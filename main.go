@@ -1,44 +1,46 @@
 package main
 
 import (
-	"flag"
+	"embed"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	tea "github.com/charmbracelet/bubbletea"
-
-	"buster-claw/internal/config"
-	"buster-claw/internal/ollama"
-	"buster-claw/internal/tui"
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
-func main() {
-	cfg := config.Load()
-	model := flag.String("m", cfg.Model, "default Ollama model")
-	host := flag.String("host", cfg.Host, "Ollama server URL")
-	flag.Parse()
+//go:embed all:frontend/dist
+var assets embed.FS
 
-	cfg.Model = *model
-	cfg.Host = *host
-	client := ollama.NewClient(cfg.Host)
+func main() {
 	saveDir, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "buster-claw: determine working directory: %v\n", err)
+		fmt.Fprintf(os.Stderr, "buster-claw: %v\n", err)
 		os.Exit(1)
 	}
 	saveDir, err = filepath.Abs(saveDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "buster-claw: determine absolute working directory: %v\n", err)
+		fmt.Fprintf(os.Stderr, "buster-claw: %v\n", err)
 		os.Exit(1)
 	}
 
-	program := tea.NewProgram(
-		tui.NewModel(client, cfg.Model, saveDir),
-		tea.WithMouseCellMotion(),
-	)
+	app := NewApp(saveDir)
 
-	if _, err := program.Run(); err != nil {
+	err = wails.Run(&options.App{
+		Title:  "Buster Claw",
+		Width:  1200,
+		Height: 800,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		OnStartup: app.startup,
+		Bind: []interface{}{
+			app,
+		},
+	})
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "buster-claw: %v\n", err)
 		os.Exit(1)
 	}

@@ -34,12 +34,21 @@
 - Orchestrator enforces sequential model access — ingestion is concurrent, but Gemma4 processes one document at a time to prevent context contamination.
 - MCP server can be run standalone (`buster-claw-mcp`) or integrated into other MCP clients.
 - YouTube transcript parsing remains stubbed.
-- No git repo initialized yet.
+- **Migrated from TUI to Wails desktop app with SolidJS frontend:**
+  - `main.go`: Rewrote for Wails — embeds `frontend/dist`, launches native webview window (1200x800).
+  - `app.go`: Wails binding struct exposing all Go functionality to the frontend: `GetModels`, `SetModel`, `SendMessage` (streaming via events), `StartIngest`, `StartAnalysis`, `StartFullPipeline`, `GetOrchestratorStatus`, `GetSources`, `GetIntentions`, `GetReportManifest`, `GetPendingCount`.
+  - `helpers.go`: Manifest reader helper.
+  - `wails.json`: Wails build configuration.
+  - `frontend/`: SolidJS + Vite + TypeScript.
+    - Dark-themed UI with sidebar (pipeline controls, orchestrator status) and main chat area with streaming response display.
+    - Model selector dropdown, pipeline buttons (Run Full, Ingest, Analyze), live status cards.
+    - Wails runtime events for real-time streaming (`chat:token`, `chat:done`, `chat:error`, `orchestrator:status`).
+  - Builds as native macOS `.app` bundle via `wails build`.
 
 ## Next
 
 - Add tests for the new packages (mcp, orchestrator, intentions).
-- Real-world testing: run `/start-full` against live sources and verify report quality.
+- Real-world testing: launch the desktop app, run full pipeline against live sources, verify report quality.
 - Expand `Intentions.md` with more specific research goals.
-- Consider adding more source URLs and RSS feeds to `sources.json`.
-- TUI dashboard view for live orchestrator monitoring.
+- Add more source URLs and RSS feeds to `sources.json`.
+- Polish the frontend: report viewer, source editor, memory management panel.
