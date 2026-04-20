@@ -44,6 +44,7 @@
     - Model selector dropdown, pipeline buttons (Run Full, Ingest, Analyze), live status cards.
     - Wails runtime events for real-time streaming (`chat:token`, `chat:done`, `chat:error`, `orchestrator:status`).
   - Builds as native macOS `.app` bundle via `wails build`.
+  - Generated `BusterClaw.dmg` installer on Desktop via `hdiutil`.
 
 ## Next
 
