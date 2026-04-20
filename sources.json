@@ -1,0 +1,14 @@
+{
+  "sources": [
+    {
+      "url": "https://lite.cnn.com/",
+      "type": "article",
+      "tags": ["news", "cnn"]
+    },
+    {
+      "url": "https://go.dev/doc/effective_go",
+      "type": "documentation",
+      "tags": ["golang", "docs"]
+    }
+  ]
+}
