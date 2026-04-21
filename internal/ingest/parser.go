@@ -40,6 +40,10 @@ func parseReadableMarkdown(rawURL string, htmlBody string) (string, error) {
 		return "", fmt.Errorf("readability extraction failed: %w", err)
 	}
 
+	if article.Node == nil {
+		return "", fmt.Errorf("readability returned no content for %s", rawURL)
+	}
+
 	var buf bytes.Buffer
 	if err := html.Render(&buf, article.Node); err != nil {
 		return "", fmt.Errorf("render readability node failed: %w", err)

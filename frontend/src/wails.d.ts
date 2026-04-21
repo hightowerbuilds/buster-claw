@@ -47,6 +47,26 @@ export interface ReportMeta {
   tags?: string[];
 }
 
+export interface DocumentInfo {
+  filename: string;
+  path: string;
+  date: string;
+  sourceUrl: string;
+  name: string;
+}
+
+export interface PendingFile {
+  filename: string;
+  path: string;
+  date: string;
+}
+
+export interface QueueEntry {
+  filename: string;
+  path: string;
+  status: string; // "queued" | "analyzing" | "done" | "failed"
+}
+
 declare global {
   interface Window {
     go: {
@@ -59,13 +79,21 @@ declare global {
           SendMessage(prompt: string): Promise<void>;
           ClearMessages(): Promise<void>;
           StartIngest(): Promise<IngestResult>;
+          IngestSource(url: string): Promise<IngestResult>;
           StartAnalysis(): Promise<AnalysisResult>;
           StartFullPipeline(): Promise<FullPipelineResult>;
           GetOrchestratorStatus(): Promise<OrchestratorStatus>;
           GetSources(): Promise<Source[]>;
+          AddSource(url: string, type: string, tags: string[], name: string): Promise<void>;
+          DeleteSource(url: string): Promise<void>;
           GetIntentions(): Promise<string>;
           GetReportManifest(): Promise<ReportMeta[]>;
           GetPendingCount(): Promise<number>;
+          GetDocuments(): Promise<DocumentInfo[]>;
+          GetPendingFiles(): Promise<PendingFile[]>;
+          QueueDocument(path: string): Promise<void>;
+          GetAnalysisQueue(): Promise<QueueEntry[]>;
+          GetReportContent(filename: string): Promise<string>;
         };
       };
     };

@@ -80,6 +80,26 @@ export namespace main {
 	        this.content = source["content"];
 	    }
 	}
+	export class DocumentInfo {
+	    filename: string;
+	    path: string;
+	    date: string;
+	    sourceUrl: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DocumentInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filename = source["filename"];
+	        this.path = source["path"];
+	        this.date = source["date"];
+	        this.sourceUrl = source["sourceUrl"];
+	        this.name = source["name"];
+	    }
+	}
 	export class FullPipelineResult {
 	    ingested: number;
 	    analyzed: number;
@@ -128,6 +148,43 @@ export namespace main {
 	        this.activeJob = source["activeJob"];
 	        this.completedJobs = source["completedJobs"];
 	        this.failedJobs = source["failedJobs"];
+	    }
+	}
+	export class PendingFile {
+	    filename: string;
+	    path: string;
+	    date: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PendingFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filename = source["filename"];
+	        this.path = source["path"];
+	        this.date = source["date"];
+	    }
+	}
+
+}
+
+export namespace orchestrator {
+	
+	export class QueueEntry {
+	    filename: string;
+	    path: string;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new QueueEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filename = source["filename"];
+	        this.path = source["path"];
+	        this.status = source["status"];
 	    }
 	}
 

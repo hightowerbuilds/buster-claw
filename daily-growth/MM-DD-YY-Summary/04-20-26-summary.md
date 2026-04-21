@@ -46,10 +46,30 @@
   - Builds as native macOS `.app` bundle via `wails build`.
   - Generated `BusterClaw.dmg` installer on Desktop via `hdiutil`.
 
+- **Frontend expanded to full 6-view UI:**
+  - `frontend/src/App.tsx`: Rewrote from single chat view to tabbed layout with 6 views: Chat, Ingestion, Documents, Orchestration, Analysis, Models.
+  - **Ingestion view**: Source list with add/delete, per-source ingest button, source type selector (rss, article, documentation, youtube_transcript), tag input.
+  - **Documents view**: Browse all ingested files grouped by date, shows source URL and name from frontmatter.
+  - **Orchestration view**: Live queue monitor with per-entry status (queued/analyzing/done/failed), pending files list with "queue for analysis" action.
+  - **Analysis view**: Report browser with manifest list, click-to-read full report content rendered as markdown.
+  - **Models view**: List available Ollama models, switch active model.
+  - Added `marked` dependency for markdown rendering in reports.
+  - `frontend/src/styles.css`: Major expansion — full styling for all 6 views, sidebar nav, status badges, cards, tables, buttons, form inputs.
+- **New backend endpoints for the expanded UI:**
+  - `app.go`: Added `IngestSource()` (single-source ingestion), `AddSource()` / `DeleteSource()` (source CRUD), `GetDocuments()` (browse raw library with frontmatter extraction), `GetPendingFiles()`, `QueueDocument()`, `GetAnalysisQueue()` (tracked queue with status), `GetReportContent()` (read + strip frontmatter).
+  - `internal/ingest/source.go`: Added `SaveSources()` for writing sources back to disk.
+  - `internal/orchestrator/orchestrator.go`: Added `IngestSingle()` for single-source ingestion, `QueueDocument()` / `GetAnalysisQueue()` / `ClearCompletedQueue()` for tracked queue with per-entry status, `setTrackedStatus()` wiring into analysis loop.
+  - `internal/ingest/parser.go`: Added nil-check on `article.Node` to guard against readability returning empty content.
+  - `internal/config/config.go`: Added default model fallback (`gemma4:e2b`) when `LOCALLLM_MODEL` is unset.
+- **Wails bindings regenerated** (`frontend/wailsjs/`) to expose all new Go methods and types (`DocumentInfo`, `PendingFile`, `QueueEntry`).
+- **Vite HMR config**: Added explicit `hmr` block in `vite.config.ts` for stable hot-reload during dev.
+- **Wails dev config**: Added `debounceMS` and `watcher:ignore` in `wails.json` to avoid frontend rebuild loops.
+- **Sources expanded**: Replaced placeholder CNN/Go docs with 11 real RSS feeds — Hacker News, Lobsters, Ars Technica, TLDR, Go Blog, Simon Willison, Julia Evans, Pragmatic Engineer, Hugging Face, Anthropic, Latent Space.
+- **Deleted `daily-growth/road-maps/roadmap.md`** — all 4 phases are complete, roadmap no longer needed.
+
 ## Next
 
 - Add tests for the new packages (mcp, orchestrator, intentions).
 - Real-world testing: launch the desktop app, run full pipeline against live sources, verify report quality.
 - Expand `Intentions.md` with more specific research goals.
-- Add more source URLs and RSS feeds to `sources.json`.
-- Polish the frontend: report viewer, source editor, memory management panel.
+- Continue frontend polish: search/filter for documents, report diff view, settings panel.

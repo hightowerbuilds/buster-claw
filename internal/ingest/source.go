@@ -59,6 +59,19 @@ func LoadSources(filepath string) ([]Source, error) {
 	return config.Sources, nil
 }
 
+// SaveSources writes the sources list back to the configuration file.
+func SaveSources(filepath string, sources []Source) error {
+	config := SourcesConfig{Sources: sources}
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal sources: %w", err)
+	}
+	if err := os.WriteFile(filepath, data, 0644); err != nil {
+		return fmt.Errorf("write sources file: %w", err)
+	}
+	return nil
+}
+
 func validateSource(src Source) error {
 	if src.URL == "" {
 		return fmt.Errorf("url is required")

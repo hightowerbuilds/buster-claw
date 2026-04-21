@@ -14,6 +14,9 @@ func Load() Config {
 	}
 
 	model := os.Getenv("LOCALLLM_MODEL")
+	if model == "" {
+		model = "gemma4:e2b"
+	}
 
 	return Config{
 		Host:  host,

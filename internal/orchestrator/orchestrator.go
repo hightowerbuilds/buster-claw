@@ -42,6 +42,13 @@ type Status struct {
 	AnalysisRunning bool
 }
 
+// QueueEntry tracks a document's state in the analysis queue.
+type QueueEntry struct {
+	Filename string `json:"filename"`
+	Path     string `json:"path"`
+	Status   string `json:"status"` // "queued", "analyzing", "done", "failed"
+}
+
 // Orchestrator coordinates the full pipeline: ingest → queue → analyze → report.
 // Ingestion runs concurrently. Analysis is gated — one document at a time.
 type Orchestrator struct {
@@ -55,6 +62,10 @@ type Orchestrator struct {
 	analysisQueue chan Job
 	statusMu      sync.RWMutex
 	status         Status
+
+	// Tracked queue for UI visibility
+	trackedQueue []QueueEntry
+	trackedMu    sync.RWMutex
 
 	// OnStatusChange is called whenever the status changes. Optional.
 	OnStatusChange func(Status)
@@ -88,6 +99,62 @@ func (o *Orchestrator) updateStatus(fn func(*Status)) {
 
 	if o.OnStatusChange != nil {
 		o.OnStatusChange(s)
+	}
+}
+
+// QueueDocument adds a single document to the analysis queue.
+func (o *Orchestrator) QueueDocument(path string) {
+	o.trackedMu.Lock()
+	// Don't add duplicates
+	for _, e := range o.trackedQueue {
+		if e.Path == path {
+			o.trackedMu.Unlock()
+			return
+		}
+	}
+	o.trackedQueue = append(o.trackedQueue, QueueEntry{
+		Filename: filepath.Base(path),
+		Path:     path,
+		Status:   "queued",
+	})
+	o.trackedMu.Unlock()
+
+	o.analysisQueue <- Job{Type: JobAnalyze, SourceFile: path}
+	o.updateStatus(func(s *Status) {
+		s.QueueDepth = len(o.analysisQueue)
+	})
+}
+
+// GetAnalysisQueue returns the current tracked queue entries.
+func (o *Orchestrator) GetAnalysisQueue() []QueueEntry {
+	o.trackedMu.RLock()
+	defer o.trackedMu.RUnlock()
+	out := make([]QueueEntry, len(o.trackedQueue))
+	copy(out, o.trackedQueue)
+	return out
+}
+
+// ClearCompletedQueue removes done/failed entries from the tracked queue.
+func (o *Orchestrator) ClearCompletedQueue() {
+	o.trackedMu.Lock()
+	defer o.trackedMu.Unlock()
+	var active []QueueEntry
+	for _, e := range o.trackedQueue {
+		if e.Status == "queued" || e.Status == "analyzing" {
+			active = append(active, e)
+		}
+	}
+	o.trackedQueue = active
+}
+
+func (o *Orchestrator) setTrackedStatus(path, status string) {
+	o.trackedMu.Lock()
+	defer o.trackedMu.Unlock()
+	for i := range o.trackedQueue {
+		if o.trackedQueue[i].Path == path {
+			o.trackedQueue[i].Status = status
+			break
+		}
 	}
 }
 
@@ -175,6 +242,77 @@ func (o *Orchestrator) RunIngest(ctx context.Context) (int, error) {
 	return saved, nil
 }
 
+// IngestSingle fetches a single source (with RSS expansion if needed),
+// saves results to the Library, and queues them for analysis.
+func (o *Orchestrator) IngestSingle(ctx context.Context, source ingest.Source) (int, error) {
+	o.updateStatus(func(s *Status) {
+		s.Phase = fmt.Sprintf("ingesting: %s", source.Name)
+		s.IngestRunning = true
+	})
+	defer o.updateStatus(func(s *Status) {
+		s.IngestRunning = false
+		if !s.AnalysisRunning {
+			s.Phase = "idle"
+		}
+	})
+
+	var fetchable []ingest.Source
+	if source.Type == ingest.RSSType {
+		entries, err := ingest.FetchRSSEntries(ctx, source)
+		if err != nil {
+			return 0, fmt.Errorf("expand rss %s: %w", source.URL, err)
+		}
+		fetchable = entries
+	} else {
+		fetchable = []ingest.Source{source}
+	}
+
+	if len(fetchable) == 0 {
+		return 0, fmt.Errorf("no fetchable content from %s", source.URL)
+	}
+
+	o.updateStatus(func(s *Status) {
+		s.Phase = fmt.Sprintf("fetching %d from %s", len(fetchable), source.Name)
+	})
+
+	fetcher := ingest.NewFetcher(5)
+	results := fetcher.FetchAll(ctx, fetchable)
+
+	libMgr := library.NewManager(o.libraryDir)
+	saved := 0
+	var lastErr error
+
+	for _, r := range results {
+		if r.Error != nil {
+			lastErr = r.Error
+			o.updateStatus(func(s *Status) { s.FailedJobs++ })
+			continue
+		}
+		path, err := libMgr.SaveResult(r)
+		if err != nil {
+			lastErr = err
+			o.updateStatus(func(s *Status) { s.FailedJobs++ })
+			continue
+		}
+
+		o.analysisQueue <- Job{
+			Type:       JobAnalyze,
+			SourceFile: path,
+		}
+		saved++
+		o.updateStatus(func(s *Status) {
+			s.CompletedJobs++
+			s.QueueDepth = len(o.analysisQueue)
+		})
+	}
+
+	if saved == 0 && lastErr != nil {
+		return 0, fmt.Errorf("all fetches failed for %s: %w", source.URL, lastErr)
+	}
+
+	return saved, nil
+}
+
 // RunAnalysis processes the analysis queue sequentially — one document at a time.
 // It blocks until the queue is drained or the context is cancelled.
 func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
@@ -218,6 +356,7 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 				return processed, lastErr
 			}
 
+			o.setTrackedStatus(job.SourceFile, "analyzing")
 			o.updateStatus(func(s *Status) {
 				s.ActiveJob = filepath.Base(job.SourceFile)
 				s.QueueDepth = len(o.analysisQueue)
@@ -227,10 +366,12 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 			err := o.analyzeOne(ctx, job, ints, qMgr, reportMgr, reportsDir)
 			if err != nil {
 				lastErr = err
+				o.setTrackedStatus(job.SourceFile, "failed")
 				o.updateStatus(func(s *Status) { s.FailedJobs++ })
 				continue
 			}
 
+			o.setTrackedStatus(job.SourceFile, "done")
 			processed++
 			o.updateStatus(func(s *Status) {
 				s.CompletedJobs++

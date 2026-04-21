@@ -6,6 +6,8 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
+  "debounceMS": 500,
+  "watcher:ignore": ["frontend"],
   "author": {
     "name": "hightowerbuilds"
   }
