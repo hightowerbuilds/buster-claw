@@ -9,6 +9,8 @@ export function AddSource(arg1:string,arg2:string,arg3:Array<string>,arg4:string
 
 export function ClearMessages():Promise<void>;
 
+export function DeleteDocument(arg1:string):Promise<void>;
+
 export function DeleteSource(arg1:string):Promise<void>;
 
 export function GetAnalysisQueue():Promise<Array<orchestrator.QueueEntry>>;

@@ -10,6 +10,10 @@ export function ClearMessages() {
   return window['go']['main']['App']['ClearMessages']();
 }
 
+export function DeleteDocument(arg1) {
+  return window['go']['main']['App']['DeleteDocument'](arg1);
+}
+
 export function DeleteSource(arg1) {
   return window['go']['main']['App']['DeleteSource'](arg1);
 }

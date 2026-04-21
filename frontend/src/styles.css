@@ -415,6 +415,32 @@ body {
   padding: 10px 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.doc-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-delete-btn {
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.doc-delete-btn:hover {
+  color: var(--error);
+  border-color: var(--error);
 }
 
 .doc-item-title {
@@ -436,6 +462,49 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 400px;
+}
+
+/* ---- Docs View ---- */
+
+.docs-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.docs-intro {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 4px 0;
+}
+
+.docs-command {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.docs-command code {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.docs-command span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.docs-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 8px 0 0 0;
+  font-style: italic;
 }
 
 /* ---- Orchestration View ---- */

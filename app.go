@@ -16,6 +16,7 @@ import (
 	"buster-claw/internal/ollama"
 	"buster-claw/internal/orchestrator"
 	"buster-claw/internal/queue"
+	"buster-claw/internal/websearch"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -127,8 +128,16 @@ func (a *App) GetMessages() []ChatMessage {
 }
 
 // SendMessage sends a prompt to the model and streams the response.
+// Supports slash commands: /search, /ingest, /status, /clear, /help.
 // Emits "chat:token" events as chunks arrive, and "chat:done" when complete.
 func (a *App) SendMessage(prompt string) error {
+	trimmed := strings.TrimSpace(prompt)
+
+	// Handle slash commands — these don't require a model
+	if strings.HasPrefix(trimmed, "/") {
+		return a.handleSlashCommand(trimmed)
+	}
+
 	if a.model == "" {
 		return fmt.Errorf("no model selected")
 	}
@@ -148,10 +157,16 @@ func (a *App) SendMessage(prompt string) error {
 	a.mu.Unlock()
 
 	go func() {
-		var builder strings.Builder
-
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
+
+		// Check if the user is asking for a web search via natural language
+		if query, ok := websearch.DetectQuery(prompt); ok {
+			a.searchAndStream(ctx, query, history)
+			return
+		}
+
+		var builder strings.Builder
 
 		err := a.client.ChatStream(ctx, a.model, history, func(chunk string) error {
 			builder.WriteString(chunk)
@@ -173,6 +188,150 @@ func (a *App) SendMessage(prompt string) error {
 	}()
 
 	return nil
+}
+
+// handleSlashCommand processes a /command and emits results as chat messages.
+func (a *App) handleSlashCommand(input string) error {
+	parts := strings.SplitN(input, " ", 2)
+	cmd := strings.ToLower(parts[0])
+	arg := ""
+	if len(parts) > 1 {
+		arg = strings.TrimSpace(parts[1])
+	}
+
+	// Add the command to chat history so the user sees it
+	a.mu.Lock()
+	a.messages = append(a.messages, ChatMessage{Role: "user", Content: input})
+	a.mu.Unlock()
+	runtime.EventsEmit(a.ctx, "chat:message", ChatMessage{Role: "user", Content: input})
+
+	switch cmd {
+	case "/search":
+		if arg == "" {
+			a.emitSystemMessage("Usage: `/search <query>`")
+			return nil
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if a.model == "" {
+				// No model — just show raw results
+				a.emitSystemMessage("No model selected. Showing raw search results:")
+				runtime.EventsEmit(a.ctx, "chat:searching", arg)
+				results, err := websearch.Search(ctx, arg, 8)
+				if err != nil {
+					runtime.EventsEmit(a.ctx, "chat:error", fmt.Sprintf("Search failed: %s", err))
+					return
+				}
+				a.emitSystemMessage(websearch.FormatResults(results))
+				return
+			}
+
+			// Build history and stream through the model
+			a.mu.Lock()
+			history := make([]ollama.Message, len(a.messages))
+			for i, m := range a.messages {
+				history[i] = ollama.Message{Role: m.Role, Content: m.Content}
+			}
+			a.mu.Unlock()
+
+			searchCtx, searchCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer searchCancel()
+			a.searchAndStream(searchCtx, arg, history)
+		}()
+		return nil
+
+	case "/ingest":
+		if arg == "" {
+			a.emitSystemMessage("Usage: `/ingest <url>`")
+			return nil
+		}
+		go func() {
+			result := a.IngestSource(arg)
+			if result.Error != "" {
+				a.emitSystemMessage(fmt.Sprintf("Ingest failed: %s", result.Error))
+			} else {
+				a.emitSystemMessage(fmt.Sprintf("Ingested %d documents from `%s`", result.SavedCount, arg))
+			}
+		}()
+		return nil
+
+	case "/status":
+		s := a.orchestrator.GetStatus()
+		msg := fmt.Sprintf("**Pipeline Status**\n- Phase: %s\n- Queue: %d\n- Active: %s\n- Completed: %d\n- Failed: %d",
+			s.Phase, s.QueueDepth, s.ActiveJob, s.CompletedJobs, s.FailedJobs)
+		a.emitSystemMessage(msg)
+		return nil
+
+	case "/clear":
+		a.ClearMessages()
+		runtime.EventsEmit(a.ctx, "chat:cleared", true)
+		return nil
+
+	case "/help":
+		help := "**Available Commands**\n" +
+			"- `/search <query>` — Search the web and summarize results\n" +
+			"- `/ingest <url>` — Ingest a URL into the library\n" +
+			"- `/status` — Show pipeline status\n" +
+			"- `/clear` — Clear chat history\n" +
+			"- `/help` — Show this message"
+		a.emitSystemMessage(help)
+		return nil
+
+	default:
+		a.emitSystemMessage(fmt.Sprintf("Unknown command: `%s`. Type `/help` for available commands.", cmd))
+		return nil
+	}
+}
+
+// emitSystemMessage sends a one-shot assistant message through the chat event system.
+func (a *App) emitSystemMessage(content string) {
+	a.mu.Lock()
+	a.messages = append(a.messages, ChatMessage{Role: "assistant", Content: content})
+	a.mu.Unlock()
+	runtime.EventsEmit(a.ctx, "chat:token", content)
+	runtime.EventsEmit(a.ctx, "chat:done", content)
+}
+
+// searchAndStream performs a web search, injects results into history, and streams the LLM response.
+func (a *App) searchAndStream(ctx context.Context, query string, history []ollama.Message) {
+	runtime.EventsEmit(a.ctx, "chat:searching", query)
+
+	searchCtx, searchCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer searchCancel()
+
+	results, err := websearch.Search(searchCtx, query, 8)
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "chat:error", fmt.Sprintf("Web search failed: %s", err))
+		return
+	}
+
+	// Inject search results as a system message before the user's prompt
+	searchContext := ollama.Message{
+		Role: "system",
+		Content: fmt.Sprintf("The user asked you to search the web. Here are the search results for %q:\n\n%s\nSummarize and answer based on these results. Cite sources by number when relevant.",
+			query, websearch.FormatResults(results)),
+	}
+	history = append(history[:len(history)-1], searchContext, history[len(history)-1])
+
+	var builder strings.Builder
+	err = a.client.ChatStream(ctx, a.model, history, func(chunk string) error {
+		builder.WriteString(chunk)
+		runtime.EventsEmit(a.ctx, "chat:token", chunk)
+		return nil
+	})
+
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "chat:error", err.Error())
+		return
+	}
+
+	response := builder.String()
+	a.mu.Lock()
+	a.messages = append(a.messages, ChatMessage{Role: "assistant", Content: response})
+	a.mu.Unlock()
+	runtime.EventsEmit(a.ctx, "chat:done", response)
 }
 
 // ClearMessages clears the chat history.
@@ -457,6 +616,34 @@ func (a *App) GetDocuments() ([]DocumentInfo, error) {
 	}
 
 	return docs, nil
+}
+
+// DeleteDocument removes a raw document file from the library.
+// Reports and queue entries referencing this document are intentionally preserved.
+func (a *App) DeleteDocument(path string) error {
+	// Ensure the path is inside Library/raw/ to prevent arbitrary file deletion
+	rawDir := filepath.Join(a.saveDir, "Library", "raw")
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("invalid path: %w", err)
+	}
+	absRaw, _ := filepath.Abs(rawDir)
+	if !strings.HasPrefix(absPath, absRaw+string(filepath.Separator)) {
+		return fmt.Errorf("path is not inside the library")
+	}
+
+	if err := os.Remove(absPath); err != nil {
+		return fmt.Errorf("delete document: %w", err)
+	}
+
+	// Clean up empty date directory if it's now empty
+	dir := filepath.Dir(absPath)
+	entries, err := os.ReadDir(dir)
+	if err == nil && len(entries) == 0 {
+		os.Remove(dir)
+	}
+
+	return nil
 }
 
 // PendingFile is a document waiting in the analysis queue.

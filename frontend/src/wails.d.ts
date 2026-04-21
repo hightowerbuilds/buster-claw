@@ -90,6 +90,7 @@ declare global {
           GetReportManifest(): Promise<ReportMeta[]>;
           GetPendingCount(): Promise<number>;
           GetDocuments(): Promise<DocumentInfo[]>;
+          DeleteDocument(path: string): Promise<void>;
           GetPendingFiles(): Promise<PendingFile[]>;
           QueueDocument(path: string): Promise<void>;
           GetAnalysisQueue(): Promise<QueueEntry[]>;

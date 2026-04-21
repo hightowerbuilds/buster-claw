@@ -2,7 +2,7 @@ import { createSignal, createEffect, onMount, onCleanup, For, Show } from "solid
 import { marked } from "marked";
 import type { ChatMessage, OrchestratorStatus, Source, DocumentInfo, PendingFile, ReportMeta, QueueEntry } from "./wails.d";
 
-type View = "chat" | "ingestion" | "documents" | "orchestration" | "analysis" | "models";
+type View = "chat" | "ingestion" | "documents" | "orchestration" | "analysis" | "models" | "docs";
 
 function App() {
   const [activeView, setActiveView] = createSignal<View>("chat");
@@ -11,6 +11,7 @@ function App() {
   const [models, setModels] = createSignal<string[]>([]);
   const [currentModel, setCurrentModel] = createSignal("");
   const [streaming, setStreaming] = createSignal(false);
+  const [searching, setSearching] = createSignal("");
   const [streamBuffer, setStreamBuffer] = createSignal("");
   const [status, setStatus] = createSignal<OrchestratorStatus>({
     phase: "idle",
@@ -75,7 +76,11 @@ function App() {
     try { const msgs = await window.go.main.App.GetMessages(); setMessages(msgs || []); } catch (e) { console.error(e); }
     try { const s = await window.go.main.App.GetSources(); setSources(s || []); } catch (e) { console.error(e); }
 
+    window.runtime.EventsOn("chat:searching", (query: string) => {
+      setSearching(query);
+    });
     window.runtime.EventsOn("chat:token", (chunk: string) => {
+      setSearching("");
       setStreaming(true);
       setStreamBuffer((prev) => prev + chunk);
     });
@@ -84,11 +89,19 @@ function App() {
       if (buf) setMessages((prev) => [...prev, { role: "assistant", content: buf }]);
       setStreamBuffer("");
       setStreaming(false);
+      setSearching("");
     });
     window.runtime.EventsOn("chat:error", (err: string) => {
       setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${err}` }]);
       setStreamBuffer("");
       setStreaming(false);
+      setSearching("");
+    });
+    window.runtime.EventsOn("chat:cleared", () => {
+      setMessages([]);
+      setStreamBuffer("");
+      setStreaming(false);
+      setSearching("");
     });
     window.runtime.EventsOn("orchestrator:status", async (s: OrchestratorStatus) => {
       setStatus(s);
@@ -100,9 +113,11 @@ function App() {
   });
 
   onCleanup(() => {
+    window.runtime.EventsOff("chat:searching");
     window.runtime.EventsOff("chat:token");
     window.runtime.EventsOff("chat:done");
     window.runtime.EventsOff("chat:error");
+    window.runtime.EventsOff("chat:cleared");
     window.runtime.EventsOff("orchestrator:status");
   });
 
@@ -227,6 +242,14 @@ function App() {
     } catch (e) { console.error(e); }
   };
 
+  const deleteDocument = async (path: string) => {
+    try {
+      await window.go.main.App.DeleteDocument(path);
+      const d = await window.go.main.App.GetDocuments();
+      setDocuments(d || []);
+    } catch (e) { console.error(e); }
+  };
+
   const clearChat = async () => {
     await window.go.main.App.ClearMessages();
     setMessages([]);
@@ -250,6 +273,7 @@ function App() {
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "orchestration" }} onClick={() => switchView("orchestration")}>Orchestration</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "analysis" }} onClick={() => switchView("analysis")}>Analysis</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "models" }} onClick={() => switchView("models")}>Models</button>
+          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "docs" }} onClick={() => switchView("docs")}>Docs</button>
         </div>
 
         <div class="sidebar-section">
@@ -272,7 +296,6 @@ function App() {
 
         <div class="sidebar-section">
           <h3>Actions</h3>
-          <button class="sidebar-btn" onClick={refreshModels}>Refresh Models</button>
           <button class="sidebar-btn" onClick={clearChat}>Clear Chat</button>
         </div>
       </div>
@@ -296,6 +319,12 @@ function App() {
                   <div class="message-content">{msg.content}</div>
                 </div>
               )}</For>
+              <Show when={searching()}>
+                <div class="message assistant searching">
+                  <div class="message-role">Gemma</div>
+                  <div class="message-content">Searching the web for "{searching()}"<span class="streaming-indicator" /></div>
+                </div>
+              </Show>
               <Show when={streaming() && streamBuffer()}>
                 <div class="message assistant">
                   <div class="message-role">Gemma</div>
@@ -376,13 +405,16 @@ function App() {
               <For each={documents()} fallback={<div class="empty-list">No documents ingested yet. Go to Ingestion to fetch sources.</div>}>
                 {(doc) => (
                   <div class="doc-item">
-                    <div class="doc-item-title">{doc.name || doc.filename}</div>
-                    <div class="doc-item-meta">
-                      <span class="doc-item-date">{doc.date}</span>
-                      <Show when={doc.sourceUrl}>
-                        <span class="doc-item-url">{doc.sourceUrl}</span>
-                      </Show>
+                    <div class="doc-item-info">
+                      <div class="doc-item-title">{doc.name || doc.filename}</div>
+                      <div class="doc-item-meta">
+                        <span class="doc-item-date">{doc.date}</span>
+                        <Show when={doc.sourceUrl}>
+                          <span class="doc-item-url">{doc.sourceUrl}</span>
+                        </Show>
+                      </div>
                     </div>
+                    <button class="doc-delete-btn" onClick={() => deleteDocument(doc.path)} title="Delete document">Delete</button>
                   </div>
                 )}
               </For>
@@ -525,12 +557,48 @@ function App() {
           </div>
         </div>
 
+        {/* Docs View */}
+        <div class="view-panel" classList={{ hidden: activeView() !== "docs" }}>
+          <div class="view-panel-content">
+            <div class="view-header">
+              <h2>Commands</h2>
+            </div>
+
+            <div class="docs-content">
+              <p class="docs-intro">Type these in the chat input.</p>
+
+              <div class="docs-command">
+                <code>/search &lt;query&gt;</code>
+                <span>Search the web and get an AI summary</span>
+              </div>
+              <div class="docs-command">
+                <code>/ingest &lt;url&gt;</code>
+                <span>Fetch a URL into the library</span>
+              </div>
+              <div class="docs-command">
+                <code>/status</code>
+                <span>Show pipeline status</span>
+              </div>
+              <div class="docs-command">
+                <code>/clear</code>
+                <span>Clear chat history</span>
+              </div>
+              <div class="docs-command">
+                <code>/help</code>
+                <span>List all commands</span>
+              </div>
+
+              <p class="docs-note">You can also ask to search in plain language, e.g. "search for golang tutorials"</p>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {/* Status Bar */}
       <div class="status-bar">
         <span>{currentModel() ? `Model: ${currentModel()}` : "No model"} | {models().length} installed</span>
-        <span>Buster Claw v1.0</span>
+        <span>Buster Claw</span>
       </div>
     </div>
   );

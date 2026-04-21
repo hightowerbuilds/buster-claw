@@ -67,9 +67,29 @@
 - **Sources expanded**: Replaced placeholder CNN/Go docs with 11 real RSS feeds — Hacker News, Lobsters, Ars Technica, TLDR, Go Blog, Simon Willison, Julia Evans, Pragmatic Engineer, Hugging Face, Anthropic, Latent Space.
 - **Deleted `daily-growth/road-maps/roadmap.md`** — all 4 phases are complete, roadmap no longer needed.
 
+- **Web search in chat:**
+  - `internal/websearch/search.go`: New package — queries DuckDuckGo HTML endpoint (no API key), parses results via goquery, returns titles/URLs/snippets. `DetectQuery()` scans for search trigger phrases anywhere in the message (not just prefix). `FormatResults()` formats for LLM context injection.
+  - `internal/websearch/detect_test.go`: Tests for search intent detection across conversational phrasing.
+  - `app.go`: `SendMessage` now detects search intent (natural language or `/search`), runs DuckDuckGo search, injects results as a system message, and streams the model's summary. Added `searchAndStream()` helper.
+  - Frontend emits `chat:searching` event — shows "Searching the web for..." indicator while results load.
+- **Slash commands in chat:**
+  - `app.go`: Added `handleSlashCommand()` router and `emitSystemMessage()` helper. Commands:
+    - `/search <query>` — web search with AI summary
+    - `/ingest <url>` — ingest a URL into the library from chat
+    - `/status` — show pipeline status inline
+    - `/clear` — clear chat history (emits `chat:cleared` event)
+    - `/help` — list available commands
+  - Frontend listens for `chat:cleared` to reset UI state.
+- **Document deletion:**
+  - `app.go`: Added `DeleteDocument(path)` — removes raw file from `Library/raw/`, cleans up empty date dirs, path-validated to prevent arbitrary deletion. Reports and queue entries are preserved.
+  - Frontend: Delete button on each document in the Documents view.
+- **Docs view:**
+  - Added 7th sidebar view ("Docs") with a quick-reference panel listing all slash commands and descriptions.
+- **Minor cleanup:** Removed "Buster Claw v1.0" version label from status bar, removed "Refresh Models" from sidebar actions.
+
 ## Next
 
-- Add tests for the new packages (mcp, orchestrator, intentions).
+- Add tests for the new packages (mcp, orchestrator, intentions, websearch).
 - Real-world testing: launch the desktop app, run full pipeline against live sources, verify report quality.
 - Expand `Intentions.md` with more specific research goals.
 - Continue frontend polish: search/filter for documents, report diff view, settings panel.
