@@ -86,6 +86,7 @@
 - **Docs view:**
   - Added 7th sidebar view ("Docs") with a quick-reference panel listing all slash commands and descriptions.
 - **Minor cleanup:** Removed "Buster Claw v1.0" version label from status bar, removed "Refresh Models" from sidebar actions.
+- **Fix `/ingest` command:** Was looking up URL in `sources.json` and failing for unknown URLs. Now fetches any arbitrary URL directly via `orchestrator.IngestSingle()` with an ad-hoc article source.
 
 ## Next
 

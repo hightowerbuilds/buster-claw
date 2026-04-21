@@ -248,11 +248,20 @@ func (a *App) handleSlashCommand(input string) error {
 			return nil
 		}
 		go func() {
-			result := a.IngestSource(arg)
-			if result.Error != "" {
-				a.emitSystemMessage(fmt.Sprintf("Ingest failed: %s", result.Error))
+			src := ingest.Source{
+				URL:  arg,
+				Type: ingest.ArticleType,
+				Tags: []string{"chat-ingest"},
+				Name: arg,
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+
+			saved, err := a.orchestrator.IngestSingle(ctx, src)
+			if err != nil {
+				a.emitSystemMessage(fmt.Sprintf("Ingest failed: %s", err))
 			} else {
-				a.emitSystemMessage(fmt.Sprintf("Ingested %d documents from `%s`", result.SavedCount, arg))
+				a.emitSystemMessage(fmt.Sprintf("Ingested %d documents from `%s`", saved, arg))
 			}
 		}()
 		return nil
