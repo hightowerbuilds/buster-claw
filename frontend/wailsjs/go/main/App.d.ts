@@ -23,17 +23,11 @@ export function GetCurrentModel():Promise<string>;
 
 export function GetDocuments():Promise<Array<main.DocumentInfo>>;
 
-export function GetIntentions():Promise<string>;
-
 export function GetMemories():Promise<Array<main.MemoryEntry>>;
 
 export function GetMessages():Promise<Array<main.ChatMessage>>;
 
 export function GetModels():Promise<Array<string>>;
-
-export function GetOrchestratorStatus():Promise<main.OrchestratorStatus>;
-
-export function GetPendingCount():Promise<number>;
 
 export function GetPendingFiles():Promise<Array<main.PendingFile>>;
 
@@ -62,8 +56,6 @@ export function SetActiveProvider(arg1:string):Promise<void>;
 export function SetModel(arg1:string):Promise<void>;
 
 export function StartAnalysis():Promise<main.AnalysisResult>;
-
-export function StartFullPipeline():Promise<main.FullPipelineResult>;
 
 export function StartIngest():Promise<main.IngestResult>;
 

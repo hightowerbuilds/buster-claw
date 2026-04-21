@@ -162,42 +162,6 @@ func (m *Manager) SetActive(name string) error {
 	return m.Save()
 }
 
-// Active returns the currently active provider config, or nil.
-func (m *Manager) Active() *Config {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for _, p := range m.providers {
-		if p.Active {
-			cfg := p
-			return &cfg
-		}
-	}
-	return nil
-}
-
-// ChatStream sends a chat request to the active provider and streams the response.
-// This is the unified interface — routes to the correct backend based on provider type.
-func (m *Manager) ChatStream(
-	ctx context.Context,
-	messages []Message,
-	onChunk func(string) error,
-) error {
-	cfg := m.Active()
-	if cfg == nil {
-		return fmt.Errorf("no active provider configured")
-	}
-
-	switch cfg.Type {
-	case TypeOllama:
-		return fmt.Errorf("use the Ollama client directly for local models")
-	case TypeAnthropic:
-		return streamAnthropic(ctx, *cfg, messages, onChunk)
-	default:
-		// OpenRouter, OpenAI, Custom — all use OpenAI-compatible format
-		return streamOpenAI(ctx, *cfg, messages, onChunk)
-	}
-}
-
 // TestConnection attempts a lightweight request to verify the provider works.
 func (m *Manager) TestConnection(ctx context.Context, name string) (string, error) {
 	m.mu.RLock()

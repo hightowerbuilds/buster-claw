@@ -38,10 +38,6 @@ export function GetDocuments() {
   return window['go']['main']['App']['GetDocuments']();
 }
 
-export function GetIntentions() {
-  return window['go']['main']['App']['GetIntentions']();
-}
-
 export function GetMemories() {
   return window['go']['main']['App']['GetMemories']();
 }
@@ -52,14 +48,6 @@ export function GetMessages() {
 
 export function GetModels() {
   return window['go']['main']['App']['GetModels']();
-}
-
-export function GetOrchestratorStatus() {
-  return window['go']['main']['App']['GetOrchestratorStatus']();
-}
-
-export function GetPendingCount() {
-  return window['go']['main']['App']['GetPendingCount']();
 }
 
 export function GetPendingFiles() {
@@ -116,10 +104,6 @@ export function SetModel(arg1) {
 
 export function StartAnalysis() {
   return window['go']['main']['App']['StartAnalysis']();
-}
-
-export function StartFullPipeline() {
-  return window['go']['main']['App']['StartFullPipeline']();
 }
 
 export function StartIngest() {

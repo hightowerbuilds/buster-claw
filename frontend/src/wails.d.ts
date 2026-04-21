@@ -24,12 +24,6 @@ export interface AnalysisResult {
   error?: string;
 }
 
-export interface FullPipelineResult {
-  ingested: number;
-  analyzed: number;
-  error?: string;
-}
-
 export interface Source {
   url: string;
   type: string;
@@ -96,14 +90,10 @@ declare global {
           StartIngest(): Promise<IngestResult>;
           IngestSource(url: string): Promise<IngestResult>;
           StartAnalysis(): Promise<AnalysisResult>;
-          StartFullPipeline(): Promise<FullPipelineResult>;
-          GetOrchestratorStatus(): Promise<OrchestratorStatus>;
           GetSources(): Promise<Source[]>;
           AddSource(url: string, type: string, tags: string[], name: string): Promise<void>;
           DeleteSource(url: string): Promise<void>;
-          GetIntentions(): Promise<string>;
           GetReportManifest(): Promise<ReportMeta[]>;
-          GetPendingCount(): Promise<number>;
           GetDocuments(): Promise<DocumentInfo[]>;
           DeleteDocument(path: string): Promise<void>;
           GetPendingFiles(): Promise<PendingFile[]>;

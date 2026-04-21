@@ -100,22 +100,6 @@ export namespace main {
 	        this.name = source["name"];
 	    }
 	}
-	export class FullPipelineResult {
-	    ingested: number;
-	    analyzed: number;
-	    error?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new FullPipelineResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.ingested = source["ingested"];
-	        this.analyzed = source["analyzed"];
-	        this.error = source["error"];
-	    }
-	}
 	export class IngestResult {
 	    savedCount: number;
 	    error?: string;
@@ -144,26 +128,6 @@ export namespace main {
 	        this.index = source["index"];
 	        this.createdAt = source["createdAt"];
 	        this.text = source["text"];
-	    }
-	}
-	export class OrchestratorStatus {
-	    phase: string;
-	    queueDepth: number;
-	    activeJob: string;
-	    completedJobs: number;
-	    failedJobs: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new OrchestratorStatus(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.phase = source["phase"];
-	        this.queueDepth = source["queueDepth"];
-	        this.activeJob = source["activeJob"];
-	        this.completedJobs = source["completedJobs"];
-	        this.failedJobs = source["failedJobs"];
 	    }
 	}
 	export class PendingFile {

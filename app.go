@@ -11,7 +11,6 @@ import (
 
 	"buster-claw/internal/config"
 	"buster-claw/internal/ingest"
-	"buster-claw/internal/intentions"
 	"buster-claw/internal/library"
 	"buster-claw/internal/mcp"
 	"buster-claw/internal/memory"
@@ -64,13 +63,6 @@ type IngestResult struct {
 type AnalysisResult struct {
 	ProcessedCount int    `json:"processedCount"`
 	Error          string `json:"error,omitempty"`
-}
-
-// FullPipelineResult is returned after a full pipeline run.
-type FullPipelineResult struct {
-	Ingested int    `json:"ingested"`
-	Analyzed int    `json:"analyzed"`
-	Error    string `json:"error,omitempty"`
 }
 
 // NewApp creates a new App instance.
@@ -503,33 +495,7 @@ func (a *App) StartAnalysis() AnalysisResult {
 	return AnalysisResult{ProcessedCount: processed}
 }
 
-// --- Full Pipeline ---
-
-// StartFullPipeline runs ingestion then analysis sequentially.
-func (a *App) StartFullPipeline() FullPipelineResult {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-
-	ingested, analyzed, err := a.orchestrator.RunFull(ctx)
-	if err != nil {
-		return FullPipelineResult{Ingested: ingested, Analyzed: analyzed, Error: err.Error()}
-	}
-	return FullPipelineResult{Ingested: ingested, Analyzed: analyzed}
-}
-
 // --- Status ---
-
-// GetOrchestratorStatus returns the current orchestrator state.
-func (a *App) GetOrchestratorStatus() OrchestratorStatus {
-	s := a.orchestrator.GetStatus()
-	return OrchestratorStatus{
-		Phase:         s.Phase,
-		QueueDepth:    s.QueueDepth,
-		ActiveJob:     s.ActiveJob,
-		CompletedJobs: s.CompletedJobs,
-		FailedJobs:    s.FailedJobs,
-	}
-}
 
 // QueueDocument adds a single document to the analysis queue.
 func (a *App) QueueDocument(path string) {
@@ -686,17 +652,6 @@ func (a *App) RemoveMemory(index int) error {
 	return a.memory.Remove(index)
 }
 
-// --- Intentions ---
-
-// GetIntentions returns the current Intentions.md content.
-func (a *App) GetIntentions() (string, error) {
-	ints, err := intentions.Load(filepath.Join(a.saveDir, "Intentions.md"))
-	if err != nil {
-		return "", err
-	}
-	return ints.Raw, nil
-}
-
 // --- Reports ---
 
 // GetReportManifest returns the report manifest.
@@ -741,22 +696,6 @@ func (a *App) GetReportContent(filename string) (string, error) {
 }
 
 // --- Queue ---
-
-// GetPendingCount returns the number of unprocessed files.
-func (a *App) GetPendingCount() (int, error) {
-	queueFile := filepath.Join(a.saveDir, "Library", "queue.json")
-	qMgr, err := queue.NewManager(queueFile)
-	if err != nil {
-		return 0, err
-	}
-
-	rawDir := filepath.Join(a.saveDir, "Library", "raw")
-	pending, err := qMgr.GetPendingFiles(rawDir)
-	if err != nil {
-		return 0, err
-	}
-	return len(pending), nil
-}
 
 // DocumentInfo is a lightweight summary of an ingested document.
 type DocumentInfo struct {
