@@ -1,17 +1,19 @@
 import { createSignal, createEffect, onMount, onCleanup, For, Show } from "solid-js";
+import { createQuery, createMutation, useQueryClient } from "@tanstack/solid-query";
 import { marked } from "marked";
-import type { ChatMessage, OrchestratorStatus, Source, DocumentInfo, PendingFile, ReportMeta, QueueEntry } from "./wails.d";
+import type { ChatMessage, OrchestratorStatus, Source, DocumentInfo, PendingFile, ReportMeta, QueueEntry, MemoryEntry, ProviderInfo } from "./wails.d";
 
-type View = "chat" | "ingestion" | "documents" | "orchestration" | "analysis" | "models" | "docs";
+type View = "chat" | "ingestion" | "documents" | "orchestration" | "analysis" | "models" | "providers" | "memory" | "docs";
 
 function App() {
+  const qc = useQueryClient();
   const [activeView, setActiveView] = createSignal<View>("chat");
   const [messages, setMessages] = createSignal<ChatMessage[]>([]);
   const [input, setInput] = createSignal("");
-  const [models, setModels] = createSignal<string[]>([]);
   const [currentModel, setCurrentModel] = createSignal("");
   const [streaming, setStreaming] = createSignal(false);
   const [searching, setSearching] = createSignal("");
+  const [waiting, setWaiting] = createSignal(false);
   const [streamBuffer, setStreamBuffer] = createSignal("");
   const [status, setStatus] = createSignal<OrchestratorStatus>({
     phase: "idle",
@@ -22,22 +24,11 @@ function App() {
   });
   const [busy, setBusy] = createSignal(false);
 
-  // Ingestion
-  const [sources, setSources] = createSignal<Source[]>([]);
+  // Form state
   const [newSourceUrl, setNewSourceUrl] = createSignal("");
   const [newSourceName, setNewSourceName] = createSignal("");
   const [newSourceType, setNewSourceType] = createSignal("rss");
   const [newSourceTags, setNewSourceTags] = createSignal("");
-
-  // Documents
-  const [documents, setDocuments] = createSignal<DocumentInfo[]>([]);
-
-  // Orchestration
-  const [pendingFiles, setPendingFiles] = createSignal<PendingFile[]>([]);
-  const [analysisQueue, setAnalysisQueue] = createSignal<QueueEntry[]>([]);
-
-  // Analysis
-  const [reports, setReports] = createSignal<ReportMeta[]>([]);
   const [selectedReport, setSelectedReport] = createSignal<ReportMeta | null>(null);
   const [reportContent, setReportContent] = createSignal("");
 
@@ -53,34 +44,151 @@ function App() {
     scrollToBottom();
   });
 
-  // Refresh data when switching views
-  const switchView = async (view: View) => {
+  // --- Queries ---
+
+  const modelsQuery = createQuery(() => ({
+    queryKey: ["models"],
+    queryFn: () => window.go.main.App.GetModels(),
+  }));
+
+  const sourcesQuery = createQuery(() => ({
+    queryKey: ["sources"],
+    queryFn: () => window.go.main.App.GetSources(),
+    enabled: activeView() === "ingestion" || activeView() === "chat",
+  }));
+
+  const documentsQuery = createQuery(() => ({
+    queryKey: ["documents"],
+    queryFn: () => window.go.main.App.GetDocuments(),
+    enabled: activeView() === "documents",
+  }));
+
+  const pendingQuery = createQuery(() => ({
+    queryKey: ["pending"],
+    queryFn: () => window.go.main.App.GetPendingFiles(),
+    enabled: activeView() === "orchestration",
+  }));
+
+  const queueQuery = createQuery(() => ({
+    queryKey: ["queue"],
+    queryFn: () => window.go.main.App.GetAnalysisQueue(),
+    enabled: activeView() === "orchestration",
+  }));
+
+  const reportsQuery = createQuery(() => ({
+    queryKey: ["reports"],
+    queryFn: () => window.go.main.App.GetReportManifest(),
+    enabled: activeView() === "analysis",
+  }));
+
+  // Helper accessors
+  const models = () => modelsQuery.data || [];
+  const sources = () => sourcesQuery.data || [];
+  const documents = () => documentsQuery.data || [];
+  const pendingFiles = () => pendingQuery.data || [];
+  const analysisQueue = () => queueQuery.data || [];
+  const reports = () => reportsQuery.data || [];
+
+  const memoriesQuery = createQuery(() => ({
+    queryKey: ["memories"],
+    queryFn: () => window.go.main.App.GetMemories(),
+    enabled: activeView() === "memory",
+  }));
+
+  const memories = () => memoriesQuery.data || [];
+
+  const providersQuery = createQuery(() => ({
+    queryKey: ["providers"],
+    queryFn: () => window.go.main.App.GetProviders(),
+    enabled: activeView() === "providers",
+  }));
+
+  const providers = () => providersQuery.data || [];
+
+  // Form state
+  const [newMemory, setNewMemory] = createSignal("");
+  const [provName, setProvName] = createSignal("");
+  const [provType, setProvType] = createSignal("openrouter");
+  const [provUrl, setProvUrl] = createSignal("");
+  const [provKey, setProvKey] = createSignal("");
+  const [provModel, setProvModel] = createSignal("");
+  const [testResult, setTestResult] = createSignal("");
+
+  // --- Mutations ---
+
+  const addSourceMut = createMutation(() => ({
+    mutationFn: (args: { url: string; type: string; tags: string[]; name: string }) =>
+      window.go.main.App.AddSource(args.url, args.type, args.tags, args.name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sources"] }),
+  }));
+
+  const deleteSourceMut = createMutation(() => ({
+    mutationFn: (url: string) => window.go.main.App.DeleteSource(url),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sources"] }),
+  }));
+
+  const deleteDocMut = createMutation(() => ({
+    mutationFn: (path: string) => window.go.main.App.DeleteDocument(path),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
+  }));
+
+  const queueDocMut = createMutation(() => ({
+    mutationFn: (path: string) => window.go.main.App.QueueDocument(path),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pending"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+    },
+  }));
+
+  const removeQueueMut = createMutation(() => ({
+    mutationFn: (path: string) => window.go.main.App.RemoveFromQueue(path),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["queue"] }),
+  }));
+
+  const addMemoryMut = createMutation(() => ({
+    mutationFn: (text: string) => window.go.main.App.AddMemory(text),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["memories"] }),
+  }));
+
+  const removeMemoryMut = createMutation(() => ({
+    mutationFn: (index: number) => window.go.main.App.RemoveMemory(index),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["memories"] }),
+  }));
+
+  const addProviderMut = createMutation(() => ({
+    mutationFn: (args: { name: string; type: string; baseUrl: string; apiKey: string; model: string }) =>
+      window.go.main.App.AddProvider(args.name, args.type, args.baseUrl, args.apiKey, args.model),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["providers"] }),
+  }));
+
+  const removeProviderMut = createMutation(() => ({
+    mutationFn: (name: string) => window.go.main.App.RemoveProvider(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["providers"] }),
+  }));
+
+  const setActiveMut = createMutation(() => ({
+    mutationFn: (name: string) => window.go.main.App.SetActiveProvider(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["providers"] }),
+  }));
+
+  // --- View switching ---
+
+  const switchView = (view: View) => {
     setActiveView(view);
-    if (view === "ingestion") {
-      try { const s = await window.go.main.App.GetSources(); setSources(s || []); } catch (e) { console.error(e); }
-    } else if (view === "documents") {
-      try { const d = await window.go.main.App.GetDocuments(); setDocuments(d || []); } catch (e) { console.error(e); }
-    } else if (view === "orchestration") {
-      try { const p = await window.go.main.App.GetPendingFiles(); setPendingFiles(p || []); } catch (e) { console.error(e); }
-      try { const q = await window.go.main.App.GetAnalysisQueue(); setAnalysisQueue(q || []); } catch (e) { console.error(e); }
-    } else if (view === "analysis") {
-      try { const r = await window.go.main.App.GetReportManifest(); setReports(r || []); } catch (e) { console.error(e); }
-    } else if (view === "models") {
-      try { const m = await window.go.main.App.GetModels(); setModels(m || []); } catch (e) { console.error(e); }
-    }
   };
 
+  // --- Event listeners ---
+
   onMount(async () => {
-    try { const m = await window.go.main.App.GetModels(); setModels(m || []); } catch (e) { console.error(e); }
     try { const cur = await window.go.main.App.GetCurrentModel(); setCurrentModel(cur); } catch (e) { console.error(e); }
     try { const msgs = await window.go.main.App.GetMessages(); setMessages(msgs || []); } catch (e) { console.error(e); }
-    try { const s = await window.go.main.App.GetSources(); setSources(s || []); } catch (e) { console.error(e); }
 
     window.runtime.EventsOn("chat:searching", (query: string) => {
       setSearching(query);
     });
     window.runtime.EventsOn("chat:token", (chunk: string) => {
       setSearching("");
+      setWaiting(false);
       setStreaming(true);
       setStreamBuffer((prev) => prev + chunk);
     });
@@ -90,25 +198,25 @@ function App() {
       setStreamBuffer("");
       setStreaming(false);
       setSearching("");
+      setWaiting(false);
     });
     window.runtime.EventsOn("chat:error", (err: string) => {
       setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${err}` }]);
       setStreamBuffer("");
       setStreaming(false);
       setSearching("");
+      setWaiting(false);
     });
     window.runtime.EventsOn("chat:cleared", () => {
       setMessages([]);
       setStreamBuffer("");
       setStreaming(false);
       setSearching("");
+      setWaiting(false);
     });
     window.runtime.EventsOn("orchestrator:status", async (s: OrchestratorStatus) => {
       setStatus(s);
-      // Refresh queue display when status changes
-      if (activeView() === "orchestration") {
-        try { const q = await window.go.main.App.GetAnalysisQueue(); setAnalysisQueue(q || []); } catch (_) {}
-      }
+      qc.invalidateQueries({ queryKey: ["queue"] });
     });
   });
 
@@ -128,7 +236,9 @@ function App() {
     if (!prompt || streaming()) return;
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: prompt }]);
+    setWaiting(true);
     try { await window.go.main.App.SendMessage(prompt); } catch (e: any) {
+      setWaiting(false);
       setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${e.message || e}` }]);
     }
   };
@@ -142,11 +252,6 @@ function App() {
     await window.go.main.App.SetModel(name);
   };
 
-  const refreshModels = async () => {
-    const m = await window.go.main.App.GetModels();
-    setModels(m || []);
-  };
-
   const startIngest = async () => {
     setBusy(true);
     try {
@@ -156,6 +261,8 @@ function App() {
       } else {
         setMessages((prev) => [...prev, { role: "assistant", content: `Ingestion complete. Saved ${result.savedCount} files.` }]);
       }
+      qc.invalidateQueries({ queryKey: ["documents"] });
+      qc.invalidateQueries({ queryKey: ["pending"] });
     } finally { setBusy(false); }
   };
 
@@ -168,30 +275,9 @@ function App() {
       } else {
         setMessages((prev) => [...prev, { role: "assistant", content: `Ingested ${result.savedCount} files from source.` }]);
       }
+      qc.invalidateQueries({ queryKey: ["documents"] });
+      qc.invalidateQueries({ queryKey: ["pending"] });
     } finally { setBusy(false); }
-  };
-
-  const startAnalysis = async () => {
-    setBusy(true);
-    try {
-      const result = await window.go.main.App.StartAnalysis();
-      if (result.error) {
-        setMessages((prev) => [...prev, { role: "assistant", content: `Analysis error: ${result.error}` }]);
-      } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: `Analysis complete. Processed ${result.processedCount} files.` }]);
-      }
-    } finally { setBusy(false); }
-  };
-
-  const queueDocument = async (path: string) => {
-    try {
-      await window.go.main.App.QueueDocument(path);
-      // Refresh both lists
-      const p = await window.go.main.App.GetPendingFiles();
-      setPendingFiles(p || []);
-      const q = await window.go.main.App.GetAnalysisQueue();
-      setAnalysisQueue(q || []);
-    } catch (e) { console.error(e); }
   };
 
   const runQueue = async () => {
@@ -201,11 +287,9 @@ function App() {
       if (result.error) {
         setMessages((prev) => [...prev, { role: "assistant", content: `Analysis error: ${result.error}` }]);
       }
-      // Refresh queue state
-      const q = await window.go.main.App.GetAnalysisQueue();
-      setAnalysisQueue(q || []);
-      const p = await window.go.main.App.GetPendingFiles();
-      setPendingFiles(p || []);
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["pending"] });
+      qc.invalidateQueries({ queryKey: ["reports"] });
     } finally { setBusy(false); }
   };
 
@@ -226,28 +310,8 @@ function App() {
     const url = newSourceUrl().trim();
     if (!url) return;
     const tags = newSourceTags().trim() ? newSourceTags().split(",").map((t) => t.trim()).filter(Boolean) : [];
-    try {
-      await window.go.main.App.AddSource(url, newSourceType(), tags, newSourceName().trim());
-      const s = await window.go.main.App.GetSources();
-      setSources(s || []);
-      setNewSourceUrl(""); setNewSourceName(""); setNewSourceTags("");
-    } catch (e) { console.error(e); }
-  };
-
-  const deleteSource = async (url: string) => {
-    try {
-      await window.go.main.App.DeleteSource(url);
-      const s = await window.go.main.App.GetSources();
-      setSources(s || []);
-    } catch (e) { console.error(e); }
-  };
-
-  const deleteDocument = async (path: string) => {
-    try {
-      await window.go.main.App.DeleteDocument(path);
-      const d = await window.go.main.App.GetDocuments();
-      setDocuments(d || []);
-    } catch (e) { console.error(e); }
+    addSourceMut.mutate({ url, type: newSourceType(), tags, name: newSourceName().trim() });
+    setNewSourceUrl(""); setNewSourceName(""); setNewSourceTags("");
   };
 
   const clearChat = async () => {
@@ -273,6 +337,8 @@ function App() {
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "orchestration" }} onClick={() => switchView("orchestration")}>Orchestration</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "analysis" }} onClick={() => switchView("analysis")}>Analysis</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "models" }} onClick={() => switchView("models")}>Models</button>
+          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "providers" }} onClick={() => switchView("providers")}>Providers</button>
+          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "memory" }} onClick={() => switchView("memory")}>Memory</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "docs" }} onClick={() => switchView("docs")}>Docs</button>
         </div>
 
@@ -325,6 +391,12 @@ function App() {
                   <div class="message-content">Searching the web for "{searching()}"<span class="streaming-indicator" /></div>
                 </div>
               </Show>
+              <Show when={waiting() && !searching()}>
+                <div class="message assistant">
+                  <div class="message-role">Gemma</div>
+                  <div class="message-content thinking-dots"><span /><span /><span /></div>
+                </div>
+              </Show>
               <Show when={streaming() && streamBuffer()}>
                 <div class="message assistant">
                   <div class="message-role">Gemma</div>
@@ -367,7 +439,7 @@ function App() {
                     </div>
                     <div class="source-item-actions">
                       <button class="source-ingest-btn" onClick={() => ingestSingle(src.url)} disabled={busy() || streaming()}>Ingest</button>
-                      <button class="source-delete-btn" onClick={() => deleteSource(src.url)}>Remove</button>
+                      <button class="source-delete-btn" onClick={() => deleteSourceMut.mutate(src.url)}>Remove</button>
                     </div>
                   </div>
                 )}
@@ -414,7 +486,7 @@ function App() {
                         </Show>
                       </div>
                     </div>
-                    <button class="doc-delete-btn" onClick={() => deleteDocument(doc.path)} title="Delete document">Delete</button>
+                    <button class="doc-delete-btn" onClick={() => deleteDocMut.mutate(doc.path)} title="Delete document">Delete</button>
                   </div>
                 )}
               </For>
@@ -453,6 +525,9 @@ function App() {
                         <div class="orch-queue-item-name">{entry.filename}</div>
                         <div class="orch-queue-item-status">{entry.status}</div>
                       </div>
+                      <Show when={entry.status === "failed" || entry.status === "queued"}>
+                        <button class="queue-remove-btn" onClick={() => removeQueueMut.mutate(entry.path)}>Remove</button>
+                      </Show>
                     </div>
                   )}
                 </For>
@@ -470,7 +545,7 @@ function App() {
                         <div class="orch-pending-name">{file.filename}</div>
                         <div class="orch-pending-date">{file.date}</div>
                       </div>
-                      <button class="source-ingest-btn" onClick={() => queueDocument(file.path)}>Queue</button>
+                      <button class="source-ingest-btn" onClick={() => queueDocMut.mutate(file.path)}>Queue</button>
                     </div>
                   )}
                 </For>
@@ -533,7 +608,7 @@ function App() {
               <h2>Models</h2>
               <div class="view-header-actions">
                 <span class="source-count">{models().length} installed</span>
-                <button class="action-btn" onClick={refreshModels}>Refresh</button>
+                <button class="action-btn" onClick={() => qc.invalidateQueries({ queryKey: ["models"] })}>Refresh</button>
               </div>
             </div>
 
@@ -550,6 +625,127 @@ function App() {
                     <Show when={m !== currentModel()}>
                       <button class="source-ingest-btn" onClick={() => switchModel(m)}>Select</button>
                     </Show>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </div>
+
+        {/* Providers View */}
+        <div class="view-panel" classList={{ hidden: activeView() !== "providers" }}>
+          <div class="view-panel-content">
+            <div class="view-header">
+              <h2>Providers</h2>
+              <span class="source-count">{providers().length} configured</span>
+            </div>
+
+            <div class="provider-list">
+              <For each={providers()} fallback={<div class="empty-list">No providers configured. Add one below to enable API-backed agentic work.</div>}>
+                {(prov) => (
+                  <div class="provider-item" classList={{ "provider-active": prov.active }}>
+                    <div class="provider-item-info">
+                      <div class="provider-item-name">
+                        {prov.name}
+                        <Show when={prov.active}><span class="model-item-badge">active</span></Show>
+                      </div>
+                      <div class="provider-item-meta">
+                        <span class="source-item-type">{prov.type}</span>
+                        <span>{prov.model}</span>
+                        <Show when={prov.hasKey}><span class="provider-key-badge">key set</span></Show>
+                      </div>
+                      <Show when={prov.baseUrl}>
+                        <div class="provider-item-url">{prov.baseUrl}</div>
+                      </Show>
+                    </div>
+                    <div class="provider-item-actions">
+                      <Show when={!prov.active}>
+                        <button class="source-ingest-btn" onClick={() => setActiveMut.mutate(prov.name)}>Activate</button>
+                      </Show>
+                      <button class="source-ingest-btn" onClick={async () => {
+                        setTestResult("Testing...");
+                        try {
+                          const r = await window.go.main.App.TestProvider(prov.name);
+                          setTestResult(`${prov.name}: ${r}`);
+                        } catch (e: any) {
+                          setTestResult(`${prov.name}: Error — ${e.message || e}`);
+                        }
+                      }}>Test</button>
+                      <button class="source-delete-btn" onClick={() => removeProviderMut.mutate(prov.name)}>Remove</button>
+                    </div>
+                  </div>
+                )}
+              </For>
+            </div>
+
+            <Show when={testResult()}>
+              <div class="provider-test-result">{testResult()}</div>
+            </Show>
+
+            <div class="provider-add">
+              <h4>Add Provider</h4>
+              <div class="provider-add-fields">
+                <div class="provider-add-row">
+                  <input type="text" placeholder="Name (e.g. openrouter-main)" value={provName()} onInput={(e) => setProvName(e.currentTarget.value)} />
+                  <select value={provType()} onChange={(e) => setProvType(e.currentTarget.value)}>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="custom">Custom (OpenAI-compatible)</option>
+                  </select>
+                </div>
+                <input type="text" placeholder="Model (e.g. anthropic/claude-sonnet-4, gpt-4o)" value={provModel()} onInput={(e) => setProvModel(e.currentTarget.value)} />
+                <input type="password" placeholder="API Key" value={provKey()} onInput={(e) => setProvKey(e.currentTarget.value)} />
+                <input type="text" placeholder="Base URL (optional — defaults per type)" value={provUrl()} onInput={(e) => setProvUrl(e.currentTarget.value)} />
+                <button class="action-btn" onClick={() => {
+                  if (!provName().trim() || !provModel().trim()) return;
+                  addProviderMut.mutate({
+                    name: provName().trim(),
+                    type: provType(),
+                    baseUrl: provUrl().trim(),
+                    apiKey: provKey().trim(),
+                    model: provModel().trim(),
+                  });
+                  setProvName(""); setProvUrl(""); setProvKey(""); setProvModel("");
+                }} disabled={!provName().trim() || !provModel().trim()}>Add Provider</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Memory View */}
+        <div class="view-panel" classList={{ hidden: activeView() !== "memory" }}>
+          <div class="view-panel-content">
+            <div class="view-header">
+              <h2>Memory</h2>
+              <span class="source-count">{memories().length} saved</span>
+            </div>
+
+            <div class="memory-add">
+              <input
+                type="text"
+                placeholder="Remember something..."
+                value={newMemory()}
+                onInput={(e) => setNewMemory(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newMemory().trim()) {
+                    addMemoryMut.mutate(newMemory().trim());
+                    setNewMemory("");
+                  }
+                }}
+              />
+              <button class="action-btn" onClick={() => { addMemoryMut.mutate(newMemory().trim()); setNewMemory(""); }} disabled={!newMemory().trim()}>Save</button>
+            </div>
+
+            <div class="memory-list">
+              <For each={memories()} fallback={<div class="empty-list">No memories saved yet. Use the input above or `/remember` in chat.</div>}>
+                {(entry) => (
+                  <div class="memory-item">
+                    <div class="memory-item-info">
+                      <div class="memory-item-text">{entry.text}</div>
+                      <div class="memory-item-date">{entry.createdAt.split("T")[0]}</div>
+                    </div>
+                    <button class="doc-delete-btn" onClick={() => removeMemoryMut.mutate(entry.index)}>Forget</button>
                   </div>
                 )}
               </For>
@@ -580,6 +776,22 @@ function App() {
                 <span>Show pipeline status</span>
               </div>
               <div class="docs-command">
+                <code>/remember &lt;text&gt;</code>
+                <span>Save a fact to persistent memory</span>
+              </div>
+              <div class="docs-command">
+                <code>/forget &lt;number&gt;</code>
+                <span>Remove a memory by number</span>
+              </div>
+              <div class="docs-command">
+                <code>/memories</code>
+                <span>List all saved memories</span>
+              </div>
+              <div class="docs-command">
+                <code>/mcp</code>
+                <span>List connected MCP servers and tools</span>
+              </div>
+              <div class="docs-command">
                 <code>/clear</code>
                 <span>Clear chat history</span>
               </div>
@@ -598,6 +810,13 @@ function App() {
       {/* Status Bar */}
       <div class="status-bar">
         <span>{currentModel() ? `Model: ${currentModel()}` : "No model"} | {models().length} installed</span>
+        <span class="status-activity">
+          {searching() ? "Searching..." :
+           streaming() ? "Chatting..." :
+           status().phase !== "idle" ? status().phase :
+           busy() ? "Working..." :
+           "Idle"}
+        </span>
         <span>Buster Claw</span>
       </div>
     </div>

@@ -5,6 +5,10 @@ import {main} from '../models';
 import {library} from '../models';
 import {ingest} from '../models';
 
+export function AddMemory(arg1:string):Promise<void>;
+
+export function AddProvider(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
+
 export function AddSource(arg1:string,arg2:string,arg3:Array<string>,arg4:string):Promise<void>;
 
 export function ClearMessages():Promise<void>;
@@ -21,6 +25,8 @@ export function GetDocuments():Promise<Array<main.DocumentInfo>>;
 
 export function GetIntentions():Promise<string>;
 
+export function GetMemories():Promise<Array<main.MemoryEntry>>;
+
 export function GetMessages():Promise<Array<main.ChatMessage>>;
 
 export function GetModels():Promise<Array<string>>;
@@ -30,6 +36,8 @@ export function GetOrchestratorStatus():Promise<main.OrchestratorStatus>;
 export function GetPendingCount():Promise<number>;
 
 export function GetPendingFiles():Promise<Array<main.PendingFile>>;
+
+export function GetProviders():Promise<Array<main.ProviderInfo>>;
 
 export function GetReportContent(arg1:string):Promise<string>;
 
@@ -41,7 +49,15 @@ export function IngestSource(arg1:string):Promise<main.IngestResult>;
 
 export function QueueDocument(arg1:string):Promise<void>;
 
+export function RemoveFromQueue(arg1:string):Promise<void>;
+
+export function RemoveMemory(arg1:number):Promise<void>;
+
+export function RemoveProvider(arg1:string):Promise<void>;
+
 export function SendMessage(arg1:string):Promise<void>;
+
+export function SetActiveProvider(arg1:string):Promise<void>;
 
 export function SetModel(arg1:string):Promise<void>;
 
@@ -50,3 +66,5 @@ export function StartAnalysis():Promise<main.AnalysisResult>;
 export function StartFullPipeline():Promise<main.FullPipelineResult>;
 
 export function StartIngest():Promise<main.IngestResult>;
+
+export function TestProvider(arg1:string):Promise<string>;

@@ -147,6 +147,19 @@ func (o *Orchestrator) ClearCompletedQueue() {
 	o.trackedQueue = active
 }
 
+// RemoveFromQueue removes a single entry from the tracked queue by path.
+func (o *Orchestrator) RemoveFromQueue(path string) {
+	o.trackedMu.Lock()
+	defer o.trackedMu.Unlock()
+	filtered := make([]QueueEntry, 0, len(o.trackedQueue))
+	for _, e := range o.trackedQueue {
+		if e.Path != path {
+			filtered = append(filtered, e)
+		}
+	}
+	o.trackedQueue = filtered
+}
+
 func (o *Orchestrator) setTrackedStatus(path, status string) {
 	o.trackedMu.Lock()
 	defer o.trackedMu.Unlock()

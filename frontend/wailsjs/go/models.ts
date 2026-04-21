@@ -130,6 +130,22 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
+	export class MemoryEntry {
+	    index: number;
+	    createdAt: string;
+	    text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MemoryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.createdAt = source["createdAt"];
+	        this.text = source["text"];
+	    }
+	}
 	export class OrchestratorStatus {
 	    phase: string;
 	    queueDepth: number;
@@ -164,6 +180,28 @@ export namespace main {
 	        this.filename = source["filename"];
 	        this.path = source["path"];
 	        this.date = source["date"];
+	    }
+	}
+	export class ProviderInfo {
+	    name: string;
+	    type: string;
+	    baseUrl: string;
+	    model: string;
+	    active: boolean;
+	    hasKey: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProviderInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.baseUrl = source["baseUrl"];
+	        this.model = source["model"];
+	        this.active = source["active"];
+	        this.hasKey = source["hasKey"];
 	    }
 	}
 

@@ -13,8 +13,11 @@ import (
 	"buster-claw/internal/ingest"
 	"buster-claw/internal/intentions"
 	"buster-claw/internal/library"
+	"buster-claw/internal/mcp"
+	"buster-claw/internal/memory"
 	"buster-claw/internal/ollama"
 	"buster-claw/internal/orchestrator"
+	"buster-claw/internal/provider"
 	"buster-claw/internal/queue"
 	"buster-claw/internal/websearch"
 
@@ -29,6 +32,9 @@ type App struct {
 	model        string
 	saveDir      string
 	orchestrator *orchestrator.Orchestrator
+	memory       *memory.Store
+	mcpManager   *mcp.Manager
+	providers    *provider.Manager
 	messages     []ChatMessage
 	mu           sync.Mutex
 }
@@ -72,12 +78,20 @@ func NewApp(saveDir string) *App {
 	cfg := config.Load()
 	client := ollama.NewClient(cfg.Host)
 	orch := orchestrator.New(client, cfg.Model, saveDir)
+	mem := memory.NewStore(saveDir)
+	mem.Load()
+	mcpMgr := mcp.NewManager(filepath.Join(saveDir, "mcp.json"))
+	provMgr := provider.NewManager(filepath.Join(saveDir, "providers.json"))
+	provMgr.Load()
 
 	return &App{
 		client:       client,
 		model:        cfg.Model,
 		saveDir:      saveDir,
 		orchestrator: orch,
+		memory:       mem,
+		mcpManager:   mcpMgr,
+		providers:    provMgr,
 	}
 }
 
@@ -95,6 +109,22 @@ func (a *App) startup(ctx context.Context) {
 			FailedJobs:    s.FailedJobs,
 		})
 	}
+
+	// Connect to configured MCP servers (non-blocking, errors logged).
+	go func() {
+		errs := a.mcpManager.LoadAndConnect()
+		for _, err := range errs {
+			fmt.Printf("[mcp] %s\n", err)
+		}
+		if names := a.mcpManager.ServerNames(); len(names) > 0 {
+			fmt.Printf("[mcp] connected: %s\n", strings.Join(names, ", "))
+		}
+	}()
+}
+
+// shutdown is called when the Wails app exits.
+func (a *App) shutdown(ctx context.Context) {
+	a.mcpManager.Close()
 }
 
 // --- Model Management ---
@@ -148,16 +178,30 @@ func (a *App) SendMessage(prompt string) error {
 
 	runtime.EventsEmit(a.ctx, "chat:message", ChatMessage{Role: "user", Content: prompt})
 
-	// Build message history for Ollama
+	// Build message history for Ollama, with memory and MCP context as system prompt
+	var systemParts []string
+	if mem := a.memory.SystemPrompt(); mem != "" {
+		systemParts = append(systemParts, mem)
+	}
+	if tools := a.mcpManager.ToolSummary(); tools != "" {
+		systemParts = append(systemParts, tools)
+	}
+
 	a.mu.Lock()
-	history := make([]ollama.Message, len(a.messages))
-	for i, m := range a.messages {
-		history[i] = ollama.Message{Role: m.Role, Content: m.Content}
+	var history []ollama.Message
+	if len(systemParts) > 0 {
+		history = append(history, ollama.Message{
+			Role:    "system",
+			Content: strings.Join(systemParts, "\n\n"),
+		})
+	}
+	for _, m := range a.messages {
+		history = append(history, ollama.Message{Role: m.Role, Content: m.Content})
 	}
 	a.mu.Unlock()
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 
 		// Check if the user is asking for a web search via natural language
@@ -236,7 +280,7 @@ func (a *App) handleSlashCommand(input string) error {
 			}
 			a.mu.Unlock()
 
-			searchCtx, searchCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			searchCtx, searchCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer searchCancel()
 			a.searchAndStream(searchCtx, arg, history)
 		}()
@@ -278,11 +322,64 @@ func (a *App) handleSlashCommand(input string) error {
 		runtime.EventsEmit(a.ctx, "chat:cleared", true)
 		return nil
 
+	case "/remember":
+		if arg == "" {
+			a.emitSystemMessage("Usage: `/remember <fact or pattern to save>`")
+			return nil
+		}
+		if err := a.memory.Add(arg); err != nil {
+			a.emitSystemMessage(fmt.Sprintf("Failed to save memory: %s", err))
+		} else {
+			a.emitSystemMessage(fmt.Sprintf("Remembered: %s (%d total)", arg, a.memory.Count()))
+		}
+		return nil
+
+	case "/forget":
+		if arg == "" {
+			a.emitSystemMessage("Usage: `/forget <number>`")
+			return nil
+		}
+		var idx int
+		if _, err := fmt.Sscanf(arg, "%d", &idx); err != nil {
+			a.emitSystemMessage("Usage: `/forget <number>` — use `/memories` to see numbers")
+			return nil
+		}
+		if err := a.memory.Remove(idx); err != nil {
+			a.emitSystemMessage(err.Error())
+		} else {
+			a.emitSystemMessage(fmt.Sprintf("Forgot memory #%d (%d remaining)", idx, a.memory.Count()))
+		}
+		return nil
+
+	case "/memories":
+		a.emitSystemMessage(a.memory.FormatList())
+		return nil
+
+	case "/mcp":
+		names := a.mcpManager.ServerNames()
+		if len(names) == 0 {
+			a.emitSystemMessage("No MCP servers connected. Add servers to `mcp.json`.")
+			return nil
+		}
+		tools := a.mcpManager.AllTools()
+		var b strings.Builder
+		fmt.Fprintf(&b, "**Connected MCP Servers:** %s\n\n", strings.Join(names, ", "))
+		fmt.Fprintf(&b, "**Available Tools (%d):**\n", len(tools))
+		for _, t := range tools {
+			fmt.Fprintf(&b, "- `%s` — %s\n", t.QualifiedName, t.Description)
+		}
+		a.emitSystemMessage(b.String())
+		return nil
+
 	case "/help":
 		help := "**Available Commands**\n" +
 			"- `/search <query>` — Search the web and summarize results\n" +
 			"- `/ingest <url>` — Ingest a URL into the library\n" +
 			"- `/status` — Show pipeline status\n" +
+			"- `/remember <text>` — Save a fact to persistent memory\n" +
+			"- `/forget <number>` — Remove a memory by number\n" +
+			"- `/memories` — List all saved memories\n" +
+			"- `/mcp` — List connected MCP servers and tools\n" +
 			"- `/clear` — Clear chat history\n" +
 			"- `/help` — Show this message"
 		a.emitSystemMessage(help)
@@ -439,6 +536,11 @@ func (a *App) QueueDocument(path string) {
 	a.orchestrator.QueueDocument(path)
 }
 
+// RemoveFromQueue removes a document from the analysis queue.
+func (a *App) RemoveFromQueue(path string) {
+	a.orchestrator.RemoveFromQueue(path)
+}
+
 // GetAnalysisQueue returns the tracked analysis queue.
 func (a *App) GetAnalysisQueue() []orchestrator.QueueEntry {
 	return a.orchestrator.GetAnalysisQueue()
@@ -498,6 +600,90 @@ func (a *App) DeleteSource(sourceURL string) error {
 	}
 
 	return ingest.SaveSources(path, filtered)
+}
+
+// --- Providers ---
+
+// ProviderInfo is a provider config for the frontend (API key masked).
+type ProviderInfo struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	BaseURL string `json:"baseUrl"`
+	Model   string `json:"model"`
+	Active  bool   `json:"active"`
+	HasKey  bool   `json:"hasKey"`
+}
+
+// GetProviders returns all configured providers with masked API keys.
+func (a *App) GetProviders() []ProviderInfo {
+	all := a.providers.All()
+	out := make([]ProviderInfo, len(all))
+	for i, p := range all {
+		out[i] = ProviderInfo{
+			Name:    p.Name,
+			Type:    string(p.Type),
+			BaseURL: p.BaseURL,
+			Model:   p.Model,
+			Active:  p.Active,
+			HasKey:  p.APIKey != "",
+		}
+	}
+	return out
+}
+
+// AddProvider adds a new provider.
+func (a *App) AddProvider(name, provType, baseURL, apiKey, model string) error {
+	return a.providers.Add(provider.Config{
+		Name:    name,
+		Type:    provider.Type(provType),
+		BaseURL: baseURL,
+		APIKey:  apiKey,
+		Model:   model,
+	})
+}
+
+// RemoveProvider deletes a provider by name.
+func (a *App) RemoveProvider(name string) error {
+	return a.providers.Remove(name)
+}
+
+// SetActiveProvider marks a provider as the active one.
+func (a *App) SetActiveProvider(name string) error {
+	return a.providers.SetActive(name)
+}
+
+// TestProvider tests connectivity to a provider.
+func (a *App) TestProvider(name string) (string, error) {
+	return a.providers.TestConnection(context.Background(), name)
+}
+
+// --- Memory ---
+
+// MemoryEntry is a single memory item for the frontend.
+type MemoryEntry struct {
+	Index     int    `json:"index"`
+	CreatedAt string `json:"createdAt"`
+	Text      string `json:"text"`
+}
+
+// GetMemories returns all saved memories.
+func (a *App) GetMemories() []MemoryEntry {
+	entries := a.memory.Entries()
+	out := make([]MemoryEntry, len(entries))
+	for i, e := range entries {
+		out[i] = MemoryEntry{Index: i + 1, CreatedAt: e.CreatedAt, Text: e.Text}
+	}
+	return out
+}
+
+// AddMemory saves a new memory entry.
+func (a *App) AddMemory(text string) error {
+	return a.memory.Add(text)
+}
+
+// RemoveMemory deletes a memory by 1-based index.
+func (a *App) RemoveMemory(index int) error {
+	return a.memory.Remove(index)
 }
 
 // --- Intentions ---

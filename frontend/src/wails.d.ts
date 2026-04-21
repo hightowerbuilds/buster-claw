@@ -67,6 +67,21 @@ export interface QueueEntry {
   status: string; // "queued" | "analyzing" | "done" | "failed"
 }
 
+export interface MemoryEntry {
+  index: number;
+  createdAt: string;
+  text: string;
+}
+
+export interface ProviderInfo {
+  name: string;
+  type: string;
+  baseUrl: string;
+  model: string;
+  active: boolean;
+  hasKey: boolean;
+}
+
 declare global {
   interface Window {
     go: {
@@ -93,8 +108,17 @@ declare global {
           DeleteDocument(path: string): Promise<void>;
           GetPendingFiles(): Promise<PendingFile[]>;
           QueueDocument(path: string): Promise<void>;
+          RemoveFromQueue(path: string): Promise<void>;
           GetAnalysisQueue(): Promise<QueueEntry[]>;
           GetReportContent(filename: string): Promise<string>;
+          GetMemories(): Promise<MemoryEntry[]>;
+          AddMemory(text: string): Promise<void>;
+          RemoveMemory(index: number): Promise<void>;
+          GetProviders(): Promise<ProviderInfo[]>;
+          AddProvider(name: string, type: string, baseUrl: string, apiKey: string, model: string): Promise<void>;
+          RemoveProvider(name: string): Promise<void>;
+          SetActiveProvider(name: string): Promise<void>;
+          TestProvider(name: string): Promise<string>;
         };
       };
     };

@@ -87,10 +87,44 @@
   - Added 7th sidebar view ("Docs") with a quick-reference panel listing all slash commands and descriptions.
 - **Minor cleanup:** Removed "Buster Claw v1.0" version label from status bar, removed "Refresh Models" from sidebar actions.
 - **Fix `/ingest` command:** Was looking up URL in `sources.json` and failing for unknown URLs. Now fetches any arbitrary URL directly via `orchestrator.IngestSingle()` with an ad-hoc article source.
+- **Added `gemma4:latest` model to local `models/` directory:**
+  - Copied 8.9GB model weights blob from `Desktop/LocalLLM/models/` into `buster-claw/models/blobs/` (gitignored).
+  - Created manifest at `models/manifests/registry.ollama.ai/library/gemma4/latest`.
+  - Set `OLLAMA_MODELS` env var to point at `buster-claw/models/` so Ollama reads all three models (`gemma3:4b`, `gemma4:e2b`, `gemma4:latest`) from one location.
+  - Still need to add `export OLLAMA_MODELS=...` to `.zshrc` for persistence across restarts.
+- **Persistent memory system:**
+  - `internal/memory/memory.go`: New package — `Store` backed by `Library/Memory.md`. Timestamped entries, load/save/add/remove. `SystemPrompt()` formats for LLM injection.
+  - `app.go`: Memory loaded on startup, injected as system prompt in every chat message. New endpoints: `GetMemories()`, `AddMemory()`, `RemoveMemory()`.
+  - Slash commands: `/remember`, `/forget`, `/memories`.
+  - Frontend: Memory sidebar tab with add input, list of saved memories, Forget button per entry.
+- **MCP client system:**
+  - `internal/mcp/client.go`: Stdio-based JSON-RPC 2.0 client — connects to external MCP servers, handshake, tool discovery, tool calling.
+  - `internal/mcp/manager.go`: Multi-server manager with namespaced tools (`server.tool`). Config from `mcp.json`. Auto-connects on startup, shuts down on exit.
+  - MCP tool summaries injected into chat system prompt. `/mcp` command lists connected servers and tools.
+- **Provider system for API-backed models:**
+  - `internal/provider/provider.go`: Unified streaming interface for OpenRouter, OpenAI, Anthropic, and custom OpenAI-compatible endpoints. SSE parsing for both OpenAI and Anthropic formats. Config persisted to `providers.json`. `TestConnection()` for verification.
+  - `app.go`: Full CRUD — `GetProviders()` (API keys masked), `AddProvider()`, `RemoveProvider()`, `SetActiveProvider()`, `TestProvider()`.
+  - Frontend: Providers sidebar tab — list with activate/test/remove, add form with type dropdown, API key (password field), model, base URL.
+- **TanStack Query integration:**
+  - Replaced all manual fetch-on-switch with `createQuery` (models, sources, documents, pending, queue, reports, memories, providers).
+  - Replaced manual refetch-after-mutation with `createMutation` + `invalidateQueries` (add/delete source, delete document, queue/remove document, add/remove memory, add/remove/activate provider).
+  - `QueryClientProvider` wraps app in `index.tsx` with 30s stale time.
+- **Unified dark input styling:** Global CSS for all `input`, `select`, `textarea` — consistent dark background, accent focus glow, custom select arrow. Removed duplicate per-component input styles.
+- **Analysis queue management:** Added `RemoveFromQueue()` on orchestrator and frontend — Remove button on failed/queued entries.
+- **Status bar activity indicator:** Footer shows Searching/Chatting/pipeline phase/Working/Idle in accent color.
+- **Thinking animation:** Three bouncing dots in a Gemma bubble while waiting for first token.
+- **Chat timeout:** Bumped from 3 to 10 minutes for slower hardware.
+- **Roadmap v2:** Six-phase plan for agentic capabilities — Browser Automation, Scheduled Pipelines, Subagent Parallelism, Webhook Triggers, Multi-Platform Delivery, Reactive Hooks. Saved to `daily-growth/old-maps/roadmap-v2.md`.
+
+## Notes
+
+- Researched Hermes Agent (Nous Research) in depth — self-improving skills, 3-layer memory, 47 tools, subagent delegation, MCP client, 17+ messaging platforms, browser automation (Camofox), cron scheduling, webhooks, Home Assistant, voice. Cross-referenced against Buster Claw to identify the six capability gaps driving roadmap v2.
+- OpenRouter identified as the best single API gateway for cloud model access — one key, 200+ models, OpenAI-compatible.
 
 ## Next
 
-- Add tests for the new packages (mcp, orchestrator, intentions, websearch).
-- Real-world testing: launch the desktop app, run full pipeline against live sources, verify report quality.
-- Expand `Intentions.md` with more specific research goals.
-- Continue frontend polish: search/filter for documents, report diff view, settings panel.
+- Begin roadmap v2 implementation (recommended order: Browser Automation → Scheduled Pipelines → Multi-Platform Delivery → Subagent Parallelism → Webhook Triggers → Reactive Hooks).
+- Add tests for new packages (memory, provider, websearch, mcp client).
+- Wire provider system into analysis pipeline so API models can run analysis in parallel.
+- Real-world testing with OpenRouter provider configured.
+- Add `export OLLAMA_MODELS=...` to `.zshrc`.

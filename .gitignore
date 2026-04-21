@@ -9,7 +9,7 @@ buster-claw
 buster-claw-mcp
 models/
 Library/
-Memory/
+/Memory/
 build/
 frontend/dist/
 frontend/node_modules/
