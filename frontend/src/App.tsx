@@ -7,8 +7,10 @@ import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { DocsView } from "./features/docs/DocsView";
+import { DocumentsView } from "./features/documents/DocumentsView";
 import { HomeView } from "./features/home/HomeView";
 import { ModelsView } from "./features/models/ModelsView";
+import { OrchestrationView } from "./features/orchestration/OrchestrationView";
 import { state, setState } from "./store";
 import type { ChatMessage, OrchestratorStatus, Source, DocumentInfo, PendingFile, ReportMeta, QueueEntry, MemoryEntry, ProviderInfo, JobState, Webhook, DeliveryDestination, Hook } from "./wails.d";
 
@@ -577,94 +579,22 @@ function App() {
           </div>
         </div>
 
-        {/* Documents View */}
-        <div class="view-panel" classList={{ hidden: activeView() !== "documents" }}>
-          <div class="view-panel-content">
-            <div class="view-header">
-              <h2>Documents</h2>
-              <span class="source-count">{documents().length} ingested</span>
-            </div>
+        <DocumentsView
+          visible={activeView() === "documents"}
+          documents={documents()}
+          onDeleteDocument={(path) => deleteDocMut.mutate(path)}
+        />
 
-            <div class="doc-list">
-              <For each={documents()} fallback={<div class="empty-list">No documents ingested yet. Go to Ingestion to fetch sources.</div>}>
-                {(doc) => (
-                  <div class="doc-item">
-                    <div class="doc-item-info">
-                      <div class="doc-item-title">{doc.name || doc.filename}</div>
-                      <div class="doc-item-meta">
-                        <span class="doc-item-date">{doc.date}</span>
-                        <Show when={doc.sourceUrl}>
-                          <span class="doc-item-url">{doc.sourceUrl}</span>
-                        </Show>
-                      </div>
-                    </div>
-                    <button class="doc-delete-btn" onClick={() => deleteDocMut.mutate(doc.path)} title="Delete document">Delete</button>
-                  </div>
-                )}
-              </For>
-            </div>
-          </div>
-        </div>
-
-        {/* Orchestration View */}
-        <div class="view-panel" classList={{ hidden: activeView() !== "orchestration" }}>
-          <div class="view-panel-content">
-            <div class="view-header">
-              <h2>Orchestration</h2>
-              <div class="view-header-actions">
-                <button class="action-btn" onClick={runQueue} disabled={state.busy || state.streaming || analysisQueue().filter(q => q.status === "queued").length === 0}>
-                  Run Queue
-                </button>
-              </div>
-            </div>
-
-            {/* Analysis Queue */}
-            <div class="orch-section">
-              <h3>Analysis Queue</h3>
-              <div class="orch-queue">
-                <For each={analysisQueue()} fallback={<div class="empty-list">No documents queued. Select documents below to add them.</div>}>
-                  {(entry) => (
-                    <div
-                      class="orch-queue-item"
-                      classList={{
-                        "orch-analyzing": entry.status === "analyzing",
-                        "orch-done": entry.status === "done",
-                        "orch-failed": entry.status === "failed",
-                      }}
-                    >
-                      <div class="orch-queue-item-fill" />
-                      <div class="orch-queue-item-content">
-                        <div class="orch-queue-item-name">{entry.filename}</div>
-                        <div class="orch-queue-item-status">{entry.status}</div>
-                      </div>
-                      <Show when={entry.status === "failed" || entry.status === "queued"}>
-                        <button class="queue-remove-btn" onClick={() => removeQueueMut.mutate(entry.path)}>Remove</button>
-                      </Show>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </div>
-
-            {/* Unanalyzed Documents */}
-            <div class="orch-section">
-              <h3>Unanalyzed Documents <span class="source-count">({pendingFiles().length})</span></h3>
-              <div class="orch-pending">
-                <For each={pendingFiles()} fallback={<div class="empty-list">All documents have been analyzed or queued.</div>}>
-                  {(file) => (
-                    <div class="orch-pending-item">
-                      <div class="orch-pending-info">
-                        <div class="orch-pending-name">{file.filename}</div>
-                        <div class="orch-pending-date">{file.date}</div>
-                      </div>
-                      <button class="source-ingest-btn" onClick={() => queueDocMut.mutate(file.path)}>Queue</button>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </div>
-          </div>
-        </div>
+        <OrchestrationView
+          visible={activeView() === "orchestration"}
+          busy={state.busy}
+          streaming={state.streaming}
+          analysisQueue={analysisQueue()}
+          pendingFiles={pendingFiles()}
+          onRunQueue={runQueue}
+          onRemoveFromQueue={(path) => removeQueueMut.mutate(path)}
+          onQueueDocument={(path) => queueDocMut.mutate(path)}
+        />
 
         {/* Analysis View */}
         <div class="view-panel" classList={{ hidden: activeView() !== "analysis" }}>
