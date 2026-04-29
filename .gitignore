@@ -7,7 +7,7 @@ dist/
 localllm
 buster-claw
 buster-claw-mcp
-models/
+/models/
 Library/
 /Memory/
 build/

@@ -6,7 +6,9 @@ import { type View } from "./app/navigation";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
+import { DocsView } from "./features/docs/DocsView";
 import { HomeView } from "./features/home/HomeView";
+import { ModelsView } from "./features/models/ModelsView";
 import { state, setState } from "./store";
 import type { ChatMessage, OrchestratorStatus, Source, DocumentInfo, PendingFile, ReportMeta, QueueEntry, MemoryEntry, ProviderInfo, JobState, Webhook, DeliveryDestination, Hook } from "./wails.d";
 
@@ -711,36 +713,13 @@ function App() {
           </Show>
         </div>
 
-        {/* Models View */}
-        <div class="view-panel" classList={{ hidden: activeView() !== "models" }}>
-          <div class="view-panel-content">
-            <div class="view-header">
-              <h2>Models</h2>
-              <div class="view-header-actions">
-                <span class="source-count">{models().length} installed</span>
-                <button class="action-btn" onClick={() => qc.invalidateQueries({ queryKey: ["models"] })}>Refresh</button>
-              </div>
-            </div>
-
-            <div class="model-list">
-              <For each={models()} fallback={<div class="empty-list">No models found. Make sure Ollama is running.</div>}>
-                {(m) => (
-                  <div class="model-item" classList={{ "model-item-active": m === currentModel() }}>
-                    <div class="model-item-info">
-                      <div class="model-item-name">{m}</div>
-                      <Show when={m === currentModel()}>
-                        <span class="model-item-badge">active</span>
-                      </Show>
-                    </div>
-                    <Show when={m !== currentModel()}>
-                      <button class="source-ingest-btn" onClick={() => switchModel(m)}>Select</button>
-                    </Show>
-                  </div>
-                )}
-              </For>
-            </div>
-          </div>
-        </div>
+        <ModelsView
+          visible={activeView() === "models"}
+          models={models()}
+          currentModel={currentModel()}
+          onRefresh={() => qc.invalidateQueries({ queryKey: ["models"] })}
+          onSelectModel={switchModel}
+        />
 
         {/* Providers View */}
         <div class="view-panel" classList={{ hidden: activeView() !== "providers" }}>
@@ -1157,57 +1136,7 @@ function App() {
           </div>
         </div>
 
-        {/* Docs View */}
-        <div class="view-panel" classList={{ hidden: activeView() !== "docs" }}>
-          <div class="view-panel-content">
-            <div class="view-header">
-              <h2>Commands</h2>
-            </div>
-
-            <div class="docs-content">
-              <p class="docs-intro">Type these in the chat input.</p>
-
-              <div class="docs-command">
-                <code>/search &lt;query&gt;</code>
-                <span>Search the web and get an AI summary</span>
-              </div>
-              <div class="docs-command">
-                <code>/ingest &lt;url&gt;</code>
-                <span>Fetch a URL into the library</span>
-              </div>
-              <div class="docs-command">
-                <code>/status</code>
-                <span>Show pipeline status</span>
-              </div>
-              <div class="docs-command">
-                <code>/remember &lt;text&gt;</code>
-                <span>Save a fact to persistent memory</span>
-              </div>
-              <div class="docs-command">
-                <code>/forget &lt;number&gt;</code>
-                <span>Remove a memory by number</span>
-              </div>
-              <div class="docs-command">
-                <code>/memories</code>
-                <span>List all saved memories</span>
-              </div>
-              <div class="docs-command">
-                <code>/mcp</code>
-                <span>List connected MCP servers and tools</span>
-              </div>
-              <div class="docs-command">
-                <code>/clear</code>
-                <span>Clear chat history</span>
-              </div>
-              <div class="docs-command">
-                <code>/help</code>
-                <span>List all commands</span>
-              </div>
-
-              <p class="docs-note">You can also ask to search in plain language, e.g. "search for golang tutorials"</p>
-            </div>
-          </div>
-        </div>
+        <DocsView visible={activeView() === "docs"} />
 
       </div>
 
