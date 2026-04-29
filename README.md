@@ -55,6 +55,12 @@ Settings are managed via the UI, which persists data into the library directory:
 - `/status`: Show pipeline activity.
 - `/help`: Show available commands.
 
+## Development Notes
+
+- [Quality checks](docs/QUALITY.md) lists the backend and frontend commands to run before refactors.
+- [Architecture notes](docs/ARCHITECTURE.md) documents the current runtime shape, persisted files, and generated-code boundaries.
+- [Code quality roadmap](CODE_QUALITY_ROADMAP.md) tracks the modularization plan.
+
 ## License
 
 MIT
