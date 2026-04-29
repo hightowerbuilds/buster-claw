@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, onCleanup, For, Show } from "solid-js";
+import { createSignal, onMount, onCleanup, For, Show } from "solid-js";
 import { createQuery, createMutation, useQueryClient } from "@tanstack/solid-query";
 import { GetModels } from "../wailsjs/go/main/App";
 import { type View } from "./app/navigation";
@@ -6,6 +6,7 @@ import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { AnalysisView } from "./features/analysis/AnalysisView";
+import { ChatView } from "./features/chat/ChatView";
 import { DocsView } from "./features/docs/DocsView";
 import { DocumentsView } from "./features/documents/DocumentsView";
 import { HomeView } from "./features/home/HomeView";
@@ -36,18 +37,6 @@ function App() {
   const [newSourceTags, setNewSourceTags] = createSignal("");
   const [selectedReport, setSelectedReport] = createSignal<ReportMeta | null>(null);
   const [reportContent, setReportContent] = createSignal("");
-
-  let messagesEnd: HTMLDivElement | undefined;
-
-  const scrollToBottom = () => {
-    messagesEnd?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  createEffect(() => {
-    messages();
-    state.streamBuffer;
-    scrollToBottom();
-  });
 
   // --- Queries ---
   const modelsQuery = createQuery(() => ({
@@ -378,10 +367,6 @@ function App() {
     }
   };
 
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  };
-
   const switchModel = async (name: string) => {
     setCurrentModel(name);
     await window.go.main.App.SetModel(name);
@@ -483,50 +468,18 @@ function App() {
           }}
         />
 
-        {/* Chat View */}
-        <div class="chat-area" classList={{ hidden: activeView() !== "chat" }}>
-          <div class="messages">
-            <Show when={messages().length > 0 || streaming()} fallback={
-              <div class="empty-state">
-                <h2>Welcome to Buster Claw</h2>
-                <p>Chat with your local model or run the pipeline.</p>
-                <p style="font-size: 11px; color: var(--text-muted)">Model: {currentModel() || "none selected"}</p>
-              </div>
-            }>
-              <For each={messages()}>{(msg) => (
-                <div class={`message ${msg.role}`}>
-                  <div class="message-role">{msg.role === "user" ? "You" : "Gemma"}</div>
-                  <div class="message-content">{msg.content}</div>
-                </div>
-              )}</For>
-              <Show when={searching()}>
-                <div class="message assistant searching">
-                  <div class="message-role">Gemma</div>
-                  <div class="message-content">Searching the web for "{searching()}"<span class="streaming-indicator" /></div>
-                </div>
-              </Show>
-              <Show when={waiting() && !searching()}>
-                <div class="message assistant">
-                  <div class="message-role">Gemma</div>
-                  <div class="message-content thinking-dots"><span /><span /><span /></div>
-                </div>
-              </Show>
-              <Show when={streaming() && streamBuffer()}>
-                <div class="message assistant">
-                  <div class="message-role">Gemma</div>
-                  <div class="message-content">{streamBuffer()}<span class="streaming-indicator" /></div>
-                </div>
-              </Show>
-            </Show>
-            <div ref={messagesEnd} />
-          </div>
-          <div class="input-area">
-            <div class="input-row">
-              <input type="text" placeholder={currentModel() ? "Send a message..." : "No model selected"} value={input()} onInput={(e) => setInput(e.currentTarget.value)} onKeyDown={handleKeyDown} disabled={!currentModel() || state.streaming} />
-              <button onClick={sendMessage} disabled={!currentModel() || state.streaming || !input().trim()}>Send</button>
-            </div>
-          </div>
-        </div>
+        <ChatView
+          visible={activeView() === "chat"}
+          messages={messages()}
+          input={input()}
+          currentModel={currentModel()}
+          searching={searching()}
+          waiting={waiting()}
+          streaming={streaming()}
+          streamBuffer={streamBuffer()}
+          onInputChange={setInput}
+          onSend={sendMessage}
+        />
 
         {/* Ingestion View */}
         <div class="view-panel" classList={{ hidden: activeView() !== "ingestion" }}>
