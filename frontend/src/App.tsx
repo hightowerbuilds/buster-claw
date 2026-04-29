@@ -10,6 +10,7 @@ import { ChatView } from "./features/chat/ChatView";
 import { DocsView } from "./features/docs/DocsView";
 import { DocumentsView } from "./features/documents/DocumentsView";
 import { HomeView } from "./features/home/HomeView";
+import { IngestionView } from "./features/ingestion/IngestionView";
 import { ModelsView } from "./features/models/ModelsView";
 import { OrchestrationView } from "./features/orchestration/OrchestrationView";
 import { state, setState } from "./store";
@@ -481,56 +482,24 @@ function App() {
           onSend={sendMessage}
         />
 
-        {/* Ingestion View */}
-        <div class="view-panel" classList={{ hidden: activeView() !== "ingestion" }}>
-          <div class="view-panel-content">
-            <div class="view-header">
-              <h2>Ingestion</h2>
-              <div class="view-header-actions">
-                <span class="source-count">{sources().length} sources</span>
-                <button class="action-btn" onClick={startIngest} disabled={state.busy || state.streaming || sources().length === 0}>Ingest All</button>
-              </div>
-            </div>
-
-            <div class="source-list">
-              <For each={sources()} fallback={<div class="empty-list">No sources configured yet.</div>}>
-                {(src) => (
-                  <div class="source-item">
-                    <div class="source-item-info">
-                      <div class="source-item-name">{src.name || src.url}</div>
-                      <div class="source-item-url">{src.url}</div>
-                      <div class="source-item-meta">
-                        <span class="source-item-type">{src.type}</span>
-                        <For each={src.tags || []}>{(tag) => <span class="source-item-tag">{tag}</span>}</For>
-                      </div>
-                    </div>
-                    <div class="source-item-actions">
-                      <button class="source-ingest-btn" onClick={() => ingestSingle(src.url)} disabled={state.busy || state.streaming}>Ingest</button>
-                      <button class="source-delete-btn" onClick={() => deleteSourceMut.mutate(src.url)}>Remove</button>
-                    </div>
-                  </div>
-                )}
-              </For>
-            </div>
-
-            <div class="source-add">
-              <h4>Add Source</h4>
-              <div class="source-add-fields">
-                <input type="text" placeholder="URL" value={newSourceUrl()} onInput={(e) => setNewSourceUrl(e.currentTarget.value)} />
-                <input type="text" placeholder="Name (optional)" value={newSourceName()} onInput={(e) => setNewSourceName(e.currentTarget.value)} />
-                <div class="source-add-row">
-                  <select value={newSourceType()} onChange={(e) => setNewSourceType(e.currentTarget.value)}>
-                    <option value="rss">RSS</option>
-                    <option value="article">Article</option>
-                    <option value="documentation">Documentation</option>
-                  </select>
-                  <input type="text" placeholder="Tags (comma separated)" value={newSourceTags()} onInput={(e) => setNewSourceTags(e.currentTarget.value)} />
-                </div>
-                <button class="action-btn" onClick={addSource} disabled={!newSourceUrl().trim()}>Add to Roster</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <IngestionView
+          visible={activeView() === "ingestion"}
+          busy={state.busy}
+          streaming={state.streaming}
+          sources={sources()}
+          sourceUrl={newSourceUrl()}
+          sourceName={newSourceName()}
+          sourceType={newSourceType()}
+          sourceTags={newSourceTags()}
+          onSourceUrlChange={setNewSourceUrl}
+          onSourceNameChange={setNewSourceName}
+          onSourceTypeChange={setNewSourceType}
+          onSourceTagsChange={setNewSourceTags}
+          onStartIngest={startIngest}
+          onIngestSingle={ingestSingle}
+          onDeleteSource={(url) => deleteSourceMut.mutate(url)}
+          onAddSource={addSource}
+        />
 
         <DocumentsView
           visible={activeView() === "documents"}
