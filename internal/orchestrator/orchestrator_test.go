@@ -10,8 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"buster-claw/internal/delivery"
+	"buster-claw/internal/hooks"
 	"buster-claw/internal/ingest"
 	"buster-claw/internal/ollama"
+	"buster-claw/internal/provider"
 )
 
 func TestQueueDocumentDeduplicatesAndRemoveDeletesQueuedWork(t *testing.T) {
@@ -160,7 +163,7 @@ Markdown report.
 		t.Fatalf("write intentions: %v", err)
 	}
 
-	return New(ollama.NewClient("http://127.0.0.1:1"), "test-model", dir)
+	return New(ollama.NewClient("http://127.0.0.1:1"), provider.NewManager(filepath.Join(dir, "providers.json")), delivery.NewManager(filepath.Join(dir, "delivery.json")), hooks.NewManager(filepath.Join(dir, "hooks.json")), "test-model", dir)
 }
 
 func writeRawDoc(t *testing.T, saveDir, name string) string {

@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
-//go:embed all:frontend/dist
+//go:embed frontend/dist/*
 var assets embed.FS
 
 func main() {
@@ -27,14 +28,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	app := NewApp(saveDir)
+	app := NewApp(saveDir); fmt.Println("Wails application is starting...");
+
+	assetsFS, err := fs.Sub(assets, "frontend/dist")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "buster-claw: %v\n", err)
+		os.Exit(1)
+	}
 
 	err = wails.Run(&options.App{
 		Title:  "Buster Claw",
 		Width:  1200,
 		Height: 800,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:  assetsFS,
 		},
 		OnStartup:  app.startup,
 		OnShutdown: app.shutdown,

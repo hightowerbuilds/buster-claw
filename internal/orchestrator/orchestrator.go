@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"buster-claw/internal/agent"
 	"buster-claw/internal/delivery"
 	"buster-claw/internal/hooks"
 	"buster-claw/internal/ingest"
@@ -426,21 +427,23 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 		workerCount = 1
 	}
 
+	pool := agent.NewAgentPool(workerCount)
+	defer pool.Close()
+
 	var wg sync.WaitGroup
 	errCh := make(chan error, workerCount)
 
-	for i := 0; i < workerCount; i++ {
+	for _, worker := range pool.Workers {
 		wg.Add(1)
-		go func() {
+		go func(w *agent.Agent) {
 			defer wg.Done()
 			for {
 				select {
-				case <-ctx.Done():
+				case <-pool.Ctx.Done():
 					return
 				default:
 					job, ok := o.takeNextQueued()
 					if !ok {
-						// Wait a bit if ingestion is still running
 						o.statusMu.RLock()
 						ingesting := o.status.IngestRunning
 						o.statusMu.RUnlock()
@@ -450,6 +453,10 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 						time.Sleep(200 * time.Millisecond)
 						continue
 					}
+
+					w.Mu.Lock()
+					w.IsWorking = true
+					w.Mu.Unlock()
 
 					jobName := filepath.Base(job.SourceFile)
 					o.updateStatus(func(s *Status) {
@@ -466,7 +473,6 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 					err := o.analyzeOne(ctx, job, ints, qMgr, reportMgr, reportsDir)
 					
 					o.updateStatus(func(s *Status) {
-						// Remove from ActiveJobs
 						var filtered []string
 						for _, aj := range s.ActiveJobs {
 							if aj != jobName {
@@ -487,6 +493,10 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 						s.QueueDepth = o.queuedDepth()
 					})
 
+					w.Mu.Lock()
+					w.IsWorking = false
+					w.Mu.Unlock()
+
 					if err != nil {
 						o.setQueueStatus(job.SourceFile, "failed")
 						errCh <- err
@@ -500,7 +510,7 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 					o.setQueueStatus(job.SourceFile, "done")
 				}
 			}
-		}()
+		}(worker)
 	}
 
 	wg.Wait()

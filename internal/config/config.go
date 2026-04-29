@@ -3,8 +3,9 @@ package config
 import "os"
 
 type Config struct {
-	Host  string
-	Model string
+	Host          string
+	Model         string
+	BrowserEngine string
 }
 
 func Load() Config {
@@ -18,8 +19,14 @@ func Load() Config {
 		model = "gemma4:e2b"
 	}
 
+	browserEngine := os.Getenv("BROWSER_ENGINE")
+	if browserEngine == "" {
+		browserEngine = "chrome"
+	}
+
 	return Config{
-		Host:  host,
-		Model: model,
+		Host:          host,
+		Model:         model,
+		BrowserEngine: browserEngine,
 	}
 }

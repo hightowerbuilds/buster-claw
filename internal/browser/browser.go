@@ -10,6 +10,23 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+// Engine defines the capabilities expected from a browser implementation.
+type Engine interface {
+	NewSession(parentCtx context.Context) (Session, error)
+}
+
+// Session represents an active browser tab and its underlying process.
+type Session interface {
+	Close()
+	SetCookies(cookies []*network.CookieParam) error
+	Navigate(url string) error
+	WaitForSelector(sel string) error
+	GetHTML() (string, error)
+	Click(sel string) error
+	Type(sel, text string) error
+	Screenshot() ([]byte, error)
+}
+
 var userAgents = []string{
 	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -30,27 +47,25 @@ func getRandomViewport() (int, int) {
 	return w, h
 }
 
-// Browser wraps CDP via chromedp for headless browser automation.
-type Browser struct {
+func randomDelay() {
+	time.Sleep(time.Duration(rand.Intn(1000)+500) * time.Millisecond)
+}
+
+// ChromeEngine implements the Engine interface using chromedp.
+type ChromeEngine struct {
 	Timeout time.Duration
 }
 
-// New creates a new Browser instance with a default 30s timeout.
-func New() *Browser {
-	return &Browser{
-		Timeout: 30 * time.Second,
-	}
+func NewChromeEngine() *ChromeEngine {
+	return &ChromeEngine{Timeout: 30 * time.Second}
 }
 
-// Session represents an active browser tab and its underlying process.
-type Session struct {
+type chromeSession struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-// NewSession starts a new headless browser session.
-// It is the caller's responsibility to call Close() when finished to prevent zombie processes.
-func (b *Browser) NewSession(parentCtx context.Context) *Session {
+func (e *ChromeEngine) NewSession(parentCtx context.Context) (Session, error) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
@@ -70,7 +85,7 @@ func (b *Browser) NewSession(parentCtx context.Context) *Session {
 	allocCtx, allocCancel := chromedp.NewExecAllocator(parentCtx, opts...)
 	taskCtx, taskCancel := chromedp.NewContext(allocCtx)
 
-	timeoutCtx, timeoutCancel := context.WithTimeout(taskCtx, b.Timeout)
+	timeoutCtx, timeoutCancel := context.WithTimeout(taskCtx, e.Timeout)
 
 	combinedCancel := func() {
 		timeoutCancel()
@@ -78,51 +93,44 @@ func (b *Browser) NewSession(parentCtx context.Context) *Session {
 		allocCancel()
 	}
 
-	return &Session{
+	return &chromeSession{
 		ctx:    timeoutCtx,
 		cancel: combinedCancel,
-	}
+	}, nil
 }
 
-// Close terminates the browser session and kills the underlying Chrome process.
-func (s *Session) Close() {
-	s.cancel()
-}
+func (s *chromeSession) Close() { s.cancel() }
 
-// SetCookies sets the provided cookies for the session.
-func (s *Session) SetCookies(cookies []*network.CookieParam) error {
+func (s *chromeSession) SetCookies(cookies []*network.CookieParam) error {
 	return chromedp.Run(s.ctx, network.SetCookies(cookies))
 }
 
-// Navigate opens the specified URL.
-func (s *Session) Navigate(url string) error {
+func (s *chromeSession) Navigate(url string) error {
+	randomDelay()
 	return chromedp.Run(s.ctx, chromedp.Navigate(url))
 }
 
-// WaitForSelector waits until the specified CSS selector is present in the DOM.
-func (s *Session) WaitForSelector(sel string) error {
+func (s *chromeSession) WaitForSelector(sel string) error {
 	return chromedp.Run(s.ctx, chromedp.WaitReady(sel, chromedp.ByQuery))
 }
 
-// GetHTML retrieves the outer HTML of the entire document.
-func (s *Session) GetHTML() (string, error) {
+func (s *chromeSession) GetHTML() (string, error) {
 	var html string
 	err := chromedp.Run(s.ctx, chromedp.OuterHTML("html", &html, chromedp.ByQuery))
 	return html, err
 }
 
-// Click finds the element by CSS selector and clicks it.
-func (s *Session) Click(sel string) error {
+func (s *chromeSession) Click(sel string) error {
+	randomDelay()
 	return chromedp.Run(s.ctx, chromedp.Click(sel, chromedp.ByQuery))
 }
 
-// Type finds the element by CSS selector and types text into it.
-func (s *Session) Type(sel, text string) error {
+func (s *chromeSession) Type(sel, text string) error {
+	randomDelay()
 	return chromedp.Run(s.ctx, chromedp.SendKeys(sel, text, chromedp.ByQuery))
 }
 
-// Screenshot captures a full-page screenshot and returns it as a byte slice (PNG).
-func (s *Session) Screenshot() ([]byte, error) {
+func (s *chromeSession) Screenshot() ([]byte, error) {
 	var buf []byte
 	err := chromedp.Run(s.ctx, chromedp.FullScreenshot(&buf, 100))
 	return buf, err

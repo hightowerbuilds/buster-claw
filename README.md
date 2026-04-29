@@ -1,95 +1,60 @@
 # Buster Claw
 
-`buster-claw` is a terminal chat app for local Ollama models with a Bubble Tea TUI and streaming responses in the normal terminal buffer.
+`buster-claw` is a desktop application for managing, searching, and analyzing local knowledge using Ollama and LLM providers. Built with [Wails](https://wails.io/), it combines a high-performance Go backend with a modern SolidJS frontend.
 
-The default model comes from `LOCALLLM_MODEL` or the `-m` flag. If neither is set, the app starts without a selected model until it discovers installed models from Ollama.
+## Features
 
-## Requirements
+- **Local & Remote LLM Chat**: Interact with local Ollama models or configured external AI providers.
+- **Knowledge Pipeline**:
+  - **Ingestion**: Scrape and fetch content from web pages and RSS feeds.
+  - **Analysis**: Queue-based asynchronous processing to structure ingested documents into markdown reports.
+  - **Delivery**: Automatically push reports to Slack, Discord, Telegram, or email.
+- **Agentic Capabilities**:
+  - **MCP Integration**: Connect Model Context Protocol servers to extend LLM capabilities with custom tools.
+  - **Parallel Processing**: Multi-worker analysis pipeline for efficient document handling.
+  - **Web Search**: Integrated web search tool for real-time information retrieval.
+- **Automation**:
+  - **Scheduler**: Cron-based job execution for fully autonomous research cycles.
+  - **Webhooks**: Trigger ingestion or analysis pipelines via external HTTP events.
+  - **Reactive Hooks**: Pre/post-processing hooks for pipeline events (e.g., auto-tagging, custom alerts).
+- **Persistent Memory**: Durable context storage in `Memory/Pneuma.md` to keep your AI smart across sessions.
 
-- Go 1.26+
-- Ollama installed and running locally
-- an installed model such as `gemma4:e2b`
+## Quick Start
 
-## Run During Development
-
-```bash
-go run .
-go run . -m gemma4:e2b
-go run . -host http://127.0.0.1:11434
-```
-
-## Build
-
-```bash
-go build -o buster-claw .
-```
-
-## Install Globally
-
-From this repository:
-
-```bash
-go install .
-```
-
-This installs the `buster-claw` binary into your Go bin directory.
+1. **Requirements**: Go 1.26+, Node.js (for frontend), Ollama.
+2. **Clone & Install**:
+   ```bash
+   git clone <repo-url>
+   cd buster-claw
+   go mod download
+   ```
+3. **Run Development**:
+   ```bash
+   wails dev
+   ```
+4. **Build**:
+   ```bash
+   wails build
+   ```
 
 ## Configuration
 
-- `-m`: default model name for this session
-- `-host`: Ollama server URL for this session
-- `LOCALLLM_MODEL`: default model name
-- `OLLAMA_HOST`: Ollama server URL, defaults to `http://127.0.0.1:11434`
+Settings are managed via the UI, which persists data into the library directory:
+- `sources.json`: Managed ingestion sources.
+- `mcp.json`: MCP server connections.
+- `providers.json`: LLM provider API keys and configurations.
+- `Library/`: Central store for all raw documents, reports, and job state.
 
-Examples:
+## Commands
 
-```bash
-go run . -m gemma4:e2b
-go run . -host http://127.0.0.1:11434
-LOCALLLM_MODEL=gemma4:e2b go run .
-OLLAMA_HOST=http://127.0.0.1:11434 go run .
-```
+- `/search <query>`: Search the web.
+- `/ingest <url>`: Ingest content for analysis.
+- `/browse <url>`: Fetch and render a URL via headless browser.
+- `/remember <text>`: Save a fact to persistent memory.
+- `/memories`: List saved memories.
+- `/status`: Show pipeline activity.
+- `/help`: Show available commands.
 
-## TUI Commands
+## License
 
-- `Enter`: send prompt
-- `/remember <text>`: save a durable memory to `Memory/Pneuma.md`
-- `/memories`: show saved memory entries
-- `/forget <n>`: delete one saved memory entry by number
-- `/models`: refresh and show installed Ollama models
-- `/model <name>`: switch models
-- `/clear`: clear the transcript
-- `/quit`: exit
-- `q`: quit
-
-## Markdown File Generation
-
-If your prompt asks Gemma to create a Markdown file, `buster-claw` scaffolds the request so the model returns one saveable `.md` document. The app writes that file into the current working directory where you launched the program.
-
-Example prompts:
-
-```text
-Create a markdown file named project-brief.md that outlines the Buster Claw roadmap for the next 30 days.
-Generate a markdown file with setup instructions for this repo and save it as onboarding.md.
-```
-
-The generated file is saved beside the app's working directory, and the transcript shows the saved filename plus the Markdown content.
-
-## Persistent Memory
-
-`buster-claw` can keep durable context in `Memory/Pneuma.md`. Saved memories are injected back into Gemma as system context on future prompts.
-
-Examples:
-
-```text
-/remember The primary goal of this repo is generating structured markdown notes from Gemma.
-/remember Prefer concise project briefs with headings and action items.
-/memories
-/forget 1
-```
-
-## Model Data
-
-The repository keeps local Ollama model metadata under `models/`. Runtime chat requests go through the Ollama HTTP API.
-# buster-claw
-# buster-claw
+MIT

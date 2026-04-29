@@ -3,12 +3,15 @@
 import {orchestrator} from '../models';
 import {delivery} from '../models';
 import {main} from '../models';
+import {hooks} from '../models';
 import {scheduler} from '../models';
 import {library} from '../models';
 import {ingest} from '../models';
 import {webhook} from '../models';
 
 export function AddDeliveryDestination(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:boolean):Promise<void>;
+
+export function AddHook(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:boolean):Promise<void>;
 
 export function AddJob(arg1:string,arg2:string,arg3:string,arg4:boolean,arg5:string,arg6:string):Promise<void>;
 
@@ -26,6 +29,8 @@ export function DeleteDeliveryDestination(arg1:string):Promise<void>;
 
 export function DeleteDocument(arg1:string):Promise<void>;
 
+export function DeleteHook(arg1:string):Promise<void>;
+
 export function DeleteJob(arg1:string):Promise<void>;
 
 export function DeleteSource(arg1:string):Promise<void>;
@@ -39,6 +44,8 @@ export function GetCurrentModel():Promise<string>;
 export function GetDeliveryDestinations():Promise<Array<delivery.Destination>>;
 
 export function GetDocuments():Promise<Array<main.DocumentInfo>>;
+
+export function GetHooks():Promise<Array<hooks.Hook>>;
 
 export function GetJobs():Promise<Array<scheduler.JobState>>;
 

@@ -2,40 +2,44 @@ package agent
 
 import (
 	"context"
-	"buster-claw/internal/provider"
+	"sync"
 )
 
-// Agent represents a lightweight autonomous worker.
+// Agent represents an isolated processing unit for a task.
 type Agent struct {
-	Name     string
-	Provider provider.Config
-	History  []provider.Message
+	ID        int
+	Mu        sync.Mutex
+	IsWorking bool
 }
 
-// New creates a new agent with an initial system prompt.
-func New(name string, prov provider.Config, systemPrompt string) *Agent {
-	return &Agent{
-		Name:     name,
-		Provider: prov,
-		History: []provider.Message{
-			{Role: "system", Content: systemPrompt},
-		},
-	}
+// Result summary returned by an agent.
+type Result struct {
+	AgentID int
+	Error   error
 }
 
-// Run executes a task and returns the result.
-func (a *Agent) Run(ctx context.Context, task string, mgr *provider.Manager) (string, error) {
-	a.History = append(a.History, provider.Message{Role: "user", Content: task})
-	
-	var response string
-	err := mgr.Chat(ctx, a.Provider, a.History, func(chunk string) error {
-		response += chunk
-		return nil
-	})
-	if err != nil {
-		return "", err
+// AgentPool manages a set of workers.
+type AgentPool struct {
+	Workers []*Agent
+	Ctx     context.Context
+	Cancel  context.CancelFunc
+}
+
+// NewAgentPool creates a pool with the specified number of workers.
+func NewAgentPool(count int) *AgentPool {
+	ctx, cancel := context.WithCancel(context.Background())
+	pool := &AgentPool{
+		Workers: make([]*Agent, count),
+		Ctx:     ctx,
+		Cancel:  cancel,
 	}
-	
-	a.History = append(a.History, provider.Message{Role: "assistant", Content: response})
-	return response, nil
+	for i := 0; i < count; i++ {
+		pool.Workers[i] = &Agent{ID: i + 1}
+	}
+	return pool
+}
+
+// Close stops all workers.
+func (p *AgentPool) Close() {
+	p.Cancel()
 }

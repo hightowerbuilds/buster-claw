@@ -25,6 +25,33 @@ export namespace delivery {
 
 }
 
+export namespace hooks {
+	
+	export class Hook {
+	    name: string;
+	    event: string;
+	    type: string;
+	    target: string;
+	    async: boolean;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Hook(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.event = source["event"];
+	        this.type = source["type"];
+	        this.target = source["target"];
+	        this.async = source["async"];
+	        this.enabled = source["enabled"];
+	    }
+	}
+
+}
+
 export namespace ingest {
 	
 	export class Cookie {
@@ -51,6 +78,7 @@ export namespace ingest {
 	    tags: string[];
 	    name?: string;
 	    cookies?: Cookie[];
+	    browser_engine?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Source(source);
@@ -63,6 +91,7 @@ export namespace ingest {
 	        this.tags = source["tags"];
 	        this.name = source["name"];
 	        this.cookies = this.convertValues(source["cookies"], Cookie);
+	        this.browser_engine = source["browser_engine"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -28,11 +28,12 @@ type Cookie struct {
 
 // Source represents a target URL to be ingested.
 type Source struct {
-	URL     string   `json:"url"`
-	Type    SourceType `json:"type"`
-	Tags    []string `json:"tags"`
-	Name    string   `json:"name,omitempty"`
-	Cookies []Cookie `json:"cookies,omitempty"`
+	URL           string     `json:"url"`
+	Type          SourceType `json:"type"`
+	Tags          []string   `json:"tags"`
+	Name          string     `json:"name,omitempty"`
+	Cookies       []Cookie   `json:"cookies,omitempty"`
+	BrowserEngine string     `json:"browser_engine,omitempty"`
 }
 
 // SourcesConfig is the root structure for the sources JSON file.

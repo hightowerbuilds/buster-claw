@@ -6,6 +6,10 @@ export function AddDeliveryDestination(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['AddDeliveryDestination'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
+export function AddHook(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['AddHook'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
 export function AddJob(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['AddJob'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
@@ -38,6 +42,10 @@ export function DeleteDocument(arg1) {
   return window['go']['main']['App']['DeleteDocument'](arg1);
 }
 
+export function DeleteHook(arg1) {
+  return window['go']['main']['App']['DeleteHook'](arg1);
+}
+
 export function DeleteJob(arg1) {
   return window['go']['main']['App']['DeleteJob'](arg1);
 }
@@ -64,6 +72,10 @@ export function GetDeliveryDestinations() {
 
 export function GetDocuments() {
   return window['go']['main']['App']['GetDocuments']();
+}
+
+export function GetHooks() {
+  return window['go']['main']['App']['GetHooks']();
 }
 
 export function GetJobs() {

@@ -1,6 +1,8 @@
 import { createSignal, createEffect, onMount, onCleanup, For, Show } from "solid-js";
 import { createQuery, createMutation, useQueryClient } from "@tanstack/solid-query";
 import { marked } from "marked";
+import { GetModels } from "../wailsjs/go/main/App";
+import { state, setState } from "./store";
 import type { ChatMessage, OrchestratorStatus, Source, DocumentInfo, PendingFile, ReportMeta, QueueEntry, MemoryEntry, ProviderInfo, JobState, Webhook, DeliveryDestination, Hook } from "./wails.d";
 
 type View = "home" | "chat" | "ingestion" | "documents" | "orchestration" | "analysis" | "models" | "providers" | "memory" | "scheduler" | "webhooks" | "delivery" | "hooks" | "docs";
@@ -29,16 +31,89 @@ function AnalogClock() {
   );
 }
 
+function startOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function dateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function WeeklyPlanCalendar(props: { jobs: JobState[] }) {
+  const days = () => {
+    const today = startOfDay(new Date());
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() + index);
+      return date;
+    });
+  };
+
+  const jobsForDay = (day: Date) => {
+    const key = dateKey(day);
+    return props.jobs.filter((job) => {
+      if (!job.enabled || !job.nextRun) return false;
+      const nextRun = new Date(job.nextRun);
+      if (Number.isNaN(nextRun.getTime())) return false;
+      return dateKey(nextRun) === key;
+    });
+  };
+
+  const jobLabel = (job: JobState) => {
+    if (job.customCmd) return job.customCmd;
+    if (job.type === "full") return "Full research pipeline";
+    if (job.type === "ingest") return "Ingest sources";
+    if (job.type === "analyze") return "Analyze queue";
+    if (job.type === "digest") return "Digest delivery";
+    return job.id;
+  };
+
+  return (
+    <section class="weekly-plan">
+      <h2 class="section-title">This Week</h2>
+      <div class="weekly-plan-grid">
+        <For each={days()}>
+          {(day, index) => {
+            const dayJobs = () => jobsForDay(day);
+            return (
+              <div class="week-day" classList={{ today: index() === 0 }}>
+                <div class="week-day-heading">
+                  <span>{index() === 0 ? "Today" : day.toLocaleDateString(undefined, { weekday: "short" })}</span>
+                  <strong>{day.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</strong>
+                </div>
+                <div class="week-day-plans">
+                  <Show when={dayJobs().length > 0} fallback={<div class="week-empty">No scheduled work</div>}>
+                    <For each={dayJobs()}>
+                      {(job) => (
+                        <div class="week-plan-item">
+                          <span class="week-plan-type">{job.type}</span>
+                          <span class="week-plan-title">{jobLabel(job)}</span>
+                          <span class="week-plan-time">{new Date(job.nextRun).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>
+                        </div>
+                      )}
+                    </For>
+                  </Show>
+                </div>
+              </div>
+            );
+          }}
+        </For>
+      </div>
+    </section>
+  );
+}
+
 function App() {
   const qc = useQueryClient();
   const [activeView, setActiveView] = createSignal<View>("home");
   const [messages, setMessages] = createSignal<ChatMessage[]>([]);
   const [input, setInput] = createSignal("");
   const [currentModel, setCurrentModel] = createSignal("");
-  const [streaming, setStreaming] = createSignal(false);
-  const [searching, setSearching] = createSignal("");
-  const [waiting, setWaiting] = createSignal(false);
-  const [streamBuffer, setStreamBuffer] = createSignal("");
   const [status, setStatus] = createSignal<OrchestratorStatus>({
     phase: "idle",
     queueDepth: 0,
@@ -47,7 +122,6 @@ function App() {
     completedJobs: 0,
     failedJobs: 0,
   });
-  const [busy, setBusy] = createSignal(false);
 
   // Form state
   const [newSourceUrl, setNewSourceUrl] = createSignal("");
@@ -65,15 +139,14 @@ function App() {
 
   createEffect(() => {
     messages();
-    streamBuffer();
+    state.streamBuffer;
     scrollToBottom();
   });
 
   // --- Queries ---
-
   const modelsQuery = createQuery(() => ({
     queryKey: ["models"],
-    queryFn: () => window.go.main.App.GetModels(),
+    queryFn: () => GetModels(),
   }));
 
   const sourcesQuery = createQuery(() => ({
@@ -113,6 +186,10 @@ function App() {
   const pendingFiles = () => pendingQuery.data || [];
   const analysisQueue = () => queueQuery.data || [];
   const reports = () => reportsQuery.data || [];
+  const streaming = () => state.streaming;
+  const searching = () => state.searching;
+  const waiting = () => state.waiting;
+  const streamBuffer = () => state.streamBuffer;
 
   const memoriesQuery = createQuery(() => ({
     queryKey: ["memories"],
@@ -133,8 +210,8 @@ function App() {
   const schedulerQuery = createQuery(() => ({
     queryKey: ["scheduler"],
     queryFn: () => window.go.main.App.GetJobs(),
-    enabled: activeView() === "scheduler",
-    refetchInterval: activeView() === "scheduler" ? 5000 : false, // Poll every 5s for NextRun/LastRun updates
+    enabled: activeView() === "scheduler" || activeView() === "home",
+    refetchInterval: activeView() === "scheduler" || activeView() === "home" ? 5000 : false, // Poll for NextRun/LastRun updates
   }));
 
   const jobs = () => schedulerQuery.data || [];
@@ -330,35 +407,41 @@ function App() {
     try { const msgs = await window.go.main.App.GetMessages(); setMessages(msgs || []); } catch (e) { console.error(e); }
 
     window.runtime.EventsOn("chat:searching", (query: string) => {
-      setSearching(query);
+      setState("searching", query);
     });
     window.runtime.EventsOn("chat:token", (chunk: string) => {
-      setSearching("");
-      setWaiting(false);
-      setStreaming(true);
-      setStreamBuffer((prev) => prev + chunk);
+      setState("searching", "");
+      setState("waiting", false);
+      setState("streaming", true);
+      setState("streamBuffer", (prev) => prev + chunk);
     });
     window.runtime.EventsOn("chat:done", (_response: string) => {
-      const buf = streamBuffer();
+      const buf = state.streamBuffer;
       if (buf) setMessages((prev) => [...prev, { role: "assistant", content: buf }]);
-      setStreamBuffer("");
-      setStreaming(false);
-      setSearching("");
-      setWaiting(false);
+      setState({
+        streamBuffer: "",
+        streaming: false,
+        searching: "",
+        waiting: false
+      });
     });
     window.runtime.EventsOn("chat:error", (err: string) => {
       setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${err}` }]);
-      setStreamBuffer("");
-      setStreaming(false);
-      setSearching("");
-      setWaiting(false);
+      setState({
+        streamBuffer: "",
+        streaming: false,
+        searching: "",
+        waiting: false
+      });
     });
     window.runtime.EventsOn("chat:cleared", () => {
       setMessages([]);
-      setStreamBuffer("");
-      setStreaming(false);
-      setSearching("");
-      setWaiting(false);
+      setState({
+        streamBuffer: "",
+        streaming: false,
+        searching: "",
+        waiting: false
+      });
     });
     window.runtime.EventsOn("orchestrator:status", async (s: OrchestratorStatus) => {
       setStatus(s);
@@ -379,12 +462,12 @@ function App() {
 
   const sendMessage = async () => {
     const prompt = input().trim();
-    if (!prompt || streaming()) return;
+    if (!prompt || state.streaming) return;
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: prompt }]);
-    setWaiting(true);
+    setState("waiting", true);
     try { await window.go.main.App.SendMessage(prompt); } catch (e: any) {
-      setWaiting(false);
+      setState("waiting", false);
       setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${e.message || e}` }]);
     }
   };
@@ -399,7 +482,7 @@ function App() {
   };
 
   const startIngest = async () => {
-    setBusy(true);
+    setState("busy", true);
     try {
       const result = await window.go.main.App.StartIngest();
       if (result.error) {
@@ -409,11 +492,11 @@ function App() {
       }
       qc.invalidateQueries({ queryKey: ["documents"] });
       qc.invalidateQueries({ queryKey: ["pending"] });
-    } finally { setBusy(false); }
+    } finally { setState("busy", false); }
   };
 
   const ingestSingle = async (url: string) => {
-    setBusy(true);
+    setState("busy", true);
     try {
       const result = await window.go.main.App.IngestSource(url);
       if (result.error) {
@@ -423,11 +506,11 @@ function App() {
       }
       qc.invalidateQueries({ queryKey: ["documents"] });
       qc.invalidateQueries({ queryKey: ["pending"] });
-    } finally { setBusy(false); }
+    } finally { setState("busy", false); }
   };
 
   const runQueue = async () => {
-    setBusy(true);
+    setState("busy", true);
     try {
       const result = await window.go.main.App.StartAnalysis();
       if (result.error) {
@@ -436,7 +519,7 @@ function App() {
       qc.invalidateQueries({ queryKey: ["queue"] });
       qc.invalidateQueries({ queryKey: ["pending"] });
       qc.invalidateQueries({ queryKey: ["reports"] });
-    } finally { setBusy(false); }
+    } finally { setState("busy", false); }
   };
 
   const openReport = async (report: ReportMeta) => {
@@ -463,7 +546,7 @@ function App() {
   const clearChat = async () => {
     await window.go.main.App.ClearMessages();
     setMessages([]);
-    setStreamBuffer("");
+    setState("streamBuffer", "");
   };
 
   return (
@@ -531,6 +614,7 @@ function App() {
           <div class="newspaper-container">
             <main class="newspaper-grid">
               <div class="main-column">
+                <WeeklyPlanCalendar jobs={jobs()} />
                 <h2 class="section-title">Latest Analysis</h2>
                 <Show when={reports().length > 0} fallback={<p class="empty-story">No recent analysis available. The newsroom is quiet.</p>}>
                   <div class="featured-story">
@@ -633,8 +717,8 @@ function App() {
           </div>
           <div class="input-area">
             <div class="input-row">
-              <input type="text" placeholder={currentModel() ? "Send a message..." : "No model selected"} value={input()} onInput={(e) => setInput(e.currentTarget.value)} onKeyDown={handleKeyDown} disabled={!currentModel() || streaming()} />
-              <button onClick={sendMessage} disabled={!currentModel() || streaming() || !input().trim()}>Send</button>
+              <input type="text" placeholder={currentModel() ? "Send a message..." : "No model selected"} value={input()} onInput={(e) => setInput(e.currentTarget.value)} onKeyDown={handleKeyDown} disabled={!currentModel() || state.streaming} />
+              <button onClick={sendMessage} disabled={!currentModel() || state.streaming || !input().trim()}>Send</button>
             </div>
           </div>
         </div>
@@ -646,7 +730,7 @@ function App() {
               <h2>Ingestion</h2>
               <div class="view-header-actions">
                 <span class="source-count">{sources().length} sources</span>
-                <button class="action-btn" onClick={startIngest} disabled={busy() || streaming() || sources().length === 0}>Ingest All</button>
+                <button class="action-btn" onClick={startIngest} disabled={state.busy || state.streaming || sources().length === 0}>Ingest All</button>
               </div>
             </div>
 
@@ -663,7 +747,7 @@ function App() {
                       </div>
                     </div>
                     <div class="source-item-actions">
-                      <button class="source-ingest-btn" onClick={() => ingestSingle(src.url)} disabled={busy() || streaming()}>Ingest</button>
+                      <button class="source-ingest-btn" onClick={() => ingestSingle(src.url)} disabled={state.busy || state.streaming}>Ingest</button>
                       <button class="source-delete-btn" onClick={() => deleteSourceMut.mutate(src.url)}>Remove</button>
                     </div>
                   </div>
@@ -725,7 +809,7 @@ function App() {
             <div class="view-header">
               <h2>Orchestration</h2>
               <div class="view-header-actions">
-                <button class="action-btn" onClick={runQueue} disabled={busy() || streaming() || analysisQueue().filter(q => q.status === "queued").length === 0}>
+                <button class="action-btn" onClick={runQueue} disabled={state.busy || state.streaming || analysisQueue().filter(q => q.status === "queued").length === 0}>
                   Run Queue
                 </button>
               </div>
@@ -1033,7 +1117,14 @@ function App() {
                         <button 
                           class="status-badge" 
                           classList={{ "success": job.enabled, "failed": !job.enabled }}
-                          onClick={() => updateJobMut.mutate({ ...job, enabled: !job.enabled })}
+                          onClick={() => updateJobMut.mutate({
+                            id: job.id,
+                            type: job.type,
+                            cron: job.cron,
+                            enabled: !job.enabled,
+                            customCmd: job.customCmd || "",
+                            deliverTo: job.deliverTo || "",
+                          })}
                         >
                           {job.enabled ? "Active" : "Paused"}
                         </button>
@@ -1128,9 +1219,6 @@ function App() {
           </div>
         </div>
 
-          </div>
-        </div>
-
         {/* Delivery View */}
         <div class="view-panel" classList={{ hidden: activeView() !== "delivery" }}>
           <div class="view-panel-content">
@@ -1182,7 +1270,7 @@ function App() {
                       <div class="provider-item-name">{dest.name}</div>
                       <div class="provider-item-meta">
                         <span class="source-item-type">{dest.type}</span>
-                        <Show when={dest.url}><span class="provider-item-url">{dest.url.substring(0, 40)}...</span></Show>
+                        <Show when={dest.url}><span class="provider-item-url">{dest.url!.substring(0, 40)}...</span></Show>
                         <Show when={dest.chatId}><span>Chat: {dest.chatId}</span></Show>
                       </div>
                     </div>
@@ -1326,10 +1414,10 @@ function App() {
       <div class="status-bar">
         <span>{currentModel() ? `Model: ${currentModel()}` : "No model"} | {models().length} installed</span>
         <span class="status-activity">
-          {searching() ? "Searching..." :
-           streaming() ? "Chatting..." :
+          {state.searching ? "Searching..." :
+           state.streaming ? "Chatting..." :
            status().phase !== "idle" ? status().phase :
-           busy() ? "Working..." :
+           state.busy ? "Working..." :
            "Idle"}
         </span>
         <span>Buster Claw</span>

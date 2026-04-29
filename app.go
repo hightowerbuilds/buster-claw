@@ -54,11 +54,12 @@ type ChatMessage struct {
 
 // OrchestratorStatus mirrors the orchestrator status for the frontend.
 type OrchestratorStatus struct {
-	Phase         string `json:"phase"`
-	QueueDepth    int    `json:"queueDepth"`
-	ActiveJob     string `json:"activeJob"`
-	CompletedJobs int    `json:"completedJobs"`
-	FailedJobs    int    `json:"failedJobs"`
+	Phase         string   `json:"phase"`
+	QueueDepth    int      `json:"queueDepth"`
+	ActiveJob     string   `json:"activeJob"`
+	ActiveJobs    []string `json:"activeJobs"`
+	CompletedJobs int      `json:"completedJobs"`
+	FailedJobs    int      `json:"failedJobs"`
 }
 
 // IngestResult is returned after an ingestion run.
@@ -188,6 +189,7 @@ func (a *App) startup(ctx context.Context) {
 			Phase:         s.Phase,
 			QueueDepth:    s.QueueDepth,
 			ActiveJob:     s.ActiveJob,
+			ActiveJobs:    s.ActiveJobs,
 			CompletedJobs: s.CompletedJobs,
 			FailedJobs:    s.FailedJobs,
 		})

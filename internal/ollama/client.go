@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -57,12 +58,14 @@ func (c *Client) ListModels(ctx context.Context) ([]string, error) {
 
 	res, err := c.http.Do(req)
 	if err != nil {
+		slog.Error("failed to connect to ollama", "url", c.baseURL, "error", err)
 		return nil, fmt.Errorf("connect to Ollama at %s: %w", c.baseURL, err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+		slog.Error("ollama list models failed", "status", res.Status, "response", string(body))
 		return nil, fmt.Errorf("ollama list models failed: %s: %s", res.Status, strings.TrimSpace(string(body)))
 	}
 

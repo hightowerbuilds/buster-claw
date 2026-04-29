@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"buster-claw/internal/browser"
+	"buster-claw/internal/config"
 	"github.com/chromedp/cdproto/network"
 )
 
@@ -22,11 +23,11 @@ type FetchResult struct {
 
 // Fetcher manages concurrent data retrieval.
 type Fetcher struct {
-	client        *http.Client
-	browserClient *browser.Browser
-	concurrency   int
-	maxRetries    int
-	baseDelay     time.Duration
+	client      *http.Client
+	engine      browser.Engine
+	concurrency int
+	maxRetries  int
+	baseDelay   time.Duration
 }
 
 // NewFetcher creates a new Fetcher with the specified concurrency limit.
@@ -34,14 +35,24 @@ func NewFetcher(concurrency int) *Fetcher {
 	if concurrency <= 0 {
 		concurrency = 5
 	}
+
+	cfg := config.Load()
+	var engine browser.Engine
+	switch cfg.BrowserEngine {
+	case "lightpanda":
+		engine = browser.NewLightPandaEngine()
+	default:
+		engine = browser.NewChromeEngine()
+	}
+
 	return &Fetcher{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		browserClient: browser.New(),
-		concurrency:   concurrency,
-		maxRetries:    3,
-		baseDelay:     500 * time.Millisecond,
+		engine:      engine,
+		concurrency: concurrency,
+		maxRetries:  3,
+		baseDelay:   500 * time.Millisecond,
 	}
 }
 
@@ -85,7 +96,6 @@ func (f *Fetcher) FetchAll(ctx context.Context, sources []Source) []FetchResult 
 	return results
 }
 
-// retryable returns true for status codes where a retry is worth attempting.
 func retryable(statusCode int) bool {
 	return statusCode == 429 || statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504
 }
@@ -108,7 +118,6 @@ func (f *Fetcher) fetchWithRetry(ctx context.Context, source Source) FetchResult
 		}
 		lastErr = result.Error
 
-		// Don't retry non-retryable errors (bad URL, parse failure, 4xx other than 429)
 		if !result.isRetryable() {
 			return result
 		}
@@ -117,20 +126,16 @@ func (f *Fetcher) fetchWithRetry(ctx context.Context, source Source) FetchResult
 	return FetchResult{Source: source, Error: fmt.Errorf("after %d retries: %w", f.maxRetries, lastErr)}
 }
 
-// isRetryable checks if a fetch error is worth retrying.
 func (r FetchResult) isRetryable() bool {
 	if r.Error == nil {
 		return false
 	}
 	msg := r.Error.Error()
-	// Network-level errors are retryable
 	for _, substr := range []string{"connection refused", "timeout", "EOF", "reset by peer"} {
 		if contains(msg, substr) {
 			return true
 		}
 	}
-	// Status-code-based retryability is handled by the caller checking the status code
-	// but the error string from fetchSingle embeds the status code for 429/5xx
 	for _, code := range []string{"429", "500", "502", "503", "504"} {
 		if contains(msg, code) {
 			return true
@@ -175,7 +180,6 @@ func (f *Fetcher) fetchSingle(ctx context.Context, source Source) FetchResult {
 		return FetchResult{Source: source, Error: fmt.Errorf("status %d from %s", resp.StatusCode, source.URL)}
 	}
 
-	// Cap body reads at 10MB to prevent memory issues
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if err != nil {
 		return FetchResult{Source: source, Error: fmt.Errorf("read response body from %s: %w", source.URL, err)}
@@ -190,7 +194,20 @@ func (f *Fetcher) fetchSingle(ctx context.Context, source Source) FetchResult {
 }
 
 func (f *Fetcher) fetchBrowser(ctx context.Context, source Source) FetchResult {
-	session := f.browserClient.NewSession(ctx)
+	engine := f.engine
+	if source.BrowserEngine != "" {
+		switch source.BrowserEngine {
+		case "lightpanda":
+			engine = browser.NewLightPandaEngine()
+		case "chrome":
+			engine = browser.NewChromeEngine()
+		}
+	}
+
+	session, err := engine.NewSession(ctx)
+	if err != nil {
+		return FetchResult{Source: source, Error: fmt.Errorf("start browser session: %w", err)}
+	}
 	defer session.Close()
 
 	if len(source.Cookies) > 0 {
