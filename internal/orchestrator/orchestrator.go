@@ -9,10 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"buster-claw/internal/delivery"
+	"buster-claw/internal/hooks"
 	"buster-claw/internal/ingest"
 	"buster-claw/internal/intentions"
 	"buster-claw/internal/library"
 	"buster-claw/internal/ollama"
+	"buster-claw/internal/provider"
 	"buster-claw/internal/queue"
 )
 
@@ -20,14 +23,14 @@ import (
 type JobType int
 
 const (
-	JobIngest  JobType = iota
+	JobIngest JobType = iota
 	JobAnalyze
 )
 
 // Job represents a single unit of work flowing through the pipeline.
 type Job struct {
 	Type       JobType
-	SourceFile string // for analysis: path to raw doc
+	SourceFile string        // for analysis: path to raw doc
 	Source     ingest.Source // for ingestion: the source to fetch
 }
 
@@ -35,7 +38,8 @@ type Job struct {
 type Status struct {
 	Phase           string
 	QueueDepth      int
-	ActiveJob       string
+	ActiveJob       string   // Legacy for single-worker mode
+	ActiveJobs      []string // For parallel mode
 	CompletedJobs   int
 	FailedJobs      int
 	IngestRunning   bool
@@ -53,34 +57,40 @@ type QueueEntry struct {
 // Ingestion runs concurrently. Analysis is gated — one document at a time.
 type Orchestrator struct {
 	client         *ollama.Client
+	providers      *provider.Manager
+	delivery       *delivery.Manager
+	hooks          *hooks.Manager
 	model          string
 	saveDir        string
 	libraryDir     string
 	intentionsFile string
 	sourcesFile    string
 
-	analysisQueue chan Job
-	statusMu      sync.RWMutex
-	status         Status
+	WorkerCount    int
 
-	// Tracked queue for UI visibility
-	trackedQueue []QueueEntry
-	trackedMu    sync.RWMutex
+	statusMu sync.RWMutex
+	status   Status
+
+	queue   []QueueEntry
+	queueMu sync.RWMutex
 
 	// OnStatusChange is called whenever the status changes. Optional.
 	OnStatusChange func(Status)
 }
 
 // New creates an Orchestrator.
-func New(client *ollama.Client, model, saveDir string) *Orchestrator {
+func New(client *ollama.Client, providers *provider.Manager, delivery *delivery.Manager, h *hooks.Manager, model, saveDir string) *Orchestrator {
 	return &Orchestrator{
 		client:         client,
+		providers:      providers,
+		delivery:       delivery,
+		hooks:          h,
 		model:          model,
 		saveDir:        saveDir,
 		libraryDir:     filepath.Join(saveDir, "Library"),
 		intentionsFile: filepath.Join(saveDir, "Intentions.md"),
 		sourcesFile:    filepath.Join(saveDir, "sources.json"),
-		analysisQueue:  make(chan Job, 100),
+		WorkerCount:    1,
 	}
 }
 
@@ -104,77 +114,115 @@ func (o *Orchestrator) updateStatus(fn func(*Status)) {
 
 // QueueDocument adds a single document to the analysis queue.
 func (o *Orchestrator) QueueDocument(path string) {
-	o.trackedMu.Lock()
-	// Don't add duplicates
-	for _, e := range o.trackedQueue {
-		if e.Path == path {
-			o.trackedMu.Unlock()
-			return
-		}
-	}
-	o.trackedQueue = append(o.trackedQueue, QueueEntry{
-		Filename: filepath.Base(path),
-		Path:     path,
-		Status:   "queued",
-	})
-	o.trackedMu.Unlock()
-
-	o.analysisQueue <- Job{Type: JobAnalyze, SourceFile: path}
-	o.updateStatus(func(s *Status) {
-		s.QueueDepth = len(o.analysisQueue)
-	})
+	o.enqueueAnalysis(path)
 }
 
 // GetAnalysisQueue returns the current tracked queue entries.
 func (o *Orchestrator) GetAnalysisQueue() []QueueEntry {
-	o.trackedMu.RLock()
-	defer o.trackedMu.RUnlock()
-	out := make([]QueueEntry, len(o.trackedQueue))
-	copy(out, o.trackedQueue)
+	o.queueMu.RLock()
+	defer o.queueMu.RUnlock()
+	out := make([]QueueEntry, len(o.queue))
+	copy(out, o.queue)
 	return out
 }
 
 // ClearCompletedQueue removes done/failed entries from the tracked queue.
 func (o *Orchestrator) ClearCompletedQueue() {
-	o.trackedMu.Lock()
-	defer o.trackedMu.Unlock()
+	o.queueMu.Lock()
+	defer o.queueMu.Unlock()
 	var active []QueueEntry
-	for _, e := range o.trackedQueue {
+	for _, e := range o.queue {
 		if e.Status == "queued" || e.Status == "analyzing" {
 			active = append(active, e)
 		}
 	}
-	o.trackedQueue = active
+	o.queue = active
 }
 
-// RemoveFromQueue removes a single entry from the tracked queue by path.
+// RemoveFromQueue removes a single non-running entry from the analysis queue by path.
 func (o *Orchestrator) RemoveFromQueue(path string) {
-	o.trackedMu.Lock()
-	defer o.trackedMu.Unlock()
-	filtered := make([]QueueEntry, 0, len(o.trackedQueue))
-	for _, e := range o.trackedQueue {
-		if e.Path != path {
+	o.queueMu.Lock()
+	filtered := make([]QueueEntry, 0, len(o.queue))
+	for _, e := range o.queue {
+		if e.Path != path || e.Status == "analyzing" {
 			filtered = append(filtered, e)
 		}
 	}
-	o.trackedQueue = filtered
+	o.queue = filtered
+	depth := countQueued(o.queue)
+	o.queueMu.Unlock()
+
+	o.updateStatus(func(s *Status) {
+		s.QueueDepth = depth
+	})
 }
 
-func (o *Orchestrator) setTrackedStatus(path, status string) {
-	o.trackedMu.Lock()
-	defer o.trackedMu.Unlock()
-	for i := range o.trackedQueue {
-		if o.trackedQueue[i].Path == path {
-			o.trackedQueue[i].Status = status
-			break
+func (o *Orchestrator) enqueueAnalysis(path string) bool {
+	o.queueMu.Lock()
+	for _, e := range o.queue {
+		if e.Path == path {
+			o.queueMu.Unlock()
+			return false
 		}
 	}
+	o.queue = append(o.queue, QueueEntry{
+		Filename: filepath.Base(path),
+		Path:     path,
+		Status:   "queued",
+	})
+	depth := countQueued(o.queue)
+	o.queueMu.Unlock()
+
+	o.updateStatus(func(s *Status) {
+		s.QueueDepth = depth
+	})
+	return true
+}
+
+func (o *Orchestrator) takeNextQueued() (Job, bool) {
+	o.queueMu.Lock()
+	defer o.queueMu.Unlock()
+	for i := range o.queue {
+		if o.queue[i].Status == "queued" {
+			o.queue[i].Status = "analyzing"
+			return Job{Type: JobAnalyze, SourceFile: o.queue[i].Path}, true
+		}
+	}
+	return Job{}, false
+}
+
+func (o *Orchestrator) setQueueStatus(path, status string) {
+	o.queueMu.Lock()
+	defer o.queueMu.Unlock()
+	for i := range o.queue {
+		if o.queue[i].Path == path {
+			o.queue[i].Status = status
+			return
+		}
+	}
+}
+
+func (o *Orchestrator) queuedDepth() int {
+	o.queueMu.RLock()
+	defer o.queueMu.RUnlock()
+	return countQueued(o.queue)
+}
+
+func countQueued(entries []QueueEntry) int {
+	count := 0
+	for _, e := range entries {
+		if e.Status == "queued" {
+			count++
+		}
+	}
+	return count
 }
 
 // RunIngest fetches all configured sources (including RSS expansion),
 // saves them to the Library, then queues each new file for analysis.
 // Returns the number of files saved.
 func (o *Orchestrator) RunIngest(ctx context.Context) (int, error) {
+	o.hooks.Trigger(hooks.PreIngest, nil)
 	o.updateStatus(func(s *Status) {
 		s.Phase = "ingesting"
 		s.IngestRunning = true
@@ -236,28 +284,27 @@ func (o *Orchestrator) RunIngest(ctx context.Context) (int, error) {
 			continue
 		}
 
-		// Queue for analysis
-		o.analysisQueue <- Job{
-			Type:       JobAnalyze,
-			SourceFile: path,
-		}
+		o.enqueueAnalysis(path)
 		saved++
 		o.updateStatus(func(s *Status) {
 			s.CompletedJobs++
-			s.QueueDepth = len(o.analysisQueue)
+			s.QueueDepth = o.queuedDepth()
 		})
 	}
 
 	if saved == 0 && lastErr != nil {
+		o.hooks.Trigger(hooks.OnError, map[string]string{"error": lastErr.Error(), "phase": "ingest"})
 		return 0, fmt.Errorf("all fetches failed, last: %w", lastErr)
 	}
 
+	o.hooks.Trigger(hooks.PostIngest, map[string]int{"saved": saved})
 	return saved, nil
 }
 
 // IngestSingle fetches a single source (with RSS expansion if needed),
 // saves results to the Library, and queues them for analysis.
 func (o *Orchestrator) IngestSingle(ctx context.Context, source ingest.Source) (int, error) {
+	o.hooks.Trigger(hooks.PreIngest, source)
 	o.updateStatus(func(s *Status) {
 		s.Phase = fmt.Sprintf("ingesting: %s", source.Name)
 		s.IngestRunning = true
@@ -308,27 +355,27 @@ func (o *Orchestrator) IngestSingle(ctx context.Context, source ingest.Source) (
 			continue
 		}
 
-		o.analysisQueue <- Job{
-			Type:       JobAnalyze,
-			SourceFile: path,
-		}
+		o.enqueueAnalysis(path)
 		saved++
 		o.updateStatus(func(s *Status) {
 			s.CompletedJobs++
-			s.QueueDepth = len(o.analysisQueue)
+			s.QueueDepth = o.queuedDepth()
 		})
 	}
 
 	if saved == 0 && lastErr != nil {
+		o.hooks.Trigger(hooks.OnError, map[string]string{"error": lastErr.Error(), "phase": "ingest_single", "url": source.URL})
 		return 0, fmt.Errorf("all fetches failed for %s: %w", source.URL, lastErr)
 	}
 
+	o.hooks.Trigger(hooks.PostIngest, map[string]any{"saved": saved, "source": source})
 	return saved, nil
 }
 
 // RunAnalysis processes the analysis queue sequentially — one document at a time.
 // It blocks until the queue is drained or the context is cancelled.
 func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
+	o.hooks.Trigger(hooks.PreAnalysis, nil)
 	o.updateStatus(func(s *Status) {
 		s.Phase = "analyzing"
 		s.AnalysisRunning = true
@@ -359,50 +406,116 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 
 	processed := 0
 	var lastErr error
+	var processedMu sync.Mutex
 
-	for {
-		select {
-		case <-ctx.Done():
-			return processed, ctx.Err()
-		case job, ok := <-o.analysisQueue:
-			if !ok {
-				return processed, lastErr
-			}
+	workerCount := o.WorkerCount
+	if workerCount <= 0 {
+		workerCount = 1
+	}
 
-			o.setTrackedStatus(job.SourceFile, "analyzing")
-			o.updateStatus(func(s *Status) {
-				s.ActiveJob = filepath.Base(job.SourceFile)
-				s.QueueDepth = len(o.analysisQueue)
-				s.Phase = fmt.Sprintf("analyzing: %s", filepath.Base(job.SourceFile))
-			})
-
-			err := o.analyzeOne(ctx, job, ints, qMgr, reportMgr, reportsDir)
-			if err != nil {
-				lastErr = err
-				o.setTrackedStatus(job.SourceFile, "failed")
-				o.updateStatus(func(s *Status) { s.FailedJobs++ })
-				continue
-			}
-
-			o.setTrackedStatus(job.SourceFile, "done")
-			processed++
-			o.updateStatus(func(s *Status) {
-				s.CompletedJobs++
-				s.ActiveJob = ""
-				s.QueueDepth = len(o.analysisQueue)
-			})
-
-			// If queue is empty and ingestion isn't running, we're done
-			if len(o.analysisQueue) == 0 {
-				o.statusMu.RLock()
-				ingesting := o.status.IngestRunning
-				o.statusMu.RUnlock()
-				if !ingesting {
-					return processed, lastErr
-				}
-			}
+	// We only parallelize if an external provider is active.
+	// Local Ollama usually handles one request at a time efficiently.
+	hasProvider := false
+	for _, p := range o.providers.All() {
+		if p.Active && p.Type != provider.TypeOllama {
+			hasProvider = true
+			break
 		}
 	}
+	if !hasProvider {
+		workerCount = 1
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, workerCount)
+
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					job, ok := o.takeNextQueued()
+					if !ok {
+						// Wait a bit if ingestion is still running
+						o.statusMu.RLock()
+						ingesting := o.status.IngestRunning
+						o.statusMu.RUnlock()
+						if !ingesting {
+							return
+						}
+						time.Sleep(200 * time.Millisecond)
+						continue
+					}
+
+					jobName := filepath.Base(job.SourceFile)
+					o.updateStatus(func(s *Status) {
+						s.QueueDepth = o.queuedDepth()
+						s.ActiveJobs = append(s.ActiveJobs, jobName)
+						if workerCount == 1 {
+							s.ActiveJob = jobName
+							s.Phase = fmt.Sprintf("analyzing: %s", jobName)
+						} else {
+							s.Phase = fmt.Sprintf("analyzing %d in parallel", len(s.ActiveJobs))
+						}
+					})
+
+					err := o.analyzeOne(ctx, job, ints, qMgr, reportMgr, reportsDir)
+					
+					o.updateStatus(func(s *Status) {
+						// Remove from ActiveJobs
+						var filtered []string
+						for _, aj := range s.ActiveJobs {
+							if aj != jobName {
+								filtered = append(filtered, aj)
+							}
+						}
+						s.ActiveJobs = filtered
+
+						if err != nil {
+							s.FailedJobs++
+						} else {
+							s.CompletedJobs++
+						}
+						
+						if workerCount == 1 {
+							s.ActiveJob = ""
+						}
+						s.QueueDepth = o.queuedDepth()
+					})
+
+					if err != nil {
+						o.setQueueStatus(job.SourceFile, "failed")
+						errCh <- err
+						continue
+					}
+
+					processedMu.Lock()
+					processed++
+					processedMu.Unlock()
+
+					o.setQueueStatus(job.SourceFile, "done")
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		lastErr = err
+	}
+
+	if lastErr != nil {
+		o.hooks.Trigger(hooks.OnError, map[string]string{"error": lastErr.Error(), "phase": "analysis"})
+	}
+
+	o.hooks.Trigger(hooks.PostAnalysis, map[string]int{"processed": processed})
+	return processed, lastErr
 }
 
 // RunFull executes ingestion and analysis as a coordinated pipeline.
@@ -432,7 +545,7 @@ func (o *Orchestrator) DrainQueue(ctx context.Context) (int, error) {
 	}
 
 	for _, f := range pending {
-		o.analysisQueue <- Job{Type: JobAnalyze, SourceFile: f}
+		o.enqueueAnalysis(f)
 	}
 
 	if len(pending) == 0 {
@@ -455,6 +568,7 @@ func (o *Orchestrator) analyzeOne(
 	reportMgr *library.ReportManager,
 	reportsDir string,
 ) error {
+	o.hooks.Trigger(hooks.PreReport, job)
 	content, err := os.ReadFile(job.SourceFile)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", filepath.Base(job.SourceFile), err)
@@ -492,21 +606,44 @@ func (o *Orchestrator) analyzeOne(
 	userPrompt.WriteString("Analyze this document:\n\n")
 	userPrompt.WriteString(docBody)
 
-	messages := []ollama.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: userPrompt.String()},
-	}
-
 	var builder strings.Builder
 	ctxChat, cancelChat := context.WithTimeout(ctx, 3*time.Minute)
-	err = o.client.ChatStream(ctxChat, o.model, messages, func(chunk string) error {
-		builder.WriteString(chunk)
-		return nil
-	})
-	cancelChat()
+	defer cancelChat()
 
-	if err != nil {
-		return fmt.Errorf("analysis failed for %s: %w", filepath.Base(job.SourceFile), err)
+	var chatErr error
+
+	// Check if any external provider is active
+	var activeProv *provider.Config
+	for _, p := range o.providers.All() {
+		if p.Active {
+			cp := p
+			activeProv = &cp
+			break
+		}
+	}
+
+	if activeProv != nil && activeProv.Type != provider.TypeOllama {
+		provMsgs := []provider.Message{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt.String()},
+		}
+		chatErr = o.providers.ChatWithActive(ctxChat, provMsgs, func(chunk string) error {
+			builder.WriteString(chunk)
+			return nil
+		})
+	} else {
+		ollamaMsgs := []ollama.Message{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt.String()},
+		}
+		chatErr = o.client.ChatStream(ctxChat, o.model, ollamaMsgs, func(chunk string) error {
+			builder.WriteString(chunk)
+			return nil
+		})
+	}
+
+	if chatErr != nil {
+		return fmt.Errorf("analysis failed for %s: %w", filepath.Base(job.SourceFile), chatErr)
 	}
 
 	rawResponse := builder.String()
@@ -538,6 +675,18 @@ func (o *Orchestrator) analyzeOne(
 	if err := reportMgr.AppendManifest(meta); err != nil {
 		// Non-fatal — report was saved
 	}
+
+	o.hooks.Trigger(hooks.PostReport, meta)
+
+	// Dispatch to delivery destinations
+	go func() {
+		dispatchCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		o.delivery.Dispatch(dispatchCtx, "", delivery.Message{
+			Title: fmt.Sprintf("Buster Claw Report: %s", spec.name),
+			Body:  spec.content,
+		})
+	}()
 
 	return qMgr.MarkProcessed(job.SourceFile)
 }

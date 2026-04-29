@@ -16,7 +16,7 @@ import (
 // For articles and documentation, it strips boilerplate (nav, footer) and returns Markdown.
 func ParseContent(source Source, htmlBody string) (string, error) {
 	switch source.Type {
-	case ArticleType, DocumentationType:
+	case ArticleType, DocumentationType, BrowserType:
 		return parseReadableMarkdown(source.URL, htmlBody)
 	case RSSType:
 		// RSS feeds are parsed at the feed level, not here.

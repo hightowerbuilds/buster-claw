@@ -10,6 +10,7 @@ export interface OrchestratorStatus {
   phase: string;
   queueDepth: number;
   activeJob: string;
+  activeJobs: string[];
   completedJobs: number;
   failedJobs: number;
 }
@@ -76,6 +77,45 @@ export interface ProviderInfo {
   hasKey: boolean;
 }
 
+export interface JobState {
+  id: string;
+  type: string;
+  cron: string;
+  enabled: boolean;
+  customCmd?: string;
+  deliverTo?: string;
+  nextRun: string;
+  lastRun: string;
+  lastError: string;
+}
+
+export interface Webhook {
+  name: string;
+  secret?: string;
+  action: string;
+  customCmd?: string;
+  deliverTo?: string;
+  enabled: boolean;
+}
+
+export interface DeliveryDestination {
+  name: string;
+  type: string;
+  url?: string;
+  token?: string;
+  chatId?: string;
+  enabled: boolean;
+}
+
+export interface Hook {
+  name: string;
+  event: string;
+  type: string;
+  target: string;
+  async: boolean;
+  enabled: boolean;
+}
+
 declare global {
   interface Window {
     go: {
@@ -109,6 +149,22 @@ declare global {
           RemoveProvider(name: string): Promise<void>;
           SetActiveProvider(name: string): Promise<void>;
           TestProvider(name: string): Promise<string>;
+          GetJobs(): Promise<JobState[]>;
+          AddJob(id: string, jobType: string, cronStr: string, enabled: boolean, customCmd: string, deliverTo: string): Promise<void>;
+          UpdateJob(id: string, jobType: string, cronStr: string, enabled: boolean, customCmd: string, deliverTo: string): Promise<void>;
+          DeleteJob(id: string): Promise<void>;
+          RunJobNow(id: string): Promise<void>;
+          GetWebhooks(): Promise<Webhook[]>;
+          AddWebhook(name: string, action: string, enabled: boolean, customCmd: string, deliverTo: string): Promise<void>;
+          DeleteWebhook(name: string): Promise<void>;
+          ToggleWebhook(name: string, enabled: boolean): Promise<void>;
+          GetDeliveryDestinations(): Promise<DeliveryDestination[]>;
+          AddDeliveryDestination(name: string, destType: string, url: string, token: string, chatId: string, enabled: boolean): Promise<void>;
+          DeleteDeliveryDestination(name: string): Promise<void>;
+          TestDeliveryDestination(name: string): Promise<void>;
+          GetHooks(): Promise<Hook[]>;
+          AddHook(name: string, event: string, hookType: string, target: string, async: boolean, enabled: boolean): Promise<void>;
+          DeleteHook(name: string): Promise<void>;
         };
       };
     };

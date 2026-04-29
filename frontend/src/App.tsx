@@ -1,13 +1,37 @@
 import { createSignal, createEffect, onMount, onCleanup, For, Show } from "solid-js";
 import { createQuery, createMutation, useQueryClient } from "@tanstack/solid-query";
 import { marked } from "marked";
-import type { ChatMessage, OrchestratorStatus, Source, DocumentInfo, PendingFile, ReportMeta, QueueEntry, MemoryEntry, ProviderInfo } from "./wails.d";
+import type { ChatMessage, OrchestratorStatus, Source, DocumentInfo, PendingFile, ReportMeta, QueueEntry, MemoryEntry, ProviderInfo, JobState, Webhook, DeliveryDestination, Hook } from "./wails.d";
 
-type View = "chat" | "ingestion" | "documents" | "orchestration" | "analysis" | "models" | "providers" | "memory" | "docs";
+type View = "home" | "chat" | "ingestion" | "documents" | "orchestration" | "analysis" | "models" | "providers" | "memory" | "scheduler" | "webhooks" | "delivery" | "hooks" | "docs";
+
+function AnalogClock() {
+  const [time, setTime] = createSignal(new Date());
+
+  createEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    onCleanup(() => clearInterval(timer));
+  });
+
+  const secondsDegrees = () => (time().getSeconds() / 60) * 360;
+  const minsDegrees = () => ((time().getMinutes() + time().getSeconds() / 60) / 60) * 360;
+  const hourDegrees = () => ((time().getHours() % 12 + time().getMinutes() / 60) / 12) * 360;
+
+  return (
+    <div class="analog-clock-wrapper">
+      <div class="analog-clock">
+        <div class="clock-center"></div>
+        <div class="clock-hand hour-hand" style={{ transform: `rotate(${hourDegrees()}deg)` }}></div>
+        <div class="clock-hand minute-hand" style={{ transform: `rotate(${minsDegrees()}deg)` }}></div>
+        <div class="clock-hand second-hand" style={{ transform: `rotate(${secondsDegrees()}deg)` }}></div>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const qc = useQueryClient();
-  const [activeView, setActiveView] = createSignal<View>("chat");
+  const [activeView, setActiveView] = createSignal<View>("home");
   const [messages, setMessages] = createSignal<ChatMessage[]>([]);
   const [input, setInput] = createSignal("");
   const [currentModel, setCurrentModel] = createSignal("");
@@ -19,6 +43,7 @@ function App() {
     phase: "idle",
     queueDepth: 0,
     activeJob: "",
+    activeJobs: [],
     completedJobs: 0,
     failedJobs: 0,
   });
@@ -60,25 +85,25 @@ function App() {
   const documentsQuery = createQuery(() => ({
     queryKey: ["documents"],
     queryFn: () => window.go.main.App.GetDocuments(),
-    enabled: activeView() === "documents",
+    enabled: activeView() === "documents" || activeView() === "home",
   }));
 
   const pendingQuery = createQuery(() => ({
     queryKey: ["pending"],
     queryFn: () => window.go.main.App.GetPendingFiles(),
-    enabled: activeView() === "orchestration",
+    enabled: activeView() === "orchestration" || activeView() === "home",
   }));
 
   const queueQuery = createQuery(() => ({
     queryKey: ["queue"],
     queryFn: () => window.go.main.App.GetAnalysisQueue(),
-    enabled: activeView() === "orchestration",
+    enabled: activeView() === "orchestration" || activeView() === "home",
   }));
 
   const reportsQuery = createQuery(() => ({
     queryKey: ["reports"],
     queryFn: () => window.go.main.App.GetReportManifest(),
-    enabled: activeView() === "analysis",
+    enabled: activeView() === "analysis" || activeView() === "home",
   }));
 
   // Helper accessors
@@ -105,6 +130,39 @@ function App() {
 
   const providers = () => providersQuery.data || [];
 
+  const schedulerQuery = createQuery(() => ({
+    queryKey: ["scheduler"],
+    queryFn: () => window.go.main.App.GetJobs(),
+    enabled: activeView() === "scheduler",
+    refetchInterval: activeView() === "scheduler" ? 5000 : false, // Poll every 5s for NextRun/LastRun updates
+  }));
+
+  const jobs = () => schedulerQuery.data || [];
+
+  const webhooksQuery = createQuery(() => ({
+    queryKey: ["webhooks"],
+    queryFn: () => window.go.main.App.GetWebhooks(),
+    enabled: activeView() === "webhooks",
+  }));
+
+  const webhooks = () => webhooksQuery.data || [];
+
+  const deliveryQuery = createQuery(() => ({
+    queryKey: ["delivery"],
+    queryFn: () => window.go.main.App.GetDeliveryDestinations(),
+    enabled: activeView() === "delivery",
+  }));
+
+  const destinations = () => deliveryQuery.data || [];
+
+  const hooksQuery = createQuery(() => ({
+    queryKey: ["hooks"],
+    queryFn: () => window.go.main.App.GetHooks(),
+    enabled: activeView() === "hooks",
+  }));
+
+  const pipelineHooks = () => hooksQuery.data || [];
+
   // Form state
   const [newMemory, setNewMemory] = createSignal("");
   const [provName, setProvName] = createSignal("");
@@ -113,6 +171,30 @@ function App() {
   const [provKey, setProvKey] = createSignal("");
   const [provModel, setProvModel] = createSignal("");
   const [testResult, setTestResult] = createSignal("");
+
+  const [jobId, setJobId] = createSignal("");
+  const [jobType, setJobType] = createSignal("ingest");
+  const [jobCron, setJobCron] = createSignal("0 7 * * *");
+  const [jobEnabled, setJobEnabled] = createSignal(true);
+  const [jobCustomCmd, setJobCustomCmd] = createSignal("");
+  const [jobDeliverTo, setJobDeliverTo] = createSignal("");
+
+  const [whName, setWhName] = createSignal("");
+  const [whAction, setWhAction] = createSignal("ingest");
+  const [whCmd, setWhCmd] = createSignal("");
+  const [whDeliver, setWhDeliver] = createSignal("");
+
+  const [destName, setDestName] = createSignal("");
+  const [destType, setDestType] = createSignal("slack");
+  const [destUrl, setDestUrl] = createSignal("");
+  const [destToken, setDestToken] = createSignal("");
+  const [destChatId, setDestChatId] = createSignal("");
+
+  const [hkName, setHkName] = createSignal("");
+  const [hkEvent, setHkEvent] = createSignal("post_ingest");
+  const [hkType, setHkType] = createSignal("shell");
+  const [hkTarget, setHkTarget] = createSignal("");
+  const [hkAsync, setHkAsync] = createSignal(true);
 
   // --- Mutations ---
 
@@ -169,6 +251,70 @@ function App() {
   const setActiveMut = createMutation(() => ({
     mutationFn: (name: string) => window.go.main.App.SetActiveProvider(name),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["providers"] }),
+  }));
+
+  const addJobMut = createMutation(() => ({
+    mutationFn: (args: { id: string; type: string; cron: string; enabled: boolean; customCmd: string; deliverTo: string }) =>
+      window.go.main.App.AddJob(args.id, args.type, args.cron, args.enabled, args.customCmd, args.deliverTo),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduler"] }),
+  }));
+
+  const updateJobMut = createMutation(() => ({
+    mutationFn: (args: { id: string; type: string; cron: string; enabled: boolean; customCmd: string; deliverTo: string }) =>
+      window.go.main.App.UpdateJob(args.id, args.type, args.cron, args.enabled, args.customCmd, args.deliverTo),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduler"] }),
+  }));
+
+  const deleteJobMut = createMutation(() => ({
+    mutationFn: (id: string) => window.go.main.App.DeleteJob(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduler"] }),
+  }));
+
+  const runJobNowMut = createMutation(() => ({
+    mutationFn: (id: string) => window.go.main.App.RunJobNow(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduler"] }),
+  }));
+
+  const addWebhookMut = createMutation(() => ({
+    mutationFn: (args: { name: string; action: string; enabled: boolean; customCmd: string; deliverTo: string }) =>
+      window.go.main.App.AddWebhook(args.name, args.action, args.enabled, args.customCmd, args.deliverTo),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
+  }));
+
+  const deleteWebhookMut = createMutation(() => ({
+    mutationFn: (name: string) => window.go.main.App.DeleteWebhook(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
+  }));
+
+  const toggleWebhookMut = createMutation(() => ({
+    mutationFn: (args: { name: string; enabled: boolean }) => window.go.main.App.ToggleWebhook(args.name, args.enabled),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
+  }));
+
+  const addDeliveryMut = createMutation(() => ({
+    mutationFn: (args: { name: string; destType: string; url: string; token: string; chatId: string; enabled: boolean }) =>
+      window.go.main.App.AddDeliveryDestination(args.name, args.destType, args.url, args.token, args.chatId, args.enabled),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["delivery"] }),
+  }));
+
+  const deleteDeliveryMut = createMutation(() => ({
+    mutationFn: (name: string) => window.go.main.App.DeleteDeliveryDestination(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["delivery"] }),
+  }));
+
+  const testDeliveryMut = createMutation(() => ({
+    mutationFn: (name: string) => window.go.main.App.TestDeliveryDestination(name),
+  }));
+
+  const addHookMut = createMutation(() => ({
+    mutationFn: (args: { name: string; event: string; type: string; target: string; async: boolean; enabled: boolean }) =>
+      window.go.main.App.AddHook(args.name, args.event, args.type, args.target, args.async, args.enabled),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["hooks"] }),
+  }));
+
+  const deleteHookMut = createMutation(() => ({
+    mutationFn: (name: string) => window.go.main.App.DeleteHook(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["hooks"] }),
   }));
 
   // --- View switching ---
@@ -331,11 +477,16 @@ function App() {
       <div class="sidebar">
         <div class="sidebar-section">
           <h3>Navigate</h3>
+          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "home" }} onClick={() => switchView("home")}>Home</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "chat" }} onClick={() => switchView("chat")}>Chat</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "ingestion" }} onClick={() => switchView("ingestion")}>Ingestion</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "documents" }} onClick={() => switchView("documents")}>Documents</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "orchestration" }} onClick={() => switchView("orchestration")}>Orchestration</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "analysis" }} onClick={() => switchView("analysis")}>Analysis</button>
+          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "scheduler" }} onClick={() => switchView("scheduler")}>Scheduler</button>
+          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "webhooks" }} onClick={() => switchView("webhooks")}>Webhooks</button>
+          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "delivery" }} onClick={() => switchView("delivery")}>Delivery</button>
+          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "hooks" }} onClick={() => switchView("hooks")}>Hooks</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "models" }} onClick={() => switchView("models")}>Models</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "providers" }} onClick={() => switchView("providers")}>Providers</button>
           <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "memory" }} onClick={() => switchView("memory")}>Memory</button>
@@ -352,12 +503,18 @@ function App() {
             <div class="label">Completed / Failed</div>
             <div class="value">{status().completedJobs} / {status().failedJobs}</div>
           </div>
-          <Show when={status().activeJob}>
-            <div class="status-card" style="margin-top: 6px">
-              <div class="label">Active</div>
-              <div class="value active">{status().activeJob}</div>
-            </div>
-          </Show>
+          <div class="status-card" style="margin-top: 6px">
+            <div class="label">Parallel Workers</div>
+            <div class="value">{status().activeJobs.length > 1 ? status().activeJobs.length : (status().activeJob ? 1 : 0)} active</div>
+          </div>
+          <For each={status().activeJobs}>
+            {(job) => (
+              <div class="status-card" style="margin-top: 6px">
+                <div class="label">Active</div>
+                <div class="value active">{job}</div>
+              </div>
+            )}
+          </For>
         </div>
 
         <div class="sidebar-section">
@@ -368,6 +525,74 @@ function App() {
 
       {/* Main Content */}
       <div class="main-content">
+
+        {/* Home View */}
+        <div class="view-panel home-view" classList={{ hidden: activeView() !== "home" }}>
+          <div class="newspaper-container">
+            <main class="newspaper-grid">
+              <div class="main-column">
+                <h2 class="section-title">Latest Analysis</h2>
+                <Show when={reports().length > 0} fallback={<p class="empty-story">No recent analysis available. The newsroom is quiet.</p>}>
+                  <div class="featured-story">
+                    <div class="story-list">
+                      <For each={reports().slice().reverse().slice(0, 5)}>
+                        {(r) => (
+                          <div class="story-item" onClick={() => { openReport(r); switchView("analysis"); }}>
+                            <h4>{r.filename.replace("report-", "").replace(".md", "").replace(/-/g, " ")}</h4>
+                            <div class="story-meta">
+                              <span>{r.source_url ? new URL(r.source_url).hostname : r.source_file}</span>
+                              <span>{new Date(r.generated_at).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                </Show>
+              </div>
+
+              <div class="side-column">
+                <div class="sidebar-module">
+                  <AnalogClock />
+                  <h2 class="section-title">Recent Ingestions</h2>
+                  <ul class="brief-list">
+                    <Show when={documents().length > 0} fallback={<li class="empty-story">No recent ingestions.</li>}>
+                      <For each={documents().slice().reverse().slice(0, 6)}>
+                        {(doc) => (
+                          <li>
+                            <div class="doc-title">{doc.name || doc.filename.replace(".md", "")}</div>
+                            <div class="story-meta">{doc.sourceUrl ? new URL(doc.sourceUrl).hostname : "Local"}</div>
+                          </li>
+                        )}
+                      </For>
+                    </Show>
+                  </ul>
+                </div>
+
+                <div class="sidebar-module" style="margin-top: 24px;">
+                  <h2 class="section-title">Up Next</h2>
+                  <ul class="brief-list">
+                    <Show when={analysisQueue().length > 0 || pendingFiles().length > 0} fallback={<li class="empty-story">The queue is empty.</li>}>
+                      <For each={analysisQueue().slice(0, 4)}>
+                        {(q) => (
+                          <li>
+                            <div class="doc-title">{q.filename.replace(".md", "")}</div>
+                            <div class="queue-status" classList={{ "active": q.status === "analyzing" }}>{q.status}</div>
+                          </li>
+                        )}
+                      </For>
+                      <Show when={pendingFiles().length > 0}>
+                        <li class="queue-more text-muted" style="margin-top: 8px; font-size: 0.85em; font-style: italic;">
+                          ...and {pendingFiles().length} pending items.
+                        </li>
+                      </Show>
+                    </Show>
+                  </ul>
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
 
         {/* Chat View */}
         <div class="chat-area" classList={{ hidden: activeView() !== "chat" }}>
@@ -746,6 +971,296 @@ function App() {
                       <div class="memory-item-date">{entry.createdAt.split("T")[0]}</div>
                     </div>
                     <button class="doc-delete-btn" onClick={() => removeMemoryMut.mutate(entry.index)}>Forget</button>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </div>
+
+        {/* Scheduler View */}
+        <div class="view-panel" classList={{ hidden: activeView() !== "scheduler" }}>
+          <div class="view-panel-content">
+            <div class="view-header">
+              <h2>Scheduler</h2>
+              <p>Configure autonomous background jobs.</p>
+            </div>
+            
+            <div class="action-bar">
+              <input type="text" class="search-input" placeholder="Job ID" value={jobId()} onInput={(e) => setJobId(e.currentTarget.value)} />
+              <select class="search-input" value={jobType()} onChange={(e) => setJobType(e.currentTarget.value)}>
+                <option value="ingest">Ingest</option>
+                <option value="analyze">Analyze</option>
+                <option value="full">Full Pipeline</option>
+                <option value="custom">Custom Command</option>
+              </select>
+              <input type="text" class="search-input" placeholder="Cron (e.g. 0 7 * * *)" value={jobCron()} onInput={(e) => setJobCron(e.currentTarget.value)} />
+              
+              <Show when={jobType() === "custom"}>
+                <input type="text" class="search-input" placeholder="/search AI news" value={jobCustomCmd()} onInput={(e) => setJobCustomCmd(e.currentTarget.value)} />
+              </Show>
+
+              <button class="btn btn-primary" onClick={() => {
+                if (!jobId() || !jobCron()) return;
+                addJobMut.mutate({ id: jobId(), type: jobType(), cron: jobCron(), enabled: true, customCmd: jobCustomCmd(), deliverTo: jobDeliverTo() });
+                setJobId(""); setJobCustomCmd("");
+              }}>Add Job</button>
+            </div>
+
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Type</th>
+                  <th>Schedule</th>
+                  <th>Status</th>
+                  <th>Last Run</th>
+                  <th>Next Run</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <Show when={jobs().length === 0}>
+                  <tr><td colspan="7" class="empty-state">No scheduled jobs.</td></tr>
+                </Show>
+                <For each={jobs()}>
+                  {(job) => (
+                    <tr>
+                      <td class="primary-col">{job.id}</td>
+                      <td>{job.type}{job.customCmd ? ` (${job.customCmd})` : ""}</td>
+                      <td class="mono">{job.cron}</td>
+                      <td>
+                        <button 
+                          class="status-badge" 
+                          classList={{ "success": job.enabled, "failed": !job.enabled }}
+                          onClick={() => updateJobMut.mutate({ ...job, enabled: !job.enabled })}
+                        >
+                          {job.enabled ? "Active" : "Paused"}
+                        </button>
+                      </td>
+                      <td class="mono" style="font-size: 0.85em;">
+                        {job.lastRun ? new Date(job.lastRun).toLocaleString() : "Never"}
+                        <Show when={job.lastError}>
+                          <div class="text-error" style="margin-top: 4px">{job.lastError}</div>
+                        </Show>
+                      </td>
+                      <td class="mono" style="font-size: 0.85em;">
+                        {job.nextRun ? new Date(job.nextRun).toLocaleString() : "-"}
+                      </td>
+                      <td class="actions-col">
+                        <button class="icon-btn" title="Run Now" onClick={() => runJobNowMut.mutate(job.id)}>▶️</button>
+                        <button class="icon-btn text-error" title="Delete" onClick={() => deleteJobMut.mutate(job.id)}>🗑️</button>
+                      </td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Webhooks View */}
+        <div class="view-panel" classList={{ hidden: activeView() !== "webhooks" }}>
+          <div class="view-panel-content">
+            <div class="view-header">
+              <h2>Webhooks</h2>
+              <p>External events can trigger research tasks. Base URL: <code>http://localhost:9090/hooks/</code></p>
+            </div>
+
+            <div class="action-bar">
+              <input type="text" class="search-input" placeholder="Hook Name" value={whName()} onInput={(e) => setWhName(e.currentTarget.value)} />
+              <select class="search-input" value={whAction()} onChange={(e) => setWhAction(e.currentTarget.value)}>
+                <option value="ingest">Ingest All</option>
+                <option value="analyze">Analyze Queue</option>
+                <option value="full">Full Pipeline</option>
+                <option value="command">Custom Command</option>
+              </select>
+              <Show when={whAction() === "command"}>
+                <input type="text" class="search-input" placeholder="/search AI news" value={whCmd()} onInput={(e) => setWhCmd(e.currentTarget.value)} />
+              </Show>
+              <button class="btn btn-primary" onClick={() => {
+                if (!whName()) return;
+                addWebhookMut.mutate({ name: whName(), action: whAction(), enabled: true, customCmd: whCmd(), deliverTo: whDeliver() });
+                setWhName(""); setWhCmd("");
+              }}>Add Hook</button>
+            </div>
+
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Action</th>
+                  <th>Endpoint</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <Show when={webhooks().length === 0}>
+                  <tr><td colspan="5" class="empty-state">No webhooks configured.</td></tr>
+                </Show>
+                <For each={webhooks()}>
+                  {(hook) => (
+                    <tr>
+                      <td class="primary-col">{hook.name}</td>
+                      <td>{hook.action}{hook.customCmd ? ` (${hook.customCmd})` : ""}</td>
+                      <td class="mono" style="font-size: 0.85em;">/hooks/{hook.name}</td>
+                      <td>
+                        <button 
+                          class="status-badge" 
+                          classList={{ "success": hook.enabled, "failed": !hook.enabled }}
+                          onClick={() => toggleWebhookMut.mutate({ name: hook.name, enabled: !hook.enabled })}
+                        >
+                          {hook.enabled ? "Active" : "Paused"}
+                        </button>
+                      </td>
+                      <td class="actions-col">
+                        <button class="icon-btn" title="Copy URL" onClick={() => {
+                          navigator.clipboard.writeText(`http://localhost:9090/hooks/${hook.name}`);
+                        }}>📋</button>
+                        <button class="icon-btn text-error" title="Delete" onClick={() => deleteWebhookMut.mutate(hook.name)}>🗑️</button>
+                      </td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+          </div>
+        </div>
+
+        {/* Delivery View */}
+        <div class="view-panel" classList={{ hidden: activeView() !== "delivery" }}>
+          <div class="view-panel-content">
+            <div class="view-header">
+              <h2>Delivery</h2>
+              <p>Configure where reports are sent after analysis.</p>
+            </div>
+
+            <div class="provider-add">
+              <h4>Add Destination</h4>
+              <div class="provider-add-fields">
+                <div class="provider-add-row">
+                  <input type="text" placeholder="Name (e.g. My Slack)" value={destName()} onInput={(e) => setDestName(e.currentTarget.value)} />
+                  <select value={destType()} onChange={(e) => setDestType(e.currentTarget.value)}>
+                    <option value="slack">Slack (Webhook)</option>
+                    <option value="discord">Discord (Webhook)</option>
+                    <option value="telegram">Telegram (Bot)</option>
+                  </select>
+                </div>
+                <Show when={destType() === "slack" || destType() === "discord"}>
+                  <input type="text" placeholder="Webhook URL" value={destUrl()} onInput={(e) => setDestUrl(e.currentTarget.value)} />
+                </Show>
+                <Show when={destType() === "telegram"}>
+                  <div class="provider-add-row">
+                    <input type="text" placeholder="Bot Token" value={destToken()} onInput={(e) => setDestToken(e.currentTarget.value)} />
+                    <input type="text" placeholder="Chat ID" value={destChatId()} onInput={(e) => setDestChatId(e.currentTarget.value)} />
+                  </div>
+                </Show>
+                <button class="action-btn" onClick={() => {
+                  if (!destName()) return;
+                  addDeliveryMut.mutate({
+                    name: destName(),
+                    destType: destType(),
+                    url: destUrl(),
+                    token: destToken(),
+                    chatId: destChatId(),
+                    enabled: true
+                  });
+                  setDestName(""); setDestUrl(""); setDestToken(""); setDestChatId("");
+                }}>Add Destination</button>
+              </div>
+            </div>
+
+            <div class="provider-list" style="margin-top: 24px;">
+              <For each={destinations()} fallback={<div class="empty-list">No delivery destinations configured.</div>}>
+                {(dest) => (
+                  <div class="provider-item" classList={{ "provider-active": dest.enabled }}>
+                    <div class="provider-item-info">
+                      <div class="provider-item-name">{dest.name}</div>
+                      <div class="provider-item-meta">
+                        <span class="source-item-type">{dest.type}</span>
+                        <Show when={dest.url}><span class="provider-item-url">{dest.url.substring(0, 40)}...</span></Show>
+                        <Show when={dest.chatId}><span>Chat: {dest.chatId}</span></Show>
+                      </div>
+                    </div>
+                    <div class="provider-item-actions">
+                      <button class="source-ingest-btn" onClick={() => testDeliveryMut.mutate(dest.name)}>Test</button>
+                      <button class="source-delete-btn" onClick={() => deleteDeliveryMut.mutate(dest.name)}>Remove</button>
+                    </div>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </div>
+
+        {/* Hooks View */}
+        <div class="view-panel" classList={{ hidden: activeView() !== "hooks" }}>
+          <div class="view-panel-content">
+            <div class="view-header">
+              <h2>Reactive Hooks</h2>
+              <p>Execute shell commands or webhooks at specific points in the pipeline.</p>
+            </div>
+
+            <div class="provider-add">
+              <h4>Add Hook</h4>
+              <div class="provider-add-fields">
+                <div class="provider-add-row">
+                  <input type="text" placeholder="Hook Name" value={hkName()} onInput={(e) => setHkName(e.currentTarget.value)} />
+                  <select value={hkEvent()} onChange={(e) => setHkEvent(e.currentTarget.value)}>
+                    <option value="pre_ingest">Pre Ingest</option>
+                    <option value="post_ingest">Post Ingest</option>
+                    <option value="pre_analysis">Pre Analysis</option>
+                    <option value="post_analysis">Post Analysis</option>
+                    <option value="pre_report">Pre Report</option>
+                    <option value="post_report">Post Report</option>
+                    <option value="on_error">On Error</option>
+                  </select>
+                </div>
+                <div class="provider-add-row">
+                  <select value={hkType()} onChange={(e) => setHkType(e.currentTarget.value)}>
+                    <option value="shell">Shell Command</option>
+                    <option value="webhook">Webhook (POST)</option>
+                  </select>
+                  <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em;">
+                    <input type="checkbox" checked={hkAsync()} onChange={(e) => setHkAsync(e.currentTarget.checked)} />
+                    Async
+                  </label>
+                </div>
+                <input type="text" placeholder={hkType() === "shell" ? "bash command (e.g. echo 'done' >> log.txt)" : "Webhook URL"} value={hkTarget()} onInput={(e) => setHkTarget(e.currentTarget.value)} />
+                <button class="action-btn" onClick={() => {
+                  if (!hkName() || !hkTarget()) return;
+                  addHookMut.mutate({
+                    name: hkName(),
+                    event: hkEvent(),
+                    type: hkType(),
+                    target: hkTarget(),
+                    async: hkAsync(),
+                    enabled: true
+                  });
+                  setHkName(""); setHkTarget("");
+                }}>Add Hook</button>
+              </div>
+            </div>
+
+            <div class="provider-list" style="margin-top: 24px;">
+              <For each={pipelineHooks()} fallback={<div class="empty-list">No reactive hooks configured.</div>}>
+                {(hook) => (
+                  <div class="provider-item" classList={{ "provider-active": hook.enabled }}>
+                    <div class="provider-item-info">
+                      <div class="provider-item-name">{hook.name} <span class="text-muted" style="font-size: 0.7em;">({hook.event})</span></div>
+                      <div class="provider-item-meta">
+                        <span class="source-item-type">{hook.type}</span>
+                        <span class="provider-item-url">{hook.target.substring(0, 50)}{hook.target.length > 50 ? "..." : ""}</span>
+                        <Show when={hook.async}><span>(async)</span></Show>
+                      </div>
+                    </div>
+                    <div class="provider-item-actions">
+                      <button class="source-delete-btn" onClick={() => deleteHookMut.mutate(hook.name)}>Remove</button>
+                    </div>
                   </div>
                 )}
               </For>

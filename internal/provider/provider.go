@@ -162,6 +162,26 @@ func (m *Manager) SetActive(name string) error {
 	return m.Save()
 }
 
+// ChatWithActive routes a chat request to the currently active provider.
+func (m *Manager) ChatWithActive(ctx context.Context, messages []Message, onChunk func(string) error) error {
+	m.mu.RLock()
+	var active *Config
+	for _, p := range m.providers {
+		if p.Active {
+			c := p
+			active = &c
+			break
+		}
+	}
+	m.mu.RUnlock()
+
+	if active == nil {
+		return fmt.Errorf("no active provider configured")
+	}
+
+	return m.Chat(ctx, *active, messages, onChunk)
+}
+
 // TestConnection attempts a lightweight request to verify the provider works.
 func (m *Manager) TestConnection(ctx context.Context, name string) (string, error) {
 	m.mu.RLock()
@@ -183,7 +203,7 @@ func (m *Manager) TestConnection(ctx context.Context, name string) (string, erro
 	defer cancel()
 
 	var response string
-	err := m.chatWithConfig(testCtx, *cfg, []Message{
+	err := m.Chat(testCtx, *cfg, []Message{
 		{Role: "user", Content: "Reply with only the word 'connected'."},
 	}, func(chunk string) error {
 		response += chunk
@@ -195,7 +215,8 @@ func (m *Manager) TestConnection(ctx context.Context, name string) (string, erro
 	return strings.TrimSpace(response), nil
 }
 
-func (m *Manager) chatWithConfig(ctx context.Context, cfg Config, messages []Message, onChunk func(string) error) error {
+// Chat routes a chat request to the specified provider configuration.
+func (m *Manager) Chat(ctx context.Context, cfg Config, messages []Message, onChunk func(string) error) error {
 	switch cfg.Type {
 	case TypeAnthropic:
 		return streamAnthropic(ctx, cfg, messages, onChunk)

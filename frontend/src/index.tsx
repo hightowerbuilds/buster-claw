@@ -1,5 +1,6 @@
 import { render } from "solid-js/web";
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
+import "@fontsource/atkinson-hyperlegible";
 import App from "./App";
 import "./styles.css";
 

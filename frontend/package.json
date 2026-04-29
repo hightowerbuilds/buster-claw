@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/atkinson-hyperlegible": "^5.2.8",
     "@tanstack/solid-query": "^5.99.2",
     "marked": "^18.0.2",
     "solid-js": "^1.9.0"

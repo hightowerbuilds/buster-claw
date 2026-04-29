@@ -15,14 +15,24 @@ const (
 	DocumentationType     SourceType = "documentation"
 	RSSType               SourceType = "rss"
 	YouTubeTranscriptType SourceType = "youtube_transcript"
+	BrowserType           SourceType = "browser"
 )
+
+// Cookie represents a browser cookie for authenticated sessions.
+type Cookie struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Domain string `json:"domain"`
+	Path   string `json:"path"`
+}
 
 // Source represents a target URL to be ingested.
 type Source struct {
-	URL  string     `json:"url"`
-	Type SourceType `json:"type"`
-	Tags []string   `json:"tags"`
-	Name string     `json:"name,omitempty"`
+	URL     string   `json:"url"`
+	Type    SourceType `json:"type"`
+	Tags    []string `json:"tags"`
+	Name    string   `json:"name,omitempty"`
+	Cookies []Cookie `json:"cookies,omitempty"`
 }
 
 // SourcesConfig is the root structure for the sources JSON file.
@@ -36,6 +46,7 @@ var validTypes = map[SourceType]bool{
 	DocumentationType:     true,
 	RSSType:               true,
 	YouTubeTranscriptType: true,
+	BrowserType:           true,
 }
 
 // LoadSources reads and parses the sources configuration file.
@@ -81,7 +92,7 @@ func validateSource(src Source) error {
 		return fmt.Errorf("invalid url: must be http or https")
 	}
 	if !validTypes[src.Type] {
-		return fmt.Errorf("unknown type %q (valid: article, documentation, rss, youtube_transcript)", src.Type)
+		return fmt.Errorf("unknown type %q (valid: article, documentation, rss, youtube_transcript, browser)", src.Type)
 	}
 	return nil
 }

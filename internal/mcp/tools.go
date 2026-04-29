@@ -24,6 +24,64 @@ func RegisterAllTools(s *Server, deps ToolDeps) {
 	registerFetchURL(s, deps)
 	registerFetchRSS(s, deps)
 	registerCheckUpdates(s, deps)
+	registerBrowserFetch(s, deps)
+}
+
+// --- browser-fetch ---
+
+func registerBrowserFetch(s *Server, deps ToolDeps) {
+	tool := Tool{
+		Name:        "browser-fetch",
+		Description: "Fetch a URL using a headless browser, rendering JavaScript and returning the parsed Markdown.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"url":  map[string]any{"type": "string", "description": "The URL to fetch via browser"},
+				"tags": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tags for this source"},
+			},
+			"required": []string{"url"},
+		},
+	}
+
+	s.RegisterTool(tool, func(params json.RawMessage) (any, error) {
+		var args struct {
+			URL  string   `json:"url"`
+			Tags []string `json:"tags"`
+		}
+		if err := json.Unmarshal(params, &args); err != nil {
+			return nil, fmt.Errorf("invalid arguments: %w", err)
+		}
+		if args.URL == "" {
+			return nil, fmt.Errorf("url is required")
+		}
+
+		src := ingest.Source{
+			URL:  args.URL,
+			Type: ingest.BrowserType,
+			Tags: args.Tags,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		fetcher := ingest.NewFetcher(1)
+		results := fetcher.FetchAll(ctx, []ingest.Source{src})
+
+		if len(results) == 0 {
+			return nil, fmt.Errorf("no results returned")
+		}
+		if results[0].Error != nil {
+			return nil, results[0].Error
+		}
+
+		libMgr := library.NewManager(deps.LibraryDir)
+		path, err := libMgr.SaveResult(results[0])
+		if err != nil {
+			return nil, err
+		}
+
+		return fmt.Sprintf("Saved browser fetch to: %s", filepath.Base(path)), nil
+	})
 }
 
 // --- fetch-url ---

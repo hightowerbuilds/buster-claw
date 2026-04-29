@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"buster-claw/internal/browser"
+	"github.com/chromedp/cdproto/network"
 )
 
 // FetchResult holds the outcome of an ingestion attempt.
@@ -19,10 +22,11 @@ type FetchResult struct {
 
 // Fetcher manages concurrent data retrieval.
 type Fetcher struct {
-	client      *http.Client
-	concurrency int
-	maxRetries  int
-	baseDelay   time.Duration
+	client        *http.Client
+	browserClient *browser.Browser
+	concurrency   int
+	maxRetries    int
+	baseDelay     time.Duration
 }
 
 // NewFetcher creates a new Fetcher with the specified concurrency limit.
@@ -34,9 +38,10 @@ func NewFetcher(concurrency int) *Fetcher {
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		concurrency: concurrency,
-		maxRetries:  3,
-		baseDelay:   500 * time.Millisecond,
+		browserClient: browser.New(),
+		concurrency:   concurrency,
+		maxRetries:    3,
+		baseDelay:     500 * time.Millisecond,
 	}
 }
 
@@ -148,6 +153,10 @@ func searchSubstring(s, substr string) bool {
 }
 
 func (f *Fetcher) fetchSingle(ctx context.Context, source Source) FetchResult {
+	if source.Type == BrowserType {
+		return f.fetchBrowser(ctx, source)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
 	if err != nil {
 		return FetchResult{Source: source, Error: fmt.Errorf("create request: %w", err)}
@@ -173,6 +182,46 @@ func (f *Fetcher) fetchSingle(ctx context.Context, source Source) FetchResult {
 	}
 
 	content, err := ParseContent(source, string(body))
+	if err != nil {
+		return FetchResult{Source: source, Error: fmt.Errorf("parse content from %s: %w", source.URL, err)}
+	}
+
+	return FetchResult{Source: source, Content: content}
+}
+
+func (f *Fetcher) fetchBrowser(ctx context.Context, source Source) FetchResult {
+	session := f.browserClient.NewSession(ctx)
+	defer session.Close()
+
+	if len(source.Cookies) > 0 {
+		var cdpCookies []*network.CookieParam
+		for _, c := range source.Cookies {
+			cdpCookies = append(cdpCookies, &network.CookieParam{
+				Name:   c.Name,
+				Value:  c.Value,
+				Domain: c.Domain,
+				Path:   c.Path,
+			})
+		}
+		if err := session.SetCookies(cdpCookies); err != nil {
+			return FetchResult{Source: source, Error: fmt.Errorf("set cookies for %s: %w", source.URL, err)}
+		}
+	}
+
+	if err := session.Navigate(source.URL); err != nil {
+		return FetchResult{Source: source, Error: fmt.Errorf("navigate to %s: %w", source.URL, err)}
+	}
+
+	if err := session.WaitForSelector("body"); err != nil {
+		return FetchResult{Source: source, Error: fmt.Errorf("wait for body on %s: %w", source.URL, err)}
+	}
+
+	html, err := session.GetHTML()
+	if err != nil {
+		return FetchResult{Source: source, Error: fmt.Errorf("get html from %s: %w", source.URL, err)}
+	}
+
+	content, err := ParseContent(source, html)
 	if err != nil {
 		return FetchResult{Source: source, Error: fmt.Errorf("parse content from %s: %w", source.URL, err)}
 	}

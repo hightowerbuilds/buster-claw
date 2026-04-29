@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"buster-claw/internal/config"
+	"buster-claw/internal/delivery"
+	"buster-claw/internal/hooks"
 	"buster-claw/internal/ingest"
 	"buster-claw/internal/library"
 	"buster-claw/internal/mcp"
@@ -18,6 +20,8 @@ import (
 	"buster-claw/internal/orchestrator"
 	"buster-claw/internal/provider"
 	"buster-claw/internal/queue"
+	"buster-claw/internal/scheduler"
+	"buster-claw/internal/webhook"
 	"buster-claw/internal/websearch"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -34,6 +38,10 @@ type App struct {
 	memory       *memory.Store
 	mcpManager   *mcp.Manager
 	providers    *provider.Manager
+	scheduler    *scheduler.Engine
+	webhooks     *webhook.Server
+	delivery     *delivery.Manager
+	hooks        *hooks.Manager
 	messages     []ChatMessage
 	mu           sync.Mutex
 }
@@ -69,14 +77,21 @@ type AnalysisResult struct {
 func NewApp(saveDir string) *App {
 	cfg := config.Load()
 	client := ollama.NewClient(cfg.Host)
-	orch := orchestrator.New(client, cfg.Model, saveDir)
-	mem := memory.NewStore(saveDir)
-	mem.Load()
 	mcpMgr := mcp.NewManager(filepath.Join(saveDir, "mcp.json"))
 	provMgr := provider.NewManager(filepath.Join(saveDir, "providers.json"))
 	provMgr.Load()
+	deliv := delivery.NewManager(filepath.Join(saveDir, "Library", "delivery.json"))
+	hks := hooks.NewManager(filepath.Join(saveDir, "Library", "hooks.json"))
 
-	return &App{
+	orch := orchestrator.New(client, provMgr, deliv, hks, cfg.Model, saveDir)
+	orch.WorkerCount = 3
+	mem := memory.NewStore(saveDir)
+	mem.Load()
+
+	sched := scheduler.New(filepath.Join(saveDir, "Library", "scheduler.json"))
+	hooks := webhook.NewServer(filepath.Join(saveDir, "Library", "webhooks.json"), 9090)
+
+	app := &App{
 		client:       client,
 		model:        cfg.Model,
 		saveDir:      saveDir,
@@ -84,12 +99,88 @@ func NewApp(saveDir string) *App {
 		memory:       mem,
 		mcpManager:   mcpMgr,
 		providers:    provMgr,
+		scheduler:    sched,
+		webhooks:     hooks,
+		delivery:     deliv,
+		hooks:        hks,
 	}
+
+	// Wire up scheduler handlers
+	sched.OnIngest = func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		_, err := orch.RunIngest(ctx)
+		return err
+	}
+	sched.OnAnalyze = func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		_, err := orch.DrainQueue(ctx)
+		return err
+	}
+	sched.OnFull = func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		_, _, err := orch.RunFull(ctx)
+		return err
+	}
+	sched.OnDigest = func(deliverTo string) error {
+		return fmt.Errorf("digest not yet implemented")
+	}
+	sched.OnCustom = func(cmd string) error {
+		return app.handleSlashCommand(cmd)
+	}
+
+	// Wire up webhook handlers
+	hooks.OnTrigger = func(h webhook.Hook, payload []byte) error {
+		switch h.Action {
+		case webhook.ActionIngest:
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			_, err := orch.RunIngest(ctx)
+			return err
+		case webhook.ActionAnalyze:
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			_, err := orch.DrainQueue(ctx)
+			return err
+		case webhook.ActionFull:
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+			defer cancel()
+			_, _, err := orch.RunFull(ctx)
+			return err
+		case webhook.ActionCommand:
+			return app.handleSlashCommand(h.CustomCmd)
+		}
+		return nil
+	}
+
+	return app
 }
 
 // startup is called when the Wails app starts.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	if err := a.scheduler.Load(); err != nil {
+		fmt.Printf("[scheduler] failed to load: %v\n", err)
+	}
+	a.scheduler.Start()
+
+	if err := a.webhooks.Load(); err != nil {
+		fmt.Printf("[webhooks] failed to load: %v\n", err)
+	}
+	if err := a.webhooks.Start(); err != nil {
+		fmt.Printf("[webhooks] failed to start: %v\n", err)
+	}
+
+	if err := a.delivery.Load(); err != nil {
+		fmt.Printf("[delivery] failed to load: %v\n", err)
+	}
+
+	if err := a.hooks.Load(); err != nil {
+		fmt.Printf("[hooks] failed to load: %v\n", err)
+	}
 
 	// Wire orchestrator status changes to frontend events.
 	a.orchestrator.OnStatusChange = func(s orchestrator.Status) {
@@ -116,6 +207,7 @@ func (a *App) startup(ctx context.Context) {
 
 // shutdown is called when the Wails app exits.
 func (a *App) shutdown(ctx context.Context) {
+	a.scheduler.Stop()
 	a.mcpManager.Close()
 }
 
@@ -302,6 +394,40 @@ func (a *App) handleSlashCommand(input string) error {
 		}()
 		return nil
 
+	case "/browse":
+		if arg == "" {
+			a.emitSystemMessage("Usage: `/browse <url>`")
+			return nil
+		}
+		go func() {
+			src := ingest.Source{
+				URL:  arg,
+				Type: ingest.BrowserType,
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+
+			fetcher := ingest.NewFetcher(1)
+			results := fetcher.FetchAll(ctx, []ingest.Source{src})
+
+			if len(results) == 0 {
+				a.emitSystemMessage(fmt.Sprintf("Browse failed for `%s`: no results", arg))
+				return
+			}
+			if results[0].Error != nil {
+				a.emitSystemMessage(fmt.Sprintf("Browse failed for `%s`: %v", arg, results[0].Error))
+				return
+			}
+
+			content := results[0].Content
+			if len(content) > 8000 {
+				content = content[:8000] + "\n\n... (content truncated for chat display)"
+			}
+
+			a.emitSystemMessage(fmt.Sprintf("**Browse Result: %s**\n\n%s", arg, content))
+		}()
+		return nil
+
 	case "/status":
 		s := a.orchestrator.GetStatus()
 		msg := fmt.Sprintf("**Pipeline Status**\n- Phase: %s\n- Queue: %d\n- Active: %s\n- Completed: %d\n- Failed: %d",
@@ -367,6 +493,7 @@ func (a *App) handleSlashCommand(input string) error {
 		help := "**Available Commands**\n" +
 			"- `/search <query>` — Search the web and summarize results\n" +
 			"- `/ingest <url>` — Ingest a URL into the library\n" +
+			"- `/browse <url>` — Fetch and render a URL using headless browser\n" +
 			"- `/status` — Show pipeline status\n" +
 			"- `/remember <text>` — Save a fact to persistent memory\n" +
 			"- `/forget <number>` — Remove a memory by number\n" +
@@ -652,6 +779,49 @@ func (a *App) RemoveMemory(index int) error {
 	return a.memory.Remove(index)
 }
 
+// --- Scheduler ---
+
+// GetJobs returns all scheduled jobs.
+func (a *App) GetJobs() []scheduler.JobState {
+	return a.scheduler.GetAll()
+}
+
+// AddJob creates a new scheduled job.
+func (a *App) AddJob(id, jobType, cronStr string, enabled bool, customCmd, deliverTo string) error {
+	j := scheduler.Job{
+		ID:        id,
+		Type:      scheduler.JobType(jobType),
+		Cron:      cronStr,
+		Enabled:   enabled,
+		CustomCmd: customCmd,
+		DeliverTo: deliverTo,
+	}
+	return a.scheduler.AddJob(j)
+}
+
+// UpdateJob modifies an existing scheduled job.
+func (a *App) UpdateJob(id, jobType, cronStr string, enabled bool, customCmd, deliverTo string) error {
+	j := scheduler.Job{
+		ID:        id,
+		Type:      scheduler.JobType(jobType),
+		Cron:      cronStr,
+		Enabled:   enabled,
+		CustomCmd: customCmd,
+		DeliverTo: deliverTo,
+	}
+	return a.scheduler.UpdateJob(j)
+}
+
+// DeleteJob removes a scheduled job.
+func (a *App) DeleteJob(id string) error {
+	return a.scheduler.DeleteJob(id)
+}
+
+// RunJobNow triggers a job immediately, ignoring its schedule.
+func (a *App) RunJobNow(id string) error {
+	return a.scheduler.RunNow(id)
+}
+
 // --- Reports ---
 
 // GetReportManifest returns the report manifest.
@@ -831,4 +1001,91 @@ func extractFrontmatterField(content, field string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// GetWebhooks returns all configured webhooks.
+func (a *App) GetWebhooks() []webhook.Hook {
+	return a.webhooks.GetAll()
+}
+
+// AddWebhook adds a new webhook.
+func (a *App) AddWebhook(name string, action string, enabled bool, customCmd, deliverTo string) error {
+	return a.webhooks.AddHook(webhook.Hook{
+		Name:      name,
+		Action:    webhook.Action(action),
+		Enabled:   enabled,
+		CustomCmd: customCmd,
+		DeliverTo: deliverTo,
+	})
+}
+
+// DeleteWebhook removes a webhook.
+func (a *App) DeleteWebhook(name string) error {
+	return a.webhooks.DeleteHook(name)
+}
+
+// ToggleWebhook enables or disables a webhook.
+func (a *App) ToggleWebhook(name string, enabled bool) error {
+	hooks := a.webhooks.GetAll()
+	for _, h := range hooks {
+		if h.Name == name {
+			h.Enabled = enabled
+			return a.webhooks.UpdateHook(h)
+		}
+	}
+	return fmt.Errorf("hook %q not found", name)
+}
+
+// GetDeliveryDestinations returns all delivery destinations.
+func (a *App) GetDeliveryDestinations() []delivery.Destination {
+	return a.delivery.GetAll()
+}
+
+// AddDeliveryDestination adds a new delivery target.
+func (a *App) AddDeliveryDestination(name, destType, url, token, chatId string, enabled bool) error {
+	return a.delivery.Add(delivery.Destination{
+		Name:    name,
+		Type:    delivery.DestinationType(destType),
+		URL:     url,
+		Token:   token,
+		ChatID:  chatId,
+		Enabled: enabled,
+	})
+}
+
+// DeleteDeliveryDestination removes a delivery target.
+func (a *App) DeleteDeliveryDestination(name string) error {
+	return a.delivery.Delete(name)
+}
+
+// TestDeliveryDestination sends a test message to a specific destination.
+func (a *App) TestDeliveryDestination(name string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return a.delivery.Dispatch(ctx, name, delivery.Message{
+		Title: "Buster Claw Connection Test",
+		Body:  "This is a test message to verify your delivery settings are correct.",
+	})
+}
+
+// GetHooks returns all configured reactive hooks.
+func (a *App) GetHooks() []hooks.Hook {
+	return a.hooks.GetAll()
+}
+
+// AddHook adds a new reactive hook.
+func (a *App) AddHook(name, event, hookType, target string, async, enabled bool) error {
+	return a.hooks.Add(hooks.Hook{
+		Name:    name,
+		Event:   hooks.Event(event),
+		Type:    hooks.HookType(hookType),
+		Target:  target,
+		Async:   async,
+		Enabled: enabled,
+	})
+}
+
+// DeleteHook removes a reactive hook.
+func (a *App) DeleteHook(name string) error {
+	return a.hooks.Delete(name)
 }
