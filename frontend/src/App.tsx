@@ -2,10 +2,12 @@ import { createSignal, createEffect, onMount, onCleanup, For, Show } from "solid
 import { createQuery, createMutation, useQueryClient } from "@tanstack/solid-query";
 import { marked } from "marked";
 import { GetModels } from "../wailsjs/go/main/App";
+import { type View } from "./app/navigation";
+import { Header } from "./components/Header";
+import { Sidebar } from "./components/Sidebar";
+import { StatusBar } from "./components/StatusBar";
 import { state, setState } from "./store";
 import type { ChatMessage, OrchestratorStatus, Source, DocumentInfo, PendingFile, ReportMeta, QueueEntry, MemoryEntry, ProviderInfo, JobState, Webhook, DeliveryDestination, Hook } from "./wails.d";
-
-type View = "home" | "chat" | "ingestion" | "documents" | "orchestration" | "analysis" | "models" | "providers" | "memory" | "scheduler" | "webhooks" | "delivery" | "hooks" | "docs";
 
 function AnalogClock() {
   const [time, setTime] = createSignal(new Date());
@@ -549,62 +551,18 @@ function App() {
     setState("streamBuffer", "");
   };
 
+  const statusActivity = () => {
+    if (state.searching) return "Searching...";
+    if (state.streaming) return "Chatting...";
+    if (status().phase !== "idle") return status().phase;
+    if (state.busy) return "Working...";
+    return "Idle";
+  };
+
   return (
     <div class="app">
-      {/* Header */}
-      <div class="header">
-        <h1>BUSTER CLAW</h1>
-      </div>
-
-      {/* Sidebar */}
-      <div class="sidebar">
-        <div class="sidebar-section">
-          <h3>Navigate</h3>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "home" }} onClick={() => switchView("home")}>Home</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "chat" }} onClick={() => switchView("chat")}>Chat</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "ingestion" }} onClick={() => switchView("ingestion")}>Ingestion</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "documents" }} onClick={() => switchView("documents")}>Documents</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "orchestration" }} onClick={() => switchView("orchestration")}>Orchestration</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "analysis" }} onClick={() => switchView("analysis")}>Analysis</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "scheduler" }} onClick={() => switchView("scheduler")}>Scheduler</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "webhooks" }} onClick={() => switchView("webhooks")}>Webhooks</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "delivery" }} onClick={() => switchView("delivery")}>Delivery</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "hooks" }} onClick={() => switchView("hooks")}>Hooks</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "models" }} onClick={() => switchView("models")}>Models</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "providers" }} onClick={() => switchView("providers")}>Providers</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "memory" }} onClick={() => switchView("memory")}>Memory</button>
-          <button class="sidebar-btn" classList={{ "sidebar-btn-active": activeView() === "docs" }} onClick={() => switchView("docs")}>Docs</button>
-        </div>
-
-        <div class="sidebar-section">
-          <h3>Status</h3>
-          <div class="status-card">
-            <div class="label">Phase</div>
-            <div class="value" classList={{ active: status().phase !== "idle" }}>{status().phase || "idle"}</div>
-          </div>
-          <div class="status-card" style="margin-top: 6px">
-            <div class="label">Completed / Failed</div>
-            <div class="value">{status().completedJobs} / {status().failedJobs}</div>
-          </div>
-          <div class="status-card" style="margin-top: 6px">
-            <div class="label">Parallel Workers</div>
-            <div class="value">{status().activeJobs.length > 1 ? status().activeJobs.length : (status().activeJob ? 1 : 0)} active</div>
-          </div>
-          <For each={status().activeJobs}>
-            {(job) => (
-              <div class="status-card" style="margin-top: 6px">
-                <div class="label">Active</div>
-                <div class="value active">{job}</div>
-              </div>
-            )}
-          </For>
-        </div>
-
-        <div class="sidebar-section">
-          <h3>Actions</h3>
-          <button class="sidebar-btn" onClick={clearChat}>Clear Chat</button>
-        </div>
-      </div>
+      <Header />
+      <Sidebar activeView={activeView()} status={status()} onSwitchView={switchView} onClearChat={clearChat} />
 
       {/* Main Content */}
       <div class="main-content">
@@ -1410,18 +1368,7 @@ function App() {
 
       </div>
 
-      {/* Status Bar */}
-      <div class="status-bar">
-        <span>{currentModel() ? `Model: ${currentModel()}` : "No model"} | {models().length} installed</span>
-        <span class="status-activity">
-          {state.searching ? "Searching..." :
-           state.streaming ? "Chatting..." :
-           status().phase !== "idle" ? status().phase :
-           state.busy ? "Working..." :
-           "Idle"}
-        </span>
-        <span>Buster Claw</span>
-      </div>
+      <StatusBar currentModel={currentModel()} modelCount={models().length} activity={statusActivity()} />
     </div>
   );
 }
