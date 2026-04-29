@@ -1,11 +1,11 @@
 import { createSignal, createEffect, onMount, onCleanup, For, Show } from "solid-js";
 import { createQuery, createMutation, useQueryClient } from "@tanstack/solid-query";
-import { marked } from "marked";
 import { GetModels } from "../wailsjs/go/main/App";
 import { type View } from "./app/navigation";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
+import { AnalysisView } from "./features/analysis/AnalysisView";
 import { DocsView } from "./features/docs/DocsView";
 import { DocumentsView } from "./features/documents/DocumentsView";
 import { HomeView } from "./features/home/HomeView";
@@ -596,52 +596,14 @@ function App() {
           onQueueDocument={(path) => queueDocMut.mutate(path)}
         />
 
-        {/* Analysis View */}
-        <div class="view-panel" classList={{ hidden: activeView() !== "analysis" }}>
-          <Show when={!selectedReport()}>
-            <div class="view-panel-content">
-              <div class="view-header">
-                <h2>Analysis</h2>
-                <span class="source-count">{reports().length} reports</span>
-              </div>
-
-              <div class="report-list">
-                <For each={reports()} fallback={<div class="empty-list">No analysis reports yet. Run the orchestration queue to generate reports.</div>}>
-                  {(report) => (
-                    <div class="report-item" onClick={() => openReport(report)}>
-                      <div class="report-item-title">{report.filename}</div>
-                      <div class="report-item-meta">
-                        <span class="report-item-date">{report.generated_at?.split("T")[0]}</span>
-                        <span class="report-item-model">{report.model}</span>
-                        <Show when={report.source_url}>
-                          <span class="report-item-source">{report.source_url}</span>
-                        </Show>
-                      </div>
-                      <Show when={report.tags && report.tags.length > 0}>
-                        <div class="report-item-tags">
-                          <For each={report.tags!}>{(tag) => <span class="source-item-tag">{tag}</span>}</For>
-                        </div>
-                      </Show>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </div>
-          </Show>
-
-          <Show when={selectedReport()}>
-            <div class="report-reader">
-              <div class="report-reader-header">
-                <button class="report-back-btn" onClick={closeReport}>Back to Reports</button>
-                <div class="report-reader-meta">
-                  <span>{selectedReport()!.generated_at?.split("T")[0]}</span>
-                  <span class="report-reader-model">{selectedReport()!.model}</span>
-                </div>
-              </div>
-              <article class="report-article" innerHTML={marked(reportContent()) as string} />
-            </div>
-          </Show>
-        </div>
+        <AnalysisView
+          visible={activeView() === "analysis"}
+          reports={reports()}
+          selectedReport={selectedReport()}
+          reportContent={reportContent()}
+          onOpenReport={openReport}
+          onCloseReport={closeReport}
+        />
 
         <ModelsView
           visible={activeView() === "models"}
