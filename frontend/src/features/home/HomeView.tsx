@@ -20,6 +20,7 @@ export function HomeView(props: HomeViewProps) {
       <div class="newspaper-container">
         <main class="newspaper-grid">
           <div class="main-column">
+            <AnalogClock />
             <WeeklyPlanCalendar jobs={props.jobs} />
             <h2 class="section-title">Latest Analysis</h2>
             <Show when={props.reports.length > 0} fallback={<p class="empty-story">No recent analysis available. The newsroom is quiet.</p>}>
@@ -43,7 +44,6 @@ export function HomeView(props: HomeViewProps) {
 
           <div class="side-column">
             <div class="sidebar-module">
-              <AnalogClock />
               <h2 class="section-title">Recent Ingestions</h2>
               <ul class="brief-list">
                 <Show when={props.documents.length > 0} fallback={<li class="empty-story">No recent ingestions.</li>}>
