@@ -6,109 +6,9 @@ import { type View } from "./app/navigation";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
+import { HomeView } from "./features/home/HomeView";
 import { state, setState } from "./store";
 import type { ChatMessage, OrchestratorStatus, Source, DocumentInfo, PendingFile, ReportMeta, QueueEntry, MemoryEntry, ProviderInfo, JobState, Webhook, DeliveryDestination, Hook } from "./wails.d";
-
-function AnalogClock() {
-  const [time, setTime] = createSignal(new Date());
-
-  createEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    onCleanup(() => clearInterval(timer));
-  });
-
-  const secondsDegrees = () => (time().getSeconds() / 60) * 360;
-  const minsDegrees = () => ((time().getMinutes() + time().getSeconds() / 60) / 60) * 360;
-  const hourDegrees = () => ((time().getHours() % 12 + time().getMinutes() / 60) / 12) * 360;
-
-  return (
-    <div class="analog-clock-wrapper">
-      <div class="analog-clock">
-        <div class="clock-center"></div>
-        <div class="clock-hand hour-hand" style={{ transform: `rotate(${hourDegrees()}deg)` }}></div>
-        <div class="clock-hand minute-hand" style={{ transform: `rotate(${minsDegrees()}deg)` }}></div>
-        <div class="clock-hand second-hand" style={{ transform: `rotate(${secondsDegrees()}deg)` }}></div>
-      </div>
-    </div>
-  );
-}
-
-function startOfDay(date: Date) {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function dateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function WeeklyPlanCalendar(props: { jobs: JobState[] }) {
-  const days = () => {
-    const today = startOfDay(new Date());
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(today);
-      date.setDate(today.getDate() + index);
-      return date;
-    });
-  };
-
-  const jobsForDay = (day: Date) => {
-    const key = dateKey(day);
-    return props.jobs.filter((job) => {
-      if (!job.enabled || !job.nextRun) return false;
-      const nextRun = new Date(job.nextRun);
-      if (Number.isNaN(nextRun.getTime())) return false;
-      return dateKey(nextRun) === key;
-    });
-  };
-
-  const jobLabel = (job: JobState) => {
-    if (job.customCmd) return job.customCmd;
-    if (job.type === "full") return "Full research pipeline";
-    if (job.type === "ingest") return "Ingest sources";
-    if (job.type === "analyze") return "Analyze queue";
-    if (job.type === "digest") return "Digest delivery";
-    return job.id;
-  };
-
-  return (
-    <section class="weekly-plan">
-      <h2 class="section-title">This Week</h2>
-      <div class="weekly-plan-grid">
-        <For each={days()}>
-          {(day, index) => {
-            const dayJobs = () => jobsForDay(day);
-            return (
-              <div class="week-day" classList={{ today: index() === 0 }}>
-                <div class="week-day-heading">
-                  <span>{index() === 0 ? "Today" : day.toLocaleDateString(undefined, { weekday: "short" })}</span>
-                  <strong>{day.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</strong>
-                </div>
-                <div class="week-day-plans">
-                  <Show when={dayJobs().length > 0} fallback={<div class="week-empty">No scheduled work</div>}>
-                    <For each={dayJobs()}>
-                      {(job) => (
-                        <div class="week-plan-item">
-                          <span class="week-plan-type">{job.type}</span>
-                          <span class="week-plan-title">{jobLabel(job)}</span>
-                          <span class="week-plan-time">{new Date(job.nextRun).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>
-                        </div>
-                      )}
-                    </For>
-                  </Show>
-                </div>
-              </div>
-            );
-          }}
-        </For>
-      </div>
-    </section>
-  );
-}
 
 function App() {
   const qc = useQueryClient();
@@ -566,75 +466,18 @@ function App() {
 
       {/* Main Content */}
       <div class="main-content">
-
-        {/* Home View */}
-        <div class="view-panel home-view" classList={{ hidden: activeView() !== "home" }}>
-          <div class="newspaper-container">
-            <main class="newspaper-grid">
-              <div class="main-column">
-                <WeeklyPlanCalendar jobs={jobs()} />
-                <h2 class="section-title">Latest Analysis</h2>
-                <Show when={reports().length > 0} fallback={<p class="empty-story">No recent analysis available. The newsroom is quiet.</p>}>
-                  <div class="featured-story">
-                    <div class="story-list">
-                      <For each={reports().slice().reverse().slice(0, 5)}>
-                        {(r) => (
-                          <div class="story-item" onClick={() => { openReport(r); switchView("analysis"); }}>
-                            <h4>{r.filename.replace("report-", "").replace(".md", "").replace(/-/g, " ")}</h4>
-                            <div class="story-meta">
-                              <span>{r.source_url ? new URL(r.source_url).hostname : r.source_file}</span>
-                              <span>{new Date(r.generated_at).toLocaleDateString()}</span>
-                            </div>
-                          </div>
-                        )}
-                      </For>
-                    </div>
-                  </div>
-                </Show>
-              </div>
-
-              <div class="side-column">
-                <div class="sidebar-module">
-                  <AnalogClock />
-                  <h2 class="section-title">Recent Ingestions</h2>
-                  <ul class="brief-list">
-                    <Show when={documents().length > 0} fallback={<li class="empty-story">No recent ingestions.</li>}>
-                      <For each={documents().slice().reverse().slice(0, 6)}>
-                        {(doc) => (
-                          <li>
-                            <div class="doc-title">{doc.name || doc.filename.replace(".md", "")}</div>
-                            <div class="story-meta">{doc.sourceUrl ? new URL(doc.sourceUrl).hostname : "Local"}</div>
-                          </li>
-                        )}
-                      </For>
-                    </Show>
-                  </ul>
-                </div>
-
-                <div class="sidebar-module" style="margin-top: 24px;">
-                  <h2 class="section-title">Up Next</h2>
-                  <ul class="brief-list">
-                    <Show when={analysisQueue().length > 0 || pendingFiles().length > 0} fallback={<li class="empty-story">The queue is empty.</li>}>
-                      <For each={analysisQueue().slice(0, 4)}>
-                        {(q) => (
-                          <li>
-                            <div class="doc-title">{q.filename.replace(".md", "")}</div>
-                            <div class="queue-status" classList={{ "active": q.status === "analyzing" }}>{q.status}</div>
-                          </li>
-                        )}
-                      </For>
-                      <Show when={pendingFiles().length > 0}>
-                        <li class="queue-more text-muted" style="margin-top: 8px; font-size: 0.85em; font-style: italic;">
-                          ...and {pendingFiles().length} pending items.
-                        </li>
-                      </Show>
-                    </Show>
-                  </ul>
-                </div>
-              </div>
-            </main>
-          </div>
-        </div>
+        <HomeView
+          visible={activeView() === "home"}
+          jobs={jobs()}
+          reports={reports()}
+          documents={documents()}
+          analysisQueue={analysisQueue()}
+          pendingFiles={pendingFiles()}
+          onOpenReport={(report) => {
+            openReport(report);
+            switchView("analysis");
+          }}
+        />
 
         {/* Chat View */}
         <div class="chat-area" classList={{ hidden: activeView() !== "chat" }}>
