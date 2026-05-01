@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // MCPConfig is the top-level config file structure for MCP servers.
@@ -20,6 +21,8 @@ type Manager struct {
 	mu         sync.RWMutex
 }
 
+const defaultConnectTimeout = 10 * time.Second
+
 // NewManager creates a manager that reads config from the given path.
 func NewManager(configPath string) *Manager {
 	return &Manager{
@@ -31,6 +34,11 @@ func NewManager(configPath string) *Manager {
 // LoadAndConnect reads the config file and connects to all configured servers.
 // Servers that fail to connect are logged but don't prevent others from starting.
 func (m *Manager) LoadAndConnect() []error {
+	return m.LoadAndConnectTimeout(defaultConnectTimeout)
+}
+
+// LoadAndConnectTimeout is LoadAndConnect with an explicit per-server timeout.
+func (m *Manager) LoadAndConnectTimeout(timeout time.Duration) []error {
 	data, err := os.ReadFile(m.configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -47,7 +55,7 @@ func (m *Manager) LoadAndConnect() []error {
 	var errs []error
 	for _, sc := range config.Servers {
 		client := NewClient(sc)
-		if err := client.Connect(); err != nil {
+		if err := connectWithTimeout(client, timeout); err != nil {
 			errs = append(errs, fmt.Errorf("connect %s: %w", sc.Name, err))
 			continue
 		}
@@ -57,6 +65,25 @@ func (m *Manager) LoadAndConnect() []error {
 	}
 
 	return errs
+}
+
+func connectWithTimeout(client *Client, timeout time.Duration) error {
+	if timeout <= 0 {
+		return client.Connect()
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- client.Connect()
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(timeout):
+		_ = client.Close()
+		return fmt.Errorf("timed out after %s", timeout)
+	}
 }
 
 // AllTools returns every tool from every connected server.

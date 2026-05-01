@@ -30,8 +30,8 @@ export function AddSource(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddSource'](arg1, arg2, arg3, arg4);
 }
 
-export function AddWebhook(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['AddWebhook'](arg1, arg2, arg3, arg4, arg5);
+export function AddWebhook(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['AddWebhook'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function ClearMessages() {

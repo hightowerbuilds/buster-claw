@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
+
+var httpClient = &http.Client{Timeout: 20 * time.Second}
 
 // Result is a single web search result.
 type Result struct {
@@ -33,7 +36,7 @@ func Search(ctx context.Context, query string, maxResults int) ([]Result, error)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("search request failed: %w", err)
 	}

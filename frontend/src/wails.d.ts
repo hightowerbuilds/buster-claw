@@ -61,6 +61,10 @@ export interface QueueEntry {
   filename: string;
   path: string;
   status: string; // "queued" | "analyzing" | "done" | "failed"
+  progress: number;
+  error?: string;
+  report?: string;
+  model?: string;
 }
 
 export interface MemoryEntry {
@@ -99,11 +103,11 @@ export interface CalendarEvent {
 
 export interface Webhook {
   name: string;
-  secret?: string;
   action: string;
   customCmd?: string;
   deliverTo?: string;
   enabled: boolean;
+  hasSecret: boolean;
 }
 
 export interface DeliveryDestination {
@@ -168,7 +172,7 @@ declare global {
           UpdateCalendarEvent(id: string, date: string, title: string, notes: string): Promise<void>;
           DeleteCalendarEvent(id: string): Promise<void>;
           GetWebhooks(): Promise<Webhook[]>;
-          AddWebhook(name: string, action: string, enabled: boolean, customCmd: string, deliverTo: string): Promise<void>;
+          AddWebhook(name: string, action: string, enabled: boolean, customCmd: string, deliverTo: string, secret: string): Promise<void>;
           DeleteWebhook(name: string): Promise<void>;
           ToggleWebhook(name: string, enabled: boolean): Promise<void>;
           GetDeliveryDestinations(): Promise<DeliveryDestination[]>;

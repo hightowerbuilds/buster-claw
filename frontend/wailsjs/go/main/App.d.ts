@@ -8,7 +8,6 @@ import {hooks} from '../models';
 import {scheduler} from '../models';
 import {library} from '../models';
 import {ingest} from '../models';
-import {webhook} from '../models';
 
 export function AddCalendarEvent(arg1:string,arg2:string,arg3:string):Promise<calendar.Event>;
 
@@ -24,7 +23,7 @@ export function AddProvider(arg1:string,arg2:string,arg3:string,arg4:string,arg5
 
 export function AddSource(arg1:string,arg2:string,arg3:Array<string>,arg4:string):Promise<void>;
 
-export function AddWebhook(arg1:string,arg2:string,arg3:boolean,arg4:string,arg5:string):Promise<void>;
+export function AddWebhook(arg1:string,arg2:string,arg3:boolean,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function ClearMessages():Promise<void>;
 
@@ -74,7 +73,7 @@ export function GetReportManifest():Promise<Array<library.ReportMeta>>;
 
 export function GetSources():Promise<Array<ingest.Source>>;
 
-export function GetWebhooks():Promise<Array<webhook.Hook>>;
+export function GetWebhooks():Promise<Array<main.WebhookInfo>>;
 
 export function IngestSource(arg1:string):Promise<main.IngestResult>;
 

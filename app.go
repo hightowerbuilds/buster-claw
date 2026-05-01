@@ -76,6 +76,11 @@ type AnalysisResult struct {
 	Error          string `json:"error,omitempty"`
 }
 
+const (
+	analysisQueueTimeout = 4 * time.Hour
+	fullPipelineTimeout  = 5 * time.Hour
+)
+
 // NewApp creates a new App instance.
 func NewApp(saveDir string) *App {
 	cfg := config.Load()
@@ -118,13 +123,13 @@ func NewApp(saveDir string) *App {
 		return err
 	}
 	sched.OnAnalyze = func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), analysisQueueTimeout)
 		defer cancel()
 		_, err := orch.DrainQueue(ctx)
 		return err
 	}
 	sched.OnFull = func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), fullPipelineTimeout)
 		defer cancel()
 		_, _, err := orch.RunFull(ctx)
 		return err
@@ -145,12 +150,12 @@ func NewApp(saveDir string) *App {
 			_, err := orch.RunIngest(ctx)
 			return err
 		case webhook.ActionAnalyze:
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), analysisQueueTimeout)
 			defer cancel()
 			_, err := orch.DrainQueue(ctx)
 			return err
 		case webhook.ActionFull:
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), fullPipelineTimeout)
 			defer cancel()
 			_, _, err := orch.RunFull(ctx)
 			return err
@@ -208,9 +213,11 @@ func (a *App) startup(ctx context.Context) {
 		errs := a.mcpManager.LoadAndConnect()
 		for _, err := range errs {
 			fmt.Printf("[mcp] %s\n", err)
+			runtime.EventsEmit(a.ctx, "mcp:error", err.Error())
 		}
 		if names := a.mcpManager.ServerNames(); len(names) > 0 {
 			fmt.Printf("[mcp] connected: %s\n", strings.Join(names, ", "))
+			runtime.EventsEmit(a.ctx, "mcp:connected", names)
 		}
 	}()
 }
@@ -623,7 +630,7 @@ func (a *App) IngestSource(sourceURL string) IngestResult {
 
 // StartAnalysis runs the analysis pipeline on documents explicitly added to the queue.
 func (a *App) StartAnalysis() AnalysisResult {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), analysisQueueTimeout)
 	defer cancel()
 
 	processed, err := a.orchestrator.RunAnalysis(ctx)
@@ -636,8 +643,8 @@ func (a *App) StartAnalysis() AnalysisResult {
 // --- Status ---
 
 // QueueDocument adds a single document to the analysis queue.
-func (a *App) QueueDocument(path string) {
-	a.orchestrator.QueueDocument(path)
+func (a *App) QueueDocument(path string) error {
+	return a.orchestrator.QueueDocument(path)
 }
 
 // RemoveFromQueue removes a document from the analysis queue.
@@ -1092,15 +1099,38 @@ func documentExcerpt(content string, maxWords int) string {
 	return strings.Join(words, " ")
 }
 
-// GetWebhooks returns all configured webhooks.
-func (a *App) GetWebhooks() []webhook.Hook {
-	return a.webhooks.GetAll()
+// WebhookInfo is a webhook config for the frontend with the secret masked.
+type WebhookInfo struct {
+	Name      string `json:"name"`
+	Action    string `json:"action"`
+	CustomCmd string `json:"customCmd,omitempty"`
+	DeliverTo string `json:"deliverTo,omitempty"`
+	Enabled   bool   `json:"enabled"`
+	HasSecret bool   `json:"hasSecret"`
+}
+
+// GetWebhooks returns all configured webhooks with secrets masked.
+func (a *App) GetWebhooks() []WebhookInfo {
+	hooks := a.webhooks.GetAll()
+	out := make([]WebhookInfo, len(hooks))
+	for i, h := range hooks {
+		out[i] = WebhookInfo{
+			Name:      h.Name,
+			Action:    string(h.Action),
+			CustomCmd: h.CustomCmd,
+			DeliverTo: h.DeliverTo,
+			Enabled:   h.Enabled,
+			HasSecret: h.Secret != "",
+		}
+	}
+	return out
 }
 
 // AddWebhook adds a new webhook.
-func (a *App) AddWebhook(name string, action string, enabled bool, customCmd, deliverTo string) error {
+func (a *App) AddWebhook(name string, action string, enabled bool, customCmd, deliverTo, secret string) error {
 	return a.webhooks.AddHook(webhook.Hook{
 		Name:      name,
+		Secret:    secret,
 		Action:    webhook.Action(action),
 		Enabled:   enabled,
 		CustomCmd: customCmd,

@@ -46,11 +46,17 @@ type Manager struct {
 	path      string
 	providers []Config
 	mu        sync.RWMutex
+	client    *http.Client
 }
 
 // NewManager creates a manager backed by the given JSON file.
 func NewManager(path string) *Manager {
-	return &Manager{path: path}
+	return &Manager{
+		path: path,
+		client: &http.Client{
+			Timeout: 45 * time.Minute,
+		},
+	}
 }
 
 // Load reads provider config from disk.
@@ -219,9 +225,9 @@ func (m *Manager) TestConnection(ctx context.Context, name string) (string, erro
 func (m *Manager) Chat(ctx context.Context, cfg Config, messages []Message, onChunk func(string) error) error {
 	switch cfg.Type {
 	case TypeAnthropic:
-		return streamAnthropic(ctx, cfg, messages, onChunk)
+		return streamAnthropic(ctx, m.client, cfg, messages, onChunk)
 	default:
-		return streamOpenAI(ctx, cfg, messages, onChunk)
+		return streamOpenAI(ctx, m.client, cfg, messages, onChunk)
 	}
 }
 
@@ -239,7 +245,7 @@ type openAIRequest struct {
 	Stream   bool      `json:"stream"`
 }
 
-func streamOpenAI(ctx context.Context, cfg Config, messages []Message, onChunk func(string) error) error {
+func streamOpenAI(ctx context.Context, client *http.Client, cfg Config, messages []Message, onChunk func(string) error) error {
 	payload, _ := json.Marshal(openAIRequest{
 		Model:    cfg.Model,
 		Messages: messages,
@@ -260,7 +266,7 @@ func streamOpenAI(ctx context.Context, cfg Config, messages []Message, onChunk f
 		req.Header.Set("X-Title", "Buster Claw")
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("connect to %s: %w", cfg.Name, err)
 	}
@@ -292,7 +298,7 @@ func streamOpenAI(ctx context.Context, cfg Config, messages []Message, onChunk f
 			} `json:"choices"`
 		}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue
+			return fmt.Errorf("parse %s stream chunk: %w", cfg.Name, err)
 		}
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 			if err := onChunk(chunk.Choices[0].Delta.Content); err != nil {
@@ -318,7 +324,7 @@ type anthropicMessage struct {
 	Content string `json:"content"`
 }
 
-func streamAnthropic(ctx context.Context, cfg Config, messages []Message, onChunk func(string) error) error {
+func streamAnthropic(ctx context.Context, client *http.Client, cfg Config, messages []Message, onChunk func(string) error) error {
 	// Convert messages — Anthropic doesn't use "system" in messages array
 	var system string
 	var apiMsgs []anthropicMessage
@@ -351,7 +357,7 @@ func streamAnthropic(ctx context.Context, cfg Config, messages []Message, onChun
 	req.Header.Set("x-api-key", cfg.APIKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("connect to Anthropic: %w", err)
 	}
@@ -371,6 +377,9 @@ func streamAnthropic(ctx context.Context, cfg Config, messages []Message, onChun
 			continue
 		}
 		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			continue
+		}
 
 		var event struct {
 			Type  string `json:"type"`
@@ -380,7 +389,7 @@ func streamAnthropic(ctx context.Context, cfg Config, messages []Message, onChun
 			} `json:"delta"`
 		}
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			continue
+			return fmt.Errorf("parse Anthropic stream chunk: %w", err)
 		}
 		if event.Type == "content_block_delta" && event.Delta.Text != "" {
 			if err := onChunk(event.Delta.Text); err != nil {

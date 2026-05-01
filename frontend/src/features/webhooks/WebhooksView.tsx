@@ -6,6 +6,7 @@ type WebhookForm = {
   action: string;
   customCmd: string;
   deliverTo: string;
+  secret: string;
 };
 
 type HookForm = {
@@ -69,6 +70,7 @@ export function WebhooksView(props: WebhooksViewProps) {
           <Show when={props.webhookForm.action === "command"}>
             <input type="text" class="search-input" placeholder="/search AI news" value={props.webhookForm.customCmd} onInput={(event) => props.onWebhookFormChange("customCmd", event.currentTarget.value)} />
           </Show>
+          <input type="password" class="search-input" placeholder="Secret" value={props.webhookForm.secret} onInput={(event) => props.onWebhookFormChange("secret", event.currentTarget.value)} />
           <button class="btn btn-primary" onClick={addWebhook}>Add Webhook</button>
         </div>
 
@@ -78,13 +80,14 @@ export function WebhooksView(props: WebhooksViewProps) {
               <th>Name</th>
               <th>Action</th>
               <th>Endpoint</th>
+              <th>Secret</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             <Show when={props.webhooks.length === 0}>
-              <tr><td colspan="5" class="empty-state">No webhooks configured.</td></tr>
+              <tr><td colspan="6" class="empty-state">No webhooks configured.</td></tr>
             </Show>
             <For each={props.webhooks}>
               {(webhook) => (
@@ -92,6 +95,7 @@ export function WebhooksView(props: WebhooksViewProps) {
                   <td class="primary-col">{webhook.name}</td>
                   <td>{webhook.action}{webhook.customCmd ? ` (${webhook.customCmd})` : ""}</td>
                   <td class="mono" style="font-size: 0.85em;">/hooks/{webhook.name}</td>
+                  <td>{webhook.hasSecret ? "Required" : "Open"}</td>
                   <td>
                     <button
                       class="status-badge"

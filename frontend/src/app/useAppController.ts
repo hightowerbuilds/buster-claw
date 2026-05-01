@@ -41,6 +41,7 @@ export function useAppController() {
   const [whAction, setWhAction] = createSignal("ingest");
   const [whCmd, setWhCmd] = createSignal("");
   const [whDeliver, setWhDeliver] = createSignal("");
+  const [whSecret, setWhSecret] = createSignal("");
 
   const [destName, setDestName] = createSignal("");
   const [destType, setDestType] = createSignal("slack");
@@ -77,11 +78,13 @@ export function useAppController() {
     queryKey: ["queue"],
     queryFn: () => window.go.main.App.GetAnalysisQueue(),
     enabled: activeView() === "documents" || activeView() === "home",
+    refetchInterval: activeView() === "documents" ? 1200 : false,
   }));
   const reportsQuery = createQuery(() => ({
     queryKey: ["reports"],
     queryFn: () => window.go.main.App.GetReportManifest(),
-    enabled: activeView() === "analysis" || activeView() === "home",
+    enabled: activeView() === "analysis" || activeView() === "home" || activeView() === "documents",
+    refetchInterval: activeView() === "documents" ? 2500 : false,
   }));
   const memoriesQuery = createQuery(() => ({
     queryKey: ["memories"],
@@ -139,6 +142,10 @@ export function useAppController() {
       qc.invalidateQueries({ queryKey: ["pending"] });
       qc.invalidateQueries({ queryKey: ["queue"] });
     },
+    onError: (error: any) => {
+      setMessages((prev) => [...prev, { role: "assistant", content: `Queue error: ${error.message || error}` }]);
+      qc.invalidateQueries({ queryKey: ["queue"] });
+    },
   }));
   const removeQueueMut = createMutation(() => ({
     mutationFn: (path: string) => window.go.main.App.RemoveFromQueue(path),
@@ -166,8 +173,8 @@ export function useAppController() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["providers"] }),
   }));
   const addWebhookMut = createMutation(() => ({
-    mutationFn: (args: { name: string; action: string; enabled: boolean; customCmd: string; deliverTo: string }) =>
-      window.go.main.App.AddWebhook(args.name, args.action, args.enabled, args.customCmd, args.deliverTo),
+    mutationFn: (args: { name: string; action: string; enabled: boolean; customCmd: string; deliverTo: string; secret: string }) =>
+      window.go.main.App.AddWebhook(args.name, args.action, args.enabled, args.customCmd, args.deliverTo, args.secret),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
   }));
   const deleteWebhookMut = createMutation(() => ({
@@ -201,43 +208,48 @@ export function useAppController() {
   }));
 
   const switchView = (view: View) => setActiveView(view);
+  let eventUnsubscribers: Array<() => void> = [];
 
   onMount(async () => {
     try { setCurrentModel(await window.go.main.App.GetCurrentModel()); } catch (error) { console.error(error); }
     try { setMessages(await window.go.main.App.GetMessages() || []); } catch (error) { console.error(error); }
-    window.runtime.EventsOn("chat:searching", (query: string) => setState("searching", query));
-    window.runtime.EventsOn("chat:token", (chunk: string) => {
-      setState("searching", "");
-      setState("waiting", false);
-      setState("streaming", true);
-      setState("streamBuffer", (prev) => prev + chunk);
-    });
-    window.runtime.EventsOn("chat:done", () => {
-      const buf = state.streamBuffer;
-      if (buf) setMessages((prev) => [...prev, { role: "assistant", content: buf }]);
-      setState({ streamBuffer: "", streaming: false, searching: "", waiting: false });
-    });
-    window.runtime.EventsOn("chat:error", (err: string) => {
-      setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${err}` }]);
-      setState({ streamBuffer: "", streaming: false, searching: "", waiting: false });
-    });
-    window.runtime.EventsOn("chat:cleared", () => {
-      setMessages([]);
-      setState({ streamBuffer: "", streaming: false, searching: "", waiting: false });
-    });
-    window.runtime.EventsOn("orchestrator:status", (s: OrchestratorStatus) => {
-      setStatus(s);
-      qc.invalidateQueries({ queryKey: ["queue"] });
-    });
+    eventUnsubscribers = [
+      window.runtime.EventsOn("chat:searching", (query: string) => setState("searching", query)),
+      window.runtime.EventsOn("chat:token", (chunk: string) => {
+        setState("searching", "");
+        setState("waiting", false);
+        setState("streaming", true);
+        setState("streamBuffer", (prev) => prev + chunk);
+      }),
+      window.runtime.EventsOn("chat:done", () => {
+        const buf = state.streamBuffer;
+        if (buf) setMessages((prev) => [...prev, { role: "assistant", content: buf }]);
+        setState({ streamBuffer: "", streaming: false, searching: "", waiting: false });
+      }),
+      window.runtime.EventsOn("chat:error", (err: string) => {
+        setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${err}` }]);
+        setState({ streamBuffer: "", streaming: false, searching: "", waiting: false });
+      }),
+      window.runtime.EventsOn("chat:cleared", () => {
+        setMessages([]);
+        setState({ streamBuffer: "", streaming: false, searching: "", waiting: false });
+      }),
+      window.runtime.EventsOn("orchestrator:status", (s: OrchestratorStatus) => {
+        setStatus(s);
+        qc.invalidateQueries({ queryKey: ["queue"] });
+      }),
+      window.runtime.EventsOn("mcp:error", (err: string) => {
+        setMessages((prev) => [...prev, { role: "assistant", content: `MCP error: ${err}` }]);
+      }),
+      window.runtime.EventsOn("mcp:connected", (names: string[]) => {
+        setMessages((prev) => [...prev, { role: "assistant", content: `MCP connected: ${names.join(", ")}` }]);
+      }),
+    ];
   });
 
   onCleanup(() => {
-    window.runtime.EventsOff("chat:searching");
-    window.runtime.EventsOff("chat:token");
-    window.runtime.EventsOff("chat:done");
-    window.runtime.EventsOff("chat:error");
-    window.runtime.EventsOff("chat:cleared");
-    window.runtime.EventsOff("orchestrator:status");
+    for (const unsubscribe of eventUnsubscribers) unsubscribe();
+    eventUnsubscribers = [];
   });
 
   const sendMessage = async () => {
@@ -287,7 +299,15 @@ export function useAppController() {
     setState("busy", true);
     try {
       const result = await window.go.main.App.StartAnalysis();
-      if (result.error) setMessages((prev) => [...prev, { role: "assistant", content: `Analysis error: ${result.error}` }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: result.error
+            ? `Analysis error: ${result.error}`
+            : `Analysis complete. Created ${result.processedCount} report${result.processedCount === 1 ? "" : "s"}.`,
+        },
+      ]);
       qc.invalidateQueries({ queryKey: ["queue"] });
       qc.invalidateQueries({ queryKey: ["pending"] });
       qc.invalidateQueries({ queryKey: ["reports"] });
@@ -354,9 +374,9 @@ export function useAppController() {
     setProvName(""); setProvUrl(""); setProvKey(""); setProvModel("");
   };
 
-  const addWebhook = (webhook: { name: string; action: string; customCmd: string; deliverTo: string }) => {
+  const addWebhook = (webhook: { name: string; action: string; customCmd: string; deliverTo: string; secret: string }) => {
     addWebhookMut.mutate({ ...webhook, enabled: true });
-    setWhName(""); setWhCmd("");
+    setWhName(""); setWhCmd(""); setWhSecret("");
   };
 
   const addDestination = (destination: { name: string; type: string; url: string; token: string; chatId: string }) => {
@@ -401,7 +421,7 @@ export function useAppController() {
     get newMemory() { return newMemory(); },
     get providerForm() { return { name: provName(), type: provType(), baseUrl: provUrl(), apiKey: provKey(), model: provModel() }; },
     get testResult() { return testResult(); },
-    get webhookForm() { return { name: whName(), action: whAction(), customCmd: whCmd(), deliverTo: whDeliver() }; },
+    get webhookForm() { return { name: whName(), action: whAction(), customCmd: whCmd(), deliverTo: whDeliver(), secret: whSecret() }; },
     get deliveryForm() { return { name: destName(), type: destType(), url: destUrl(), token: destToken(), chatId: destChatId() }; },
     get hookForm() { return { name: hkName(), event: hkEvent(), type: hkType(), target: hkTarget(), async: hkAsync() }; },
     get statusActivity() {
@@ -447,11 +467,12 @@ export function useAppController() {
     activateProvider: (name: string) => setActiveMut.mutate(name),
     removeProvider: (name: string) => removeProviderMut.mutate(name),
     testProvider,
-    updateWebhookForm: (field: "name" | "action" | "customCmd" | "deliverTo", value: string) => {
+    updateWebhookForm: (field: "name" | "action" | "customCmd" | "deliverTo" | "secret", value: string) => {
       if (field === "name") setWhName(value);
       if (field === "action") setWhAction(value);
       if (field === "customCmd") setWhCmd(value);
       if (field === "deliverTo") setWhDeliver(value);
+      if (field === "secret") setWhSecret(value);
     },
     addWebhook,
     toggleWebhook: (name: string, enabled: boolean) => toggleWebhookMut.mutate({ name, enabled }),

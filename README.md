@@ -59,7 +59,8 @@ Settings are managed via the UI, which persists data into the library directory:
 
 - [Quality checks](docs/QUALITY.md) lists the backend and frontend commands to run before refactors.
 - [Architecture notes](docs/ARCHITECTURE.md) documents the current runtime shape, persisted files, and generated-code boundaries.
-- [Code quality roadmap](CODE_QUALITY_ROADMAP.md) tracks the modularization plan.
+- [Local trust model](docs/LOCAL_TRUST.md) documents shell hooks, webhooks, stored secrets, fetched markdown, and MCP boundaries.
+- Historical quality plans are archived in `daily-growth/old-maps/`.
 
 ## License
 

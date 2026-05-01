@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { renderMarkdown } from "../../lib/markdown";
+import { MarkdownArticle } from "../../components/MarkdownArticle";
 import type { ReportMeta } from "../../wails.d";
 
 type AnalysisViewProps = {
@@ -56,7 +56,7 @@ export function AnalysisView(props: AnalysisViewProps) {
               <span class="report-reader-model">{selectedReport()!.model}</span>
             </div>
           </div>
-          <article class="report-article" innerHTML={renderMarkdown(props.reportContent)} />
+          <MarkdownArticle markdown={props.reportContent} />
         </div>
       </Show>
     </div>

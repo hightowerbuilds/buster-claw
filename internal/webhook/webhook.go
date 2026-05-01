@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +21,8 @@ const (
 	ActionFull    Action = "full"
 	ActionCommand Action = "command"
 )
+
+const SecretHeader = "X-Buster-Claw-Secret"
 
 // Hook represents a single webhook configuration.
 type Hook struct {
@@ -136,6 +139,10 @@ func (s *Server) handleHook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Hook not found or disabled", http.StatusNotFound)
 		return
 	}
+	if !validSecret(hook, r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	// Read body (limit 1MB)
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1024*1024))
@@ -153,6 +160,25 @@ func (s *Server) handleHook(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusAccepted)
 	fmt.Fprintf(w, "Hook %q triggered", name)
+}
+
+func validSecret(hook Hook, r *http.Request) bool {
+	if hook.Secret == "" {
+		return true
+	}
+
+	got := r.Header.Get(SecretHeader)
+	if got == "" {
+		const bearerPrefix = "Bearer "
+		auth := r.Header.Get("Authorization")
+		if len(auth) > len(bearerPrefix) && auth[:len(bearerPrefix)] == bearerPrefix {
+			got = auth[len(bearerPrefix):]
+		}
+	}
+	if got == "" || len(got) != len(hook.Secret) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(hook.Secret)) == 1
 }
 
 // AddHook adds a new hook configuration.

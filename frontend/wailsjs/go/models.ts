@@ -287,6 +287,28 @@ export namespace main {
 	        this.hasKey = source["hasKey"];
 	    }
 	}
+	export class WebhookInfo {
+	    name: string;
+	    action: string;
+	    customCmd?: string;
+	    deliverTo?: string;
+	    enabled: boolean;
+	    hasSecret: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WebhookInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.action = source["action"];
+	        this.customCmd = source["customCmd"];
+	        this.deliverTo = source["deliverTo"];
+	        this.enabled = source["enabled"];
+	        this.hasSecret = source["hasSecret"];
+	    }
+	}
 
 }
 
@@ -296,6 +318,10 @@ export namespace orchestrator {
 	    filename: string;
 	    path: string;
 	    status: string;
+	    progress: number;
+	    error?: string;
+	    report?: string;
+	    model?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new QueueEntry(source);
@@ -306,6 +332,10 @@ export namespace orchestrator {
 	        this.filename = source["filename"];
 	        this.path = source["path"];
 	        this.status = source["status"];
+	        this.progress = source["progress"];
+	        this.error = source["error"];
+	        this.report = source["report"];
+	        this.model = source["model"];
 	    }
 	}
 
@@ -339,33 +369,6 @@ export namespace scheduler {
 	        this.nextRun = source["nextRun"];
 	        this.lastRun = source["lastRun"];
 	        this.lastError = source["lastError"];
-	    }
-	}
-
-}
-
-export namespace webhook {
-	
-	export class Hook {
-	    name: string;
-	    secret?: string;
-	    action: string;
-	    customCmd?: string;
-	    deliverTo?: string;
-	    enabled: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new Hook(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.secret = source["secret"];
-	        this.action = source["action"];
-	        this.customCmd = source["customCmd"];
-	        this.deliverTo = source["deliverTo"];
-	        this.enabled = source["enabled"];
 	    }
 	}
 

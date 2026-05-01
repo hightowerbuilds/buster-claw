@@ -29,6 +29,7 @@ export function ChatView(props: ChatViewProps) {
       props.onSend();
     }
   };
+  const disabled = () => !props.currentModel || props.streaming || props.waiting || !!props.searching;
 
   return (
     <div class="chat-area" classList={{ hidden: !props.visible }}>
@@ -75,9 +76,9 @@ export function ChatView(props: ChatViewProps) {
             value={props.input}
             onInput={(event) => props.onInputChange(event.currentTarget.value)}
             onKeyDown={handleKeyDown}
-            disabled={!props.currentModel || props.streaming}
+            disabled={disabled()}
           />
-          <button onClick={props.onSend} disabled={!props.currentModel || props.streaming || !props.input.trim()}>Send</button>
+          <button onClick={props.onSend} disabled={disabled() || !props.input.trim()}>Send</button>
         </div>
       </div>
     </div>

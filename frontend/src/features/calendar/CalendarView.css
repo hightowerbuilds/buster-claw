@@ -2,6 +2,9 @@
   --calendar-event: var(--success);
   --calendar-job: var(--accent);
   --calendar-today: #ff8c42;
+  --calendar-control-green: var(--success);
+  --calendar-control-green-soft: rgba(76, 175, 80, 0.16);
+  --calendar-control-green-border: rgba(76, 175, 80, 0.52);
   --calendar-line-soft: rgba(255, 255, 255, 0.12);
   --calendar-surface: rgba(18, 18, 26, 0.82);
   --calendar-surface-strong: rgba(10, 10, 15, 0.72);
@@ -38,10 +41,10 @@
   justify-content: center;
   min-height: 42px;
   padding: 0.62rem 0.95rem;
-  border: 1px solid rgba(120, 255, 160, 0.42);
+  border: 1px solid var(--calendar-control-green-border);
   border-left-width: 0;
-  background: rgba(0, 0, 0, 0.24);
-  color: rgba(201, 255, 216, 0.82);
+  background: rgba(0, 0, 0, 0.28);
+  color: rgba(206, 245, 213, 0.9);
   font-family: "Atkinson Hyperlegible", sans-serif;
   font-size: 12px;
   font-weight: 700;
@@ -57,9 +60,14 @@
 
 .calendar-control-btn:hover,
 .calendar-control-btn.active {
-  background: rgba(120, 255, 160, 0.08);
-  border-color: rgba(120, 255, 160, 0.82);
-  color: #e6ffef;
+  background: var(--calendar-control-green-soft);
+  border-color: var(--calendar-control-green);
+  color: #effff2;
+}
+
+.calendar-control-btn.active {
+  background: rgba(76, 175, 80, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(206, 245, 213, 0.16);
 }
 
 .calendar-layout {

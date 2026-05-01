@@ -52,7 +52,15 @@ type QueueEntry struct {
 	Filename string `json:"filename"`
 	Path     string `json:"path"`
 	Status   string `json:"status"` // "queued", "analyzing", "done", "failed"
+	Progress int    `json:"progress"`
+	Error    string `json:"error,omitempty"`
+	Report   string `json:"report,omitempty"`
+	Model    string `json:"model,omitempty"`
 }
+
+const MaxAnalysisQueue = 5
+
+const perDocumentAnalysisTimeout = 45 * time.Minute
 
 // Orchestrator coordinates the full pipeline: ingest → queue → analyze → report.
 // Ingestion runs concurrently. Analysis is gated — one document at a time.
@@ -127,8 +135,8 @@ func (o *Orchestrator) updateStatus(fn func(*Status)) {
 }
 
 // QueueDocument adds a single document to the analysis queue.
-func (o *Orchestrator) QueueDocument(path string) {
-	o.enqueueAnalysis(path)
+func (o *Orchestrator) QueueDocument(path string) error {
+	return o.enqueueAnalysis(path)
 }
 
 // GetAnalysisQueue returns the current tracked queue entries.
@@ -171,18 +179,41 @@ func (o *Orchestrator) RemoveFromQueue(path string) {
 	})
 }
 
-func (o *Orchestrator) enqueueAnalysis(path string) bool {
+func (o *Orchestrator) enqueueAnalysis(path string) error {
 	o.queueMu.Lock()
-	for _, e := range o.queue {
-		if e.Path == path {
-			o.queueMu.Unlock()
-			return false
+	for i, e := range o.queue {
+		if e.Path != path {
+			continue
 		}
+		if e.Status == "failed" {
+			if countActiveQueue(o.queue) >= MaxAnalysisQueue {
+				o.queueMu.Unlock()
+				return fmt.Errorf("analysis queue is full; run or clear existing items before adding more")
+			}
+			o.queue[i].Status = "queued"
+			o.queue[i].Progress = 0
+			o.queue[i].Error = ""
+			o.queue[i].Report = ""
+			o.queue[i].Model = ""
+			depth := countQueued(o.queue)
+			o.queueMu.Unlock()
+			o.updateStatus(func(s *Status) {
+				s.QueueDepth = depth
+			})
+			return nil
+		}
+		o.queueMu.Unlock()
+		return nil
+	}
+	if countActiveQueue(o.queue) >= MaxAnalysisQueue {
+		o.queueMu.Unlock()
+		return fmt.Errorf("analysis queue is full; run or clear existing items before adding more")
 	}
 	o.queue = append(o.queue, QueueEntry{
 		Filename: filepath.Base(path),
 		Path:     path,
 		Status:   "queued",
+		Progress: 0,
 	})
 	depth := countQueued(o.queue)
 	o.queueMu.Unlock()
@@ -190,7 +221,7 @@ func (o *Orchestrator) enqueueAnalysis(path string) bool {
 	o.updateStatus(func(s *Status) {
 		s.QueueDepth = depth
 	})
-	return true
+	return nil
 }
 
 func (o *Orchestrator) takeNextQueued() (Job, bool) {
@@ -199,18 +230,33 @@ func (o *Orchestrator) takeNextQueued() (Job, bool) {
 	for i := range o.queue {
 		if o.queue[i].Status == "queued" {
 			o.queue[i].Status = "analyzing"
+			o.queue[i].Progress = 25
+			o.queue[i].Error = ""
+			o.queue[i].Model = o.currentModel()
 			return Job{Type: JobAnalyze, SourceFile: o.queue[i].Path}, true
 		}
 	}
 	return Job{}, false
 }
 
-func (o *Orchestrator) setQueueStatus(path, status string) {
+func (o *Orchestrator) setQueueStatus(path, status, message, report string) {
 	o.queueMu.Lock()
 	defer o.queueMu.Unlock()
 	for i := range o.queue {
 		if o.queue[i].Path == path {
 			o.queue[i].Status = status
+			o.queue[i].Error = message
+			o.queue[i].Report = report
+			switch status {
+			case "queued":
+				o.queue[i].Progress = 0
+			case "analyzing":
+				o.queue[i].Progress = 50
+			case "done":
+				o.queue[i].Progress = 100
+			case "failed":
+				o.queue[i].Progress = 100
+			}
 			return
 		}
 	}
@@ -226,6 +272,16 @@ func countQueued(entries []QueueEntry) int {
 	count := 0
 	for _, e := range entries {
 		if e.Status == "queued" {
+			count++
+		}
+	}
+	return count
+}
+
+func countActiveQueue(entries []QueueEntry) int {
+	count := 0
+	for _, e := range entries {
+		if e.Status == "queued" || e.Status == "analyzing" {
 			count++
 		}
 	}
@@ -382,7 +438,8 @@ func (o *Orchestrator) IngestSingle(ctx context.Context, source ingest.Source) (
 	return saved, nil
 }
 
-// RunAnalysis processes the analysis queue sequentially — one document at a time.
+// RunAnalysis processes explicitly queued documents. Analysis runs in parallel
+// only when an external provider is active; local Ollama is kept single-worker.
 // It blocks until the queue is drained or the context is cancelled.
 func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 	o.hooks.Trigger(hooks.PreAnalysis, nil)
@@ -416,7 +473,7 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 
 	processed := 0
 	var lastErr error
-	var processedMu sync.Mutex
+	var resultMu sync.Mutex
 
 	workerCount := o.WorkerCount
 	if workerCount <= 0 {
@@ -440,7 +497,6 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 	defer pool.Close()
 
 	var wg sync.WaitGroup
-	errCh := make(chan error, workerCount)
 
 	for _, worker := range pool.Workers {
 		wg.Add(1)
@@ -479,7 +535,7 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 						}
 					})
 
-					err := o.analyzeOne(ctx, job, ints, qMgr, reportMgr, reportsDir)
+					reportName, err := o.analyzeOne(ctx, job, ints, qMgr, reportMgr, reportsDir)
 
 					o.updateStatus(func(s *Status) {
 						var filtered []string
@@ -507,34 +563,35 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 					w.Mu.Unlock()
 
 					if err != nil {
-						o.setQueueStatus(job.SourceFile, "failed")
-						errCh <- err
+						o.setQueueStatus(job.SourceFile, "failed", err.Error(), "")
+						resultMu.Lock()
+						lastErr = err
+						resultMu.Unlock()
 						continue
 					}
 
-					processedMu.Lock()
+					resultMu.Lock()
 					processed++
-					processedMu.Unlock()
+					resultMu.Unlock()
 
-					o.setQueueStatus(job.SourceFile, "done")
+					o.setQueueStatus(job.SourceFile, "done", "", reportName)
 				}
 			}
 		}(worker)
 	}
 
 	wg.Wait()
-	close(errCh)
+	resultMu.Lock()
+	processedCount := processed
+	finalErr := lastErr
+	resultMu.Unlock()
 
-	for err := range errCh {
-		lastErr = err
+	if finalErr != nil {
+		o.hooks.Trigger(hooks.OnError, map[string]string{"error": finalErr.Error(), "phase": "analysis"})
 	}
 
-	if lastErr != nil {
-		o.hooks.Trigger(hooks.OnError, map[string]string{"error": lastErr.Error(), "phase": "analysis"})
-	}
-
-	o.hooks.Trigger(hooks.PostAnalysis, map[string]int{"processed": processed})
-	return processed, lastErr
+	o.hooks.Trigger(hooks.PostAnalysis, map[string]int{"processed": processedCount})
+	return processedCount, finalErr
 }
 
 // RunFull executes ingestion and analysis as a coordinated pipeline.
@@ -563,15 +620,37 @@ func (o *Orchestrator) DrainQueue(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("get pending files: %w", err)
 	}
 
-	for _, f := range pending {
-		o.enqueueAnalysis(f)
-	}
-
 	if len(pending) == 0 {
 		return 0, nil
 	}
 
-	return o.RunAnalysis(ctx)
+	queued := 0
+	var enqueueErr error
+	for _, f := range pending {
+		if err := o.enqueueAnalysis(f); err != nil {
+			if enqueueErr == nil {
+				enqueueErr = err
+			}
+			continue
+		}
+		queued++
+	}
+
+	if queued == 0 {
+		if enqueueErr != nil {
+			return 0, fmt.Errorf("queue pending files: %w", enqueueErr)
+		}
+		return 0, nil
+	}
+
+	processed, err := o.RunAnalysis(ctx)
+	if err != nil {
+		return processed, err
+	}
+	if enqueueErr != nil {
+		return processed, fmt.Errorf("some pending files were not queued: %w", enqueueErr)
+	}
+	return processed, nil
 }
 
 const (
@@ -586,11 +665,11 @@ func (o *Orchestrator) analyzeOne(
 	qMgr *queue.Manager,
 	reportMgr *library.ReportManager,
 	reportsDir string,
-) error {
+) (string, error) {
 	o.hooks.Trigger(hooks.PreReport, job)
 	content, err := os.ReadFile(job.SourceFile)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", filepath.Base(job.SourceFile), err)
+		return "", fmt.Errorf("read %s: %w", filepath.Base(job.SourceFile), err)
 	}
 
 	docContent := string(content)
@@ -627,7 +706,7 @@ func (o *Orchestrator) analyzeOne(
 	userPrompt.WriteString(docBody)
 
 	var builder strings.Builder
-	ctxChat, cancelChat := context.WithTimeout(ctx, 3*time.Minute)
+	ctxChat, cancelChat := context.WithTimeout(ctx, perDocumentAnalysisTimeout)
 	defer cancelChat()
 
 	var chatErr error
@@ -663,16 +742,22 @@ func (o *Orchestrator) analyzeOne(
 	}
 
 	if chatErr != nil {
-		return fmt.Errorf("analysis failed for %s: %w", filepath.Base(job.SourceFile), chatErr)
+		return "", fmt.Errorf("analysis failed for %s: %w", filepath.Base(job.SourceFile), chatErr)
 	}
 
 	rawResponse := builder.String()
 	spec, found, parseErr := extractMarkdownBlock(rawResponse)
 	if parseErr != nil {
-		return fmt.Errorf("extract report for %s: %w", filepath.Base(job.SourceFile), parseErr)
+		spec, err = fallbackMarkdownReport(rawResponse, job.SourceFile)
+		if err != nil {
+			return "", fmt.Errorf("extract report for %s: %w", filepath.Base(job.SourceFile), parseErr)
+		}
 	}
 	if !found {
-		return fmt.Errorf("no valid markdown block for %s", filepath.Base(job.SourceFile))
+		spec, err = fallbackMarkdownReport(rawResponse, job.SourceFile)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	now := time.Now().Format(time.RFC3339)
@@ -689,11 +774,11 @@ func (o *Orchestrator) analyzeOne(
 	fullContent := library.BuildReportFrontmatter(meta) + spec.content + "\n"
 	outPath := filepath.Join(reportsDir, filepath.Base(spec.name))
 	if err := os.WriteFile(outPath, []byte(fullContent), 0644); err != nil {
-		return fmt.Errorf("write report: %w", err)
+		return "", fmt.Errorf("write report: %w", err)
 	}
 
 	if err := reportMgr.AppendManifest(meta); err != nil {
-		// Non-fatal — report was saved
+		return "", fmt.Errorf("add report to analysis page: %w", err)
 	}
 
 	o.hooks.Trigger(hooks.PostReport, meta)
@@ -708,7 +793,10 @@ func (o *Orchestrator) analyzeOne(
 		})
 	}()
 
-	return qMgr.MarkProcessed(job.SourceFile)
+	if err := qMgr.MarkProcessed(job.SourceFile); err != nil {
+		return "", err
+	}
+	return meta.Filename, nil
 }
 
 // --- frontmatter helpers (duplicated from tui to avoid circular import) ---
@@ -790,4 +878,52 @@ func extractMarkdownBlock(raw string) (markdownSpec, bool, error) {
 	}
 
 	return markdownSpec{name: name, content: content}, true, nil
+}
+
+func fallbackMarkdownReport(raw, sourceFile string) (markdownSpec, error) {
+	content := strings.TrimSpace(raw)
+	if content == "" {
+		return markdownSpec{}, fmt.Errorf("model returned empty analysis for %s", filepath.Base(sourceFile))
+	}
+
+	content = strings.TrimPrefix(content, "```markdown")
+	content = strings.TrimPrefix(content, "```md")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return markdownSpec{}, fmt.Errorf("model returned empty markdown for %s", filepath.Base(sourceFile))
+	}
+
+	if !strings.HasPrefix(content, "# ") {
+		content = fmt.Sprintf("# Analysis: %s\n\n%s", strings.TrimSuffix(filepath.Base(sourceFile), filepath.Ext(sourceFile)), content)
+	}
+
+	return markdownSpec{
+		name:    fallbackReportName(sourceFile),
+		content: content,
+	}, nil
+}
+
+func fallbackReportName(sourceFile string) string {
+	base := strings.TrimSuffix(filepath.Base(sourceFile), filepath.Ext(sourceFile))
+	base = strings.ToLower(base)
+	var cleaned strings.Builder
+	lastDash := false
+	for _, r := range base {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			cleaned.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			cleaned.WriteRune('-')
+			lastDash = true
+		}
+	}
+	name := strings.Trim(cleaned.String(), "-")
+	if name == "" {
+		name = "analysis"
+	}
+	return "report-" + name + ".md"
 }

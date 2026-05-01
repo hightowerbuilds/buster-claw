@@ -507,6 +507,129 @@ select {
   overflow: hidden;
 }
 
+.analysis-queue-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.analysis-queue-chip {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 9px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(130, 150, 190, 0.24);
+}
+
+.analysis-queue-chip.active {
+  border-color: rgba(30, 144, 255, 0.7);
+}
+
+.analysis-queue-chip.complete {
+  border-color: rgba(76, 175, 80, 0.72);
+}
+
+.analysis-queue-chip.failed {
+  border-color: rgba(239, 83, 80, 0.72);
+}
+
+.analysis-chip-thumb {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(130, 150, 190, 0.22);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.analysis-chip-main {
+  min-width: 0;
+}
+
+.analysis-chip-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.analysis-chip-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.analysis-chip-status {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.analysis-queue-chip.active .analysis-chip-status {
+  color: var(--accent);
+}
+
+.analysis-queue-chip.complete .analysis-chip-status {
+  color: var(--success);
+}
+
+.analysis-queue-chip.failed .analysis-chip-status,
+.analysis-chip-error {
+  color: var(--error);
+}
+
+.analysis-chip-progress {
+  height: 4px;
+  margin-top: 7px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.analysis-chip-progress div {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.analysis-queue-chip.complete .analysis-chip-progress div {
+  background: var(--success);
+}
+
+.analysis-queue-chip.failed .analysis-chip-progress div {
+  background: var(--error);
+}
+
+.analysis-chip-error,
+.analysis-chip-report {
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.analysis-chip-report {
+  color: var(--text-muted);
+}
+
 .doc-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
