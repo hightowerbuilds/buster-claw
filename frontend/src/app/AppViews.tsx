@@ -1,16 +1,11 @@
 import { AnalysisView } from "../features/analysis/AnalysisView";
+import { AdvancedView } from "../features/advanced/AdvancedView";
+import { CalendarView } from "../features/calendar/CalendarView";
 import { ChatView } from "../features/chat/ChatView";
-import { DeliveryView } from "../features/delivery/DeliveryView";
-import { DocsView } from "../features/docs/DocsView";
 import { DocumentsView } from "../features/documents/DocumentsView";
 import { HomeView } from "../features/home/HomeView";
-import { HooksView } from "../features/hooks/HooksView";
 import { IngestionView } from "../features/ingestion/IngestionView";
-import { MemoryView } from "../features/memory/MemoryView";
-import { ModelsView } from "../features/models/ModelsView";
-import { OrchestrationView } from "../features/orchestration/OrchestrationView";
-import { ProvidersView } from "../features/providers/ProvidersView";
-import { SchedulerView } from "../features/scheduler/SchedulerView";
+import { IntelligenceView } from "../features/intelligence/IntelligenceView";
 import { WebhooksView } from "../features/webhooks/WebhooksView";
 import type { useAppController } from "./useAppController";
 
@@ -26,6 +21,7 @@ export function AppViews(props: AppViewsProps) {
       <HomeView
         visible={app.activeView === "home"}
         jobs={app.jobs}
+        calendarEvents={app.calendarEvents}
         reports={app.reports}
         documents={app.documents}
         analysisQueue={app.analysisQueue}
@@ -70,19 +66,18 @@ export function AppViews(props: AppViewsProps) {
 
       <DocumentsView
         visible={app.activeView === "documents"}
-        documents={app.documents}
-        onDeleteDocument={app.deleteDocument}
-      />
-
-      <OrchestrationView
-        visible={app.activeView === "orchestration"}
         busy={app.busy}
         streaming={app.streaming}
+        documents={app.documents}
         analysisQueue={app.analysisQueue}
         pendingFiles={app.pendingFiles}
+        selectedDocument={app.selectedDocument}
+        documentContent={app.documentContent}
+        onDeleteDocument={app.deleteDocument}
         onRunQueue={app.runQueue}
-        onRemoveFromQueue={app.removeFromQueue}
         onQueueDocument={app.queueDocument}
+        onOpenDocument={app.openDocument}
+        onCloseDocument={app.closeDocument}
       />
 
       <AnalysisView
@@ -94,76 +89,57 @@ export function AppViews(props: AppViewsProps) {
         onCloseReport={app.closeReport}
       />
 
-      <ModelsView
-        visible={app.activeView === "models"}
-        models={app.models}
-        currentModel={app.currentModel}
-        onRefresh={app.refreshModels}
-        onSelectModel={app.switchModel}
+      <CalendarView
+        visible={app.activeView === "calendar"}
+        events={app.calendarEvents}
+        jobs={app.jobs}
       />
 
-      <ProvidersView
-        visible={app.activeView === "providers"}
+      <IntelligenceView
+        visible={app.activeView === "intelligence"}
+        models={app.models}
+        currentModel={app.currentModel}
         providers={app.providers}
+        providerForm={app.providerForm}
         testResult={app.testResult}
-        form={app.providerForm}
-        onFormChange={app.updateProviderForm}
+        onRefreshModels={app.refreshModels}
+        onSelectModel={app.switchModel}
+        onProviderFormChange={app.updateProviderForm}
         onAddProvider={app.addProvider}
         onActivateProvider={app.activateProvider}
         onRemoveProvider={app.removeProvider}
         onTestProvider={app.testProvider}
       />
 
-      <MemoryView
-        visible={app.activeView === "memory"}
-        memories={app.memories}
-        newMemory={app.newMemory}
-        onMemoryChange={app.setNewMemory}
-        onAddMemory={app.addMemory}
-        onRemoveMemory={app.removeMemory}
-      />
-
-      <SchedulerView
-        visible={app.activeView === "scheduler"}
-        jobs={app.jobs}
-        form={app.jobForm}
-        onFormChange={app.updateJobForm}
-        onAddJob={app.addJob}
-        onToggleJob={app.toggleJob}
-        onRunJobNow={app.runJobNow}
-        onDeleteJob={app.deleteJob}
-      />
-
       <WebhooksView
         visible={app.activeView === "webhooks"}
         webhooks={app.webhooks}
-        form={app.webhookForm}
-        onFormChange={app.updateWebhookForm}
+        webhookForm={app.webhookForm}
+        hooks={app.pipelineHooks}
+        hookForm={app.hookForm}
+        onWebhookFormChange={app.updateWebhookForm}
+        onHookFormChange={app.updateHookForm}
         onAddWebhook={app.addWebhook}
         onToggleWebhook={app.toggleWebhook}
         onDeleteWebhook={app.deleteWebhook}
-      />
-
-      <DeliveryView
-        visible={app.activeView === "delivery"}
-        destinations={app.destinations}
-        form={app.deliveryForm}
-        onFormChange={app.updateDeliveryForm}
-        onAddDestination={app.addDestination}
-        onTestDestination={app.testDestination}
-        onDeleteDestination={app.deleteDestination}
-      />
-
-      <HooksView
-        visible={app.activeView === "hooks"}
-        hooks={app.pipelineHooks}
-        form={app.hookForm}
-        onFormChange={app.updateHookForm}
         onAddHook={app.addHook}
         onDeleteHook={app.deleteHook}
       />
 
-      <DocsView visible={app.activeView === "docs"} />
+      <AdvancedView
+        visible={app.activeView === "advanced"}
+        destinations={app.destinations}
+        deliveryForm={app.deliveryForm}
+        memories={app.memories}
+        newMemory={app.newMemory}
+        onDeliveryFormChange={app.updateDeliveryForm}
+        onAddDestination={app.addDestination}
+        onTestDestination={app.testDestination}
+        onDeleteDestination={app.deleteDestination}
+        onMemoryChange={app.setNewMemory}
+        onAddMemory={app.addMemory}
+        onRemoveMemory={app.removeMemory}
+      />
     </div>
   );
 }

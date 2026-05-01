@@ -1,12 +1,13 @@
 import { For, Show } from "solid-js";
 import { hostnameFromUrl } from "../../lib/urls";
-import type { DocumentInfo, JobState, PendingFile, QueueEntry, ReportMeta } from "../../wails.d";
+import type { CalendarEvent, DocumentInfo, JobState, PendingFile, QueueEntry, ReportMeta } from "../../wails.d";
 import { AnalogClock } from "./AnalogClock";
 import { WeeklyPlanCalendar } from "./WeeklyPlanCalendar";
 
 type HomeViewProps = {
   visible: boolean;
   jobs: JobState[];
+  calendarEvents: CalendarEvent[];
   reports: ReportMeta[];
   documents: DocumentInfo[];
   analysisQueue: QueueEntry[];
@@ -21,7 +22,7 @@ export function HomeView(props: HomeViewProps) {
         <main class="newspaper-grid">
           <div class="main-column">
             <AnalogClock />
-            <WeeklyPlanCalendar jobs={props.jobs} />
+            <WeeklyPlanCalendar jobs={props.jobs} events={props.calendarEvents} />
             <h2 class="section-title">Latest Analysis</h2>
             <Show when={props.reports.length > 0} fallback={<p class="empty-story">No recent analysis available. The newsroom is quiet.</p>}>
               <div class="featured-story">

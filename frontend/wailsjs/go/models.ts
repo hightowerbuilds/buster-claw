@@ -1,3 +1,26 @@
+export namespace calendar {
+	
+	export class Event {
+	    id: string;
+	    date: string;
+	    title: string;
+	    notes?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Event(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.date = source["date"];
+	        this.title = source["title"];
+	        this.notes = source["notes"];
+	    }
+	}
+
+}
+
 export namespace delivery {
 	
 	export class Destination {
@@ -180,6 +203,7 @@ export namespace main {
 	    date: string;
 	    sourceUrl: string;
 	    name: string;
+	    excerpt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new DocumentInfo(source);
@@ -192,6 +216,7 @@ export namespace main {
 	        this.date = source["date"];
 	        this.sourceUrl = source["sourceUrl"];
 	        this.name = source["name"];
+	        this.excerpt = source["excerpt"];
 	    }
 	}
 	export class IngestResult {

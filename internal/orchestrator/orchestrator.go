@@ -67,7 +67,7 @@ type Orchestrator struct {
 	intentionsFile string
 	sourcesFile    string
 
-	WorkerCount    int
+	WorkerCount int
 
 	statusMu sync.RWMutex
 	status   Status
@@ -100,6 +100,19 @@ func (o *Orchestrator) GetStatus() Status {
 	o.statusMu.RLock()
 	defer o.statusMu.RUnlock()
 	return o.status
+}
+
+// SetModel updates the local Ollama model used for analysis jobs.
+func (o *Orchestrator) SetModel(model string) {
+	o.statusMu.Lock()
+	o.model = model
+	o.statusMu.Unlock()
+}
+
+func (o *Orchestrator) currentModel() string {
+	o.statusMu.RLock()
+	defer o.statusMu.RUnlock()
+	return o.model
 }
 
 func (o *Orchestrator) updateStatus(fn func(*Status)) {
@@ -219,8 +232,8 @@ func countQueued(entries []QueueEntry) int {
 	return count
 }
 
-// RunIngest fetches all configured sources (including RSS expansion),
-// saves them to the Library, then queues each new file for analysis.
+// RunIngest fetches all configured sources (including RSS expansion)
+// and saves them to the Library for later analysis.
 // Returns the number of files saved.
 func (o *Orchestrator) RunIngest(ctx context.Context) (int, error) {
 	o.hooks.Trigger(hooks.PreIngest, nil)
@@ -278,18 +291,16 @@ func (o *Orchestrator) RunIngest(ctx context.Context) (int, error) {
 			o.updateStatus(func(s *Status) { s.FailedJobs++ })
 			continue
 		}
-		path, err := libMgr.SaveResult(r)
+		_, err := libMgr.SaveResult(r)
 		if err != nil {
 			lastErr = err
 			o.updateStatus(func(s *Status) { s.FailedJobs++ })
 			continue
 		}
 
-		o.enqueueAnalysis(path)
 		saved++
 		o.updateStatus(func(s *Status) {
 			s.CompletedJobs++
-			s.QueueDepth = o.queuedDepth()
 		})
 	}
 
@@ -303,7 +314,7 @@ func (o *Orchestrator) RunIngest(ctx context.Context) (int, error) {
 }
 
 // IngestSingle fetches a single source (with RSS expansion if needed),
-// saves results to the Library, and queues them for analysis.
+// saves results to the Library for later analysis.
 func (o *Orchestrator) IngestSingle(ctx context.Context, source ingest.Source) (int, error) {
 	o.hooks.Trigger(hooks.PreIngest, source)
 	o.updateStatus(func(s *Status) {
@@ -349,18 +360,16 @@ func (o *Orchestrator) IngestSingle(ctx context.Context, source ingest.Source) (
 			o.updateStatus(func(s *Status) { s.FailedJobs++ })
 			continue
 		}
-		path, err := libMgr.SaveResult(r)
+		_, err := libMgr.SaveResult(r)
 		if err != nil {
 			lastErr = err
 			o.updateStatus(func(s *Status) { s.FailedJobs++ })
 			continue
 		}
 
-		o.enqueueAnalysis(path)
 		saved++
 		o.updateStatus(func(s *Status) {
 			s.CompletedJobs++
-			s.QueueDepth = o.queuedDepth()
 		})
 	}
 
@@ -471,7 +480,7 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 					})
 
 					err := o.analyzeOne(ctx, job, ints, qMgr, reportMgr, reportsDir)
-					
+
 					o.updateStatus(func(s *Status) {
 						var filtered []string
 						for _, aj := range s.ActiveJobs {
@@ -486,7 +495,7 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 						} else {
 							s.CompletedJobs++
 						}
-						
+
 						if workerCount == 1 {
 							s.ActiveJob = ""
 						}
@@ -529,14 +538,14 @@ func (o *Orchestrator) RunAnalysis(ctx context.Context) (int, error) {
 }
 
 // RunFull executes ingestion and analysis as a coordinated pipeline.
-// Ingestion runs first, queuing files. Then analysis processes them sequentially.
+// Ingestion runs first, then analysis processes all pending raw documents.
 func (o *Orchestrator) RunFull(ctx context.Context) (ingested int, analyzed int, err error) {
 	ingested, err = o.RunIngest(ctx)
 	if err != nil {
 		return ingested, 0, err
 	}
 
-	analyzed, err = o.RunAnalysis(ctx)
+	analyzed, err = o.DrainQueue(ctx)
 	return ingested, analyzed, err
 }
 
@@ -587,6 +596,7 @@ func (o *Orchestrator) analyzeOne(
 	docContent := string(content)
 	sourceURL, sourceTags := extractFrontmatterMeta(docContent)
 	docBody := stripFrontmatter(docContent)
+	model := o.currentModel()
 
 	systemPrompt := ints.AnalysisPrompt() + "\n\n" + strings.Join([]string{
 		"You are analyzing a single document. Focus entirely on this document.",
@@ -646,7 +656,7 @@ func (o *Orchestrator) analyzeOne(
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt.String()},
 		}
-		chatErr = o.client.ChatStream(ctxChat, o.model, ollamaMsgs, func(chunk string) error {
+		chatErr = o.client.ChatStream(ctxChat, model, ollamaMsgs, func(chunk string) error {
 			builder.WriteString(chunk)
 			return nil
 		})
@@ -671,7 +681,7 @@ func (o *Orchestrator) analyzeOne(
 		SourceFile:     filepath.Base(job.SourceFile),
 		SourceURL:      sourceURL,
 		GeneratedAt:    now,
-		Model:          o.model,
+		Model:          model,
 		IntentionsUsed: true,
 		Tags:           sourceTags,
 	}

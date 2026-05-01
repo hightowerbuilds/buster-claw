@@ -91,7 +91,24 @@ func TestRunAnalysisProcessesQueuedDocumentsAndTracksStatus(t *testing.T) {
 	}
 }
 
-func TestIngestSingleQueuesSavedDocumentForUI(t *testing.T) {
+func TestRunAnalysisDoesNotDrainUnqueuedPendingDocuments(t *testing.T) {
+	o := newTestOrchestrator(t)
+	o.client = ollama.NewClient(newFakeOllamaServer(t).URL)
+	writeRawDoc(t, o.saveDir, "unqueued.md")
+
+	processed, err := o.RunAnalysis(context.Background())
+	if err != nil {
+		t.Fatalf("RunAnalysis returned error: %v", err)
+	}
+	if processed != 0 {
+		t.Fatalf("expected unqueued document to be ignored, processed %d", processed)
+	}
+	if entries := o.GetAnalysisQueue(); len(entries) != 0 {
+		t.Fatalf("expected manual queue to remain empty, got %#v", entries)
+	}
+}
+
+func TestIngestSingleSavesDocumentWithoutQueueingForUI(t *testing.T) {
 	o := newTestOrchestrator(t)
 	articleServer := newFakeArticleServer(t)
 
@@ -109,14 +126,11 @@ func TestIngestSingleQueuesSavedDocumentForUI(t *testing.T) {
 	}
 
 	entries := o.GetAnalysisQueue()
-	if len(entries) != 1 {
-		t.Fatalf("expected ingested document to appear in queue, got %d entries", len(entries))
+	if len(entries) != 0 {
+		t.Fatalf("expected ingestion to leave manual queue empty, got %d entries", len(entries))
 	}
-	if entries[0].Status != "queued" {
-		t.Fatalf("expected queued status, got %q", entries[0].Status)
-	}
-	if got := o.GetStatus().QueueDepth; got != 1 {
-		t.Fatalf("expected queue depth 1, got %d", got)
+	if got := o.GetStatus().QueueDepth; got != 0 {
+		t.Fatalf("expected queue depth 0, got %d", got)
 	}
 }
 

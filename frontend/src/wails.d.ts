@@ -48,6 +48,7 @@ export interface DocumentInfo {
   date: string;
   sourceUrl: string;
   name: string;
+  excerpt: string;
 }
 
 export interface PendingFile {
@@ -87,6 +88,13 @@ export interface JobState {
   nextRun: string;
   lastRun: string;
   lastError: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  date: string;
+  title: string;
+  notes?: string;
 }
 
 export interface Webhook {
@@ -135,6 +143,7 @@ declare global {
           DeleteSource(url: string): Promise<void>;
           GetReportManifest(): Promise<ReportMeta[]>;
           GetDocuments(): Promise<DocumentInfo[]>;
+          GetDocumentContent(path: string): Promise<string>;
           DeleteDocument(path: string): Promise<void>;
           GetPendingFiles(): Promise<PendingFile[]>;
           QueueDocument(path: string): Promise<void>;
@@ -154,6 +163,10 @@ declare global {
           UpdateJob(id: string, jobType: string, cronStr: string, enabled: boolean, customCmd: string, deliverTo: string): Promise<void>;
           DeleteJob(id: string): Promise<void>;
           RunJobNow(id: string): Promise<void>;
+          GetCalendarEvents(): Promise<CalendarEvent[]>;
+          AddCalendarEvent(date: string, title: string, notes: string): Promise<CalendarEvent>;
+          UpdateCalendarEvent(id: string, date: string, title: string, notes: string): Promise<void>;
+          DeleteCalendarEvent(id: string): Promise<void>;
           GetWebhooks(): Promise<Webhook[]>;
           AddWebhook(name: string, action: string, enabled: boolean, customCmd: string, deliverTo: string): Promise<void>;
           DeleteWebhook(name: string): Promise<void>;

@@ -3,7 +3,7 @@ import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-que
 import { GetModels } from "../../wailsjs/go/main/App";
 import type { View } from "./navigation";
 import { state, setState } from "../store";
-import type { ChatMessage, JobState, OrchestratorStatus, ReportMeta } from "../wails.d";
+import type { ChatMessage, DocumentInfo, OrchestratorStatus, ReportMeta } from "../wails.d";
 
 export function useAppController() {
   const qc = useQueryClient();
@@ -26,6 +26,8 @@ export function useAppController() {
   const [newSourceTags, setNewSourceTags] = createSignal("");
   const [selectedReport, setSelectedReport] = createSignal<ReportMeta | null>(null);
   const [reportContent, setReportContent] = createSignal("");
+  const [selectedDocument, setSelectedDocument] = createSignal<DocumentInfo | null>(null);
+  const [documentContent, setDocumentContent] = createSignal("");
 
   const [newMemory, setNewMemory] = createSignal("");
   const [provName, setProvName] = createSignal("");
@@ -34,12 +36,6 @@ export function useAppController() {
   const [provKey, setProvKey] = createSignal("");
   const [provModel, setProvModel] = createSignal("");
   const [testResult, setTestResult] = createSignal("");
-
-  const [jobId, setJobId] = createSignal("");
-  const [jobType, setJobType] = createSignal("ingest");
-  const [jobCron, setJobCron] = createSignal("0 7 * * *");
-  const [jobCustomCmd, setJobCustomCmd] = createSignal("");
-  const [jobDeliverTo, setJobDeliverTo] = createSignal("");
 
   const [whName, setWhName] = createSignal("");
   const [whAction, setWhAction] = createSignal("ingest");
@@ -75,12 +71,12 @@ export function useAppController() {
   const pendingQuery = createQuery(() => ({
     queryKey: ["pending"],
     queryFn: () => window.go.main.App.GetPendingFiles(),
-    enabled: activeView() === "orchestration" || activeView() === "home",
+    enabled: activeView() === "documents" || activeView() === "home",
   }));
   const queueQuery = createQuery(() => ({
     queryKey: ["queue"],
     queryFn: () => window.go.main.App.GetAnalysisQueue(),
-    enabled: activeView() === "orchestration" || activeView() === "home",
+    enabled: activeView() === "documents" || activeView() === "home",
   }));
   const reportsQuery = createQuery(() => ({
     queryKey: ["reports"],
@@ -90,18 +86,23 @@ export function useAppController() {
   const memoriesQuery = createQuery(() => ({
     queryKey: ["memories"],
     queryFn: () => window.go.main.App.GetMemories(),
-    enabled: activeView() === "memory",
+    enabled: activeView() === "advanced",
   }));
   const providersQuery = createQuery(() => ({
     queryKey: ["providers"],
     queryFn: () => window.go.main.App.GetProviders(),
-    enabled: activeView() === "providers",
+    enabled: activeView() === "intelligence",
   }));
   const schedulerQuery = createQuery(() => ({
     queryKey: ["scheduler"],
     queryFn: () => window.go.main.App.GetJobs(),
-    enabled: activeView() === "scheduler" || activeView() === "home",
-    refetchInterval: activeView() === "scheduler" || activeView() === "home" ? 5000 : false,
+    enabled: activeView() === "calendar" || activeView() === "home",
+    refetchInterval: activeView() === "calendar" || activeView() === "home" ? 5000 : false,
+  }));
+  const calendarQuery = createQuery(() => ({
+    queryKey: ["calendar-events"],
+    queryFn: () => window.go.main.App.GetCalendarEvents(),
+    enabled: activeView() === "calendar" || activeView() === "home",
   }));
   const webhooksQuery = createQuery(() => ({
     queryKey: ["webhooks"],
@@ -111,12 +112,12 @@ export function useAppController() {
   const deliveryQuery = createQuery(() => ({
     queryKey: ["delivery"],
     queryFn: () => window.go.main.App.GetDeliveryDestinations(),
-    enabled: activeView() === "delivery",
+    enabled: activeView() === "advanced",
   }));
   const hooksQuery = createQuery(() => ({
     queryKey: ["hooks"],
     queryFn: () => window.go.main.App.GetHooks(),
-    enabled: activeView() === "hooks",
+    enabled: activeView() === "webhooks",
   }));
 
   const addSourceMut = createMutation(() => ({
@@ -163,24 +164,6 @@ export function useAppController() {
   const setActiveMut = createMutation(() => ({
     mutationFn: (name: string) => window.go.main.App.SetActiveProvider(name),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["providers"] }),
-  }));
-  const addJobMut = createMutation(() => ({
-    mutationFn: (args: { id: string; type: string; cron: string; enabled: boolean; customCmd: string; deliverTo: string }) =>
-      window.go.main.App.AddJob(args.id, args.type, args.cron, args.enabled, args.customCmd, args.deliverTo),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduler"] }),
-  }));
-  const updateJobMut = createMutation(() => ({
-    mutationFn: (args: { id: string; type: string; cron: string; enabled: boolean; customCmd: string; deliverTo: string }) =>
-      window.go.main.App.UpdateJob(args.id, args.type, args.cron, args.enabled, args.customCmd, args.deliverTo),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduler"] }),
-  }));
-  const deleteJobMut = createMutation(() => ({
-    mutationFn: (id: string) => window.go.main.App.DeleteJob(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduler"] }),
-  }));
-  const runJobNowMut = createMutation(() => ({
-    mutationFn: (id: string) => window.go.main.App.RunJobNow(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduler"] }),
   }));
   const addWebhookMut = createMutation(() => ({
     mutationFn: (args: { name: string; action: string; enabled: boolean; customCmd: string; deliverTo: string }) =>
@@ -327,6 +310,20 @@ export function useAppController() {
     setReportContent("");
   };
 
+  const openDocument = async (doc: DocumentInfo) => {
+    try {
+      setDocumentContent(await window.go.main.App.GetDocumentContent(doc.path));
+      setSelectedDocument(doc);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const closeDocument = () => {
+    setSelectedDocument(null);
+    setDocumentContent("");
+  };
+
   const addSource = () => {
     const url = newSourceUrl().trim();
     if (!url) return;
@@ -355,15 +352,6 @@ export function useAppController() {
   const addProvider = (provider: { name: string; type: string; baseUrl: string; apiKey: string; model: string }) => {
     addProviderMut.mutate(provider);
     setProvName(""); setProvUrl(""); setProvKey(""); setProvModel("");
-  };
-
-  const addJob = (job: { id: string; type: string; cron: string; customCmd: string; deliverTo: string }) => {
-    addJobMut.mutate({ ...job, enabled: true });
-    setJobId(""); setJobCustomCmd("");
-  };
-
-  const toggleJob = (job: JobState) => {
-    updateJobMut.mutate({ id: job.id, type: job.type, cron: job.cron, enabled: !job.enabled, customCmd: job.customCmd || "", deliverTo: job.deliverTo || "" });
   };
 
   const addWebhook = (webhook: { name: string; action: string; customCmd: string; deliverTo: string }) => {
@@ -396,6 +384,7 @@ export function useAppController() {
     get memories() { return memoriesQuery.data || []; },
     get providers() { return providersQuery.data || []; },
     get jobs() { return schedulerQuery.data || []; },
+    get calendarEvents() { return calendarQuery.data || []; },
     get webhooks() { return webhooksQuery.data || []; },
     get destinations() { return deliveryQuery.data || []; },
     get pipelineHooks() { return hooksQuery.data || []; },
@@ -407,10 +396,11 @@ export function useAppController() {
     get sourceForm() { return { url: newSourceUrl(), name: newSourceName(), type: newSourceType(), tags: newSourceTags() }; },
     get selectedReport() { return selectedReport(); },
     get reportContent() { return reportContent(); },
+    get selectedDocument() { return selectedDocument(); },
+    get documentContent() { return documentContent(); },
     get newMemory() { return newMemory(); },
     get providerForm() { return { name: provName(), type: provType(), baseUrl: provUrl(), apiKey: provKey(), model: provModel() }; },
     get testResult() { return testResult(); },
-    get jobForm() { return { id: jobId(), type: jobType(), cron: jobCron(), customCmd: jobCustomCmd(), deliverTo: jobDeliverTo() }; },
     get webhookForm() { return { name: whName(), action: whAction(), customCmd: whCmd(), deliverTo: whDeliver() }; },
     get deliveryForm() { return { name: destName(), type: destType(), url: destUrl(), token: destToken(), chatId: destChatId() }; },
     get hookForm() { return { name: hkName(), event: hkEvent(), type: hkType(), target: hkTarget(), async: hkAsync() }; },
@@ -437,6 +427,8 @@ export function useAppController() {
     runQueue,
     removeFromQueue: (path: string) => removeQueueMut.mutate(path),
     queueDocument: (path: string) => queueDocMut.mutate(path),
+    openDocument,
+    closeDocument,
     openReport,
     closeReport,
     refreshModels: () => qc.invalidateQueries({ queryKey: ["models"] }),
@@ -455,17 +447,6 @@ export function useAppController() {
     activateProvider: (name: string) => setActiveMut.mutate(name),
     removeProvider: (name: string) => removeProviderMut.mutate(name),
     testProvider,
-    updateJobForm: (field: "id" | "type" | "cron" | "customCmd" | "deliverTo", value: string) => {
-      if (field === "id") setJobId(value);
-      if (field === "type") setJobType(value);
-      if (field === "cron") setJobCron(value);
-      if (field === "customCmd") setJobCustomCmd(value);
-      if (field === "deliverTo") setJobDeliverTo(value);
-    },
-    addJob,
-    toggleJob,
-    runJobNow: (id: string) => runJobNowMut.mutate(id),
-    deleteJob: (id: string) => deleteJobMut.mutate(id),
     updateWebhookForm: (field: "name" | "action" | "customCmd" | "deliverTo", value: string) => {
       if (field === "name") setWhName(value);
       if (field === "action") setWhAction(value);

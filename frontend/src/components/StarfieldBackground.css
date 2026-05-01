@@ -1,0 +1,108 @@
+.starfield-background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #000;
+}
+
+.starfield-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  background: transparent;
+  will-change: transform, opacity, filter;
+}
+
+.starfield-layer-far {
+  opacity: 0.72;
+  animation:
+    starfield-drift-far 180s linear infinite,
+    starfield-pulse-far 96s ease-in-out infinite;
+}
+
+.starfield-layer-mid {
+  opacity: 0.78;
+  animation:
+    starfield-drift-mid 140s linear infinite,
+    starfield-pulse-mid 112s ease-in-out infinite;
+}
+
+.starfield-layer-near {
+  opacity: 0.86;
+  animation:
+    starfield-drift-near 118s linear infinite,
+    starfield-pulse-near 88s ease-in-out infinite;
+}
+
+@keyframes starfield-drift-far {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-80px, -720px, 0);
+  }
+}
+
+@keyframes starfield-drift-mid {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(72px, -840px, 0);
+  }
+}
+
+@keyframes starfield-drift-near {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(120px, -980px, 0);
+  }
+}
+
+@keyframes starfield-pulse-far {
+  0%,
+  100% {
+    opacity: 0.54;
+    filter: brightness(0.84);
+  }
+  50% {
+    opacity: 0.92;
+    filter: brightness(1.24);
+  }
+}
+
+@keyframes starfield-pulse-mid {
+  0%,
+  100% {
+    opacity: 0.58;
+    filter: brightness(0.9);
+  }
+  50% {
+    opacity: 0.96;
+    filter: brightness(1.38);
+  }
+}
+
+@keyframes starfield-pulse-near {
+  0%,
+  100% {
+    opacity: 0.64;
+    filter: brightness(0.94);
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(1.5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .starfield-layer {
+    animation: none;
+  }
+}

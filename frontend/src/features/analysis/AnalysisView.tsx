@@ -24,7 +24,7 @@ export function AnalysisView(props: AnalysisViewProps) {
           </div>
 
           <div class="report-list">
-            <For each={props.reports} fallback={<div class="empty-list">No analysis reports yet. Run the orchestration queue to generate reports.</div>}>
+            <For each={props.reports} fallback={<div class="empty-list">No analysis reports yet. Add documents to the queue from Documents, then run the queue.</div>}>
               {(report) => (
                 <div class="report-item" onClick={() => props.onOpenReport(report)}>
                   <div class="report-item-title">{report.filename}</div>

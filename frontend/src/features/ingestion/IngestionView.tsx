@@ -25,7 +25,7 @@ export function IngestionView(props: IngestionViewProps) {
     <div class="view-panel" classList={{ hidden: !props.visible }}>
       <div class="view-panel-content">
         <div class="view-header">
-          <h2>Ingestion</h2>
+          <h2>Sources</h2>
           <div class="view-header-actions">
             <span class="source-count">{props.sources.length} sources</span>
             <button class="action-btn" onClick={props.onStartIngest} disabled={props.busy || props.streaming || props.sources.length === 0}>Ingest All</button>

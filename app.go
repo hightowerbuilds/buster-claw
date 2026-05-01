@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"buster-claw/internal/calendar"
 	"buster-claw/internal/config"
 	"buster-claw/internal/delivery"
 	"buster-claw/internal/hooks"
@@ -42,6 +43,7 @@ type App struct {
 	webhooks     *webhook.Server
 	delivery     *delivery.Manager
 	hooks        *hooks.Manager
+	calendar     *calendar.Manager
 	messages     []ChatMessage
 	mu           sync.Mutex
 }
@@ -91,6 +93,7 @@ func NewApp(saveDir string) *App {
 
 	sched := scheduler.New(filepath.Join(saveDir, "Library", "scheduler.json"))
 	hooks := webhook.NewServer(filepath.Join(saveDir, "Library", "webhooks.json"), 9090)
+	cal := calendar.NewManager(filepath.Join(saveDir, "Library", "calendar.json"))
 
 	app := &App{
 		client:       client,
@@ -104,6 +107,7 @@ func NewApp(saveDir string) *App {
 		webhooks:     hooks,
 		delivery:     deliv,
 		hooks:        hks,
+		calendar:     cal,
 	}
 
 	// Wire up scheduler handlers
@@ -183,6 +187,10 @@ func (a *App) startup(ctx context.Context) {
 		fmt.Printf("[hooks] failed to load: %v\n", err)
 	}
 
+	if err := a.calendar.Load(); err != nil {
+		fmt.Printf("[calendar] failed to load: %v\n", err)
+	}
+
 	// Wire orchestrator status changes to frontend events.
 	a.orchestrator.OnStatusChange = func(s orchestrator.Status) {
 		runtime.EventsEmit(a.ctx, "orchestrator:status", OrchestratorStatus{
@@ -230,6 +238,7 @@ func (a *App) GetCurrentModel() string {
 // SetModel switches the active model.
 func (a *App) SetModel(name string) {
 	a.model = name
+	a.orchestrator.SetModel(name)
 }
 
 // --- Chat ---
@@ -612,12 +621,12 @@ func (a *App) IngestSource(sourceURL string) IngestResult {
 
 // --- Analysis ---
 
-// StartAnalysis runs the analysis pipeline on pending documents.
+// StartAnalysis runs the analysis pipeline on documents explicitly added to the queue.
 func (a *App) StartAnalysis() AnalysisResult {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	processed, err := a.orchestrator.DrainQueue(ctx)
+	processed, err := a.orchestrator.RunAnalysis(ctx)
 	if err != nil {
 		return AnalysisResult{Error: err.Error()}
 	}
@@ -824,6 +833,28 @@ func (a *App) RunJobNow(id string) error {
 	return a.scheduler.RunNow(id)
 }
 
+// --- Calendar ---
+
+// GetCalendarEvents returns all user-authored calendar events.
+func (a *App) GetCalendarEvents() []calendar.Event {
+	return a.calendar.All()
+}
+
+// AddCalendarEvent creates a calendar event for a specific date.
+func (a *App) AddCalendarEvent(date, title, notes string) (calendar.Event, error) {
+	return a.calendar.Add(date, title, notes)
+}
+
+// UpdateCalendarEvent updates an existing calendar event.
+func (a *App) UpdateCalendarEvent(id, date, title, notes string) error {
+	return a.calendar.Update(id, date, title, notes)
+}
+
+// DeleteCalendarEvent removes a calendar event.
+func (a *App) DeleteCalendarEvent(id string) error {
+	return a.calendar.Delete(id)
+}
+
 // --- Reports ---
 
 // GetReportManifest returns the report manifest.
@@ -876,6 +907,20 @@ type DocumentInfo struct {
 	Date      string `json:"date"`
 	SourceURL string `json:"sourceUrl"`
 	Name      string `json:"name"`
+	Excerpt   string `json:"excerpt"`
+}
+
+func (a *App) validateRawDocumentPath(path string) (string, error) {
+	rawDir := filepath.Join(a.saveDir, "Library", "raw")
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
+	absRaw, _ := filepath.Abs(rawDir)
+	if !strings.HasPrefix(absPath, absRaw+string(filepath.Separator)) {
+		return "", fmt.Errorf("path is not inside the library")
+	}
+	return absPath, nil
 }
 
 // GetDocuments returns metadata for all ingested documents in Library/raw/.
@@ -916,6 +961,7 @@ func (a *App) GetDocuments() ([]DocumentInfo, error) {
 				name, _ := extractFrontmatterField(string(content), "name")
 				doc.SourceURL = url
 				doc.Name = name
+				doc.Excerpt = documentExcerpt(string(content), 34)
 			}
 			docs = append(docs, doc)
 		}
@@ -924,18 +970,31 @@ func (a *App) GetDocuments() ([]DocumentInfo, error) {
 	return docs, nil
 }
 
+// GetDocumentContent reads a raw document file and returns markdown content with frontmatter stripped.
+func (a *App) GetDocumentContent(path string) (string, error) {
+	absPath, err := a.validateRawDocumentPath(path)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", fmt.Errorf("read document: %w", err)
+	}
+	content := string(data)
+	if strings.HasPrefix(content, "---\n") {
+		if end := strings.Index(content[4:], "\n---"); end != -1 {
+			content = strings.TrimSpace(content[4+end+4:])
+		}
+	}
+	return content, nil
+}
+
 // DeleteDocument removes a raw document file from the library.
 // Reports and queue entries referencing this document are intentionally preserved.
 func (a *App) DeleteDocument(path string) error {
-	// Ensure the path is inside Library/raw/ to prevent arbitrary file deletion
-	rawDir := filepath.Join(a.saveDir, "Library", "raw")
-	absPath, err := filepath.Abs(path)
+	absPath, err := a.validateRawDocumentPath(path)
 	if err != nil {
-		return fmt.Errorf("invalid path: %w", err)
-	}
-	absRaw, _ := filepath.Abs(rawDir)
-	if !strings.HasPrefix(absPath, absRaw+string(filepath.Separator)) {
-		return fmt.Errorf("path is not inside the library")
+		return err
 	}
 
 	if err := os.Remove(absPath); err != nil {
@@ -1003,6 +1062,34 @@ func extractFrontmatterField(content, field string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func documentExcerpt(content string, maxWords int) string {
+	if strings.HasPrefix(content, "---\n") {
+		if end := strings.Index(content[4:], "\n---"); end != -1 {
+			content = content[4+end+4:]
+		}
+	}
+
+	replacer := strings.NewReplacer(
+		"#", "",
+		"*", "",
+		"`", "",
+		"[", "",
+		"]", "",
+		"(", "",
+		")", "",
+		">", "",
+	)
+	words := strings.Fields(replacer.Replace(content))
+	if len(words) == 0 {
+		return ""
+	}
+	if len(words) > maxWords {
+		words = words[:maxWords]
+		return strings.Join(words, " ") + "..."
+	}
+	return strings.Join(words, " ")
 }
 
 // GetWebhooks returns all configured webhooks.

@@ -1,9 +1,10 @@
 import { For, Show } from "solid-js";
 import { dateKey, startOfDay } from "../../lib/dates";
-import type { JobState } from "../../wails.d";
+import type { CalendarEvent, JobState } from "../../wails.d";
 
 type WeeklyPlanCalendarProps = {
   jobs: JobState[];
+  events: CalendarEvent[];
 };
 
 export function WeeklyPlanCalendar(props: WeeklyPlanCalendarProps) {
@@ -26,6 +27,11 @@ export function WeeklyPlanCalendar(props: WeeklyPlanCalendarProps) {
     });
   };
 
+  const eventsForDay = (day: Date) => {
+    const key = dateKey(day);
+    return props.events.filter((event) => event.date === key);
+  };
+
   const jobLabel = (job: JobState) => {
     if (job.customCmd) return job.customCmd;
     if (job.type === "full") return "Full research pipeline";
@@ -42,6 +48,8 @@ export function WeeklyPlanCalendar(props: WeeklyPlanCalendarProps) {
         <For each={days()}>
           {(day, index) => {
             const dayJobs = () => jobsForDay(day);
+            const dayEvents = () => eventsForDay(day);
+            const hasPlans = () => dayJobs().length > 0 || dayEvents().length > 0;
             return (
               <div class="week-day" classList={{ today: index() === 0 }}>
                 <div class="week-day-heading">
@@ -49,7 +57,18 @@ export function WeeklyPlanCalendar(props: WeeklyPlanCalendarProps) {
                   <strong>{day.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</strong>
                 </div>
                 <div class="week-day-plans">
-                  <Show when={dayJobs().length > 0} fallback={<div class="week-empty">No scheduled work</div>}>
+                  <Show when={hasPlans()} fallback={<div class="week-empty">No scheduled work</div>}>
+                    <For each={dayEvents()}>
+                      {(event) => (
+                        <div class="week-plan-item calendar-plan">
+                          <span class="week-plan-type">event</span>
+                          <span class="week-plan-title">{event.title}</span>
+                          <Show when={event.notes}>
+                            <span class="week-plan-time">{event.notes}</span>
+                          </Show>
+                        </div>
+                      )}
+                    </For>
                     <For each={dayJobs()}>
                       {(job) => (
                         <div class="week-plan-item">
