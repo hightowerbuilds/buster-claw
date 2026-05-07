@@ -1,15 +1,25 @@
 .DS_Store
-__pycache__/
-.venv/
-.gocache/
-.gomodcache/
-dist/
-localllm
-buster-claw
-buster-claw-mcp
-/models/
+
+# Phoenix generated files
+/_build/
+/cover/
+/deps/
+/doc/
+/.fetch
+*.ez
+/tmp/
+buster_claw-*.tar
+/priv/static/assets/
+/priv/static/cache_manifest.json
+/assets/node_modules/
+npm-debug.log
+*.db
+*.db-*
+
+# Tauri desktop shell generated files
+desktop/tauri/target/
+
+# Local runtime data
 Library/
-/Memory/
-build/
-frontend/dist/
-frontend/node_modules/
+*.log
+erl_crash.dump

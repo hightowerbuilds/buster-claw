@@ -1,6 +1,6 @@
 # Buster Claw
 
-`buster-claw` is a desktop application for managing, searching, and analyzing local knowledge using Ollama and LLM providers. Built with [Wails](https://wails.io/), it combines a high-performance Go backend with a modern SolidJS frontend.
+`buster-claw` is a local-first Phoenix/LiveView application wrapped in a Tauri desktop shell. Phoenix lives at the repository root; the desktop shell lives in `desktop/tauri`.
 
 ## Features
 
@@ -21,29 +21,42 @@
 
 ## Quick Start
 
-1. **Requirements**: Go 1.26+, Node.js (for frontend), Ollama.
-2. **Clone & Install**:
-   ```bash
-   git clone <repo-url>
-   cd buster-claw
-   go mod download
-   ```
-3. **Run Development**:
-   ```bash
-   wails dev
-   ```
-4. **Build**:
-   ```bash
-   wails build
-   ```
+Requirements:
+
+- Elixir/Erlang
+- Rust/Cargo
+- `cargo-tauri`
+- Ollama or configured remote LLM provider
+
+Run Phoenix:
+
+```bash
+mix phx.server
+```
+
+Run the desktop shell in another terminal:
+
+```bash
+cd desktop/tauri
+cargo tauri dev
+```
+
+Phoenix is available directly at `http://127.0.0.1:4000/`; the Tauri shell opens the same app in a native desktop window.
+
+The desktop shell points at `http://127.0.0.1:4000` in dev mode. Override that endpoint when needed:
+
+```bash
+cd desktop/tauri
+BUSTER_CLAW_PHOENIX_URL=http://127.0.0.1:4001 cargo tauri dev
+```
 
 ## Configuration
 
-Settings are managed via the UI, which persists data into the library directory:
-- `sources.json`: Managed ingestion sources.
-- `mcp.json`: MCP server connections.
-- `providers.json`: LLM provider API keys and configurations.
-- `Library/`: Central store for all raw documents, reports, and job state.
+Rewrite state is managed by Phoenix/Ecto and the local library directory:
+
+- `buster_claw_dev.db`: development SQLite database.
+- `Library/`: raw documents and generated reports.
+- Legacy data files such as `sources.json` and `Library/*.json` are migration inputs.
 
 ## Commands
 
@@ -57,9 +70,11 @@ Settings are managed via the UI, which persists data into the library directory:
 
 ## Development Notes
 
-- [Quality checks](docs/QUALITY.md) lists the backend and frontend commands to run before refactors.
+- [Quality checks](docs/QUALITY.md) lists the Phoenix and Tauri commands to run before refactors.
 - [Architecture notes](docs/ARCHITECTURE.md) documents the current runtime shape, persisted files, and generated-code boundaries.
 - [Local trust model](docs/LOCAL_TRUST.md) documents shell hooks, webhooks, stored secrets, fetched markdown, and MCP boundaries.
+- [Rewrite packaging notes](docs/rewrite/DESKTOP_PACKAGING.md) document the Phoenix/Tauri desktop path.
+- [Rewrite cutover notes](docs/rewrite/CUTOVER.md) document what still blocks packaged daily use.
 - Historical quality plans are archived in `daily-growth/old-maps/`.
 
 ## License

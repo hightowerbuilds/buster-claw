@@ -1,26 +1,35 @@
-# Quality Checks
+# Quality
 
-Run these checks before and after behavior-preserving refactors.
+Run these checks before meaningful refactors.
 
-## Backend
+## Phoenix
 
-```bash
-go test ./...
-go vet ./...
+```sh
+mix format
+mix test
 ```
 
-## Frontend
+## Tauri
 
-```bash
-cd frontend
-npx tsc --noEmit
-npm run build
+```sh
+cd desktop/tauri
+cargo check
 ```
 
-## Generated Code
+For manual desktop testing:
 
-Do not hand-edit `frontend/wailsjs/**`. Wails owns those bindings. If a Go method signature changes, regenerate the bindings through the normal Wails workflow instead of patching generated TypeScript or JavaScript directly.
+```sh
+mix phx.server
+```
 
-## Refactor Rule
+Then in another terminal:
 
-Each modularization step should keep user-visible behavior stable unless the change is explicitly scoped as a product change. Prefer small commits where a file move, extraction, or service boundary can be reviewed independently from behavior changes.
+```sh
+cd desktop/tauri
+cargo tauri dev
+```
+
+## Notes
+
+- Keep generated Phoenix build artifacts, SQLite files, and Tauri `target/` out of source control.
+- Treat `Library/` and root legacy data files as local runtime/migration data, not application source.
