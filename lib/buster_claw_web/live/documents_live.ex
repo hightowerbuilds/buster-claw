@@ -2,14 +2,19 @@ defmodule BusterClawWeb.DocumentsLive do
   use BusterClawWeb, :live_view
 
   alias BusterClaw.Library
+  alias BusterClaw.Runtime.Status
 
   @impl true
   def mount(_params, _session, socket) do
+    snapshot = Status.snapshot()
+
     {:ok,
      socket
      |> assign(:page_title, "Documents")
      |> assign(:selected_document, nil)
      |> assign(:document_content, "")
+     |> assign(:library_root, snapshot.library_root)
+     |> assign(:library_exists?, snapshot.library_exists?)
      |> load_documents()}
   end
 
@@ -69,6 +74,24 @@ defmodule BusterClawWeb.DocumentsLive do
             Index Existing
           </button>
         </div>
+
+        <section class="rounded-lg border border-base-300 bg-base-100 p-5">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <h2 class="text-sm font-semibold text-base-content/70">Library Root</h2>
+              <p class="mt-2 break-words font-mono text-sm">{@library_root}</p>
+            </div>
+            <span class={[
+              "rounded-full px-2 py-1 text-xs font-semibold",
+              if(@library_exists?,
+                do: "bg-success/15 text-success",
+                else: "bg-warning/15 text-warning"
+              )
+            ]}>
+              {if @library_exists?, do: "ready", else: "pending"}
+            </span>
+          </div>
+        </section>
 
         <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,480px)]">
           <section class="rounded-lg border border-base-300 bg-base-100">

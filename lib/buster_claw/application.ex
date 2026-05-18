@@ -14,6 +14,7 @@ defmodule BusterClaw.Application do
        repos: Application.fetch_env!(:buster_claw, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:buster_claw, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: BusterClaw.PubSub},
+      BusterClaw.AgentMode,
       {Registry, keys: :unique, name: BusterClaw.Chat.Registry},
       {DynamicSupervisor, strategy: :one_for_one, name: BusterClaw.Chat.SessionSupervisor},
       # Start to serve requests, typically the last entry

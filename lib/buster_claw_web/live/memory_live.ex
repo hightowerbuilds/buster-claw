@@ -3,14 +3,19 @@ defmodule BusterClawWeb.MemoryLive do
 
   alias BusterClaw.Memory
   alias BusterClaw.Memory.Memory, as: MemoryRecord
+  alias BusterClaw.Runtime.Status
 
   @impl true
   def mount(_params, _session, socket) do
+    snapshot = Status.snapshot()
+
     {:ok,
      socket
      |> assign(:page_title, "Memory")
      |> assign(:editing_memory, nil)
      |> assign(:result, nil)
+     |> assign(:database_path, snapshot.database_path)
+     |> assign(:database_exists?, snapshot.database_exists?)
      |> assign_form(MemoryRecord.changeset(%MemoryRecord{}, default_attrs()))
      |> load_memories()}
   end
@@ -100,6 +105,24 @@ defmodule BusterClawWeb.MemoryLive do
         <p :if={@result} class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm">
           {@result}
         </p>
+
+        <section class="rounded-lg border border-base-300 bg-base-100 p-5">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <h2 class="text-sm font-semibold text-base-content/70">SQLite Database</h2>
+              <p class="mt-2 break-words font-mono text-sm">{@database_path}</p>
+            </div>
+            <span class={[
+              "rounded-full px-2 py-1 text-xs font-semibold",
+              if(@database_exists?,
+                do: "bg-success/15 text-success",
+                else: "bg-warning/15 text-warning"
+              )
+            ]}>
+              {if @database_exists?, do: "ready", else: "pending"}
+            </span>
+          </div>
+        </section>
 
         <div class="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
           <.form

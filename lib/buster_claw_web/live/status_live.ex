@@ -1,6 +1,8 @@
 defmodule BusterClawWeb.StatusLive do
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.AgentMode
+  alias BusterClaw.Commands
   alias BusterClaw.Providers
   alias BusterClaw.Providers.Provider
   alias BusterClaw.Runtime.Status
@@ -14,12 +16,22 @@ defmodule BusterClawWeb.StatusLive do
     {"Ollama (local)", "ollama"}
   ]
 
+  @activity_keep 25
+
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket) do
+      AgentMode.subscribe_mode()
+      AgentMode.subscribe_activity()
+    end
+
     {:ok,
      socket
      |> assign(status: Status.snapshot())
      |> assign(:flash_note, nil)
+     |> assign(:mode, :api_key)
+     |> assign(:agent_mode_on?, AgentMode.on?())
+     |> assign(:activity, [])
      |> load_providers()
      |> assign_new_form("anthropic")}
   end
@@ -34,6 +46,16 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   @impl true
+  def handle_event("select_mode", %{"mode" => mode}, socket)
+      when mode in ["api_key", "terminal_agent"] do
+    {:noreply, assign(socket, :mode, String.to_atom(mode))}
+  end
+
+  def handle_event("toggle_agent_mode", _params, socket) do
+    AgentMode.toggle()
+    {:noreply, socket}
+  end
+
   def handle_event("validate", %{"provider" => params}, socket) do
     prev_type = socket.assigns.form[:type].value
     new_type = Map.get(params, "type")
@@ -108,6 +130,16 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   @impl true
+  def handle_info({:agent_mode, value}, socket) do
+    {:noreply, assign(socket, :agent_mode_on?, value)}
+  end
+
+  def handle_info({:activity, payload}, socket) do
+    activity = [payload | socket.assigns.activity] |> Enum.take(@activity_keep)
+    {:noreply, assign(socket, :activity, activity)}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
@@ -122,7 +154,39 @@ defmodule BusterClawWeb.StatusLive do
           </p>
         </div>
 
+        <div class="flex gap-2 rounded-lg border border-base-300 bg-base-100 p-1">
+          <button
+            type="button"
+            phx-click="select_mode"
+            phx-value-mode="api_key"
+            class={[
+              "flex-1 rounded px-4 py-2 text-sm font-semibold transition-colors",
+              if(@mode == :api_key,
+                do: "bg-base-content text-base-100",
+                else: "text-base-content/70 hover:bg-base-200"
+              )
+            ]}
+          >
+            Use an API key
+          </button>
+          <button
+            type="button"
+            phx-click="select_mode"
+            phx-value-mode="terminal_agent"
+            class={[
+              "flex-1 rounded px-4 py-2 text-sm font-semibold transition-colors",
+              if(@mode == :terminal_agent,
+                do: "bg-base-content text-base-100",
+                else: "text-base-content/70 hover:bg-base-200"
+              )
+            ]}
+          >
+            Hand off to a terminal agent
+          </button>
+        </div>
+
         <.models_panel
+          :if={@mode == :api_key}
           providers={@providers}
           active_id={@active_id}
           form={@form}
@@ -130,52 +194,11 @@ defmodule BusterClawWeb.StatusLive do
           flash_note={@flash_note}
         />
 
-        <div class="grid gap-4 md:grid-cols-2">
-          <.status_card
-            title="Library Root"
-            value={@status.library_root}
-            ok?={@status.library_exists?}
-          />
-          <.status_card
-            title="SQLite Database"
-            value={@status.database_path}
-            ok?={@status.database_exists?}
-          />
-          <.status_card title="PubSub" value={@status.pubsub} ok?={true} />
-          <.status_card title="Endpoint" value={@status.endpoint} ok?={true} />
-        </div>
-
-        <div class="grid gap-6 lg:grid-cols-2">
-          <section class="rounded-lg border border-base-300 bg-base-100 p-5">
-            <h2 class="text-lg font-semibold">Parity Views</h2>
-            <div class="mt-4 grid gap-2 sm:grid-cols-2">
-              <div
-                :for={view <- @status.views}
-                class={[
-                  "rounded border px-3 py-2 text-sm",
-                  if(view.key == @current_view,
-                    do: "border-base-content bg-base-content text-base-100",
-                    else: "border-base-300"
-                  )
-                ]}
-              >
-                <a href={view.path}>{view.label}</a>
-              </div>
-            </div>
-          </section>
-
-          <section class="rounded-lg border border-base-300 bg-base-100 p-5">
-            <h2 class="text-lg font-semibold">Supervised Services</h2>
-            <div class="mt-4 grid gap-2 sm:grid-cols-2">
-              <div
-                :for={service <- @status.services}
-                class="rounded border border-base-300 px-3 py-2 text-sm"
-              >
-                {service}
-              </div>
-            </div>
-          </section>
-        </div>
+        <.agent_panel
+          :if={@mode == :terminal_agent}
+          agent_mode_on?={@agent_mode_on?}
+          activity={@activity}
+        />
       </section>
     </Layouts.app>
     """
@@ -282,6 +305,100 @@ defmodule BusterClawWeb.StatusLive do
     """
   end
 
+  attr :agent_mode_on?, :boolean, required: true
+  attr :activity, :list, required: true
+
+  defp agent_panel(assigns) do
+    assigns = assign(assigns, :commands, Commands.list_commands())
+
+    ~H"""
+    <section class="space-y-4 rounded-lg border border-base-300 bg-base-100 p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Terminal Agent</h2>
+          <p class="text-sm text-base-content/60">
+            Hand control to an external agent (Claude Code, Codex) running in a terminal next
+            to this window. The agent drives Buster Claw through the MCP server while you watch
+            its activity here.
+          </p>
+        </div>
+        <button
+          type="button"
+          phx-click="toggle_agent_mode"
+          class={[
+            "rounded px-4 py-2 text-sm font-semibold",
+            if(@agent_mode_on?,
+              do: "border border-error/40 text-error",
+              else: "bg-base-content text-base-100"
+            )
+          ]}
+        >
+          {if @agent_mode_on?, do: "End agent mode", else: "Ready for agent"}
+        </button>
+      </div>
+
+      <div
+        :if={@agent_mode_on?}
+        class="rounded border border-success/40 bg-success/10 px-3 py-2 text-sm font-semibold text-success"
+      >
+        Agent mode is on. Watch the activity feed below.
+      </div>
+
+      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div class="rounded border border-base-300">
+          <div class="border-b border-base-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+            Roster · {length(@commands)} commands
+          </div>
+          <ul class="max-h-96 divide-y divide-base-300 overflow-y-auto text-sm">
+            <li :for={cmd <- @commands} class="flex items-baseline gap-2 px-3 py-2">
+              <code class="font-mono text-xs">{cmd.name}</code>
+              <span class="truncate text-xs text-base-content/60">{cmd.description}</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="rounded border border-base-300">
+          <div class="border-b border-base-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+            Activity
+          </div>
+          <ul class="max-h-96 divide-y divide-base-300 overflow-y-auto text-sm">
+            <li
+              :for={event <- @activity}
+              class="flex flex-col gap-1 px-3 py-2"
+            >
+              <div class="flex items-baseline gap-2">
+                <code class="font-mono text-xs">{event.name}</code>
+                <span class={[
+                  "rounded-full px-2 py-0.5 text-xs font-semibold",
+                  case event.result do
+                    :ok -> "bg-success/15 text-success"
+                    :error -> "bg-error/15 text-error"
+                    _ -> "bg-base-200 text-base-content/60"
+                  end
+                ]}>
+                  {event.result}
+                </span>
+                <span class="ml-auto font-mono text-xs text-base-content/50">
+                  {format_time(event.at)}
+                </span>
+              </div>
+            </li>
+            <li
+              :if={@activity == []}
+              class="px-3 py-8 text-center text-xs text-base-content/50"
+            >
+              No activity yet. The agent's command invocations will appear here.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M:%S")
+  defp format_time(_), do: ""
+
   defp page_title(:home), do: "Home"
 
   defp page_title(action) do
@@ -290,29 +407,6 @@ defmodule BusterClawWeb.StatusLive do
     |> String.replace("_", " ")
     |> String.split()
     |> Enum.map_join(" ", &String.capitalize/1)
-  end
-
-  attr :title, :string, required: true
-  attr :value, :string, required: true
-  attr :ok?, :boolean, required: true
-
-  defp status_card(assigns) do
-    ~H"""
-    <section class="rounded-lg border border-base-300 bg-base-100 p-5">
-      <div class="flex items-start justify-between gap-4">
-        <div class="min-w-0">
-          <h2 class="text-sm font-semibold text-base-content/70">{@title}</h2>
-          <p class="mt-2 break-words font-mono text-sm">{@value}</p>
-        </div>
-        <span class={[
-          "rounded-full px-2 py-1 text-xs font-semibold",
-          if(@ok?, do: "bg-success/15 text-success", else: "bg-warning/15 text-warning")
-        ]}>
-          {if @ok?, do: "ready", else: "pending"}
-        </span>
-      </div>
-    </section>
-    """
   end
 
   defp load_providers(socket) do

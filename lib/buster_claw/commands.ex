@@ -52,11 +52,15 @@ defmodule BusterClaw.Commands do
   `{:error, :unknown_command}` if the name is not in the catalog.
   """
   def call(name, args \\ %{}) when is_binary(name) do
-    if has_command?(name) do
-      apply(__MODULE__, String.to_existing_atom(name), [normalize_args(args)])
-    else
-      {:error, :unknown_command}
-    end
+    result =
+      if has_command?(name) do
+        apply(__MODULE__, String.to_existing_atom(name), [normalize_args(args)])
+      else
+        {:error, :unknown_command}
+      end
+
+    BusterClaw.AgentMode.record_activity(name, args, result)
+    result
   end
 
   @doc "Return the command catalog as a list of maps."

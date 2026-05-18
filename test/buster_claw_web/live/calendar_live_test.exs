@@ -7,16 +7,20 @@ defmodule BusterClawWeb.CalendarLiveTest do
 
   test "creates, edits, and deletes a calendar event from the UI", %{conn: conn} do
     {:ok, view, html} = live_isolated(conn, BusterClawWeb.CalendarLive)
-    assert html =~ "No calendar events yet"
 
+    # Month-grid header renders the current month
+    today = Date.utc_today()
+    month_name = Elixir.Calendar.strftime(today, "%B %Y")
+    assert html =~ month_name
+
+    # Create
     html =
       view
       |> form("#event-form", %{
         event: %{
-          date: "2026-05-07",
+          date: "#{today.year}-#{pad(today.month)}-15",
           title: "Rewrite planning",
-          notes: "Memory and calendar phase",
-          event_id: "rewrite-planning"
+          notes: "Memory and calendar phase"
         }
       })
       |> render_submit()
@@ -25,21 +29,23 @@ defmodule BusterClawWeb.CalendarLiveTest do
     assert html =~ "Rewrite planning"
     assert [event] = Calendar.list_events()
 
-    html =
-      view
-      |> element("button[phx-click='edit'][phx-value-id='#{event.id}']")
-      |> render_click()
+    # Click event chip → opens detail view
+    view
+    |> element("li[phx-click='inspect'][phx-value-id='#{event.id}']")
+    |> render_click()
 
-    assert html =~ "Edit Event"
+    # Click Edit button in detail view → opens form
+    view
+    |> element("button[phx-click='edit'][phx-value-id='#{event.id}']")
+    |> render_click()
 
     html =
       view
       |> form("#event-form", %{
         event: %{
-          date: "2026-05-08",
+          date: "#{today.year}-#{pad(today.month)}-16",
           title: "Importer follow-up",
-          notes: "Verify legacy fixtures",
-          event_id: "rewrite-planning"
+          notes: "Verify legacy fixtures"
         }
       })
       |> render_submit()
@@ -47,12 +53,20 @@ defmodule BusterClawWeb.CalendarLiveTest do
     assert html =~ "Importer follow-up"
     assert [%{title: "Importer follow-up"} = event] = Calendar.list_events()
 
+    # Delete via the inspect view's Delete button
+    view
+    |> element("li[phx-click='inspect'][phx-value-id='#{event.id}']")
+    |> render_click()
+
     html =
       view
       |> element("button[phx-click='delete'][phx-value-id='#{event.id}']")
       |> render_click()
 
-    assert html =~ "No calendar events yet"
+    assert html =~ "Event deleted."
     assert [] = Calendar.list_events()
   end
+
+  defp pad(n) when n < 10, do: "0#{n}"
+  defp pad(n), do: "#{n}"
 end

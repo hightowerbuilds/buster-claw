@@ -34,43 +34,85 @@ defmodule BusterClawWeb.Layouts do
   slot :inner_block, required: true
 
   def app(assigns) do
-    ~H"""
-    <header class="border-b border-base-300 bg-base-100/95">
-      <div class="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between gap-4">
-          <a href="/" class="flex items-center gap-3">
-            <div class="grid size-9 place-items-center rounded bg-base-content text-base-100">
-              BC
-            </div>
-            <div>
-              <div class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-                Elixir Rewrite
-              </div>
-              <div class="text-lg font-semibold">Buster Claw</div>
-            </div>
-          </a>
-          <.theme_toggle />
-        </div>
+    assigns =
+      assigns
+      |> assign(:runtime, BusterClaw.Runtime.Status.snapshot())
+      |> assign(:agent_mode_on?, BusterClaw.AgentMode.on?())
 
-        <nav class="flex flex-wrap gap-2 text-sm">
+    ~H"""
+    <div class="flex min-h-screen">
+      <aside class="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-base-300 bg-base-100/95">
+        <a
+          href="/"
+          class="flex shrink-0 items-center gap-3 border-b border-base-300 px-4 py-4"
+        >
+          <div class="grid size-9 place-items-center rounded bg-base-content text-base-100">
+            BC
+          </div>
+          <div class="min-w-0">
+            <div class="truncate text-xs font-semibold uppercase tracking-wide text-base-content/60">
+              Elixir Rewrite
+            </div>
+            <div class="truncate text-base font-semibold">Buster Claw</div>
+          </div>
+        </a>
+
+        <nav class="flex flex-1 flex-col gap-1 overflow-y-auto p-3 text-sm">
           <a
             :for={item <- navigation_items()}
             href={item.path}
-            class="rounded border border-base-300 px-3 py-2 hover:bg-base-200"
+            class="rounded px-3 py-2 hover:bg-base-200"
           >
             {item.label}
           </a>
         </nav>
-      </div>
-    </header>
 
-    <main class="px-4 py-8 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-7xl space-y-4">
-        {render_slot(@inner_block)}
-      </div>
-    </main>
+        <div class="shrink-0 border-t border-base-300 p-3">
+          <.theme_toggle />
+        </div>
+      </aside>
+
+      <main class="min-w-0 flex-1">
+        <div class="sticky top-0 z-10 border-b border-base-300 bg-base-100/95 px-4 py-2 backdrop-blur sm:px-6 lg:px-8">
+          <div class="mx-auto flex max-w-7xl items-center justify-end gap-2 text-xs">
+            <span
+              :if={@agent_mode_on?}
+              class="inline-flex items-center gap-2 rounded-full border border-success/40 bg-success/10 px-3 py-1 font-semibold text-success"
+            >
+              <span class="size-2 rounded-full bg-success" />
+              Agent mode on
+            </span>
+            <.runtime_chip label="PubSub" value={@runtime.pubsub} ok?={true} />
+            <.runtime_chip label="Endpoint" value={@runtime.endpoint} ok?={true} />
+          </div>
+        </div>
+
+        <div class="mx-auto max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8">
+          {render_slot(@inner_block)}
+        </div>
+      </main>
+    </div>
 
     <.flash_group flash={@flash} />
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :value, :string, required: true
+  attr :ok?, :boolean, required: true
+
+  defp runtime_chip(assigns) do
+    ~H"""
+    <span class="inline-flex items-center gap-2 rounded-full border border-base-300 bg-base-100 px-3 py-1">
+      <span class="font-semibold uppercase tracking-wide text-base-content/60">{@label}</span>
+      <span class="font-mono text-base-content/80">{@value}</span>
+      <span class={[
+        "rounded-full px-2 py-0.5 font-semibold",
+        if(@ok?, do: "bg-success/15 text-success", else: "bg-warning/15 text-warning")
+      ]}>
+        {if @ok?, do: "ready", else: "pending"}
+      </span>
+    </span>
     """
   end
 
