@@ -3,7 +3,7 @@ defmodule BusterClaw.Automation.SchedulerJob do
 
   import Ecto.Changeset
 
-  @types ~w(ingest analyze full digest custom)
+  @types ~w(ingest analyze full digest custom integrations_poll monitoring_brief)
 
   schema "scheduler_jobs" do
     field :job_id, :string

@@ -3,7 +3,7 @@ defmodule BusterClaw.Scheduler do
 
   import Ecto.Query
 
-  alias BusterClaw.{Automation, Ingest, Library, Repo, Sources, Workflow}
+  alias BusterClaw.{Automation, Ingest, Integrations, Library, Repo, Sources, Workflow}
   alias BusterClaw.Automation.SchedulerJob
 
   def list_jobs do
@@ -57,6 +57,60 @@ defmodule BusterClaw.Scheduler do
     {:ok, summary}
   end
 
+  defp execute(%SchedulerJob{type: "integrations_poll"} = job) do
+    results = Integrations.poll_all(trigger: "scheduler")
+    {ok_count, error_count} = Enum.reduce(results, {0, 0}, &count_integration_result/2)
+
+    summary = %{
+      status: "ok",
+      ok: ok_count,
+      errors: error_count,
+      runs: Enum.map(results, &integration_run_summary/1)
+    }
+
+    record_event(
+      job,
+      "scheduler.integrations_poll",
+      "Scheduler integration poll completed",
+      summary
+    )
+
+    {:ok, summary}
+  end
+
+  defp execute(%SchedulerJob{type: "monitoring_brief"} = job) do
+    case Integrations.generate_monitoring_brief(window: "scheduler monitoring brief") do
+      {:ok, report} ->
+        summary = %{
+          status: "ok",
+          report_id: report.id,
+          artifact_path: report.artifact_path
+        }
+
+        record_event(
+          job,
+          "scheduler.monitoring_brief",
+          "Scheduler monitoring brief completed",
+          summary
+        )
+
+        {:ok, summary}
+
+      {:error, reason} ->
+        record_event(
+          job,
+          "scheduler.monitoring_brief.failed",
+          "Scheduler monitoring brief failed",
+          %{
+            status: "error",
+            error: inspect(reason)
+          }
+        )
+
+        {:error, reason}
+    end
+  end
+
   defp execute(%SchedulerJob{type: "custom"} = job) do
     summary = %{
       status: "placeholder",
@@ -92,6 +146,22 @@ defmodule BusterClaw.Scheduler do
 
   defp stringify(map) when is_map(map) do
     Map.new(map, fn {key, value} -> {to_string(key), inspect(value)} end)
+  end
+
+  defp count_integration_result({:ok, _run}, {ok_count, error_count}),
+    do: {ok_count + 1, error_count}
+
+  defp count_integration_result({:error, _run}, {ok_count, error_count}),
+    do: {ok_count, error_count + 1}
+
+  defp integration_run_summary({status, run}) do
+    %{
+      status: status,
+      run_id: run.id,
+      integration_id: run.integration_id,
+      records_fetched: run.records_fetched,
+      error: run.error
+    }
   end
 
   defp timestamp, do: DateTime.utc_now() |> DateTime.truncate(:second)

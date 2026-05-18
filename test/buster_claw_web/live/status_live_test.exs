@@ -5,10 +5,11 @@ defmodule BusterClawWeb.StatusLiveTest do
     conn = get(conn, ~p"/")
     response = html_response(conn, 200)
 
-    assert response =~ "Buster Claw Rewrite"
+    assert response =~ "Buster Claw"
+    assert response =~ "Models"
+    assert response =~ "Active key"
     assert response =~ "Parity Views"
     assert response =~ "Supervised Services"
-    assert response =~ "Elixir Rewrite"
     assert response =~ "Webhooks"
     assert response =~ "Hooks"
   end

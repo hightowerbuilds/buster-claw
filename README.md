@@ -58,7 +58,7 @@ Rewrite state is managed by Phoenix/Ecto and the local library directory:
 - `Library/`: raw documents and generated reports.
 - Legacy data files such as `sources.json` and `Library/*.json` are migration inputs.
 
-## Commands
+## Slash commands (in chat)
 
 - `/search <query>`: Search the web.
 - `/ingest <url>`: Ingest content for analysis.
@@ -67,6 +67,67 @@ Rewrite state is managed by Phoenix/Ecto and the local library directory:
 - `/memories`: List saved memories.
 - `/status`: Show pipeline activity.
 - `/help`: Show available commands.
+
+## Driving Buster Claw (CLI, MCP, HTTP)
+
+Buster Claw exposes a single canonical command surface — see [`docs/rewrite/COMMAND_SURFACE.md`](docs/rewrite/COMMAND_SURFACE.md) for the full catalog (76 commands across sources, providers, documents, analysis, memory, chat, scheduler, webhooks, hooks, delivery, integrations, search, browser, runtime). Three frontends consume it:
+
+### Authentication
+
+A loopback API token lives at `~/Library/Application Support/BusterClaw/api_token` (auto-generated on first launch). Override via `BUSTER_CLAW_API_TOKEN`. The Phoenix endpoint binds to `127.0.0.1` only; the token defends against other local users on a shared machine.
+
+### CLI escript
+
+```bash
+# Build (once)
+mix escript.build
+
+# Run
+./buster-claw commands                          # list the catalog
+./buster-claw source list                       # noun-verb shorthand
+./buster-claw run analysis_queue --json '{"document_id": 1}'
+./buster-claw run web_search --json '{"query": "phoenix liveview"}'
+```
+
+Token comes from `BUSTER_CLAW_API_TOKEN` env, then the file path above, then `--token <token>` flag. Base URL is `BUSTER_CLAW_URL` env or `--url <url>` flag (default `http://127.0.0.1:4000`).
+
+### MCP server (for Claude Code, Codex, other TUI agents)
+
+Buster Claw hosts an MCP server at `POST /mcp` using the Streamable HTTP transport (JSON-RPC, JSON response form). Add this to your Claude Code config (`~/Library/Application Support/Claude/claude_desktop_config.json` or similar):
+
+```json
+{
+  "mcpServers": {
+    "buster-claw": {
+      "url": "http://127.0.0.1:4000/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-token>"
+      }
+    }
+  }
+}
+```
+
+The full safe-tier catalog (read commands, chat, low-risk triggers) appears in the agent's tool list. Restricted commands (deletes, `provider_set_active`, `delivery_dispatch_all`) are still callable via the HTTP API and CLI but are not exposed to MCP for safety.
+
+### HTTP API (for direct integration)
+
+```bash
+TOKEN=$(cat ~/Library/Application\ Support/BusterClaw/api_token)
+
+# Catalog (no auth needed)
+curl http://127.0.0.1:4000/api/commands
+
+# Invoke a command
+curl -X POST http://127.0.0.1:4000/api/run \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"command":"source_list","args":{}}'
+```
+
+### Internal agent (chat-driven tool calls)
+
+When the active provider is Anthropic, the chat session passes safe-tier commands to the model as Anthropic tool definitions and runs an agentic loop — the model can call `runtime_status`, `document_list`, `analysis_queue`, `chat_messages`, etc. and use the results in its next reply. The loop is capped at 6 iterations to prevent runaway recursion. Other provider types fall back to plain chat without tools (OpenAI/Gemini/Codex tool-call adapters are planned).
 
 ## Development Notes
 

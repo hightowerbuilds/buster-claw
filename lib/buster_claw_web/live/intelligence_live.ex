@@ -102,11 +102,13 @@ defmodule BusterClawWeb.IntelligenceLive do
               label="Type"
               type="select"
               options={[
-                {"Ollama", "ollama"},
+                {"Anthropic (Claude)", "anthropic"},
+                {"Google Gemini", "gemini"},
+                {"OpenAI Codex (Responses API)", "codex"},
+                {"OpenAI (Chat Completions)", "openai"},
                 {"OpenRouter", "openrouter"},
-                {"OpenAI", "openai"},
-                {"Anthropic", "anthropic"},
-                {"Custom", "custom"}
+                {"Ollama (local)", "ollama"},
+                {"Custom OpenAI-compatible", "custom"}
               ]}
             />
             <.input field={@form[:base_url]} label="Base URL" />

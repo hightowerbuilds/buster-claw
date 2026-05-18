@@ -11,7 +11,27 @@ defmodule BusterClaw.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      releases: releases(),
+      escript: escript()
+    ]
+  end
+
+  defp escript do
+    [
+      main_module: BusterClaw.CLI,
+      name: "buster-claw",
+      path: "buster-claw",
+      app: nil
+    ]
+  end
+
+  defp releases do
+    [
+      buster_claw: [
+        include_executables_for: [:unix],
+        applications: [runtime_tools: :permanent]
+      ]
     ]
   end
 
@@ -84,6 +104,7 @@ defmodule BusterClaw.MixProject do
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind buster_claw", "esbuild buster_claw"],
       "assets.deploy": [
+        "compile",
         "tailwind buster_claw --minify",
         "esbuild buster_claw --minify",
         "phx.digest"

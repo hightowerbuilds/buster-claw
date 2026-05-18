@@ -3,7 +3,7 @@ defmodule BusterClaw.Providers do
 
   import Ecto.Query
 
-  alias BusterClaw.Provider.{Anthropic, Ollama, OpenAICompatible}
+  alias BusterClaw.Provider.{Anthropic, Codex, Gemini, Ollama, OpenAICompatible}
   alias BusterClaw.Providers.Provider
   alias BusterClaw.Repo
 
@@ -27,7 +27,11 @@ defmodule BusterClaw.Providers do
   def set_active_provider(%Provider{} = provider) do
     Repo.transaction(fn ->
       Repo.update_all(Provider, set: [active: false])
-      provider |> Provider.changeset(%{active: true}) |> Repo.update!()
+
+      provider
+      |> Provider.changeset(%{active: true})
+      |> Ecto.Changeset.force_change(:active, true)
+      |> Repo.update!()
     end)
   end
 
@@ -40,11 +44,34 @@ defmodule BusterClaw.Providers do
     end
   end
 
+  @doc """
+  Agentic chat with `BusterClaw.Commands` exposed as safe-tier tools. Routes
+  to a provider-specific agent loop when the type supports tool calling
+  (currently: Anthropic). Falls back to plain `chat/3` for other providers.
+  """
+  def agentic_chat_with_active(messages, on_chunk) do
+    case active_provider() do
+      nil -> {:error, :no_active_provider}
+      provider -> agentic_chat(provider, messages, on_chunk)
+    end
+  end
+
   def chat(%Provider{} = provider, messages, on_chunk) when is_function(on_chunk, 1) do
     module_for(provider).chat(provider, normalize_messages(messages), on_chunk)
   end
 
+  def agentic_chat(%Provider{type: "anthropic"} = provider, messages, on_chunk)
+      when is_function(on_chunk, 1) do
+    Anthropic.chat_agentic(provider, normalize_messages(messages), on_chunk)
+  end
+
+  def agentic_chat(%Provider{} = provider, messages, on_chunk) when is_function(on_chunk, 1) do
+    chat(provider, messages, on_chunk)
+  end
+
   defp module_for(%{type: "anthropic"}), do: Anthropic
+  defp module_for(%{type: "gemini"}), do: Gemini
+  defp module_for(%{type: "codex"}), do: Codex
   defp module_for(%{type: "ollama"}), do: Ollama
   defp module_for(_provider), do: OpenAICompatible
 
@@ -74,6 +101,12 @@ defmodule BusterClaw.Providers do
 
   defp put_default_base_url(attrs, "anthropic"),
     do: put_attr(attrs, :base_url, "https://api.anthropic.com")
+
+  defp put_default_base_url(attrs, "gemini"),
+    do: put_attr(attrs, :base_url, "https://generativelanguage.googleapis.com/v1beta")
+
+  defp put_default_base_url(attrs, "codex"),
+    do: put_attr(attrs, :base_url, "https://api.openai.com/v1")
 
   defp put_default_base_url(attrs, "ollama"),
     do: put_attr(attrs, :base_url, "http://127.0.0.1:11434")

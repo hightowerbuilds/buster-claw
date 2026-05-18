@@ -97,6 +97,8 @@ defmodule BusterClawWeb.SchedulerLive do
               options={[
                 {"Ingest", "ingest"},
                 {"Analyze", "analyze"},
+                {"Poll Integrations", "integrations_poll"},
+                {"Monitoring Brief", "monitoring_brief"},
                 {"Full", "full"},
                 {"Digest", "digest"},
                 {"Custom", "custom"}

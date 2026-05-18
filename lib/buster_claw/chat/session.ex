@@ -4,7 +4,7 @@ defmodule BusterClaw.Chat.Session do
   use GenServer
 
   alias BusterClaw.Chat.Message
-  alias BusterClaw.{Browser, Ingest, MCP, Memory, Providers, Search}
+  alias BusterClaw.{Browser, Ingest, Integrations, MCP, Memory, Providers, Search}
 
   def start_link(session_id) do
     GenServer.start_link(__MODULE__, session_id, name: via(session_id))
@@ -100,6 +100,15 @@ defmodule BusterClaw.Chat.Session do
       "/mcp" ->
         reply(state, "**MCP Servers**\n\n#{MCP.tool_summary()}")
 
+      "/integrations" ->
+        integrations(state)
+
+      "/poll" ->
+        poll_integration(state, arg)
+
+      "/brief" ->
+        monitoring_brief(state)
+
       _ ->
         reply(state, "Unknown command: `#{command}`. Type `/help` for available commands.")
     end
@@ -115,7 +124,7 @@ defmodule BusterClaw.Chat.Session do
 
     with {:ok, agent} <- chunks,
          :ok <-
-           Providers.chat_with_active(provider_messages, fn chunk ->
+           Providers.agentic_chat_with_active(provider_messages, fn chunk ->
              Agent.update(agent, &[chunk | &1])
            end) do
       response = agent |> Agent.get(&Enum.reverse/1) |> Enum.join()
@@ -241,6 +250,53 @@ defmodule BusterClaw.Chat.Session do
     end
   end
 
+  defp integrations(state) do
+    entries = Integrations.list_integrations()
+
+    content =
+      if entries == [] do
+        "No integrations configured."
+      else
+        entries
+        |> Enum.map_join("\n", fn integration ->
+          "- #{integration.name} (#{integration.service_type}): #{integration.last_status}"
+        end)
+      end
+
+    reply(state, "**Integrations**\n\n#{content}")
+  end
+
+  defp poll_integration(state, ""), do: reply(state, "Usage: `/poll <integration name>`")
+
+  defp poll_integration(state, name) do
+    case Integrations.get_by_name(name) do
+      nil ->
+        reply(state, "Integration not found: `#{name}`")
+
+      integration ->
+        case Integrations.poll_integration(integration) do
+          {:ok, run} ->
+            reply(
+              state,
+              "Polled #{integration.name}: #{run.records_fetched} snapshot(s), status #{run.status}."
+            )
+
+          {:error, run} ->
+            reply(state, "Poll failed for #{integration.name}: #{run.error}")
+        end
+    end
+  end
+
+  defp monitoring_brief(state) do
+    case Integrations.generate_monitoring_brief() do
+      {:ok, report} ->
+        reply(state, "Monitoring brief generated: #{report.artifact_path}")
+
+      {:error, reason} ->
+        reply(state, "Monitoring brief failed: #{inspect(reason)}")
+    end
+  end
+
   defp status do
     active =
       case Providers.active_provider() do
@@ -267,6 +323,9 @@ defmodule BusterClaw.Chat.Session do
     - `/search <query>`
     - `/browse <url>`
     - `/mcp`
+    - `/integrations`
+    - `/poll <integration name>`
+    - `/brief`
     - `/clear`
     - `/help`
     """

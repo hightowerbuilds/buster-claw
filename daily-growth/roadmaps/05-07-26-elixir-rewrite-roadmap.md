@@ -567,26 +567,26 @@ Acceptance checks:
 Deliverable: installable desktop app.
 
 - [x] Choose desktop wrapper.
-- [ ] Build Elixir release.
-- [ ] Bundle Erlang runtime.
-- [ ] Bundle Phoenix static assets.
+- [x] Build Elixir release.
+- [x] Bundle Erlang runtime.
+- [x] Bundle Phoenix static assets.
 - [ ] Bundle Node sidecar if browser automation is enabled.
-- [ ] Start Phoenix on `127.0.0.1`.
-- [ ] Use random or configurable local port.
-- [ ] Open local webview.
-- [ ] Stop runtime cleanly on app quit.
-- [ ] Store logs in accessible local path.
-- [ ] Store database and library in stable local path.
-- [ ] Add macOS build path.
+- [x] Start Phoenix on `127.0.0.1`.
+- [x] Use random or configurable local port.
+- [x] Open local webview.
+- [x] Stop runtime cleanly on app quit.
+- [x] Store logs in accessible local path.
+- [x] Store database and library in stable local path.
+- [x] Add macOS build path.
 - [ ] Add Windows build path if needed.
 - [ ] Add Linux build path if needed.
 
 Acceptance checks:
 
-- [ ] Packaged app starts without development tools.
-- [ ] UI loads from local Phoenix runtime.
-- [ ] App shutdown stops the BEAM runtime and sidecars.
-- [ ] Data persists between packaged app launches.
+- [x] Packaged app starts without development tools.
+- [x] UI loads from local Phoenix runtime.
+- [x] App shutdown stops the BEAM runtime and sidecars.
+- [x] Data persists between packaged app launches.
 
 ## Phase 19: Verification Matrix
 
@@ -676,7 +676,7 @@ Deliverable: explicit decision that the rewrite is ready for packaged daily use.
 - [x] Phase 9: MCP runtime.
 - [x] Phase 14: Browser automation sidecar.
 - [x] Phase 17: Migration.
-- [ ] Phase 18: Desktop packaging.
+- [x] Phase 18: Desktop packaging (macOS; Windows/Linux deferred).
 - [x] Phase 19: Verification matrix.
 - [x] Phase 20: Cutover decision.
 
@@ -684,7 +684,7 @@ Deliverable: explicit decision that the rewrite is ready for packaged daily use.
 
 The Elixir rewrite reaches parity when a user can:
 
-- [ ] Start the desktop app.
+- [x] Start the desktop app.
 - [x] Configure local and remote model providers.
 - [x] Chat with streaming responses.
 - [x] Save and use persistent memory.

@@ -14,6 +14,11 @@ defmodule BusterClawWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :api_authenticated do
+    plug :accepts, ["json"]
+    plug BusterClawWeb.ApiAuth
+  end
+
   scope "/", BusterClawWeb do
     pipe_through :browser
 
@@ -25,6 +30,7 @@ defmodule BusterClawWeb.Router do
     live "/calendar", CalendarLive, :index
     live "/memory", MemoryLive, :index
     live "/intelligence", IntelligenceLive, :index
+    live "/integrations", IntegrationsLive, :index
     live "/mcp", MCPLive, :index
     live "/scheduler", SchedulerLive, :index
     live "/webhooks", WebhooksLive, :index
@@ -36,7 +42,27 @@ defmodule BusterClawWeb.Router do
   scope "/", BusterClawWeb do
     pipe_through :api
 
+    get "/_health", HealthController, :show
+    post "/integrations/:name/webhook", IntegrationWebhookController, :trigger
     post "/hooks/:name", WebhookController, :trigger
+  end
+
+  scope "/api", BusterClawWeb do
+    pipe_through :api
+
+    get "/commands", ApiController, :commands
+  end
+
+  scope "/api", BusterClawWeb do
+    pipe_through :api_authenticated
+
+    post "/run", ApiController, :run
+  end
+
+  scope "/", BusterClawWeb do
+    pipe_through :api_authenticated
+
+    post "/mcp", McpController, :handle
   end
 
   # Other scopes may use custom stacks.

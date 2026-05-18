@@ -84,6 +84,7 @@ defmodule BusterClawWeb.Layouts do
       %{label: "Calendar", path: "/calendar"},
       %{label: "Memory", path: "/memory"},
       %{label: "Intelligence", path: "/intelligence"},
+      %{label: "Integrations", path: "/integrations"},
       %{label: "MCP", path: "/mcp"},
       %{label: "Scheduler", path: "/scheduler"},
       %{label: "Webhooks", path: "/webhooks"},

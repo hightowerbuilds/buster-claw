@@ -46,10 +46,26 @@ defmodule BusterClawWeb.Endpoint do
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
-    json_decoder: Phoenix.json_library()
+    json_decoder: Phoenix.json_library(),
+    body_reader: {BusterClawWeb.Endpoint, :cache_raw_body, []}
 
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
   plug BusterClawWeb.Router
+
+  def cache_raw_body(conn, opts) do
+    case Plug.Conn.read_body(conn, opts) do
+      {:ok, body, conn} ->
+        conn = update_in(conn.assigns[:raw_body], &((&1 || "") <> body))
+        {:ok, body, conn}
+
+      {:more, body, conn} ->
+        conn = update_in(conn.assigns[:raw_body], &((&1 || "") <> body))
+        {:more, body, conn}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 end

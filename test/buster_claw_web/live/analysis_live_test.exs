@@ -39,6 +39,7 @@ defmodule BusterClawWeb.AnalysisLiveTest do
         name: "openai",
         type: "openai",
         model: "gpt-5.4",
+        api_key: "secret",
         active: true
       })
 

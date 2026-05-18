@@ -9,6 +9,7 @@ defmodule BusterClawWeb.AutomationRoutesTest do
           {~p"/calendar", "Calendar"},
           {~p"/memory", "Memory"},
           {~p"/scheduler", "Scheduler"},
+          {~p"/integrations", "Integrations"},
           {~p"/webhooks", "Webhooks"},
           {~p"/hooks", "Hooks"},
           {~p"/delivery", "Delivery"},

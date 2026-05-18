@@ -3,7 +3,7 @@ defmodule BusterClaw.Providers.Provider do
 
   import Ecto.Changeset
 
-  @types ~w(ollama openrouter openai anthropic custom)
+  @types ~w(ollama openrouter openai anthropic gemini codex custom)
 
   schema "providers" do
     field :name, :string
@@ -22,6 +22,14 @@ defmodule BusterClaw.Providers.Provider do
     |> cast(attrs, [:name, :type, :base_url, :api_key, :model, :active, :priority])
     |> validate_required([:name, :type, :model])
     |> validate_inclusion(:type, @types)
+    |> maybe_require_api_key()
     |> unique_constraint(:name)
+  end
+
+  defp maybe_require_api_key(changeset) do
+    case get_field(changeset, :type) do
+      "ollama" -> changeset
+      _ -> validate_required(changeset, [:api_key])
+    end
   end
 end

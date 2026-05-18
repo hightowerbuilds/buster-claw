@@ -8,17 +8,8 @@ import Config
 config :buster_claw, BusterClawWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json"
 
-# Force using SSL in production. This also sets the "strict-security-transport" header,
-# known as HSTS. If you have a health check endpoint, you may want to exclude it below.
-# Note `:force_ssl` is required to be set at compile-time.
-config :buster_claw, BusterClawWeb.Endpoint,
-  force_ssl: [
-    rewrite_on: [:x_forwarded_proto],
-    exclude: [
-      # paths: ["/health"],
-      hosts: ["localhost", "127.0.0.1"]
-    ]
-  ]
+# The packaged desktop app binds Phoenix to 127.0.0.1 over plain HTTP;
+# SSL is not used because the Tauri webview connects to loopback only.
 
 # Configure Swoosh API Client
 config :swoosh, api_client: Swoosh.ApiClient.Req

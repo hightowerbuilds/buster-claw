@@ -3,7 +3,10 @@ defmodule BusterClaw.Provider.Anthropic do
 
   @behaviour BusterClaw.Provider
 
+  alias BusterClaw.AgentTools
   alias BusterClaw.Provider.HTTP
+
+  @max_tool_iterations 6
 
   @impl true
   def chat(provider, messages, on_chunk) do
@@ -12,7 +15,7 @@ defmodule BusterClaw.Provider.Anthropic do
     payload =
       %{
         model: provider.model,
-        max_tokens: 1024,
+        max_tokens: 8192,
         messages: user_messages
       }
       |> maybe_put_system(system)
@@ -27,6 +30,87 @@ defmodule BusterClaw.Provider.Anthropic do
       on_chunk.(content)
       :ok
     end
+  end
+
+  @doc """
+  Agentic chat with tool support. Runs the model in a loop, executing safe-tier
+  `BusterClaw.Commands` calls as tools, until the model produces a final
+  text response (or `@max_tool_iterations` rounds elapse).
+  """
+  def chat_agentic(provider, messages, on_chunk) do
+    {system, normalized} = split_system(messages)
+    tools = AgentTools.anthropic_tools()
+    agent_loop(provider, system, normalized, tools, on_chunk, @max_tool_iterations)
+  end
+
+  defp agent_loop(_provider, _system, _messages, _tools, _on_chunk, 0) do
+    {:error, :max_tool_iterations}
+  end
+
+  defp agent_loop(provider, system, messages, tools, on_chunk, remaining) do
+    payload =
+      %{
+        model: provider.model,
+        max_tokens: 8192,
+        messages: messages,
+        tools: tools
+      }
+      |> maybe_put_system(system)
+
+    case HTTP.post(endpoint(provider),
+           json: payload,
+           headers: headers(provider),
+           receive_timeout: 60_000
+         ) do
+      {:ok, %{"stop_reason" => "tool_use", "content" => content} = _body} ->
+        tool_results =
+          content
+          |> Enum.filter(&(&1["type"] == "tool_use"))
+          |> Enum.map(&run_tool_call/1)
+
+        assistant_msg = %{role: "assistant", content: content}
+        user_msg = %{role: "user", content: tool_results}
+
+        agent_loop(
+          provider,
+          system,
+          messages ++ [assistant_msg, user_msg],
+          tools,
+          on_chunk,
+          remaining - 1
+        )
+
+      {:ok, %{"content" => content}} ->
+        text =
+          content
+          |> Enum.filter(&(&1["type"] == "text"))
+          |> Enum.map(& &1["text"])
+          |> Enum.join("\n")
+
+        if text != "", do: on_chunk.(text)
+        :ok
+
+      {:ok, body} ->
+        {:error, {:unexpected_response, body}}
+
+      error ->
+        error
+    end
+  end
+
+  defp run_tool_call(%{"id" => id, "name" => name, "input" => input}) do
+    {is_error, content} =
+      case AgentTools.execute(name, input) do
+        {:ok, text} -> {false, text}
+        {:error, text} -> {true, text}
+      end
+
+    %{
+      type: "tool_result",
+      tool_use_id: id,
+      content: content,
+      is_error: is_error
+    }
   end
 
   @impl true

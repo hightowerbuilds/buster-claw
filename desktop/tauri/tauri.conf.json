@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Buster Claw Rewrite",
+  "productName": "Buster Claw",
   "version": "0.1.0",
-  "identifier": "com.hightowerbuilds.busterclaw.rewrite",
+  "identifier": "com.hightowerbuilds.busterclaw",
   "build": {
     "devUrl": "http://127.0.0.1:4000",
     "frontendDist": "dist"
@@ -11,13 +11,15 @@
     "windows": [
       {
         "label": "main",
-        "title": "Buster Claw Rewrite",
+        "title": "Buster Claw",
         "width": 1280,
         "height": 860,
         "minWidth": 960,
         "minHeight": 640,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "visible": false,
+        "url": "index.html"
       }
     ],
     "security": {
@@ -25,8 +27,14 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all",
-    "icon": []
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": ["icons/icon.png"],
+    "resources": {
+      "resources/release": "release"
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
   }
 }

@@ -627,22 +627,22 @@ Later hardening:
 
 ## Build Readiness Checklist
 
-- [ ] Add migration for `integrations` and `integration_runs`.
-- [ ] Add `BusterClaw.Integrations.Integration`.
-- [ ] Add `BusterClaw.Integrations.IntegrationRun`.
-- [ ] Add `BusterClaw.Integrations` context.
-- [ ] Add integration behavior.
-- [ ] Add markdown snapshot helpers.
-- [ ] Add Umami polling.
-- [ ] Add Sentry polling.
-- [ ] Add GitHub polling.
-- [ ] Add integration webhook controller.
-- [ ] Add `IntegrationsLive`.
-- [ ] Add nav route.
-- [ ] Add monitoring brief intention.
-- [ ] Add scheduler types.
-- [ ] Add chat commands.
-- [ ] Run `mix precommit`.
+- [x] Add migration for `integrations` and `integration_runs`.
+- [x] Add `BusterClaw.Integrations.Integration`.
+- [x] Add `BusterClaw.Integrations.IntegrationRun`.
+- [x] Add `BusterClaw.Integrations` context.
+- [x] Add integration behavior.
+- [x] Add markdown snapshot helpers.
+- [x] Add Umami polling.
+- [x] Add Sentry polling.
+- [x] Add GitHub polling.
+- [x] Add integration webhook controller.
+- [x] Add `IntegrationsLive`.
+- [x] Add nav route.
+- [x] Add monitoring brief intention.
+- [x] Add scheduler types.
+- [x] Add chat commands.
+- [x] Run `mix precommit`.
 
 ## Open Questions
 

@@ -11,6 +11,10 @@
 buster_claw-*.tar
 /priv/static/assets/
 /priv/static/cache_manifest.json
+# Phoenix digest hashed copies + precompressed assets
+/priv/static/*-*.ico
+/priv/static/*-*.txt
+/priv/static/*.gz
 /assets/node_modules/
 npm-debug.log
 *.db
@@ -23,3 +27,6 @@ desktop/tauri/target/
 Library/
 *.log
 erl_crash.dump
+
+# CLI escript build artifact
+/buster-claw

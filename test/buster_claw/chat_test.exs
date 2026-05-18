@@ -1,11 +1,26 @@
 defmodule BusterClaw.ChatTest do
   use BusterClaw.DataCase
 
-  alias BusterClaw.{Chat, Memory, Providers}
+  alias BusterClaw.{Chat, Integrations, Library, Memory, Providers}
 
   setup do
     session_id = "test-#{System.unique_integer([:positive])}"
     Req.Test.verify_on_exit!()
+
+    root =
+      Path.join(
+        System.tmp_dir!(),
+        "buster-claw-chat-test-#{System.unique_integer([:positive])}"
+      )
+
+    previous = Application.get_env(:buster_claw, :library_root)
+    Application.put_env(:buster_claw, :library_root, root)
+
+    on_exit(fn ->
+      Application.put_env(:buster_claw, :library_root, previous)
+      File.rm_rf(root)
+    end)
+
     %{session_id: session_id}
   end
 
@@ -102,5 +117,87 @@ defmodule BusterClaw.ChatTest do
     assert_receive {:done, %{content: content}}, 500
     assert content =~ "Browser Fetch"
     assert content =~ "Rendered content"
+  end
+
+  test "integration commands list and poll configured integrations", %{session_id: session_id} do
+    {:ok, _integration} =
+      Integrations.create_integration(%{
+        name: "sentry-prod",
+        service_type: "sentry",
+        config_text: ~s({"org":"acme"})
+      })
+
+    :ok = Phoenix.PubSub.subscribe(BusterClaw.PubSub, Chat.topic(session_id))
+
+    Chat.send_message(session_id, "/integrations")
+    assert_receive {:done, %{content: content}}, 500
+    assert content =~ "sentry-prod"
+    assert content =~ "sentry"
+
+    Chat.send_message(session_id, "/poll sentry-prod")
+    assert_receive {:done, %{content: content}}, 500
+    assert content =~ "Poll failed for sentry-prod"
+    assert content =~ "missing_config"
+  end
+
+  test "brief command generates a monitoring brief", %{session_id: session_id} do
+    Req.Test.stub(BusterClaw.ProviderHTTP, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert body =~ "Operational Snapshot"
+
+      Req.Test.json(conn, %{
+        choices: [
+          %{
+            message: %{
+              content: "## Executive summary\n\nChat-generated operations brief."
+            }
+          }
+        ]
+      })
+    end)
+
+    {:ok, provider} =
+      Providers.create_provider(%{
+        name: "openai",
+        type: "openai",
+        model: "gpt-5.4",
+        api_key: "secret",
+        active: true
+      })
+
+    raw_document!("Operational Snapshot")
+
+    {:ok, session_pid} = Chat.ensure_session(session_id)
+    {:ok, _provider} = Providers.set_active_provider(provider)
+    assert Providers.active_provider().id == provider.id
+    Req.Test.allow(BusterClaw.ProviderHTTP, self(), session_pid)
+    :ok = Phoenix.PubSub.subscribe(BusterClaw.PubSub, Chat.topic(session_id))
+
+    Chat.send_message(session_id, "/brief")
+
+    assert_receive {:done, %{content: content}}, 500
+    assert content =~ "Monitoring brief generated"
+    assert [report] = Library.list_reports()
+    assert report.artifact_path =~ "monitoring-brief"
+  end
+
+  defp raw_document!(name) do
+    filename =
+      name
+      |> String.downcase()
+      |> String.replace(" ", "-")
+      |> Kernel.<>(".md")
+
+    assert {:ok, document} =
+             Library.save_raw_document(%{
+               date: ~D[2026-05-18],
+               filename: filename,
+               name: name,
+               source_url: "https://example.com/#{filename}",
+               tags: ["integration", "github", "activity"],
+               content: "# #{name}\n\nImportant chat source material."
+             })
+
+    document
   end
 end
