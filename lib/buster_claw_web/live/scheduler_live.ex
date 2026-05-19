@@ -44,7 +44,7 @@ defmodule BusterClawWeb.SchedulerLive do
     result =
       case Scheduler.run_now(id) do
         {:ok, summary} -> "Run completed: #{inspect(summary)}"
-        {:error, reason} -> "Run failed: #{inspect(reason)}"
+        {:error, reason} -> "Run failed: #{BusterClawWeb.ErrorFormatter.format(reason)}"
       end
 
     {:noreply, socket |> assign(:result, result) |> load_jobs()}

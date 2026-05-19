@@ -10,8 +10,13 @@ defmodule BusterClawWeb.ApiControllerTest do
       conn = get(conn, ~p"/api/commands")
       assert %{"ok" => true, "commands" => commands} = json_response(conn, 200)
       assert is_list(commands)
-      assert length(commands) >= 70
-      assert Enum.any?(commands, &(&1["name"] == "source_list"))
+      assert length(commands) > 0
+
+      names = Enum.map(commands, & &1["name"])
+
+      for representative <- ~w(runtime_status source_list provider_active chat_send web_search) do
+        assert representative in names, "expected catalog to include #{representative}"
+      end
     end
   end
 

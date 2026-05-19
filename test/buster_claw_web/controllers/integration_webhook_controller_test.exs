@@ -142,6 +142,105 @@ defmodule BusterClawWeb.IntegrationWebhookControllerTest do
     assert json_response(disabled_conn, 410)["error"] == "integration disabled"
   end
 
+  test "POST /integrations/:name/webhook rejects when the signature header is missing", %{
+    conn: conn
+  } do
+    {:ok, _integration} =
+      Integrations.create_integration(%{
+        name: "github-missing-header",
+        service_type: "github",
+        webhook_secret: "webhook-secret",
+        config_text: ~s({"owner":"acme","repo":"checkout"})
+      })
+
+    body = Jason.encode!(%{"action" => "opened"})
+
+    conn =
+      conn
+      |> put_req_header("content-type", "application/json")
+      |> post(~p"/integrations/github-missing-header/webhook", body)
+
+    assert json_response(conn, 401)["error"] =~ "unauthorized"
+    assert [] = Library.list_documents()
+  end
+
+  test "POST /integrations/:name/webhook rejects when the signature header is wrong", %{
+    conn: conn
+  } do
+    {:ok, _integration} =
+      Integrations.create_integration(%{
+        name: "github-wrong-header",
+        service_type: "github",
+        webhook_secret: "real-secret",
+        config_text: ~s({"owner":"acme","repo":"checkout"})
+      })
+
+    body = Jason.encode!(%{"action" => "opened"})
+
+    conn =
+      conn
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("x-hub-signature-256", "sha256=#{hmac("bad-secret", body)}")
+      |> post(~p"/integrations/github-wrong-header/webhook", body)
+
+    assert json_response(conn, 401)["error"] =~ "unauthorized"
+    assert [] = Library.list_documents()
+  end
+
+  test "POST /integrations/:name/webhook returns 422 for an empty body with a valid signature", %{
+    conn: conn
+  } do
+    {:ok, _integration} =
+      Integrations.create_integration(%{
+        name: "github-empty-body",
+        service_type: "github",
+        webhook_secret: "webhook-secret",
+        config_text: ~s({"owner":"acme","repo":"checkout"})
+      })
+
+    conn =
+      conn
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("x-hub-signature-256", "sha256=#{hmac("webhook-secret", "")}")
+      |> post(~p"/integrations/github-empty-body/webhook", "")
+
+    assert json_response(conn, 422)["error"]
+    assert [] = Library.list_documents()
+  end
+
+  test "POST /integrations/:name/webhook returns 404 for an unknown integration name", %{
+    conn: conn
+  } do
+    conn =
+      conn
+      |> put_req_header("content-type", "application/json")
+      |> post(~p"/integrations/no-such-integration/webhook", Jason.encode!(%{}))
+
+    assert json_response(conn, 404)["error"] == "integration not found"
+  end
+
+  test "POST /integrations/:name/webhook returns 410 for a disabled integration", %{conn: conn} do
+    {:ok, integration} =
+      Integrations.create_integration(%{
+        name: "off-integration",
+        service_type: "github",
+        webhook_secret: "webhook-secret",
+        config_text: ~s({"owner":"acme","repo":"checkout"})
+      })
+
+    {:ok, _} = Integrations.update_integration(integration, %{enabled: false})
+
+    body = Jason.encode!(%{"action" => "opened"})
+
+    conn =
+      conn
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("x-hub-signature-256", "sha256=#{hmac("webhook-secret", body)}")
+      |> post(~p"/integrations/off-integration/webhook", body)
+
+    assert json_response(conn, 410)["error"] == "integration disabled"
+  end
+
   defp hmac(secret, body) do
     :crypto.mac(:hmac, :sha256, secret, body) |> Base.encode16(case: :lower)
   end

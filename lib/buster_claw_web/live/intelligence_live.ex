@@ -63,7 +63,7 @@ defmodule BusterClawWeb.IntelligenceLive do
     result =
       case Providers.test_provider(provider) do
         {:ok, response} -> "Connected: #{response}"
-        {:error, reason} -> "Connection failed: #{inspect(reason)}"
+        {:error, reason} -> "Connection failed: #{BusterClawWeb.ErrorFormatter.format(reason)}"
       end
 
     {:noreply, assign(socket, :test_result, result)}

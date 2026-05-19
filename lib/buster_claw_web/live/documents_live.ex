@@ -30,8 +30,11 @@ defmodule BusterClawWeb.DocumentsLive do
 
     content =
       case Library.read_raw_document(document) do
-        {:ok, body} -> body
-        {:error, reason} -> "Unable to read document: #{inspect(reason)}"
+        {:ok, body} ->
+          body
+
+        {:error, reason} ->
+          "Unable to read document: #{BusterClawWeb.ErrorFormatter.format(reason)}"
       end
 
     {:noreply, assign(socket, selected_document: document, document_content: content)}

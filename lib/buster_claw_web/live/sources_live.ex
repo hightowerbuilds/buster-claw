@@ -191,7 +191,9 @@ defmodule BusterClawWeb.SourcesLive do
   defp tags(source), do: get_in(source.tags || %{}, ["items"]) || []
 
   defp format_ingest_result({:ok, count, _items}), do: "Ingested #{count} documents."
-  defp format_ingest_result({:error, reason}), do: "Ingest failed: #{inspect(reason)}"
+
+  defp format_ingest_result({:error, reason}),
+    do: "Ingest failed: #{BusterClawWeb.ErrorFormatter.format(reason)}"
 
   defp format_summary(%{saved: saved, errors: []}), do: "Ingested #{saved} documents."
 

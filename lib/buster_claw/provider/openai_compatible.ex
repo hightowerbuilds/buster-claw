@@ -1,7 +1,7 @@
 defmodule BusterClaw.Provider.OpenAICompatible do
   @moduledoc "OpenAI-compatible chat completions provider."
 
-  @behaviour BusterClaw.Provider
+  @behaviour BusterClaw.Providers.Backend
 
   alias BusterClaw.Provider.HTTP
 

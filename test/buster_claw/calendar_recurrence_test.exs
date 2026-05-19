@@ -52,7 +52,14 @@ defmodule BusterClaw.CalendarRecurrenceTest do
         })
 
       occurrences = Calendar.events_in_range(~D[2026-06-01], ~D[2026-06-30])
-      assert Enum.map(occurrences, & &1.date) == [~D[2026-06-01], ~D[2026-06-08], ~D[2026-06-15], ~D[2026-06-22], ~D[2026-06-29]]
+
+      assert Enum.map(occurrences, & &1.date) == [
+               ~D[2026-06-01],
+               ~D[2026-06-08],
+               ~D[2026-06-15],
+               ~D[2026-06-22],
+               ~D[2026-06-29]
+             ]
     end
 
     test "monthly recurring events step by month and clamp on shorter months" do

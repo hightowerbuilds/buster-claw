@@ -79,8 +79,7 @@ defmodule BusterClawWeb.Layouts do
               :if={@agent_mode_on?}
               class="inline-flex items-center gap-2 rounded-full border border-success/40 bg-success/10 px-3 py-1 font-semibold text-success"
             >
-              <span class="size-2 rounded-full bg-success" />
-              Agent mode on
+              <span class="size-2 rounded-full bg-success" /> Agent mode on
             </span>
             <.runtime_chip label="PubSub" value={@runtime.pubsub} ok?={true} />
             <.runtime_chip label="Endpoint" value={@runtime.endpoint} ok?={true} />

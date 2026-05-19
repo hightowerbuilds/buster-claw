@@ -1,7 +1,7 @@
 defmodule BusterClaw.Provider.Gemini do
   @moduledoc "Google Gemini generateContent provider."
 
-  @behaviour BusterClaw.Provider
+  @behaviour BusterClaw.Providers.Backend
 
   alias BusterClaw.Provider.HTTP
 

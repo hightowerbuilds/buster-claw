@@ -187,7 +187,10 @@ defmodule BusterClawWeb.CalendarLive do
          {:ok, _} <- Calendar.update_event(event, %{date: new_date}) do
       {:noreply,
        socket
-       |> assign(:result, "Moved \"#{event.title}\" to #{Elixir.Calendar.strftime(new_date, "%b %-d, %Y")}.")
+       |> assign(
+         :result,
+         "Moved \"#{event.title}\" to #{Elixir.Calendar.strftime(new_date, "%b %-d, %Y")}."
+       )
        |> rebuild_view()}
     else
       _ -> {:noreply, socket}
@@ -272,8 +275,18 @@ defmodule BusterClawWeb.CalendarLive do
             </div>
           </header>
 
-          <.month_view :if={@view == :month} grid_days={@grid_days} weekday_labels={@weekday_labels} today={@today} />
-          <.week_view :if={@view == :week} grid_days={@grid_days} weekday_labels={@weekday_labels} today={@today} />
+          <.month_view
+            :if={@view == :month}
+            grid_days={@grid_days}
+            weekday_labels={@weekday_labels}
+            today={@today}
+          />
+          <.week_view
+            :if={@view == :week}
+            grid_days={@grid_days}
+            weekday_labels={@weekday_labels}
+            today={@today}
+          />
           <.day_view :if={@view == :day} day={hd(@grid_days)} today={@today} />
         </section>
 
@@ -396,7 +409,13 @@ defmodule BusterClawWeb.CalendarLive do
     </div>
 
     <div class="grid grid-cols-7">
-      <.day_cell :for={day <- @grid_days} day={day} today={@today} dim_other_month={true} min_height="min-h-28" />
+      <.day_cell
+        :for={day <- @grid_days}
+        day={day}
+        today={@today}
+        dim_other_month={true}
+        min_height="min-h-28"
+      />
     </div>
     """
   end
@@ -415,7 +434,13 @@ defmodule BusterClawWeb.CalendarLive do
     </div>
 
     <div class="grid grid-cols-7">
-      <.day_cell :for={day <- @grid_days} day={day} today={@today} dim_other_month={false} min_height="min-h-64" />
+      <.day_cell
+        :for={day <- @grid_days}
+        day={day}
+        today={@today}
+        dim_other_month={false}
+        min_height="min-h-64"
+      />
     </div>
     """
   end
@@ -427,7 +452,9 @@ defmodule BusterClawWeb.CalendarLive do
     ~H"""
     <div class="border-b border-base-300 px-4 py-3 text-sm">
       <span class="font-semibold">{Elixir.Calendar.strftime(@day.date, "%A")}</span>
-      <span class="ml-2 text-base-content/60">{Elixir.Calendar.strftime(@day.date, "%B %-d, %Y")}</span>
+      <span class="ml-2 text-base-content/60">
+        {Elixir.Calendar.strftime(@day.date, "%B %-d, %Y")}
+      </span>
     </div>
     <div class="p-4">
       <ul :if={@day.events != []} class="space-y-2">
@@ -484,7 +511,10 @@ defmodule BusterClawWeb.CalendarLive do
     >
       <span class={[
         "self-end font-mono font-semibold",
-        if(@day.date == @today, do: "rounded-full bg-base-content px-2 py-0.5 text-base-100", else: "")
+        if(@day.date == @today,
+          do: "rounded-full bg-base-content px-2 py-0.5 text-base-100",
+          else: ""
+        )
       ]}>
         {@day.date.day}
       </span>
@@ -518,7 +548,8 @@ defmodule BusterClawWeb.CalendarLive do
     {range_start, range_end} = view_range(socket.assigns.view, socket.assigns.anchor)
     events = Calendar.events_in_range(range_start, range_end)
 
-    grid_days = build_grid_days(socket.assigns.view, socket.assigns.anchor, events, range_start, range_end)
+    grid_days =
+      build_grid_days(socket.assigns.view, socket.assigns.anchor, events, range_start, range_end)
 
     assign(socket, :grid_days, grid_days)
   end
@@ -582,6 +613,7 @@ defmodule BusterClawWeb.CalendarLive do
   defp header_label(:week, anchor) do
     start = Date.add(anchor, -(Date.day_of_week(anchor, :sunday) - 1))
     finish = Date.add(start, 6)
+
     "#{Elixir.Calendar.strftime(start, "%b %-d")} – #{Elixir.Calendar.strftime(finish, "%b %-d, %Y")}"
   end
 

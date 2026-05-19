@@ -1,7 +1,7 @@
 defmodule BusterClaw.Provider.Anthropic do
   @moduledoc "Anthropic messages provider."
 
-  @behaviour BusterClaw.Provider
+  @behaviour BusterClaw.Providers.Backend
 
   alias BusterClaw.AgentTools
   alias BusterClaw.Provider.HTTP

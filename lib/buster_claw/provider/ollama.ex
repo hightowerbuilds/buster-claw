@@ -1,7 +1,7 @@
 defmodule BusterClaw.Provider.Ollama do
   @moduledoc "Ollama chat provider."
 
-  @behaviour BusterClaw.Provider
+  @behaviour BusterClaw.Providers.Backend
 
   alias BusterClaw.Provider.HTTP
 

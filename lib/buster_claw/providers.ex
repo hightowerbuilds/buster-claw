@@ -35,6 +35,15 @@ defmodule BusterClaw.Providers do
     end)
   end
 
+  @doc """
+  Deactivate every provider. Returns `:ok` either way. Used by the home-page
+  "no active key" option.
+  """
+  def clear_active do
+    Repo.update_all(Provider, set: [active: false])
+    :ok
+  end
+
   def test_provider(%Provider{} = provider), do: module_for(provider).test_connection(provider)
 
   def chat_with_active(messages, on_chunk) do

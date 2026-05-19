@@ -108,9 +108,8 @@ defmodule BusterClawWeb.StatusLive do
       nil ->
         {:noreply, socket}
 
-      provider ->
-        {:ok, _} =
-          provider |> Provider.changeset(%{active: false}) |> BusterClaw.Repo.update()
+      _provider ->
+        :ok = Providers.clear_active()
 
         {:noreply,
          socket

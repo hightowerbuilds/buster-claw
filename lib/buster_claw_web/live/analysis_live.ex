@@ -23,7 +23,10 @@ defmodule BusterClawWeb.AnalysisLive do
         {:noreply, load_state(socket)}
 
       {:error, reason} ->
-        {:noreply, socket |> assign(:last_error, inspect(reason)) |> load_state()}
+        {:noreply,
+         socket
+         |> assign(:last_error, BusterClawWeb.ErrorFormatter.format(reason))
+         |> load_state()}
     end
   end
 

@@ -71,5 +71,5 @@ defmodule BusterClaw.AgentTools do
   end
 
   defp format_error(reason) when is_atom(reason), do: to_string(reason)
-  defp format_error(reason), do: inspect(reason)
+  defp format_error(reason), do: BusterClawWeb.ErrorFormatter.format(reason)
 end

@@ -1,4 +1,4 @@
-defmodule BusterClaw.Provider do
+defmodule BusterClaw.Providers.Backend do
   @moduledoc "Provider behavior for model chat backends."
 
   alias BusterClaw.Providers.Provider, as: ProviderConfig

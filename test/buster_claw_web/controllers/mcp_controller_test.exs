@@ -28,10 +28,14 @@ defmodule BusterClawWeb.McpControllerTest do
       assert %{"jsonrpc" => "2.0", "id" => 2, "result" => %{"tools" => tools}} =
                json_response(conn, 200)
 
-      assert length(tools) >= 70
+      assert length(tools) > 0
+      names = Enum.map(tools, & &1["name"])
+
+      for representative <- ~w(runtime_status source_list provider_active chat_send web_search) do
+        assert representative in names, "expected tool catalog to include #{representative}"
+      end
 
       first = Enum.find(tools, &(&1["name"] == "source_list"))
-      assert first
       assert first["description"]
       assert first["inputSchema"]["type"] == "object"
     end

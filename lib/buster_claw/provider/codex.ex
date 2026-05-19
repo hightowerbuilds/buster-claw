@@ -1,7 +1,7 @@
 defmodule BusterClaw.Provider.Codex do
   @moduledoc "OpenAI Responses API provider for codex-* models."
 
-  @behaviour BusterClaw.Provider
+  @behaviour BusterClaw.Providers.Backend
 
   alias BusterClaw.Provider.HTTP
 

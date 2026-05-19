@@ -57,7 +57,7 @@ defmodule BusterClawWeb.ApiController do
         send_error(conn, 400, to_string(reason))
 
       {:error, reason} ->
-        send_error(conn, 500, inspect(reason))
+        send_error(conn, 500, BusterClawWeb.ErrorFormatter.format(reason))
     end
   end
 
