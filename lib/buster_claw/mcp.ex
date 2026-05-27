@@ -22,10 +22,30 @@ defmodule BusterClaw.MCP do
   end
 
   def delete_server(%MCPServer{} = server) do
+    BusterClaw.MCP.Supervisor.stop_server(server)
+
     server
     |> Automation.delete_mcp_server()
     |> broadcast_change()
   end
+
+  def start_enabled_servers, do: BusterClaw.MCP.Supervisor.start_enabled_servers()
+
+  def connect_server(id) when is_binary(id) or is_integer(id) do
+    id
+    |> get_server!()
+    |> connect_server()
+  end
+
+  def connect_server(%MCPServer{} = server), do: BusterClaw.MCP.Supervisor.start_server(server)
+
+  def discover_tools(id) when is_binary(id) or is_integer(id) do
+    id
+    |> get_server!()
+    |> discover_tools()
+  end
+
+  def discover_tools(%MCPServer{} = server), do: BusterClaw.MCP.Supervisor.discover_tools(server)
 
   def mark_unavailable(%MCPServer{} = server, reason) do
     update_server(server, %{
@@ -44,7 +64,8 @@ defmodule BusterClaw.MCP do
         servers
         |> Enum.map_join("\n", fn server ->
           status = server.last_status || if(server.enabled, do: "configured", else: "disabled")
-          "- #{server.name}: #{status} (`#{server.command}`)"
+          tools = tool_count(server)
+          "- #{server.name}: #{status}#{tools} (`#{server.command}`)"
         end)
     end
   end
@@ -84,4 +105,11 @@ defmodule BusterClaw.MCP do
   end
 
   defp broadcast_change(other), do: other
+
+  defp tool_count(server) do
+    case BusterClaw.MCP.Supervisor.cached_tools(server) do
+      {:ok, tools} -> " (#{length(tools)} tools)"
+      _other -> ""
+    end
+  end
 end

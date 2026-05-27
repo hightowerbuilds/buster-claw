@@ -2,10 +2,16 @@ defmodule BusterClawWeb.StatusLive do
   use BusterClawWeb, :live_view
 
   alias BusterClaw.AgentMode
+  alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Commands
+  alias BusterClaw.Google
+  alias BusterClaw.Google.Account, as: GoogleAccount
+  alias BusterClaw.Google.OAuth, as: GoogleOAuthCore
   alias BusterClaw.Providers
   alias BusterClaw.Providers.Provider
   alias BusterClaw.Runtime.Status
+  alias BusterClaw.SystemBrowser
+  alias BusterClawWeb.GoogleOAuth
 
   @type_options [
     {"Anthropic (Claude)", "anthropic"},
@@ -13,16 +19,21 @@ defmodule BusterClawWeb.StatusLive do
     {"OpenAI Codex", "codex"},
     {"OpenAI (Chat Completions)", "openai"},
     {"OpenRouter", "openrouter"},
-    {"Ollama (local)", "ollama"}
+    {"Ollama (local)", "ollama"},
+    {"Custom OpenAI-compatible", "custom"}
   ]
 
   @activity_keep 25
+  @google_default_query "newer_than:7d"
 
   @impl true
   def mount(_params, _session, socket) do
+    today = Date.utc_today()
+
     if connected?(socket) do
       AgentMode.subscribe_mode()
       AgentMode.subscribe_activity()
+      Google.subscribe()
     end
 
     {:ok,
@@ -30,9 +41,15 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(status: Status.snapshot())
      |> assign(:flash_note, nil)
      |> assign(:mode, :api_key)
+     |> assign(:today, today)
+     |> assign(:google_auth_url, nil)
+     |> assign(:google_note, nil)
      |> assign(:agent_mode_on?, AgentMode.on?())
      |> assign(:activity, [])
      |> load_providers()
+     |> load_google_accounts()
+     |> load_daily_events()
+     |> assign_google_form()
      |> assign_new_form("anthropic")}
   end
 
@@ -128,6 +145,62 @@ defmodule BusterClawWeb.StatusLive do
      |> load_providers()}
   end
 
+  def handle_event("test_provider", %{"id" => id}, socket) do
+    provider = Providers.get_provider!(id)
+
+    note =
+      case Providers.test_provider(provider) do
+        {:ok, response} -> "#{provider.name}: #{response}"
+        {:error, reason} -> "#{provider.name}: #{BusterClawWeb.ErrorFormatter.format(reason)}"
+      end
+
+    {:noreply, assign(socket, :flash_note, note)}
+  end
+
+  def handle_event("validate_google", %{"google_account" => params}, socket) do
+    changeset =
+      %GoogleAccount{}
+      |> GoogleAccount.changeset(put_google_defaults(params))
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :google_form, to_form(changeset, as: :google_account))}
+  end
+
+  def handle_event("connect_google", %{"google_account" => params}, socket) do
+    case Google.upsert_account(put_google_defaults(params)) do
+      {:ok, account} ->
+        {:noreply,
+         socket
+         |> assign(:google_auth_url, GoogleOAuth.authorization_url(account))
+         |> assign(:google_note, "Google account saved.")
+         |> load_google_accounts()
+         |> assign_google_form()}
+
+      {:error, changeset} ->
+        {:noreply,
+         assign(
+           socket,
+           :google_form,
+           to_form(%{changeset | action: :insert}, as: :google_account)
+         )}
+    end
+  end
+
+  def handle_event("open_google_sign_in", _params, socket) do
+    case SystemBrowser.open(socket.assigns.google_auth_url) do
+      {:ok, :opened} ->
+        {:noreply, assign(socket, :google_note, "Opened Google sign-in in your browser.")}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(
+           socket,
+           :google_note,
+           "Could not open the browser automatically: #{BusterClawWeb.ErrorFormatter.format(reason)}"
+         )}
+    end
+  end
+
   @impl true
   def handle_info({:agent_mode, value}, socket) do
     {:noreply, assign(socket, :agent_mode_on?, value)}
@@ -136,6 +209,10 @@ defmodule BusterClawWeb.StatusLive do
   def handle_info({:activity, payload}, socket) do
     activity = [payload | socket.assigns.activity] |> Enum.take(@activity_keep)
     {:noreply, assign(socket, :activity, activity)}
+  end
+
+  def handle_info({:google_account_changed, _event, _account}, socket) do
+    {:noreply, load_google_accounts(socket)}
   end
 
   @impl true
@@ -153,53 +230,282 @@ defmodule BusterClawWeb.StatusLive do
           </p>
         </div>
 
-        <div class="flex gap-2 rounded-lg border border-base-300 bg-base-100 p-1">
-          <button
-            type="button"
-            phx-click="select_mode"
-            phx-value-mode="api_key"
-            class={[
-              "flex-1 rounded px-4 py-2 text-sm font-semibold transition-colors",
-              if(@mode == :api_key,
-                do: "bg-base-content text-base-100",
-                else: "text-base-content/70 hover:bg-base-200"
-              )
-            ]}
-          >
-            Use an API key
-          </button>
-          <button
-            type="button"
-            phx-click="select_mode"
-            phx-value-mode="terminal_agent"
-            class={[
-              "flex-1 rounded px-4 py-2 text-sm font-semibold transition-colors",
-              if(@mode == :terminal_agent,
-                do: "bg-base-content text-base-100",
-                else: "text-base-content/70 hover:bg-base-200"
-              )
-            ]}
-          >
-            Hand off to a terminal agent
-          </button>
-        </div>
+        <.daily_calendar_panel today={@today} events={@daily_events} />
 
-        <.models_panel
-          :if={@mode == :api_key}
-          providers={@providers}
-          active_id={@active_id}
-          form={@form}
-          type_options={@type_options}
-          flash_note={@flash_note}
+        <.google_workspace_login_panel
+          form={@google_form}
+          accounts={@google_accounts}
+          auth_url={@google_auth_url}
+          note={@google_note}
         />
 
-        <.agent_panel
-          :if={@mode == :terminal_agent}
-          agent_mode_on?={@agent_mode_on?}
-          activity={@activity}
-        />
+        <details
+          id="home-handoff-section"
+          class="group rounded-lg border border-base-300 bg-base-100"
+        >
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden">
+            <div class="min-w-0">
+              <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">
+                Runtime Control
+              </p>
+              <h2 class="text-lg font-semibold">Agent Handoff & API Keys</h2>
+              <p class="mt-1 text-sm text-base-content/60">
+                Choose the active model path when you need to change who drives the app.
+              </p>
+            </div>
+            <span class="grid size-9 shrink-0 place-items-center rounded border border-base-300 text-base-content/70 transition group-open:rotate-180">
+              <.icon name="hero-chevron-down" class="size-4" />
+            </span>
+          </summary>
+
+          <div class="space-y-5 border-t border-base-300 p-5">
+            <div class="flex gap-2 rounded-lg border border-base-300 bg-base-100 p-1">
+              <button
+                type="button"
+                phx-click="select_mode"
+                phx-value-mode="api_key"
+                class={[
+                  "flex-1 rounded px-4 py-2 text-sm font-semibold transition-colors",
+                  if(@mode == :api_key,
+                    do: "bg-base-content text-base-100",
+                    else: "text-base-content/70 hover:bg-base-200"
+                  )
+                ]}
+              >
+                Use an API key
+              </button>
+              <button
+                type="button"
+                phx-click="select_mode"
+                phx-value-mode="terminal_agent"
+                class={[
+                  "flex-1 rounded px-4 py-2 text-sm font-semibold transition-colors",
+                  if(@mode == :terminal_agent,
+                    do: "bg-base-content text-base-100",
+                    else: "text-base-content/70 hover:bg-base-200"
+                  )
+                ]}
+              >
+                Hand off to a terminal agent
+              </button>
+            </div>
+
+            <.models_panel
+              :if={@mode == :api_key}
+              providers={@providers}
+              active_id={@active_id}
+              form={@form}
+              type_options={@type_options}
+              flash_note={@flash_note}
+            />
+
+            <.agent_panel
+              :if={@mode == :terminal_agent}
+              agent_mode_on?={@agent_mode_on?}
+              activity={@activity}
+            />
+          </div>
+        </details>
       </section>
     </Layouts.app>
+    """
+  end
+
+  attr :today, Date, required: true
+  attr :events, :list, required: true
+
+  defp daily_calendar_panel(assigns) do
+    ~H"""
+    <section id="home-daily-calendar" class="rounded-lg border border-base-300 bg-base-100">
+      <header class="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 px-5 py-4">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">
+            Today's Calendar
+          </p>
+          <h2 class="text-2xl font-semibold tracking-normal">
+            {Elixir.Calendar.strftime(@today, "%A, %B %-d")}
+          </h2>
+        </div>
+
+        <.link
+          navigate={~p"/calendar"}
+          class="rounded border border-base-300 px-3 py-2 text-sm font-semibold text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
+        >
+          Open Calendar
+        </.link>
+      </header>
+
+      <div class="p-5">
+        <ol :if={@events != []} class="divide-y divide-base-300 rounded border border-base-300">
+          <li
+            :for={event <- @events}
+            id={"home-event-#{event.id}-#{Date.to_iso8601(event.date)}"}
+            class="grid gap-3 px-4 py-3 text-sm sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-start"
+          >
+            <div class="font-mono text-xs font-semibold text-base-content/60">
+              {event_time_label(event)}
+            </div>
+            <div class="min-w-0">
+              <div class="flex min-w-0 items-center gap-2">
+                <span class={["size-2.5 shrink-0 rounded-full", event_dot_class(event.color)]} />
+                <h3 class="truncate font-semibold">{event.title}</h3>
+                <span
+                  :if={event.frequency}
+                  class="rounded-full bg-base-200 px-2 py-0.5 text-xs font-semibold text-base-content/60"
+                >
+                  {event.frequency}
+                </span>
+              </div>
+              <p
+                :if={event.notes not in [nil, ""]}
+                class="mt-1 line-clamp-2 text-sm text-base-content/60"
+              >
+                {event.notes}
+              </p>
+            </div>
+          </li>
+        </ol>
+
+        <div
+          :if={@events == []}
+          class="rounded border border-dashed border-base-300 px-4 py-10 text-center text-sm text-base-content/60"
+        >
+          Nothing scheduled today.
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  attr :form, :any, required: true
+  attr :accounts, :list, required: true
+  attr :auth_url, :string, default: nil
+  attr :note, :string, default: nil
+
+  defp google_workspace_login_panel(assigns) do
+    assigns = assign(assigns, :default_query, @google_default_query)
+
+    ~H"""
+    <section id="home-google-workspace-login" class="rounded-lg border border-base-300 bg-base-100">
+      <header class="flex flex-wrap items-start justify-between gap-3 border-b border-base-300 px-5 py-4">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">
+            Google Workspace
+          </p>
+          <h2 class="text-2xl font-semibold tracking-normal">Connect GWS</h2>
+          <p class="mt-1 text-sm text-base-content/60">
+            Save your desktop OAuth client and finish Google authorization.
+          </p>
+        </div>
+
+        <.link
+          navigate={~p"/gws"}
+          class="rounded border border-base-300 px-3 py-2 text-sm font-semibold text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
+        >
+          Open GWS
+        </.link>
+      </header>
+
+      <div class="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div class="space-y-4">
+          <p
+            :if={@note}
+            id="google-connect-note"
+            class="rounded border border-base-300 bg-base-200/40 px-3 py-2 text-sm"
+          >
+            {@note}
+          </p>
+
+          <.form
+            for={@form}
+            id="google-account-form"
+            phx-change="validate_google"
+            phx-submit="connect_google"
+            class="grid gap-3 sm:grid-cols-2"
+          >
+            <input
+              type="hidden"
+              name="google_account[scopes]"
+              value={@form[:scopes].value || GoogleOAuthCore.default_scope_string()}
+            />
+            <input
+              type="hidden"
+              name="google_account[default_query]"
+              value={@form[:default_query].value || @default_query}
+            />
+
+            <.input field={@form[:email]} type="email" label="Google account" />
+            <.input field={@form[:client_id]} type="text" label="OAuth client ID" />
+            <div class="sm:col-span-2">
+              <.input
+                field={@form[:client_secret]}
+                type="password"
+                label="OAuth client secret"
+                autocomplete="off"
+              />
+            </div>
+
+            <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85 sm:col-span-2">
+              Connect Google
+            </button>
+          </.form>
+
+          <div
+            :if={@auth_url}
+            id="google-oauth-next"
+            class="flex flex-col gap-3 rounded border border-success/30 bg-success/10 p-4 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <p class="text-sm font-semibold text-success">Google sign-in is ready.</p>
+            <button
+              type="button"
+              id="google-oauth-link"
+              phx-click="open_google_sign_in"
+              class="rounded bg-base-content px-4 py-2 text-center text-sm font-semibold text-base-100 transition hover:opacity-85"
+            >
+              Open Google Sign-In
+            </button>
+          </div>
+
+          <div
+            :if={@auth_url}
+            class="rounded border border-base-300 bg-base-100 p-3 text-xs text-base-content/60"
+          >
+            <label for="google-oauth-url" class="font-semibold uppercase tracking-wide">
+              Manual URL
+            </label>
+            <input
+              id="google-oauth-url"
+              type="text"
+              readonly
+              value={@auth_url}
+              class="mt-2 w-full rounded border border-base-300 bg-base-200 px-2 py-1 font-mono text-xs"
+            />
+          </div>
+        </div>
+
+        <aside class="rounded border border-base-300">
+          <div class="border-b border-base-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+            GWS accounts
+          </div>
+          <div class="divide-y divide-base-300 text-sm">
+            <div :for={account <- @accounts} class="px-3 py-2">
+              <div class="truncate font-medium">{account.email}</div>
+              <div class="mt-1 flex flex-wrap gap-2 text-xs">
+                <span class={google_status_class(account.has_refresh_token)}>
+                  {if account.has_refresh_token, do: "connected", else: "pending"}
+                </span>
+                <span class="rounded border border-base-300 px-2 py-0.5">
+                  {if account.enabled, do: "enabled", else: "disabled"}
+                </span>
+              </div>
+            </div>
+            <div :if={@accounts == []} class="px-3 py-8 text-center text-xs text-base-content/50">
+              No GWS accounts yet.
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
     """
   end
 
@@ -211,7 +517,7 @@ defmodule BusterClawWeb.StatusLive do
 
   defp models_panel(assigns) do
     ~H"""
-    <section class="space-y-4 rounded-lg border border-base-300 bg-base-100 p-5">
+    <section class="space-y-4">
       <div class="flex flex-wrap items-baseline justify-between gap-2">
         <h2 class="text-lg font-semibold">Models</h2>
         <p class="text-sm text-base-content/60">
@@ -223,7 +529,7 @@ defmodule BusterClawWeb.StatusLive do
         {@flash_note}
       </p>
 
-      <form phx-change="activate_provider" class="space-y-1">
+      <form id="active-provider-form" phx-change="activate_provider" class="space-y-1">
         <label class="block text-xs font-semibold uppercase tracking-wide text-base-content/60">
           Active key
         </label>
@@ -259,23 +565,39 @@ defmodule BusterClawWeb.StatusLive do
               </span>
             </p>
           </div>
-          <button
-            class="rounded border border-error/40 px-2 py-1 text-xs text-error"
-            phx-click="delete_provider"
-            phx-value-id={p.id}
-            data-confirm={"Delete #{p.name}?"}
-          >
-            Delete
-          </button>
+          <div class="flex flex-shrink-0 gap-2">
+            <button
+              class="rounded border border-base-300 px-2 py-1 text-xs"
+              phx-click="test_provider"
+              phx-value-id={p.id}
+            >
+              Test
+            </button>
+            <button
+              class="rounded border border-error/40 px-2 py-1 text-xs text-error"
+              phx-click="delete_provider"
+              phx-value-id={p.id}
+              data-confirm={"Delete #{p.name}?"}
+            >
+              Delete
+            </button>
+          </div>
         </div>
       </div>
 
       <.form
         for={@form}
+        id="provider-form"
         phx-change="validate"
         phx-submit="add_provider"
-        class="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)_200px_auto] sm:items-end"
+        class="grid gap-3 sm:grid-cols-2"
       >
+        <.input
+          field={@form[:name]}
+          type="text"
+          label="Name (optional)"
+          placeholder="Auto-named by provider type"
+        />
         <.input
           field={@form[:type]}
           type="select"
@@ -283,11 +605,10 @@ defmodule BusterClawWeb.StatusLive do
           options={@type_options}
         />
         <.input
-          field={@form[:api_key]}
-          type="password"
-          label="API key"
-          placeholder={api_key_placeholder(@form[:type].value)}
-          autocomplete="off"
+          field={@form[:base_url]}
+          type="text"
+          label="Base URL (optional)"
+          placeholder={base_url_placeholder(@form[:type].value)}
         />
         <.input
           field={@form[:model]}
@@ -295,8 +616,16 @@ defmodule BusterClawWeb.StatusLive do
           label="Model"
           placeholder={default_model(@form[:type].value)}
         />
-
-        <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100">
+        <div class="sm:col-span-2">
+          <.input
+            field={@form[:api_key]}
+            type="password"
+            label="API key"
+            placeholder={api_key_placeholder(@form[:type].value)}
+            autocomplete="off"
+          />
+        </div>
+        <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 sm:col-span-2">
           Add key
         </button>
       </.form>
@@ -311,7 +640,7 @@ defmodule BusterClawWeb.StatusLive do
     assigns = assign(assigns, :commands, Commands.list_commands())
 
     ~H"""
-    <section class="space-y-4 rounded-lg border border-base-300 bg-base-100 p-5">
+    <section class="space-y-4">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">Terminal Agent</h2>
@@ -395,8 +724,33 @@ defmodule BusterClawWeb.StatusLive do
     """
   end
 
-  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M:%S")
+  defp format_time(%DateTime{} = dt), do: Elixir.Calendar.strftime(dt, "%H:%M:%S")
   defp format_time(_), do: ""
+
+  defp event_time_label(%{start_time: nil}), do: "All day"
+
+  defp event_time_label(%{start_time: start_time, end_time: nil}),
+    do: format_event_time(start_time)
+
+  defp event_time_label(%{start_time: start_time, end_time: end_time}),
+    do: "#{format_event_time(start_time)}-#{format_event_time(end_time)}"
+
+  defp format_event_time(%Time{} = time), do: Elixir.Calendar.strftime(time, "%H:%M")
+
+  defp event_dot_class(color) do
+    case color do
+      "work" -> "bg-info"
+      "personal" -> "bg-secondary"
+      "social" -> "bg-accent"
+      "travel" -> "bg-warning"
+      "health" -> "bg-success"
+      "holiday" -> "bg-error"
+      _ -> "bg-base-content/40"
+    end
+  end
+
+  defp google_status_class(true), do: "rounded bg-success/15 px-2 py-0.5 text-success"
+  defp google_status_class(false), do: "rounded bg-warning/15 px-2 py-0.5 text-warning"
 
   defp page_title(:home), do: "Home"
 
@@ -418,6 +772,24 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:type_options, @type_options)
   end
 
+  defp load_google_accounts(socket) do
+    assign(socket, :google_accounts, Google.list_account_summaries())
+  end
+
+  defp load_daily_events(socket) do
+    today = socket.assigns.today
+
+    events =
+      today
+      |> AppCalendar.events_in_range(today)
+      |> Enum.sort_by(&daily_event_sort_key/1)
+
+    assign(socket, :daily_events, events)
+  end
+
+  defp daily_event_sort_key(%{start_time: nil}), do: {0, ~T[00:00:00]}
+  defp daily_event_sort_key(%{start_time: time}), do: {1, time}
+
   defp assign_new_form(socket, type) do
     type = if type in Enum.map(@type_options, &elem(&1, 1)), do: type, else: "anthropic"
 
@@ -431,10 +803,38 @@ defmodule BusterClawWeb.StatusLive do
     assign(socket, :form, to_form(changeset, as: :provider))
   end
 
+  defp assign_google_form(socket, attrs \\ %{}) do
+    changeset =
+      %GoogleAccount{}
+      |> GoogleAccount.changeset(Map.merge(google_form_defaults(), attrs))
+
+    assign(socket, :google_form, to_form(changeset, as: :google_account))
+  end
+
+  defp put_google_defaults(params) do
+    params
+    |> Map.put(
+      "scopes",
+      blank_to_default(Map.get(params, "scopes"), GoogleOAuthCore.default_scope_string())
+    )
+    |> Map.put(
+      "default_query",
+      blank_to_default(Map.get(params, "default_query"), @google_default_query)
+    )
+  end
+
+  defp google_form_defaults do
+    %{
+      "scopes" => GoogleOAuthCore.default_scope_string(),
+      "default_query" => @google_default_query,
+      "enabled" => true
+    }
+  end
+
   defp fill_defaults(params, providers) do
     type = Map.get(params, "type", "anthropic")
     model = blank_to_default(Map.get(params, "model"), default_model(type))
-    name = auto_name(type, providers)
+    name = blank_to_default(Map.get(params, "name"), auto_name(type, providers))
 
     params
     |> Map.put("model", model)
@@ -486,6 +886,7 @@ defmodule BusterClawWeb.StatusLive do
   defp default_model("openai"), do: "gpt-4o"
   defp default_model("openrouter"), do: "openai/gpt-4o"
   defp default_model("ollama"), do: "llama3"
+  defp default_model("custom"), do: ""
   defp default_model(_), do: ""
 
   defp api_key_placeholder("anthropic"), do: "sk-ant-..."
@@ -494,5 +895,15 @@ defmodule BusterClawWeb.StatusLive do
   defp api_key_placeholder("openai"), do: "sk-..."
   defp api_key_placeholder("openrouter"), do: "sk-or-..."
   defp api_key_placeholder("ollama"), do: "(leave blank for local Ollama)"
+  defp api_key_placeholder("custom"), do: "(if your endpoint requires one)"
   defp api_key_placeholder(_), do: ""
+
+  defp base_url_placeholder("anthropic"), do: "https://api.anthropic.com"
+  defp base_url_placeholder("gemini"), do: "https://generativelanguage.googleapis.com"
+  defp base_url_placeholder("codex"), do: "https://api.openai.com/v1"
+  defp base_url_placeholder("openai"), do: "https://api.openai.com/v1"
+  defp base_url_placeholder("openrouter"), do: "https://openrouter.ai/api/v1"
+  defp base_url_placeholder("ollama"), do: "http://127.0.0.1:11434"
+  defp base_url_placeholder("custom"), do: "https://your-endpoint/v1"
+  defp base_url_placeholder(_), do: ""
 end

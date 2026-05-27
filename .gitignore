@@ -24,7 +24,7 @@ npm-debug.log
 desktop/tauri/target/
 
 # Local runtime data
-Library/
+/Library/
 *.log
 erl_crash.dump
 

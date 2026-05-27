@@ -7,19 +7,25 @@ defmodule BusterClaw.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      BusterClawWeb.Telemetry,
-      BusterClaw.Repo,
-      {Ecto.Migrator,
-       repos: Application.fetch_env!(:buster_claw, :ecto_repos), skip: skip_migrations?()},
-      {DNSCluster, query: Application.get_env(:buster_claw, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: BusterClaw.PubSub},
-      BusterClaw.AgentMode,
-      {Registry, keys: :unique, name: BusterClaw.Chat.Registry},
-      {DynamicSupervisor, strategy: :one_for_one, name: BusterClaw.Chat.SessionSupervisor},
-      # Start to serve requests, typically the last entry
-      BusterClawWeb.Endpoint
-    ]
+    children =
+      [
+        BusterClawWeb.Telemetry,
+        BusterClaw.Repo,
+        {Ecto.Migrator,
+         repos: Application.fetch_env!(:buster_claw, :ecto_repos), skip: skip_migrations?()},
+        {DNSCluster, query: Application.get_env(:buster_claw, :dns_cluster_query) || :ignore},
+        {Phoenix.PubSub, name: BusterClaw.PubSub},
+        BusterClaw.AgentMode,
+        {Registry, keys: :unique, name: BusterClaw.MCP.Registry},
+        BusterClaw.MCP.Supervisor,
+        BusterClaw.MCP.Bootstrap,
+        scheduler_child(),
+        {Registry, keys: :unique, name: BusterClaw.Chat.Registry},
+        {DynamicSupervisor, strategy: :one_for_one, name: BusterClaw.Chat.SessionSupervisor},
+        # Start to serve requests, typically the last entry
+        BusterClawWeb.Endpoint
+      ]
+      |> Enum.reject(&is_nil/1)
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -38,5 +44,11 @@ defmodule BusterClaw.Application do
   defp skip_migrations?() do
     # By default, sqlite migrations are run when using a release
     System.get_env("RELEASE_NAME") == nil
+  end
+
+  defp scheduler_child do
+    if Application.get_env(:buster_claw, :scheduler_enabled, true) do
+      BusterClaw.Scheduler.Runner
+    end
   end
 end

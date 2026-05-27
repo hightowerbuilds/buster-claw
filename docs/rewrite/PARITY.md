@@ -67,10 +67,10 @@ The architectural target is Elixir, OTP, Phoenix LiveView, SQLite/Ecto, supervis
 - [ ] Run shell hooks with JSON stdin.
 - [ ] Run webhook hooks with JSON payload.
 - [ ] Track recent hook execution results.
-- [ ] Load and connect configured MCP servers.
-- [ ] Discover MCP tools.
-- [ ] Show MCP server/tool status.
-- [ ] Inject MCP tool summaries into chat context.
+- [x] Load and connect configured MCP servers.
+- [x] Discover MCP tools.
+- [x] Show MCP server/tool status.
+- [x] Inject MCP tool summaries into chat context.
 - [ ] Add calendar event.
 - [ ] Update calendar event.
 - [ ] Delete calendar event.
@@ -85,7 +85,7 @@ The architectural target is Elixir, OTP, Phoenix LiveView, SQLite/Ecto, supervis
 - [ ] `/remember <text>`: save a persistent memory entry.
 - [ ] `/forget <number>`: remove a persistent memory entry by 1-based index.
 - [ ] `/memories`: list saved memories.
-- [ ] `/mcp`: list connected MCP servers and discovered tools.
+- [x] `/mcp`: list connected MCP servers and discovered tools.
 - [ ] `/help`: list available commands.
 
 ## External Integrations To Preserve
@@ -99,7 +99,7 @@ The architectural target is Elixir, OTP, Phoenix LiveView, SQLite/Ecto, supervis
 - [ ] RSS/Atom fetching.
 - [ ] HTTP article fetching.
 - [ ] Browser-rendered fetching.
-- [ ] MCP stdio server launching and JSON-RPC calls.
+- [x] MCP stdio server launching and startup JSON-RPC handshakes.
 - [ ] Slack webhook delivery.
 - [ ] Discord webhook delivery.
 - [ ] Telegram bot delivery.

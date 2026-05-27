@@ -1,7 +1,7 @@
 defmodule BusterClaw.AnalysisTest do
   use BusterClaw.DataCase
 
-  alias BusterClaw.{Analysis, Library, Providers, Workflow}
+  alias BusterClaw.{Analysis, Delivery, Hooks, Library, Providers, Workflow}
 
   setup do
     root =
@@ -82,6 +82,100 @@ defmodule BusterClaw.AnalysisTest do
     assert File.read!(report_path) =~ "This document has a clear launch signal."
   end
 
+  test "runs post-report hooks and delivery after report generation" do
+    test_pid = self()
+
+    Req.Test.stub(BusterClaw.AnalysisHookHTTP, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:hook_request, conn.request_path, body})
+      Req.Test.json(conn, %{ok: true})
+    end)
+
+    Req.Test.stub(BusterClaw.AnalysisDeliveryHTTP, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:delivery_request, conn.request_path, body})
+      Req.Test.json(conn, %{ok: true})
+    end)
+
+    Req.Test.stub(BusterClaw.ProviderHTTP, fn conn ->
+      Req.Test.json(conn, %{
+        choices: [
+          %{
+            message: %{
+              content: "## Summary\n\nSide effects report."
+            }
+          }
+        ]
+      })
+    end)
+
+    {:ok, _provider} =
+      Providers.create_provider(%{
+        name: "openai-side-effects",
+        type: "openai",
+        model: "gpt-5.4",
+        api_key: "secret",
+        active: true
+      })
+
+    {:ok, _post_analysis} =
+      Hooks.create_hook(%{
+        name: "after-analysis",
+        event: "post_analysis",
+        type: "webhook",
+        target: "https://example.com/hooks/post-analysis"
+      })
+
+    {:ok, _post_report} =
+      Hooks.create_hook(%{
+        name: "after-report",
+        event: "post_report",
+        type: "webhook",
+        target: "https://example.com/hooks/post-report"
+      })
+
+    {:ok, _destination} =
+      Delivery.create_destination(%{
+        name: "team-slack",
+        type: "slack",
+        url: "https://example.com/delivery/report"
+      })
+
+    document = raw_document!("Side Effects")
+    {:ok, queued_job} = Analysis.queue_document(document)
+
+    assert {:ok, job} =
+             Analysis.run_job(queued_job,
+               hook_req_options: [plug: {Req.Test, BusterClaw.AnalysisHookHTTP}],
+               delivery_req_options: [plug: {Req.Test, BusterClaw.AnalysisDeliveryHTTP}]
+             )
+
+    assert job.status == "done"
+    assert job.report_id
+
+    assert_receive {:hook_request, "/hooks/post-analysis", post_analysis_body}
+    assert post_analysis_body =~ "post_analysis"
+    assert post_analysis_body =~ "#{job.report_id}"
+
+    assert_receive {:hook_request, "/hooks/post-report", post_report_body}
+    assert post_report_body =~ "post_report"
+    assert post_report_body =~ "#{job.report_id}"
+
+    assert_receive {:delivery_request, "/delivery/report", delivery_body}
+    assert delivery_body =~ "Report ready: Side Effects"
+    assert delivery_body =~ "#{job.report_id}"
+
+    assert Enum.map(Workflow.list_hook_runs(), & &1.event) |> Enum.sort() == [
+             "post_analysis",
+             "post_report"
+           ]
+
+    assert [attempt] = Workflow.list_delivery_attempts()
+    assert attempt.status == "sent"
+    assert attempt.report_id == job.report_id
+    assert attempt.title == "Report ready: Side Effects"
+  end
+
   test "drains queued jobs sequentially" do
     Req.Test.stub(BusterClaw.ProviderHTTP, fn conn ->
       Req.Test.json(conn, %{message: %{content: "local report"}})
@@ -103,6 +197,37 @@ defmodule BusterClaw.AnalysisTest do
     assert {:ok, [{:ok, _}, {:ok, _}]} = Analysis.drain_pending(max_jobs: 10)
     assert Enum.map(Analysis.list_jobs(), & &1.status) == ["done", "done"]
     assert length(Analysis.list_reports()) == 2
+  end
+
+  test "runs a specific queued job by id" do
+    Req.Test.stub(BusterClaw.ProviderHTTP, fn conn ->
+      Req.Test.json(conn, %{
+        choices: [
+          %{
+            message: %{
+              content: "## Summary\n\nSpecific job completed."
+            }
+          }
+        ]
+      })
+    end)
+
+    {:ok, _provider} =
+      Providers.create_provider(%{
+        name: "openai-specific",
+        type: "openai",
+        model: "gpt-5.4",
+        api_key: "secret",
+        active: true
+      })
+
+    document = raw_document!("Specific Job")
+    assert {:ok, queued_job} = Analysis.queue_document(document)
+
+    assert {:ok, job} = Analysis.run_job(queued_job.id)
+    assert job.id == queued_job.id
+    assert job.status == "done"
+    assert job.report_id
   end
 
   test "marks a job failed when no provider is available" do

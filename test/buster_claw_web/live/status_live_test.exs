@@ -3,6 +3,8 @@ defmodule BusterClawWeb.StatusLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias BusterClaw.Calendar
+  alias BusterClaw.Google
   alias BusterClaw.Providers
 
   test "GET / renders the home shell", %{conn: conn} do
@@ -10,11 +12,59 @@ defmodule BusterClawWeb.StatusLiveTest do
     response = html_response(conn, 200)
 
     assert response =~ "Buster Claw"
+    assert response =~ ~s(id="home-google-workspace-login")
+    assert response =~ ~s(href="/gws")
     assert response =~ "Models"
     assert response =~ "Active key"
-    # Sidebar nav still surfaces every section
-    assert response =~ "Webhooks"
-    assert response =~ "Hooks"
+    assert response =~ ~s(href="/advanced")
+    refute response =~ ~s(href="/webhooks")
+    refute response =~ ~s(href="/hooks")
+    refute response =~ ~s(href="/integrations")
+    refute response =~ ~s(href="/mcp")
+    refute response =~ ~s(href="/delivery")
+  end
+
+  test "home Google Workspace form saves an account and prepares sign-in", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    html =
+      view
+      |> form("#google-account-form", %{
+        google_account: %{
+          email: "me@example.com",
+          client_id: "client-id",
+          client_secret: "client-secret"
+        }
+      })
+      |> render_submit()
+
+    assert html =~ ~s(id="google-oauth-link")
+    assert html =~ "accounts.google.com"
+    assert [account] = Google.list_accounts()
+    assert account.email == "me@example.com"
+    assert account.client_id == "client-id"
+    assert account.scopes =~ "gmail.readonly"
+  end
+
+  test "GET / renders today's calendar events", %{conn: conn} do
+    today = Date.utc_today()
+
+    {:ok, _event} =
+      Calendar.create_event(%{
+        event_id: "home-today-event",
+        date: today,
+        start_time: ~T[09:30:00],
+        title: "Home page planning block",
+        notes: "Visible on the daily agenda.",
+        color: "work"
+      })
+
+    conn = get(conn, ~p"/")
+    response = html_response(conn, 200)
+
+    assert response =~ ~s(id="home-daily-calendar")
+    assert response =~ "Home page planning block"
+    assert response =~ "09:30"
   end
 
   test "GET /chat renders the chat shell", %{conn: conn} do
@@ -44,6 +94,41 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute Providers.get_provider!(a.id).active
       assert Providers.get_provider!(b.id).active
       assert Providers.active_provider().id == b.id
+    end
+
+    test "submitting the add-provider form creates and lists a provider", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      html =
+        view
+        |> form("form[phx-submit='add_provider']", %{
+          provider: %{
+            name: "OpenRouter Test",
+            type: "openrouter",
+            model: "openai/gpt-4o",
+            api_key: "secret"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Saved OpenRouter Test."
+      assert html =~ "OpenRouter Test"
+      assert [%{name: "OpenRouter Test"}] = Providers.list_providers()
+    end
+
+    test "delete button removes a provider", %{conn: conn} do
+      {:ok, p} =
+        Providers.create_provider(%{name: "to-delete", type: "ollama", model: "llama3"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      html =
+        view
+        |> element("button[phx-click='delete_provider'][phx-value-id='#{p.id}']")
+        |> render_click()
+
+      assert html =~ "Deleted to-delete."
+      assert [] = Providers.list_providers()
     end
 
     test "selecting the empty option clears the active provider", %{conn: conn} do

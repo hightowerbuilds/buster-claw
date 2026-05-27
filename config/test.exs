@@ -28,6 +28,7 @@ config :buster_claw, :search_req_options, plug: {Req.Test, BusterClaw.SearchHTTP
 config :buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHTTP}
 
 config :buster_claw, :api_token, "test-token-loopback-only"
+config :buster_claw, :scheduler_enabled, false
 
 # Print only warnings and errors during test
 config :logger, level: :warning

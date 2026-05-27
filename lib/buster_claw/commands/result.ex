@@ -6,6 +6,10 @@ defmodule BusterClaw.Commands.Result do
   lists/maps. Used by the HTTP API and MCP frontends.
   """
 
+  def to_json({status, value}) when status in [:ok, :error] do
+    %{status: to_string(status), value: to_json(value)}
+  end
+
   def to_json(value) when is_list(value), do: Enum.map(value, &to_json/1)
   def to_json(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
   def to_json(%NaiveDateTime{} = ndt), do: NaiveDateTime.to_iso8601(ndt)

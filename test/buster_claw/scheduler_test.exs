@@ -1,7 +1,7 @@
 defmodule BusterClaw.SchedulerTest do
   use BusterClaw.DataCase
 
-  alias BusterClaw.{Integrations, Library, Providers, Scheduler, Workflow}
+  alias BusterClaw.{Automation, Integrations, Library, Providers, Scheduler, Workflow}
 
   setup do
     Req.Test.verify_on_exit!()
@@ -40,6 +40,92 @@ defmodule BusterClaw.SchedulerTest do
     assert [] = Scheduler.list_jobs()
   end
 
+  test "validates cron expressions and initializes next run time" do
+    assert {:ok, job} =
+             Scheduler.create_job(%{
+               job_id: "next-hour",
+               type: "ingest",
+               cron: "@hourly"
+             })
+
+    assert job.next_run_at
+
+    assert {:error, changeset} =
+             Scheduler.create_job(%{
+               job_id: "bad-cron",
+               type: "ingest",
+               cron: "not a cron"
+             })
+
+    assert %{cron: [_]} = errors_on(changeset)
+  end
+
+  test "initializes next_run_at for imported enabled jobs" do
+    assert {:ok, job} =
+             Automation.create_scheduler_job(%{
+               job_id: "imported",
+               type: "custom",
+               cron: "@daily",
+               custom_cmd: "echo imported"
+             })
+
+    refute job.next_run_at
+
+    assert [{:ok, updated}] = Scheduler.ensure_next_runs(~U[2026-05-26 10:00:00Z])
+    assert updated.job_id == "imported"
+    assert updated.next_run_at == ~U[2026-05-27 00:00:00Z]
+  end
+
+  test "run_due executes due jobs and advances next_run_at" do
+    now = ~U[2026-05-26 10:00:00Z]
+
+    assert {:ok, job} =
+             Scheduler.create_job(%{
+               job_id: "due-custom",
+               type: "custom",
+               cron: "* * * * *",
+               custom_cmd: "echo due"
+             })
+
+    assert {:ok, _job} =
+             Automation.update_scheduler_job(job, %{next_run_at: DateTime.add(now, -60, :second)})
+
+    assert [{%{job_id: "due-custom"}, {:ok, %{status: "placeholder"}}}] = Scheduler.run_due(now)
+
+    updated = Scheduler.get_job!(job.id)
+    assert updated.last_run_at == now
+    assert updated.next_run_at == ~U[2026-05-26 10:01:00Z]
+  end
+
+  test "supervised runner ticks due jobs" do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    assert {:ok, job} =
+             Scheduler.create_job(%{
+               job_id: "runner-custom",
+               type: "custom",
+               cron: "* * * * *",
+               custom_cmd: "echo runner"
+             })
+
+    assert {:ok, _job} =
+             Automation.update_scheduler_job(job, %{next_run_at: DateTime.add(now, -60, :second)})
+
+    runner_name = :"scheduler-runner-#{System.unique_integer([:positive])}"
+
+    pid =
+      start_supervised!(
+        {BusterClaw.Scheduler.Runner, name: runner_name, interval_ms: 60_000, autostart: false}
+      )
+
+    send(pid, :tick)
+    _ = :sys.get_state(pid)
+
+    assert Scheduler.get_job!(job.id).last_run_at
+
+    GenServer.stop(pid)
+  end
+
   test "run_now records custom placeholders without executing commands" do
     assert {:ok, job} =
              Scheduler.create_job(%{
@@ -72,6 +158,56 @@ defmodule BusterClaw.SchedulerTest do
 
     assert {:ok, %{saved: 0, errors: []}} = Scheduler.run_now(job)
     assert Scheduler.get_job!(job.id).last_run_at
+  end
+
+  test "run_now analyze queues fetched documents and drains analysis" do
+    stub_provider_response("## Summary\n\nScheduler analysis completed.")
+    active_provider!("openai-scheduler-analysis")
+    document = raw_document!("Scheduler Analysis")
+
+    assert {:ok, job} =
+             Scheduler.create_job(%{
+               job_id: "analyze-documents",
+               type: "analyze",
+               cron: "@hourly"
+             })
+
+    assert {:ok, summary} = Scheduler.run_now(job)
+    assert summary.status == "ok"
+    assert summary.queued == 1
+    assert summary.pending == 1
+    assert summary.analyzed == 1
+    assert summary.queue_errors == []
+    assert summary.analysis_errors == []
+    assert [%{status: "done", document_id: document_id, report_id: report_id}] = summary.jobs
+    assert document_id == document.id
+    assert report_id
+    assert Library.get_document!(document.id).status == "analyzed"
+    assert [report] = Library.list_reports()
+    assert report.id == report_id
+  end
+
+  test "run_now full ingests sources then drains analysis" do
+    stub_provider_response("## Summary\n\nFull scheduler run completed.")
+    active_provider!("openai-scheduler-full")
+    document = raw_document!("Full Scheduler Run")
+
+    assert {:ok, job} =
+             Scheduler.create_job(%{
+               job_id: "full-workflow",
+               type: "full",
+               cron: "@daily"
+             })
+
+    assert {:ok, summary} = Scheduler.run_now(job)
+    assert summary.status == "ok"
+    assert summary.ingest == %{saved: 0, errors: []}
+    assert summary.analysis.queued == 1
+    assert summary.analysis.analyzed == 1
+    assert [%{status: "done", document_id: document_id}] = summary.analysis.jobs
+    assert document_id == document.id
+    assert Library.get_document!(document.id).status == "analyzed"
+    assert [_report] = Library.list_reports()
   end
 
   test "run_now can poll integrations" do
@@ -148,6 +284,35 @@ defmodule BusterClaw.SchedulerTest do
     refute updated.last_error
   end
 
+  test "run_now digest generates a monitoring brief" do
+    stub_provider_response(
+      "## Executive summary\n\nThe scheduled digest is ready.",
+      "scheduler digest"
+    )
+
+    active_provider!("openai-scheduler-digest")
+    raw_document!("Digest Snapshot")
+
+    assert {:ok, job} =
+             Scheduler.create_job(%{
+               job_id: "daily-digest",
+               type: "digest",
+               cron: "@daily"
+             })
+
+    assert {:ok, summary} = Scheduler.run_now(job)
+    assert summary.status == "ok"
+    assert summary.report_id
+    assert summary.artifact_path =~ "monitoring-brief"
+
+    assert [report] = Library.list_reports()
+    assert report.id == summary.report_id
+
+    updated = Scheduler.get_job!(job.id)
+    assert updated.last_run_at
+    refute updated.last_error
+  end
+
   test "run_now records monitoring brief errors on the job" do
     assert {:ok, job} =
              Scheduler.create_job(%{
@@ -160,6 +325,39 @@ defmodule BusterClaw.SchedulerTest do
     updated = Scheduler.get_job!(job.id)
     assert updated.last_run_at
     assert updated.last_error =~ "no_integration_documents"
+  end
+
+  defp stub_provider_response(content, expected_body_text \\ nil) do
+    Req.Test.stub(BusterClaw.ProviderHTTP, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+      if expected_body_text do
+        assert body =~ expected_body_text
+      end
+
+      Req.Test.json(conn, %{
+        choices: [
+          %{
+            message: %{
+              content: content
+            }
+          }
+        ]
+      })
+    end)
+  end
+
+  defp active_provider!(name) do
+    assert {:ok, provider} =
+             Providers.create_provider(%{
+               name: name,
+               type: "openai",
+               model: "gpt-5.4",
+               api_key: "secret",
+               active: true
+             })
+
+    provider
   end
 
   defp raw_document!(name) do

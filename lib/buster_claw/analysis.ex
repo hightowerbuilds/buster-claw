@@ -3,7 +3,7 @@ defmodule BusterClaw.Analysis do
 
   import Ecto.Query
 
-  alias BusterClaw.Intentions
+  alias BusterClaw.{Delivery, Hooks, Intentions}
   alias BusterClaw.Library
   alias BusterClaw.Library.{Artifact, Document, Frontmatter, Report}
   alias BusterClaw.Providers
@@ -69,8 +69,8 @@ defmodule BusterClaw.Analysis do
   def run_job(job_or_id, opts \\ [])
 
   def run_job(id, opts) when is_binary(id) or is_integer(id) do
-    id
-    |> Repo.get!(AnalysisJob)
+    AnalysisJob
+    |> Repo.get!(id)
     |> run_job(opts)
   end
 
@@ -84,6 +84,7 @@ defmodule BusterClaw.Analysis do
            call_provider(provider, Intentions.analysis_messages(job.document, body)),
          {:ok, report} <- save_report(job.document, provider, content),
          {:ok, job} <- finish_job(job, report) do
+      run_report_side_effects(job, report, opts)
       {:ok, preload_job(job)}
     else
       {:error, reason} ->
@@ -251,6 +252,77 @@ defmodule BusterClaw.Analysis do
       generated_at: generated_at
     })
   end
+
+  defp run_report_side_effects(job, report, opts) do
+    payload = report_payload(job, report)
+    hook_opts = side_effect_options(opts, :hook_options, :hook_req_options)
+
+    Enum.each(["post_analysis", "post_report"], fn event ->
+      Hooks.execute_event(event, Map.put(payload, "event", event), hook_opts)
+    end)
+
+    opts
+    |> side_effect_options(:delivery_options, :delivery_req_options)
+    |> Keyword.put(:report_id, report.id)
+    |> then(&Delivery.dispatch_all(payload, &1))
+
+    :ok
+  rescue
+    _error -> :ok
+  end
+
+  defp report_payload(job, report) do
+    document = job.document
+    provider = job.provider
+
+    %{
+      "title" => report_title(document, report),
+      "body" => report_body(document, report),
+      "analysis_job_id" => job.id,
+      "document_id" => document && document.id,
+      "document_name" => document && document.name,
+      "report_id" => report.id,
+      "report_filename" => report.filename,
+      "report_path" => report.artifact_path,
+      "source_file" => report.source_file,
+      "source_url" => report.source_url,
+      "provider_id" => provider && provider.id,
+      "provider_name" => provider && provider.name,
+      "model" => report.model,
+      "generated_at" => iso8601(report.generated_at)
+    }
+  end
+
+  defp report_title(document, report) do
+    name = (document && document.name) || report.source_file || report.filename
+    "Report ready: #{name}"
+  end
+
+  defp report_body(document, report) do
+    source = report.source_url || (document && document.source_url) || "local document"
+
+    [
+      "Buster Claw generated a report.",
+      "Report: #{report.artifact_path}",
+      "Source: #{source}",
+      "Model: #{report.model || "unknown"}"
+    ]
+    |> Enum.join("\n")
+  end
+
+  defp side_effect_options(opts, option_key, req_options_key) do
+    options = Keyword.get(opts, option_key, [])
+    req_options = Keyword.get(opts, req_options_key, Keyword.get(opts, :req_options))
+
+    if is_nil(req_options) do
+      options
+    else
+      Keyword.put_new(options, :req_options, req_options)
+    end
+  end
+
+  defp iso8601(%DateTime{} = datetime), do: DateTime.to_iso8601(datetime)
+  defp iso8601(_datetime), do: nil
 
   defp call_provider(provider, messages) do
     chunks = Agent.start_link(fn -> [] end)

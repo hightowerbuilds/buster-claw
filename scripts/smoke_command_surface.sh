@@ -25,15 +25,34 @@ fi
 pass() { echo "  pass: $1"; }
 fail() { echo "  FAIL: $1" >&2; exit 1; }
 
+REQUIRED_COMMANDS=(
+  runtime_status
+  source_list
+  provider_active
+  gmail_sync
+  chat_send
+  web_search
+)
+
+assert_commands_present() {
+  local body="$1"
+  local label="$2"
+
+  for command in "${REQUIRED_COMMANDS[@]}"; do
+    echo "$body" | grep -q "\"name\":\"$command\"" \
+      || fail "$label missing $command"
+  done
+}
+
 echo "==> Phoenix server"
 curl -fsS "$URL/_health" > /dev/null || fail "phx.server not reachable at $URL"
 pass "_health responds"
 
 echo "==> HTTP API"
 
-CATALOG_COUNT=$(curl -fsS "$URL/api/commands" | grep -o '"name":' | wc -l | tr -d ' ')
-[[ "$CATALOG_COUNT" -ge 70 ]] || fail "GET /api/commands returned $CATALOG_COUNT commands"
-pass "GET /api/commands returned $CATALOG_COUNT commands"
+CATALOG_BODY=$(curl -fsS "$URL/api/commands")
+assert_commands_present "$CATALOG_BODY" "GET /api/commands"
+pass "GET /api/commands includes representative commands"
 
 UNAUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$URL/api/run" \
   -H "Content-Type: application/json" \
@@ -58,8 +77,10 @@ if [[ ! -x "$REPO_ROOT/buster-claw" ]]; then
 fi
 
 COMMANDS_OUT=$(BUSTER_CLAW_API_TOKEN="$TOKEN" BUSTER_CLAW_URL="$URL" ./buster-claw commands)
-echo "$COMMANDS_OUT" | grep -q 'source_list' \
-  || fail "./buster-claw commands missing source_list"
+for command in "${REQUIRED_COMMANDS[@]}"; do
+  echo "$COMMANDS_OUT" | grep -q "$command" \
+    || fail "./buster-claw commands missing $command"
+done
 pass "./buster-claw commands runs"
 
 CLI_OUT=$(BUSTER_CLAW_API_TOKEN="$TOKEN" BUSTER_CLAW_URL="$URL" ./buster-claw run runtime_status)
@@ -81,9 +102,8 @@ TOOLS_BODY=$(curl -fsS -X POST "$URL/mcp" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":2}')
 
-TOOL_COUNT=$(echo "$TOOLS_BODY" | grep -o '"name":' | wc -l | tr -d ' ')
-[[ "$TOOL_COUNT" -ge 70 ]] || fail "tools/list returned $TOOL_COUNT tools"
-pass "POST /mcp tools/list returned $TOOL_COUNT tools"
+assert_commands_present "$TOOLS_BODY" "POST /mcp tools/list"
+pass "POST /mcp tools/list includes representative commands"
 
 CALL_BODY=$(curl -fsS -X POST "$URL/mcp" \
   -H "Content-Type: application/json" \

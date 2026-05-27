@@ -36,6 +36,14 @@ defmodule BusterClawWeb.ErrorFormatterTest do
       assert ErrorFormatter.format({:http_error, 404, "body"}) == "HTTP 404"
     end
 
+    test "Google OAuth errors surface safe provider details" do
+      assert ErrorFormatter.format(
+               {:google_oauth_error, 401,
+                %{"error" => "invalid_client", "error_description" => "Unauthorized"}}
+             ) ==
+               "Google OAuth HTTP 401: invalid client. Re-check that the client ID and client secret came from the same Desktop app OAuth client. Google said: Unauthorized"
+    end
+
     test "{:missing_config, key} surfaces the missing key" do
       assert ErrorFormatter.format({:missing_config, :api_key}) == "missing config: api_key"
     end

@@ -28,6 +28,7 @@ defmodule BusterClaw.Commands do
     Calendar,
     Chat,
     Delivery,
+    Google,
     Hooks,
     Ingest,
     Integrations,
@@ -134,6 +135,23 @@ defmodule BusterClaw.Commands do
         other -> other
       end
     end)
+  end
+
+  # -----------------------------------------------------------------------
+  # MCP servers (extras)
+  # -----------------------------------------------------------------------
+
+  def mcp_server_connect(%{"id" => id}) do
+    with_resource(MCP, :get_server!, id, fn server ->
+      case MCP.connect_server(server) do
+        {:ok, _pid} -> {:ok, MCP.get_server!(server.id)}
+        {:error, reason} -> {:error, reason}
+      end
+    end)
+  end
+
+  def mcp_server_tools(%{"id" => id}) do
+    with_resource(MCP, :get_server!, id, &MCP.discover_tools/1)
   end
 
   # -----------------------------------------------------------------------
@@ -319,14 +337,91 @@ defmodule BusterClaw.Commands do
   end
 
   # -----------------------------------------------------------------------
+  # Google Workspace accounts
+  # -----------------------------------------------------------------------
+
+  def google_account_list(_args \\ %{}), do: {:ok, Google.list_account_summaries()}
+
+  def google_account_get(%{"id" => id}) do
+    with_resource(Google, :get_account!, id, fn account ->
+      {:ok, Google.account_summary(account)}
+    end)
+  end
+
+  def google_account_create(args) do
+    case Google.create_account(args) do
+      {:ok, account} -> {:ok, Google.account_summary(account)}
+      other -> other
+    end
+  end
+
+  def google_account_update(%{"id" => id} = args) do
+    with_resource(Google, :get_account!, id, fn account ->
+      case Google.update_account(account, Map.delete(args, "id")) do
+        {:ok, account} -> {:ok, Google.account_summary(account)}
+        other -> other
+      end
+    end)
+  end
+
+  def google_account_delete(%{"id" => id}) do
+    with_resource(Google, :get_account!, id, fn account ->
+      case Google.delete_account(account) do
+        {:ok, account} -> {:ok, Google.account_summary(account)}
+        other -> other
+      end
+    end)
+  end
+
+  def gmail_label_list(args \\ %{}) do
+    with_google_account(args, fn account ->
+      BusterClaw.Google.Gmail.labels(account)
+    end)
+  end
+
+  def gmail_search(args) do
+    with_google_account(args, fn account ->
+      query = Map.get(args, "query") || account.default_query || "newer_than:7d"
+      limit = Map.get(args, "limit", 10)
+      BusterClaw.Google.Gmail.search(account, query, limit: limit)
+    end)
+  end
+
+  def gmail_read(args) do
+    message_id = Map.get(args, "message_id") || Map.get(args, "id")
+
+    if message_id in [nil, ""] do
+      {:error, :missing_message_id}
+    else
+      with_google_account(args, fn account ->
+        BusterClaw.Google.Gmail.read(account, message_id)
+      end)
+    end
+  end
+
+  def gmail_sync(args) do
+    with_google_account(args, fn account ->
+      query = Map.get(args, "query") || account.default_query || "newer_than:7d"
+      limit = Map.get(args, "limit", 10)
+      BusterClaw.Google.GmailSync.sync(account, query: query, limit: limit)
+    end)
+  end
+
+  # -----------------------------------------------------------------------
   # Chat
   # -----------------------------------------------------------------------
 
-  def chat_send(%{"prompt" => prompt} = args) do
+  def chat_send(args) do
+    prompt = Map.get(args, "prompt") || Map.get(args, "content")
     session = Map.get(args, "session_id", Chat.default_session())
-    Chat.ensure_session(session)
-    :ok = Chat.send_message(session, prompt)
-    {:ok, :sent}
+
+    if prompt in [nil, ""] do
+      {:error, :missing_prompt}
+    else
+      Chat.ensure_session(session)
+      :ok = Chat.send_message(session, prompt)
+      {:ok, :sent}
+    end
   end
 
   def chat_messages(args) do
@@ -378,6 +473,25 @@ defmodule BusterClaw.Commands do
     case safe_get(module, getter, id) do
       {:ok, resource} -> fun.(resource)
       error -> error
+    end
+  end
+
+  defp with_google_account(args, fun) do
+    cond do
+      account_id = Map.get(args, "account_id") ->
+        with_resource(Google, :get_account!, account_id, fun)
+
+      email = Map.get(args, "email") ->
+        case Google.get_account_by_email(email) do
+          nil -> {:error, :not_found}
+          account -> fun.(account)
+        end
+
+      account = Google.default_account() ->
+        fun.(account)
+
+      true ->
+        {:error, :no_google_account}
     end
   end
 
@@ -617,6 +731,16 @@ defmodule BusterClaw.Commands do
         }
       },
       delete_entry("mcp_server_delete", "Delete an MCP server config."),
+      id_trigger_entry(
+        "mcp_server_connect",
+        "Launch a configured MCP stdio server.",
+        :restricted
+      ),
+      id_trigger_entry(
+        "mcp_server_tools",
+        "Launch and discover tools from an MCP stdio server.",
+        :safe
+      ),
 
       # Webhooks
       list_entry("webhook_list", "List all webhooks."),
@@ -851,6 +975,91 @@ defmodule BusterClaw.Commands do
         }
       },
 
+      # Google Workspace accounts
+      list_entry("google_account_list", "List configured Google Workspace accounts."),
+      get_entry("google_account_get", "Fetch a Google Workspace account summary."),
+      %{
+        name: "google_account_create",
+        type: :mutate,
+        tier: :restricted,
+        description: "Create a Google Workspace account credential shell.",
+        args: %{
+          "email" => %{type: :string, required: true},
+          "client_id" => %{type: :string, required: true},
+          "client_secret" => %{type: :string, required: false},
+          "refresh_token" => %{type: :string, required: false},
+          "access_token" => %{type: :string, required: false},
+          "access_token_expires_at" => %{type: :string, required: false},
+          "scopes" => %{type: :string, required: false},
+          "default_query" => %{type: :string, required: false},
+          "enabled" => %{type: :boolean, required: false, default: true}
+        }
+      },
+      %{
+        name: "google_account_update",
+        type: :mutate,
+        tier: :restricted,
+        description: "Update a Google Workspace account credential shell.",
+        args: %{
+          "id" => %{type: :integer, required: true},
+          "email" => %{type: :string, required: false},
+          "client_id" => %{type: :string, required: false},
+          "client_secret" => %{type: :string, required: false},
+          "refresh_token" => %{type: :string, required: false},
+          "access_token" => %{type: :string, required: false},
+          "access_token_expires_at" => %{type: :string, required: false},
+          "scopes" => %{type: :string, required: false},
+          "default_query" => %{type: :string, required: false},
+          "enabled" => %{type: :boolean, required: false}
+        }
+      },
+      delete_entry("google_account_delete", "Delete a Google Workspace account."),
+      %{
+        name: "gmail_label_list",
+        type: :read,
+        tier: :safe,
+        description: "List Gmail labels for a connected Google Workspace account.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "gmail_search",
+        type: :read,
+        tier: :safe,
+        description: "Search Gmail messages for a connected Google Workspace account.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "query" => %{type: :string, required: false},
+          "limit" => %{type: :integer, required: false, default: 10}
+        }
+      },
+      %{
+        name: "gmail_read",
+        type: :read,
+        tier: :safe,
+        description: "Read one Gmail message by message ID.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "message_id" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "gmail_sync",
+        type: :trigger,
+        tier: :safe,
+        description: "Sync Gmail search results into Library raw documents.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "query" => %{type: :string, required: false},
+          "limit" => %{type: :integer, required: false, default: 10}
+        }
+      },
+
       # Chat
       %{
         name: "chat_send",
@@ -859,6 +1068,7 @@ defmodule BusterClaw.Commands do
         description: "Send a prompt to the active provider (async).",
         args: %{
           "prompt" => %{type: :string, required: true},
+          "content" => %{type: :string, required: false, description: "Alias for prompt."},
           "session_id" => %{type: :string, required: false, default: "default"}
         }
       },

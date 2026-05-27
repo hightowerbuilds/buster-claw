@@ -6,13 +6,14 @@ defmodule BusterClaw.Ingest do
   alias BusterClaw.Sources.Source
   alias BusterClaw.Workflow
 
-  def ingest_source(%Source{} = source) do
+  def ingest_source(%Source{} = source, fetcher \\ &Fetcher.fetch/1)
+      when is_function(fetcher, 1) do
     broadcast(:ingest_started, %{source_id: source.id, url: source.url})
 
     source
     |> source_attrs()
-    |> Fetcher.fetch()
-    |> save_items()
+    |> fetcher.()
+    |> save_items(source)
     |> tap(&record_source_result(source, &1))
   end
 
@@ -30,11 +31,12 @@ defmodule BusterClaw.Ingest do
     }
   end
 
-  defp save_items({:ok, items}) do
+  defp save_items({:ok, items}, %Source{} = source) do
     results =
       Enum.map(items, fn item ->
         Library.save_raw_document(%{
           date: Date.utc_today(),
+          source_id: source.id,
           filename: item.title || item.url,
           source_url: item.url,
           name: item.title,
@@ -47,7 +49,7 @@ defmodule BusterClaw.Ingest do
     {:ok, Enum.count(results, &match?({:ok, _}, &1)), results}
   end
 
-  defp save_items({:error, reason}), do: {:error, reason}
+  defp save_items({:error, reason}, _source), do: {:error, reason}
 
   defp summarize(results) do
     saved =

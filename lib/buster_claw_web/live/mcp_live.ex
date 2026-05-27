@@ -46,6 +46,26 @@ defmodule BusterClawWeb.MCPLive do
     {:noreply, assign(socket, :servers, MCP.list_servers())}
   end
 
+  def handle_event("connect", %{"id" => id}, socket) do
+    socket =
+      id
+      |> MCP.get_server!()
+      |> MCP.discover_tools()
+      |> case do
+        {:ok, tools} ->
+          socket
+          |> put_flash(:info, "MCP server connected with #{length(tools)} tools.")
+          |> assign(:servers, MCP.list_servers())
+
+        {:error, reason} ->
+          socket
+          |> put_flash(:error, BusterClawWeb.ErrorFormatter.format(reason))
+          |> assign(:servers, MCP.list_servers())
+      end
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info({:mcp_changed, _server}, socket) do
     {:noreply, assign(socket, :servers, MCP.list_servers())}
@@ -55,79 +75,91 @@ defmodule BusterClawWeb.MCPLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <section class="space-y-6">
-        <div>
-          <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-            Runtime
-          </p>
-          <h1 class="text-4xl font-semibold tracking-normal">MCP</h1>
-          <p class="mt-2 text-base text-base-content/70">
-            Configure local MCP commands and track their visible runtime state.
-          </p>
-        </div>
+      <div class="space-y-6">
+        <BusterClawWeb.AdvancedTabs.tabs active={:mcp} />
 
-        <form
-          phx-submit="save"
-          class="grid gap-3 rounded-lg border border-base-300 p-4 md:grid-cols-2"
-        >
-          <input
-            name="server[name]"
-            value={@form["name"]}
-            placeholder="Name"
-            class="rounded border border-base-300 bg-base-100 px-3 py-2 text-sm"
-          />
-          <input
-            name="server[command]"
-            value={@form["command"]}
-            placeholder="Command"
-            class="rounded border border-base-300 bg-base-100 px-3 py-2 text-sm"
-          />
-          <textarea
-            name="server[args]"
-            class="min-h-20 rounded border border-base-300 bg-base-100 px-3 py-2 text-sm"
-          >{@form["args"]}</textarea>
-          <textarea
-            name="server[env]"
-            class="min-h-20 rounded border border-base-300 bg-base-100 px-3 py-2 text-sm"
-          >{@form["env"]}</textarea>
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="server[enabled]" value="true" checked /> Enabled
-          </label>
-          <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100">
-            Save Server
-          </button>
-        </form>
-
-        <section class="space-y-3">
-          <div :for={server <- @servers} class="rounded-lg border border-base-300 p-4">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <h2 class="text-lg font-semibold">{server.name}</h2>
-                <p class="text-sm text-base-content/70">{server.command}</p>
-              </div>
-              <button
-                phx-click="delete"
-                phx-value-id={server.id}
-                class="rounded border border-base-300 px-3 py-2 text-sm"
-              >
-                Delete
-              </button>
-            </div>
-            <div class="mt-3 grid gap-2 text-sm md:grid-cols-3">
-              <div>Status: {server.last_status || "configured"}</div>
-              <div>Enabled: {if server.enabled, do: "yes", else: "no"}</div>
-              <div>Error: {server.last_error || "none"}</div>
-            </div>
+        <section class="space-y-6">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+              Runtime
+            </p>
+            <h1 class="text-4xl font-semibold tracking-normal">MCP</h1>
+            <p class="mt-2 text-base text-base-content/70">
+              Configure local MCP commands and track their visible runtime state.
+            </p>
           </div>
 
-          <div
-            :if={@servers == []}
-            class="rounded-lg border border-dashed border-base-300 p-6 text-sm text-base-content/60"
+          <form
+            phx-submit="save"
+            class="grid gap-3 rounded-lg border border-base-300 p-4 md:grid-cols-2"
           >
-            No MCP servers configured.
-          </div>
+            <input
+              name="server[name]"
+              value={@form["name"]}
+              placeholder="Name"
+              class="rounded border border-base-300 bg-base-100 px-3 py-2 text-sm"
+            />
+            <input
+              name="server[command]"
+              value={@form["command"]}
+              placeholder="Command"
+              class="rounded border border-base-300 bg-base-100 px-3 py-2 text-sm"
+            />
+            <textarea
+              name="server[args]"
+              class="min-h-20 rounded border border-base-300 bg-base-100 px-3 py-2 text-sm"
+            >{@form["args"]}</textarea>
+            <textarea
+              name="server[env]"
+              class="min-h-20 rounded border border-base-300 bg-base-100 px-3 py-2 text-sm"
+            >{@form["env"]}</textarea>
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="server[enabled]" value="true" checked /> Enabled
+            </label>
+            <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100">
+              Save Server
+            </button>
+          </form>
+
+          <section class="space-y-3">
+            <div :for={server <- @servers} class="rounded-lg border border-base-300 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h2 class="text-lg font-semibold">{server.name}</h2>
+                  <p class="text-sm text-base-content/70">{server.command}</p>
+                </div>
+                <button
+                  phx-click="delete"
+                  phx-value-id={server.id}
+                  class="rounded border border-base-300 px-3 py-2 text-sm"
+                >
+                  Delete
+                </button>
+                <button
+                  phx-click="connect"
+                  phx-value-id={server.id}
+                  disabled={!server.enabled}
+                  class="rounded bg-base-content px-3 py-2 text-sm font-semibold text-base-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Connect
+                </button>
+              </div>
+              <div class="mt-3 grid gap-2 text-sm md:grid-cols-3">
+                <div>Status: {server.last_status || "configured"}</div>
+                <div>Enabled: {if server.enabled, do: "yes", else: "no"}</div>
+                <div>Error: {server.last_error || "none"}</div>
+              </div>
+            </div>
+
+            <div
+              :if={@servers == []}
+              class="rounded-lg border border-dashed border-base-300 p-6 text-sm text-base-content/60"
+            >
+              No MCP servers configured.
+            </div>
+          </section>
         </section>
-      </section>
+      </div>
     </Layouts.app>
     """
   end

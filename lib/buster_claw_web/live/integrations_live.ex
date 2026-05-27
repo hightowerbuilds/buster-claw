@@ -121,198 +121,202 @@ defmodule BusterClawWeb.IntegrationsLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <section class="space-y-6">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-              Operations
-            </p>
-            <h1 class="text-4xl font-semibold tracking-normal">Integrations</h1>
-            <p class="mt-2 max-w-3xl text-base text-base-content/70">
-              Configure service connectors that turn operational signals into local Library documents.
-            </p>
-          </div>
+      <div class="space-y-6">
+        <BusterClawWeb.AdvancedTabs.tabs active={:integrations} />
 
-          <button
-            id="integrations-poll-all"
-            class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85 disabled:opacity-40"
-            phx-click="poll_all"
-            disabled={@integrations == []}
-          >
-            Poll All
-          </button>
-        </div>
-
-        <p
-          :if={@result}
-          id="integrations-result"
-          class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm"
-        >
-          {@result}
-        </p>
-
-        <div class="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-          <.form
-            for={@form}
-            id="integration-form"
-            phx-change="validate"
-            phx-submit="save"
-            class="space-y-4 rounded-lg border border-base-300 bg-base-100 p-5"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <h2 class="text-lg font-semibold">
-                {if @editing_integration, do: "Edit Integration", else: "New Integration"}
-              </h2>
-              <button
-                :if={@editing_integration}
-                type="button"
-                class="rounded border border-base-300 px-3 py-1.5 text-sm"
-                phx-click="cancel"
-              >
-                Cancel
-              </button>
+        <section class="space-y-6">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+                Operations
+              </p>
+              <h1 class="text-4xl font-semibold tracking-normal">Integrations</h1>
+              <p class="mt-2 max-w-3xl text-base text-base-content/70">
+                Configure service connectors that turn operational signals into local Library documents.
+              </p>
             </div>
 
-            <.input field={@form[:name]} label="Name" />
-            <.input
-              field={@form[:service_type]}
-              label="Service"
-              type="select"
-              options={@service_options}
-            />
-            <.input field={@form[:base_url]} label="Base URL" />
-            <.input field={@form[:token]} label="Token" type="password" autocomplete="off" />
-            <.input
-              field={@form[:webhook_secret]}
-              label="Webhook Secret"
-              type="password"
-              autocomplete="off"
-            />
-            <.input
-              field={@form[:config_text]}
-              label="Config JSON"
-              type="textarea"
-              rows="8"
-              placeholder={config_placeholder(@form[:service_type].value)}
-              class="w-full rounded border border-base-300 bg-base-100 px-3 py-2 font-mono text-sm"
-            />
-            <.input
-              field={@form[:polling_interval_minutes]}
-              label="Polling Interval Minutes"
-              type="number"
-              min="1"
-            />
-            <.input field={@form[:enabled]} label="Enabled" type="checkbox" />
-
-            <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85">
-              Save Integration
+            <button
+              id="integrations-poll-all"
+              class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85 disabled:opacity-40"
+              phx-click="poll_all"
+              disabled={@integrations == []}
+            >
+              Poll All
             </button>
-          </.form>
-
-          <div class="space-y-6">
-            <section class="rounded-lg border border-base-300 bg-base-100">
-              <div class="border-b border-base-300 px-4 py-3 text-sm font-semibold">
-                {@integrations_count} integrations
-              </div>
-
-              <div class="divide-y divide-base-300">
-                <div
-                  :for={integration <- @integrations}
-                  id={"integration-#{integration.id}"}
-                  class="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div class="min-w-0">
-                    <h2 class="truncate text-sm font-semibold">{integration.name}</h2>
-                    <p class="mt-1 truncate font-mono text-xs text-base-content/60">
-                      {integration.base_url}
-                    </p>
-                    <div class="mt-2 flex flex-wrap gap-2 text-xs">
-                      <span class="rounded border border-base-300 px-2 py-1">
-                        {integration.service_type}
-                      </span>
-                      <span class="rounded border border-base-300 px-2 py-1">
-                        {if integration.enabled, do: "enabled", else: "disabled"}
-                      </span>
-                      <span class={status_class(integration.last_status)}>
-                        {integration.last_status}
-                      </span>
-                    </div>
-                    <p :if={integration.last_error} class="mt-2 line-clamp-2 text-xs text-error">
-                      {integration.last_error}
-                    </p>
-                  </div>
-
-                  <div class="flex flex-wrap gap-2">
-                    <button
-                      class="rounded border border-base-300 px-3 py-2 text-sm"
-                      phx-click="poll"
-                      phx-value-id={integration.id}
-                    >
-                      Poll
-                    </button>
-                    <button
-                      class="rounded border border-base-300 px-3 py-2 text-sm"
-                      phx-click="edit"
-                      phx-value-id={integration.id}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      class="rounded border border-base-300 px-3 py-2 text-sm"
-                      phx-click="toggle"
-                      phx-value-id={integration.id}
-                    >
-                      Toggle
-                    </button>
-                    <button
-                      class="rounded border border-error/40 px-3 py-2 text-sm text-error"
-                      phx-click="delete"
-                      phx-value-id={integration.id}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-
-                <div
-                  :if={@integrations == []}
-                  class="px-4 py-10 text-center text-sm text-base-content/60"
-                >
-                  No integrations configured yet.
-                </div>
-              </div>
-            </section>
-
-            <section class="rounded-lg border border-base-300 bg-base-100">
-              <div class="border-b border-base-300 px-4 py-3 text-sm font-semibold">
-                Recent runs
-              </div>
-
-              <div class="divide-y divide-base-300">
-                <div :for={run <- @runs} id={"integration-run-#{run.id}"} class="px-4 py-3">
-                  <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
-                    <div class="font-semibold">
-                      {(run.integration && run.integration.name) || "Deleted integration"}
-                    </div>
-                    <span class={run_status_class(run.status)}>{run.status}</span>
-                  </div>
-                  <p class="mt-1 text-xs text-base-content/60">
-                    {run.trigger} · {run.records_fetched} records · {run.started_at}
-                  </p>
-                  <p :if={run.document} class="mt-1 truncate font-mono text-xs text-base-content/60">
-                    {run.document.artifact_path}
-                  </p>
-                  <p :if={run.error} class="mt-1 line-clamp-2 text-xs text-error">{run.error}</p>
-                </div>
-
-                <div :if={@runs == []} class="px-4 py-10 text-center text-sm text-base-content/60">
-                  No integration runs recorded yet.
-                </div>
-              </div>
-            </section>
           </div>
-        </div>
-      </section>
+
+          <p
+            :if={@result}
+            id="integrations-result"
+            class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm"
+          >
+            {@result}
+          </p>
+
+          <div class="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
+            <.form
+              for={@form}
+              id="integration-form"
+              phx-change="validate"
+              phx-submit="save"
+              class="space-y-4 rounded-lg border border-base-300 bg-base-100 p-5"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <h2 class="text-lg font-semibold">
+                  {if @editing_integration, do: "Edit Integration", else: "New Integration"}
+                </h2>
+                <button
+                  :if={@editing_integration}
+                  type="button"
+                  class="rounded border border-base-300 px-3 py-1.5 text-sm"
+                  phx-click="cancel"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <.input field={@form[:name]} label="Name" />
+              <.input
+                field={@form[:service_type]}
+                label="Service"
+                type="select"
+                options={@service_options}
+              />
+              <.input field={@form[:base_url]} label="Base URL" />
+              <.input field={@form[:token]} label="Token" type="password" autocomplete="off" />
+              <.input
+                field={@form[:webhook_secret]}
+                label="Webhook Secret"
+                type="password"
+                autocomplete="off"
+              />
+              <.input
+                field={@form[:config_text]}
+                label="Config JSON"
+                type="textarea"
+                rows="8"
+                placeholder={config_placeholder(@form[:service_type].value)}
+                class="w-full rounded border border-base-300 bg-base-100 px-3 py-2 font-mono text-sm"
+              />
+              <.input
+                field={@form[:polling_interval_minutes]}
+                label="Polling Interval Minutes"
+                type="number"
+                min="1"
+              />
+              <.input field={@form[:enabled]} label="Enabled" type="checkbox" />
+
+              <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85">
+                Save Integration
+              </button>
+            </.form>
+
+            <div class="space-y-6">
+              <section class="rounded-lg border border-base-300 bg-base-100">
+                <div class="border-b border-base-300 px-4 py-3 text-sm font-semibold">
+                  {@integrations_count} integrations
+                </div>
+
+                <div class="divide-y divide-base-300">
+                  <div
+                    :for={integration <- @integrations}
+                    id={"integration-#{integration.id}"}
+                    class="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div class="min-w-0">
+                      <h2 class="truncate text-sm font-semibold">{integration.name}</h2>
+                      <p class="mt-1 truncate font-mono text-xs text-base-content/60">
+                        {integration.base_url}
+                      </p>
+                      <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                        <span class="rounded border border-base-300 px-2 py-1">
+                          {integration.service_type}
+                        </span>
+                        <span class="rounded border border-base-300 px-2 py-1">
+                          {if integration.enabled, do: "enabled", else: "disabled"}
+                        </span>
+                        <span class={status_class(integration.last_status)}>
+                          {integration.last_status}
+                        </span>
+                      </div>
+                      <p :if={integration.last_error} class="mt-2 line-clamp-2 text-xs text-error">
+                        {integration.last_error}
+                      </p>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                        class="rounded border border-base-300 px-3 py-2 text-sm"
+                        phx-click="poll"
+                        phx-value-id={integration.id}
+                      >
+                        Poll
+                      </button>
+                      <button
+                        class="rounded border border-base-300 px-3 py-2 text-sm"
+                        phx-click="edit"
+                        phx-value-id={integration.id}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        class="rounded border border-base-300 px-3 py-2 text-sm"
+                        phx-click="toggle"
+                        phx-value-id={integration.id}
+                      >
+                        Toggle
+                      </button>
+                      <button
+                        class="rounded border border-error/40 px-3 py-2 text-sm text-error"
+                        phx-click="delete"
+                        phx-value-id={integration.id}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    :if={@integrations == []}
+                    class="px-4 py-10 text-center text-sm text-base-content/60"
+                  >
+                    No integrations configured yet.
+                  </div>
+                </div>
+              </section>
+
+              <section class="rounded-lg border border-base-300 bg-base-100">
+                <div class="border-b border-base-300 px-4 py-3 text-sm font-semibold">
+                  Recent runs
+                </div>
+
+                <div class="divide-y divide-base-300">
+                  <div :for={run <- @runs} id={"integration-run-#{run.id}"} class="px-4 py-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <div class="font-semibold">
+                        {(run.integration && run.integration.name) || "Deleted integration"}
+                      </div>
+                      <span class={run_status_class(run.status)}>{run.status}</span>
+                    </div>
+                    <p class="mt-1 text-xs text-base-content/60">
+                      {run.trigger} · {run.records_fetched} records · {run.started_at}
+                    </p>
+                    <p :if={run.document} class="mt-1 truncate font-mono text-xs text-base-content/60">
+                      {run.document.artifact_path}
+                    </p>
+                    <p :if={run.error} class="mt-1 line-clamp-2 text-xs text-error">{run.error}</p>
+                  </div>
+
+                  <div :if={@runs == []} class="px-4 py-10 text-center text-sm text-base-content/60">
+                    No integration runs recorded yet.
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+      </div>
     </Layouts.app>
     """
   end

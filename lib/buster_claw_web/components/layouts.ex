@@ -123,14 +123,9 @@ defmodule BusterClawWeb.Layouts do
       %{label: "Documents", path: "/documents"},
       %{label: "Analysis", path: "/analysis"},
       %{label: "Calendar", path: "/calendar"},
+      %{label: "GWS", path: "/gws"},
       %{label: "Memory", path: "/memory"},
-      %{label: "Intelligence", path: "/intelligence"},
-      %{label: "Integrations", path: "/integrations"},
-      %{label: "MCP", path: "/mcp"},
       %{label: "Scheduler", path: "/scheduler"},
-      %{label: "Webhooks", path: "/webhooks"},
-      %{label: "Hooks", path: "/hooks"},
-      %{label: "Delivery", path: "/delivery"},
       %{label: "Advanced", path: "/advanced"}
     ]
   end

@@ -28,15 +28,17 @@ defmodule BusterClawWeb.Router do
     live "/documents", DocumentsLive, :index
     live "/analysis", AnalysisLive, :index
     live "/calendar", CalendarLive, :index
+    live "/gws", GWSLive, :index
     live "/memory", MemoryLive, :index
-    live "/intelligence", IntelligenceLive, :index
     live "/integrations", IntegrationsLive, :index
     live "/mcp", MCPLive, :index
     live "/scheduler", SchedulerLive, :index
     live "/webhooks", WebhooksLive, :index
     live "/hooks", HooksLive, :index
     live "/delivery", DeliveryLive, :index
-    live "/advanced", StatusLive, :advanced
+    live "/advanced", DeliveryLive, :advanced
+
+    get "/google/oauth/callback", GoogleOAuthController, :callback
   end
 
   scope "/", BusterClawWeb do

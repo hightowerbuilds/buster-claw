@@ -28,12 +28,13 @@ defmodule BusterClaw.Library do
          {:ok, parsed} <- Artifact.parse_markdown_file(path) do
       fields = parsed.fields
       relative_path = Artifact.relative_to_root(path)
-      source_url = Map.get(fields, "url") || Map.get(attrs, :source_url)
-      name = Map.get(fields, "name") || Map.get(attrs, :name)
-      tags = Map.get(fields, "tags") || Map.get(attrs, :tags, [])
-      date = Map.get(attrs, :date, Date.utc_today())
+      source_url = Map.get(fields, "url") || attr(attrs, :source_url)
+      name = Map.get(fields, "name") || attr(attrs, :name)
+      tags = Map.get(fields, "tags") || attr(attrs, :tags) || []
+      date = attr(attrs, :date) || Date.utc_today()
 
-      create_document(%{
+      attrs = %{
+        source_id: attr(attrs, :source_id),
         filename: Path.basename(path),
         artifact_path: relative_path,
         date: date,
@@ -42,8 +43,14 @@ defmodule BusterClaw.Library do
         tags: %{"items" => List.wrap(tags)},
         content_hash: parsed.content_hash,
         excerpt: parsed.excerpt,
-        fetched_at: Map.get(attrs, :fetched_at, DateTime.utc_now() |> DateTime.truncate(:second))
-      })
+        status: attr(attrs, :status) || "fetched",
+        fetched_at: attr(attrs, :fetched_at) || timestamp()
+      }
+
+      case Repo.get_by(Document, artifact_path: relative_path) do
+        nil -> create_document(attrs)
+        %Document{} = document -> update_document(document, attrs)
+      end
     end
   end
 
@@ -125,5 +132,13 @@ defmodule BusterClaw.Library do
       {:ok, date} -> date
       _ -> nil
     end
+  end
+
+  defp attr(attrs, key) do
+    Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
+  end
+
+  defp timestamp do
+    DateTime.utc_now() |> DateTime.truncate(:second)
   end
 end

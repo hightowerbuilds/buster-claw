@@ -72,107 +72,111 @@ defmodule BusterClawWeb.DeliveryLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <section class="space-y-6">
-        <div>
-          <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-            Automation
+      <div class="space-y-6">
+        <BusterClawWeb.AdvancedTabs.tabs active={:delivery} />
+
+        <section class="space-y-6">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+              Automation
+            </p>
+            <h1 class="text-4xl font-semibold tracking-normal">Delivery</h1>
+            <p class="mt-2 max-w-3xl text-base text-base-content/70">
+              Manage delivery endpoints for generated reports and automation notifications.
+            </p>
+          </div>
+
+          <p :if={@result} class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm">
+            {@result}
           </p>
-          <h1 class="text-4xl font-semibold tracking-normal">Delivery</h1>
-          <p class="mt-2 max-w-3xl text-base text-base-content/70">
-            Manage delivery endpoints for generated reports and automation notifications.
-          </p>
-        </div>
 
-        <p :if={@result} class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm">
-          {@result}
-        </p>
+          <div class="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
+            <.form
+              for={@form}
+              id="delivery-destination-form"
+              phx-change="validate"
+              phx-submit="save"
+              class="space-y-4 rounded-lg border border-base-300 bg-base-100 p-5"
+            >
+              <h2 class="text-lg font-semibold">New Destination</h2>
+              <.input field={@form[:name]} label="Name" />
+              <.input
+                field={@form[:type]}
+                label="Type"
+                type="select"
+                options={[
+                  {"Slack", "slack"},
+                  {"Discord", "discord"},
+                  {"Telegram", "telegram"},
+                  {"Email", "email"}
+                ]}
+              />
+              <.input field={@form[:url]} label="URL" />
+              <.input field={@form[:token]} label="Token" />
+              <.input field={@form[:chat_id]} label="Chat ID" />
+              <.input field={@form[:enabled]} label="Enabled" type="checkbox" />
+              <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100">
+                Save Destination
+              </button>
+            </.form>
 
-        <div class="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
-          <.form
-            for={@form}
-            id="delivery-destination-form"
-            phx-change="validate"
-            phx-submit="save"
-            class="space-y-4 rounded-lg border border-base-300 bg-base-100 p-5"
-          >
-            <h2 class="text-lg font-semibold">New Destination</h2>
-            <.input field={@form[:name]} label="Name" />
-            <.input
-              field={@form[:type]}
-              label="Type"
-              type="select"
-              options={[
-                {"Slack", "slack"},
-                {"Discord", "discord"},
-                {"Telegram", "telegram"},
-                {"Email", "email"}
-              ]}
-            />
-            <.input field={@form[:url]} label="URL" />
-            <.input field={@form[:token]} label="Token" />
-            <.input field={@form[:chat_id]} label="Chat ID" />
-            <.input field={@form[:enabled]} label="Enabled" type="checkbox" />
-            <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100">
-              Save Destination
-            </button>
-          </.form>
+            <section class="rounded-lg border border-base-300 bg-base-100">
+              <div class="border-b border-base-300 px-4 py-3 text-sm font-semibold">
+                {@destinations_count} destinations
+              </div>
+              <div class="divide-y divide-base-300">
+                <div
+                  :for={destination <- @destinations}
+                  class="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div class="min-w-0">
+                    <h2 class="truncate text-sm font-semibold">{destination.name}</h2>
+                    <p class="mt-1 truncate font-mono text-xs text-base-content/60">
+                      {destination.url || "No URL configured"}
+                    </p>
+                    <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                      <span class="rounded border border-base-300 px-2 py-1">{destination.type}</span>
+                      <span class="rounded border border-base-300 px-2 py-1">
+                        {if destination.enabled, do: "enabled", else: "disabled"}
+                      </span>
+                    </div>
+                  </div>
 
-          <section class="rounded-lg border border-base-300 bg-base-100">
-            <div class="border-b border-base-300 px-4 py-3 text-sm font-semibold">
-              {@destinations_count} destinations
-            </div>
-            <div class="divide-y divide-base-300">
-              <div
-                :for={destination <- @destinations}
-                class="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div class="min-w-0">
-                  <h2 class="truncate text-sm font-semibold">{destination.name}</h2>
-                  <p class="mt-1 truncate font-mono text-xs text-base-content/60">
-                    {destination.url || "No URL configured"}
-                  </p>
-                  <div class="mt-2 flex flex-wrap gap-2 text-xs">
-                    <span class="rounded border border-base-300 px-2 py-1">{destination.type}</span>
-                    <span class="rounded border border-base-300 px-2 py-1">
-                      {if destination.enabled, do: "enabled", else: "disabled"}
-                    </span>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      class="rounded border border-base-300 px-3 py-2 text-sm"
+                      phx-click="test"
+                      phx-value-id={destination.id}
+                    >
+                      Test
+                    </button>
+                    <button
+                      class="rounded border border-base-300 px-3 py-2 text-sm"
+                      phx-click="toggle"
+                      phx-value-id={destination.id}
+                    >
+                      Toggle
+                    </button>
+                    <button
+                      class="rounded border border-error/40 px-3 py-2 text-sm text-error"
+                      phx-click="delete"
+                      phx-value-id={destination.id}
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
-
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    class="rounded border border-base-300 px-3 py-2 text-sm"
-                    phx-click="test"
-                    phx-value-id={destination.id}
-                  >
-                    Test
-                  </button>
-                  <button
-                    class="rounded border border-base-300 px-3 py-2 text-sm"
-                    phx-click="toggle"
-                    phx-value-id={destination.id}
-                  >
-                    Toggle
-                  </button>
-                  <button
-                    class="rounded border border-error/40 px-3 py-2 text-sm text-error"
-                    phx-click="delete"
-                    phx-value-id={destination.id}
-                  >
-                    Delete
-                  </button>
+                <div
+                  :if={@destinations == []}
+                  class="px-4 py-10 text-center text-sm text-base-content/60"
+                >
+                  No delivery destinations configured yet.
                 </div>
               </div>
-              <div
-                :if={@destinations == []}
-                class="px-4 py-10 text-center text-sm text-base-content/60"
-              >
-                No delivery destinations configured yet.
-              </div>
-            </div>
-          </section>
-        </div>
-      </section>
+            </section>
+          </div>
+        </section>
+      </div>
     </Layouts.app>
     """
   end

@@ -12,7 +12,7 @@ defmodule BusterClaw.Runtime.Status do
     %{key: :documents, label: "Documents", path: "/documents"},
     %{key: :analysis, label: "Analysis", path: "/analysis"},
     %{key: :calendar, label: "Calendar", path: "/calendar"},
-    %{key: :intelligence, label: "Intelligence", path: "/intelligence"},
+    %{key: :gws, label: "GWS", path: "/gws"},
     %{key: :webhooks, label: "Webhooks / Hooks", path: "/webhooks"},
     %{key: :advanced, label: "Advanced", path: "/advanced"}
   ]
@@ -26,6 +26,7 @@ defmodule BusterClaw.Runtime.Status do
     "Ingestion",
     "Analysis jobs",
     "Providers",
+    "Google Workspace",
     "MCP supervisor",
     "Scheduler",
     "Webhooks",

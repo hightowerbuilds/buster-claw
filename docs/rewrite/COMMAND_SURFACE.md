@@ -59,19 +59,20 @@ Most mutating commands broadcast on a PubSub topic and write to SQLite. Triggers
 | **Analysis** | `analysis_job_list`, `analysis_queue`, `analysis_run_pending`, `analysis_run_job` |
 | **Memory** | `memory_list`, `memory_remember`, `memory_forget` |
 | **Events** | `event_list`, `event_get`, `event_create`, `event_update`, `event_delete` |
-| **MCP servers** | `mcp_server_list`, `mcp_server_get`, `mcp_server_create`, `mcp_server_update`, `mcp_server_delete` |
+| **MCP servers** | `mcp_server_list`, `mcp_server_get`, `mcp_server_create`, `mcp_server_update`, `mcp_server_delete`, `mcp_server_connect`, `mcp_server_tools` |
 | **Webhooks** | `webhook_list`, `webhook_get`, `webhook_create`, `webhook_update`, `webhook_delete`, `webhook_trigger` |
 | **Hooks** | `hook_list`, `hook_get`, `hook_create`, `hook_update`, `hook_delete`, `hook_test`, `hook_event_execute` |
 | **Delivery destinations** | `delivery_destination_list`, `delivery_destination_get`, `delivery_destination_create`, `delivery_destination_update`, `delivery_destination_delete`, `delivery_destination_test` |
 | **Delivery** | `delivery_dispatch_all` |
 | **Scheduler** | `scheduler_job_list`, `scheduler_job_get`, `scheduler_job_create`, `scheduler_job_update`, `scheduler_job_delete`, `scheduler_job_run_now` |
 | **Integrations** | `integration_list`, `integration_get`, `integration_create`, `integration_update`, `integration_delete`, `integration_poll`, `integration_poll_all`, `integration_run_list` |
+| **Google Workspace** | `google_account_list`, `google_account_get`, `google_account_create`, `google_account_update`, `google_account_delete`, `gmail_label_list`, `gmail_search`, `gmail_read`, `gmail_sync` |
 | **Chat** | `chat_send`, `chat_messages`, `chat_clear` |
 | **Search** | `web_search` |
 | **Browser** | `browser_fetch` |
 | **Runtime** | `runtime_status` |
 
-Total: **76 commands**.
+Total: **87 commands**.
 
 ---
 
@@ -116,7 +117,7 @@ Configured ingestion targets (RSS feeds, URLs, etc.).
 - **Type**: trigger | **Tier**: safe
 - **Args**: `{id: integer}`
 - **Returns**: `{:ok, %{count: integer, items: [Document]}} | {:error, term()}`
-- **Side effects**: outbound HTTP fetch; writes markdown files to `Library/raw/`; inserts `documents`; broadcasts ingestion + runtime events
+- **Side effects**: outbound HTTP fetch; writes markdown files to `Library/raw/`; inserts `documents` linked to the source ID; broadcasts ingestion + runtime events
 - **Delegates**: `BusterClaw.Ingest.ingest_source/1`
 
 ---
@@ -345,6 +346,18 @@ External MCP servers Buster Claw connects to (consumes, not hosts).
 - **Args**: `{id: integer}`
 - **Returns**: `{:ok, MCPServer} | {:error, :not_found}`
 
+### `mcp_server_connect`
+- **Type**: trigger | **Tier**: restricted
+- **Args**: `{id: integer}`
+- **Returns**: `{:ok, MCPServer} | {:error, :not_found | :disabled | term()}`
+- **Side effects**: launches the configured stdio command under the MCP supervisor, runs `initialize`, sends `notifications/initialized`, discovers tools with `tools/list`, and updates runtime status fields.
+
+### `mcp_server_tools`
+- **Type**: trigger | **Tier**: safe
+- **Args**: `{id: integer}`
+- **Returns**: `{:ok, [map]} | {:error, :not_found | :disabled | term()}`
+- **Side effects**: starts the MCP server if needed and returns the discovered tool list.
+
 ---
 
 ## Webhooks
@@ -568,13 +581,72 @@ Service integrations (GitHub, Slack, Jira, etc.) that poll external systems and 
 
 ---
 
+## Google Workspace
+
+Stored OAuth account shells for Gmail and Google Workspace sync. Account commands return safe summaries only; client secrets and tokens are encrypted at rest and never returned as plaintext.
+
+### `google_account_list`
+- **Type**: read | **Tier**: safe
+- **Args**: none
+- **Returns**: `{:ok, [GoogleAccountSummary]}`
+- **Delegates**: `BusterClaw.Google.list_account_summaries/0`
+
+### `google_account_get`
+- **Type**: read | **Tier**: safe
+- **Args**: `{id: integer}`
+- **Returns**: `{:ok, GoogleAccountSummary} | {:error, :not_found}`
+
+### `google_account_create`
+- **Type**: mutate | **Tier**: restricted
+- **Args**: `{email: string, client_id: string, client_secret?: string, refresh_token?: string, access_token?: string, access_token_expires_at?: datetime, scopes?: string, default_query?: string, enabled?: boolean default: true}`
+- **Returns**: `{:ok, GoogleAccountSummary} | {:error, Changeset}`
+- **Side effects**: inserts `google_accounts`; encrypts credential fields; broadcasts on `"google"` topic
+
+### `google_account_update`
+- **Type**: mutate | **Tier**: restricted
+- **Args**: `{id: integer, email?: string, client_id?: string, client_secret?: string, refresh_token?: string, access_token?: string, access_token_expires_at?: datetime, scopes?: string, default_query?: string, enabled?: boolean}`
+- **Returns**: `{:ok, GoogleAccountSummary} | {:error, Changeset | :not_found}`
+- **Side effects**: updates `google_accounts`; re-encrypts changed credential fields; broadcasts
+
+### `google_account_delete`
+- **Type**: mutate | **Tier**: restricted
+- **Args**: `{id: integer}`
+- **Returns**: `{:ok, GoogleAccountSummary} | {:error, :not_found}`
+- **Side effects**: deletes from `google_accounts`; broadcasts
+
+### `gmail_label_list`
+- **Type**: read | **Tier**: safe
+- **Args**: `{account_id?: integer, email?: string}` — if omitted, uses the first enabled connected account
+- **Returns**: `{:ok, [GmailLabel]} | {:error, :no_google_account | term()}`
+- **Side effects**: outbound HTTP to Gmail; may refresh OAuth access token
+
+### `gmail_search`
+- **Type**: read | **Tier**: safe
+- **Args**: `{account_id?: integer, email?: string, query?: string, limit?: integer default: 10}` — if `query` is omitted, uses the account default query
+- **Returns**: `{:ok, %{messages: [GmailMessageSummary], result_size_estimate: integer, next_page_token?: string}} | {:error, :no_google_account | term()}`
+- **Side effects**: outbound HTTP to Gmail; may refresh OAuth access token
+
+### `gmail_read`
+- **Type**: read | **Tier**: safe
+- **Args**: `{account_id?: integer, email?: string, message_id: string}`
+- **Returns**: `{:ok, GmailMessage} | {:error, :missing_message_id | :no_google_account | term()}`
+- **Side effects**: outbound HTTP to Gmail; may refresh OAuth access token
+
+### `gmail_sync`
+- **Type**: trigger | **Tier**: safe
+- **Args**: `{account_id?: integer, email?: string, query?: string, limit?: integer default: 10}` — if `query` is omitted, uses the account default query
+- **Returns**: `{:ok, %{synced: integer, requested: integer, documents: [Document], errors: [term()], account: GoogleAccountSummary}} | {:error, :no_google_account | term()}`
+- **Side effects**: outbound HTTP to Gmail; may refresh OAuth access token; writes stable Gmail markdown documents under `Library/raw/YYYY-MM-DD`; updates the Google account sync cursor fields.
+
+---
+
 ## Chat
 
 Live chat session with the active provider. Sessions are supervised GenServers keyed by `session_id` (default: `"default"`).
 
 ### `chat_send`
 - **Type**: trigger | **Tier**: safe
-- **Args**: `{prompt: string, session_id?: string default: "default"}`
+- **Args**: `{prompt: string, content?: string alias for prompt, session_id?: string default: "default"}`
 - **Returns**: `{:ok, :sent}`
 - **Side effects**: enqueues prompt for the session GenServer; streams assistant tokens via PubSub on `"chat:<session_id>"`; returns immediately. Use `chat_messages` to read the result, or subscribe to the PubSub topic for streaming.
 - **Notes**: slash commands (`/help`, `/status`, `/ingest`, etc.) work here — they execute inline and append a system message to the session.

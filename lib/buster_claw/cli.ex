@@ -46,8 +46,7 @@ defmodule BusterClaw.CLI do
   end
 
   defp ensure_apps do
-    Application.ensure_all_started(:inets)
-    Application.ensure_all_started(:ssl)
+    Application.ensure_all_started(:req)
   end
 
   # ---- Subcommands ----
@@ -103,12 +102,14 @@ defmodule BusterClaw.CLI do
 
   defp http_get(path) do
     url = base_url() <> path
-    headers = [{~c"accept", ~c"application/json"} | auth_header_charlist()]
-    request = {String.to_charlist(url), headers}
 
-    case :httpc.request(:get, request, [{:connect_timeout, 5_000}], []) do
-      {:ok, {{_, status, _}, _resp_headers, body_charlist}} ->
-        decode_response(status, body_charlist)
+    case Req.get(url,
+           headers: [{"accept", "application/json"} | auth_header()],
+           receive_timeout: 5_000,
+           retry: false
+         ) do
+      {:ok, %{status: status, body: body}} ->
+        decode_response(status, body)
 
       {:error, reason} ->
         {:error, connection_message(reason)}
@@ -117,17 +118,14 @@ defmodule BusterClaw.CLI do
 
   defp http_post(path, body, opts) do
     url = base_url(opts[:opts]) <> path
-    json_body = Jason.encode!(body)
 
     headers =
-      [{~c"accept", ~c"application/json"}]
+      [{"accept", "application/json"}]
       |> maybe_add_auth(opts[:auth], opts[:opts])
 
-    request = {String.to_charlist(url), headers, ~c"application/json", json_body}
-
-    case :httpc.request(:post, request, [{:connect_timeout, 5_000}], []) do
-      {:ok, {{_, status, _}, _resp_headers, body_charlist}} ->
-        decode_response(status, body_charlist)
+    case Req.post(url, json: body, headers: headers, receive_timeout: 5_000, retry: false) do
+      {:ok, %{status: status, body: response_body}} ->
+        decode_response(status, response_body)
 
       {:error, reason} ->
         {:error, connection_message(reason)}
@@ -135,20 +133,22 @@ defmodule BusterClaw.CLI do
   end
 
   defp maybe_add_auth(headers, true, opts) do
-    headers ++ auth_header_charlist(opts)
+    headers ++ auth_header(opts)
   end
 
   defp maybe_add_auth(headers, _, _), do: headers
 
-  defp auth_header_charlist(opts \\ []) do
+  defp auth_header(opts \\ []) do
     case token(opts) do
       nil -> []
-      tok -> [{~c"authorization", String.to_charlist("Bearer " <> tok)}]
+      tok -> [{"authorization", "Bearer " <> tok}]
     end
   end
 
-  defp decode_response(status, body_charlist) do
-    body = body_charlist |> IO.iodata_to_binary()
+  defp decode_response(_status, body) when is_map(body) or is_list(body), do: {:ok, body}
+
+  defp decode_response(status, body) do
+    body = IO.iodata_to_binary(body)
 
     case Jason.decode(body) do
       {:ok, parsed} when status in 200..299 -> {:ok, parsed}
