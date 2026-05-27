@@ -40,35 +40,54 @@ defmodule BusterClawWeb.Layouts do
       |> assign(:agent_mode_on?, BusterClaw.AgentMode.on?())
 
     ~H"""
-    <div class="flex min-h-screen">
-      <aside class="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-base-300 bg-base-100/95">
-        <a
-          href="/"
-          class="flex shrink-0 items-center gap-3 border-b border-base-300 px-4 py-4"
+    <div id="app-shell" class="flex min-h-screen">
+      <aside
+        id="app-sidebar"
+        class="sticky top-0 z-20 h-screen w-60 shrink-0 border-r border-base-300 bg-base-100/95 transition-[width,border-color] duration-200 ease-out [[data-sidebar=closed]_&]:w-0 [[data-sidebar=closed]_&]:border-transparent"
+      >
+        <button
+          id="sidebar-bumper"
+          type="button"
+          title="Toggle sidebar"
+          aria-label="Toggle sidebar"
+          phx-click={JS.dispatch("bc:toggle-sidebar")}
+          class="absolute top-20 -right-3 z-30 grid size-7 place-items-center rounded-full border border-base-300 bg-base-100 text-base-content shadow-sm transition hover:border-base-content/30 hover:bg-base-200 focus:outline-none focus:ring-2 focus:ring-base-content/30 [[data-sidebar=closed]_&]:-right-7"
         >
-          <div class="grid size-9 place-items-center rounded bg-base-content text-base-100">
-            BC
-          </div>
-          <div class="min-w-0">
-            <div class="truncate text-xs font-semibold uppercase tracking-wide text-base-content/60">
-              Elixir Rewrite
-            </div>
-            <div class="truncate text-base font-semibold">Buster Claw</div>
-          </div>
-        </a>
+          <.icon name="hero-chevron-left" class="size-4 [[data-sidebar=closed]_&]:hidden" />
+          <.icon name="hero-chevron-right" class="hidden size-4 [[data-sidebar=closed]_&]:block" />
+        </button>
 
-        <nav class="flex flex-1 flex-col gap-1 overflow-y-auto p-3 text-sm">
+        <div class="flex h-full w-60 flex-col overflow-hidden transition-opacity duration-150 [[data-sidebar=closed]_&]:pointer-events-none [[data-sidebar=closed]_&]:opacity-0">
           <a
-            :for={item <- navigation_items()}
-            href={item.path}
-            class="rounded px-3 py-2 hover:bg-base-200"
+            href="/"
+            class="flex shrink-0 items-center gap-3 border-b border-base-300 px-4 py-4"
           >
-            {item.label}
+            <div class="grid size-9 shrink-0 place-items-center rounded bg-base-content text-base-100">
+              BC
+            </div>
+            <div class="min-w-0">
+              <div class="truncate text-xs font-semibold uppercase tracking-wide text-base-content/60">
+                Elixir Rewrite
+              </div>
+              <div class="truncate text-base font-semibold">Buster Claw</div>
+            </div>
           </a>
-        </nav>
 
-        <div class="shrink-0 border-t border-base-300 p-3">
-          <.theme_toggle />
+          <nav class="flex flex-1 flex-col gap-1 overflow-y-auto p-3 text-sm">
+            <a
+              :for={item <- navigation_items()}
+              href={item.path}
+              title={item.label}
+              class="flex items-center gap-3 rounded px-3 py-2 transition hover:bg-base-200"
+            >
+              <.icon name={item.icon} class="size-5 shrink-0 text-base-content/70" />
+              <span class="truncate">{item.label}</span>
+            </a>
+          </nav>
+
+          <div class="shrink-0 border-t border-base-300 p-3">
+            <.theme_toggle />
+          </div>
         </div>
       </aside>
 
@@ -117,16 +136,16 @@ defmodule BusterClawWeb.Layouts do
 
   defp navigation_items do
     [
-      %{label: "Home", path: "/"},
-      %{label: "Chat", path: "/chat"},
-      %{label: "Sources", path: "/sources"},
-      %{label: "Documents", path: "/documents"},
-      %{label: "Analysis", path: "/analysis"},
-      %{label: "Calendar", path: "/calendar"},
-      %{label: "GWS", path: "/gws"},
-      %{label: "Memory", path: "/memory"},
-      %{label: "Scheduler", path: "/scheduler"},
-      %{label: "Advanced", path: "/advanced"}
+      %{label: "Home", path: "/", icon: "hero-home"},
+      %{label: "Chat", path: "/chat", icon: "hero-chat-bubble-left-right"},
+      %{label: "Sources", path: "/sources", icon: "hero-folder-open"},
+      %{label: "Documents", path: "/documents", icon: "hero-document-text"},
+      %{label: "Analysis", path: "/analysis", icon: "hero-chart-bar"},
+      %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
+      %{label: "GWS", path: "/gws", icon: "hero-envelope"},
+      %{label: "Memory", path: "/memory", icon: "hero-circle-stack"},
+      %{label: "Scheduler", path: "/scheduler", icon: "hero-clock"},
+      %{label: "Advanced", path: "/advanced", icon: "hero-adjustments-horizontal"}
     ]
   end
 

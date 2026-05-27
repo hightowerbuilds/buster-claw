@@ -35,14 +35,57 @@ defmodule BusterClawWeb.DocumentsLiveTest do
     {:ok, view, html} = live(conn, ~p"/documents")
 
     assert html =~ "Documents"
+    assert has_element?(view, "#documents-reader")
+    assert has_element?(view, "#documents-sidebar")
+    assert has_element?(view, "#documents-sidebar-bumper")
+    assert has_element?(view, "#documents-main")
     assert html =~ "Live Doc"
+    assert view |> element("#document-preview") |> render() =~ "Preview me."
 
-    html =
-      view
-      |> element("button[phx-value-id='#{document.id}']", "Live Doc")
-      |> render_click()
+    view
+    |> element("#document-list-item-#{document.id}", "Live Doc")
+    |> render_click()
 
-    assert html =~ "Preview me."
+    assert has_element?(view, "#document-preview")
+    assert view |> element("#document-preview") |> render() =~ "Preview me."
+  end
+
+  test "switches the main reader from the sidebar list", %{conn: conn} do
+    assert {:ok, older_document} =
+             Library.save_raw_document(%{
+               date: ~D[2026-05-07],
+               filename: "older-doc.md",
+               name: "Older Doc",
+               content: "# Older Doc\n\nOlder body."
+             })
+
+    assert {:ok, newer_document} =
+             Library.save_raw_document(%{
+               date: ~D[2026-05-08],
+               filename: "newer-doc.md",
+               name: "Newer Doc",
+               content: "# Newer Doc\n\nNewer body."
+             })
+
+    {:ok, view, html} = live(conn, ~p"/documents")
+
+    assert html =~ "Newer Doc"
+    assert view |> element("#document-preview") |> render() =~ "Newer body."
+    refute view |> element("#document-preview") |> render() =~ "Older body."
+
+    view
+    |> element("#document-list-item-#{older_document.id}", "Older Doc")
+    |> render_click()
+
+    assert view |> element("#document-preview") |> render() =~ "Older body."
+    refute view |> element("#document-preview") |> render() =~ "Newer body."
+
+    view
+    |> element("#document-list-item-#{newer_document.id}", "Newer Doc")
+    |> render_click()
+
+    assert view |> element("#document-preview") |> render() =~ "Newer body."
+    refute view |> element("#document-preview") |> render() =~ "Older body."
   end
 
   test "indexes existing documents from the UI", %{conn: conn} do

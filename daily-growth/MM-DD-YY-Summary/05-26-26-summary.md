@@ -281,6 +281,26 @@
 - Archived the completed master roadmap to
   `daily-growth/old-maps/master-roadmap.md`.
 
+### App shell and document reader UX
+
+- Added a global app-sidebar bumper so users can collapse/reopen the main
+  sidebar from any route.
+- Persisted the app-sidebar state in browser storage with `bc:sidebar`.
+- Added navigation icons to the main sidebar while keeping the existing route
+  structure.
+- Reworked the Documents page into a Gmail-style reader:
+  - document list sidebar on the left
+  - selected document preview/main reader on the right
+  - newest document auto-selected on page load
+  - active document highlighting in the list
+  - clear/delete controls in the reader header
+- Kept the document list sidebar as a left overlay on narrow windows instead of
+  stacking it above the reader.
+- Added a document-sidebar bumper so users can collapse/reopen the Documents
+  list independently of the global app sidebar.
+- Persisted the document-sidebar state in browser storage with
+  `bc:documents-sidebar`.
+
 ## Verification
 
 - `mix test test/buster_claw/analysis_test.exs`: 6 tests, 0 failures.
@@ -300,7 +320,11 @@
 - `mix test test/buster_claw/google/gmail_test.exs test/buster_claw/commands_test.exs test/buster_claw/google_test.exs`: 44 tests, 0 failures.
 - `mix test test/buster_claw/google/gmail_sync_test.exs test/buster_claw/google/calendar_sync_test.exs`: 7 tests, 0 failures.
 - `mix test test/buster_claw/google/gmail_sync_test.exs test/buster_claw/google/calendar_sync_test.exs test/buster_claw/commands_test.exs test/buster_claw_web/live/gws_live_test.exs test/buster_claw/google/gmail_test.exs test/buster_claw/google_test.exs`: 57 tests, 0 failures.
-- `mix precommit`: latest final run passed with 250 tests, 0 failures.
+- `mix test test/buster_claw_web/live/status_live_test.exs`: 9 tests, 0
+  failures.
+- `mix test test/buster_claw_web/live/documents_live_test.exs`: 3 tests, 0
+  failures.
+- `mix precommit`: latest final run passed with 251 tests, 0 failures.
 - `mix ecto.migrate`: migrations already up.
 
 ## Where we left off
@@ -320,4 +344,8 @@
   complete.
 - The master roadmap active implementation pass is complete and archived in
   `daily-growth/old-maps/master-roadmap.md`.
+- The main app sidebar and Documents sidebar are both collapsible via bumper
+  controls.
+- The Documents page now uses a two-pane, Gmail-style reader layout with a
+  scrollable document list and full main preview area.
 - Future deferred work is tracked in `daily-growth/roadmaps/Leftovers.md`.

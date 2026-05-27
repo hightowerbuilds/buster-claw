@@ -85,6 +85,42 @@ const Hooks = {
   }
 }
 
+const sidebarStorageKey = "bc:sidebar"
+const setSidebarState = (state) => {
+  const nextState = state === "closed" ? "closed" : "open"
+  document.documentElement.dataset.sidebar = nextState
+  localStorage.setItem(sidebarStorageKey, nextState)
+}
+
+setSidebarState(localStorage.getItem(sidebarStorageKey))
+
+window.addEventListener("storage", (event) => {
+  if (event.key === sidebarStorageKey) setSidebarState(event.newValue)
+})
+
+window.addEventListener("bc:toggle-sidebar", () => {
+  const nextState = document.documentElement.dataset.sidebar === "closed" ? "open" : "closed"
+  setSidebarState(nextState)
+})
+
+const documentsSidebarStorageKey = "bc:documents-sidebar"
+const setDocumentsSidebarState = (state) => {
+  const nextState = state === "closed" ? "closed" : "open"
+  document.documentElement.dataset.documentsSidebar = nextState
+  localStorage.setItem(documentsSidebarStorageKey, nextState)
+}
+
+setDocumentsSidebarState(localStorage.getItem(documentsSidebarStorageKey))
+
+window.addEventListener("storage", (event) => {
+  if (event.key === documentsSidebarStorageKey) setDocumentsSidebarState(event.newValue)
+})
+
+window.addEventListener("bc:toggle-documents-sidebar", () => {
+  const nextState = document.documentElement.dataset.documentsSidebar === "closed" ? "open" : "closed"
+  setDocumentsSidebarState(nextState)
+})
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
@@ -140,4 +176,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-
