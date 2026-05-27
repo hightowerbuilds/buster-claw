@@ -30,6 +30,9 @@ REQUIRED_COMMANDS=(
   source_list
   provider_active
   gmail_sync
+  gmail_draft_create
+  gmail_send
+  google_calendar_sync
   chat_send
   web_search
 )

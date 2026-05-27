@@ -7,6 +7,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Google
   alias BusterClaw.Google.Account, as: GoogleAccount
   alias BusterClaw.Google.OAuth, as: GoogleOAuthCore
+  alias BusterClaw.LocalTime
   alias BusterClaw.Providers
   alias BusterClaw.Providers.Provider
   alias BusterClaw.Runtime.Status
@@ -28,7 +29,7 @@ defmodule BusterClawWeb.StatusLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    today = Date.utc_today()
+    today = LocalTime.today()
 
     if connected?(socket) do
       AgentMode.subscribe_mode()
@@ -386,28 +387,37 @@ defmodule BusterClawWeb.StatusLive do
     assigns = assign(assigns, :default_query, @google_default_query)
 
     ~H"""
-    <section id="home-google-workspace-login" class="rounded-lg border border-base-300 bg-base-100">
-      <header class="flex flex-wrap items-start justify-between gap-3 border-b border-base-300 px-5 py-4">
-        <div>
+    <details
+      id="home-google-workspace-login"
+      open={@auth_url != nil or @note != nil}
+      class="group rounded-lg border border-base-300 bg-base-100"
+    >
+      <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden">
+        <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">
             Google Workspace
           </p>
-          <h2 class="text-2xl font-semibold tracking-normal">Connect GWS</h2>
+          <h2 class="text-lg font-semibold">Connect GWS</h2>
           <p class="mt-1 text-sm text-base-content/60">
             Save your desktop OAuth client and finish Google authorization.
           </p>
         </div>
+        <span class="grid size-9 shrink-0 place-items-center rounded border border-base-300 text-base-content/70 transition group-open:rotate-180">
+          <.icon name="hero-chevron-down" class="size-4" />
+        </span>
+      </summary>
 
-        <.link
-          navigate={~p"/gws"}
-          class="rounded border border-base-300 px-3 py-2 text-sm font-semibold text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
-        >
-          Open GWS
-        </.link>
-      </header>
-
-      <div class="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <div class="grid gap-5 border-t border-base-300 p-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div class="space-y-4">
+          <div class="flex justify-end">
+            <.link
+              navigate={~p"/gws"}
+              class="rounded border border-base-300 px-3 py-2 text-sm font-semibold text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
+            >
+              Open GWS
+            </.link>
+          </div>
+
           <p
             :if={@note}
             id="google-connect-note"
@@ -505,7 +515,7 @@ defmodule BusterClawWeb.StatusLive do
           </div>
         </aside>
       </div>
-    </section>
+    </details>
     """
   end
 

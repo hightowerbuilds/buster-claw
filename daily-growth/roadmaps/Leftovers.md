@@ -49,8 +49,11 @@ and daily-use hardening.
 - [x] Dedicated GWS tab for account management.
 - [x] Gmail labels/search/read commands.
 - [x] Gmail sync into Library documents.
-- [ ] Gmail draft/send commands.
-- [ ] Incremental Gmail history sync beyond query/limit-based pulls.
+- [x] Google Calendar one-way sync into app calendar events.
+- [x] Gmail draft-create command.
+- [x] Gmail send command.
+- [x] Incremental Gmail history sync beyond query/limit-based pulls.
+- [x] Incremental Google Calendar sync tokens beyond query/window-based pulls.
 - [x] Reconfirm encrypted-secret design, because it is broader than Gmail and may
   eventually cover provider keys and integration tokens.
 

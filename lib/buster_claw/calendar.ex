@@ -6,9 +6,43 @@ defmodule BusterClaw.Calendar do
 
   def list_events, do: Repo.all(Event)
   def get_event!(id), do: Repo.get!(Event, id)
+  def get_event_by_event_id(event_id), do: Repo.get_by(Event, event_id: event_id)
   def create_event(attrs), do: %Event{} |> Event.changeset(attrs) |> Repo.insert()
   def update_event(%Event{} = event, attrs), do: event |> Event.changeset(attrs) |> Repo.update()
   def delete_event(%Event{} = event), do: Repo.delete(event)
+
+  def sync_external_events(prefix, attrs_list) when is_binary(prefix) and is_list(attrs_list) do
+    incoming_event_ids = attrs_list |> Enum.map(&event_id!/1) |> MapSet.new()
+
+    existing =
+      list_events()
+      |> Enum.filter(&String.starts_with?(&1.event_id, prefix))
+
+    stale = Enum.reject(existing, &MapSet.member?(incoming_event_ids, &1.event_id))
+
+    deleted =
+      Enum.map(stale, fn event ->
+        {:ok, deleted} = delete_event(event)
+        deleted
+      end)
+
+    {created, updated, events} =
+      Enum.reduce(attrs_list, {0, 0, []}, fn attrs, {created, updated, events} ->
+        case upsert_external_event(attrs) do
+          {:created, event} -> {created + 1, updated, [event | events]}
+          {:updated, event} -> {created, updated + 1, [event | events]}
+        end
+      end)
+
+    {:ok,
+     %{
+       created: created,
+       updated: updated,
+       deleted: length(deleted),
+       events: Enum.reverse(events),
+       deleted_events: deleted
+     }}
+  end
 
   @doc """
   Return all event occurrences whose date falls within `range_start..range_end`
@@ -58,4 +92,20 @@ defmodule BusterClaw.Calendar do
   defp in_range?(date, range_start, range_end) do
     Date.compare(date, range_start) != :lt and Date.compare(date, range_end) != :gt
   end
+
+  defp upsert_external_event(attrs) do
+    event_id = event_id!(attrs)
+
+    case get_event_by_event_id(event_id) do
+      nil ->
+        {:ok, event} = create_event(attrs)
+        {:created, event}
+
+      %Event{} = event ->
+        {:ok, event} = update_event(event, attrs)
+        {:updated, event}
+    end
+  end
+
+  defp event_id!(attrs), do: Map.get(attrs, :event_id) || Map.fetch!(attrs, "event_id")
 end

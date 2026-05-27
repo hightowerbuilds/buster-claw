@@ -3,6 +3,7 @@ defmodule BusterClaw.Ingest do
 
   alias BusterClaw.Ingest.Fetcher
   alias BusterClaw.Library
+  alias BusterClaw.LocalTime
   alias BusterClaw.Sources.Source
   alias BusterClaw.Workflow
 
@@ -35,7 +36,7 @@ defmodule BusterClaw.Ingest do
     results =
       Enum.map(items, fn item ->
         Library.save_raw_document(%{
-          date: Date.utc_today(),
+          date: LocalTime.today(),
           source_id: source.id,
           filename: item.title || item.url,
           source_url: item.url,

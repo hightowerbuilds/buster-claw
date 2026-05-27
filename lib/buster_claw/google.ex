@@ -92,6 +92,8 @@ defmodule BusterClaw.Google do
       enabled: account.enabled,
       last_synced_at: account.last_synced_at,
       last_seen_history_id: account.last_seen_history_id,
+      calendar_sync_token_calendars:
+        account.calendar_sync_tokens |> normalize_map() |> Map.keys() |> Enum.sort(),
       has_client_secret: present?(account.client_secret_enc),
       has_refresh_token: present?(account.refresh_token_enc),
       has_access_token: present?(account.access_token_enc),
@@ -108,4 +110,6 @@ defmodule BusterClaw.Google do
   defp scrub_and_broadcast(other, _event), do: other
 
   defp present?(value), do: value not in [nil, ""]
+  defp normalize_map(value) when is_map(value), do: value
+  defp normalize_map(_value), do: %{}
 end

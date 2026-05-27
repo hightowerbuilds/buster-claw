@@ -5,6 +5,7 @@ defmodule BusterClawWeb.StatusLiveTest do
 
   alias BusterClaw.Calendar
   alias BusterClaw.Google
+  alias BusterClaw.LocalTime
   alias BusterClaw.Providers
 
   test "GET / renders the home shell", %{conn: conn} do
@@ -12,7 +13,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     response = html_response(conn, 200)
 
     assert response =~ "Buster Claw"
-    assert response =~ ~s(id="home-google-workspace-login")
+    assert response =~ ~s(<details id="home-google-workspace-login")
     assert response =~ ~s(href="/gws")
     assert response =~ "Models"
     assert response =~ "Active key"
@@ -39,6 +40,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       |> render_submit()
 
     assert html =~ ~s(id="google-oauth-link")
+    assert html =~ ~s(id="home-google-workspace-login" open)
     assert html =~ "accounts.google.com"
     assert [account] = Google.list_accounts()
     assert account.email == "me@example.com"
@@ -47,7 +49,7 @@ defmodule BusterClawWeb.StatusLiveTest do
   end
 
   test "GET / renders today's calendar events", %{conn: conn} do
-    today = Date.utc_today()
+    today = LocalTime.today()
 
     {:ok, _event} =
       Calendar.create_event(%{
@@ -65,6 +67,39 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(id="home-daily-calendar")
     assert response =~ "Home page planning block"
     assert response =~ "09:30"
+  end
+
+  test "GET / uses the app-local date for the daily calendar", %{conn: conn} do
+    previous = Application.get_env(:buster_claw, :local_today)
+    Application.put_env(:buster_claw, :local_today, ~D[2026-05-26])
+
+    on_exit(fn ->
+      if previous do
+        Application.put_env(:buster_claw, :local_today, previous)
+      else
+        Application.delete_env(:buster_claw, :local_today)
+      end
+    end)
+
+    {:ok, _event} =
+      Calendar.create_event(%{
+        event_id: "home-local-today",
+        date: ~D[2026-05-26],
+        title: "Local today event"
+      })
+
+    {:ok, _event} =
+      Calendar.create_event(%{
+        event_id: "home-utc-tomorrow",
+        date: ~D[2026-05-27],
+        title: "UTC tomorrow event"
+      })
+
+    conn = get(conn, ~p"/")
+    response = html_response(conn, 200)
+
+    assert response =~ "Local today event"
+    refute response =~ "UTC tomorrow event"
   end
 
   test "GET /chat renders the chat shell", %{conn: conn} do

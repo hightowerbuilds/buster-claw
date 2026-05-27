@@ -104,7 +104,27 @@ defmodule BusterClaw.GoogleTest do
       assert params["access_type"] == "offline"
       assert params["prompt"] == "consent"
       assert params["scope"] =~ "gmail.readonly"
+      assert params["scope"] =~ "gmail.compose"
       assert params["state"] == "state"
+    end
+
+    test "authorization URL includes new default scopes for older connected accounts" do
+      assert {:ok, account} =
+               Google.create_account(%{
+                 "email" => "me@example.com",
+                 "client_id" => "client-id",
+                 "client_secret" => "client-secret",
+                 "scopes" => "https://www.googleapis.com/auth/gmail.readonly"
+               })
+
+      url =
+        OAuth.authorization_url(account, "http://127.0.0.1:4000/google/oauth/callback", "state")
+
+      params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      assert params["scope"] =~ "gmail.readonly"
+      assert params["scope"] =~ "gmail.compose"
+      assert params["scope"] =~ "calendar.events.readonly"
     end
 
     test "exchanges a callback code and stores encrypted tokens" do

@@ -403,7 +403,39 @@ defmodule BusterClaw.Commands do
     with_google_account(args, fn account ->
       query = Map.get(args, "query") || account.default_query || "newer_than:7d"
       limit = Map.get(args, "limit", 10)
-      BusterClaw.Google.GmailSync.sync(account, query: query, limit: limit)
+
+      BusterClaw.Google.GmailSync.sync(account,
+        query: query,
+        limit: limit,
+        incremental: truthy?(Map.get(args, "incremental", false)),
+        start_history_id: Map.get(args, "start_history_id")
+      )
+    end)
+  end
+
+  def gmail_draft_create(args) do
+    with_google_account(args, fn account ->
+      BusterClaw.Google.Gmail.create_draft(account, args)
+    end)
+  end
+
+  def gmail_send(args) do
+    if send_confirmed?(args) do
+      with_google_account(args, fn account ->
+        BusterClaw.Google.Gmail.send_message(account, args)
+      end)
+    else
+      {:error, :missing_send_confirmation}
+    end
+  end
+
+  def google_calendar_sync(args) do
+    with_google_account(args, fn account ->
+      BusterClaw.Google.CalendarSync.sync(account,
+        calendar_id: Map.get(args, "calendar_id", "primary"),
+        days_ahead: Map.get(args, "days_ahead", 90),
+        force_full?: truthy?(Map.get(args, "force_full", false))
+      )
     end)
   end
 
@@ -494,6 +526,12 @@ defmodule BusterClaw.Commands do
         {:error, :no_google_account}
     end
   end
+
+  defp send_confirmed?(args) do
+    Map.get(args, "confirm_send") in [true, "true", "send", "SEND"]
+  end
+
+  defp truthy?(value), do: value in [true, "true", "1", 1, "yes", "YES", "on", "ON"]
 
   defp now_utc, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -1033,7 +1071,9 @@ defmodule BusterClaw.Commands do
           "account_id" => %{type: :integer, required: false},
           "email" => %{type: :string, required: false},
           "query" => %{type: :string, required: false},
-          "limit" => %{type: :integer, required: false, default: 10}
+          "limit" => %{type: :integer, required: false, default: 10},
+          "incremental" => %{type: :boolean, required: false, default: false},
+          "start_history_id" => %{type: :string, required: false}
         }
       },
       %{
@@ -1051,12 +1091,60 @@ defmodule BusterClaw.Commands do
         name: "gmail_sync",
         type: :trigger,
         tier: :safe,
-        description: "Sync Gmail search results into Library raw documents.",
+        description: "Sync Gmail search results or history deltas into Library raw documents.",
         args: %{
           "account_id" => %{type: :integer, required: false},
           "email" => %{type: :string, required: false},
           "query" => %{type: :string, required: false},
-          "limit" => %{type: :integer, required: false, default: 10}
+          "limit" => %{type: :integer, required: false, default: 10},
+          "incremental" => %{type: :boolean, required: false, default: false},
+          "start_history_id" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "gmail_draft_create",
+        type: :mutate,
+        tier: :restricted,
+        description: "Create a Gmail draft for a connected Google Workspace account.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "to" => %{type: :string, required: false},
+          "recipient" => %{type: :string, required: false, description: "Alias for to."},
+          "cc" => %{type: :string, required: false},
+          "bcc" => %{type: :string, required: false},
+          "subject" => %{type: :string, required: true},
+          "body" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "gmail_send",
+        type: :mutate,
+        tier: :restricted,
+        description: "Send a Gmail message from a connected Google Workspace account.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "to" => %{type: :string, required: false},
+          "recipient" => %{type: :string, required: false, description: "Alias for to."},
+          "cc" => %{type: :string, required: false},
+          "bcc" => %{type: :string, required: false},
+          "subject" => %{type: :string, required: true},
+          "body" => %{type: :string, required: true},
+          "confirm_send" => %{type: :boolean, required: true, default: false}
+        }
+      },
+      %{
+        name: "google_calendar_sync",
+        type: :trigger,
+        tier: :safe,
+        description: "One-way sync Google Calendar events into the app calendar.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "calendar_id" => %{type: :string, required: false, default: "primary"},
+          "days_ahead" => %{type: :integer, required: false, default: 90},
+          "force_full" => %{type: :boolean, required: false, default: false}
         }
       },
 

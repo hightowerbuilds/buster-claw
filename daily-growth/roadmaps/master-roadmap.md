@@ -168,7 +168,8 @@ Still needed:
 
 ### Gmail / Google Workspace
 
-Status: account connection, Gmail read tools, and first Library sync implemented.
+Status: account connection, Gmail read/sync/draft/send tools, Google Calendar
+one-way sync, and incremental GWS cursor/token sync implemented.
 
 Implemented:
 
@@ -194,12 +195,25 @@ Implemented:
   `Library/raw/YYYY-MM-DD/gmail-<message-id>.md` documents.
 - [x] Google account sync cursor update for `last_synced_at` and latest Gmail
   history ID seen during sync.
+- [x] Google Calendar one-way sync command and GWS tab action:
+  `google_calendar_sync`.
+- [x] App-local calendar date helper so Home and Calendar views use the desktop
+  local date instead of UTC.
+- [x] Gmail draft-create command:
+  `gmail_draft_create`.
+- [x] Gmail send command with explicit `confirm_send` guard:
+  `gmail_send`.
+- [x] Incremental Gmail history sync using the stored `last_seen_history_id`.
+- [x] Incremental Google Calendar sync-token storage and delta sync using
+  per-calendar `nextSyncToken` values.
 - [x] Real connected-account Gmail label smoke through the local command API.
 
 Planned direction:
 
-- [ ] Gmail draft/send commands.
-- [ ] Incremental Gmail history sync beyond query/limit-based pulls.
+- [x] Gmail draft-create command.
+- [x] Gmail send command.
+- [x] Incremental Gmail history sync beyond query/limit-based pulls.
+- [x] Incremental Google Calendar sync tokens beyond query/window-based pulls.
 
 Next decision before implementation:
 
@@ -260,8 +274,9 @@ Next:
      credential vault, and command-surface foundation.
 5. [x] Implement the Gmail API client layer and first read/search paths.
 6. [x] Implement Gmail sync into Library documents.
-7. [ ] Decide whether Gmail draft/send or incremental history sync is the next
-   Google Workspace slice.
+7. [x] Add one-way Google Calendar sync into app calendar events.
+8. [x] Implement incremental Gmail history sync and incremental Google Calendar
+   sync tokens.
 
 ## Deferred Work
 

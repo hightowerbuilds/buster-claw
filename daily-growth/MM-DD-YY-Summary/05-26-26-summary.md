@@ -194,7 +194,69 @@
   `gmail_label_list`.
 - Updated `docs/rewrite/COMMAND_SURFACE.md`, `master-roadmap.md`, and
   `Leftovers.md` to reflect labels/search/read and Library sync being complete
-  while draft/send and incremental history sync remain pending.
+  while send and incremental history sync remain pending.
+
+### Google Calendar sync and local date fix
+
+- Added app-local date helper so the Home daily calendar and Calendar page use
+  the desktop local date instead of UTC. This fixes the evening issue where the
+  app could show tomorrow's events.
+- Added Google Calendar API read helper using the same authenticated Google HTTP
+  client/token refresh path.
+- Added one-way Google Calendar sync into app calendar events:
+  - imports events from the selected Google account/calendar
+  - upserts rows with stable `google-calendar:<account>:<calendar>:<event>` IDs
+  - removes stale previously imported Google events for that account/calendar
+  - leaves local calendar items, scheduler/cron items, and manually authored
+    events untouched
+- Added command-surface entry:
+  - `google_calendar_sync`
+- Added a Google Calendar sync form/results panel to the `GWS` tab.
+
+### Gmail draft creation
+
+- Extended the shared Google HTTP client with authenticated JSON POST support
+  while keeping the same token refresh path used by Gmail and Calendar reads.
+- Added `gmail_draft_create`, a restricted command that builds a plain-text MIME
+  message, base64url encodes it for Gmail, and creates a Gmail draft without
+  sending mail.
+- Added header sanitization for draft `to`/`cc`/`bcc`/`subject` fields so
+  newline input cannot inject extra MIME headers.
+- Added `https://www.googleapis.com/auth/gmail.compose` to the default Google
+  OAuth scope set for new/reconnected accounts.
+- Made reconnect authorization URLs merge the current default scopes with any
+  older persisted scope string, so existing accounts can request compose without
+  manually editing their saved scope field.
+- Updated `docs/rewrite/COMMAND_SURFACE.md`, `master-roadmap.md`,
+  `Leftovers.md`, and the command-surface smoke representative list for
+  `gmail_draft_create`.
+
+### Gmail send command
+
+- Added `gmail_send`, a restricted command that uses the same sanitized
+  plain-text MIME path as draft creation and posts to Gmail's send endpoint.
+- Added an explicit `confirm_send` guard so command callers cannot send mail by
+  accidentally invoking the command without a positive confirmation flag.
+- Updated command docs, roadmap files, leftovers, and command-surface smoke
+  representative coverage for `gmail_send`.
+
+### Incremental GWS sync
+
+- Added Gmail incremental history sync using `users/me/history` and the stored
+  `last_seen_history_id` cursor.
+- Preserved query/limit Gmail sync while allowing `gmail_sync` callers to pass
+  `incremental: true` and optionally `start_history_id`.
+- Added bounded Gmail fallback reporting for missing or expired history cursors:
+  `full_sync_required: true`.
+- Added per-calendar Google Calendar `nextSyncToken` persistence on Google
+  accounts through a `calendar_sync_tokens` map.
+- Updated Google Calendar sync to reuse stored sync tokens, apply incremental
+  event deltas, remove explicit cancelled Google events, and clear invalidated
+  tokens when Google returns `410 Gone`.
+- Added Calendar pagination handling so all event pages are consumed before a
+  new sync token is stored.
+- Updated command docs, roadmap files, and leftovers to mark the remaining GWS
+  incremental sync work complete.
 
 ## Verification
 
@@ -211,7 +273,12 @@
 - `mix test test/buster_claw/google_test.exs test/buster_claw_web/controllers/google_oauth_controller_test.exs test/buster_claw_web/live/status_live_test.exs test/buster_claw_web/live/gws_live_test.exs test/buster_claw_web/live/automation_routes_test.exs`: 20 tests, 0 failures.
 - `mix test test/buster_claw/google/gmail_test.exs test/buster_claw/commands_test.exs test/buster_claw_web/live/gws_live_test.exs test/buster_claw/google_test.exs`: 39 tests, 0 failures.
 - `mix test test/buster_claw/google/gmail_test.exs test/buster_claw/google/gmail_sync_test.exs test/buster_claw/commands_test.exs test/buster_claw_web/live/gws_live_test.exs test/buster_claw/google_test.exs test/buster_claw/library_artifact_test.exs`: 45 tests, 0 failures.
-- `mix precommit`: final run passed with 225 tests, 0 failures.
+- `mix test test/buster_claw/google/calendar_sync_test.exs test/buster_claw/commands_test.exs test/buster_claw_web/live/gws_live_test.exs test/buster_claw/calendar_test.exs test/buster_claw_web/live/status_live_test.exs test/buster_claw_web/live/calendar_live_test.exs`: 44 tests, 0 failures.
+- `mix test test/buster_claw/google/gmail_test.exs test/buster_claw/commands_test.exs test/buster_claw/google_test.exs`: 44 tests, 0 failures.
+- `mix test test/buster_claw/google/gmail_sync_test.exs test/buster_claw/google/calendar_sync_test.exs`: 7 tests, 0 failures.
+- `mix test test/buster_claw/google/gmail_sync_test.exs test/buster_claw/google/calendar_sync_test.exs test/buster_claw/commands_test.exs test/buster_claw_web/live/gws_live_test.exs test/buster_claw/google/gmail_test.exs test/buster_claw/google_test.exs`: 57 tests, 0 failures.
+- `mix precommit`: final run passed with 244 tests, 0 failures.
+- `mix ecto.migrate`: migrations already up.
 
 ## Where we left off
 
@@ -222,6 +289,9 @@
 - Google Workspace account storage and encrypted credential handling are in
   place.
 - The Home-page GWS connection flow and dedicated GWS tab are in place.
-- Gmail labels/search/read/sync are available through commands and the GWS tab.
-- Next Google Workspace step: decide whether draft/send or incremental Gmail
-  history sync belongs in the next daily-use slice.
+- Gmail labels/search/read/sync, Gmail draft creation, Gmail send, Google
+  Calendar one-way sync, Gmail history sync, and Google Calendar sync-token
+  deltas are available through commands. Gmail and Calendar sync are also
+  available through the GWS tab.
+- The remaining Gmail / Google Workspace roadmap items in `Leftovers.md` are
+  complete.

@@ -5,11 +5,42 @@ defmodule BusterClaw.Google.GmailSync do
   alias BusterClaw.Google.Account
   alias BusterClaw.Google.Gmail
   alias BusterClaw.Library
+  alias BusterClaw.LocalTime
 
   @default_query "newer_than:7d"
   @default_limit 10
 
   def sync(%Account{} = account, opts \\ []) do
+    if Keyword.get(opts, :incremental, false) do
+      sync_incremental(account, opts)
+    else
+      sync_query(account, opts)
+    end
+  end
+
+  def sync_incremental(%Account{} = account, opts \\ []) do
+    start_history_id =
+      opts |> Keyword.get(:start_history_id, account.last_seen_history_id) |> present_or_nil()
+
+    if is_nil(start_history_id) do
+      {:ok, full_sync_required_result(account, start_history_id, :missing_history_id)}
+    else
+      account
+      |> history_pages(start_history_id, opts)
+      |> case do
+        {:ok, pages} ->
+          sync_history_pages(account, start_history_id, pages, opts)
+
+        {:error, {:google_api_error, 404, body}} ->
+          {:ok, full_sync_required_result(account, start_history_id, :history_id_too_old, body)}
+
+        error ->
+          error
+      end
+    end
+  end
+
+  defp sync_query(%Account{} = account, opts) do
     query =
       opts |> Keyword.get(:query) |> present_or_nil() || account.default_query || @default_query
 
@@ -43,6 +74,70 @@ defmodule BusterClaw.Google.GmailSync do
            next_page_token: search.next_page_token
          }}
       end
+    end
+  end
+
+  defp history_pages(%Account{} = account, start_history_id, opts) do
+    fetch_history_page(account, start_history_id, nil, opts, [])
+  end
+
+  defp fetch_history_page(%Account{} = account, start_history_id, page_token, opts, pages) do
+    opts =
+      if page_token in [nil, ""] do
+        opts
+      else
+        Keyword.put(opts, :page_token, page_token)
+      end
+
+    case Gmail.history(account, start_history_id, opts) do
+      {:ok, page} ->
+        pages = [page | pages]
+
+        if page.next_page_token in [nil, ""] do
+          {:ok, Enum.reverse(pages)}
+        else
+          fetch_history_page(account, start_history_id, page.next_page_token, opts, pages)
+        end
+
+      error ->
+        error
+    end
+  end
+
+  defp sync_history_pages(%Account{} = account, start_history_id, pages, opts) do
+    message_ids = changed_message_ids(pages)
+
+    results =
+      Enum.map(message_ids, fn message_id ->
+        sync_message(account, message_id, opts)
+      end)
+
+    documents = synced_documents(results)
+    errors = sync_errors(results)
+    synced_at = timestamp()
+    history_id = latest_history_id(pages)
+
+    account_attrs =
+      %{"last_synced_at" => synced_at}
+      |> maybe_put_response_history_id(history_id)
+
+    with {:ok, updated_account} <- Google.update_account(account, account_attrs) do
+      {:ok,
+       %{
+         mode: :incremental,
+         account: Google.account_summary(updated_account),
+         start_history_id: start_history_id,
+         history_id: history_id,
+         requested: length(message_ids),
+         synced: length(documents),
+         documents: documents,
+         errors: errors,
+         deleted_message_ids: deleted_message_ids(pages),
+         history_records: Enum.sum(Enum.map(pages, &length(&1.history))),
+         full_sync_required: false,
+         full_sync_reason: nil,
+         last_synced_at: synced_at
+       }}
     end
   end
 
@@ -121,8 +216,54 @@ defmodule BusterClaw.Google.GmailSync do
     end
   end
 
+  defp maybe_put_response_history_id(attrs, history_id) when history_id in [nil, ""], do: attrs
+
+  defp maybe_put_response_history_id(attrs, history_id) do
+    Map.put(attrs, "last_seen_history_id", history_id)
+  end
+
+  defp changed_message_ids(pages) do
+    deleted_ids = pages |> deleted_message_ids() |> MapSet.new()
+
+    pages
+    |> Enum.flat_map(& &1.message_ids)
+    |> Enum.reject(&MapSet.member?(deleted_ids, &1))
+    |> Enum.uniq()
+  end
+
+  defp deleted_message_ids(pages) do
+    pages
+    |> Enum.flat_map(& &1.deleted_message_ids)
+    |> Enum.uniq()
+  end
+
+  defp latest_history_id(pages) do
+    pages
+    |> Enum.reverse()
+    |> Enum.find_value(&present_or_nil(&1.history_id))
+  end
+
+  defp full_sync_required_result(account, start_history_id, reason, response \\ nil) do
+    %{
+      mode: :incremental,
+      account: Google.account_summary(account),
+      start_history_id: start_history_id,
+      history_id: nil,
+      requested: 0,
+      synced: 0,
+      documents: [],
+      errors: [],
+      deleted_message_ids: [],
+      history_records: 0,
+      full_sync_required: true,
+      full_sync_reason: reason,
+      google_response: response,
+      last_synced_at: account.last_synced_at
+    }
+  end
+
   defp message_date(%{internal_date: %DateTime{} = date_time}), do: DateTime.to_date(date_time)
-  defp message_date(_message), do: Date.utc_today()
+  defp message_date(_message), do: LocalTime.today()
 
   defp source_url(%Account{} = account, message) do
     "gmail://#{URI.encode_www_form(account.email)}/messages/#{URI.encode_www_form(message.id)}"

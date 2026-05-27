@@ -66,13 +66,13 @@ Most mutating commands broadcast on a PubSub topic and write to SQLite. Triggers
 | **Delivery** | `delivery_dispatch_all` |
 | **Scheduler** | `scheduler_job_list`, `scheduler_job_get`, `scheduler_job_create`, `scheduler_job_update`, `scheduler_job_delete`, `scheduler_job_run_now` |
 | **Integrations** | `integration_list`, `integration_get`, `integration_create`, `integration_update`, `integration_delete`, `integration_poll`, `integration_poll_all`, `integration_run_list` |
-| **Google Workspace** | `google_account_list`, `google_account_get`, `google_account_create`, `google_account_update`, `google_account_delete`, `gmail_label_list`, `gmail_search`, `gmail_read`, `gmail_sync` |
+| **Google Workspace** | `google_account_list`, `google_account_get`, `google_account_create`, `google_account_update`, `google_account_delete`, `gmail_label_list`, `gmail_search`, `gmail_read`, `gmail_sync`, `gmail_draft_create`, `gmail_send`, `google_calendar_sync` |
 | **Chat** | `chat_send`, `chat_messages`, `chat_clear` |
 | **Search** | `web_search` |
 | **Browser** | `browser_fetch` |
 | **Runtime** | `runtime_status` |
 
-Total: **87 commands**.
+Total: **90 commands**.
 
 ---
 
@@ -634,9 +634,29 @@ Stored OAuth account shells for Gmail and Google Workspace sync. Account command
 
 ### `gmail_sync`
 - **Type**: trigger | **Tier**: safe
-- **Args**: `{account_id?: integer, email?: string, query?: string, limit?: integer default: 10}` — if `query` is omitted, uses the account default query
-- **Returns**: `{:ok, %{synced: integer, requested: integer, documents: [Document], errors: [term()], account: GoogleAccountSummary}} | {:error, :no_google_account | term()}`
-- **Side effects**: outbound HTTP to Gmail; may refresh OAuth access token; writes stable Gmail markdown documents under `Library/raw/YYYY-MM-DD`; updates the Google account sync cursor fields.
+- **Args**: `{account_id?: integer, email?: string, query?: string, limit?: integer default: 10, incremental?: boolean default: false, start_history_id?: string}` — if `query` is omitted, uses the account default query
+- **Returns**: query mode returns `{:ok, %{synced: integer, requested: integer, documents: [Document], errors: [term()], account: GoogleAccountSummary}}`; incremental mode returns `{:ok, %{mode: :incremental, synced: integer, requested: integer, documents: [Document], deleted_message_ids: [string], full_sync_required: boolean, account: GoogleAccountSummary}}`; errors include `{:error, :no_google_account | term()}`
+- **Side effects**: outbound HTTP to Gmail; may refresh OAuth access token; writes stable Gmail markdown documents under `Library/raw/YYYY-MM-DD`; updates the Google account sync cursor fields. Incremental mode uses Gmail `users/me/history` from the stored `last_seen_history_id`; if the cursor is missing or too old it reports `full_sync_required: true` instead of silently falling back.
+
+### `gmail_draft_create`
+- **Type**: mutate | **Tier**: restricted
+- **Args**: `{account_id?: integer, email?: string, to?: string, recipient?: string alias for to, cc?: string, bcc?: string, subject: string, body: string}`
+- **Returns**: `{:ok, %{id: string, message_id: string, thread_id: string, raw: map}} | {:error, :missing_recipient | :missing_subject | :missing_body | :no_google_account | term()}`
+- **Side effects**: outbound HTTP to Gmail; may refresh OAuth access token; creates a Gmail draft only. It does not send mail.
+- **Notes**: requires the connected Google account to authorize `https://www.googleapis.com/auth/gmail.compose`; reconnect older accounts if Gmail returns insufficient-scope errors.
+
+### `gmail_send`
+- **Type**: mutate | **Tier**: restricted
+- **Args**: `{account_id?: integer, email?: string, to?: string, recipient?: string alias for to, cc?: string, bcc?: string, subject: string, body: string, confirm_send: true}`
+- **Returns**: `{:ok, %{id: string, thread_id: string, label_ids: [string], raw: map}} | {:error, :missing_send_confirmation | :missing_recipient | :missing_subject | :missing_body | :no_google_account | term()}`
+- **Side effects**: outbound HTTP to Gmail; may refresh OAuth access token; sends mail from the connected Google account.
+- **Notes**: callers must pass `confirm_send: true` (or `"send"` for CLI-style string args). Requires `https://www.googleapis.com/auth/gmail.compose`.
+
+### `google_calendar_sync`
+- **Type**: trigger | **Tier**: safe
+- **Args**: `{account_id?: integer, email?: string, calendar_id?: string default: "primary", days_ahead?: integer default: 90, force_full?: boolean default: false}`
+- **Returns**: `{:ok, %{mode: :full | :incremental, imported: integer, created: integer, updated: integer, deleted: integer, events: [Event], account: GoogleAccountSummary, next_sync_token?: string}} | {:error, {:calendar_sync_token_invalid, map()} | :no_google_account | term()}`
+- **Side effects**: outbound HTTP to Google Calendar; may refresh OAuth access token; one-way upserts imported Google events into `calendar_events`; removes stale previously imported Google events for that account/calendar during full sync while leaving local and scheduler-authored events untouched. Stores per-calendar Google `nextSyncToken` on the account and reuses it for incremental delta syncs. If Google invalidates the token, the stored token is cleared and the error payload includes `full_sync_required: true`.
 
 ---
 

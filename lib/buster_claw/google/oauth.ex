@@ -8,6 +8,7 @@ defmodule BusterClaw.Google.OAuth do
   @token_endpoint "https://oauth2.googleapis.com/token"
   @default_scopes [
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.compose",
     "https://www.googleapis.com/auth/calendar.events.readonly"
   ]
 
@@ -15,7 +16,7 @@ defmodule BusterClaw.Google.OAuth do
   def default_scope_string, do: Enum.join(@default_scopes, " ")
 
   def authorization_url(%Account{} = account, redirect_uri, state) do
-    scope = account.scopes || default_scope_string()
+    scope = authorization_scope(account.scopes)
 
     params = %{
       "access_type" => "offline",
@@ -29,6 +30,16 @@ defmodule BusterClaw.Google.OAuth do
     }
 
     @authorize_endpoint <> "?" <> URI.encode_query(params)
+  end
+
+  defp authorization_scope(nil), do: default_scope_string()
+
+  defp authorization_scope(scopes) do
+    scopes
+    |> String.split(~r/\s+/, trim: true)
+    |> Kernel.++(@default_scopes)
+    |> Enum.uniq()
+    |> Enum.join(" ")
   end
 
   def exchange_code(%Account{} = account, code, redirect_uri, opts \\ []) do

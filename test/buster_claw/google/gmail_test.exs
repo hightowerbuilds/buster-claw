@@ -88,6 +88,97 @@ defmodule BusterClaw.Google.GmailTest do
     assert message.label_ids == ["INBOX"]
   end
 
+  test "creates a Gmail draft with a plain text MIME payload" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/gmail/v1/users/me/drafts"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+      raw = payload |> get_in(["message", "raw"]) |> decode_base64url!()
+
+      assert raw =~ "To: Ada <ada@example.com>\r\n"
+      assert raw =~ "Cc: Team <team@example.com>\r\n"
+      assert raw =~ "Subject: Hello Bcc: hidden@example.com\r\n"
+      refute raw =~ "\r\nBcc: hidden@example.com"
+      assert raw =~ "\r\n\r\nLine one\nLine two"
+
+      Req.Test.json(conn, %{
+        "id" => "draft-1",
+        "message" => %{"id" => "msg-1", "threadId" => "thread-1"}
+      })
+    end)
+
+    account = connected_account!()
+
+    assert {:ok, draft} =
+             Gmail.create_draft(
+               account,
+               %{
+                 to: "Ada <ada@example.com>",
+                 cc: "Team <team@example.com>",
+                 subject: "Hello\r\nBcc: hidden@example.com",
+                 body: "Line one\nLine two"
+               },
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert draft.id == "draft-1"
+    assert draft.message_id == "msg-1"
+    assert draft.thread_id == "thread-1"
+  end
+
+  test "validates required Gmail draft fields before calling Google" do
+    account = connected_account!()
+
+    assert {:error, :missing_recipient} =
+             Gmail.create_draft(account, %{subject: "Hello", body: "Hi"})
+
+    assert {:error, :missing_subject} =
+             Gmail.create_draft(account, %{to: "ada@example.com", body: "Hi"})
+
+    assert {:error, :missing_body} =
+             Gmail.create_draft(account, %{to: "ada@example.com", subject: "Hello"})
+  end
+
+  test "sends a Gmail message with a plain text MIME payload" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/gmail/v1/users/me/messages/send"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+      raw = payload |> Map.fetch!("raw") |> decode_base64url!()
+
+      assert raw =~ "To: Ada <ada@example.com>\r\n"
+      assert raw =~ "Subject: Sent from Buster Claw\r\n"
+      assert raw =~ "\r\n\r\nSend body."
+
+      Req.Test.json(conn, %{
+        "id" => "msg-sent-1",
+        "threadId" => "thread-sent-1",
+        "labelIds" => ["SENT"]
+      })
+    end)
+
+    account = connected_account!()
+
+    assert {:ok, message} =
+             Gmail.send_message(
+               account,
+               %{
+                 to: "Ada <ada@example.com>",
+                 subject: "Sent from Buster Claw",
+                 body: "Send body."
+               },
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert message.id == "msg-sent-1"
+    assert message.thread_id == "thread-sent-1"
+    assert message.label_ids == ["SENT"]
+  end
+
   defp connected_account! do
     {:ok, account} =
       Google.create_account(%{
@@ -133,5 +224,18 @@ defmodule BusterClaw.Google.GmailTest do
         "body" => %{"data" => Base.url_encode64("Hello from Gmail.", padding: false)}
       }
     ])
+  end
+
+  defp decode_base64url!(data) do
+    data
+    |> pad_base64()
+    |> Base.url_decode64!()
+  end
+
+  defp pad_base64(data) do
+    case rem(String.length(data), 4) do
+      0 -> data
+      missing -> data <> String.duplicate("=", 4 - missing)
+    end
   end
 end

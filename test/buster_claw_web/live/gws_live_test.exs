@@ -3,6 +3,7 @@ defmodule BusterClawWeb.GWSLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Google
   alias BusterClaw.Library
 
@@ -169,6 +170,45 @@ defmodule BusterClawWeb.GWSLiveTest do
     assert [document] = Library.list_documents()
     assert {:ok, markdown} = Library.read_raw_document(document)
     assert markdown =~ "Hello from Gmail."
+  end
+
+  test "syncs Google Calendar events into the app calendar", %{conn: conn} do
+    account = connected_account!()
+
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      assert conn.request_path == "/calendar/v3/calendars/primary/events"
+      assert conn.query_params["singleEvents"] == "true"
+
+      Req.Test.json(conn, %{
+        "items" => [
+          %{
+            "id" => "calendar-event-1",
+            "status" => "confirmed",
+            "summary" => "GWS planning",
+            "start" => %{"dateTime" => "2026-05-27T09:30:00-07:00"},
+            "end" => %{"dateTime" => "2026-05-27T10:00:00-07:00"}
+          }
+        ]
+      })
+    end)
+
+    {:ok, view, html} = live(conn, ~p"/gws")
+    Req.Test.allow(BusterClaw.GoogleHTTP, self(), view.pid)
+
+    assert html =~ ~s(id="google-calendar-tools")
+
+    html =
+      view
+      |> form("#google-calendar-sync-form",
+        google_calendar: %{account_id: account.id, calendar_id: "primary", days_ahead: "14"}
+      )
+      |> render_submit()
+
+    assert html =~ ~s(id="google-calendar-sync-results")
+    assert html =~ "Synced 1 Google Calendar events into Calendar."
+    assert html =~ "GWS planning"
+    assert [%{title: "GWS planning", start_time: ~T[09:30:00]}] = AppCalendar.list_events()
   end
 
   defp connected_account! do

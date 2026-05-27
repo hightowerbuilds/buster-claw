@@ -4,6 +4,7 @@ defmodule BusterClaw.CommandsTest do
   alias BusterClaw.Commands
   alias BusterClaw.Commands.Result
   alias BusterClaw.Google
+  alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Library
 
   setup do
@@ -286,6 +287,184 @@ defmodule BusterClaw.CommandsTest do
       assert [stored] = Library.list_documents()
       assert stored.id == document.id
     end
+
+    test "gmail_sync incremental mode reports when no history cursor exists" do
+      {:ok, _account} =
+        Google.create_account(%{
+          "email" => "me@example.com",
+          "client_id" => "client-id",
+          "client_secret" => "client-secret",
+          "refresh_token" => "refresh-token",
+          "access_token" => "access-token",
+          "access_token_expires_at" => DateTime.utc_now() |> DateTime.add(3600, :second)
+        })
+
+      assert {:ok, %{full_sync_required: true, full_sync_reason: :missing_history_id}} =
+               Commands.gmail_sync(%{"incremental" => true})
+    end
+
+    test "gmail_draft_create creates a draft for the default connected account" do
+      previous = Application.get_env(:buster_claw, :google_req_options)
+
+      Application.put_env(:buster_claw, :google_req_options,
+        plug: {Req.Test, BusterClaw.GoogleHTTP}
+      )
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:buster_claw, :google_req_options, previous)
+        else
+          Application.delete_env(:buster_claw, :google_req_options)
+        end
+      end)
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        assert conn.method == "POST"
+        assert conn.request_path == "/gmail/v1/users/me/drafts"
+
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        payload = Jason.decode!(body)
+        raw = payload |> get_in(["message", "raw"]) |> decode_base64url!()
+
+        assert raw =~ "To: ada@example.com\r\n"
+        assert raw =~ "Subject: Draft from command\r\n"
+        assert raw =~ "\r\n\r\nReady for review."
+
+        Req.Test.json(conn, %{
+          "id" => "draft-1",
+          "message" => %{"id" => "msg-1", "threadId" => "thread-1"}
+        })
+      end)
+
+      {:ok, _account} =
+        Google.create_account(%{
+          "email" => "me@example.com",
+          "client_id" => "client-id",
+          "client_secret" => "client-secret",
+          "refresh_token" => "refresh-token",
+          "access_token" => "access-token",
+          "access_token_expires_at" => DateTime.utc_now() |> DateTime.add(3600, :second)
+        })
+
+      assert {:ok, %{id: "draft-1", message_id: "msg-1", thread_id: "thread-1"}} =
+               Commands.gmail_draft_create(%{
+                 "to" => "ada@example.com",
+                 "subject" => "Draft from command",
+                 "body" => "Ready for review."
+               })
+    end
+
+    test "gmail_send requires explicit confirmation" do
+      assert {:error, :missing_send_confirmation} =
+               Commands.gmail_send(%{
+                 "to" => "ada@example.com",
+                 "subject" => "No confirm",
+                 "body" => "Do not send."
+               })
+    end
+
+    test "gmail_send sends a message for the default connected account" do
+      previous = Application.get_env(:buster_claw, :google_req_options)
+
+      Application.put_env(:buster_claw, :google_req_options,
+        plug: {Req.Test, BusterClaw.GoogleHTTP}
+      )
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:buster_claw, :google_req_options, previous)
+        else
+          Application.delete_env(:buster_claw, :google_req_options)
+        end
+      end)
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        assert conn.method == "POST"
+        assert conn.request_path == "/gmail/v1/users/me/messages/send"
+
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        payload = Jason.decode!(body)
+        raw = payload |> Map.fetch!("raw") |> decode_base64url!()
+
+        assert raw =~ "To: ada@example.com\r\n"
+        assert raw =~ "Subject: Send from command\r\n"
+        assert raw =~ "\r\n\r\nConfirmed send."
+
+        Req.Test.json(conn, %{
+          "id" => "msg-sent-1",
+          "threadId" => "thread-sent-1",
+          "labelIds" => ["SENT"]
+        })
+      end)
+
+      {:ok, _account} =
+        Google.create_account(%{
+          "email" => "me@example.com",
+          "client_id" => "client-id",
+          "client_secret" => "client-secret",
+          "refresh_token" => "refresh-token",
+          "access_token" => "access-token",
+          "access_token_expires_at" => DateTime.utc_now() |> DateTime.add(3600, :second)
+        })
+
+      assert {:ok, %{id: "msg-sent-1", thread_id: "thread-sent-1", label_ids: ["SENT"]}} =
+               Commands.gmail_send(%{
+                 "to" => "ada@example.com",
+                 "subject" => "Send from command",
+                 "body" => "Confirmed send.",
+                 "confirm_send" => true
+               })
+    end
+  end
+
+  describe "google calendar commands" do
+    test "google_calendar_sync imports Google events into app calendar" do
+      previous = Application.get_env(:buster_claw, :google_req_options)
+
+      Application.put_env(:buster_claw, :google_req_options,
+        plug: {Req.Test, BusterClaw.GoogleHTTP}
+      )
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:buster_claw, :google_req_options, previous)
+        else
+          Application.delete_env(:buster_claw, :google_req_options)
+        end
+      end)
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        assert conn.request_path == "/calendar/v3/calendars/primary/events"
+
+        Req.Test.json(conn, %{
+          "items" => [
+            %{
+              "id" => "calendar-event-1",
+              "status" => "confirmed",
+              "summary" => "GWS planning",
+              "start" => %{"dateTime" => "2026-05-27T09:30:00-07:00"},
+              "end" => %{"dateTime" => "2026-05-27T10:00:00-07:00"}
+            }
+          ]
+        })
+      end)
+
+      {:ok, _account} =
+        Google.create_account(%{
+          "email" => "me@example.com",
+          "client_id" => "client-id",
+          "client_secret" => "client-secret",
+          "refresh_token" => "refresh-token",
+          "access_token" => "access-token",
+          "access_token_expires_at" => DateTime.utc_now() |> DateTime.add(3600, :second)
+        })
+
+      assert {:ok, %{imported: 1, created: 1, deleted: 0}} =
+               Commands.google_calendar_sync(%{"calendar_id" => "primary", "days_ahead" => 14})
+
+      assert [%{title: "GWS planning", start_time: ~T[09:30:00]}] = AppCalendar.list_events()
+    end
   end
 
   describe "chat" do
@@ -343,6 +522,9 @@ defmodule BusterClaw.CommandsTest do
       google_account_list
       gmail_search
       gmail_sync
+      gmail_draft_create
+      gmail_send
+      google_calendar_sync
       chat_send
       web_search
       browser_fetch
@@ -385,5 +567,18 @@ defmodule BusterClaw.CommandsTest do
     ~U[2026-05-27 16:00:00Z]
     |> DateTime.to_unix(:millisecond)
     |> Integer.to_string()
+  end
+
+  defp decode_base64url!(data) do
+    data
+    |> pad_base64()
+    |> Base.url_decode64!()
+  end
+
+  defp pad_base64(data) do
+    case rem(String.length(data), 4) do
+      0 -> data
+      missing -> data <> String.duplicate("=", 4 - missing)
+    end
   end
 end

@@ -2,6 +2,7 @@ defmodule BusterClawWeb.GWSLive do
   use BusterClawWeb, :live_view
 
   alias BusterClaw.Google
+  alias BusterClaw.Google.CalendarSync
   alias BusterClaw.Google.Gmail
   alias BusterClaw.Google.GmailSync
   alias BusterClaw.SystemBrowser
@@ -21,13 +22,15 @@ defmodule BusterClawWeb.GWSLive do
      |> assign(:gmail_search, nil)
      |> assign(:gmail_sync, nil)
      |> assign(:gmail_message, nil)
+     |> assign(:calendar_sync, nil)
      |> load_accounts()
-     |> assign_gmail_forms()}
+     |> assign_gmail_forms()
+     |> assign_calendar_form()}
   end
 
   @impl true
   def handle_info({:google_account_changed, _event, _account}, socket) do
-    {:noreply, socket |> load_accounts() |> assign_gmail_forms()}
+    {:noreply, socket |> load_accounts() |> assign_gmail_forms() |> assign_calendar_form()}
   end
 
   @impl true
@@ -63,7 +66,8 @@ defmodule BusterClawWeb.GWSLive do
      socket
      |> assign(:result, "Updated #{account.email}.")
      |> load_accounts()
-     |> assign_gmail_forms()}
+     |> assign_gmail_forms()
+     |> assign_calendar_form()}
   end
 
   def handle_event("delete_account", %{"id" => id}, socket) do
@@ -75,7 +79,8 @@ defmodule BusterClawWeb.GWSLive do
      |> assign(:auth_url, nil)
      |> assign(:result, "Deleted #{account.email}.")
      |> load_accounts()
-     |> assign_gmail_forms()}
+     |> assign_gmail_forms()
+     |> assign_calendar_form()}
   end
 
   def handle_event("load_gmail_labels", %{"gmail" => params}, socket) do
@@ -137,6 +142,28 @@ defmodule BusterClawWeb.GWSLive do
        |> assign_gmail_forms(params)
        |> assign(:gmail_sync, result)
        |> assign(:result, "Synced #{result.synced} Gmail messages into Library.")}
+    else
+      {:error, reason} ->
+        {:noreply, assign(socket, :result, ErrorFormatter.format(reason))}
+    end
+  end
+
+  def handle_event("sync_google_calendar", %{"google_calendar" => params}, socket) do
+    with {:ok, account} <- account_from_params(params),
+         {:ok, result} <-
+           CalendarSync.sync(account,
+             calendar_id: Map.get(params, "calendar_id", "primary"),
+             days_ahead: Map.get(params, "days_ahead", "90")
+           ) do
+      {:noreply,
+       socket
+       |> load_accounts()
+       |> assign_calendar_form(params)
+       |> assign(:calendar_sync, result)
+       |> assign(
+         :result,
+         "Synced #{result.imported} Google Calendar events into Calendar."
+       )}
     else
       {:error, reason} ->
         {:noreply, assign(socket, :result, ErrorFormatter.format(reason))}
@@ -211,6 +238,78 @@ defmodule BusterClawWeb.GWSLive do
             class="mt-2 w-full rounded border border-base-300 bg-base-200 px-2 py-1 font-mono text-xs"
           />
         </div>
+
+        <section id="google-calendar-tools" class="rounded-lg border border-base-300 bg-base-100">
+          <div class="border-b border-base-300 px-4 py-3">
+            <h2 class="text-sm font-semibold">Google Calendar</h2>
+          </div>
+
+          <div class="grid gap-5 p-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
+            <.form
+              for={@calendar_sync_form}
+              id="google-calendar-sync-form"
+              phx-submit="sync_google_calendar"
+              class="space-y-3 rounded border border-base-300 p-3"
+            >
+              <.input
+                field={@calendar_sync_form[:account_id]}
+                id="google-calendar-account-id"
+                type="select"
+                label="Account"
+                options={account_options(@accounts)}
+              />
+              <.input
+                field={@calendar_sync_form[:calendar_id]}
+                id="google-calendar-id"
+                type="text"
+                label="Calendar ID"
+              />
+              <.input
+                field={@calendar_sync_form[:days_ahead]}
+                id="google-calendar-days-ahead"
+                type="number"
+                label="Days Ahead"
+                min="1"
+                max="365"
+              />
+              <button
+                class="w-full rounded bg-base-content px-3 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85 disabled:opacity-40"
+                disabled={@accounts == []}
+              >
+                Sync Calendar
+              </button>
+            </.form>
+
+            <div
+              :if={@calendar_sync}
+              id="google-calendar-sync-results"
+              class="rounded border border-base-300"
+            >
+              <div class="border-b border-base-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+                Imported Events
+              </div>
+              <div class="divide-y divide-base-300">
+                <div
+                  :for={event <- @calendar_sync.events}
+                  id={"google-calendar-event-#{event.id}"}
+                  class="px-3 py-3"
+                >
+                  <h3 class="truncate text-sm font-semibold">{event.title}</h3>
+                  <p class="mt-1 text-xs text-base-content/60">
+                    {event.date} {event.start_time && Calendar.strftime(event.start_time, "%H:%M")}
+                  </p>
+                </div>
+
+                <div
+                  :if={@calendar_sync.events == []}
+                  class="px-3 py-6 text-center text-sm text-base-content/60"
+                >
+                  No Google Calendar events matched the sync window.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <section id="gmail-tools" class="rounded-lg border border-base-300 bg-base-100">
           <div class="border-b border-base-300 px-4 py-3">
@@ -523,6 +622,23 @@ defmodule BusterClawWeb.GWSLive do
       )
     )
     |> assign(:gmail_search_account_id, account_id)
+  end
+
+  defp assign_calendar_form(socket, params \\ %{}) do
+    account_id = Map.get(params, "account_id") || default_account_id(socket.assigns.accounts)
+
+    assign(
+      socket,
+      :calendar_sync_form,
+      to_form(
+        %{
+          "account_id" => account_id,
+          "calendar_id" => Map.get(params, "calendar_id", "primary"),
+          "days_ahead" => Map.get(params, "days_ahead", "90")
+        },
+        as: :google_calendar
+      )
+    )
   end
 
   defp account_from_params(params) do

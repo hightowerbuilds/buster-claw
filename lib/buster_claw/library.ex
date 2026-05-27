@@ -4,6 +4,7 @@ defmodule BusterClaw.Library do
   import Ecto.Query
 
   alias BusterClaw.Library.{Artifact, Document, Report}
+  alias BusterClaw.LocalTime
   alias BusterClaw.Repo
 
   def library_root, do: Artifact.root()
@@ -31,7 +32,7 @@ defmodule BusterClaw.Library do
       source_url = Map.get(fields, "url") || attr(attrs, :source_url)
       name = Map.get(fields, "name") || attr(attrs, :name)
       tags = Map.get(fields, "tags") || attr(attrs, :tags) || []
-      date = attr(attrs, :date) || Date.utc_today()
+      date = attr(attrs, :date) || LocalTime.today()
 
       attrs = %{
         source_id: attr(attrs, :source_id),

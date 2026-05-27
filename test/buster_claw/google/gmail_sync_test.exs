@@ -83,9 +83,128 @@ defmodule BusterClaw.Google.GmailSyncTest do
     assert [_one_document] = Library.list_documents()
   end
 
-  defp connected_account! do
+  test "incremental sync imports changed messages from Gmail history" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+
+      case {conn.request_path, conn.query_params["pageToken"], conn.query_params["format"]} do
+        {"/gmail/v1/users/me/history", nil, _format} ->
+          assert conn.query_params["startHistoryId"] == "history-start"
+          assert conn.query_params["maxResults"] == "100"
+
+          Req.Test.json(conn, %{
+            "historyId" => "history-mid",
+            "nextPageToken" => "next-page",
+            "history" => []
+          })
+
+        {"/gmail/v1/users/me/history", "next-page", _format} ->
+          assert conn.query_params["startHistoryId"] == "history-start"
+          assert conn.query_params["maxResults"] == "100"
+
+          Req.Test.json(conn, %{
+            "historyId" => "history-new",
+            "history" => [
+              %{
+                "id" => "history-event-1",
+                "messagesAdded" => [
+                  %{"message" => %{"id" => "msg-2", "threadId" => "thread-2"}}
+                ]
+              },
+              %{
+                "id" => "history-event-2",
+                "labelsAdded" => [
+                  %{"message" => %{"id" => "msg-2", "threadId" => "thread-2"}}
+                ]
+              },
+              %{
+                "id" => "history-event-3",
+                "messagesDeleted" => [
+                  %{"message" => %{"id" => "msg-deleted", "threadId" => "thread-deleted"}}
+                ]
+              }
+            ]
+          })
+
+        {"/gmail/v1/users/me/messages/msg-2", nil, "full"} ->
+          Req.Test.json(
+            conn,
+            full_message(%{
+              "id" => "msg-2",
+              "threadId" => "thread-2",
+              "historyId" => "history-message-2",
+              "subject" => "Incremental notes",
+              "body" => "Pulled from Gmail history."
+            })
+          )
+      end
+    end)
+
+    account = connected_account!(%{"last_seen_history_id" => "history-start"})
+
+    assert {:ok, result} =
+             GmailSync.sync_incremental(account,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert result.mode == :incremental
+    assert result.full_sync_required == false
+    assert result.full_sync_reason == nil
+    assert result.start_history_id == "history-start"
+    assert result.history_id == "history-new"
+    assert result.requested == 1
+    assert result.synced == 1
+    assert result.errors == []
+    assert result.deleted_message_ids == ["msg-deleted"]
+    assert result.history_records == 3
+    assert result.account.last_seen_history_id == "history-new"
+
+    assert [document] = result.documents
+    assert document.artifact_path == "raw/2026-05-27/gmail-msg-2.md"
+
+    assert {:ok, markdown} = Library.read_raw_document(document)
+    assert markdown =~ "# Incremental notes"
+    assert markdown =~ "Pulled from Gmail history."
+  end
+
+  test "incremental sync reports when Gmail history is too old for a delta pull" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+
+      assert conn.request_path == "/gmail/v1/users/me/history"
+      assert conn.query_params["startHistoryId"] == "expired-history"
+
+      conn
+      |> Plug.Conn.put_status(:not_found)
+      |> Req.Test.json(%{
+        "error" => %{
+          "code" => 404,
+          "message" => "Requested entity was not found.",
+          "status" => "NOT_FOUND"
+        }
+      })
+    end)
+
+    account = connected_account!(%{"last_seen_history_id" => "expired-history"})
+
+    assert {:ok, result} =
+             GmailSync.sync_incremental(account,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert result.mode == :incremental
+    assert result.full_sync_required == true
+    assert result.full_sync_reason == :history_id_too_old
+    assert result.start_history_id == "expired-history"
+    assert result.synced == 0
+    assert result.documents == []
+    assert result.errors == []
+    assert result.account.last_seen_history_id == "expired-history"
+  end
+
+  defp connected_account!(attrs \\ %{}) do
     {:ok, account} =
-      Google.create_account(%{
+      %{
         "email" => "me@example.com",
         "client_id" => "client-id",
         "client_secret" => "client-secret",
@@ -93,7 +212,9 @@ defmodule BusterClaw.Google.GmailSyncTest do
         "access_token" => "access-token",
         "access_token_expires_at" => DateTime.utc_now() |> DateTime.add(3600, :second),
         "default_query" => "newer_than:7d"
-      })
+      }
+      |> Map.merge(attrs)
+      |> Google.create_account()
 
     account
   end
@@ -131,6 +252,34 @@ defmodule BusterClaw.Google.GmailSyncTest do
         "body" => %{"data" => Base.url_encode64("Hello from Gmail.", padding: false)}
       }
     ])
+  end
+
+  defp full_message(attrs) do
+    %{
+      "id" => Map.fetch!(attrs, "id"),
+      "threadId" => Map.fetch!(attrs, "threadId"),
+      "historyId" => Map.fetch!(attrs, "historyId"),
+      "internalDate" => internal_date_ms(),
+      "snippet" => "Please review.",
+      "labelIds" => Map.get(attrs, "labelIds", ["INBOX"]),
+      "payload" => %{
+        "headers" => [
+          %{"name" => "Subject", "value" => Map.fetch!(attrs, "subject")},
+          %{"name" => "From", "value" => "Ada <ada@example.com>"},
+          %{"name" => "To", "value" => "Luke <luke@example.com>"},
+          %{"name" => "Date", "value" => "Wed, 27 May 2026 09:00:00 -0700"}
+        ],
+        "mimeType" => "multipart/alternative",
+        "parts" => [
+          %{
+            "mimeType" => "text/plain",
+            "body" => %{
+              "data" => Base.url_encode64(Map.fetch!(attrs, "body"), padding: false)
+            }
+          }
+        ]
+      }
+    }
   end
 
   defp internal_date_ms do

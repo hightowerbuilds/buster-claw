@@ -2,6 +2,7 @@ defmodule BusterClaw.Library.Artifact do
   @moduledoc "Filesystem boundary for local markdown Library artifacts."
 
   alias BusterClaw.Library.Frontmatter
+  alias BusterClaw.LocalTime
 
   @raw_dir "raw"
   @reports_dir "reports"
@@ -33,7 +34,7 @@ defmodule BusterClaw.Library.Artifact do
   def write_raw_document(attrs) when is_map(attrs) do
     ensure_directories()
 
-    date = date_attr(attrs) || Date.utc_today()
+    date = date_attr(attrs) || LocalTime.today()
     filename = attrs |> attr(:filename) |> fallback_filename(attrs) |> markdown_filename()
     dir = raw_date_dir(date)
     path = safe_join!(dir, [filename])

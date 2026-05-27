@@ -3,6 +3,7 @@ defmodule BusterClawWeb.CalendarLive do
 
   alias BusterClaw.Calendar
   alias BusterClaw.Calendar.Event
+  alias BusterClaw.LocalTime
 
   @weekday_labels ~w(Sun Mon Tue Wed Thu Fri Sat)
 
@@ -35,7 +36,7 @@ defmodule BusterClawWeb.CalendarLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    today = Date.utc_today()
+    today = LocalTime.today()
 
     {:ok,
      socket

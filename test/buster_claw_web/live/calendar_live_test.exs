@@ -4,12 +4,13 @@ defmodule BusterClawWeb.CalendarLiveTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Calendar
+  alias BusterClaw.LocalTime
 
   test "creates, edits, and deletes a calendar event from the UI", %{conn: conn} do
     {:ok, view, html} = live_isolated(conn, BusterClawWeb.CalendarLive)
 
     # Month-grid header renders the current month
-    today = Date.utc_today()
+    today = LocalTime.today()
     month_name = Elixir.Calendar.strftime(today, "%B %Y")
     assert html =~ month_name
 

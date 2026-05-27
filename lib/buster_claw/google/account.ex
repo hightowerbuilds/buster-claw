@@ -16,6 +16,7 @@ defmodule BusterClaw.Google.Account do
     field :default_query, :string
     field :last_synced_at, :utc_datetime
     field :last_seen_history_id, :string
+    field :calendar_sync_tokens, :map, default: %{}
     field :enabled, :boolean, default: true
 
     field :client_secret, :string, virtual: true
@@ -38,6 +39,7 @@ defmodule BusterClaw.Google.Account do
       :default_query,
       :last_synced_at,
       :last_seen_history_id,
+      :calendar_sync_tokens,
       :enabled
     ])
     |> validate_required([:email, :client_id, :enabled])
