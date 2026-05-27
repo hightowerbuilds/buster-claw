@@ -14,7 +14,7 @@ defmodule BusterClaw.Integrations.Sentry do
          {:ok, project} <- required_config(integration, "project"),
          {:ok, issues} <-
            get_json(integration, issues_path(org, project), issue_params(integration), opts),
-         {:ok, samples} <- fetch_event_samples(integration, issues, opts) do
+         {:ok, samples} <- fetch_event_samples(integration, org, issues, opts) do
       now = timestamp()
       source_url = source_url(integration, org, project)
       issues = Enum.take(List.wrap(issues), limit(integration))
@@ -81,14 +81,7 @@ defmodule BusterClaw.Integrations.Sentry do
           source: source_url,
           records: 1,
           summary: webhook_summary(payload),
-          sections: [
-            "",
-            "## Payload Excerpt",
-            "",
-            "```elixir",
-            Snapshot.inspect_block(payload),
-            "```"
-          ]
+          sections: Snapshot.webhook_payload_sections(integration, payload)
         })
 
       {:ok,
@@ -106,7 +99,7 @@ defmodule BusterClaw.Integrations.Sentry do
     end
   end
 
-  defp fetch_event_samples(integration, issues, opts) do
+  defp fetch_event_samples(integration, org, issues, opts) do
     issues
     |> List.wrap()
     |> Enum.take(@event_sample_limit)
@@ -116,7 +109,7 @@ defmodule BusterClaw.Integrations.Sentry do
           {:cont, {:ok, acc}}
 
         id ->
-          case get_json(integration, latest_event_path(id), [], opts) do
+          case get_json(integration, latest_event_path(org, id), [], opts) do
             {:ok, event} -> {:cont, {:ok, Map.put(acc, id, event)}}
             {:error, {:http_error, 404, _body}} -> {:cont, {:ok, acc}}
             {:error, reason} -> {:halt, {:error, reason}}
@@ -277,8 +270,9 @@ defmodule BusterClaw.Integrations.Sentry do
     "/projects/#{URI.encode_www_form(org)}/#{URI.encode_www_form(project)}/issues/"
   end
 
-  defp latest_event_path(issue_id),
-    do: "/issues/#{URI.encode_www_form(to_string(issue_id))}/events/latest/"
+  defp latest_event_path(org, issue_id) do
+    "/organizations/#{URI.encode_www_form(org)}/issues/#{URI.encode_www_form(to_string(issue_id))}/events/latest/"
+  end
 
   defp source_url(integration, org, project), do: endpoint(integration, issues_path(org, project))
 

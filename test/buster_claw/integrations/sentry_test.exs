@@ -60,14 +60,14 @@ defmodule BusterClaw.Integrations.SentryTest do
             }
           ])
 
-        "/api/0/issues/111/events/latest/" ->
+        "/api/0/organizations/acme/issues/111/events/latest/" ->
           Req.Test.json(conn, %{
             "eventID" => "event-111",
             "message" => "Cannot read properties of undefined",
             "dateCreated" => "2026-05-18T15:19:00Z"
           })
 
-        "/api/0/issues/222/events/latest/" ->
+        "/api/0/organizations/acme/issues/222/events/latest/" ->
           Req.Test.json(conn, %{
             "eventID" => "event-222",
             "message" => "Invalid time value",

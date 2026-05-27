@@ -258,6 +258,29 @@
 - Updated command docs, roadmap files, and leftovers to mark the remaining GWS
   incremental sync work complete.
 
+### Integration hardening and roadmap archive
+
+- Smoked the GitHub integration against `hightowerbuilds/buster-claw` and saved
+  a real GitHub activity snapshot into the Library.
+- Attempted Sentry against `hightowerbuilds/notes-that-float`; Sentry returned
+  `403`, so the Sentry smoke is deferred until a token with issue/event read
+  access is available.
+- Deferred Umami smoke until base URL, website ID, and API token are available.
+- Added opt-in webhook analysis queuing with `auto_analyze_webhooks`.
+- Added webhook payload excerpt retention controls:
+  - redacted, capped excerpts by default
+  - `webhook_payload_excerpt: false` to omit payload excerpts
+- Added monitoring brief provider overrides:
+  - `integration_monitoring_brief` command
+  - scheduler `custom_cmd` support for `provider_id=...`
+- Added polling snapshot dedupe controls:
+  - `dedupe_poll_snapshots`
+  - `dedupe_window_days`
+- Updated `docs/rewrite/COMMAND_SURFACE.md` for the new monitoring brief command.
+- Deferred monitoring-brief Delivery dispatch to `Leftovers.md`.
+- Archived the completed master roadmap to
+  `daily-growth/old-maps/master-roadmap.md`.
+
 ## Verification
 
 - `mix test test/buster_claw/analysis_test.exs`: 6 tests, 0 failures.
@@ -277,7 +300,7 @@
 - `mix test test/buster_claw/google/gmail_test.exs test/buster_claw/commands_test.exs test/buster_claw/google_test.exs`: 44 tests, 0 failures.
 - `mix test test/buster_claw/google/gmail_sync_test.exs test/buster_claw/google/calendar_sync_test.exs`: 7 tests, 0 failures.
 - `mix test test/buster_claw/google/gmail_sync_test.exs test/buster_claw/google/calendar_sync_test.exs test/buster_claw/commands_test.exs test/buster_claw_web/live/gws_live_test.exs test/buster_claw/google/gmail_test.exs test/buster_claw/google_test.exs`: 57 tests, 0 failures.
-- `mix precommit`: final run passed with 244 tests, 0 failures.
+- `mix precommit`: latest final run passed with 250 tests, 0 failures.
 - `mix ecto.migrate`: migrations already up.
 
 ## Where we left off
@@ -295,3 +318,6 @@
   available through the GWS tab.
 - The remaining Gmail / Google Workspace roadmap items in `Leftovers.md` are
   complete.
+- The master roadmap active implementation pass is complete and archived in
+  `daily-growth/old-maps/master-roadmap.md`.
+- Future deferred work is tracked in `daily-growth/roadmaps/Leftovers.md`.

@@ -156,15 +156,26 @@ Implemented:
 - [x] Chat commands for `/integrations`, `/poll`, and `/brief`.
 - [x] Tests for CRUD, polling, webhook handling, snapshots, scheduler integration,
   and monitoring briefs.
+- [x] GitHub API smoke against `hightowerbuilds/buster-claw`.
+- [x] Integration webhook events can opt into analysis queuing with
+  `auto_analyze_webhooks`.
+- [x] Raw webhook payload excerpts use redacted, capped retention by default and
+  can be disabled with `webhook_payload_excerpt`.
+- [x] Monitoring briefs allow provider overrides through
+  `integration_monitoring_brief` and scheduler `provider_id=...` options.
+- [x] Polling snapshots can opt into dedupe controls with
+  `dedupe_poll_snapshots` and `dedupe_window_days`.
+
+Deferred:
+
+- Sentry API smoke is deferred to `Leftovers.md` until a token with issue/event
+  read access is available.
+- Umami API smoke is deferred to `Leftovers.md` until base URL, website ID, and
+  API token are available.
+- Monitoring brief Delivery dispatch is deferred to `Leftovers.md`.
 
 Still needed:
-
-- [ ] Manual smoke with real Sentry, GitHub, and Umami credentials.
-- [ ] Decide whether integration webhook events should auto-queue analysis.
-- [ ] Decide retention policy for raw webhook payload excerpts.
-- [ ] Decide whether monitoring briefs should allow provider overrides.
-- [ ] Add polling-window/dedup controls if repeated snapshots become noisy.
-- [ ] Optionally dispatch generated monitoring briefs through Delivery.
+None in this integration hardening pass.
 
 ### Gmail / Google Workspace
 

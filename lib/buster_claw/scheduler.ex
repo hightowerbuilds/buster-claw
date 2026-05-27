@@ -177,7 +177,7 @@ defmodule BusterClaw.Scheduler do
   defp execute(%SchedulerJob{type: type}), do: {:error, {:unsupported_scheduler_type, type}}
 
   defp run_monitoring_brief(job, type, window) do
-    case Integrations.generate_monitoring_brief(window: window) do
+    case Integrations.generate_monitoring_brief(monitoring_brief_options(job, window)) do
       {:ok, report} ->
         summary = %{
           status: "ok",
@@ -208,6 +208,31 @@ defmodule BusterClaw.Scheduler do
         {:error, reason}
     end
   end
+
+  defp monitoring_brief_options(%SchedulerJob{} = job, window) do
+    [window: window]
+    |> maybe_put_provider_id(provider_id_from_custom_cmd(job.custom_cmd))
+  end
+
+  defp provider_id_from_custom_cmd(value) when value in [nil, ""], do: nil
+
+  defp provider_id_from_custom_cmd(value) do
+    value = String.trim(to_string(value))
+
+    cond do
+      Regex.match?(~r/^\d+$/, value) ->
+        String.to_integer(value)
+
+      match = Regex.run(~r/(?:^|\s)provider_id=(\d+)(?:\s|$)/, value) ->
+        match |> List.last() |> String.to_integer()
+
+      true ->
+        nil
+    end
+  end
+
+  defp maybe_put_provider_id(opts, nil), do: opts
+  defp maybe_put_provider_id(opts, provider_id), do: Keyword.put(opts, :provider_id, provider_id)
 
   defp run_analysis_pipeline do
     queue_results =

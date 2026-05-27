@@ -65,14 +65,14 @@ Most mutating commands broadcast on a PubSub topic and write to SQLite. Triggers
 | **Delivery destinations** | `delivery_destination_list`, `delivery_destination_get`, `delivery_destination_create`, `delivery_destination_update`, `delivery_destination_delete`, `delivery_destination_test` |
 | **Delivery** | `delivery_dispatch_all` |
 | **Scheduler** | `scheduler_job_list`, `scheduler_job_get`, `scheduler_job_create`, `scheduler_job_update`, `scheduler_job_delete`, `scheduler_job_run_now` |
-| **Integrations** | `integration_list`, `integration_get`, `integration_create`, `integration_update`, `integration_delete`, `integration_poll`, `integration_poll_all`, `integration_run_list` |
+| **Integrations** | `integration_list`, `integration_get`, `integration_create`, `integration_update`, `integration_delete`, `integration_poll`, `integration_poll_all`, `integration_run_list`, `integration_monitoring_brief` |
 | **Google Workspace** | `google_account_list`, `google_account_get`, `google_account_create`, `google_account_update`, `google_account_delete`, `gmail_label_list`, `gmail_search`, `gmail_read`, `gmail_sync`, `gmail_draft_create`, `gmail_send`, `google_calendar_sync` |
 | **Chat** | `chat_send`, `chat_messages`, `chat_clear` |
 | **Search** | `web_search` |
 | **Browser** | `browser_fetch` |
 | **Runtime** | `runtime_status` |
 
-Total: **90 commands**.
+Total: **93 commands**.
 
 ---
 
@@ -578,6 +578,13 @@ Service integrations (GitHub, Slack, Jira, etc.) that poll external systems and 
 - **Type**: read | **Tier**: safe
 - **Args**: `{integration_id?: integer}` — if omitted, returns runs across all integrations
 - **Returns**: `{:ok, [IntegrationRun]}` — sorted by `started_at` desc
+
+### `integration_monitoring_brief`
+- **Type**: trigger | **Tier**: restricted
+- **Args**: `{provider_id?: integer, limit?: integer default: 10, window?: string}`
+- **Returns**: `{:ok, Report} | {:error, :no_integration_documents | :no_active_provider | :provider_not_found | term}`
+- **Side effects**: reads latest integration Library snapshots, calls the selected provider, and writes a monitoring report artifact
+- **Provider selection**: uses the active provider by default; `provider_id` overrides it for a single brief
 
 ---
 

@@ -2,9 +2,9 @@
 
 Assessment date: 2026-05-26
 
-This file tracks work intentionally deferred from `master-roadmap.md`. These are
-not abandoned; they are parked so the active roadmap can stay focused on cutover
-and daily-use hardening.
+This file tracks work intentionally deferred from the completed master roadmap,
+now archived at `daily-growth/old-maps/master-roadmap.md`. These are not
+abandoned; they are parked for future hardening or feature passes.
 
 ## Deferred Cutover Options
 
@@ -25,6 +25,7 @@ and daily-use hardening.
 ## Automation And Command Surface
 
 - [ ] OpenAI, Gemini, and Codex provider tool adapters.
+  - Priority: next candidate after the integration smoke.
   - Anthropic currently has the internal agent/tool loop.
 - [ ] CLI install helper / symlink flow.
 - [ ] Token rotation UI.
@@ -32,12 +33,15 @@ and daily-use hardening.
 
 ## Integrations
 
-- [ ] Manual smoke with real Sentry, GitHub, and Umami credentials.
-- [ ] Decide whether integration webhook events should auto-queue analysis.
-- [ ] Decide retention policy for raw webhook payload excerpts.
-- [ ] Decide whether monitoring briefs should allow provider overrides.
-- [ ] Add polling-window/dedup controls if repeated snapshots become noisy.
+- [ ] Sentry API smoke with real credentials.
+  - Decision: defer for now.
+  - Current attempt: `hightowerbuilds/notes-that-float` returned 403.
+  - Revisit when an auth token with Sentry issue/event read access is available.
+- [ ] Umami API smoke with real credentials.
+  - Decision: defer for now.
+  - Revisit when an Umami base URL, website ID, and API token are available.
 - [ ] Optionally dispatch generated monitoring briefs through Delivery.
+  - Decision: defer for now.
 
 ## Gmail / Google Workspace
 

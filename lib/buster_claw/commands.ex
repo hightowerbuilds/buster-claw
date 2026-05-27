@@ -336,6 +336,16 @@ defmodule BusterClaw.Commands do
     end
   end
 
+  def integration_monitoring_brief(args \\ %{}) do
+    opts =
+      []
+      |> maybe_put_option(:provider_id, Map.get(args, "provider_id"))
+      |> maybe_put_option(:limit, Map.get(args, "limit"))
+      |> maybe_put_option(:window, Map.get(args, "window"))
+
+    Integrations.generate_monitoring_brief(opts)
+  end
+
   # -----------------------------------------------------------------------
   # Google Workspace accounts
   # -----------------------------------------------------------------------
@@ -532,6 +542,9 @@ defmodule BusterClaw.Commands do
   end
 
   defp truthy?(value), do: value in [true, "true", "1", 1, "yes", "YES", "on", "ON"]
+
+  defp maybe_put_option(opts, _key, value) when value in [nil, ""], do: opts
+  defp maybe_put_option(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp now_utc, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -1010,6 +1023,17 @@ defmodule BusterClaw.Commands do
         description: "List integration run history.",
         args: %{
           "integration_id" => %{type: :integer, required: false}
+        }
+      },
+      %{
+        name: "integration_monitoring_brief",
+        type: :trigger,
+        tier: :restricted,
+        description: "Generate a monitoring brief from latest integration snapshots.",
+        args: %{
+          "provider_id" => %{type: :integer, required: false},
+          "limit" => %{type: :integer, required: false, default: 10},
+          "window" => %{type: :string, required: false}
         }
       },
 

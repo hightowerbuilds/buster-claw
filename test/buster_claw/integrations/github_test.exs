@@ -3,6 +3,8 @@ defmodule BusterClaw.Integrations.GitHubTest do
 
   alias BusterClaw.Integrations
   alias BusterClaw.Library
+  alias BusterClaw.Repo
+  alias BusterClaw.Workflow.AnalysisJob
 
   setup do
     Req.Test.verify_on_exit!()
@@ -172,6 +174,55 @@ defmodule BusterClaw.Integrations.GitHubTest do
     assert [] = Library.list_documents()
   end
 
+  test "dedupes repeated polling snapshots when enabled" do
+    stub_empty_github_poll()
+
+    {:ok, integration} =
+      Integrations.create_integration(%{
+        name: "Checkout Repo Dedupe",
+        service_type: "github",
+        config_text:
+          ~s({"owner":"acme","repo":"checkout","include_workflows":true,"include_issues":true,"dedupe_poll_snapshots":true,"dedupe_window_days":30})
+      })
+
+    assert {:ok, first_run} =
+             Integrations.poll_integration(integration,
+               req_options: [plug: {Req.Test, BusterClaw.IntegrationHTTP}]
+             )
+
+    assert first_run.status == "ok"
+    assert first_run.document_id
+    assert first_run.metadata["dedupe"]["enabled"] == true
+    assert first_run.metadata["dedupe"]["saved"] == 1
+    assert first_run.metadata["dedupe"]["skipped"] == []
+
+    assert [document] = Library.list_documents()
+
+    assert {:ok, second_run} =
+             Integrations.poll_integration(integration,
+               req_options: [plug: {Req.Test, BusterClaw.IntegrationHTTP}]
+             )
+
+    assert second_run.status == "ok"
+    assert is_nil(second_run.document_id)
+    assert second_run.records_fetched == 1
+    assert second_run.metadata["documents"] == []
+    assert second_run.metadata["dedupe"]["enabled"] == true
+    assert second_run.metadata["dedupe"]["saved"] == 0
+
+    assert [
+             %{
+               "name" => "GitHub Activity Snapshot: acme/checkout",
+               "source_url" => "https://github.com/acme/checkout",
+               "duplicate_of" => duplicate_path
+             }
+           ] = second_run.metadata["dedupe"]["skipped"]
+
+    assert duplicate_path == document.artifact_path
+    assert [remaining_document] = Library.list_documents()
+    assert remaining_document.id == document.id
+  end
+
   test "stores signed GitHub webhook payloads as Library documents" do
     body =
       Jason.encode!(%{
@@ -184,6 +235,9 @@ defmodule BusterClaw.Integrations.GitHubTest do
           "full_name" => "acme/checkout",
           "html_url" => "https://github.com/acme/checkout"
         },
+        "authorization" => "Bearer payload-secret",
+        "hook" => %{"secret" => "payload-secret", "signature" => "payload-signature"},
+        "installation" => %{"access_token" => "payload-token"},
         "sender" => %{"login" => "octocat"}
       })
 
@@ -209,12 +263,113 @@ defmodule BusterClaw.Integrations.GitHubTest do
     assert [document] = Library.list_documents()
     assert document.name == "GitHub Webhook Snapshot: workflow_run.completed"
     assert document.tags == %{"items" => ["integration", "github", "webhook", "monitoring"]}
+    assert Library.get_document!(document.id).status == "fetched"
+    assert [] = Repo.all(AnalysisJob)
+    assert run.metadata["auto_analysis"] == %{"enabled" => false, "jobs" => []}
 
     assert {:ok, markdown} = Library.read_raw_document(document)
     assert markdown =~ "# GitHub Webhook Snapshot: workflow_run.completed"
     assert markdown =~ "- Repository: acme/checkout"
     assert markdown =~ "- Sender: octocat"
     assert markdown =~ "## Payload Excerpt"
+    assert markdown =~ "Retention: redacted excerpt"
+    assert markdown =~ "[redacted]"
+    refute markdown =~ "payload-secret"
+    refute markdown =~ "payload-signature"
+    refute markdown =~ "payload-token"
+  end
+
+  test "omits webhook payload excerpts when retention is disabled" do
+    body =
+      Jason.encode!(%{
+        "action" => "completed",
+        "workflow_run" => %{
+          "name" => "CI",
+          "html_url" => "https://github.com/acme/checkout/actions/runs/1"
+        },
+        "repository" => %{
+          "full_name" => "acme/checkout",
+          "html_url" => "https://github.com/acme/checkout"
+        },
+        "authorization" => "Bearer payload-secret",
+        "sender" => %{"login" => "octocat"}
+      })
+
+    {:ok, integration} =
+      Integrations.create_integration(%{
+        name: "GitHub Webhooks No Payload",
+        service_type: "github",
+        webhook_secret: "webhook-secret",
+        config_text: ~s({"owner":"acme","repo":"checkout","webhook_payload_excerpt":false})
+      })
+
+    assert {:ok, run} =
+             Integrations.handle_webhook(
+               integration,
+               [{"x-hub-signature-256", "sha256=#{hmac("webhook-secret", body)}"}],
+               body
+             )
+
+    assert run.status == "ok"
+
+    assert [document] = Library.list_documents()
+    assert {:ok, markdown} = Library.read_raw_document(document)
+    assert markdown =~ "# GitHub Webhook Snapshot: workflow_run.completed"
+    assert markdown =~ "- Repository: acme/checkout"
+    refute markdown =~ "## Payload Excerpt"
+    refute markdown =~ "payload-secret"
+  end
+
+  test "auto-queues analysis for webhook snapshots when enabled in integration config" do
+    body =
+      Jason.encode!(%{
+        "action" => "completed",
+        "workflow_run" => %{
+          "name" => "CI",
+          "html_url" => "https://github.com/acme/checkout/actions/runs/1"
+        },
+        "repository" => %{
+          "full_name" => "acme/checkout",
+          "html_url" => "https://github.com/acme/checkout"
+        },
+        "sender" => %{"login" => "octocat"}
+      })
+
+    {:ok, integration} =
+      Integrations.create_integration(%{
+        name: "GitHub Webhook Analysis",
+        service_type: "github",
+        webhook_secret: "webhook-secret",
+        config_text: ~s({"owner":"acme","repo":"checkout","auto_analyze_webhooks":true})
+      })
+
+    assert {:ok, run} =
+             Integrations.handle_webhook(
+               integration,
+               [{"x-hub-signature-256", "sha256=#{hmac("webhook-secret", body)}"}],
+               body
+             )
+
+    assert run.status == "ok"
+    assert run.trigger == "webhook"
+
+    assert [document] = Library.list_documents()
+    assert Library.get_document!(document.id).status == "queued"
+
+    assert [%AnalysisJob{} = job] = Repo.all(AnalysisJob)
+    assert job.document_id == document.id
+    assert job.status == "queued"
+
+    assert run.metadata["auto_analysis"] == %{
+             "enabled" => true,
+             "jobs" => [
+               %{
+                 "document_id" => document.id,
+                 "job_id" => job.id,
+                 "status" => "queued"
+               }
+             ]
+           }
   end
 
   test "rejects invalid GitHub webhook signatures and records a failed run" do
@@ -242,5 +397,29 @@ defmodule BusterClaw.Integrations.GitHubTest do
 
   defp hmac(secret, body) do
     :crypto.mac(:hmac, :sha256, secret, body) |> Base.encode16(case: :lower)
+  end
+
+  defp stub_empty_github_poll do
+    Req.Test.stub(BusterClaw.IntegrationHTTP, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+
+      case conn.request_path do
+        "/repos/acme/checkout/commits" ->
+          Req.Test.json(conn, [])
+
+        "/repos/acme/checkout/pulls" ->
+          assert conn.query_params["state"] in ["open", "closed"]
+          Req.Test.json(conn, [])
+
+        "/repos/acme/checkout/issues" ->
+          Req.Test.json(conn, [])
+
+        "/repos/acme/checkout/actions/runs" ->
+          Req.Test.json(conn, %{"workflow_runs" => []})
+
+        "/repos/acme/checkout/releases" ->
+          Req.Test.json(conn, [])
+      end
+    end)
   end
 end

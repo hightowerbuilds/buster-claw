@@ -107,14 +107,7 @@ defmodule BusterClaw.Integrations.GitHub do
           source: source_url,
           records: 1,
           summary: webhook_summary(event, action, payload),
-          sections: [
-            "",
-            "## Payload Excerpt",
-            "",
-            "```elixir",
-            Snapshot.inspect_block(payload),
-            "```"
-          ]
+          sections: Snapshot.webhook_payload_sections(integration, payload)
         })
 
       {:ok,

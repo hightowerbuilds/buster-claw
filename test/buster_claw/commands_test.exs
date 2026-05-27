@@ -6,6 +6,7 @@ defmodule BusterClaw.CommandsTest do
   alias BusterClaw.Google
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Library
+  alias BusterClaw.Providers
 
   setup do
     Req.Test.verify_on_exit!()
@@ -212,6 +213,84 @@ defmodule BusterClaw.CommandsTest do
       assert deleted.id == summary.id
       assert {:ok, []} = Commands.google_account_list(%{})
       assert {:error, :not_found} = Commands.google_account_get(%{"id" => summary.id})
+    end
+  end
+
+  describe "integrations" do
+    test "integration_monitoring_brief accepts a provider override" do
+      previous_library_root = Application.get_env(:buster_claw, :library_root)
+
+      library_root =
+        Path.join(
+          System.tmp_dir!(),
+          "buster-claw-commands-monitoring-test-#{System.unique_integer([:positive])}"
+        )
+
+      Application.put_env(:buster_claw, :library_root, library_root)
+
+      on_exit(fn ->
+        if previous_library_root do
+          Application.put_env(:buster_claw, :library_root, previous_library_root)
+        else
+          Application.delete_env(:buster_claw, :library_root)
+        end
+
+        File.rm_rf(library_root)
+      end)
+
+      Req.Test.stub(BusterClaw.ProviderHTTP, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        assert body =~ "override-model"
+        assert body =~ "GitHub deploy snapshot"
+
+        Req.Test.json(conn, %{
+          choices: [
+            %{
+              message: %{
+                content: "## Executive summary\n\nCommand-generated operations brief."
+              }
+            }
+          ]
+        })
+      end)
+
+      {:ok, _active_provider} =
+        Providers.create_provider(%{
+          name: "active-provider",
+          type: "openai",
+          model: "active-model",
+          api_key: "secret",
+          active: true
+        })
+
+      {:ok, override_provider} =
+        Providers.create_provider(%{
+          name: "override-provider",
+          type: "openai",
+          model: "override-model",
+          api_key: "secret",
+          active: false
+        })
+
+      assert {:ok, _document} =
+               Library.save_raw_document(%{
+                 date: ~D[2026-05-27],
+                 filename: "github-deploy-snapshot.md",
+                 name: "GitHub deploy snapshot",
+                 source_url: "https://github.com/acme/checkout",
+                 tags: ["integration", "github", "activity"],
+                 content: "# GitHub deploy snapshot\n\nDeploy signal."
+               })
+
+      assert {:ok, report} =
+               Commands.integration_monitoring_brief(%{
+                 "provider_id" => "#{override_provider.id}",
+                 "window" => "command smoke"
+               })
+
+      assert report.provider_id == override_provider.id
+      assert report.model == "override-model"
+      assert report.artifact_path =~ "monitoring-brief"
     end
   end
 
@@ -519,6 +598,7 @@ defmodule BusterClaw.CommandsTest do
       delivery_dispatch_all
       scheduler_job_run_now
       integration_poll_all
+      integration_monitoring_brief
       google_account_list
       gmail_search
       gmail_sync

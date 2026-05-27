@@ -284,6 +284,53 @@ defmodule BusterClaw.SchedulerTest do
     refute updated.last_error
   end
 
+  test "run_now monitoring brief can override the provider" do
+    Req.Test.stub(BusterClaw.ProviderHTTP, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert body =~ "override-model"
+      assert body =~ "Operational Snapshot"
+
+      Req.Test.json(conn, %{
+        choices: [
+          %{
+            message: %{
+              content: "## Executive summary\n\nThe override operations brief is ready."
+            }
+          }
+        ]
+      })
+    end)
+
+    active_provider!("active-provider")
+
+    assert {:ok, override_provider} =
+             Providers.create_provider(%{
+               name: "override-provider",
+               type: "openai",
+               model: "override-model",
+               api_key: "secret",
+               active: false
+             })
+
+    raw_document!("Operational Snapshot")
+
+    assert {:ok, job} =
+             Scheduler.create_job(%{
+               job_id: "monitoring-brief-override",
+               type: "monitoring_brief",
+               cron: "@daily",
+               custom_cmd: "provider_id=#{override_provider.id}"
+             })
+
+    assert {:ok, summary} = Scheduler.run_now(job)
+    assert summary.status == "ok"
+
+    assert [report] = Library.list_reports()
+    assert report.id == summary.report_id
+    assert report.provider_id == override_provider.id
+    assert report.model == "override-model"
+  end
+
   test "run_now digest generates a monitoring brief" do
     stub_provider_response(
       "## Executive summary\n\nThe scheduled digest is ready.",

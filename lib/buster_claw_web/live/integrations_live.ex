@@ -344,13 +344,16 @@ defmodule BusterClawWeb.IntegrationsLive do
   defp count_poll_result({:error, _run}, {ok_count, error_count}), do: {ok_count, error_count + 1}
 
   defp config_placeholder("sentry"),
-    do: ~s({"org":"acme","project":"checkout","environment":"production","limit":10})
+    do:
+      ~s({"org":"acme","project":"checkout","environment":"production","limit":10,"auto_analyze_webhooks":false,"webhook_payload_excerpt":true,"dedupe_poll_snapshots":false,"dedupe_window_days":30})
 
   defp config_placeholder("umami"),
-    do: ~s({"website_id":"site-id","timezone":"America/Los_Angeles","period":"24h"})
+    do:
+      ~s({"website_id":"site-id","timezone":"America/Los_Angeles","period":"24h","dedupe_poll_snapshots":false,"dedupe_window_days":30})
 
   defp config_placeholder(_service),
-    do: ~s({"owner":"hightowerbuilds","repo":"buster-claw","limit":10})
+    do:
+      ~s({"owner":"hightowerbuilds","repo":"buster-claw","limit":10,"auto_analyze_webhooks":false,"webhook_payload_excerpt":true,"dedupe_poll_snapshots":false,"dedupe_window_days":30})
 
   defp status_class("ok"), do: "rounded bg-success/15 px-2 py-1 text-success"
   defp status_class("error"), do: "rounded bg-error/15 px-2 py-1 text-error"
