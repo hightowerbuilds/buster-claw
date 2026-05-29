@@ -16,6 +16,7 @@ defmodule BusterClaw.Application do
         {DNSCluster, query: Application.get_env(:buster_claw, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: BusterClaw.PubSub},
         BusterClaw.AgentMode,
+        browser_sidecar_child(),
         {Registry, keys: :unique, name: BusterClaw.MCP.Registry},
         BusterClaw.MCP.Supervisor,
         BusterClaw.MCP.Bootstrap,
@@ -49,6 +50,12 @@ defmodule BusterClaw.Application do
   defp scheduler_child do
     if Application.get_env(:buster_claw, :scheduler_enabled, true) do
       BusterClaw.Scheduler.Runner
+    end
+  end
+
+  defp browser_sidecar_child do
+    if Application.get_env(:buster_claw, :browser_sidecar_enabled, false) do
+      BusterClaw.Browser.Sidecar
     end
   end
 end

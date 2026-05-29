@@ -28,7 +28,9 @@ defmodule BusterClaw.Ingest do
     %{
       url: source.url,
       type: source.type,
-      tags: Map.get(source.tags || %{}, "items", [])
+      tags: Map.get(source.tags || %{}, "items", []),
+      browser_engine: source.browser_engine,
+      cookies: source.cookies || %{}
     }
   end
 

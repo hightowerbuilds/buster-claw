@@ -37,7 +37,9 @@ Remaining caveats:
   searched local user-data/project locations. The packaged import smoke therefore
   used the available real legacy input, `sources.json`, plus generated smoke data.
 - Real external provider credential smoke testing remains deferred.
-- Playwright/browser-rendered ingestion remains deferred.
+- Playwright/browser-rendered ingestion is available as an opt-in supervised
+  sidecar path; browser binary installation and release bundling remain
+  deferred.
 
 What is now ready (was previously blocking):
 
@@ -47,7 +49,10 @@ What is now ready (was previously blocking):
 - Legacy migration coverage for automation configuration: `mcp.json`, `Library/delivery.json`, `Library/hooks.json`, `Library/webhooks.json`, `Library/scheduler.json`, and `Library/reports/manifest.json`.
 - Autonomous scheduler ticking with five-field cron parsing, common aliases, due-job selection, and `next_run_at` advancement.
 - Scheduler workflow orchestration for `analyze`, `full`, and `digest` jobs. Custom scheduler commands remain recorded-only by design.
-- Browser-rendered ingestion sidecar decision: deferred. HTTP fallback remains the current boundary because RSS and static/server-rendered sample sources ingest successfully.
+- Browser-rendered ingestion sidecar: opt-in supervised Node Playwright sidecar
+  boundary is implemented, and browser source ingestion now routes through the
+  browser boundary. HTTP fallback remains available for RSS and
+  static/server-rendered sources.
 - MCP stdio supervision and startup JSON-RPC handshakes: configured local servers launch as supervised Port-backed clients and run `initialize` plus `tools/list` discovery.
 - Real external provider credential smoke testing: deferred.
 - Packaged release import and smoke testing with available real legacy source
@@ -56,5 +61,5 @@ What is now ready (was previously blocking):
 Cutover rule:
 
 - Treat the Phoenix/Tauri rewrite as the only application path for local daily-use
-  trial. Keep external credential testing, browser sidecar work, and distribution
-  hardening tracked as follow-up work rather than cutover blockers.
+  trial. Keep external credential testing, Playwright binary bundling, and
+  distribution hardening tracked as follow-up work rather than cutover blockers.

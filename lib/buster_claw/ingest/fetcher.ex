@@ -1,6 +1,7 @@
 defmodule BusterClaw.Ingest.Fetcher do
   @moduledoc "HTTP fetcher for URL and RSS ingestion."
 
+  alias BusterClaw.Browser
   alias BusterClaw.Ingest.Content
 
   @user_agent "BusterClaw/2.0 ElixirRewrite"
@@ -13,15 +14,41 @@ defmodule BusterClaw.Ingest.Fetcher do
     tags = Map.get(source, :tags, [])
     retries = Keyword.get(opts, :retries, 2)
 
-    with {:ok, body} <- fetch_body(url, retries) do
-      items =
-        if type == "rss" do
-          Content.parse_rss(url, body, tags)
-        else
-          [Content.parse_article(url, body, tags)]
+    case type do
+      "browser" ->
+        fetch_browser(source, opts)
+
+      "rss" ->
+        with {:ok, body} <- fetch_body(url, retries) do
+          {:ok, Content.parse_rss(url, body, tags)}
         end
 
-      {:ok, items}
+      _ ->
+        with {:ok, body} <- fetch_body(url, retries) do
+          {:ok, [Content.parse_article(url, body, tags)]}
+        end
+    end
+  end
+
+  defp fetch_browser(source, opts) do
+    url = Map.fetch!(source, :url)
+    tags = Map.get(source, :tags, [])
+
+    browser_opts =
+      opts
+      |> Keyword.put(:browser_engine, Map.get(source, :browser_engine))
+      |> Keyword.put(:cookies, Map.get(source, :cookies))
+
+    with {:ok, page} <- Browser.fetch(url, browser_opts) do
+      {:ok,
+       [
+         %{
+           url: page.url,
+           title: page.title,
+           content: page.markdown,
+           tags: tags
+         }
+       ]}
     end
   end
 

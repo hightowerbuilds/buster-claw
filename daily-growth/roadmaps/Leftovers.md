@@ -8,13 +8,13 @@ abandoned; they are parked for future hardening or feature passes.
 
 ## Deferred Cutover Options
 
-- [ ] Supervised Playwright browser sidecar.
-  - Decision: defer for now.
-  - Reason: sample-source smoke showed current HTTP ingestion works for RSS and
-    static/server-rendered pages. JS-heavy app/social/authenticated pages still
-    need a browser, but they are not required for the current cutover.
-  - Revisit when real required sources produce login shells, empty titles, app
-    shells, or missing client-rendered content.
+- [x] Supervised Playwright browser sidecar.
+  - Completed as an opt-in supervised Node sidecar with a local HTTP `/fetch`
+    boundary and `/health` endpoint.
+  - `BusterClaw.Browser.fetch/2` now uses a configured/supervised sidecar when
+    available and falls back to direct `Req` HTTP fetching otherwise.
+  - `browser` sources now ingest through the browser boundary instead of the
+    plain article fetcher.
 - [ ] MCP over SSE and streaming responses.
   - The implemented endpoint is Streamable HTTP-style JSON response at `POST /mcp`.
 - [ ] External MCP `tools/call` routing.
@@ -67,6 +67,10 @@ abandoned; they are parked for future hardening or feature passes.
   - Decision: defer for now.
   - Current cutover smoke can use a local Ollama provider or loopback
     OpenAI-compatible provider.
+- [ ] Bundle/install Playwright npm dependency and browser binaries for packaged
+  desktop releases.
+  - The sidecar boundary is implemented, but distribution still needs an
+    explicit Node/Playwright packaging strategy.
 - [ ] Full secrets encryption/keychain support.
 - [ ] Windows and Linux desktop packaging paths.
 - [ ] Auto-updates, signing, notarization, and log rotation.

@@ -109,8 +109,14 @@ defmodule BusterClawWeb.SourcesLive do
               field={@form[:type]}
               label="Type"
               type="select"
-              options={[{"Article", "article"}, {"Documentation", "documentation"}, {"RSS", "rss"}]}
+              options={[
+                {"Article", "article"},
+                {"Documentation", "documentation"},
+                {"RSS", "rss"},
+                {"Browser", "browser"}
+              ]}
             />
+            <.input field={@form[:browser_engine]} label="Browser engine" />
             <.input field={@form[:tags_text]} label="Tags" value={@form[:tags_text].value || ""} />
             <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100">
               Add Source

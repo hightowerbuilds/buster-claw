@@ -16,6 +16,7 @@ buster_claw-*.tar
 /priv/static/*-*.txt
 /priv/static/*.gz
 /assets/node_modules/
+/priv/playwright_sidecar/node_modules/
 npm-debug.log
 *.db
 *.db-*

@@ -707,13 +707,19 @@ DuckDuckGo web search.
 
 ## Browser
 
-Fetch a URL, convert HTML to markdown. Falls back to `Req` (no browser sidecar yet — Playwright integration is deferred per `docs/rewrite/CUTOVER.md`).
+Fetch a URL and convert HTML to markdown. Uses a configured or supervised Playwright sidecar when available, then falls back to `Req` for direct HTTP fetches.
+
+Sidecar runtime controls:
+
+- `BUSTER_CLAW_BROWSER_SIDECAR=1` starts the bundled Node sidecar supervisor.
+- `BUSTER_CLAW_BROWSER_SIDECAR_COMMAND=/path/to/node` overrides the Node executable.
+- `BUSTER_CLAW_BROWSER_SIDECAR_URL=http://127.0.0.1:PORT` points at an already-running sidecar.
 
 ### `browser_fetch`
 - **Type**: trigger | **Tier**: safe
 - **Args**: `{url: string}`
-- **Returns**: `{:ok, %{url: string, title: string, html: string, markdown: string}} | {:error, {:bad_status, integer} | term()}`
-- **Side effects**: outbound HTTP fetch
+- **Returns**: `{:ok, %{url: string, title: string, html: string, markdown: string}} | {:error, {:bad_status, integer} | {:sidecar_bad_status, integer, term()} | term()}`
+- **Side effects**: outbound HTTP fetch or local sidecar navigation
 - **Delegates**: `BusterClaw.Browser.fetch/2`
 
 ---

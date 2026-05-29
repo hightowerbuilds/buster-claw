@@ -28,6 +28,20 @@ config :buster_claw,
     System.get_env("BUSTER_CLAW_LIBRARY_ROOT") ||
       Application.get_env(:buster_claw, :library_root)
 
+browser_sidecar_enabled =
+  case System.get_env("BUSTER_CLAW_BROWSER_SIDECAR") do
+    nil -> config_env() == :dev
+    value -> value in ["1", "true", "TRUE", "yes", "YES"]
+  end
+
+config :buster_claw,
+  browser_sidecar_enabled: browser_sidecar_enabled,
+  browser_sidecar_command: System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_COMMAND", "node")
+
+if browser_sidecar_url = System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_URL") do
+  config :buster_claw, :browser_sidecar_url, browser_sidecar_url
+end
+
 if config_env() == :prod do
   database_path =
     System.get_env("DATABASE_PATH") ||
