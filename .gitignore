@@ -31,3 +31,8 @@ erl_crash.dump
 
 # CLI escript build artifact
 /buster-claw
+
+# Stray root-level npm cruft (not part of this Elixir/esbuild project)
+/node_modules/
+/package.json
+/bun.lock

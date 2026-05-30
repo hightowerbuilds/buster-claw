@@ -13,9 +13,10 @@ defmodule BusterClawWeb.StatusLiveTest do
     response = html_response(conn, 200)
 
     assert response =~ "Buster Claw"
-    assert response =~ ~s(id="app-sidebar")
-    assert response =~ ~s(id="sidebar-bumper")
-    assert response =~ ~s(bc:toggle-sidebar)
+    # Browser-style shell: top tab strip + bottom dock (former sidebar).
+    assert response =~ ~s(id="tab-strip")
+    assert response =~ ~s(phx-hook="TabStrip")
+    assert response =~ ~s(id="app-dock")
     assert response =~ ~s(<details id="home-google-workspace-login")
     assert response =~ ~s(href="/gws")
     assert response =~ "Models"

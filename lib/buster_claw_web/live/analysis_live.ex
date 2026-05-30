@@ -83,6 +83,8 @@ defmodule BusterClawWeb.AnalysisLive do
           </div>
         </div>
 
+        <BusterClawWeb.LibraryTabs.tabs active={:analysis} />
+
         <div
           :if={@last_error}
           class="rounded border border-error/40 bg-error/10 px-4 py-3 text-sm text-error"

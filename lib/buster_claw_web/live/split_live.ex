@@ -1,0 +1,128 @@
+defmodule BusterClawWeb.SplitLive do
+  @moduledoc """
+  Renders two views side-by-side in one tab. Reached at
+  `/split?left=<path>&right=<path>` when a user joins two tabs. Each pane is a
+  nested `live_render` of the target view, mounted with `embedded: true` so its
+  shell (tab strip / dock) is suppressed — see `BusterClawWeb.ChromeHook`.
+  """
+  use BusterClawWeb, :live_view
+
+  # Views that are safe to embed in a split pane (mount without route params).
+  # Home is excluded: StatusLive uses handle_params, which isn't allowed in a
+  # nested (embedded) live_render child.
+  @panes %{
+    "/chat" => {BusterClawWeb.ChatLive, "Chat"},
+    "/documents" => {BusterClawWeb.DocumentsLive, "Library"},
+    "/browse" => {BusterClawWeb.BrowseLive, "Browse"},
+    "/calendar" => {BusterClawWeb.CalendarLive, "Calendar"},
+    "/gws" => {BusterClawWeb.GWSLive, "GWS"},
+    "/memory" => {BusterClawWeb.MemoryLive, "Memory"},
+    "/scheduler" => {BusterClawWeb.SchedulerLive, "Scheduler"},
+    "/sources" => {BusterClawWeb.SourcesLive, "Sources"},
+    "/analysis" => {BusterClawWeb.AnalysisLive, "Analysis"}
+  }
+
+  @impl true
+  def mount(_params, _session, socket), do: {:ok, assign(socket, page_title: "Split")}
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(:left_param, params["left"])
+     |> assign(:right_param, params["right"])
+     |> assign(:left, pane_spec(params["left"]))
+     |> assign(:right, pane_spec(params["right"]))}
+  end
+
+  defp pane_spec(nil), do: nil
+
+  defp pane_spec(path) when is_binary(path) do
+    pathname = path |> String.split("?") |> hd()
+    url = pane_url(path)
+
+    case Map.fetch(@panes, pathname) do
+      {:ok, {module, label}} -> %{path: path, module: module, label: label, url: url}
+      :error -> %{path: path, module: nil, label: pathname, url: url}
+    end
+  end
+
+  # Pull a `url` query param (if any) out of the pane's path.
+  defp pane_url(path) do
+    case URI.parse(path).query do
+      nil -> nil
+      query -> query |> URI.decode_query() |> Map.get("url")
+    end
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash}>
+      <section class="space-y-4">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+              Split view
+            </p>
+            <h1 class="text-3xl font-semibold tracking-normal">
+              {pane_label(@left)} <span class="text-base-content/40">|</span> {pane_label(@right)}
+            </h1>
+          </div>
+          <.link
+            :if={@left && @right}
+            navigate={~p"/split?#{[left: @right_param, right: @left_param]}"}
+            class="shrink-0 rounded border border-base-300 px-3 py-1.5 text-sm font-semibold transition hover:bg-base-200"
+          >
+            Swap panes
+          </.link>
+        </div>
+
+        <div class="grid gap-4 lg:grid-cols-2">
+          <.pane side="left" pane={@left} socket={@socket} />
+          <.pane side="right" pane={@right} socket={@socket} />
+        </div>
+      </section>
+    </Layouts.app>
+    """
+  end
+
+  attr :side, :string, required: true
+  attr :pane, :map, default: nil
+  attr :socket, :map, required: true
+
+  defp pane(assigns) do
+    ~H"""
+    <section class="flex min-h-[70vh] min-w-0 flex-col overflow-hidden rounded-lg border border-base-300 bg-base-100 shadow-sm">
+      <header class="flex items-center justify-between gap-2 border-b border-base-300 px-4 py-2">
+        <span class="truncate text-sm font-semibold">{pane_label(@pane)}</span>
+        <.link
+          :if={@pane && @pane.path}
+          navigate={@pane.path}
+          class="shrink-0 rounded border border-base-300 px-2 py-1 text-xs font-semibold transition hover:bg-base-200"
+        >
+          Open as tab
+        </.link>
+      </header>
+      <div class="min-h-0 flex-1 overflow-auto">
+        <%= cond do %>
+          <% is_nil(@pane) -> %>
+            <p class="p-6 text-sm text-base-content/60">No view selected for this pane.</p>
+          <% is_nil(@pane.module) -> %>
+            <p class="p-6 text-sm text-base-content/60">
+              "{@pane.label}" can't be opened in a split pane yet.
+            </p>
+          <% true -> %>
+            {live_render(@socket, @pane.module,
+              id: "split-pane-#{@side}",
+              session: %{"embedded" => true, "url" => @pane.url}
+            )}
+        <% end %>
+      </div>
+    </section>
+    """
+  end
+
+  defp pane_label(nil), do: "Empty"
+  defp pane_label(%{label: label}), do: label
+end

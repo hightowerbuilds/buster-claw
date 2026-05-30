@@ -34,65 +34,46 @@ defmodule BusterClawWeb.Layouts do
   slot :inner_block, required: true
 
   def app(assigns) do
+    if BusterClawWeb.ChromeHook.embedded?() do
+      bare(assigns)
+    else
+      shell(assigns)
+    end
+  end
+
+  # A split pane: render only the view's content, no tab strip / dock / flash.
+  defp bare(assigns) do
+    ~H"""
+    <div class="min-h-screen bg-base-100">
+      <div class="space-y-4 p-4 sm:p-6">{render_slot(@inner_block)}</div>
+    </div>
+    """
+  end
+
+  defp shell(assigns) do
     assigns =
       assigns
       |> assign(:runtime, BusterClaw.Runtime.Status.snapshot())
       |> assign(:agent_mode_on?, BusterClaw.AgentMode.on?())
+      |> assign(:nav_items, navigation_items())
+      |> assign(:tab_labels, Jason.encode!(tab_labels()))
 
     ~H"""
-    <div id="app-shell" class="flex min-h-screen">
-      <aside
-        id="app-sidebar"
-        class="sticky top-0 z-20 h-screen w-60 shrink-0 border-r border-base-300 bg-base-100/95 transition-[width,border-color] duration-200 ease-out [[data-sidebar=closed]_&]:w-0 [[data-sidebar=closed]_&]:border-transparent"
-      >
-        <button
-          id="sidebar-bumper"
-          type="button"
-          title="Toggle sidebar"
-          aria-label="Toggle sidebar"
-          phx-click={JS.dispatch("bc:toggle-sidebar")}
-          class="absolute top-20 -right-3 z-30 grid size-7 place-items-center rounded-full border border-base-300 bg-base-100 text-base-content shadow-sm transition hover:border-base-content/30 hover:bg-base-200 focus:outline-none focus:ring-2 focus:ring-base-content/30 [[data-sidebar=closed]_&]:-right-7"
+    <div id="app-shell" class="flex min-h-screen flex-col">
+      <header class="sticky top-0 z-30">
+        <%!-- Browser-style tab strip; populated client-side by the TabStrip hook. --%>
+        <div
+          id="tab-strip"
+          phx-hook="TabStrip"
+          phx-update="ignore"
+          data-labels={@tab_labels}
+          role="tablist"
+          aria-label="Open tabs"
+          class="flex min-h-9 items-end gap-1 overflow-x-auto border-b border-base-300 bg-base-200/80 px-2 pt-1 backdrop-blur"
         >
-          <.icon name="hero-chevron-left" class="size-4 [[data-sidebar=closed]_&]:hidden" />
-          <.icon name="hero-chevron-right" class="hidden size-4 [[data-sidebar=closed]_&]:block" />
-        </button>
-
-        <div class="flex h-full w-60 flex-col overflow-hidden transition-opacity duration-150 [[data-sidebar=closed]_&]:pointer-events-none [[data-sidebar=closed]_&]:opacity-0">
-          <a
-            href="/"
-            class="flex shrink-0 items-center gap-3 border-b border-base-300 px-4 py-4"
-          >
-            <div class="grid size-9 shrink-0 place-items-center rounded bg-base-content text-base-100">
-              BC
-            </div>
-            <div class="min-w-0">
-              <div class="truncate text-xs font-semibold uppercase tracking-wide text-base-content/60">
-                Elixir Rewrite
-              </div>
-              <div class="truncate text-base font-semibold">Buster Claw</div>
-            </div>
-          </a>
-
-          <nav class="flex flex-1 flex-col gap-1 overflow-y-auto p-3 text-sm">
-            <a
-              :for={item <- navigation_items()}
-              href={item.path}
-              title={item.label}
-              class="flex items-center gap-3 rounded px-3 py-2 transition hover:bg-base-200"
-            >
-              <.icon name={item.icon} class="size-5 shrink-0 text-base-content/70" />
-              <span class="truncate">{item.label}</span>
-            </a>
-          </nav>
-
-          <div class="shrink-0 border-t border-base-300 p-3">
-            <.theme_toggle />
-          </div>
         </div>
-      </aside>
 
-      <main class="min-w-0 flex-1">
-        <div class="sticky top-0 z-10 border-b border-base-300 bg-base-100/95 px-4 py-2 backdrop-blur sm:px-6 lg:px-8">
+        <div class="border-b border-base-300 bg-base-100/95 px-4 py-2 backdrop-blur sm:px-6 lg:px-8">
           <div class="mx-auto flex max-w-7xl items-center justify-end gap-2 text-xs">
             <span
               :if={@agent_mode_on?}
@@ -104,11 +85,41 @@ defmodule BusterClawWeb.Layouts do
             <.runtime_chip label="Endpoint" value={@runtime.endpoint} ok?={true} />
           </div>
         </div>
+      </header>
 
+      <main class="min-w-0 flex-1">
         <div class="mx-auto max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8">
           {render_slot(@inner_block)}
         </div>
       </main>
+
+      <%!-- The former sidebar, now a dock across the bottom of the window. --%>
+      <footer
+        id="app-dock"
+        class="sticky bottom-0 z-30 flex items-center gap-2 overflow-x-auto border-t border-base-300 bg-base-100/95 px-3 py-2 backdrop-blur"
+      >
+        <a href="/" title="Buster Claw" class="flex shrink-0 items-center">
+          <div class="grid size-8 shrink-0 place-items-center rounded bg-base-content text-xs font-semibold text-base-100">
+            BC
+          </div>
+        </a>
+
+        <nav class="flex items-center gap-1" aria-label="Open a tab">
+          <.link
+            :for={item <- @nav_items}
+            navigate={item.path}
+            title={item.label}
+            class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
+          >
+            <.icon name={item.icon} class="size-5 shrink-0 text-base-content/70" />
+            <span class="hidden sm:inline">{item.label}</span>
+          </.link>
+        </nav>
+
+        <div class="ml-auto shrink-0">
+          <.theme_toggle />
+        </div>
+      </footer>
     </div>
 
     <.flash_group flash={@flash} />
@@ -138,15 +149,31 @@ defmodule BusterClawWeb.Layouts do
     [
       %{label: "Home", path: "/", icon: "hero-home"},
       %{label: "Chat", path: "/chat", icon: "hero-chat-bubble-left-right"},
-      %{label: "Sources", path: "/sources", icon: "hero-folder-open"},
       %{label: "Documents", path: "/documents", icon: "hero-document-text"},
-      %{label: "Analysis", path: "/analysis", icon: "hero-chart-bar"},
+      %{label: "Browse", path: "/browse", icon: "hero-globe-alt"},
       %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
       %{label: "GWS", path: "/gws", icon: "hero-envelope"},
       %{label: "Memory", path: "/memory", icon: "hero-circle-stack"},
       %{label: "Scheduler", path: "/scheduler", icon: "hero-clock"},
       %{label: "Advanced", path: "/advanced", icon: "hero-adjustments-horizontal"}
     ]
+  end
+
+  # Path -> tab label for every route a tab can open, including routes reachable
+  # via in-page tabs (Library/Advanced) rather than the dock. Serialized into
+  # the tab strip for the client-side TabStrip hook to label tabs.
+  defp tab_labels do
+    base = Map.new(navigation_items(), &{&1.path, &1.label})
+
+    Map.merge(base, %{
+      "/sources" => "Sources",
+      "/analysis" => "Analysis",
+      "/delivery" => "Delivery",
+      "/hooks" => "Hooks",
+      "/webhooks" => "Webhooks",
+      "/integrations" => "Integrations",
+      "/mcp" => "MCP"
+    })
   end
 
   @doc """

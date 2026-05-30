@@ -875,7 +875,9 @@ defmodule BusterClaw.Commands do
         }
       },
       delete_entry("hook_delete", "Delete a hook."),
-      id_payload_trigger_entry("hook_test", "Test-run a single hook.", :safe),
+      # Restricted: hook_test runs the hook's stored target, which for "shell"
+      # hooks is an arbitrary command. Must not be reachable by the chat agent.
+      id_payload_trigger_entry("hook_test", "Test-run a single hook.", :restricted),
       %{
         name: "hook_event_execute",
         type: :trigger,

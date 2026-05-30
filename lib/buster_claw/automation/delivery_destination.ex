@@ -9,7 +9,7 @@ defmodule BusterClaw.Automation.DeliveryDestination do
     field :name, :string
     field :type, :string
     field :url, :string
-    field :token, :string
+    field :token, BusterClaw.Encrypted
     field :chat_id, :string
     field :enabled, :boolean, default: true
 

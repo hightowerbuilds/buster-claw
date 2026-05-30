@@ -3,10 +3,18 @@ defmodule BusterClaw.Browser do
 
   alias BusterClaw.Ingest.Content
   alias BusterClaw.Browser.Sidecar
+  alias BusterClaw.URLGuard
 
   @user_agent "BusterClaw/2.0 BrowserSidecarFallback"
 
   def fetch(url, opts \\ []) do
+    case URLGuard.validate(url) do
+      :ok -> do_fetch(url, opts)
+      {:error, reason} -> {:error, {:blocked_url, reason}}
+    end
+  end
+
+  defp do_fetch(url, opts) do
     if sidecar_url = sidecar_url(opts) do
       case fetch_with_sidecar(sidecar_url, url, opts) do
         {:ok, page} ->
@@ -92,7 +100,13 @@ defmodule BusterClaw.Browser do
       |> Keyword.merge(Application.get_env(:buster_claw, :browser_req_options, []))
       |> Keyword.merge(Keyword.get(opts, :req_options, []))
 
-    case Req.get(url, request_options) do
+    req =
+      [url: url]
+      |> Keyword.merge(request_options)
+      |> Req.new()
+      |> Req.Request.append_request_steps(ssrf_guard: &URLGuard.req_step/1)
+
+    case Req.request(req) do
       {:ok, %{status: status, body: body}} when status in 200..299 ->
         html = to_string(body)
 

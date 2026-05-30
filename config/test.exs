@@ -30,6 +30,11 @@ config :buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHT
 config :buster_claw, :api_token, "test-token-loopback-only"
 config :buster_claw, :scheduler_enabled, false
 
+# Skip live DNS resolution in the SSRF guard during tests; literal-IP and
+# hostname checks still run. URLGuard's resolution path is covered directly in
+# its unit test.
+config :buster_claw, :ssrf_resolve_dns, false
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

@@ -65,6 +65,8 @@ defmodule BusterClawWeb.DocumentsLive do
           </button>
         </div>
 
+        <BusterClawWeb.LibraryTabs.tabs active={:documents} />
+
         <section class="rounded-lg border border-base-300 bg-base-100 p-5">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
@@ -207,13 +209,13 @@ defmodule BusterClawWeb.DocumentsLive do
                   >
                     {tag}
                   </span>
-                  <a
+                  <.link
                     :if={@selected_document.source_url}
-                    href={@selected_document.source_url}
+                    navigate={~p"/browse?#{%{url: @selected_document.source_url}}"}
                     class="rounded-full border border-base-300 px-2 py-1 text-xs font-semibold text-base-content/70 transition hover:bg-base-200"
                   >
-                    Source URL
-                  </a>
+                    Open Source
+                  </.link>
                 </div>
               </header>
 

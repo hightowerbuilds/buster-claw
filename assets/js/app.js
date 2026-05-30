@@ -82,26 +82,181 @@ const Hooks = {
         draggingId = null
       })
     }
+  },
+
+  // Browser-style tab strip. Open routes are persisted client-side in
+  // localStorage so they survive LiveView navigations; the dock buttons open
+  // routes, and each open route shows up here as a tab with a close (×) button.
+  TabStrip: {
+    mounted() {
+      this.labels = this.parseLabels()
+      this.el.addEventListener("click", (e) => this.onClick(e))
+      // Drag one tab onto another to join them into a side-by-side split tab.
+      this.el.addEventListener("dragstart", (e) => this.onDragStart(e))
+      this.el.addEventListener("dragover", (e) => this.onDragOver(e))
+      this.el.addEventListener("drop", (e) => this.onDrop(e))
+      this.onNav = () => {this.sync(); this.render()}
+      // Re-render on every LiveView navigation so the active tab tracks the URL.
+      window.addEventListener("phx:page-loading-stop", this.onNav)
+      // BrowseLive pushes the loaded page's title/url so the tab reflects it.
+      this.handleEvent("bc:tab_meta", (m) => this.onTabMeta(m))
+      this.sync()
+      this.render()
+    },
+    destroyed() {
+      window.removeEventListener("phx:page-loading-stop", this.onNav)
+    },
+    parseLabels() {
+      try { return JSON.parse(this.el.dataset.labels || "{}") } catch (_e) { return {} }
+    },
+    load() {
+      try { return JSON.parse(localStorage.getItem("bc:tabs")) || [] } catch (_e) { return [] }
+    },
+    save(tabs) { localStorage.setItem("bc:tabs", JSON.stringify(tabs)) },
+    // Tab key is the full path incl. query, so multiple /browse tabs
+    // (each /browse?t=<id>) are distinct, independent tabs.
+    currentKey() { return window.location.pathname + window.location.search },
+    labelFor(key) {
+      const [path, query] = key.split("?")
+      if (path === "/split") {
+        const params = new URLSearchParams(query || "")
+        return `${this.shortLabel(params.get("left"))} | ${this.shortLabel(params.get("right"))}`
+      }
+      return this.labels[path] || path
+    },
+    shortLabel(fullPath) {
+      if (!fullPath) return "?"
+      const path = fullPath.split("?")[0]
+      return this.labels[path] || path
+    },
+    sync() {
+      const key = this.currentKey()
+      const tabs = this.load()
+      if (!tabs.some((t) => t.path === key)) {
+        tabs.push({path: key, label: this.labelFor(key)})
+        this.save(tabs)
+      }
+    },
+    // A loaded page tells us its title/url; reflect both on the current tab so
+    // it shows the page title (not "Browse") and can carry the url into a split.
+    onTabMeta({title, url}) {
+      const key = this.currentKey()
+      const tabs = this.load()
+      const tab = tabs.find((t) => t.path === key)
+      if (!tab) return
+      if (title) tab.label = title
+      tab.url = url
+      this.save(tabs)
+      this.render()
+    },
+    render() {
+      const active = this.currentKey()
+      const tabs = this.load().map((t) => this.tabHtml(t, t.path === active)).join("")
+      this.el.innerHTML = tabs + this.newTabHtml()
+    },
+    newTabHtml() {
+      return `<button type="button" data-newtab="1" title="New browser tab" aria-label="New browser tab" ` +
+        `class="grid size-7 shrink-0 place-items-center self-center rounded text-base-content/60 hover:bg-base-200 hover:text-base-content">` +
+        `<span class="text-lg leading-none">+</span></button>`
+    },
+    tabHtml(tab, isActive) {
+      const wrap = isActive
+        ? "group flex shrink-0 items-center gap-1 rounded-t-lg border border-b-0 border-base-300 bg-base-100 px-3 py-1.5 text-sm font-medium text-base-content"
+        : "group flex shrink-0 items-center gap-1 rounded-t-lg border border-transparent bg-base-200 px-3 py-1.5 text-sm text-base-content/60 hover:bg-base-100/70 hover:text-base-content"
+      const label = this.escape(tab.label)
+      const path = this.escape(tab.path)
+      return `<span class="${wrap}" data-path="${path}" draggable="true">` +
+        `<a href="${path}" draggable="false" data-phx-link="redirect" data-phx-link-state="push" class="max-w-[12rem] truncate">${label}</a>` +
+        `<button type="button" data-close="${path}" aria-label="Close ${label}" ` +
+        `class="grid size-4 shrink-0 place-items-center rounded text-base-content/40 hover:bg-base-300 hover:text-base-content">&times;</button>` +
+        `</span>`
+    },
+    onClick(e) {
+      const newTab = e.target.closest("[data-newtab]")
+      if (newTab) {
+        e.preventDefault()
+        this.openBrowserTab()
+        return
+      }
+      const closeBtn = e.target.closest("[data-close]")
+      if (!closeBtn) return
+      e.preventDefault()
+      e.stopPropagation()
+      this.closeTab(closeBtn.getAttribute("data-close"))
+    },
+    openBrowserTab() {
+      const token = Math.random().toString(36).slice(2, 8)
+      window.location.href = `/browse?t=${token}`
+    },
+    onDragStart(e) {
+      const tab = e.target.closest("[data-path]")
+      this.dragPath = tab ? tab.getAttribute("data-path") : null
+      if (this.dragPath && e.dataTransfer) e.dataTransfer.effectAllowed = "move"
+    },
+    onDragOver(e) {
+      if (this.dragPath && e.target.closest("[data-path]")) e.preventDefault()
+    },
+    onDrop(e) {
+      const tab = e.target.closest("[data-path]")
+      if (!tab || !this.dragPath) return
+      e.preventDefault()
+      const targetPath = tab.getAttribute("data-path")
+      // Default drag reorders; hold Alt to join two tabs into a split.
+      if (e.altKey) {
+        this.joinTabs(this.dragPath, targetPath)
+      } else {
+        this.reorderTab(this.dragPath, targetPath)
+      }
+      this.dragPath = null
+    },
+    // Move the dragged tab to the dropped target's position; persisted order is
+    // the render order, so this survives navigations.
+    reorderTab(from, to) {
+      if (!from || !to || from === to) return
+      const tabs = this.load()
+      const fromIdx = tabs.findIndex((t) => t.path === from)
+      const toIdx = tabs.findIndex((t) => t.path === to)
+      if (fromIdx === -1 || toIdx === -1) return
+      const [moved] = tabs.splice(fromIdx, 1)
+      tabs.splice(toIdx, 0, moved)
+      this.save(tabs)
+      this.render()
+    },
+    // A pane carries its browsed page as ?url=<page> so the split can load it.
+    paneParam(tabPath) {
+      const tab = this.load().find((t) => t.path === tabPath)
+      if (tab && tab.url) {
+        return tabPath.split("?")[0] + "?url=" + encodeURIComponent(tab.url)
+      }
+      return tabPath
+    },
+    joinTabs(a, b) {
+      // Don't join a tab to itself or nest splits inside splits.
+      if (!a || !b || a === b) return
+      if (a.split("?")[0] === "/split" || b.split("?")[0] === "/split") return
+      const left = this.paneParam(a)
+      const right = this.paneParam(b)
+      window.location.href = `/split?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`
+    },
+    closeTab(path) {
+      const tabs = this.load()
+      const idx = tabs.findIndex((t) => t.path === path)
+      if (idx === -1) return
+      tabs.splice(idx, 1)
+      this.save(tabs)
+      if (path === this.currentKey()) {
+        const next = tabs[idx] || tabs[idx - 1]
+        window.location.href = next ? next.path : "/"
+      } else {
+        this.render()
+      }
+    },
+    escape(s) {
+      return String(s).replace(/[&<>"']/g, (c) =>
+        ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[c]))
+    }
   }
 }
-
-const sidebarStorageKey = "bc:sidebar"
-const setSidebarState = (state) => {
-  const nextState = state === "closed" ? "closed" : "open"
-  document.documentElement.dataset.sidebar = nextState
-  localStorage.setItem(sidebarStorageKey, nextState)
-}
-
-setSidebarState(localStorage.getItem(sidebarStorageKey))
-
-window.addEventListener("storage", (event) => {
-  if (event.key === sidebarStorageKey) setSidebarState(event.newValue)
-})
-
-window.addEventListener("bc:toggle-sidebar", () => {
-  const nextState = document.documentElement.dataset.sidebar === "closed" ? "open" : "closed"
-  setSidebarState(nextState)
-})
 
 const documentsSidebarStorageKey = "bc:documents-sidebar"
 const setDocumentsSidebarState = (state) => {

@@ -10,8 +10,8 @@ defmodule BusterClaw.Integrations.Integration do
     field :name, :string
     field :service_type, :string
     field :base_url, :string
-    field :token, :string
-    field :webhook_secret, :string
+    field :token, BusterClaw.Encrypted
+    field :webhook_secret, BusterClaw.Encrypted
     field :config, :map, default: %{}
     field :config_text, :string, virtual: true
     field :enabled, :boolean, default: true

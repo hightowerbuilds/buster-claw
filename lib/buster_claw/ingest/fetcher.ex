@@ -3,6 +3,7 @@ defmodule BusterClaw.Ingest.Fetcher do
 
   alias BusterClaw.Browser
   alias BusterClaw.Ingest.Content
+  alias BusterClaw.URLGuard
 
   @user_agent "BusterClaw/2.0 ElixirRewrite"
   @max_body_bytes 10 * 1024 * 1024
@@ -10,6 +11,14 @@ defmodule BusterClaw.Ingest.Fetcher do
 
   def fetch(source, opts \\ []) do
     url = Map.fetch!(source, :url)
+
+    case URLGuard.validate(url) do
+      :ok -> do_fetch(source, url, opts)
+      {:error, reason} -> {:error, {:blocked_url, reason}}
+    end
+  end
+
+  defp do_fetch(source, url, opts) do
     type = Map.get(source, :type, "article")
     tags = Map.get(source, :tags, [])
     retries = Keyword.get(opts, :retries, 2)
@@ -73,7 +82,8 @@ defmodule BusterClaw.Ingest.Fetcher do
   end
 
   defp request(url) do
-    Req.get(url,
+    [
+      url: url,
       headers: [
         {"user-agent", @user_agent},
         {"accept",
@@ -81,7 +91,11 @@ defmodule BusterClaw.Ingest.Fetcher do
       ],
       receive_timeout: 30_000,
       retry: false
-    )
+    ]
+    |> Keyword.merge(Application.get_env(:buster_claw, :ingest_req_options, []))
+    |> Req.new()
+    |> Req.Request.append_request_steps(ssrf_guard: &URLGuard.req_step/1)
+    |> Req.request()
   end
 
   defp truncate_body(body) when is_binary(body),

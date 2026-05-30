@@ -7,7 +7,7 @@ defmodule BusterClaw.Automation.Webhook do
 
   schema "webhooks" do
     field :name, :string
-    field :secret, :string
+    field :secret, BusterClaw.Encrypted
     field :action, :string
     field :custom_cmd, :string
     field :deliver_to, :string

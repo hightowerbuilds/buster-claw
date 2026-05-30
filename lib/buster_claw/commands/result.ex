@@ -4,7 +4,21 @@ defmodule BusterClaw.Commands.Result do
 
   Handles Ecto structs, DateTime/Date/Time, unloaded associations, and nested
   lists/maps. Used by the HTTP API and MCP frontends.
+
+  Secret-bearing fields (API keys, tokens, webhook secrets, and any encrypted
+  `*_enc` column) are redacted so that no frontend — including the chat agent's
+  tool loop, which may be driven by prompt-injected content — can read or
+  exfiltrate stored credentials. Presence is preserved (`"[REDACTED]"`) so
+  callers can still tell a secret is set without learning its value.
   """
+
+  # Field names whose values must never be serialized in cleartext.
+  @redacted_fields ~w(
+    api_key secret token webhook_secret client_secret refresh_token
+    access_token password
+  )a
+
+  @redacted_placeholder "[REDACTED]"
 
   def to_json({status, value}) when status in [:ok, :error] do
     %{status: to_string(status), value: to_json(value)}
@@ -20,7 +34,7 @@ defmodule BusterClaw.Commands.Result do
     struct
     |> Map.from_struct()
     |> Map.drop([:__meta__])
-    |> Enum.into(%{}, fn {k, v} -> {k, sanitize(v)} end)
+    |> Enum.into(%{}, fn {k, v} -> {k, redact(k, v)} end)
   end
 
   def to_json(value) when is_map(value) do
@@ -28,6 +42,22 @@ defmodule BusterClaw.Commands.Result do
   end
 
   def to_json(value), do: value
+
+  # Redact known-sensitive fields and any encrypted column (`*_enc`). A set
+  # secret becomes a placeholder; an unset one stays nil so presence is clear.
+  defp redact(key, value) do
+    if redacted_field?(key) do
+      if is_nil(value), do: nil, else: @redacted_placeholder
+    else
+      sanitize(value)
+    end
+  end
+
+  defp redacted_field?(key) when is_atom(key) do
+    key in @redacted_fields or String.ends_with?(Atom.to_string(key), "_enc")
+  end
+
+  defp redacted_field?(_key), do: false
 
   defp sanitize(%Ecto.Association.NotLoaded{}), do: nil
   defp sanitize(value), do: to_json(value)

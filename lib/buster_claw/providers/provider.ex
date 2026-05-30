@@ -9,7 +9,7 @@ defmodule BusterClaw.Providers.Provider do
     field :name, :string
     field :type, :string
     field :base_url, :string
-    field :api_key, :string
+    field :api_key, BusterClaw.Encrypted
     field :model, :string
     field :active, :boolean, default: false
     field :priority, :integer, default: 100

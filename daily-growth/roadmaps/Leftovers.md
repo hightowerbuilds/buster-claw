@@ -1,10 +1,38 @@
 # Buster Claw Leftovers
 
-Assessment date: 2026-05-26
+Assessment date: 2026-05-26 (security pass added 2026-05-28)
 
 This file tracks work intentionally deferred from the completed master roadmap,
 now archived at `daily-growth/old-maps/master-roadmap.md`. These are not
 abandoned; they are parked for future hardening or feature passes.
+
+## Security Hardening (2026-05-28)
+
+Closes findings from the codebase security review. All landed with tests.
+
+- [x] Redact secrets in the command-surface serializer (`Commands.Result.to_json`).
+  - Field denylist (`api_key`, `secret`, `token`, `webhook_secret`,
+    `client_secret`, `refresh_token`, `access_token`, `password`) plus any
+    `*_enc` column now serialize as `"[REDACTED]"`; unset secrets stay nil.
+  - Closes the prompt-injection exfiltration path: the chat agent's safe-tier
+    `*_list`/`*_get` tools can no longer leak provider keys / webhook secrets.
+- [x] Encrypt provider/integration/webhook/delivery secrets at rest.
+  - New app-wide `BusterClaw.Vault` (AES-256-GCM) + transparent
+    `BusterClaw.Encrypted` Ecto type applied to `providers.api_key`,
+    `webhooks.secret`, `delivery_destinations.token`, `integrations.token`,
+    and `integrations.webhook_secret`.
+  - Backfill migration `20260528223000_encrypt_secrets_at_rest` re-encrypts
+    existing rows (idempotent; skips already-encrypted values).
+- [x] Reclassify `hook_test` as `:restricted`.
+  - It runs a hook's stored shell `target`; it is no longer exposed to the
+    chat agent (verified by an `AgentTools` test).
+- [x] SSRF guard on outbound fetches (`BusterClaw.URLGuard`).
+  - Blocks loopback, link-local/metadata (169.254.0.0/16), and RFC1918 hosts
+    (literals + DNS resolution) at the `Browser.fetch` / `Ingest.Fetcher`
+    entry points, and re-validates each redirect hop via a Req request step.
+  - Residual gaps (deferred): DNS-rebinding TOCTOU and fail-open on resolution
+    error are not addressed; DNS resolution is config-gated
+    (`:ssrf_resolve_dns`, off in test).
 
 ## Deferred Cutover Options
 
@@ -60,6 +88,9 @@ abandoned; they are parked for future hardening or feature passes.
 - [x] Incremental Google Calendar sync tokens beyond query/window-based pulls.
 - [x] Reconfirm encrypted-secret design, because it is broader than Gmail and may
   eventually cover provider keys and integration tokens.
+  - Done and now applied: the 2026-05-28 security pass extended encryption at rest
+    to provider keys, integration/webhook secrets, and delivery tokens via
+    `BusterClaw.Vault` + `BusterClaw.Encrypted`. See the Security Hardening section.
 
 ## Packaging And Distribution
 
@@ -71,6 +102,9 @@ abandoned; they are parked for future hardening or feature passes.
   desktop releases.
   - The sidecar boundary is implemented, but distribution still needs an
     explicit Node/Playwright packaging strategy.
-- [ ] Full secrets encryption/keychain support.
+- [ ] OS keychain support for the vault key.
+  - App-level secrets are now encrypted at rest (see Security Hardening), but the
+    vault key is still derived from `secret_key_base`. Remaining work: store the
+    key (or `secret_key_base`) in the OS keychain rather than env/config.
 - [ ] Windows and Linux desktop packaging paths.
 - [ ] Auto-updates, signing, notarization, and log rotation.

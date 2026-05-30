@@ -91,6 +91,8 @@ defmodule BusterClawWeb.SourcesLive do
           </button>
         </div>
 
+        <BusterClawWeb.LibraryTabs.tabs active={:sources} />
+
         <p :if={@result} class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm">
           {@result}
         </p>

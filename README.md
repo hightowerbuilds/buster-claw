@@ -133,6 +133,7 @@ When the active provider is Anthropic, the chat session passes safe-tier command
 
 - [Quality checks](docs/QUALITY.md) lists the Phoenix and Tauri commands to run before refactors.
 - [Architecture notes](docs/ARCHITECTURE.md) documents the current runtime shape, persisted files, and generated-code boundaries.
+- [UML / architecture diagrams](docs/UML.md) — Mermaid diagrams of the system layers, supervision tree, domain model, command surface, provider abstraction, and the core functional flows (ingest→analyze→deliver, agentic chat loop).
 - [Local trust model](docs/LOCAL_TRUST.md) documents shell hooks, webhooks, stored secrets, fetched markdown, and MCP boundaries.
 - [Rewrite packaging notes](docs/rewrite/DESKTOP_PACKAGING.md) document the Phoenix/Tauri desktop path.
 - [Rewrite cutover notes](docs/rewrite/CUTOVER.md) document what still blocks packaged daily use.

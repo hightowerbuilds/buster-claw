@@ -52,6 +52,11 @@ defmodule BusterClawWeb do
     quote do
       use Phoenix.LiveView
 
+      # Marks views rendered inside a split pane so the shell renders "bare"
+      # (no tab strip / dock). Runs for every LiveView, including nested
+      # live_render children, which is how the embedded flag reaches them.
+      on_mount BusterClawWeb.ChromeHook
+
       unquote(html_helpers())
     end
   end

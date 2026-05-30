@@ -40,4 +40,23 @@ defmodule BusterClawWeb.AutomationRoutesTest do
       assert html =~ ~s(id="advanced-tab-mcp")
     end
   end
+
+  test "library surfaces render the shared section tabs", %{conn: conn} do
+    for path <- [~p"/documents", ~p"/sources", ~p"/analysis"] do
+      {:ok, _view, html} = live(conn, path)
+      assert html =~ ~s(id="library-tabs")
+      assert html =~ ~s(id="library-tab-documents")
+      assert html =~ ~s(id="library-tab-sources")
+      assert html =~ ~s(id="library-tab-analysis")
+    end
+  end
+
+  test "sources and analysis are no longer top-level sidebar entries", %{conn: conn} do
+    {:ok, _view, html} = live(conn, ~p"/")
+
+    refute html =~ ~s(href="/sources")
+    refute html =~ ~s(href="/analysis")
+    # Documents remains the sidebar entry point into the library surfaces.
+    assert html =~ ~s(href="/documents")
+  end
 end

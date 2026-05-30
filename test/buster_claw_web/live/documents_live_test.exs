@@ -88,6 +88,22 @@ defmodule BusterClawWeb.DocumentsLiveTest do
     refute view |> element("#document-preview") |> render() =~ "Older body."
   end
 
+  test "source url opens in the in-app browser instead of leaving the app", %{conn: conn} do
+    assert {:ok, _document} =
+             Library.save_raw_document(%{
+               date: ~D[2026-05-07],
+               filename: "sourced.md",
+               name: "Sourced Doc",
+               source_url: "https://example.com/article",
+               content: "# Sourced Doc\n\nBody."
+             })
+
+    {:ok, view, _html} = live(conn, ~p"/documents")
+
+    link_html = view |> element("a", "Open Source") |> render()
+    assert link_html =~ "/browse?url=https%3A%2F%2Fexample.com%2Farticle"
+  end
+
   test "indexes existing documents from the UI", %{conn: conn} do
     root = Application.fetch_env!(:buster_claw, :library_root)
     path = Path.join([root, "raw", "2026-05-07", "legacy.md"])
