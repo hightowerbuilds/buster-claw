@@ -19,7 +19,8 @@ defmodule BusterClawWeb.SplitLive do
     "/memory" => {BusterClawWeb.MemoryLive, "Memory"},
     "/scheduler" => {BusterClawWeb.SchedulerLive, "Scheduler"},
     "/sources" => {BusterClawWeb.SourcesLive, "Sources"},
-    "/analysis" => {BusterClawWeb.AnalysisLive, "Analysis"}
+    "/analysis" => {BusterClawWeb.AnalysisLive, "Analysis"},
+    "/terminal" => {BusterClawWeb.TerminalLive, "Terminal"}
   }
 
   @impl true
@@ -96,13 +97,6 @@ defmodule BusterClawWeb.SplitLive do
     <section class="flex min-h-[70vh] min-w-0 flex-col overflow-hidden rounded-lg border border-base-300 bg-base-100 shadow-sm">
       <header class="flex items-center justify-between gap-2 border-b border-base-300 px-4 py-2">
         <span class="truncate text-sm font-semibold">{pane_label(@pane)}</span>
-        <.link
-          :if={@pane && @pane.path}
-          navigate={@pane.path}
-          class="shrink-0 rounded border border-base-300 px-2 py-1 text-xs font-semibold transition hover:bg-base-200"
-        >
-          Open as tab
-        </.link>
       </header>
       <div class="min-h-0 flex-1 overflow-auto">
         <%= cond do %>

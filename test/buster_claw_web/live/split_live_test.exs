@@ -11,6 +11,19 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert html =~ "Chat"
     # The embedded Browse pane renders its own (bare) content.
     assert html =~ "Nothing loaded yet"
+    # In a joined pane the browser drops its page header.
+    refute html =~ "Fetch and read pages in-app"
+  end
+
+  test "the terminal can be opened in a split pane", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/split?left=/terminal&right=/browse")
+
+    assert html =~ "Terminal"
+    # The embedded terminal pane renders its xterm host (not the fallback).
+    assert html =~ ~s(phx-hook="TerminalView")
+    refute html =~ "can't be opened in a split pane"
+    # In a joined pane it's just the terminal window — no page header.
+    refute html =~ "A live shell running"
   end
 
   test "embedded panes render bare (no nested tab strip / dock)", %{conn: conn} do
@@ -45,11 +58,10 @@ defmodule BusterClawWeb.SplitLiveTest do
     refute html =~ "Swap panes"
   end
 
-  test "each pane shows an Open as tab link to its own path", %{conn: conn} do
-    {:ok, view, _html} = live(conn, "/split?left=/browse&right=/chat")
+  test "panes no longer show an Open as tab link", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/split?left=/browse&right=/chat")
 
-    assert has_element?(view, ~s(a[href="/browse"]), "Open as tab")
-    assert has_element?(view, ~s(a[href="/chat"]), "Open as tab")
+    refute html =~ "Open as tab"
   end
 
   test "a joined browse pane loads the url carried in its param", %{conn: conn} do

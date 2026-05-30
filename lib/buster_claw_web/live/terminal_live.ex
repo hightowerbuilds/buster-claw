@@ -3,20 +3,28 @@ defmodule BusterClawWeb.TerminalLive do
   Terminal tab. The view is just a host for xterm.js (the `TerminalView` JS
   hook); the shell runs in a PTY in the Tauri Rust backend, streamed over IPC.
   Works in the desktop app; in a plain browser the hook shows a notice.
+
+  In a split pane (embedded), the page header is dropped so the pane is just
+  the terminal window.
   """
   use BusterClawWeb, :live_view
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, :page_title, "Terminal")}
+    # Unique id so two terminal panes in one split view don't collide.
+    {:ok,
+     socket
+     |> assign(:page_title, "Terminal")
+     |> assign(:embedded?, BusterClawWeb.ChromeHook.embedded?())
+     |> assign(:dom_id, "terminal-root-#{System.unique_integer([:positive])}")}
   end
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <section class="space-y-4">
-        <div>
+      <section class={if @embedded?, do: "h-full", else: "space-y-4"}>
+        <div :if={not @embedded?}>
           <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
             Shell
           </p>
@@ -27,10 +35,16 @@ defmodule BusterClawWeb.TerminalLive do
         </div>
 
         <div
-          id="terminal-root"
+          id={@dom_id}
           phx-hook="TerminalView"
           phx-update="ignore"
-          class="h-[70vh] overflow-hidden rounded-lg border border-base-300 bg-[#1e1e2e] p-2 shadow-sm"
+          class={[
+            "overflow-hidden bg-[#1e1e2e]",
+            if(@embedded?,
+              do: "h-full",
+              else: "h-[70vh] rounded-lg border border-base-300 p-2 shadow-sm"
+            )
+          ]}
         >
         </div>
       </section>

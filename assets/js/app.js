@@ -241,7 +241,22 @@ const Hooks = {
       if (a.split("?")[0] === "/split" || b.split("?")[0] === "/split") return
       const left = this.paneParam(a)
       const right = this.paneParam(b)
+      // The two source tabs now live inside the joined tab — drop them.
+      this.save(this.load().filter((t) => t.path !== a && t.path !== b))
       window.location.href = `/split?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`
+    },
+    // Split a joined tab back into its two component tabs.
+    separateTabs(splitPath) {
+      const params = new URLSearchParams(splitPath.split("?")[1] || "")
+      const left = params.get("left")
+      const right = params.get("right")
+      if (!left || !right) return
+      const tabs = this.load().filter((t) => t.path !== splitPath)
+      for (const p of [left, right]) {
+        if (!tabs.some((t) => t.path === p)) tabs.push({path: p, label: this.labelFor(p)})
+      }
+      this.save(tabs)
+      window.location.href = left
     },
     // ----- Right-click context menu -----
     onContextMenu(e) {
@@ -282,10 +297,14 @@ const Hooks = {
       }, 0)
     },
     renderMenuRoot() {
-      this.menuEl.innerHTML =
-        `<button type="button" data-menu="join" ` +
-        `class="flex w-full items-center justify-between gap-3 rounded px-3 py-1.5 text-left hover:bg-base-200">` +
-        `<span>Join tabs</span><span class="text-base-content/40">&#9656;</span></button>`
+      const isSplit = (this.menuPath || "").split("?")[0] === "/split"
+      this.menuEl.innerHTML = isSplit
+        ? `<button type="button" data-menu="separate" ` +
+            `class="flex w-full items-center gap-3 rounded px-3 py-1.5 text-left hover:bg-base-200">` +
+            `<span>Separate tabs</span></button>`
+        : `<button type="button" data-menu="join" ` +
+            `class="flex w-full items-center justify-between gap-3 rounded px-3 py-1.5 text-left hover:bg-base-200">` +
+            `<span>Join tabs</span><span class="text-base-content/40">&#9656;</span></button>`
     },
     renderJoinList() {
       const candidates = this.load().filter(
@@ -312,6 +331,14 @@ const Hooks = {
       if (join) {
         e.stopPropagation()
         this.renderJoinList()
+        return
+      }
+      const separate = e.target.closest("[data-menu='separate']")
+      if (separate) {
+        e.stopPropagation()
+        const source = this.menuPath
+        this.closeMenu()
+        this.separateTabs(source)
         return
       }
       const target = e.target.closest("[data-jointarget]")

@@ -42,11 +42,11 @@ defmodule BusterClawWeb.Layouts do
   end
 
   # A split pane: render only the view's content, no tab strip / dock / flash.
+  # Full-bleed (no padding) so panes like the terminal can sit flush against the
+  # pane partition; views that want breathing room add their own padding.
   defp bare(assigns) do
     ~H"""
-    <div class="min-h-screen bg-base-100">
-      <div class="space-y-4 p-4 sm:p-6">{render_slot(@inner_block)}</div>
-    </div>
+    <div class="h-full bg-base-100">{render_slot(@inner_block)}</div>
     """
   end
 

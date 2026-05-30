@@ -7,7 +7,7 @@ defmodule BusterClawWeb.TerminalLiveTest do
     {:ok, view, html} = live(conn, ~p"/terminal")
 
     assert html =~ "Terminal"
-    assert has_element?(view, "#terminal-root[phx-hook='TerminalView']")
+    assert has_element?(view, "[id^='terminal-root'][phx-hook='TerminalView']")
   end
 
   test "terminal is reachable from the dock nav", %{conn: conn} do

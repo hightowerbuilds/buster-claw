@@ -25,6 +25,7 @@ defmodule BusterClawWeb.BrowseLive do
       |> assign(:error, nil)
       |> assign(:back, [])
       |> assign(:forward, [])
+      |> assign(:embedded?, BusterClawWeb.ChromeHook.embedded?())
 
     # Deep link (e.g. /browse?url=...) loads on mount. Handled here rather than
     # in handle_params so BrowseLive can also be embedded as a split pane
@@ -141,7 +142,7 @@ defmodule BusterClawWeb.BrowseLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="space-y-4">
-        <div>
+        <div :if={not @embedded?}>
           <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
             Browser
           </p>
