@@ -151,6 +151,7 @@ defmodule BusterClawWeb.Layouts do
       %{label: "Chat", path: "/chat", icon: "hero-chat-bubble-left-right"},
       %{label: "Documents", path: "/documents", icon: "hero-document-text"},
       %{label: "Browse", path: "/browse", icon: "hero-globe-alt"},
+      %{label: "Terminal", path: "/terminal", icon: "hero-command-line"},
       %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
       %{label: "GWS", path: "/gws", icon: "hero-envelope"},
       %{label: "Memory", path: "/memory", icon: "hero-circle-stack"},

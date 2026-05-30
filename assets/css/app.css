@@ -2,6 +2,8 @@
    https://tailwindcss.com/docs/configuration */
 
 @import "tailwindcss" source(none);
+/* xterm.js styles for the Terminal tab */
+@import "../node_modules/@xterm/xterm/css/xterm.css";
 @source "../css";
 @source "../js";
 @source "../../lib/buster_claw_web";

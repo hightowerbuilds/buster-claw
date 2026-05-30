@@ -24,6 +24,8 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/buster_claw"
 import topbar from "../vendor/topbar"
+import {Terminal as XTerm} from "@xterm/xterm"
+import {FitAddon} from "@xterm/addon-fit"
 
 const Hooks = {
   CalendarDrag: {
@@ -255,6 +257,63 @@ const Hooks = {
       return String(s).replace(/[&<>"']/g, (c) =>
         ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[c]))
     }
+  },
+
+  // PTY-backed terminal (desktop only). xterm.js renders here; the PTY lives in
+  // the Tauri Rust backend, reached over IPC. In a plain browser (no Tauri) we
+  // show a notice instead of a terminal.
+  TerminalView: {
+    async mounted() {
+      const tauri = window.__TAURI__
+      if (!tauri) {
+        this.el.innerHTML =
+          `<div class="grid h-full place-items-center p-8 text-center text-sm text-base-content/60">` +
+          `Terminal is available in the Buster Claw desktop app.</div>`
+        return
+      }
+      const {invoke} = tauri.core
+      const {listen} = tauri.event
+
+      const term = new XTerm({
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: 13,
+        cursorBlink: true,
+        theme: {background: "#1e1e2e"},
+      })
+      const fit = new FitAddon()
+      term.loadAddon(fit)
+      term.open(this.el)
+      fit.fit()
+      this.term = term
+
+      try {
+        this.id = await invoke("terminal_open", {cols: term.cols, rows: term.rows})
+      } catch (e) {
+        term.write(`\r\n[failed to open terminal: ${e}]\r\n`)
+        return
+      }
+
+      this.unlistenData = await listen(`terminal:data:${this.id}`, (ev) => term.write(ev.payload))
+      this.unlistenExit = await listen(`terminal:exit:${this.id}`, () =>
+        term.write("\r\n[process exited]\r\n"))
+      term.onData((data) => invoke("terminal_input", {id: this.id, data}))
+
+      this.resizeObserver = new ResizeObserver(() => {
+        try { fit.fit() } catch (_e) { return }
+        if (this.id) invoke("terminal_resize", {id: this.id, cols: term.cols, rows: term.rows})
+      })
+      this.resizeObserver.observe(this.el)
+      term.focus()
+    },
+    destroyed() {
+      this.resizeObserver?.disconnect()
+      this.unlistenData?.()
+      this.unlistenExit?.()
+      if (this.id && window.__TAURI__) {
+        window.__TAURI__.core.invoke("terminal_close", {id: this.id})
+      }
+      this.term?.dispose()
+    },
   }
 }
 

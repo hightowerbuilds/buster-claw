@@ -135,17 +135,55 @@
   file sets (SplitLive vs. `app.js`/`BrowseLive`) with a shared contract, then
   integrated and verified centrally.
 
+### Terminal tab (xterm.js + Rust PTY)
+
+- Added an in-app **Terminal** tab. xterm.js renders in the webview; the PTY
+  that runs `$SHELL` lives in the existing Tauri Rust shell via `portable-pty`,
+  reached over IPC. No new language (Elixir + Rust + JS already in play).
+- Rust: `desktop/tauri/src/terminal.rs` (session map + `terminal_open/input/
+  resize/close` commands + a reader thread emitting `terminal:data:<id>`),
+  wired into `main.rs` (`manage`, `invoke_handler`, exit cleanup);
+  `withGlobalTauri` enabled in `tauri.conf.json`.
+- Frontend: `@xterm/xterm` + `@xterm/addon-fit` installed into `assets`, xterm
+  CSS imported in `app.css`, a `TerminalView` hook in `app.js` (Tauri-detect,
+  open/listen/onData/resize; shows a "desktop app only" notice in a plain
+  browser). `TerminalLive` at `/terminal` + dock nav entry.
+- Decision recap: chose xterm.js over embedding Alacritty's engine — Alacritty
+  is a standalone GPU window, not embeddable in a webview; xterm.js is simpler
+  and the PTY in the existing Rust shell keeps it real without new languages.
+- Unblocked `cargo tauri dev`: a leftover **full staged release** (2,154 files)
+  in `desktop/tauri/resources/release` from a past `build_desktop.sh` was
+  tripping `tauri-build`'s resource walk (EACCES); restored the dev `.gitkeep`
+  placeholder (packaging re-stages it).
+
+### Agent mode on by default
+
+- `BusterClaw.AgentMode` now boots **on** (new `:agent_mode_default` config,
+  defaults `true`; override with `config :buster_claw, :agent_mode_default,
+  false`). The agent surface is live as soon as the app opens.
+
+### BusterClawCLI data root (decided; build deferred)
+
+- Decided `BusterClawCLI` is the app's **actual data root** (not a workspace):
+  user-choosable location, default `~/Desktop/BusterClawCLI`, structure
+  `library/sources/analysis/memory`, provisioned on **`.dmg` install**, and the
+  Terminal opens into it. Contents still evolving; full build deferred to the
+  DMG-install milestone. Captured in project memory.
+
 ## Verification
 
 - `mix compile --warnings-as-errors`: clean.
-- New tests: `vault_test`, `url_guard_test`, `security_hardening_test`,
-  `browser/reader_test`, `browse_live_test`, `split_live_test`, plus extended
-  `documents_live_test`, `automation_routes_test`, `status_live_test`.
-- `mix ecto.migrate` (dev): secret-encryption backfill applied; provider keys
-  encrypted at rest and verified to decrypt on load.
-- `mix precommit`: final run passed with **298 tests, 0 failures**.
-- Live app verified end-to-end (tabbed shell, multiple browser tabs, split view,
-  url-carry, swap/unjoin) against the running dev server + Tauri window.
+- New tests across the day: `vault_test`, `url_guard_test`,
+  `security_hardening_test`, `browser/reader_test`, `browse_live_test`,
+  `split_live_test`, `terminal_live_test`, plus extended `documents_live_test`,
+  `automation_routes_test`, `status_live_test`.
+- `mix ecto.migrate` (dev): secret-encryption backfill applied and verified.
+- Terminal: `cargo build` clean with `portable-pty`; `cargo tauri dev` launches
+  the desktop app with the PTY backend (verified running); `/terminal` serves;
+  xterm.js bundled into `app.js` and `.xterm` styles in the built CSS.
+- `mix precommit`: final run passed with **300 tests, 0 failures**.
+- Live app verified (tabbed shell, browser tabs, split view, url-carry,
+  swap/unjoin, terminal launch, agent-mode chip) against the dev server + Tauri.
 
 ## Where we left off
 
@@ -156,6 +194,10 @@
   (name + ×), multiple independent browser tabs ("+"), and drag-to-join split
   view (Alt+drop) with swap/unjoin and url-carry. Plain drag reorders tabs.
 - Library surfaces (Library/Sources/Analysis) are grouped under one tab row.
+- An in-app **Terminal** tab (xterm.js + Rust PTY) runs in the desktop app.
+- **Agent mode is on by default** at app launch.
+- **BusterClawCLI data root** is decided and captured in memory; build deferred
+  until the contents settle and we test the `.dmg` install.
 - Open follow-ups:
   - The README advertises a `/browse <url>` chat slash command that does not
     exist — wire chat's `/browse` to the view or correct the README.

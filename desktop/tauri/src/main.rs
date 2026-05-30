@@ -11,6 +11,8 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use tauri::{Manager, RunEvent};
 
+mod terminal;
+
 const APP_DATA_DIR_NAME: &str = "BusterClaw";
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(250);
@@ -21,6 +23,13 @@ fn main() {
     let release_child_for_run = Arc::clone(&release_child);
 
     let app = tauri::Builder::default()
+        .manage(terminal::TerminalState::default())
+        .invoke_handler(tauri::generate_handler![
+            terminal::terminal_open,
+            terminal::terminal_input,
+            terminal::terminal_resize,
+            terminal::terminal_close
+        ])
         .setup(move |app| {
             let handle = app.handle().clone();
 
@@ -104,8 +113,9 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("failed to build Buster Claw desktop shell");
 
-    app.run(move |_handle, event| {
+    app.run(move |handle, event| {
         if matches!(event, RunEvent::Exit) {
+            terminal::shutdown_all(handle);
             shutdown_release(&release_child_for_run);
         }
     });

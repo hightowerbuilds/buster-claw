@@ -20,8 +20,12 @@ defmodule BusterClaw.AgentMode do
   @activity_topic "agent_activity"
 
   def start_link(_opts) do
-    Agent.start_link(fn -> false end, name: __MODULE__)
+    Agent.start_link(fn -> default_mode() end, name: __MODULE__)
   end
+
+  # Agent mode is on by default so the agent surface is live as soon as the app
+  # opens. Override with `config :buster_claw, :agent_mode_default, false`.
+  defp default_mode, do: Application.get_env(:buster_claw, :agent_mode_default, true)
 
   @doc "Returns `true` if agent mode is currently on. Safe before supervision starts."
   def on? do
@@ -52,7 +56,7 @@ defmodule BusterClaw.AgentMode do
   defp ensure_started do
     case Process.whereis(__MODULE__) do
       nil ->
-        case Agent.start(fn -> false end, name: __MODULE__) do
+        case Agent.start(fn -> default_mode() end, name: __MODULE__) do
           {:ok, _pid} -> :ok
           {:error, {:already_started, _pid}} -> :ok
         end
