@@ -97,7 +97,9 @@ const Hooks = {
       this.el.addEventListener("dragstart", (e) => this.onDragStart(e))
       this.el.addEventListener("dragover", (e) => this.onDragOver(e))
       this.el.addEventListener("drop", (e) => this.onDrop(e))
-      this.onNav = () => {this.sync(); this.render()}
+      // Right-click a tab for the context menu (Join tabs, ...).
+      this.el.addEventListener("contextmenu", (e) => this.onContextMenu(e))
+      this.onNav = () => {this.closeMenu(); this.sync(); this.render()}
       // Re-render on every LiveView navigation so the active tab tracks the URL.
       window.addEventListener("phx:page-loading-stop", this.onNav)
       // BrowseLive pushes the loaded page's title/url so the tab reflects it.
@@ -106,6 +108,7 @@ const Hooks = {
       this.render()
     },
     destroyed() {
+      this.closeMenu()
       window.removeEventListener("phx:page-loading-stop", this.onNav)
     },
     parseLabels() {
@@ -239,6 +242,100 @@ const Hooks = {
       const left = this.paneParam(a)
       const right = this.paneParam(b)
       window.location.href = `/split?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`
+    },
+    // ----- Right-click context menu -----
+    onContextMenu(e) {
+      const tab = e.target.closest("[data-path]")
+      if (!tab) return
+      e.preventDefault()
+      this.openMenu(tab.getAttribute("data-path"), e.clientX, e.clientY)
+    },
+    openMenu(path, x, y) {
+      this.closeMenu()
+      this.menuPath = path
+      const menu = document.createElement("div")
+      menu.className =
+        "fixed z-50 min-w-44 rounded-lg border border-base-300 bg-base-100 p-1 text-sm shadow-lg"
+      menu.addEventListener("click", (e) => this.onMenuClick(e))
+      menu.addEventListener("contextmenu", (e) => e.preventDefault())
+      document.body.appendChild(menu)
+      this.menuEl = menu
+      this.renderMenuRoot()
+
+      // Position at the cursor, clamped to the viewport.
+      const rect = menu.getBoundingClientRect()
+      const left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))
+      const top = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))
+      menu.style.left = `${left}px`
+      menu.style.top = `${top}px`
+
+      // Dismiss on outside click / Escape (deferred so the opening event doesn't close it).
+      this.onDocClick = (ev) => {
+        if (this.menuEl && !this.menuEl.contains(ev.target)) this.closeMenu()
+      }
+      this.onMenuKey = (ev) => {
+        if (ev.key === "Escape") this.closeMenu()
+      }
+      setTimeout(() => {
+        document.addEventListener("click", this.onDocClick)
+        document.addEventListener("keydown", this.onMenuKey)
+      }, 0)
+    },
+    renderMenuRoot() {
+      this.menuEl.innerHTML =
+        `<button type="button" data-menu="join" ` +
+        `class="flex w-full items-center justify-between gap-3 rounded px-3 py-1.5 text-left hover:bg-base-200">` +
+        `<span>Join tabs</span><span class="text-base-content/40">&#9656;</span></button>`
+    },
+    renderJoinList() {
+      const candidates = this.load().filter(
+        (t) => t.path !== this.menuPath && !t.path.startsWith("/split")
+      )
+      const header =
+        `<div class="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-base-content/50">Join with…</div>`
+      if (candidates.length === 0) {
+        this.menuEl.innerHTML =
+          header + `<div class="px-3 py-2 text-xs text-base-content/50">No other tabs open.</div>`
+        return
+      }
+      const rows = candidates
+        .map(
+          (t) =>
+            `<button type="button" data-jointarget="${this.escape(t.path)}" ` +
+            `class="block w-full truncate rounded px-3 py-1.5 text-left hover:bg-base-200">${this.escape(t.label)}</button>`
+        )
+        .join("")
+      this.menuEl.innerHTML = header + rows
+    },
+    onMenuClick(e) {
+      const join = e.target.closest("[data-menu='join']")
+      if (join) {
+        e.stopPropagation()
+        this.renderJoinList()
+        return
+      }
+      const target = e.target.closest("[data-jointarget]")
+      if (target) {
+        e.stopPropagation()
+        const source = this.menuPath
+        this.closeMenu()
+        this.joinTabs(source, target.getAttribute("data-jointarget"))
+      }
+    },
+    closeMenu() {
+      if (this.onDocClick) {
+        document.removeEventListener("click", this.onDocClick)
+        this.onDocClick = null
+      }
+      if (this.onMenuKey) {
+        document.removeEventListener("keydown", this.onMenuKey)
+        this.onMenuKey = null
+      }
+      if (this.menuEl) {
+        this.menuEl.remove()
+        this.menuEl = null
+      }
+      this.menuPath = null
     },
     closeTab(path) {
       const tabs = this.load()
