@@ -6,7 +6,6 @@ defmodule BusterClawWeb.SplitLiveTest do
   test "renders two joined views side-by-side", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/split?left=/browse&right=/chat")
 
-    assert html =~ "Split view"
     assert html =~ "Browse"
     assert html =~ "Chat"
     # The embedded Browse pane renders its own (bare) content.
@@ -41,27 +40,13 @@ defmodule BusterClawWeb.SplitLiveTest do
              html =~ "can't be opened in a split pane"
   end
 
-  test "renders a swap link with left/right swapped", %{conn: conn} do
-    {:ok, view, _html} = live(conn, "/split?left=/browse&right=/chat")
-
-    # Swapped: left becomes /chat, right becomes /browse (slashes URL-encoded).
-    assert has_element?(
-             view,
-             ~s(a[href="/split?left=%2Fchat&right=%2Fbrowse"]),
-             "Swap panes"
-           )
-  end
-
-  test "does not render a swap link when a pane is missing", %{conn: conn} do
-    {:ok, _view, html} = live(conn, "/split?left=/browse")
-
-    refute html =~ "Swap panes"
-  end
-
-  test "panes no longer show an Open as tab link", %{conn: conn} do
+  test "panes carry no inline chrome (no Open as tab, no Split view header, no swap link)",
+       %{conn: conn} do
     {:ok, _view, html} = live(conn, "/split?left=/browse&right=/chat")
 
     refute html =~ "Open as tab"
+    refute html =~ "Split view"
+    refute html =~ "Swap panes"
   end
 
   test "a joined browse pane loads the url carried in its param", %{conn: conn} do

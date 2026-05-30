@@ -245,6 +245,20 @@ const Hooks = {
       this.save(this.load().filter((t) => t.path !== a && t.path !== b))
       window.location.href = `/split?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`
     },
+    // Swap the two sides of a joined tab.
+    swapSides(splitPath) {
+      const params = new URLSearchParams(splitPath.split("?")[1] || "")
+      const left = params.get("left")
+      const right = params.get("right")
+      if (!left || !right) return
+      const newPath = `/split?left=${encodeURIComponent(right)}&right=${encodeURIComponent(left)}`
+      this.save(
+        this.load().map((t) =>
+          t.path === splitPath ? {path: newPath, label: this.labelFor(newPath)} : t
+        )
+      )
+      window.location.href = newPath
+    },
     // Split a joined tab back into its two component tabs.
     separateTabs(splitPath) {
       const params = new URLSearchParams(splitPath.split("?")[1] || "")
@@ -298,12 +312,11 @@ const Hooks = {
     },
     renderMenuRoot() {
       const isSplit = (this.menuPath || "").split("?")[0] === "/split"
+      const item = "flex w-full items-center gap-3 rounded px-3 py-1.5 text-left hover:bg-base-200"
       this.menuEl.innerHTML = isSplit
-        ? `<button type="button" data-menu="separate" ` +
-            `class="flex w-full items-center gap-3 rounded px-3 py-1.5 text-left hover:bg-base-200">` +
-            `<span>Separate tabs</span></button>`
-        : `<button type="button" data-menu="join" ` +
-            `class="flex w-full items-center justify-between gap-3 rounded px-3 py-1.5 text-left hover:bg-base-200">` +
+        ? `<button type="button" data-menu="swap" class="${item}"><span>Swap sides</span></button>` +
+            `<button type="button" data-menu="separate" class="${item}"><span>Separate tabs</span></button>`
+        : `<button type="button" data-menu="join" class="${item} justify-between">` +
             `<span>Join tabs</span><span class="text-base-content/40">&#9656;</span></button>`
     },
     renderJoinList() {
@@ -331,6 +344,14 @@ const Hooks = {
       if (join) {
         e.stopPropagation()
         this.renderJoinList()
+        return
+      }
+      const swap = e.target.closest("[data-menu='swap']")
+      if (swap) {
+        e.stopPropagation()
+        const source = this.menuPath
+        this.closeMenu()
+        this.swapSides(source)
         return
       }
       const separate = e.target.closest("[data-menu='separate']")

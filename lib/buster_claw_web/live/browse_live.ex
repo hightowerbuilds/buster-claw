@@ -141,18 +141,7 @@ defmodule BusterClawWeb.BrowseLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <section class="space-y-4">
-        <div :if={not @embedded?}>
-          <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-            Browser
-          </p>
-          <h1 class="text-4xl font-semibold tracking-normal">Browse</h1>
-          <p class="mt-2 text-base text-base-content/70">
-            Fetch and read pages in-app. Links stay inside Buster Claw — use the
-            sidebar bumper on the left to return to the rest of the app.
-          </p>
-        </div>
-
+      <section class={["space-y-4", not @embedded? && "-mt-8"]}>
         <div class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
           <div class="flex items-center gap-1">
             <button

@@ -4,8 +4,8 @@ defmodule BusterClawWeb.TerminalLive do
   hook); the shell runs in a PTY in the Tauri Rust backend, streamed over IPC.
   Works in the desktop app; in a plain browser the hook shows a notice.
 
-  In a split pane (embedded), the page header is dropped so the pane is just
-  the terminal window.
+  No page header — the terminal fills its tab (flush with the tab bar) and, in a
+  split pane, sits flush against the partition.
   """
   use BusterClawWeb, :live_view
 
@@ -23,17 +23,7 @@ defmodule BusterClawWeb.TerminalLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <section class={if @embedded?, do: "h-full", else: "space-y-4"}>
-        <div :if={not @embedded?}>
-          <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-            Shell
-          </p>
-          <h1 class="text-4xl font-semibold tracking-normal">Terminal</h1>
-          <p class="mt-2 text-base text-base-content/70">
-            A live shell running in a PTY, rendered with xterm.js.
-          </p>
-        </div>
-
+      <section class={if @embedded?, do: "h-full", else: "-mt-8"}>
         <div
           id={@dom_id}
           phx-hook="TerminalView"

@@ -13,7 +13,7 @@ defmodule BusterClawWeb.SplitLive do
   @panes %{
     "/chat" => {BusterClawWeb.ChatLive, "Chat"},
     "/documents" => {BusterClawWeb.DocumentsLive, "Library"},
-    "/browse" => {BusterClawWeb.BrowseLive, "Browse"},
+    "/browse" => {BusterClawWeb.BrowseLive, "Browser"},
     "/calendar" => {BusterClawWeb.CalendarLive, "Calendar"},
     "/gws" => {BusterClawWeb.GWSLive, "GWS"},
     "/memory" => {BusterClawWeb.MemoryLive, "Memory"},
@@ -30,8 +30,6 @@ defmodule BusterClawWeb.SplitLive do
   def handle_params(params, _uri, socket) do
     {:noreply,
      socket
-     |> assign(:left_param, params["left"])
-     |> assign(:right_param, params["right"])
      |> assign(:left, pane_spec(params["left"]))
      |> assign(:right, pane_spec(params["right"]))}
   end
@@ -60,30 +58,10 @@ defmodule BusterClawWeb.SplitLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <section class="space-y-4">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-              Split view
-            </p>
-            <h1 class="text-3xl font-semibold tracking-normal">
-              {pane_label(@left)} <span class="text-base-content/40">|</span> {pane_label(@right)}
-            </h1>
-          </div>
-          <.link
-            :if={@left && @right}
-            navigate={~p"/split?#{[left: @right_param, right: @left_param]}"}
-            class="shrink-0 rounded border border-base-300 px-3 py-1.5 text-sm font-semibold transition hover:bg-base-200"
-          >
-            Swap panes
-          </.link>
-        </div>
-
-        <div class="grid gap-4 lg:grid-cols-2">
-          <.pane side="left" pane={@left} socket={@socket} />
-          <.pane side="right" pane={@right} socket={@socket} />
-        </div>
-      </section>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <.pane side="left" pane={@left} socket={@socket} />
+        <.pane side="right" pane={@right} socket={@socket} />
+      </div>
     </Layouts.app>
     """
   end

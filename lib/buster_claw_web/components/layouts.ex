@@ -53,8 +53,6 @@ defmodule BusterClawWeb.Layouts do
   defp shell(assigns) do
     assigns =
       assigns
-      |> assign(:runtime, BusterClaw.Runtime.Status.snapshot())
-      |> assign(:agent_mode_on?, BusterClaw.AgentMode.on?())
       |> assign(:nav_items, navigation_items())
       |> assign(:tab_labels, Jason.encode!(tab_labels()))
 
@@ -71,19 +69,6 @@ defmodule BusterClawWeb.Layouts do
           aria-label="Open tabs"
           class="flex min-h-9 items-end gap-1 overflow-x-auto border-b border-base-300 bg-base-200/80 px-2 pt-1 backdrop-blur"
         >
-        </div>
-
-        <div class="border-b border-base-300 bg-base-100/95 px-4 py-2 backdrop-blur sm:px-6 lg:px-8">
-          <div class="mx-auto flex max-w-7xl items-center justify-end gap-2 text-xs">
-            <span
-              :if={@agent_mode_on?}
-              class="inline-flex items-center gap-2 rounded-full border border-success/40 bg-success/10 px-3 py-1 font-semibold text-success"
-            >
-              <span class="size-2 rounded-full bg-success" /> Agent mode on
-            </span>
-            <.runtime_chip label="PubSub" value={@runtime.pubsub} ok?={true} />
-            <.runtime_chip label="Endpoint" value={@runtime.endpoint} ok?={true} />
-          </div>
         </div>
       </header>
 
@@ -126,31 +111,12 @@ defmodule BusterClawWeb.Layouts do
     """
   end
 
-  attr :label, :string, required: true
-  attr :value, :string, required: true
-  attr :ok?, :boolean, required: true
-
-  defp runtime_chip(assigns) do
-    ~H"""
-    <span class="inline-flex items-center gap-2 rounded-full border border-base-300 bg-base-100 px-3 py-1">
-      <span class="font-semibold uppercase tracking-wide text-base-content/60">{@label}</span>
-      <span class="font-mono text-base-content/80">{@value}</span>
-      <span class={[
-        "rounded-full px-2 py-0.5 font-semibold",
-        if(@ok?, do: "bg-success/15 text-success", else: "bg-warning/15 text-warning")
-      ]}>
-        {if @ok?, do: "ready", else: "pending"}
-      </span>
-    </span>
-    """
-  end
-
   defp navigation_items do
     [
       %{label: "Home", path: "/", icon: "hero-home"},
       %{label: "Chat", path: "/chat", icon: "hero-chat-bubble-left-right"},
       %{label: "Documents", path: "/documents", icon: "hero-document-text"},
-      %{label: "Browse", path: "/browse", icon: "hero-globe-alt"},
+      %{label: "Browser", path: "/browse", icon: "hero-globe-alt"},
       %{label: "Terminal", path: "/terminal", icon: "hero-command-line"},
       %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
       %{label: "GWS", path: "/gws", icon: "hero-envelope"},
