@@ -80,10 +80,10 @@ defmodule BusterClawWeb.MCPLive do
 
         <section class="space-y-6">
           <div>
-            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+            <p class="ic-eyebrow">
               Runtime
             </p>
-            <h1 class="text-4xl font-semibold tracking-normal">MCP</h1>
+            <h1 class="font-display text-5xl font-black uppercase tracking-tight">MCP</h1>
             <p class="mt-2 text-base text-base-content/70">
               Configure local MCP commands and track their visible runtime state.
             </p>

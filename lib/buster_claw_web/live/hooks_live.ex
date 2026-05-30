@@ -69,10 +69,10 @@ defmodule BusterClawWeb.HooksLive do
 
         <section class="space-y-6">
           <div>
-            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+            <p class="ic-eyebrow">
               Automation
             </p>
-            <h1 class="text-4xl font-semibold tracking-normal">Hooks</h1>
+            <h1 class="font-display text-5xl font-black uppercase tracking-tight">Hooks</h1>
             <p class="mt-2 max-w-3xl text-base text-base-content/70">
               Run shell or webhook hooks around ingestion, analysis, reports, and errors.
             </p>

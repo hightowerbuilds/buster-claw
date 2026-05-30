@@ -40,6 +40,7 @@ defmodule BusterClawWeb.Router do
     live "/hooks", HooksLive, :index
     live "/delivery", DeliveryLive, :index
     live "/advanced", DeliveryLive, :advanced
+    live "/runtime", RuntimeLive, :index
 
     get "/google/oauth/callback", GoogleOAuthController, :callback
   end

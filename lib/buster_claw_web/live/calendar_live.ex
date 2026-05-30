@@ -214,10 +214,10 @@ defmodule BusterClawWeb.CalendarLive do
       <section class="space-y-6">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+            <p class="ic-eyebrow">
               Planning
             </p>
-            <h1 class="text-4xl font-semibold tracking-normal">Calendar</h1>
+            <h1 class="font-display text-5xl font-black uppercase tracking-tight">Calendar</h1>
           </div>
         </div>
 

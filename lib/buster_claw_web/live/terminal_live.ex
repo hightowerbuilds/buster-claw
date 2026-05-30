@@ -29,10 +29,10 @@ defmodule BusterClawWeb.TerminalLive do
           phx-hook="TerminalView"
           phx-update="ignore"
           class={[
-            "overflow-hidden bg-[#1e1e2e]",
+            "overflow-hidden bg-base-100",
             if(@embedded?,
               do: "h-full",
-              else: "h-[70vh] rounded-lg border border-base-300 p-2 shadow-sm"
+              else: "ic-panel h-[70vh] p-2"
             )
           ]}
         >

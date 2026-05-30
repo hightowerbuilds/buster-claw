@@ -67,10 +67,10 @@ defmodule BusterClawWeb.SchedulerLive do
     <Layouts.app flash={@flash}>
       <section class="space-y-6">
         <div>
-          <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+          <p class="ic-eyebrow">
             Automation
           </p>
-          <h1 class="text-4xl font-semibold tracking-normal">Scheduler</h1>
+          <h1 class="font-display text-5xl font-black uppercase tracking-tight">Scheduler</h1>
           <p class="mt-2 max-w-3xl text-base text-base-content/70">
             Configure recurring automation jobs and trigger a manual run.
           </p>

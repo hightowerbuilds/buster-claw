@@ -161,7 +161,7 @@ const Hooks = {
     },
     newTabHtml() {
       return `<button type="button" data-newtab="1" title="New browser tab" aria-label="New browser tab" ` +
-        `class="grid size-7 shrink-0 place-items-center self-center rounded text-base-content/60 hover:bg-base-200 hover:text-base-content">` +
+        `class="grid size-7 shrink-0 place-items-center self-center rounded-sm text-base-content/60 hover:bg-base-content/10 hover:text-primary">` +
         `<span class="text-lg leading-none">+</span></button>`
     },
     tabHtml(tab, isActive) {
@@ -419,11 +419,26 @@ const Hooks = {
       const {invoke} = tauri.core
       const {listen} = tauri.event
 
+      // Pull the live Industrial Claw theme tokens so the terminal matches the
+      // app surface in both dark and light modes.
+      const css = getComputedStyle(document.documentElement)
+      const token = (name, fallback) => (css.getPropertyValue(name).trim() || fallback)
+      const bg = token("--color-base-100", "#121212")
+      const fg = token("--color-base-content", "#fafafa")
+      const accent = token("--color-primary", "#ff4d1c")
+
       const term = new XTerm({
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontFamily: "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
         fontSize: 13,
         cursorBlink: true,
-        theme: {background: "#1e1e2e"},
+        theme: {
+          background: bg,
+          foreground: fg,
+          cursor: accent,
+          cursorAccent: bg,
+          selectionBackground: accent,
+          selectionForeground: bg,
+        },
       })
       const fit = new FitAddon()
       term.loadAddon(fit)

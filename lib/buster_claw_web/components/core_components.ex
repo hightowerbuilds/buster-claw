@@ -321,12 +321,15 @@ defmodule BusterClawWeb.CoreComponents do
 
   def header(assigns) do
     ~H"""
-    <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
+    <header class={[
+      @actions != [] && "flex items-center justify-between gap-6",
+      "border-b-2 border-base-content/20 pb-4"
+    ]}>
       <div>
-        <h1 class="text-lg font-semibold leading-8">
+        <h1 class="font-display text-2xl font-black uppercase tracking-tight leading-tight">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="text-sm text-base-content/70">
+        <p :if={@subtitle != []} class="ic-eyebrow mt-1">
           {render_slot(@subtitle)}
         </p>
       </div>

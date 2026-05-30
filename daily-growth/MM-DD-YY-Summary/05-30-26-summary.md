@@ -170,20 +170,126 @@
   Terminal opens into it. Contents still evolving; full build deferred to the
   DMG-install milestone. Captured in project memory.
 
+### Tab interactions: context menu, join / separate / reorder
+
+- Right-click a tab for a context menu (`TabStrip` hook). A normal tab shows
+  **Join tabs ▸** → a list of other open tabs; picking one joins them.
+- Drag a tab to **reorder**; **Alt+drop** onto another tab joins them.
+- Joining **consumes** the two source tabs (they live inside the joined tab).
+- A split tab's menu shows **Swap sides** and **Separate tabs** (splits it back
+  into its two component tabs).
+
+### Tab chrome cleanup (headers, status bar, rename)
+
+- Removed page headers from the **Browser** and **Terminal** tabs and pulled
+  them flush with the tab bar (embedded panes are flush against the partition).
+- Removed the SplitLive "Split view" header; moved Swap into the menu.
+- Removed the shell status-bar chips (Agent mode / PubSub / Endpoint).
+- Renamed **Browse → Browser** in the dock, tab labels, and split pane label.
+
+### Terminal in split panes
+
+- `/terminal` is now embeddable in split panes (added to SplitLive's pane map);
+  unique per-instance container id so two terminal panes don't collide. Each
+  pane is its own PTY session.
+
+### Runtime control → Advanced tab
+
+- Extracted the home page's runtime control (mode selector, Models/API-key
+  panel, agent-handoff panel + all events/helpers) into a new
+  `BusterClawWeb.RuntimeLive` at **/runtime**, added as a **Runtime** tab in the
+  Advanced tab row. The home page no longer carries provider/agent controls.
+
+### Recent emails on the home page
+
+- The GWS container now shows **recent emails** (`#home-recent-emails`), fetched
+  live from Gmail for the default connected account (`Gmail.search`, the
+  account's `default_query` or `newer_than:7d`, 5 messages) via an async
+  `:load_recent_emails`. Graceful loading / no-account / error / empty states;
+  re-fetches when an account connects.
+
+### Cybersecurity layer — research & planning (no app code changed)
+
+- Researched the full security posture for a defensive "notify the user of
+  dangerous data/activity" layer, given the app brokers untrusted external
+  agents (MCP), downloads untrusted content → LLM, and sends data outbound. All
+  output is planning docs in `daily-growth/roadmaps/` — nothing built.
+- **⭐ MCP tier-bypass (CRITICAL, verified in source):** the chat agent is
+  sandboxed to `tier == :safe` (`agent_tools.ex:31-50`), but `McpController`
+  applies **no** tier filter — `tools/list` uses full `Commands.list_commands()`
+  (`mcp_controller.ex:56`) and `tools/call` → `Commands.call/2` runs with no
+  check (`commands.ex:55-65`). Any MCP client with the bearer token can call any
+  restricted command (`gmail_send`, shell `hook_*`, `mcp_server_connect`,
+  provider/credential swaps).
+- **Desktop RCE-class path (verified):** `tauri.conf.json` has `"csp": null` +
+  `"withGlobalTauri": true`, and `app.js` drives a real `$SHELL` PTY via
+  `invoke("terminal_open")`. Any JS in the webview (LiveView XSS, or the in-app
+  browser hitting a hostile page) → full shell as the user; invoke handlers
+  aren't origin-scoped.
+- Other gaps: no durable audit log (`agent_mode.record_activity` is ephemeral,
+  off by default, not called by MCP); untrusted content fed verbatim into LLM
+  prompts; delivery/hook outbound targets POST to arbitrary URLs; URLGuard
+  fails open on DNS error + the sidecar `Req.post` path is unguarded.
+- Roadmap docs written (suggested order **0→1→5→2→3→4→6**):
+  - `05-30-26-security-notification-layer-research.md` — master: threat model,
+    controls inventory, 6-phase "Sentinel" design (classify→audit→notify→gate
+    via `Commands.call/3`).
+  - `05-30-26-phase-0-mcp-tier-fix-plan.md` — close the silent-exec hole.
+    **Decided:** Option A+B (scoped MCP token, airtight) + a minimal pending stub.
+  - `05-30-26-phase-1-audit-notify-spine-plan.md` — `Sentinel` on the existing
+    `Workflow.record_event`, `risk:`/`outward:` metadata, alert center + Tauri
+    OS notifications.
+  - `05-30-26-desktop-shell-terminal-hardening-plan.md` — Phase 5 (RCE): CSP,
+    lock down `withGlobalTauri`, origin-scope `terminal_*`, isolate in-app browser.
+  - `05-30-26-phases-2-4-plans.md` — confirmation gating, data-trust/injection
+    hardening, baseline web/crypto hardening.
+- Open Phase-5 question: does the in-app browser share the privileged webview or
+  use a separate one? (Determines config tweak vs. rebuild for isolation.)
+
+### Visual identity: Industrial Claw (shipped this session)
+
+- Replaced the stock Phoenix/daisyUI scaffold look (source of the "prototype
+  feel") with a brutalist, high-contrast, tool-like identity. Balanced
+  transparency; full-app page-by-page scope. Captured in design memory; mockup at
+  `daily-growth/mockups/industrial-claw-preview.html`.
+- **Color** — daisyUI dark+light themes rebuilt in `assets/css/app.css`: dark
+  default (near-black `#121212`/`#0c0c0c`, text `#fafafa`, hazard-orange accent
+  `#ff4d1c`, `--depth/--noise: 0`, 2px borders) + warm-paper light (`#f4f1ea`).
+- **Fonts** — **Archivo** (heavy display), **IBM Plex Sans** (body), **IBM Plex
+  Mono** (data/labels/terminal), all **self-hosted** in `priv/static/fonts/`
+  (no CDN — respects offline/desktop posture), wired via `@font-face` + `@theme`
+  `--font-*`, key weights preloaded in `root.html.heex`.
+- **Transparency** — balanced: glass blur (`.ic-glass`) on tab strip + dock only;
+  panels solid with hard offset shadows. **No grid background** (tried, removed
+  at user request).
+- **Utilities** — `.ic-panel`, `.ic-panel-h`, `.ic-eyebrow`, `.ic-stat-n/-l`,
+  `.ic-dot`, `.ic-glass`, plus `.btn`/`.input`/`.table` daisyUI overrides.
+- **Applied** — shell chrome (tab strip with accent active-bar + mono labels,
+  dock, BC logo, theme toggle in `layouts.ex` + `TabStrip` hook); every page
+  heading (~18 LiveViews) → mono eyebrow + heavy display `<h1>`; flagship pages
+  fully restyled (Home/Status, Chat, Documents, Terminal).
+- **Terminal background now matches the app** — the xterm.js theme reads live
+  `--color-base-100/-content/-primary` CSS tokens at mount (was hardcoded
+  `#1e1e2e`), so it tracks dark/light; font switched to IBM Plex Mono.
+- Status: font files + `app.css`/`app.js`/LiveView changes are working-tree, not
+  yet committed. Remaining: non-flagship page *bodies* still have stock-styled
+  cards under the new headings.
+
 ## Verification
 
 - `mix compile --warnings-as-errors`: clean.
 - New tests across the day: `vault_test`, `url_guard_test`,
   `security_hardening_test`, `browser/reader_test`, `browse_live_test`,
-  `split_live_test`, `terminal_live_test`, plus extended `documents_live_test`,
-  `automation_routes_test`, `status_live_test`.
+  `split_live_test`, `terminal_live_test`, `runtime_live_test`, plus extended
+  `documents_live_test`, `automation_routes_test`, `status_live_test`.
 - `mix ecto.migrate` (dev): secret-encryption backfill applied and verified.
 - Terminal: `cargo build` clean with `portable-pty`; `cargo tauri dev` launches
   the desktop app with the PTY backend (verified running); `/terminal` serves;
   xterm.js bundled into `app.js` and `.xterm` styles in the built CSS.
 - `mix precommit`: final run passed with **300 tests, 0 failures**.
-- Live app verified (tabbed shell, browser tabs, split view, url-carry,
-  swap/unjoin, terminal launch, agent-mode chip) against the dev server + Tauri.
+- Live app verified (tabbed shell, browser tabs, split view, url-carry, join /
+  separate / swap menu, terminal in split, runtime at `/runtime`, recent-emails
+  panel on home) against the dev server + Tauri.
 
 ## Where we left off
 
@@ -194,8 +300,24 @@
   (name + ×), multiple independent browser tabs ("+"), and drag-to-join split
   view (Alt+drop) with swap/unjoin and url-carry. Plain drag reorders tabs.
 - Library surfaces (Library/Sources/Analysis) are grouped under one tab row.
-- An in-app **Terminal** tab (xterm.js + Rust PTY) runs in the desktop app.
+- Tabs support right-click menu (join/separate/swap), drag-reorder, Alt+drop
+  join; joining consumes the source tabs; Browser/Terminal tabs are chrome-free.
+- An in-app **Terminal** tab (xterm.js + Rust PTY) runs in the desktop app and
+  is embeddable in split panes.
+- **Runtime control** now lives at **/runtime** (a Runtime Advanced tab), off
+  the home page; the home GWS panel shows **recent emails** (live Gmail).
 - **Agent mode is on by default** at app launch.
+- The **Industrial Claw** visual identity shipped this session: theme rebuilt,
+  self-hosted Archivo/IBM Plex fonts, `ic-*` utilities, shell chrome + all page
+  headings + flagship page bodies (Home/Chat/Documents/Terminal) restyled, and
+  the terminal now reads live theme tokens. Non-flagship page bodies still have
+  stock cards under the new headings. All uncommitted working-tree changes.
+- A **cybersecurity defense layer** was researched and fully planned (5 roadmap
+  docs in `daily-growth/roadmaps/`, 6 phases, order 0→1→5→2→3→4→6) — **planning
+  only, nothing built**. Two verified critical findings: the MCP endpoint
+  bypasses the command tier system, and the Tauri webview (`csp:null` +
+  `withGlobalTauri` + `terminal_*` PTY) is an RCE-class path. Phase 0 decided:
+  scoped MCP token (A+B) + pending stub.
 - **BusterClawCLI data root** is decided and captured in memory; build deferred
   until the contents settle and we test the `.dmg` install.
 - Open follow-ups:

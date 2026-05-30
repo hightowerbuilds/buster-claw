@@ -49,10 +49,10 @@ defmodule BusterClawWeb.WebhooksLive do
 
         <section class="space-y-6">
           <div>
-            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+            <p class="ic-eyebrow">
               Local Automation
             </p>
-            <h1 class="text-4xl font-semibold tracking-normal">Webhooks</h1>
+            <h1 class="font-display text-5xl font-black uppercase tracking-tight">Webhooks</h1>
             <p class="mt-2 text-base text-base-content/70">
               Local POST endpoints under <code>/hooks/:name</code>
               for ingest, analysis, full pipelines, and custom commands.

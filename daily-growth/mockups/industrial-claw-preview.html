@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Buster Claw · Industrial Claw preview</title>
+<style>
+  /* ---- FONTS (self-hosted set we downloaded to priv/static/fonts) ---- */
+  @font-face{font-family:'Archivo';src:url('../../priv/static/fonts/archivo-700.woff2') format('woff2');font-weight:700;font-display:swap}
+  @font-face{font-family:'Archivo';src:url('../../priv/static/fonts/archivo-800.woff2') format('woff2');font-weight:800;font-display:swap}
+  @font-face{font-family:'Archivo';src:url('../../priv/static/fonts/archivo-900.woff2') format('woff2');font-weight:900;font-display:swap}
+  @font-face{font-family:'IBM Plex Sans';src:url('../../priv/static/fonts/ibm-plex-sans-400.woff2') format('woff2');font-weight:400;font-display:swap}
+  @font-face{font-family:'IBM Plex Sans';src:url('../../priv/static/fonts/ibm-plex-sans-500.woff2') format('woff2');font-weight:500;font-display:swap}
+  @font-face{font-family:'IBM Plex Sans';src:url('../../priv/static/fonts/ibm-plex-sans-600.woff2') format('woff2');font-weight:600;font-display:swap}
+  @font-face{font-family:'IBM Plex Sans';src:url('../../priv/static/fonts/ibm-plex-sans-700.woff2') format('woff2');font-weight:700;font-display:swap}
+  @font-face{font-family:'IBM Plex Mono';src:url('../../priv/static/fonts/ibm-plex-mono-500.woff2') format('woff2');font-weight:500;font-display:swap}
+  @font-face{font-family:'IBM Plex Mono';src:url('../../priv/static/fonts/ibm-plex-mono-600.woff2') format('woff2');font-weight:600;font-display:swap}
+
+  /* ---- INDUSTRIAL CLAW TOKENS ---- */
+  :root[data-theme="dark"]{
+    --base-100:#121212; --base-200:#0c0c0c; --base-300:#1c1c1c;
+    --content:#FAFAFA; --muted:#9a9a9a;
+    --line:#2a2a2a; --line-strong:#3a3a3a;
+    --accent:#FF4D1C; --accent-content:#0a0a0a;
+    --ok:#4ec77a; --warn:#e0a020; --err:#ff4d1c;
+    --panel: rgba(20,20,20,0.55);
+  }
+  :root[data-theme="light"]{
+    --base-100:#F4F1EA; --base-200:#eae6db; --base-300:#fbf9f3;
+    --content:#141414; --muted:#5a564e;
+    --line:#d6d0c2; --line-strong:#141414;
+    --accent:#FF4D1C; --accent-content:#FAFAFA;
+    --ok:#1c7a44; --warn:#9a6a00; --err:#d23a12;
+    --panel: rgba(251,249,243,0.6);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--base-100);color:var(--content);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:15px;line-height:1.55;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:0 18px}
+  .mono{font-family:'IBM Plex Mono',monospace}
+  .display{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.02em;text-transform:uppercase}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .accent{color:var(--accent)}
+
+  /* ---- TAB STRIP ---- */
+  header.tabs{position:sticky;top:0;z-index:9;display:flex;align-items:flex-end;gap:4px;
+    padding:8px 12px 0;border-bottom:2px solid var(--line-strong);
+    background:var(--panel);backdrop-filter:blur(10px)}
+  .tab{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    padding:7px 14px;border:2px solid var(--line);border-bottom:none;background:var(--base-200);color:var(--muted);
+    border-radius:3px 3px 0 0;cursor:pointer}
+  .tab.active{background:var(--base-100);color:var(--content);border-color:var(--line-strong);position:relative}
+  .tab.active::before{content:"";position:absolute;left:-2px;right:-2px;top:-2px;height:3px;background:var(--accent)}
+
+  /* ---- PANELS ---- */
+  .panel{background:var(--base-100);border:2px solid var(--line-strong);border-radius:4px;
+    box-shadow:4px 4px 0 rgba(0,0,0,.25)}
+  .panel.glass{background:var(--panel);backdrop-filter:blur(8px)}
+  .panel-h{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 14px;border-bottom:2px solid var(--line-strong)}
+  .panel-b{padding:16px}
+
+  /* ---- BITS ---- */
+  .badge{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:3px 8px;border:1.5px solid var(--line-strong);border-radius:2px;color:var(--muted)}
+  .badge.live{color:var(--accent);border-color:var(--accent)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;box-shadow:0 0 0 3px color-mix(in oklab,var(--accent) 25%,transparent)}
+  .btn{font-family:'Archivo',sans-serif;font-weight:800;letter-spacing:.04em;text-transform:uppercase;font-size:13px;
+    padding:11px 20px;border:2px solid var(--accent);background:var(--accent);color:var(--accent-content);
+    border-radius:3px;cursor:pointer;box-shadow:3px 3px 0 rgba(0,0,0,.3)}
+  .btn.ghost{background:transparent;color:var(--content);border-color:var(--line-strong);box-shadow:none}
+  .msg{border:2px solid var(--line);border-radius:4px;padding:12px 14px;margin-bottom:12px;background:var(--base-300)}
+  .msg.user{background:transparent}
+  .msg .role{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .field{width:100%;background:var(--base-200);border:2px solid var(--line-strong);border-radius:3px;color:var(--content);
+    font-family:'IBM Plex Sans',sans-serif;font-size:14px;padding:12px 14px;resize:none}
+  .field::placeholder{color:var(--muted)}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .stat .n{font-family:'Archivo',sans-serif;font-weight:900;font-size:38px;line-height:1;letter-spacing:-.03em}
+  .stat .l{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:8px}
+  .bar{height:6px;background:var(--base-300);border:1.5px solid var(--line-strong);border-radius:2px;overflow:hidden;margin-top:14px}
+  .bar>i{display:block;height:100%;background:var(--accent)}
+
+  /* ---- DOCK ---- */
+  footer.dock{position:sticky;bottom:0;z-index:9;display:flex;align-items:center;gap:6px;
+    padding:10px 14px;border-top:2px solid var(--line-strong);background:var(--panel);backdrop-filter:blur(10px);margin-top:28px}
+  .logo{display:grid;place-items:center;width:34px;height:34px;background:var(--accent);color:var(--accent-content);
+    font-family:'Archivo';font-weight:900;font-size:13px;border-radius:3px}
+  .nav{display:flex;gap:4px;flex-wrap:wrap}
+  .nav a{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+    padding:8px 12px;border:2px solid transparent;border-radius:3px;text-decoration:none}
+  .nav a:hover{color:var(--content);border-color:var(--line)}
+  .nav a.on{color:var(--content);border-color:var(--line-strong);background:var(--base-200)}
+  .toggle{margin-left:auto;display:flex;gap:4px}
+  .toggle button{font-family:'IBM Plex Mono';font-size:11px;text-transform:uppercase;padding:7px 11px;
+    border:2px solid var(--line-strong);background:var(--base-200);color:var(--muted);border-radius:3px;cursor:pointer}
+  .toggle button.on{background:var(--accent);color:var(--accent-content);border-color:var(--accent)}
+  h1.page{font-size:46px;margin:26px 0 4px}
+  .swatches{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .sw{width:64px;height:46px;border:2px solid var(--line-strong);border-radius:3px;display:grid;place-items:end;padding:4px}
+  .sw span{font-family:'IBM Plex Mono';font-size:9px;background:rgba(0,0,0,.5);color:#fff;padding:1px 3px;border-radius:2px}
+  section{margin-top:22px}
+</style>
+</head>
+<body>
+  <header class="tabs">
+    <div class="tab active">▌ Chat</div>
+    <div class="tab">Home</div>
+    <div class="tab">Documents</div>
+    <div class="tab">Terminal</div>
+    <div class="tab">Memory</div>
+  </header>
+
+  <div class="wrap">
+    <!-- ============ CHAT PAGE ============ -->
+    <div class="eyebrow" style="margin-top:28px">Session // supervised</div>
+    <h1 class="page display">Chat</h1>
+    <div style="color:var(--muted);max-width:560px">Local chat session with provider routing and slash commands. <span class="accent mono">agent mode: ON</span></div>
+
+    <section class="panel" style="margin-top:18px">
+      <div class="panel-h">
+        <div style="display:flex;align-items:center;gap:10px"><span class="dot"></span><span class="mono" style="font-size:12px;letter-spacing:.1em">LIVE · anthropic / claude-opus</span></div>
+        <span class="badge live">streaming</span>
+      </div>
+      <div class="panel-b">
+        <div class="msg user"><div class="role">user</div>Summarize the three most important security findings from today's research.</div>
+        <div class="msg"><div class="role">assistant</div>The headline finding is the MCP endpoint tier-bypass — any connected agent can reach restricted commands. Second is the desktop webview RCE path. Third is the lack of a durable audit trail…</div>
+        <div class="msg" style="border-style:dashed;border-color:var(--accent)"><div class="role accent">assistant · streaming ▌</div>Drafting the mitigation order now</div>
+      </div>
+      <div class="panel-h" style="border-bottom:none;border-top:2px solid var(--line-strong);gap:12px">
+        <textarea class="field" rows="2" placeholder="Message Buster Claw or type /help"></textarea>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn">Send ▸</button>
+          <button class="btn ghost">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HOME / STATUS PAGE ============ -->
+    <section>
+      <div class="eyebrow">System // overview</div>
+      <h1 class="page display" style="font-size:40px;margin-top:2px">Runtime Status</h1>
+      <div class="grid3" style="margin-top:14px">
+        <div class="panel"><div class="panel-b stat"><div class="n">1,284</div><div class="l">Documents</div><div class="bar"><i style="width:72%"></i></div></div></div>
+        <div class="panel"><div class="panel-b stat"><div class="n accent">7</div><div class="l">Pending analysis</div><div class="bar"><i style="width:30%"></i></div></div></div>
+        <div class="panel glass"><div class="panel-b stat"><div class="n">OK</div><div class="l">Provider · Ollama</div><div class="bar"><i style="width:100%"></i></div></div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span class="mono" style="font-size:12px;letter-spacing:.12em">RECENT ACTIVITY</span><span class="badge">last 24h</span></div>
+      <div class="panel-b mono" style="font-size:13px;line-height:2">
+        <div><span class="accent">●</span> 12:04  ingest.finished &nbsp; <span style="color:var(--muted)">techcrunch.com · 14 docs</span></div>
+        <div><span style="color:var(--ok)">●</span> 11:51  analysis.complete &nbsp; <span style="color:var(--muted)">report #882</span></div>
+        <div><span style="color:var(--warn)">●</span> 11:30  delivery.retry &nbsp; <span style="color:var(--muted)">slack · attempt 2</span></div>
+      </div>
+    </section>
+
+    <!-- ============ PALETTE / TYPE SPECIMEN ============ -->
+    <section class="panel">
+      <div class="panel-h"><span class="mono" style="font-size:12px;letter-spacing:.12em">IDENTITY SPEC</span><span class="badge">Industrial Claw</span></div>
+      <div class="panel-b">
+        <div class="display" style="font-size:30px">ARCHIVO BLACK · DISPLAY</div>
+        <div style="font-size:16px;margin-top:4px">IBM Plex Sans · body copy reads clean and neutral against the heavy headings and hazard accent.</div>
+        <div class="mono" style="margin-top:4px;color:var(--muted)">IBM Plex Mono · 0123456789 // labels, data, terminal</div>
+        <div class="swatches">
+          <div class="sw" style="background:#121212"><span>#121212</span></div>
+          <div class="sw" style="background:#1c1c1c"><span>#1C1C1C</span></div>
+          <div class="sw" style="background:#FF4D1C"><span>#FF4D1C</span></div>
+          <div class="sw" style="background:#F4F1EA"><span>#F4F1EA</span></div>
+          <div class="sw" style="background:#4ec77a"><span>OK</span></div>
+          <div class="sw" style="background:#e0a020"><span>WARN</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="dock">
+    <div class="logo">BC</div>
+    <nav class="nav">
+      <a class="on">Home</a><a>Chat</a><a>Docs</a><a>Browse</a><a>Terminal</a><a>Memory</a><a>Scheduler</a>
+    </nav>
+    <div class="toggle">
+      <button onclick="document.documentElement.dataset.theme='light'">Light</button>
+      <button class="on" onclick="document.documentElement.dataset.theme='dark'">Dark</button>
+    </div>
+  </footer>
+</body>
+</html>

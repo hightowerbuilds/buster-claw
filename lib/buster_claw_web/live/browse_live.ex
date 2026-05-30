@@ -207,7 +207,7 @@ defmodule BusterClawWeb.BrowseLive do
           class="min-h-[60vh] rounded-lg border border-base-300 bg-base-100 p-6 shadow-sm"
         >
           <header class="mb-4 border-b border-base-300 pb-4">
-            <h2 class="text-2xl font-semibold tracking-normal">{@title}</h2>
+            <h2 class="font-display text-2xl font-black uppercase tracking-tight">{@title}</h2>
             <p class="mt-1 break-words font-mono text-xs text-base-content/60">{@current_url}</p>
           </header>
 

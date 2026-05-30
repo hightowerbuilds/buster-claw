@@ -6,7 +6,8 @@ defmodule BusterClawWeb.AdvancedTabs do
     %{key: :hooks, label: "Hooks", path: "/hooks"},
     %{key: :webhooks, label: "Webhooks", path: "/webhooks"},
     %{key: :integrations, label: "Integrations", path: "/integrations"},
-    %{key: :mcp, label: "MCP", path: "/mcp"}
+    %{key: :mcp, label: "MCP", path: "/mcp"},
+    %{key: :runtime, label: "Runtime", path: "/runtime"}
   ]
 
   attr :active, :atom, required: true

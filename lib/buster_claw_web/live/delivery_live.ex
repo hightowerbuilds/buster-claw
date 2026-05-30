@@ -77,10 +77,10 @@ defmodule BusterClawWeb.DeliveryLive do
 
         <section class="space-y-6">
           <div>
-            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+            <p class="ic-eyebrow">
               Automation
             </p>
-            <h1 class="text-4xl font-semibold tracking-normal">Delivery</h1>
+            <h1 class="font-display text-5xl font-black uppercase tracking-tight">Delivery</h1>
             <p class="mt-2 max-w-3xl text-base text-base-content/70">
               Manage delivery endpoints for generated reports and automation notifications.
             </p>

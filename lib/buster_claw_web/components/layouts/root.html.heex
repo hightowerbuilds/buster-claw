@@ -5,6 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
     <.live_title default="Buster Claw" suffix=" · Buster Claw" phx-no-format>{assigns[:page_title]}</.live_title>
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href={~p"/fonts/archivo-900.woff2"}
+      crossorigin="anonymous"
+    />
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href={~p"/fonts/ibm-plex-sans-400.woff2"}
+      crossorigin="anonymous"
+    />
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href={~p"/fonts/ibm-plex-mono-500.woff2"}
+      crossorigin="anonymous"
+    />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>

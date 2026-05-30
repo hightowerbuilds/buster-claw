@@ -49,35 +49,32 @@ defmodule BusterClawWeb.DocumentsLive do
       <section class="space-y-6">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+            <p class="ic-eyebrow">
               Library
             </p>
-            <h1 class="text-4xl font-semibold tracking-normal">Documents</h1>
+            <h1 class="font-display text-5xl font-black uppercase tracking-tight">Documents</h1>
             <p class="mt-2 text-base text-base-content/70">
               Raw markdown artifacts indexed from the local Buster Claw library.
             </p>
           </div>
-          <button
-            class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100"
-            phx-click="index_existing"
-          >
+          <button class="btn btn-primary" phx-click="index_existing">
             Index Existing
           </button>
         </div>
 
         <BusterClawWeb.LibraryTabs.tabs active={:documents} />
 
-        <section class="rounded-lg border border-base-300 bg-base-100 p-5">
+        <section class="ic-panel p-5">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
-              <h2 class="text-sm font-semibold text-base-content/70">Library Root</h2>
+              <h2 class="ic-eyebrow">Library Root</h2>
               <p class="mt-2 break-words font-mono text-sm">{@library_root}</p>
             </div>
             <span class={[
-              "rounded-full px-2 py-1 text-xs font-semibold",
+              "rounded-sm border-2 px-2 py-1 font-mono text-xs uppercase tracking-wide",
               if(@library_exists?,
-                do: "bg-success/15 text-success",
-                else: "bg-warning/15 text-warning"
+                do: "border-success/40 bg-success/15 text-success",
+                else: "border-warning/40 bg-warning/15 text-warning"
               )
             ]}>
               {if @library_exists?, do: "ready", else: "pending"}
@@ -87,7 +84,7 @@ defmodule BusterClawWeb.DocumentsLive do
 
         <div
           id="documents-reader"
-          class="relative min-h-[72vh] overflow-hidden rounded-lg border border-base-300 bg-base-100 shadow-sm"
+          class="ic-panel relative min-h-[72vh] overflow-hidden"
         >
           <aside
             id="documents-sidebar"
@@ -111,28 +108,30 @@ defmodule BusterClawWeb.DocumentsLive do
               />
             </button>
 
-            <div class="flex items-center justify-between gap-3 border-b border-base-300 px-4 py-3">
+            <div class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-4 py-3">
               <div class="min-w-0">
-                <h2 class="text-sm font-semibold">Library Inbox</h2>
-                <p class="text-xs text-base-content/60">{@documents_count} documents</p>
+                <h2 class="ic-eyebrow">Library Inbox</h2>
+                <p class="mt-1 font-mono text-xs text-base-content/60">
+                  {@documents_count} documents
+                </p>
               </div>
-              <span class="rounded-full border border-base-300 bg-base-100 px-2 py-1 text-xs font-semibold text-base-content/70">
+              <span class="rounded-sm border-2 border-base-content/25 px-2 py-1 font-mono text-xs uppercase tracking-wide text-base-content/70">
                 Raw
               </span>
             </div>
 
             <div
               id="documents-list"
-              class="max-h-[calc(72vh-3.75rem)] divide-y divide-base-300 overflow-y-auto"
+              class="max-h-[calc(72vh-3.75rem)] divide-y-2 divide-base-content/10 overflow-y-auto"
             >
               <button
                 :for={document <- @documents}
                 id={"document-list-item-#{document.id}"}
                 type="button"
                 class={[
-                  "block w-full border-l-4 border-transparent px-4 py-4 text-left transition hover:bg-base-100",
+                  "block w-full border-l-4 border-transparent px-4 py-4 text-left transition hover:bg-base-200/60",
                   selected_document?(document, @selected_document) &&
-                    "border-base-content bg-base-100"
+                    "border-l-primary bg-base-200/60"
                 ]}
                 phx-click="open_document"
                 phx-value-id={document.id}
@@ -149,13 +148,16 @@ defmodule BusterClawWeb.DocumentsLive do
                       {document.excerpt || "No preview available."}
                     </p>
                   </div>
-                  <span class="shrink-0 rounded border border-base-300 bg-base-100 px-2 py-1 text-xs">
+                  <span class="shrink-0 rounded-sm border-2 border-base-content/20 px-2 py-1 font-mono text-xs uppercase tracking-wide">
                     {document.status}
                   </span>
                 </div>
               </button>
 
-              <div :if={@documents == []} class="px-4 py-12 text-center text-sm text-base-content/60">
+              <div
+                :if={@documents == []}
+                class="px-4 py-12 text-center font-mono text-xs uppercase tracking-wide text-base-content/60"
+              >
                 No documents indexed yet.
               </div>
             </div>
@@ -166,16 +168,16 @@ defmodule BusterClawWeb.DocumentsLive do
             class="min-w-0 bg-base-100 transition-[padding] duration-200 ease-out lg:pl-[22rem] [[data-documents-sidebar=closed]_&]:lg:pl-0"
           >
             <div :if={@selected_document} class="flex h-full min-h-[72vh] flex-col">
-              <header class="border-b border-base-300 px-5 py-4">
+              <header class="border-b-2 border-base-content/20 px-5 py-4">
                 <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2 text-xs text-base-content/60">
-                      <span class="rounded-full border border-base-300 px-2 py-1 font-semibold">
+                    <div class="flex flex-wrap items-center gap-2 font-mono text-xs uppercase tracking-wide text-base-content/60">
+                      <span class="rounded-sm border-2 border-base-content/25 px-2 py-1">
                         {@selected_document.status}
                       </span>
                       <span>{document_date(@selected_document)}</span>
                     </div>
-                    <h2 class="mt-3 text-2xl font-semibold tracking-normal">
+                    <h2 class="mt-3 font-display text-2xl font-black uppercase tracking-tight">
                       {document_title(@selected_document)}
                     </h2>
                     <p class="mt-2 break-words font-mono text-xs text-base-content/60">
@@ -186,14 +188,14 @@ defmodule BusterClawWeb.DocumentsLive do
                   <div class="flex shrink-0 items-center gap-2">
                     <button
                       type="button"
-                      class="rounded border border-base-300 px-3 py-2 text-sm font-semibold transition hover:bg-base-200"
+                      class="rounded-sm border-2 border-base-content/25 px-3 py-2 font-mono text-xs uppercase tracking-wide transition hover:border-primary hover:text-primary"
                       phx-click="close_document"
                     >
                       Clear
                     </button>
                     <button
                       type="button"
-                      class="rounded border border-error/40 px-3 py-2 text-sm font-semibold text-error transition hover:bg-error/10"
+                      class="rounded-sm border-2 border-error/50 px-3 py-2 font-mono text-xs uppercase tracking-wide text-error transition hover:bg-error/10"
                       phx-click="delete_document"
                       phx-value-id={@selected_document.id}
                     >
@@ -205,14 +207,14 @@ defmodule BusterClawWeb.DocumentsLive do
                 <div class="mt-4 flex flex-wrap gap-2">
                   <span
                     :for={tag <- document_tags(@selected_document)}
-                    class="rounded-full bg-base-200 px-2 py-1 text-xs font-semibold text-base-content/70"
+                    class="rounded-sm border-2 border-base-content/15 bg-base-200 px-2 py-1 font-mono text-xs uppercase tracking-wide text-base-content/70"
                   >
                     {tag}
                   </span>
                   <.link
                     :if={@selected_document.source_url}
                     navigate={~p"/browse?#{%{url: @selected_document.source_url}}"}
-                    class="rounded-full border border-base-300 px-2 py-1 text-xs font-semibold text-base-content/70 transition hover:bg-base-200"
+                    class="rounded-sm border-2 border-base-content/25 px-2 py-1 font-mono text-xs uppercase tracking-wide text-base-content/70 transition hover:border-primary hover:text-primary"
                   >
                     Open Source
                   </.link>
@@ -222,7 +224,7 @@ defmodule BusterClawWeb.DocumentsLive do
               <div class="min-h-0 flex-1 overflow-y-auto p-5">
                 <article
                   id="document-preview"
-                  class="min-h-full whitespace-pre-wrap rounded border border-base-300 bg-base-200/70 p-5 font-mono text-sm leading-6 text-base-content/90"
+                  class="min-h-full whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-200/70 p-5 font-mono text-sm leading-6 text-base-content/90"
                 >
                   {@document_content}
                 </article>
@@ -233,9 +235,16 @@ defmodule BusterClawWeb.DocumentsLive do
               :if={!@selected_document}
               class="grid min-h-[72vh] place-items-center p-8 text-center text-sm text-base-content/60"
             >
-              <div>
-                <h2 class="text-base font-semibold text-base-content">No document selected</h2>
-                <p class="mt-2">Select a document from the sidebar to preview its markdown body.</p>
+              <div class="flex flex-col items-center gap-3">
+                <div class="grid size-12 place-items-center rounded-sm border-2 border-base-content/25 bg-base-200 text-primary">
+                  <.icon name="hero-document-text" class="size-6" />
+                </div>
+                <h2 class="font-display text-base font-black uppercase tracking-tight text-base-content">
+                  No document selected
+                </h2>
+                <p class="mt-1 font-mono text-xs uppercase tracking-wide">
+                  Select a document from the sidebar to preview its markdown body.
+                </p>
               </div>
             </div>
           </section>
