@@ -91,3 +91,7 @@ config :swoosh, :api_client, false
 # Stable loopback API token for the command surface (HTTP API, CLI, MCP).
 # Persisted across dev restarts so shell aliases and MCP configs keep working.
 config :buster_claw, :api_token, "dev-token-loopback-only"
+
+# Scoped MCP token: authenticates as the `:mcp` caller, which is restricted to
+# safe-tier commands. Hand this (not the full token) to external MCP agents.
+config :buster_claw, :mcp_api_token, "dev-mcp-token-safe-tier-only"

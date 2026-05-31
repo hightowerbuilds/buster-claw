@@ -8,6 +8,7 @@ defmodule BusterClawWeb.Router do
     plug :put_root_layout, html: {BusterClawWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug BusterClawWeb.ContentSecurityPolicy
   end
 
   pipeline :api do
@@ -41,6 +42,10 @@ defmodule BusterClawWeb.Router do
     live "/delivery", DeliveryLive, :index
     live "/advanced", DeliveryLive, :advanced
     live "/runtime", RuntimeLive, :index
+    live "/security", SecurityLive, :index
+    live "/settings", SettingsLive, :index
+    live "/workspace", WorkspaceLive, :index
+    live "/setup", SetupLive, :index
 
     get "/google/oauth/callback", GoogleOAuthController, :callback
   end

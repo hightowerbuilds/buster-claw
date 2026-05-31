@@ -21,10 +21,14 @@ defmodule BusterClawWeb.ApiController do
 
   def run(conn, %{"command" => name} = params) do
     args = Map.get(params, "args", %{})
+    caller = Map.get(conn.assigns, :caller, :trusted)
 
-    case Commands.call(name, args) do
+    case Commands.call(name, args, caller: caller) do
       {:ok, value} ->
         json(conn, %{ok: true, result: serialize(value)})
+
+      {:error, :requires_confirmation} ->
+        send_error(conn, 403, "requires_confirmation")
 
       {:error, :unknown_command} ->
         send_error(conn, 404, "unknown_command")

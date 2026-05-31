@@ -102,6 +102,8 @@ defmodule BusterClawWeb.MemoryLive do
           </div>
         </div>
 
+        <BusterClawWeb.AdvancedTabs.tabs active={:memory} />
+
         <p :if={@result} class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm">
           {@result}
         </p>

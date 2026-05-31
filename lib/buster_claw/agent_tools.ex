@@ -34,7 +34,7 @@ defmodule BusterClaw.AgentTools do
         {:error, "tool not available: #{name}"}
 
       true ->
-        case Commands.call(name, args || %{}) do
+        case Commands.call(name, args || %{}, caller: :agent) do
           {:ok, value} ->
             {:ok, format_value(value)}
 
@@ -44,10 +44,7 @@ defmodule BusterClaw.AgentTools do
     end
   end
 
-  defp safe_commands do
-    Commands.list_commands()
-    |> Enum.filter(&(&1.tier == :safe))
-  end
+  defp safe_commands, do: Commands.safe_commands()
 
   defp has_safe_command?(name) do
     Enum.any?(safe_commands(), &(&1.name == name))

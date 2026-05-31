@@ -82,6 +82,53 @@ defmodule BusterClaw.CommandsTest do
     end
   end
 
+  describe "call/3 caller enforcement" do
+    test "trusted caller (the default) may run restricted commands" do
+      assert {:ok, _} =
+               Commands.call(
+                 "source_create",
+                 %{"url" => "https://example.com/feed", "type" => "rss"},
+                 caller: :trusted
+               )
+    end
+
+    test "untrusted callers may run safe-tier commands" do
+      for caller <- [:agent, :mcp] do
+        assert {:ok, _} = Commands.call("runtime_status", %{}, caller: caller)
+        assert {:ok, []} = Commands.call("source_list", %{}, caller: caller)
+      end
+    end
+
+    test "untrusted callers are refused restricted commands and cause no side effect" do
+      assert {:error, :requires_confirmation} =
+               Commands.call(
+                 "source_create",
+                 %{"url" => "https://evil.example.com/feed", "type" => "rss"},
+                 caller: :mcp
+               )
+
+      assert {:ok, []} = Commands.source_list(%{})
+    end
+
+    test "unknown command for an untrusted caller still reports :unknown_command" do
+      assert {:error, :unknown_command} = Commands.call("nope_nope", %{}, caller: :mcp)
+    end
+
+    test "EVERY restricted command in the catalog is refused for the :mcp caller" do
+      for %{name: name, tier: :restricted} <- Commands.list_commands() do
+        assert {:error, :requires_confirmation} = Commands.call(name, %{}, caller: :mcp),
+               "expected restricted command #{name} to be refused for the :mcp caller"
+      end
+    end
+
+    test "safe_commands/0 and command_tier/1 agree with the catalog" do
+      assert Enum.all?(Commands.safe_commands(), &(&1.tier == :safe))
+      assert Commands.command_tier("source_list") == :safe
+      assert Commands.command_tier("source_create") == :restricted
+      assert Commands.command_tier("nope_nope") == nil
+    end
+  end
+
   describe "sources" do
     test "list, create, get, update, delete round trip" do
       assert {:ok, []} = Commands.source_list(%{})

@@ -72,8 +72,8 @@ defmodule BusterClawWeb.Layouts do
         </div>
       </header>
 
-      <main class="min-w-0 flex-1">
-        <div class="mx-auto max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8">
+      <main class="flex min-w-0 flex-1 flex-col">
+        <div class="mx-auto flex w-full max-w-7xl flex-1 flex-col space-y-4 px-4 py-8 sm:px-6 lg:px-8">
           {render_slot(@inner_block)}
         </div>
       </main>
@@ -83,12 +83,6 @@ defmodule BusterClawWeb.Layouts do
         id="app-dock"
         class="sticky bottom-0 z-30 flex items-center gap-2 overflow-x-auto border-t border-base-300 bg-base-100/95 px-3 py-2 backdrop-blur"
       >
-        <a href="/" title="Buster Claw" class="flex shrink-0 items-center">
-          <div class="grid size-8 shrink-0 place-items-center rounded bg-base-content text-xs font-semibold text-base-100">
-            BC
-          </div>
-        </a>
-
         <nav class="flex items-center gap-1" aria-label="Open a tab">
           <.link
             :for={item <- @nav_items}
@@ -115,14 +109,13 @@ defmodule BusterClawWeb.Layouts do
     [
       %{label: "Home", path: "/", icon: "hero-home"},
       %{label: "Chat", path: "/chat", icon: "hero-chat-bubble-left-right"},
-      %{label: "Documents", path: "/documents", icon: "hero-document-text"},
+      %{label: "Workspace", path: "/workspace", icon: "hero-folder"},
       %{label: "Browser", path: "/browse", icon: "hero-globe-alt"},
       %{label: "Terminal", path: "/terminal", icon: "hero-command-line"},
       %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
       %{label: "GWS", path: "/gws", icon: "hero-envelope"},
-      %{label: "Memory", path: "/memory", icon: "hero-circle-stack"},
-      %{label: "Scheduler", path: "/scheduler", icon: "hero-clock"},
-      %{label: "Advanced", path: "/advanced", icon: "hero-adjustments-horizontal"}
+      %{label: "Advanced", path: "/advanced", icon: "hero-adjustments-horizontal"},
+      %{label: "Settings", path: "/settings", icon: "hero-cog-6-tooth"}
     ]
   end
 
@@ -133,13 +126,18 @@ defmodule BusterClawWeb.Layouts do
     base = Map.new(navigation_items(), &{&1.path, &1.label})
 
     Map.merge(base, %{
+      "/documents" => "Library",
       "/sources" => "Sources",
       "/analysis" => "Analysis",
       "/delivery" => "Delivery",
       "/hooks" => "Hooks",
       "/webhooks" => "Webhooks",
       "/integrations" => "Integrations",
-      "/mcp" => "MCP"
+      "/mcp" => "MCP",
+      "/memory" => "Memory",
+      "/scheduler" => "Scheduler",
+      "/security" => "Security",
+      "/workspace" => "Workspace"
     })
   end
 

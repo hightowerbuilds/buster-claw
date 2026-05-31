@@ -98,6 +98,12 @@ defmodule BusterClaw.Ingest do
     })
 
     broadcast(:documents_changed, %{source_id: source.id, saved: count})
+
+    BusterClaw.Sentinel.observe(
+      :untrusted_ingest,
+      "Ingested #{count} documents from #{source.url}",
+      %{source_id: source.id, url: source.url, saved: count, trust: "fetched"}
+    )
   end
 
   defp record_source_result(source, {:error, reason}) do

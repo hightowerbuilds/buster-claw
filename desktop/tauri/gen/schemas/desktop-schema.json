@@ -177,6 +177,66 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the terminal_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-terminal-close",
+          "markdownDescription": "Enables the terminal_close command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the terminal_input command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-terminal-input",
+          "markdownDescription": "Enables the terminal_input command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the terminal_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-terminal-open",
+          "markdownDescription": "Enables the terminal_open command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the terminal_resize command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-terminal-resize",
+          "markdownDescription": "Enables the terminal_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the workspace_relaunch command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-workspace-relaunch",
+          "markdownDescription": "Enables the workspace_relaunch command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the terminal_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-terminal-close",
+          "markdownDescription": "Denies the terminal_close command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the terminal_input command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-terminal-input",
+          "markdownDescription": "Denies the terminal_input command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the terminal_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-terminal-open",
+          "markdownDescription": "Denies the terminal_open command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the terminal_resize command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-terminal-resize",
+          "markdownDescription": "Denies the terminal_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the workspace_relaunch command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-workspace-relaunch",
+          "markdownDescription": "Denies the workspace_relaunch command without any pre-configured scope."
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",

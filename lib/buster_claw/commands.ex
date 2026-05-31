@@ -51,21 +51,106 @@ defmodule BusterClaw.Commands do
   @doc """
   Dispatch a command by string name with the given args. Returns
   `{:error, :unknown_command}` if the name is not in the catalog.
+
+  Accepts an optional `:caller` (`:trusted | :agent | :mcp`, default
+  `:trusted`). Untrusted callers (`:agent`, `:mcp`) may only run `:safe`-tier
+  commands; a `:restricted` command is refused with
+  `{:error, :requires_confirmation}`, recorded via `Sentinel.Pending`, and is
+  NOT executed. Internal callers and the user's own `/api/run` default to
+  `:trusted` and are unaffected.
   """
-  def call(name, args \\ %{}) when is_binary(name) do
+  def call(name, args \\ %{}, opts \\ []) when is_binary(name) do
+    caller = Keyword.get(opts, :caller, :trusted)
+
     result =
-      if has_command?(name) do
-        apply(__MODULE__, String.to_existing_atom(name), [normalize_args(args)])
-      else
-        {:error, :unknown_command}
+      case authorize(name, caller) do
+        :ok ->
+          dispatch(name, args)
+
+        {:error, :requires_confirmation} = refusal ->
+          BusterClaw.Sentinel.Pending.record(name, args, caller)
+          refusal
       end
 
+    audit(name, args, caller, result)
     BusterClaw.AgentMode.record_activity(name, args, result)
     result
   end
 
+  # Feed the Sentinel audit/notify spine. Refused restricted calls are critical
+  # security blocks; otherwise only consequential (mutating/triggering) commands
+  # are recorded — pure reads are skipped to keep the audit log signal-rich.
+  defp audit(name, args, caller, {:error, :requires_confirmation}) do
+    BusterClaw.Sentinel.observe(
+      :security_block,
+      ~s(Refused restricted command "#{name}" for #{caller} caller),
+      %{command: name, args: args, caller: caller, tier: command_tier(name)}
+    )
+
+    :ok
+  end
+
+  defp audit(name, args, caller, result) do
+    if command_type(name) in [:mutate, :trigger] do
+      outcome = if match?({:ok, _}, result), do: "ok", else: "error"
+
+      BusterClaw.Sentinel.observe(
+        :command_invoke,
+        "#{name} (#{outcome})",
+        %{command: name, args: args, caller: caller, tier: command_tier(name), outcome: outcome}
+      )
+    end
+
+    :ok
+  end
+
   @doc "Return the command catalog as a list of maps."
   def list_commands, do: commands_catalog()
+
+  @doc "Return only the `:safe`-tier commands (the ones untrusted callers may run)."
+  def safe_commands, do: Enum.filter(commands_catalog(), &(&1.tier == :safe))
+
+  @doc """
+  The tier (`:safe | :restricted`) of a command by name, or `nil` when the name
+  is not in the catalog.
+  """
+  def command_tier(name) do
+    case Enum.find(commands_catalog(), &(&1.name == name)) do
+      %{tier: tier} -> tier
+      nil -> nil
+    end
+  end
+
+  @doc """
+  The type (`:read | :mutate | :trigger`) of a command by name, or `nil` when
+  the name is not in the catalog.
+  """
+  def command_type(name) do
+    case Enum.find(commands_catalog(), &(&1.name == name)) do
+      %{type: type} -> type
+      nil -> nil
+    end
+  end
+
+  defp dispatch(name, args) do
+    if has_command?(name) do
+      apply(__MODULE__, String.to_existing_atom(name), [normalize_args(args)])
+    else
+      {:error, :unknown_command}
+    end
+  end
+
+  # Untrusted callers (chat agent / MCP) may only run safe-tier commands.
+  # Unknown names fall through to `dispatch/2`, which returns
+  # `{:error, :unknown_command}` — we don't leak "restricted" for those.
+  defp authorize(name, caller) when caller in [:agent, :mcp] do
+    case command_tier(name) do
+      :restricted -> {:error, :requires_confirmation}
+      _ -> :ok
+    end
+  end
+
+  defp authorize(_name, _caller), do: :ok
 
   defp has_command?(name), do: Enum.any?(commands_catalog(), &(&1.name == name))
 

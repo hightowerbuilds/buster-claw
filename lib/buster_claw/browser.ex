@@ -9,10 +9,19 @@ defmodule BusterClaw.Browser do
 
   def fetch(url, opts \\ []) do
     case URLGuard.validate(url) do
-      :ok -> do_fetch(url, opts)
+      :ok -> do_fetch(url, opts) |> observe_fetch(url)
       {:error, reason} -> {:error, {:blocked_url, reason}}
     end
   end
+
+  # A successful fetch pulls untrusted external content in → record it.
+  defp observe_fetch({:ok, _page} = result, url) do
+    BusterClaw.Sentinel.observe(:untrusted_ingest, "Browsed #{url}", %{url: url, trust: "fetched"})
+
+    result
+  end
+
+  defp observe_fetch(other, _url), do: other
 
   defp do_fetch(url, opts) do
     if sidecar_url = sidecar_url(opts) do

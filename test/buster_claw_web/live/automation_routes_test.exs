@@ -54,12 +54,13 @@ defmodule BusterClawWeb.AutomationRoutesTest do
     end
   end
 
-  test "sources and analysis are no longer top-level sidebar entries", %{conn: conn} do
+  test "library surfaces are reached via the library tab row, not the dock", %{conn: conn} do
     {:ok, _view, html} = live(conn, ~p"/")
 
     refute html =~ ~s(href="/sources")
     refute html =~ ~s(href="/analysis")
-    # Documents remains the sidebar entry point into the library surfaces.
-    assert html =~ ~s(href="/documents")
+    # Documents/Library is no longer in the dock; Workspace took its place.
+    refute html =~ ~s(href="/documents")
+    assert html =~ ~s(href="/workspace")
   end
 end

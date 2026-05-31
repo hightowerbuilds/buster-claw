@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-relaunch"
+description = "Enables the workspace_relaunch command without any pre-configured scope."
+commands.allow = ["workspace_relaunch"]
+
+[[permission]]
+identifier = "deny-workspace-relaunch"
+description = "Denies the workspace_relaunch command without any pre-configured scope."
+commands.deny = ["workspace_relaunch"]

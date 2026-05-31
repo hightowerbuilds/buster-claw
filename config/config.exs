@@ -10,6 +10,7 @@ import Config
 config :buster_claw,
   ecto_repos: [BusterClaw.Repo],
   generators: [timestamp_type: :utc_datetime],
+  workspace_root: Path.expand("../..", __DIR__),
   library_root: Path.expand("../../Library", __DIR__),
   scheduler_enabled: true,
   scheduler_tick_ms: 60_000

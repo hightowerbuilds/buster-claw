@@ -16,6 +16,7 @@ defmodule BusterClaw.Application do
         {DNSCluster, query: Application.get_env(:buster_claw, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: BusterClaw.PubSub},
         BusterClaw.AgentMode,
+        BusterClaw.Sentinel.Pending,
         browser_sidecar_child(),
         {Registry, keys: :unique, name: BusterClaw.MCP.Registry},
         BusterClaw.MCP.Supervisor,

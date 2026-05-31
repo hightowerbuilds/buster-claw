@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -53,6 +54,7 @@ pub fn terminal_open(
     state: State<TerminalState>,
     cols: u16,
     rows: u16,
+    cwd: Option<String>,
 ) -> Result<String, String> {
     let pair = native_pty_system()
         .openpty(pty_size(cols, rows))
@@ -65,8 +67,14 @@ pub fn terminal_open(
     // installed via Homebrew, npm-global, or version managers (nvm/fnm/asdf) —
     // including `node`, which many CLIs shell out to — aren't found.
     cmd.arg("-l");
-    if let Some(home) = dirs::home_dir() {
-        cmd.cwd(home);
+    // Open in the Buster Claw workspace folder when the frontend passes one and it
+    // exists; otherwise fall back to the user's home directory.
+    let start_dir = cwd
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .or_else(dirs::home_dir);
+    if let Some(dir) = start_dir {
+        cmd.cwd(dir);
     }
     // GUI-launched processes lack these; real terminal emulators set them, and
     // many TUIs need a UTF-8 locale and truecolor hint to render correctly.

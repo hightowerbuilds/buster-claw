@@ -40,7 +40,9 @@ defmodule BusterClaw.Repo.Migrations.EncryptSecretsAtRest do
       unless Vault.encrypted?(value) do
         repo().query!(
           "UPDATE #{table} SET #{column} = ? WHERE id = ?",
-          [Vault.encrypt!(value), id], log: false)
+          [Vault.encrypt!(value), id],
+          log: false
+        )
       end
     end)
   end

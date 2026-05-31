@@ -1,7 +1,10 @@
 defmodule BusterClawWeb.McpControllerTest do
   use BusterClawWeb.ConnCase
 
+  alias BusterClaw.Commands
+
   @token "test-token-loopback-only"
+  @mcp_token "test-mcp-token-safe-tier-only"
 
   describe "auth" do
     test "rejects unauthenticated", %{conn: conn} do
@@ -21,7 +24,7 @@ defmodule BusterClawWeb.McpControllerTest do
   end
 
   describe "tools/list" do
-    test "returns the full catalog as MCP tools", %{conn: conn} do
+    test "advertises only safe-tier commands, never restricted ones", %{conn: conn} do
       req = %{"jsonrpc" => "2.0", "method" => "tools/list", "id" => 2}
       conn = authed(conn) |> post(~p"/mcp", req)
 
@@ -29,30 +32,37 @@ defmodule BusterClawWeb.McpControllerTest do
                json_response(conn, 200)
 
       assert length(tools) > 0
-      names = Enum.map(tools, & &1["name"])
+      names = MapSet.new(tools, & &1["name"])
 
-      for representative <- ~w(runtime_status source_list provider_active chat_send web_search) do
-        assert representative in names, "expected tool catalog to include #{representative}"
+      # The advertised set is exactly the safe-tier catalog.
+      safe_names = Commands.safe_commands() |> MapSet.new(& &1.name)
+      assert MapSet.equal?(names, safe_names)
+
+      # Representative safe reads are present...
+      for representative <- ~w(runtime_status source_list) do
+        assert representative in names, "expected #{representative} to be advertised"
       end
 
-      first = Enum.find(tools, &(&1["name"] == "source_list"))
-      assert first["description"]
-      assert first["inputSchema"]["type"] == "object"
+      # ...and restricted commands are NOT exposed.
+      for restricted <- ~w(source_create gmail_send delivery_dispatch_all analysis_run_pending) do
+        refute restricted in names, "restricted #{restricted} must not be advertised over MCP"
+      end
     end
 
-    test "tools with required args expose them in inputSchema.required", %{conn: conn} do
+    test "safe tools with required args expose them in inputSchema.required", %{conn: conn} do
       req = %{"jsonrpc" => "2.0", "method" => "tools/list", "id" => 3}
       conn = authed(conn) |> post(~p"/mcp", req)
       %{"result" => %{"tools" => tools}} = json_response(conn, 200)
 
-      tool = Enum.find(tools, &(&1["name"] == "source_create"))
-      assert "url" in tool["inputSchema"]["required"]
-      assert "type" in tool["inputSchema"]["required"]
+      # source_get is safe-tier and requires an :id.
+      tool = Enum.find(tools, &(&1["name"] == "source_get"))
+      assert tool, "expected safe command source_get to be advertised"
+      assert "id" in tool["inputSchema"]["required"]
     end
   end
 
   describe "tools/call" do
-    test "invokes a command and returns text content", %{conn: conn} do
+    test "invokes a safe command and returns text content", %{conn: conn} do
       req = %{
         "jsonrpc" => "2.0",
         "method" => "tools/call",
@@ -60,7 +70,7 @@ defmodule BusterClawWeb.McpControllerTest do
         "params" => %{"name" => "source_list", "arguments" => %{}}
       }
 
-      conn = authed(conn) |> post(~p"/mcp", req)
+      conn = authed_mcp(conn) |> post(~p"/mcp", req)
       assert %{"jsonrpc" => "2.0", "id" => 4, "result" => result} = json_response(conn, 200)
       assert result["isError"] == false
       assert [%{"type" => "text", "text" => text}] = result["content"]
@@ -75,9 +85,31 @@ defmodule BusterClawWeb.McpControllerTest do
         "params" => %{"name" => "source_get", "arguments" => %{"id" => 99_999}}
       }
 
-      conn = authed(conn) |> post(~p"/mcp", req)
+      conn = authed_mcp(conn) |> post(~p"/mcp", req)
       %{"result" => result} = json_response(conn, 200)
       assert result["isError"] == true
+    end
+
+    test "refuses a restricted command for an MCP caller and does NOT execute it", %{conn: conn} do
+      req = %{
+        "jsonrpc" => "2.0",
+        "method" => "tools/call",
+        "id" => 6,
+        "params" => %{
+          "name" => "source_create",
+          "arguments" => %{"url" => "https://evil.example.com/feed", "type" => "rss"}
+        }
+      }
+
+      conn = authed_mcp(conn) |> post(~p"/mcp", req)
+      %{"result" => result} = json_response(conn, 200)
+
+      assert result["isError"] == true
+      assert [%{"text" => text}] = result["content"]
+      assert text =~ "requires human approval"
+
+      # Side-effect check: nothing was created.
+      assert {:ok, []} = Commands.source_list(%{})
     end
   end
 
@@ -109,4 +141,5 @@ defmodule BusterClawWeb.McpControllerTest do
   end
 
   defp authed(conn), do: put_req_header(conn, "authorization", "Bearer #{@token}")
+  defp authed_mcp(conn), do: put_req_header(conn, "authorization", "Bearer #{@mcp_token}")
 end

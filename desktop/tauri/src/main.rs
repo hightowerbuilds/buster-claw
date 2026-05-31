@@ -12,6 +12,7 @@ use rand::Rng;
 use tauri::{Manager, RunEvent};
 
 mod terminal;
+mod workspace;
 
 const APP_DATA_DIR_NAME: &str = "BusterClaw";
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
@@ -28,7 +29,8 @@ fn main() {
             terminal::terminal_open,
             terminal::terminal_input,
             terminal::terminal_resize,
-            terminal::terminal_close
+            terminal::terminal_close,
+            workspace::workspace_relaunch
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -42,7 +44,8 @@ fn main() {
                 let data_dir = resolve_data_dir()?;
                 ensure_data_dirs(&data_dir)?;
                 let secret_key_base = ensure_secret_key_base(&data_dir)?;
-                let library_root = data_dir.join("Library");
+                let workspace_root = workspace::resolve_workspace_root(&data_dir)?;
+                workspace::ensure_workspace_dirs(&workspace_root)?;
                 let database_path = data_dir.join("buster_claw.db");
                 let logs_dir = data_dir.join("logs");
 
@@ -58,7 +61,7 @@ fn main() {
                     .env("PHX_SERVER", "true")
                     .env("PORT", port.to_string())
                     .env("DATABASE_PATH", &database_path)
-                    .env("BUSTER_CLAW_LIBRARY_ROOT", &library_root)
+                    .env("BUSTER_CLAW_WORKSPACE_ROOT", &workspace_root)
                     .env("SECRET_KEY_BASE", &secret_key_base)
                     .env("RELEASE_DISTRIBUTION", "none")
                     .stdout(Stdio::from(stdout_log))
@@ -121,16 +124,17 @@ fn main() {
     });
 }
 
-fn resolve_data_dir() -> Result<PathBuf, String> {
+pub(crate) fn resolve_data_dir() -> Result<PathBuf, String> {
     let base = dirs::data_dir().ok_or_else(|| "could not resolve user data dir".to_string())?;
     Ok(base.join(APP_DATA_DIR_NAME))
 }
 
 fn ensure_data_dirs(data_dir: &Path) -> Result<(), String> {
-    for sub in ["Library/raw", "Library/reports", "logs"] {
-        fs::create_dir_all(data_dir.join(sub))
-            .map_err(|e| format!("failed to create {sub}: {e}"))?;
-    }
+    // The library/sources/analysis/memory tree now lives under the user-chosen
+    // workspace root (see `workspace::ensure_workspace_dirs`); the data dir only
+    // holds app-internal state such as logs, the DB, and the secret key.
+    fs::create_dir_all(data_dir.join("logs"))
+        .map_err(|e| format!("failed to create logs dir: {e}"))?;
     Ok(())
 }
 

@@ -447,7 +447,8 @@ const Hooks = {
       this.term = term
 
       try {
-        this.id = await invoke("terminal_open", {cols: term.cols, rows: term.rows})
+        const cwd = this.el.dataset.cwd || null
+        this.id = await invoke("terminal_open", {cols: term.cols, rows: term.rows, cwd})
       } catch (e) {
         term.write(`\r\n[failed to open terminal: ${e}]\r\n`)
         return
@@ -473,6 +474,24 @@ const Hooks = {
         window.__TAURI__.core.invoke("terminal_close", {id: this.id})
       }
       this.term?.dispose()
+    },
+  },
+
+  // Relaunches the desktop shell to apply a new workspace root. Workspace
+  // browsing/selection is now an in-app server-side file tree, so this hook
+  // only needs the restart bridge. No-op in a plain browser (dev).
+  WorkspacePicker: {
+    mounted() {
+      this.tauri = window.__TAURI__ || null
+
+      this.handleEvent("workspace:relaunch", async () => {
+        if (!this.tauri) return
+        try {
+          await this.tauri.core.invoke("workspace_relaunch")
+        } catch (_e) {
+          // restart() never returns on success; ignore.
+        }
+      })
     },
   }
 }

@@ -68,8 +68,27 @@ defmodule BusterClaw.Delivery do
 
     with {:ok, attempt} <- attempt do
       result = send_payload(destination, payload, opts)
+      observe_send(destination, payload, result)
       finish_attempt(attempt, result)
     end
+  end
+
+  # A delivery leaves the box → record it on the Sentinel audit spine.
+  defp observe_send(_destination, _payload, {:ok, :skipped}), do: :ok
+
+  defp observe_send(destination, payload, result) do
+    outcome = if match?({:ok, _}, result), do: "ok", else: "error"
+
+    BusterClaw.Sentinel.observe(
+      :outbound_send,
+      "Delivered \"#{payload_title(payload)}\" to #{destination.name} (#{outcome})",
+      %{
+        destination: destination.name,
+        type: destination.type,
+        url: destination.url,
+        outcome: outcome
+      }
+    )
   end
 
   defp send_payload(%DeliveryDestination{enabled: false}, _payload, _opts) do

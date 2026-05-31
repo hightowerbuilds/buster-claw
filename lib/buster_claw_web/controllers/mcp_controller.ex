@@ -6,12 +6,16 @@ defmodule BusterClawWeb.McpController do
 
   Supports the methods needed for tool discovery and invocation:
   - `initialize` — handshake, returns server capabilities + info
-  - `tools/list` — returns the catalog from `BusterClaw.Commands.list_commands/0`
-  - `tools/call` — invokes a command via `BusterClaw.Commands.call/2`
+  - `tools/list` — returns ONLY the safe-tier catalog (`Commands.safe_commands/0`)
+  - `tools/call` — invokes a command via `BusterClaw.Commands.call/3` tagged with
+    the authenticated caller; restricted commands are refused, never executed.
   - `ping` — keep-alive
   - `notifications/*` — accepted, no response body
 
-  Auth: Bearer token via `BusterClawWeb.ApiAuth`.
+  Auth: Bearer token via `BusterClawWeb.ApiAuth`, which assigns `:caller`
+  (`:trusted` for the full token, `:mcp` for the scoped MCP token). The caller
+  is the trust boundary — an agent issued only the MCP token cannot reach
+  restricted commands here OR on `/api/run`.
   """
 
   use BusterClawWeb, :controller
@@ -24,7 +28,9 @@ defmodule BusterClawWeb.McpController do
   @server_version "0.1.0"
 
   def handle(conn, params) do
-    case process_request(params) do
+    caller = Map.get(conn.assigns, :caller, :mcp)
+
+    case process_request(params, caller) do
       nil ->
         # notifications expect 202 with no body
         send_resp(conn, 202, "")
@@ -36,7 +42,7 @@ defmodule BusterClawWeb.McpController do
 
   # ---- Method dispatch ----
 
-  defp process_request(%{"jsonrpc" => "2.0", "method" => "initialize", "id" => id}) do
+  defp process_request(%{"jsonrpc" => "2.0", "method" => "initialize", "id" => id}, _caller) do
     %{
       jsonrpc: "2.0",
       id: id,
@@ -48,24 +54,29 @@ defmodule BusterClawWeb.McpController do
     }
   end
 
-  defp process_request(%{"jsonrpc" => "2.0", "method" => "ping", "id" => id}) do
+  defp process_request(%{"jsonrpc" => "2.0", "method" => "ping", "id" => id}, _caller) do
     %{jsonrpc: "2.0", id: id, result: %{}}
   end
 
-  defp process_request(%{"jsonrpc" => "2.0", "method" => "tools/list", "id" => id}) do
-    tools = Commands.list_commands() |> Enum.map(&command_to_tool/1)
+  defp process_request(%{"jsonrpc" => "2.0", "method" => "tools/list", "id" => id}, _caller) do
+    # Only advertise safe-tier commands. Restricted commands (deletes, sends,
+    # credential changes, shell hooks) are never exposed to MCP clients.
+    tools = Commands.safe_commands() |> Enum.map(&command_to_tool/1)
     %{jsonrpc: "2.0", id: id, result: %{tools: tools}}
   end
 
-  defp process_request(%{
-         "jsonrpc" => "2.0",
-         "method" => "tools/call",
-         "id" => id,
-         "params" => %{"name" => name} = params
-       }) do
+  defp process_request(
+         %{
+           "jsonrpc" => "2.0",
+           "method" => "tools/call",
+           "id" => id,
+           "params" => %{"name" => name} = params
+         },
+         caller
+       ) do
     args = Map.get(params, "arguments", %{})
 
-    case Commands.call(name, args) do
+    case Commands.call(name, args, caller: caller) do
       {:ok, value} ->
         text = format_value(value)
 
@@ -75,6 +86,23 @@ defmodule BusterClawWeb.McpController do
           result: %{
             content: [%{type: "text", text: text}],
             isError: false
+          }
+        }
+
+      {:error, :requires_confirmation} ->
+        %{
+          jsonrpc: "2.0",
+          id: id,
+          result: %{
+            content: [
+              %{
+                type: "text",
+                text:
+                  "This command is restricted and requires human approval in the " <>
+                    "Buster Claw app. It was not executed."
+              }
+            ],
+            isError: true
           }
         }
 
@@ -90,11 +118,11 @@ defmodule BusterClawWeb.McpController do
     end
   end
 
-  defp process_request(%{"jsonrpc" => "2.0", "method" => "notifications/" <> _}) do
+  defp process_request(%{"jsonrpc" => "2.0", "method" => "notifications/" <> _}, _caller) do
     nil
   end
 
-  defp process_request(%{"jsonrpc" => "2.0", "method" => method, "id" => id}) do
+  defp process_request(%{"jsonrpc" => "2.0", "method" => method, "id" => id}, _caller) do
     %{
       jsonrpc: "2.0",
       id: id,
@@ -102,7 +130,7 @@ defmodule BusterClawWeb.McpController do
     }
   end
 
-  defp process_request(%{"jsonrpc" => "2.0", "id" => id}) do
+  defp process_request(%{"jsonrpc" => "2.0", "id" => id}, _caller) do
     %{
       jsonrpc: "2.0",
       id: id,
@@ -110,7 +138,7 @@ defmodule BusterClawWeb.McpController do
     }
   end
 
-  defp process_request(_) do
+  defp process_request(_, _caller) do
     %{
       jsonrpc: "2.0",
       id: nil,

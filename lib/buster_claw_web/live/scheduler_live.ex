@@ -76,6 +76,8 @@ defmodule BusterClawWeb.SchedulerLive do
           </p>
         </div>
 
+        <BusterClawWeb.AdvancedTabs.tabs active={:scheduler} />
+
         <p :if={@result} class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm">
           {@result}
         </p>

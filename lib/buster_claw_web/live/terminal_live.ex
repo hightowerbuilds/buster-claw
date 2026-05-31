@@ -9,6 +9,8 @@ defmodule BusterClawWeb.TerminalLive do
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.Library.Artifact
+
   @impl true
   def mount(_params, _session, socket) do
     # Unique id so two terminal panes in one split view don't collide.
@@ -16,6 +18,7 @@ defmodule BusterClawWeb.TerminalLive do
      socket
      |> assign(:page_title, "Terminal")
      |> assign(:embedded?, BusterClawWeb.ChromeHook.embedded?())
+     |> assign(:cwd, Artifact.workspace_root())
      |> assign(:dom_id, "terminal-root-#{System.unique_integer([:positive])}")}
   end
 
@@ -28,6 +31,7 @@ defmodule BusterClawWeb.TerminalLive do
           id={@dom_id}
           phx-hook="TerminalView"
           phx-update="ignore"
+          data-cwd={@cwd}
           class={[
             "overflow-hidden bg-base-100",
             if(@embedded?,

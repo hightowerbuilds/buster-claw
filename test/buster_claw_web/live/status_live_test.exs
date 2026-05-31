@@ -1,10 +1,7 @@
 defmodule BusterClawWeb.StatusLiveTest do
   use BusterClawWeb.ConnCase
 
-  import Phoenix.LiveViewTest
-
   alias BusterClaw.Calendar
-  alias BusterClaw.Google
   alias BusterClaw.LocalTime
 
   test "GET / renders the home shell", %{conn: conn} do
@@ -16,10 +13,9 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(id="tab-strip")
     assert response =~ ~s(phx-hook="TabStrip")
     assert response =~ ~s(id="app-dock")
-    assert response =~ ~s(<details id="home-google-workspace-login")
-    assert response =~ ~s(href="/gws")
-    # Recent emails live in the GWS panel; runtime control moved to /runtime.
-    assert response =~ ~s(id="home-recent-emails")
+    # The Connect-GWS panel was removed from the home page; GWS lives at /gws + /setup.
+    refute response =~ ~s(id="home-google-workspace-login")
+    refute response =~ ~s(id="home-recent-emails")
     refute response =~ "Active key"
     assert response =~ ~s(href="/advanced")
     refute response =~ ~s(href="/webhooks")
@@ -27,29 +23,6 @@ defmodule BusterClawWeb.StatusLiveTest do
     refute response =~ ~s(href="/integrations")
     refute response =~ ~s(href="/mcp")
     refute response =~ ~s(href="/delivery")
-  end
-
-  test "home Google Workspace form saves an account and prepares sign-in", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/")
-
-    html =
-      view
-      |> form("#google-account-form", %{
-        google_account: %{
-          email: "me@example.com",
-          client_id: "client-id",
-          client_secret: "client-secret"
-        }
-      })
-      |> render_submit()
-
-    assert html =~ ~s(id="google-oauth-link")
-    assert html =~ ~s(id="home-google-workspace-login" open)
-    assert html =~ "accounts.google.com"
-    assert [account] = Google.list_accounts()
-    assert account.email == "me@example.com"
-    assert account.client_id == "client-id"
-    assert account.scopes =~ "gmail.readonly"
   end
 
   test "GET / renders today's calendar events", %{conn: conn} do

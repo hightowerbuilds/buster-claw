@@ -8,13 +8,49 @@ defmodule BusterClaw.Library.Artifact do
   @reports_dir "reports"
   @max_excerpt 280
 
+  @workspace_subdirs ~w(sources analysis memory)
+
   def root do
     Application.fetch_env!(:buster_claw, :library_root)
   end
 
+  @doc """
+  The workspace folder that contains the `library/` directory (= `root/0`) plus
+  the `sources/`, `analysis/`, and `memory/` siblings. Defaults to the parent of
+  the library root when `:workspace_root` is unset (e.g. in tests that only
+  override `:library_root`).
+  """
+  def workspace_root do
+    case Application.get_env(:buster_claw, :workspace_root) do
+      nil -> Path.dirname(Path.expand(root()))
+      value -> Path.expand(value)
+    end
+  end
+
+  @doc "Names of the workspace sub-directories scaffolded alongside `library/`."
+  def workspace_subdirs, do: @workspace_subdirs
+
   def ensure_directories do
     File.mkdir_p!(raw_root())
     File.mkdir_p!(reports_root())
+    :ok
+  end
+
+  @doc """
+  Create the full workspace layout: the library tree (`raw/`, `reports/`) plus
+  the `sources/`, `analysis/`, and `memory/` sibling directories. The latter
+  three are organizational scaffolding today (those domains are DB-backed) and
+  are reserved for file exports.
+  """
+  def ensure_workspace_dirs do
+    ensure_directories()
+
+    workspace = workspace_root()
+
+    Enum.each(@workspace_subdirs, fn sub ->
+      File.mkdir_p!(Path.join(workspace, sub))
+    end)
+
     :ok
   end
 

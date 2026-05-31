@@ -57,12 +57,38 @@ defmodule BusterClaw.Hooks do
       |> Kernel.-(start_native)
       |> System.convert_time_unit(:native, :millisecond)
 
+    observe_hook(hook, result)
+
     attrs = run_attrs(hook, payload, started_at, duration_ms, result)
 
     with {:ok, run} <- Workflow.create_hook_run(attrs) do
       {:ok, run}
     end
   end
+
+  # Hooks reach outside the box (webhook URL) or run a shell — both are
+  # consequential and recorded on the Sentinel audit spine.
+  defp observe_hook(%Hook{type: "webhook"} = hook, result) do
+    BusterClaw.Sentinel.observe(
+      :outbound_send,
+      "Webhook hook \"#{hook.name}\" → #{hook.target} (#{hook_outcome(result)})",
+      %{hook: hook.name, event: hook.event, url: hook.target, outcome: hook_outcome(result)}
+    )
+  end
+
+  defp observe_hook(%Hook{type: "shell"} = hook, result) do
+    BusterClaw.Sentinel.observe(
+      :command_invoke,
+      "Shell hook \"#{hook.name}\" executed (#{hook_outcome(result)})",
+      %{hook: hook.name, event: hook.event, target: hook.target, outcome: hook_outcome(result)},
+      severity: :warning
+    )
+  end
+
+  defp observe_hook(_hook, _result), do: :ok
+
+  defp hook_outcome({:ok, %{success: true}}), do: "ok"
+  defp hook_outcome(_), do: "error"
 
   defp execute_shell(hook) do
     {output, status_code} = System.cmd("sh", ["-c", hook.target], stderr_to_stdout: true)

@@ -23,9 +23,18 @@ end
 config :buster_claw, BusterClawWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# The Tauri desktop shell passes the user-chosen workspace folder via
+# BUSTER_CLAW_WORKSPACE_ROOT. The library lives at <workspace>/library, with
+# sources/analysis/memory as siblings. An explicit BUSTER_CLAW_LIBRARY_ROOT
+# still wins for manual/backward-compatible runs; dev and test fall back to the
+# compile-time config defaults untouched.
+workspace_root_env = System.get_env("BUSTER_CLAW_WORKSPACE_ROOT")
+
 config :buster_claw,
+  workspace_root: workspace_root_env || Application.get_env(:buster_claw, :workspace_root),
   library_root:
     System.get_env("BUSTER_CLAW_LIBRARY_ROOT") ||
+      if(workspace_root_env, do: Path.join(workspace_root_env, "library")) ||
       Application.get_env(:buster_claw, :library_root)
 
 browser_sidecar_enabled =

@@ -24,7 +24,7 @@ defmodule BusterClaw.ApiToken do
 
   @app :buster_claw
 
-  @doc "Return the current token, loading it on first access."
+  @doc "Return the full-access API token, loading it on first access."
   def value do
     case Application.get_env(@app, :api_token) do
       nil -> initialize()
@@ -32,9 +32,30 @@ defmodule BusterClaw.ApiToken do
     end
   end
 
+  @doc """
+  Return the scoped MCP token, loading it on first access.
+
+  This is a *distinct* token handed to external MCP agents. It authenticates as
+  the `:mcp` caller, which `BusterClaw.Commands.call/3` restricts to safe-tier
+  commands. Generated and stored next to the full token (`mcp_token`) in
+  production; preset via `config :buster_claw, :mcp_api_token` in dev/test.
+  """
+  def mcp_value do
+    case Application.get_env(@app, :mcp_api_token) do
+      nil -> initialize_mcp()
+      token when is_binary(token) -> token
+    end
+  end
+
   defp initialize do
     token = load_or_generate(token_path())
     Application.put_env(@app, :api_token, token)
+    token
+  end
+
+  defp initialize_mcp do
+    token = load_or_generate(mcp_token_path())
+    Application.put_env(@app, :mcp_api_token, token)
     token
   end
 
@@ -60,6 +81,13 @@ defmodule BusterClaw.ApiToken do
   defp token_path do
     case Application.get_env(@app, :api_token_path) do
       nil -> default_token_path()
+      path when is_binary(path) -> path
+    end
+  end
+
+  defp mcp_token_path do
+    case Application.get_env(@app, :mcp_api_token_path) do
+      nil -> Path.join(Path.dirname(token_path()), "mcp_token")
       path when is_binary(path) -> path
     end
   end

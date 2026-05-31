@@ -28,6 +28,7 @@ config :buster_claw, :search_req_options, plug: {Req.Test, BusterClaw.SearchHTTP
 config :buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHTTP}
 
 config :buster_claw, :api_token, "test-token-loopback-only"
+config :buster_claw, :mcp_api_token, "test-mcp-token-safe-tier-only"
 config :buster_claw, :scheduler_enabled, false
 
 # Skip live DNS resolution in the SSRF guard during tests; literal-IP and
