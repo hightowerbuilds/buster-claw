@@ -21,6 +21,12 @@ defmodule BusterClawWeb.OrchestrationPanel do
         </div>
 
         <div class="flex shrink-0 items-center gap-2">
+          <.link
+            navigate="/orchestration"
+            class="rounded-sm border-2 border-base-content/25 px-3 py-2 font-mono text-xs uppercase tracking-wide text-base-content/70 transition hover:border-primary hover:text-primary"
+          >
+            Manage
+          </.link>
           <button
             :if={not shift_on?(@snapshot)}
             type="button"
