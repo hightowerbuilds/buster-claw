@@ -50,7 +50,7 @@ defmodule BusterClawWeb.Layouts do
   # pane partition; views that want breathing room add their own padding.
   defp bare(assigns) do
     ~H"""
-    <div class="h-full bg-base-100">{render_slot(@inner_block)}</div>
+    <div class="flex h-full min-h-0 flex-col bg-base-100">{render_slot(@inner_block)}</div>
     """
   end
 
@@ -61,7 +61,13 @@ defmodule BusterClawWeb.Layouts do
       |> assign(:tab_labels, Jason.encode!(tab_labels()))
 
     ~H"""
-    <div id="app-shell" class="flex min-h-screen flex-col">
+    <div
+      id="app-shell"
+      class={[
+        "flex flex-col",
+        if(@full_bleed, do: "h-screen overflow-hidden", else: "min-h-screen")
+      ]}
+    >
       <header class="sticky top-0 z-30">
         <%!-- Browser-style tab strip; populated client-side by the TabStrip hook. --%>
         <div
@@ -76,7 +82,10 @@ defmodule BusterClawWeb.Layouts do
         </div>
       </header>
 
-      <main class="flex min-w-0 flex-1 flex-col">
+      <main class={[
+        "flex min-w-0 flex-1 flex-col",
+        @full_bleed && "min-h-0 overflow-hidden"
+      ]}>
         <div class={[
           "flex w-full flex-1 flex-col",
           if(@full_bleed,

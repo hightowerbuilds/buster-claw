@@ -100,12 +100,8 @@ defmodule BusterClawWeb.WorkspaceLive do
 
     ~H"""
     <Layouts.app flash={@flash}>
-      <section id="workspace" class="flex flex-1 flex-col space-y-4">
+      <section id="workspace" class="flex min-h-0 flex-1 flex-col space-y-4">
         <div class="flex flex-wrap items-end justify-between gap-3 border-b-2 border-base-content/20 pb-4">
-          <div>
-            <p class="ic-eyebrow">Files</p>
-            <h1 class="font-display text-3xl font-black uppercase tracking-tight">Workspace</h1>
-          </div>
           <p class="font-mono text-xs text-base-content/55">
             Active workspace: {@workspace_root}
           </p>
@@ -192,11 +188,11 @@ defmodule BusterClawWeb.WorkspaceLive do
               title={if @sidebar_open, do: "Collapse file tree", else: "Expand file tree"}
               aria-label={if @sidebar_open, do: "Collapse file tree", else: "Expand file tree"}
               aria-expanded={@sidebar_open}
-              class="group flex w-5 shrink-0 items-center justify-center border-y-2 border-r-2 border-base-content/15 bg-primary/15 transition hover:bg-primary/30"
+              class="group flex w-2.5 shrink-0 items-center justify-center border-y-2 border-r-2 border-base-content/15 bg-primary/15 transition hover:bg-primary/30"
             >
               <.icon
                 name={if @sidebar_open, do: "hero-chevron-left", else: "hero-chevron-right"}
-                class="size-4 text-primary"
+                class="size-3 text-primary"
               />
             </button>
           </div>
