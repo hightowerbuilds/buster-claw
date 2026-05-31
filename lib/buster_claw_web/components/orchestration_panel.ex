@@ -8,6 +8,7 @@ defmodule BusterClawWeb.OrchestrationPanel do
   use BusterClawWeb, :html
 
   attr :snapshot, :map, required: true
+  attr :manage_link, :boolean, default: true
 
   def panel(assigns) do
     ~H"""
@@ -22,6 +23,7 @@ defmodule BusterClawWeb.OrchestrationPanel do
 
         <div class="flex shrink-0 items-center gap-2">
           <.link
+            :if={@manage_link}
             navigate="/orchestration"
             class="rounded-sm border-2 border-base-content/25 px-3 py-2 font-mono text-xs uppercase tracking-wide text-base-content/70 transition hover:border-primary hover:text-primary"
           >
@@ -85,6 +87,16 @@ defmodule BusterClawWeb.OrchestrationPanel do
             <span class="size-2 shrink-0 rounded-full bg-base-content/30"></span>
             <span class="min-w-0 flex-1 truncate">{task.name}</span>
             <span class="font-mono text-xs text-base-content/50">{due_label(task)}</span>
+            <button
+              type="button"
+              phx-click="delete_task"
+              phx-value-id={task.id}
+              aria-label={"Delete #{task.name}"}
+              title="Delete task"
+              class="grid size-5 shrink-0 place-items-center rounded text-base-content/40 hover:bg-base-300 hover:text-error"
+            >
+              &times;
+            </button>
           </:row>
         </.list_block>
 

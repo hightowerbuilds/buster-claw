@@ -35,6 +35,7 @@ defmodule BusterClaw.Commands do
     Library,
     MCP,
     Memory,
+    Orchestration,
     Providers,
     Scheduler,
     Search,
@@ -584,6 +585,49 @@ defmodule BusterClaw.Commands do
   # -----------------------------------------------------------------------
 
   def runtime_status(_args \\ %{}), do: {:ok, Status.snapshot()}
+
+  # --- Orchestration shift (agent-drivable: the on-shift Claude starts/stops it) ---
+
+  def shift_status(_args \\ %{}) do
+    case Orchestration.active_shift() do
+      nil ->
+        {:ok, %{active: false}}
+
+      shift ->
+        {:ok,
+         %{
+           active: true,
+           shift_id: shift.id,
+           started_at: shift.started_at,
+           ends_at: shift.ends_at,
+           dispatched: shift.dispatched_count,
+           done: shift.done_count,
+           failed: shift.failed_count
+         }}
+    end
+  end
+
+  def shift_start(args \\ %{}) do
+    hours = Map.get(args, "hours", 12)
+    Orchestration.clear_kill_switch()
+
+    case Orchestration.start_shift(hours: hours) do
+      {:ok, shift} ->
+        {:ok, %{shift_id: shift.id, status: shift.status, ends_at: shift.ends_at}}
+
+      {:error, _changeset} = error ->
+        error
+    end
+  end
+
+  def shift_stop(args \\ %{}) do
+    reason = Map.get(args, "reason", "stopped by agent")
+
+    case Orchestration.stop_shift(reason) do
+      {:ok, shift} -> {:ok, %{shift_id: shift.id, status: shift.status}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   # -----------------------------------------------------------------------
   # Helpers
@@ -1312,6 +1356,23 @@ defmodule BusterClaw.Commands do
       },
 
       # Runtime
-      list_entry("runtime_status", "Snapshot of process and system state.")
+      list_entry("runtime_status", "Snapshot of process and system state."),
+
+      # Orchestration shift — agent-drivable so the on-shift model can start/stop it.
+      list_entry("shift_status", "Whether an orchestration shift is active, plus counts."),
+      %{
+        name: "shift_start",
+        type: :trigger,
+        tier: :safe,
+        description: "Start an unattended orchestration shift (default 12h).",
+        args: %{"hours" => %{type: :integer, required: false, default: 12}}
+      },
+      %{
+        name: "shift_stop",
+        type: :trigger,
+        tier: :safe,
+        description: "Stop the active orchestration shift.",
+        args: %{"reason" => %{type: :string, required: false}}
+      }
     ]
 end

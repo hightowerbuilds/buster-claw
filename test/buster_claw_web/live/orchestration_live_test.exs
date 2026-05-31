@@ -12,16 +12,21 @@ defmodule BusterClawWeb.OrchestrationLiveTest do
     assert html =~ "No active shift"
   end
 
-  test "creates a pipeline task via the form", %{conn: conn} do
+  test "creates a pipeline task via the wizard", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/orchestration")
 
-    html =
-      view
-      |> form("#task-form", task: %{name: "Nightly noop", type: "pipeline", command: "noop"})
-      |> render_submit()
+    # Step 1: pick Pipeline (auto-advances to Brief; command defaults to noop).
+    view |> element(~s|button[phx-value-type="pipeline"]|) |> render_click()
+    # Brief -> Schedule (once is the default).
+    view |> element(~s|button[phx-click="wizard_next"]|) |> render_click()
+    # Schedule -> Review.
+    view |> element(~s|button[phx-click="wizard_next"]|) |> render_click()
+    # Name it, then create.
+    view |> form(~s|form[phx-change="wizard_change"]|, %{name: "Nightly noop"}) |> render_change()
+    html = view |> element(~s|button[phx-click="wizard_create"]|) |> render_click()
 
-    assert html =~ "Nightly noop"
     assert html =~ "Task added."
+    assert html =~ "Nightly noop"
 
     assert [%{name: "Nightly noop", type: "pipeline", command: "noop"}] =
              Orchestration.list_tasks()

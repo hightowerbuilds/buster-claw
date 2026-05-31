@@ -48,6 +48,15 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
   end
 
+  def handle_event("delete_task", %{"id" => id}, socket) do
+    case Orchestration.get_task(id) do
+      nil -> :ok
+      task -> Orchestration.delete_task(task)
+    end
+
+    {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
+  end
+
   @impl true
   def handle_params(_params, _uri, socket) do
     {:noreply,

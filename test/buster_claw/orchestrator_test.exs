@@ -50,6 +50,23 @@ defmodule BusterClaw.OrchestratorTest do
     :ok
   end
 
+  # Wait for any dispatched runner Tasks to finish while the sandbox connection
+  # is still live, so a fire-and-forget run can't leak into the next test.
+  defp drain_runners(timeout \\ 3_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+
+    Stream.repeatedly(fn ->
+      Task.Supervisor.children(BusterClaw.Orchestration.RunnerSupervisor)
+    end)
+    |> Enum.reduce_while(:ok, fn children, _acc ->
+      cond do
+        children == [] -> {:halt, :ok}
+        System.monotonic_time(:millisecond) >= deadline -> {:halt, :ok}
+        true -> Process.sleep(25) && {:cont, :ok}
+      end
+    end)
+  end
+
   describe "rate cap" do
     test "skips dispatch when runs in the last hour are at/over the cap" do
       Application.put_env(:buster_claw, :agent_runner_mode, :stub)
@@ -64,6 +81,7 @@ defmodule BusterClaw.OrchestratorTest do
       %{name: name} = start_orchestrator(max_runs_per_hour: 3, max_concurrent: 5)
 
       tick_sync(name)
+      drain_runners()
 
       # The due task should NOT have been claimed/dispatched (still pending),
       # and no new "running" run was created for it.
@@ -82,6 +100,7 @@ defmodule BusterClaw.OrchestratorTest do
       %{name: name} = start_orchestrator(max_runs_per_hour: 100, max_concurrent: 5)
 
       tick_sync(name)
+      drain_runners()
 
       # Task was claimed and marked running (dispatch happened). The stub run may
       # already have completed, so assert the task left the pending pool.
