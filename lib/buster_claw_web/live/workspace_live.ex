@@ -201,7 +201,8 @@ defmodule BusterClawWeb.WorkspaceLive do
         <p class="ic-eyebrow">Preview</p>
         <p class="mt-1 break-all font-mono text-xs text-base-content/70">{@preview.path}</p>
       </div>
-      <div class="min-h-0 flex-1 overflow-auto p-4">
+      <div class="min-h-0 flex-1 overflow-auto p-6">
+        <div :if={@preview.kind == :markdown} class="md-prose">{raw(@preview.html)}</div>
         <pre
           :if={@preview.kind == :text}
           class="whitespace-pre-wrap break-words font-mono text-xs leading-6"
@@ -214,10 +215,16 @@ defmodule BusterClawWeb.WorkspaceLive do
 
   # --- internals ----------------------------------------------------------
 
+  @markdown_exts ~w(.md .markdown)
+
   defp preview_for(path, base) do
     case FileManager.read_file(path, base) do
       {:ok, content} ->
-        %{path: path, kind: :text, content: content}
+        if String.downcase(Path.extname(path)) in @markdown_exts do
+          %{path: path, kind: :markdown, html: BusterClaw.Markdown.to_html(content)}
+        else
+          %{path: path, kind: :text, content: content}
+        end
 
       {:error, :too_large} ->
         %{path: path, kind: :error, message: "File is too large to preview."}
