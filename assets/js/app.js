@@ -407,6 +407,10 @@ const Hooks = {
   // PTY-backed terminal (desktop only). xterm.js renders here; the PTY lives in
   // the Tauri Rust backend, reached over IPC. In a plain browser (no Tauri) we
   // show a notice instead of a terminal.
+  //
+  // When the element carries `data-session-key`, the PTY persists across tab
+  // switches: the LiveView unmount disposes the xterm UI but keeps the shell
+  // alive, and remounting reattaches and replays the server-buffered scrollback.
   TerminalView: {
     async mounted() {
       const tauri = window.__TAURI__
@@ -418,6 +422,9 @@ const Hooks = {
       }
       const {invoke} = tauri.core
       const {listen} = tauri.event
+
+      this.sessionKey = this.el.dataset.sessionKey || null
+      this.storageKey = this.sessionKey ? `bc:term:${this.sessionKey}` : null
 
       // Pull the live Industrial Claw theme tokens so the terminal matches the
       // app surface in both dark and light modes.
@@ -447,30 +454,50 @@ const Hooks = {
       this.term = term
 
       try {
-        const cwd = this.el.dataset.cwd || null
-        this.id = await invoke("terminal_open", {cols: term.cols, rows: term.rows, cwd})
+        // Try to reattach to a persisted session first.
+        const storedId = this.storageKey ? localStorage.getItem(this.storageKey) : null
+        let scrollback = null
+        if (storedId) {
+          scrollback = await invoke("terminal_attach", {id: storedId})
+        }
+
+        if (storedId && scrollback !== null) {
+          this.id = storedId
+          if (scrollback) term.write(scrollback)
+        } else {
+          const cwd = this.el.dataset.cwd || null
+          this.id = await invoke("terminal_open", {cols: term.cols, rows: term.rows, cwd})
+          if (this.storageKey) localStorage.setItem(this.storageKey, this.id)
+        }
       } catch (e) {
         term.write(`\r\n[failed to open terminal: ${e}]\r\n`)
         return
       }
 
       this.unlistenData = await listen(`terminal:data:${this.id}`, (ev) => term.write(ev.payload))
-      this.unlistenExit = await listen(`terminal:exit:${this.id}`, () =>
-        term.write("\r\n[process exited]\r\n"))
-      term.onData((data) => invoke("terminal_input", {id: this.id, data}))
+      this.unlistenExit = await listen(`terminal:exit:${this.id}`, () => {
+        term.write("\r\n[process exited]\r\n")
+        if (this.storageKey) localStorage.removeItem(this.storageKey)
+        this.id = null
+      })
+      term.onData((data) => this.id && invoke("terminal_input", {id: this.id, data}))
 
       this.resizeObserver = new ResizeObserver(() => {
         try { fit.fit() } catch (_e) { return }
         if (this.id) invoke("terminal_resize", {id: this.id, cols: term.cols, rows: term.rows})
       })
       this.resizeObserver.observe(this.el)
+      // Sync the PTY to the current viewport (important after a reattach).
+      if (this.id) invoke("terminal_resize", {id: this.id, cols: term.cols, rows: term.rows})
       term.focus()
     },
     destroyed() {
       this.resizeObserver?.disconnect()
       this.unlistenData?.()
       this.unlistenExit?.()
-      if (this.id && window.__TAURI__) {
+      // Persistent sessions keep their PTY alive across tab switches; only
+      // ephemeral (e.g. split-pane) terminals are closed on unmount.
+      if (this.id && !this.sessionKey && window.__TAURI__) {
         window.__TAURI__.core.invoke("terminal_close", {id: this.id})
       }
       this.term?.dispose()

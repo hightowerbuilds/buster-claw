@@ -27,6 +27,7 @@ fn main() {
         .manage(terminal::TerminalState::default())
         .invoke_handler(tauri::generate_handler![
             terminal::terminal_open,
+            terminal::terminal_attach,
             terminal::terminal_input,
             terminal::terminal_resize,
             terminal::terminal_close,

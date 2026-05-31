@@ -6,6 +6,7 @@ fn main() {
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new().commands(&[
                 "terminal_open",
+                "terminal_attach",
                 "terminal_input",
                 "terminal_resize",
                 "terminal_close",

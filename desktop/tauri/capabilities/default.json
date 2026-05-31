@@ -9,6 +9,7 @@
   "permissions": [
     "core:default",
     "allow-terminal-open",
+    "allow-terminal-attach",
     "allow-terminal-input",
     "allow-terminal-resize",
     "allow-terminal-close",

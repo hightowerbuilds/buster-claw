@@ -26,17 +26,18 @@ defmodule BusterClawWeb.TerminalLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <section class={if @embedded?, do: "h-full", else: "-mt-8"}>
+      <section class={if @embedded?, do: "h-full", else: "-mt-6"}>
         <div
           id={@dom_id}
           phx-hook="TerminalView"
           phx-update="ignore"
           data-cwd={@cwd}
+          data-session-key={unless @embedded?, do: "main"}
           class={[
             "overflow-hidden bg-base-100",
             if(@embedded?,
               do: "h-full",
-              else: "ic-panel h-[70vh] p-2"
+              else: "ic-panel h-[calc(100dvh-8rem)] p-2"
             )
           ]}
         >

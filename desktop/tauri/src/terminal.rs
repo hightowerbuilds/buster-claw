@@ -9,17 +9,22 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+// Keep a bounded tail of recent PTY output per session so the webview can
+// reattach (after a tab switch unmounts/remounts the view) and replay it.
+const MAX_SCROLLBACK: usize = 256 * 1024;
+
 pub struct Session {
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
     writer: Box<dyn Write + Send>,
+    scrollback: Arc<Mutex<Vec<u8>>>,
 }
 
 #[derive(Default)]
@@ -106,6 +111,8 @@ pub fn terminal_open(
     let exit_event = format!("terminal:exit:{id}");
     let reader_app = app.clone();
     let reader_id = id.clone();
+    let scrollback = Arc::new(Mutex::new(Vec::new()));
+    let reader_scrollback = Arc::clone(&scrollback);
 
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
@@ -113,6 +120,14 @@ pub fn terminal_open(
             match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
+                    if let Ok(mut sb) = reader_scrollback.lock() {
+                        sb.extend_from_slice(&buf[..n]);
+                        if sb.len() > MAX_SCROLLBACK {
+                            let overflow = sb.len() - MAX_SCROLLBACK;
+                            sb.drain(0..overflow);
+                        }
+                    }
+
                     let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
                     let _ = reader_app.emit(&data_event, chunk);
                 }
@@ -138,10 +153,32 @@ pub fn terminal_open(
                 master: pair.master,
                 child,
                 writer,
+                scrollback,
             },
         );
 
     Ok(id)
+}
+
+/// Reattach to an existing session: returns its buffered scrollback so the
+/// webview can replay it, or `None` if the session is gone (shell exited).
+#[tauri::command]
+pub fn terminal_attach(state: State<TerminalState>, id: String) -> Result<Option<String>, String> {
+    let sessions = state
+        .sessions
+        .lock()
+        .map_err(|e| format!("terminal state lock poisoned: {e}"))?;
+
+    match sessions.get(&id) {
+        None => Ok(None),
+        Some(session) => {
+            let sb = session
+                .scrollback
+                .lock()
+                .map_err(|e| format!("scrollback lock poisoned: {e}"))?;
+            Ok(Some(String::from_utf8_lossy(&sb).to_string()))
+        }
+    }
 }
 
 #[tauri::command]
