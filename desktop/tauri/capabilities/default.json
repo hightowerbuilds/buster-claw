@@ -3,5 +3,14 @@
   "identifier": "default",
   "description": "Default capability for the Buster Claw desktop shell.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "remote": {
+    "urls": ["http://127.0.0.1:*"]
+  },
+  "permissions": [
+    "core:default",
+    "allow-terminal-open",
+    "allow-terminal-input",
+    "allow-terminal-resize",
+    "allow-terminal-close"
+  ]
 }

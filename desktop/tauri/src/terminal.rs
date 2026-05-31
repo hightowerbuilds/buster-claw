@@ -59,10 +59,22 @@ pub fn terminal_open(
         .map_err(|e| format!("openpty failed: {e}"))?;
 
     let mut cmd = CommandBuilder::new(default_shell());
+    // Run as a login shell (`-l`) so the user's profile (~/.zprofile, ~/.zshrc,
+    // etc.) is sourced — exactly how Terminal.app and iTerm launch shells. A GUI
+    // app launched from Finder inherits a minimal PATH, so without this, tools
+    // installed via Homebrew, npm-global, or version managers (nvm/fnm/asdf) —
+    // including `node`, which many CLIs shell out to — aren't found.
+    cmd.arg("-l");
     if let Some(home) = dirs::home_dir() {
         cmd.cwd(home);
     }
+    // GUI-launched processes lack these; real terminal emulators set them, and
+    // many TUIs need a UTF-8 locale and truecolor hint to render correctly.
     cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    if std::env::var_os("LANG").is_none() {
+        cmd.env("LANG", "en_US.UTF-8");
+    }
 
     let child = pair
         .slave

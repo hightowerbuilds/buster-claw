@@ -21,6 +21,10 @@ mkdir -p desktop/tauri/resources
 cp -R "$REPO_ROOT/_build/prod/rel/buster_claw" desktop/tauri/resources/release
 
 echo "==> Building Tauri bundle"
+# tauri-build's copy_resources overwrites with fs::copy without removing first;
+# the staged erts binaries are mode 0555, so a prior copy left read-only files
+# that fail to overwrite (EACCES). Clear the previous staging dir first.
+rm -rf desktop/tauri/target/release/release
 cd desktop/tauri
 cargo tauri build
 
