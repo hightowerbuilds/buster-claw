@@ -20,7 +20,8 @@ defmodule BusterClawWeb.SplitLive do
     "/scheduler" => {BusterClawWeb.SchedulerLive, "Scheduler"},
     "/sources" => {BusterClawWeb.SourcesLive, "Sources"},
     "/analysis" => {BusterClawWeb.AnalysisLive, "Analysis"},
-    "/terminal" => {BusterClawWeb.TerminalLive, "Terminal"}
+    "/terminal" => {BusterClawWeb.TerminalLive, "Terminal"},
+    "/workspace" => {BusterClawWeb.WorkspaceLive, "Workspace"}
   }
 
   @impl true

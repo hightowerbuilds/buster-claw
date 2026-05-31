@@ -495,8 +495,8 @@ const Hooks = {
       this.resizeObserver?.disconnect()
       this.unlistenData?.()
       this.unlistenExit?.()
-      // Persistent sessions keep their PTY alive across tab switches; only
-      // ephemeral (e.g. split-pane) terminals are closed on unmount.
+      // A session key means the PTY persists across unmounts (tab switches and
+      // joining into a split pane both reattach to it); keyless terminals close.
       if (this.id && !this.sessionKey && window.__TAURI__) {
         window.__TAURI__.core.invoke("terminal_close", {id: this.id})
       }

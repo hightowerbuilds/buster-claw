@@ -32,7 +32,7 @@ defmodule BusterClawWeb.TerminalLive do
           phx-hook="TerminalView"
           phx-update="ignore"
           data-cwd={@cwd}
-          data-session-key={unless @embedded?, do: "main"}
+          data-session-key="main"
           class={[
             "overflow-hidden bg-base-100",
             if(@embedded?,
