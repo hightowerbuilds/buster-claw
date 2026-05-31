@@ -17,11 +17,19 @@ config :buster_claw,
   orchestrator_enabled: true,
   orchestrator_tick_ms: 30_000,
   orchestrator_max_concurrent: 3,
+  # Crash-loop / rate brakes for the unattended shift.
+  orchestrator_max_consecutive_failures: 5,
+  orchestrator_max_runs_per_hour: 120,
+  orchestrator_alerts_enabled: true,
+  orchestrator_morning_report: true,
   # :stub runs dispatched agents as a safe simulation (no API calls); set :real
   # to invoke the actual claude/codex CLIs during a live shift.
   agent_runner_mode: :stub,
   agent_runner_claude: ["claude", "-p"],
-  agent_runner_codex: ["codex", "exec"]
+  agent_runner_codex: ["codex", "exec"],
+  agent_run_timeout_ms: 600_000,
+  agent_heartbeat_interval_ms: 30_000,
+  agent_heartbeat_stale_ms: 120_000
 
 # Configure the endpoint
 config :buster_claw, BusterClawWeb.Endpoint,

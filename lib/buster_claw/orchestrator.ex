@@ -10,10 +10,12 @@ defmodule BusterClaw.Orchestrator do
   """
   use GenServer
 
+  import Ecto.Query
+
   require Logger
 
-  alias BusterClaw.{AgentRunner, Orchestration, Sentinel}
-  alias BusterClaw.Orchestration.Pipeline
+  alias BusterClaw.{AgentRunner, Orchestration, Repo, Sentinel}
+  alias BusterClaw.Orchestration.{AgentRun, Pipeline}
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
@@ -26,9 +28,19 @@ defmodule BusterClaw.Orchestrator do
   def init(opts) do
     state = %{
       interval_ms: Keyword.get(opts, :interval_ms, configured(:orchestrator_tick_ms, 30_000)),
-      max_concurrent: Keyword.get(opts, :max_concurrent, configured(:orchestrator_max_concurrent, 3)),
+      max_concurrent:
+        Keyword.get(opts, :max_concurrent, configured(:orchestrator_max_concurrent, 3)),
+      max_consecutive_failures:
+        Keyword.get(
+          opts,
+          :max_consecutive_failures,
+          configured(:orchestrator_max_consecutive_failures, 5)
+        ),
+      max_runs_per_hour:
+        Keyword.get(opts, :max_runs_per_hour, configured(:orchestrator_max_runs_per_hour, 120)),
       owner: owner_id(),
-      autostart: Keyword.get(opts, :autostart, true)
+      autostart: Keyword.get(opts, :autostart, true),
+      consecutive_failures: 0
     }
 
     if state.autostart, do: send(self(), :tick)
@@ -37,13 +49,56 @@ defmodule BusterClaw.Orchestrator do
 
   @impl true
   def handle_info(:tick, state) do
-    safe_tick(state)
+    state = record_tick(state, safe_tick(state))
     Process.send_after(self(), :tick, state.interval_ms)
     {:noreply, state}
   end
 
+  # Update the crash-loop counter from a tick's pass/fail result. A failure is a
+  # tick whose body raised (rescued in `safe_tick`). On reaching the threshold we
+  # stop the shift, raise a critical Sentinel event, and reset the counter so the
+  # operator can restart cleanly.
+  defp record_tick(state, :ok), do: %{state | consecutive_failures: 0}
+
+  defp record_tick(state, :error) do
+    failures = state.consecutive_failures + 1
+
+    if failures >= state.max_consecutive_failures do
+      trip_crash_loop(failures, state)
+      %{state | consecutive_failures: 0}
+    else
+      %{state | consecutive_failures: failures}
+    end
+  end
+
+  # The brake itself must not crash the ticker (the very thing OTP keeps alive),
+  # so its side-effects are isolated — a failure here just logs.
+  defp trip_crash_loop(failures, state) do
+    Logger.error(
+      "Orchestrator hit #{failures} consecutive tick failures; stopping shift (crash loop)"
+    )
+
+    Orchestration.stop_shift("crash loop")
+
+    Sentinel.observe(
+      :security_block,
+      "Shift stopped: orchestrator crash loop (#{failures} consecutive tick failures)",
+      %{consecutive_failures: failures, threshold: state.max_consecutive_failures}
+    )
+
+    :ok
+  rescue
+    error ->
+      Logger.error(
+        "Orchestrator crash-loop brake failed to stop shift: #{Exception.message(error)}"
+      )
+
+      :error
+  end
+
   defp safe_tick(state) do
     run_tick(state)
+    :ok
   rescue
     error ->
       Logger.error("Orchestrator tick failed: #{Exception.message(error)}")
@@ -80,6 +135,14 @@ defmodule BusterClaw.Orchestrator do
     Orchestration.ensure_next_runs(now)
     Orchestration.reclaim_expired(now)
 
+    if rate_capped?(state, now) do
+      :rate_capped
+    else
+      dispatch_within_capacity(shift, state, now)
+    end
+  end
+
+  defp dispatch_within_capacity(shift, state, now) do
     capacity = state.max_concurrent - length(Orchestration.list_active_runs())
 
     if capacity > 0 do
@@ -94,6 +157,36 @@ defmodule BusterClaw.Orchestrator do
         end
       end)
     end
+  end
+
+  # Hourly throughput brake: count agent_runs started in the trailing hour. When
+  # at/over the cap we skip dispatch for this tick (a transient brake, not a
+  # shift stop) and surface a notice so the operator can see the throttle.
+  defp rate_capped?(state, now) do
+    started = runs_in_last_hour(now)
+
+    if started >= state.max_runs_per_hour do
+      Sentinel.observe(
+        :command_invoke,
+        "Orchestrator dispatch rate-capped: #{started} runs in the last hour (cap #{state.max_runs_per_hour})",
+        %{runs_last_hour: started, cap: state.max_runs_per_hour},
+        severity: :warning
+      )
+
+      true
+    else
+      false
+    end
+  end
+
+  defp runs_in_last_hour(now) do
+    one_hour_ago = DateTime.add(now, -3600, :second)
+
+    Repo.aggregate(
+      from(r in AgentRun, where: r.started_at >= ^one_hour_ago),
+      :count,
+      :id
+    )
   end
 
   defp dispatch(task, shift, state) do

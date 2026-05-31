@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Buster Claw LaunchAgent (template).
+
+  This is the outermost watchdog in the uptime stack: launchd relaunches the
+  whole `.app` if it crashes, is force-quit, or the machine reboots — keeping an
+  unattended 12-hour shift alive. The Tauri/Rust layer respawns the Phoenix
+  release on BEAM exit; this layer guards against the app process itself dying.
+
+  `__APP_PATH__` is a placeholder rendered by scripts/install_launchd.sh
+  (defaults to "/Applications/Buster Claw.app"). We launch via `open -a` so the
+  app starts as a normal GUI app in the user's Aqua session.
+
+  RunAtLoad  — start as soon as the agent is loaded (and at login).
+  KeepAlive  — relaunch whenever the app exits, for any reason.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hightowerbuilds.busterclaw</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>-a</string>
+        <string>__APP_PATH__</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Throttle relaunch attempts so a crash-on-launch can't busy-loop. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/com.hightowerbuilds.busterclaw.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/com.hightowerbuilds.busterclaw.err.log</string>
+</dict>
+</plist>

@@ -4,6 +4,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -18,10 +19,241 @@ const APP_DATA_DIR_NAME: &str = "BusterClaw";
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
+// Respawn guardrails for the bundled Phoenix release. If the BEAM exits while
+// the app is still running, the monitor restarts it with exponential backoff,
+// but gives up (and shows error.html) after too many failures in a short window
+// to avoid a hot crash-loop.
+const RESPAWN_BACKOFF_BASE: Duration = Duration::from_secs(1);
+const RESPAWN_BACKOFF_MAX: Duration = Duration::from_secs(30);
+const RESPAWN_MAX_RESTARTS: u32 = 5;
+const RESPAWN_RESTART_WINDOW: Duration = Duration::from_secs(5 * 60);
+
+/// Everything the release monitor needs to (re)spawn the Phoenix release and
+/// transition the webview. Built once in `setup()` and shared with the monitor
+/// thread so a respawn re-runs the exact same launch + health-poll + navigate
+/// logic as the initial boot.
+struct ReleaseLauncher {
+    handle: tauri::AppHandle,
+    release_child: Arc<Mutex<Option<Child>>>,
+    shutting_down: Arc<AtomicBool>,
+    release_bin: PathBuf,
+    logs_dir: PathBuf,
+    database_path: PathBuf,
+    workspace_root: PathBuf,
+    secret_key_base: String,
+    port: u16,
+    phoenix_url: String,
+}
+
+impl ReleaseLauncher {
+    /// Spawn the Phoenix release and store the child handle. Returns an error
+    /// without touching the stored child if the spawn itself fails.
+    fn spawn_release(&self) -> Result<(), String> {
+        let stdout_log = open_log(&self.logs_dir, "release.stdout.log")?;
+        let stderr_log = open_log(&self.logs_dir, "release.stderr.log")?;
+
+        let child = Command::new(&self.release_bin)
+            .arg("start")
+            .env("PHX_SERVER", "true")
+            .env("PORT", self.port.to_string())
+            .env("DATABASE_PATH", &self.database_path)
+            .env("BUSTER_CLAW_WORKSPACE_ROOT", &self.workspace_root)
+            .env("SECRET_KEY_BASE", &self.secret_key_base)
+            .env("RELEASE_DISTRIBUTION", "none")
+            .stdout(Stdio::from(stdout_log))
+            .stderr(Stdio::from(stderr_log))
+            .spawn()
+            .map_err(|e| format!("failed to spawn Phoenix release: {e}"))?;
+
+        *self
+            .release_child
+            .lock()
+            .map_err(|e| format!("release child mutex poisoned: {e}"))? = Some(child);
+        Ok(())
+    }
+
+    /// Health-poll the release and point the webview at it (or error.html). Run
+    /// on the provided tokio runtime so it can reuse the current-thread reactor.
+    fn await_health_and_navigate(&self, runtime: &tokio::runtime::Runtime) {
+        let health_url = format!("{}/_health", self.phoenix_url);
+        let handle = self.handle.clone();
+        let phoenix_url = self.phoenix_url.clone();
+
+        runtime.block_on(async move {
+            let healthy = wait_for_health(&health_url).await;
+            let Some(window) = handle.get_webview_window("main") else {
+                eprintln!("[buster-claw] main window missing during startup transition");
+                return;
+            };
+
+            let target = if healthy {
+                phoenix_url.clone()
+            } else {
+                "error.html".to_string()
+            };
+
+            if let Err(e) = window.eval(&format!(
+                "window.location.replace({})",
+                js_string_literal(&target)
+            )) {
+                eprintln!("[buster-claw] failed to navigate webview: {e}");
+            }
+
+            if let Err(e) = window.show() {
+                eprintln!("[buster-claw] failed to show main window: {e}");
+            }
+            let _ = window.set_focus();
+        });
+    }
+
+    /// Point the webview at error.html (used when we give up respawning).
+    fn navigate_to_error(&self) {
+        let Some(window) = self.handle.get_webview_window("main") else {
+            return;
+        };
+        if let Err(e) = window.eval(&format!(
+            "window.location.replace({})",
+            js_string_literal("error.html")
+        )) {
+            eprintln!("[buster-claw] failed to navigate webview to error.html: {e}");
+        }
+    }
+}
+
+/// Background watchdog for the Phoenix release child (release builds only).
+///
+/// Waits on the spawned BEAM process; if it exits while the app is *not* shutting
+/// down, respawns it with exponential backoff. A consecutive-restart guard
+/// (`RESPAWN_MAX_RESTARTS` within `RESPAWN_RESTART_WINDOW`) trips the breaker:
+/// the monitor navigates to error.html and stops trying so a doomed release
+/// doesn't pin the CPU.
+fn run_release_monitor(launcher: ReleaseLauncher) {
+    // Dedicated current-thread runtime for the health polls this monitor drives.
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("[buster-claw] release monitor failed to build runtime: {e}");
+            return;
+        }
+    };
+
+    let mut backoff = RESPAWN_BACKOFF_BASE;
+    let mut restart_count: u32 = 0;
+    let mut window_start = Instant::now();
+
+    loop {
+        // Take ownership of the current child handle so we can wait on it without
+        // holding the mutex (shutdown and respawn both need the lock).
+        let mut child = {
+            let Ok(mut guard) = launcher.release_child.lock() else {
+                return;
+            };
+            match guard.take() {
+                Some(c) => c,
+                None => {
+                    // No child to watch (already shut down, or never spawned).
+                    if launcher.shutting_down.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    // Nothing tracked yet; brief pause then re-check.
+                    drop(guard);
+                    std::thread::sleep(Duration::from_millis(250));
+                    continue;
+                }
+            }
+        };
+
+        // Poll for child exit while we still own it. We don't hold the mutex,
+        // so the Exit handler can't reap it; that's fine — once we detect an
+        // intentional shutdown we drop our handle and let shutdown_release run.
+        loop {
+            if launcher.shutting_down.load(Ordering::SeqCst) {
+                // Intentional quit: hand the child back so shutdown_release can
+                // SIGTERM it, then exit the monitor.
+                if let Ok(mut guard) = launcher.release_child.lock() {
+                    if guard.is_none() {
+                        *guard = Some(child);
+                    }
+                }
+                return;
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    eprintln!("[buster-claw] Phoenix release exited unexpectedly: {status}");
+                    break;
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(500)),
+                Err(e) => {
+                    eprintln!("[buster-claw] error waiting on release child: {e}");
+                    break;
+                }
+            }
+        }
+
+        // Re-check the shutdown flag before respawning (it may have been set
+        // while we were detecting the exit).
+        if launcher.shutting_down.load(Ordering::SeqCst) {
+            return;
+        }
+
+        // Consecutive-restart guard: reset the counter if the last failure was
+        // long enough ago, otherwise trip the breaker.
+        if window_start.elapsed() > RESPAWN_RESTART_WINDOW {
+            restart_count = 0;
+            window_start = Instant::now();
+            backoff = RESPAWN_BACKOFF_BASE;
+        }
+        restart_count += 1;
+        if restart_count > RESPAWN_MAX_RESTARTS {
+            eprintln!(
+                "[buster-claw] Phoenix release crash-looped ({} restarts in {:?}); giving up",
+                restart_count - 1,
+                RESPAWN_RESTART_WINDOW
+            );
+            launcher.navigate_to_error();
+            return;
+        }
+
+        eprintln!(
+            "[buster-claw] respawning Phoenix release in {:?} (attempt {restart_count}/{RESPAWN_MAX_RESTARTS})",
+            backoff
+        );
+        std::thread::sleep(backoff);
+        backoff = (backoff * 2).min(RESPAWN_BACKOFF_MAX);
+
+        if launcher.shutting_down.load(Ordering::SeqCst) {
+            return;
+        }
+
+        match launcher.spawn_release() {
+            Ok(()) => launcher.await_health_and_navigate(&runtime),
+            Err(e) => {
+                eprintln!("[buster-claw] failed to respawn Phoenix release: {e}");
+                // Loop again; backoff already advanced and the guard will trip
+                // if this keeps failing.
+            }
+        }
+    }
+}
+
 fn main() {
     let release_child: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
     let release_child_for_setup = Arc::clone(&release_child);
     let release_child_for_run = Arc::clone(&release_child);
+
+    // Set in the Exit handler so the release monitor doesn't fight an
+    // intentional quit by respawning a child we just SIGTERMed.
+    let shutting_down = Arc::new(AtomicBool::new(false));
+    let shutting_down_for_setup = Arc::clone(&shutting_down);
+    let shutting_down_for_run = Arc::clone(&shutting_down);
+
+    // Handle to the macOS `caffeinate` no-sleep assertion (release builds only),
+    // killed on exit alongside the release child.
+    let caffeinate_child: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
+    let caffeinate_for_run = Arc::clone(&caffeinate_child);
 
     let app = tauri::Builder::default()
         .manage(terminal::TerminalState::default())
@@ -36,80 +268,117 @@ fn main() {
         .setup(move |app| {
             let handle = app.handle().clone();
 
-            let phoenix_url = if cfg!(debug_assertions) {
+            if cfg!(debug_assertions) {
                 // Dev mode: expect `mix phx.server` running externally on :4000.
                 // Skipping the bundled-release spawn lets LiveView hot-reload Elixir
-                // edits straight into the Tauri webview.
-                "http://127.0.0.1:4000".to_string()
-            } else {
-                let data_dir = resolve_data_dir()?;
-                ensure_data_dirs(&data_dir)?;
-                let secret_key_base = ensure_secret_key_base(&data_dir)?;
-                let workspace_root = workspace::resolve_workspace_root(&data_dir)?;
-                workspace::ensure_workspace_dirs(&workspace_root)?;
-                let database_path = data_dir.join("buster_claw.db");
-                let logs_dir = data_dir.join("logs");
+                // edits straight into the Tauri webview. No release child, no
+                // respawn monitor, and no no-sleep assertion in dev.
+                let phoenix_url = "http://127.0.0.1:4000".to_string();
+                let health_url = format!("{phoenix_url}/_health");
 
-                let port = portpicker::pick_unused_port()
-                    .ok_or_else(|| "no free TCP port available".to_string())?;
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|e| format!("failed to build tokio runtime: {e}"))?;
 
-                let release_bin = resolve_release_binary(app)?;
-                let stdout_log = open_log(&logs_dir, "release.stdout.log")?;
-                let stderr_log = open_log(&logs_dir, "release.stderr.log")?;
+                std::thread::spawn(move || {
+                    runtime.block_on(async move {
+                        let healthy = wait_for_health(&health_url).await;
+                        let Some(window) = handle.get_webview_window("main") else {
+                            eprintln!(
+                                "[buster-claw] main window missing during startup transition"
+                            );
+                            return;
+                        };
 
-                let child = Command::new(&release_bin)
-                    .arg("start")
-                    .env("PHX_SERVER", "true")
-                    .env("PORT", port.to_string())
-                    .env("DATABASE_PATH", &database_path)
-                    .env("BUSTER_CLAW_WORKSPACE_ROOT", &workspace_root)
-                    .env("SECRET_KEY_BASE", &secret_key_base)
-                    .env("RELEASE_DISTRIBUTION", "none")
-                    .stdout(Stdio::from(stdout_log))
-                    .stderr(Stdio::from(stderr_log))
-                    .spawn()
-                    .map_err(|e| format!("failed to spawn Phoenix release: {e}"))?;
+                        let target = if healthy {
+                            phoenix_url.clone()
+                        } else {
+                            "error.html".to_string()
+                        };
 
-                *release_child_for_setup
-                    .lock()
-                    .map_err(|e| format!("release child mutex poisoned: {e}"))? = Some(child);
+                        if let Err(e) = window.eval(&format!(
+                            "window.location.replace({})",
+                            js_string_literal(&target)
+                        )) {
+                            eprintln!("[buster-claw] failed to navigate webview: {e}");
+                        }
 
-                format!("http://127.0.0.1:{port}")
+                        if let Err(e) = window.show() {
+                            eprintln!("[buster-claw] failed to show main window: {e}");
+                        }
+                        let _ = window.set_focus();
+                    });
+                });
+
+                return Ok(());
+            }
+
+            // --- Release mode: bundled BEAM, respawn monitor, no-sleep ---
+            let data_dir = resolve_data_dir()?;
+            ensure_data_dirs(&data_dir)?;
+            let secret_key_base = ensure_secret_key_base(&data_dir)?;
+            let workspace_root = workspace::resolve_workspace_root(&data_dir)?;
+            workspace::ensure_workspace_dirs(&workspace_root)?;
+            let database_path = data_dir.join("buster_claw.db");
+            let logs_dir = data_dir.join("logs");
+
+            let port = portpicker::pick_unused_port()
+                .ok_or_else(|| "no free TCP port available".to_string())?;
+
+            let release_bin = resolve_release_binary(app)?;
+
+            // Prevent macOS from sleeping while the app is running so an
+            // unattended shift survives the night. `caffeinate -dimsu` asserts
+            // display/idle/disk/system sleep prevention for as long as it lives;
+            // we kill it on exit. NOTE: this is app-lifetime scoped for now;
+            // scoping the assertion to an active shift is a future refinement.
+            match Command::new("caffeinate")
+                .arg("-dimsu")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+            {
+                Ok(child) => {
+                    if let Ok(mut guard) = caffeinate_child.lock() {
+                        *guard = Some(child);
+                    }
+                }
+                Err(e) => eprintln!("[buster-claw] failed to start caffeinate (no-sleep): {e}"),
+            }
+
+            let launcher = ReleaseLauncher {
+                handle: handle.clone(),
+                release_child: Arc::clone(&release_child_for_setup),
+                shutting_down: Arc::clone(&shutting_down_for_setup),
+                release_bin,
+                logs_dir,
+                database_path,
+                workspace_root,
+                secret_key_base,
+                port,
+                phoenix_url: format!("http://127.0.0.1:{port}"),
             };
 
-            let health_url = format!("{phoenix_url}/_health");
-
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| format!("failed to build tokio runtime: {e}"))?;
-
+            // Initial boot: spawn the release, then transition the webview once
+            // healthy. Done on a background thread so setup() returns promptly.
+            launcher.spawn_release()?;
             std::thread::spawn(move || {
-                runtime.block_on(async move {
-                    let healthy = wait_for_health(&health_url).await;
-                    let Some(window) = handle.get_webview_window("main") else {
-                        eprintln!("[buster-claw] main window missing during startup transition");
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        eprintln!("[buster-claw] failed to build tokio runtime: {e}");
                         return;
-                    };
-
-                    let target = if healthy {
-                        phoenix_url.clone()
-                    } else {
-                        "error.html".to_string()
-                    };
-
-                    if let Err(e) = window.eval(&format!(
-                        "window.location.replace({})",
-                        js_string_literal(&target)
-                    )) {
-                        eprintln!("[buster-claw] failed to navigate webview: {e}");
                     }
-
-                    if let Err(e) = window.show() {
-                        eprintln!("[buster-claw] failed to show main window: {e}");
-                    }
-                    let _ = window.set_focus();
-                });
+                };
+                launcher.await_health_and_navigate(&runtime);
+                // Hand off to the watchdog: from here it owns the child handle,
+                // respawning on unexpected exit until shutdown or crash-loop.
+                run_release_monitor(launcher);
             });
 
             Ok(())
@@ -119,8 +388,12 @@ fn main() {
 
     app.run(move |handle, event| {
         if matches!(event, RunEvent::Exit) {
+            // Signal the respawn monitor to stand down before we reap the child,
+            // so it doesn't race us by spawning a replacement.
+            shutting_down_for_run.store(true, Ordering::SeqCst);
             terminal::shutdown_all(handle);
             shutdown_release(&release_child_for_run);
+            shutdown_caffeinate(&caffeinate_for_run);
         }
     });
 }
@@ -223,6 +496,17 @@ fn shutdown_release(child: &Arc<Mutex<Option<Child>>>) {
             Err(_) => break,
         }
     }
+    let _ = process.kill();
+    let _ = process.wait();
+}
+
+fn shutdown_caffeinate(child: &Arc<Mutex<Option<Child>>>) {
+    let Ok(mut guard) = child.lock() else { return };
+    let Some(mut process) = guard.take() else {
+        return;
+    };
+    // caffeinate releases its sleep assertions as soon as it dies, so a plain
+    // kill is sufficient here.
     let _ = process.kill();
     let _ = process.wait();
 }

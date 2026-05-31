@@ -22,7 +22,9 @@ defmodule BusterClawWeb.OrchestrationLiveTest do
 
     assert html =~ "Nightly noop"
     assert html =~ "Task added."
-    assert [%{name: "Nightly noop", type: "pipeline", command: "noop"}] = Orchestration.list_tasks()
+
+    assert [%{name: "Nightly noop", type: "pipeline", command: "noop"}] =
+             Orchestration.list_tasks()
   end
 
   test "run_now queues a task immediately", %{conn: conn} do

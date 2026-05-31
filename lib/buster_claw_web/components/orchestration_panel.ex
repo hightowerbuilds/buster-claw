@@ -47,7 +47,10 @@ defmodule BusterClawWeb.OrchestrationPanel do
       </header>
 
       <div class="flex-1 space-y-5 overflow-auto p-5">
-        <div :if={not shift_on?(@snapshot)} class="rounded border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60">
+        <div
+          :if={not shift_on?(@snapshot)}
+          class="rounded border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60"
+        >
           No active shift. Start a 12-hour shift to begin dispatching scheduled work.
         </div>
 
@@ -59,6 +62,13 @@ defmodule BusterClawWeb.OrchestrationPanel do
             <span class="font-mono text-xs text-base-content/55">
               {@snapshot.shift.dispatched_count} dispatched · {@snapshot.shift.done_count} done · {@snapshot.shift.failed_count} failed
             </span>
+          </div>
+
+          <% v = vitals(@snapshot) %>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.7rem] uppercase tracking-wide text-base-content/45">
+            <span>concurrency {v.running}/{v.max_concurrent}</span>
+            <span>runs this hour {v.runs_last_hour}/{v.max_runs_per_hour}</span>
+            <span>{v.done_today} done · {v.failed_today} failed</span>
           </div>
         </div>
 
@@ -81,7 +91,9 @@ defmodule BusterClawWeb.OrchestrationPanel do
         <.list_block title="Recent runs" items={@snapshot.recent} empty="No runs yet.">
           <:row :let={run}>
             <span class={["size-2 shrink-0 rounded-full", run_dot(run.status)]}></span>
-            <span class="min-w-0 flex-1 truncate font-mono text-xs">{run.engine} · run ##{run.id}</span>
+            <span class="min-w-0 flex-1 truncate font-mono text-xs">
+              {run.engine} · run ##{run.id}
+            </span>
             <span class="font-mono text-xs text-base-content/50">{run.status}</span>
           </:row>
         </.list_block>
@@ -110,6 +122,18 @@ defmodule BusterClawWeb.OrchestrationPanel do
   end
 
   defp shift_on?(%{shift: shift}), do: shift != nil
+
+  @empty_vitals %{
+    running: 0,
+    max_concurrent: 0,
+    runs_last_hour: 0,
+    max_runs_per_hour: 0,
+    done_today: 0,
+    failed_today: 0
+  }
+
+  defp vitals(%{vitals: %{} = v}), do: Map.merge(@empty_vitals, v)
+  defp vitals(_), do: @empty_vitals
 
   defp time_left(%{ends_at: ends_at}) do
     secs = DateTime.diff(ends_at, DateTime.utc_now())

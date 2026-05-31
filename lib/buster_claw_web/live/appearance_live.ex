@@ -77,7 +77,11 @@ defmodule BusterClawWeb.AppearanceLive do
             Color scheme for the in-app terminal — background, text, cursor, and ANSI colors.
             Applies to open terminals immediately.
           </p>
-          <div id="terminal-theme-picker" phx-hook="TermThemePicker" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            id="terminal-theme-picker"
+            phx-hook="TermThemePicker"
+            class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          >
             <button
               :for={t <- @terminal_themes}
               type="button"

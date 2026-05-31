@@ -60,6 +60,11 @@ defmodule BusterClaw.Orchestration do
 
   def shift_active?, do: active_shift() != nil
 
+  @doc "The most recent shift regardless of status (e.g. to read why it stopped)."
+  def latest_shift do
+    Shift |> order_by([s], desc: s.started_at) |> limit(1) |> Repo.one()
+  end
+
   # --- kill switch (a STOP file in the workspace the Orchestrator checks) ---
 
   def kill_switch_path, do: Path.join(Artifact.workspace_root(), @kill_switch_file)
@@ -165,7 +170,11 @@ defmodule BusterClaw.Orchestration do
 
     Task
     |> where([t], t.enabled == true and t.state == "pending")
-    |> where([t], (not is_nil(t.due_at) and t.due_at <= ^at) or (not is_nil(t.next_run_at) and t.next_run_at <= ^at))
+    |> where(
+      [t],
+      (not is_nil(t.due_at) and t.due_at <= ^at) or
+        (not is_nil(t.next_run_at) and t.next_run_at <= ^at)
+    )
     |> order_by([t], asc: t.next_run_at, asc: t.due_at, asc: t.id)
     |> Repo.all()
   end
@@ -201,9 +210,13 @@ defmodule BusterClaw.Orchestration do
 
     {count, _} =
       from(t in Task,
-        where: t.state in ["claimed", "running"] and not is_nil(t.lease_expires_at) and t.lease_expires_at < ^at
+        where:
+          t.state in ["claimed", "running"] and not is_nil(t.lease_expires_at) and
+            t.lease_expires_at < ^at
       )
-      |> Repo.update_all(set: [state: "pending", lease_owner: nil, lease_expires_at: nil, updated_at: now()])
+      |> Repo.update_all(
+        set: [state: "pending", lease_owner: nil, lease_expires_at: nil, updated_at: now()]
+      )
 
     if count > 0, do: broadcast(:tasks_reclaimed)
     count
@@ -265,7 +278,10 @@ defmodule BusterClaw.Orchestration do
   def heartbeat_run(%AgentRun{} = run), do: update_run(run, %{last_heartbeat_at: now()})
 
   def list_active_runs do
-    AgentRun |> where([r], r.status == "running") |> order_by([r], asc: r.started_at) |> Repo.all()
+    AgentRun
+    |> where([r], r.status == "running")
+    |> order_by([r], asc: r.started_at)
+    |> Repo.all()
   end
 
   def list_recent_runs(limit \\ 10) do
@@ -282,8 +298,41 @@ defmodule BusterClaw.Orchestration do
       shift: active_shift(),
       running: running_tasks(),
       upcoming: upcoming_tasks(),
-      recent: list_recent_runs(8)
+      recent: list_recent_runs(8),
+      vitals: vitals()
     }
+  end
+
+  @doc """
+  Live operational gauges for the active shift: in-flight concurrency, the
+  rolling hourly dispatch rate (both against their configured caps), and
+  today's done/failed tallies. Computed via cheap aggregate queries.
+  """
+  def vitals do
+    now = now()
+    hour_ago = DateTime.add(now, -3600, :second)
+    day_start = DateTime.to_date(now) |> DateTime.new!(~T[00:00:00], "Etc/UTC")
+
+    %{
+      running: count_runs(where: dynamic([r], r.status == "running")),
+      max_concurrent: Application.get_env(:buster_claw, :orchestrator_max_concurrent, 3),
+      runs_last_hour: count_runs(where: dynamic([r], r.started_at >= ^hour_ago)),
+      max_runs_per_hour: Application.get_env(:buster_claw, :orchestrator_max_runs_per_hour, 120),
+      done_today:
+        count_runs(where: dynamic([r], r.status == "done" and r.inserted_at >= ^day_start)),
+      failed_today:
+        count_runs(
+          where:
+            dynamic(
+              [r],
+              r.status in ["failed", "timeout", "killed"] and r.inserted_at >= ^day_start
+            )
+        )
+    }
+  end
+
+  defp count_runs(where: condition) do
+    AgentRun |> where(^condition) |> Repo.aggregate(:count, :id)
   end
 
   defp running_tasks do

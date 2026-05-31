@@ -39,7 +39,12 @@ defmodule BusterClawWeb.OrchestrationLive do
   def handle_event("save", %{"task" => params}, socket) do
     case params |> normalize() |> Orchestration.create_task() do
       {:ok, _task} ->
-        {:noreply, socket |> put_flash(:info, "Task added.") |> assign(:task_type, "pipeline") |> load() |> assign_form()}
+        {:noreply,
+         socket
+         |> put_flash(:info, "Task added.")
+         |> assign(:task_type, "pipeline")
+         |> load()
+         |> assign_form()}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset, as: :task))}
@@ -108,7 +113,10 @@ defmodule BusterClawWeb.OrchestrationLive do
           </div>
           <span class={[
             "rounded-full px-3 py-1 text-xs font-semibold",
-            if(@shift_active?, do: "bg-success/15 text-success", else: "bg-base-200 text-base-content/60")
+            if(@shift_active?,
+              do: "bg-success/15 text-success",
+              else: "bg-base-200 text-base-content/60"
+            )
           ]}>
             {if @shift_active?, do: "Shift active", else: "No active shift"}
           </span>
@@ -126,47 +134,82 @@ defmodule BusterClawWeb.OrchestrationLive do
 
             <label class="block">
               <span class="ic-eyebrow">Name</span>
-              <input type="text" name="task[name]" value={@form[:name].value} class="input mt-1 w-full" placeholder="Morning digest" />
+              <input
+                type="text"
+                name="task[name]"
+                value={@form[:name].value}
+                class="input mt-1 w-full"
+                placeholder="Morning digest"
+              />
             </label>
 
             <label class="block">
               <span class="ic-eyebrow">Type</span>
               <select name="task[type]" class="select mt-1 w-full">
-                <option value="pipeline" selected={@task_type == "pipeline"}>Pipeline (Elixir worker)</option>
-                <option value="agent" selected={@task_type == "agent"}>Agent (headless claude/codex)</option>
+                <option value="pipeline" selected={@task_type == "pipeline"}>
+                  Pipeline (Elixir worker)
+                </option>
+                <option value="agent" selected={@task_type == "agent"}>
+                  Agent (headless claude/codex)
+                </option>
               </select>
             </label>
 
             <label :if={@task_type == "pipeline"} class="block">
               <span class="ic-eyebrow">Command</span>
-              <input type="text" name="task[command]" value={@form[:command].value} class="input mt-1 w-full" placeholder="noop" />
-              <span class="mt-1 block text-xs text-base-content/55">e.g. <code>noop</code>, <code>analyze_pending</code></span>
+              <input
+                type="text"
+                name="task[command]"
+                value={@form[:command].value}
+                class="input mt-1 w-full"
+                placeholder="noop"
+              />
+              <span class="mt-1 block text-xs text-base-content/55">
+                e.g. <code>noop</code>, <code>analyze_pending</code>
+              </span>
             </label>
 
             <label :if={@task_type == "agent"} class="block">
               <span class="ic-eyebrow">Engine</span>
               <select name="task[engine]" class="select mt-1 w-full">
-                <option value="claude" selected={@form[:engine].value in [nil, "claude"]}>Claude</option>
+                <option value="claude" selected={@form[:engine].value in [nil, "claude"]}>
+                  Claude
+                </option>
                 <option value="codex" selected={@form[:engine].value == "codex"}>Codex</option>
               </select>
             </label>
 
             <label :if={@task_type == "agent"} class="block">
               <span class="ic-eyebrow">Prompt</span>
-              <textarea name="task[prompt]" rows="3" class="textarea mt-1 w-full" placeholder="What should the agent do?">{@form[:prompt].value}</textarea>
+              <textarea
+                name="task[prompt]"
+                rows="3"
+                class="textarea mt-1 w-full"
+                placeholder="What should the agent do?"
+              >{@form[:prompt].value}</textarea>
             </label>
 
             <label class="block">
               <span class="ic-eyebrow">Cron (optional)</span>
-              <input type="text" name="task[cron]" value={@form[:cron].value} class="input mt-1 w-full font-mono" placeholder="*/15 * * * *  (blank = one-shot)" />
+              <input
+                type="text"
+                name="task[cron]"
+                value={@form[:cron].value}
+                class="input mt-1 w-full font-mono"
+                placeholder="*/15 * * * *  (blank = one-shot)"
+              />
             </label>
 
             <label class="flex items-center gap-2 text-sm">
               <input type="hidden" name="task[run_now]" value="false" />
-              <input type="checkbox" name="task[run_now]" value="true" class="checkbox checkbox-sm" /> Run immediately
+              <input type="checkbox" name="task[run_now]" value="true" class="checkbox checkbox-sm" />
+              Run immediately
             </label>
 
-            <button type="submit" class="w-full rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85">
+            <button
+              type="submit"
+              class="w-full rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
+            >
               Add task
             </button>
           </.form>
@@ -189,11 +232,19 @@ defmodule BusterClawWeb.OrchestrationLive do
                     {task.type}{target_label(task)} · {schedule_label(task)} · {task.state}
                   </p>
                 </div>
-                <button type="button" phx-click="run_now" phx-value-id={task.id} class={action_btn()}>Run now</button>
+                <button type="button" phx-click="run_now" phx-value-id={task.id} class={action_btn()}>
+                  Run now
+                </button>
                 <button type="button" phx-click="toggle" phx-value-id={task.id} class={action_btn()}>
                   {if task.enabled, do: "Disable", else: "Enable"}
                 </button>
-                <button type="button" phx-click="delete" phx-value-id={task.id} data-confirm="Delete this task?" class={action_btn("text-error hover:border-error")}>
+                <button
+                  type="button"
+                  phx-click="delete"
+                  phx-value-id={task.id}
+                  data-confirm="Delete this task?"
+                  class={action_btn("text-error hover:border-error")}
+                >
                   Delete
                 </button>
               </li>
@@ -206,7 +257,10 @@ defmodule BusterClawWeb.OrchestrationLive do
   end
 
   defp target_label(%{type: "agent", engine: engine}), do: " · #{engine || "claude"}"
-  defp target_label(%{type: "pipeline", command: command}) when is_binary(command), do: " · #{command}"
+
+  defp target_label(%{type: "pipeline", command: command}) when is_binary(command),
+    do: " · #{command}"
+
   defp target_label(_), do: ""
 
   defp schedule_label(%{cron: cron}) when is_binary(cron) and cron != "", do: cron
