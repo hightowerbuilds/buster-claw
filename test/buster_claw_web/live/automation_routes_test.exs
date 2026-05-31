@@ -16,7 +16,7 @@ defmodule BusterClawWeb.AutomationRoutesTest do
           {~p"/hooks", "Hooks"},
           {~p"/delivery", "Delivery"},
           {~p"/mcp", "MCP"},
-          {~p"/runtime", "Runtime Control"}
+          {~p"/runtime", "Runtime"}
         ] do
       {:ok, _view, html} = live(conn, path)
       assert html =~ text

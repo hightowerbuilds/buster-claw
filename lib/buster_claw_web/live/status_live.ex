@@ -3,6 +3,7 @@ defmodule BusterClawWeb.StatusLive do
 
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.LocalTime
+  alias BusterClaw.Orchestration
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
 
@@ -10,12 +11,41 @@ defmodule BusterClawWeb.StatusLive do
   def mount(_params, _session, socket) do
     today = LocalTime.today()
 
+    if connected?(socket) do
+      Orchestration.subscribe()
+      # Keep time-left/heartbeats fresh even between events.
+      :timer.send_interval(30_000, self(), :refresh_orchestration)
+    end
+
     {:ok,
      socket
      |> assign(status: Status.snapshot())
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
+     |> assign(:orchestration, Orchestration.snapshot())
      |> load_daily_events()}
+  end
+
+  @impl true
+  def handle_info({:orchestration, _event}, socket) do
+    {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
+  end
+
+  def handle_info(:refresh_orchestration, socket) do
+    {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
+  end
+
+  @impl true
+  def handle_event("start_shift", _params, socket) do
+    Orchestration.clear_kill_switch()
+    Orchestration.start_shift()
+    {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
+  end
+
+  def handle_event("kill_shift", _params, socket) do
+    Orchestration.engage_kill_switch()
+    Orchestration.stop_shift("kill switch")
+    {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
   end
 
   @impl true
@@ -52,7 +82,7 @@ defmodule BusterClawWeb.StatusLive do
         </div>
 
         <div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
-          <section id="home-left-panel" class="ic-panel min-h-64"></section>
+          <BusterClawWeb.OrchestrationPanel.panel snapshot={@orchestration} />
 
           <.daily_calendar_panel today={@today} events={@daily_events} />
         </div>

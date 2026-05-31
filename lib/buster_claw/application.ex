@@ -22,6 +22,8 @@ defmodule BusterClaw.Application do
         BusterClaw.MCP.Supervisor,
         BusterClaw.MCP.Bootstrap,
         scheduler_child(),
+        {Task.Supervisor, name: BusterClaw.Orchestration.RunnerSupervisor},
+        orchestrator_child(),
         {Registry, keys: :unique, name: BusterClaw.Chat.Registry},
         {DynamicSupervisor, strategy: :one_for_one, name: BusterClaw.Chat.SessionSupervisor},
         # Start to serve requests, typically the last entry
@@ -66,6 +68,12 @@ defmodule BusterClaw.Application do
   defp browser_sidecar_child do
     if Application.get_env(:buster_claw, :browser_sidecar_enabled, false) do
       BusterClaw.Browser.Sidecar
+    end
+  end
+
+  defp orchestrator_child do
+    if Application.get_env(:buster_claw, :orchestrator_enabled, true) do
+      BusterClaw.Orchestrator
     end
   end
 end

@@ -40,7 +40,10 @@ defmodule BusterClawWeb.WorkspaceLiveTest do
     |> element(~s|#workspace button[phx-click="select"]|)
     |> render_click()
 
-    assert render(view) =~ "# workspace"
+    # .md files render as a sanitized blog-style HTML preview (not raw source).
+    html = render(view)
+    assert html =~ "md-prose"
+    assert html =~ "<h1>workspace</h1>"
   end
 
   test "create a folder then delete it via the tree", %{

@@ -13,7 +13,15 @@ config :buster_claw,
   workspace_root: Path.expand("../..", __DIR__),
   library_root: Path.expand("../../Library", __DIR__),
   scheduler_enabled: true,
-  scheduler_tick_ms: 60_000
+  scheduler_tick_ms: 60_000,
+  orchestrator_enabled: true,
+  orchestrator_tick_ms: 30_000,
+  orchestrator_max_concurrent: 3,
+  # :stub runs dispatched agents as a safe simulation (no API calls); set :real
+  # to invoke the actual claude/codex CLIs during a live shift.
+  agent_runner_mode: :stub,
+  agent_runner_claude: ["claude", "-p"],
+  agent_runner_codex: ["codex", "exec"]
 
 # Configure the endpoint
 config :buster_claw, BusterClawWeb.Endpoint,
