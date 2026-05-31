@@ -127,6 +127,7 @@ defmodule BusterClawWeb.Layouts do
   defp navigation_items do
     [
       %{label: "Home", path: "/", icon: "hero-home"},
+      %{label: "Orchestration", path: "/orchestration", icon: "hero-queue-list"},
       %{label: "Chat", path: "/chat", icon: "hero-chat-bubble-left-right"},
       %{label: "Workspace", path: "/workspace", icon: "hero-folder"},
       %{label: "Browser", path: "/browse", icon: "hero-globe-alt"},
@@ -157,7 +158,6 @@ defmodule BusterClawWeb.Layouts do
       "/security" => "Security",
       "/gws" => "GWS",
       "/appearance" => "Settings",
-      "/orchestration" => "Orchestration",
       "/workspace" => "Workspace"
     })
   end
