@@ -23,7 +23,13 @@ defmodule BusterClawWeb.WorkspaceLive do
      |> assign(:tree_root, workspace)
      |> assign(:tree_base, workspace)
      |> assign(:preview, nil)
+     |> assign(:sidebar_open, true)
      |> assign(:note, nil)}
+  end
+
+  @impl true
+  def handle_event("toggle_sidebar", _params, socket) do
+    {:noreply, update(socket, :sidebar_open, &(not &1))}
   end
 
   @impl true
@@ -165,18 +171,37 @@ defmodule BusterClawWeb.WorkspaceLive do
           {@note}
         </p>
 
-        <div class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-          <section class="ic-panel min-h-0 overflow-hidden p-3">
-            <.live_component
-              module={BusterClawWeb.FileTree}
-              id="workspace-tree"
-              root={@tree_root}
-              base={@tree_base}
-              mode={:manage}
-            />
-          </section>
+        <div class="flex min-h-0 flex-1 gap-4">
+          <div class="flex min-h-0 shrink-0">
+            <section class={[
+              "ic-panel min-h-0 w-[20rem] overflow-hidden p-3",
+              not @sidebar_open && "hidden"
+            ]}>
+              <.live_component
+                module={BusterClawWeb.FileTree}
+                id="workspace-tree"
+                root={@tree_root}
+                base={@tree_base}
+                mode={:manage}
+              />
+            </section>
 
-          <section class="ic-panel flex min-h-0 flex-col overflow-hidden">
+            <button
+              type="button"
+              phx-click="toggle_sidebar"
+              title={if @sidebar_open, do: "Collapse file tree", else: "Expand file tree"}
+              aria-label={if @sidebar_open, do: "Collapse file tree", else: "Expand file tree"}
+              aria-expanded={@sidebar_open}
+              class="group flex w-5 shrink-0 items-center justify-center border-y-2 border-r-2 border-base-content/15 bg-primary/15 transition hover:bg-primary/30"
+            >
+              <.icon
+                name={if @sidebar_open, do: "hero-chevron-left", else: "hero-chevron-right"}
+                class="size-4 text-primary"
+              />
+            </button>
+          </div>
+
+          <section class="ic-panel flex min-h-0 flex-1 flex-col overflow-hidden">
             <.preview preview={@preview} />
           </section>
         </div>

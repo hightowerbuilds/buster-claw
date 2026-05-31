@@ -31,6 +31,10 @@ defmodule BusterClawWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
+  attr :full_bleed, :boolean,
+    default: false,
+    doc: "drop the centered max-width/padding so content fills the window (e.g. split panes)"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -73,7 +77,13 @@ defmodule BusterClawWeb.Layouts do
       </header>
 
       <main class="flex min-w-0 flex-1 flex-col">
-        <div class="mx-auto flex w-full max-w-7xl flex-1 flex-col space-y-4 px-4 py-8 sm:px-6 lg:px-8">
+        <div class={[
+          "flex w-full flex-1 flex-col",
+          if(@full_bleed,
+            do: "min-h-0",
+            else: "mx-auto max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8"
+          )
+        ]}>
           {render_slot(@inner_block)}
         </div>
       </main>
