@@ -50,34 +50,24 @@ defmodule BusterClawWeb.SecurityLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="space-y-6">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p class="ic-eyebrow">Sentinel</p>
-            <h1 class="font-display text-5xl font-black uppercase tracking-tight">Security</h1>
-            <p class="mt-2 text-base text-base-content/70">
-              Durable audit trail of consequential and blocked actions.
-            </p>
-          </div>
-
-          <div class="flex items-center gap-3">
-            <span class={[
-              "rounded-full px-3 py-1 text-sm font-semibold",
-              if(@unacknowledged > 0,
-                do: "bg-warning/15 text-warning",
-                else: "bg-success/15 text-success"
-              )
-            ]}>
-              {@unacknowledged} unacknowledged
-            </span>
-            <button
-              :if={@unacknowledged > 0}
-              type="button"
-              phx-click="acknowledge_all"
-              class="rounded border border-base-300 px-3 py-2 text-sm hover:bg-base-200"
-            >
-              Acknowledge all
-            </button>
-          </div>
+        <div class="flex items-center justify-end gap-3">
+          <span class={[
+            "rounded-full px-3 py-1 text-sm font-semibold",
+            if(@unacknowledged > 0,
+              do: "bg-warning/15 text-warning",
+              else: "bg-success/15 text-success"
+            )
+          ]}>
+            {@unacknowledged} unacknowledged
+          </span>
+          <button
+            :if={@unacknowledged > 0}
+            type="button"
+            phx-click="acknowledge_all"
+            class="rounded border border-base-300 px-3 py-2 text-sm hover:bg-base-200"
+          >
+            Acknowledge all
+          </button>
         </div>
 
         <BusterClawWeb.AdvancedTabs.tabs active={:security} />

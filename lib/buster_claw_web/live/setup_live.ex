@@ -204,9 +204,12 @@ defmodule BusterClawWeb.SetupLive do
               How Buster Claw works
             </h2>
             <p class="text-sm leading-7 text-base-content/80">
-              Buster Claw is a local-first research runtime. It pulls content from the web, your
-              sources, and Google Workspace into a <span class="font-semibold">Library</span>,
-              analyzes it with an AI model you configure, and delivers reports where you want them.
+              Buster Claw is a desktop runtime where an AI agent manages your web interactivity. The
+              main way to use it is to run <span class="font-semibold">Claude Code or Codex in the
+                built-in terminal</span> — those agents operate Buster Claw through its MCP server and
+              your workspace to browse the web, act on Google Workspace and integrations, and deliver
+              results, all through one auditable command surface. A built-in chat with your own AI
+              provider is also available.
             </p>
             <ul class="space-y-2 text-sm leading-7 text-base-content/80">
               <li>
@@ -223,8 +226,8 @@ defmodule BusterClawWeb.SetupLive do
               </li>
             </ul>
             <p class="text-sm leading-7 text-base-content/60">
-              Everything runs on your machine. Every command, outbound send, and untrusted fetch is
-              recorded on the Security audit feed. This wizard sets up the essentials — you can change
+              The app and your data stay on your machine. Every command, outbound send, and untrusted
+              fetch is recorded on the Security audit feed. This wizard sets up the essentials — you can change
               any of it later from Settings.
             </p>
           </div>

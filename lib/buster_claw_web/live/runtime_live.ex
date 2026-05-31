@@ -150,18 +150,6 @@ defmodule BusterClawWeb.RuntimeLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="space-y-4">
-        <div>
-          <p class="ic-eyebrow">
-            Runtime Control
-          </p>
-          <h1 class="font-display text-4xl font-black uppercase tracking-tight">
-            Agent Handoff & API Keys
-          </h1>
-          <p class="mt-1 text-sm text-base-content/60">
-            Choose the active model path when you need to change who drives the app.
-          </p>
-        </div>
-
         <BusterClawWeb.AdvancedTabs.tabs active={:runtime} />
 
         <div class="space-y-5">

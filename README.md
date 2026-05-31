@@ -1,23 +1,29 @@
 # Buster Claw
 
-`buster-claw` is a local-first Phoenix/LiveView application wrapped in a Tauri desktop shell. Phoenix lives at the repository root; the desktop shell lives in `desktop/tauri`.
+`buster-claw` is a desktop runtime where an AI agent manages your web interactivity — browsing, Google Workspace, third-party integrations, MCP servers, and outbound delivery — through one auditable command surface. It's a Phoenix/LiveView application wrapped in a Tauri desktop shell; Phoenix lives at the repository root, the desktop shell in `desktop/tauri`.
+
+## How it's used
+
+The primary way to use Buster Claw is to run **Claude Code or Codex in the built-in terminal**; those agents operate Buster Claw through its MCP server (`POST /mcp`) and the workspace files, while the desktop UI gives you the command surface, the Sentinel audit feed, and the results. A built-in chat with your own provider is also available, but the intelligence is typically remote — the agent, not the app.
 
 ## Features
 
-- **Local & Remote LLM Chat**: Interact with local Ollama models or configured external AI providers.
-- **Knowledge Pipeline**:
-  - **Ingestion**: Scrape and fetch content from web pages and RSS feeds.
-  - **Analysis**: Queue-based asynchronous processing to structure ingested documents into markdown reports.
-  - **Delivery**: Automatically push reports to Slack, Discord, Telegram, or email.
-- **Agentic Capabilities**:
-  - **MCP Integration**: Connect Model Context Protocol servers to extend LLM capabilities with custom tools.
-  - **Parallel Processing**: Multi-worker analysis pipeline for efficient document handling.
-  - **Web Search**: Integrated web search tool for real-time information retrieval.
+- **Agentic command surface**: One canonical catalog (~76 commands) an AI agent drives across every frontend — internal chat, CLI, HTTP API, and MCP — with per-caller trust tiers and a full audit trail.
+- **Web & Workspace interactivity**:
+  - **Browsing & fetch**: Headless browser + HTTP fetchers (SSRF-guarded) to read and capture web pages, articles, and RSS.
+  - **Google Workspace**: Sync and act on Gmail and Google Calendar.
+  - **Integrations**: Pull and react to GitHub, Sentry, and Umami activity.
+  - **Delivery**: Push results to Slack, Discord, Telegram, or email.
+- **MCP (both directions)**: Connect external MCP servers as agent tools, and expose Buster Claw's own safe-tier commands as an MCP server to other agents (Claude Code, Codex, …).
+- **In-app terminal**: A real PTY where you run Claude Code, Codex, or any CLI; the primary surface for agents to drive Buster Claw.
+- **Built-in chat (secondary)**: Optional chat with local Ollama models or a configured remote provider (Anthropic agentic tool-loop; OpenAI/Gemini/Codex chat).
 - **Automation**:
-  - **Scheduler**: Cron-based job execution for fully autonomous research cycles.
-  - **Webhooks**: Trigger ingestion or analysis pipelines via external HTTP events.
-  - **Reactive Hooks**: Pre/post-processing hooks for pipeline events (e.g., auto-tagging, custom alerts).
-- **Persistent Memory**: Durable context storage in `Memory/Pneuma.md` to keep your AI smart across sessions.
+  - **Scheduler**: Cron-based jobs for autonomous, recurring runs.
+  - **Webhooks**: Trigger pipelines via external HTTP events.
+  - **Reactive Hooks**: Pre/post-processing hooks on pipeline events (e.g., auto-tagging, custom alerts).
+- **Content pipeline**: Ingest → analyze → deliver, with documents and reports stored as markdown in the workspace.
+- **Persistent Memory**: Durable notes/context to keep the agent smart across sessions.
+- **Sentinel security layer**: Every command, outbound send, and untrusted fetch is recorded on an auditable feed; restricted actions require confirmation.
 
 ## Quick Start
 

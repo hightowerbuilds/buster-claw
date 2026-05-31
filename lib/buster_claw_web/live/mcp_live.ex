@@ -79,16 +79,6 @@ defmodule BusterClawWeb.MCPLive do
         <BusterClawWeb.AdvancedTabs.tabs active={:mcp} />
 
         <section class="space-y-6">
-          <div>
-            <p class="ic-eyebrow">
-              Runtime
-            </p>
-            <h1 class="font-display text-5xl font-black uppercase tracking-tight">MCP</h1>
-            <p class="mt-2 text-base text-base-content/70">
-              Configure local MCP commands and track their visible runtime state.
-            </p>
-          </div>
-
           <form
             phx-submit="save"
             class="grid gap-3 rounded-lg border border-base-300 p-4 md:grid-cols-2"

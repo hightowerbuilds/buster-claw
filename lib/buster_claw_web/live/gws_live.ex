@@ -175,17 +175,7 @@ defmodule BusterClawWeb.GWSLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="space-y-6">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p class="ic-eyebrow">
-              Google Workspace
-            </p>
-            <h1 class="font-display text-5xl font-black uppercase tracking-tight">GWS</h1>
-            <p class="mt-2 max-w-3xl text-base text-base-content/70">
-              Manage connected Google accounts, tokens, scopes, and sync readiness.
-            </p>
-          </div>
-
+        <div class="flex justify-end">
           <.link
             navigate={~p"/"}
             class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85"

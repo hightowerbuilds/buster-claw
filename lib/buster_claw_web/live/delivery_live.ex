@@ -76,16 +76,6 @@ defmodule BusterClawWeb.DeliveryLive do
         <BusterClawWeb.AdvancedTabs.tabs active={:delivery} />
 
         <section class="space-y-6">
-          <div>
-            <p class="ic-eyebrow">
-              Automation
-            </p>
-            <h1 class="font-display text-5xl font-black uppercase tracking-tight">Delivery</h1>
-            <p class="mt-2 max-w-3xl text-base text-base-content/70">
-              Manage delivery endpoints for generated reports and automation notifications.
-            </p>
-          </div>
-
           <p :if={@result} class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm">
             {@result}
           </p>

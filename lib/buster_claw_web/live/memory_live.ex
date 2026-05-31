@@ -90,18 +90,6 @@ defmodule BusterClawWeb.MemoryLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="space-y-6">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p class="ic-eyebrow">
-              Context
-            </p>
-            <h1 class="font-display text-5xl font-black uppercase tracking-tight">Memory</h1>
-            <p class="mt-2 text-base text-base-content/70">
-              Persistent notes used as durable prompt context.
-            </p>
-          </div>
-        </div>
-
         <BusterClawWeb.AdvancedTabs.tabs active={:memory} />
 
         <p :if={@result} class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm">

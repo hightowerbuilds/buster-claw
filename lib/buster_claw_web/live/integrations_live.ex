@@ -125,17 +125,7 @@ defmodule BusterClawWeb.IntegrationsLive do
         <BusterClawWeb.AdvancedTabs.tabs active={:integrations} />
 
         <section class="space-y-6">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p class="ic-eyebrow">
-                Operations
-              </p>
-              <h1 class="font-display text-5xl font-black uppercase tracking-tight">Integrations</h1>
-              <p class="mt-2 max-w-3xl text-base text-base-content/70">
-                Configure service connectors that turn operational signals into local Library documents.
-              </p>
-            </div>
-
+          <div class="flex justify-end">
             <button
               id="integrations-poll-all"
               class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85 disabled:opacity-40"

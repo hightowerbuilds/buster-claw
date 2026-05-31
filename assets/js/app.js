@@ -27,6 +27,16 @@ import topbar from "../vendor/topbar"
 import {Terminal as XTerm} from "@xterm/xterm"
 import {FitAddon} from "@xterm/addon-fit"
 
+// The Advanced section is a set of sub-routes shown behind one in-page tab bar
+// (see AdvancedTabs). In the top browser-style tab strip they collapse into a
+// single "Advanced" tab keyed by ADVANCED_KEY, so traversing the sub-tabs only
+// moves the in-page highlight — it never spawns new top-level tabs.
+const ADVANCED_KEY = "/advanced"
+const ADVANCED_PATHS = new Set([
+  "/advanced", "/hooks", "/webhooks", "/integrations", "/mcp",
+  "/runtime", "/memory", "/scheduler", "/security", "/gws"
+])
+
 const Hooks = {
   CalendarDrag: {
     mounted() {
@@ -119,8 +129,13 @@ const Hooks = {
     },
     save(tabs) { localStorage.setItem("bc:tabs", JSON.stringify(tabs)) },
     // Tab key is the full path incl. query, so multiple /browse tabs
-    // (each /browse?t=<id>) are distinct, independent tabs.
-    currentKey() { return window.location.pathname + window.location.search },
+    // (each /browse?t=<id>) are distinct, independent tabs. Any Advanced
+    // sub-route collapses to the single ADVANCED_KEY so they share one top tab.
+    currentKey() {
+      const path = window.location.pathname
+      if (ADVANCED_PATHS.has(path)) return ADVANCED_KEY
+      return path + window.location.search
+    },
     labelFor(key) {
       const [path, query] = key.split("?")
       if (path === "/split") {
@@ -137,10 +152,15 @@ const Hooks = {
     sync() {
       const key = this.currentKey()
       const tabs = this.load()
-      if (!tabs.some((t) => t.path === key)) {
-        tabs.push({path: key, label: this.labelFor(key)})
-        this.save(tabs)
+      // Drop any legacy per-subroute Advanced tabs; they collapse into one
+      // ADVANCED_KEY tab. Keep the canonical Advanced tab and all non-Advanced tabs.
+      const pruned = tabs.filter((t) => t.path === ADVANCED_KEY || !ADVANCED_PATHS.has(t.path))
+      let changed = pruned.length !== tabs.length
+      if (!pruned.some((t) => t.path === key)) {
+        pruned.push({path: key, label: this.labelFor(key)})
+        changed = true
       }
+      if (changed) this.save(pruned)
     },
     // A loaded page tells us its title/url; reflect both on the current tab so
     // it shows the page title (not "Browse") and can carry the url into a split.

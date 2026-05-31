@@ -48,17 +48,6 @@ defmodule BusterClawWeb.WebhooksLive do
         <BusterClawWeb.AdvancedTabs.tabs active={:webhooks} />
 
         <section class="space-y-6">
-          <div>
-            <p class="ic-eyebrow">
-              Local Automation
-            </p>
-            <h1 class="font-display text-5xl font-black uppercase tracking-tight">Webhooks</h1>
-            <p class="mt-2 text-base text-base-content/70">
-              Local POST endpoints under <code>/hooks/:name</code>
-              for ingest, analysis, full pipelines, and custom commands.
-            </p>
-          </div>
-
           <div class="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
             <.form
               for={@form}

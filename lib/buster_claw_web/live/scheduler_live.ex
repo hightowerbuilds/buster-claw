@@ -66,16 +66,6 @@ defmodule BusterClawWeb.SchedulerLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="space-y-6">
-        <div>
-          <p class="ic-eyebrow">
-            Automation
-          </p>
-          <h1 class="font-display text-5xl font-black uppercase tracking-tight">Scheduler</h1>
-          <p class="mt-2 max-w-3xl text-base text-base-content/70">
-            Configure recurring automation jobs and trigger a manual run.
-          </p>
-        </div>
-
         <BusterClawWeb.AdvancedTabs.tabs active={:scheduler} />
 
         <p :if={@result} class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm">
