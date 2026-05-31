@@ -1,8 +1,8 @@
 defmodule BusterClawWeb.SettingsLive do
   @moduledoc """
-  Settings hub (General tab). Holds the profile, onboarding progress, and links
-  out to the per-feature config tabs. The workspace file manager lives in its
-  own `WorkspaceLive` tab (Settings → Workspace).
+  Settings → Configuration sub-tab. Holds the profile, onboarding progress, and
+  links out to the per-feature config surfaces. Sits alongside the Appearance
+  sub-tab (see `BusterClawWeb.SettingsTabs` / `BusterClawWeb.AppearanceLive`).
   """
   use BusterClawWeb, :live_view
 
@@ -80,14 +80,8 @@ defmodule BusterClawWeb.SettingsLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <section id="settings" class="space-y-8">
-        <div class="space-y-2 border-b-2 border-base-content/20 pb-5">
-          <p class="ic-eyebrow">Configuration</p>
-          <h1 class="font-display text-3xl font-black uppercase tracking-tight">Settings</h1>
-          <p class="max-w-3xl text-sm leading-7 text-base-content/70">
-            Global preferences plus quick access to every configuration surface.
-          </p>
-        </div>
+      <section id="settings" class="space-y-6">
+        <BusterClawWeb.SettingsTabs.tabs active={:configuration} />
 
         <section class="ic-panel space-y-4 p-6">
           <h2 class="ic-eyebrow">Profile</h2>

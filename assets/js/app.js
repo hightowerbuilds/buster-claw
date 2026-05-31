@@ -27,15 +27,135 @@ import topbar from "../vendor/topbar"
 import {Terminal as XTerm} from "@xterm/xterm"
 import {FitAddon} from "@xterm/addon-fit"
 
-// The Advanced section is a set of sub-routes shown behind one in-page tab bar
-// (see AdvancedTabs). In the top browser-style tab strip they collapse into a
-// single "Advanced" tab keyed by ADVANCED_KEY, so traversing the sub-tabs only
-// moves the in-page highlight — it never spawns new top-level tabs.
-const ADVANCED_KEY = "/advanced"
-const ADVANCED_PATHS = new Set([
-  "/advanced", "/hooks", "/webhooks", "/integrations", "/mcp",
-  "/runtime", "/memory", "/scheduler", "/security", "/gws"
-])
+// Some sections present several routes behind one in-page tab bar (Advanced,
+// Settings). In the top browser-style tab strip those routes collapse into a
+// single tab keyed by the group's canonical path, so traversing the sub-tabs
+// only moves the in-page highlight — it never spawns new top-level tabs.
+const TAB_GROUPS = [
+  {
+    key: "/advanced",
+    paths: new Set([
+      "/advanced", "/hooks", "/webhooks", "/integrations", "/mcp",
+      "/runtime", "/memory", "/scheduler", "/security", "/gws"
+    ])
+  },
+  {
+    key: "/settings",
+    paths: new Set(["/settings", "/appearance"])
+  }
+]
+
+// Canonical top-tab path for a route: the owning group's key if the route is in
+// a collapsed group, else null.
+function canonicalGroupKey(path) {
+  for (const g of TAB_GROUPS) if (g.paths.has(path)) return g.key
+  return null
+}
+
+// ---- Terminal color themes -------------------------------------------------
+// xterm palettes selectable from Settings → Appearance. The chosen key is
+// stored in localStorage["bc:term-theme"]; "industrial" derives its colors from
+// the app's CSS tokens so it tracks the light/dark app theme.
+const TERM_THEME_KEY = "bc:term-theme"
+const TERM_THEME_DEFAULT = "industrial"
+const TERM_THEMES = {
+  industrial: null, // sentinel — resolved from CSS tokens, see termThemePalette
+  light: {
+    background: "#fafafa", foreground: "#1a1a1a", cursor: "#1a1a1a",
+    cursorAccent: "#fafafa", selectionBackground: "#c7d2fe", selectionForeground: "#1a1a1a"
+  },
+  solarized: {
+    background: "#002b36", foreground: "#839496", cursor: "#93a1a1",
+    cursorAccent: "#002b36", selectionBackground: "#073642",
+    black: "#073642", red: "#dc322f", green: "#859900", yellow: "#b58900",
+    blue: "#268bd2", magenta: "#d33682", cyan: "#2aa198", white: "#eee8d5",
+    brightBlack: "#586e75", brightRed: "#cb4b16", brightGreen: "#586e75", brightYellow: "#657b83",
+    brightBlue: "#839496", brightMagenta: "#6c71c4", brightCyan: "#93a1a1", brightWhite: "#fdf6e3"
+  },
+  dracula: {
+    background: "#282a36", foreground: "#f8f8f2", cursor: "#f8f8f2",
+    cursorAccent: "#282a36", selectionBackground: "#44475a",
+    black: "#21222c", red: "#ff5555", green: "#50fa7b", yellow: "#f1fa8c",
+    blue: "#bd93f9", magenta: "#ff79c6", cyan: "#8be9fd", white: "#f8f8f2",
+    brightBlack: "#6272a4", brightRed: "#ff6e6e", brightGreen: "#69ff94", brightYellow: "#ffffa5",
+    brightBlue: "#d6acff", brightMagenta: "#ff92df", brightCyan: "#a4ffff", brightWhite: "#ffffff"
+  },
+  nord: {
+    background: "#2e3440", foreground: "#d8dee9", cursor: "#d8dee9",
+    cursorAccent: "#2e3440", selectionBackground: "#434c5e",
+    black: "#3b4252", red: "#bf616a", green: "#a3be8c", yellow: "#ebcb8b",
+    blue: "#81a1c1", magenta: "#b48ead", cyan: "#88c0d0", white: "#e5e9f0",
+    brightBlack: "#4c566a", brightRed: "#bf616a", brightGreen: "#a3be8c", brightYellow: "#ebcb8b",
+    brightBlue: "#81a1c1", brightMagenta: "#b48ead", brightCyan: "#8fbcbb", brightWhite: "#eceff4"
+  },
+  gruvbox: {
+    background: "#282828", foreground: "#ebdbb2", cursor: "#ebdbb2",
+    cursorAccent: "#282828", selectionBackground: "#504945",
+    black: "#282828", red: "#cc241d", green: "#98971a", yellow: "#d79921",
+    blue: "#458588", magenta: "#b16286", cyan: "#689d6a", white: "#a89984",
+    brightBlack: "#928374", brightRed: "#fb4934", brightGreen: "#b8bb26", brightYellow: "#fabd2f",
+    brightBlue: "#83a598", brightMagenta: "#d3869b", brightCyan: "#8ec07c", brightWhite: "#ebdbb2"
+  },
+  monokai: {
+    background: "#272822", foreground: "#f8f8f2", cursor: "#f8f8f0",
+    cursorAccent: "#272822", selectionBackground: "#49483e",
+    black: "#272822", red: "#f92672", green: "#a6e22e", yellow: "#f4bf75",
+    blue: "#66d9ef", magenta: "#ae81ff", cyan: "#a1efe4", white: "#f8f8f2",
+    brightBlack: "#75715e", brightRed: "#f92672", brightGreen: "#a6e22e", brightYellow: "#f4bf75",
+    brightBlue: "#66d9ef", brightMagenta: "#ae81ff", brightCyan: "#a1efe4", brightWhite: "#f9f8f5"
+  },
+  "tokyo-night": {
+    background: "#1a1b26", foreground: "#c0caf5", cursor: "#c0caf5",
+    cursorAccent: "#1a1b26", selectionBackground: "#283457",
+    black: "#15161e", red: "#f7768e", green: "#9ece6a", yellow: "#e0af68",
+    blue: "#7aa2f7", magenta: "#bb9af7", cyan: "#7dcfff", white: "#a9b1d6",
+    brightBlack: "#414868", brightRed: "#f7768e", brightGreen: "#9ece6a", brightYellow: "#e0af68",
+    brightBlue: "#7aa2f7", brightMagenta: "#bb9af7", brightCyan: "#7dcfff", brightWhite: "#c0caf5"
+  },
+  matrix: {
+    background: "#000000", foreground: "#00ff41", cursor: "#00ff41",
+    cursorAccent: "#000000", selectionBackground: "#0f3d0f"
+  }
+}
+
+function currentTermTheme() {
+  return localStorage.getItem(TERM_THEME_KEY) || TERM_THEME_DEFAULT
+}
+
+function termThemePalette(key) {
+  const preset = TERM_THEMES[key]
+  if (preset) return preset
+  // "industrial" (or unknown) — match the live app surface via CSS tokens.
+  const css = getComputedStyle(document.documentElement)
+  const token = (name, fallback) => (css.getPropertyValue(name).trim() || fallback)
+  const bg = token("--color-base-100", "#121212")
+  const fg = token("--color-base-content", "#fafafa")
+  const accent = token("--color-primary", "#ff4d1c")
+  return {
+    background: bg, foreground: fg, cursor: accent, cursorAccent: bg,
+    selectionBackground: accent, selectionForeground: bg
+  }
+}
+
+// Open xterm instances, so a theme change applies to every live terminal.
+const liveTerminals = new Set()
+function applyTermTheme(key) {
+  const palette = termThemePalette(key)
+  liveTerminals.forEach((t) => { t.options.theme = palette })
+}
+function setTermTheme(key) {
+  if (!key) return
+  localStorage.setItem(TERM_THEME_KEY, key)
+  applyTermTheme(key)
+}
+window.addEventListener("bc:set-term-theme", (e) => setTermTheme(e.target.dataset.termTheme))
+window.addEventListener("storage", (e) => {
+  if (e.key === TERM_THEME_KEY) applyTermTheme(currentTermTheme())
+})
+// When the app light/dark theme flips, refresh terminals that track it.
+window.addEventListener("phx:set-theme", () => {
+  if (currentTermTheme() === "industrial") setTimeout(() => applyTermTheme("industrial"), 0)
+})
 
 const Hooks = {
   CalendarDrag: {
@@ -132,9 +252,9 @@ const Hooks = {
     // (each /browse?t=<id>) are distinct, independent tabs. Any Advanced
     // sub-route collapses to the single ADVANCED_KEY so they share one top tab.
     currentKey() {
-      const path = window.location.pathname
-      if (ADVANCED_PATHS.has(path)) return ADVANCED_KEY
-      return path + window.location.search
+      const group = canonicalGroupKey(window.location.pathname)
+      if (group) return group
+      return window.location.pathname + window.location.search
     },
     labelFor(key) {
       const [path, query] = key.split("?")
@@ -152,9 +272,12 @@ const Hooks = {
     sync() {
       const key = this.currentKey()
       const tabs = this.load()
-      // Drop any legacy per-subroute Advanced tabs; they collapse into one
-      // ADVANCED_KEY tab. Keep the canonical Advanced tab and all non-Advanced tabs.
-      const pruned = tabs.filter((t) => t.path === ADVANCED_KEY || !ADVANCED_PATHS.has(t.path))
+      // Drop legacy per-subroute tabs for any collapsed group; they fold into
+      // the group's single canonical tab. Keep canonical and ungrouped tabs.
+      const pruned = tabs.filter((t) => {
+        const group = canonicalGroupKey(t.path)
+        return !group || group === t.path
+      })
       let changed = pruned.length !== tabs.length
       if (!pruned.some((t) => t.path === key)) {
         pruned.push({path: key, label: this.labelFor(key)})
@@ -446,32 +569,20 @@ const Hooks = {
       this.sessionKey = this.el.dataset.sessionKey || null
       this.storageKey = this.sessionKey ? `bc:term:${this.sessionKey}` : null
 
-      // Pull the live Industrial Claw theme tokens so the terminal matches the
-      // app surface in both dark and light modes.
-      const css = getComputedStyle(document.documentElement)
-      const token = (name, fallback) => (css.getPropertyValue(name).trim() || fallback)
-      const bg = token("--color-base-100", "#121212")
-      const fg = token("--color-base-content", "#fafafa")
-      const accent = token("--color-primary", "#ff4d1c")
-
+      // Color palette comes from Settings → Appearance (Terminal theme); the
+      // default "industrial" derives from the app's CSS tokens.
       const term = new XTerm({
         fontFamily: "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
-        fontSize: 13,
+        fontSize: 16,
         cursorBlink: true,
-        theme: {
-          background: bg,
-          foreground: fg,
-          cursor: accent,
-          cursorAccent: bg,
-          selectionBackground: accent,
-          selectionForeground: bg,
-        },
+        theme: termThemePalette(currentTermTheme()),
       })
       const fit = new FitAddon()
       term.loadAddon(fit)
       term.open(this.el)
       fit.fit()
       this.term = term
+      liveTerminals.add(term)
 
       try {
         // Try to reattach to a persisted session first.
@@ -520,6 +631,7 @@ const Hooks = {
       if (this.id && !this.sessionKey && window.__TAURI__) {
         window.__TAURI__.core.invoke("terminal_close", {id: this.id})
       }
+      if (this.term) liveTerminals.delete(this.term)
       this.term?.dispose()
     },
   },
@@ -540,6 +652,30 @@ const Hooks = {
         }
       })
     },
+  },
+
+  // Highlights the active terminal-theme button in Settings → Appearance and
+  // keeps the highlight in sync after the user picks one.
+  TermThemePicker: {
+    mounted() {
+      this.mark = () => {
+        const cur = currentTermTheme()
+        this.el.querySelectorAll("[data-term-theme]").forEach((b) => {
+          const active = b.dataset.termTheme === cur
+          b.classList.toggle("ring-2", active)
+          b.classList.toggle("ring-primary", active)
+          b.setAttribute("aria-pressed", active ? "true" : "false")
+        })
+      }
+      this.onClick = (e) => {
+        if (e.target.closest("[data-term-theme]")) setTimeout(this.mark, 0)
+      }
+      this.el.addEventListener("click", this.onClick)
+      this.mark()
+    },
+    destroyed() {
+      this.el.removeEventListener("click", this.onClick)
+    }
   }
 }
 
