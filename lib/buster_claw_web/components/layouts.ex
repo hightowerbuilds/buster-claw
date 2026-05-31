@@ -113,7 +113,6 @@ defmodule BusterClawWeb.Layouts do
       %{label: "Browser", path: "/browse", icon: "hero-globe-alt"},
       %{label: "Terminal", path: "/terminal", icon: "hero-command-line"},
       %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
-      %{label: "GWS", path: "/gws", icon: "hero-envelope"},
       %{label: "Advanced", path: "/advanced", icon: "hero-adjustments-horizontal"},
       %{label: "Settings", path: "/settings", icon: "hero-cog-6-tooth"}
     ]
@@ -137,6 +136,7 @@ defmodule BusterClawWeb.Layouts do
       "/memory" => "Memory",
       "/scheduler" => "Scheduler",
       "/security" => "Security",
+      "/gws" => "GWS",
       "/workspace" => "Workspace"
     })
   end

@@ -4,7 +4,7 @@ defmodule BusterClaw.Chat.Session do
   use GenServer
 
   alias BusterClaw.Chat.Message
-  alias BusterClaw.{Browser, Ingest, Integrations, MCP, Memory, Providers, Search}
+  alias BusterClaw.{Browser, Ingest, Integrations, Introduction, MCP, Memory, Providers, Search}
 
   def start_link(session_id) do
     GenServer.start_link(__MODULE__, session_id, name: via(session_id))
@@ -145,6 +145,7 @@ defmodule BusterClaw.Chat.Session do
       end
 
     [
+      %Message{role: "system", content: Introduction.read()},
       %Message{role: "system", content: "Persistent memory:\n#{memory_text}"},
       %Message{role: "system", content: "MCP context:\n#{MCP.tool_summary()}"}
       | messages

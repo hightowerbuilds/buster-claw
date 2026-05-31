@@ -23,12 +23,45 @@ end
 config :buster_claw, BusterClawWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
-# The Tauri desktop shell passes the user-chosen workspace folder via
-# BUSTER_CLAW_WORKSPACE_ROOT. The library lives at <workspace>/library, with
-# sources/analysis/memory as siblings. An explicit BUSTER_CLAW_LIBRARY_ROOT
-# still wins for manual/backward-compatible runs; dev and test fall back to the
-# compile-time config defaults untouched.
-workspace_root_env = System.get_env("BUSTER_CLAW_WORKSPACE_ROOT")
+# Resolve the workspace root for every environment so the linked workspace is
+# honored even outside the packaged app:
+#   1. BUSTER_CLAW_WORKSPACE_ROOT env var (set by the Tauri shell in release), else
+#   2. the persisted choice in the Buster Claw data dir (so `mix phx.server` dev
+#      uses the workspace you assigned in-app), else
+#   3. the compile-time config default.
+# The library lives at <workspace>/library, with sources/analysis/memory siblings.
+# Test is never bound to the persisted/on-disk workspace (it uses config defaults
+# and per-test overrides).
+workspace_root_env =
+  if config_env() == :test do
+    nil
+  else
+    with nil <- System.get_env("BUSTER_CLAW_WORKSPACE_ROOT") do
+      data_dir =
+        case :os.type() do
+          {:unix, :darwin} ->
+            Path.expand("~/Library/Application Support/BusterClaw")
+
+          {:unix, _} ->
+            Path.join(
+              System.get_env("XDG_DATA_HOME") || Path.expand("~/.local/share"),
+              "BusterClaw"
+            )
+
+          _ ->
+            Path.expand("~/.buster_claw")
+        end
+
+      case File.read(Path.join(data_dir, "workspace_root")) do
+        {:ok, contents} ->
+          trimmed = String.trim(contents)
+          if trimmed == "", do: nil, else: trimmed
+
+        _ ->
+          nil
+      end
+    end
+  end
 
 config :buster_claw,
   workspace_root: workspace_root_env || Application.get_env(:buster_claw, :workspace_root),

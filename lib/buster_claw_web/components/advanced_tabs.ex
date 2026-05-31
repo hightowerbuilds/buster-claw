@@ -10,7 +10,8 @@ defmodule BusterClawWeb.AdvancedTabs do
     %{key: :runtime, label: "Runtime", path: "/runtime"},
     %{key: :memory, label: "Memory", path: "/memory"},
     %{key: :scheduler, label: "Scheduler", path: "/scheduler"},
-    %{key: :security, label: "Security", path: "/security"}
+    %{key: :security, label: "Security", path: "/security"},
+    %{key: :gws, label: "GWS", path: "/gws"}
   ]
 
   attr :active, :atom, required: true
