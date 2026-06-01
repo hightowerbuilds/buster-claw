@@ -77,6 +77,8 @@ defmodule BusterClawWeb.OrchestrationLive do
     {:ok,
      socket
      |> assign(:page_title, "Orchestration")
+     |> assign(:confirm_delete, nil)
+     |> assign(:editing, nil)
      |> reset_wizard()
      |> load()}
   end
@@ -140,36 +142,70 @@ defmodule BusterClawWeb.OrchestrationLive do
     end
   end
 
-  # --- task table ---
+  # --- schedule row: edit ---
 
-  def handle_event("run_now", %{"id" => id}, socket) do
-    id
-    |> Orchestration.get_task!()
-    |> Orchestration.update_task(%{state: "pending", due_at: now(), next_run_at: nil})
-
-    if Orchestration.shift_active?() and Process.whereis(BusterClaw.Orchestrator) do
-      BusterClaw.Orchestrator.tick_now()
-    end
-
-    {:noreply, socket |> put_flash(:info, "Queued to run.") |> load()}
-  end
-
-  def handle_event("toggle", %{"id" => id}, socket) do
-    task = Orchestration.get_task!(id)
-    Orchestration.update_task(task, %{enabled: not task.enabled})
-    {:noreply, load(socket)}
-  end
-
-  def handle_event("delete", %{"id" => id}, socket), do: do_delete(id, socket)
-  def handle_event("delete_task", %{"id" => id}, socket), do: do_delete(id, socket)
-
-  defp do_delete(id, socket) do
+  def handle_event("edit_task", %{"id" => id}, socket) do
     case Orchestration.get_task(id) do
-      nil -> :ok
-      task -> Orchestration.delete_task(task)
+      nil -> {:noreply, load(socket)}
+      task -> {:noreply, assign(socket, :editing, edit_form_for(task))}
+    end
+  end
+
+  def handle_event("edit_change", params, socket) do
+    editing =
+      Enum.reduce(~w(name schedule cron enabled), socket.assigns.editing, fn key, acc ->
+        case Map.fetch(params, key) do
+          {:ok, value} -> Map.put(acc, key, value)
+          :error -> acc
+        end
+      end)
+
+    {:noreply, assign(socket, :editing, editing)}
+  end
+
+  def handle_event("cancel_edit", _params, socket), do: {:noreply, assign(socket, :editing, nil)}
+
+  def handle_event("save_edit", _params, socket) do
+    editing = socket.assigns.editing
+
+    with :ok <- validate_edit(editing),
+         task when not is_nil(task) <- Orchestration.get_task(editing["id"]),
+         {:ok, _task} <- Orchestration.update_task(task, edit_attrs(editing, task)) do
+      {:noreply, socket |> assign(:editing, nil) |> put_flash(:info, "Task updated.") |> load()}
+    else
+      {:error, message} when is_binary(message) ->
+        {:noreply, put_flash(socket, :error, message)}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Couldn't update the task — check the fields.")}
+    end
+  end
+
+  # --- schedule row: delete (with confirmation) ---
+
+  def handle_event("confirm_delete", %{"id" => id}, socket) do
+    case Orchestration.get_task(id) do
+      nil -> {:noreply, load(socket)}
+      task -> {:noreply, assign(socket, :confirm_delete, %{id: task.id, name: task.name})}
+    end
+  end
+
+  def handle_event("cancel_delete", _params, socket),
+    do: {:noreply, assign(socket, :confirm_delete, nil)}
+
+  def handle_event("delete_confirmed", _params, socket) do
+    case socket.assigns.confirm_delete do
+      %{id: id} ->
+        case Orchestration.get_task(id) do
+          nil -> :ok
+          task -> Orchestration.delete_task(task)
+        end
+
+      _ ->
+        :ok
     end
 
-    {:noreply, load(socket)}
+    {:noreply, socket |> assign(:confirm_delete, nil) |> load()}
   end
 
   # --- state ---
@@ -323,6 +359,56 @@ defmodule BusterClawWeb.OrchestrationLive do
   defp blank?(value), do: value in [nil, ""]
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
+  # --- edit (scheduling + status only) ---
+
+  defp edit_form_for(task) do
+    %{
+      "id" => task.id,
+      "name" => task.name,
+      "schedule" => schedule_mode_of(task),
+      "cron" => task.cron || "",
+      "enabled" => task.enabled,
+      "summary" => "#{task.type}#{target_label(task)}"
+    }
+  end
+
+  defp schedule_mode_of(%{cron: cron}) when is_binary(cron) and cron != "", do: "recurring"
+  defp schedule_mode_of(%{due_at: %DateTime{}}), do: "once"
+  defp schedule_mode_of(_task), do: "manual"
+
+  defp validate_edit(%{"name" => name}) when name in [nil, ""],
+    do: {:error, "Give the task a name."}
+
+  defp validate_edit(%{"schedule" => "recurring", "cron" => cron}) do
+    if BusterClaw.Scheduler.Cron.valid?(cron),
+      do: :ok,
+      else: {:error, "Enter a valid cron expression (e.g. */15 * * * *)."}
+  end
+
+  defp validate_edit(_editing), do: :ok
+
+  defp edit_attrs(editing, task) do
+    schedule =
+      case editing["schedule"] do
+        "once" -> %{due_at: now(), cron: nil, next_run_at: nil}
+        "recurring" -> %{cron: editing["cron"], due_at: nil, next_run_at: nil}
+        _manual -> %{cron: nil, due_at: nil, next_run_at: nil}
+      end
+
+    %{name: editing["name"], enabled: checkbox_on?(editing["enabled"])}
+    |> Map.merge(schedule)
+    |> maybe_rearm(task)
+  end
+
+  # Re-arm a finished task so an edited schedule actually runs again; leave
+  # running/claimed/pending tasks alone.
+  defp maybe_rearm(attrs, %{state: state}) when state in ~w(done failed cancelled),
+    do: Map.put(attrs, :state, "pending")
+
+  defp maybe_rearm(attrs, _task), do: attrs
+
+  defp checkbox_on?(value), do: value in [true, "true", "on", "1"]
+
   # --- render ---
 
   @impl true
@@ -330,20 +416,173 @@ defmodule BusterClawWeb.OrchestrationLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="space-y-6">
-        <div class="border-b-2 border-base-content/20 pb-4">
-          <p class="ic-eyebrow">Orchestration</p>
-          <h1 class="font-display text-3xl font-black uppercase tracking-tight">Schedule</h1>
+        <div class="flex flex-wrap items-end justify-between gap-3 border-b-2 border-base-content/20 pb-4">
+          <div>
+            <p class="ic-eyebrow">Orchestration</p>
+            <h1 class="font-display text-3xl font-black uppercase tracking-tight">Schedule</h1>
+          </div>
+          <.shift_status snapshot={@snapshot} />
         </div>
-
-        <BusterClawWeb.OrchestrationPanel.panel snapshot={@snapshot} manage_link={false} />
 
         <div class="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
           <.wizard wizard={@wizard} step={@wizard_step} accounts={@accounts} />
-          <.task_table tasks={@tasks} />
+          <.schedule tasks={@tasks} />
         </div>
       </section>
+
+      <.delete_modal confirm={@confirm_delete} />
+      <.edit_modal editing={@editing} />
     </Layouts.app>
     """
+  end
+
+  attr :confirm, :map, default: nil
+
+  defp delete_modal(assigns) do
+    ~H"""
+    <div :if={@confirm} class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/50" phx-click="cancel_delete" aria-hidden="true"></div>
+      <div
+        role="dialog"
+        aria-modal="true"
+        class="relative w-full max-w-sm space-y-4 rounded-lg border-2 border-base-content/20 bg-base-100 p-5 shadow-xl"
+      >
+        <h2 class="font-display text-lg font-black uppercase tracking-tight">Delete task</h2>
+        <p class="text-sm leading-6 text-base-content/80">
+          Delete <span class="font-semibold">"{@confirm.name}"</span>? This can't be undone.
+        </p>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            phx-click="cancel_delete"
+            class="rounded border-2 border-base-content/30 px-4 py-2 text-sm font-semibold transition hover:bg-base-200"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            phx-click="delete_confirmed"
+            class="rounded border-2 border-error/60 bg-error/10 px-4 py-2 text-sm font-semibold text-error transition hover:bg-error/20"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :editing, :map, default: nil
+
+  defp edit_modal(assigns) do
+    ~H"""
+    <div :if={@editing} class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/50" phx-click="cancel_edit" aria-hidden="true"></div>
+      <div
+        role="dialog"
+        aria-modal="true"
+        class="relative w-full max-w-md rounded-lg border-2 border-base-content/20 bg-base-100 p-5 shadow-xl"
+      >
+        <h2 class="mb-1 font-display text-lg font-black uppercase tracking-tight">Edit task</h2>
+        <p class="mb-4 font-mono text-xs text-base-content/55">{@editing["summary"]}</p>
+
+        <form phx-change="edit_change" phx-submit="save_edit" class="space-y-4">
+          <label class="block">
+            <span class="ic-eyebrow">Name <span class="text-error">*</span></span>
+            <input type="text" name="name" value={@editing["name"]} class="input mt-1 w-full" />
+          </label>
+
+          <label class="block">
+            <span class="ic-eyebrow">Schedule</span>
+            <select name="schedule" class="select mt-1 w-full">
+              <option value="once" selected={@editing["schedule"] == "once"}>
+                Once, immediately
+              </option>
+              <option value="recurring" selected={@editing["schedule"] == "recurring"}>
+                On a schedule (cron)
+              </option>
+              <option value="manual" selected={@editing["schedule"] == "manual"}>
+                Manual only
+              </option>
+            </select>
+          </label>
+
+          <label :if={@editing["schedule"] == "recurring"} class="block">
+            <span class="ic-eyebrow">Cron</span>
+            <input
+              type="text"
+              name="cron"
+              value={@editing["cron"]}
+              class="input mt-1 w-full font-mono"
+              placeholder="*/15 * * * *"
+            />
+          </label>
+
+          <label class="flex items-center gap-2">
+            <input type="hidden" name="enabled" value="false" />
+            <input type="checkbox" name="enabled" value="true" checked={checkbox_on?(@editing["enabled"])} class="checkbox" />
+            <span class="text-sm">Enabled</span>
+          </label>
+
+          <div class="flex justify-end gap-2 border-t-2 border-base-content/10 pt-4">
+            <button
+              type="button"
+              phx-click="cancel_edit"
+              class="rounded border-2 border-base-content/30 px-4 py-2 text-sm font-semibold transition hover:bg-base-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
+            >
+              Save
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+  end
+
+  # Compact shift status + emergency stop (the running/upcoming lists live in the
+  # Schedule column now; the full panel stays on Home).
+  attr :snapshot, :map, required: true
+
+  defp shift_status(assigns) do
+    ~H"""
+    <div class="flex flex-wrap items-center gap-2 text-xs">
+      <%= if @snapshot.shift do %>
+        <span class="rounded-full bg-success/15 px-3 py-1 font-semibold text-success">
+          Active · {time_left(@snapshot.shift)}
+        </span>
+        <span class="font-mono text-base-content/55">
+          {@snapshot.shift.dispatched_count} dispatched · {@snapshot.shift.done_count} done · {@snapshot.shift.failed_count} failed
+        </span>
+        <button
+          type="button"
+          phx-click="kill_shift"
+          class="rounded border-2 border-error/60 bg-error/10 px-3 py-1 font-semibold text-error transition hover:bg-error/20"
+        >
+          Emergency stop
+        </button>
+      <% else %>
+        <span class="font-mono text-base-content/55">
+          No active shift — start one from the terminal.
+        </span>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp time_left(%{ends_at: ends_at}) do
+    secs = DateTime.diff(ends_at, DateTime.utc_now())
+
+    cond do
+      secs <= 0 -> "ending"
+      secs < 3600 -> "#{div(secs, 60)}m left"
+      true -> "#{div(secs, 3600)}h #{rem(div(secs, 60), 60)}m left"
+    end
   end
 
   attr :wizard, :map, required: true
@@ -656,11 +895,15 @@ defmodule BusterClawWeb.OrchestrationLive do
 
   attr :tasks, :list, required: true
 
-  defp task_table(assigns) do
+  defp schedule(assigns) do
+    {non_cron, cron} = split_schedule(assigns.tasks)
+    assigns = assign(assigns, non_cron: non_cron, cron: cron)
+
     ~H"""
     <div class="ic-panel overflow-hidden">
-      <div class="border-b-2 border-base-content/15 px-4 py-3">
-        <p class="ic-eyebrow">Tasks ({length(@tasks)})</p>
+      <div class="flex items-center justify-between border-b-2 border-base-content/15 px-4 py-3">
+        <p class="ic-eyebrow">Schedule</p>
+        <span class="font-mono text-xs text-base-content/55">{length(@tasks)} tasks</span>
       </div>
 
       <div :if={@tasks == []} class="px-4 py-10 text-center text-sm text-base-content/55">
@@ -668,33 +911,67 @@ defmodule BusterClawWeb.OrchestrationLive do
       </div>
 
       <ul :if={@tasks != []} class="divide-y divide-base-300">
-        <li :for={task <- @tasks} class="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
-          <span class={["size-2 shrink-0 rounded-full", state_dot(task.state)]}></span>
-          <div class="min-w-0 flex-1">
-            <p class="truncate font-semibold">{task.name}</p>
-            <p class="truncate font-mono text-xs text-base-content/55">
-              {task.type}{target_label(task)} · {schedule_label(task)} · {task.state}
-            </p>
-          </div>
-          <button type="button" phx-click="run_now" phx-value-id={task.id} class={action_btn()}>
-            Run now
-          </button>
-          <button type="button" phx-click="toggle" phx-value-id={task.id} class={action_btn()}>
-            {if task.enabled, do: "Disable", else: "Enable"}
-          </button>
-          <button
-            type="button"
-            phx-click="delete"
-            phx-value-id={task.id}
-            class={action_btn("text-error hover:border-error")}
-          >
-            Delete
-          </button>
+        <.task_row :for={task <- @non_cron} task={task} />
+        <li
+          :if={@cron != [] and @non_cron != []}
+          class="bg-base-200/40 px-4 py-1 font-mono text-[0.7rem] uppercase tracking-wide text-base-content/45"
+        >
+          Recurring
         </li>
+        <.task_row :for={task <- @cron} task={task} />
       </ul>
     </div>
     """
   end
+
+  attr :task, :map, required: true
+
+  defp task_row(assigns) do
+    ~H"""
+    <li class="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+      <span class={["size-2 shrink-0 rounded-full", state_dot(@task.state)]}></span>
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-semibold">{@task.name}</p>
+        <p class="truncate font-mono text-xs text-base-content/55">
+          {@task.type}{target_label(@task)} · {schedule_label(@task)} · {@task.state}
+        </p>
+      </div>
+      <span
+        :if={not @task.enabled}
+        class="rounded-sm border-2 border-base-content/20 px-2 py-1 font-mono text-[0.7rem] uppercase tracking-wide text-base-content/45"
+      >
+        paused
+      </span>
+      <button type="button" phx-click="edit_task" phx-value-id={@task.id} class={action_btn()}>
+        Edit
+      </button>
+      <button
+        type="button"
+        phx-click="confirm_delete"
+        phx-value-id={@task.id}
+        class={action_btn("text-error hover:border-error")}
+      >
+        Delete
+      </button>
+    </li>
+    """
+  end
+
+  # Schedule ordering: one-shot / manual (non-cron) tasks on top, then recurring
+  # (cron) tasks chronologically by next run.
+  defp split_schedule(tasks) do
+    {cron, non_cron} = Enum.split_with(tasks, &recurring?/1)
+    {Enum.sort_by(non_cron, &due_key/1), Enum.sort_by(cron, &next_key/1)}
+  end
+
+  defp recurring?(%{cron: cron}), do: is_binary(cron) and cron != ""
+  defp recurring?(_task), do: false
+
+  defp due_key(task), do: {at_key(task.due_at), task.name || ""}
+  defp next_key(task), do: {at_key(task.next_run_at), task.name || ""}
+
+  defp at_key(%DateTime{} = at), do: DateTime.to_unix(at)
+  defp at_key(_at), do: :infinity
 
   defp review_heading(%{"type" => "agent"}), do: "Brief for the on-shift agent"
   defp review_heading(%{"type" => "gws"}), do: "Google Workspace action"

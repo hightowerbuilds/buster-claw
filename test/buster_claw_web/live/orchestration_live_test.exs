@@ -12,6 +12,31 @@ defmodule BusterClawWeb.OrchestrationLiveTest do
     assert html =~ "No active shift"
   end
 
+  test "schedule lists non-cron tasks above recurring ones", %{conn: conn} do
+    {:ok, _recurring} =
+      Orchestration.create_task(%{
+        name: "AAA recurring",
+        type: "pipeline",
+        command: "noop",
+        cron: "0 9 * * *"
+      })
+
+    {:ok, _one_shot} =
+      Orchestration.create_task(%{
+        name: "ZZZ one-shot",
+        type: "pipeline",
+        command: "noop",
+        due_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+
+    {:ok, _view, html} = live(conn, ~p"/orchestration")
+
+    assert html =~ "Recurring"
+    # The one-shot renders before the recurring task despite alphabetical order.
+    [before_one_shot, _rest] = String.split(html, "ZZZ one-shot", parts: 2)
+    refute before_one_shot =~ "AAA recurring"
+  end
+
   test "creates a GWS sync action via the wizard", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/orchestration")
 
@@ -59,27 +84,78 @@ defmodule BusterClawWeb.OrchestrationLiveTest do
     assert task.params["subject"] == "Nightly report"
   end
 
-  test "run_now queues a task immediately", %{conn: conn} do
-    {:ok, task} = Orchestration.create_task(%{name: "later", type: "pipeline", command: "noop"})
-    {:ok, view, _html} = live(conn, ~p"/orchestration")
-
-    view
-    |> element(~s|button[phx-click="run_now"][phx-value-id="#{task.id}"]|)
-    |> render_click()
-
-    reloaded = Orchestration.get_task!(task.id)
-    assert reloaded.state == "pending"
-    assert reloaded.due_at
-  end
-
-  test "delete removes a task", %{conn: conn} do
+  test "delete is gated behind a confirmation modal", %{conn: conn} do
     {:ok, task} = Orchestration.create_task(%{name: "scrap", type: "pipeline", command: "noop"})
     {:ok, view, _html} = live(conn, ~p"/orchestration")
 
+    # Clicking delete opens the confirm modal but does NOT delete yet.
+    html =
+      view
+      |> element(~s|button[phx-click="confirm_delete"][phx-value-id="#{task.id}"]|)
+      |> render_click()
+
+    assert html =~ "Delete task"
+    assert html =~ "scrap"
+    assert [_task] = Orchestration.list_tasks()
+
+    # Cancel keeps it.
+    view |> element(~s|button[phx-click="cancel_delete"]|) |> render_click()
+    assert [_task] = Orchestration.list_tasks()
+
+    # Re-open and confirm → gone.
     view
-    |> element(~s|button[phx-click="delete"][phx-value-id="#{task.id}"]|)
+    |> element(~s|button[phx-click="confirm_delete"][phx-value-id="#{task.id}"]|)
     |> render_click()
 
+    view |> element(~s|button[phx-click="delete_confirmed"]|) |> render_click()
     assert Orchestration.list_tasks() == []
+  end
+
+  test "edit updates a task's name, schedule and enabled state", %{conn: conn} do
+    {:ok, task} =
+      Orchestration.create_task(%{name: "old name", type: "pipeline", command: "noop"})
+
+    {:ok, view, _html} = live(conn, ~p"/orchestration")
+
+    html =
+      view
+      |> element(~s|button[phx-click="edit_task"][phx-value-id="#{task.id}"]|)
+      |> render_click()
+
+    assert html =~ "Edit task"
+
+    render_hook(view, "edit_change", %{
+      "name" => "new name",
+      "schedule" => "recurring",
+      "cron" => "0 9 * * *",
+      "enabled" => "false"
+    })
+
+    view |> element(~s|form[phx-submit="save_edit"]|) |> render_submit()
+
+    reloaded = Orchestration.get_task!(task.id)
+    assert reloaded.name == "new name"
+    assert reloaded.cron == "0 9 * * *"
+    refute reloaded.enabled
+  end
+
+  test "edit rejects an invalid cron and keeps the task unchanged", %{conn: conn} do
+    {:ok, task} =
+      Orchestration.create_task(%{name: "keep", type: "pipeline", command: "noop"})
+
+    {:ok, view, _html} = live(conn, ~p"/orchestration")
+
+    view |> element(~s|button[phx-click="edit_task"][phx-value-id="#{task.id}"]|) |> render_click()
+
+    render_hook(view, "edit_change", %{
+      "name" => "keep",
+      "schedule" => "recurring",
+      "cron" => "not a cron"
+    })
+
+    html = view |> element(~s|form[phx-submit="save_edit"]|) |> render_submit()
+
+    assert html =~ "valid cron"
+    assert Orchestration.get_task!(task.id).name == "keep"
   end
 end
