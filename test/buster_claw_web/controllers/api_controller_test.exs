@@ -14,7 +14,7 @@ defmodule BusterClawWeb.ApiControllerTest do
 
       names = Enum.map(commands, & &1["name"])
 
-      for representative <- ~w(runtime_status source_list provider_active chat_send web_search) do
+      for representative <- ~w(runtime_status document_list memory_list web_search browser_fetch) do
         assert representative in names, "expected catalog to include #{representative}"
       end
     end
@@ -22,7 +22,7 @@ defmodule BusterClawWeb.ApiControllerTest do
 
   describe "POST /api/run — auth" do
     test "rejects requests without a token", %{conn: conn} do
-      conn = post(conn, ~p"/api/run", %{"command" => "source_list"})
+      conn = post(conn, ~p"/api/run", %{"command" => "memory_list"})
       assert %{"ok" => false, "error" => "unauthorized"} = json_response(conn, 401)
     end
 
@@ -30,13 +30,13 @@ defmodule BusterClawWeb.ApiControllerTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer wrong")
-        |> post(~p"/api/run", %{"command" => "source_list"})
+        |> post(~p"/api/run", %{"command" => "memory_list"})
 
       assert json_response(conn, 401)
     end
 
     test "accepts requests with the right token", %{conn: conn} do
-      conn = authed(conn) |> post(~p"/api/run", %{"command" => "source_list"})
+      conn = authed(conn) |> post(~p"/api/run", %{"command" => "memory_list"})
       assert %{"ok" => true, "result" => []} = json_response(conn, 200)
     end
   end
@@ -55,7 +55,7 @@ defmodule BusterClawWeb.ApiControllerTest do
     test "returns 422 + errors map on validation failure", %{conn: conn} do
       conn =
         authed(conn)
-        |> post(~p"/api/run", %{"command" => "source_create", "args" => %{"url" => ""}})
+        |> post(~p"/api/run", %{"command" => "event_create", "args" => %{}})
 
       assert %{"ok" => false, "error" => "validation", "errors" => errors} =
                json_response(conn, 422)
@@ -66,18 +66,22 @@ defmodule BusterClawWeb.ApiControllerTest do
     test "returns 404 with :not_found atom for missing resource", %{conn: conn} do
       conn =
         authed(conn)
-        |> post(~p"/api/run", %{"command" => "source_get", "args" => %{"id" => 99_999}})
+        |> post(~p"/api/run", %{"command" => "event_get", "args" => %{"id" => 99_999}})
 
       assert %{"ok" => false, "error" => "not_found"} = json_response(conn, 404)
     end
 
     test "serializes datetimes as ISO 8601", %{conn: conn} do
-      {:ok, source} =
-        Commands.source_create(%{"url" => "https://example.com/iso", "type" => "rss"})
+      {:ok, event} =
+        Commands.event_create(%{
+          "event_id" => "api-iso",
+          "date" => "2026-06-01",
+          "title" => "Conference"
+        })
 
       conn =
         authed(conn)
-        |> post(~p"/api/run", %{"command" => "source_get", "args" => %{"id" => source.id}})
+        |> post(~p"/api/run", %{"command" => "event_get", "args" => %{"id" => event.id}})
 
       assert %{"ok" => true, "result" => result} = json_response(conn, 200)
       assert is_binary(result["inserted_at"])
@@ -88,8 +92,8 @@ defmodule BusterClawWeb.ApiControllerTest do
       create_resp =
         authed(conn)
         |> post(~p"/api/run", %{
-          "command" => "source_create",
-          "args" => %{"url" => "https://example.com/api-rt", "type" => "rss"}
+          "command" => "event_create",
+          "args" => %{"event_id" => "api-rt", "date" => "2026-06-01", "title" => "Round Trip"}
         })
 
       assert %{"ok" => true, "result" => %{"id" => id}} = json_response(create_resp, 200)
@@ -97,7 +101,7 @@ defmodule BusterClawWeb.ApiControllerTest do
       delete_resp =
         authed(conn)
         |> post(~p"/api/run", %{
-          "command" => "source_delete",
+          "command" => "event_delete",
           "args" => %{"id" => id}
         })
 

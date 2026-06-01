@@ -12,23 +12,17 @@ defmodule BusterClaw.Migration do
   alias BusterClaw.Calendar
   alias BusterClaw.Calendar.Event
   alias BusterClaw.Library
-  alias BusterClaw.Library.{Artifact, Document, Report}
+  alias BusterClaw.Library.{Artifact, Document}
   alias BusterClaw.Memory
   alias BusterClaw.Memory.Memory, as: MemoryRecord
-  alias BusterClaw.Providers
-  alias BusterClaw.Providers.Provider
   alias BusterClaw.Repo
   alias BusterClaw.Scheduler.Cron
-  alias BusterClaw.Sources
-  alias BusterClaw.Sources.Source
 
-  @source_types ~w(article documentation rss youtube_transcript browser)
-  @provider_types ~w(ollama openrouter openai anthropic custom)
   @delivery_types ~w(slack discord telegram email)
   @hook_events ~w(pre_ingest post_ingest pre_analysis post_analysis pre_report post_report on_error)
   @hook_types ~w(shell webhook)
-  @webhook_actions ~w(ingest analyze full command)
-  @scheduler_types ~w(ingest analyze full digest custom integrations_poll monitoring_brief)
+  @webhook_actions ~w(command)
+  @scheduler_types ~w(custom integrations_poll)
 
   def import_all(opts \\ []) do
     root = Keyword.get(opts, :legacy_root, default_legacy_root())
@@ -37,20 +31,12 @@ defmodule BusterClaw.Migration do
     %{
       memories: import_memory(Path.join(library_root, "Memory.md")),
       calendar_events: import_calendar(Path.join(library_root, "calendar.json")),
-      sources: import_sources(Path.join(root, "sources.json")),
-      providers: import_providers(Path.join(root, "providers.json")),
       mcp_servers: import_mcp(Path.join(root, "mcp.json")),
       delivery_destinations: import_delivery(Path.join(library_root, "delivery.json")),
       hooks: import_hooks(Path.join(library_root, "hooks.json")),
       webhooks: import_webhooks(Path.join(library_root, "webhooks.json")),
       scheduler_jobs: import_scheduler(Path.join(library_root, "scheduler.json")),
-      raw_documents: index_raw_markdown(library_root),
-      report_manifest:
-        import_report_manifest(
-          Path.join([library_root, "reports", "manifest.json"]),
-          library_root
-        ),
-      reports: index_reports(library_root)
+      raw_documents: index_raw_markdown(library_root)
     }
   end
 
@@ -80,36 +66,6 @@ defmodule BusterClaw.Migration do
       |> Enum.map(&normalize_event/1)
       |> Enum.reject(&is_nil/1)
       |> Enum.map(&upsert_event/1)
-      |> summarize_results()
-    else
-      {:error, :enoent} -> %{created: 0, updated: 0, skipped: 1, errors: []}
-      {:error, reason} -> %{created: 0, updated: 0, skipped: 0, errors: [{path, reason}]}
-    end
-  end
-
-  def import_sources(path) do
-    with {:ok, content} <- File.read(path),
-         {:ok, decoded} <- Jason.decode(content) do
-      decoded
-      |> json_items(["sources"])
-      |> Enum.map(&normalize_source/1)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.map(&upsert_source/1)
-      |> summarize_results()
-    else
-      {:error, :enoent} -> %{created: 0, updated: 0, skipped: 1, errors: []}
-      {:error, reason} -> %{created: 0, updated: 0, skipped: 0, errors: [{path, reason}]}
-    end
-  end
-
-  def import_providers(path) do
-    with {:ok, content} <- File.read(path),
-         {:ok, decoded} <- Jason.decode(content) do
-      decoded
-      |> json_items(["providers"])
-      |> Enum.map(&normalize_provider/1)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.map(&upsert_provider/1)
       |> summarize_results()
     else
       {:error, :enoent} -> %{created: 0, updated: 0, skipped: 1, errors: []}
@@ -192,34 +148,11 @@ defmodule BusterClaw.Migration do
     end
   end
 
-  def import_report_manifest(path, library_root) do
-    with {:ok, content} <- File.read(path),
-         {:ok, decoded} <- Jason.decode(content) do
-      decoded
-      |> json_items(["reports", "items", "entries", "manifest"])
-      |> Enum.map(&normalize_report_manifest_entry(&1, library_root))
-      |> Enum.reject(&is_nil/1)
-      |> Enum.map(&upsert_report/1)
-      |> summarize_results()
-    else
-      {:error, :enoent} -> %{created: 0, updated: 0, skipped: 1, errors: []}
-      {:error, reason} -> %{created: 0, updated: 0, skipped: 0, errors: [{path, reason}]}
-    end
-  end
-
   def index_raw_markdown(library_root) do
     library_root
     |> Path.join("raw/**/*.md")
     |> Path.wildcard()
     |> Enum.map(&index_raw_file(&1, library_root))
-    |> summarize_results()
-  end
-
-  def index_reports(library_root) do
-    library_root
-    |> Path.join("reports/**/*.md")
-    |> Path.wildcard()
-    |> Enum.map(&index_report_file(&1, library_root))
     |> summarize_results()
   end
 
@@ -234,20 +167,6 @@ defmodule BusterClaw.Migration do
     case Repo.get_by(Event, event_id: attrs.event_id) do
       nil -> Calendar.create_event(attrs) |> tag_result(:created)
       %Event{} = event -> Calendar.update_event(event, attrs) |> tag_result(:updated)
-    end
-  end
-
-  defp upsert_source(attrs) do
-    case Repo.get_by(Source, url: attrs.url) do
-      nil -> Sources.create_source(attrs) |> tag_result(:created)
-      %Source{} = source -> Sources.update_source(source, attrs) |> tag_result(:updated)
-    end
-  end
-
-  defp upsert_provider(attrs) do
-    case Repo.get_by(Provider, name: attrs.name) do
-      nil -> Providers.create_provider(attrs) |> tag_result(:created)
-      %Provider{} = provider -> Providers.update_provider(provider, attrs) |> tag_result(:updated)
     end
   end
 
@@ -292,13 +211,6 @@ defmodule BusterClaw.Migration do
     end
   end
 
-  defp upsert_report(attrs) do
-    case Repo.get_by(Report, artifact_path: attrs.artifact_path) do
-      nil -> Library.create_report(attrs) |> tag_result(:created)
-      %Report{} = report -> Library.update_report(report, attrs) |> tag_result(:updated)
-    end
-  end
-
   defp index_raw_file(path, library_root) do
     with {:ok, parsed} <- Artifact.parse_markdown_file(path) do
       fields = parsed.fields
@@ -323,32 +235,6 @@ defmodule BusterClaw.Migration do
     end
   end
 
-  defp index_report_file(path, library_root) do
-    with {:ok, parsed} <- Artifact.parse_markdown_file(path) do
-      fields = parsed.fields
-      relative_path = relative_to(path, library_root)
-      existing_report = Repo.get_by(Report, artifact_path: relative_path)
-      source_file = Map.get(fields, "source_file") || Map.get(fields, "source")
-      source_url = Map.get(fields, "url") || Map.get(fields, "source_url")
-      tags = %{"items" => List.wrap(Map.get(fields, "tags", []))}
-
-      attrs = %{
-        filename: Path.basename(path),
-        artifact_path: relative_path,
-        source_file: source_file || existing_value(existing_report, :source_file),
-        source_url: source_url || existing_value(existing_report, :source_url),
-        model: Map.get(fields, "model") || existing_value(existing_report, :model),
-        tags: keep_existing_tags(tags, existing_report),
-        generated_at:
-          parse_datetime(first_present(fields, ["generated_at", "generatedAt", "date"])) ||
-            existing_value(existing_report, :generated_at) ||
-            file_datetime(path)
-      }
-
-      upsert_report(attrs)
-    end
-  end
-
   defp normalize_event(%{} = item) do
     date = parse_date(Map.get(item, "date") || Map.get(item, "day"))
     title = Map.get(item, "title") || Map.get(item, "name") || Map.get(item, "summary")
@@ -367,43 +253,6 @@ defmodule BusterClaw.Migration do
   end
 
   defp normalize_event(_item), do: nil
-
-  defp normalize_source(%{"url" => url} = item) when is_binary(url) do
-    type = item |> Map.get("type", "article") |> normalize_type(@source_types, "article")
-
-    %{
-      url: url,
-      type: type,
-      name: Map.get(item, "name"),
-      tags: %{"items" => List.wrap(Map.get(item, "tags", []))},
-      browser_engine: first_present(item, ["browser_engine", "browserEngine"]),
-      cookies: Map.get(item, "cookies") || %{},
-      enabled: Map.get(item, "enabled", true)
-    }
-  end
-
-  defp normalize_source(_item), do: nil
-
-  defp normalize_provider(%{} = item) do
-    name = first_present(item, ["name", "id"])
-    model = first_present(item, ["model", "default_model", "defaultModel"])
-
-    if present?(name) do
-      type = item |> Map.get("type", "custom") |> normalize_type(@provider_types, "custom")
-
-      %{
-        name: to_string(name),
-        type: type,
-        base_url: first_present(item, ["base_url", "baseUrl", "url"]),
-        api_key: first_present(item, ["api_key", "apiKey"]),
-        model: to_string(model || "unknown"),
-        active: Map.get(item, "active", false),
-        priority: Map.get(item, "priority", 100)
-      }
-    end
-  end
-
-  defp normalize_provider(_item), do: nil
 
   defp normalize_mcp_server(%{} = item) do
     name = first_present(item, ["name", "id"])
@@ -477,7 +326,7 @@ defmodule BusterClaw.Migration do
     custom_cmd = first_present(item, ["custom_cmd", "customCmd", "command", "cmd"])
 
     if present?(name) do
-      default_action = if present?(custom_cmd), do: "command", else: "full"
+      default_action = "command"
 
       %{
         name: to_string(name),
@@ -500,7 +349,7 @@ defmodule BusterClaw.Migration do
 
     if present?(job_id) do
       custom_cmd = first_present(item, ["custom_cmd", "customCmd", "command", "cmd"])
-      default_type = if present?(custom_cmd), do: "custom", else: "ingest"
+      default_type = "custom"
       cron_value = first_present(item, ["cron", "schedule", "expression"])
       {cron, enabled, last_error, next_run_at} = normalize_cron(cron_value, item)
       legacy_next_run_at = parse_datetime(first_present(item, ["next_run_at", "nextRunAt"]))
@@ -523,38 +372,6 @@ defmodule BusterClaw.Migration do
   end
 
   defp normalize_scheduler_job(_item), do: nil
-
-  defp normalize_report_manifest_entry(%{} = item, library_root) do
-    path =
-      first_present(item, [
-        "artifact_path",
-        "artifactPath",
-        "path",
-        "file",
-        "report_file",
-        "reportFile"
-      ])
-
-    relative_path = normalize_report_path(path, library_root)
-
-    if present?(relative_path) && File.exists?(Path.join(library_root, relative_path)) do
-      %{
-        filename: Path.basename(relative_path),
-        artifact_path: relative_path,
-        source_file: first_present(item, ["source_file", "sourceFile", "source"]),
-        source_url: first_present(item, ["source_url", "sourceUrl", "url"]),
-        model: first_present(item, ["model", "provider_model", "providerModel"]),
-        tags: %{"items" => List.wrap(first_present(item, ["tags"]) || [])},
-        generated_at:
-          parse_datetime(
-            first_present(item, ["generated_at", "generatedAt", "created_at", "createdAt"])
-          ) ||
-            file_datetime(Path.join(library_root, relative_path))
-      }
-    end
-  end
-
-  defp normalize_report_manifest_entry(_item, _library_root), do: nil
 
   defp parse_memory_markdown(content) do
     content
@@ -762,58 +579,12 @@ defmodule BusterClaw.Migration do
     |> Path.relative_to(Path.expand(library_root))
   end
 
-  defp normalize_report_path(path, _library_root) when path in [nil, ""], do: nil
-
-  defp normalize_report_path(path, library_root) do
-    path = to_string(path)
-
-    relative_path =
-      cond do
-        Path.type(path) == :absolute ->
-          relative_to(path, library_root)
-
-        String.starts_with?(path, "Library/") ->
-          String.replace_prefix(path, "Library/", "")
-
-        String.starts_with?(path, "reports/") ->
-          path
-
-        Path.extname(path) == ".md" && Path.dirname(path) != "." ->
-          path
-
-        Path.extname(path) == ".md" ->
-          Path.join("reports", path)
-
-        true ->
-          nil
-      end
-
-    if safe_relative_path?(relative_path, library_root), do: relative_path
-  end
-
-  defp safe_relative_path?(path, _library_root) when path in [nil, ""], do: false
-
-  defp safe_relative_path?(path, library_root) do
-    library_root = Path.expand(library_root)
-    expanded_path = Path.expand(Path.join(library_root, path))
-
-    Path.type(path) == :relative &&
-      !String.starts_with?(path, "..") &&
-      (expanded_path == library_root || String.starts_with?(expanded_path, library_root <> "/"))
-  end
-
   defp first_present(map, keys) do
     Enum.find_value(keys, fn key ->
       value = Map.get(map, key)
       if present?(value), do: value
     end)
   end
-
-  defp keep_existing_tags(%{"items" => []}, %Report{tags: tags}) when is_map(tags), do: tags
-  defp keep_existing_tags(tags, _existing_report), do: tags
-
-  defp existing_value(nil, _field), do: nil
-  defp existing_value(struct, field), do: Map.get(struct, field)
 
   defp ensure_map(%{} = value), do: value
   defp ensure_map(_value), do: %{}

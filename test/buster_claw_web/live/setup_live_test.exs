@@ -4,7 +4,6 @@ defmodule BusterClawWeb.SetupLiveTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Google
-  alias BusterClaw.Providers
   alias BusterClaw.Settings
   alias BusterClaw.Setup
 
@@ -46,7 +45,7 @@ defmodule BusterClawWeb.SetupLiveTest do
     {:ok, view, _html} = live(conn, ~p"/setup")
 
     html = render_hook(view, "goto", %{"step" => "done"})
-    assert html =~ "of 4 steps complete"
+    assert html =~ "of 3 steps complete"
 
     assert {:error, {:live_redirect, %{to: "/"}}} =
              view |> element("button", "Finish setup") |> render_click()
@@ -57,19 +56,16 @@ defmodule BusterClawWeb.SetupLiveTest do
       {:ok, _view, html} = live(conn, ~p"/")
       assert html =~ "Set up Buster Claw"
 
-      # Complete two of four steps.
+      # Complete two of three steps.
       Setup.put_profile("Ada", "")
       Setup.confirm_workspace()
 
       {:ok, _view, html} = live(conn, ~p"/")
-      assert html =~ "2 of 4 complete"
+      assert html =~ "2 of 3 complete"
 
-      # Complete the remaining two via real state.
+      # Complete the remaining step via real state.
       {:ok, _} =
         Google.upsert_account(%{"email" => "a@b.com", "client_id" => "cid", "enabled" => true})
-
-      {:ok, _} =
-        Providers.create_provider(%{"type" => "ollama", "model" => "llama3", "name" => "local"})
 
       {:ok, _view, html} = live(conn, ~p"/")
       refute html =~ "Set up Buster Claw"

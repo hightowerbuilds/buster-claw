@@ -1,8 +1,9 @@
 defmodule BusterClawWeb.OrchestrationPanel do
   @moduledoc """
   Home left-column panel: the live window into the unattended orchestration
-  shift. Shows shift status + controls (start / emergency stop), what's running,
-  what's up next, and recent agent runs. Driven by `Orchestration.snapshot/0`;
+  shift. Shifts are started by the agent from the terminal (`shift_start`); this
+  panel shows shift status + emergency stop, what's running, what's up next, and
+  recent agent runs. Driven by `Orchestration.snapshot/0`;
   the parent LiveView re-snapshots on the `"orchestration"` PubSub topic.
   """
   use BusterClawWeb, :html
@@ -30,14 +31,6 @@ defmodule BusterClawWeb.OrchestrationPanel do
             Manage
           </.link>
           <button
-            :if={not shift_on?(@snapshot)}
-            type="button"
-            phx-click="start_shift"
-            class="rounded bg-primary px-3 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
-          >
-            Start shift
-          </button>
-          <button
             :if={shift_on?(@snapshot)}
             type="button"
             phx-click="kill_shift"
@@ -53,7 +46,9 @@ defmodule BusterClawWeb.OrchestrationPanel do
           :if={not shift_on?(@snapshot)}
           class="rounded border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60"
         >
-          No active shift. Start a 12-hour shift to begin dispatching scheduled work.
+          No active shift. The agent starts a shift from the terminal —
+          <code class="font-mono">buster-claw run shift_start</code>
+          — then this panel tracks it live.
         </div>
 
         <div :if={shift_on?(@snapshot)} class="space-y-3">

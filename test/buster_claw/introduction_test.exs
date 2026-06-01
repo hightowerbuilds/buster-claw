@@ -27,8 +27,8 @@ defmodule BusterClaw.IntroductionTest do
     # Command surface, grouped by tier, with real catalog entries.
     assert md =~ "Safe (agent-callable)"
     assert md =~ "Restricted (require confirmation)"
-    assert md =~ "`source_list`"
-    assert md =~ "`source_create`"
+    assert md =~ "`document_list`"
+    assert md =~ "`document_save`"
   end
 
   test "install! writes INTRODUCTION.md into the workspace root", %{root: root} do

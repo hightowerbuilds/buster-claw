@@ -7,13 +7,13 @@ defmodule BusterClaw.WebhooksTest do
     assert {:ok, _webhook} =
              Webhooks.create_webhook(%{
                name: "ingest-now",
-               action: "ingest",
+               action: "command",
                secret: "secret"
              })
 
     assert {:error, :unauthorized} = Webhooks.trigger("ingest-now", [], "{}")
 
-    assert {:ok, %{action: "ingest"}} =
+    assert {:ok, %{action: "command"}} =
              Webhooks.trigger("ingest-now", [{"x-buster-claw-secret", "secret"}], "{}")
 
     assert Workflow.list_runtime_events() |> Enum.any?(&String.starts_with?(&1.kind, "webhook."))

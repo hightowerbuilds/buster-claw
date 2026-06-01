@@ -23,7 +23,6 @@ config :buster_claw, BusterClaw.Mailer, adapter: Swoosh.Adapters.Test
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
-config :buster_claw, :provider_req_options, plug: {Req.Test, BusterClaw.ProviderHTTP}
 config :buster_claw, :search_req_options, plug: {Req.Test, BusterClaw.SearchHTTP}
 config :buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHTTP}
 

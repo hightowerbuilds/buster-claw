@@ -2,7 +2,6 @@ defmodule BusterClaw.Ingest.ContentTest do
   use ExUnit.Case, async: true
 
   alias BusterClaw.Ingest.Content
-  alias BusterClaw.Ingest.Fetcher
 
   test "parses article HTML into markdown-ish content" do
     item =
@@ -75,12 +74,5 @@ defmodule BusterClaw.Ingest.ContentTest do
     assert item.url == "https://example.com/atom-post"
     assert item.title == "Atom Post"
     assert item.content =~ "Atom body"
-  end
-
-  test "fetcher returns a bounded error for failed requests" do
-    assert {:error, _reason} =
-             Fetcher.fetch(%{url: "http://127.0.0.1:1/not-running", type: "article", tags: []},
-               retries: 0
-             )
   end
 end

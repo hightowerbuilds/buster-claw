@@ -25,8 +25,7 @@ defmodule BusterClaw.Application do
         {Task.Supervisor, name: BusterClaw.Orchestration.RunnerSupervisor},
         orchestrator_child(),
         reporter_child(),
-        {Registry, keys: :unique, name: BusterClaw.Chat.Registry},
-        {DynamicSupervisor, strategy: :one_for_one, name: BusterClaw.Chat.SessionSupervisor},
+        uptime_child(),
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
       ]
@@ -81,6 +80,12 @@ defmodule BusterClaw.Application do
   defp reporter_child do
     if Application.get_env(:buster_claw, :orchestrator_enabled, true) do
       BusterClaw.Orchestration.Reporter
+    end
+  end
+
+  defp uptime_child do
+    if Application.get_env(:buster_claw, :orchestrator_enabled, true) do
+      BusterClaw.Orchestration.Uptime
     end
   end
 end

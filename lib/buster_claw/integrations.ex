@@ -3,11 +3,9 @@ defmodule BusterClaw.Integrations do
 
   import Ecto.Query
 
-  alias BusterClaw.{Analysis, Intentions, LocalTime}
+  alias BusterClaw.LocalTime
   alias BusterClaw.Integrations.{GitHub, Integration, IntegrationRun, Sentry, Umami}
   alias BusterClaw.Library
-  alias BusterClaw.Library.{Artifact, Frontmatter}
-  alias BusterClaw.Providers
   alias BusterClaw.Repo
 
   @topic "integrations"
@@ -421,7 +419,6 @@ defmodule BusterClaw.Integrations do
     case result do
       {:ok, items, documents} ->
         document = List.first(documents)
-        auto_analysis = maybe_queue_webhook_analysis(integration, documents)
 
         {:ok, run} =
           create_run(%{
@@ -435,8 +432,7 @@ defmodule BusterClaw.Integrations do
             finished_at: timestamp(),
             metadata: %{
               "service_type" => integration.service_type,
-              "documents" => Enum.map(documents, & &1.artifact_path),
-              "auto_analysis" => auto_analysis
+              "documents" => Enum.map(documents, & &1.artifact_path)
             }
           })
 
@@ -471,74 +467,7 @@ defmodule BusterClaw.Integrations do
     end
   end
 
-  def generate_monitoring_brief(opts \\ []) do
-    limit = Keyword.get(opts, :limit, 10)
-    documents = latest_documents(limit)
-
-    with false <- documents == [],
-         {:ok, provider} <- provider_for_monitoring_brief(opts),
-         {:ok, source_material} <- read_source_material(documents),
-         {:ok, content} <-
-           call_provider(provider, Intentions.monitoring_brief_messages(source_material, opts)),
-         {:ok, report} <- save_monitoring_report(provider, documents, content) do
-      {:ok, report}
-    else
-      true -> {:error, :no_integration_documents}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp provider_for_monitoring_brief(opts) do
-    case Keyword.get(opts, :provider_id) do
-      nil -> active_provider()
-      "" -> active_provider()
-      provider_id -> {:ok, Providers.get_provider!(normalize_provider_id(provider_id))}
-    end
-  rescue
-    Ecto.NoResultsError -> {:error, :provider_not_found}
-    Ecto.Query.CastError -> {:error, :provider_not_found}
-  end
-
-  defp normalize_provider_id(provider_id) when is_binary(provider_id) do
-    case Integer.parse(provider_id) do
-      {id, ""} -> id
-      _other -> provider_id
-    end
-  end
-
-  defp normalize_provider_id(provider_id), do: provider_id
-
   defp trigger(opts), do: opts |> Keyword.get(:trigger, "manual") |> to_string()
-
-  defp maybe_queue_webhook_analysis(%Integration{} = integration, documents) do
-    if enabled_config?(integration, "auto_analyze_webhooks") do
-      %{
-        "enabled" => true,
-        "jobs" => queue_webhook_documents(documents)
-      }
-    else
-      %{"enabled" => false, "jobs" => []}
-    end
-  end
-
-  defp queue_webhook_documents(documents) do
-    Enum.map(documents, fn document ->
-      case Analysis.queue_document(document) do
-        {:ok, job} ->
-          %{
-            "document_id" => document.id,
-            "job_id" => job.id,
-            "status" => job.status
-          }
-
-        {:error, reason} ->
-          %{
-            "document_id" => document.id,
-            "error" => bounded_error(error_message(reason))
-          }
-      end
-    end)
-  end
 
   defp enabled_config?(%Integration{config: config}, key) when is_map(config) do
     case Map.get(config, key) do
@@ -553,94 +482,6 @@ defmodule BusterClaw.Integrations do
 
   defp integration_document?(document) do
     "integration" in get_in(document.tags || %{}, ["items"])
-  end
-
-  defp active_provider do
-    case Providers.active_provider() do
-      nil -> {:error, :no_active_provider}
-      provider -> {:ok, provider}
-    end
-  end
-
-  defp read_source_material(documents) do
-    documents
-    |> Enum.reduce_while({:ok, []}, fn document, {:ok, acc} ->
-      case Library.read_raw_document(document) do
-        {:ok, body} -> {:cont, {:ok, [%{document: document, body: body} | acc]}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      {:ok, entries} -> {:ok, Enum.reverse(entries)}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp call_provider(provider, messages) do
-    chunks = Agent.start_link(fn -> [] end)
-
-    with {:ok, pid} <- chunks,
-         :ok <-
-           Providers.chat(provider, messages, fn chunk -> Agent.update(pid, &[chunk | &1]) end) do
-      content = pid |> Agent.get(&Enum.reverse/1) |> Enum.join()
-      Agent.stop(pid)
-      {:ok, content}
-    else
-      {:error, reason} ->
-        with {:ok, pid} <- chunks, do: Agent.stop(pid)
-        {:error, reason}
-    end
-  end
-
-  defp save_monitoring_report(provider, documents, content) do
-    generated_at = timestamp()
-    dir = Artifact.reports_date_dir(DateTime.to_date(generated_at))
-    filename = monitoring_report_filename(generated_at)
-    path = Artifact.safe_join!(dir, [filename])
-    :ok = File.mkdir_p!(dir)
-
-    metadata = %{
-      provider_name: provider.name,
-      model: provider.model,
-      generated_at: DateTime.to_iso8601(generated_at),
-      source_file: "#{length(documents)} integration snapshots",
-      source_url: "local-library"
-    }
-
-    bytes =
-      Frontmatter.build(%{
-        "provider" => provider.name,
-        "model" => provider.model,
-        "generated_at" => DateTime.to_iso8601(generated_at),
-        "source_documents" => Enum.map(documents, & &1.artifact_path),
-        "tags" => ["monitoring", "brief", "consultation"]
-      }) <>
-        Intentions.monitoring_brief_markdown(content, metadata)
-
-    File.write!(path, bytes)
-
-    Library.create_report(%{
-      provider_id: provider.id,
-      filename: filename,
-      artifact_path: Artifact.relative_to_root(path),
-      source_file: metadata.source_file,
-      source_url: metadata.source_url,
-      model: provider.model,
-      tags: %{
-        "items" => ["monitoring", "brief", "consultation"],
-        "monitoring" => %{
-          "source_document_ids" => Enum.map(documents, & &1.id),
-          "provider" => provider.name,
-          "model" => provider.model
-        }
-      },
-      generated_at: generated_at
-    })
-  end
-
-  defp monitoring_report_filename(generated_at) do
-    stamp = generated_at |> DateTime.to_iso8601(:basic) |> String.replace(~r/[^0-9TZ]/, "")
-    "monitoring-brief-#{stamp}.md"
   end
 
   defp encode_config(config) when is_map(config) do

@@ -1,13 +1,12 @@
 defmodule BusterClaw.Setup do
   @moduledoc """
   Derived first-run setup progress. Completion is computed from real state
-  (settings + connected accounts + configured providers), not a single flag, so
-  the home CTA can reflect partial progress ("2 of 4 complete") and disappear
-  only once every tracked step is genuinely done.
+  (settings + connected accounts), not a single flag, so the home CTA can
+  reflect partial progress ("2 of 3 complete") and disappear only once every
+  tracked step is genuinely done.
   """
 
   alias BusterClaw.Google
-  alias BusterClaw.Providers
   alias BusterClaw.Settings
 
   @profile_name_key "profile_name"
@@ -19,8 +18,7 @@ defmodule BusterClaw.Setup do
     [
       %{key: :profile, label: "Your name or org", complete: profile_complete?()},
       %{key: :workspace, label: "Workspace folder", complete: workspace_complete?()},
-      %{key: :google, label: "Google Workspace", complete: google_complete?()},
-      %{key: :provider, label: "AI model", complete: provider_complete?()}
+      %{key: :google, label: "Google Workspace", complete: google_complete?()}
     ]
   end
 
@@ -38,7 +36,6 @@ defmodule BusterClaw.Setup do
 
   def workspace_complete?, do: Settings.get(@workspace_confirmed_key) == "true"
   def google_complete?, do: Google.list_account_summaries() != []
-  def provider_complete?, do: Providers.list_providers() != []
 
   # --- Profile + workspace persistence -----------------------------------
 

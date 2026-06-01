@@ -3,7 +3,7 @@ defmodule BusterClaw.Library do
 
   import Ecto.Query
 
-  alias BusterClaw.Library.{Artifact, Document, Report}
+  alias BusterClaw.Library.{Artifact, Document}
   alias BusterClaw.LocalTime
   alias BusterClaw.Repo
 
@@ -114,15 +114,6 @@ defmodule BusterClaw.Library do
       Path.join(root, relative_or_abs_path)
     end
   end
-
-  def list_reports, do: Repo.all(Report)
-  def get_report!(id), do: Repo.get!(Report, id)
-  def create_report(attrs), do: %Report{} |> Report.changeset(attrs) |> Repo.insert()
-
-  def update_report(%Report{} = report, attrs),
-    do: report |> Report.changeset(attrs) |> Repo.update()
-
-  def delete_report(%Report{} = report), do: Repo.delete(report)
 
   defp date_from_path(path) do
     path

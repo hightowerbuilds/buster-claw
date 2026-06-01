@@ -11,18 +11,11 @@ defmodule BusterClawWeb.SettingsLive do
   alias BusterClaw.Hooks
   alias BusterClaw.Integrations
   alias BusterClaw.MCP
-  alias BusterClaw.Providers
   alias BusterClaw.Scheduler
   alias BusterClaw.Setup
   alias BusterClaw.Webhooks
 
   @config_links [
-    %{
-      label: "AI Providers",
-      path: "/runtime",
-      icon: "hero-cpu-chip",
-      desc: "Models and API keys"
-    },
     %{label: "Google Workspace", path: "/gws", icon: "hero-envelope", desc: "Gmail and Calendar"},
     %{
       label: "Integrations",
@@ -179,7 +172,6 @@ defmodule BusterClawWeb.SettingsLive do
     Enum.map(@config_links, &Map.put(&1, :done?, config_done?(&1.path)))
   end
 
-  defp config_done?("/runtime"), do: Providers.list_providers() != []
   defp config_done?("/gws"), do: Google.list_account_summaries() != []
   defp config_done?("/integrations"), do: Integrations.list_integrations() != []
   defp config_done?("/delivery"), do: Delivery.list_destinations() != []

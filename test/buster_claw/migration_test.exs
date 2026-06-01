@@ -1,7 +1,7 @@
 defmodule BusterClaw.MigrationTest do
   use BusterClaw.DataCase
 
-  alias BusterClaw.{Automation, Calendar, Library, Memory, Migration, Providers, Sources}
+  alias BusterClaw.{Automation, Calendar, Library, Memory, Migration}
 
   setup do
     root =
@@ -18,7 +18,7 @@ defmodule BusterClaw.MigrationTest do
     %{root: root, library_root: library_root}
   end
 
-  test "imports legacy memory, calendar, sources, and providers idempotently", %{
+  test "imports legacy memory and calendar idempotently", %{
     root: root,
     library_root: library_root
   } do
@@ -38,39 +38,17 @@ defmodule BusterClaw.MigrationTest do
       })
     )
 
-    File.write!(
-      Path.join(root, "sources.json"),
-      Jason.encode!(%{
-        sources: [
-          %{url: "https://example.com/feed.xml", type: "rss", name: "Feed", tags: ["ai"]}
-        ]
-      })
-    )
-
-    File.write!(
-      Path.join(root, "providers.json"),
-      Jason.encode!(%{
-        providers: [
-          %{name: "local", type: "ollama", model: "llama3", active: true}
-        ]
-      })
-    )
-
     assert %{memories: %{created: 2}, calendar_events: %{created: 1}} =
              Migration.import_all(legacy_root: root, library_root: library_root)
 
     assert length(Memory.list_memories()) == 2
     assert [%{event_id: "event-1"}] = Calendar.list_events()
-    assert [%{url: "https://example.com/feed.xml"}] = Sources.list_sources()
-    assert [%{name: "local"}] = Providers.list_providers()
 
     assert %{memories: %{updated: 2}, calendar_events: %{updated: 1}} =
              Migration.import_all(legacy_root: root, library_root: library_root)
 
     assert length(Memory.list_memories()) == 2
     assert length(Calendar.list_events()) == 1
-    assert length(Sources.list_sources()) == 1
-    assert length(Providers.list_providers()) == 1
   end
 
   test "imports legacy automation JSON files idempotently", %{
@@ -124,7 +102,7 @@ defmodule BusterClaw.MigrationTest do
         hooks: [
           %{
             name: "ingest-now",
-            action: "ingest",
+            action: "command",
             secret: "secret"
           }
         ]
@@ -159,7 +137,7 @@ defmodule BusterClaw.MigrationTest do
 
     assert [%{name: "ops", chat_id: "C123"}] = Automation.list_delivery_destinations()
     assert [%{name: "after-report", event: "post_report"}] = Automation.list_hooks()
-    assert [%{name: "ingest-now", action: "ingest"}] = Automation.list_webhooks()
+    assert [%{name: "ingest-now", action: "command"}] = Automation.list_webhooks()
 
     assert [%{job_id: "bad-cron", enabled: false, last_error: last_error}] =
              Automation.list_scheduler_jobs()
@@ -181,12 +159,9 @@ defmodule BusterClaw.MigrationTest do
     assert length(Automation.list_scheduler_jobs()) == 1
   end
 
-  test "indexes legacy raw markdown and reports idempotently", %{library_root: library_root} do
+  test "indexes legacy raw markdown idempotently", %{library_root: library_root} do
     raw_path = Path.join([library_root, "raw", "2026-05-07", "story.md"])
-    report_path = Path.join([library_root, "reports", "2026-05-07", "story-report.md"])
-
     File.mkdir_p!(Path.dirname(raw_path))
-    File.mkdir_p!(Path.dirname(report_path))
 
     File.write!(raw_path, """
     ---
@@ -200,20 +175,7 @@ defmodule BusterClaw.MigrationTest do
     Body text.
     """)
 
-    File.write!(report_path, """
-    ---
-    source_file: "story.md"
-    url: "https://example.com/story"
-    model: "llama3"
-    tags: ["report"]
-    ---
-
-    # Report
-
-    Summary text.
-    """)
-
-    assert %{raw_documents: %{created: 1}, reports: %{created: 1}} =
+    assert %{raw_documents: %{created: 1}} =
              Migration.import_all(
                legacy_root: Path.dirname(library_root),
                library_root: library_root
@@ -222,69 +184,12 @@ defmodule BusterClaw.MigrationTest do
     assert [%{artifact_path: "raw/2026-05-07/story.md", name: "Story"}] =
              Library.list_documents()
 
-    assert [%{artifact_path: "reports/2026-05-07/story-report.md", model: "llama3"}] =
-             Library.list_reports()
-
-    assert %{raw_documents: %{updated: 1}, reports: %{updated: 1}} =
+    assert %{raw_documents: %{updated: 1}} =
              Migration.import_all(
                legacy_root: Path.dirname(library_root),
                library_root: library_root
              )
 
     assert length(Library.list_documents()) == 1
-    assert length(Library.list_reports()) == 1
-  end
-
-  test "imports report manifest metadata before indexing report markdown", %{
-    library_root: library_root
-  } do
-    report_path = Path.join([library_root, "reports", "2026-05-07", "manifest-report.md"])
-    File.mkdir_p!(Path.dirname(report_path))
-
-    File.write!(report_path, """
-    # Manifest Report
-
-    Summary text.
-    """)
-
-    File.write!(
-      Path.join([library_root, "reports", "manifest.json"]),
-      Jason.encode!(%{
-        reports: [
-          %{
-            path: "reports/2026-05-07/manifest-report.md",
-            sourceFile: "raw/2026-05-07/story.md",
-            sourceUrl: "https://example.com/story",
-            model: "gpt-5.4",
-            tags: ["manifest"],
-            generatedAt: "2026-05-07T12:00:00Z"
-          }
-        ]
-      })
-    )
-
-    assert %{report_manifest: %{created: 1}, reports: %{updated: 1}} =
-             Migration.import_all(
-               legacy_root: Path.dirname(library_root),
-               library_root: library_root
-             )
-
-    assert [
-             %{
-               artifact_path: "reports/2026-05-07/manifest-report.md",
-               source_file: "raw/2026-05-07/story.md",
-               source_url: "https://example.com/story",
-               model: "gpt-5.4",
-               tags: %{"items" => ["manifest"]}
-             }
-           ] = Library.list_reports()
-
-    assert %{report_manifest: %{updated: 1}, reports: %{updated: 1}} =
-             Migration.import_all(
-               legacy_root: Path.dirname(library_root),
-               library_root: library_root
-             )
-
-    assert length(Library.list_reports()) == 1
   end
 end

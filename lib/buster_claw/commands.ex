@@ -2,8 +2,8 @@ defmodule BusterClaw.Commands do
   @moduledoc """
   Canonical command surface for Buster Claw.
 
-  Every external surface (HTTP API, MCP server, CLI escript) and the internal
-  chat agent dispatches through this module. See
+  Every external surface (HTTP API, MCP server, CLI escript) dispatches through
+  this module. See
   `docs/rewrite/COMMAND_SURFACE.md` for the full catalog with arg schemas,
   return shapes, and agent allowlist tiers.
 
@@ -19,27 +19,22 @@ defmodule BusterClaw.Commands do
 
   - `list_commands/0` returns the catalog (used by MCP `tools/list` and CLI `--help`).
   - `call/2` dispatches by string command name (used by HTTP and MCP frontends).
-  - Direct calls (`Commands.source_list(%{})`) work for internal callers.
+  - Direct calls (`Commands.document_list(%{})`) work for internal callers.
   """
 
   alias BusterClaw.{
-    Analysis,
     Browser,
     Calendar,
-    Chat,
     Delivery,
     Google,
     Hooks,
-    Ingest,
     Integrations,
     Library,
     MCP,
     Memory,
     Orchestration,
-    Providers,
     Scheduler,
     Search,
-    Sources,
     Webhooks
   }
 
@@ -173,8 +168,6 @@ defmodule BusterClaw.Commands do
   # -----------------------------------------------------------------------
 
   for {prefix, context, ctx_singular, ctx_plural} <- [
-        {:source, Sources, :source, :sources},
-        {:provider, Providers, :provider, :providers},
         {:event, Calendar, :event, :events},
         {:mcp_server, MCP, :server, :servers},
         {:webhook, Webhooks, :webhook, :webhooks},
@@ -211,19 +204,6 @@ defmodule BusterClaw.Commands do
   end
 
   # -----------------------------------------------------------------------
-  # Sources (extras)
-  # -----------------------------------------------------------------------
-
-  def source_ingest(%{"id" => id}) do
-    with_resource(Sources, :get_source!, id, fn source ->
-      case Ingest.ingest_source(source) do
-        {:ok, count, items} -> {:ok, %{count: count, items: items}}
-        other -> other
-      end
-    end)
-  end
-
-  # -----------------------------------------------------------------------
   # MCP servers (extras)
   # -----------------------------------------------------------------------
 
@@ -238,20 +218,6 @@ defmodule BusterClaw.Commands do
 
   def mcp_server_tools(%{"id" => id}) do
     with_resource(MCP, :get_server!, id, &MCP.discover_tools/1)
-  end
-
-  # -----------------------------------------------------------------------
-  # Providers (extras)
-  # -----------------------------------------------------------------------
-
-  def provider_active(_args \\ %{}), do: {:ok, Providers.active_provider()}
-
-  def provider_set_active(%{"id" => id}) do
-    with_resource(Providers, :get_provider!, id, &Providers.set_active_provider/1)
-  end
-
-  def provider_test(%{"id" => id}) do
-    with_resource(Providers, :get_provider!, id, &Providers.test_provider/1)
   end
 
   # -----------------------------------------------------------------------
@@ -270,41 +236,6 @@ defmodule BusterClaw.Commands do
 
   def document_delete(%{"id" => id}) do
     with_resource(Library, :get_document!, id, &Library.delete_raw_document/1)
-  end
-
-  # -----------------------------------------------------------------------
-  # Reports (read-only)
-  # -----------------------------------------------------------------------
-
-  def report_list(_args \\ %{}), do: {:ok, Library.list_reports()}
-
-  def report_get(%{"id" => id}), do: safe_get(Library, :get_report!, id)
-
-  # -----------------------------------------------------------------------
-  # Analysis
-  # -----------------------------------------------------------------------
-
-  def analysis_job_list(_args \\ %{}), do: {:ok, Analysis.list_jobs()}
-
-  def analysis_queue(%{"document_id" => doc_id} = args) do
-    extra = Map.drop(args, ["document_id"])
-
-    with_resource(Library, :get_document!, doc_id, fn document ->
-      Analysis.queue_document(document, extra)
-    end)
-  end
-
-  def analysis_run_pending(args) do
-    max = Map.get(args, "max", 1)
-    {:ok, Analysis.run_pending(max: max)}
-  end
-
-  def analysis_run_job(%{"id" => id}) do
-    case Analysis.run_job(id, []) do
-      {:ok, job} -> {:ok, job}
-      {:error, :not_found} -> {:error, :not_found}
-      other -> other
-    end
   end
 
   # -----------------------------------------------------------------------
@@ -422,16 +353,6 @@ defmodule BusterClaw.Commands do
     end
   end
 
-  def integration_monitoring_brief(args \\ %{}) do
-    opts =
-      []
-      |> maybe_put_option(:provider_id, Map.get(args, "provider_id"))
-      |> maybe_put_option(:limit, Map.get(args, "limit"))
-      |> maybe_put_option(:window, Map.get(args, "window"))
-
-    Integrations.generate_monitoring_brief(opts)
-  end
-
   # -----------------------------------------------------------------------
   # Google Workspace accounts
   # -----------------------------------------------------------------------
@@ -533,36 +454,6 @@ defmodule BusterClaw.Commands do
         force_full?: truthy?(Map.get(args, "force_full", false))
       )
     end)
-  end
-
-  # -----------------------------------------------------------------------
-  # Chat
-  # -----------------------------------------------------------------------
-
-  def chat_send(args) do
-    prompt = Map.get(args, "prompt") || Map.get(args, "content")
-    session = Map.get(args, "session_id", Chat.default_session())
-
-    if prompt in [nil, ""] do
-      {:error, :missing_prompt}
-    else
-      Chat.ensure_session(session)
-      :ok = Chat.send_message(session, prompt)
-      {:ok, :sent}
-    end
-  end
-
-  def chat_messages(args) do
-    session = Map.get(args, "session_id", Chat.default_session())
-    Chat.ensure_session(session)
-    {:ok, Chat.messages(session)}
-  end
-
-  def chat_clear(args) do
-    session = Map.get(args, "session_id", Chat.default_session())
-    Chat.ensure_session(session)
-    :ok = Chat.clear(session)
-    {:ok, :cleared}
   end
 
   # -----------------------------------------------------------------------
@@ -672,9 +563,6 @@ defmodule BusterClaw.Commands do
 
   defp truthy?(value), do: value in [true, "true", "1", 1, "yes", "YES", "on", "ON"]
 
-  defp maybe_put_option(opts, _key, value) when value in [nil, ""], do: opts
-  defp maybe_put_option(opts, key, value), do: Keyword.put(opts, key, value)
-
   defp now_utc, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   # -----------------------------------------------------------------------
@@ -707,90 +595,6 @@ defmodule BusterClaw.Commands do
 
   defp commands_catalog,
     do: [
-      # Sources
-      list_entry("source_list", "List all configured sources."),
-      get_entry("source_get", "Fetch a source by ID."),
-      %{
-        name: "source_create",
-        type: :mutate,
-        tier: :restricted,
-        description: "Create a new source.",
-        args: %{
-          "url" => %{type: :string, required: true, description: "RSS or page URL"},
-          "type" => %{type: :string, required: true, enum: ["rss", "url"]},
-          "name" => %{type: :string, required: false},
-          "tags" => %{type: :map, required: false},
-          "browser_engine" => %{type: :string, required: false},
-          "cookies" => %{type: :map, required: false},
-          "enabled" => %{type: :boolean, required: false, default: true}
-        }
-      },
-      %{
-        name: "source_update",
-        type: :mutate,
-        tier: :restricted,
-        description: "Update a source.",
-        args: %{
-          "id" => %{type: :integer, required: true},
-          "url" => %{type: :string, required: false},
-          "type" => %{type: :string, required: false, enum: ["rss", "url"]},
-          "name" => %{type: :string, required: false},
-          "tags" => %{type: :map, required: false},
-          "browser_engine" => %{type: :string, required: false},
-          "cookies" => %{type: :map, required: false},
-          "enabled" => %{type: :boolean, required: false}
-        }
-      },
-      delete_entry("source_delete", "Delete a source."),
-      id_trigger_entry("source_ingest", "Fetch + parse + save documents from a source.", :safe),
-
-      # Providers
-      list_entry("provider_list", "List all configured LLM providers."),
-      get_entry("provider_get", "Fetch a provider by ID."),
-      list_entry("provider_active", "Return the currently active provider."),
-      %{
-        name: "provider_create",
-        type: :mutate,
-        tier: :restricted,
-        description: "Create a new provider.",
-        args: %{
-          "name" => %{type: :string, required: true},
-          "type" => %{
-            type: :string,
-            required: true,
-            enum: ["anthropic", "gemini", "codex", "openai", "openrouter", "ollama", "custom"]
-          },
-          "model" => %{type: :string, required: true},
-          "api_key" => %{
-            type: :string,
-            required: false,
-            description: "Required for every type except ollama."
-          },
-          "base_url" => %{type: :string, required: false},
-          "active" => %{type: :boolean, required: false, default: false},
-          "priority" => %{type: :integer, required: false, default: 100}
-        }
-      },
-      %{
-        name: "provider_update",
-        type: :mutate,
-        tier: :restricted,
-        description: "Update a provider.",
-        args: %{
-          "id" => %{type: :integer, required: true},
-          "name" => %{type: :string, required: false},
-          "type" => %{type: :string, required: false},
-          "model" => %{type: :string, required: false},
-          "api_key" => %{type: :string, required: false},
-          "base_url" => %{type: :string, required: false},
-          "active" => %{type: :boolean, required: false},
-          "priority" => %{type: :integer, required: false}
-        }
-      },
-      delete_entry("provider_delete", "Delete a provider."),
-      delete_entry("provider_set_active", "Mark a provider as active (deactivates others)."),
-      id_trigger_entry("provider_test", "Test connection to a provider's endpoint.", :safe),
-
       # Documents
       list_entry("document_list", "List all indexed documents."),
       get_entry("document_get", "Fetch a document by ID."),
@@ -805,39 +609,10 @@ defmodule BusterClaw.Commands do
           "body" => %{type: :string, required: true},
           "source_url" => %{type: :string, required: false},
           "date" => %{type: :string, required: false, description: "ISO 8601 date"},
-          "tags" => %{type: :map, required: false},
-          "source_id" => %{type: :integer, required: false}
+          "tags" => %{type: :map, required: false}
         }
       },
       delete_entry("document_delete", "Delete a document's file and mark it deleted."),
-
-      # Reports
-      list_entry("report_list", "List all analysis reports."),
-      get_entry("report_get", "Fetch a report by ID."),
-
-      # Analysis
-      list_entry("analysis_job_list", "List all analysis jobs."),
-      %{
-        name: "analysis_queue",
-        type: :trigger,
-        tier: :safe,
-        description: "Queue a document for analysis.",
-        args: %{
-          "document_id" => %{type: :integer, required: true},
-          "provider_id" => %{type: :integer, required: false},
-          "intentions" => %{type: :string, required: false}
-        }
-      },
-      %{
-        name: "analysis_run_pending",
-        type: :trigger,
-        tier: :restricted,
-        description: "Run up to N pending analysis jobs.",
-        args: %{
-          "max" => %{type: :integer, required: false, default: 1}
-        }
-      },
-      id_trigger_entry("analysis_run_job", "Run a specific analysis job.", :restricted),
 
       # Memory
       list_entry("memory_list", "List all persistent memory entries."),
@@ -1156,17 +931,6 @@ defmodule BusterClaw.Commands do
           "integration_id" => %{type: :integer, required: false}
         }
       },
-      %{
-        name: "integration_monitoring_brief",
-        type: :trigger,
-        tier: :restricted,
-        description: "Generate a monitoring brief from latest integration snapshots.",
-        args: %{
-          "provider_id" => %{type: :integer, required: false},
-          "limit" => %{type: :integer, required: false, default: 10},
-          "window" => %{type: :string, required: false}
-        }
-      },
 
       # Google Workspace accounts
       list_entry("google_account_list", "List configured Google Workspace accounts."),
@@ -1300,37 +1064,6 @@ defmodule BusterClaw.Commands do
           "calendar_id" => %{type: :string, required: false, default: "primary"},
           "days_ahead" => %{type: :integer, required: false, default: 90},
           "force_full" => %{type: :boolean, required: false, default: false}
-        }
-      },
-
-      # Chat
-      %{
-        name: "chat_send",
-        type: :trigger,
-        tier: :safe,
-        description: "Send a prompt to the active provider (async).",
-        args: %{
-          "prompt" => %{type: :string, required: true},
-          "content" => %{type: :string, required: false, description: "Alias for prompt."},
-          "session_id" => %{type: :string, required: false, default: "default"}
-        }
-      },
-      %{
-        name: "chat_messages",
-        type: :read,
-        tier: :safe,
-        description: "Get chat session message history.",
-        args: %{
-          "session_id" => %{type: :string, required: false, default: "default"}
-        }
-      },
-      %{
-        name: "chat_clear",
-        type: :mutate,
-        tier: :safe,
-        description: "Clear a chat session's history.",
-        args: %{
-          "session_id" => %{type: :string, required: false, default: "default"}
         }
       },
 

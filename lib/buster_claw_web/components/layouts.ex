@@ -128,7 +128,6 @@ defmodule BusterClawWeb.Layouts do
     [
       %{label: "Home", path: "/", icon: "hero-home"},
       %{label: "Orchestration", path: "/orchestration", icon: "hero-queue-list"},
-      %{label: "Chat", path: "/chat", icon: "hero-chat-bubble-left-right"},
       %{label: "Workspace", path: "/workspace", icon: "hero-folder"},
       %{label: "Browser", path: "/browse", icon: "hero-globe-alt"},
       %{label: "Terminal", path: "/terminal", icon: "hero-command-line"},
@@ -145,9 +144,6 @@ defmodule BusterClawWeb.Layouts do
     base = Map.new(navigation_items(), &{&1.path, &1.label})
 
     Map.merge(base, %{
-      "/documents" => "Library",
-      "/sources" => "Sources",
-      "/analysis" => "Analysis",
       "/delivery" => "Delivery",
       "/hooks" => "Hooks",
       "/webhooks" => "Webhooks",

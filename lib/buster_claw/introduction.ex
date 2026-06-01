@@ -56,19 +56,16 @@ defmodule BusterClaw.Introduction do
     agentically managing the user's web interactivity. Through one auditable
     command surface you browse and fetch the web, act on Google Workspace
     (Gmail, Calendar), pull from integrations (GitHub, Sentry, Umami), connect
-    MCP servers, and deliver results to Slack/Discord/Telegram/email. Content you
-    gather can be captured into a **Library** and analyzed into reports. Every
-    command, outbound send, and untrusted fetch is recorded on the Security
-    (Sentinel) audit feed.
+    MCP servers, and deliver results to Slack/Discord/Telegram/email. Files you
+    create are captured into a **Library** of markdown documents in the
+    workspace. Every command, outbound send, and untrusted fetch is recorded on
+    the Security (Sentinel) audit feed.
 
     ## Workspace layout
 
     Everything you create lives under the workspace folder (`#{Artifact.workspace_root()}`):
 
-    - `library/` — the document store. Raw documents under `library/raw/<date>/`,
-      generated reports under `library/reports/<date>/`.
-    - `sources/` — saved source material.
-    - `analysis/` — analysis outputs.
+    - `library/` — the document store. Raw documents under `library/raw/<date>/`.
     - `memory/` — durable notes/context.
 
     ## Daily activity summaries (minutes)
@@ -76,9 +73,9 @@ defmodule BusterClaw.Introduction do
     Keep a running record of everything that happens in Buster Claw, like meeting
     minutes. Each day, create a folder **inside the library** named
     `MM-DD-YY-summary` (the current date — e.g. `#{example_date()}-summary`) and
-    write that day's summary/minutes there: every ingest, analysis, delivery,
-    command run, and notable decision. Append throughout the day; one dated folder
-    per day so the history is easy to scan.
+    write that day's summary/minutes there: every command run, delivery, and
+    notable decision. Append throughout the day; one dated folder per day so the
+    history is easy to scan.
 
     ## Command surface (CLI)
 

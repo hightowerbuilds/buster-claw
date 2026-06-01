@@ -5,7 +5,7 @@ defmodule BusterClawWeb.WebhookControllerTest do
 
   test "POST /hooks/:name accepts authorized local webhook", %{conn: conn} do
     {:ok, _webhook} =
-      Webhooks.create_webhook(%{name: "analyze-now", action: "analyze", secret: "secret"})
+      Webhooks.create_webhook(%{name: "analyze-now", action: "command", secret: "secret"})
 
     conn =
       conn
@@ -17,7 +17,7 @@ defmodule BusterClawWeb.WebhookControllerTest do
 
   test "POST /hooks/:name rejects when the secret header is missing", %{conn: conn} do
     {:ok, _webhook} =
-      Webhooks.create_webhook(%{name: "missing-header", action: "ingest", secret: "secret"})
+      Webhooks.create_webhook(%{name: "missing-header", action: "command", secret: "secret"})
 
     conn = post(conn, ~p"/hooks/missing-header", %{})
     assert json_response(conn, 401)["error"] == "unauthorized"
@@ -25,7 +25,7 @@ defmodule BusterClawWeb.WebhookControllerTest do
 
   test "POST /hooks/:name rejects when the secret header is wrong", %{conn: conn} do
     {:ok, _webhook} =
-      Webhooks.create_webhook(%{name: "wrong-header", action: "ingest", secret: "real-secret"})
+      Webhooks.create_webhook(%{name: "wrong-header", action: "command", secret: "real-secret"})
 
     conn =
       conn
@@ -37,7 +37,7 @@ defmodule BusterClawWeb.WebhookControllerTest do
 
   test "POST /hooks/:name accepts an empty body with a valid secret", %{conn: conn} do
     {:ok, _webhook} =
-      Webhooks.create_webhook(%{name: "empty-body", action: "analyze", secret: "secret"})
+      Webhooks.create_webhook(%{name: "empty-body", action: "command", secret: "secret"})
 
     conn =
       conn
@@ -59,7 +59,7 @@ defmodule BusterClawWeb.WebhookControllerTest do
 
   test "POST /hooks/:name returns 410 for a disabled webhook", %{conn: conn} do
     {:ok, webhook} =
-      Webhooks.create_webhook(%{name: "off", action: "ingest", secret: "secret"})
+      Webhooks.create_webhook(%{name: "off", action: "command", secret: "secret"})
 
     {:ok, _} = Webhooks.update_webhook(webhook, %{enabled: false})
 

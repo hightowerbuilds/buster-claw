@@ -250,11 +250,6 @@ fn main() {
     let shutting_down_for_setup = Arc::clone(&shutting_down);
     let shutting_down_for_run = Arc::clone(&shutting_down);
 
-    // Handle to the macOS `caffeinate` no-sleep assertion (release builds only),
-    // killed on exit alongside the release child.
-    let caffeinate_child: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
-    let caffeinate_for_run = Arc::clone(&caffeinate_child);
-
     let app = tauri::Builder::default()
         .manage(terminal::TerminalState::default())
         .invoke_handler(tauri::generate_handler![
@@ -314,7 +309,7 @@ fn main() {
                 return Ok(());
             }
 
-            // --- Release mode: bundled BEAM, respawn monitor, no-sleep ---
+            // --- Release mode: bundled BEAM + respawn monitor ---
             let data_dir = resolve_data_dir()?;
             ensure_data_dirs(&data_dir)?;
             let secret_key_base = ensure_secret_key_base(&data_dir)?;
@@ -328,25 +323,9 @@ fn main() {
 
             let release_bin = resolve_release_binary(app)?;
 
-            // Prevent macOS from sleeping while the app is running so an
-            // unattended shift survives the night. `caffeinate -dimsu` asserts
-            // display/idle/disk/system sleep prevention for as long as it lives;
-            // we kill it on exit. NOTE: this is app-lifetime scoped for now;
-            // scoping the assertion to an active shift is a future refinement.
-            match Command::new("caffeinate")
-                .arg("-dimsu")
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-            {
-                Ok(child) => {
-                    if let Ok(mut guard) = caffeinate_child.lock() {
-                        *guard = Some(child);
-                    }
-                }
-                Err(e) => eprintln!("[buster-claw] failed to start caffeinate (no-sleep): {e}"),
-            }
+            // No-sleep + relaunch are shift-scoped and owned by the Elixir
+            // `BusterClaw.Orchestration.Uptime` GenServer (caffeinate + launchd),
+            // engaged only while a shift is active — not by this shell.
 
             let launcher = ReleaseLauncher {
                 handle: handle.clone(),
@@ -393,7 +372,6 @@ fn main() {
             shutting_down_for_run.store(true, Ordering::SeqCst);
             terminal::shutdown_all(handle);
             shutdown_release(&release_child_for_run);
-            shutdown_caffeinate(&caffeinate_for_run);
         }
     });
 }
@@ -496,17 +474,6 @@ fn shutdown_release(child: &Arc<Mutex<Option<Child>>>) {
             Err(_) => break,
         }
     }
-    let _ = process.kill();
-    let _ = process.wait();
-}
-
-fn shutdown_caffeinate(child: &Arc<Mutex<Option<Child>>>) {
-    let Ok(mut guard) = child.lock() else { return };
-    let Some(mut process) = guard.take() else {
-        return;
-    };
-    // caffeinate releases its sleep assertions as soon as it dies, so a plain
-    // kill is sufficient here.
     let _ = process.kill();
     let _ = process.wait();
 }

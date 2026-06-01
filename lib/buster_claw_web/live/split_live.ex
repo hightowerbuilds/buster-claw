@@ -11,15 +11,11 @@ defmodule BusterClawWeb.SplitLive do
   # Home is excluded: StatusLive uses handle_params, which isn't allowed in a
   # nested (embedded) live_render child.
   @panes %{
-    "/chat" => {BusterClawWeb.ChatLive, "Chat"},
-    "/documents" => {BusterClawWeb.DocumentsLive, "Library"},
     "/browse" => {BusterClawWeb.BrowseLive, "Browser"},
     "/calendar" => {BusterClawWeb.CalendarLive, "Calendar"},
     "/gws" => {BusterClawWeb.GWSLive, "GWS"},
     "/memory" => {BusterClawWeb.MemoryLive, "Memory"},
     "/scheduler" => {BusterClawWeb.SchedulerLive, "Scheduler"},
-    "/sources" => {BusterClawWeb.SourcesLive, "Sources"},
-    "/analysis" => {BusterClawWeb.AnalysisLive, "Analysis"},
     "/terminal" => {BusterClawWeb.TerminalLive, "Terminal"},
     "/workspace" => {BusterClawWeb.WorkspaceLive, "Workspace"}
   }

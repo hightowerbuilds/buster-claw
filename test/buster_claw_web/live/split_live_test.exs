@@ -4,10 +4,10 @@ defmodule BusterClawWeb.SplitLiveTest do
   import Phoenix.LiveViewTest
 
   test "renders two joined views side-by-side", %{conn: conn} do
-    {:ok, _view, html} = live(conn, "/split?left=/browse&right=/chat")
+    {:ok, _view, html} = live(conn, "/split?left=/browse&right=/calendar")
 
     assert html =~ "Browse"
-    assert html =~ "Chat"
+    assert html =~ "Calendar"
     # The embedded Browse pane renders its own (bare) content.
     assert html =~ "Nothing loaded yet"
     # In a joined pane the browser drops its page header.
@@ -42,7 +42,7 @@ defmodule BusterClawWeb.SplitLiveTest do
 
   test "panes carry no inline chrome (no Open as tab, no Split view header, no swap link)",
        %{conn: conn} do
-    {:ok, _view, html} = live(conn, "/split?left=/browse&right=/chat")
+    {:ok, _view, html} = live(conn, "/split?left=/browse&right=/calendar")
 
     refute html =~ "Open as tab"
     refute html =~ "Split view"
@@ -58,7 +58,7 @@ defmodule BusterClawWeb.SplitLiveTest do
     end)
 
     left = URI.encode_www_form("/browse?url=https://example.com/x")
-    right = URI.encode_www_form("/chat")
+    right = URI.encode_www_form("/calendar")
 
     {:ok, _view, html} = live(conn, "/split?left=#{left}&right=#{right}")
 

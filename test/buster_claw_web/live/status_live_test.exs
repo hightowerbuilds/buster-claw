@@ -78,12 +78,4 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ "Local today event"
     refute response =~ "UTC tomorrow event"
   end
-
-  test "GET /chat renders the chat shell", %{conn: conn} do
-    conn = get(conn, ~p"/chat")
-    response = html_response(conn, 200)
-
-    assert response =~ "Supervised local chat session"
-    assert response =~ "Chat"
-  end
 end

@@ -3,8 +3,6 @@ defmodule BusterClaw.Integrations.GitHubTest do
 
   alias BusterClaw.Integrations
   alias BusterClaw.Library
-  alias BusterClaw.Repo
-  alias BusterClaw.Workflow.AnalysisJob
 
   setup do
     Req.Test.verify_on_exit!()
@@ -264,8 +262,6 @@ defmodule BusterClaw.Integrations.GitHubTest do
     assert document.name == "GitHub Webhook Snapshot: workflow_run.completed"
     assert document.tags == %{"items" => ["integration", "github", "webhook", "monitoring"]}
     assert Library.get_document!(document.id).status == "fetched"
-    assert [] = Repo.all(AnalysisJob)
-    assert run.metadata["auto_analysis"] == %{"enabled" => false, "jobs" => []}
 
     assert {:ok, markdown} = Library.read_raw_document(document)
     assert markdown =~ "# GitHub Webhook Snapshot: workflow_run.completed"
@@ -318,58 +314,6 @@ defmodule BusterClaw.Integrations.GitHubTest do
     assert markdown =~ "- Repository: acme/checkout"
     refute markdown =~ "## Payload Excerpt"
     refute markdown =~ "payload-secret"
-  end
-
-  test "auto-queues analysis for webhook snapshots when enabled in integration config" do
-    body =
-      Jason.encode!(%{
-        "action" => "completed",
-        "workflow_run" => %{
-          "name" => "CI",
-          "html_url" => "https://github.com/acme/checkout/actions/runs/1"
-        },
-        "repository" => %{
-          "full_name" => "acme/checkout",
-          "html_url" => "https://github.com/acme/checkout"
-        },
-        "sender" => %{"login" => "octocat"}
-      })
-
-    {:ok, integration} =
-      Integrations.create_integration(%{
-        name: "GitHub Webhook Analysis",
-        service_type: "github",
-        webhook_secret: "webhook-secret",
-        config_text: ~s({"owner":"acme","repo":"checkout","auto_analyze_webhooks":true})
-      })
-
-    assert {:ok, run} =
-             Integrations.handle_webhook(
-               integration,
-               [{"x-hub-signature-256", "sha256=#{hmac("webhook-secret", body)}"}],
-               body
-             )
-
-    assert run.status == "ok"
-    assert run.trigger == "webhook"
-
-    assert [document] = Library.list_documents()
-    assert Library.get_document!(document.id).status == "queued"
-
-    assert [%AnalysisJob{} = job] = Repo.all(AnalysisJob)
-    assert job.document_id == document.id
-    assert job.status == "queued"
-
-    assert run.metadata["auto_analysis"] == %{
-             "enabled" => true,
-             "jobs" => [
-               %{
-                 "document_id" => document.id,
-                 "job_id" => job.id,
-                 "status" => "queued"
-               }
-             ]
-           }
   end
 
   test "rejects invalid GitHub webhook signatures and records a failed run" do

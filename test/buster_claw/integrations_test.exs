@@ -1,7 +1,7 @@
 defmodule BusterClaw.IntegrationsTest do
   use BusterClaw.DataCase
 
-  alias BusterClaw.{Integrations, Library, Providers}
+  alias BusterClaw.{Integrations, Library}
 
   setup do
     Req.Test.verify_on_exit!()
@@ -133,102 +133,6 @@ defmodule BusterClaw.IntegrationsTest do
 
     assert [document] = Integrations.latest_documents()
     assert document.id == integration_doc.id
-  end
-
-  test "generate_monitoring_brief uses active provider and saves a monitoring report" do
-    Req.Test.stub(BusterClaw.ProviderHTTP, fn conn ->
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
-      assert body =~ "GitHub deploy snapshot"
-      assert body =~ "Sentry issue snapshot"
-
-      Req.Test.json(conn, %{
-        choices: [
-          %{
-            message: %{
-              content: "## Executive summary\n\nInvestigate the failed deploy and new errors."
-            }
-          }
-        ]
-      })
-    end)
-
-    {:ok, provider} =
-      Providers.create_provider(%{
-        name: "openai",
-        type: "openai",
-        model: "gpt-5.4",
-        api_key: "secret",
-        active: true
-      })
-
-    _github = raw_document!("GitHub deploy snapshot", ["integration", "github", "activity"])
-    _sentry = raw_document!("Sentry issue snapshot", ["integration", "sentry", "issues"])
-    source_document_ids = Integrations.latest_documents(5) |> Enum.map(& &1.id)
-
-    assert {:ok, report} = Integrations.generate_monitoring_brief(limit: 5)
-    assert report.provider_id == provider.id
-    assert report.model == "gpt-5.4"
-    assert report.tags["items"] == ["monitoring", "brief", "consultation"]
-    assert report.tags["monitoring"]["source_document_ids"] == source_document_ids
-
-    report_path = Library.absolute_artifact_path(report.artifact_path)
-    assert File.exists?(report_path)
-    assert File.read!(report_path) =~ "# Monitoring Brief"
-    assert File.read!(report_path) =~ "Investigate the failed deploy and new errors."
-  end
-
-  test "generate_monitoring_brief can use a provider override" do
-    Req.Test.stub(BusterClaw.ProviderHTTP, fn conn ->
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
-      assert body =~ "override-model"
-      assert body =~ "GitHub deploy snapshot"
-
-      Req.Test.json(conn, %{
-        choices: [
-          %{
-            message: %{
-              content: "## Executive summary\n\nOverride provider generated this brief."
-            }
-          }
-        ]
-      })
-    end)
-
-    {:ok, _active_provider} =
-      Providers.create_provider(%{
-        name: "active-provider",
-        type: "openai",
-        model: "active-model",
-        api_key: "secret",
-        active: true
-      })
-
-    {:ok, override_provider} =
-      Providers.create_provider(%{
-        name: "override-provider",
-        type: "openai",
-        model: "override-model",
-        api_key: "secret",
-        active: false
-      })
-
-    _github = raw_document!("GitHub deploy snapshot", ["integration", "github", "activity"])
-
-    assert {:ok, report} =
-             Integrations.generate_monitoring_brief(provider_id: "#{override_provider.id}")
-
-    assert report.provider_id == override_provider.id
-    assert report.model == "override-model"
-    assert report.tags["monitoring"]["provider"] == "override-provider"
-  end
-
-  test "generate_monitoring_brief returns clear errors without documents or provider" do
-    assert {:error, :no_integration_documents} = Integrations.generate_monitoring_brief()
-
-    _document = raw_document!("Sentry issue snapshot", ["integration", "sentry", "issues"])
-
-    assert {:error, :no_active_provider} = Integrations.generate_monitoring_brief()
-    assert {:error, :provider_not_found} = Integrations.generate_monitoring_brief(provider_id: -1)
   end
 
   defp raw_document!(name, tags) do

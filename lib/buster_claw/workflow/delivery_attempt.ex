@@ -4,13 +4,11 @@ defmodule BusterClaw.Workflow.DeliveryAttempt do
   import Ecto.Changeset
 
   alias BusterClaw.Automation.DeliveryDestination
-  alias BusterClaw.Library.Report
 
   @statuses ~w(queued sending sent failed)
 
   schema "delivery_attempts" do
     belongs_to :delivery_destination, DeliveryDestination
-    belongs_to :report, Report
 
     field :title, :string
     field :status, :string, default: "queued"
@@ -25,7 +23,6 @@ defmodule BusterClaw.Workflow.DeliveryAttempt do
     attempt
     |> cast(attrs, [
       :delivery_destination_id,
-      :report_id,
       :title,
       :status,
       :error,

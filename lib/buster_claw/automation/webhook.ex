@@ -3,7 +3,7 @@ defmodule BusterClaw.Automation.Webhook do
 
   import Ecto.Changeset
 
-  @actions ~w(ingest analyze full command)
+  @actions ~w(command)
 
   schema "webhooks" do
     field :name, :string

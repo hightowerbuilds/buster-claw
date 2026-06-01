@@ -15,7 +15,7 @@ defmodule BusterClaw.AutomationTest do
     assert {:ok, webhook} =
              Automation.create_webhook(%{
                name: "daily",
-               action: "full",
+               action: "command",
                secret: "secret"
              })
 
@@ -37,7 +37,7 @@ defmodule BusterClaw.AutomationTest do
     assert {:ok, job} =
              Automation.create_scheduler_job(%{
                job_id: "morning",
-               type: "ingest",
+               type: "integrations_poll",
                cron: "0 8 * * *"
              })
 

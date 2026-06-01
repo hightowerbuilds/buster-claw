@@ -39,12 +39,12 @@ defmodule BusterClawWeb.McpControllerTest do
       assert MapSet.equal?(names, safe_names)
 
       # Representative safe reads are present...
-      for representative <- ~w(runtime_status source_list) do
+      for representative <- ~w(runtime_status document_list) do
         assert representative in names, "expected #{representative} to be advertised"
       end
 
       # ...and restricted commands are NOT exposed.
-      for restricted <- ~w(source_create gmail_send delivery_dispatch_all analysis_run_pending) do
+      for restricted <- ~w(memory_remember gmail_send delivery_dispatch_all document_save) do
         refute restricted in names, "restricted #{restricted} must not be advertised over MCP"
       end
     end
@@ -54,9 +54,9 @@ defmodule BusterClawWeb.McpControllerTest do
       conn = authed(conn) |> post(~p"/mcp", req)
       %{"result" => %{"tools" => tools}} = json_response(conn, 200)
 
-      # source_get is safe-tier and requires an :id.
-      tool = Enum.find(tools, &(&1["name"] == "source_get"))
-      assert tool, "expected safe command source_get to be advertised"
+      # document_get is safe-tier and requires an :id.
+      tool = Enum.find(tools, &(&1["name"] == "document_get"))
+      assert tool, "expected safe command document_get to be advertised"
       assert "id" in tool["inputSchema"]["required"]
     end
   end
@@ -67,7 +67,7 @@ defmodule BusterClawWeb.McpControllerTest do
         "jsonrpc" => "2.0",
         "method" => "tools/call",
         "id" => 4,
-        "params" => %{"name" => "source_list", "arguments" => %{}}
+        "params" => %{"name" => "memory_list", "arguments" => %{}}
       }
 
       conn = authed_mcp(conn) |> post(~p"/mcp", req)
@@ -82,7 +82,7 @@ defmodule BusterClawWeb.McpControllerTest do
         "jsonrpc" => "2.0",
         "method" => "tools/call",
         "id" => 5,
-        "params" => %{"name" => "source_get", "arguments" => %{"id" => 99_999}}
+        "params" => %{"name" => "document_get", "arguments" => %{"id" => 99_999}}
       }
 
       conn = authed_mcp(conn) |> post(~p"/mcp", req)
@@ -96,8 +96,8 @@ defmodule BusterClawWeb.McpControllerTest do
         "method" => "tools/call",
         "id" => 6,
         "params" => %{
-          "name" => "source_create",
-          "arguments" => %{"url" => "https://evil.example.com/feed", "type" => "rss"}
+          "name" => "memory_remember",
+          "arguments" => %{"text" => "evil note"}
         }
       }
 
@@ -109,7 +109,7 @@ defmodule BusterClawWeb.McpControllerTest do
       assert text =~ "requires human approval"
 
       # Side-effect check: nothing was created.
-      assert {:ok, []} = Commands.source_list(%{})
+      assert {:ok, []} = Commands.memory_list(%{})
     end
   end
 

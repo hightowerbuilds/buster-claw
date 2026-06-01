@@ -6,7 +6,7 @@ defmodule BusterClawWeb.SchedulerLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    changeset = Scheduler.change_job(%SchedulerJob{}, %{type: "ingest", enabled: true})
+    changeset = Scheduler.change_job(%SchedulerJob{}, %{type: "integrations_poll", enabled: true})
 
     {:ok,
      socket
@@ -31,7 +31,10 @@ defmodule BusterClawWeb.SchedulerLive do
       {:ok, _job} ->
         {:noreply,
          socket
-         |> assign(:form, to_form(Scheduler.change_job(%SchedulerJob{}, %{type: "ingest"})))
+         |> assign(
+           :form,
+           to_form(Scheduler.change_job(%SchedulerJob{}, %{type: "integrations_poll"}))
+         )
          |> assign(:result, "Scheduler job saved.")
          |> load_jobs()}
 
@@ -87,12 +90,7 @@ defmodule BusterClawWeb.SchedulerLive do
               label="Type"
               type="select"
               options={[
-                {"Ingest", "ingest"},
-                {"Analyze", "analyze"},
                 {"Poll Integrations", "integrations_poll"},
-                {"Monitoring Brief", "monitoring_brief"},
-                {"Full", "full"},
-                {"Digest", "digest"},
                 {"Custom", "custom"}
               ]}
             />

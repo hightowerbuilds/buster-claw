@@ -6,7 +6,6 @@ defmodule BusterClaw.CommandsTest do
   alias BusterClaw.Google
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Library
-  alias BusterClaw.Providers
 
   setup do
     Req.Test.verify_on_exit!()
@@ -33,7 +32,7 @@ defmodule BusterClaw.CommandsTest do
       assert %{type: :read, tier: :safe} = Enum.find(catalog, &(&1.name == "runtime_status"))
 
       assert %{type: :trigger, tier: :restricted} =
-               Enum.find(catalog, &(&1.name == "analysis_run_pending"))
+               Enum.find(catalog, &(&1.name == "delivery_dispatch_all"))
     end
 
     test "every command has a unique name" do
@@ -67,7 +66,7 @@ defmodule BusterClaw.CommandsTest do
 
   describe "call/2 dispatcher" do
     test "dispatches to the matching command" do
-      assert {:ok, []} = Commands.call("source_list", %{})
+      assert {:ok, []} = Commands.call("memory_list", %{})
     end
 
     test "normalizes atom-keyed args to strings" do
@@ -86,8 +85,8 @@ defmodule BusterClaw.CommandsTest do
     test "trusted caller (the default) may run restricted commands" do
       assert {:ok, _} =
                Commands.call(
-                 "source_create",
-                 %{"url" => "https://example.com/feed", "type" => "rss"},
+                 "memory_remember",
+                 %{"text" => "trusted note"},
                  caller: :trusted
                )
     end
@@ -95,19 +94,19 @@ defmodule BusterClaw.CommandsTest do
     test "untrusted callers may run safe-tier commands" do
       for caller <- [:agent, :mcp] do
         assert {:ok, _} = Commands.call("runtime_status", %{}, caller: caller)
-        assert {:ok, []} = Commands.call("source_list", %{}, caller: caller)
+        assert {:ok, []} = Commands.call("memory_list", %{}, caller: caller)
       end
     end
 
     test "untrusted callers are refused restricted commands and cause no side effect" do
       assert {:error, :requires_confirmation} =
                Commands.call(
-                 "source_create",
-                 %{"url" => "https://evil.example.com/feed", "type" => "rss"},
+                 "memory_remember",
+                 %{"text" => "evil note"},
                  caller: :mcp
                )
 
-      assert {:ok, []} = Commands.source_list(%{})
+      assert {:ok, []} = Commands.memory_list(%{})
     end
 
     test "unknown command for an untrusted caller still reports :unknown_command" do
@@ -123,68 +122,9 @@ defmodule BusterClaw.CommandsTest do
 
     test "safe_commands/0 and command_tier/1 agree with the catalog" do
       assert Enum.all?(Commands.safe_commands(), &(&1.tier == :safe))
-      assert Commands.command_tier("source_list") == :safe
-      assert Commands.command_tier("source_create") == :restricted
+      assert Commands.command_tier("memory_list") == :safe
+      assert Commands.command_tier("memory_remember") == :restricted
       assert Commands.command_tier("nope_nope") == nil
-    end
-  end
-
-  describe "sources" do
-    test "list, create, get, update, delete round trip" do
-      assert {:ok, []} = Commands.source_list(%{})
-
-      assert {:ok, source} =
-               Commands.source_create(%{"url" => "https://example.com/feed", "type" => "rss"})
-
-      assert {:ok, ^source} = Commands.source_get(%{"id" => source.id})
-
-      assert {:ok, updated} =
-               Commands.source_update(%{"id" => source.id, "name" => "Renamed"})
-
-      assert updated.name == "Renamed"
-
-      assert {:ok, _} = Commands.source_delete(%{"id" => source.id})
-      assert {:error, :not_found} = Commands.source_get(%{"id" => source.id})
-    end
-
-    test "create returns changeset on invalid args" do
-      assert {:error, %Ecto.Changeset{}} = Commands.source_create(%{"url" => ""})
-    end
-  end
-
-  describe "providers" do
-    test "create requires api_key for non-ollama" do
-      assert {:error, %Ecto.Changeset{}} =
-               Commands.provider_create(%{
-                 "name" => "anth",
-                 "type" => "anthropic",
-                 "model" => "claude"
-               })
-    end
-
-    test "ollama does not require api_key" do
-      assert {:ok, provider} =
-               Commands.provider_create(%{
-                 "name" => "local",
-                 "type" => "ollama",
-                 "model" => "llama3"
-               })
-
-      assert provider.type == "ollama"
-    end
-
-    test "active returns nil when no provider is active" do
-      assert {:ok, nil} = Commands.provider_active(%{})
-    end
-
-    test "set_active flips the active flag" do
-      {:ok, p1} =
-        Commands.provider_create(%{"name" => "a", "type" => "ollama", "model" => "llama3"})
-
-      assert {:ok, active} = Commands.provider_set_active(%{"id" => p1.id})
-      assert active.active == true
-      assert {:ok, %{id: id}} = Commands.provider_active(%{})
-      assert id == p1.id
     end
   end
 
@@ -260,84 +200,6 @@ defmodule BusterClaw.CommandsTest do
       assert deleted.id == summary.id
       assert {:ok, []} = Commands.google_account_list(%{})
       assert {:error, :not_found} = Commands.google_account_get(%{"id" => summary.id})
-    end
-  end
-
-  describe "integrations" do
-    test "integration_monitoring_brief accepts a provider override" do
-      previous_library_root = Application.get_env(:buster_claw, :library_root)
-
-      library_root =
-        Path.join(
-          System.tmp_dir!(),
-          "buster-claw-commands-monitoring-test-#{System.unique_integer([:positive])}"
-        )
-
-      Application.put_env(:buster_claw, :library_root, library_root)
-
-      on_exit(fn ->
-        if previous_library_root do
-          Application.put_env(:buster_claw, :library_root, previous_library_root)
-        else
-          Application.delete_env(:buster_claw, :library_root)
-        end
-
-        File.rm_rf(library_root)
-      end)
-
-      Req.Test.stub(BusterClaw.ProviderHTTP, fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        assert body =~ "override-model"
-        assert body =~ "GitHub deploy snapshot"
-
-        Req.Test.json(conn, %{
-          choices: [
-            %{
-              message: %{
-                content: "## Executive summary\n\nCommand-generated operations brief."
-              }
-            }
-          ]
-        })
-      end)
-
-      {:ok, _active_provider} =
-        Providers.create_provider(%{
-          name: "active-provider",
-          type: "openai",
-          model: "active-model",
-          api_key: "secret",
-          active: true
-        })
-
-      {:ok, override_provider} =
-        Providers.create_provider(%{
-          name: "override-provider",
-          type: "openai",
-          model: "override-model",
-          api_key: "secret",
-          active: false
-        })
-
-      assert {:ok, _document} =
-               Library.save_raw_document(%{
-                 date: ~D[2026-05-27],
-                 filename: "github-deploy-snapshot.md",
-                 name: "GitHub deploy snapshot",
-                 source_url: "https://github.com/acme/checkout",
-                 tags: ["integration", "github", "activity"],
-                 content: "# GitHub deploy snapshot\n\nDeploy signal."
-               })
-
-      assert {:ok, report} =
-               Commands.integration_monitoring_brief(%{
-                 "provider_id" => "#{override_provider.id}",
-                 "window" => "command smoke"
-               })
-
-      assert report.provider_id == override_provider.id
-      assert report.model == "override-model"
-      assert report.artifact_path =~ "monitoring-brief"
     end
   end
 
@@ -593,29 +455,6 @@ defmodule BusterClaw.CommandsTest do
     end
   end
 
-  describe "chat" do
-    test "chat_send accepts content as a compatibility alias for prompt" do
-      assert {:ok, :sent} =
-               Commands.chat_send(%{
-                 "session_id" => "test-content-alias",
-                 "content" => "/help"
-               })
-    end
-
-    test "chat_send returns a bounded error when prompt is missing" do
-      assert {:error, :missing_prompt} = Commands.chat_send(%{"session_id" => "test-missing"})
-    end
-
-    test "chat_messages on a fresh session is empty" do
-      assert {:ok, messages} = Commands.chat_messages(%{"session_id" => "test-fresh"})
-      assert is_list(messages)
-    end
-
-    test "chat_clear returns :cleared" do
-      assert {:ok, :cleared} = Commands.chat_clear(%{"session_id" => "test-clear"})
-    end
-  end
-
   describe "runtime" do
     test "status returns a snapshot map" do
       assert {:ok, snapshot} = Commands.runtime_status(%{})
@@ -632,11 +471,7 @@ defmodule BusterClaw.CommandsTest do
   defp representative_commands do
     ~w(
       runtime_status
-      source_list
-      source_ingest
-      provider_active
       document_save
-      analysis_queue
       memory_remember
       event_create
       mcp_server_list
@@ -645,14 +480,12 @@ defmodule BusterClaw.CommandsTest do
       delivery_dispatch_all
       scheduler_job_run_now
       integration_poll_all
-      integration_monitoring_brief
       google_account_list
       gmail_search
       gmail_sync
       gmail_draft_create
       gmail_send
       google_calendar_sync
-      chat_send
       web_search
       browser_fetch
     )

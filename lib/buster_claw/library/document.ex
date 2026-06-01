@@ -3,13 +3,9 @@ defmodule BusterClaw.Library.Document do
 
   import Ecto.Changeset
 
-  alias BusterClaw.Sources.Source
-
   @statuses ~w(fetched queued analyzing analyzed failed deleted)
 
   schema "documents" do
-    belongs_to :source, Source
-
     field :filename, :string
     field :artifact_path, :string
     field :date, :date
@@ -29,7 +25,6 @@ defmodule BusterClaw.Library.Document do
   def changeset(document, attrs) do
     document
     |> cast(attrs, [
-      :source_id,
       :filename,
       :artifact_path,
       :date,
@@ -42,8 +37,6 @@ defmodule BusterClaw.Library.Document do
       :fetched_at
     ])
     |> validate_required([:filename, :artifact_path, :status])
-    |> validate_inclusion(:status, @statuses)
-    |> foreign_key_constraint(:source_id)
     |> unique_constraint(:artifact_path)
   end
 end

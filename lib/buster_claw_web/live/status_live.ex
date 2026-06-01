@@ -36,12 +36,6 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   @impl true
-  def handle_event("start_shift", _params, socket) do
-    Orchestration.clear_kill_switch()
-    Orchestration.start_shift()
-    {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
-  end
-
   def handle_event("kill_shift", _params, socket) do
     Orchestration.engage_kill_switch()
     Orchestration.stop_shift("kill switch")

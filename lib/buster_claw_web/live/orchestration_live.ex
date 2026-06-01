@@ -46,15 +46,9 @@ defmodule BusterClawWeb.OrchestrationLive do
   def handle_info({:orchestration, _event}, socket), do: {:noreply, load(socket)}
   def handle_info(:refresh, socket), do: {:noreply, load(socket)}
 
-  # --- shift controls (mirror the home panel) ---
+  # --- shift control (emergency stop; shifts start from the terminal) ---
 
   @impl true
-  def handle_event("start_shift", _params, socket) do
-    Orchestration.clear_kill_switch()
-    Orchestration.start_shift()
-    {:noreply, load(socket)}
-  end
-
   def handle_event("kill_shift", _params, socket) do
     Orchestration.engage_kill_switch()
     Orchestration.stop_shift("kill switch")

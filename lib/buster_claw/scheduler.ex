@@ -4,7 +4,7 @@ defmodule BusterClaw.Scheduler do
   import Ecto.Changeset
   import Ecto.Query
 
-  alias BusterClaw.{Analysis, Automation, Ingest, Integrations, Library, Repo, Sources, Workflow}
+  alias BusterClaw.{Automation, Integrations, Repo, Workflow}
   alias BusterClaw.Automation.SchedulerJob
   alias BusterClaw.Scheduler.Cron
 
@@ -94,24 +94,6 @@ defmodule BusterClaw.Scheduler do
     end
   end
 
-  defp execute(%SchedulerJob{type: "ingest"} = job) do
-    summary = Sources.list_sources() |> Ingest.ingest_sources()
-    record_event(job, "scheduler.ingest", "Scheduler ingest run completed", summary)
-    {:ok, summary}
-  end
-
-  defp execute(%SchedulerJob{type: "analyze"} = job) do
-    case run_analysis_pipeline() do
-      {:ok, summary} ->
-        record_event(job, "scheduler.analyze", "Scheduler analyze run completed", summary)
-        {:ok, summary}
-
-      {:error, summary} ->
-        record_event(job, "scheduler.analyze.failed", "Scheduler analyze run failed", summary)
-        {:error, summary}
-    end
-  end
-
   defp execute(%SchedulerJob{type: "integrations_poll"} = job) do
     results = Integrations.poll_all(trigger: "scheduler")
     {ok_count, error_count} = Enum.reduce(results, {0, 0}, &count_integration_result/2)
@@ -133,12 +115,6 @@ defmodule BusterClaw.Scheduler do
     {:ok, summary}
   end
 
-  defp execute(%SchedulerJob{type: "monitoring_brief"} = job),
-    do: run_monitoring_brief(job, "monitoring_brief", "scheduler monitoring brief")
-
-  defp execute(%SchedulerJob{type: "digest"} = job),
-    do: run_monitoring_brief(job, "digest", "scheduler digest")
-
   defp execute(%SchedulerJob{type: "custom"} = job) do
     summary = %{
       status: "placeholder",
@@ -150,201 +126,7 @@ defmodule BusterClaw.Scheduler do
     {:ok, summary}
   end
 
-  defp execute(%SchedulerJob{type: "full"} = job) do
-    ingest_summary = Sources.list_sources() |> Ingest.ingest_sources()
-
-    case run_analysis_pipeline() do
-      {:ok, analysis_summary} ->
-        summary = full_summary(ingest_summary, analysis_summary)
-
-        case full_result(summary) do
-          {:ok, summary} ->
-            record_event(job, "scheduler.full", "Scheduler full run completed", summary)
-            {:ok, summary}
-
-          {:error, summary} ->
-            record_event(job, "scheduler.full.failed", "Scheduler full run failed", summary)
-            {:error, summary}
-        end
-
-      {:error, analysis_summary} ->
-        summary = full_summary(ingest_summary, analysis_summary)
-        record_event(job, "scheduler.full.failed", "Scheduler full run failed", summary)
-        {:error, summary}
-    end
-  end
-
   defp execute(%SchedulerJob{type: type}), do: {:error, {:unsupported_scheduler_type, type}}
-
-  defp run_monitoring_brief(job, type, window) do
-    case Integrations.generate_monitoring_brief(monitoring_brief_options(job, window)) do
-      {:ok, report} ->
-        summary = %{
-          status: "ok",
-          report_id: report.id,
-          artifact_path: report.artifact_path
-        }
-
-        record_event(
-          job,
-          "scheduler.#{type}",
-          "Scheduler #{scheduler_label(type)} completed",
-          summary
-        )
-
-        {:ok, summary}
-
-      {:error, reason} ->
-        record_event(
-          job,
-          "scheduler.#{type}.failed",
-          "Scheduler #{scheduler_label(type)} failed",
-          %{
-            status: "error",
-            error: inspect(reason)
-          }
-        )
-
-        {:error, reason}
-    end
-  end
-
-  defp monitoring_brief_options(%SchedulerJob{} = job, window) do
-    [window: window]
-    |> maybe_put_provider_id(provider_id_from_custom_cmd(job.custom_cmd))
-  end
-
-  defp provider_id_from_custom_cmd(value) when value in [nil, ""], do: nil
-
-  defp provider_id_from_custom_cmd(value) do
-    value = String.trim(to_string(value))
-
-    cond do
-      Regex.match?(~r/^\d+$/, value) ->
-        String.to_integer(value)
-
-      match = Regex.run(~r/(?:^|\s)provider_id=(\d+)(?:\s|$)/, value) ->
-        match |> List.last() |> String.to_integer()
-
-      true ->
-        nil
-    end
-  end
-
-  defp maybe_put_provider_id(opts, nil), do: opts
-  defp maybe_put_provider_id(opts, provider_id), do: Keyword.put(opts, :provider_id, provider_id)
-
-  defp run_analysis_pipeline do
-    queue_results =
-      Library.list_documents()
-      |> Enum.filter(&(&1.status == "fetched"))
-      |> Enum.map(&queue_for_analysis/1)
-
-    pending_count = pending_analysis_count()
-    run_results = drain_pending_analysis(pending_count)
-    summary = analysis_pipeline_summary(queue_results, pending_count, run_results)
-
-    if summary.status == "ok", do: {:ok, summary}, else: {:error, summary}
-  end
-
-  defp queue_for_analysis(document) do
-    case Analysis.queue_document(document) do
-      {:ok, job} ->
-        {:ok, job}
-
-      {:error, reason} ->
-        {:error,
-         %{
-           document_id: document.id,
-           document_name: document.name || document.filename,
-           error: error_text(reason)
-         }}
-    end
-  end
-
-  defp pending_analysis_count do
-    Analysis.list_jobs()
-    |> Enum.count(&(&1.status == "queued"))
-  end
-
-  defp drain_pending_analysis(0), do: []
-
-  defp drain_pending_analysis(pending_count) do
-    case Analysis.drain_pending(max_jobs: pending_count) do
-      {:ok, results} -> results
-      {:error, reason} -> [{:error, reason}]
-    end
-  end
-
-  defp analysis_pipeline_summary(queue_results, pending_count, run_results) do
-    queue_errors = queue_errors(queue_results)
-    analysis_errors = analysis_errors(run_results)
-    status = if queue_errors == [] and analysis_errors == [], do: "ok", else: "error"
-
-    %{
-      status: status,
-      queued: Enum.count(queue_results, &match?({:ok, _job}, &1)),
-      queue_errors: queue_errors,
-      pending: pending_count,
-      analyzed: Enum.count(run_results, &match?({:ok, _job}, &1)),
-      analysis_errors: analysis_errors,
-      jobs: Enum.map(run_results, &analysis_result_summary/1)
-    }
-  end
-
-  defp queue_errors(queue_results) do
-    Enum.flat_map(queue_results, fn
-      {:ok, _job} -> []
-      {:error, error} -> [error]
-    end)
-  end
-
-  defp analysis_errors(run_results) do
-    Enum.flat_map(run_results, fn
-      {:ok, _job} -> []
-      {:error, reason} -> [error_text(reason)]
-    end)
-  end
-
-  defp analysis_result_summary({:ok, job}) do
-    %{
-      status: job.status,
-      job_id: job.id,
-      document_id: job.document_id,
-      report_id: job.report_id
-    }
-  end
-
-  defp analysis_result_summary({:error, reason}) do
-    %{
-      status: "error",
-      error: error_text(reason)
-    }
-  end
-
-  defp full_summary(ingest_summary, analysis_summary) do
-    %{
-      status: full_status(ingest_summary, analysis_summary),
-      ingest: ingest_summary,
-      analysis: analysis_summary
-    }
-  end
-
-  defp full_result(%{status: "ok"} = summary), do: {:ok, summary}
-  defp full_result(summary), do: {:error, summary}
-
-  defp full_status(ingest_summary, analysis_summary) do
-    cond do
-      ingest_summary.errors != [] -> "error"
-      analysis_summary.status != "ok" -> "error"
-      true -> "ok"
-    end
-  end
-
-  defp scheduler_label(type), do: String.replace(type, "_", " ")
-
-  defp error_text(reason) when is_binary(reason), do: reason
-  defp error_text(reason), do: inspect(reason)
 
   defp prepare_job_attrs(%SchedulerJob{} = job, attrs) do
     attrs = normalize_job_attrs(attrs)

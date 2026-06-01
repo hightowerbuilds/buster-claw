@@ -6,7 +6,7 @@ defmodule BusterClaw.Orchestration.Pipeline do
   """
   require Logger
 
-  alias BusterClaw.{Analysis, Orchestration}
+  alias BusterClaw.Orchestration
 
   @runner_supervisor BusterClaw.Orchestration.RunnerSupervisor
 
@@ -34,12 +34,6 @@ defmodule BusterClaw.Orchestration.Pipeline do
 
   # Known deterministic commands. Extend as more pipeline work is added.
   defp execute("noop", _params), do: {:ok, "noop"}
-
-  defp execute("analyze_pending", params) do
-    limit = Map.get(params, "limit", 5)
-    results = Analysis.run_pending(limit: limit)
-    {:ok, "analyzed #{length(results)} document(s)"}
-  end
 
   defp execute(command, _params) when is_binary(command),
     do: {:error, {:unknown_command, command}}

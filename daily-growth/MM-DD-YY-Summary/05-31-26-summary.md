@@ -89,6 +89,46 @@
   `<`/`>` chevron. Collapsing hides the tree (kept mounted, state preserved) so
   the markdown preview goes full-width for reading.
 
+### Big cut → terminal-driven CLAW
+
+- Removed the app's entire built-in "brain": the chat stack (`chat.ex`, `chat/*`,
+  `agent_tools.ex`, ChatLive) and **all LLM providers**
+  (Anthropic/OpenAI/Gemini/Codex/**Ollama-Gemma**, RuntimeLive provider config) —
+  so Buster Claw now needs **no API keys**. Also cut the ingest→analyze pipeline
+  (Sources, Ingest, Analysis, Reports + their LiveViews). The intelligence is the
+  terminal agent (Claude Code/Codex) driving the MCP command surface.
+- Kept the CLAW surface: terminal + MCP, **Browser** (restored `ingest/content.ex`,
+  the HTML→markdown util Browser depends on), **Delivery** (outbound alert surface),
+  Library/workspace, Orchestration, Google Workspace, Calendar, Integrations
+  (polling), Memory, Hooks, Webhooks, Scheduler, Security.
+- New migration drops `providers/sources/reports/analysis_jobs`; `documents`
+  decoupled from sources, `delivery_attempts` from reports. Discovered + handled
+  deeper couplings: trimmed scheduler job types → `custom`/`integrations_poll`,
+  webhook actions → `command`, and cut Integrations' LLM "monitoring brief" +
+  scheduler analyze/full/digest paths.
+- ~7.3k net lines removed across 86 files; pruned/rewrote the affected tests.
+  Clean `--warnings-as-errors` compile; escript catalog free of cut commands;
+  drop migration is reversible. On branch `cut/terminal-claw`.
+
+### Shift starts from the terminal
+
+- Removed the "Start shift" button from `OrchestrationPanel` (home + `/orchestration`)
+  and the dead `start_shift` handlers. Shifts now start via the `shift_start`
+  command over CLI/MCP (already clears the kill switch). The panel shows the
+  terminal command and keeps **Emergency stop** as the human brake.
+
+### Shift-scoped uptime (caffeinate + launchd)
+
+- New `BusterClaw.Orchestration.Uptime` GenServer (mirrors `Reporter`): subscribes
+  to shift PubSub, **engages** `caffeinate -dimsu` + `launchctl load` on
+  `:shift_started`, **releases** on `:shift_stopped`/`:shift_completed`, and
+  re-engages in `init` if a shift is already active (relaunch mid-shift). Injectable
+  `:ops` for tests, macOS-guarded, launchd a no-op when the plist is absent (dev).
+- Uptime is **Elixir-owned, not Tauri** — works in dev and packaged. Removed the
+  Tauri app-lifetime `caffeinate` (`main.rs`); plist `RunAtLoad`→`false`;
+  `install_launchd.sh` installs-but-doesn't-load (Uptime owns load/unload).
+- `cargo check` clean; `uptime_test.exs` 6/0; full suite 316/0.
+
 ## Notes
 
 - Run dev with: `./scripts/dev.sh` (single command, no manual port juggling).
@@ -107,3 +147,9 @@
   discoverability (optional — the script alone is sufficient).
 - Add a `.gitignore` sweep for the crash dump, dev/test DBs, and the staged
   release resources.
+- Orchestration follow-ups (`daily-growth/roadmaps/05-31-26-orchestration-followups.md`):
+  the **real 12h unattended dry-run** (validates caffeinate + launchd-relaunch
+  end-to-end), crash-loop brake trip-path test, token/$ budget cap, and the now-empty
+  `Orchestration.Pipeline` path (drop it or repopulate with deterministic commands).
+- Docs scrub: README / `docs/` / `Intentions.md` still mention chat/providers/analysis
+  removed in the cut.

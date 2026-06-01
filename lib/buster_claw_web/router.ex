@@ -25,13 +25,9 @@ defmodule BusterClawWeb.Router do
 
     live "/", StatusLive, :home
     live "/orchestration", OrchestrationLive, :index
-    live "/chat", ChatLive, :index
-    live "/sources", SourcesLive, :index
-    live "/documents", DocumentsLive, :index
     live "/browse", BrowseLive, :index
     live "/split", SplitLive, :index
     live "/terminal", TerminalLive, :index
-    live "/analysis", AnalysisLive, :index
     live "/calendar", CalendarLive, :index
     live "/gws", GWSLive, :index
     live "/memory", MemoryLive, :index
@@ -42,7 +38,6 @@ defmodule BusterClawWeb.Router do
     live "/hooks", HooksLive, :index
     live "/delivery", DeliveryLive, :index
     live "/advanced", DeliveryLive, :advanced
-    live "/runtime", RuntimeLive, :index
     live "/security", SecurityLive, :index
     live "/settings", SettingsLive, :index
     live "/appearance", AppearanceLive, :index

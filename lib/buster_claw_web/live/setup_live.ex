@@ -1,12 +1,11 @@
 defmodule BusterClawWeb.SetupLive do
   @moduledoc """
   First-run setup wizard. Walks a new user through: how Buster Claw works, the
-  workspace folder, connecting Google Workspace, and configuring an AI provider.
+  workspace folder, and connecting Google Workspace.
 
   Reuses existing contexts rather than reimplementing flows:
-  `BusterClaw.Google` + `BusterClawWeb.GoogleOAuth` for GWS, and
-  `BusterClaw.Providers` for the AI model. Completion is recorded via
-  `BusterClaw.Settings.mark_onboarding_complete/0`.
+  `BusterClaw.Google` + `BusterClawWeb.GoogleOAuth` for GWS. Completion is
+  recorded via `BusterClaw.Settings.mark_onboarding_complete/0`.
   """
   use BusterClawWeb, :live_view
 
@@ -14,30 +13,20 @@ defmodule BusterClawWeb.SetupLive do
   alias BusterClaw.Google.Account, as: GoogleAccount
   alias BusterClaw.Google.OAuth, as: GoogleOAuthCore
   alias BusterClaw.Library.Artifact
-  alias BusterClaw.Providers
-  alias BusterClaw.Providers.Provider
   alias BusterClaw.Settings
   alias BusterClaw.Setup
   alias BusterClaw.SystemBrowser
   alias BusterClawWeb.ErrorFormatter
   alias BusterClawWeb.GoogleOAuth
 
-  @steps [:intro, :identity, :workspace, :gws, :provider, :done]
+  @steps [:intro, :identity, :workspace, :gws, :done]
   @step_bar [
     {:intro, "Welcome"},
     {:identity, "You"},
     {:workspace, "Workspace"},
-    {:gws, "Google"},
-    {:provider, "AI Model"}
+    {:gws, "Google"}
   ]
   @google_default_query "newer_than:7d"
-
-  @provider_types [
-    {"Anthropic (Claude)", "anthropic"},
-    {"Google Gemini", "gemini"},
-    {"OpenAI (Chat Completions)", "openai"},
-    {"Ollama (local)", "ollama"}
-  ]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -51,14 +40,10 @@ defmodule BusterClawWeb.SetupLive do
      |> assign(:profile_note, nil)
      |> assign(:google_auth_url, nil)
      |> assign(:google_note, nil)
-     |> assign(:provider_note, nil)
-     |> assign(:provider_types, @provider_types)
      |> assign_status()
      |> load_workspace()
      |> load_google_accounts()
-     |> load_providers()
-     |> assign_google_form()
-     |> assign_provider_form()}
+     |> assign_google_form()}
   end
 
   # --- Step navigation ----------------------------------------------------
@@ -152,37 +137,6 @@ defmodule BusterClawWeb.SetupLive do
     end
   end
 
-  # --- AI provider --------------------------------------------------------
-
-  def handle_event("validate_provider", %{"provider" => params}, socket) do
-    changeset =
-      %Provider{}
-      |> Provider.changeset(params)
-      |> Map.put(:action, :validate)
-
-    {:noreply, assign(socket, :provider_form, to_form(changeset, as: :provider))}
-  end
-
-  def handle_event("add_provider", %{"provider" => params}, socket) do
-    params = fill_provider_defaults(params)
-    existing = socket.assigns.providers
-
-    case Providers.create_provider(params) do
-      {:ok, provider} ->
-        if Enum.all?(existing, &(!&1.active)), do: Providers.set_active_provider(provider)
-
-        {:noreply,
-         socket
-         |> assign(:provider_note, "Saved #{provider.name} and set it active.")
-         |> load_providers()
-         |> assign_provider_form()
-         |> assign_status()}
-
-      {:error, changeset} ->
-        {:noreply, assign(socket, :provider_form, to_form(changeset, as: :provider))}
-    end
-  end
-
   # --- Render -------------------------------------------------------------
 
   @impl true
@@ -204,21 +158,19 @@ defmodule BusterClawWeb.SetupLive do
               How Buster Claw works
             </h2>
             <p class="text-sm leading-7 text-base-content/80">
-              Buster Claw is a desktop runtime where an AI agent manages your web interactivity. The
-              main way to use it is to run <span class="font-semibold">Claude Code or Codex in the
-                built-in terminal</span> — those agents operate Buster Claw through its MCP server and
-              your workspace to browse the web, act on Google Workspace and integrations, and deliver
-              results, all through one auditable command surface. A built-in chat with your own AI
-              provider is also available.
+              Buster Claw is a desktop runtime where an AI agent manages your web interactivity. You
+              run <span class="font-semibold">Claude Code or Codex in the built-in terminal</span> —
+              those agents operate Buster Claw through its MCP server and your workspace, all through
+              one auditable command surface.
             </p>
             <ul class="space-y-2 text-sm leading-7 text-base-content/80">
               <li>
-                <span class="font-mono text-primary">ingest</span>
-                → fetch URLs, RSS, and email into the Library
+                <span class="font-mono text-primary">browse</span>
+                → fetch web pages and search from the agent
               </li>
               <li>
-                <span class="font-mono text-primary">analyze</span>
-                → run documents through your AI provider
+                <span class="font-mono text-primary">act</span>
+                → drive Google Workspace, integrations, and memory
               </li>
               <li>
                 <span class="font-mono text-primary">deliver</span>
@@ -389,50 +341,6 @@ defmodule BusterClawWeb.SetupLive do
           <.step_nav can_back={true} skip_label="Skip" />
         </div>
 
-        <div :if={@step == :provider} class="space-y-5">
-          <div class="ic-panel space-y-4 p-6">
-            <h2 class="font-display text-xl font-black uppercase tracking-tight">AI model</h2>
-            <p class="text-sm leading-7 text-base-content/80">
-              Configure a provider so chat and analysis work. The first provider you add becomes active.
-            </p>
-
-            <.form
-              for={@provider_form}
-              id="setup-provider-form"
-              phx-change="validate_provider"
-              phx-submit="add_provider"
-              class="space-y-3"
-            >
-              <.input
-                field={@provider_form[:type]}
-                type="select"
-                label="Provider"
-                options={@provider_types}
-              />
-              <.input field={@provider_form[:model]} label="Model" />
-              <.input
-                field={@provider_form[:api_key]}
-                type="password"
-                label="API key"
-                autocomplete="off"
-              />
-              <button type="submit" class={button_outline()}>Save provider</button>
-            </.form>
-
-            <p
-              :if={@provider_note}
-              class="rounded-sm border-2 border-primary/40 bg-primary/10 px-3 py-2 text-sm"
-            >
-              {@provider_note}
-            </p>
-
-            <p :if={@providers != []} class="text-sm text-base-content/70">
-              Configured: {Enum.map_join(@providers, ", ", & &1.name)}
-            </p>
-          </div>
-          <.step_nav can_back={true} skip_label="Skip" />
-        </div>
-
         <div :if={@step == :done} class="space-y-5">
           <div class="ic-panel space-y-4 p-6">
             <h2 class="font-display text-xl font-black uppercase tracking-tight">
@@ -546,10 +454,6 @@ defmodule BusterClawWeb.SetupLive do
     assign(socket, :google_accounts, Google.list_account_summaries())
   end
 
-  defp load_providers(socket) do
-    assign(socket, :providers, Providers.list_providers())
-  end
-
   defp assign_google_form(socket) do
     changeset =
       GoogleAccount.changeset(%GoogleAccount{}, %{
@@ -559,17 +463,6 @@ defmodule BusterClawWeb.SetupLive do
       })
 
     assign(socket, :google_form, to_form(changeset, as: :google_account))
-  end
-
-  defp assign_provider_form(socket) do
-    changeset =
-      Provider.changeset(%Provider{}, %{
-        type: "anthropic",
-        model: default_model("anthropic"),
-        priority: 100
-      })
-
-    assign(socket, :provider_form, to_form(changeset, as: :provider))
   end
 
   defp put_google_defaults(params) do
@@ -583,27 +476,6 @@ defmodule BusterClawWeb.SetupLive do
       blank_to_default(Map.get(params, "default_query"), @google_default_query)
     )
   end
-
-  defp fill_provider_defaults(params) do
-    type = Map.get(params, "type", "anthropic")
-    model = blank_to_default(Map.get(params, "model"), default_model(type))
-    name = blank_to_default(Map.get(params, "name"), provider_label(type))
-
-    params
-    |> Map.put("model", model)
-    |> Map.put("name", name)
-    |> Map.put("priority", "100")
-  end
-
-  defp provider_label(type) do
-    Enum.find_value(@provider_types, type, fn {label, value} -> value == type && label end)
-  end
-
-  defp default_model("anthropic"), do: "claude-sonnet-4-6"
-  defp default_model("gemini"), do: "gemini-2.0-flash"
-  defp default_model("openai"), do: "gpt-4o"
-  defp default_model("ollama"), do: "llama3"
-  defp default_model(_type), do: ""
 
   defp blank_to_default(nil, default), do: default
   defp blank_to_default("", default), do: default

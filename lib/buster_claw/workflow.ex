@@ -2,10 +2,9 @@ defmodule BusterClaw.Workflow do
   @moduledoc "Durable workflow state for jobs, attempts, hook runs, and audit events."
 
   alias BusterClaw.Repo
-  alias BusterClaw.Workflow.{AnalysisJob, DeliveryAttempt, HookRun, RuntimeEvent}
+  alias BusterClaw.Workflow.{DeliveryAttempt, HookRun, RuntimeEvent}
 
   for {schema, plural, singular} <- [
-        {AnalysisJob, :analysis_jobs, :analysis_job},
         {DeliveryAttempt, :delivery_attempts, :delivery_attempt},
         {HookRun, :hook_runs, :hook_run},
         {RuntimeEvent, :runtime_events, :runtime_event}
