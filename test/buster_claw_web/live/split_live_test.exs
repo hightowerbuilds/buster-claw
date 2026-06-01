@@ -34,7 +34,7 @@ defmodule BusterClawWeb.SplitLiveTest do
   end
 
   test "unsupported views show a fallback instead of embedding", %{conn: conn} do
-    {:ok, _view, html} = live(conn, "/split?left=/mcp&right=/browse")
+    {:ok, _view, html} = live(conn, "/split?left=/setup&right=/browse")
 
     assert html =~ "can&#39;t be opened in a split pane" or
              html =~ "can't be opened in a split pane"
@@ -64,6 +64,25 @@ defmodule BusterClawWeb.SplitLiveTest do
 
     # The embedded Browse pane fetched and rendered the carried url.
     assert html =~ "Carried page body."
+  end
+
+  test "orchestration can be joined with the terminal (both bare)", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/split?left=/terminal&right=/orchestration")
+
+    assert html =~ "Terminal"
+    assert html =~ "Orchestration"
+    # Both panes are embedded → only the outer split view draws the shell.
+    assert occurrences(html, ~s(id="tab-strip")) == 1
+    assert occurrences(html, ~s(id="app-dock")) == 1
+  end
+
+  test "every workspace tab embeds alongside the terminal without crashing", %{conn: conn} do
+    for path <-
+          ~w(/orchestration /integrations /mcp /webhooks /hooks /delivery /advanced
+             /security /settings /appearance /calendar /gws /memory /scheduler /workspace) do
+      assert {:ok, _view, _html} = live(conn, "/split?left=/terminal&right=#{path}"),
+             "expected #{path} to embed in a split pane"
+    end
   end
 
   defp occurrences(haystack, needle), do: length(String.split(haystack, needle)) - 1

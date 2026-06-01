@@ -8,16 +8,27 @@ defmodule BusterClawWeb.SplitLive do
   use BusterClawWeb, :live_view
 
   # Views that are safe to embed in a split pane (mount without route params).
-  # Home is excluded: StatusLive uses handle_params, which isn't allowed in a
-  # nested (embedded) live_render child.
+  # Every workspace tab is joinable; chrome is suppressed centrally by
+  # `BusterClawWeb.ChromeHook` + `Layouts.app`. Excluded: Home (StatusLive uses
+  # handle_params, not allowed in an embedded child), /split itself, and /setup.
   @panes %{
+    "/orchestration" => {BusterClawWeb.OrchestrationLive, "Orchestration"},
     "/browse" => {BusterClawWeb.BrowseLive, "Browser"},
     "/calendar" => {BusterClawWeb.CalendarLive, "Calendar"},
     "/gws" => {BusterClawWeb.GWSLive, "GWS"},
     "/memory" => {BusterClawWeb.MemoryLive, "Memory"},
     "/scheduler" => {BusterClawWeb.SchedulerLive, "Scheduler"},
     "/terminal" => {BusterClawWeb.TerminalLive, "Terminal"},
-    "/workspace" => {BusterClawWeb.WorkspaceLive, "Workspace"}
+    "/workspace" => {BusterClawWeb.WorkspaceLive, "Workspace"},
+    "/integrations" => {BusterClawWeb.IntegrationsLive, "Integrations"},
+    "/mcp" => {BusterClawWeb.MCPLive, "MCP"},
+    "/webhooks" => {BusterClawWeb.WebhooksLive, "Webhooks"},
+    "/hooks" => {BusterClawWeb.HooksLive, "Hooks"},
+    "/delivery" => {BusterClawWeb.DeliveryLive, "Delivery"},
+    "/advanced" => {BusterClawWeb.DeliveryLive, "Advanced"},
+    "/security" => {BusterClawWeb.SecurityLive, "Security"},
+    "/settings" => {BusterClawWeb.SettingsLive, "Settings"},
+    "/appearance" => {BusterClawWeb.AppearanceLive, "Appearance"}
   }
 
   @impl true
