@@ -3,29 +3,68 @@ defmodule BusterClawWeb.OrchestrationLive do
   Orchestration hub: the live shift dashboard (home `OrchestrationPanel`), a
   guided **new-task wizard**, and the task table (run-now / enable / delete).
 
-  The wizard walks the user through Type → Brief → Schedule → Review. For agent
-  tasks the answers are assembled into a structured markdown **brief** stored as
-  the task's prompt — that brief is exactly what the on-shift model (Claude /
-  Codex) reads and interprets when the Orchestrator dispatches the task.
+  The wizard walks the user through Type → Brief → Schedule → Review.
+
+  - **Agent** tasks assemble the answers into a structured markdown **brief**
+    stored as the task's prompt — what the on-shift model (Claude / Codex) reads.
+  - **GWS action** tasks are deterministic `pipeline` tasks whose `command` is a
+    Google Workspace command (sync Gmail/Calendar, search, draft, send) and whose
+    `params` carry the action's arguments; the Orchestrator runs them via
+    `BusterClaw.Orchestration.Pipeline` → `Commands.call`.
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.Google
   alias BusterClaw.Orchestration
 
   @steps [:type, :brief, :schedule, :review]
   @step_bar [{:type, "Type"}, {:brief, "Brief"}, {:schedule, "Schedule"}, {:review, "Review"}]
   @blank_to_nil ~w(engine cron command prompt)
+
+  # GWS actions selectable in the wizard: {command, label, ordered fields}.
+  @gws_actions [
+    {"gmail_sync", "Sync Gmail → workspace", [:account, :query, :limit]},
+    {"google_calendar_sync", "Sync Calendar → app", [:account, :calendar_id, :days_ahead]},
+    {"gmail_search", "Search Gmail", [:account, :query, :limit]},
+    {"gmail_read", "Read a message", [:account, :message_id]},
+    {"gmail_label_list", "List Gmail labels", [:account]},
+    {"gmail_draft_create", "Create a draft email", [:account, :to, :subject, :body]},
+    {"gmail_send", "Send an email", [:account, :to, :subject, :body]}
+  ]
+
+  # field => {wizard_key, command_param_key, label, input_type, required?}
+  @gws_fields %{
+    account: {"gws_account", "email", "Google account", :account, false},
+    query: {"gws_query", "query", "Query", :text, false},
+    limit: {"gws_limit", "limit", "Limit", :number, false},
+    calendar_id: {"gws_calendar_id", "calendar_id", "Calendar ID", :text, false},
+    days_ahead: {"gws_days_ahead", "days_ahead", "Days ahead", :number, false},
+    message_id: {"gws_message_id", "message_id", "Message ID", :text, true},
+    to: {"gws_to", "to", "To", :text, true},
+    subject: {"gws_subject", "subject", "Subject", :text, true},
+    body: {"gws_body", "body", "Body", :textarea, true}
+  }
+
   @wizard_defaults %{
     "type" => nil,
     "engine" => "claude",
-    "command" => "noop",
     "objective" => "",
     "context" => "",
     "deliverable" => "",
     "done" => "",
     "schedule" => "once",
     "cron" => "",
-    "name" => ""
+    "name" => "",
+    "gws_action" => "gmail_sync",
+    "gws_account" => "",
+    "gws_query" => "",
+    "gws_limit" => "",
+    "gws_calendar_id" => "",
+    "gws_days_ahead" => "",
+    "gws_message_id" => "",
+    "gws_to" => "",
+    "gws_subject" => "",
+    "gws_body" => ""
   }
 
   @impl true
@@ -139,15 +178,19 @@ defmodule BusterClawWeb.OrchestrationLive do
     socket
     |> assign(:tasks, Orchestration.list_tasks())
     |> assign(:snapshot, Orchestration.snapshot())
+    |> assign(:accounts, Google.list_account_summaries())
   end
 
   defp reset_wizard(socket) do
     socket |> assign(:wizard_step, :type) |> assign(:wizard, @wizard_defaults)
   end
 
+  @wizard_keys ~w(engine objective context deliverable done cron name
+                  gws_action gws_account gws_query gws_limit gws_calendar_id
+                  gws_days_ahead gws_message_id gws_to gws_subject gws_body)
+
   defp merge_wizard(wizard, params) do
-    Enum.reduce(~w(engine command objective context deliverable done cron name), wizard, fn key,
-                                                                                            acc ->
+    Enum.reduce(@wizard_keys, wizard, fn key, acc ->
       case Map.fetch(params, key) do
         {:ok, value} -> Map.put(acc, key, value)
         :error -> acc
@@ -160,8 +203,18 @@ defmodule BusterClawWeb.OrchestrationLive do
     Enum.at(@steps, max(0, min(length(@steps) - 1, idx + delta)))
   end
 
-  defp validate_step(:brief, %{"type" => "pipeline"} = w) do
-    if blank?(w["command"]), do: {:error, "Pick a command for the pipeline task."}, else: :ok
+  defp validate_step(:brief, %{"type" => "gws"} = w) do
+    missing =
+      w
+      |> gws_field_atoms()
+      |> Enum.filter(fn atom ->
+        {wiz_key, _param, _label, _type, required} = @gws_fields[atom]
+        required and blank?(w[wiz_key])
+      end)
+
+    if missing == [],
+      do: :ok,
+      else: {:error, "Fill in the required fields for this action."}
   end
 
   defp validate_step(:brief, %{"type" => "agent"} = w) do
@@ -190,17 +243,59 @@ defmodule BusterClawWeb.OrchestrationLive do
         _ -> %{}
       end
 
-    target =
+    {task_type, target} =
       case w["type"] do
-        "agent" -> %{"engine" => w["engine"], "prompt" => build_brief(w)}
-        "pipeline" -> %{"command" => w["command"]}
-        _ -> %{}
+        "agent" -> {"agent", %{"engine" => w["engine"], "prompt" => build_brief(w)}}
+        "gws" -> {"pipeline", %{"command" => w["gws_action"], "params" => gws_params(w)}}
+        other -> {other, %{}}
       end
 
-    %{"name" => w["name"], "type" => w["type"]}
+    %{"name" => w["name"], "type" => task_type}
     |> Map.merge(target)
     |> Map.merge(schedule)
     |> normalize()
+  end
+
+  # The ordered fields for the currently-selected GWS action.
+  defp gws_field_atoms(w) do
+    case List.keyfind(@gws_actions, w["gws_action"], 0) do
+      {_command, _label, fields} -> fields
+      nil -> []
+    end
+  end
+
+  defp gws_action_label(action) do
+    case List.keyfind(@gws_actions, action, 0) do
+      {_command, label, _fields} -> label
+      nil -> action
+    end
+  end
+
+  # Collect the chosen action's fields into the command's params map.
+  defp gws_params(w) do
+    base =
+      w
+      |> gws_field_atoms()
+      |> Enum.reduce(%{}, fn atom, acc ->
+        {wiz_key, param_key, _label, type, _required} = @gws_fields[atom]
+        value = w[wiz_key]
+
+        cond do
+          blank?(value) -> acc
+          type == :number -> maybe_put_int(acc, param_key, value)
+          true -> Map.put(acc, param_key, value)
+        end
+      end)
+
+    # A scheduled send is pre-authorized by the user when they set up the task.
+    if w["gws_action"] == "gmail_send", do: Map.put(base, "confirm_send", true), else: base
+  end
+
+  defp maybe_put_int(acc, key, value) do
+    case Integer.parse(to_string(value)) do
+      {n, _rest} -> Map.put(acc, key, n)
+      :error -> acc
+    end
   end
 
   # Assemble the answers into the markdown brief the on-shift agent reads.
@@ -243,7 +338,7 @@ defmodule BusterClawWeb.OrchestrationLive do
         <BusterClawWeb.OrchestrationPanel.panel snapshot={@snapshot} manage_link={false} />
 
         <div class="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-          <.wizard wizard={@wizard} step={@wizard_step} />
+          <.wizard wizard={@wizard} step={@wizard_step} accounts={@accounts} />
           <.task_table tasks={@tasks} />
         </div>
       </section>
@@ -253,6 +348,7 @@ defmodule BusterClawWeb.OrchestrationLive do
 
   attr :wizard, :map, required: true
   attr :step, :atom, required: true
+  attr :accounts, :list, default: []
 
   defp wizard(assigns) do
     assigns = assign(assigns, :bar, @step_bar)
@@ -306,14 +402,14 @@ defmodule BusterClawWeb.OrchestrationLive do
             <button
               type="button"
               phx-click="wizard_type"
-              phx-value-type="pipeline"
+              phx-value-type="gws"
               class="block w-full rounded-lg border-2 border-base-content/20 p-4 text-left transition hover:border-primary"
             >
               <span class="block font-display text-sm font-black uppercase tracking-tight">
-                Pipeline
+                GWS action
               </span>
               <span class="block text-xs text-base-content/60">
-                A deterministic Elixir job (no model) — e.g. analyze queued documents.
+                A deterministic Google Workspace action — sync Gmail/Calendar, search, draft, or send email.
               </span>
             </button>
           </div>
@@ -367,17 +463,50 @@ defmodule BusterClawWeb.OrchestrationLive do
               </label>
             <% else %>
               <label class="block">
-                <span class="ic-eyebrow">Command</span>
-                <select name="command" class="select mt-1 w-full">
-                  <option value="noop" selected={@wizard["command"] == "noop"}>noop (test)</option>
-                  <option value="analyze_pending" selected={@wizard["command"] == "analyze_pending"}>
-                    analyze_pending
+                <span class="ic-eyebrow">Action</span>
+                <select name="gws_action" class="select mt-1 w-full">
+                  <option
+                    :for={{command, label, _fields} <- gws_actions()}
+                    value={command}
+                    selected={@wizard["gws_action"] == command}
+                  >
+                    {label}
                   </option>
                 </select>
                 <span class="mt-1 block text-xs text-base-content/55">
-                  Deterministic job run by an Elixir worker.
+                  Runs deterministically during the shift — no model.
                 </span>
               </label>
+
+              <label class="block">
+                <span class="ic-eyebrow">Google account</span>
+                <select name="gws_account" class="select mt-1 w-full">
+                  <option value="" selected={@wizard["gws_account"] in [nil, ""]}>
+                    Default account
+                  </option>
+                  <option
+                    :for={account <- @accounts}
+                    value={account.email}
+                    selected={@wizard["gws_account"] == account.email}
+                  >
+                    {account.email}
+                  </option>
+                </select>
+              </label>
+
+              <.gws_field
+                :for={atom <- gws_field_atoms(@wizard) -- [:account]}
+                field={atom}
+                wizard={@wizard}
+              />
+
+              <p
+                :if={@wizard["gws_action"] == "gmail_send"}
+                class="rounded-sm border-2 border-primary/50 bg-primary/10 px-3 py-2 text-xs leading-5"
+              >
+                Heads up: this sends a real email every time the task runs — it's
+                pre-authorized by scheduling it here.
+              </p>
             <% end %>
           </form>
         <% :schedule -> %>
@@ -465,6 +594,41 @@ defmodule BusterClawWeb.OrchestrationLive do
     """
   end
 
+  # Module attrs aren't visible as `@...` inside ~H (that's assigns); expose them.
+  defp gws_actions, do: @gws_actions
+
+  attr :field, :atom, required: true
+  attr :wizard, :map, required: true
+
+  defp gws_field(assigns) do
+    {wiz_key, _param, label, type, required} = @gws_fields[assigns.field]
+
+    assigns =
+      assign(assigns,
+        wiz_key: wiz_key,
+        label: label,
+        type: type,
+        required: required,
+        value: assigns.wizard[wiz_key]
+      )
+
+    ~H"""
+    <label class="block">
+      <span class="ic-eyebrow">
+        {@label}<span :if={@required} class="text-error"> *</span>
+      </span>
+      <textarea :if={@type == :textarea} name={@wiz_key} rows="3" class="textarea mt-1 w-full">{@value}</textarea>
+      <input
+        :if={@type != :textarea}
+        type={if @type == :number, do: "number", else: "text"}
+        name={@wiz_key}
+        value={@value}
+        class="input mt-1 w-full"
+      />
+    </label>
+    """
+  end
+
   attr :mode, :string, required: true
   attr :current, :string, required: true
   attr :title, :string, required: true
@@ -533,13 +697,27 @@ defmodule BusterClawWeb.OrchestrationLive do
   end
 
   defp review_heading(%{"type" => "agent"}), do: "Brief for the on-shift agent"
-  defp review_heading(%{"type" => "pipeline"}), do: "Pipeline job"
+  defp review_heading(%{"type" => "gws"}), do: "Google Workspace action"
   defp review_heading(_), do: "Summary"
 
   defp review_body(%{"type" => "agent"} = w), do: build_brief(w)
 
-  defp review_body(%{"type" => "pipeline"} = w),
-    do: "Runs the `#{w["command"]}` pipeline command."
+  defp review_body(%{"type" => "gws"} = w) do
+    account = if blank?(w["gws_account"]), do: "default", else: w["gws_account"]
+
+    detail =
+      gws_params(w)
+      |> Map.drop(["email", "confirm_send"])
+      |> Enum.map(fn {key, value} -> "#{key}: #{value}" end)
+
+    Enum.join(
+      [
+        "Action: #{gws_action_label(w["gws_action"])} (#{w["gws_action"]})",
+        "Account: #{account}" | detail
+      ],
+      "\n"
+    )
+  end
 
   defp review_body(_), do: ""
 

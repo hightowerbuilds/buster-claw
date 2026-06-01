@@ -12,24 +12,51 @@ defmodule BusterClawWeb.OrchestrationLiveTest do
     assert html =~ "No active shift"
   end
 
-  test "creates a pipeline task via the wizard", %{conn: conn} do
+  test "creates a GWS sync action via the wizard", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/orchestration")
 
-    # Step 1: pick Pipeline (auto-advances to Brief; command defaults to noop).
-    view |> element(~s|button[phx-value-type="pipeline"]|) |> render_click()
-    # Brief -> Schedule (once is the default).
+    # Pick GWS action (auto-advances to Brief; gmail_sync is the default action).
+    view |> element(~s|button[phx-value-type="gws"]|) |> render_click()
+    render_hook(view, "wizard_change", %{"gws_query" => "newer_than:7d", "gws_limit" => "5"})
+    # Brief -> Schedule (once default) -> Review.
     view |> element(~s|button[phx-click="wizard_next"]|) |> render_click()
-    # Schedule -> Review.
     view |> element(~s|button[phx-click="wizard_next"]|) |> render_click()
-    # Name it, then create.
-    view |> form(~s|form[phx-change="wizard_change"]|, %{name: "Nightly noop"}) |> render_change()
+    render_hook(view, "wizard_change", %{"name" => "Daily Gmail sync"})
     html = view |> element(~s|button[phx-click="wizard_create"]|) |> render_click()
 
     assert html =~ "Task added."
-    assert html =~ "Nightly noop"
 
-    assert [%{name: "Nightly noop", type: "pipeline", command: "noop"}] =
-             Orchestration.list_tasks()
+    assert [task] = Orchestration.list_tasks()
+    assert task.name == "Daily Gmail sync"
+    assert task.type == "pipeline"
+    assert task.command == "gmail_sync"
+    assert task.params["query"] == "newer_than:7d"
+    assert task.params["limit"] == 5
+  end
+
+  test "creates a gmail_send action with confirm_send pre-authorized", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/orchestration")
+
+    view |> element(~s|button[phx-value-type="gws"]|) |> render_click()
+
+    render_hook(view, "wizard_change", %{
+      "gws_action" => "gmail_send",
+      "gws_to" => "ops@example.com",
+      "gws_subject" => "Nightly report",
+      "gws_body" => "See the workspace."
+    })
+
+    view |> element(~s|button[phx-click="wizard_next"]|) |> render_click()
+    view |> element(~s|button[phx-click="wizard_next"]|) |> render_click()
+    render_hook(view, "wizard_change", %{"name" => "Send nightly report"})
+    view |> element(~s|button[phx-click="wizard_create"]|) |> render_click()
+
+    assert [task] = Orchestration.list_tasks()
+    assert task.type == "pipeline"
+    assert task.command == "gmail_send"
+    assert task.params["confirm_send"] == true
+    assert task.params["to"] == "ops@example.com"
+    assert task.params["subject"] == "Nightly report"
   end
 
   test "run_now queues a task immediately", %{conn: conn} do
