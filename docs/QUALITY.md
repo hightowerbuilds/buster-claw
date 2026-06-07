@@ -16,13 +16,17 @@ cd desktop/tauri
 cargo check
 ```
 
-For manual desktop testing:
+For desktop testing, use the single-command launcher (boots Phoenix, waits for `/_health`, then opens the Tauri window):
+
+```sh
+./scripts/dev.sh
+```
+
+Manual fallback — run Phoenix and the shell in separate terminals:
 
 ```sh
 mix phx.server
 ```
-
-Then in another terminal:
 
 ```sh
 cd desktop/tauri

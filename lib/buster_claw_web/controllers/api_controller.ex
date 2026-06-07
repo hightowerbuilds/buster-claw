@@ -1,7 +1,7 @@
 defmodule BusterClawWeb.ApiController do
   @moduledoc """
   HTTP frontend for `BusterClaw.Commands`. See
-  `docs/rewrite/COMMAND_SURFACE.md` for the catalog.
+  `docs/COMMAND_SURFACE.md` for the catalog.
 
   - `GET /api/commands` — catalog metadata (unauthenticated).
   - `POST /api/run` — invoke a command (Bearer token required).

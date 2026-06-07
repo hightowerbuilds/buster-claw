@@ -4,7 +4,7 @@ defmodule BusterClaw.Commands do
 
   Every external surface (HTTP API, MCP server, CLI escript) dispatches through
   this module. See
-  `docs/rewrite/COMMAND_SURFACE.md` for the full catalog with arg schemas,
+  `docs/COMMAND_SURFACE.md` for the full catalog with arg schemas,
   return shapes, and agent allowlist tiers.
 
   ## Contract

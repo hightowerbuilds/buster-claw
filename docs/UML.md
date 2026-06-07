@@ -1,51 +1,52 @@
 # Buster Claw — UML / Architecture Diagrams
 
 Mermaid diagrams describing both the **structure** (modules, schemas, supervision) and the
-**functionality** (request flows and pipelines) of the codebase. Rendered automatically by
-GitHub and most Markdown viewers.
+**functionality** (request flows) of the codebase. Rendered automatically by GitHub and most
+Markdown viewers.
 
-> Source of truth: generated from `lib/` on 2026-05-28. Re-derive after large refactors.
+> Source of truth: generated from `lib/` on 2026-06-05 (post terminal-driven-CLAW cut).
+> Re-derive after large refactors.
 
 ---
 
 ## 1. System layers (functional overview)
 
-How the four frontends, the unified command surface, the domain contexts, and the
-external world fit together.
+How the three frontends, the unified command surface, the domain contexts, and the
+external world fit together. Buster Claw has no built-in LLM — the intelligence is a
+terminal agent (Claude Code / Codex) driving the command surface over MCP.
 
 ```mermaid
 flowchart TB
     subgraph Frontends["Frontends / Entry points"]
         CLI["CLI escript<br/>(cli.ex)"]
-        WebUI["LiveView UI<br/>(15 LiveViews)"]
+        WebUI["LiveView UI<br/>(~20 LiveViews)"]
         HTTP["HTTP API<br/>(api_controller)"]
         MCP["MCP server<br/>(mcp_controller)"]
-        AgentLoop["Internal agent loop<br/>(agent_mode / agent_tools)"]
         Webhooks_in["Inbound webhooks<br/>(webhook / integration_webhook)"]
     end
 
     subgraph Surface["Unified Command Surface"]
-        Commands["Commands.call/2<br/>(76 commands, tier-gated)"]
+        Commands["Commands.call/2<br/>(~70 commands, tier-gated)"]
         Schema["Commands.Schema"]
         Result["Commands.Result"]
     end
 
     subgraph Contexts["Domain Contexts"]
-        Sources & Library & Ingest & Analysis & Workflow
-        Chat & Providers & Memory & Calendar
-        Automation & Integrations & Google & Scheduler & Webhooks & Hooks & Delivery
+        Library & Browser & Search & Memory & Calendar
+        Google & Integrations & Delivery
+        Automation & Orchestration & Sentinel & Settings
     end
 
     subgraph Infra["Infrastructure"]
         Repo["Repo (SQLite/Ecto)"]
         PubSub["Phoenix.PubSub"]
-        Vault["Google.Vault (AES-256-GCM)"]
+        Vault["Vault / Google.Vault<br/>(AES-256-GCM)"]
     end
 
     subgraph External["External services"]
-        LLM["LLM providers<br/>(Anthropic/OpenAI/Gemini/Ollama/Codex)"]
+        Agents["Headless agents<br/>(claude -p / codex exec)"]
         GoogleAPI["Google Workspace<br/>(Gmail / Calendar)"]
-        Browser["Browser sidecar<br/>(Playwright)"]
+        BrowserBin["Browser sidecar<br/>(Playwright)"]
         Integr["GitHub / Sentry / Umami"]
         DeliverOut["Slack / Discord / Telegram / Email"]
     end
@@ -54,21 +55,21 @@ flowchart TB
     WebUI --> Contexts
     HTTP --> Commands
     MCP -->|safe-tier only| Commands
-    AgentLoop -->|safe-tier only| Commands
-    Webhooks_in --> Webhooks & Integrations
+    Webhooks_in --> Automation & Integrations
 
     Commands --> Schema
     Commands --> Result
     Commands --> Contexts
+    Commands -.audited by.-> Sentinel
 
     Contexts --> Repo
     Contexts --> PubSub
     Google --> Vault
-    Providers --> LLM
     Google --> GoogleAPI
-    Ingest --> Browser
+    Browser --> BrowserBin
     Integrations --> Integr
     Delivery --> DeliverOut
+    Orchestration --> Agents
 
     PubSub -.live updates.-> WebUI
 ```
@@ -88,37 +89,31 @@ flowchart TD
     Sup --> Migrator["Ecto.Migrator"]
     Sup --> DNS["DNSCluster"]
     Sup --> PubSub["Phoenix.PubSub"]
-    Sup --> AgentMode["AgentMode (Agent)"]
+    Sup --> AgentMode["AgentMode (Agent)<br/>on/off + activity feed"]
+    Sup --> SentinelPending["Sentinel.Pending"]
     Sup --> Sidecar["Browser.Sidecar *<br/>(browser_sidecar_enabled)"]
     Sup --> McpReg["Registry: MCP.Registry"]
     Sup --> McpSup["MCP.Supervisor<br/>(DynamicSupervisor)"]
     Sup --> McpBoot["MCP.Bootstrap"]
     Sup --> Sched["Scheduler.Runner *<br/>(scheduler_enabled)"]
-    Sup --> ChatReg["Registry: Chat.Registry"]
-    Sup --> ChatSup["Chat.SessionSupervisor<br/>(DynamicSupervisor)"]
+    Sup --> RunnerSup["Orchestration.RunnerSupervisor<br/>(Task.Supervisor)"]
+    Sup --> Orchestrator["Orchestrator *<br/>(orchestrator_enabled)"]
+    Sup --> Reporter["Orchestration.Reporter *"]
+    Sup --> Uptime["Orchestration.Uptime *"]
     Sup --> Endpoint["BusterClawWeb.Endpoint"]
 
     McpSup -.spawns.-> McpClient["MCP.Client<br/>(one per server)"]
-    ChatSup -.spawns.-> ChatSession["Chat.Session<br/>(one per chat)"]
+    RunnerSup -.spawns.-> AgentRunner["AgentRunner<br/>(one per dispatched task)"]
 ```
 
 ---
 
 ## 3. Domain model (Ecto schemas & relationships)
 
-All persisted schemas and their associations. Standalone schemas (no FKs) are grouped at
-the bottom.
+All persisted schemas. Standalone schemas (no FKs) are grouped at the bottom.
 
 ```mermaid
 classDiagram
-    class Source {
-        +string url
-        +string type
-        +string name
-        +map tags
-        +string browser_engine
-        +bool enabled
-    }
     class Document {
         +string filename
         +string artifact_path
@@ -128,39 +123,17 @@ classDiagram
         +string status
         +string excerpt
     }
-    class Report {
-        +string filename
-        +string artifact_path
-        +string model
-        +map tags
-        +utc generated_at
-    }
-    class Provider {
-        +string name
-        +string type
-        +string base_url
-        +string api_key
-        +string model
-        +bool active
-        +int priority
-    }
-    class AnalysisJob {
-        +string status
-        +int progress
-        +string model
-        +string error
-    }
-    class DeliveryAttempt {
-        +string title
-        +string status
-        +string error
-    }
     class DeliveryDestination {
         +string name
         +string type
         +string url
         +string token
         +bool enabled
+    }
+    class DeliveryAttempt {
+        +string title
+        +string status
+        +string error
     }
     class Integration {
         +string name
@@ -190,24 +163,60 @@ classDiagram
         +string stdout
         +string stderr
     }
+    class OrchestratorTask {
+        +string name
+        +string type
+        +string engine
+        +string command
+        +string prompt
+        +string cron
+        +utc due_at
+        +string state
+        +string lease_owner
+        +utc lease_expires_at
+        +int attempts
+    }
+    class AgentRun {
+        +string engine
+        +int os_pid
+        +string status
+        +utc started_at
+        +utc last_heartbeat_at
+        +int exit_code
+        +string output_path
+    }
 
-    Source "1" --> "*" Document : has
-    Document "1" --> "*" Report : produces
-    Document "1" --> "*" AnalysisJob : queued for
-    Document "1" --> "*" IntegrationRun : created by
-    Provider "1" --> "*" Report : generated by
-    Provider "1" --> "*" AnalysisJob : runs on
-    Report "1" --> "*" AnalysisJob : output of
-    Report "1" --> "*" DeliveryAttempt : delivered via
     DeliveryDestination "1" --> "*" DeliveryAttempt : target of
     Integration "1" --> "*" IntegrationRun : has
     Hook "1" --> "*" HookRun : has
+    OrchestratorTask "1" --> "*" AgentRun : dispatched as
 ```
 
 ### Standalone schemas (no foreign keys)
 
 ```mermaid
 classDiagram
+    class Shift {
+        +utc started_at
+        +utc ends_at
+        +string status
+        +int dispatched_count
+        +int done_count
+        +int failed_count
+        +string stopped_reason
+    }
+    class SecurityEvent {
+        +string kind
+        +string command
+        +string caller
+        +string tier
+        +string outcome
+        +map metadata
+    }
+    class AppSetting {
+        +string key
+        +string value
+    }
     class GoogleAccount {
         +string email
         +binary client_secret_enc
@@ -260,15 +269,16 @@ classDiagram
 
 ## 4. Command surface dispatch (shared by all frontends)
 
-The single most important design property: **one** dispatcher, four callers. Restricted-tier
-commands are filtered out for the model-facing frontends (MCP, agent loop).
+The single most important design property: **one** dispatcher, three callers. Restricted-tier
+commands are refused for the untrusted (MCP) caller and recorded in `Sentinel.Pending`.
 
 ```mermaid
 classDiagram
     class Commands {
-        +call(name, args)
-        +commands_catalog()
-        -safe_get(...)
+        +call(name, args, opts)
+        +list_commands()
+        -authorize(name, caller)
+        -dispatch(name, args)
     }
     class CommandsSchema {
         +validate(name, args)
@@ -283,159 +293,96 @@ classDiagram
     class McpController {
         +handle(conn, params)
     }
-    class AgentTools {
-        +tool_definitions()
-        +execute(name, args)
-    }
-    class AgentMode {
-        +enabled?()
-    }
     class CLI {
         +main(argv)
     }
+    class SentinelPending {
+        +record(name, args, caller)
+    }
 
-    ApiController ..> Commands : POST /api/run
-    McpController ..> Commands : tools/call (safe tier)
-    AgentTools ..> Commands : LLM tool calls (safe tier)
-    AgentMode ..> Commands
+    ApiController ..> Commands : POST /api/run (trusted)
+    McpController ..> Commands : tools/call (mcp tier)
     CLI ..> ApiController : HTTP /api/run
     Commands ..> CommandsSchema : validates args
     Commands ..> CommandsResult : serializes output
+    Commands ..> SentinelPending : queues refused restricted calls
 ```
 
 ---
 
-## 5. LLM provider abstraction
+## 5. Command call & tier gate
 
-`Backend` behaviour with per-provider implementations, dispatched by `module_for/1`. Only
-Anthropic implements the agentic tool loop today (others fall back to plain chat).
-
-```mermaid
-classDiagram
-    class Backend {
-        <<behaviour>>
-        +chat(config, messages, on_chunk) ok
-        +test_connection(config) result
-    }
-    class Providers {
-        +chat(provider, messages, on_chunk)
-        +agentic_chat(provider, messages, on_chunk)
-        -module_for(provider)
-    }
-    class Anthropic {
-        +chat(...)
-        +chat_agentic(...) max 6 iters
-        +test_connection(...)
-    }
-    class OpenAICompatible
-    class Gemini
-    class Ollama
-    class Codex
-    class ProviderHTTP {
-        +request(...)
-    }
-
-    Backend <|.. Anthropic
-    Backend <|.. OpenAICompatible
-    Backend <|.. Gemini
-    Backend <|.. Ollama
-    Backend <|.. Codex
-    Providers ..> Backend : dispatches via module_for
-    Anthropic ..> ProviderHTTP
-    OpenAICompatible ..> ProviderHTTP
-    Gemini ..> ProviderHTTP
-    Codex ..> ProviderHTTP
-    Ollama ..> ProviderHTTP
-```
-
----
-
-## 6. Knowledge pipeline (ingest → analyze → deliver)
-
-The core functional loop, including the queue-based async analysis and PubSub-driven
-live updates.
+How a single command request is authorized, dispatched, and audited.
 
 ```mermaid
 sequenceDiagram
-    actor User
-    participant UI as LiveView / CLI / Scheduler
-    participant Ingest
-    participant Fetcher as Ingest.Fetcher / Browser
-    participant Library
-    participant Analysis as Analysis (queue)
-    participant Provider as Providers + LLM
-    participant Delivery
-    participant Dest as Slack/Discord/Telegram/Email
-    participant PubSub
+    participant Caller as CLI / HTTP / MCP
+    participant Commands as Commands.call/2
+    participant Sentinel
+    participant Context as Domain context
+    participant Repo
 
-    User->>UI: ingest <url>
-    UI->>Ingest: source_ingest
-    Ingest->>Fetcher: fetch(url)
-    Fetcher-->>Ingest: html/markdown
-    Ingest->>Library: store Document (status: fetched)
-    Library-->>PubSub: broadcast document
-
-    UI->>Analysis: analysis_queue(document_id)
-    Analysis->>Analysis: create AnalysisJob (queued)
-    Analysis->>Provider: chat(prompt + document)
-    Provider->>Provider: call LLM, accumulate chunks
-    Provider-->>Analysis: report markdown
-    Analysis->>Library: store Report (document_id, provider_id)
-    Analysis->>Analysis: Document.status = analyzed
-    Analysis-->>PubSub: broadcast report
-
-    UI->>Delivery: delivery_dispatch(report)
-    Delivery->>Dest: POST report
-    Delivery->>Delivery: record DeliveryAttempt
-    PubSub-->>UI: live refresh
-```
-
----
-
-## 7. Agentic chat loop (Anthropic tool-calling)
-
-How a chat turn becomes tool calls against the command surface, with the safe-tier gate
-and the 6-iteration cap.
-
-```mermaid
-sequenceDiagram
-    participant UI as ChatLive
-    participant Session as Chat.Session
-    participant Providers
-    participant Anthropic
-    participant LLM as Anthropic API
-    participant Tools as AgentTools
-    participant Commands
-
-    UI->>Session: user message
-    Session->>Providers: agentic_chat(provider, msgs)
-    Providers->>Anthropic: chat_agentic (type == anthropic)
-    loop up to 6 iterations
-        Anthropic->>LLM: messages + safe-tier tool defs
-        LLM-->>Anthropic: text or tool_use
-        alt tool_use requested
-            Anthropic->>Tools: execute(name, args)
-            Tools->>Commands: call (reject if restricted)
-            Commands-->>Tools: result JSON
-            Tools-->>Anthropic: tool_result
-        else final text
-            Anthropic-->>Providers: assistant reply
-        end
+    Caller->>Commands: call(name, args, caller: tier)
+    Commands->>Commands: authorize(name, caller)
+    alt restricted command, untrusted caller
+        Commands->>Sentinel: Pending.record(name, args, caller)
+        Commands-->>Caller: {:error, :requires_confirmation}
+    else allowed
+        Commands->>Context: dispatch(name, args)
+        Context->>Repo: read / write
+        Repo-->>Context: data
+        Context-->>Commands: {:ok, value}
+        Commands->>Sentinel: observe(command, caller, tier, outcome)
+        Commands-->>Caller: {:ok, value}
     end
-    Providers-->>Session: reply (or {:error, :max_tool_iterations})
-    Session-->>UI: broadcast :token / :done
 ```
 
 ---
 
-## 8. HTTP routing & auth tiers
+## 6. Orchestration shift (unattended dispatch)
+
+The deterministic brain (not an LLM) reads due tasks, leases them, and dispatches disposable
+headless agents — surviving crashes by resuming from SQLite.
+
+```mermaid
+sequenceDiagram
+    participant Terminal as Terminal agent (shift_start)
+    participant Orchestrator as Orchestrator (GenServer tick)
+    participant DB as orchestrator_tasks / shifts
+    participant Runner as AgentRunner (Port)
+    participant Agent as claude -p / codex exec
+    participant Reporter
+    participant Sentinel
+
+    Terminal->>Orchestrator: shift_start (clears kill switch)
+    Orchestrator->>DB: create Shift (active, ends_at = +12h)
+    loop every ~30s tick
+        Orchestrator->>DB: select due tasks, lease (pending → claimed)
+        alt :agent task
+            Orchestrator->>Runner: spawn(engine, prompt, workspace)
+            Runner->>Agent: run, wired to BusterClaw MCP
+            Agent-->>Runner: heartbeat / output
+            Runner->>DB: AgentRun status + result_path
+        else :pipeline task
+            Orchestrator->>Orchestrator: run deterministic command (GWS / noop)
+        end
+        Orchestrator->>Sentinel: observe dispatch
+        Note over Orchestrator: crash-loop brake, concurrency + rate caps
+    end
+    Orchestrator->>Reporter: shift end / failures
+    Reporter-->>Terminal: Delivery alert + morning report
+```
+
+---
+
+## 7. HTTP routing & auth tiers
 
 From `lib/buster_claw_web/router.ex`.
 
 ```mermaid
 flowchart LR
     subgraph browser["pipe :browser (session, CSRF, LiveView)"]
-        R1["/ , /chat, /sources, /documents, /analysis,<br/>/calendar, /gws, /memory, /integrations,<br/>/mcp, /scheduler, /webhooks, /hooks, /delivery"]
+        R1["/ , /orchestration, /browse, /split, /terminal,<br/>/calendar, /gws, /memory, /integrations, /mcp,<br/>/scheduler, /webhooks, /hooks, /delivery, /advanced,<br/>/security, /settings, /appearance, /workspace, /setup"]
         R2["/google/oauth/callback"]
     end
     subgraph api["pipe :api (unauthenticated)"]

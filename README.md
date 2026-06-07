@@ -4,26 +4,26 @@
 
 ## How it's used
 
-The primary way to use Buster Claw is to run **Claude Code or Codex in the built-in terminal**; those agents operate Buster Claw through its MCP server (`POST /mcp`) and the workspace files, while the desktop UI gives you the command surface, the Sentinel audit feed, and the results. A built-in chat with your own provider is also available, but the intelligence is typically remote — the agent, not the app.
+The way to use Buster Claw is to run **Claude Code or Codex in the built-in terminal**; those agents operate Buster Claw through its MCP server (`POST /mcp`) and the workspace files, while the desktop UI gives you the command surface, the Sentinel audit feed, and the results. The intelligence is remote — the agent, not the app. Buster Claw has no built-in LLM and needs no API keys.
 
 ## Features
 
-- **Agentic command surface**: One canonical catalog (~76 commands) an AI agent drives across every frontend — internal chat, CLI, HTTP API, and MCP — with per-caller trust tiers and a full audit trail.
+- **Agentic command surface**: One canonical catalog (~70 commands) an AI agent drives across every frontend — CLI, HTTP API, and MCP — with per-caller trust tiers and a full audit trail.
 - **Web & Workspace interactivity**:
-  - **Browsing & fetch**: Headless browser + HTTP fetchers (SSRF-guarded) to read and capture web pages, articles, and RSS.
+  - **Browsing & fetch**: Headless browser + HTTP fetchers (SSRF-guarded) to read and capture web pages and articles.
   - **Google Workspace**: Sync and act on Gmail and Google Calendar.
   - **Integrations**: Pull and react to GitHub, Sentry, and Umami activity.
   - **Delivery**: Push results to Slack, Discord, Telegram, or email.
 - **MCP (both directions)**: Connect external MCP servers as agent tools, and expose Buster Claw's own safe-tier commands as an MCP server to other agents (Claude Code, Codex, …).
 - **In-app terminal**: A real PTY where you run Claude Code, Codex, or any CLI; the primary surface for agents to drive Buster Claw.
-- **Built-in chat (secondary)**: Optional chat with local Ollama models or a configured remote provider (Anthropic agentic tool-loop; OpenAI/Gemini/Codex chat).
+- **Orchestration**: An unattended "shift" — a deterministic Elixir brain dispatches disposable headless agents (`claude -p` / `codex exec`) with kill switch, caps, and audit.
 - **Automation**:
   - **Scheduler**: Cron-based jobs for autonomous, recurring runs.
-  - **Webhooks**: Trigger pipelines via external HTTP events.
-  - **Reactive Hooks**: Pre/post-processing hooks on pipeline events (e.g., auto-tagging, custom alerts).
-- **Content pipeline**: Ingest → analyze → deliver, with documents and reports stored as markdown in the workspace.
+  - **Webhooks**: Trigger commands via external HTTP events.
+  - **Reactive Hooks**: Pre/post-processing hooks on events (e.g., auto-tagging, custom alerts).
+- **Workspace library**: Documents and artifacts stored as markdown in the workspace, with a blog-style reading view.
 - **Persistent Memory**: Durable notes/context to keep the agent smart across sessions.
-- **Sentinel security layer**: Every command, outbound send, and untrusted fetch is recorded on an auditable feed; restricted actions require confirmation.
+- **Sentinel security layer**: Every command, outbound send, and untrusted fetch is recorded on an auditable feed; restricted actions are refused for untrusted callers.
 
 ## Quick Start
 
@@ -32,15 +32,18 @@ Requirements:
 - Elixir/Erlang
 - Rust/Cargo
 - `cargo-tauri`
-- Ollama or configured remote LLM provider
 
-Run Phoenix:
+The single-command launcher boots Phoenix, waits for `/_health`, then opens the desktop window (and tears down on Ctrl-C):
+
+```bash
+./scripts/dev.sh
+```
+
+Manual fallback — run Phoenix and the shell in separate terminals:
 
 ```bash
 mix phx.server
 ```
-
-Run the desktop shell in another terminal:
 
 ```bash
 cd desktop/tauri
@@ -58,25 +61,15 @@ BUSTER_CLAW_PHOENIX_URL=http://127.0.0.1:4001 cargo tauri dev
 
 ## Configuration
 
-Rewrite state is managed by Phoenix/Ecto and the local library directory:
+State is managed by Phoenix/Ecto and the local workspace directory:
 
 - `buster_claw_dev.db`: development SQLite database.
-- `Library/`: raw documents and generated reports.
+- `Library/`: workspace documents and artifacts (markdown).
 - Legacy data files such as `sources.json` and `Library/*.json` are migration inputs.
-
-## Slash commands (in chat)
-
-- `/search <query>`: Search the web.
-- `/ingest <url>`: Ingest content for analysis.
-- `/browse <url>`: Fetch and render a URL via headless browser.
-- `/remember <text>`: Save a fact to persistent memory.
-- `/memories`: List saved memories.
-- `/status`: Show pipeline activity.
-- `/help`: Show available commands.
 
 ## Driving Buster Claw (CLI, MCP, HTTP)
 
-Buster Claw exposes a single canonical command surface — see [`docs/rewrite/COMMAND_SURFACE.md`](docs/rewrite/COMMAND_SURFACE.md) for the full catalog (76 commands across sources, providers, documents, analysis, memory, chat, scheduler, webhooks, hooks, delivery, integrations, search, browser, runtime). Three frontends consume it:
+Buster Claw exposes a single canonical command surface (~70 commands) across documents, memory, calendar events, Google Workspace (accounts/Gmail/Calendar), integrations, delivery, scheduler, webhooks, hooks, MCP servers, search, browser, runtime, and the orchestration shift. Three frontends consume it:
 
 ### Authentication
 
@@ -90,9 +83,9 @@ mix escript.build
 
 # Run
 ./buster-claw commands                          # list the catalog
-./buster-claw source list                       # noun-verb shorthand
-./buster-claw run analysis_queue --json '{"document_id": 1}'
+./buster-claw document list                      # noun-verb shorthand
 ./buster-claw run web_search --json '{"query": "phoenix liveview"}'
+./buster-claw run shift_status --json '{}'
 ```
 
 Token comes from `BUSTER_CLAW_API_TOKEN` env, then the file path above, then `--token <token>` flag. Base URL is `BUSTER_CLAW_URL` env or `--url <url>` flag (default `http://127.0.0.1:4000`).
@@ -114,7 +107,7 @@ Buster Claw hosts an MCP server at `POST /mcp` using the Streamable HTTP transpo
 }
 ```
 
-The full safe-tier catalog (read commands, chat, low-risk triggers) appears in the agent's tool list. Restricted commands (deletes, `provider_set_active`, `delivery_dispatch_all`) are still callable via the HTTP API and CLI but are not exposed to MCP for safety.
+The full safe-tier catalog (read commands and low-risk triggers) appears in the agent's tool list. Restricted commands (deletes, `delivery_dispatch_all`, `document_save`, …) are still callable via the HTTP API and CLI but are not exposed to MCP for safety.
 
 ### HTTP API (for direct integration)
 
@@ -128,21 +121,16 @@ curl http://127.0.0.1:4000/api/commands
 curl -X POST http://127.0.0.1:4000/api/run \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"command":"source_list","args":{}}'
+  -d '{"command":"document_list","args":{}}'
 ```
-
-### Internal agent (chat-driven tool calls)
-
-When the active provider is Anthropic, the chat session passes safe-tier commands to the model as Anthropic tool definitions and runs an agentic loop — the model can call `runtime_status`, `document_list`, `analysis_queue`, `chat_messages`, etc. and use the results in its next reply. The loop is capped at 6 iterations to prevent runaway recursion. Other provider types fall back to plain chat without tools (OpenAI/Gemini/Codex tool-call adapters are planned).
 
 ## Development Notes
 
 - [Quality checks](docs/QUALITY.md) lists the Phoenix and Tauri commands to run before refactors.
 - [Architecture notes](docs/ARCHITECTURE.md) documents the current runtime shape, persisted files, and generated-code boundaries.
-- [UML / architecture diagrams](docs/UML.md) — Mermaid diagrams of the system layers, supervision tree, domain model, command surface, provider abstraction, and the core functional flows (ingest→analyze→deliver, agentic chat loop).
+- [UML / architecture diagrams](docs/UML.md) — Mermaid diagrams of the system layers, supervision tree, domain model, command surface, and HTTP routing.
 - [Local trust model](docs/LOCAL_TRUST.md) documents shell hooks, webhooks, stored secrets, fetched markdown, and MCP boundaries.
-- [Rewrite packaging notes](docs/rewrite/DESKTOP_PACKAGING.md) document the Phoenix/Tauri desktop path.
-- [Rewrite cutover notes](docs/rewrite/CUTOVER.md) document what still blocks packaged daily use.
+- [Desktop packaging notes](docs/DESKTOP_PACKAGING.md) document the Phoenix/Tauri desktop path.
 - Historical quality plans are archived in `daily-growth/old-maps/`.
 
 ## License
