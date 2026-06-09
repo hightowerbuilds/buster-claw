@@ -5,20 +5,23 @@ defmodule BusterClaw.CLI do
   ## Examples
 
       $ ./buster-claw commands
-      $ ./buster-claw run source_list
-      $ ./buster-claw source list
-      $ ./buster-claw run source_create --json '{"url":"https://...","type":"rss"}'
-      $ ./buster-claw source ingest --json '{"id": 1}'
+      $ ./buster-claw run runtime_status
+      $ ./buster-claw document list
+      $ ./buster-claw run web_search --json '{"query":"phoenix liveview"}'
+      $ ./buster-claw run document_save --json '{"name":"Note","body":"# Note"}'
 
   ## Configuration
 
   - `BUSTER_CLAW_URL` — base URL of the Buster Claw HTTP API. Default
     `http://127.0.0.1:4000`.
   - `BUSTER_CLAW_API_TOKEN` — token. If unset, falls back to reading
+    the configured app token, then
     `~/Library/Application Support/BusterClaw/api_token`.
   """
 
   @default_url "http://127.0.0.1:4000"
+  @default_receive_timeout_ms 5_000
+  @mailman_receive_timeout_ms 300_000
 
   @doc false
   def main(argv) do
@@ -29,6 +32,9 @@ defmodule BusterClaw.CLI do
       ["commands"] -> commands(opts)
       ["help"] -> usage()
       ["--help"] -> usage()
+      ["terminal", "open"] -> terminal_open(opts)
+      ["terminal", "open", role] -> terminal_open(opts, role)
+      ["mailman", "poll"] -> mailman_poll(opts)
       ["run", name] -> run(name, opts)
       [noun, verb] -> run("#{noun}_#{verb}", opts)
       [name] -> run(name, opts)
@@ -38,7 +44,29 @@ defmodule BusterClaw.CLI do
   end
 
   defp switches do
-    [json: :string, url: :string, token: :string, help: :boolean]
+    [
+      json: :string,
+      url: :string,
+      token: :string,
+      role: :string,
+      label: :string,
+      agent: :string,
+      purpose: :string,
+      session: :string,
+      startup_profile: :string,
+      account: :string,
+      account_id: :string,
+      email: :string,
+      query: :string,
+      limit: :integer,
+      interval: :integer,
+      timeout: :integer,
+      max_runs: :integer,
+      once: :boolean,
+      no_activate: :boolean,
+      verbose: :boolean,
+      help: :boolean
+    ]
   end
 
   defp aliases do
@@ -66,8 +94,39 @@ defmodule BusterClaw.CLI do
     end
   end
 
-  defp run(name, opts) do
-    args = parse_args(opts)
+  defp terminal_open(opts, positional_role \\ nil) do
+    args =
+      opts
+      |> parse_args()
+      |> maybe_put("role_key", Keyword.get(opts, :role) || positional_role)
+      |> maybe_put("label", Keyword.get(opts, :label))
+      |> maybe_put("agent_name", Keyword.get(opts, :agent))
+      |> maybe_put("purpose", Keyword.get(opts, :purpose))
+      |> maybe_put("session_key", Keyword.get(opts, :session))
+      |> maybe_put("startup_profile", Keyword.get(opts, :startup_profile))
+      |> maybe_put("activate", if(Keyword.get(opts, :no_activate), do: false, else: nil))
+
+    run("terminal_tab_open", opts, args)
+  end
+
+  defp mailman_poll(opts) do
+    args =
+      opts
+      |> parse_args()
+      |> maybe_put("account_id", Keyword.get(opts, :account_id) || Keyword.get(opts, :account))
+      |> maybe_put("email", Keyword.get(opts, :email))
+      |> maybe_put("query", Keyword.get(opts, :query))
+      |> maybe_put("limit", Keyword.get(opts, :limit))
+
+    interval = max(Keyword.get(opts, :interval, 60), 1)
+    max_runs = if Keyword.get(opts, :once), do: 1, else: Keyword.get(opts, :max_runs)
+
+    IO.puts("Mailman polling Gmail through Buster Claw every #{interval}s.")
+    poll_gmail(args, opts, interval, max_runs, 1)
+  end
+
+  defp run(name, opts, args \\ nil) do
+    args = args || parse_args(opts)
     body = %{"command" => name, "args" => args}
 
     case http_post("/api/run", body, auth: true, opts: opts) do
@@ -81,6 +140,37 @@ defmodule BusterClaw.CLI do
 
       {:error, reason} ->
         die(reason, 1)
+    end
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp poll_gmail(args, opts, interval, max_runs, run_number) do
+    stamp = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+    IO.puts("[#{stamp}] Mailman sync ##{run_number}")
+
+    case http_post("/api/run", %{"command" => "gmail_sync", "args" => args},
+           auth: true,
+           opts: opts,
+           receive_timeout: request_timeout_ms(opts, @mailman_receive_timeout_ms)
+         ) do
+      {:ok, %{"ok" => true, "result" => result}} ->
+        IO.puts(mailman_result_output(result, opts))
+
+      {:ok, %{"ok" => false, "error" => error} = payload} ->
+        IO.puts(:stderr, "error: #{error}")
+        if errors = payload["errors"], do: IO.puts(:stderr, pretty(errors))
+
+      {:error, reason} ->
+        IO.puts(:stderr, "error: #{reason}")
+    end
+
+    if max_runs && run_number >= max_runs do
+      :ok
+    else
+      Process.sleep(interval * 1_000)
+      poll_gmail(args, opts, interval, max_runs, run_number + 1)
     end
   end
 
@@ -100,12 +190,47 @@ defmodule BusterClaw.CLI do
 
   # ---- HTTP ----
 
+  @doc false
+  def request_timeout_ms(opts, default_ms \\ @default_receive_timeout_ms) do
+    case Keyword.get(opts, :timeout) do
+      seconds when is_integer(seconds) -> max(seconds, 1) * 1_000
+      _ -> default_ms
+    end
+  end
+
+  @doc false
+  def format_mailman_result(result) when is_map(result) do
+    documents = list_value(result, "documents")
+    errors = list_value(result, "errors")
+    account = map_value(result, "account")
+    synced = value(result, "synced") || length(documents)
+    requested = value(result, "requested")
+    query = value(result, "query")
+    estimate = value(result, "result_size_estimate")
+    email = value(account, "email")
+    last_synced_at = value(result, "last_synced_at")
+
+    [
+      mailman_summary_line(synced, requested, email),
+      optional_line("Query", query),
+      optional_line("Mailbox matches", estimate),
+      optional_line("Last synced", last_synced_at),
+      format_mailman_documents(documents),
+      format_mailman_errors(errors)
+    ]
+    |> List.flatten()
+    |> Enum.reject(&blank?/1)
+    |> Enum.join("\n")
+  end
+
+  def format_mailman_result(result), do: pretty(result)
+
   defp http_get(path) do
     url = base_url() <> path
 
     case Req.get(url,
            headers: [{"accept", "application/json"} | auth_header()],
-           receive_timeout: 5_000,
+           receive_timeout: @default_receive_timeout_ms,
            retry: false
          ) do
       {:ok, %{status: status, body: body}} ->
@@ -118,12 +243,18 @@ defmodule BusterClaw.CLI do
 
   defp http_post(path, body, opts) do
     url = base_url(opts[:opts]) <> path
+    receive_timeout = Keyword.get(opts, :receive_timeout, request_timeout_ms(opts[:opts] || []))
 
     headers =
       [{"accept", "application/json"}]
       |> maybe_add_auth(opts[:auth], opts[:opts])
 
-    case Req.post(url, json: body, headers: headers, receive_timeout: 5_000, retry: false) do
+    case Req.post(url,
+           json: body,
+           headers: headers,
+           receive_timeout: receive_timeout,
+           retry: false
+         ) do
       {:ok, %{status: status, body: response_body}} ->
         decode_response(status, response_body)
 
@@ -161,6 +292,10 @@ defmodule BusterClaw.CLI do
     "could not connect to Buster Claw at #{base_url()} — is `mix phx.server` running?"
   end
 
+  defp connection_message(%Req.TransportError{reason: :timeout}) do
+    "request timed out while waiting for Buster Claw; try a larger --timeout <seconds> for long-running commands"
+  end
+
   defp connection_message(reason), do: "request failed: #{inspect(reason)}"
 
   # ---- Token / URL ----
@@ -169,6 +304,7 @@ defmodule BusterClaw.CLI do
     cond do
       flag = Keyword.get(opts, :token) -> flag
       env = System.get_env("BUSTER_CLAW_API_TOKEN") -> env
+      configured = Application.get_env(:buster_claw, :api_token) -> configured
       true -> read_token_file()
     end
   end
@@ -198,6 +334,109 @@ defmodule BusterClaw.CLI do
 
   defp pretty(value), do: Jason.encode!(value, pretty: true)
 
+  defp mailman_result_output(result, opts) do
+    if Keyword.get(opts, :verbose), do: pretty(result), else: format_mailman_result(result)
+  end
+
+  defp mailman_summary_line(0, requested, email) do
+    suffix = requested_suffix(requested) <> account_suffix(email)
+    "No new Gmail messages synced#{suffix}."
+  end
+
+  defp mailman_summary_line(synced, requested, email) do
+    suffix = requested_suffix(requested) <> account_suffix(email)
+    "Synced #{synced} Gmail #{plural(synced, "message")}#{suffix}."
+  end
+
+  defp requested_suffix(nil), do: ""
+  defp requested_suffix(requested), do: " (requested #{requested})"
+
+  defp account_suffix(nil), do: ""
+  defp account_suffix(""), do: ""
+  defp account_suffix(email), do: " for #{email}"
+
+  defp optional_line(_label, nil), do: nil
+  defp optional_line(_label, ""), do: nil
+  defp optional_line(label, value), do: "#{label}: #{value}"
+
+  defp format_mailman_documents([]), do: "Documents: none"
+
+  defp format_mailman_documents(documents) do
+    visible = Enum.take(documents, 5)
+    hidden = max(length(documents) - length(visible), 0)
+
+    lines =
+      Enum.flat_map(visible, fn document ->
+        title = value(document, "name") || value(document, "filename") || "Untitled Gmail message"
+        date = value(document, "date")
+        path = value(document, "artifact_path")
+
+        [
+          "  - #{title}#{date_suffix(date)}",
+          if(path in [nil, ""], do: nil, else: "    #{path}")
+        ]
+      end)
+
+    ["Documents:" | lines ++ more_documents_line(hidden)]
+  end
+
+  defp more_documents_line(0), do: []
+  defp more_documents_line(count), do: ["  - ...and #{count} more"]
+
+  defp format_mailman_errors([]), do: nil
+
+  defp format_mailman_errors(errors) do
+    ["Errors:" | Enum.map(errors, &"  - #{format_error_line(&1)}")]
+  end
+
+  defp format_error_line(error) when is_binary(error), do: error
+  defp format_error_line(error), do: inspect(error)
+
+  defp date_suffix(nil), do: ""
+  defp date_suffix(""), do: ""
+  defp date_suffix(date), do: " (#{date})"
+
+  defp plural(1, singular), do: singular
+  defp plural(_count, singular), do: singular <> "s"
+
+  defp list_value(map, key) do
+    case value(map, key) do
+      value when is_list(value) -> value
+      _ -> []
+    end
+  end
+
+  defp map_value(map, key) do
+    case value(map, key) do
+      value when is_map(value) -> value
+      _ -> %{}
+    end
+  end
+
+  defp value(map, key) when is_map(map) do
+    Map.get(map, key) || Map.get(map, atom_key(key))
+  end
+
+  defp value(_map, _key), do: nil
+
+  defp atom_key("account"), do: :account
+  defp atom_key("artifact_path"), do: :artifact_path
+  defp atom_key("date"), do: :date
+  defp atom_key("documents"), do: :documents
+  defp atom_key("email"), do: :email
+  defp atom_key("errors"), do: :errors
+  defp atom_key("filename"), do: :filename
+  defp atom_key("last_synced_at"), do: :last_synced_at
+  defp atom_key("name"), do: :name
+  defp atom_key("query"), do: :query
+  defp atom_key("requested"), do: :requested
+  defp atom_key("result_size_estimate"), do: :result_size_estimate
+  defp atom_key("synced"), do: :synced
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_value), do: false
+
   defp pad(str, width) do
     String.pad_trailing(str, width)
   end
@@ -210,18 +449,38 @@ defmodule BusterClaw.CLI do
       commands               List the full command catalog.
       run <name> [opts]      Invoke a command by name.
       <noun> <verb> [opts]   Shorthand for `run <noun>_<verb>`.
+      terminal open [role]   Open a role-labeled terminal tab inside Buster Claw.
+      mailman poll           Continuously sync Gmail through the local API.
 
     Options:
       --json '<json>'        Pass command args as a JSON object.
+      --role <role>          Role key for `terminal open`.
+      --label <label>        Visible label for `terminal open`.
+      --agent <name>         Agent name metadata for `terminal open`.
+      --purpose <text>       Purpose metadata for `terminal open`.
+      --session <key>        Explicit terminal session key for `terminal open`.
+      --startup-profile <p>  Known terminal startup profile; currently: mailman.
+      --account-id <id>      Google account id for `mailman poll`.
+      --email <email>        Google account email for `mailman poll`.
+      --query <query>        Gmail query for `mailman poll`.
+      --limit <n>            Gmail sync limit for `mailman poll`.
+      --interval <seconds>   Poll interval for `mailman poll` (default 60).
+      --timeout <seconds>    HTTP receive timeout (mailman default 300).
+      --max-runs <n>         Stop `mailman poll` after n sync attempts.
+      --once                 Run `mailman poll` once.
+      --no-activate          Queue the tab without navigating to it.
+      --verbose              Print full JSON for `mailman poll`.
       --url <url>            Override BUSTER_CLAW_URL (default #{@default_url}).
       --token <token>        Override BUSTER_CLAW_API_TOKEN.
       -h, --help             Print this message.
 
     Examples:
       ./buster-claw commands
-      ./buster-claw source list
-      ./buster-claw run source_create --json '{"url":"https://x.io","type":"rss"}'
-      ./buster-claw run analysis_queue --json '{"document_id": 1}'
+      ./buster-claw document list
+      ./buster-claw run web_search --json '{"query":"phoenix liveview"}'
+      ./buster-claw run document_save --json '{"name":"Note","body":"# Note"}'
+      ./buster-claw terminal open --role mailman --label Mailman
+      ./buster-claw mailman poll --interval 60
     """)
   end
 

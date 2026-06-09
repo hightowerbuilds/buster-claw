@@ -17,12 +17,6 @@ config :buster_claw, BusterClawWeb.Endpoint,
   secret_key_base: "4b9dJlwt909xaIFH1I1ZBTm3Ge4dBRtl7vhsFySqmKhhmXQt1RElz4HjimLpy/95",
   server: false
 
-# In test we don't send emails
-config :buster_claw, BusterClaw.Mailer, adapter: Swoosh.Adapters.Test
-
-# Disable swoosh api client as it is only required for production adapters
-config :swoosh, :api_client, false
-
 config :buster_claw, :search_req_options, plug: {Req.Test, BusterClaw.SearchHTTP}
 config :buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHTTP}
 

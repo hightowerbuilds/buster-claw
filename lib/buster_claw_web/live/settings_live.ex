@@ -27,7 +27,7 @@ defmodule BusterClawWeb.SettingsLive do
       label: "Delivery",
       path: "/delivery",
       icon: "hero-paper-airplane",
-      desc: "Slack, email destinations"
+      desc: "Slack, Discord, Telegram"
     },
     %{
       label: "MCP",

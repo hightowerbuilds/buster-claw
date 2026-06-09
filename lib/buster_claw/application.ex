@@ -15,7 +15,7 @@ defmodule BusterClaw.Application do
          repos: Application.fetch_env!(:buster_claw, :ecto_repos), skip: skip_migrations?()},
         {DNSCluster, query: Application.get_env(:buster_claw, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: BusterClaw.PubSub},
-        BusterClaw.AgentMode,
+        BusterClaw.TerminalWorkspace,
         BusterClaw.Sentinel.Pending,
         browser_sidecar_child(),
         {Registry, keys: :unique, name: BusterClaw.MCP.Registry},
@@ -39,6 +39,8 @@ defmodule BusterClaw.Application do
       {:ok, _pid} = ok ->
         # Install the model-facing workspace guide (best-effort).
         BusterClaw.Introduction.ensure()
+        # Install the DataZone-local CLI launcher used by terminal role commands.
+        BusterClaw.WorkspaceCLI.ensure()
         ok
 
       other ->

@@ -21,7 +21,6 @@ defmodule BusterClawWeb.ErrorFormatterTest do
     test "well-known atoms get humanized strings" do
       assert ErrorFormatter.format(:not_found) == "not found"
       assert ErrorFormatter.format(:unauthorized) == "unauthorized"
-      assert ErrorFormatter.format(:no_active_provider) == "no active provider configured"
       assert ErrorFormatter.format(:econnrefused) == "connection refused"
       assert ErrorFormatter.format(:nxdomain) == "domain not found"
     end

@@ -65,11 +65,12 @@ defmodule BusterClawWeb.StatusLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="flex flex-1 flex-col space-y-8">
-        <div class="space-y-2 border-b-2 border-base-content/20 pb-5">
-          <p class="ic-eyebrow flex items-center gap-2">
-            <span class="ic-dot"></span> {@status.phase}
-          </p>
-          <h1 class="font-display text-[20px] font-black uppercase tracking-tight">Buster Claw</h1>
+        <div class="space-y-4 border-b-2 border-base-content/20 pb-5">
+          <img
+            src={~p"/images/busterclaw-logo.png"}
+            alt="Buster Claw"
+            class="block h-auto w-full max-w-[28rem]"
+          />
           <div :if={not @setup_status.complete?} class="pt-1">
             <.link
               navigate={~p"/setup"}

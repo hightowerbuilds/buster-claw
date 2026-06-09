@@ -14,12 +14,12 @@ defmodule BusterClawWeb.SecurityLiveTest do
 
     # A subsequently recorded event appears live (the view subscribes to the topic).
     {:ok, _} =
-      Sentinel.observe(:command_invoke, "source_create (ok)", %{
-        command: "source_create",
+      Sentinel.observe(:command_invoke, "document_save (ok)", %{
+        command: "document_save",
         tier: :restricted
       })
 
-    assert render(view) =~ "source_create (ok)"
+    assert render(view) =~ "document_save (ok)"
   end
 
   test "acknowledge clears the unacknowledged count", %{conn: conn} do

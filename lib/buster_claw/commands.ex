@@ -4,8 +4,7 @@ defmodule BusterClaw.Commands do
 
   Every external surface (HTTP API, MCP server, CLI escript) dispatches through
   this module. See
-  `docs/COMMAND_SURFACE.md` for the full catalog with arg schemas,
-  return shapes, and agent allowlist tiers.
+  `docs/COMMAND_SURFACE.md` for a command-surface overview.
 
   ## Contract
 
@@ -35,6 +34,7 @@ defmodule BusterClaw.Commands do
     Orchestration,
     Scheduler,
     Search,
+    TerminalWorkspace,
     Webhooks
   }
 
@@ -69,7 +69,6 @@ defmodule BusterClaw.Commands do
       end
 
     audit(name, args, caller, result)
-    BusterClaw.AgentMode.record_activity(name, args, result)
     result
   end
 
@@ -291,11 +290,6 @@ defmodule BusterClaw.Commands do
     end)
   end
 
-  def hook_event_execute(%{"event" => event} = args) do
-    payload = Map.get(args, "payload", %{})
-    {:ok, Hooks.execute_event(event, payload, [])}
-  end
-
   # -----------------------------------------------------------------------
   # Delivery destinations (extras)
   # -----------------------------------------------------------------------
@@ -477,6 +471,12 @@ defmodule BusterClaw.Commands do
 
   def runtime_status(_args \\ %{}), do: {:ok, Status.snapshot()}
 
+  # -----------------------------------------------------------------------
+  # Visible terminal workspace
+  # -----------------------------------------------------------------------
+
+  def terminal_tab_open(args \\ %{}), do: TerminalWorkspace.open(args)
+
   # --- Orchestration shift (agent-drivable: the on-shift Claude starts/stops it) ---
 
   def shift_status(_args \\ %{}) do
@@ -489,6 +489,12 @@ defmodule BusterClaw.Commands do
          %{
            active: true,
            shift_id: shift.id,
+           job_key: shift.job_key,
+           job_name: shift.job_name,
+           job_description: shift.job_description,
+           agent_name: shift.agent_name,
+           shell: shift.shell,
+           duration_hours: shift.duration_hours,
            started_at: shift.started_at,
            ends_at: shift.ends_at,
            dispatched: shift.dispatched_count,
@@ -499,12 +505,21 @@ defmodule BusterClaw.Commands do
   end
 
   def shift_start(args \\ %{}) do
-    hours = Map.get(args, "hours", 12)
     Orchestration.clear_kill_switch()
 
-    case Orchestration.start_shift(hours: hours) do
+    case Orchestration.start_shift(args) do
       {:ok, shift} ->
-        {:ok, %{shift_id: shift.id, status: shift.status, ends_at: shift.ends_at}}
+        {:ok,
+         %{
+           shift_id: shift.id,
+           status: shift.status,
+           job_key: shift.job_key,
+           job_name: shift.job_name,
+           agent_name: shift.agent_name,
+           shell: shift.shell,
+           duration_hours: shift.duration_hours,
+           ends_at: shift.ends_at
+         }}
 
       {:error, _changeset} = error ->
         error
@@ -516,6 +531,25 @@ defmodule BusterClaw.Commands do
 
     case Orchestration.stop_shift(reason) do
       {:ok, shift} -> {:ok, %{shift_id: shift.id, status: shift.status}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def shift_assignment_start(args \\ %{}) do
+    case Orchestration.start_shift_assignment(args) do
+      {:ok, assignment} ->
+        {:ok, assignment}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def shift_assignment_status(args \\ %{}), do: Orchestration.shift_assignment_status(args)
+
+  def shift_assignment_stop(args \\ %{}) do
+    case Orchestration.stop_shift_assignment(args) do
+      {:ok, assignment} -> {:ok, assignment}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -710,11 +744,9 @@ defmodule BusterClaw.Commands do
           "action" => %{
             type: :string,
             required: true,
-            enum: ["run_analysis", "ingest_url", "run_scheduler", "shell"]
+            enum: ["command"]
           },
           "secret" => %{type: :string, required: false},
-          "custom_cmd" => %{type: :string, required: false},
-          "deliver_to" => %{type: :string, required: false},
           "enabled" => %{type: :boolean, required: false, default: true}
         }
       },
@@ -726,10 +758,8 @@ defmodule BusterClaw.Commands do
         args: %{
           "id" => %{type: :integer, required: true},
           "name" => %{type: :string, required: false},
-          "action" => %{type: :string, required: false},
+          "action" => %{type: :string, required: false, enum: ["command"]},
           "secret" => %{type: :string, required: false},
-          "custom_cmd" => %{type: :string, required: false},
-          "deliver_to" => %{type: :string, required: false},
           "enabled" => %{type: :boolean, required: false}
         }
       },
@@ -782,16 +812,6 @@ defmodule BusterClaw.Commands do
       # Restricted: hook_test runs the hook's stored target, which for "shell"
       # hooks is an arbitrary command. Must not be reachable by the chat agent.
       id_payload_trigger_entry("hook_test", "Test-run a single hook.", :restricted),
-      %{
-        name: "hook_event_execute",
-        type: :trigger,
-        tier: :restricted,
-        description: "Fire all hooks bound to an event.",
-        args: %{
-          "event" => %{type: :string, required: true},
-          "payload" => %{type: :map, required: false}
-        }
-      },
 
       # Delivery destinations
       list_entry("delivery_destination_list", "List delivery destinations."),
@@ -806,7 +826,7 @@ defmodule BusterClaw.Commands do
           "type" => %{
             type: :string,
             required: true,
-            enum: ["slack", "discord", "telegram", "email", "webhook"]
+            enum: ["slack", "discord", "telegram", "webhook"]
           },
           "url" => %{type: :string, required: false},
           "token" => %{type: :string, required: false},
@@ -857,11 +877,9 @@ defmodule BusterClaw.Commands do
         description: "Create a scheduler job.",
         args: %{
           "job_id" => %{type: :string, required: true},
-          "type" => %{type: :string, required: true},
+          "type" => %{type: :string, required: true, enum: ["integrations_poll"]},
           "cron" => %{type: :string, required: true},
-          "enabled" => %{type: :boolean, required: false, default: true},
-          "custom_cmd" => %{type: :string, required: false},
-          "deliver_to" => %{type: :string, required: false}
+          "enabled" => %{type: :boolean, required: false, default: true}
         }
       },
       %{
@@ -872,11 +890,9 @@ defmodule BusterClaw.Commands do
         args: %{
           "id" => %{type: :integer, required: true},
           "job_id" => %{type: :string, required: false},
-          "type" => %{type: :string, required: false},
+          "type" => %{type: :string, required: false, enum: ["integrations_poll"]},
           "cron" => %{type: :string, required: false},
-          "enabled" => %{type: :boolean, required: false},
-          "custom_cmd" => %{type: :string, required: false},
-          "deliver_to" => %{type: :string, required: false}
+          "enabled" => %{type: :boolean, required: false}
         }
       },
       delete_entry("scheduler_job_delete", "Delete a scheduler job."),
@@ -1091,14 +1107,37 @@ defmodule BusterClaw.Commands do
       # Runtime
       list_entry("runtime_status", "Snapshot of process and system state."),
 
+      # Visible terminal workspace
+      %{
+        name: "terminal_tab_open",
+        type: :trigger,
+        tier: :safe,
+        description: "Open a new visible in-app terminal tab for a role.",
+        args: %{
+          "role_key" => %{type: :string, required: true},
+          "label" => %{type: :string, required: false},
+          "agent_name" => %{type: :string, required: false},
+          "purpose" => %{type: :string, required: false},
+          "session_key" => %{type: :string, required: false},
+          "startup_profile" => %{type: :string, required: false, enum: ["mailman"]},
+          "activate" => %{type: :boolean, required: false, default: true}
+        }
+      },
+
       # Orchestration shift — agent-drivable so the on-shift model can start/stop it.
       list_entry("shift_status", "Whether an orchestration shift is active, plus counts."),
       %{
         name: "shift_start",
         type: :trigger,
         tier: :safe,
-        description: "Start an unattended orchestration shift (default 12h).",
-        args: %{"hours" => %{type: :integer, required: false, default: 12}}
+        description:
+          "Start an unattended orchestration shift with job/agent assignment metadata.",
+        args: %{
+          "job" => %{type: :string, required: false, default: "lookout"},
+          "agent_name" => %{type: :string, required: false},
+          "shell" => %{type: :string, required: false},
+          "hours" => %{type: :integer, required: false, default: 12}
+        }
       },
       %{
         name: "shift_stop",
@@ -1106,6 +1145,40 @@ defmodule BusterClaw.Commands do
         tier: :safe,
         description: "Stop the active orchestration shift.",
         args: %{"reason" => %{type: :string, required: false}}
+      },
+      %{
+        name: "shift_assignment_start",
+        type: :trigger,
+        tier: :safe,
+        description: "Start a specialist role/session inside the active shift.",
+        args: %{
+          "role_key" => %{type: :string, required: true},
+          "agent_name" => %{type: :string, required: false},
+          "shell" => %{type: :string, required: false},
+          "purpose" => %{type: :string, required: false},
+          "dedupe_key" => %{type: :string, required: false},
+          "notes" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "shift_assignment_status",
+        type: :read,
+        tier: :safe,
+        description: "List active specialist role sessions inside the active shift.",
+        args: %{}
+      },
+      %{
+        name: "shift_assignment_stop",
+        type: :trigger,
+        tier: :safe,
+        description: "Stop or block an active specialist role/session.",
+        args: %{
+          "id" => %{type: :integer, required: false},
+          "role_key" => %{type: :string, required: false},
+          "dedupe_key" => %{type: :string, required: false},
+          "status" => %{type: :string, required: false, default: "stopped"},
+          "notes" => %{type: :string, required: false}
+        }
       }
     ]
 end

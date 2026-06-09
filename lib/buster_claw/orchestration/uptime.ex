@@ -109,7 +109,8 @@ defmodule BusterClaw.Orchestration.Uptime do
   defp start_caffeinate do
     with true <- macos?(),
          exe when is_binary(exe) <- System.find_executable("caffeinate") do
-      port = Port.open({:spawn_executable, exe}, [:binary, :exit_status, {:args, @caffeinate_args}])
+      port =
+        Port.open({:spawn_executable, exe}, [:binary, :exit_status, {:args, @caffeinate_args}])
 
       os_pid =
         case Port.info(port, :os_pid) do

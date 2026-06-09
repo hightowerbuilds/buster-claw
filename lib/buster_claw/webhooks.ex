@@ -57,9 +57,7 @@ defmodule BusterClaw.Webhooks do
   defp action_summary(webhook) do
     %{
       webhook: webhook.name,
-      action: webhook.action,
-      custom_cmd: webhook.custom_cmd,
-      deliver_to: webhook.deliver_to
+      action: webhook.action
     }
   end
 

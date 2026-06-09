@@ -71,32 +71,4 @@ defmodule BusterClaw.LibraryArtifactTest do
     refute File.exists?(path)
     assert Repo.reload!(document).status == "deleted"
   end
-
-  test "indexes existing raw markdown without rewriting it", %{root: root} do
-    path = Path.join([root, "raw", "2026-05-07", "existing.md"])
-    File.mkdir_p!(Path.dirname(path))
-
-    content = """
-    ---
-    url: "https://example.com/existing"
-    name: "Existing"
-    tags: ["legacy", "import"]
-    ---
-
-    # Existing
-
-    Already here.
-    """
-
-    File.write!(path, content)
-    before_hash = :crypto.hash(:sha256, File.read!(path)) |> Base.encode16(case: :lower)
-
-    assert [{:ok, document}] = Library.index_existing_raw_documents()
-    assert document.artifact_path == "raw/2026-05-07/existing.md"
-    assert document.content_hash == before_hash
-    assert File.read!(path) == content
-
-    assert [{:ok, updated}] = Library.index_existing_raw_documents()
-    assert updated.id == document.id
-  end
 end

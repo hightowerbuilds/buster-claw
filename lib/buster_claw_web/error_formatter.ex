@@ -51,7 +51,6 @@ defmodule BusterClawWeb.ErrorFormatter do
   def format(:not_found), do: "not found"
   def format(:unauthorized), do: "unauthorized"
   def format(:disabled), do: "disabled"
-  def format(:no_active_provider), do: "no active provider configured"
   def format(:empty_query), do: "query is empty"
   def format(:timeout), do: "request timed out"
   def format(:closed), do: "connection closed"

@@ -257,8 +257,7 @@ fn main() {
             terminal::terminal_attach,
             terminal::terminal_input,
             terminal::terminal_resize,
-            terminal::terminal_close,
-            workspace::workspace_relaunch
+            terminal::terminal_close
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

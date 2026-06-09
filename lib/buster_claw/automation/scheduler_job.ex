@@ -3,15 +3,13 @@ defmodule BusterClaw.Automation.SchedulerJob do
 
   import Ecto.Changeset
 
-  @types ~w(custom integrations_poll)
+  @types ~w(integrations_poll)
 
   schema "scheduler_jobs" do
     field :job_id, :string
     field :type, :string
     field :cron, :string
     field :enabled, :boolean, default: true
-    field :custom_cmd, :string
-    field :deliver_to, :string
     field :last_run_at, :utc_datetime
     field :next_run_at, :utc_datetime
     field :last_error, :string
@@ -26,8 +24,6 @@ defmodule BusterClaw.Automation.SchedulerJob do
       :type,
       :cron,
       :enabled,
-      :custom_cmd,
-      :deliver_to,
       :last_run_at,
       :next_run_at,
       :last_error

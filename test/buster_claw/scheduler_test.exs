@@ -1,7 +1,7 @@
 defmodule BusterClaw.SchedulerTest do
   use BusterClaw.DataCase
 
-  alias BusterClaw.{Automation, Integrations, Scheduler, Workflow}
+  alias BusterClaw.{Automation, Integrations, Scheduler}
 
   setup do
     Req.Test.verify_on_exit!()
@@ -64,9 +64,8 @@ defmodule BusterClaw.SchedulerTest do
     assert {:ok, job} =
              Automation.create_scheduler_job(%{
                job_id: "imported",
-               type: "custom",
-               cron: "@daily",
-               custom_cmd: "echo imported"
+               type: "integrations_poll",
+               cron: "@daily"
              })
 
     refute job.next_run_at
@@ -82,15 +81,14 @@ defmodule BusterClaw.SchedulerTest do
     assert {:ok, job} =
              Scheduler.create_job(%{
                job_id: "due-custom",
-               type: "custom",
-               cron: "* * * * *",
-               custom_cmd: "echo due"
+               type: "integrations_poll",
+               cron: "* * * * *"
              })
 
     assert {:ok, _job} =
              Automation.update_scheduler_job(job, %{next_run_at: DateTime.add(now, -60, :second)})
 
-    assert [{%{job_id: "due-custom"}, {:ok, %{status: "placeholder"}}}] = Scheduler.run_due(now)
+    assert [{%{job_id: "due-custom"}, {:ok, %{status: "ok"}}}] = Scheduler.run_due(now)
 
     updated = Scheduler.get_job!(job.id)
     assert updated.last_run_at == now
@@ -103,9 +101,8 @@ defmodule BusterClaw.SchedulerTest do
     assert {:ok, job} =
              Scheduler.create_job(%{
                job_id: "runner-custom",
-               type: "custom",
-               cron: "* * * * *",
-               custom_cmd: "echo runner"
+               type: "integrations_poll",
+               cron: "* * * * *"
              })
 
     assert {:ok, _job} =
@@ -124,28 +121,6 @@ defmodule BusterClaw.SchedulerTest do
     assert Scheduler.get_job!(job.id).last_run_at
 
     GenServer.stop(pid)
-  end
-
-  test "run_now records custom placeholders without executing commands" do
-    assert {:ok, job} =
-             Scheduler.create_job(%{
-               job_id: "custom-placeholder",
-               type: "custom",
-               cron: "@daily",
-               custom_cmd: "exit 42"
-             })
-
-    assert {:ok, summary} = Scheduler.run_now(job)
-    assert summary.status == "placeholder"
-    assert summary.custom_cmd == "exit 42"
-
-    updated = Scheduler.get_job!(job.id)
-    assert updated.last_run_at
-    refute updated.last_error
-
-    assert [event] = Workflow.list_runtime_events()
-    assert event.kind == "scheduler.custom"
-    assert event.metadata["job_id"] == "custom-placeholder"
   end
 
   test "run_now can poll integrations" do

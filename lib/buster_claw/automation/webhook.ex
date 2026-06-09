@@ -9,8 +9,6 @@ defmodule BusterClaw.Automation.Webhook do
     field :name, :string
     field :secret, BusterClaw.Encrypted
     field :action, :string
-    field :custom_cmd, :string
-    field :deliver_to, :string
     field :enabled, :boolean, default: true
 
     timestamps(type: :utc_datetime)
@@ -18,7 +16,7 @@ defmodule BusterClaw.Automation.Webhook do
 
   def changeset(webhook, attrs) do
     webhook
-    |> cast(attrs, [:name, :secret, :action, :custom_cmd, :deliver_to, :enabled])
+    |> cast(attrs, [:name, :secret, :action, :enabled])
     |> validate_required([:name, :action])
     |> validate_inclusion(:action, @actions)
     |> unique_constraint(:name)

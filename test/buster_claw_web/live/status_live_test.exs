@@ -3,6 +3,7 @@ defmodule BusterClawWeb.StatusLiveTest do
 
   alias BusterClaw.Calendar
   alias BusterClaw.LocalTime
+  alias BusterClaw.Orchestration
 
   test "GET / renders the home shell", %{conn: conn} do
     conn = get(conn, ~p"/")
@@ -13,6 +14,10 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(id="tab-strip")
     assert response =~ ~s(phx-hook="TabStrip")
     assert response =~ ~s(id="app-dock")
+    assert response =~ ~s(id="home-shift-management")
+    assert response =~ "No shift shell open."
+    refute response =~ ~s(id="shift-assignment-form")
+    refute response =~ ~s(id="shift-start-button")
     # The Connect-GWS panel was removed from the home page; GWS lives at /gws + /setup.
     refute response =~ ~s(id="home-google-workspace-login")
     refute response =~ ~s(id="home-recent-emails")
@@ -44,6 +49,38 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(id="home-daily-calendar")
     assert response =~ "Home page planning block"
     assert response =~ "09:30"
+  end
+
+  test "home displays the shell currently on shift", %{conn: conn} do
+    {:ok, _shift} =
+      Orchestration.start_shift(
+        job: "lookout",
+        agent_name: "Codex",
+        shell: "Terminal 1",
+        hours: 12
+      )
+
+    {:ok, _assignment} =
+      Orchestration.start_shift_assignment(
+        role_key: "mail-triage",
+        agent_name: "Mail Triage",
+        shell: "Email terminal",
+        purpose: "Handle incoming email."
+      )
+
+    conn = get(conn, ~p"/")
+    response = html_response(conn, 200)
+
+    assert response =~ ~s(id="home-shift-management")
+    assert response =~ ~s(id="shift-shell-open-status")
+    assert response =~ ~s(id="shift-active-assignments")
+    assert response =~ "Shell open"
+    assert response =~ "Lookout"
+    assert response =~ "Codex"
+    assert response =~ "Terminal 1"
+    assert response =~ "Mail Triage"
+    assert response =~ "Email terminal"
+    refute response =~ ~s(id="shift-assignment-form")
   end
 
   test "GET / uses the app-local date for the daily calendar", %{conn: conn} do

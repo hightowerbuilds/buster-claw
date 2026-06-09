@@ -1,5 +1,5 @@
 defmodule BusterClaw.SentinelTest do
-  use BusterClaw.DataCase, async: true
+  use BusterClaw.DataCase, async: false
 
   alias BusterClaw.Sentinel
 

@@ -22,13 +22,12 @@ Buster Claw has no built-in LLM and needs no API keys: the intelligence is a ter
 - `BusterClaw.Google`: Google OAuth, Gmail, and Calendar sync (tokens in `BusterClaw.Google.Vault`).
 - `BusterClaw.Calendar`: durable calendar events.
 - `BusterClaw.Integrations`: GitHub / Sentry / Umami polling.
-- `BusterClaw.Delivery`: outbound delivery to Slack / Discord / Telegram / email.
+- `BusterClaw.Delivery`: outbound delivery to Slack / Discord / Telegram-compatible webhooks.
 - `BusterClaw.Automation`: MCP host/client, scheduler, webhooks, and hooks.
 - `BusterClaw.Orchestration`: the unattended "shift" — `Orchestrator` (deterministic GenServer brain), `AgentRunner` (headless `claude -p` / `codex exec`), `Pipeline`, `Reporter`, `Uptime`, and the `orchestrator_tasks` / `agent_runs` / `shifts` schemas.
 - `BusterClaw.Sentinel`: the security/audit spine — every command, outbound send, and untrusted fetch is recorded; restricted actions from untrusted callers are refused and queued.
 - `BusterClaw.Memory`: persistent agent memory.
 - `BusterClaw.Settings`: app settings.
-- `BusterClaw.Migration`: importer for legacy local data files.
 
 ## Desktop Shell
 

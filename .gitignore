@@ -26,6 +26,8 @@ desktop/tauri/target/
 
 # Local runtime data
 /Library/
+/busterclaw-logo.png
+/priv/static/images/busterclaw-logo.png
 *.log
 erl_crash.dump
 

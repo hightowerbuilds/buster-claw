@@ -137,11 +137,129 @@ function termThemePalette(key) {
   }
 }
 
+// xterm theme palette, made see-through when a terminal background image is
+// active so the image shows behind the text (the `__bcBgActive` flag is set per
+// terminal by the TerminalView hook).
+function termThemeWithBackground(bgActive) {
+  const palette = termThemePalette(currentTermTheme())
+  return bgActive ? {...palette, background: "rgba(0,0,0,0)"} : palette
+}
+
+// Full-screen TUIs often fill empty cells with ANSI black. When an image-backed
+// terminal is transparent, those black background instructions need to become
+// the default transparent background instead of opaque painted cells.
+function stripTransparentBackgroundPaint(data, state) {
+  const input = (state.pending || "") + String(data || "")
+  state.pending = ""
+
+  let output = ""
+  let offset = 0
+
+  while (offset < input.length) {
+    const csiStart = input.indexOf("\x1b[", offset)
+    if (csiStart === -1) {
+      output += input.slice(offset)
+      break
+    }
+
+    output += input.slice(offset, csiStart)
+
+    const csiEnd = findCsiEnd(input, csiStart + 2)
+    if (csiEnd === -1) {
+      state.pending = input.slice(csiStart)
+      break
+    }
+
+    const sequence = input.slice(csiStart, csiEnd + 1)
+    output += input[csiEnd] === "m"
+      ? stripBlackBackgroundSgr(sequence, input.slice(csiStart + 2, csiEnd))
+      : sequence
+    offset = csiEnd + 1
+  }
+
+  return output
+}
+
+function flushTransparentBackgroundPaint(state) {
+  const pending = state.pending || ""
+  state.pending = ""
+  return pending
+}
+
+function findCsiEnd(input, offset) {
+  for (let i = offset; i < input.length; i++) {
+    const code = input.charCodeAt(i)
+    if (code >= 0x40 && code <= 0x7e) return i
+  }
+
+  return -1
+}
+
+function stripBlackBackgroundSgr(sequence, paramsText) {
+  if (paramsText === "") return sequence
+
+  const params = paramsText.split(";")
+  const kept = []
+  let changed = false
+
+  for (let i = 0; i < params.length; i++) {
+    const param = params[i]
+
+    if (param === "40" || isBlackColonBackground(param)) {
+      changed = true
+      continue
+    }
+
+    if (param === "48" && params[i + 1] === "5" && isBlackAnsiColor(params[i + 2])) {
+      i += 2
+      changed = true
+      continue
+    }
+
+    if (param === "48" && params[i + 1] === "2" && isBlackRgb(params.slice(i + 2, i + 5))) {
+      i += 4
+      changed = true
+      continue
+    }
+
+    kept.push(param)
+  }
+
+  if (!changed) return sequence
+  if (kept.length === 0) return ""
+
+  return `\x1b[${kept.join(";")}m`
+}
+
+function isBlackColonBackground(param) {
+  if (!param.startsWith("48:")) return false
+
+  const parts = param.split(":")
+  if (parts[1] === "5") return isBlackAnsiColor(parts[2])
+  if (parts[1] !== "2") return false
+
+  return isBlackRgb(parts.slice(2).filter((part) => part !== "").slice(0, 3))
+}
+
+function isBlackAnsiColor(value) {
+  if (!/^\d+$/.test(String(value || ""))) return false
+
+  const index = Number.parseInt(value, 10)
+  return index === 0 || index === 16
+}
+
+function isBlackRgb(values) {
+  return values.length === 3 &&
+    values.every((value) => /^\d+$/.test(String(value)) && Number.parseInt(value, 10) === 0)
+}
+
 // Open xterm instances, so a theme change applies to every live terminal.
 const liveTerminals = new Set()
 function applyTermTheme(key) {
   const palette = termThemePalette(key)
-  liveTerminals.forEach((t) => { t.options.theme = palette })
+  liveTerminals.forEach((t) => {
+    t.options.theme = t.__bcBgActive ? {...palette, background: "rgba(0,0,0,0)"} : palette
+  })
 }
 function setTermTheme(key) {
   if (!key) return
@@ -156,6 +274,90 @@ window.addEventListener("storage", (e) => {
 window.addEventListener("phx:set-theme", () => {
   if (currentTermTheme() === "industrial") setTimeout(() => applyTermTheme("industrial"), 0)
 })
+
+const TAB_STORAGE_KEY = "bc:tabs"
+
+function splitPathQuery(fullPath) {
+  const value = String(fullPath || "")
+  const idx = value.indexOf("?")
+  if (idx === -1) return [value, ""]
+  return [value.slice(0, idx), value.slice(idx + 1)]
+}
+
+function loadTabs() {
+  try { return JSON.parse(localStorage.getItem(TAB_STORAGE_KEY)) || [] } catch (_e) { return [] }
+}
+
+function saveTabs(tabs) {
+  localStorage.setItem(TAB_STORAGE_KEY, JSON.stringify(tabs))
+}
+
+function terminalLabelFromQuery(query, labels = {}) {
+  const params = new URLSearchParams(query || "")
+  return params.get("label") || labels["/terminal"] || "Terminal"
+}
+
+function labelForPath(fullPath, labels = {}) {
+  if (!fullPath) return "?"
+  const [path, query] = splitPathQuery(fullPath)
+  if (path === "/terminal") return terminalLabelFromQuery(query, labels)
+  if (path === "/split") {
+    const params = new URLSearchParams(query || "")
+    return `${labelForPath(params.get("left"), labels)} | ${labelForPath(params.get("right"), labels)}`
+  }
+  return labels[path] || path
+}
+
+function newTerminalKey() {
+  const stamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14)
+  const token = Math.random().toString(36).slice(2, 6)
+  return `term-${stamp}-${token}`
+}
+
+function nextTerminalNumber(tabs, labels = {}) {
+  const usedNumbers = tabs.flatMap((t) => {
+    const [path] = splitPathQuery(t.path)
+    if (path !== "/terminal") return []
+
+    const match = String(t.label || labelForPath(t.path, labels)).match(/^Terminal(?:\s+(\d+))?$/)
+    if (!match) return []
+
+    return [match[1] ? parseInt(match[1], 10) : 1]
+  })
+
+  return Math.max(1, ...usedNumbers) + 1
+}
+
+function createTerminalTab(tabs = loadTabs(), labels = {}) {
+  const key = newTerminalKey()
+  const label = `Terminal ${nextTerminalNumber(tabs, labels)}`
+  const path = `/terminal?session=${encodeURIComponent(key)}&label=${encodeURIComponent(label)}`
+  return {path, label}
+}
+
+function openNewTerminalTab(labels = {}) {
+  const tabs = loadTabs()
+  const tab = createTerminalTab(tabs, labels)
+  tabs.push(tab)
+  saveTabs(tabs)
+  window.location.href = tab.path
+}
+
+function splitPathForTerminal(currentPath, side, labels = {}) {
+  const other = createTerminalTab(loadTabs(), labels)
+  const left = side === "left" ? other.path : currentPath
+  const right = side === "left" ? currentPath : other.path
+  return `/split?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`
+}
+
+function openTerminalSplit(currentPath, side, labels = {}) {
+  const splitPath = splitPathForTerminal(currentPath, side, labels)
+  const currentTabPath = window.location.pathname + window.location.search
+  const tabs = loadTabs().filter((t) => t.path !== currentPath && t.path !== currentTabPath)
+  tabs.push({path: splitPath, label: labelForPath(splitPath, labels)})
+  saveTabs(tabs)
+  window.location.href = splitPath
+}
 
 const Hooks = {
   CalendarDrag: {
@@ -234,6 +436,8 @@ const Hooks = {
       window.addEventListener("phx:page-loading-stop", this.onNav)
       // BrowseLive pushes the loaded page's title/url so the tab reflects it.
       this.handleEvent("bc:tab_meta", (m) => this.onTabMeta(m))
+      // Commands/CLI can request a visible in-app terminal tab.
+      this.handleEvent("bc:open_terminal", (request) => this.onOpenTerminalRequest(request))
       this.sync()
       this.render()
     },
@@ -244,10 +448,8 @@ const Hooks = {
     parseLabels() {
       try { return JSON.parse(this.el.dataset.labels || "{}") } catch (_e) { return {} }
     },
-    load() {
-      try { return JSON.parse(localStorage.getItem("bc:tabs")) || [] } catch (_e) { return [] }
-    },
-    save(tabs) { localStorage.setItem("bc:tabs", JSON.stringify(tabs)) },
+    load() { return loadTabs() },
+    save(tabs) { saveTabs(tabs) },
     // Tab key is the full path incl. query, so multiple /browse tabs
     // (each /browse?t=<id>) are distinct, independent tabs. Any Advanced
     // sub-route collapses to the single ADVANCED_KEY so they share one top tab.
@@ -257,17 +459,10 @@ const Hooks = {
       return window.location.pathname + window.location.search
     },
     labelFor(key) {
-      const [path, query] = key.split("?")
-      if (path === "/split") {
-        const params = new URLSearchParams(query || "")
-        return `${this.shortLabel(params.get("left"))} | ${this.shortLabel(params.get("right"))}`
-      }
-      return this.labels[path] || path
+      return labelForPath(key, this.labels)
     },
     shortLabel(fullPath) {
-      if (!fullPath) return "?"
-      const path = fullPath.split("?")[0]
-      return this.labels[path] || path
+      return labelForPath(fullPath, this.labels)
     },
     sync() {
       const key = this.currentKey()
@@ -297,15 +492,44 @@ const Hooks = {
       this.save(tabs)
       this.render()
     },
+    onOpenTerminalRequest(request) {
+      const path = request?.path
+      if (!path) return
+
+      const label = request.label || this.labelFor(path)
+      const tabs = this.load().filter((t) => t.path !== path)
+      tabs.push({
+        path,
+        label,
+        role_key: request.role_key,
+        agent_name: request.agent_name,
+        purpose: request.purpose,
+        startup_profile: request.startup_profile
+      })
+      this.save(tabs)
+
+      if (request.activate === false) {
+        this.render()
+      } else {
+        window.location.href = path
+      }
+    },
     render() {
       const active = this.currentKey()
       const tabs = this.load().map((t) => this.tabHtml(t, t.path === active)).join("")
       this.el.innerHTML = tabs + this.newTabHtml()
     },
     newTabHtml() {
+      const button =
+        `grid size-7 shrink-0 place-items-center self-center rounded-sm text-base-content/60 ` +
+        `hover:bg-base-content/10 hover:text-primary`
+
       return `<button type="button" data-newtab="1" title="New browser tab" aria-label="New browser tab" ` +
-        `class="grid size-7 shrink-0 place-items-center self-center rounded-sm text-base-content/60 hover:bg-base-content/10 hover:text-primary">` +
-        `<span class="text-lg leading-none">+</span></button>`
+        `class="${button}">` +
+        `<span class="text-lg leading-none">+</span></button>` +
+        `<button type="button" data-newterminal="1" title="New terminal tab" aria-label="New terminal tab" ` +
+        `class="${button}">` +
+        `<span class="font-mono text-[0.65rem] font-semibold leading-none">&gt;_</span></button>`
     },
     tabHtml(tab, isActive) {
       const wrap = isActive
@@ -326,6 +550,12 @@ const Hooks = {
         this.openBrowserTab()
         return
       }
+      const newTerminal = e.target.closest("[data-newterminal]")
+      if (newTerminal) {
+        e.preventDefault()
+        this.openTerminalTab()
+        return
+      }
       const closeBtn = e.target.closest("[data-close]")
       if (!closeBtn) return
       e.preventDefault()
@@ -335,6 +565,9 @@ const Hooks = {
     openBrowserTab() {
       const token = Math.random().toString(36).slice(2, 8)
       window.location.href = `/browse?t=${token}`
+    },
+    openTerminalTab() {
+      openNewTerminalTab(this.labels)
     },
     onDragStart(e) {
       const tab = e.target.closest("[data-path]")
@@ -556,73 +789,225 @@ const Hooks = {
   // alive, and remounting reattaches and replays the server-buffered scrollback.
   TerminalView: {
     async mounted() {
-      const tauri = window.__TAURI__
-      if (!tauri) {
-        this.el.innerHTML =
-          `<div class="grid h-full place-items-center p-8 text-center text-sm text-base-content/60">` +
-          `Terminal is available in the Buster Claw desktop app.</div>`
-        return
-      }
-      const {invoke} = tauri.core
-      const {listen} = tauri.event
-
       this.sessionKey = this.el.dataset.sessionKey || null
       this.storageKey = this.sessionKey ? `bc:term:${this.sessionKey}` : null
+      this.startupCommand = (this.el.dataset.startupCommand || "").trim()
+      this.terminalPath = this.el.dataset.terminalPath || window.location.pathname + window.location.search
+      this.toolbar = document.getElementById(this.el.dataset.toolbarId || "")
+      this.statusEl = document.getElementById(this.el.dataset.statusId || "")
+      this.onToolbarClick = (e) => this.handleToolbarClick(e)
+      this.toolbar?.addEventListener("click", this.onToolbarClick)
+      this.setStatus("Connecting")
 
-      // Color palette comes from Settings → Appearance (Terminal theme); the
-      // default "industrial" derives from the app's CSS tokens.
-      const term = new XTerm({
-        fontFamily: "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
-        fontSize: 16,
-        cursorBlink: true,
-        theme: termThemePalette(currentTermTheme()),
-      })
-      const fit = new FitAddon()
-      term.loadAddon(fit)
-      term.open(this.el)
-      fit.fit()
-      this.term = term
-      liveTerminals.add(term)
+      // Terminal background image (Settings → Appearance). When active, the xterm
+      // palette goes transparent; standalone terminals paint the image on their
+      // own host, while split panes leave it to the shared split container.
+      this.transparentBgFilterState = {pending: ""}
+      this.bgActive = this.el.dataset.terminalBgActive === "true"
+      this.el.classList.toggle("bc-terminal-bg-active", this.bgActive)
+      this.applyBackgroundImage(this.el.dataset.terminalBgImage || "")
+      this.handleEvent("terminal-background", ({active, image}) => this.setBackground(active, image))
 
       try {
+        const tauri = window.__TAURI__
+        if (!tauri) {
+          this.setStatus("Desktop only")
+          this.setCloseDisabled(true)
+          this.el.innerHTML =
+            `<div class="grid h-full place-items-center p-8 text-center text-sm text-base-content/60">` +
+            `Terminal is available in the Buster Claw desktop app.</div>`
+          return
+        }
+        if (!tauri.core?.invoke || !tauri.event?.listen) {
+          throw new Error("Tauri terminal bridge unavailable")
+        }
+        const {invoke} = tauri.core
+        const {listen} = tauri.event
+
+        // Color palette comes from Settings → Appearance (Terminal theme); the
+        // default "industrial" derives from the app's CSS tokens.
+        const term = new XTerm({
+          fontFamily: "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+          fontSize: 16,
+          cursorBlink: true,
+          allowTransparency: true,
+          theme: termThemeWithBackground(this.bgActive),
+        })
+        term.__bcBgActive = this.bgActive
+        const fit = new FitAddon()
+        term.loadAddon(fit)
+        term.open(this.el)
+        fit.fit()
+        this.term = term
+        liveTerminals.add(term)
+
         // Try to reattach to a persisted session first.
         const storedId = this.storageKey ? localStorage.getItem(this.storageKey) : null
+        let openedNewSession = false
         let scrollback = null
         if (storedId) {
+          this.setStatus("Attaching")
           scrollback = await invoke("terminal_attach", {id: storedId})
         }
 
         if (storedId && scrollback !== null) {
           this.id = storedId
-          if (scrollback) term.write(scrollback)
+          if (scrollback) this.writeTerminal(scrollback)
+          this.setStatus("Attached")
         } else {
           const cwd = this.el.dataset.cwd || null
+          this.setStatus("Opening")
           this.id = await invoke("terminal_open", {cols: term.cols, rows: term.rows, cwd})
           if (this.storageKey) localStorage.setItem(this.storageKey, this.id)
+          this.setStatus("Open")
+          openedNewSession = true
         }
+
+        this.unlistenData = await listen(`terminal:data:${this.id}`, (ev) => this.writeTerminal(ev.payload))
+        this.unlistenExit = await listen(`terminal:exit:${this.id}`, () => {
+          term.write("\r\n[process exited]\r\n")
+          if (this.storageKey) localStorage.removeItem(this.storageKey)
+          this.id = null
+          this.setStatus("Exited")
+        })
+        term.onData((data) => this.id && invoke("terminal_input", {id: this.id, data}))
+
+        this.resizeObserver = new ResizeObserver(() => {
+          try { fit.fit() } catch (_e) { return }
+          if (this.id) invoke("terminal_resize", {id: this.id, cols: term.cols, rows: term.rows})
+        })
+        this.resizeObserver.observe(this.el)
+        // Sync the PTY to the current viewport (important after a reattach).
+        if (this.id) invoke("terminal_resize", {id: this.id, cols: term.cols, rows: term.rows})
+        term.focus()
+        if (openedNewSession) await this.runStartupCommand(invoke)
       } catch (e) {
-        term.write(`\r\n[failed to open terminal: ${e}]\r\n`)
+        this.setStatus("Error")
+        if (this.term) {
+          this.term.write(`\r\n[failed to open terminal: ${e}]\r\n`)
+        } else {
+          this.el.innerHTML =
+            `<div class="grid h-full place-items-center p-8 text-center text-sm text-error">` +
+            `Failed to open terminal: ${this.escapeHtml(e)}</div>`
+        }
+        console.error("Buster Claw terminal failed to open", e)
+      }
+    },
+    async runStartupCommand(invoke) {
+      if (!this.startupCommand || !this.id) return
+
+      this.setStatus("Starting")
+      await new Promise((resolve) => window.setTimeout(resolve, 250))
+      await invoke("terminal_input", {id: this.id, data: `${this.startupCommand}\r`})
+      this.setStatus("Running")
+    },
+    handleToolbarClick(e) {
+      const button = e.target.closest("[data-terminal-action]")
+      if (!button || (this.toolbar && !this.toolbar.contains(button))) return
+
+      e.preventDefault()
+      const action = button.dataset.terminalAction
+
+      if (action === "new") {
+        openNewTerminalTab()
         return
       }
 
-      this.unlistenData = await listen(`terminal:data:${this.id}`, (ev) => term.write(ev.payload))
-      this.unlistenExit = await listen(`terminal:exit:${this.id}`, () => {
-        term.write("\r\n[process exited]\r\n")
+      if (action === "split") {
+        openTerminalSplit(this.terminalPath, button.dataset.splitSide || "right")
+        return
+      }
+
+      if (action === "copy-key") {
+        this.copySessionKey()
+        return
+      }
+
+      if (action === "close-shell") {
+        this.closeShell()
+      }
+    },
+    setStatus(status) {
+      if (this.statusEl) this.statusEl.textContent = status
+    },
+    writeTerminal(data) {
+      if (!this.term) return
+
+      const output = this.bgActive
+        ? stripTransparentBackgroundPaint(data, this.transparentBgFilterState)
+        : flushTransparentBackgroundPaint(this.transparentBgFilterState) + String(data || "")
+
+      if (output) this.term.write(output)
+    },
+    // Live-update the background when the user changes it in Settings → Appearance.
+    setBackground(active, image) {
+      if (!active && this.term) {
+        this.term.write(flushTransparentBackgroundPaint(this.transparentBgFilterState))
+      }
+
+      this.bgActive = active
+      this.el.classList.toggle("bc-terminal-bg-active", active)
+
+      if (this.term) {
+        this.term.__bcBgActive = active
+        this.term.options.theme = termThemeWithBackground(active)
+      }
+      this.applyBackgroundImage(image || "")
+    },
+    applyBackgroundImage(image) {
+      if (image) {
+        this.el.style.backgroundImage = `url('${image}')`
+        this.el.style.backgroundSize = "cover"
+        this.el.style.backgroundPosition = "center"
+      } else {
+        this.el.style.backgroundImage = ""
+      }
+    },
+    escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (c) =>
+        ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[c]))
+    },
+    setCloseDisabled(disabled) {
+      const closeButton = this.toolbar?.querySelector("[data-terminal-action='close-shell']")
+      if (closeButton) closeButton.disabled = disabled
+    },
+    async copySessionKey() {
+      const key = this.sessionKey || "main"
+      try {
+        await navigator.clipboard.writeText(key)
+        this.setStatus("Copied")
+      } catch (_e) {
+        this.setStatus("Copy failed")
+      }
+    },
+    async closeShell() {
+      const tauri = window.__TAURI__
+      if (!tauri) {
+        this.setStatus("Desktop only")
+        return
+      }
+
+      const id = this.id || (this.storageKey ? localStorage.getItem(this.storageKey) : null)
+      if (!id) {
+        this.setStatus("No shell")
+        return
+      }
+
+      try {
+        await tauri.core.invoke("terminal_close", {id})
         if (this.storageKey) localStorage.removeItem(this.storageKey)
         this.id = null
-      })
-      term.onData((data) => this.id && invoke("terminal_input", {id: this.id, data}))
-
-      this.resizeObserver = new ResizeObserver(() => {
-        try { fit.fit() } catch (_e) { return }
-        if (this.id) invoke("terminal_resize", {id: this.id, cols: term.cols, rows: term.rows})
-      })
-      this.resizeObserver.observe(this.el)
-      // Sync the PTY to the current viewport (important after a reattach).
-      if (this.id) invoke("terminal_resize", {id: this.id, cols: term.cols, rows: term.rows})
-      term.focus()
+        this.setStatus("Closed")
+        this.term?.write("\r\n[session closed]\r\n")
+      } catch (e) {
+        this.setStatus("Close failed")
+        this.term?.write(`\r\n[failed to close terminal: ${e}]\r\n`)
+      }
     },
     destroyed() {
+      if (this.toolbar && this.onToolbarClick) {
+        this.toolbar.removeEventListener("click", this.onToolbarClick)
+      }
       this.resizeObserver?.disconnect()
       this.unlistenData?.()
       this.unlistenExit?.()
@@ -633,24 +1018,6 @@ const Hooks = {
       }
       if (this.term) liveTerminals.delete(this.term)
       this.term?.dispose()
-    },
-  },
-
-  // Relaunches the desktop shell to apply a new workspace root. Workspace
-  // browsing/selection is now an in-app server-side file tree, so this hook
-  // only needs the restart bridge. No-op in a plain browser (dev).
-  WorkspacePicker: {
-    mounted() {
-      this.tauri = window.__TAURI__ || null
-
-      this.handleEvent("workspace:relaunch", async () => {
-        if (!this.tauri) return
-        try {
-          await this.tauri.core.invoke("workspace_relaunch")
-        } catch (_e) {
-          // restart() never returns on success; ignore.
-        }
-      })
     },
   },
 
@@ -695,6 +1062,30 @@ window.addEventListener("storage", (event) => {
 window.addEventListener("bc:toggle-documents-sidebar", () => {
   const nextState = document.documentElement.dataset.documentsSidebar === "closed" ? "open" : "closed"
   setDocumentsSidebarState(nextState)
+})
+
+window.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-terminal-command-copy]")
+  if (!button) return
+
+  event.preventDefault()
+  const command = button.dataset.terminalCommandCopy || ""
+  const label = button.querySelector("[data-terminal-command-copy-label]")
+
+  try {
+    await navigator.clipboard.writeText(command)
+    if (label) {
+      const previous = label.textContent
+      label.textContent = "Copied"
+      window.setTimeout(() => { label.textContent = previous || "Copy" }, 1200)
+    }
+  } catch (_e) {
+    if (label) {
+      const previous = label.textContent
+      label.textContent = "Failed"
+      window.setTimeout(() => { label.textContent = previous || "Copy" }, 1200)
+    }
+  }
 })
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")

@@ -11,12 +11,6 @@ config :buster_claw, BusterClawWeb.Endpoint,
 # The packaged desktop app binds Phoenix to 127.0.0.1 over plain HTTP;
 # SSL is not used because the Tauri webview connects to loopback only.
 
-# Configure Swoosh API Client
-config :swoosh, api_client: Swoosh.ApiClient.Req
-
-# Disable Swoosh Local Memory Storage
-config :swoosh, local: false
-
 # Do not print debug messages in production
 config :logger, level: :info
 

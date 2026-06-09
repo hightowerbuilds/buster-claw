@@ -56,6 +56,7 @@ defmodule BusterClawWeb do
       # (no tab strip / dock). Runs for every LiveView, including nested
       # live_render children, which is how the embedded flag reaches them.
       on_mount BusterClawWeb.ChromeHook
+      on_mount BusterClawWeb.TerminalWorkspaceHook
 
       unquote(html_helpers())
     end

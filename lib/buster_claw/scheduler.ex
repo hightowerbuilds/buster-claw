@@ -8,7 +8,7 @@ defmodule BusterClaw.Scheduler do
   alias BusterClaw.Automation.SchedulerJob
   alias BusterClaw.Scheduler.Cron
 
-  @job_fields ~w(job_id type cron enabled custom_cmd deliver_to last_run_at next_run_at last_error)a
+  @job_fields ~w(job_id type cron enabled)a
 
   def list_jobs do
     SchedulerJob
@@ -112,17 +112,6 @@ defmodule BusterClaw.Scheduler do
       summary
     )
 
-    {:ok, summary}
-  end
-
-  defp execute(%SchedulerJob{type: "custom"} = job) do
-    summary = %{
-      status: "placeholder",
-      custom_cmd: job.custom_cmd,
-      message: "Custom scheduler commands are recorded but not executed yet."
-    }
-
-    record_event(job, "scheduler.custom", "Scheduler custom placeholder completed", summary)
     {:ok, summary}
   end
 

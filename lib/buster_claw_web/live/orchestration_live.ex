@@ -520,7 +520,13 @@ defmodule BusterClawWeb.OrchestrationLive do
 
           <label class="flex items-center gap-2">
             <input type="hidden" name="enabled" value="false" />
-            <input type="checkbox" name="enabled" value="true" checked={checkbox_on?(@editing["enabled"])} class="checkbox" />
+            <input
+              type="checkbox"
+              name="enabled"
+              value="true"
+              checked={checkbox_on?(@editing["enabled"])}
+              class="checkbox"
+            />
             <span class="text-sm">Enabled</span>
           </label>
 

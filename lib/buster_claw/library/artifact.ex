@@ -58,15 +58,6 @@ defmodule BusterClaw.Library.Artifact do
     Path.join([root(), @raw_dir, Date.to_iso8601(date)])
   end
 
-  def reports_date_dir(%Date{} = date) do
-    Path.join([root(), @reports_dir, Date.to_iso8601(date)])
-  end
-
-  def indexable_raw_files do
-    Path.wildcard(Path.join(raw_root(), "**/*.md"))
-    |> Enum.sort()
-  end
-
   def write_raw_document(attrs) when is_map(attrs) do
     ensure_directories()
 

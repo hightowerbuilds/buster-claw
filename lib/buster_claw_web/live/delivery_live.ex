@@ -97,8 +97,7 @@ defmodule BusterClawWeb.DeliveryLive do
                 options={[
                   {"Slack", "slack"},
                   {"Discord", "discord"},
-                  {"Telegram", "telegram"},
-                  {"Email", "email"}
+                  {"Telegram", "telegram"}
                 ]}
               />
               <.input field={@form[:url]} label="URL" />

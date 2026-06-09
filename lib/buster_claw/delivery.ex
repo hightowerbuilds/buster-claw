@@ -60,7 +60,6 @@ defmodule BusterClaw.Delivery do
     attempt =
       Workflow.create_delivery_attempt(%{
         delivery_destination_id: destination.id,
-        report_id: Keyword.get(opts, :report_id),
         title: payload_title(payload),
         status: "sending",
         started_at: started_at

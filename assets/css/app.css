@@ -134,6 +134,17 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+/* xterm.css gives the internal viewport a hard black background. Image-backed
+   terminals need every xterm layer transparent so the selected background can
+   show through the emulator surface. */
+.bc-terminal-bg-active .xterm,
+.bc-terminal-bg-active .xterm .xterm-viewport,
+.bc-terminal-bg-active .xterm .xterm-screen,
+.bc-terminal-bg-active .xterm .xterm-screen canvas {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 /* ============================================================
    INDUSTRIAL CLAW — type system + identity layer
    ============================================================ */

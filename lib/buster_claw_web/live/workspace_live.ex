@@ -269,6 +269,7 @@ defmodule BusterClawWeb.WorkspaceLive do
       Application.put_env(:buster_claw, :library_root, Path.join(path, "library"))
       Artifact.ensure_workspace_dirs()
       BusterClaw.Introduction.ensure()
+      BusterClaw.WorkspaceCLI.ensure()
       Setup.confirm_workspace()
       :ok
     else

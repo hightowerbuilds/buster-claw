@@ -10,7 +10,6 @@ fn main() {
                 "terminal_input",
                 "terminal_resize",
                 "terminal_close",
-                "workspace_relaunch",
             ]),
         ),
     )

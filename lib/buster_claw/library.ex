@@ -35,7 +35,6 @@ defmodule BusterClaw.Library do
       date = attr(attrs, :date) || LocalTime.today()
 
       attrs = %{
-        source_id: attr(attrs, :source_id),
         filename: Path.basename(path),
         artifact_path: relative_path,
         date: date,
@@ -70,40 +69,6 @@ defmodule BusterClaw.Library do
     end
   end
 
-  def index_existing_raw_documents do
-    Artifact.ensure_directories()
-
-    Artifact.indexable_raw_files()
-    |> Enum.map(&index_raw_file/1)
-  end
-
-  def index_raw_file(path) do
-    with {:ok, abs_path} <- Artifact.validate_raw_path(path),
-         {:ok, parsed} <- Artifact.parse_markdown_file(abs_path) do
-      fields = parsed.fields
-      relative_path = Artifact.relative_to_root(abs_path)
-      date = date_from_path(abs_path)
-      tags = Map.get(fields, "tags", [])
-
-      attrs = %{
-        filename: Path.basename(abs_path),
-        artifact_path: relative_path,
-        date: date,
-        source_url: Map.get(fields, "url"),
-        name: Map.get(fields, "name"),
-        tags: %{"items" => List.wrap(tags)},
-        content_hash: parsed.content_hash,
-        excerpt: parsed.excerpt,
-        fetched_at: DateTime.utc_now() |> DateTime.truncate(:second)
-      }
-
-      case Repo.get_by(Document, artifact_path: relative_path) do
-        nil -> create_document(attrs)
-        %Document{} = document -> update_document(document, attrs)
-      end
-    end
-  end
-
   def absolute_artifact_path(relative_or_abs_path) do
     path = Path.expand(relative_or_abs_path)
     root = Path.expand(library_root())
@@ -112,17 +77,6 @@ defmodule BusterClaw.Library do
       path
     else
       Path.join(root, relative_or_abs_path)
-    end
-  end
-
-  defp date_from_path(path) do
-    path
-    |> Path.dirname()
-    |> Path.basename()
-    |> Date.from_iso8601()
-    |> case do
-      {:ok, date} -> date
-      _ -> nil
     end
   end
 

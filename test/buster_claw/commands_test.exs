@@ -6,9 +6,11 @@ defmodule BusterClaw.CommandsTest do
   alias BusterClaw.Google
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Library
+  alias BusterClaw.TerminalWorkspace
 
   setup do
     Req.Test.verify_on_exit!()
+    TerminalWorkspace.drain_pending()
     :ok
   end
 
@@ -30,6 +32,9 @@ defmodule BusterClaw.CommandsTest do
       end
 
       assert %{type: :read, tier: :safe} = Enum.find(catalog, &(&1.name == "runtime_status"))
+
+      assert %{type: :trigger, tier: :safe} =
+               Enum.find(catalog, &(&1.name == "terminal_tab_open"))
 
       assert %{type: :trigger, tier: :restricted} =
                Enum.find(catalog, &(&1.name == "delivery_dispatch_all"))
@@ -138,6 +143,43 @@ defmodule BusterClaw.CommandsTest do
 
     test "forget returns :not_found for missing id" do
       assert {:error, :not_found} = Commands.memory_forget(%{"id" => 99_999})
+    end
+  end
+
+  describe "shift assignment commands" do
+    test "start/status/stop role sessions inside the active shift" do
+      assert {:error, :no_active_shift} =
+               Commands.shift_assignment_start(%{"role_key" => "mail-triage"})
+
+      assert {:ok, %{shift_id: shift_id}} =
+               Commands.shift_start(%{
+                 "job" => "lookout",
+                 "agent_name" => "Lookout",
+                 "shell" => "Primary terminal",
+                 "hours" => 12
+               })
+
+      assert {:ok, assignment} =
+               Commands.shift_assignment_start(%{
+                 "role_key" => "mail-triage",
+                 "agent_name" => "Mail Triage",
+                 "shell" => "Email terminal"
+               })
+
+      assert assignment.shift_id == shift_id
+      assert assignment.role_key == "mail-triage"
+      assert assignment.status == "active"
+
+      assert {:ok, %{active_shift_id: ^shift_id, assignments: [active]}} =
+               Commands.shift_assignment_status(%{})
+
+      assert active.id == assignment.id
+
+      assert {:ok, stopped} =
+               Commands.shift_assignment_stop(%{"role_key" => "mail-triage"})
+
+      assert stopped.status == "stopped"
+      assert {:ok, %{assignments: []}} = Commands.shift_assignment_status(%{})
     end
   end
 
@@ -463,6 +505,37 @@ defmodule BusterClaw.CommandsTest do
     end
   end
 
+  describe "terminal workspace commands" do
+    test "terminal_tab_open queues a role terminal request" do
+      assert {:ok, request} =
+               Commands.terminal_tab_open(%{
+                 "role_key" => "mail-triage",
+                 "label" => "Mail Triage",
+                 "session_key" => "mail-triage"
+               })
+
+      assert request.role_key == "mail-triage"
+      assert request.label == "Mail Triage"
+      assert request.session_key == "mail-triage"
+      assert request.startup_profile == "mailman"
+
+      assert request.path ==
+               "/terminal?session=mail-triage&label=Mail+Triage&startup_profile=mailman"
+    end
+
+    test "terminal_tab_open is available to scoped agent callers" do
+      assert {:ok, request} =
+               Commands.call(
+                 "terminal_tab_open",
+                 %{"role_key" => "dispatcher", "label" => "Dispatcher"},
+                 caller: :mcp
+               )
+
+      assert request.role_key == "dispatcher"
+      assert request.label == "Dispatcher"
+    end
+  end
+
   defp normalize({:ok, %BusterClaw.Memory.Memory{} = memory}),
     do: {:ok, %{name: "n", text: memory.text}}
 
@@ -471,12 +544,12 @@ defmodule BusterClaw.CommandsTest do
   defp representative_commands do
     ~w(
       runtime_status
+      terminal_tab_open
       document_save
       memory_remember
       event_create
       mcp_server_list
       webhook_trigger
-      hook_event_execute
       delivery_dispatch_all
       scheduler_job_run_now
       integration_poll_all

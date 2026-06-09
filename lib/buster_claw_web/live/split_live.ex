@@ -32,7 +32,21 @@ defmodule BusterClawWeb.SplitLive do
   }
 
   @impl true
-  def mount(_params, _session, socket), do: {:ok, assign(socket, page_title: "Split")}
+  def mount(_params, _session, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(BusterClaw.PubSub, BusterClaw.Appearance.topic())
+    end
+
+    {:ok,
+     socket
+     |> assign(:page_title, "Split")
+     |> assign(:terminal_background_url, BusterClaw.Appearance.terminal_background_url())}
+  end
+
+  @impl true
+  def handle_info({:terminal_background, url}, socket) do
+    {:noreply, assign(socket, :terminal_background_url, url)}
+  end
 
   @impl true
   def handle_params(params, _uri, socket) do
@@ -49,8 +63,17 @@ defmodule BusterClawWeb.SplitLive do
     url = pane_url(path)
 
     case Map.fetch(@panes, pathname) do
-      {:ok, {module, label}} -> %{path: path, module: module, label: label, url: url}
-      :error -> %{path: path, module: nil, label: pathname, url: url}
+      {:ok, {module, label}} ->
+        %{
+          path: path,
+          module: module,
+          label: label,
+          url: url,
+          child_session: pane_child_session(pathname, path, url)
+        }
+
+      :error ->
+        %{path: path, module: nil, label: pathname, url: url, child_session: %{}}
     end
   end
 
@@ -62,26 +85,92 @@ defmodule BusterClawWeb.SplitLive do
     end
   end
 
+  defp pane_params(path) do
+    case URI.parse(path).query do
+      nil -> %{}
+      query -> URI.decode_query(query)
+    end
+  end
+
+  defp pane_child_session("/terminal", path, _url) do
+    params = pane_params(path)
+
+    %{}
+    |> maybe_put("terminal_session_key", params["session"])
+    |> maybe_put("terminal_label", params["label"])
+  end
+
+  defp pane_child_session(_pathname, _path, nil), do: %{}
+  defp pane_child_session(_pathname, _path, url), do: %{"url" => url}
+
+  defp maybe_put(map, _key, value) when value in [nil, ""], do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp pane_live_id(side, %{module: BusterClawWeb.TerminalLive, child_session: child_session}) do
+    session_key = Map.get(child_session, "terminal_session_key", "main")
+    "split-pane-#{side}-terminal-#{dom_id_part(session_key)}"
+  end
+
+  defp pane_live_id(side, _pane), do: "split-pane-#{side}"
+
+  defp dom_id_part(value) do
+    value
+    |> to_string()
+    |> String.replace(~r/[^A-Za-z0-9_-]+/, "-")
+    |> String.trim("-")
+    |> case do
+      "" -> "main"
+      id -> id
+    end
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} full_bleed>
-      <div class="grid min-h-0 flex-1 gap-3 p-3 lg:grid-cols-2">
-        <.pane side="left" pane={@left} socket={@socket} />
-        <.pane side="right" pane={@right} socket={@socket} />
+      <div
+        class={[
+          "grid min-h-0 flex-1 lg:grid-cols-2",
+          if(@terminal_background_url, do: "gap-0 p-0 bg-cover bg-center", else: "gap-3 p-3")
+        ]}
+        style={split_background_style(@terminal_background_url)}
+      >
+        <.pane side="left" pane={@left} socket={@socket} bg_active={@terminal_background_url != nil} />
+        <.pane
+          side="right"
+          pane={@right}
+          socket={@socket}
+          bg_active={@terminal_background_url != nil}
+        />
       </div>
     </Layouts.app>
     """
   end
 
+  # When a terminal background is set, the single image is painted on the shared
+  # grid above; the panes go transparent so it reads as one continuous image
+  # spanning both, rather than two copies.
+  defp split_background_style(nil), do: nil
+  defp split_background_style(url), do: "background-image:url('#{url}')"
+
   attr :side, :string, required: true
   attr :pane, :map, default: nil
   attr :socket, :map, required: true
+  attr :bg_active, :boolean, default: false
 
   defp pane(assigns) do
     ~H"""
-    <section class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-base-300 bg-base-100 shadow-sm">
-      <header class="flex items-center justify-between gap-2 border-b border-base-300 px-4 py-2">
+    <section class={[
+      "flex min-h-0 min-w-0 flex-col overflow-hidden",
+      if(@bg_active,
+        do: "bg-transparent",
+        else: "rounded-lg border border-base-300 bg-base-100 shadow-sm"
+      )
+    ]}>
+      <header class={[
+        "flex items-center justify-between gap-2 px-4 py-2",
+        unless(@bg_active, do: "border-b border-base-300")
+      ]}>
         <span class="truncate text-sm font-semibold">{pane_label(@pane)}</span>
       </header>
       <div class="min-h-0 flex-1 overflow-auto">
@@ -94,8 +183,8 @@ defmodule BusterClawWeb.SplitLive do
             </p>
           <% true -> %>
             {live_render(@socket, @pane.module,
-              id: "split-pane-#{@side}",
-              session: %{"embedded" => true, "url" => @pane.url}
+              id: pane_live_id(@side, @pane),
+              session: Map.put(@pane.child_session, "embedded", true)
             )}
         <% end %>
       </div>

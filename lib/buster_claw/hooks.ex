@@ -1,5 +1,5 @@
 defmodule BusterClaw.Hooks do
-  @moduledoc "Hook configuration, execution, and test helpers."
+  @moduledoc "Hook configuration and test helpers."
 
   import Ecto.Query
 
@@ -14,13 +14,6 @@ defmodule BusterClaw.Hooks do
     |> Repo.all()
   end
 
-  def list_hooks_for_event(event) do
-    Hook
-    |> where([hook], hook.event == ^event and hook.enabled == true)
-    |> order_by([hook], asc: hook.name)
-    |> Repo.all()
-  end
-
   def get_hook!(id), do: Automation.get_hook!(id)
   def create_hook(attrs), do: Automation.create_hook(attrs)
   def update_hook(%Hook{} = hook, attrs), do: Automation.update_hook(hook, attrs)
@@ -30,18 +23,12 @@ defmodule BusterClaw.Hooks do
     Hook.changeset(hook, attrs)
   end
 
-  def execute_event(event, payload \\ %{}, opts \\ []) do
-    event
-    |> list_hooks_for_event()
-    |> Enum.map(&execute_hook(&1, payload, opts))
-  end
-
   def test_hook(%Hook{} = hook, opts \\ []) do
     payload = Keyword.get(opts, :payload, %{"test" => true})
     execute_hook(hook, payload, opts)
   end
 
-  def execute_hook(%Hook{} = hook, payload \\ %{}, opts \\ []) do
+  defp execute_hook(%Hook{} = hook, payload, opts) do
     started_at = timestamp()
     start_native = System.monotonic_time()
 

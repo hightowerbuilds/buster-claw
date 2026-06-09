@@ -13,14 +13,14 @@ The way to use Buster Claw is to run **Claude Code or Codex in the built-in term
   - **Browsing & fetch**: Headless browser + HTTP fetchers (SSRF-guarded) to read and capture web pages and articles.
   - **Google Workspace**: Sync and act on Gmail and Google Calendar.
   - **Integrations**: Pull and react to GitHub, Sentry, and Umami activity.
-  - **Delivery**: Push results to Slack, Discord, Telegram, or email.
+  - **Delivery**: Push results to Slack, Discord, or Telegram-compatible webhooks.
 - **MCP (both directions)**: Connect external MCP servers as agent tools, and expose Buster Claw's own safe-tier commands as an MCP server to other agents (Claude Code, Codex, …).
 - **In-app terminal**: A real PTY where you run Claude Code, Codex, or any CLI; the primary surface for agents to drive Buster Claw.
 - **Orchestration**: An unattended "shift" — a deterministic Elixir brain dispatches disposable headless agents (`claude -p` / `codex exec`) with kill switch, caps, and audit.
 - **Automation**:
-  - **Scheduler**: Cron-based jobs for autonomous, recurring runs.
-  - **Webhooks**: Trigger commands via external HTTP events.
-  - **Reactive Hooks**: Pre/post-processing hooks on events (e.g., auto-tagging, custom alerts).
+  - **Scheduler**: Cron-based integration polling jobs.
+  - **Webhooks**: Receive authenticated external HTTP events with runtime audit records.
+  - **Hooks**: Testable shell/webhook actions for operator-managed automation.
 - **Workspace library**: Documents and artifacts stored as markdown in the workspace, with a blog-style reading view.
 - **Persistent Memory**: Durable notes/context to keep the agent smart across sessions.
 - **Sentinel security layer**: Every command, outbound send, and untrusted fetch is recorded on an auditable feed; restricted actions are refused for untrusted callers.
@@ -86,6 +86,8 @@ mix escript.build
 ./buster-claw document list                      # noun-verb shorthand
 ./buster-claw run web_search --json '{"query": "phoenix liveview"}'
 ./buster-claw run shift_status --json '{}'
+./buster-claw terminal open --role mailman --label Mailman
+./buster-claw mailman poll --interval 60
 ```
 
 Token comes from `BUSTER_CLAW_API_TOKEN` env, then the file path above, then `--token <token>` flag. Base URL is `BUSTER_CLAW_URL` env or `--url <url>` flag (default `http://127.0.0.1:4000`).

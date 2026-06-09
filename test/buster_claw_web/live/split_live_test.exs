@@ -20,9 +20,24 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert html =~ "Terminal"
     # The embedded terminal pane renders its xterm host (not the fallback).
     assert html =~ ~s(phx-hook="TerminalView")
+    assert html =~ ~s(data-session-key="main")
     refute html =~ "can't be opened in a split pane"
     # In a joined pane it's just the terminal window — no page header.
     refute html =~ "A live shell running"
+  end
+
+  test "split terminal panes preserve distinct session params", %{conn: conn} do
+    left = URI.encode_www_form("/terminal?session=alpha&label=Alpha")
+    right = URI.encode_www_form("/terminal?session=beta&label=Beta")
+
+    {:ok, _view, html} = live(conn, "/split?left=#{left}&right=#{right}")
+
+    assert html =~ ~s(id="split-pane-left-terminal-alpha")
+    assert html =~ ~s(id="split-pane-right-terminal-beta")
+    assert html =~ ~s(data-session-key="alpha")
+    assert html =~ ~s(data-terminal-label="Alpha")
+    assert html =~ ~s(data-session-key="beta")
+    assert html =~ ~s(data-terminal-label="Beta")
   end
 
   test "embedded panes render bare (no nested tab strip / dock)", %{conn: conn} do

@@ -42,14 +42,7 @@ defmodule BusterClawWeb.OrchestrationPanel do
       </header>
 
       <div class="flex-1 space-y-5 overflow-auto p-5">
-        <div
-          :if={not shift_on?(@snapshot)}
-          class="rounded border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60"
-        >
-          No active shift. The agent starts a shift from the terminal —
-          <code class="font-mono">buster-claw run shift_start</code>
-          — then this panel tracks it live.
-        </div>
+        <.shift_management snapshot={@snapshot} />
 
         <div :if={shift_on?(@snapshot)} class="space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -109,6 +102,147 @@ defmodule BusterClawWeb.OrchestrationPanel do
     """
   end
 
+  attr :snapshot, :map, required: true
+
+  defp shift_management(assigns) do
+    ~H"""
+    <section
+      id="home-shift-management"
+      class={[
+        "space-y-4 rounded border-2 p-4 transition",
+        if(shift_on?(@snapshot),
+          do: "border-success/45 bg-success/10",
+          else: "border-base-content/15 bg-base-200/35"
+        )
+      ]}
+    >
+      <div id="home-shift-assignment" class="space-y-3">
+        <%= if shift_on?(@snapshot) do %>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="ic-eyebrow">On Shift</p>
+              <h3 class="font-display text-2xl font-black uppercase tracking-tight">
+                {shift_job_name(@snapshot.shift)}
+              </h3>
+              <p class="mt-1 text-sm text-base-content/65">
+                {shift_description(@snapshot.shift)}
+              </p>
+            </div>
+            <div
+              id="shift-shell-open-status"
+              class="rounded border-2 border-success/40 bg-success/15 px-3 py-2 text-right"
+            >
+              <p class="font-mono text-[0.7rem] uppercase tracking-wide text-success">
+                Shell open
+              </p>
+              <p class="font-display text-lg font-black uppercase">{time_left(@snapshot.shift)}</p>
+            </div>
+          </div>
+
+          <dl class="grid gap-2 text-sm sm:grid-cols-3">
+            <div class="rounded border border-base-300 bg-base-100/60 p-3">
+              <dt class="font-mono text-[0.68rem] uppercase tracking-wide text-base-content/45">
+                Agent
+              </dt>
+              <dd class="mt-1 truncate font-semibold">{shift_agent(@snapshot.shift)}</dd>
+            </div>
+            <div class="rounded border border-base-300 bg-base-100/60 p-3">
+              <dt class="font-mono text-[0.68rem] uppercase tracking-wide text-base-content/45">
+                Shell
+              </dt>
+              <dd class="mt-1 truncate font-semibold">{shift_shell(@snapshot.shift)}</dd>
+            </div>
+            <div class="rounded border border-base-300 bg-base-100/60 p-3">
+              <dt class="font-mono text-[0.68rem] uppercase tracking-wide text-base-content/45">
+                Window
+              </dt>
+              <dd class="mt-1 font-semibold">
+                {shift_duration(@snapshot.shift)} · ends {short_time(@snapshot.shift.ends_at)}
+              </dd>
+            </div>
+          </dl>
+
+          <div class="h-2 overflow-hidden rounded-full bg-base-300">
+            <div
+              class="h-full rounded-full bg-primary transition-all duration-500"
+              style={"width: #{shift_progress(@snapshot.shift)}%"}
+            >
+            </div>
+          </div>
+
+          <section id="shift-active-assignments" class="space-y-2 border-t border-success/25 pt-3">
+            <div class="flex items-center justify-between gap-2">
+              <p class="ic-eyebrow">Specialist Shells</p>
+              <span class="font-mono text-[0.68rem] uppercase tracking-wide text-base-content/45">
+                {length(assignments(@snapshot))} active
+              </span>
+            </div>
+
+            <div
+              :if={assignments(@snapshot) == []}
+              class="rounded border border-dashed border-success/25 px-3 py-4 text-sm text-base-content/55"
+            >
+              No specialist shells are open under this shift.
+            </div>
+
+            <div :if={assignments(@snapshot) != []} class="grid gap-2">
+              <article
+                :for={assignment <- assignments(@snapshot)}
+                id={"shift-assignment-#{assignment.id}"}
+                class="rounded border border-success/30 bg-base-100/70 p-3"
+              >
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <span class="size-2 shrink-0 rounded-full bg-success motion-safe:animate-pulse">
+                      </span>
+                      <h4 class="truncate font-display text-sm font-black uppercase tracking-tight">
+                        {assignment_role_name(assignment)}
+                      </h4>
+                    </div>
+                    <p
+                      :if={assignment.purpose not in [nil, ""]}
+                      class="mt-1 line-clamp-2 text-xs leading-5 text-base-content/60"
+                    >
+                      {assignment.purpose}
+                    </p>
+                  </div>
+                  <span class="rounded bg-success/15 px-2 py-1 font-mono text-[0.65rem] uppercase tracking-wide text-success">
+                    {assignment.status}
+                  </span>
+                </div>
+
+                <dl class="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                  <div>
+                    <dt class="font-mono uppercase tracking-wide text-base-content/40">Agent</dt>
+                    <dd class="mt-0.5 truncate font-semibold">{assignment_agent(assignment)}</dd>
+                  </div>
+                  <div>
+                    <dt class="font-mono uppercase tracking-wide text-base-content/40">Shell</dt>
+                    <dd class="mt-0.5 truncate font-semibold">{assignment_shell(assignment)}</dd>
+                  </div>
+                  <div>
+                    <dt class="font-mono uppercase tracking-wide text-base-content/40">Started</dt>
+                    <dd class="mt-0.5 font-semibold">{short_time(assignment.started_at)}</dd>
+                  </div>
+                </dl>
+              </article>
+            </div>
+          </section>
+        <% else %>
+          <div class="rounded border border-dashed border-base-300 px-4 py-6 text-center text-sm text-base-content/60">
+            <p class="font-semibold text-base-content/80">No shift shell open.</p>
+            <p class="mt-1">
+              The terminal agent starts shifts with <code class="font-mono">buster-claw run shift_start</code>;
+              this display turns live when a shell takes a job.
+            </p>
+          </div>
+        <% end %>
+      </div>
+    </section>
+    """
+  end
+
   attr :title, :string, required: true
   attr :items, :list, required: true
   attr :empty, :string, required: true
@@ -141,6 +275,60 @@ defmodule BusterClawWeb.OrchestrationPanel do
 
   defp vitals(%{vitals: %{} = v}), do: Map.merge(@empty_vitals, v)
   defp vitals(_), do: @empty_vitals
+
+  defp assignments(%{assignments: assignments}) when is_list(assignments), do: assignments
+  defp assignments(_snapshot), do: []
+
+  defp shift_job_name(%{job_name: name}) when is_binary(name) and name != "", do: name
+  defp shift_job_name(_shift), do: "Lookout"
+
+  defp shift_description(%{job_description: description})
+       when is_binary(description) and description != "",
+       do: description
+
+  defp shift_description(_shift), do: "Active operator shift."
+
+  defp shift_agent(%{agent_name: agent}) when is_binary(agent) and agent != "", do: agent
+  defp shift_agent(_shift), do: "Unassigned"
+
+  defp shift_shell(%{shell: shell}) when is_binary(shell) and shell != "", do: shell
+  defp shift_shell(_shift), do: "Shell not set"
+
+  defp shift_duration(%{duration_hours: hours}) when is_integer(hours), do: "#{hours}h shift"
+  defp shift_duration(_shift), do: "Timed shift"
+
+  defp shift_progress(%{started_at: %DateTime{} = started_at, ends_at: %DateTime{} = ends_at}) do
+    total = max(DateTime.diff(ends_at, started_at), 1)
+    elapsed = DateTime.diff(DateTime.utc_now(), started_at)
+
+    elapsed
+    |> max(0)
+    |> min(total)
+    |> then(&(&1 / total * 100))
+    |> Float.round(1)
+  end
+
+  defp shift_progress(_shift), do: 0
+
+  defp short_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M")
+  defp short_time(_dt), do: "unknown"
+
+  defp assignment_role_name(%{role_key: role_key}) when is_binary(role_key) do
+    role_key
+    |> String.split("-", trim: true)
+    |> Enum.map_join(" ", &String.capitalize/1)
+  end
+
+  defp assignment_role_name(_assignment), do: "Specialist"
+
+  defp assignment_agent(%{agent_name: agent_name})
+       when is_binary(agent_name) and agent_name != "",
+       do: agent_name
+
+  defp assignment_agent(_assignment), do: "Unassigned"
+
+  defp assignment_shell(%{shell: shell}) when is_binary(shell) and shell != "", do: shell
+  defp assignment_shell(_assignment), do: "Shell not set"
 
   defp time_left(%{ends_at: ends_at}) do
     secs = DateTime.diff(ends_at, DateTime.utc_now())

@@ -18,9 +18,8 @@ defmodule BusterClaw.Sentinel do
 
   - `:security_block` — a restricted command refused for an untrusted caller
   - `:command_invoke` — a consequential command dispatched via the command surface
-  - `:outbound_send` — something left the box (delivery, hook, email)
-  - `:untrusted_ingest` — untrusted external content pulled in (web/RSS/email)
-  - `:llm_submission` — content submitted to an LLM provider
+  - `:outbound_send` — something left the box (delivery, hook)
+  - `:untrusted_ingest` — untrusted external content pulled in (web/RSS)
 
   ## Severity rubric
 
@@ -119,20 +118,10 @@ defmodule BusterClaw.Sentinel do
     if tier(meta) == "restricted", do: :warning, else: :notice
   end
 
-  def classify(:llm_submission, meta) do
-    if untrusted_trust?(meta), do: :warning, else: :notice
-  end
-
   def classify(_other, _meta), do: :info
 
   defp tier(meta) when is_map(meta), do: to_string(meta[:tier] || meta["tier"] || "")
   defp tier(_meta), do: ""
-
-  defp untrusted_trust?(meta) when is_map(meta) do
-    to_string(meta[:trust] || meta["trust"] || "") in ~w(fetched email agent integration)
-  end
-
-  defp untrusted_trust?(_meta), do: false
 
   # ---- Helpers ----
 

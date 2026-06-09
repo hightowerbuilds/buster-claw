@@ -174,7 +174,7 @@ defmodule BusterClawWeb.SetupLive do
               </li>
               <li>
                 <span class="font-mono text-primary">deliver</span>
-                → push results to Slack, email, and more
+                → push results to Slack, Discord, and Telegram
               </li>
             </ul>
             <p class="text-sm leading-7 text-base-content/60">

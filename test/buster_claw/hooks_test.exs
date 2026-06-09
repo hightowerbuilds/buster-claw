@@ -65,27 +65,4 @@ defmodule BusterClaw.HooksTest do
     assert run.status_code == 200
     assert run.stdout =~ "received"
   end
-
-  test "execute_event only runs enabled hooks for the event" do
-    assert {:ok, enabled} =
-             Hooks.create_hook(%{
-               name: "enabled",
-               event: "pre_ingest",
-               type: "shell",
-               target: "printf enabled"
-             })
-
-    assert {:ok, disabled} =
-             Hooks.create_hook(%{
-               name: "disabled",
-               event: "pre_ingest",
-               type: "shell",
-               target: "printf disabled",
-               enabled: false
-             })
-
-    assert [{:ok, %{hook_id: hook_id, stdout: "enabled"}}] = Hooks.execute_event("pre_ingest")
-    assert hook_id == enabled.id
-    assert Hooks.list_hooks() == [disabled, enabled]
-  end
 end

@@ -145,7 +145,9 @@ defmodule BusterClawWeb.OrchestrationLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/orchestration")
 
-    view |> element(~s|button[phx-click="edit_task"][phx-value-id="#{task.id}"]|) |> render_click()
+    view
+    |> element(~s|button[phx-click="edit_task"][phx-value-id="#{task.id}"]|)
+    |> render_click()
 
     render_hook(view, "edit_change", %{
       "name" => "keep",

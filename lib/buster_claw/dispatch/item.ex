@@ -1,0 +1,115 @@
+defmodule BusterClaw.Dispatch.Item do
+  @moduledoc "A durable Dispatch queue item created from trusted inbound requests."
+
+  use Ecto.Schema
+
+  import Ecto.Changeset
+
+  alias BusterClaw.Orchestration.{Shift, ShiftAssignment, Task}
+
+  @statuses ~w(queued claimed running done failed blocked cancelled)
+
+  @derive {Jason.Encoder,
+           only: [
+             :id,
+             :source,
+             :source_account,
+             :sender,
+             :trusted_sender,
+             :trusted,
+             :auth_status,
+             :gmail_message_id,
+             :gmail_thread_id,
+             :subject,
+             :request_summary,
+             :request_body_excerpt,
+             :recommended_agent,
+             :recommended_role_key,
+             :risk,
+             :status,
+             :shift_id,
+             :shift_assignment_id,
+             :orchestrator_task_id,
+             :dedupe_key,
+             :claimed_by,
+             :claimed_at,
+             :started_at,
+             :finished_at,
+             :heartbeat_at,
+             :outcome,
+             :notes,
+             :metadata,
+             :inserted_at,
+             :updated_at
+           ]}
+  schema "dispatch_items" do
+    field :source, :string
+    field :source_account, :string
+    field :sender, :string
+    field :trusted_sender, :string
+    field :trusted, :boolean, default: false
+    field :auth_status, :string, default: "unverified"
+    field :gmail_message_id, :string
+    field :gmail_thread_id, :string
+    field :subject, :string
+    field :request_summary, :string
+    field :request_body_excerpt, :string
+    field :recommended_agent, :string
+    field :recommended_role_key, :string
+    field :risk, :string
+    field :status, :string, default: "queued"
+    field :dedupe_key, :string
+    field :claimed_by, :string
+    field :claimed_at, :utc_datetime
+    field :started_at, :utc_datetime
+    field :finished_at, :utc_datetime
+    field :heartbeat_at, :utc_datetime
+    field :outcome, :string
+    field :notes, :string
+    field :metadata, :map, default: %{}
+
+    belongs_to :shift, Shift
+    belongs_to :shift_assignment, ShiftAssignment
+    belongs_to :orchestrator_task, Task
+
+    timestamps(type: :utc_datetime)
+  end
+
+  def changeset(item, attrs) do
+    item
+    |> cast(attrs, [
+      :source,
+      :source_account,
+      :sender,
+      :trusted_sender,
+      :trusted,
+      :auth_status,
+      :gmail_message_id,
+      :gmail_thread_id,
+      :subject,
+      :request_summary,
+      :request_body_excerpt,
+      :recommended_agent,
+      :recommended_role_key,
+      :risk,
+      :status,
+      :shift_id,
+      :shift_assignment_id,
+      :orchestrator_task_id,
+      :dedupe_key,
+      :claimed_by,
+      :claimed_at,
+      :started_at,
+      :finished_at,
+      :heartbeat_at,
+      :outcome,
+      :notes,
+      :metadata
+    ])
+    |> validate_required([:source, :status, :dedupe_key])
+    |> validate_inclusion(:status, @statuses)
+    |> unique_constraint(:dedupe_key)
+  end
+
+  def statuses, do: @statuses
+end

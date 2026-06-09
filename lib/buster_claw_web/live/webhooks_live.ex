@@ -11,7 +11,7 @@ defmodule BusterClawWeb.WebhooksLive do
      |> assign(:page_title, "Webhooks")
      |> assign(
        :form,
-       to_form(Webhooks.change_webhook(%Webhook{}, %{action: "ingest", enabled: true}))
+       to_form(Webhooks.change_webhook(%Webhook{}, %{action: "command", enabled: true}))
      )
      |> load_webhooks()}
   end
@@ -27,7 +27,7 @@ defmodule BusterClawWeb.WebhooksLive do
       {:ok, _webhook} ->
         {:noreply,
          socket
-         |> assign(:form, to_form(Webhooks.change_webhook(%Webhook{}, %{action: "ingest"})))
+         |> assign(:form, to_form(Webhooks.change_webhook(%Webhook{}, %{action: "command"})))
          |> load_webhooks()}
 
       {:error, changeset} ->
@@ -63,15 +63,8 @@ defmodule BusterClawWeb.WebhooksLive do
                 field={@form[:action]}
                 label="Action"
                 type="select"
-                options={[
-                  {"Ingest", "ingest"},
-                  {"Analyze", "analyze"},
-                  {"Full", "full"},
-                  {"Command", "command"}
-                ]}
+                options={[{"Command", "command"}]}
               />
-              <.input field={@form[:custom_cmd]} label="Custom Command" />
-              <.input field={@form[:deliver_to]} label="Deliver To" />
               <.input field={@form[:enabled]} label="Enabled" type="checkbox" />
               <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100">
                 Save Webhook

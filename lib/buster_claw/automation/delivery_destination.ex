@@ -3,7 +3,7 @@ defmodule BusterClaw.Automation.DeliveryDestination do
 
   import Ecto.Changeset
 
-  @types ~w(slack discord telegram email)
+  @types ~w(slack discord telegram)
 
   schema "delivery_destinations" do
     field :name, :string

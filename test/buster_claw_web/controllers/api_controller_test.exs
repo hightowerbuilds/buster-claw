@@ -2,8 +2,14 @@ defmodule BusterClawWeb.ApiControllerTest do
   use BusterClawWeb.ConnCase
 
   alias BusterClaw.Commands
+  alias BusterClaw.TerminalWorkspace
 
   @token "test-token-loopback-only"
+
+  setup do
+    TerminalWorkspace.drain_pending()
+    :ok
+  end
 
   describe "GET /api/commands" do
     test "returns the catalog without auth", %{conn: conn} do
@@ -86,6 +92,31 @@ defmodule BusterClawWeb.ApiControllerTest do
       assert %{"ok" => true, "result" => result} = json_response(conn, 200)
       assert is_binary(result["inserted_at"])
       assert {:ok, _, _} = DateTime.from_iso8601(result["inserted_at"])
+    end
+
+    test "runs terminal_tab_open for the CLI bridge", %{conn: conn} do
+      conn =
+        authed(conn)
+        |> post(~p"/api/run", %{
+          "command" => "terminal_tab_open",
+          "args" => %{
+            "role_key" => "mail-triage",
+            "label" => "Mail Triage",
+            "session_key" => "mail-triage"
+          }
+        })
+
+      assert %{
+               "ok" => true,
+               "result" => %{
+                 "role_key" => "mail-triage",
+                 "label" => "Mail Triage",
+                 "session_key" => "mail-triage",
+                 "startup_profile" => "mailman",
+                 "path" =>
+                   "/terminal?session=mail-triage&label=Mail+Triage&startup_profile=mailman"
+               }
+             } = json_response(conn, 200)
     end
 
     test "round-trips create/delete via the API", %{conn: conn} do

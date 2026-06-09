@@ -48,7 +48,7 @@ flowchart TB
         GoogleAPI["Google Workspace<br/>(Gmail / Calendar)"]
         BrowserBin["Browser sidecar<br/>(Playwright)"]
         Integr["GitHub / Sentry / Umami"]
-        DeliverOut["Slack / Discord / Telegram / Email"]
+        DeliverOut["Slack / Discord / Telegram"]
     end
 
     CLI -->|HTTP /api/run| HTTP
@@ -89,7 +89,6 @@ flowchart TD
     Sup --> Migrator["Ecto.Migrator"]
     Sup --> DNS["DNSCluster"]
     Sup --> PubSub["Phoenix.PubSub"]
-    Sup --> AgentMode["AgentMode (Agent)<br/>on/off + activity feed"]
     Sup --> SentinelPending["Sentinel.Pending"]
     Sup --> Sidecar["Browser.Sidecar *<br/>(browser_sidecar_enabled)"]
     Sup --> McpReg["Registry: MCP.Registry"]
@@ -249,13 +248,11 @@ classDiagram
         +string name
         +string secret
         +string action
-        +string custom_cmd
     }
     class SchedulerJob {
         +string job_id
         +string type
         +string cron
-        +string custom_cmd
         +utc next_run_at
     }
     class RuntimeEvent {

@@ -36,9 +36,6 @@ defmodule BusterClawWeb.ApiController do
       {:error, :not_found} ->
         send_error(conn, 404, "not_found")
 
-      {:error, :no_active_provider} ->
-        send_error(conn, 409, "no_active_provider")
-
       {:error, :unauthorized} ->
         send_error(conn, 401, "unauthorized")
 

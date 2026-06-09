@@ -10,6 +10,12 @@ defmodule BusterClaw.Orchestration.Shift do
     field :started_at, :utc_datetime
     field :ends_at, :utc_datetime
     field :status, :string, default: "active"
+    field :job_key, :string, default: "lookout"
+    field :job_name, :string, default: "Lookout"
+    field :job_description, :string
+    field :agent_name, :string
+    field :shell, :string
+    field :duration_hours, :integer, default: 12
     field :dispatched_count, :integer, default: 0
     field :done_count, :integer, default: 0
     field :failed_count, :integer, default: 0
@@ -24,12 +30,19 @@ defmodule BusterClaw.Orchestration.Shift do
       :started_at,
       :ends_at,
       :status,
+      :job_key,
+      :job_name,
+      :job_description,
+      :agent_name,
+      :shell,
+      :duration_hours,
       :dispatched_count,
       :done_count,
       :failed_count,
       :stopped_reason
     ])
-    |> validate_required([:started_at, :ends_at, :status])
+    |> validate_required([:started_at, :ends_at, :status, :job_key, :job_name, :duration_hours])
     |> validate_inclusion(:status, @statuses)
+    |> validate_number(:duration_hours, greater_than: 0, less_than_or_equal_to: 168)
   end
 end

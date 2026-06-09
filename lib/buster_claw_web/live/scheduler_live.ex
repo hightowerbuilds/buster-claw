@@ -89,14 +89,9 @@ defmodule BusterClawWeb.SchedulerLive do
               field={@form[:type]}
               label="Type"
               type="select"
-              options={[
-                {"Poll Integrations", "integrations_poll"},
-                {"Custom", "custom"}
-              ]}
+              options={[{"Poll Integrations", "integrations_poll"}]}
             />
             <.input field={@form[:cron]} label="Cron" />
-            <.input field={@form[:custom_cmd]} label="Custom Command" />
-            <.input field={@form[:deliver_to]} label="Deliver To" />
             <.input field={@form[:enabled]} label="Enabled" type="checkbox" />
             <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100">
               Save Job

@@ -8,13 +8,10 @@
 //!
 //! Browsing/selecting a workspace is now an in-app, server-side file tree
 //! (Phoenix `BusterClaw.FileManager` + `WorkspaceLive`), which also writes this
-//! same file directly. This module therefore only handles boot-time resolution
-//! and the relaunch used to apply a newly chosen root.
+//! same file directly. This module therefore only handles boot-time resolution.
 
 use std::fs;
 use std::path::{Path, PathBuf};
-
-use tauri::AppHandle;
 
 const WORKSPACE_FILE: &str = "workspace_root";
 const SUBDIRS: [&str; 5] = ["library/raw", "library/reports", "sources", "analysis", "memory"];
@@ -53,10 +50,4 @@ pub fn ensure_workspace_dirs(workspace_root: &Path) -> Result<(), String> {
             .map_err(|e| format!("failed to create {sub}: {e}"))?;
     }
     Ok(())
-}
-
-/// Relaunch the desktop app so a newly chosen workspace takes effect.
-#[tauri::command]
-pub fn workspace_relaunch(app: AppHandle) {
-    app.restart();
 }

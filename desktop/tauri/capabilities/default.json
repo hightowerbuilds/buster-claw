@@ -12,7 +12,6 @@
     "allow-terminal-attach",
     "allow-terminal-input",
     "allow-terminal-resize",
-    "allow-terminal-close",
-    "allow-workspace-relaunch"
+    "allow-terminal-close"
   ]
 }
