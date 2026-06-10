@@ -100,3 +100,27 @@
 - Projector tests assert real file output: fridge grouping/open-count, the
   indented fence on an injection-style body, `.jsonl` `queued`/`claimed`/
   `finished` lines, and fridge-render idempotency.
+
+## Phase 4 — `dispatch` CLI verb (write-back)
+
+- Added the queue write-back surface so a terminal Claude Code session can act on
+  the fridge: claim work, complete it, or block it — all via the local CLI/API.
+- Server commands (all `:safe`, in `commands.ex`): `dispatch_list`
+  (open items, `--status`/`--job`/`--limit`), `dispatch_show`, `dispatch_claim`
+  (`--job`-scoped), `dispatch_done`, `dispatch_block` (with optional `--note`).
+  Mutating ones are audited through Sentinel like every consequential command.
+- Extended `Dispatch.claim_next/2` with a `:role` filter so a job can pull only
+  its own items even when another job's item is older.
+- CLI (`cli.ex`): `dispatch list|show|claim|done|block` subcommands with compact
+  human-readable output by default and `--verbose` for raw JSON, matching the
+  mailman convention.
+- The end-to-end pull loop is now wired except intake: email → (Phase 5) →
+  queue → fridge → agent `claim`/`done`. A claimed item stays on the fridge;
+  a done/blocked item drops off and the diary keeps the record.
+
+## Verification (Phase 4)
+
+- `mix compile --warnings-as-errors` and `mix format --check-formatted` clean.
+- `mix test` — 349 tests, 0 failures (+9: dispatch command + CLI formatter tests).
+- Tests cover: list/claim/show/done/block command paths, job-scoped claim
+  ordering, empty-queue claim, safe-tier enforcement, and CLI output formatters.

@@ -35,6 +35,11 @@ defmodule BusterClaw.CLI do
       ["terminal", "open"] -> terminal_open(opts)
       ["terminal", "open", role] -> terminal_open(opts, role)
       ["mailman", "poll"] -> mailman_poll(opts)
+      ["dispatch", "list"] -> dispatch_list_cmd(opts)
+      ["dispatch", "show", id] -> dispatch_show_cmd(id, opts)
+      ["dispatch", "claim"] -> dispatch_claim_cmd(opts)
+      ["dispatch", "done", id] -> dispatch_finish_cmd("dispatch_done", id, opts)
+      ["dispatch", "block", id] -> dispatch_finish_cmd("dispatch_block", id, opts)
       ["run", name] -> run(name, opts)
       [noun, verb] -> run("#{noun}_#{verb}", opts)
       [name] -> run(name, opts)
@@ -65,6 +70,9 @@ defmodule BusterClaw.CLI do
       once: :boolean,
       no_activate: :boolean,
       verbose: :boolean,
+      status: :string,
+      note: :string,
+      job: :string,
       help: :boolean
     ]
   end
@@ -187,6 +195,111 @@ defmodule BusterClaw.CLI do
         end
     end
   end
+
+  # ---- Dispatch queue ----
+
+  defp dispatch_list_cmd(opts) do
+    args =
+      %{}
+      |> maybe_put("status", Keyword.get(opts, :status))
+      |> maybe_put("job", Keyword.get(opts, :job))
+      |> maybe_put("limit", Keyword.get(opts, :limit))
+
+    dispatch_request("dispatch_list", args, opts, &format_dispatch_list/1)
+  end
+
+  defp dispatch_show_cmd(id, opts) do
+    dispatch_request("dispatch_show", %{"id" => id}, opts, &format_dispatch_item/1)
+  end
+
+  defp dispatch_claim_cmd(opts) do
+    args =
+      %{}
+      |> maybe_put("job", Keyword.get(opts, :job))
+      |> maybe_put("claimed_by", Keyword.get(opts, :session) || Keyword.get(opts, :job))
+
+    dispatch_request("dispatch_claim", args, opts, &format_dispatch_claim/1)
+  end
+
+  defp dispatch_finish_cmd(command, id, opts) do
+    args = maybe_put(%{"id" => id}, "note", Keyword.get(opts, :note))
+    dispatch_request(command, args, opts, &format_dispatch_finish/1)
+  end
+
+  defp dispatch_request(command, args, opts, formatter) do
+    case http_post("/api/run", %{"command" => command, "args" => args}, auth: true, opts: opts) do
+      {:ok, %{"ok" => true, "result" => result}} ->
+        IO.puts(if Keyword.get(opts, :verbose), do: pretty(result), else: formatter.(result))
+
+      {:ok, %{"ok" => false, "error" => error} = payload} ->
+        IO.puts(:stderr, "error: #{error}")
+        if errors = payload["errors"], do: IO.puts(:stderr, pretty(errors))
+        System.halt(1)
+
+      {:error, reason} ->
+        die(reason, 1)
+    end
+  end
+
+  @doc false
+  def format_dispatch_list(items) when is_list(items) do
+    case items do
+      [] ->
+        "No open Dispatch items."
+
+      _ ->
+        "#{length(items)} Dispatch #{plural(length(items), "item")}:\n" <>
+          Enum.map_join(items, "\n", &dispatch_line/1)
+    end
+  end
+
+  def format_dispatch_list(other), do: pretty(other)
+
+  @doc false
+  def format_dispatch_item(%{"empty" => true}), do: "Queue empty — nothing to claim."
+
+  def format_dispatch_item(item) when is_map(item) do
+    [
+      "##{item["id"]} [#{item["status"]}] #{item["subject"] || "(no subject)"}",
+      dispatch_kv("Source", item["source"]),
+      dispatch_kv("Sender", item["sender"]),
+      dispatch_kv("Job", item["recommended_role_key"]),
+      dispatch_kv("Summary", item["request_summary"])
+    ]
+    |> Enum.reject(&blank?/1)
+    |> Enum.join("\n")
+  end
+
+  def format_dispatch_item(other), do: pretty(other)
+
+  @doc false
+  def format_dispatch_claim(%{"empty" => true}), do: "Queue empty — nothing to claim."
+
+  def format_dispatch_claim(item) when is_map(item),
+    do: "Claimed:\n" <> format_dispatch_item(item)
+
+  def format_dispatch_claim(other), do: pretty(other)
+
+  @doc false
+  def format_dispatch_finish(item) when is_map(item),
+    do: "Marked ##{item["id"]} #{item["status"]}."
+
+  def format_dispatch_finish(other), do: pretty(other)
+
+  defp dispatch_line(item) do
+    suffix =
+      [item["sender"], item["recommended_role_key"]]
+      |> Enum.reject(&blank?/1)
+      |> case do
+        [] -> ""
+        parts -> " — " <> Enum.join(parts, " · ")
+      end
+
+    "  ##{item["id"]} [#{item["status"]}] #{item["subject"] || "(no subject)"}#{suffix}"
+  end
+
+  defp dispatch_kv(_label, value) when value in [nil, ""], do: nil
+  defp dispatch_kv(label, value), do: "  #{label}: #{value}"
 
   # ---- HTTP ----
 
@@ -451,6 +564,11 @@ defmodule BusterClaw.CLI do
       <noun> <verb> [opts]   Shorthand for `run <noun>_<verb>`.
       terminal open [role]   Open a role-labeled terminal tab inside Buster Claw.
       mailman poll           Continuously sync Gmail through the local API.
+      dispatch list          List open queue items (--status, --job, --limit).
+      dispatch show <id>     Show one queue item.
+      dispatch claim         Claim the next open item (--job to scope, --session).
+      dispatch done <id>     Mark an item done (--note).
+      dispatch block <id>    Mark an item blocked (--note).
 
     Options:
       --json '<json>'        Pass command args as a JSON object.
@@ -468,6 +586,9 @@ defmodule BusterClaw.CLI do
       --timeout <seconds>    HTTP receive timeout (mailman default 300).
       --max-runs <n>         Stop `mailman poll` after n sync attempts.
       --once                 Run `mailman poll` once.
+      --status <status>      Filter `dispatch list` (e.g. queued, claimed).
+      --job <key>            Scope `dispatch list` / `dispatch claim` to a job.
+      --note <text>          Note for `dispatch done` / `dispatch block`.
       --no-activate          Queue the tab without navigating to it.
       --verbose              Print full JSON for `mailman poll`.
       --url <url>            Override BUSTER_CLAW_URL (default #{@default_url}).

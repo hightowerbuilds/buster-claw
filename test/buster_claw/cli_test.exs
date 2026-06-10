@@ -64,4 +64,36 @@ defmodule BusterClaw.CLITest do
     assert output =~ "No new Gmail messages synced for person@example.com."
     assert output =~ "Documents: none"
   end
+
+  test "format_dispatch_list renders a compact list and handles empty" do
+    assert CLI.format_dispatch_list([]) =~ "No open Dispatch items."
+
+    out =
+      CLI.format_dispatch_list([
+        %{
+          "id" => 1,
+          "status" => "queued",
+          "subject" => "Reset password",
+          "sender" => "alice@example.com",
+          "recommended_role_key" => "mail-triage"
+        }
+      ])
+
+    assert out =~ "1 Dispatch item:"
+    assert out =~ "#1 [queued] Reset password"
+    assert out =~ "alice@example.com"
+    assert out =~ "mail-triage"
+  end
+
+  test "format_dispatch_claim shows the claimed item or empty" do
+    assert CLI.format_dispatch_claim(%{"empty" => true}) =~ "Queue empty"
+
+    out = CLI.format_dispatch_claim(%{"id" => 5, "status" => "claimed", "subject" => "Invoice"})
+    assert out =~ "Claimed:"
+    assert out =~ "#5 [claimed] Invoice"
+  end
+
+  test "format_dispatch_finish confirms the new status" do
+    assert CLI.format_dispatch_finish(%{"id" => 9, "status" => "done"}) == "Marked #9 done."
+  end
 end

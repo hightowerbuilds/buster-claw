@@ -123,6 +123,7 @@ defmodule BusterClaw.Dispatch do
       Item
       |> where([item], item.status == "queued")
       |> maybe_where_source(present(opt(opts, :source)))
+      |> maybe_where_role(present(opt(opts, :role)))
       |> order_by([item], asc: item.inserted_at, asc: item.id)
       |> limit(1)
 
@@ -187,6 +188,11 @@ defmodule BusterClaw.Dispatch do
 
   defp maybe_where_source(query, nil), do: query
   defp maybe_where_source(query, source), do: where(query, [item], item.source == ^source)
+
+  defp maybe_where_role(query, nil), do: query
+
+  defp maybe_where_role(query, role),
+    do: where(query, [item], item.recommended_role_key == ^role)
 
   defp put_generated_dedupe_key(attrs) do
     cond do
