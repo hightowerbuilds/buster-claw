@@ -15,6 +15,7 @@ defmodule BusterClaw.Application do
          repos: Application.fetch_env!(:buster_claw, :ecto_repos), skip: skip_migrations?()},
         {DNSCluster, query: Application.get_env(:buster_claw, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: BusterClaw.PubSub},
+        dispatch_projector_child(),
         BusterClaw.TerminalWorkspace,
         BusterClaw.Sentinel.Pending,
         browser_sidecar_child(),
@@ -59,6 +60,12 @@ defmodule BusterClaw.Application do
   defp scheduler_child do
     if Application.get_env(:buster_claw, :scheduler_enabled, true) do
       BusterClaw.Scheduler.Runner
+    end
+  end
+
+  defp dispatch_projector_child do
+    if Application.get_env(:buster_claw, :dispatch_projector_enabled, true) do
+      BusterClaw.DispatchProjector
     end
   end
 

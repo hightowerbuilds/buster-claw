@@ -64,6 +64,16 @@ defmodule BusterClaw.Dispatch do
     |> list_items()
   end
 
+  @open_statuses ~w(queued claimed running)
+
+  @doc "All currently-open items (queued/claimed/running), oldest first."
+  def list_open do
+    Item
+    |> where([item], item.status in @open_statuses)
+    |> order_by([item], asc: item.inserted_at, asc: item.id)
+    |> Repo.all()
+  end
+
   def get_item!(id), do: Repo.get!(Item, id)
   def get_item(id), do: Repo.get(Item, id)
 
@@ -134,8 +144,9 @@ defmodule BusterClaw.Dispatch do
 
         case count do
           1 ->
-            broadcast(:dispatch_item_claimed)
-            {:ok, get_item!(id)}
+            item = get_item!(id)
+            broadcast(:dispatch_item_claimed, item)
+            {:ok, item}
 
           _ ->
             {:error, :not_claimable}
@@ -269,22 +280,22 @@ defmodule BusterClaw.Dispatch do
 
   defp timestamp, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
-  defp tap_broadcast({:ok, _item} = result, event) do
-    broadcast(event)
+  defp tap_broadcast({:ok, item} = result, event) do
+    broadcast(event, item)
     result
   end
 
   defp tap_broadcast(other, _event), do: other
 
-  defp tap_event({:ok, _item} = result, event) do
-    broadcast(event)
+  defp tap_event({:ok, item} = result, event) do
+    broadcast(event, item)
     result
   end
 
   defp tap_event(other, _event), do: other
 
-  defp broadcast(event) do
-    Phoenix.PubSub.broadcast(BusterClaw.PubSub, @topic, {:dispatch, event})
+  defp broadcast(event, item) do
+    Phoenix.PubSub.broadcast(BusterClaw.PubSub, @topic, {:dispatch, event, item})
     :ok
   end
 end

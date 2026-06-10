@@ -72,9 +72,10 @@ multi-channel delivery) that exists only to serve the old push model, and
 Gmail poller (./buster-claw mailman poll)
    └─> Dispatch.enqueue_gmail ──> SQLite dispatch_items       (source of truth)
                                         │
-   PubSub "dispatch" ─> DispatchProjector ─> shift/<date>/Dispatch.md (+ .jsonl)
-                                        │
-   Claude Code session (human's own, no API key) reads Dispatch.md
+   PubSub "dispatch" ─> DispatchProjector ─┬─> shift/Dispatch.md   (fridge: open items, live)
+                                           └─> shift/<date>/Dispatch.md + .jsonl
+                                        │                          (diary: per-day record)
+   Claude Code session (human's own, no API key) reads shift/Dispatch.md (the fridge)
                                         │
         does the work, then:  ./buster-claw dispatch done <id> --note "..."
                                         │
@@ -169,22 +170,36 @@ Acceptance:
 
 ### Phase 3: Dispatch Projector
 
+One projector writes **two views of the same SQLite queue** on every event —
+the *fridge* (live worklist) and the *diary* (per-day record).
+
 - Add `BusterClaw.DispatchProjector` GenServer.
 - Subscribe to the `"dispatch"` PubSub topic.
-- On `:dispatch_item_queued|claimed|running|finished`, re-render
-  `shift/<date>/Dispatch.md` and append the event to `shift/<date>/Dispatch.jsonl`
-  (the existing workspace convention).
-- `Dispatch.md` lists open items grouped by recommended job: id, source, sender,
-  subject, summary, body excerpt, status. Keep it scannable.
+- On `:dispatch_item_queued|claimed|running|finished`, render **both**:
+  - **Fridge** — `shift/Dispatch.md` (stable, date-independent). A full
+    **overwrite** showing only currently-open items (status in
+    `queued`/`claimed`/`running`) across all dates, grouped by recommended job.
+    This is the agent's primary read: "what's on my plate right now."
+  - **Diary** — `shift/<date>/Dispatch.md` (that day's snapshot, overwritten)
+    plus `shift/<date>/Dispatch.jsonl` (the event **appended**, append-only).
+    The permanent per-day record / audit trail.
+- Each item row: id, source, sender, subject, summary, body excerpt, status.
+  Keep it scannable.
 - Treat ingested content as untrusted: fence the email body so the agent reads it
   as data, not instructions (ties to the prior security finding).
 
+Coherence rule: SQLite is the source of truth; the fridge and the dated `.md`
+are always **full overwrites** (never accumulate stale items); only the dated
+`.jsonl` is **append-only** (history is never rewritten).
+
 Acceptance:
 
-- Enqueuing an item updates `Dispatch.md` within one projection cycle and appends
-  one `Dispatch.jsonl` line.
-- Finishing an item moves it out of the open list and is reflected in both files.
-- Projection of `Dispatch.md` is idempotent: re-running produces the same file.
+- Enqueuing an item adds it to `shift/Dispatch.md` and the dated `Dispatch.md`
+  within one projection cycle, and appends exactly one `Dispatch.jsonl` line.
+- Finishing an item removes it from the fridge (`shift/Dispatch.md`) but leaves
+  the dated diary record intact, plus a `finished` `.jsonl` line.
+- The fridge and dated `.md` renders are idempotent: re-running with no DB change
+  produces byte-identical files.
 
 ### Phase 4: CLI `dispatch` Verb
 
@@ -215,8 +230,8 @@ Acceptance:
 
 Acceptance:
 
-- A new email from a trusted sender appears as a queued dispatch item and in
-  `Dispatch.md`.
+- A new email from a trusted sender appears as a queued dispatch item and on the
+  fridge (`shift/Dispatch.md`).
 - Re-polling the same message does not create a duplicate item.
 
 ### Phase 6: Job-Description Consolidation
@@ -250,8 +265,10 @@ Acceptance:
 
 ## Test Plan
 
-- `DispatchProjector`: enqueue/claim/finish each update `Dispatch.md` and append
-  `Dispatch.jsonl`; `Dispatch.md` render is idempotent; untrusted body is fenced.
+- `DispatchProjector`: enqueue/claim/finish update both the fridge
+  (`shift/Dispatch.md`) and the dated diary (`shift/<date>/Dispatch.md` +
+  appended `.jsonl`); fridge drops finished items; both `.md` renders are
+  idempotent; untrusted body is fenced.
 - CLI `dispatch`: list/show/claim/done happy paths; concurrent-claim safety; bad
   id handling.
 - Poller: `mailman poll` enqueues a dispatch item for a trusted sender; re-poll
@@ -262,11 +279,15 @@ Acceptance:
 - Regression: confirm deleted surfaces are gone (no `/mcp` route, no Orchestrator
   dispatch) and that compile/test stay green.
 
+## Decided
+
+- **Two projections, written concurrently** (the date-scoping question): a
+  date-independent **fridge** (`shift/Dispatch.md`, live open items, the agent's
+  primary read) and a per-day **diary** (`shift/<date>/Dispatch.md` + `.jsonl`,
+  the permanent record). See Phase 3.
+
 ## Open Questions
 
-- `Dispatch.md` lifecycle: does the date-scoped `shift/<date>/` folder fit a
-  long-running pull model, or do we also want a date-independent "open items"
-  view the agent can always read?
 - Do dispatch items and Library documents stay separate, or does the item link to
   the saved doc and the doc stop being the primary store?
 - Does the optional `Delivery` "ping me when X" path survive at all, or is it cut

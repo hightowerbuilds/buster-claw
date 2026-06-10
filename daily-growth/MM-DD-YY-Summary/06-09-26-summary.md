@@ -69,6 +69,34 @@
   nothing auto-runs them now — expected until the pull loop (Phases 3–5) exists.
   Noted in the `OrchestrationLive` moduledoc.
 - Work done on branch `phase1-cut-harness`.
-- Open question to settle before Phase 3 (`DispatchProjector`): whether the
-  projector writes the date-bound `shift/<date>/Dispatch.md` or an additional
-  date-independent "open items" view for a long-running pull agent.
+
+## Phase 3 — Dispatch Projector (later today)
+
+- Resolved the open date-scoping question: do **both** views ("fridge AND
+  diary"), written concurrently. Updated the roadmap's Phase 3, spine, and a new
+  "Decided" section.
+- Enriched the `"dispatch"` PubSub broadcast to carry the item
+  (`{:dispatch, event, item}`) — no existing subscribers, so safe — and added
+  `Dispatch.list_open/0` (queued/claimed/running, oldest first).
+- Added `BusterClaw.DispatchProjector` GenServer. On each dispatch event it
+  writes two views of the SQLite queue:
+  - **Fridge** — `shift/Dispatch.md`: full overwrite of currently-open items,
+    grouped by job. The agent's primary read.
+  - **Diary** — `shift/<date>/Dispatch.md` (readable, overwritten) +
+    `shift/<date>/Dispatch.jsonl` (append-only, one line per primary event).
+- Coherence guarantees: `.md` renders are pure functions of their inputs (no
+  wall-clock) so they're byte-idempotent; only the `.jsonl` is appended. Writes
+  are best-effort (a filesystem error logs, never crashes the projector).
+- Untrusted inbound content (email body) is rendered as an indented code block
+  (4-space prefix) so it's inert data — it can't break out or inject markdown.
+- Gated behind `:dispatch_projector_enabled` (config), off in test so unrelated
+  dispatch tests don't write files; projector tests start it against a tmp
+  workspace and a pinned `:local_today`.
+
+## Verification (Phase 3)
+
+- `mix compile --warnings-as-errors` and `mix format --check-formatted` clean.
+- `mix test` — 340 tests, 0 failures (+5 projector tests).
+- Projector tests assert real file output: fridge grouping/open-count, the
+  indented fence on an injection-style body, `.jsonl` `queued`/`claimed`/
+  `finished` lines, and fridge-render idempotency.

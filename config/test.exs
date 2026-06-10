@@ -24,6 +24,10 @@ config :buster_claw, :api_token, "test-token-loopback-only"
 config :buster_claw, :mcp_api_token, "test-mcp-token-safe-tier-only"
 config :buster_claw, :scheduler_enabled, false
 config :buster_claw, :orchestrator_enabled, false
+# The projector writes into the workspace on every dispatch event; off by default
+# in tests so unrelated dispatch tests don't write files. Projector tests start it
+# explicitly against a tmp workspace.
+config :buster_claw, :dispatch_projector_enabled, false
 
 # Skip live DNS resolution in the SSRF guard during tests; literal-IP and
 # hostname checks still run. URLGuard's resolution path is covered directly in
