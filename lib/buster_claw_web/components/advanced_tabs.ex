@@ -6,7 +6,6 @@ defmodule BusterClawWeb.AdvancedTabs do
     %{key: :hooks, label: "Hooks", path: "/hooks"},
     %{key: :webhooks, label: "Webhooks", path: "/webhooks"},
     %{key: :integrations, label: "Integrations", path: "/integrations"},
-    %{key: :mcp, label: "MCP", path: "/mcp"},
     %{key: :memory, label: "Memory", path: "/memory"},
     %{key: :scheduler, label: "Scheduler", path: "/scheduler"},
     %{key: :security, label: "Security", path: "/security"},

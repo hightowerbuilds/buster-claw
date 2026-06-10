@@ -10,7 +10,6 @@ defmodule BusterClawWeb.SettingsLive do
   alias BusterClaw.Google
   alias BusterClaw.Hooks
   alias BusterClaw.Integrations
-  alias BusterClaw.MCP
   alias BusterClaw.Scheduler
   alias BusterClaw.Setup
   alias BusterClaw.Webhooks
@@ -28,12 +27,6 @@ defmodule BusterClawWeb.SettingsLive do
       path: "/delivery",
       icon: "hero-paper-airplane",
       desc: "Slack, Discord, Telegram"
-    },
-    %{
-      label: "MCP",
-      path: "/mcp",
-      icon: "hero-server-stack",
-      desc: "Model Context Protocol servers"
     },
     %{label: "Scheduler", path: "/scheduler", icon: "hero-clock", desc: "Recurring jobs"},
     %{label: "Hooks", path: "/hooks", icon: "hero-bolt", desc: "Shell and webhook hooks"},
@@ -175,7 +168,6 @@ defmodule BusterClawWeb.SettingsLive do
   defp config_done?("/gws"), do: Google.list_account_summaries() != []
   defp config_done?("/integrations"), do: Integrations.list_integrations() != []
   defp config_done?("/delivery"), do: Delivery.list_destinations() != []
-  defp config_done?("/mcp"), do: MCP.list_servers() != []
   defp config_done?("/scheduler"), do: Scheduler.list_jobs() != []
   defp config_done?("/hooks"), do: Hooks.list_hooks() != []
   defp config_done?("/webhooks"), do: Webhooks.list_webhooks() != []

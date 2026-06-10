@@ -9,8 +9,11 @@ defmodule BusterClawWeb.OrchestrationLive do
     stored as the task's prompt — what the on-shift model (Claude / Codex) reads.
   - **GWS action** tasks are deterministic `pipeline` tasks whose `command` is a
     Google Workspace command (sync Gmail/Calendar, search, draft, send) and whose
-    `params` carry the action's arguments; the Orchestrator runs them via
-    `BusterClaw.Orchestration.Pipeline` → `Commands.call`.
+    `params` carry the action's arguments, resolved through `Commands.call`.
+
+  Note: the Orchestrator no longer auto-dispatches these tasks — work is pulled
+  from the Dispatch queue by a terminal Claude Code session. See
+  `daily-growth/roadmaps/06-09-26-terminal-pull-queue-roadmap.md`.
   """
   use BusterClawWeb, :live_view
 

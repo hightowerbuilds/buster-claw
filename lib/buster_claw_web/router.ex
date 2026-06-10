@@ -32,7 +32,6 @@ defmodule BusterClawWeb.Router do
     live "/gws", GWSLive, :index
     live "/memory", MemoryLive, :index
     live "/integrations", IntegrationsLive, :index
-    live "/mcp", MCPLive, :index
     live "/scheduler", SchedulerLive, :index
     live "/webhooks", WebhooksLive, :index
     live "/hooks", HooksLive, :index
@@ -72,12 +71,6 @@ defmodule BusterClawWeb.Router do
     pipe_through :api_authenticated
 
     post "/run", ApiController, :run
-  end
-
-  scope "/", BusterClawWeb do
-    pipe_through :api_authenticated
-
-    post "/mcp", McpController, :handle
   end
 
   # Other scopes may use custom stacks.

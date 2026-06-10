@@ -18,13 +18,8 @@ defmodule BusterClaw.Application do
         BusterClaw.TerminalWorkspace,
         BusterClaw.Sentinel.Pending,
         browser_sidecar_child(),
-        {Registry, keys: :unique, name: BusterClaw.MCP.Registry},
-        BusterClaw.MCP.Supervisor,
-        BusterClaw.MCP.Bootstrap,
         scheduler_child(),
-        {Task.Supervisor, name: BusterClaw.Orchestration.RunnerSupervisor},
         orchestrator_child(),
-        reporter_child(),
         uptime_child(),
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
@@ -76,12 +71,6 @@ defmodule BusterClaw.Application do
   defp orchestrator_child do
     if Application.get_env(:buster_claw, :orchestrator_enabled, true) do
       BusterClaw.Orchestrator
-    end
-  end
-
-  defp reporter_child do
-    if Application.get_env(:buster_claw, :orchestrator_enabled, true) do
-      BusterClaw.Orchestration.Reporter
     end
   end
 

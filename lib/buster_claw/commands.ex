@@ -29,7 +29,6 @@ defmodule BusterClaw.Commands do
     Hooks,
     Integrations,
     Library,
-    MCP,
     Memory,
     Orchestration,
     Scheduler,
@@ -168,7 +167,6 @@ defmodule BusterClaw.Commands do
 
   for {prefix, context, ctx_singular, ctx_plural} <- [
         {:event, Calendar, :event, :events},
-        {:mcp_server, MCP, :server, :servers},
         {:webhook, Webhooks, :webhook, :webhooks},
         {:delivery_destination, Delivery, :destination, :destinations},
         {:scheduler_job, Scheduler, :job, :jobs},
@@ -200,23 +198,6 @@ defmodule BusterClaw.Commands do
         apply(unquote(context), unquote(delete_fn), [record])
       end)
     end
-  end
-
-  # -----------------------------------------------------------------------
-  # MCP servers (extras)
-  # -----------------------------------------------------------------------
-
-  def mcp_server_connect(%{"id" => id}) do
-    with_resource(MCP, :get_server!, id, fn server ->
-      case MCP.connect_server(server) do
-        {:ok, _pid} -> {:ok, MCP.get_server!(server.id)}
-        {:error, reason} -> {:error, reason}
-      end
-    end)
-  end
-
-  def mcp_server_tools(%{"id" => id}) do
-    with_resource(MCP, :get_server!, id, &MCP.discover_tools/1)
   end
 
   # -----------------------------------------------------------------------
@@ -300,14 +281,6 @@ defmodule BusterClaw.Commands do
     with_resource(Delivery, :get_destination!, id, fn destination ->
       Delivery.test_destination(destination, payload: payload)
     end)
-  end
-
-  # -----------------------------------------------------------------------
-  # Delivery (broadcast)
-  # -----------------------------------------------------------------------
-
-  def delivery_dispatch_all(%{"payload" => payload}) do
-    {:ok, Delivery.dispatch_all(payload, [])}
   end
 
   # -----------------------------------------------------------------------
@@ -689,48 +662,6 @@ defmodule BusterClaw.Commands do
       },
       delete_entry("event_delete", "Delete a calendar event."),
 
-      # MCP servers
-      list_entry("mcp_server_list", "List configured MCP servers."),
-      get_entry("mcp_server_get", "Fetch an MCP server by ID."),
-      %{
-        name: "mcp_server_create",
-        type: :mutate,
-        tier: :restricted,
-        description: "Configure a new MCP server.",
-        args: %{
-          "name" => %{type: :string, required: true},
-          "command" => %{type: :string, required: true},
-          "args" => %{type: :map, required: false},
-          "env" => %{type: :map, required: false},
-          "enabled" => %{type: :boolean, required: false, default: true}
-        }
-      },
-      %{
-        name: "mcp_server_update",
-        type: :mutate,
-        tier: :restricted,
-        description: "Update an MCP server config.",
-        args: %{
-          "id" => %{type: :integer, required: true},
-          "name" => %{type: :string, required: false},
-          "command" => %{type: :string, required: false},
-          "args" => %{type: :map, required: false},
-          "env" => %{type: :map, required: false},
-          "enabled" => %{type: :boolean, required: false}
-        }
-      },
-      delete_entry("mcp_server_delete", "Delete an MCP server config."),
-      id_trigger_entry(
-        "mcp_server_connect",
-        "Launch a configured MCP stdio server.",
-        :restricted
-      ),
-      id_trigger_entry(
-        "mcp_server_tools",
-        "Launch and discover tools from an MCP stdio server.",
-        :safe
-      ),
-
       # Webhooks
       list_entry("webhook_list", "List all webhooks."),
       get_entry("webhook_get", "Fetch a webhook by ID."),
@@ -855,17 +786,6 @@ defmodule BusterClaw.Commands do
         "Send a test payload to a destination.",
         :safe
       ),
-
-      # Delivery
-      %{
-        name: "delivery_dispatch_all",
-        type: :trigger,
-        tier: :restricted,
-        description: "Send a payload to every enabled destination.",
-        args: %{
-          "payload" => %{type: :map, required: true}
-        }
-      },
 
       # Scheduler
       list_entry("scheduler_job_list", "List scheduler jobs."),

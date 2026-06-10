@@ -21,7 +21,6 @@ defmodule BusterClawWeb.SplitLive do
     "/terminal" => {BusterClawWeb.TerminalLive, "Terminal"},
     "/workspace" => {BusterClawWeb.WorkspaceLive, "Workspace"},
     "/integrations" => {BusterClawWeb.IntegrationsLive, "Integrations"},
-    "/mcp" => {BusterClawWeb.MCPLive, "MCP"},
     "/webhooks" => {BusterClawWeb.WebhooksLive, "Webhooks"},
     "/hooks" => {BusterClawWeb.HooksLive, "Hooks"},
     "/delivery" => {BusterClawWeb.DeliveryLive, "Delivery"},

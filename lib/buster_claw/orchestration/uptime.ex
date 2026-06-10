@@ -3,8 +3,8 @@ defmodule BusterClaw.Orchestration.Uptime do
   Shift-scoped OS uptime: keeps the Mac awake and the app relaunchable **only
   while an orchestration shift is active**.
 
-  A passive listener on the `"orchestration"` PubSub topic (mirrors
-  `BusterClaw.Orchestration.Reporter`). On `:shift_started` it **engages** —
+  A passive listener on the `"orchestration"` PubSub topic. On `:shift_started`
+  it **engages** —
   spawns `caffeinate -dimsu` (no display/idle/disk/system sleep) and, if the
   launchd KeepAlive agent is installed, `launchctl load`s it so a force-quit gets
   relaunched. On `:shift_stopped` / `:shift_completed` it **releases** — kills

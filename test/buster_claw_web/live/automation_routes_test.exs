@@ -13,8 +13,7 @@ defmodule BusterClawWeb.AutomationRoutesTest do
           {~p"/advanced", "Delivery"},
           {~p"/webhooks", "Webhooks"},
           {~p"/hooks", "Hooks"},
-          {~p"/delivery", "Delivery"},
-          {~p"/mcp", "MCP"}
+          {~p"/delivery", "Delivery"}
         ] do
       {:ok, _view, html} = live(conn, path)
       assert html =~ text
@@ -27,8 +26,7 @@ defmodule BusterClawWeb.AutomationRoutesTest do
           ~p"/delivery",
           ~p"/hooks",
           ~p"/webhooks",
-          ~p"/integrations",
-          ~p"/mcp"
+          ~p"/integrations"
         ] do
       {:ok, _view, html} = live(conn, path)
       assert html =~ ~s(id="advanced-tabs")
@@ -36,7 +34,6 @@ defmodule BusterClawWeb.AutomationRoutesTest do
       assert html =~ ~s(id="advanced-tab-hooks")
       assert html =~ ~s(id="advanced-tab-webhooks")
       assert html =~ ~s(id="advanced-tab-integrations")
-      assert html =~ ~s(id="advanced-tab-mcp")
     end
   end
 
