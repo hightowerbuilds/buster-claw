@@ -1,6 +1,7 @@
 defmodule BusterClaw.Google.GmailSyncTest do
   use BusterClaw.DataCase
 
+  alias BusterClaw.Dispatch
   alias BusterClaw.Google
   alias BusterClaw.Google.GmailSync
   alias BusterClaw.Library
@@ -12,17 +13,48 @@ defmodule BusterClaw.Google.GmailSyncTest do
         "buster-claw-gmail-sync-test-#{System.unique_integer([:positive])}"
       )
 
-    previous = Application.get_env(:buster_claw, :library_root)
+    prev_lib = Application.get_env(:buster_claw, :library_root)
+    prev_ws = Application.get_env(:buster_claw, :workspace_root)
     Application.put_env(:buster_claw, :library_root, root)
+    # Point the workspace (and thus the trusted-sender policy file) at the tmp dir.
+    # With no policy file written, no sender is trusted, so existing tests don't
+    # enqueue anything.
+    Application.put_env(:buster_claw, :workspace_root, root)
 
     Req.Test.verify_on_exit!()
 
     on_exit(fn ->
-      Application.put_env(:buster_claw, :library_root, previous)
+      Application.put_env(:buster_claw, :library_root, prev_lib)
+      Application.put_env(:buster_claw, :workspace_root, prev_ws)
       File.rm_rf(root)
     end)
 
-    :ok
+    {:ok, root: root}
+  end
+
+  defp trust_sender!(root, address) do
+    File.mkdir_p!(Path.join(root, "memory"))
+    File.write!(Path.join(root, "memory/trusted-email-senders.md"), "- #{address}\n")
+  end
+
+  defp stub_single_message do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+
+      case {conn.request_path, conn.query_params["format"]} do
+        {"/gmail/v1/users/me/messages", _format} ->
+          Req.Test.json(conn, %{
+            "resultSizeEstimate" => 1,
+            "messages" => [%{"id" => "msg-1", "threadId" => "thread-1"}]
+          })
+
+        {"/gmail/v1/users/me/messages/msg-1", "metadata"} ->
+          Req.Test.json(conn, metadata_message())
+
+        {"/gmail/v1/users/me/messages/msg-1", "full"} ->
+          Req.Test.json(conn, full_message())
+      end
+    end)
   end
 
   test "syncs Gmail messages into stable Library raw documents" do
@@ -200,6 +232,56 @@ defmodule BusterClaw.Google.GmailSyncTest do
     assert result.documents == []
     assert result.errors == []
     assert result.account.last_seen_history_id == "expired-history"
+  end
+
+  test "enqueues a Dispatch item for a trusted sender, linked to the Library doc", %{root: root} do
+    trust_sender!(root, "ada@example.com")
+    stub_single_message()
+    account = connected_account!()
+
+    assert {:ok, result} =
+             GmailSync.sync(account,
+               query: "in:inbox",
+               limit: 1,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert result.synced == 1
+    assert [item] = Dispatch.list_open()
+    assert item.gmail_message_id == "msg-1"
+    assert item.status == "queued"
+    assert item.trusted == true
+    assert item.trusted_sender == "ada@example.com"
+    assert item.recommended_role_key == "mail-triage"
+    assert item.metadata["artifact_path"] =~ "gmail-msg-1.md"
+
+    # Re-syncing the same message must not duplicate the queue item.
+    stub_single_message()
+
+    assert {:ok, _} =
+             GmailSync.sync(account,
+               query: "in:inbox",
+               limit: 1,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert [_only_one] = Dispatch.list_open()
+  end
+
+  test "does not enqueue for an untrusted sender (archived to Library only)", %{root: _root} do
+    stub_single_message()
+    account = connected_account!()
+
+    assert {:ok, result} =
+             GmailSync.sync(account,
+               query: "in:inbox",
+               limit: 1,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert result.synced == 1
+    assert [_document] = Library.list_documents()
+    assert Dispatch.list_open() == []
   end
 
   defp connected_account!(attrs \\ %{}) do

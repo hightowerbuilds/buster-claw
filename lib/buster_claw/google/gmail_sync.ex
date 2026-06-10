@@ -1,11 +1,13 @@
 defmodule BusterClaw.Google.GmailSync do
   @moduledoc "Sync Gmail messages into the local Library as raw markdown documents."
 
+  alias BusterClaw.Dispatch
   alias BusterClaw.Google
   alias BusterClaw.Google.Account
   alias BusterClaw.Google.Gmail
   alias BusterClaw.Library
   alias BusterClaw.LocalTime
+  alias BusterClaw.TrustedSenders
 
   @default_query "newer_than:7d"
   @default_limit 10
@@ -144,7 +146,33 @@ defmodule BusterClaw.Google.GmailSync do
   defp sync_message(%Account{} = account, message_id, opts) do
     with {:ok, message} <- Gmail.read(account, message_id, opts),
          {:ok, document} <- save_message(account, message) do
+      maybe_enqueue_dispatch(account, message, document, opts)
       {:ok, document, message}
+    end
+  end
+
+  # Trusted-sender mail also lands on the Dispatch queue so the agent can act on
+  # it. Untrusted mail is archived to the Library only (above) — never enqueued.
+  # Best-effort: a dedupe conflict (re-sync) or any error is ignored so it can't
+  # fail the sync. The item links back to the saved Library doc via metadata.
+  defp maybe_enqueue_dispatch(%Account{} = account, message, document, opts) do
+    if Keyword.get(opts, :enqueue, true) do
+      case TrustedSenders.match(message.from) do
+        nil ->
+          :skip
+
+        entry ->
+          _ =
+            Dispatch.enqueue_gmail(account, message, %{
+              trusted: true,
+              trusted_sender: entry,
+              recommended_role_key: Keyword.get(opts, :dispatch_role, "mail-triage"),
+              request_summary: message.subject,
+              metadata: %{"artifact_path" => document.artifact_path}
+            })
+
+          :ok
+      end
     end
   end
 

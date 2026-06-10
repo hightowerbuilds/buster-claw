@@ -124,3 +124,33 @@
 - `mix test` — 349 tests, 0 failures (+9: dispatch command + CLI formatter tests).
 - Tests cover: list/claim/show/done/block command paths, job-scoped claim
   ordering, empty-queue claim, safe-tier enforcement, and CLI output formatters.
+
+## Phase 5 — wire the poller to the queue (intake)
+
+- Closed the loop: a Gmail sync now also enqueues a Dispatch item for **trusted**
+  senders, so trusted mail lands on the fridge. Untrusted mail is still archived
+  to the Library only — never put on the agent's plate (approach A: link, don't
+  double-store away the archive).
+- New `BusterClaw.TrustedSenders`: reads `memory/trusted-email-senders.md` (full
+  addresses or `*@domain` wildcards; missing/empty file ⇒ nobody trusted, the
+  safe default). Exposes `trusted?/1` and `match/1`.
+- Wired into `GmailSync.sync_message`: trusted mail calls `Dispatch.enqueue_gmail`
+  with `trusted`, `trusted_sender`, `recommended_role_key: "mail-triage"`, and
+  `metadata.artifact_path` linking back to the saved Library doc. Best-effort —
+  a dedupe conflict on re-sync or any error never fails the sync.
+- The full pull loop now runs end to end: trusted email → enqueue → fridge
+  (`shift/Dispatch.md`) → agent `dispatch claim` → work → `dispatch done`.
+
+## Verification (Phase 5)
+
+- `mix compile --warnings-as-errors` and `mix format --check-formatted` clean.
+- `mix test` — 355 tests, 0 failures (+6: 4 trusted-sender + 2 gmail-sync enqueue).
+- Tests cover: address/domain-wildcard/case-insensitive matching, missing-file
+  default, trusted-sender enqueue + doc link, re-sync dedupe, and untrusted
+  senders not enqueueing (still archived).
+
+## Notes (pull loop)
+
+- A missing `memory/trusted-email-senders.md` means nothing is enqueued — safe,
+  but worth a seeded template / onboarding hint so a fresh workspace isn't
+  silently empty. Follow-up (Phase 6 / onboarding).
