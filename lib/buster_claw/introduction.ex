@@ -66,16 +66,37 @@ defmodule BusterClaw.Introduction do
     Everything you create lives under the workspace folder (`#{Artifact.workspace_root()}`):
 
     - `library/` — the document store. Raw documents under `library/raw/<date>/`.
-    - `memory/` — durable notes/context.
+    - `memory/` — durable notes/context, including the trusted-sender policy (`memory/trusted-email-senders.md`).
+    - `job-descriptions/` — operating role definitions; see `job-descriptions/README.md` for the current roster.
+    - `analysis/` — per-request analysis/job files (findings inline; one job = one file).
+    - `shift/` — orchestration shift state, background pollers, and the Dispatch queue (`shift/<date>/Dispatch.jsonl` + `Dispatch.md`).
+    - `projects/` — working folders for ongoing projects.
+    - `mm-dd-yy-summary/` — daily activity minutes (see below).
 
     ## Daily activity summaries (minutes)
 
     Keep a running record of everything that happens in Buster Claw, like meeting
-    minutes. Each day, create a folder **inside the library** named
-    `MM-DD-YY-summary` (the current date — e.g. `#{example_date()}-summary`) and
-    write that day's summary/minutes there: every command run, delivery, and
-    notable decision. Append throughout the day; one dated folder per day so the
-    history is easy to scan.
+    minutes. Daily summaries live in a single workspace-root folder named
+    `mm-dd-yy-summary/` (not inside the library). Each day, add one file named
+    `MM-DD-YY-summary.md` (the current date — e.g. `#{example_date()}-summary.md`)
+    and write that day's minutes there: every command run, delivery, and notable
+    decision. Append throughout the day; one dated file per day so the history is
+    easy to scan.
+
+    ## Orchestration & roles
+
+    Buster Claw runs unattended work as **shifts**. A shift (`shift_start`) keeps
+    the runtime awake and assigns specialist **roles** (`shift_assignment_start`)
+    that each own a focused job. The roles, their triggers, and their hand-off
+    contract are defined in `job-descriptions/` — read
+    `job-descriptions/README.md` for the current roster rather than assuming a
+    fixed set.
+
+    Trusted-sender email requests are queued and tracked through the **Dispatch
+    queue** (`shift/<date>/Dispatch.jsonl` + `Dispatch.md`): one role queues an
+    item, another claims it, the specialist executes, and the result is recorded
+    in the daily minutes. Treat `memory/trusted-email-senders.md` as the authority
+    on which inbound senders may drive follow-through work.
 
     ## Command surface (CLI)
 

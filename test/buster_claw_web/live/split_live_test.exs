@@ -3,6 +3,8 @@ defmodule BusterClawWeb.SplitLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias BusterClaw.Settings
+
   test "renders two joined views side-by-side", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/split?left=/browse&right=/calendar")
 
@@ -38,6 +40,74 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert html =~ ~s(data-terminal-label="Alpha")
     assert html =~ ~s(data-session-key="beta")
     assert html =~ ~s(data-terminal-label="Beta")
+  end
+
+  test "terminal terminal splits use one shared transparent background", %{conn: conn} do
+    put_terminal_background()
+
+    {:ok, view, _html} = live(conn, "/split?left=/terminal&right=/terminal")
+
+    assert has_element?(
+             view,
+             "#split-root[data-split-terminal-bg-active='true'][data-terminal-bg-active='true']"
+           )
+
+    assert has_element?(
+             view,
+             "[data-split-pane='left'][data-split-pane-terminal='true'][data-terminal-bg-active='true']"
+           )
+
+    assert has_element?(
+             view,
+             "[data-split-pane='right'][data-split-pane-terminal='true'][data-terminal-bg-active='true']"
+           )
+
+    assert has_element?(
+             view,
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='shared'][data-terminal-bg-image='']"
+           )
+  end
+
+  test "mixed terminal splits keep non terminal panes opaque", %{conn: conn} do
+    put_terminal_background()
+
+    {:ok, view, _html} = live(conn, "/split?left=/terminal&right=/browse")
+
+    assert has_element?(
+             view,
+             "#split-root[data-split-terminal-bg-active='true'][data-terminal-bg-active='true']"
+           )
+
+    assert has_element?(
+             view,
+             "[data-split-pane='left'][data-split-pane-terminal='true'][data-terminal-bg-active='true']"
+           )
+
+    assert has_element?(
+             view,
+             "[data-split-pane='right'][data-split-pane-terminal='false'][data-terminal-bg-active='false']"
+           )
+  end
+
+  test "non terminal splits do not paint the terminal background", %{conn: conn} do
+    put_terminal_background()
+
+    {:ok, view, _html} = live(conn, "/split?left=/browse&right=/calendar")
+
+    assert has_element?(
+             view,
+             "#split-root[data-split-terminal-bg-active='false'][data-terminal-bg-active='false']"
+           )
+
+    assert has_element?(
+             view,
+             "[data-split-pane='left'][data-split-pane-terminal='false'][data-terminal-bg-active='false']"
+           )
+
+    assert has_element?(
+             view,
+             "[data-split-pane='right'][data-split-pane-terminal='false'][data-terminal-bg-active='false']"
+           )
   end
 
   test "embedded panes render bare (no nested tab strip / dock)", %{conn: conn} do
@@ -98,6 +168,11 @@ defmodule BusterClawWeb.SplitLiveTest do
       assert {:ok, _view, _html} = live(conn, "/split?left=/terminal&right=#{path}"),
              "expected #{path} to embed in a split pane"
     end
+  end
+
+  defp put_terminal_background do
+    Settings.put("terminal_background_path", "appearance/test.png")
+    Settings.put("terminal_background_updated_at", "123")
   end
 
   defp occurrences(haystack, needle), do: length(String.split(haystack, needle)) - 1

@@ -31,6 +31,27 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "`document_save`"
   end
 
+  test "documents the workspace layout, role model, and corrected summary convention" do
+    md = Introduction.markdown()
+
+    # Workspace layout covers the real top-level folders, not just library/memory.
+    assert md =~ "`job-descriptions/`"
+    assert md =~ "`analysis/`"
+    assert md =~ "`shift/`"
+    assert md =~ "`mm-dd-yy-summary/`"
+
+    # Daily minutes: a single workspace-root folder with one file per day —
+    # NOT a per-day folder inside the library (the old, inaccurate convention).
+    assert md =~ "mm-dd-yy-summary/"
+    assert md =~ "one dated file per day"
+    refute md =~ "one dated folder per day"
+
+    # Orchestration & roles, pointing at the job-descriptions roster as the
+    # source of truth rather than hardcoding a role list that can go stale.
+    assert md =~ "Orchestration & roles"
+    assert md =~ "job-descriptions/README.md"
+  end
+
   test "install! writes INTRODUCTION.md into the workspace root", %{root: root} do
     assert {:ok, path} = Introduction.install!()
     assert path == Path.join(root, "INTRODUCTION.md")

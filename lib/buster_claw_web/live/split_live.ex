@@ -126,21 +126,41 @@ defmodule BusterClawWeb.SplitLive do
 
   @impl true
   def render(assigns) do
+    assigns =
+      assigns
+      |> assign(
+        :split_terminal_background_url,
+        split_terminal_background_url(
+          assigns.left,
+          assigns.right,
+          assigns.terminal_background_url
+        )
+      )
+
     ~H"""
     <Layouts.app flash={@flash} full_bleed>
       <div
+        id="split-root"
+        data-split-terminal-bg-active={to_string(@split_terminal_background_url != nil)}
+        data-terminal-bg-active={to_string(@split_terminal_background_url != nil)}
         class={[
           "grid min-h-0 flex-1 lg:grid-cols-2",
-          if(@terminal_background_url, do: "gap-0 p-0 bg-cover bg-center", else: "gap-3 p-3")
+          if(@split_terminal_background_url, do: "gap-0 p-0 bg-cover bg-center", else: "gap-3 p-3"),
+          @split_terminal_background_url && "bc-split-terminal-bg-active"
         ]}
-        style={split_background_style(@terminal_background_url)}
+        style={split_background_style(@split_terminal_background_url)}
       >
-        <.pane side="left" pane={@left} socket={@socket} bg_active={@terminal_background_url != nil} />
+        <.pane
+          side="left"
+          pane={@left}
+          socket={@socket}
+          bg_active={terminal_background_active?(@left, @split_terminal_background_url)}
+        />
         <.pane
           side="right"
           pane={@right}
           socket={@socket}
-          bg_active={@terminal_background_url != nil}
+          bg_active={terminal_background_active?(@right, @split_terminal_background_url)}
         />
       </div>
     </Layouts.app>
@@ -148,10 +168,22 @@ defmodule BusterClawWeb.SplitLive do
   end
 
   # When a terminal background is set, the single image is painted on the shared
-  # grid above; the panes go transparent so it reads as one continuous image
-  # spanning both, rather than two copies.
+  # grid above only if at least one pane is terminal-backed. Terminal panes then
+  # go transparent so terminal/terminal splits read as one continuous image,
+  # while non-terminal panes retain their normal application surface.
+  defp split_terminal_background_url(_left, _right, nil), do: nil
+
+  defp split_terminal_background_url(left, right, url) do
+    if terminal_pane?(left) or terminal_pane?(right), do: url
+  end
+
   defp split_background_style(nil), do: nil
   defp split_background_style(url), do: "background-image:url('#{url}')"
+
+  defp terminal_pane?(%{module: BusterClawWeb.TerminalLive}), do: true
+  defp terminal_pane?(_pane), do: false
+
+  defp terminal_background_active?(pane, url), do: terminal_pane?(pane) and not is_nil(url)
 
   attr :side, :string, required: true
   attr :pane, :map, default: nil
@@ -160,16 +192,21 @@ defmodule BusterClawWeb.SplitLive do
 
   defp pane(assigns) do
     ~H"""
-    <section class={[
-      "flex min-h-0 min-w-0 flex-col overflow-hidden",
-      if(@bg_active,
-        do: "bg-transparent",
-        else: "rounded-lg border border-base-300 bg-base-100 shadow-sm"
-      )
-    ]}>
+    <section
+      data-split-pane={@side}
+      data-split-pane-terminal={to_string(terminal_pane?(@pane))}
+      data-terminal-bg-active={to_string(@bg_active)}
+      class={[
+        "flex min-h-0 min-w-0 flex-col overflow-hidden",
+        if(@bg_active,
+          do: "bg-transparent",
+          else: "rounded-lg border border-base-300 bg-base-100 shadow-sm"
+        )
+      ]}
+    >
       <header class={[
         "flex items-center justify-between gap-2 px-4 py-2",
-        unless(@bg_active, do: "border-b border-base-300")
+        if(@bg_active, do: "bg-transparent", else: "border-b border-base-300")
       ]}>
         <span class="truncate text-sm font-semibold">{pane_label(@pane)}</span>
       </header>

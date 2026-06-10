@@ -140,9 +140,17 @@
 .bc-terminal-bg-active .xterm,
 .bc-terminal-bg-active .xterm .xterm-viewport,
 .bc-terminal-bg-active .xterm .xterm-screen,
-.bc-terminal-bg-active .xterm .xterm-screen canvas {
+.bc-terminal-bg-active .xterm .xterm-screen canvas,
+[data-terminal-bg-active="true"] .xterm,
+[data-terminal-bg-active="true"] .xterm .xterm-viewport,
+[data-terminal-bg-active="true"] .xterm .xterm-screen,
+[data-terminal-bg-active="true"] .xterm .xterm-screen canvas {
   background: transparent !important;
   background-color: transparent !important;
+}
+
+.bc-split-terminal-bg-active [data-split-pane][data-terminal-bg-active="true"] {
+  background: transparent;
 }
 
 /* ============================================================
