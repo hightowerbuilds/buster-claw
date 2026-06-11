@@ -204,10 +204,16 @@ defmodule BusterClawWeb.SplitLive do
         )
       ]}
     >
-      <header class={[
-        "flex items-center justify-between gap-2 px-4 py-2",
-        if(@bg_active, do: "bg-transparent", else: "border-b border-base-300")
-      ]}>
+      <%!-- Terminal panes carry their own toolbar (label + controls), so the
+            split-pane header is redundant for them — skip it so the terminal
+            toolbar sits flush at the top instead of below an empty header strip. --%>
+      <header
+        :if={not terminal_pane?(@pane)}
+        class={[
+          "flex items-center justify-between gap-2 px-4 py-2",
+          if(@bg_active, do: "bg-transparent", else: "border-b border-base-300")
+        ]}
+      >
         <span class="truncate text-sm font-semibold">{pane_label(@pane)}</span>
       </header>
       <div class="min-h-0 flex-1 overflow-auto">
