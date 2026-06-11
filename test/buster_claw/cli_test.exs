@@ -96,4 +96,30 @@ defmodule BusterClaw.CLITest do
   test "format_dispatch_finish confirms the new status" do
     assert CLI.format_dispatch_finish(%{"id" => 9, "status" => "done"}) == "Marked #9 done."
   end
+
+  test "format_job_list renders the roster and handles empty" do
+    assert CLI.format_job_list([]) =~ "No jobs defined"
+
+    out =
+      CLI.format_job_list([
+        %{"key" => "mail-triage", "name" => "Mail Triage", "summary" => "Triage email."}
+      ])
+
+    assert out =~ "1 job:"
+    assert out =~ "mail-triage — Mail Triage"
+    assert out =~ "Triage email."
+  end
+
+  test "format_job renders header, summary, and body" do
+    out =
+      CLI.format_job(%{
+        "key" => "mail-triage",
+        "name" => "Mail Triage",
+        "summary" => "Triage email.",
+        "body" => "# Mail Triage\n\nDo the thing."
+      })
+
+    assert out =~ "Mail Triage (mail-triage)"
+    assert out =~ "Do the thing."
+  end
 end

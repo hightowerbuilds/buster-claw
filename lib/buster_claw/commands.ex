@@ -29,6 +29,7 @@ defmodule BusterClaw.Commands do
     Google,
     Hooks,
     Integrations,
+    Jobs,
     Library,
     Memory,
     Orchestration,
@@ -561,6 +562,19 @@ defmodule BusterClaw.Commands do
 
   def dispatch_done(%{"id" => id} = args), do: finish_dispatch(id, "done", args)
   def dispatch_block(%{"id" => id} = args), do: finish_dispatch(id, "blocked", args)
+
+  # -----------------------------------------------------------------------
+  # Job descriptions (the role roster)
+  # -----------------------------------------------------------------------
+
+  def job_list(_args \\ %{}), do: {:ok, Jobs.list()}
+
+  def job_show(%{"key" => key}) do
+    case Jobs.get(key) do
+      nil -> {:error, :not_found}
+      job -> {:ok, job}
+    end
+  end
 
   defp finish_dispatch(id, status, args) do
     with_resource(Dispatch, :get_item!, id, fn item ->
@@ -1160,6 +1174,16 @@ defmodule BusterClaw.Commands do
           "status" => %{type: :string, required: false, default: "stopped"},
           "notes" => %{type: :string, required: false}
         }
+      },
+
+      # Job descriptions (the role roster).
+      list_entry("job_list", "List the defined jobs (role roster)."),
+      %{
+        name: "job_show",
+        type: :read,
+        tier: :safe,
+        description: "Read one job description by key.",
+        args: %{"key" => %{type: :string, required: true}}
       },
 
       # Dispatch queue (pull model) — the terminal agent's worklist + write-back.

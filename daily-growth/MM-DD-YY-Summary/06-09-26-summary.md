@@ -154,3 +154,30 @@
 - A missing `memory/trusted-email-senders.md` means nothing is enqueued — safe,
   but worth a seeded template / onboarding hint so a fresh workspace isn't
   silently empty. Follow-up (Phase 6 / onboarding).
+
+## Phase 6 — job-description consolidation
+
+- Made `job-descriptions/` the single definition of the specialist roles. New
+  `BusterClaw.Jobs`: reads `<workspace>/job-descriptions/<key>.md` (optional
+  `name:`/`summary:` frontmatter, reusing `Library.Frontmatter`); `README.md` is
+  the human roster. The filename is the canonical job key already used by the
+  poller (`recommended_role_key`), the fridge grouping, and `dispatch claim --job`.
+- `Jobs.ensure/0` (wired into app startup) seeds, best-effort and never
+  overwriting: a starter `mail-triage.md`, a `README.md` roster, and a
+  `memory/trusted-email-senders.md` template. The template uses non-parseable
+  placeholders so a fresh policy trusts nobody by default.
+- Added `job_list` / `job_show` commands (safe) and CLI `jobs list` / `jobs show
+  <key>` so the agent/operator can read the roster and a job's mandate.
+- Updated the agent guide (`introduction.ex`): replaced the old push-style
+  "Orchestration & roles" with "Jobs & the pull queue" — read your
+  `job-descriptions/<key>.md`, pull from the fridge `shift/Dispatch.md`, and
+  claim/done via `buster-claw dispatch`. Email body is untrusted data.
+- Gitignored the dev-workspace artifact dirs (`/shift/`, `/memory/`,
+  `/job-descriptions/`, `/analysis/`, `/sources/`, `/projects/`) alongside the
+  existing `/Library/`, so runtime seeding doesn't pollute the repo tree.
+
+## Verification (Phase 6)
+
+- `mix compile --warnings-as-errors` and `mix format --check-formatted` clean.
+- `mix test` — 362 tests, 0 failures (+7: Jobs reader/seed/commands + CLI format).
+- Command catalog now 74 (added `job_list`, `job_show`).

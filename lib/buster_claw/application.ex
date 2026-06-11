@@ -37,6 +37,8 @@ defmodule BusterClaw.Application do
         BusterClaw.Introduction.ensure()
         # Install the DataZone-local CLI launcher used by terminal role commands.
         BusterClaw.WorkspaceCLI.ensure()
+        # Seed job descriptions + the trusted-sender policy template (best-effort).
+        BusterClaw.Jobs.ensure()
         ok
 
       other ->

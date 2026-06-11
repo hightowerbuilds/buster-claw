@@ -40,6 +40,8 @@ defmodule BusterClaw.CLI do
       ["dispatch", "claim"] -> dispatch_claim_cmd(opts)
       ["dispatch", "done", id] -> dispatch_finish_cmd("dispatch_done", id, opts)
       ["dispatch", "block", id] -> dispatch_finish_cmd("dispatch_block", id, opts)
+      ["jobs", "list"] -> dispatch_request("job_list", %{}, opts, &format_job_list/1)
+      ["jobs", "show", key] -> dispatch_request("job_show", %{"key" => key}, opts, &format_job/1)
       ["run", name] -> run(name, opts)
       [noun, verb] -> run("#{noun}_#{verb}", opts)
       [name] -> run(name, opts)
@@ -300,6 +302,38 @@ defmodule BusterClaw.CLI do
 
   defp dispatch_kv(_label, value) when value in [nil, ""], do: nil
   defp dispatch_kv(label, value), do: "  #{label}: #{value}"
+
+  # ---- Jobs ----
+
+  @doc false
+  def format_job_list(jobs) when is_list(jobs) do
+    case jobs do
+      [] ->
+        "No jobs defined. Drop a `<key>.md` in job-descriptions/."
+
+      _ ->
+        "#{length(jobs)} #{plural(length(jobs), "job")}:\n" <>
+          Enum.map_join(jobs, "\n", fn job ->
+            "  #{job["key"]} — #{job["name"]}#{job_summary_suffix(job["summary"])}"
+          end)
+    end
+  end
+
+  def format_job_list(other), do: pretty(other)
+
+  @doc false
+  def format_job(job) when is_map(job) do
+    header = "#{job["name"]} (#{job["key"]})"
+    summary = if blank?(job["summary"]), do: [], else: ["", job["summary"]]
+    body = if blank?(job["body"]), do: [], else: ["", job["body"]]
+    Enum.join([header] ++ summary ++ body, "\n")
+  end
+
+  def format_job(other), do: pretty(other)
+
+  defp job_summary_suffix(summary) do
+    if blank?(summary), do: "", else: " · #{summary}"
+  end
 
   # ---- HTTP ----
 
@@ -569,6 +603,8 @@ defmodule BusterClaw.CLI do
       dispatch claim         Claim the next open item (--job to scope, --session).
       dispatch done <id>     Mark an item done (--note).
       dispatch block <id>    Mark an item blocked (--note).
+      jobs list              List the defined jobs (role roster).
+      jobs show <key>        Read one job description.
 
     Options:
       --json '<json>'        Pass command args as a JSON object.

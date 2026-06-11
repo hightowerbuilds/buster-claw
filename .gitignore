@@ -26,6 +26,13 @@ desktop/tauri/target/
 
 # Local runtime data
 /Library/
+# Workspace artifacts when the repo itself is the dev workspace
+/shift/
+/memory/
+/job-descriptions/
+/analysis/
+/sources/
+/projects/
 /busterclaw-logo.png
 /priv/static/images/busterclaw-logo.png
 *.log

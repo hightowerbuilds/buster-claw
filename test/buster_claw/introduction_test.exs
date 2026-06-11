@@ -46,10 +46,12 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "one dated file per day"
     refute md =~ "one dated folder per day"
 
-    # Orchestration & roles, pointing at the job-descriptions roster as the
-    # source of truth rather than hardcoding a role list that can go stale.
-    assert md =~ "Orchestration & roles"
+    # Jobs & the pull queue: points at the job-descriptions roster as the source
+    # of truth and describes pulling work from the fridge via the CLI.
+    assert md =~ "Jobs & the pull queue"
     assert md =~ "job-descriptions/README.md"
+    assert md =~ "shift/Dispatch.md"
+    assert md =~ "dispatch claim"
   end
 
   test "install! writes INTRODUCTION.md into the workspace root", %{root: root} do
