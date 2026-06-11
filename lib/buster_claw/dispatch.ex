@@ -65,6 +65,7 @@ defmodule BusterClaw.Dispatch do
   end
 
   @open_statuses ~w(queued claimed running)
+  @in_flight_statuses ~w(claimed running)
 
   @doc "All currently-open items (queued/claimed/running), oldest first."
   def list_open do
@@ -72,6 +73,28 @@ defmodule BusterClaw.Dispatch do
     |> where([item], item.status in @open_statuses)
     |> order_by([item], asc: item.inserted_at, asc: item.id)
     |> Repo.all()
+  end
+
+  @doc """
+  Return orphaned in-flight items (`claimed`/`running`) to the `queued` pool and
+  clear their claim fields. Called on boot so a hard restart that left no session
+  owning an item doesn't strand it. Returns the count reset.
+  """
+  def reclaim_orphans do
+    {count, _} =
+      from(item in Item, where: item.status in @in_flight_statuses)
+      |> Repo.update_all(
+        set: [
+          status: "queued",
+          claimed_by: nil,
+          claimed_at: nil,
+          started_at: nil,
+          heartbeat_at: nil,
+          updated_at: timestamp()
+        ]
+      )
+
+    count
   end
 
   def get_item!(id), do: Repo.get!(Item, id)

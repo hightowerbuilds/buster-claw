@@ -39,9 +39,19 @@ defmodule BusterClaw.DispatchProjector do
   @impl true
   def init(_opts) do
     Dispatch.subscribe()
-    # Best-effort initial render so the fridge reflects current state on boot.
+    # On boot, return orphaned in-flight items to the queue, then render so the
+    # fridge reflects the reconciled state.
+    _ = safe_reclaim()
     safe_render(nil, nil)
     {:ok, %{}}
+  end
+
+  defp safe_reclaim do
+    Dispatch.reclaim_orphans()
+  rescue
+    error ->
+      Logger.warning("DispatchProjector boot reclaim failed: #{Exception.message(error)}")
+      0
   end
 
   @impl true

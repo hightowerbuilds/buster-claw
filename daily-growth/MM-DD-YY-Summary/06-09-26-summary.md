@@ -181,3 +181,24 @@
 - `mix compile --warnings-as-errors` and `mix format --check-formatted` clean.
 - `mix test` — 362 tests, 0 failures (+7: Jobs reader/seed/commands + CLI format).
 - Command catalog now 74 (added `job_list`, `job_show`).
+
+## Phase 7 — carryover hardening (from the original code review)
+
+- **Startup reconciliation**: `Dispatch.reclaim_orphans/0` returns in-flight
+  items (`claimed`/`running`) to `queued` and clears their claim fields. Called
+  from `DispatchProjector.init` (best-effort) before the initial render, so a
+  hard restart that left no session owning an item doesn't strand it — the
+  reaper the review flagged as missing (now scoped to the pull queue, since the
+  headless agent-runs it originally targeted are gone).
+- **Parallel Gmail fan-out**: replaced the two sequential `Enum.map` message
+  loops in `GmailSync` with `Task.async_stream` (bounded `max_concurrency: 5`,
+  `ordered: true` for deterministic history-id selection, `timeout: :infinity`
+  to defer to Req's own timeout). Turns the N+1 sequential fetch into bounded
+  concurrency. Verified Req.Test stubs and the Ecto sandbox propagate to the
+  task subprocesses via `$callers` — existing Gmail tests pass unchanged.
+
+## Verification (Phase 7)
+
+- `mix compile --warnings-as-errors` and `mix format --check-formatted` clean.
+- `mix test` — 363 tests, 0 failures (+1: reclaim_orphans).
+- This completes the terminal pull-queue roadmap (Phases 1–7).

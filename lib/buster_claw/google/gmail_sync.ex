@@ -11,6 +11,7 @@ defmodule BusterClaw.Google.GmailSync do
 
   @default_query "newer_than:7d"
   @default_limit 10
+  @fan_out_concurrency 5
 
   def sync(%Account{} = account, opts \\ []) do
     if Keyword.get(opts, :incremental, false) do
@@ -49,10 +50,7 @@ defmodule BusterClaw.Google.GmailSync do
     limit = Keyword.get(opts, :limit, @default_limit)
 
     with {:ok, search} <- Gmail.search(account, query, Keyword.put(opts, :limit, limit)) do
-      results =
-        Enum.map(search.messages, fn message ->
-          sync_message(account, message.id, opts)
-        end)
+      results = sync_messages(account, Enum.map(search.messages, & &1.id), opts)
 
       documents = synced_documents(results)
       errors = sync_errors(results)
@@ -108,11 +106,7 @@ defmodule BusterClaw.Google.GmailSync do
 
   defp sync_history_pages(%Account{} = account, start_history_id, pages, opts) do
     message_ids = changed_message_ids(pages)
-
-    results =
-      Enum.map(message_ids, fn message_id ->
-        sync_message(account, message_id, opts)
-      end)
+    results = sync_messages(account, message_ids, opts)
 
     documents = synced_documents(results)
     errors = sync_errors(results)
@@ -141,6 +135,23 @@ defmodule BusterClaw.Google.GmailSync do
          last_synced_at: synced_at
        }}
     end
+  end
+
+  # Fetch + persist each message concurrently (each is an independent HTTP round
+  # trip). `ordered: true` preserves the original sequence so history-id selection
+  # is deterministic; `timeout: :infinity` defers to Req's own receive timeout.
+  defp sync_messages(%Account{} = account, message_ids, opts) do
+    message_ids
+    |> Task.async_stream(
+      fn message_id -> sync_message(account, message_id, opts) end,
+      max_concurrency: Keyword.get(opts, :max_concurrency, @fan_out_concurrency),
+      ordered: true,
+      timeout: :infinity
+    )
+    |> Enum.map(fn
+      {:ok, result} -> result
+      {:exit, reason} -> {:error, {:sync_task_exit, reason}}
+    end)
   end
 
   defp sync_message(%Account{} = account, message_id, opts) do

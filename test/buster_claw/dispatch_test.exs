@@ -138,4 +138,24 @@ defmodule BusterClaw.DispatchTest do
     assert done.outcome == "Agent completed the request."
     assert done.notes == "Outcome appended to Dispatch."
   end
+
+  test "reclaim_orphans returns in-flight items to the queue and clears claim fields" do
+    {:ok, _} = Dispatch.enqueue(%{source: "gmail", gmail_message_id: "orphan-1"})
+    {:ok, _} = Dispatch.enqueue(%{source: "gmail", gmail_message_id: "orphan-2"})
+
+    {:ok, claimed} = Dispatch.claim_next("dispatcher")
+    {:ok, _running} = Dispatch.mark_running(claimed)
+
+    # A queued item is untouched; the running one is reset.
+    assert Dispatch.reclaim_orphans() == 1
+
+    reclaimed = Dispatch.get_item!(claimed.id)
+    assert reclaimed.status == "queued"
+    assert reclaimed.claimed_by == nil
+    assert reclaimed.claimed_at == nil
+    assert reclaimed.started_at == nil
+
+    # Everything is back in the open/queued pool, nothing stuck in-flight.
+    assert length(Dispatch.list_queued()) == 2
+  end
 end
