@@ -177,7 +177,7 @@ defmodule BusterClawWeb.TerminalLive do
           data-terminal-embedded={to_string(@embedded?)}
           data-terminal-bg-active={to_string(@terminal_background_url != nil)}
           data-terminal-bg-source={terminal_background_source(@terminal_background_url, @embedded?)}
-          data-terminal-bg-image={standalone_background(@terminal_background_url, @embedded?)}
+          data-terminal-bg-image={terminal_host_background(@terminal_background_url, @embedded?)}
           class={[
             "min-h-0 flex-1 overflow-hidden",
             if(@terminal_background_url, do: "bg-transparent", else: "bg-base-100"),
@@ -310,19 +310,20 @@ defmodule BusterClawWeb.TerminalLive do
      |> push_event("terminal-background", %{
        active: url != nil,
        source: terminal_background_source(url, embedded?),
-       image: standalone_background(url, embedded?)
+       image: terminal_host_background(url, embedded?)
      })}
   end
 
-  # The image to paint behind this terminal's own host element. Only standalone
-  # terminals paint their own; embedded panes stay transparent so the shared
-  # split-pane background shows through as one continuous image.
-  defp standalone_background(url, embedded?) when is_binary(url) and not embedded?, do: url
-  defp standalone_background(_url, _embedded?), do: ""
+  # The image to paint behind this terminal's own host element — for *every*
+  # terminal, standalone and embedded/split alike. A joined terminal then shows
+  # the background directly behind its (transparent) xterm instead of relying on
+  # the shared split container showing through, which a non-terminal neighbor pane
+  # or an opaque emulator layer can block.
+  defp terminal_host_background(url, _embedded?) when is_binary(url), do: url
+  defp terminal_host_background(_url, _embedded?), do: ""
 
   defp terminal_background_source(nil, _embedded?), do: "none"
-  defp terminal_background_source(_url, true), do: "shared"
-  defp terminal_background_source(_url, false), do: "host"
+  defp terminal_background_source(_url, _embedded?), do: "host"
 
   defp terminal_session_key(params, session) do
     params

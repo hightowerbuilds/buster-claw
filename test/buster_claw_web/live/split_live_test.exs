@@ -42,7 +42,7 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert html =~ ~s(data-terminal-label="Beta")
   end
 
-  test "terminal terminal splits use one shared transparent background", %{conn: conn} do
+  test "joined terminal panes paint their own background image", %{conn: conn} do
     put_terminal_background()
 
     {:ok, view, _html} = live(conn, "/split?left=/terminal&right=/terminal")
@@ -64,7 +64,7 @@ defmodule BusterClawWeb.SplitLiveTest do
 
     assert has_element?(
              view,
-             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='shared'][data-terminal-bg-image='']"
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='/appearance/terminal-background?v=123']"
            )
   end
 
@@ -72,6 +72,14 @@ defmodule BusterClawWeb.SplitLiveTest do
     put_terminal_background()
 
     {:ok, view, _html} = live(conn, "/split?left=/terminal&right=/browse")
+
+    # Regression: the joined terminal paints its own background image even next to
+    # a non-terminal pane — it no longer depends on the shared container showing
+    # through (which the opaque neighbor would block).
+    assert has_element?(
+             view,
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='/appearance/terminal-background?v=123']"
+           )
 
     assert has_element?(
              view,
