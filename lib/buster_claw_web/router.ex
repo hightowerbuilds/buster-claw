@@ -41,6 +41,7 @@ defmodule BusterClawWeb.Router do
     live "/settings", SettingsLive, :index
     live "/appearance", AppearanceLive, :index
     live "/workspace", WorkspaceLive, :index
+    live "/user-guide", UserGuideLive, :index
     live "/setup", SetupLive, :index
 
     get "/google/oauth/callback", GoogleOAuthController, :callback

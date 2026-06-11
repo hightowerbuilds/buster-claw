@@ -153,7 +153,8 @@ defmodule BusterClawWeb.Layouts do
       "/security" => "Security",
       "/gws" => "GWS",
       "/appearance" => "Settings",
-      "/workspace" => "Workspace"
+      "/workspace" => "Workspace",
+      "/user-guide" => "User Guide"
     })
   end
 

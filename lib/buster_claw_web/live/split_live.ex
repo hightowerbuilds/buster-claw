@@ -27,7 +27,8 @@ defmodule BusterClawWeb.SplitLive do
     "/advanced" => {BusterClawWeb.DeliveryLive, "Advanced"},
     "/security" => {BusterClawWeb.SecurityLive, "Security"},
     "/settings" => {BusterClawWeb.SettingsLive, "Settings"},
-    "/appearance" => {BusterClawWeb.AppearanceLive, "Appearance"}
+    "/appearance" => {BusterClawWeb.AppearanceLive, "Appearance"},
+    "/user-guide" => {BusterClawWeb.UserGuideLive, "User Guide"}
   }
 
   @impl true

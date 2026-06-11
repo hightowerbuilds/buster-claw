@@ -71,8 +71,9 @@ defmodule BusterClawWeb.StatusLive do
             alt="Buster Claw"
             class="block h-auto w-full max-w-[28rem]"
           />
-          <div :if={not @setup_status.complete?} class="pt-1">
+          <div class="flex flex-wrap items-center gap-3 pt-1">
             <.link
+              :if={not @setup_status.complete?}
               navigate={~p"/setup"}
               class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
             >
@@ -81,6 +82,14 @@ defmodule BusterClawWeb.StatusLive do
               <span :if={@setup_status.completed > 0}>
                 Finish setup · {@setup_status.completed} of {@setup_status.total} complete
               </span>
+            </.link>
+
+            <.link
+              navigate={~p"/user-guide"}
+              class="inline-flex items-center gap-2 rounded border-2 border-base-content/25 px-4 py-2 text-sm font-semibold transition hover:border-primary hover:text-primary"
+            >
+              <.icon name="hero-book-open" class="size-4" />
+              <span>User Guide</span>
             </.link>
           </div>
         </div>
