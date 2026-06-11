@@ -32,6 +32,13 @@ defmodule BusterClaw.TerminalCommands do
           label: "Poll Every Minute",
           description: "Sync Gmail every 60 seconds.",
           command: "./buster-claw mailman poll --interval 60"
+        },
+        %{
+          key: "poll-shift-log",
+          label: "Poll + Shift Log",
+          description: "Continuously sync Gmail and append output to the shift log.",
+          command:
+            "./buster-claw mailman poll 2>&1 | tee -a shift/2026-06-08/mailman-native-poll.log"
         }
       ]
     }

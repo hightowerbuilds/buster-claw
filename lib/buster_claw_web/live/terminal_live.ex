@@ -52,6 +52,9 @@ defmodule BusterClawWeb.TerminalLive do
     <Layouts.app flash={@flash}>
       <section
         id={"#{@dom_id}-session"}
+        data-terminal-session-shell
+        data-terminal-embedded={to_string(@embedded?)}
+        data-terminal-bg-active={to_string(@terminal_background_url != nil)}
         class={[
           "relative flex min-h-0 flex-col overflow-hidden",
           if(@embedded? and @terminal_background_url, do: "bg-transparent", else: "bg-base-100"),
@@ -171,7 +174,9 @@ defmodule BusterClawWeb.TerminalLive do
           data-startup-command={@startup_command}
           data-toolbar-id={@toolbar_id}
           data-status-id={@status_id}
+          data-terminal-embedded={to_string(@embedded?)}
           data-terminal-bg-active={to_string(@terminal_background_url != nil)}
+          data-terminal-bg-source={terminal_background_source(@terminal_background_url, @embedded?)}
           data-terminal-bg-image={standalone_background(@terminal_background_url, @embedded?)}
           class={[
             "min-h-0 flex-1 overflow-hidden",
@@ -304,6 +309,7 @@ defmodule BusterClawWeb.TerminalLive do
      |> assign(:terminal_background_url, url)
      |> push_event("terminal-background", %{
        active: url != nil,
+       source: terminal_background_source(url, embedded?),
        image: standalone_background(url, embedded?)
      })}
   end
@@ -313,6 +319,10 @@ defmodule BusterClawWeb.TerminalLive do
   # split-pane background shows through as one continuous image.
   defp standalone_background(url, embedded?) when is_binary(url) and not embedded?, do: url
   defp standalone_background(_url, _embedded?), do: ""
+
+  defp terminal_background_source(nil, _embedded?), do: "none"
+  defp terminal_background_source(_url, true), do: "shared"
+  defp terminal_background_source(_url, false), do: "host"
 
   defp terminal_session_key(params, session) do
     params

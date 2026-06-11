@@ -1,21 +1,19 @@
 defmodule BusterClaw.Orchestrator do
   @moduledoc """
-  The deterministic brain of the unattended shift. A supervised ticker that, when
-  a shift is active, reclaims expired leases, selects due `orchestrator_tasks`,
-  claims them, and dispatches: `:pipeline` → existing Elixir workers, `:agent` →
-  headless `claude`/`codex` runs. Idles when no shift is active.
+  Lease janitor for the active shift. A supervised ticker that, when a shift is
+  active, enforces the shift window and kill switch and reclaims expired task
+  leases so abandoned work returns to the pending pool.
 
-  This — not an LLM — is what must stay up for 12h; OTP restarts it on crash,
-  and all work state lives durably in `Orchestration` so a restart resumes.
+  It no longer dispatches headless `claude`/`codex` runs — work is now pulled by
+  a human-run Claude Code session through the Dispatch queue. This — not an LLM —
+  is what stays up for the shift; OTP restarts it on crash, and all work state
+  lives durably in `Orchestration` so a restart resumes.
   """
   use GenServer
 
-  import Ecto.Query
-
   require Logger
 
-  alias BusterClaw.{AgentRunner, Orchestration, Repo, Sentinel}
-  alias BusterClaw.Orchestration.{AgentRun, Pipeline}
+  alias BusterClaw.{Orchestration, Sentinel}
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
@@ -28,17 +26,12 @@ defmodule BusterClaw.Orchestrator do
   def init(opts) do
     state = %{
       interval_ms: Keyword.get(opts, :interval_ms, configured(:orchestrator_tick_ms, 30_000)),
-      max_concurrent:
-        Keyword.get(opts, :max_concurrent, configured(:orchestrator_max_concurrent, 3)),
       max_consecutive_failures:
         Keyword.get(
           opts,
           :max_consecutive_failures,
           configured(:orchestrator_max_consecutive_failures, 5)
         ),
-      max_runs_per_hour:
-        Keyword.get(opts, :max_runs_per_hour, configured(:orchestrator_max_runs_per_hour, 120)),
-      owner: owner_id(),
       autostart: Keyword.get(opts, :autostart, true),
       consecutive_failures: 0
     }
@@ -49,7 +42,7 @@ defmodule BusterClaw.Orchestrator do
 
   @impl true
   def handle_info(:tick, state) do
-    state = record_tick(state, safe_tick(state))
+    state = record_tick(state, safe_tick())
     Process.send_after(self(), :tick, state.interval_ms)
     {:noreply, state}
   end
@@ -96,8 +89,8 @@ defmodule BusterClaw.Orchestrator do
       :error
   end
 
-  defp safe_tick(state) do
-    run_tick(state)
+  defp safe_tick do
+    run_tick()
     :ok
   rescue
     error ->
@@ -105,14 +98,14 @@ defmodule BusterClaw.Orchestrator do
       :error
   end
 
-  defp run_tick(state) do
+  defp run_tick do
     case Orchestration.active_shift() do
       nil -> :idle
-      shift -> run_shift_tick(shift, state)
+      shift -> run_shift_tick(shift)
     end
   end
 
-  defp run_shift_tick(shift, state) do
+  defp run_shift_tick(shift) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     cond do
@@ -127,91 +120,9 @@ defmodule BusterClaw.Orchestrator do
         Orchestration.complete_shift(shift, "window elapsed")
 
       true ->
-        dispatch_due(shift, state, now)
+        Orchestration.reclaim_expired(now)
     end
   end
-
-  defp dispatch_due(shift, state, now) do
-    Orchestration.ensure_next_runs(now)
-    Orchestration.reclaim_expired(now)
-
-    if rate_capped?(state, now) do
-      :rate_capped
-    else
-      dispatch_within_capacity(shift, state, now)
-    end
-  end
-
-  defp dispatch_within_capacity(shift, state, now) do
-    capacity = state.max_concurrent - length(Orchestration.list_active_runs())
-
-    if capacity > 0 do
-      now
-      |> Orchestration.list_due_tasks()
-      |> Enum.reduce_while(capacity, fn task, remaining ->
-        if remaining <= 0 do
-          {:halt, remaining}
-        else
-          dispatch(task, shift, state)
-          {:cont, remaining - 1}
-        end
-      end)
-    end
-  end
-
-  # Hourly throughput brake: count agent_runs started in the trailing hour. When
-  # at/over the cap we skip dispatch for this tick (a transient brake, not a
-  # shift stop) and surface a notice so the operator can see the throttle.
-  defp rate_capped?(state, now) do
-    started = runs_in_last_hour(now)
-
-    if started >= state.max_runs_per_hour do
-      Sentinel.observe(
-        :command_invoke,
-        "Orchestrator dispatch rate-capped: #{started} runs in the last hour (cap #{state.max_runs_per_hour})",
-        %{runs_last_hour: started, cap: state.max_runs_per_hour},
-        severity: :warning
-      )
-
-      true
-    else
-      false
-    end
-  end
-
-  defp runs_in_last_hour(now) do
-    one_hour_ago = DateTime.add(now, -3600, :second)
-
-    Repo.aggregate(
-      from(r in AgentRun, where: r.started_at >= ^one_hour_ago),
-      :count,
-      :id
-    )
-  end
-
-  defp dispatch(task, shift, state) do
-    case Orchestration.claim_task(task, state.owner) do
-      {:ok, claimed} ->
-        Orchestration.mark_running(claimed)
-        Orchestration.bump_shift(shift, :dispatched)
-
-        Sentinel.observe(:command_invoke, "Dispatched #{claimed.type} task: #{claimed.name}", %{
-          task_id: claimed.id,
-          type: claimed.type,
-          engine: claimed.engine
-        })
-
-        case claimed.type do
-          "agent" -> AgentRunner.start(claimed, shift)
-          "pipeline" -> Pipeline.start(claimed, shift)
-        end
-
-      {:error, :not_claimable} ->
-        :ok
-    end
-  end
-
-  defp owner_id, do: "#{node()}/#{System.pid()}"
 
   defp configured(key, default), do: Application.get_env(:buster_claw, key, default)
 end

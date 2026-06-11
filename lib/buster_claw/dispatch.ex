@@ -64,6 +64,39 @@ defmodule BusterClaw.Dispatch do
     |> list_items()
   end
 
+  @open_statuses ~w(queued claimed running)
+  @in_flight_statuses ~w(claimed running)
+
+  @doc "All currently-open items (queued/claimed/running), oldest first."
+  def list_open do
+    Item
+    |> where([item], item.status in @open_statuses)
+    |> order_by([item], asc: item.inserted_at, asc: item.id)
+    |> Repo.all()
+  end
+
+  @doc """
+  Return orphaned in-flight items (`claimed`/`running`) to the `queued` pool and
+  clear their claim fields. Called on boot so a hard restart that left no session
+  owning an item doesn't strand it. Returns the count reset.
+  """
+  def reclaim_orphans do
+    {count, _} =
+      from(item in Item, where: item.status in @in_flight_statuses)
+      |> Repo.update_all(
+        set: [
+          status: "queued",
+          claimed_by: nil,
+          claimed_at: nil,
+          started_at: nil,
+          heartbeat_at: nil,
+          updated_at: timestamp()
+        ]
+      )
+
+    count
+  end
+
   def get_item!(id), do: Repo.get!(Item, id)
   def get_item(id), do: Repo.get(Item, id)
 
@@ -113,6 +146,7 @@ defmodule BusterClaw.Dispatch do
       Item
       |> where([item], item.status == "queued")
       |> maybe_where_source(present(opt(opts, :source)))
+      |> maybe_where_role(present(opt(opts, :role)))
       |> order_by([item], asc: item.inserted_at, asc: item.id)
       |> limit(1)
 
@@ -134,8 +168,9 @@ defmodule BusterClaw.Dispatch do
 
         case count do
           1 ->
-            broadcast(:dispatch_item_claimed)
-            {:ok, get_item!(id)}
+            item = get_item!(id)
+            broadcast(:dispatch_item_claimed, item)
+            {:ok, item}
 
           _ ->
             {:error, :not_claimable}
@@ -176,6 +211,11 @@ defmodule BusterClaw.Dispatch do
 
   defp maybe_where_source(query, nil), do: query
   defp maybe_where_source(query, source), do: where(query, [item], item.source == ^source)
+
+  defp maybe_where_role(query, nil), do: query
+
+  defp maybe_where_role(query, role),
+    do: where(query, [item], item.recommended_role_key == ^role)
 
   defp put_generated_dedupe_key(attrs) do
     cond do
@@ -269,22 +309,22 @@ defmodule BusterClaw.Dispatch do
 
   defp timestamp, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
-  defp tap_broadcast({:ok, _item} = result, event) do
-    broadcast(event)
+  defp tap_broadcast({:ok, item} = result, event) do
+    broadcast(event, item)
     result
   end
 
   defp tap_broadcast(other, _event), do: other
 
-  defp tap_event({:ok, _item} = result, event) do
-    broadcast(event)
+  defp tap_event({:ok, item} = result, event) do
+    broadcast(event, item)
     result
   end
 
   defp tap_event(other, _event), do: other
 
-  defp broadcast(event) do
-    Phoenix.PubSub.broadcast(BusterClaw.PubSub, @topic, {:dispatch, event})
+  defp broadcast(event, item) do
+    Phoenix.PubSub.broadcast(BusterClaw.PubSub, @topic, {:dispatch, event, item})
     :ok
   end
 end

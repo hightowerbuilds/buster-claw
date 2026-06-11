@@ -15,16 +15,12 @@ defmodule BusterClaw.Application do
          repos: Application.fetch_env!(:buster_claw, :ecto_repos), skip: skip_migrations?()},
         {DNSCluster, query: Application.get_env(:buster_claw, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: BusterClaw.PubSub},
+        dispatch_projector_child(),
         BusterClaw.TerminalWorkspace,
         BusterClaw.Sentinel.Pending,
         browser_sidecar_child(),
-        {Registry, keys: :unique, name: BusterClaw.MCP.Registry},
-        BusterClaw.MCP.Supervisor,
-        BusterClaw.MCP.Bootstrap,
         scheduler_child(),
-        {Task.Supervisor, name: BusterClaw.Orchestration.RunnerSupervisor},
         orchestrator_child(),
-        reporter_child(),
         uptime_child(),
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
@@ -41,6 +37,8 @@ defmodule BusterClaw.Application do
         BusterClaw.Introduction.ensure()
         # Install the DataZone-local CLI launcher used by terminal role commands.
         BusterClaw.WorkspaceCLI.ensure()
+        # Seed job descriptions + the trusted-sender policy template (best-effort).
+        BusterClaw.Jobs.ensure()
         ok
 
       other ->
@@ -67,6 +65,12 @@ defmodule BusterClaw.Application do
     end
   end
 
+  defp dispatch_projector_child do
+    if Application.get_env(:buster_claw, :dispatch_projector_enabled, true) do
+      BusterClaw.DispatchProjector
+    end
+  end
+
   defp browser_sidecar_child do
     if Application.get_env(:buster_claw, :browser_sidecar_enabled, false) do
       BusterClaw.Browser.Sidecar
@@ -76,12 +80,6 @@ defmodule BusterClaw.Application do
   defp orchestrator_child do
     if Application.get_env(:buster_claw, :orchestrator_enabled, true) do
       BusterClaw.Orchestrator
-    end
-  end
-
-  defp reporter_child do
-    if Application.get_env(:buster_claw, :orchestrator_enabled, true) do
-      BusterClaw.Orchestration.Reporter
     end
   end
 

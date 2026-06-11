@@ -148,7 +148,6 @@ defmodule BusterClawWeb.Layouts do
       "/hooks" => "Hooks",
       "/webhooks" => "Webhooks",
       "/integrations" => "Integrations",
-      "/mcp" => "MCP",
       "/memory" => "Memory",
       "/scheduler" => "Scheduler",
       "/security" => "Security",

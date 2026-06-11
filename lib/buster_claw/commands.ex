@@ -25,11 +25,12 @@ defmodule BusterClaw.Commands do
     Browser,
     Calendar,
     Delivery,
+    Dispatch,
     Google,
     Hooks,
     Integrations,
+    Jobs,
     Library,
-    MCP,
     Memory,
     Orchestration,
     Scheduler,
@@ -168,7 +169,6 @@ defmodule BusterClaw.Commands do
 
   for {prefix, context, ctx_singular, ctx_plural} <- [
         {:event, Calendar, :event, :events},
-        {:mcp_server, MCP, :server, :servers},
         {:webhook, Webhooks, :webhook, :webhooks},
         {:delivery_destination, Delivery, :destination, :destinations},
         {:scheduler_job, Scheduler, :job, :jobs},
@@ -200,23 +200,6 @@ defmodule BusterClaw.Commands do
         apply(unquote(context), unquote(delete_fn), [record])
       end)
     end
-  end
-
-  # -----------------------------------------------------------------------
-  # MCP servers (extras)
-  # -----------------------------------------------------------------------
-
-  def mcp_server_connect(%{"id" => id}) do
-    with_resource(MCP, :get_server!, id, fn server ->
-      case MCP.connect_server(server) do
-        {:ok, _pid} -> {:ok, MCP.get_server!(server.id)}
-        {:error, reason} -> {:error, reason}
-      end
-    end)
-  end
-
-  def mcp_server_tools(%{"id" => id}) do
-    with_resource(MCP, :get_server!, id, &MCP.discover_tools/1)
   end
 
   # -----------------------------------------------------------------------
@@ -300,14 +283,6 @@ defmodule BusterClaw.Commands do
     with_resource(Delivery, :get_destination!, id, fn destination ->
       Delivery.test_destination(destination, payload: payload)
     end)
-  end
-
-  # -----------------------------------------------------------------------
-  # Delivery (broadcast)
-  # -----------------------------------------------------------------------
-
-  def delivery_dispatch_all(%{"payload" => payload}) do
-    {:ok, Delivery.dispatch_all(payload, [])}
   end
 
   # -----------------------------------------------------------------------
@@ -555,8 +530,81 @@ defmodule BusterClaw.Commands do
   end
 
   # -----------------------------------------------------------------------
+  # Dispatch queue (pull model)
+  # -----------------------------------------------------------------------
+
+  def dispatch_list(args \\ %{}) do
+    items =
+      case blank_to_nil(Map.get(args, "status")) do
+        nil -> Dispatch.list_open()
+        status -> Dispatch.list_items(status: status, limit: Map.get(args, "limit"))
+      end
+
+    {:ok, filter_by_job(items, blank_to_nil(Map.get(args, "job")))}
+  end
+
+  def dispatch_show(%{"id" => id}), do: safe_get(Dispatch, :get_item!, id)
+
+  def dispatch_claim(args \\ %{}) do
+    claimed_by =
+      blank_to_nil(Map.get(args, "claimed_by")) || blank_to_nil(Map.get(args, "job")) || "agent"
+
+    opts =
+      [source: blank_to_nil(Map.get(args, "source")), role: blank_to_nil(Map.get(args, "job"))]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    case Dispatch.claim_next(claimed_by, opts) do
+      {:ok, item} -> {:ok, item}
+      {:error, :empty} -> {:ok, %{"empty" => true}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def dispatch_done(%{"id" => id} = args), do: finish_dispatch(id, "done", args)
+  def dispatch_block(%{"id" => id} = args), do: finish_dispatch(id, "blocked", args)
+
+  # -----------------------------------------------------------------------
+  # Job descriptions (the role roster)
+  # -----------------------------------------------------------------------
+
+  def job_list(_args \\ %{}), do: {:ok, Jobs.list()}
+
+  def job_show(%{"key" => key}) do
+    case Jobs.get(key) do
+      nil -> {:error, :not_found}
+      job -> {:ok, job}
+    end
+  end
+
+  defp finish_dispatch(id, status, args) do
+    with_resource(Dispatch, :get_item!, id, fn item ->
+      attrs =
+        case blank_to_nil(Map.get(args, "note")) do
+          nil -> %{}
+          note -> %{notes: note, outcome: note}
+        end
+
+      Dispatch.finish(item, status, attrs)
+    end)
+  end
+
+  # -----------------------------------------------------------------------
   # Helpers
   # -----------------------------------------------------------------------
+
+  defp blank_to_nil(nil), do: nil
+
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(value), do: value
+
+  defp filter_by_job(items, nil), do: items
+  defp filter_by_job(items, job), do: Enum.filter(items, &(&1.recommended_role_key == job))
 
   defp safe_get(module, fun, id) do
     {:ok, apply(module, fun, [id])}
@@ -689,48 +737,6 @@ defmodule BusterClaw.Commands do
       },
       delete_entry("event_delete", "Delete a calendar event."),
 
-      # MCP servers
-      list_entry("mcp_server_list", "List configured MCP servers."),
-      get_entry("mcp_server_get", "Fetch an MCP server by ID."),
-      %{
-        name: "mcp_server_create",
-        type: :mutate,
-        tier: :restricted,
-        description: "Configure a new MCP server.",
-        args: %{
-          "name" => %{type: :string, required: true},
-          "command" => %{type: :string, required: true},
-          "args" => %{type: :map, required: false},
-          "env" => %{type: :map, required: false},
-          "enabled" => %{type: :boolean, required: false, default: true}
-        }
-      },
-      %{
-        name: "mcp_server_update",
-        type: :mutate,
-        tier: :restricted,
-        description: "Update an MCP server config.",
-        args: %{
-          "id" => %{type: :integer, required: true},
-          "name" => %{type: :string, required: false},
-          "command" => %{type: :string, required: false},
-          "args" => %{type: :map, required: false},
-          "env" => %{type: :map, required: false},
-          "enabled" => %{type: :boolean, required: false}
-        }
-      },
-      delete_entry("mcp_server_delete", "Delete an MCP server config."),
-      id_trigger_entry(
-        "mcp_server_connect",
-        "Launch a configured MCP stdio server.",
-        :restricted
-      ),
-      id_trigger_entry(
-        "mcp_server_tools",
-        "Launch and discover tools from an MCP stdio server.",
-        :safe
-      ),
-
       # Webhooks
       list_entry("webhook_list", "List all webhooks."),
       get_entry("webhook_get", "Fetch a webhook by ID."),
@@ -855,17 +861,6 @@ defmodule BusterClaw.Commands do
         "Send a test payload to a destination.",
         :safe
       ),
-
-      # Delivery
-      %{
-        name: "delivery_dispatch_all",
-        type: :trigger,
-        tier: :restricted,
-        description: "Send a payload to every enabled destination.",
-        args: %{
-          "payload" => %{type: :map, required: true}
-        }
-      },
 
       # Scheduler
       list_entry("scheduler_job_list", "List scheduler jobs."),
@@ -1178,6 +1173,61 @@ defmodule BusterClaw.Commands do
           "dedupe_key" => %{type: :string, required: false},
           "status" => %{type: :string, required: false, default: "stopped"},
           "notes" => %{type: :string, required: false}
+        }
+      },
+
+      # Job descriptions (the role roster).
+      list_entry("job_list", "List the defined jobs (role roster)."),
+      %{
+        name: "job_show",
+        type: :read,
+        tier: :safe,
+        description: "Read one job description by key.",
+        args: %{"key" => %{type: :string, required: true}}
+      },
+
+      # Dispatch queue (pull model) — the terminal agent's worklist + write-back.
+      %{
+        name: "dispatch_list",
+        type: :read,
+        tier: :safe,
+        description: "List open Dispatch items (or by status), optionally for one job.",
+        args: %{
+          "status" => %{type: :string, required: false},
+          "job" => %{type: :string, required: false},
+          "limit" => %{type: :integer, required: false}
+        }
+      },
+      get_entry("dispatch_show", "Fetch a Dispatch item by ID."),
+      %{
+        name: "dispatch_claim",
+        type: :mutate,
+        tier: :safe,
+        description: "Claim the next open Dispatch item (optionally scoped to one job).",
+        args: %{
+          "job" => %{type: :string, required: false},
+          "source" => %{type: :string, required: false},
+          "claimed_by" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "dispatch_done",
+        type: :mutate,
+        tier: :safe,
+        description: "Mark a Dispatch item done.",
+        args: %{
+          "id" => %{type: :integer, required: true},
+          "note" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "dispatch_block",
+        type: :mutate,
+        tier: :safe,
+        description: "Mark a Dispatch item blocked.",
+        args: %{
+          "id" => %{type: :integer, required: true},
+          "note" => %{type: :string, required: false}
         }
       }
     ]

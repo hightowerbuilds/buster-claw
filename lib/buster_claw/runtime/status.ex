@@ -23,7 +23,6 @@ defmodule BusterClaw.Runtime.Status do
     "Endpoint",
     "Library",
     "Google Workspace",
-    "MCP supervisor",
     "Scheduler",
     "Webhooks",
     "Hooks",

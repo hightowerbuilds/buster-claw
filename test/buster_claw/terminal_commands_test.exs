@@ -8,6 +8,12 @@ defmodule BusterClaw.TerminalCommandsTest do
 
     assert Enum.any?(commands, &(&1.command == "./buster-claw mailman poll"))
     assert Enum.any?(commands, &(&1.command == "./buster-claw mailman poll --once"))
+
+    assert Enum.any?(
+             commands,
+             &(&1.command ==
+                 "./buster-claw mailman poll 2>&1 | tee -a shift/2026-06-08/mailman-native-poll.log")
+           )
   end
 
   test "resolves Mailman aliases" do

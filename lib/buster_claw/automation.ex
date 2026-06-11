@@ -1,11 +1,10 @@
 defmodule BusterClaw.Automation do
-  @moduledoc "Automation configuration for MCP, webhooks, hooks, delivery, and scheduler jobs."
+  @moduledoc "Automation configuration for webhooks, hooks, delivery, and scheduler jobs."
 
-  alias BusterClaw.Automation.{DeliveryDestination, Hook, MCPServer, SchedulerJob, Webhook}
+  alias BusterClaw.Automation.{DeliveryDestination, Hook, SchedulerJob, Webhook}
   alias BusterClaw.Repo
 
   for {schema, plural, singular} <- [
-        {MCPServer, :mcp_servers, :mcp_server},
         {Webhook, :webhooks, :webhook},
         {Hook, :hooks, :hook},
         {DeliveryDestination, :delivery_destinations, :delivery_destination},

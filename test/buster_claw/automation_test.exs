@@ -4,14 +4,6 @@ defmodule BusterClaw.AutomationTest do
   alias BusterClaw.Automation
 
   test "manages automation configuration tables" do
-    assert {:ok, mcp} =
-             Automation.create_mcp_server(%{
-               name: "filesystem",
-               command: "npx",
-               args: %{"items" => ["-y", "@modelcontextprotocol/server-filesystem"]},
-               env: %{"HOME" => "/tmp"}
-             })
-
     assert {:ok, webhook} =
              Automation.create_webhook(%{
                name: "daily",
@@ -41,7 +33,6 @@ defmodule BusterClaw.AutomationTest do
                cron: "0 8 * * *"
              })
 
-    assert [^mcp] = Automation.list_mcp_servers()
     assert [^webhook] = Automation.list_webhooks()
     assert [^hook] = Automation.list_hooks()
     assert [^destination] = Automation.list_delivery_destinations()

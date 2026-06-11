@@ -159,9 +159,10 @@ defmodule BusterClawWeb.SetupLive do
             </h2>
             <p class="text-sm leading-7 text-base-content/80">
               Buster Claw is a desktop runtime where an AI agent manages your web interactivity. You
-              run <span class="font-semibold">Claude Code or Codex in the built-in terminal</span> —
-              those agents operate Buster Claw through its MCP server and your workspace, all through
-              one auditable command surface.
+              run <span class="font-semibold">Claude Code or Codex in the built-in terminal</span>
+              —
+              those agents operate Buster Claw through the <span class="font-mono">buster-claw</span>
+              CLI and your workspace, all through one auditable command surface.
             </p>
             <ul class="space-y-2 text-sm leading-7 text-base-content/80">
               <li>

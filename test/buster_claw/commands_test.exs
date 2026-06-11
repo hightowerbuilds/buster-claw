@@ -35,9 +35,6 @@ defmodule BusterClaw.CommandsTest do
 
       assert %{type: :trigger, tier: :safe} =
                Enum.find(catalog, &(&1.name == "terminal_tab_open"))
-
-      assert %{type: :trigger, tier: :restricted} =
-               Enum.find(catalog, &(&1.name == "delivery_dispatch_all"))
     end
 
     test "every command has a unique name" do
@@ -548,9 +545,7 @@ defmodule BusterClaw.CommandsTest do
       document_save
       memory_remember
       event_create
-      mcp_server_list
       webhook_trigger
-      delivery_dispatch_all
       scheduler_job_run_now
       integration_poll_all
       google_account_list

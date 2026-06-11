@@ -803,10 +803,16 @@ const Hooks = {
       // palette goes transparent; standalone terminals paint the image on their
       // own host, while split panes leave it to the shared split container.
       this.transparentBgFilterState = {pending: ""}
-      this.bgActive = this.el.dataset.terminalBgActive === "true"
-      this.el.classList.toggle("bc-terminal-bg-active", this.bgActive)
+      this.bgActive = false
+      this.bgSource = "none"
+      this.setTransparencyState(
+        this.el.dataset.terminalBgActive === "true",
+        this.el.dataset.terminalBgSource || null
+      )
       this.applyBackgroundImage(this.el.dataset.terminalBgImage || "")
-      this.handleEvent("terminal-background", ({active, image}) => this.setBackground(active, image))
+      this.handleEvent("terminal-background", ({active, image, source}) =>
+        this.setBackground(active, image, source)
+      )
 
       try {
         const tauri = window.__TAURI__
@@ -837,6 +843,7 @@ const Hooks = {
         const fit = new FitAddon()
         term.loadAddon(fit)
         term.open(this.el)
+        this.setTransparencyState(this.bgActive, this.bgSource)
         fit.fit()
         this.term = term
         liveTerminals.add(term)
@@ -940,19 +947,32 @@ const Hooks = {
       if (output) this.term.write(output)
     },
     // Live-update the background when the user changes it in Settings → Appearance.
-    setBackground(active, image) {
+    setBackground(active, image, source = null) {
       if (!active && this.term) {
         this.term.write(flushTransparentBackgroundPaint(this.transparentBgFilterState))
       }
 
-      this.bgActive = active
-      this.el.classList.toggle("bc-terminal-bg-active", active)
+      this.setTransparencyState(active, source)
 
       if (this.term) {
         this.term.__bcBgActive = active
         this.term.options.theme = termThemeWithBackground(active)
       }
       this.applyBackgroundImage(image || "")
+    },
+    setTransparencyState(active, source = null) {
+      const bgActive = !!active
+      const bgSource = bgActive ? (source || this.el.dataset.terminalBgSource || "host") : "none"
+
+      this.bgActive = bgActive
+      this.bgSource = bgSource
+      this.el.dataset.terminalBgActive = String(bgActive)
+      this.el.dataset.terminalBgSource = bgSource
+      this.el.classList.toggle("bc-terminal-bg-active", bgActive)
+      this.el.classList.toggle("bc-terminal-bg-shared", bgActive && bgSource === "shared")
+      this.el.classList.toggle("bc-terminal-bg-host", bgActive && bgSource === "host")
+
+      if (this.term) this.term.__bcBgActive = bgActive
     },
     applyBackgroundImage(image) {
       if (image) {

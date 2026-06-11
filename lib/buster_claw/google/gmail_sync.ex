@@ -1,14 +1,17 @@
 defmodule BusterClaw.Google.GmailSync do
   @moduledoc "Sync Gmail messages into the local Library as raw markdown documents."
 
+  alias BusterClaw.Dispatch
   alias BusterClaw.Google
   alias BusterClaw.Google.Account
   alias BusterClaw.Google.Gmail
   alias BusterClaw.Library
   alias BusterClaw.LocalTime
+  alias BusterClaw.TrustedSenders
 
   @default_query "newer_than:7d"
   @default_limit 10
+  @fan_out_concurrency 5
 
   def sync(%Account{} = account, opts \\ []) do
     if Keyword.get(opts, :incremental, false) do
@@ -47,10 +50,7 @@ defmodule BusterClaw.Google.GmailSync do
     limit = Keyword.get(opts, :limit, @default_limit)
 
     with {:ok, search} <- Gmail.search(account, query, Keyword.put(opts, :limit, limit)) do
-      results =
-        Enum.map(search.messages, fn message ->
-          sync_message(account, message.id, opts)
-        end)
+      results = sync_messages(account, Enum.map(search.messages, & &1.id), opts)
 
       documents = synced_documents(results)
       errors = sync_errors(results)
@@ -106,11 +106,7 @@ defmodule BusterClaw.Google.GmailSync do
 
   defp sync_history_pages(%Account{} = account, start_history_id, pages, opts) do
     message_ids = changed_message_ids(pages)
-
-    results =
-      Enum.map(message_ids, fn message_id ->
-        sync_message(account, message_id, opts)
-      end)
+    results = sync_messages(account, message_ids, opts)
 
     documents = synced_documents(results)
     errors = sync_errors(results)
@@ -141,10 +137,53 @@ defmodule BusterClaw.Google.GmailSync do
     end
   end
 
+  # Fetch + persist each message concurrently (each is an independent HTTP round
+  # trip). `ordered: true` preserves the original sequence so history-id selection
+  # is deterministic; `timeout: :infinity` defers to Req's own receive timeout.
+  defp sync_messages(%Account{} = account, message_ids, opts) do
+    message_ids
+    |> Task.async_stream(
+      fn message_id -> sync_message(account, message_id, opts) end,
+      max_concurrency: Keyword.get(opts, :max_concurrency, @fan_out_concurrency),
+      ordered: true,
+      timeout: :infinity
+    )
+    |> Enum.map(fn
+      {:ok, result} -> result
+      {:exit, reason} -> {:error, {:sync_task_exit, reason}}
+    end)
+  end
+
   defp sync_message(%Account{} = account, message_id, opts) do
     with {:ok, message} <- Gmail.read(account, message_id, opts),
          {:ok, document} <- save_message(account, message) do
+      maybe_enqueue_dispatch(account, message, document, opts)
       {:ok, document, message}
+    end
+  end
+
+  # Trusted-sender mail also lands on the Dispatch queue so the agent can act on
+  # it. Untrusted mail is archived to the Library only (above) — never enqueued.
+  # Best-effort: a dedupe conflict (re-sync) or any error is ignored so it can't
+  # fail the sync. The item links back to the saved Library doc via metadata.
+  defp maybe_enqueue_dispatch(%Account{} = account, message, document, opts) do
+    if Keyword.get(opts, :enqueue, true) do
+      case TrustedSenders.match(message.from) do
+        nil ->
+          :skip
+
+        entry ->
+          _ =
+            Dispatch.enqueue_gmail(account, message, %{
+              trusted: true,
+              trusted_sender: entry,
+              recommended_role_key: Keyword.get(opts, :dispatch_role, "mail-triage"),
+              request_summary: message.subject,
+              metadata: %{"artifact_path" => document.artifact_path}
+            })
+
+          :ok
+      end
     end
   end
 
