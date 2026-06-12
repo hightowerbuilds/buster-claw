@@ -3,10 +3,10 @@ defmodule BusterClawWeb.UserGuideLiveTest do
 
   import Phoenix.LiveViewTest
 
-  test "the User Guide tab renders Introduction by default with all sub-tabs", %{conn: conn} do
-    {:ok, _view, html} = live(conn, ~p"/user-guide")
+  test "the Manual tab renders Introduction by default with all sub-tabs", %{conn: conn} do
+    {:ok, _view, html} = live(conn, ~p"/manual")
 
-    assert html =~ "User Guide"
+    assert html =~ "Manual"
     # Sub-tabs present.
     assert html =~ "user-guide-tab-introduction"
     assert html =~ "user-guide-tab-setup"
@@ -16,7 +16,7 @@ defmodule BusterClawWeb.UserGuideLiveTest do
   end
 
   test "selecting Setup and Daily Loop swaps the section content", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/user-guide")
+    {:ok, view, _html} = live(conn, ~p"/manual")
 
     setup_html = view |> element("#user-guide-tab-setup") |> render_click()
     assert setup_html =~ "trusted-email-senders.md"
@@ -25,8 +25,8 @@ defmodule BusterClawWeb.UserGuideLiveTest do
     assert loop_html =~ "dispatch claim"
   end
 
-  test "Home shows a button that opens the User Guide tab", %{conn: conn} do
+  test "the footer dock links to the Manual", %{conn: conn} do
     {:ok, _view, html} = live(conn, ~p"/")
-    assert html =~ ~s(href="/user-guide")
+    assert html =~ ~s(href="/manual")
   end
 end

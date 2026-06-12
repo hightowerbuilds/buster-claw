@@ -133,6 +133,7 @@ defmodule BusterClawWeb.Layouts do
       %{label: "Terminal", path: "/terminal", icon: "hero-command-line"},
       %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
       %{label: "Advanced", path: "/advanced", icon: "hero-adjustments-horizontal"},
+      %{label: "Manual", path: "/manual", icon: "hero-book-open"},
       %{label: "Settings", path: "/settings", icon: "hero-cog-6-tooth"}
     ]
   end
@@ -154,7 +155,7 @@ defmodule BusterClawWeb.Layouts do
       "/gws" => "GWS",
       "/appearance" => "Settings",
       "/workspace" => "Workspace",
-      "/user-guide" => "User Guide"
+      "/manual" => "Manual"
     })
   end
 

@@ -30,7 +30,7 @@ defmodule BusterClawWeb.SplitLive do
     "/security" => {BusterClawWeb.SecurityLive, "Security"},
     "/settings" => {BusterClawWeb.SettingsLive, "Settings"},
     "/appearance" => {BusterClawWeb.AppearanceLive, "Appearance"},
-    "/user-guide" => {BusterClawWeb.UserGuideLive, "User Guide"}
+    "/manual" => {BusterClawWeb.UserGuideLive, "Manual"}
   }
 
   @impl true

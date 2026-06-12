@@ -432,6 +432,11 @@ const Hooks = {
       this.el.addEventListener("drop", (e) => this.onDrop(e))
       // Right-click a tab for the context menu (Join tabs, ...).
       this.el.addEventListener("contextmenu", (e) => this.onContextMenu(e))
+      // Double-click a tab to rename it; Enter/blur commits, Escape cancels.
+      this.editingPath = null
+      this.el.addEventListener("dblclick", (e) => this.onRenameStart(e))
+      this.el.addEventListener("keydown", (e) => this.onRenameKeydown(e))
+      this.el.addEventListener("focusout", (e) => this.onRenameBlur(e))
       this.onNav = () => {this.closeMenu(); this.sync(); this.render()}
       // Re-render on every LiveView navigation so the active tab tracks the URL.
       window.addEventListener("phx:page-loading-stop", this.onNav)
@@ -534,6 +539,10 @@ const Hooks = {
       const active = this.currentKey()
       const tabs = this.load().map((t) => this.tabHtml(t, t.path === active)).join("")
       this.el.innerHTML = tabs + this.newTabHtml()
+      if (this.editingPath) {
+        const input = this.el.querySelector("[data-tab-edit]")
+        if (input) input.focus()
+      }
     },
     newTabHtml() {
       const button =
@@ -553,11 +562,59 @@ const Hooks = {
         : "group flex shrink-0 items-center gap-1 rounded-t-lg border border-transparent bg-base-200 px-3 py-1.5 text-sm text-base-content/60 hover:bg-base-100/70 hover:text-base-content"
       const label = this.escape(tab.label)
       const path = this.escape(tab.path)
+      // While renaming: the name is replaced by an empty focused input.
+      if (tab.path === this.editingPath) {
+        return `<span class="${wrap}" data-path="${path}">` +
+          `<input data-tab-edit type="text" value="" aria-label="Rename tab" ` +
+          `autocomplete="off" spellcheck="false" ` +
+          `class="w-32 max-w-[12rem] bg-transparent text-sm outline-none" /></span>`
+      }
       return `<span class="${wrap}" data-path="${path}" draggable="true">` +
         `<a href="${path}" draggable="false" data-phx-link="redirect" data-phx-link-state="push" class="max-w-[12rem] truncate">${label}</a>` +
         `<button type="button" data-close="${path}" aria-label="Close ${label}" ` +
         `class="grid size-4 shrink-0 place-items-center rounded text-base-content/40 hover:bg-base-300 hover:text-base-content">&times;</button>` +
         `</span>`
+    },
+    // ----- Double-click rename -----
+    onRenameStart(e) {
+      const tab = e.target.closest("[data-path]")
+      if (!tab) return
+      e.preventDefault()
+      this.editingPath = tab.getAttribute("data-path")
+      this.render()
+    },
+    onRenameKeydown(e) {
+      if (!e.target.closest("[data-tab-edit]")) return
+      if (e.key === "Enter") {
+        e.preventDefault()
+        this.commitRename(e.target.value)
+      } else if (e.key === "Escape") {
+        e.preventDefault()
+        this.cancelRename()
+      }
+    },
+    onRenameBlur(e) {
+      const input = e.target.closest("[data-tab-edit]")
+      if (input) this.commitRename(input.value)
+    },
+    commitRename(value) {
+      if (!this.editingPath) return
+      const path = this.editingPath
+      this.editingPath = null
+      const name = String(value || "").trim()
+      if (name) {
+        const tabs = this.load()
+        const tab = tabs.find((t) => t.path === path)
+        if (tab) {
+          tab.label = name
+          this.save(tabs)
+        }
+      }
+      this.render()
+    },
+    cancelRename() {
+      this.editingPath = null
+      this.render()
     },
     onClick(e) {
       const newTab = e.target.closest("[data-newtab]")
@@ -1119,8 +1176,13 @@ const Hooks = {
         this.el.style.backgroundImage = `url('${image}')`
         this.el.style.backgroundSize = "cover"
         this.el.style.backgroundPosition = "center"
+        // Anchor to the viewport so joined terminals read as ONE continuous
+        // image — each pane reveals only its slice of the same window-fixed
+        // picture instead of repeating the whole image per pane.
+        this.el.style.backgroundAttachment = "fixed"
       } else {
         this.el.style.backgroundImage = ""
+        this.el.style.backgroundAttachment = ""
       }
     },
     escapeHtml(value) {

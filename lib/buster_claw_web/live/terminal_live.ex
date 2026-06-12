@@ -320,11 +320,10 @@ defmodule BusterClawWeb.TerminalLive do
      })}
   end
 
-  # The image to paint behind this terminal's own host element — for *every*
-  # terminal, standalone and embedded/split alike. A joined terminal then shows
-  # the background directly behind its (transparent) xterm instead of relying on
-  # the shared split container showing through, which a non-terminal neighbor pane
-  # or an opaque emulator layer can block.
+  # Every terminal paints the background on its own host (the xterm canvas only
+  # reveals its host's background, not ancestors). The JS anchors the image to
+  # the viewport (`background-attachment: fixed`), so two joined terminals reveal
+  # adjacent slices of the same picture — one continuous image across the split.
   defp terminal_host_background(url, _embedded?) when is_binary(url), do: url
   defp terminal_host_background(_url, _embedded?), do: ""
 

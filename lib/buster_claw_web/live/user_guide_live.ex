@@ -1,8 +1,8 @@
 defmodule BusterClawWeb.UserGuideLive do
   @moduledoc """
-  The **User Guide** tab — renders the guide (sourced from
-  `daily-growth/user-guide/`, via `BusterClaw.UserGuide`) with in-page sub-tabs
-  (Introduction / Setup / Daily Loop). Opened from the button on Home.
+  The **Manual** tab — renders the guide (sourced from `daily-growth/user-guide/`,
+  via `BusterClaw.UserGuide`) with in-page sub-tabs (Introduction / Setup / Daily
+  Loop). Opened from the footer dock.
 
   Sub-tabs switch via LiveView events (no URL change), so the whole guide stays
   one top-level browser tab.
@@ -15,7 +15,7 @@ defmodule BusterClawWeb.UserGuideLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:page_title, "User Guide")
+     |> assign(:page_title, "Manual")
      |> assign(:sections, UserGuide.sections())
      |> assign(:active, UserGuide.default_section())}
   end
@@ -37,11 +37,11 @@ defmodule BusterClawWeb.UserGuideLive do
       <section class="flex flex-1 flex-col space-y-6">
         <div class="space-y-3 border-b-2 border-base-content/20 pb-5">
           <p class="ic-eyebrow">Reference</p>
-          <h1 class="font-display text-3xl font-black uppercase tracking-tight">User Guide</h1>
+          <h1 class="font-display text-3xl font-black uppercase tracking-tight">Manual</h1>
 
           <nav
             id="user-guide-tabs"
-            aria-label="User Guide sections"
+            aria-label="Manual sections"
             class="flex gap-2 overflow-x-auto rounded-lg border border-base-300 bg-base-100 p-1"
           >
             <button

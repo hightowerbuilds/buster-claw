@@ -57,7 +57,7 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert html =~ ~s(data-terminal-label="Beta")
   end
 
-  test "joined terminal panes paint their own background image", %{conn: conn} do
+  test "two joined terminals share one continuous background", %{conn: conn} do
     put_terminal_background()
 
     {:ok, view, _html} = live(conn, "/split?left=/terminal&right=/terminal")
@@ -77,6 +77,8 @@ defmodule BusterClawWeb.SplitLiveTest do
              "[data-split-pane='right'][data-split-pane-terminal='true'][data-terminal-bg-active='true']"
            )
 
+    # Each terminal self-paints the image on its own host; continuity comes from
+    # the JS anchoring it to the viewport (background-attachment: fixed).
     assert has_element?(
              view,
              "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='/appearance/terminal-background?v=123']"
@@ -188,7 +190,7 @@ defmodule BusterClawWeb.SplitLiveTest do
     for path <-
           ~w(/ /orchestration /browse /calendar /gws /memory /scheduler /workspace
              /integrations /webhooks /hooks /delivery /advanced /security /settings
-             /appearance /user-guide) do
+             /appearance /manual) do
       assert {:ok, _view, _html} = live(conn, "/split?left=/terminal&right=#{path}"),
              "expected #{path} to embed in a split pane"
     end
