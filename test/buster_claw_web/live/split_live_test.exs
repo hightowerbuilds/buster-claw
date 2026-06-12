@@ -24,6 +24,13 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert has_element?(view, "[data-split-swap]")
   end
 
+  test "each joined pane has its own close button", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/split?left=/browse&right=/calendar")
+
+    assert has_element?(view, "[data-split-close='left']")
+    assert has_element?(view, "[data-split-close='right']")
+  end
+
   test "the terminal can be opened in a split pane", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/split?left=/terminal&right=/browse")
 
@@ -179,11 +186,21 @@ defmodule BusterClawWeb.SplitLiveTest do
 
   test "every workspace tab embeds alongside the terminal without crashing", %{conn: conn} do
     for path <-
-          ~w(/orchestration /integrations /mcp /webhooks /hooks /delivery /advanced
-             /security /settings /appearance /calendar /gws /memory /scheduler /workspace) do
+          ~w(/ /orchestration /browse /calendar /gws /memory /scheduler /workspace
+             /integrations /webhooks /hooks /delivery /advanced /security /settings
+             /appearance /user-guide) do
       assert {:ok, _view, _html} = live(conn, "/split?left=/terminal&right=#{path}"),
              "expected #{path} to embed in a split pane"
     end
+  end
+
+  test "Home can be joined and renders (not the unsupported fallback)", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/split?left=/&right=/memory")
+
+    refute html =~ "can&#39;t be opened in a split pane"
+    refute html =~ "can't be opened in a split pane"
+    # Home (StatusLive) content renders embedded — its daily-calendar panel.
+    assert has_element?(view, "#home-daily-calendar")
   end
 
   defp put_terminal_background do

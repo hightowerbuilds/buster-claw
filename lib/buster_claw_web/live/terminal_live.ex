@@ -68,7 +68,13 @@ defmodule BusterClawWeb.TerminalLive do
           data-terminal-label={@terminal_label}
           data-terminal-path={@terminal_path}
           data-startup-profile={@startup_profile}
-          class="flex min-h-11 items-center gap-3 border-b border-base-300 px-3 py-2"
+          class={
+            [
+              "flex min-h-11 items-center gap-3 border-b border-base-300 py-2 pl-3",
+              # Embedded in a split, leave room at the right for the pane-close button.
+              if(@embedded?, do: "pr-12", else: "pr-3")
+            ]
+          }
         >
           <div class="flex min-w-0 flex-1 items-center gap-2">
             <.icon name="hero-command-line" class="size-4 shrink-0 text-primary" />

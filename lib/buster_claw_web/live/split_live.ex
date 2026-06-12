@@ -7,11 +7,13 @@ defmodule BusterClawWeb.SplitLive do
   """
   use BusterClawWeb, :live_view
 
-  # Views that are safe to embed in a split pane (mount without route params).
-  # Every workspace tab is joinable; chrome is suppressed centrally by
-  # `BusterClawWeb.ChromeHook` + `Layouts.app`. Excluded: Home (StatusLive uses
-  # handle_params, not allowed in an embedded child), /split itself, and /setup.
+  # Views that are safe to embed in a split pane (they render from mount-set
+  # assigns, not route params). Every workspace tab — including Home — is
+  # joinable; chrome is suppressed centrally by `BusterClawWeb.ChromeHook` +
+  # `Layouts.app`. Excluded only: /split itself (no nested splits) and /setup
+  # (the first-run wizard).
   @panes %{
+    "/" => {BusterClawWeb.StatusLive, "Home"},
     "/orchestration" => {BusterClawWeb.OrchestrationLive, "Orchestration"},
     "/browse" => {BusterClawWeb.BrowseLive, "Browser"},
     "/calendar" => {BusterClawWeb.CalendarLive, "Calendar"},
@@ -226,7 +228,7 @@ defmodule BusterClawWeb.SplitLive do
       data-split-pane-terminal={to_string(terminal_pane?(@pane))}
       data-terminal-bg-active={to_string(@bg_active)}
       class={[
-        "flex min-h-0 min-w-0 flex-col overflow-hidden",
+        "relative flex min-h-0 min-w-0 flex-col overflow-hidden",
         @class,
         if(@bg_active,
           do: "bg-transparent",
@@ -234,6 +236,16 @@ defmodule BusterClawWeb.SplitLive do
         )
       ]}
     >
+      <%!-- Close this pane and keep the other side as a solo tab. --%>
+      <button
+        type="button"
+        data-split-close={@side}
+        title="Close this pane"
+        aria-label="Close this pane"
+        class="absolute right-2 top-2 z-20 grid size-6 place-items-center rounded-full border border-base-300 bg-base-100/90 text-base-content/70 shadow-sm transition hover:border-error hover:text-error"
+      >
+        <.icon name="hero-x-mark" class="size-3.5" />
+      </button>
       <%!-- Terminal panes carry their own toolbar (label + controls), so the
             split-pane header is redundant for them — skip it so the terminal
             toolbar sits flush at the top instead of below an empty header strip. --%>

@@ -19,6 +19,7 @@ defmodule BusterClawWeb.StatusLive do
 
     {:ok,
      socket
+     |> assign(:page_title, "Home")
      |> assign(status: Status.snapshot())
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
@@ -49,15 +50,6 @@ defmodule BusterClawWeb.StatusLive do
     end
 
     {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
-  end
-
-  @impl true
-  def handle_params(_params, _uri, socket) do
-    {:noreply,
-     assign(socket,
-       current_view: socket.assigns.live_action,
-       page_title: page_title(socket.assigns.live_action)
-     )}
   end
 
   @impl true
@@ -188,16 +180,6 @@ defmodule BusterClawWeb.StatusLive do
       "holiday" -> "bg-error"
       _ -> "bg-base-content/40"
     end
-  end
-
-  defp page_title(:home), do: "Home"
-
-  defp page_title(action) do
-    action
-    |> Atom.to_string()
-    |> String.replace("_", " ")
-    |> String.split()
-    |> Enum.map_join(" ", &String.capitalize/1)
   end
 
   defp load_daily_events(socket) do

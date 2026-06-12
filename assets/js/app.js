@@ -447,6 +447,10 @@ const Hooks = {
       // so the persisted tab path + label stay in sync.
       this.onSwapSplit = () => this.swapSides(this.currentKey())
       window.addEventListener("bc:swap-split", this.onSwapSplit)
+      // The per-pane close (×) in /split asks us to drop one side and keep the
+      // other as a solo tab.
+      this.onCloseSplitPane = (e) => this.closeSplitPane(e.detail && e.detail.side)
+      window.addEventListener("bc:close-split-pane", this.onCloseSplitPane)
       this.sync()
       this.render()
     },
@@ -455,6 +459,7 @@ const Hooks = {
       window.removeEventListener("phx:page-loading-stop", this.onNav)
       window.removeEventListener("keydown", this.onKeydown, true)
       window.removeEventListener("bc:swap-split", this.onSwapSplit)
+      window.removeEventListener("bc:close-split-pane", this.onCloseSplitPane)
     },
     parseLabels() {
       try { return JSON.parse(this.el.dataset.labels || "{}") } catch (_e) { return {} }
@@ -646,6 +651,20 @@ const Hooks = {
       )
       window.location.href = newPath
     },
+    // Close one pane of a joined tab; the other side stays open as a solo tab.
+    closeSplitPane(side) {
+      const cur = this.currentKey()
+      if (cur.split("?")[0] !== "/split") return
+      const params = new URLSearchParams(cur.split("?")[1] || "")
+      const keep = side === "left" ? params.get("right") : params.get("left")
+      if (!keep) return
+      const tabs = this.load().filter((t) => t.path !== cur)
+      if (!tabs.some((t) => t.path === keep)) {
+        tabs.push({path: keep, label: this.labelFor(keep)})
+      }
+      this.save(tabs)
+      window.location.href = keep
+    },
     // Split a joined tab back into its two component tabs.
     separateTabs(splitPath) {
       const params = new URLSearchParams(splitPath.split("?")[1] || "")
@@ -830,7 +849,7 @@ const Hooks = {
     mounted() {
       this.applyStoredRatio()
       this.onPointerDown = (e) => this.startDrag(e)
-      this.onClick = (e) => this.maybeSwap(e)
+      this.onClick = (e) => this.handleClick(e)
       this.el.addEventListener("pointerdown", this.onPointerDown)
       this.el.addEventListener("click", this.onClick)
     },
@@ -853,10 +872,19 @@ const Hooks = {
     setRatio(ratio) {
       this.el.style.setProperty("--split-left", `${(ratio * 100).toFixed(2)}%`)
     },
-    maybeSwap(e) {
-      if (!e.target.closest("[data-split-swap]")) return
-      e.preventDefault()
-      window.dispatchEvent(new CustomEvent("bc:swap-split"))
+    handleClick(e) {
+      if (e.target.closest("[data-split-swap]")) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent("bc:swap-split"))
+        return
+      }
+      const close = e.target.closest("[data-split-close]")
+      if (close) {
+        e.preventDefault()
+        window.dispatchEvent(
+          new CustomEvent("bc:close-split-pane", {detail: {side: close.getAttribute("data-split-close")}})
+        )
+      }
     },
     startDrag(e) {
       const onDivider = e.target.closest("[data-split-divider]")
