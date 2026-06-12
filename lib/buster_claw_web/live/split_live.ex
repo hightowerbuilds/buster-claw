@@ -141,23 +141,27 @@ defmodule BusterClawWeb.SplitLive do
     <Layouts.app flash={@flash} full_bleed>
       <div
         id="split-root"
+        phx-hook="SplitResizer"
         data-split-terminal-bg-active={to_string(@split_terminal_background_url != nil)}
         data-terminal-bg-active={to_string(@split_terminal_background_url != nil)}
         class={[
-          "grid min-h-0 flex-1 lg:grid-cols-2",
-          if(@split_terminal_background_url, do: "gap-0 p-0 bg-cover bg-center", else: "gap-3 p-3"),
+          "flex min-h-0 flex-1 flex-col lg:flex-row",
+          if(@split_terminal_background_url, do: "bg-cover bg-center", else: nil),
           @split_terminal_background_url && "bc-split-terminal-bg-active"
         ]}
         style={split_background_style(@split_terminal_background_url)}
       >
         <.pane
           side="left"
+          class="bc-split-left"
           pane={@left}
           socket={@socket}
           bg_active={terminal_background_active?(@left, @split_terminal_background_url)}
         />
+        <.split_divider />
         <.pane
           side="right"
+          class="bc-split-right"
           pane={@right}
           socket={@socket}
           bg_active={terminal_background_active?(@right, @split_terminal_background_url)}
@@ -185,7 +189,32 @@ defmodule BusterClawWeb.SplitLive do
 
   defp terminal_background_active?(pane, url), do: terminal_pane?(pane) and not is_nil(url)
 
+  # The draggable partition between the two joined panes. Dragging it resizes the
+  # split (SplitResizer hook); the centered button swaps the two sides. Only shown
+  # on the side-by-side (lg) layout.
+  defp split_divider(assigns) do
+    ~H"""
+    <div
+      data-split-divider
+      title="Drag to resize"
+      class="group relative hidden shrink-0 cursor-col-resize items-center justify-center lg:flex lg:w-3"
+    >
+      <span class="h-full w-px bg-base-content/15 transition group-hover:bg-primary"></span>
+      <button
+        type="button"
+        data-split-swap
+        title="Swap sides"
+        aria-label="Swap sides"
+        class="absolute grid size-6 cursor-pointer place-items-center rounded-full border border-base-300 bg-base-100 text-base-content/60 opacity-0 shadow-sm transition group-hover:opacity-100 hover:text-primary"
+      >
+        <.icon name="hero-arrows-right-left" class="size-3.5" />
+      </button>
+    </div>
+    """
+  end
+
   attr :side, :string, required: true
+  attr :class, :string, default: nil
   attr :pane, :map, default: nil
   attr :socket, :map, required: true
   attr :bg_active, :boolean, default: false
@@ -198,6 +227,7 @@ defmodule BusterClawWeb.SplitLive do
       data-terminal-bg-active={to_string(@bg_active)}
       class={[
         "flex min-h-0 min-w-0 flex-col overflow-hidden",
+        @class,
         if(@bg_active,
           do: "bg-transparent",
           else: "rounded-lg border border-base-300 bg-base-100 shadow-sm"

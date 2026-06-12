@@ -153,6 +153,15 @@
   background: transparent;
 }
 
+/* Resizable joined view (/split): the left pane's width is driven by the
+   `--split-left` CSS var (set by the SplitResizer hook); the right pane takes
+   the rest. Only applies on the side-by-side (lg) layout. */
+.bc-split-left, .bc-split-right { min-width: 0; }
+@media (min-width: 1024px) {
+  .bc-split-left { flex: 0 0 var(--split-left, 50%); }
+  .bc-split-right { flex: 1 1 0; }
+}
+
 /* ============================================================
    INDUSTRIAL CLAW — type system + identity layer
    ============================================================ */

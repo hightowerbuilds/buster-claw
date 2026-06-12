@@ -276,6 +276,7 @@ window.addEventListener("phx:set-theme", () => {
 })
 
 const TAB_STORAGE_KEY = "bc:tabs"
+const SPLIT_RATIO_KEY = "bc:split-ratio"
 
 function splitPathQuery(fullPath) {
   const value = String(fullPath || "")
@@ -438,12 +439,22 @@ const Hooks = {
       this.handleEvent("bc:tab_meta", (m) => this.onTabMeta(m))
       // Commands/CLI can request a visible in-app terminal tab.
       this.handleEvent("bc:open_terminal", (request) => this.onOpenTerminalRequest(request))
+      // ⌘T opens a terminal tab; ⌘W closes the active tab, then the window once
+      // no tabs remain. Capture phase so we beat xterm's own key handling.
+      this.onKeydown = (e) => this.handleShortcut(e)
+      window.addEventListener("keydown", this.onKeydown, true)
+      // The joined-tab "swap sides" control (rendered in /split) asks us to swap,
+      // so the persisted tab path + label stay in sync.
+      this.onSwapSplit = () => this.swapSides(this.currentKey())
+      window.addEventListener("bc:swap-split", this.onSwapSplit)
       this.sync()
       this.render()
     },
     destroyed() {
       this.closeMenu()
       window.removeEventListener("phx:page-loading-stop", this.onNav)
+      window.removeEventListener("keydown", this.onKeydown, true)
+      window.removeEventListener("bc:swap-split", this.onSwapSplit)
     },
     parseLabels() {
       try { return JSON.parse(this.el.dataset.labels || "{}") } catch (_e) { return {} }
@@ -774,9 +785,110 @@ const Hooks = {
         this.render()
       }
     },
+    handleShortcut(e) {
+      if (e.altKey || e.shiftKey || !(e.metaKey || e.ctrlKey)) return
+      const key = (e.key || "").toLowerCase()
+      if (key !== "t" && key !== "w") return
+      // Handle it ourselves and keep it from reaching the terminal / PTY.
+      e.preventDefault()
+      e.stopPropagation()
+      if (key === "t") this.openTerminalTab()
+      else this.closeCurrentTabOrWindow()
+    },
+    // ⌘W closes the active tab; once none remain it closes the window instead.
+    closeCurrentTabOrWindow() {
+      const active = this.currentKey()
+      const remaining = this.load().filter((t) => t.path !== active)
+      if (remaining.length === 0) {
+        this.closeWindow()
+      } else {
+        this.closeTab(active)
+      }
+    },
+    closeWindow() {
+      try {
+        const appWindow = window.__TAURI__?.window?.getCurrentWindow?.()
+        if (appWindow) {
+          appWindow.close()
+          return
+        }
+      } catch (_e) {
+        /* not in the desktop shell — fall through */
+      }
+      window.close()
+    },
     escape(s) {
       return String(s).replace(/[&<>"']/g, (c) =>
         ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[c]))
+    }
+  },
+
+  // Resizable + swappable joined view (/split). The grabbable divider sets the
+  // left pane's width via the `--split-left` CSS var (persisted in localStorage);
+  // the swap button flips the two sides by reusing the tab strip's swapSides.
+  SplitResizer: {
+    mounted() {
+      this.applyStoredRatio()
+      this.onPointerDown = (e) => this.startDrag(e)
+      this.onClick = (e) => this.maybeSwap(e)
+      this.el.addEventListener("pointerdown", this.onPointerDown)
+      this.el.addEventListener("click", this.onClick)
+    },
+    updated() {
+      // A server re-render rewrites the style attr; re-apply the saved width.
+      if (!this.dragging) this.applyStoredRatio()
+    },
+    destroyed() {
+      this.el.removeEventListener("pointerdown", this.onPointerDown)
+      this.el.removeEventListener("click", this.onClick)
+      this.endDrag()
+    },
+    storedRatio() {
+      const raw = parseFloat(localStorage.getItem(SPLIT_RATIO_KEY))
+      return isFinite(raw) ? Math.min(0.85, Math.max(0.15, raw)) : 0.5
+    },
+    applyStoredRatio() {
+      this.setRatio(this.storedRatio())
+    },
+    setRatio(ratio) {
+      this.el.style.setProperty("--split-left", `${(ratio * 100).toFixed(2)}%`)
+    },
+    maybeSwap(e) {
+      if (!e.target.closest("[data-split-swap]")) return
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent("bc:swap-split"))
+    },
+    startDrag(e) {
+      const onDivider = e.target.closest("[data-split-divider]")
+      if (!onDivider || e.target.closest("[data-split-swap]")) return
+      e.preventDefault()
+      this.dragging = true
+      document.body.style.userSelect = "none"
+      document.body.style.cursor = "col-resize"
+      this.onMove = (ev) => this.drag(ev)
+      this.onUp = () => this.endDrag()
+      window.addEventListener("pointermove", this.onMove)
+      window.addEventListener("pointerup", this.onUp)
+    },
+    drag(e) {
+      if (!this.dragging) return
+      const rect = this.el.getBoundingClientRect()
+      if (rect.width <= 0) return
+      this.ratio = Math.min(0.85, Math.max(0.15, (e.clientX - rect.left) / rect.width))
+      this.setRatio(this.ratio)
+    },
+    endDrag() {
+      if (this.onMove) window.removeEventListener("pointermove", this.onMove)
+      if (this.onUp) window.removeEventListener("pointerup", this.onUp)
+      this.onMove = this.onUp = null
+      if (this.dragging) {
+        document.body.style.userSelect = ""
+        document.body.style.cursor = ""
+        if (typeof this.ratio === "number") {
+          localStorage.setItem(SPLIT_RATIO_KEY, String(this.ratio))
+        }
+      }
+      this.dragging = false
     }
   },
 

@@ -16,6 +16,14 @@ defmodule BusterClawWeb.SplitLiveTest do
     refute html =~ "Fetch and read pages in-app"
   end
 
+  test "joined views render a draggable resize divider with a swap control", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/split?left=/browse&right=/calendar")
+
+    assert has_element?(view, "#split-root[phx-hook='SplitResizer']")
+    assert has_element?(view, "[data-split-divider]")
+    assert has_element?(view, "[data-split-swap]")
+  end
+
   test "the terminal can be opened in a split pane", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/split?left=/terminal&right=/browse")
 
