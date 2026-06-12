@@ -1015,7 +1015,6 @@ const Hooks = {
         const tauri = window.__TAURI__
         if (!tauri) {
           this.setStatus("Desktop only")
-          this.setCloseDisabled(true)
           this.el.innerHTML =
             `<div class="grid h-full place-items-center p-8 text-center text-sm text-base-content/60">` +
             `Terminal is available in the Buster Claw desktop app.</div>`
@@ -1126,10 +1125,6 @@ const Hooks = {
         this.copySessionKey()
         return
       }
-
-      if (action === "close-shell") {
-        this.closeShell()
-      }
     },
     setStatus(status) {
       if (this.statusEl) this.statusEl.textContent = status
@@ -1189,10 +1184,6 @@ const Hooks = {
       return String(value).replace(/[&<>"']/g, (c) =>
         ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[c]))
     },
-    setCloseDisabled(disabled) {
-      const closeButton = this.toolbar?.querySelector("[data-terminal-action='close-shell']")
-      if (closeButton) closeButton.disabled = disabled
-    },
     async copySessionKey() {
       const key = this.sessionKey || "main"
       try {
@@ -1200,30 +1191,6 @@ const Hooks = {
         this.setStatus("Copied")
       } catch (_e) {
         this.setStatus("Copy failed")
-      }
-    },
-    async closeShell() {
-      const tauri = window.__TAURI__
-      if (!tauri) {
-        this.setStatus("Desktop only")
-        return
-      }
-
-      const id = this.id || (this.storageKey ? localStorage.getItem(this.storageKey) : null)
-      if (!id) {
-        this.setStatus("No shell")
-        return
-      }
-
-      try {
-        await tauri.core.invoke("terminal_close", {id})
-        if (this.storageKey) localStorage.removeItem(this.storageKey)
-        this.id = null
-        this.setStatus("Closed")
-        this.term?.write("\r\n[session closed]\r\n")
-      } catch (e) {
-        this.setStatus("Close failed")
-        this.term?.write(`\r\n[failed to close terminal: ${e}]\r\n`)
       }
     },
     destroyed() {

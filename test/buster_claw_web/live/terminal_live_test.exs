@@ -20,7 +20,9 @@ defmodule BusterClawWeb.TerminalLiveTest do
     assert has_element?(view, "button[data-terminal-action='split'][data-split-side='left']")
     assert has_element?(view, "button[data-terminal-action='split'][data-split-side='right']")
     assert has_element?(view, "button[data-terminal-action='copy-key']")
-    assert has_element?(view, "button[data-terminal-action='close-shell']")
+    # The shell-killing close button was removed; tabs/panes are closed via the
+    # tab strip's × (and the per-pane × in a split), not from the terminal toolbar.
+    refute has_element?(view, "button[data-terminal-action='close-shell']")
 
     assert has_element?(
              view,

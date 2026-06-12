@@ -155,16 +155,6 @@ defmodule BusterClawWeb.TerminalLive do
             >
               <.icon name="hero-command-line" class="size-4" />
             </button>
-            <button
-              id={"#{@dom_id}-close-shell"}
-              type="button"
-              data-terminal-action="close-shell"
-              title="Close shell"
-              aria-label="Close shell"
-              class={toolbar_button_class()}
-            >
-              <.icon name="hero-x-mark" class="size-4" />
-            </button>
           </div>
         </div>
 
