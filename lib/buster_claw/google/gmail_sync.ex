@@ -49,8 +49,11 @@ defmodule BusterClaw.Google.GmailSync do
 
     limit = Keyword.get(opts, :limit, @default_limit)
 
-    with {:ok, search} <- Gmail.search(account, query, Keyword.put(opts, :limit, limit)) do
-      results = sync_messages(account, Enum.map(search.messages, & &1.id), opts)
+    # Use the list call's ids directly: the sync path re-fetches each message
+    # with `format=full`, so the per-message metadata GETs that `search/3` would
+    # issue are wasted here.
+    with {:ok, search} <- Gmail.list_ids(account, query, Keyword.put(opts, :limit, limit)) do
+      results = sync_messages(account, search.message_ids, opts)
 
       documents = synced_documents(results)
       errors = sync_errors(results)
@@ -65,7 +68,7 @@ defmodule BusterClaw.Google.GmailSync do
          %{
            account: Google.account_summary(updated_account),
            query: query,
-           requested: length(search.messages),
+           requested: length(search.message_ids),
            synced: length(documents),
            documents: documents,
            errors: errors,
@@ -107,6 +110,7 @@ defmodule BusterClaw.Google.GmailSync do
   defp sync_history_pages(%Account{} = account, start_history_id, pages, opts) do
     message_ids = changed_message_ids(pages)
     results = sync_messages(account, message_ids, opts)
+    label_only_message_ids = label_only_message_ids(pages, message_ids)
 
     documents = synced_documents(results)
     errors = sync_errors(results)
@@ -129,6 +133,7 @@ defmodule BusterClaw.Google.GmailSync do
          documents: documents,
          errors: errors,
          deleted_message_ids: deleted_message_ids(pages),
+         skipped_label_only_message_ids: label_only_message_ids,
          history_records: Enum.sum(Enum.map(pages, &length(&1.history))),
          full_sync_required: false,
          full_sync_reason: nil,
@@ -261,13 +266,46 @@ defmodule BusterClaw.Google.GmailSync do
     Map.put(attrs, "last_seen_history_id", history_id)
   end
 
+  # Only genuinely-new messages (`messagesAdded` history events) warrant a full
+  # `format=full` download + Library write. Ids that appear solely via
+  # `labelsAdded` / `labelsRemoved` (the rest of `page.message_ids`) describe an
+  # already-archived message whose flags changed — re-downloading it is wasted
+  # work, so those are skipped here (see `label_only_message_ids/2`).
   defp changed_message_ids(pages) do
     deleted_ids = pages |> deleted_message_ids() |> MapSet.new()
 
     pages
-    |> Enum.flat_map(& &1.message_ids)
+    |> added_message_ids()
     |> Enum.reject(&MapSet.member?(deleted_ids, &1))
     |> Enum.uniq()
+  end
+
+  # Ids that changed (per `page.message_ids`) but were not newly added — i.e.
+  # label-only changes — minus the ids we are syncing and any deletions. We do
+  # not update local labels for these (that would require a metadata fetch); we
+  # simply skip the re-download and report them for visibility.
+  defp label_only_message_ids(pages, synced_message_ids) do
+    deleted_ids = pages |> deleted_message_ids() |> MapSet.new()
+    synced = MapSet.new(synced_message_ids)
+
+    pages
+    |> Enum.flat_map(& &1.message_ids)
+    |> Enum.uniq()
+    |> Enum.reject(&(MapSet.member?(deleted_ids, &1) or MapSet.member?(synced, &1)))
+  end
+
+  defp added_message_ids(pages) do
+    pages
+    |> Enum.flat_map(fn page ->
+      page.history
+      |> Enum.flat_map(fn entry ->
+        entry
+        |> Map.get("messagesAdded", [])
+        |> Enum.map(fn event -> get_in(event, ["message", "id"]) || Map.get(event, "id") end)
+      end)
+    end)
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.map(&to_string/1)
   end
 
   defp deleted_message_ids(pages) do

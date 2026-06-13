@@ -95,6 +95,28 @@ defmodule BusterClaw.CalendarRecurrenceTest do
       assert Enum.map(occurrences, & &1.date) == [~D[2026-06-01], ~D[2026-06-08], ~D[2026-06-15]]
     end
 
+    test "recurring events with a base date before the range still expand into it" do
+      # Guards the SQL date-scoping in events_in_range/2: recurring events must be
+      # loaded regardless of their base date, then expanded in memory.
+      {:ok, _} =
+        Calendar.create_event(%{
+          event_id: "old-weekly",
+          date: ~D[2026-01-05],
+          title: "Old weekly",
+          frequency: "weekly"
+        })
+
+      occurrences = Calendar.events_in_range(~D[2026-06-01], ~D[2026-06-30])
+
+      refute occurrences == []
+      assert Enum.all?(occurrences, &(&1.title == "Old weekly"))
+
+      assert Enum.all?(occurrences, fn occ ->
+               Date.compare(occ.date, ~D[2026-06-01]) != :lt and
+                 Date.compare(occ.date, ~D[2026-06-30]) != :gt
+             end)
+    end
+
     test "occurrences inherit parent attributes (color, time, notes)" do
       {:ok, _} =
         Calendar.create_event(%{

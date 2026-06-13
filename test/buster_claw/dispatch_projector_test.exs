@@ -116,6 +116,26 @@ defmodule BusterClaw.DispatchProjectorTest do
     assert a =~ "    ```"
   end
 
+  test "a bare heartbeat does not rewrite the fridge", %{tmp: tmp} do
+    item = enqueue!(%{subject: "Heartbeat me", dedupe_key: "hb-1"})
+
+    fridge_file = Path.join(tmp, "shift/Dispatch.md")
+    before_mtime = File.stat!(fridge_file, time: :posix).mtime
+    before_content = File.read!(fridge_file)
+
+    # Ensure any rewrite would land on a later second, so an unchanged mtime
+    # proves the fridge write was skipped (not merely byte-identical).
+    Process.sleep(1100)
+
+    # heartbeat/1 fires a bare :dispatch_item_updated — the open set is unchanged,
+    # so the fridge must not be re-rendered.
+    {:ok, _} = Dispatch.heartbeat(item)
+    sync()
+
+    assert File.stat!(fridge_file, time: :posix).mtime == before_mtime
+    assert File.read!(fridge_file) == before_content
+  end
+
   test "empty queue renders an empty fridge" do
     assert DispatchProjector.render_fridge([]) =~ "0 open"
     assert DispatchProjector.render_fridge([]) =~ "Nothing open"

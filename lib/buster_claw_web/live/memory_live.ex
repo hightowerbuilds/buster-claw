@@ -1,8 +1,11 @@
 defmodule BusterClawWeb.MemoryLive do
   use BusterClawWeb, :live_view
 
+  import Ecto.Query
+
   alias BusterClaw.Memory
   alias BusterClaw.Memory.Memory, as: MemoryRecord
+  alias BusterClaw.Repo
   alias BusterClaw.Runtime.Status
 
   @impl true
@@ -147,8 +150,8 @@ defmodule BusterClawWeb.MemoryLive do
               {@memories_count} memories
             </div>
 
-            <div class="divide-y divide-base-300">
-              <div :for={memory <- @memories} class="px-4 py-4">
+            <div id="memories" phx-update="stream" class="divide-y divide-base-300">
+              <div :for={{dom_id, memory} <- @streams.memories} id={dom_id} class="px-4 py-4">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div class="min-w-0">
                     <p class="whitespace-pre-wrap text-sm leading-6">{memory.text}</p>
@@ -175,10 +178,13 @@ defmodule BusterClawWeb.MemoryLive do
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div :if={@memories == []} class="px-4 py-10 text-center text-sm text-base-content/60">
-                No memories recorded yet.
-              </div>
+            <div
+              :if={@memories_count == 0}
+              class="px-4 py-10 text-center text-sm text-base-content/60"
+            >
+              No memories recorded yet.
             </div>
           </section>
         </div>
@@ -188,12 +194,11 @@ defmodule BusterClawWeb.MemoryLive do
   end
 
   defp load_memories(socket) do
-    memories =
-      Memory.list_memories()
-      |> Enum.sort_by(& &1.created_at, {:desc, DateTime})
+    # Order in SQL (newest first) rather than sorting in app code.
+    memories = Repo.all(from m in MemoryRecord, order_by: [desc: m.created_at])
 
     socket
-    |> assign(:memories, memories)
+    |> stream(:memories, memories, reset: true)
     |> assign(:memories_count, length(memories))
   end
 

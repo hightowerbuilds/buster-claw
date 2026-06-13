@@ -70,6 +70,74 @@ defmodule BusterClaw.Google.GmailTest do
     assert message.snippet == "Please review."
   end
 
+  test "fetches summaries concurrently and preserves result order" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+
+      case conn.request_path do
+        "/gmail/v1/users/me/messages" ->
+          assert conn.query_params["maxResults"] == "3"
+
+          Req.Test.json(conn, %{
+            "resultSizeEstimate" => 3,
+            "messages" => [
+              %{"id" => "msg-1"},
+              %{"id" => "msg-2"},
+              %{"id" => "msg-3"}
+            ]
+          })
+
+        "/gmail/v1/users/me/messages/" <> id ->
+          Req.Test.json(
+            conn,
+            metadata_message()
+            |> Map.put("id", id)
+            |> put_in(["payload", "headers"], [
+              %{"name" => "Subject", "value" => "Subject #{id}"},
+              %{"name" => "From", "value" => "#{id}@example.com"},
+              %{"name" => "Date", "value" => "Wed, 27 May 2026 09:00:00 -0700"}
+            ])
+          )
+      end
+    end)
+
+    account = connected_account!()
+
+    assert {:ok, %{messages: messages, result_size_estimate: 3}} =
+             Gmail.search(account, "from:ada",
+               limit: 3,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert Enum.map(messages, & &1.id) == ["msg-1", "msg-2", "msg-3"]
+    assert Enum.map(messages, & &1.subject) == ["Subject msg-1", "Subject msg-2", "Subject msg-3"]
+  end
+
+  test "list_ids returns message ids without per-message metadata fetches" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+
+      assert conn.request_path == "/gmail/v1/users/me/messages"
+      assert conn.query_params["q"] == "in:inbox"
+      assert conn.query_params["maxResults"] == "2"
+
+      Req.Test.json(conn, %{
+        "resultSizeEstimate" => 2,
+        "nextPageToken" => "next-1",
+        "messages" => [%{"id" => "msg-1"}, %{"id" => "msg-2"}]
+      })
+    end)
+
+    account = connected_account!()
+
+    assert {:ok,
+            %{message_ids: ["msg-1", "msg-2"], result_size_estimate: 2, next_page_token: "next-1"}} =
+             Gmail.list_ids(account, "in:inbox",
+               limit: 2,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+  end
+
   test "reads and parses a Gmail message body" do
     Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
       assert conn.request_path == "/gmail/v1/users/me/messages/msg-1"

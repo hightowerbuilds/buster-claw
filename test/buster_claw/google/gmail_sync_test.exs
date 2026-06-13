@@ -199,6 +199,48 @@ defmodule BusterClaw.Google.GmailSyncTest do
     assert markdown =~ "Pulled from Gmail history."
   end
 
+  test "incremental sync skips a full re-fetch for label-only changes" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+
+      case {conn.request_path, conn.query_params["format"]} do
+        {"/gmail/v1/users/me/history", _format} ->
+          assert conn.query_params["startHistoryId"] == "history-start"
+
+          Req.Test.json(conn, %{
+            "historyId" => "history-new",
+            "history" => [
+              %{
+                "id" => "history-event-1",
+                "labelsAdded" => [
+                  %{"message" => %{"id" => "msg-label-only", "threadId" => "thread-x"}}
+                ]
+              }
+            ]
+          })
+
+        {"/gmail/v1/users/me/messages/" <> _id, "full"} ->
+          flunk("label-only change must not trigger a full message fetch")
+      end
+    end)
+
+    account = connected_account!(%{"last_seen_history_id" => "history-start"})
+
+    assert {:ok, result} =
+             GmailSync.sync_incremental(account,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert result.mode == :incremental
+    assert result.full_sync_required == false
+    assert result.requested == 0
+    assert result.synced == 0
+    assert result.documents == []
+    assert result.skipped_label_only_message_ids == ["msg-label-only"]
+    assert result.history_id == "history-new"
+    assert Library.list_documents() == []
+  end
+
   test "incremental sync reports when Gmail history is too old for a delta pull" do
     Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)

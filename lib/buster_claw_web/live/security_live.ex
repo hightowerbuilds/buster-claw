@@ -23,11 +23,10 @@ defmodule BusterClawWeb.SecurityLive do
 
   @impl true
   def handle_info({:security_event, event}, socket) do
-    events = [event | socket.assigns.events] |> Enum.take(@keep)
-
     {:noreply,
      socket
-     |> assign(:events, events)
+     |> stream_insert(:events, event, at: 0, limit: @keep)
+     |> update(:events_count, &min(&1 + 1, @keep))
      |> assign(:unacknowledged, Sentinel.count_unacknowledged())}
   end
 
@@ -74,12 +73,13 @@ defmodule BusterClawWeb.SecurityLive do
 
         <section class="rounded-lg border border-base-300 bg-base-100">
           <div class="border-b border-base-300 px-4 py-3 text-sm font-semibold">
-            {length(@events)} recent events
+            {@events_count} recent events
           </div>
 
-          <div class="divide-y divide-base-300">
+          <div id="security-events" phx-update="stream" class="divide-y divide-base-300">
             <div
-              :for={event <- @events}
+              :for={{dom_id, event} <- @streams.events}
+              id={dom_id}
               class={[
                 "flex items-start gap-4 px-4 py-4",
                 is_nil(event.acknowledged_at) || "opacity-60"
@@ -111,10 +111,13 @@ defmodule BusterClawWeb.SecurityLive do
                 Ack
               </button>
             </div>
+          </div>
 
-            <div :if={@events == []} class="px-4 py-10 text-center text-sm text-base-content/60">
-              No security events recorded yet.
-            </div>
+          <div
+            :if={@events_count == 0}
+            class="px-4 py-10 text-center text-sm text-base-content/60"
+          >
+            No security events recorded yet.
           </div>
         </section>
       </section>
@@ -123,8 +126,11 @@ defmodule BusterClawWeb.SecurityLive do
   end
 
   defp load(socket) do
+    events = Sentinel.list_events(limit: @keep)
+
     socket
-    |> assign(:events, Sentinel.list_events(limit: @keep))
+    |> stream(:events, events, reset: true, limit: @keep)
+    |> assign(:events_count, length(events))
     |> assign(:unacknowledged, Sentinel.count_unacknowledged())
   end
 

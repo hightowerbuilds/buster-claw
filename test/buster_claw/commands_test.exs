@@ -129,6 +129,26 @@ defmodule BusterClaw.CommandsTest do
       assert Commands.command_tier("memory_remember") == :restricted
       assert Commands.command_tier("nope_nope") == nil
     end
+
+    test "lifted catalog lookups agree with list_commands/0 for every entry" do
+      catalog = Commands.list_commands()
+
+      # safe_commands/0 is exactly the safe-tier slice of the catalog.
+      assert Commands.safe_commands() == Enum.filter(catalog, &(&1.tier == :safe))
+
+      # The precomputed lookup maps return the same tier/type as the catalog list.
+      for %{name: name, tier: tier, type: type} <- catalog do
+        assert Commands.command_tier(name) == tier
+        assert Commands.command_type(name) == type
+      end
+    end
+
+    test "command_type/1 returns the catalog type and nil for unknowns" do
+      assert Commands.command_type("memory_list") == :read
+      assert Commands.command_type("memory_remember") == :mutate
+      assert Commands.command_type("web_search") == :trigger
+      assert Commands.command_type("nope_nope") == nil
+    end
   end
 
   describe "memory" do

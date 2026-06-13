@@ -61,6 +61,20 @@ defmodule BusterClaw.IntroductionTest do
     assert File.read!(path) =~ "Operating Guide"
   end
 
+  test "install! does not rewrite an already-identical file", %{root: _root} do
+    assert {:ok, path} = Introduction.install!()
+    mtime = File.stat!(path, time: :posix).mtime
+
+    # A second install with unchanged content must skip the write (mtime stable).
+    assert {:ok, ^path} = Introduction.install!()
+    assert File.stat!(path, time: :posix).mtime == mtime
+
+    # A changed on-disk file is overwritten back to the generated content.
+    File.write!(path, "STALE")
+    assert {:ok, ^path} = Introduction.install!()
+    assert File.read!(path) =~ "Operating Guide"
+  end
+
   test "read returns the installed file, or generates when absent", %{root: root} do
     # Absent → generated fallback.
     assert Introduction.read() =~ "Operating Guide"

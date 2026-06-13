@@ -24,7 +24,8 @@ defmodule BusterClawWeb.WorkspaceLive do
      |> assign(:tree_base, workspace)
      |> assign(:preview, nil)
      |> assign(:sidebar_open, true)
-     |> assign(:note, nil)}
+     |> assign(:note, nil)
+     |> assign_path_view()}
   end
 
   @impl true
@@ -57,7 +58,8 @@ defmodule BusterClawWeb.WorkspaceLive do
         {:noreply,
          socket
          |> assign(:workspace_root, path)
-         |> assign(:note, "Workspace is now #{path}.")}
+         |> assign(:note, "Workspace is now #{path}.")
+         |> assign_path_view()}
 
       {:error, message} ->
         {:noreply, assign(socket, :note, "Couldn't set workspace: #{message}")}
@@ -77,6 +79,19 @@ defmodule BusterClawWeb.WorkspaceLive do
     |> assign(:tree_root, dir)
     |> assign(:tree_base, dir)
     |> assign(:preview, nil)
+    |> assign_path_view()
+  end
+
+  # Derive the breadcrumb + position flags once, whenever tree_root or
+  # workspace_root changes, instead of recomputing them on every render.
+  defp assign_path_view(socket) do
+    tree_root = socket.assigns.tree_root
+    workspace_root = socket.assigns.workspace_root
+
+    socket
+    |> assign(:crumbs, crumbs(tree_root))
+    |> assign(:at_workspace?, Path.expand(tree_root) == Path.expand(workspace_root))
+    |> assign(:at_root?, Path.dirname(tree_root) == tree_root)
   end
 
   defp crumbs(path) do
@@ -89,15 +104,6 @@ defmodule BusterClawWeb.WorkspaceLive do
 
   @impl true
   def render(assigns) do
-    assigns =
-      assigns
-      |> assign(:crumbs, crumbs(assigns.tree_root))
-      |> assign(
-        :at_workspace?,
-        Path.expand(assigns.tree_root) == Path.expand(assigns.workspace_root)
-      )
-      |> assign(:at_root?, Path.dirname(assigns.tree_root) == assigns.tree_root)
-
     ~H"""
     <Layouts.app flash={@flash}>
       <section id="workspace" class="flex min-h-0 flex-1 flex-col space-y-4">

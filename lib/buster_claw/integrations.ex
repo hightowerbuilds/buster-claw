@@ -302,18 +302,18 @@ defmodule BusterClaw.Integrations do
   defp dedupe_window_days(_value), do: 30
 
   defp dedupe_candidates(%Integration{} = integration, dedupe) do
-    Library.list_documents()
+    # Push the date window + service-type tag filter into SQL so we don't load
+    # (and reject) the entire documents table on every poll.
+    [tag: integration.service_type, since: dedupe_since(dedupe.window_days)]
+    |> Library.list_documents()
     |> Enum.filter(&integration_document?/1)
-    |> Enum.filter(&(integration.service_type in document_tags(&1)))
-    |> Enum.filter(&within_dedupe_window?(&1, dedupe.window_days))
+    # Deleted documents have no artifact on disk; the previous file-read compare
+    # treated them as non-matches, so exclude them to keep dedupe semantics.
+    |> Enum.reject(&(&1.status == "deleted"))
   end
 
-  defp within_dedupe_window?(_document, nil), do: true
-
-  defp within_dedupe_window?(document, window_days) do
-    document.date &&
-      Date.diff(LocalTime.today(), document.date) <= window_days
-  end
+  defp dedupe_since(nil), do: nil
+  defp dedupe_since(window_days), do: Date.add(LocalTime.today(), -window_days)
 
   defp duplicate_snapshot(item, candidates) do
     Enum.find_value(candidates, :unique, fn document ->
@@ -330,10 +330,10 @@ defmodule BusterClaw.Integrations do
   end
 
   defp same_snapshot_body?(item, document) do
-    case Library.read_raw_document(document) do
-      {:ok, body} -> String.trim(body) == String.trim(snapshot_body(item))
-      {:error, _reason} -> false
-    end
+    # Compare against the stored body hash instead of reading the artifact back
+    # off disk. `content_hash` is taken over the trimmed body, so hashing the
+    # incoming body the same way reproduces it without a filesystem read.
+    Library.body_hash(snapshot_body(item)) == document.content_hash
   end
 
   defp skipped_snapshot(item, document) do
@@ -481,7 +481,7 @@ defmodule BusterClaw.Integrations do
   defp enabled_config?(_integration, _key), do: false
 
   defp integration_document?(document) do
-    "integration" in get_in(document.tags || %{}, ["items"])
+    "integration" in document_tags(document)
   end
 
   defp encode_config(config) when is_map(config) do

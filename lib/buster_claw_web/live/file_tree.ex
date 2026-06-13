@@ -126,16 +126,23 @@ defmodule BusterClawWeb.FileTree do
     end
   end
 
+  def handle_event("start_delete", %{"path" => path}, socket) do
+    {:noreply, assign(socket, action: {:delete, path}, fm_error: nil)}
+  end
+
   def handle_event("delete", %{"path" => path}, socket) do
     parent = Path.dirname(path)
 
     case FileManager.delete(path, base(socket)) do
       :ok ->
         selected = if socket.assigns.selected == path, do: nil, else: socket.assigns.selected
-        {:noreply, socket |> assign(selected: selected, fm_error: nil) |> reload(parent)}
+
+        {:noreply,
+         socket |> assign(selected: selected, action: nil, fm_error: nil) |> reload(parent)}
 
       {:error, reason} ->
-        {:noreply, assign(socket, :fm_error, "Delete failed: #{inspect(reason)}")}
+        {:noreply,
+         assign(socket, action: nil, fm_error: "Delete failed: #{humanize_error(reason)}")}
     end
   end
 
@@ -335,10 +342,9 @@ defmodule BusterClawWeb.FileTree do
             </button>
             <button
               type="button"
-              phx-click="delete"
+              phx-click="start_delete"
               phx-value-path={e.path}
               phx-target={@tree.target}
-              data-confirm={"Delete #{e.name}? This cannot be undone."}
               title="Delete"
               class="text-base-content/50 hover:text-error"
             >
@@ -353,6 +359,14 @@ defmodule BusterClawWeb.FileTree do
           class="py-1"
         >
           <.rename_form name={e.name} target={@tree.target} />
+        </div>
+
+        <div
+          :if={@tree.action == {:delete, e.path}}
+          style={"padding-left: #{(@depth + 1) * 0.85 + 0.25}rem"}
+          class="py-1"
+        >
+          <.delete_confirm name={e.name} path={e.path} type={e.type} target={@tree.target} />
         </div>
 
         <%= if e.type == :dir and MapSet.member?(@tree.expanded, e.path) do %>
@@ -427,6 +441,33 @@ defmodule BusterClawWeb.FileTree do
     """
   end
 
+  attr :name, :string, required: true
+  attr :path, :string, required: true
+  attr :type, :atom, required: true
+  attr :target, :any, required: true
+
+  defp delete_confirm(assigns) do
+    ~H"""
+    <div class="flex flex-wrap items-center gap-2 rounded-sm border-2 border-error/40 bg-error/10 px-3 py-2 text-xs">
+      <span class="font-mono">
+        Delete <b>{@name}</b>{if @type == :dir, do: " and everything inside", else: ""}? This can't be undone.
+      </span>
+      <button
+        type="button"
+        phx-click="delete"
+        phx-value-path={@path}
+        phx-target={@target}
+        class="rounded-sm border-2 border-error/60 px-2 py-0.5 font-mono uppercase text-error transition hover:bg-error hover:text-error-content"
+      >
+        Delete
+      </button>
+      <button type="button" phx-click="cancel_action" phx-target={@target} class="underline">
+        cancel
+      </button>
+    </div>
+    """
+  end
+
   # --- internals ----------------------------------------------------------
 
   defp creating_in?({:create, parent, _kind}, path), do: parent == path
@@ -468,5 +509,7 @@ defmodule BusterClawWeb.FileTree do
   defp humanize_error(:invalid_name), do: "Invalid name (no slashes or “..”)."
   defp humanize_error(:outside_base), do: "That location is outside the allowed folder."
   defp humanize_error(:not_a_directory), do: "Destination is not a folder."
+  defp humanize_error(:cannot_delete_base), do: "Can't delete the workspace root from inside it."
+  defp humanize_error(:eacces), do: "Permission denied."
   defp humanize_error(reason), do: "Operation failed: #{inspect(reason)}"
 end

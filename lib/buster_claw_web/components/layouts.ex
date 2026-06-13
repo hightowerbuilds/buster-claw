@@ -5,6 +5,42 @@ defmodule BusterClawWeb.Layouts do
   """
   use BusterClawWeb, :html
 
+  @navigation_items [
+    %{label: "Home", path: "/", icon: "hero-home"},
+    %{label: "Orchestration", path: "/orchestration", icon: "hero-queue-list"},
+    %{label: "Workspace", path: "/workspace", icon: "hero-folder"},
+    %{label: "Browser", path: "/browse", icon: "hero-globe-alt"},
+    %{label: "Terminal", path: "/terminal", icon: "hero-command-line"},
+    %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
+    %{label: "Advanced", path: "/advanced", icon: "hero-adjustments-horizontal"},
+    %{label: "Manual", path: "/manual", icon: "hero-book-open"},
+    %{label: "Settings", path: "/settings", icon: "hero-cog-6-tooth"}
+  ]
+
+  # Path -> tab label for every route a tab can open, including routes reachable
+  # via in-page tabs (Library/Advanced) rather than the dock. Serialized into the
+  # tab strip for the client-side TabStrip hook to label tabs. The labels are a
+  # compile-time constant, so the JSON is encoded once here rather than on every
+  # `shell/1` render.
+  @tab_labels Map.merge(
+                Map.new(@navigation_items, &{&1.path, &1.label}),
+                %{
+                  "/delivery" => "Delivery",
+                  "/hooks" => "Hooks",
+                  "/webhooks" => "Webhooks",
+                  "/integrations" => "Integrations",
+                  "/memory" => "Memory",
+                  "/scheduler" => "Scheduler",
+                  "/security" => "Security",
+                  "/gws" => "GWS",
+                  "/appearance" => "Settings",
+                  "/workspace" => "Workspace",
+                  "/manual" => "Manual"
+                }
+              )
+
+  @tab_labels_json Jason.encode!(@tab_labels)
+
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
   # skeleton of your application, namely HTML headers
@@ -57,8 +93,8 @@ defmodule BusterClawWeb.Layouts do
   defp shell(assigns) do
     assigns =
       assigns
-      |> assign(:nav_items, navigation_items())
-      |> assign(:tab_labels, Jason.encode!(tab_labels()))
+      |> assign(:nav_items, @navigation_items)
+      |> assign(:tab_labels, @tab_labels_json)
 
     ~H"""
     <div
@@ -122,41 +158,6 @@ defmodule BusterClawWeb.Layouts do
 
     <.flash_group flash={@flash} />
     """
-  end
-
-  defp navigation_items do
-    [
-      %{label: "Home", path: "/", icon: "hero-home"},
-      %{label: "Orchestration", path: "/orchestration", icon: "hero-queue-list"},
-      %{label: "Workspace", path: "/workspace", icon: "hero-folder"},
-      %{label: "Browser", path: "/browse", icon: "hero-globe-alt"},
-      %{label: "Terminal", path: "/terminal", icon: "hero-command-line"},
-      %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
-      %{label: "Advanced", path: "/advanced", icon: "hero-adjustments-horizontal"},
-      %{label: "Manual", path: "/manual", icon: "hero-book-open"},
-      %{label: "Settings", path: "/settings", icon: "hero-cog-6-tooth"}
-    ]
-  end
-
-  # Path -> tab label for every route a tab can open, including routes reachable
-  # via in-page tabs (Library/Advanced) rather than the dock. Serialized into
-  # the tab strip for the client-side TabStrip hook to label tabs.
-  defp tab_labels do
-    base = Map.new(navigation_items(), &{&1.path, &1.label})
-
-    Map.merge(base, %{
-      "/delivery" => "Delivery",
-      "/hooks" => "Hooks",
-      "/webhooks" => "Webhooks",
-      "/integrations" => "Integrations",
-      "/memory" => "Memory",
-      "/scheduler" => "Scheduler",
-      "/security" => "Security",
-      "/gws" => "GWS",
-      "/appearance" => "Settings",
-      "/workspace" => "Workspace",
-      "/manual" => "Manual"
-    })
   end
 
   @doc """

@@ -128,8 +128,24 @@ defmodule BusterClaw.Google.CalendarSync do
       |> Enum.reject(&cancelled?/1)
       |> Enum.flat_map(&event_attrs(account, calendar_id, &1))
 
-    with {:ok, {created, updated, events}} <- upsert_event_attrs(attrs_list),
-         {:ok, deleted_events} <- delete_cancelled_events(account, calendar_id, google_events) do
+    # One query for the rows this batch may touch (upserts + deletes), keyed by
+    # event_id, so the loops below decide create/update/delete in memory.
+    cancelled_event_ids =
+      google_events
+      |> Enum.filter(&cancelled?/1)
+      |> Enum.flat_map(fn ge ->
+        case google_event_id(ge) do
+          id when is_binary(id) -> [event_prefix(account, calendar_id) <> event_key(id)]
+          _ -> []
+        end
+      end)
+
+    touched_event_ids = Enum.map(attrs_list, &event_id!/1) ++ cancelled_event_ids
+    existing_by_id = AppCalendar.events_by_event_ids(touched_event_ids)
+
+    with {:ok, {created, updated, events}} <- upsert_event_attrs(attrs_list, existing_by_id),
+         {:ok, deleted_events} <-
+           delete_cancelled_events(account, calendar_id, google_events, existing_by_id) do
       {:ok,
        %{
          created: created,
@@ -141,10 +157,10 @@ defmodule BusterClaw.Google.CalendarSync do
     end
   end
 
-  defp upsert_event_attrs(attrs_list) do
+  defp upsert_event_attrs(attrs_list, existing_by_id) do
     Enum.reduce_while(attrs_list, {:ok, {0, 0, []}}, fn attrs,
                                                         {:ok, {created, updated, events}} ->
-      case upsert_event(attrs) do
+      case upsert_event(attrs, existing_by_id) do
         {:created, event} -> {:cont, {:ok, {created + 1, updated, [event | events]}}}
         {:updated, event} -> {:cont, {:ok, {created, updated + 1, [event | events]}}}
         {:error, reason} -> {:halt, {:error, reason}}
@@ -156,10 +172,10 @@ defmodule BusterClaw.Google.CalendarSync do
     end
   end
 
-  defp upsert_event(attrs) do
+  defp upsert_event(attrs, existing_by_id) do
     event_id = event_id!(attrs)
 
-    case AppCalendar.get_event_by_event_id(event_id) do
+    case Map.get(existing_by_id, event_id) do
       nil ->
         with {:ok, event} <- AppCalendar.create_event(attrs), do: {:created, event}
 
@@ -168,11 +184,11 @@ defmodule BusterClaw.Google.CalendarSync do
     end
   end
 
-  defp delete_cancelled_events(%Account{} = account, calendar_id, google_events) do
+  defp delete_cancelled_events(%Account{} = account, calendar_id, google_events, existing_by_id) do
     google_events
     |> Enum.filter(&cancelled?/1)
     |> Enum.reduce_while({:ok, []}, fn google_event, {:ok, deleted_events} ->
-      case delete_cancelled_event(account, calendar_id, google_event) do
+      case delete_cancelled_event(account, calendar_id, google_event, existing_by_id) do
         {:ok, nil} -> {:cont, {:ok, deleted_events}}
         {:ok, deleted_event} -> {:cont, {:ok, [deleted_event | deleted_events]}}
         {:error, reason} -> {:halt, {:error, reason}}
@@ -184,10 +200,10 @@ defmodule BusterClaw.Google.CalendarSync do
     end
   end
 
-  defp delete_cancelled_event(%Account{} = account, calendar_id, google_event) do
+  defp delete_cancelled_event(%Account{} = account, calendar_id, google_event, existing_by_id) do
     with id when is_binary(id) <- google_event_id(google_event),
          event_id <- event_prefix(account, calendar_id) <> event_key(id),
-         event when not is_nil(event) <- AppCalendar.get_event_by_event_id(event_id) do
+         event when not is_nil(event) <- Map.get(existing_by_id, event_id) do
       AppCalendar.delete_event(event)
     else
       _other -> {:ok, nil}

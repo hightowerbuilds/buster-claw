@@ -81,6 +81,27 @@ defmodule BusterClaw.TrustedSendersTest do
       assert TrustedSenders.list_entries() == []
     end
 
+    test "add_entry invalidates the cached policy so a later match sees the new entry", %{
+      root: _root
+    } do
+      # Prime the cache via a read while the policy is empty.
+      refute TrustedSenders.trusted?("alice@example.com")
+
+      # add_entry writes and must refresh the cache, not serve the stale empty read.
+      assert {:ok, "alice@example.com"} = TrustedSenders.add_entry("alice@example.com")
+      assert TrustedSenders.trusted?("alice@example.com")
+    end
+
+    test "remove_entry invalidates the cached policy", %{root: root} do
+      write_policy(root, "- alice@example.com\n")
+
+      # Prime the cache with alice trusted.
+      assert TrustedSenders.trusted?("alice@example.com")
+
+      assert :ok = TrustedSenders.remove_entry("alice@example.com")
+      refute TrustedSenders.trusted?("alice@example.com")
+    end
+
     test "remove_entry drops an entry without touching the others", %{root: root} do
       write_policy(root, "# Trusted\n\n- alice@example.com\n- bob@example.com\n- *@acme.com\n")
 

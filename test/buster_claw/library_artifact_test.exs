@@ -56,6 +56,65 @@ defmodule BusterClaw.LibraryArtifactTest do
     assert {:error, :outside_library} = Artifact.read_raw_document("/tmp/not-inside-library.md")
   end
 
+  test "content_hash is the body hash, stable across differing frontmatter" do
+    assert {:ok, first} =
+             Library.save_raw_document(%{
+               date: ~D[2026-05-07],
+               filename: "snapshot.md",
+               name: "Snapshot",
+               source_url: "https://example.com/s",
+               tags: ["integration"],
+               content: "# Body\n\nIdentical body text.",
+               fetched_at: ~U[2026-05-07 10:00:00Z]
+             })
+
+    # Same body, different fetched_at (which lands in frontmatter) and a
+    # distinct artifact path: the stored content_hash must still match.
+    assert {:ok, second} =
+             Library.save_raw_document(%{
+               date: ~D[2026-05-08],
+               filename: "snapshot.md",
+               name: "Snapshot",
+               source_url: "https://example.com/s",
+               tags: ["integration"],
+               content: "# Body\n\nIdentical body text.",
+               fetched_at: ~U[2026-05-08 18:30:00Z]
+             })
+
+    assert first.content_hash == second.content_hash
+    assert first.content_hash == Library.body_hash("# Body\n\nIdentical body text.")
+  end
+
+  test "list_documents/1 scopes by tag and since date" do
+    {:ok, _old} =
+      Library.save_raw_document(%{
+        date: ~D[2026-01-01],
+        filename: "old.md",
+        tags: ["integration", "github"],
+        content: "old"
+      })
+
+    {:ok, recent} =
+      Library.save_raw_document(%{
+        date: ~D[2026-06-01],
+        filename: "recent.md",
+        tags: ["integration", "github"],
+        content: "recent"
+      })
+
+    {:ok, _other} =
+      Library.save_raw_document(%{
+        date: ~D[2026-06-01],
+        filename: "other.md",
+        tags: ["research"],
+        content: "other"
+      })
+
+    scoped = Library.list_documents(tag: "github", since: ~D[2026-05-01])
+    assert [doc] = scoped
+    assert doc.id == recent.id
+  end
+
   test "deletes raw document artifact and marks metadata deleted" do
     assert {:ok, document} =
              Library.save_raw_document(%{

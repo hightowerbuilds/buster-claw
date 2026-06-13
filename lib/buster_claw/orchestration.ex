@@ -580,26 +580,40 @@ defmodule BusterClaw.Orchestration do
     hour_ago = DateTime.add(now, -3600, :second)
     day_start = DateTime.to_date(now) |> DateTime.new!(~T[00:00:00], "Etc/UTC")
 
-    %{
-      running: count_runs(where: dynamic([r], r.status == "running")),
-      max_concurrent: Application.get_env(:buster_claw, :orchestrator_max_concurrent, 3),
-      runs_last_hour: count_runs(where: dynamic([r], r.started_at >= ^hour_ago)),
-      max_runs_per_hour: Application.get_env(:buster_claw, :orchestrator_max_runs_per_hour, 120),
-      done_today:
-        count_runs(where: dynamic([r], r.status == "done" and r.inserted_at >= ^day_start)),
-      failed_today:
-        count_runs(
-          where:
-            dynamic(
-              [r],
-              r.status in ["failed", "timeout", "killed"] and r.inserted_at >= ^day_start
+    # One pass over agent_runs with conditional counts, replacing four separate
+    # COUNT queries. Time windows (hour_ago / day_start) match the prior logic
+    # exactly. Failed-today counts the "failed"/"timeout"/"killed" terminal states.
+    %{running: running, runs_last_hour: runs_last_hour, done_today: done, failed_today: failed} =
+      from(r in AgentRun,
+        select: %{
+          running: fragment("COUNT(CASE WHEN ? = 'running' THEN 1 END)", r.status),
+          runs_last_hour: fragment("COUNT(CASE WHEN ? >= ? THEN 1 END)", r.started_at, ^hour_ago),
+          done_today:
+            fragment(
+              "COUNT(CASE WHEN ? = 'done' AND ? >= ? THEN 1 END)",
+              r.status,
+              r.inserted_at,
+              ^day_start
+            ),
+          failed_today:
+            fragment(
+              "COUNT(CASE WHEN ? IN ('failed', 'timeout', 'killed') AND ? >= ? THEN 1 END)",
+              r.status,
+              r.inserted_at,
+              ^day_start
             )
-        )
-    }
-  end
+        }
+      )
+      |> Repo.one()
 
-  defp count_runs(where: condition) do
-    AgentRun |> where(^condition) |> Repo.aggregate(:count, :id)
+    %{
+      running: running,
+      max_concurrent: Application.get_env(:buster_claw, :orchestrator_max_concurrent, 3),
+      runs_last_hour: runs_last_hour,
+      max_runs_per_hour: Application.get_env(:buster_claw, :orchestrator_max_runs_per_hour, 120),
+      done_today: done,
+      failed_today: failed
+    }
   end
 
   defp running_tasks do

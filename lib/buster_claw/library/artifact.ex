@@ -69,16 +69,31 @@ defmodule BusterClaw.Library.Artifact do
 
     content = attr(attrs, :content) || attr(attrs, :body) || ""
 
-    bytes =
-      Frontmatter.build(%{
-        "url" => attr(attrs, :source_url),
-        "name" => attr(attrs, :name),
-        "tags" => normalize_tags(attr(attrs, :tags)),
-        "fetched_at" => attr(attrs, :fetched_at)
-      }) <> String.trim_leading(to_string(content))
+    fields = %{
+      "url" => attr(attrs, :source_url),
+      "name" => attr(attrs, :name),
+      "tags" => normalize_tags(attr(attrs, :tags)),
+      "fetched_at" => attr(attrs, :fetched_at)
+    }
+
+    body = String.trim_leading(to_string(content))
+    bytes = Frontmatter.build(fields) <> body
 
     File.write!(path, bytes)
-    {:ok, path}
+
+    # Reuse the rendered bytes/body for downstream metadata instead of forcing a
+    # re-read + re-parse from disk. `split/1` of `bytes` would yield the same
+    # parsed fields, but we already hold them here.
+    parsed_fields = Frontmatter.split(bytes).fields
+
+    {:ok,
+     %{
+       path: path,
+       content: bytes,
+       fields: parsed_fields,
+       content_hash: body_hash(body),
+       excerpt: excerpt(body)
+     }}
   end
 
   def parse_markdown_file(path) do
@@ -89,7 +104,10 @@ defmodule BusterClaw.Library.Artifact do
        %{
          fields: split.fields,
          body: split.body,
-         content_hash: content_hash(content),
+         # Hash the body (not the full file) so the hash is stable across
+         # re-renders whose frontmatter varies (e.g. `fetched_at`). This lets
+         # dedupe compare bodies via the stored hash without reading the file.
+         content_hash: body_hash(split.body),
          excerpt: excerpt(split.body)
        }}
     end
@@ -130,7 +148,7 @@ defmodule BusterClaw.Library.Artifact do
 
   def relative_to_root(path) do
     abs_path = Path.expand(path)
-    root = root()
+    root = Path.expand(root())
 
     if abs_path == root do
       "."
@@ -220,6 +238,12 @@ defmodule BusterClaw.Library.Artifact do
     root = Path.expand(root)
     path == root or String.starts_with?(path, root <> "/")
   end
+
+  @doc """
+  The content hash stored on a document: the sha256 of its trimmed body. Used
+  by dedupe to compare bodies without reading the artifact back off disk.
+  """
+  def body_hash(body), do: body |> to_string() |> String.trim() |> content_hash()
 
   defp content_hash(content) do
     :crypto.hash(:sha256, content)

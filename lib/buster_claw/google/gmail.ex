@@ -8,6 +8,7 @@ defmodule BusterClaw.Google.Gmail do
   @max_limit 50
   @default_history_limit 100
   @max_history_limit 500
+  @summary_concurrency 5
 
   def labels(%Account{} = account, opts \\ []) do
     with {:ok, body} <- Client.get_json(account, "users/me/labels", opts) do
@@ -31,11 +32,24 @@ defmodule BusterClaw.Google.Gmail do
 
     with {:ok, body} <-
            Client.get_json(account, "users/me/messages", Keyword.put(opts, :params, params)) do
+      # Each id needs its own metadata GET (an independent HTTP round trip), so
+      # fan them out concurrently rather than mapping sequentially. `ordered: true`
+      # preserves the result order; `timeout: :infinity` defers to Req's own
+      # receive timeout. Mirrors GmailSync.sync_messages.
       messages =
         body
         |> Map.get("messages", [])
         |> Enum.take(limit)
-        |> Enum.map(&fetch_summary(account, &1, opts))
+        |> Task.async_stream(
+          fn message -> fetch_summary(account, message, opts) end,
+          max_concurrency: Keyword.get(opts, :max_concurrency, @summary_concurrency),
+          ordered: true,
+          timeout: :infinity
+        )
+        |> Enum.map(fn
+          {:ok, result} -> result
+          {:exit, reason} -> {:error, {:summary_task_exit, reason}}
+        end)
         |> collect_ok()
 
       case messages do
@@ -50,6 +64,37 @@ defmodule BusterClaw.Google.Gmail do
         error ->
           error
       end
+    end
+  end
+
+  # messages.list only — returns ids plus pagination, with no per-message
+  # metadata GETs. `search/3` is for callers that need rendered summaries; the
+  # sync path only needs ids (it re-fetches each with `format=full`), so this
+  # avoids a wasted metadata round trip per result.
+  def list_ids(%Account{} = account, query, opts \\ []) do
+    limit = opts |> Keyword.get(:limit, @default_limit) |> clamp_limit()
+
+    params =
+      [
+        {"maxResults", Integer.to_string(limit)}
+      ]
+      |> maybe_put_query(query)
+
+    with {:ok, body} <-
+           Client.get_json(account, "users/me/messages", Keyword.put(opts, :params, params)) do
+      ids =
+        body
+        |> Map.get("messages", [])
+        |> Enum.take(limit)
+        |> Enum.map(&Map.get(&1, "id"))
+        |> Enum.reject(&(&1 in [nil, ""]))
+
+      {:ok,
+       %{
+         message_ids: ids,
+         result_size_estimate: Map.get(body, "resultSizeEstimate", length(ids)),
+         next_page_token: Map.get(body, "nextPageToken")
+       }}
     end
   end
 

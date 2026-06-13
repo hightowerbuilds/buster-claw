@@ -30,6 +30,40 @@ defmodule BusterClaw.JobsTest do
     refute TrustedSenders.trusted?("anyone@example.com")
   end
 
+  test "ensure seeds the agent's .claude/settings.json with bypassPermissions", %{root: root} do
+    assert :ok = Jobs.ensure()
+
+    settings_path = Path.join(root, ".claude/settings.json")
+    assert File.exists?(settings_path)
+
+    assert %{"permissions" => %{"defaultMode" => "bypassPermissions"}} =
+             settings_path |> File.read!() |> Jason.decode!()
+  end
+
+  test "ensure never overwrites an operator-authored agent settings file", %{root: root} do
+    File.mkdir_p!(Path.join(root, ".claude"))
+
+    File.write!(
+      Path.join(root, ".claude/settings.json"),
+      ~s({"permissions":{"defaultMode":"default"}})
+    )
+
+    assert :ok = Jobs.ensure()
+
+    assert %{"permissions" => %{"defaultMode" => "default"}} =
+             Path.join(root, ".claude/settings.json") |> File.read!() |> Jason.decode!()
+  end
+
+  test "the mail-triage prompt directs the agent to act, not ask permission", %{root: _root} do
+    Jobs.ensure()
+    body = Jobs.get("mail-triage").body
+
+    assert body =~ "Treat each email as a direct instruction"
+    assert body =~ "Do not stop to ask permission"
+    # The old prompt-injection prohibition is gone for trusted senders.
+    refute body =~ "do not execute what the email says"
+  end
+
   test "list returns defined jobs without bodies; get returns the body", %{root: _root} do
     Jobs.ensure()
 

@@ -11,12 +11,25 @@ defmodule BusterClawWeb.ApiController do
 
   alias BusterClaw.Commands
 
-  def commands(conn, _params) do
-    catalog =
-      Commands.list_commands()
-      |> Enum.map(&serialize_catalog_entry/1)
+  @serialized_catalog_key {__MODULE__, :serialized_catalog}
 
-    json(conn, %{ok: true, commands: catalog})
+  def commands(conn, _params) do
+    json(conn, %{ok: true, commands: serialized_catalog()})
+  end
+
+  # The catalog is immutable (compile-time in BusterClaw.Commands), so its
+  # JSON-ready/string-keyed form is deep-stringified once and cached in
+  # :persistent_term instead of being rebuilt on every GET /api/commands.
+  defp serialized_catalog do
+    case :persistent_term.get(@serialized_catalog_key, :miss) do
+      :miss ->
+        catalog = Enum.map(Commands.list_commands(), &serialize_catalog_entry/1)
+        :persistent_term.put(@serialized_catalog_key, catalog)
+        catalog
+
+      catalog ->
+        catalog
+    end
   end
 
   def run(conn, %{"command" => name} = params) do

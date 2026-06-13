@@ -26,7 +26,7 @@ defmodule BusterClaw.TrustedSenders do
   @doc "The matched allow-entry for `from`, or nil when the sender is untrusted."
   def match(from) do
     with address when is_binary(address) <- extract_address(from) do
-      %{addresses: addresses, domains: domains} = load_policy()
+      %{addresses: addresses, domains: domains} = cached_policy()
       domain = "@" <> (address |> String.split("@") |> List.last())
 
       cond do
@@ -86,6 +86,7 @@ defmodule BusterClaw.TrustedSenders do
                    policy_path(),
                    ensure_trailing_newline(contents) <> "- #{entry.value}\n"
                  ) do
+            refresh_cache()
             {:ok, entry.value}
           end
         end
@@ -108,7 +109,9 @@ defmodule BusterClaw.TrustedSenders do
           |> Enum.reject(&line_matches_entry?(&1, entry))
           |> Enum.join("\n")
 
-        File.write(policy_path(), updated)
+        result = File.write(policy_path(), updated)
+        if result == :ok, do: refresh_cache()
+        result
 
       :error ->
         {:error, :invalid_entry}
@@ -176,6 +179,32 @@ defmodule BusterClaw.TrustedSenders do
       _ ->
         %{addresses: [], domains: []}
     end
+  end
+
+  # The parsed policy is cached in :persistent_term so the hot `match/1` path skips
+  # the disk read + two Regex.scan passes on every inbound message. The cache key
+  # includes the resolved policy path so switching workspaces (which changes
+  # `workspace_root/0`) serves the right policy rather than stale data. All writes
+  # go through add_entry/remove_entry, which refresh the cache for their path.
+  defp cache_key, do: {__MODULE__, :policy, policy_path()}
+
+  defp cached_policy do
+    key = cache_key()
+
+    case :persistent_term.get(key, :miss) do
+      :miss ->
+        policy = load_policy()
+        :persistent_term.put(key, policy)
+        policy
+
+      policy ->
+        policy
+    end
+  end
+
+  defp refresh_cache do
+    :persistent_term.put(cache_key(), load_policy())
+    :ok
   end
 
   defp scan_addresses(contents) do

@@ -63,6 +63,14 @@ defmodule BusterClawWeb.WorkspaceLiveTest do
 
     assert File.dir?(Path.join(root, "fresh"))
 
+    # Deleting is a two-step inline confirm (no native window.confirm — it
+    # silently no-ops in the webview shell).
+    view
+    |> element(
+      ~s|#workspace button[phx-click="start_delete"][phx-value-path="#{Path.join(root_abs, "fresh")}"]|
+    )
+    |> render_click()
+
     view
     |> element(
       ~s|#workspace button[phx-click="delete"][phx-value-path="#{Path.join(root_abs, "fresh")}"]|
@@ -70,6 +78,29 @@ defmodule BusterClawWeb.WorkspaceLiveTest do
     |> render_click()
 
     refute File.exists?(Path.join(root, "fresh"))
+  end
+
+  test "deletes an existing non-empty folder via the tree", %{
+    conn: conn,
+    root: root,
+    root_abs: root_abs
+  } do
+    File.write!(Path.join([root, "library", "note.md"]), "# note\n")
+    {:ok, view, _html} = live(conn, ~p"/workspace")
+
+    view
+    |> element(
+      ~s|#workspace button[phx-click="start_delete"][phx-value-path="#{Path.join(root_abs, "library")}"]|
+    )
+    |> render_click()
+
+    view
+    |> element(
+      ~s|#workspace button[phx-click="delete"][phx-value-path="#{Path.join(root_abs, "library")}"]|
+    )
+    |> render_click()
+
+    refute File.exists?(Path.join(root, "library"))
   end
 
   test "navigates up to the parent directory and offers to set it as workspace", %{

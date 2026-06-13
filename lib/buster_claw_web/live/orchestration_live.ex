@@ -82,13 +82,21 @@ defmodule BusterClawWeb.OrchestrationLive do
      |> assign(:page_title, "Orchestration")
      |> assign(:confirm_delete, nil)
      |> assign(:editing, nil)
+     |> assign(:accounts, Google.list_account_summaries())
      |> reset_wizard()
      |> load()}
   end
 
+  @task_events ~w(task_created task_updated task_deleted tasks_reclaimed)a
+
   @impl true
-  def handle_info({:orchestration, _event}, socket), do: {:noreply, load(socket)}
-  def handle_info(:refresh, socket), do: {:noreply, load(socket)}
+  # Task events can change the task list; refresh both tasks and the snapshot.
+  # Everything else (shift/run lifecycle) only moves the snapshot.
+  def handle_info({:orchestration, event}, socket) when event in @task_events,
+    do: {:noreply, refresh(socket)}
+
+  def handle_info({:orchestration, _event}, socket), do: {:noreply, refresh_snapshot(socket)}
+  def handle_info(:refresh, socket), do: {:noreply, refresh_snapshot(socket)}
 
   # --- shift control (emergency stop; shifts start from the terminal) ---
 
@@ -213,11 +221,19 @@ defmodule BusterClawWeb.OrchestrationLive do
 
   # --- state ---
 
-  defp load(socket) do
+  # Volatile data only. Accounts are loaded once in `mount/3` (they don't change
+  # under the dashboard's feet), so neither the 30s timer nor PubSub events
+  # re-query them.
+  defp load(socket), do: refresh(socket)
+
+  defp refresh(socket) do
     socket
     |> assign(:tasks, Orchestration.list_tasks())
-    |> assign(:snapshot, Orchestration.snapshot())
-    |> assign(:accounts, Google.list_account_summaries())
+    |> refresh_snapshot()
+  end
+
+  defp refresh_snapshot(socket) do
+    assign(socket, :snapshot, Orchestration.snapshot())
   end
 
   defp reset_wizard(socket) do

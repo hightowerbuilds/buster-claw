@@ -7,40 +7,21 @@ defmodule BusterClaw.Integrations.GitHub do
 
   @default_limit 10
 
+  @fetch_concurrency 6
+
   @impl true
   def fetch(%Integration{} = integration, opts \\ []) do
     with {:ok, owner} <- required_config(integration, "owner"),
          {:ok, repo} <- required_config(integration, "repo"),
-         {:ok, commits} <-
-           get_json(
-             integration,
-             repo_path(owner, repo, "/commits"),
-             commit_params(integration),
-             opts
-           ),
-         {:ok, open_prs} <-
-           get_json(
-             integration,
-             repo_path(owner, repo, "/pulls"),
-             pull_params("open", integration),
-             opts
-           ),
-         {:ok, closed_prs} <-
-           get_json(
-             integration,
-             repo_path(owner, repo, "/pulls"),
-             pull_params("closed", integration),
-             opts
-           ),
-         {:ok, issues} <- fetch_issues(integration, owner, repo, opts),
-         {:ok, workflow_runs} <- fetch_workflow_runs(integration, owner, repo, opts),
-         {:ok, releases} <-
-           get_json(
-             integration,
-             repo_path(owner, repo, "/releases"),
-             limit_params(integration),
-             opts
-           ) do
+         {:ok,
+          %{
+            commits: commits,
+            open_prs: open_prs,
+            closed_prs: closed_prs,
+            issues: issues,
+            workflow_runs: workflow_runs,
+            releases: releases
+          }} <- fetch_activity(integration, owner, repo, opts) do
       now = timestamp()
       source_url = source_url(owner, repo)
 
@@ -77,6 +58,68 @@ defmodule BusterClaw.Integrations.GitHub do
          }
        ]}
     end
+  end
+
+  # The six activity calls are independent GitHub REST reads with no inter-
+  # dependency, so we fan them out concurrently instead of summing their
+  # latencies in a sequential `with` chain. Each task carries its own HTTP call
+  # (`get_json` keeps its own `receive_timeout`, so the stream uses
+  # `timeout: :infinity`). We propagate the first error to preserve the previous
+  # short-circuit semantics; on success the named fields are reassembled.
+  defp fetch_activity(integration, owner, repo, opts) do
+    calls = [
+      {:commits,
+       fn ->
+         get_json(
+           integration,
+           repo_path(owner, repo, "/commits"),
+           commit_params(integration),
+           opts
+         )
+       end},
+      {:open_prs,
+       fn ->
+         get_json(
+           integration,
+           repo_path(owner, repo, "/pulls"),
+           pull_params("open", integration),
+           opts
+         )
+       end},
+      {:closed_prs,
+       fn ->
+         get_json(
+           integration,
+           repo_path(owner, repo, "/pulls"),
+           pull_params("closed", integration),
+           opts
+         )
+       end},
+      {:issues, fn -> fetch_issues(integration, owner, repo, opts) end},
+      {:workflow_runs, fn -> fetch_workflow_runs(integration, owner, repo, opts) end},
+      {:releases,
+       fn ->
+         get_json(
+           integration,
+           repo_path(owner, repo, "/releases"),
+           limit_params(integration),
+           opts
+         )
+       end}
+    ]
+
+    calls
+    |> Task.async_stream(
+      fn {key, call} -> {key, call.()} end,
+      max_concurrency: @fetch_concurrency,
+      ordered: false,
+      timeout: :infinity
+    )
+    |> Enum.reduce_while({:ok, %{}}, fn
+      {:ok, {key, {:ok, value}}}, {:ok, acc} -> {:cont, {:ok, Map.put(acc, key, value)}}
+      {:ok, {_key, {:error, reason}}}, _acc -> {:halt, {:error, reason}}
+      {:exit, reason}, _acc -> {:halt, {:error, {:fetch_task_exit, reason}}}
+    end)
   end
 
   @impl true

@@ -110,10 +110,13 @@ defmodule BusterClawWeb.StatusLive do
           <div class="min-w-0">
             <h3 class="font-semibold">Start the agent</h3>
             <p class="mt-0.5 text-sm text-base-content/65">
-              Open the <.link
+              Open the
+              <.link
                 navigate={~p"/terminal"}
                 class="font-semibold text-primary hover:underline"
-              >Terminal</.link>
+              >
+                Terminal
+              </.link>
               and start a Claude Code session on the <span class="font-mono">mail-triage</span>
               job. That's the worker that reads queued mail and writes the replies.
             </p>
