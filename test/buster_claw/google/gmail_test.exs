@@ -86,6 +86,7 @@ defmodule BusterClaw.Google.GmailTest do
     assert message.to == "Luke <luke@example.com>"
     assert message.body_text == "Hello from Gmail."
     assert message.label_ids == ["INBOX"]
+    assert message.message_id_header == "<original-abc@mail.example.com>"
   end
 
   test "creates a Gmail draft with a plain text MIME payload" do
@@ -179,6 +180,42 @@ defmodule BusterClaw.Google.GmailTest do
     assert message.label_ids == ["SENT"]
   end
 
+  test "sends a threaded reply with In-Reply-To / References headers and threadId" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      assert conn.request_path == "/gmail/v1/users/me/messages/send"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+      raw = payload |> Map.fetch!("raw") |> decode_base64url!()
+
+      assert payload["threadId"] == "thread-1"
+      assert raw =~ "In-Reply-To: <original-abc@mail.example.com>\r\n"
+      assert raw =~ "References: <original-abc@mail.example.com>\r\n"
+      assert raw =~ "Subject: Re: Launch notes\r\n"
+      assert raw =~ "\r\n\r\nThanks, will do."
+
+      Req.Test.json(conn, %{"id" => "msg-sent-2", "threadId" => "thread-1"})
+    end)
+
+    account = connected_account!()
+
+    assert {:ok, message} =
+             Gmail.send_message(
+               account,
+               %{
+                 "to" => "Ada <ada@example.com>",
+                 "subject" => "Re: Launch notes",
+                 "body" => "Thanks, will do.",
+                 "in_reply_to" => "<original-abc@mail.example.com>",
+                 "references" => "<original-abc@mail.example.com>",
+                 "thread_id" => "thread-1"
+               },
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert message.thread_id == "thread-1"
+  end
+
   defp connected_account! do
     {:ok, account} =
       Google.create_account(%{
@@ -215,6 +252,7 @@ defmodule BusterClaw.Google.GmailTest do
       %{"name" => "Subject", "value" => "Launch notes"},
       %{"name" => "From", "value" => "Ada <ada@example.com>"},
       %{"name" => "To", "value" => "Luke <luke@example.com>"},
+      %{"name" => "Message-ID", "value" => "<original-abc@mail.example.com>"},
       %{"name" => "Date", "value" => "Wed, 27 May 2026 09:00:00 -0700"}
     ])
     |> put_in(["payload", "mimeType"], "multipart/alternative")

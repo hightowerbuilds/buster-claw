@@ -18,16 +18,22 @@ defmodule BusterClaw.OrchestrationTest do
   describe "shifts" do
     test "start/active/stop lifecycle" do
       refute Orchestration.shift_active?()
-      {:ok, shift} = Orchestration.start_shift(hours: 12)
+      {:ok, shift} = Orchestration.start_shift()
       assert Orchestration.shift_active?()
       assert Orchestration.active_shift().id == shift.id
       assert shift.job_key == "lookout"
       assert shift.job_name == "Lookout"
-      assert shift.duration_hours == 12
 
       {:ok, stopped} = Orchestration.stop_shift("kill switch")
       assert stopped.status == "stopped"
       refute Orchestration.shift_active?()
+    end
+
+    test "a shift runs until stopped (no fixed window)" do
+      {:ok, shift} = Orchestration.start_shift()
+      assert shift.status == "active"
+      refute Map.has_key?(shift, :ends_at)
+      refute Map.has_key?(shift, :duration_hours)
     end
 
     test "start stores job assignment metadata" do
@@ -35,15 +41,12 @@ defmodule BusterClaw.OrchestrationTest do
                Orchestration.start_shift(
                  job: "lookout",
                  agent_name: "Codex",
-                 shell: "Terminal 2",
-                 hours: "12"
+                 shell: "Terminal 2"
                )
 
       assert shift.job_name == "Lookout"
       assert shift.agent_name == "Codex"
       assert shift.shell == "Terminal 2"
-      assert shift.duration_hours == 12
-      assert DateTime.diff(shift.ends_at, shift.started_at, :hour) == 12
     end
 
     test "starting a shift supersedes a prior active one" do

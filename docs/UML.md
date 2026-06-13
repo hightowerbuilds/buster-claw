@@ -197,7 +197,6 @@ classDiagram
 classDiagram
     class Shift {
         +utc started_at
-        +utc ends_at
         +string status
         +int dispatched_count
         +int done_count
@@ -352,7 +351,7 @@ sequenceDiagram
     participant Sentinel
 
     Terminal->>Orchestrator: shift_start (clears kill switch)
-    Orchestrator->>DB: create Shift (active, ends_at = +12h)
+    Orchestrator->>DB: create Shift (active, runs until stopped)
     loop every ~30s tick
         Orchestrator->>DB: select due tasks, lease (pending → claimed)
         alt :agent task

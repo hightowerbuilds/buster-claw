@@ -97,6 +97,19 @@ defmodule BusterClaw.CLITest do
     assert CLI.format_dispatch_finish(%{"id" => 9, "status" => "done"}) == "Marked #9 done."
   end
 
+  test "format_dispatch_reply confirms the sent reply and closed item" do
+    out =
+      CLI.format_dispatch_reply(%{
+        "dispatch_item_id" => 7,
+        "to" => "Ada <ada@example.com>",
+        "thread_id" => "thread-1"
+      })
+
+    assert out =~ "Replied to Ada <ada@example.com>"
+    assert out =~ "item #7"
+    assert out =~ "thread thread-1"
+  end
+
   test "format_job_list renders the roster and handles empty" do
     assert CLI.format_job_list([]) =~ "No jobs defined"
 

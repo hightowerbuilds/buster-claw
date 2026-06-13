@@ -1,8 +1,9 @@
 defmodule BusterClaw.Orchestrator do
   @moduledoc """
   Lease janitor for the active shift. A supervised ticker that, when a shift is
-  active, enforces the shift window and kill switch and reclaims expired task
-  leases so abandoned work returns to the pending pool.
+  active, enforces the kill switch and reclaims expired task leases so abandoned
+  work returns to the pending pool. A shift runs until it is stopped — there is
+  no fixed window.
 
   It no longer dispatches headless `claude`/`codex` runs — work is now pulled by
   a human-run Claude Code session through the Dispatch queue. This — not an LLM —
@@ -106,21 +107,14 @@ defmodule BusterClaw.Orchestrator do
   end
 
   defp run_shift_tick(shift) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    if Orchestration.kill_switch_engaged?() do
+      Orchestration.stop_shift("kill switch")
 
-    cond do
-      Orchestration.kill_switch_engaged?() ->
-        Orchestration.stop_shift("kill switch")
-
-        Sentinel.observe(:security_block, "Shift stopped by kill switch (STOP file)", %{
-          shift_id: shift.id
-        })
-
-      DateTime.compare(now, shift.ends_at) != :lt ->
-        Orchestration.complete_shift(shift, "window elapsed")
-
-      true ->
-        Orchestration.reclaim_expired(now)
+      Sentinel.observe(:security_block, "Shift stopped by kill switch (STOP file)", %{
+        shift_id: shift.id
+      })
+    else
+      Orchestration.reclaim_expired()
     end
   end
 

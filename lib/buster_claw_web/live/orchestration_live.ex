@@ -563,7 +563,7 @@ defmodule BusterClawWeb.OrchestrationLive do
     <div class="flex flex-wrap items-center gap-2 text-xs">
       <%= if @snapshot.shift do %>
         <span class="rounded-full bg-success/15 px-3 py-1 font-semibold text-success">
-          Active · {time_left(@snapshot.shift)}
+          Active · {elapsed(@snapshot.shift)} on shift
         </span>
         <span class="font-mono text-base-content/55">
           {@snapshot.shift.dispatched_count} dispatched · {@snapshot.shift.done_count} done · {@snapshot.shift.failed_count} failed
@@ -584,15 +584,17 @@ defmodule BusterClawWeb.OrchestrationLive do
     """
   end
 
-  defp time_left(%{ends_at: ends_at}) do
-    secs = DateTime.diff(ends_at, DateTime.utc_now())
+  defp elapsed(%{started_at: %DateTime{} = started_at}) do
+    secs = max(DateTime.diff(DateTime.utc_now(), started_at), 0)
 
     cond do
-      secs <= 0 -> "ending"
-      secs < 3600 -> "#{div(secs, 60)}m left"
-      true -> "#{div(secs, 3600)}h #{rem(div(secs, 60), 60)}m left"
+      secs < 60 -> "just now"
+      secs < 3600 -> "#{div(secs, 60)}m"
+      true -> "#{div(secs, 3600)}h #{rem(div(secs, 60), 60)}m"
     end
   end
+
+  defp elapsed(_shift), do: "—"
 
   attr :wizard, :map, required: true
   attr :step, :atom, required: true

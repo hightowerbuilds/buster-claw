@@ -38,9 +38,10 @@ defmodule BusterClaw.JobsTest do
 
     job = Jobs.get("mail-triage")
     assert job.key == "mail-triage"
-    assert job.summary =~ "Triage"
+    assert job.summary =~ "Reply"
     assert job.body =~ "# Mail Triage"
     assert job.body =~ "dispatch claim --job mail-triage"
+    assert job.body =~ "dispatch reply <id>"
   end
 
   test "get derives name/summary from frontmatter or falls back to the key/body", %{root: root} do

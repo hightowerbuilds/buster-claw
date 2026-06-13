@@ -47,7 +47,7 @@ defmodule BusterClawWeb.OrchestrationPanel do
         <div :if={shift_on?(@snapshot)} class="space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span class="rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
-              Active · {time_left(@snapshot.shift)}
+              Active · {elapsed(@snapshot.shift)} on shift
             </span>
             <span class="font-mono text-xs text-base-content/55">
               {@snapshot.shift.dispatched_count} dispatched · {@snapshot.shift.done_count} done · {@snapshot.shift.failed_count} failed
@@ -135,7 +135,7 @@ defmodule BusterClawWeb.OrchestrationPanel do
               <p class="font-mono text-[0.7rem] uppercase tracking-wide text-success">
                 Shell open
               </p>
-              <p class="font-display text-lg font-black uppercase">{time_left(@snapshot.shift)}</p>
+              <p class="font-display text-lg font-black uppercase">{elapsed(@snapshot.shift)}</p>
             </div>
           </div>
 
@@ -154,21 +154,13 @@ defmodule BusterClawWeb.OrchestrationPanel do
             </div>
             <div class="rounded border border-base-300 bg-base-100/60 p-3">
               <dt class="font-mono text-[0.68rem] uppercase tracking-wide text-base-content/45">
-                Window
+                On Shift Since
               </dt>
               <dd class="mt-1 font-semibold">
-                {shift_duration(@snapshot.shift)} · ends {short_time(@snapshot.shift.ends_at)}
+                {short_time(@snapshot.shift.started_at)}
               </dd>
             </div>
           </dl>
-
-          <div class="h-2 overflow-hidden rounded-full bg-base-300">
-            <div
-              class="h-full rounded-full bg-primary transition-all duration-500"
-              style={"width: #{shift_progress(@snapshot.shift)}%"}
-            >
-            </div>
-          </div>
 
           <section id="shift-active-assignments" class="space-y-2 border-t border-success/25 pt-3">
             <div class="flex items-center justify-between gap-2">
@@ -294,22 +286,6 @@ defmodule BusterClawWeb.OrchestrationPanel do
   defp shift_shell(%{shell: shell}) when is_binary(shell) and shell != "", do: shell
   defp shift_shell(_shift), do: "Shell not set"
 
-  defp shift_duration(%{duration_hours: hours}) when is_integer(hours), do: "#{hours}h shift"
-  defp shift_duration(_shift), do: "Timed shift"
-
-  defp shift_progress(%{started_at: %DateTime{} = started_at, ends_at: %DateTime{} = ends_at}) do
-    total = max(DateTime.diff(ends_at, started_at), 1)
-    elapsed = DateTime.diff(DateTime.utc_now(), started_at)
-
-    elapsed
-    |> max(0)
-    |> min(total)
-    |> then(&(&1 / total * 100))
-    |> Float.round(1)
-  end
-
-  defp shift_progress(_shift), do: 0
-
   defp short_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M")
   defp short_time(_dt), do: "unknown"
 
@@ -330,15 +306,17 @@ defmodule BusterClawWeb.OrchestrationPanel do
   defp assignment_shell(%{shell: shell}) when is_binary(shell) and shell != "", do: shell
   defp assignment_shell(_assignment), do: "Shell not set"
 
-  defp time_left(%{ends_at: ends_at}) do
-    secs = DateTime.diff(ends_at, DateTime.utc_now())
+  defp elapsed(%{started_at: %DateTime{} = started_at}) do
+    secs = max(DateTime.diff(DateTime.utc_now(), started_at), 0)
 
     cond do
-      secs <= 0 -> "ending"
-      secs < 3600 -> "#{div(secs, 60)}m left"
-      true -> "#{div(secs, 3600)}h #{rem(div(secs, 60), 60)}m left"
+      secs < 60 -> "just now"
+      secs < 3600 -> "#{div(secs, 60)}m"
+      true -> "#{div(secs, 3600)}h #{rem(div(secs, 60), 60)}m"
     end
   end
+
+  defp elapsed(_shift), do: "—"
 
   defp due_label(%{next_run_at: %DateTime{} = dt}), do: Calendar.strftime(dt, "%H:%M")
   defp due_label(%{due_at: %DateTime{} = dt}), do: Calendar.strftime(dt, "%H:%M")

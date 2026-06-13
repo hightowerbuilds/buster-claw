@@ -22,6 +22,7 @@ defmodule BusterClaw.Dispatch do
     auth_status
     gmail_message_id
     gmail_thread_id
+    gmail_rfc_message_id
     subject
     request_summary
     request_body_excerpt
@@ -124,6 +125,7 @@ defmodule BusterClaw.Dispatch do
         sender: value(message, :from),
         gmail_message_id: value(message, :id),
         gmail_thread_id: value(message, :thread_id),
+        gmail_rfc_message_id: value(message, :message_id_header),
         subject: value(message, :subject),
         request_body_excerpt: excerpt(value(message, :body_text) || value(message, :snippet))
       })

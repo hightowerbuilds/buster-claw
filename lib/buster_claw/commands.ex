@@ -469,9 +469,7 @@ defmodule BusterClaw.Commands do
            job_description: shift.job_description,
            agent_name: shift.agent_name,
            shell: shift.shell,
-           duration_hours: shift.duration_hours,
            started_at: shift.started_at,
-           ends_at: shift.ends_at,
            dispatched: shift.dispatched_count,
            done: shift.done_count,
            failed: shift.failed_count
@@ -492,8 +490,7 @@ defmodule BusterClaw.Commands do
            job_name: shift.job_name,
            agent_name: shift.agent_name,
            shell: shift.shell,
-           duration_hours: shift.duration_hours,
-           ends_at: shift.ends_at
+           started_at: shift.started_at
          }}
 
       {:error, _changeset} = error ->
@@ -562,6 +559,86 @@ defmodule BusterClaw.Commands do
 
   def dispatch_done(%{"id" => id} = args), do: finish_dispatch(id, "done", args)
   def dispatch_block(%{"id" => id} = args), do: finish_dispatch(id, "blocked", args)
+
+  @doc """
+  Send a threaded Gmail reply to a Dispatch item's sender and mark the item done.
+  Restricted-tier: the act of calling it is the send authorization (no separate
+  `confirm_send`). The reply threads via the stored RFC Message-ID + thread id and
+  is sent from the account that received the original mail.
+  """
+  def dispatch_reply(%{"id" => id} = args) do
+    with_resource(Dispatch, :get_item!, id, fn item ->
+      cond do
+        is_nil(blank_to_nil(Map.get(args, "body"))) -> {:error, :missing_body}
+        is_nil(blank_to_nil(item.sender)) -> {:error, :no_reply_recipient}
+        true -> send_dispatch_reply(item, blank_to_nil(Map.get(args, "body")), args)
+      end
+    end)
+  end
+
+  defp send_dispatch_reply(item, body, args) do
+    selector =
+      args
+      |> Map.take(["account_id", "email"])
+      |> put_new_string("email", blank_to_nil(item.source_account))
+
+    with_google_account(selector, fn account ->
+      case BusterClaw.Google.Gmail.send_message(account, reply_message_attrs(item, body)) do
+        {:ok, sent} ->
+          {:ok, finished} = Dispatch.finish(item, "done", reply_finish_attrs(body))
+
+          BusterClaw.Sentinel.observe(
+            :outbound_send,
+            "Auto-replied to Dispatch item ##{item.id}",
+            %{
+              dispatch_item_id: item.id,
+              to: item.sender,
+              gmail_thread_id: item.gmail_thread_id
+            }
+          )
+
+          {:ok,
+           %{
+             dispatch_item_id: finished.id,
+             status: finished.status,
+             to: item.sender,
+             subject: reply_subject(item.subject),
+             thread_id: Map.get(sent, :thread_id) || item.gmail_thread_id
+           }}
+
+        error ->
+          error
+      end
+    end)
+  end
+
+  defp reply_message_attrs(item, body) do
+    %{
+      "to" => item.sender,
+      "subject" => reply_subject(item.subject),
+      "body" => body,
+      "in_reply_to" => item.gmail_rfc_message_id,
+      "references" => item.gmail_rfc_message_id,
+      "thread_id" => item.gmail_thread_id
+    }
+  end
+
+  defp reply_subject(subject) do
+    case blank_to_nil(subject) do
+      nil -> "Re:"
+      trimmed -> if Regex.match?(~r/^re:/i, trimmed), do: trimmed, else: "Re: " <> trimmed
+    end
+  end
+
+  defp reply_finish_attrs(body) do
+    %{outcome: "replied", notes: "Auto-replied: " <> String.slice(to_string(body), 0, 280)}
+  end
+
+  defp put_new_string(map, _key, nil), do: map
+
+  defp put_new_string(map, key, value) do
+    if Map.get(map, key) in [nil, ""], do: Map.put(map, key, value), else: map
+  end
 
   # -----------------------------------------------------------------------
   # Job descriptions (the role roster)
@@ -1126,12 +1203,11 @@ defmodule BusterClaw.Commands do
         type: :trigger,
         tier: :safe,
         description:
-          "Start an unattended orchestration shift with job/agent assignment metadata.",
+          "Start an unattended orchestration shift (runs until stopped) with job/agent assignment metadata.",
         args: %{
           "job" => %{type: :string, required: false, default: "lookout"},
           "agent_name" => %{type: :string, required: false},
-          "shell" => %{type: :string, required: false},
-          "hours" => %{type: :integer, required: false, default: 12}
+          "shell" => %{type: :string, required: false}
         }
       },
       %{
@@ -1228,6 +1304,19 @@ defmodule BusterClaw.Commands do
         args: %{
           "id" => %{type: :integer, required: true},
           "note" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "dispatch_reply",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Send a threaded Gmail reply to a Dispatch item's sender and mark the item done.",
+        args: %{
+          "id" => %{type: :integer, required: true},
+          "body" => %{type: :string, required: true},
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false}
         }
       }
     ]

@@ -40,6 +40,7 @@ defmodule BusterClaw.CLI do
       ["dispatch", "claim"] -> dispatch_claim_cmd(opts)
       ["dispatch", "done", id] -> dispatch_finish_cmd("dispatch_done", id, opts)
       ["dispatch", "block", id] -> dispatch_finish_cmd("dispatch_block", id, opts)
+      ["dispatch", "reply", id] -> dispatch_reply_cmd(id, opts)
       ["jobs", "list"] -> dispatch_request("job_list", %{}, opts, &format_job_list/1)
       ["jobs", "show", key] -> dispatch_request("job_show", %{"key" => key}, opts, &format_job/1)
       ["run", name] -> run(name, opts)
@@ -74,6 +75,7 @@ defmodule BusterClaw.CLI do
       verbose: :boolean,
       status: :string,
       note: :string,
+      body: :string,
       job: :string,
       help: :boolean
     ]
@@ -228,6 +230,16 @@ defmodule BusterClaw.CLI do
     dispatch_request(command, args, opts, &format_dispatch_finish/1)
   end
 
+  defp dispatch_reply_cmd(id, opts) do
+    args =
+      %{"id" => id}
+      |> maybe_put("body", Keyword.get(opts, :body))
+      |> maybe_put("email", Keyword.get(opts, :email))
+      |> maybe_put("account_id", Keyword.get(opts, :account_id))
+
+    dispatch_request("dispatch_reply", args, opts, &format_dispatch_reply/1)
+  end
+
   defp dispatch_request(command, args, opts, formatter) do
     case http_post("/api/run", %{"command" => command, "args" => args}, auth: true, opts: opts) do
       {:ok, %{"ok" => true, "result" => result}} ->
@@ -287,6 +299,13 @@ defmodule BusterClaw.CLI do
     do: "Marked ##{item["id"]} #{item["status"]}."
 
   def format_dispatch_finish(other), do: pretty(other)
+
+  @doc false
+  def format_dispatch_reply(%{"dispatch_item_id" => id} = result) do
+    "Replied to #{result["to"]} and closed item ##{id} (thread #{result["thread_id"] || "?"})."
+  end
+
+  def format_dispatch_reply(other), do: pretty(other)
 
   defp dispatch_line(item) do
     suffix =

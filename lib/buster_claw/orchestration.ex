@@ -17,14 +17,12 @@ defmodule BusterClaw.Orchestration do
   alias BusterClaw.Scheduler.Cron
 
   @topic "orchestration"
-  @default_shift_hours 12
   @default_lease_ms :timer.minutes(30)
   @kill_switch_file "STOP"
   @shift_jobs [
     %{
       key: "lookout",
       name: "Lookout",
-      default_hours: @default_shift_hours,
       shell: "Primary terminal",
       description:
         "Maintain situational awareness across the workspace, scheduled work, browser state, and incoming signals. Escalate anything that needs a human decision."
@@ -32,7 +30,6 @@ defmodule BusterClaw.Orchestration do
     %{
       key: "dispatcher",
       name: "Dispatcher",
-      default_hours: 4,
       shell: "Ops terminal",
       description:
         "Triage queued tasks, choose the next agent run, and keep the unattended shift moving without overloading the system."
@@ -40,7 +37,6 @@ defmodule BusterClaw.Orchestration do
     %{
       key: "scribe",
       name: "Scribe",
-      default_hours: 2,
       shell: "Notes terminal",
       description:
         "Keep the workspace notes, summaries, and handoff context current so the next operator can pick up cleanly."
@@ -103,16 +99,12 @@ defmodule BusterClaw.Orchestration do
     job_key = opt(opts, :job_key) || opt(opts, :job) || "lookout"
     job = shift_job(job_key) || shift_job("lookout")
 
-    duration_hours =
-      positive_integer(opt(opts, :hours) || opt(opts, :duration_hours), job.default_hours)
-
     %{
       job_key: job.key,
       job_name: present(opt(opts, :job_name)) || job.name,
       job_description: present(opt(opts, :job_description)) || job.description,
       agent_name: present(opt(opts, :agent_name) || opt(opts, :agent)),
-      shell: present(opt(opts, :shell)) || job.shell,
-      duration_hours: duration_hours
+      shell: present(opt(opts, :shell)) || job.shell
     }
   end
 
@@ -134,17 +126,6 @@ defmodule BusterClaw.Orchestration do
   end
 
   defp present(value), do: value
-
-  defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
-
-  defp positive_integer(value, default) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, ""} when int > 0 -> int
-      _ -> default
-    end
-  end
-
-  defp positive_integer(_value, default), do: default
 
   defp assignment_attrs(%Shift{} = shift, opts) do
     role_key = present(opt(opts, :role_key) || opt(opts, :role) || opt(opts, :job))
@@ -190,16 +171,14 @@ defmodule BusterClaw.Orchestration do
   # Shifts
   # ---------------------------------------------------------------------------
 
-  @doc "Start a shift (default 12h). Completes any other active shift first."
+  @doc "Start a shift that runs until stopped. Completes any other active shift first."
   def start_shift(opts \\ []) do
     attrs = shift_attrs(opts)
-    started = now()
-    ends = DateTime.add(started, attrs.duration_hours * 3600, :second)
 
     Enum.each(active_shifts(), &complete_shift(&1, "superseded"))
 
     %Shift{}
-    |> Shift.changeset(Map.merge(attrs, %{started_at: started, ends_at: ends, status: "active"}))
+    |> Shift.changeset(Map.merge(attrs, %{started_at: now(), status: "active"}))
     |> Repo.insert()
     |> tap_broadcast(:shift_started)
   end
@@ -243,7 +222,7 @@ defmodule BusterClaw.Orchestration do
     end
   end
 
-  @doc "Mark a shift completed (window elapsed)."
+  @doc "Mark a shift completed (e.g. superseded by a new shift)."
   def complete_shift(shift \\ nil, reason \\ nil)
 
   def complete_shift(nil, reason) do

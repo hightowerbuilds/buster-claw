@@ -97,10 +97,21 @@ defmodule BusterClaw.Google.Gmail do
            Client.post_json(
              account,
              "users/me/messages/send",
-             %{"raw" => Base.url_encode64(mime, padding: false)},
+             send_payload(mime, attrs),
              opts
            ) do
       {:ok, sent_message_summary(body)}
+    end
+  end
+
+  # Including `threadId` makes Gmail file the sent message into the original
+  # conversation (alongside the In-Reply-To / References headers from the MIME).
+  defp send_payload(mime, attrs) do
+    base = %{"raw" => Base.url_encode64(mime, padding: false)}
+
+    case header_value(get_attr(attrs, "thread_id")) do
+      "" -> base
+      thread_id -> Map.put(base, "threadId", thread_id)
     end
   end
 
@@ -148,6 +159,9 @@ defmodule BusterClaw.Google.Gmail do
       from: Map.get(headers, "from"),
       to: Map.get(headers, "to"),
       date: Map.get(headers, "date"),
+      # The RFC 5322 Message-ID header (distinct from the Gmail API `id`); used as
+      # the In-Reply-To / References target when replying so the reply threads.
+      message_id_header: Map.get(headers, "message-id"),
       body_text: text || html_to_text(html),
       body_html: html,
       raw: body
@@ -258,6 +272,8 @@ defmodule BusterClaw.Google.Gmail do
           {"To", to},
           optional_header("Cc", attrs, "cc"),
           optional_header("Bcc", attrs, "bcc"),
+          optional_header("In-Reply-To", attrs, "in_reply_to"),
+          optional_header("References", attrs, "references"),
           {"Subject", subject},
           {"MIME-Version", "1.0"},
           {"Content-Type", ~s(text/plain; charset="UTF-8")}
@@ -307,6 +323,15 @@ defmodule BusterClaw.Google.Gmail do
 
       "body" ->
         Map.get(attrs, "body") || Map.get(attrs, :body)
+
+      "in_reply_to" ->
+        Map.get(attrs, "in_reply_to") || Map.get(attrs, :in_reply_to)
+
+      "references" ->
+        Map.get(attrs, "references") || Map.get(attrs, :references)
+
+      "thread_id" ->
+        Map.get(attrs, "thread_id") || Map.get(attrs, :thread_id)
 
       _other ->
         Map.get(attrs, key)

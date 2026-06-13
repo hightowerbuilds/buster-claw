@@ -3,6 +3,7 @@ defmodule BusterClaw.CommandsTest do
 
   alias BusterClaw.Commands
   alias BusterClaw.Commands.Result
+  alias BusterClaw.Dispatch
   alias BusterClaw.Google
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Library
@@ -441,6 +442,100 @@ defmodule BusterClaw.CommandsTest do
                  "body" => "Confirmed send.",
                  "confirm_send" => true
                })
+    end
+  end
+
+  describe "dispatch reply" do
+    setup do
+      previous = Application.get_env(:buster_claw, :google_req_options)
+
+      Application.put_env(:buster_claw, :google_req_options,
+        plug: {Req.Test, BusterClaw.GoogleHTTP}
+      )
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:buster_claw, :google_req_options, previous)
+        else
+          Application.delete_env(:buster_claw, :google_req_options)
+        end
+      end)
+
+      {:ok, _account} =
+        Google.create_account(%{
+          "email" => "me@example.com",
+          "client_id" => "client-id",
+          "client_secret" => "client-secret",
+          "refresh_token" => "refresh-token",
+          "access_token" => "access-token",
+          "access_token_expires_at" => DateTime.utc_now() |> DateTime.add(3600, :second)
+        })
+
+      {:ok, item} =
+        Dispatch.enqueue(%{
+          source: "gmail",
+          source_account: "me@example.com",
+          sender: "Ada <ada@example.com>",
+          trusted: true,
+          trusted_sender: "*@example.com",
+          gmail_message_id: "msg-1",
+          gmail_thread_id: "thread-1",
+          gmail_rfc_message_id: "<original-abc@mail.example.com>",
+          subject: "Launch notes",
+          recommended_role_key: "mail-triage"
+        })
+
+      %{item: item}
+    end
+
+    test "sends a threaded reply to the sender and marks the item done", %{item: item} do
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        assert conn.request_path == "/gmail/v1/users/me/messages/send"
+
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        payload = Jason.decode!(body)
+        raw = payload |> Map.fetch!("raw") |> decode_base64url!()
+
+        assert payload["threadId"] == "thread-1"
+        assert raw =~ "To: Ada <ada@example.com>\r\n"
+        assert raw =~ "Subject: Re: Launch notes\r\n"
+        assert raw =~ "In-Reply-To: <original-abc@mail.example.com>\r\n"
+        assert raw =~ "References: <original-abc@mail.example.com>\r\n"
+        assert raw =~ "\r\n\r\nThanks, will follow up."
+
+        Req.Test.json(conn, %{"id" => "msg-sent-9", "threadId" => "thread-1"})
+      end)
+
+      assert {:ok, result} =
+               Commands.dispatch_reply(%{"id" => item.id, "body" => "Thanks, will follow up."})
+
+      assert result.dispatch_item_id == item.id
+      assert result.status == "done"
+      assert result.subject == "Re: Launch notes"
+      assert result.thread_id == "thread-1"
+
+      reloaded = Dispatch.get_item!(item.id)
+      assert reloaded.status == "done"
+      assert reloaded.outcome == "replied"
+    end
+
+    test "does not double-prefix an already-Re: subject", %{item: item} do
+      {:ok, item} = Dispatch.update_item(item, %{subject: "Re: Launch notes"})
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        raw = body |> Jason.decode!() |> Map.fetch!("raw") |> decode_base64url!()
+        assert raw =~ "Subject: Re: Launch notes\r\n"
+        refute raw =~ "Subject: Re: Re:"
+        Req.Test.json(conn, %{"id" => "msg-sent-10", "threadId" => "thread-1"})
+      end)
+
+      assert {:ok, _} = Commands.dispatch_reply(%{"id" => item.id, "body" => "ok"})
+    end
+
+    test "requires a body", %{item: item} do
+      assert {:error, :missing_body} = Commands.dispatch_reply(%{"id" => item.id, "body" => "  "})
+      assert Dispatch.get_item!(item.id).status == "queued"
     end
   end
 

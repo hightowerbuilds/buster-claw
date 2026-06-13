@@ -20,6 +20,7 @@ defmodule BusterClaw.Dispatch.Item do
              :auth_status,
              :gmail_message_id,
              :gmail_thread_id,
+             :gmail_rfc_message_id,
              :subject,
              :request_summary,
              :request_body_excerpt,
@@ -51,6 +52,7 @@ defmodule BusterClaw.Dispatch.Item do
     field :auth_status, :string, default: "unverified"
     field :gmail_message_id, :string
     field :gmail_thread_id, :string
+    field :gmail_rfc_message_id, :string
     field :subject, :string
     field :request_summary, :string
     field :request_body_excerpt, :string
@@ -86,6 +88,7 @@ defmodule BusterClaw.Dispatch.Item do
       :auth_status,
       :gmail_message_id,
       :gmail_thread_id,
+      :gmail_rfc_message_id,
       :subject,
       :request_summary,
       :request_body_excerpt,
