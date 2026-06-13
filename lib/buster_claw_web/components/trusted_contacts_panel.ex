@@ -13,7 +13,7 @@ defmodule BusterClawWeb.TrustedContactsPanel do
 
   def panel(assigns) do
     ~H"""
-    <section id="home-left-panel" class="ic-panel flex min-h-64 flex-col">
+    <section id="home-left-panel" class="ic-panel flex min-h-64 flex-1 flex-col">
       <header class="border-b-2 border-base-content/20 px-5 py-4">
         <p class="ic-eyebrow">Trusted Contacts</p>
         <h2 class="font-display text-2xl font-black uppercase tracking-tight">
@@ -24,7 +24,7 @@ defmodule BusterClawWeb.TrustedContactsPanel do
         </p>
       </header>
 
-      <div class="flex flex-1 flex-col gap-4 p-5">
+      <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
         <form phx-submit="add_contact" class="flex flex-wrap items-center gap-2">
           <input
             type="text"

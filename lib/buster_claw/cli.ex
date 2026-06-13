@@ -35,6 +35,7 @@ defmodule BusterClaw.CLI do
       ["terminal", "open"] -> terminal_open(opts)
       ["terminal", "open", role] -> terminal_open(opts, role)
       ["mailman", "poll"] -> mailman_poll(opts)
+      ["shift", "run"] -> shift_run(opts)
       ["dispatch", "list"] -> dispatch_list_cmd(opts)
       ["dispatch", "show", id] -> dispatch_show_cmd(id, opts)
       ["dispatch", "claim"] -> dispatch_claim_cmd(opts)
@@ -136,6 +137,42 @@ defmodule BusterClaw.CLI do
     IO.puts("Mailman polling Gmail through Buster Claw every #{interval}s.")
     poll_gmail(args, opts, interval, max_runs, 1)
   end
+
+  # Go on duty in one step: start an orchestration shift, then poll trusted mail.
+  defp shift_run(opts) do
+    shift_args =
+      %{}
+      |> maybe_put("job", Keyword.get(opts, :job))
+      |> maybe_put("agent_name", Keyword.get(opts, :agent))
+      |> maybe_put("shell", Keyword.get(opts, :startup_profile))
+
+    case http_post("/api/run", %{"command" => "shift_start", "args" => shift_args},
+           auth: true,
+           opts: opts
+         ) do
+      {:ok, %{"ok" => true, "result" => result}} ->
+        IO.puts(format_shift_started(result))
+        mailman_poll(opts)
+
+      {:ok, %{"ok" => false, "error" => error} = payload} ->
+        IO.puts(:stderr, "error: #{error}")
+        if errors = payload["errors"], do: IO.puts(:stderr, pretty(errors))
+        System.halt(1)
+
+      {:error, reason} ->
+        die(reason, 1)
+    end
+  end
+
+  defp format_shift_started(result) when is_map(result) do
+    job = result["job_name"] || result["job_key"] || "lookout"
+    id = result["shift_id"]
+
+    "Shift #{if id, do: "##{id} ", else: ""}started on #{job}." <>
+      " Polling begins below — stop with Ctrl-C, then `./buster-claw shift stop` to end the shift."
+  end
+
+  defp format_shift_started(result), do: pretty(result)
 
   defp run(name, opts, args \\ nil) do
     args = args || parse_args(opts)
@@ -617,6 +654,7 @@ defmodule BusterClaw.CLI do
       <noun> <verb> [opts]   Shorthand for `run <noun>_<verb>`.
       terminal open [role]   Open a role-labeled terminal tab inside Buster Claw.
       mailman poll           Continuously sync Gmail through the local API.
+      shift run              Start an orchestration shift, then poll trusted mail.
       dispatch list          List open queue items (--status, --job, --limit).
       dispatch show <id>     Show one queue item.
       dispatch claim         Claim the next open item (--job to scope, --session).

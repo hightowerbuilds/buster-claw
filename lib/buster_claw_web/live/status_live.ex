@@ -64,12 +64,97 @@ defmodule BusterClawWeb.StatusLive do
         </div>
 
         <div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
-          <BusterClawWeb.TrustedContactsPanel.panel entries={@trusted_contacts} />
+          <div class="flex min-h-0 flex-col gap-6">
+            <.get_started_panel />
+            <BusterClawWeb.TrustedContactsPanel.panel entries={@trusted_contacts} />
+          </div>
 
           <.daily_calendar_panel today={@today} events={@daily_events} />
         </div>
       </section>
     </Layouts.app>
+    """
+  end
+
+  defp get_started_panel(assigns) do
+    ~H"""
+    <section id="home-get-started" class="ic-panel flex min-h-64 flex-1 flex-col">
+      <header class="border-b-2 border-base-content/20 px-5 py-4">
+        <p class="ic-eyebrow">Get Started</p>
+        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+          Get Started
+        </h2>
+        <p class="mt-1 text-sm text-base-content/65">
+          Three steps to put Buster Claw on email duty (Google Workspace already connected).
+        </p>
+      </header>
+
+      <ol class="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
+        <li class="flex gap-3">
+          <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
+            1
+          </span>
+          <div class="min-w-0">
+            <h3 class="font-semibold">Add your trusted contacts</h3>
+            <p class="mt-0.5 text-sm text-base-content/65">
+              In the panel below, list the senders the agent may read and reply to.
+              Mail from anyone else is ignored.
+            </p>
+          </div>
+        </li>
+
+        <li class="flex gap-3">
+          <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
+            2
+          </span>
+          <div class="min-w-0">
+            <h3 class="font-semibold">Start the agent</h3>
+            <p class="mt-0.5 text-sm text-base-content/65">
+              Open the <.link
+                navigate={~p"/terminal"}
+                class="font-semibold text-primary hover:underline"
+              >Terminal</.link>
+              and start a Claude Code session on the <span class="font-mono">mail-triage</span>
+              job. That's the worker that reads queued mail and writes the replies.
+            </p>
+          </div>
+        </li>
+
+        <li class="flex gap-3">
+          <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
+            3
+          </span>
+          <div class="min-w-0">
+            <h3 class="font-semibold">Go on duty</h3>
+            <p class="mt-0.5 text-sm text-base-content/65">
+              In a terminal, run <.copy_command command="./buster-claw shift run" />. It starts a
+              shift and polls your trusted mail until you stop it (Ctrl-C, then
+              <.copy_command command="./buster-claw shift stop" />).
+            </p>
+          </div>
+        </li>
+      </ol>
+    </section>
+    """
+  end
+
+  attr :command, :string, required: true
+
+  defp copy_command(assigns) do
+    ~H"""
+    <span class="inline-flex items-center gap-1 align-middle">
+      <code class="rounded bg-base-200 px-1.5 py-0.5 font-mono text-[0.8rem]">{@command}</code>
+      <button
+        type="button"
+        data-terminal-command-copy={@command}
+        aria-label={"Copy command: #{@command}"}
+        title="Copy"
+        class="inline-flex shrink-0 items-center gap-1 rounded-sm border border-base-content/20 px-1.5 py-0.5 font-mono text-[0.62rem] font-semibold uppercase tracking-wide text-base-content/60 transition hover:border-primary hover:text-primary"
+      >
+        <.icon name="hero-clipboard-document" class="size-3" />
+        <span data-terminal-command-copy-label>Copy</span>
+      </button>
+    </span>
     """
   end
 

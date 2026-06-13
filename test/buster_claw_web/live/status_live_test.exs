@@ -31,7 +31,11 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(id="tab-strip")
     assert response =~ ~s(phx-hook="TabStrip")
     assert response =~ ~s(id="app-dock")
-    # Left column is now the trusted-contacts manager (replaced orchestration).
+    # Left column: Get Started explainer on top, trusted-contacts manager below.
+    assert response =~ ~s(id="home-get-started")
+    assert response =~ "Get Started"
+    assert response =~ "Go on duty"
+    assert response =~ "./buster-claw shift run"
     assert response =~ ~s(id="home-left-panel")
     assert response =~ "Trusted Contacts"
     assert response =~ "No trusted contacts yet."

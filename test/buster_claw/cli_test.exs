@@ -20,6 +20,7 @@ defmodule BusterClaw.CLITest do
     assert output =~ "--timeout <seconds>"
     assert output =~ "mailman default 300"
     assert output =~ "--verbose"
+    assert output =~ "shift run"
   end
 
   test "formats Mailman poll results for terminal reading" do
