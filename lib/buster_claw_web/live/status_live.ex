@@ -3,19 +3,13 @@ defmodule BusterClawWeb.StatusLive do
 
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.LocalTime
-  alias BusterClaw.Orchestration
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
+  alias BusterClaw.TrustedSenders
 
   @impl true
   def mount(_params, _session, socket) do
     today = LocalTime.today()
-
-    if connected?(socket) do
-      Orchestration.subscribe()
-      # Keep time-left/heartbeats fresh even between events.
-      :timer.send_interval(30_000, self(), :refresh_orchestration)
-    end
 
     {:ok,
      socket
@@ -23,33 +17,25 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(status: Status.snapshot())
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
-     |> assign(:orchestration, Orchestration.snapshot())
+     |> assign(:trusted_contacts, TrustedSenders.list_entries())
      |> load_daily_events()}
   end
 
   @impl true
-  def handle_info({:orchestration, _event}, socket) do
-    {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
-  end
+  def handle_event("add_contact", %{"entry" => entry}, socket) do
+    case TrustedSenders.add_entry(entry) do
+      {:ok, _value} ->
+        {:noreply, assign(socket, :trusted_contacts, TrustedSenders.list_entries())}
 
-  def handle_info(:refresh_orchestration, socket) do
-    {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
-  end
-
-  @impl true
-  def handle_event("kill_shift", _params, socket) do
-    Orchestration.engage_kill_switch()
-    Orchestration.stop_shift("kill switch")
-    {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
-  end
-
-  def handle_event("delete_task", %{"id" => id}, socket) do
-    case Orchestration.get_task(id) do
-      nil -> :ok
-      task -> Orchestration.delete_task(task)
+      {:error, :invalid_entry} ->
+        {:noreply,
+         put_flash(socket, :error, "Enter a full email address or a *@domain wildcard.")}
     end
+  end
 
-    {:noreply, assign(socket, :orchestration, Orchestration.snapshot())}
+  def handle_event("remove_contact", %{"entry" => entry}, socket) do
+    TrustedSenders.remove_entry(entry)
+    {:noreply, assign(socket, :trusted_contacts, TrustedSenders.list_entries())}
   end
 
   @impl true
@@ -78,7 +64,7 @@ defmodule BusterClawWeb.StatusLive do
         </div>
 
         <div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
-          <BusterClawWeb.OrchestrationPanel.panel snapshot={@orchestration} />
+          <BusterClawWeb.TrustedContactsPanel.panel entries={@trusted_contacts} />
 
           <.daily_calendar_panel today={@today} events={@daily_events} />
         </div>

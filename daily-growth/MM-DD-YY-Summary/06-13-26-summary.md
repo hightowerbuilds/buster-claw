@@ -80,6 +80,24 @@ reply verb and pointed the job at it.
 - Verification: `mix test` 375/0, `mix compile --warnings-as-errors` +
   `mix format --check-formatted` clean.
 
+### Trusted-contacts UI (home left column)
+
+Added a homepage manager for the trusted-sender allow-list, replacing the
+orchestration container in the left column (orchestration still lives at
+`/orchestration`).
+
+- **`TrustedSenders`** gained write/read management: `list_entries/0` (addresses
+  first, then `*@domain` rules), `add_entry/1` (accepts a full address, `*@domain`,
+  or a bare domain → wildcard; idempotent; validates), `remove_entry/1`.
+- **`TrustedContactsPanel`** component (`id="home-left-panel"`): add form +
+  list with a "domain" badge + per-row remove (with `data-confirm`); empty state.
+- **`StatusLive`** — dropped the home orchestration wiring (subscribe/timer/
+  kill_shift/delete_task) and now renders the trusted-contacts panel, handling
+  `add_contact` / `remove_contact` (invalid entry → flash).
+- Tests: `TrustedSenders` add/list/remove unit tests; rewritten `status_live_test`
+  (panel render, lists existing, add+remove via LiveView, invalid→flash).
+- Verification: `mix test` 382/0, compile warnings-as-errors + format clean.
+
 ## Notes
 
 - Both objectives add migrations. They auto-apply on next `mix phx.server` boot

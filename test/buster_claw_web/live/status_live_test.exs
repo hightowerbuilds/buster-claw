@@ -1,11 +1,28 @@
 defmodule BusterClawWeb.StatusLiveTest do
-  use BusterClawWeb.ConnCase
+  # async: false — points the global :workspace_root at a tmp trusted-senders file.
+  use BusterClawWeb.ConnCase, async: false
+
+  import Phoenix.LiveViewTest
 
   alias BusterClaw.Calendar
   alias BusterClaw.LocalTime
-  alias BusterClaw.Orchestration
 
-  test "GET / renders the home shell", %{conn: conn} do
+  setup do
+    root = Path.join(System.tmp_dir!(), "bc_status_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(Path.join(root, "memory"))
+
+    prev = Application.get_env(:buster_claw, :workspace_root)
+    Application.put_env(:buster_claw, :workspace_root, root)
+
+    on_exit(fn ->
+      Application.put_env(:buster_claw, :workspace_root, prev)
+      File.rm_rf(root)
+    end)
+
+    {:ok, root: root}
+  end
+
+  test "GET / renders the home shell with the trusted-contacts panel", %{conn: conn} do
     conn = get(conn, ~p"/")
     response = html_response(conn, 200)
 
@@ -14,20 +31,17 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(id="tab-strip")
     assert response =~ ~s(phx-hook="TabStrip")
     assert response =~ ~s(id="app-dock")
-    assert response =~ ~s(id="home-shift-management")
-    assert response =~ "No shift shell open."
-    refute response =~ ~s(id="shift-assignment-form")
-    refute response =~ ~s(id="shift-start-button")
+    # Left column is now the trusted-contacts manager (replaced orchestration).
+    assert response =~ ~s(id="home-left-panel")
+    assert response =~ "Trusted Contacts"
+    assert response =~ "No trusted contacts yet."
+    refute response =~ ~s(id="home-shift-management")
     # The Connect-GWS panel was removed from the home page; GWS lives at /gws + /setup.
     refute response =~ ~s(id="home-google-workspace-login")
     refute response =~ ~s(id="home-recent-emails")
-    refute response =~ "Active key"
     assert response =~ ~s(href="/advanced")
     refute response =~ ~s(href="/webhooks")
-    refute response =~ ~s(href="/hooks")
-    refute response =~ ~s(href="/integrations")
     refute response =~ ~s(href="/mcp")
-    refute response =~ ~s(href="/delivery")
   end
 
   test "GET / renders today's calendar events", %{conn: conn} do
@@ -51,36 +65,55 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ "09:30"
   end
 
-  test "home displays the shell currently on shift", %{conn: conn} do
-    {:ok, _shift} =
-      Orchestration.start_shift(
-        job: "lookout",
-        agent_name: "Codex",
-        shell: "Terminal 1",
-        hours: 12
-      )
-
-    {:ok, _assignment} =
-      Orchestration.start_shift_assignment(
-        role_key: "mail-triage",
-        agent_name: "Mail Triage",
-        shell: "Email terminal",
-        purpose: "Handle incoming email."
-      )
+  test "lists existing trusted contacts, marking domain wildcards", %{conn: conn, root: root} do
+    File.write!(
+      Path.join(root, "memory/trusted-email-senders.md"),
+      "# Trusted\n\n- alice@example.com\n- *@acme.com\n"
+    )
 
     conn = get(conn, ~p"/")
     response = html_response(conn, 200)
 
-    assert response =~ ~s(id="home-shift-management")
-    assert response =~ ~s(id="shift-shell-open-status")
-    assert response =~ ~s(id="shift-active-assignments")
-    assert response =~ "Shell open"
-    assert response =~ "Lookout"
-    assert response =~ "Codex"
-    assert response =~ "Terminal 1"
-    assert response =~ "Mail Triage"
-    assert response =~ "Email terminal"
-    refute response =~ ~s(id="shift-assignment-form")
+    assert response =~ "alice@example.com"
+    assert response =~ "*@acme.com"
+    refute response =~ "No trusted contacts yet."
+  end
+
+  test "adds and removes a trusted contact from the home panel", %{conn: conn} do
+    # Use an address that does NOT appear in the input placeholder text.
+    contact = "dana@example.org"
+
+    {:ok, view, html} = live(conn, ~p"/")
+    assert html =~ "No trusted contacts yet."
+    refute html =~ contact
+
+    html =
+      view
+      |> form(~s(form[phx-submit="add_contact"]), %{"entry" => contact})
+      |> render_submit()
+
+    assert html =~ contact
+    refute html =~ "No trusted contacts yet."
+
+    html =
+      view
+      |> element(~s(button[phx-value-entry="#{contact}"]))
+      |> render_click()
+
+    assert html =~ "No trusted contacts yet."
+    refute html =~ contact
+  end
+
+  test "rejects an invalid trusted-contact entry with a flash", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    html =
+      view
+      |> form(~s(form[phx-submit="add_contact"]), %{"entry" => "not-an-email"})
+      |> render_submit()
+
+    assert html =~ "Enter a full email address or a *@domain wildcard."
+    assert html =~ "No trusted contacts yet."
   end
 
   test "GET / uses the app-local date for the daily calendar", %{conn: conn} do
