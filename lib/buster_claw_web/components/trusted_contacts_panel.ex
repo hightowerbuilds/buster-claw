@@ -13,16 +13,28 @@ defmodule BusterClawWeb.TrustedContactsPanel do
 
   def panel(assigns) do
     ~H"""
-    <section id="home-left-panel" class="ic-panel flex min-h-64 flex-1 flex-col">
-      <header class="border-b-2 border-base-content/20 px-5 py-4">
-        <p class="ic-eyebrow">Trusted Contacts</p>
-        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-          Trusted Contacts
-        </h2>
-        <p class="mt-1 text-sm text-base-content/65">
-          Only mail from these senders is queued for the agent to act on.
-        </p>
-      </header>
+    <details
+      id="home-left-panel"
+      open
+      class="ic-panel group flex min-h-0 flex-col open:min-h-64 open:flex-1"
+    >
+      <summary class="flex cursor-pointer list-none items-start justify-between gap-3 border-base-content/20 px-5 py-4 transition group-open:border-b-2 hover:text-primary">
+        <div class="min-w-0">
+          <p class="ic-eyebrow">Trusted Contacts</p>
+          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+            Trusted Contacts
+          </h2>
+          <p class="mt-1 text-sm text-base-content/65">
+            Only mail from these senders is queued for the agent to act on.
+          </p>
+        </div>
+        <div class="flex shrink-0 items-center gap-2 pt-1">
+          <span class="rounded bg-base-200 px-2 py-0.5 font-mono text-xs font-bold text-base-content/60">
+            {length(@entries)}
+          </span>
+          <.icon name="hero-chevron-right" class="size-5 transition group-open:rotate-90" />
+        </div>
+      </summary>
 
       <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
         <form phx-submit="add_contact" class="flex flex-wrap items-center gap-2">
@@ -88,7 +100,7 @@ defmodule BusterClawWeb.TrustedContactsPanel do
           <p class="mt-1">Add a sender above to start queueing their mail for the agent.</p>
         </div>
       </div>
-    </section>
+    </details>
     """
   end
 end
