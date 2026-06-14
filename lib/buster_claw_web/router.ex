@@ -54,6 +54,13 @@ defmodule BusterClawWeb.Router do
     get "/terminal-background", AppearanceController, :terminal_background
   end
 
+  # Renders a workspace file (Markdown → HTML, .html as-is) for the in-app browser.
+  # No pipeline: returns a raw HTML document, not a LiveView page. Path-guarded to
+  # the workspace by FileManager; loopback-only.
+  scope "/ws", BusterClawWeb do
+    get "/file", WorkspaceFileController, :show
+  end
+
   scope "/", BusterClawWeb do
     pipe_through :api
 

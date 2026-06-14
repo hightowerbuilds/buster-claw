@@ -234,6 +234,17 @@ Turned the `projects/financial-advisor/` research briefs into a phased build
   variants so collapsing it lets the Trusted Contacts panel grow). Body stays in the
   DOM, so existing render assertions hold. Status tests green.
 
+### Browser — workspace HTML/MD viewer (Part 1 of webview rework)
+
+- New `GET /ws/file?path=` (`WorkspaceFileController`): serves a workspace file for
+  the in-app browser — Markdown → HTML, `.html`/`.htm` as-is, other text in a `<pre>`.
+  Path-guarded to the workspace via `FileManager.read_file/2` (traversal/size/binary
+  rejected); raw HTML response (no LiveView shell). Tests: md render, raw html,
+  outside-workspace 403, missing-path 400.
+- **Next (Part 2):** an embedded Tauri webview (operator chose B) for live HTTPS +
+  wiring the browser UI to this route — native (`unstable` multi-webview + JS↔Rust
+  position sync), needs in-app iteration.
+
 ## Notes
 
 - Both objectives add migrations. They auto-apply on next `mix phx.server` boot
