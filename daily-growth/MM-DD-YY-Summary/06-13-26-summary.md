@@ -261,6 +261,24 @@ Turned the `projects/financial-advisor/` research briefs into a phased build
   ResizeObserver, drive nav commands) and the BrowseLive shell rework + non-Tauri
   fallback. Runtime-only-testable in the Tauri app → build-and-iterate.
 
+### Browser — embedded-webview wiring (Part 2b)
+
+- **`EmbeddedBrowser` JS hook** (`app.js`): in the desktop app it opens the native
+  child webview over the surface element and keeps it glued via a `ResizeObserver` +
+  window resize/scroll (rAF-debounced `browser_set_bounds`); the toolbar
+  (back/forward/reload + address form) drives the `browser_*` commands client-side
+  (no server round-trip); `destroyed()` closes the webview. Outside the desktop app
+  it reveals a fallback notice. The address bar resolves a URL (`https://…`, scheme
+  optional) or an absolute workspace path (`/…` → `/ws/file`).
+- **`BrowseLive` rewritten** from the server-side reader into the shell (toolbar +
+  surface + fallback); deep-link `?url=` / split-pane `session["url"]` seed the
+  address. Old reader handlers/state removed.
+- Tests rewritten for the shell; `browse_live_test` + `split_live_test` updated
+  (reader assertions → shell assertions). Full suite green (395); `cargo check` +
+  `mix assets.build` clean.
+- **Not yet runtime-verified:** native positioning / live loads need the Tauri app
+  (`./scripts/dev.sh`) — expect to iterate on overlay alignment and lifecycle.
+
 ### First-run onboarding — hyper-minimal 4-step flow
 
 - Rebuilt `/setup` (`SetupLive`) into a welcome explainer + **4 progress dots**

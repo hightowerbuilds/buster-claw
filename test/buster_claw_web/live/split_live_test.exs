@@ -10,10 +10,8 @@ defmodule BusterClawWeb.SplitLiveTest do
 
     assert html =~ "Browse"
     assert html =~ "Calendar"
-    # The embedded Browse pane renders its own (bare) content.
-    assert html =~ "Nothing loaded yet"
-    # In a joined pane the browser drops its page header.
-    refute html =~ "Fetch and read pages in-app"
+    # The embedded Browse pane renders its (bare) browser shell.
+    assert html =~ "data-browser-surface"
   end
 
   test "joined views render a draggable resize divider with a swap control", %{conn: conn} do
@@ -159,21 +157,14 @@ defmodule BusterClawWeb.SplitLiveTest do
     refute html =~ "Swap panes"
   end
 
-  test "a joined browse pane loads the url carried in its param", %{conn: conn} do
-    Req.Test.stub(BusterClaw.BrowserHTTP, fn c ->
-      Req.Test.html(
-        c,
-        "<html><head><title>Carried</title></head><body><p>Carried page body.</p></body></html>"
-      )
-    end)
-
+  test "a joined browse pane seeds its address from the url carried in its param", %{conn: conn} do
     left = URI.encode_www_form("/browse?url=https://example.com/x")
     right = URI.encode_www_form("/calendar")
 
     {:ok, _view, html} = live(conn, "/split?left=#{left}&right=#{right}")
 
-    # The embedded Browse pane fetched and rendered the carried url.
-    assert html =~ "Carried page body."
+    # The embedded Browse pane carries the url into its address bar / hook.
+    assert html =~ "https://example.com/x"
   end
 
   test "a workspace tab can be joined with the terminal (both bare)", %{conn: conn} do
