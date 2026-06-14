@@ -17,7 +17,9 @@ defmodule BusterClawWeb.WorkspaceFileController do
   @html_exts ~w(.html .htm)
 
   def show(conn, %{"path" => path}) when is_binary(path) and path != "" do
-    case FileManager.read_file(path, Artifact.workspace_root()) do
+    workspace = Artifact.workspace_root()
+
+    case FileManager.read_file(resolve(path, workspace), workspace) do
       {:ok, content} ->
         ext = path |> Path.extname() |> String.downcase()
         title = Path.basename(path)
@@ -48,6 +50,18 @@ defmodule BusterClawWeb.WorkspaceFileController do
   end
 
   def show(conn, _params), do: send_resp(conn, 400, "Missing ?path=")
+
+  # Accept either an absolute path already inside the workspace, or a
+  # workspace-relative path (leading `/` = workspace root), as the browser uses.
+  defp resolve(path, workspace) do
+    expanded = Path.expand(path)
+
+    if FileManager.within?(expanded, workspace) do
+      expanded
+    else
+      Path.expand(Path.join(workspace, String.trim_leading(path, "/")))
+    end
+  end
 
   # Minimal standalone document shell (the app's md-prose CSS isn't available
   # in this raw response, so inline just enough to make it readable).

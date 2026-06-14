@@ -87,6 +87,21 @@ defmodule BusterClawWeb.BrowserChromeController do
           const url = resolve(addr.value)
           if (url && invoke) { record(url, addr.value.trim()); invoke("browser_navigate", {url}) }
         }
+        // When the address starts with "/", browse the workspace in the content
+        // webview (folders/files under that path), debounced so it doesn't reload
+        // on every keystroke. Hitting Go still opens the typed path via /ws/file.
+        let browseTimer
+        addr.addEventListener("input", function () {
+          if (!addr.value.startsWith("/")) return
+          clearTimeout(browseTimer)
+          browseTimer = setTimeout(function () {
+            if (invoke && addr.value.startsWith("/")) {
+              invoke("browser_navigate", {
+                url: origin + "/browser/workspace?q=" + encodeURIComponent(addr.value)
+              })
+            }
+          }, 300)
+        })
         document.getElementById("form").addEventListener("submit", function (e) { e.preventDefault(); go() })
         document.getElementById("home").addEventListener("click", function () { invoke && invoke("browser_navigate", {url: homeUrl}) })
         document.getElementById("back").addEventListener("click", function () { invoke && invoke("browser_back") })

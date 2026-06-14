@@ -68,6 +68,7 @@ defmodule BusterClawWeb.Router do
   scope "/browser", BusterClawWeb do
     get "/chrome", BrowserChromeController, :show
     get "/home", BrowserHomeController, :show
+    get "/workspace", BrowserWorkspaceController, :show
     post "/history", BrowserHistoryController, :create
   end
 

@@ -327,6 +327,21 @@ operator direction, moved the **entire browser chrome into the native layer**:
   `BrowserHistoryController`, chrome toolbar + hook tweaks. Tests for the store, the
   homepage render, and recording. Full suite green (403).
 
+### Browser — workspace file browser from the address bar
+
+- Typing an address starting with **`/`** browses the workspace: the chrome toolbar
+  (debounced) navigates the content webview to **`/browser/workspace?q=…`**
+  (`BrowserWorkspaceController`) — a dark-themed listing of folders/files under that
+  workspace-relative path, filtered by the trailing name. Folders drill in (with a
+  `..` parent); files open via `/ws/file` and are recorded to history (`sendBeacon`).
+  (Dropdown-in-chrome was avoided — the 46px chrome webview would clip it.)
+- **`/ws/file` now accepts workspace-relative paths** (leading `/` = workspace root),
+  resolved safely: absolute-in-workspace kept as-is, else joined under the root;
+  traversal still blocked by `within?` (→ 403). `/etc/hosts` → `<ws>/etc/hosts` (404),
+  never the real file.
+- All Phoenix/JS (no Rust). Tests: workspace listing + prefix filter + parent link +
+  relative-path resolution. Full suite green (407).
+
 ### First-run onboarding — hyper-minimal 4-step flow
 
 - Rebuilt `/setup` (`SetupLive`) into a welcome explainer + **4 progress dots**
