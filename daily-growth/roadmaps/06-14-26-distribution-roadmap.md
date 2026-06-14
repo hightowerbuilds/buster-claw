@@ -74,6 +74,15 @@ The vault key can't live inside the DB it encrypts. Today the Tauri shell genera
 
 **Effort:** ~2–4 days (mostly Rust + migration + tests). **Cross-platform note:** Windows Credential Manager / Linux Secret Service are the same crate, deferred to post-v1.
 
+**Status (2026-06-14):**
+- 1.1 — **DONE.** Shell sources `SECRET_KEY_BASE` from the macOS Keychain (`keyring` crate, `KEYCHAIN_SERVICE = "BusterClaw"`), via a generic `ensure_secret` in `main.rs`. `cargo check` clean.
+- 1.2 — **DONE.** `api_token` + `mcp_token` are Keychain-managed too; the shell injects them as `BUSTER_CLAW_API_TOKEN`/`BUSTER_CLAW_MCP_API_TOKEN`, and `config/runtime.exs` (prod) adopts them. `ApiToken`'s file path remains the non-shell fallback.
+- 1.3 — **DONE.** `ensure_secret` migrates legacy plaintext files (`secret_key_base`/`api_token`/`mcp_token`) into the Keychain and deletes them; also adopts a user-dropped `RESTORE_SECRET_KEY` recovery file.
+- 1.4 — **DONE.** `BusterClaw.Recovery` + a "Recovery key" panel in `SettingsLive` (reveal/hide, copy, and restore-file instructions). No inline JS (CSP-safe).
+- 1.5 — **DONE.** `recovery_test.exs` + `settings_live_test.exs` (reveal hidden-until-clicked). 5/5 pass.
+
+**Not runtime-verifiable here:** the Keychain path only runs in a packaged `cargo tauri build` (debug returns early), so it's compile-verified only. Real Keychain behavior — and stable access ACLs — needs a signed build (Phase 3); unsigned binaries get a fresh ACL identity and may re-prompt. Verify end-to-end after signing.
+
 ---
 
 ## Phase 2 — Bundled Google OAuth (PKCE) + verification  *(external critical path — kick off now)*

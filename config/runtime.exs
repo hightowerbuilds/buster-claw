@@ -131,6 +131,18 @@ if config_env() == :prod do
         """
       end
 
+  # Loopback API tokens. The Tauri shell sources these from the macOS Keychain
+  # and injects them, so they never round-trip through a plaintext file. When
+  # unset (e.g. a manual release run outside the shell), BusterClaw.ApiToken
+  # falls back to generating and persisting a per-machine token file.
+  if api_token = System.get_env("BUSTER_CLAW_API_TOKEN") do
+    config :buster_claw, :api_token, api_token
+  end
+
+  if mcp_token = System.get_env("BUSTER_CLAW_MCP_API_TOKEN") do
+    config :buster_claw, :mcp_api_token, mcp_token
+  end
+
   port = String.to_integer(System.get_env("PORT") || "4000")
 
   config :buster_claw, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")

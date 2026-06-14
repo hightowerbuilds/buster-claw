@@ -17,6 +17,10 @@ mod terminal;
 mod workspace;
 
 const APP_DATA_DIR_NAME: &str = "BusterClaw";
+// Keychain service under which the master key (SECRET_KEY_BASE) and the loopback
+// API tokens are stored. Deliberately independent of the (still-unfinalized)
+// bundle identifier so it stays stable across a rename.
+const KEYCHAIN_SERVICE: &str = "BusterClaw";
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
@@ -42,6 +46,8 @@ struct ReleaseLauncher {
     database_path: PathBuf,
     workspace_root: PathBuf,
     secret_key_base: String,
+    api_token: String,
+    mcp_token: String,
     port: u16,
     phoenix_url: String,
 }
@@ -60,6 +66,8 @@ impl ReleaseLauncher {
             .env("DATABASE_PATH", &self.database_path)
             .env("BUSTER_CLAW_WORKSPACE_ROOT", &self.workspace_root)
             .env("SECRET_KEY_BASE", &self.secret_key_base)
+            .env("BUSTER_CLAW_API_TOKEN", &self.api_token)
+            .env("BUSTER_CLAW_MCP_API_TOKEN", &self.mcp_token)
             .env("RELEASE_DISTRIBUTION", "none")
             .stdout(Stdio::from(stdout_log))
             .stderr(Stdio::from(stderr_log))
@@ -324,7 +332,18 @@ fn main() {
             // --- Release mode: bundled BEAM + respawn monitor ---
             let data_dir = resolve_data_dir()?;
             ensure_data_dirs(&data_dir)?;
-            let secret_key_base = ensure_secret_key_base(&data_dir)?;
+            // Master key + loopback API tokens come from the Keychain (migrated
+            // once from the legacy plaintext files, or adopted from a user-dropped
+            // RESTORE_SECRET_KEY recovery file). The 43-char tokens match the
+            // entropy of the Elixir-side generator they replace.
+            let secret_key_base = ensure_secret(
+                &data_dir,
+                "secret_key_base",
+                &["RESTORE_SECRET_KEY", "secret_key_base"],
+                64,
+            )?;
+            let api_token = ensure_secret(&data_dir, "api_token", &["api_token"], 43)?;
+            let mcp_token = ensure_secret(&data_dir, "mcp_token", &["mcp_token"], 43)?;
             let workspace_root = workspace::resolve_workspace_root(&data_dir)?;
             workspace::ensure_workspace_dirs(&workspace_root)?;
             let database_path = data_dir.join("buster_claw.db");
@@ -348,6 +367,8 @@ fn main() {
                 database_path,
                 workspace_root,
                 secret_key_base,
+                api_token,
+                mcp_token,
                 port,
                 phoenix_url: format!("http://127.0.0.1:{port}"),
             };
@@ -402,22 +423,75 @@ fn ensure_data_dirs(data_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn ensure_secret_key_base(data_dir: &Path) -> Result<String, String> {
-    let key_path = data_dir.join("secret_key_base");
-    if key_path.exists() {
-        let mut buf = String::new();
-        File::open(&key_path)
-            .and_then(|mut f| f.read_to_string(&mut buf))
-            .map_err(|e| format!("failed to read secret_key_base: {e}"))?;
-        return Ok(buf.trim().to_string());
+// --- Secret material: macOS Keychain, with a one-time migration from the
+// legacy plaintext files older shells wrote into the data dir ---
+
+fn keychain_entry(account: &str) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, account)
+        .map_err(|e| format!("keychain entry error for {account}: {e}"))
+}
+
+fn keychain_get(account: &str) -> Result<Option<String>, String> {
+    match keychain_entry(account)?.get_password() {
+        Ok(v) => Ok(Some(v)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(format!("keychain read error for {account}: {e}")),
     }
-    let generated: String = rand::thread_rng()
+}
+
+fn keychain_set(account: &str, value: &str) -> Result<(), String> {
+    keychain_entry(account)?
+        .set_password(value)
+        .map_err(|e| format!("keychain write error for {account}: {e}"))
+}
+
+fn random_alphanumeric(len: usize) -> String {
+    rand::thread_rng()
         .sample_iter(&Alphanumeric)
-        .take(64)
+        .take(len)
         .map(char::from)
-        .collect();
-    fs::write(&key_path, &generated)
-        .map_err(|e| format!("failed to write secret_key_base: {e}"))?;
+        .collect()
+}
+
+/// Resolve a secret, preferring the Keychain. On a cold machine the candidate
+/// files in `data_dir` are tried in order — a user-dropped recovery file, then a
+/// legacy plaintext file from an older shell. The first non-empty one is adopted
+/// into the Keychain and then deleted, so secret material never lingers on disk.
+/// If nothing is found, a fresh secret is generated and stored.
+fn ensure_secret(
+    data_dir: &Path,
+    account: &str,
+    migrate_files: &[&str],
+    len: usize,
+) -> Result<String, String> {
+    if let Some(existing) = keychain_get(account)? {
+        let trimmed = existing.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+
+    for file in migrate_files {
+        let path = data_dir.join(file);
+        if !path.exists() {
+            continue;
+        }
+        let mut buf = String::new();
+        File::open(&path)
+            .and_then(|mut f| f.read_to_string(&mut buf))
+            .map_err(|e| format!("failed to read {file}: {e}"))?;
+        let value = buf.trim().to_string();
+        if value.is_empty() {
+            continue;
+        }
+        keychain_set(account, &value)?;
+        // Secret now lives in the Keychain; drop the on-disk copy (best-effort).
+        let _ = fs::remove_file(&path);
+        return Ok(value);
+    }
+
+    let generated = random_alphanumeric(len);
+    keychain_set(account, &generated)?;
     Ok(generated)
 }
 
