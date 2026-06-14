@@ -17,8 +17,8 @@ defmodule BusterClaw.TerminalCommands do
         %{
           key: "install-claude",
           label: "Install Claude Code",
-          description: "Install the Claude Code CLI with the official installer.",
-          command: "curl -fsSL https://claude.ai/install.sh | bash",
+          description: "Install the Claude Code CLI with Homebrew.",
+          command: "brew install --cask claude-code",
           default?: true
         }
       ]
@@ -54,6 +54,43 @@ defmodule BusterClaw.TerminalCommands do
           description: "Continuously sync Gmail and append output to the shift log.",
           command:
             "./buster-claw mailman poll 2>&1 | tee -a shift/2026-06-08/mailman-native-poll.log"
+        }
+      ]
+    },
+    %{
+      key: "shift",
+      label: "Shift",
+      aliases: ["on-shift", "duty"],
+      startup_profile: "shift",
+      commands: [
+        %{
+          key: "shift-run",
+          label: "Open Shift",
+          description:
+            "Start an orchestration shift, then poll trusted mail (Ctrl-C ends polling).",
+          command: "./buster-claw shift run",
+          default?: true
+        },
+        %{
+          key: "shift-stop",
+          label: "Close Shift",
+          description: "End the current shift — the agent stops claiming new work.",
+          command: "./buster-claw shift stop"
+        }
+      ]
+    },
+    %{
+      key: "prompts",
+      label: "Prompts",
+      aliases: ["prompt"],
+      startup_profile: "prompts",
+      commands: [
+        %{
+          key: "welcome-introduction",
+          label: "Welcome / Read Introduction",
+          description: "Greet the agent and point it at the introduction to start a session.",
+          command: "Welcome to Buster Claw. Please read the introduction.",
+          default?: true
         }
       ]
     }

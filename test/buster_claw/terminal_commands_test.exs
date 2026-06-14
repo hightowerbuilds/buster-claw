@@ -22,7 +22,7 @@ defmodule BusterClaw.TerminalCommandsTest do
              TerminalCommands.role("agent-setup")
 
     assert TerminalCommands.startup_command("agent-setup") ==
-             "curl -fsSL https://claude.ai/install.sh | bash"
+             "brew install --cask claude-code"
   end
 
   test "resolves Mailman aliases" do

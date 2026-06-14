@@ -435,6 +435,20 @@ operator direction, moved the **entire browser chrome into the native layer**:
   buttons from the `TabStrip` (`render()` no longer appends `newTabHtml()`, which
   was deleted). The tab strip now shows only open tabs. `⌘T`/`⌘W` shortcuts are
   untouched.
+- **Terminal toolbar rework.** Collapsed the three buttons (`+` new-tab, `←`/`→`
+  split arrows) into a single `+` that opens a split terminal (`data-split-side`
+  right). Kept the session-key copy button. Turned the Commands icon into a text
+  **`cmd-list`** button (still toggles the cheat-sheet dropdown). Tests updated.
+- **Claude install → Homebrew.** Swapped the Claude Code install command from the
+  `curl … install.sh | bash` native installer to `brew install --cask claude-code`
+  in both the `TerminalCommands` agent-setup role and `SetupLive`'s Tools step
+  (`@claude_install_command`); descriptions + tests updated.
+- **Cheat-sheet categories.** Added two new `TerminalCommands` roles surfaced in
+  the terminal cmd-list: **Shift** (`Open Shift` → `./buster-claw shift run`,
+  `Close Shift` → `./buster-claw shift stop`) and **Prompts** (`Welcome / Read
+  Introduction` → copies `Welcome to Buster Claw. Please read the introduction.`).
+  Both copy via the existing `data-terminal-command-copy` handler — prompts copy
+  as plain text.
 
 ## Notes
 

@@ -102,36 +102,15 @@ defmodule BusterClawWeb.TerminalLive do
 
           <div class="flex shrink-0 items-center gap-1">
             <button
-              id={"#{@dom_id}-new-terminal"}
-              type="button"
-              data-terminal-action="new"
-              title="New terminal"
-              aria-label="New terminal"
-              class={toolbar_button_class()}
-            >
-              <.icon name="hero-plus" class="size-4" />
-            </button>
-            <button
-              id={"#{@dom_id}-split-left"}
-              type="button"
-              data-terminal-action="split"
-              data-split-side="left"
-              title="Split left"
-              aria-label="Split left"
-              class={toolbar_button_class()}
-            >
-              <.icon name="hero-arrow-left" class="size-4" />
-            </button>
-            <button
-              id={"#{@dom_id}-split-right"}
+              id={"#{@dom_id}-split"}
               type="button"
               data-terminal-action="split"
               data-split-side="right"
-              title="Split right"
-              aria-label="Split right"
+              title="Split terminal"
+              aria-label="Split terminal"
               class={toolbar_button_class()}
             >
-              <.icon name="hero-arrow-right" class="size-4" />
+              <.icon name="hero-plus" class="size-4" />
             </button>
             <button
               id={"#{@dom_id}-copy-key"}
@@ -147,15 +126,16 @@ defmodule BusterClawWeb.TerminalLive do
               id={@commands_button_id}
               type="button"
               data-terminal-commands-button
-              title="Commands"
-              aria-label="Show terminal commands"
+              title="Command cheat sheet"
+              aria-label="Show command cheat sheet"
               aria-haspopup="menu"
               aria-controls={@commands_menu_id}
               aria-expanded={to_string(@terminal_commands_open)}
               phx-click="toggle_terminal_commands"
-              class={toolbar_button_class()}
+              class="inline-flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 font-mono text-xs uppercase tracking-wide text-base-content/60 transition hover:bg-base-content/10 hover:text-primary"
             >
               <.icon name="hero-command-line" class="size-4" />
+              <span>cmd-list</span>
             </button>
           </div>
         </div>

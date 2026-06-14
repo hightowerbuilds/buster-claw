@@ -32,7 +32,7 @@ defmodule BusterClawWeb.SetupLive do
   @steps [:welcome, :workspace, :tools, :google, :live]
   # The four steps shown as dots (welcome is the explainer landing, not a dot).
   @dot_steps [:workspace, :tools, :google, :live]
-  @claude_install_command "curl -fsSL https://claude.ai/install.sh | bash"
+  @claude_install_command "brew install --cask claude-code"
   @google_default_query "newer_than:7d"
 
   @impl true

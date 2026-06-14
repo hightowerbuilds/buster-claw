@@ -16,17 +16,21 @@ defmodule BusterClawWeb.TerminalLiveTest do
     assert has_element?(view, "[data-terminal-toolbar][data-session-key='main']")
     assert has_element?(view, "[data-terminal-status]", "Connecting")
     assert has_element?(view, "[data-terminal-key]", "main")
-    assert has_element?(view, "button[data-terminal-action='new'][aria-label='New terminal']")
-    assert has_element?(view, "button[data-terminal-action='split'][data-split-side='left']")
+    # Toolbar is now a single split (+) button, the session-key copy, and the
+    # cmd-list cheat-sheet toggle. The directional split arrows + the separate
+    # new-tab button were removed.
     assert has_element?(view, "button[data-terminal-action='split'][data-split-side='right']")
+    refute has_element?(view, "button[data-terminal-action='new']")
+    refute has_element?(view, "button[data-terminal-action='split'][data-split-side='left']")
     assert has_element?(view, "button[data-terminal-action='copy-key']")
+    assert has_element?(view, "button[data-terminal-commands-button]", "cmd-list")
     # The shell-killing close button was removed; tabs/panes are closed via the
     # tab strip's × (and the per-pane × in a split), not from the terminal toolbar.
     refute has_element?(view, "button[data-terminal-action='close-shell']")
 
     assert has_element?(
              view,
-             "button[data-terminal-commands-button][aria-label='Show terminal commands']"
+             "button[data-terminal-commands-button][aria-label='Show command cheat sheet']"
            )
 
     refute has_element?(view, "[data-terminal-commands-menu]")
