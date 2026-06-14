@@ -16,6 +16,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
 
+# Load local secrets/env (gitignored) so the dev server inherits them — e.g.
+# FINNHUB_API_KEY for the finance_* commands. Optional; absent .env is fine.
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  echo "==> Loading $REPO_ROOT/.env"
+  set -a
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/.env"
+  set +a
+fi
+
 HEALTH="http://127.0.0.1:4000/_health"
 LOG_DIR="$REPO_ROOT/_build/dev"
 PHX_LOG="$LOG_DIR/phx.server.log"

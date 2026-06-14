@@ -14,11 +14,17 @@ defmodule BusterClaw.Finance do
   (Finnhub, key-gated) land in a later slice.
   """
 
-  alias BusterClaw.Finance.Edgar
+  alias BusterClaw.Finance.{Edgar, Finnhub}
 
   @doc "Recent SEC filings for a ticker symbol."
   def filings(symbol, opts \\ []), do: Edgar.filings(symbol, opts)
 
   @doc "Latest curated XBRL fundamentals for a ticker symbol."
   def fundamentals(symbol, opts \\ []), do: Edgar.fundamentals(symbol, opts)
+
+  @doc "Latest quote for a ticker symbol (Finnhub; key-gated)."
+  def quote(symbol, opts \\ []), do: Finnhub.quote(symbol, opts)
+
+  @doc "Recent company news for a ticker symbol (Finnhub; key-gated)."
+  def news(symbol, opts \\ []), do: Finnhub.news(symbol, opts)
 end

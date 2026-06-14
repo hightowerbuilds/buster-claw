@@ -84,6 +84,14 @@ if browser_sidecar_url = System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_URL") do
   config :buster_claw, :browser_sidecar_url, browser_sidecar_url
 end
 
+# Finnhub API key for the finance_quote / finance_news commands. Optional — when
+# unset, those commands return {:error, :not_configured} and the rest of the
+# finance surface (EDGAR filings/fundamentals) is unaffected. Set FINNHUB_API_KEY
+# in the server's environment (never commit the key).
+if finnhub_api_key = System.get_env("FINNHUB_API_KEY") do
+  config :buster_claw, :finnhub_api_key, finnhub_api_key
+end
+
 if config_env() == :prod do
   cli_eval? = System.get_env("BUSTER_CLAW_CLI_EVAL") in ["1", "true", "TRUE", "yes", "YES"]
 

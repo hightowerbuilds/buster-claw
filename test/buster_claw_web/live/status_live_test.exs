@@ -36,6 +36,9 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ "Get Started"
     assert response =~ "Go on duty"
     assert response =~ "./buster-claw shift run"
+    # Get Started links out to the Financial Advisor dashboard.
+    assert response =~ ~s(href="/finance")
+    assert response =~ "Open the Financial Advisor"
     assert response =~ ~s(id="home-left-panel")
     assert response =~ "Trusted Contacts"
     assert response =~ "No trusted contacts yet."

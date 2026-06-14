@@ -45,3 +45,7 @@ erl_crash.dump
 /node_modules/
 /package.json
 /bun.lock
+
+# Local environment / secrets (never commit)
+.env
+.env.local

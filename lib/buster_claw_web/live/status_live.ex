@@ -137,6 +137,15 @@ defmodule BusterClawWeb.StatusLive do
           </div>
         </li>
       </ol>
+
+      <div class="border-t-2 border-base-content/20 px-5 py-4">
+        <.link
+          navigate={~p"/finance"}
+          class="inline-flex items-center gap-2 rounded-sm border-2 border-base-content/25 px-3 py-2 font-mono text-xs uppercase tracking-wide text-base-content/70 transition hover:border-primary hover:text-primary"
+        >
+          <.icon name="hero-chart-bar" class="size-4" /> Open the Financial Advisor
+        </.link>
+      </div>
     </section>
     """
   end
