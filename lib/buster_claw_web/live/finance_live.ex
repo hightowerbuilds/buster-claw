@@ -15,9 +15,11 @@ defmodule BusterClawWeb.FinanceLive do
      socket
      |> assign(:page_title, "Financial Informant")
      |> assign(:query, "")
-     |> assign(:symbol, nil)
      |> assign(:suggestions, [])
-     |> assign(:results, nil)}
+     # Open stock tabs: each %{symbol, name, results}. `active` is the shown one.
+     |> assign(:tabs, [])
+     |> assign(:active, nil)
+     |> assign(:notice, nil)}
   end
 
   @impl true
@@ -40,43 +42,86 @@ defmodule BusterClawWeb.FinanceLive do
   def handle_event("lookup", %{"symbol" => raw}, socket) do
     query = String.trim(to_string(raw))
 
-    cond do
-      query == "" ->
-        {:noreply, assign(socket, query: "", symbol: nil, results: nil, suggestions: [])}
+    if query == "" do
+      {:noreply, assign(socket, query: "", suggestions: [])}
+    else
+      case Finance.resolve(query) do
+        {:ok, symbol} ->
+          {:noreply, open_tab(socket, symbol)}
 
-      true ->
-        case Finance.resolve(query) do
-          {:ok, symbol} ->
-            results = %{
-              quote: Finance.quote(symbol),
-              fundamentals: Finance.fundamentals(symbol),
-              filings: Finance.filings(symbol),
-              news: Finance.news(symbol)
-            }
-
-            {:noreply,
-             assign(socket, query: symbol, symbol: symbol, results: results, suggestions: [])}
-
-          {:error, _reason} ->
-            {:noreply,
-             assign(socket, query: query, symbol: query, results: :no_match, suggestions: [])}
-        end
+        {:error, _reason} ->
+          {:noreply,
+           assign(socket,
+             query: query,
+             suggestions: [],
+             notice: "No company found for “#{query}”."
+           )}
+      end
     end
+  end
+
+  def handle_event("select_tab", %{"symbol" => symbol}, socket) do
+    {:noreply, assign(socket, active: symbol, notice: nil)}
+  end
+
+  def handle_event("close_tab", %{"symbol" => symbol}, socket) do
+    tabs = Enum.reject(socket.assigns.tabs, &(&1.symbol == symbol))
+
+    active =
+      cond do
+        socket.assigns.active != symbol -> socket.assigns.active
+        tabs == [] -> nil
+        true -> List.last(tabs).symbol
+      end
+
+    {:noreply, assign(socket, tabs: tabs, active: active)}
+  end
+
+  # Open `symbol` as a tab (or just switch to it if already open).
+  defp open_tab(socket, symbol) do
+    cleared = assign(socket, query: "", suggestions: [], notice: nil)
+
+    if Enum.any?(socket.assigns.tabs, &(&1.symbol == symbol)) do
+      assign(cleared, active: symbol)
+    else
+      results = %{
+        quote: Finance.quote(symbol),
+        fundamentals: Finance.fundamentals(symbol),
+        filings: Finance.filings(symbol),
+        news: Finance.news(symbol)
+      }
+
+      tab = %{symbol: symbol, name: tab_name(symbol, results), results: results}
+      assign(cleared, tabs: socket.assigns.tabs ++ [tab], active: symbol)
+    end
+  end
+
+  # Company name from whichever source returned it; falls back to the symbol.
+  defp tab_name(symbol, results) do
+    [results.filings, results.fundamentals]
+    |> Enum.find_value(fn
+      {:ok, %{company: c}} when is_binary(c) and c != "" -> c
+      _ -> nil
+    end)
+    |> Kernel.||(symbol)
   end
 
   @impl true
   def render(assigns) do
+    assigns =
+      assign(assigns, :active_tab, Enum.find(assigns.tabs, &(&1.symbol == assigns.active)))
+
     ~H"""
     <Layouts.app flash={@flash}>
-      <section id="finance" class="flex flex-1 flex-col space-y-6">
+      <section id="finance" class="flex min-h-0 flex-1 flex-col space-y-6">
         <div class="border-b-2 border-base-content/20 pb-5">
           <p class="ic-eyebrow">Markets</p>
           <h1 class="font-display text-3xl font-black uppercase tracking-tight">
             Financial Informant
           </h1>
           <p class="mt-1 text-sm text-base-content/65">
-            Search by ticker or company name — every figure carries its source and as-of date.
-            <span class="font-semibold">Not financial advice.</span>
+            Search by ticker or company name — opens in a tab below. Every figure carries its
+            source and as-of date. <span class="font-semibold">Not financial advice.</span>
           </p>
 
           <form phx-change="suggest" phx-submit="lookup" class="mt-4 flex flex-wrap items-start gap-2">
@@ -116,28 +161,71 @@ defmodule BusterClawWeb.FinanceLive do
               Look up
             </button>
           </form>
+
+          <p :if={@notice} class="mt-3 font-mono text-xs text-warning">{@notice}</p>
         </div>
 
         <div
-          :if={is_nil(@results)}
+          :if={@tabs == []}
           class="rounded border border-dashed border-base-300 px-4 py-16 text-center text-sm text-base-content/60"
         >
-          Search by ticker or company name to see its quote, fundamentals, recent filings, and news.
+          No stocks open. Search above to open one — each opens in its own tab here.
         </div>
 
-        <div
-          :if={@results == :no_match}
-          class="rounded border border-dashed border-base-300 px-4 py-16 text-center text-sm text-base-content/60"
-        >
-          No company found for <span class="font-mono">{@symbol}</span>. Try a ticker (AAPL) or a
-          company name (Apple).
-        </div>
+        <div :if={@tabs != []} class="flex min-h-0 flex-1 flex-col">
+          <%!-- In-page tab strip (one per open stock) --%>
+          <div
+            id="finance-tab-strip"
+            role="tablist"
+            class="flex flex-wrap items-stretch gap-1 border-b-2 border-base-content/20"
+          >
+            <div
+              :for={tab <- @tabs}
+              class={[
+                "group flex items-center gap-2 rounded-t-sm border-2 border-b-0 px-3 py-2 transition",
+                if(tab.symbol == @active,
+                  do: "border-base-content/30 bg-base-100",
+                  else: "border-transparent text-base-content/55 hover:text-primary"
+                )
+              ]}
+            >
+              <button
+                type="button"
+                phx-click="select_tab"
+                phx-value-symbol={tab.symbol}
+                title={tab.name}
+                class="flex items-baseline gap-2 text-left"
+              >
+                <span class="font-mono text-sm font-bold">{tab.symbol}</span>
+                <span class="hidden max-w-[10rem] truncate text-xs text-base-content/55 sm:inline">
+                  {tab.name}
+                </span>
+              </button>
+              <button
+                type="button"
+                phx-click="close_tab"
+                phx-value-symbol={tab.symbol}
+                aria-label={"Close #{tab.symbol}"}
+                class="rounded-sm px-1 text-base-content/40 hover:text-error"
+              >
+                <.icon name="hero-x-mark" class="size-3.5" />
+              </button>
+            </div>
+          </div>
 
-        <div :if={is_map(@results)} class="grid gap-6 lg:grid-cols-2">
-          <.quote_card result={@results.quote} symbol={@symbol} />
-          <.fundamentals_card result={@results.fundamentals} />
-          <.filings_card result={@results.filings} />
-          <.news_card result={@results.news} />
+          <%!-- Active stock's cards --%>
+          <div :if={@active_tab} class="min-h-0 flex-1 overflow-auto pt-6">
+            <h2 class="mb-4 font-display text-2xl font-black uppercase tracking-tight">
+              {@active_tab.name}
+              <span class="ml-1 font-mono text-base text-base-content/50">{@active_tab.symbol}</span>
+            </h2>
+            <div class="grid gap-6 lg:grid-cols-2">
+              <.quote_card result={@active_tab.results.quote} symbol={@active_tab.symbol} />
+              <.fundamentals_card result={@active_tab.results.fundamentals} />
+              <.filings_card result={@active_tab.results.filings} />
+              <.news_card result={@active_tab.results.news} />
+            </div>
+          </div>
         </div>
       </section>
     </Layouts.app>

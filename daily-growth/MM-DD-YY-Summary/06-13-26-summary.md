@@ -193,6 +193,15 @@ Turned the `projects/financial-advisor/` research briefs into a phased build
 - Tests: search ranking + name→ticker resolve; the dashboard render asserts the rename
   + suggest wiring.
 
+### Financial Informant — multiple in-page stock tabs
+
+- The page now holds **several open stocks as in-page tabs** (not browser tabs, not
+  app-shell tabs). A lookup opens the stock in its own tab — or switches to it if
+  already open; the in-page tab strip shows each open stock with an active highlight
+  and a close (×), and switching tabs swaps the Quote / Fundamentals / Filings / News
+  view. Per-tab results are fetched once on open and held in socket state. Empty state
+  when nothing's open; a "no company found" notice on an unresolved search.
+
 ## Notes
 
 - Both objectives add migrations. They auto-apply on next `mix phx.server` boot
