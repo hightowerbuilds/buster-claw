@@ -169,11 +169,16 @@ Turned the `projects/financial-advisor/` research briefs into a phased build
   wired `FINANCE_USER_AGENT`.
 - Verified live: AAPL quote $291.13, 10 news articles, 10 filings.
 
-### Docs — README refresh
+### `dev.sh` — stale-server error handling
 
-- Added the **Financial research** feature; corrected the stale **Orchestration**
-  bullet (headless dispatch was cut → terminal agent pulls from the Dispatch queue,
-  Orchestrator is the janitor); nuanced "needs no API keys."
+- Root-caused a recurring "finance not configured / EDGAR 403" symptom to a
+  **six-day-old dev server** holding `:4000`: Phoenix hot-reloads *code* but
+  `config/runtime.exs` only reads env at *boot*, so the process never picked up the
+  `.env` vars added today, and `dev.sh` kept *reusing* it.
+- `scripts/dev.sh` now detects this — when a server is already running it checks the
+  process env for every variable `.env` defines; if any are missing it reports which,
+  restarts the server, and boots fresh so `runtime.exs` re-runs. Otherwise it reuses
+  as before. (Quotes in `.env` were a red herring — bash `source` strips them.)
 
 ## Notes
 
