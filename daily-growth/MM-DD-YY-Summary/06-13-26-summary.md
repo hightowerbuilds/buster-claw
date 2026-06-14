@@ -202,6 +202,18 @@ Turned the `projects/financial-advisor/` research briefs into a phased build
   view. Per-tab results are fetched once on open and held in socket state. Empty state
   when nothing's open; a "no company found" notice on an unresolved search.
 
+### Removed the Orchestration tab
+
+- `/orchestration` was vestigial: its task wizard created tasks nothing ran (no
+  dispatcher, no run-now; `list_due_tasks`/`claim_task` had no callers) — residue of
+  the pre-pull-queue design. Removed the route, the dock nav item, the `@views`
+  (status) and `@panes` (split) entries + the split test reference, and deleted
+  `OrchestrationLive` + the now-dead `OrchestrationPanel` + its test.
+- **Kept intact:** the `Orchestration` domain and the `Orchestrator` janitor
+  (kill-switch + lease reclaim during a shift) — shifts still power `shift run` and the
+  dispatch queue. The pull queue and `/scheduler` are untouched.
+- Full suite green (403).
+
 ## Notes
 
 - Both objectives add migrations. They auto-apply on next `mix phx.server` boot

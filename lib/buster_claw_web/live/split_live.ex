@@ -14,7 +14,6 @@ defmodule BusterClawWeb.SplitLive do
   # (the first-run wizard).
   @panes %{
     "/" => {BusterClawWeb.StatusLive, "Home"},
-    "/orchestration" => {BusterClawWeb.OrchestrationLive, "Orchestration"},
     "/browse" => {BusterClawWeb.BrowseLive, "Browser"},
     "/calendar" => {BusterClawWeb.CalendarLive, "Calendar"},
     "/gws" => {BusterClawWeb.GWSLive, "GWS"},

@@ -556,7 +556,7 @@ defmodule BusterClaw.Orchestration do
   # Panel snapshot
   # ---------------------------------------------------------------------------
 
-  @doc "Everything the home OrchestrationPanel needs in one call."
+  @doc "Aggregated shift/runs/tasks snapshot (shifts power `shift run` + the dispatch queue)."
   def snapshot do
     shift = active_shift()
 

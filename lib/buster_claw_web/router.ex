@@ -24,7 +24,6 @@ defmodule BusterClawWeb.Router do
     pipe_through :browser
 
     live "/", StatusLive, :home
-    live "/orchestration", OrchestrationLive, :index
     live "/browse", BrowseLive, :index
     live "/split", SplitLive, :index
     live "/terminal", TerminalLive, :index

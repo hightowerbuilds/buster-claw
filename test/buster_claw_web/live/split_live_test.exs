@@ -176,11 +176,11 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert html =~ "Carried page body."
   end
 
-  test "orchestration can be joined with the terminal (both bare)", %{conn: conn} do
-    {:ok, _view, html} = live(conn, "/split?left=/terminal&right=/orchestration")
+  test "a workspace tab can be joined with the terminal (both bare)", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/split?left=/terminal&right=/calendar")
 
     assert html =~ "Terminal"
-    assert html =~ "Orchestration"
+    assert html =~ "Calendar"
     # Both panes are embedded → only the outer split view draws the shell.
     assert occurrences(html, ~s(id="tab-strip")) == 1
     assert occurrences(html, ~s(id="app-dock")) == 1
@@ -188,7 +188,7 @@ defmodule BusterClawWeb.SplitLiveTest do
 
   test "every workspace tab embeds alongside the terminal without crashing", %{conn: conn} do
     for path <-
-          ~w(/ /orchestration /browse /calendar /gws /memory /scheduler /workspace
+          ~w(/ /browse /calendar /gws /memory /scheduler /workspace
              /integrations /webhooks /hooks /delivery /advanced /security /settings
              /appearance /manual) do
       assert {:ok, _view, _html} = live(conn, "/split?left=/terminal&right=#{path}"),

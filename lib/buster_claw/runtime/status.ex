@@ -7,7 +7,6 @@ defmodule BusterClaw.Runtime.Status do
 
   @views [
     %{key: :home, label: "Home", path: "/"},
-    %{key: :orchestration, label: "Orchestration", path: "/orchestration"},
     %{key: :terminal, label: "Terminal", path: "/terminal"},
     %{key: :workspace, label: "Workspace", path: "/workspace"},
     %{key: :browse, label: "Browser", path: "/browse"},

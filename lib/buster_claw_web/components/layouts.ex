@@ -7,7 +7,6 @@ defmodule BusterClawWeb.Layouts do
 
   @navigation_items [
     %{label: "Home", path: "/", icon: "hero-home"},
-    %{label: "Orchestration", path: "/orchestration", icon: "hero-queue-list"},
     %{label: "Workspace", path: "/workspace", icon: "hero-folder"},
     %{label: "Browser", path: "/browse", icon: "hero-globe-alt"},
     %{label: "Terminal", path: "/terminal", icon: "hero-command-line"},
