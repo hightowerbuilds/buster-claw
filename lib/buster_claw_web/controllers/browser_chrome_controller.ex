@@ -54,6 +54,7 @@ defmodule BusterClawWeb.BrowserChromeController do
     </style>
     </head>
     <body>
+      <button class="nav" id="home" title="Home" aria-label="Home">&#8962;</button>
       <button class="nav" id="back" title="Back" aria-label="Back">&#9664;</button>
       <button class="nav" id="fwd" title="Forward" aria-label="Forward">&#9654;</button>
       <button class="nav" id="reload" title="Reload" aria-label="Reload">&#8635;</button>
@@ -66,6 +67,7 @@ defmodule BusterClawWeb.BrowserChromeController do
       <script>
         const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke
         const origin = window.location.origin
+        const homeUrl = origin + "/browser/home"
         const addr = document.getElementById("addr")
         function resolve(raw) {
           const v = (raw || "").trim()
@@ -74,11 +76,19 @@ defmodule BusterClawWeb.BrowserChromeController do
           if (v.startsWith("/")) return origin + "/ws/file?path=" + encodeURIComponent(v)
           return "https://" + v
         }
+        function record(url, label) {
+          if (!url || url === homeUrl) return
+          try {
+            fetch(origin + "/browser/history?url=" + encodeURIComponent(url) +
+                  "&label=" + encodeURIComponent(label || url), {method: "POST"})
+          } catch (e) {}
+        }
         function go() {
           const url = resolve(addr.value)
-          if (url && invoke) invoke("browser_navigate", {url})
+          if (url && invoke) { record(url, addr.value.trim()); invoke("browser_navigate", {url}) }
         }
         document.getElementById("form").addEventListener("submit", function (e) { e.preventDefault(); go() })
+        document.getElementById("home").addEventListener("click", function () { invoke && invoke("browser_navigate", {url: homeUrl}) })
         document.getElementById("back").addEventListener("click", function () { invoke && invoke("browser_back") })
         document.getElementById("fwd").addEventListener("click", function () { invoke && invoke("browser_forward") })
         document.getElementById("reload").addEventListener("click", function () { invoke && invoke("browser_reload") })

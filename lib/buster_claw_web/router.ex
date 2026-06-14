@@ -67,6 +67,8 @@ defmodule BusterClawWeb.Router do
   # Raw HTML; loopback-only; drives the sibling content webview via Tauri commands.
   scope "/browser", BusterClawWeb do
     get "/chrome", BrowserChromeController, :show
+    get "/home", BrowserHomeController, :show
+    post "/history", BrowserHistoryController, :create
   end
 
   scope "/", BusterClawWeb do

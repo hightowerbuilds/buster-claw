@@ -314,6 +314,19 @@ operator direction, moved the **entire browser chrome into the native layer**:
 - **Deferred (operator opted out for now):** device-permission denial (geo/cam/mic),
   download policy, and restricting the content webview's loopback reach to `/ws/file`.
 
+### Browser — homepage with recent URLs
+
+- The content webview now defaults to a Phoenix-served **`/browser/home`** (dark-themed
+  to match) instead of `about:blank` — it server-renders a **recent-URL list** from
+  `BusterClaw.BrowserHistory` (per-workspace, file-backed `.browser-history.json`,
+  newest-first, deduped, capped 50). Entries link straight into the content webview.
+- The native chrome toolbar gained a **Home** button and **records each navigation**
+  via `POST /browser/history` — so external URLs *and* workspace HTML/MD files opened
+  from the address bar (`/path` → `/ws/file`) show up in Recent.
+- All Phoenix/JS (no Rust): `BrowserHistory`, `BrowserHomeController`,
+  `BrowserHistoryController`, chrome toolbar + hook tweaks. Tests for the store, the
+  homepage render, and recording. Full suite green (403).
+
 ### First-run onboarding — hyper-minimal 4-step flow
 
 - Rebuilt `/setup` (`SetupLive`) into a welcome explainer + **4 progress dots**

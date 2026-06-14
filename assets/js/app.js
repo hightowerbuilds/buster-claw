@@ -428,10 +428,10 @@ const Hooks = {
     },
 
     // Initial content URL: scheme kept, absolute workspace path → /ws/file,
-    // bare domain → https://, empty → about:blank.
+    // bare domain → https://, empty → the browser homepage (recent URLs).
     resolveContent(raw) {
       const v = (raw || "").trim()
-      if (v === "") return "about:blank"
+      if (v === "") return `${this.origin}/browser/home`
       if (/^[a-z]+:\/\//i.test(v)) return v
       if (v.startsWith("/")) return `${this.origin}/ws/file?path=${encodeURIComponent(v)}`
       return `https://${v}`
