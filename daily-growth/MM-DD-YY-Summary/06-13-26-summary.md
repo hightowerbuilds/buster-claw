@@ -351,6 +351,14 @@ operator direction, moved the **entire browser chrome into the native layer**:
   external sites) and **skips while the input is focused** so it never clobbers typing.
   `cargo check` clean. (Rust change → needs a Tauri rebuild.)
 
+### Footer dock — branded wordmark icons
+
+- Replaced the footer dock buttons for **Home / Browser / Terminal** with the
+  operator's hand-drawn wordmark PNGs (`priv/static/images/{home,browser,terminal}-icon.png`,
+  sized to `h-6`); nav items gained an optional `image` field, and the dock renders
+  the image when present, else the hero icon + label. **Workspace still uses its hero
+  icon** — pending a `workspace-icon.png` (drop it in + add the `image` field to wire).
+
 ### First-run onboarding — hyper-minimal 4-step flow
 
 - Rebuilt `/setup` (`SetupLive`) into a welcome explainer + **4 progress dots**

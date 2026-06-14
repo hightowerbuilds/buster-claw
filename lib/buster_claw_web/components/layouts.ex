@@ -6,10 +6,20 @@ defmodule BusterClawWeb.Layouts do
   use BusterClawWeb, :html
 
   @navigation_items [
-    %{label: "Home", path: "/", icon: "hero-home"},
+    %{label: "Home", path: "/", icon: "hero-home", image: "/images/home-icon.png"},
     %{label: "Workspace", path: "/workspace", icon: "hero-folder"},
-    %{label: "Browser", path: "/browse", icon: "hero-globe-alt"},
-    %{label: "Terminal", path: "/terminal", icon: "hero-command-line"},
+    %{
+      label: "Browser",
+      path: "/browse",
+      icon: "hero-globe-alt",
+      image: "/images/browser-icon.png"
+    },
+    %{
+      label: "Terminal",
+      path: "/terminal",
+      icon: "hero-command-line",
+      image: "/images/terminal-icon.png"
+    },
     %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
     %{label: "Advanced", path: "/advanced", icon: "hero-adjustments-horizontal"},
     %{label: "Manual", path: "/manual", icon: "hero-book-open"},
@@ -145,8 +155,14 @@ defmodule BusterClawWeb.Layouts do
             title={item.label}
             class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
           >
-            <.icon name={item.icon} class="size-5 shrink-0 text-base-content/70" />
-            <span class="hidden sm:inline">{item.label}</span>
+            <img
+              :if={item[:image]}
+              src={item[:image]}
+              alt={item.label}
+              class="h-6 w-auto shrink-0"
+            />
+            <.icon :if={!item[:image]} name={item.icon} class="size-5 shrink-0 text-base-content/70" />
+            <span :if={!item[:image]} class="hidden sm:inline">{item.label}</span>
           </.link>
         </nav>
 
