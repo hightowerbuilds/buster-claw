@@ -17,6 +17,23 @@ const CHROME_LABEL: &str = "browser-chrome";
 const CONTENT_LABEL: &str = "browser-content";
 const CHROME_HEIGHT: f64 = 46.0;
 
+// Injected into the content webview before page scripts: keep popups and
+// target=_blank links in-place instead of spawning uncontrolled OS windows.
+const NO_POPUPS_JS: &str = r#"
+(function () {
+  try {
+    window.open = function (url) { if (url) { window.location.href = url; } return null; };
+    document.addEventListener("click", function (e) {
+      var a = e.target && e.target.closest && e.target.closest("a[target]");
+      if (a && a.target && a.target !== "_self" && a.href) {
+        e.preventDefault();
+        window.location.href = a.href;
+      }
+    }, true);
+  } catch (_e) {}
+})();
+"#;
+
 /// Open (or reposition + show) the two-webview browser over the given box.
 /// `chrome_url` is our Phoenix-served toolbar; `content_url` is the site.
 #[tauri::command]
@@ -129,9 +146,11 @@ fn ensure_webview(
     // or escape into app/IPC schemes. (The chrome webview only ever loads our own
     // loopback toolbar, so it doesn't need this.)
     if label == CONTENT_LABEL {
-        builder = builder.on_navigation(|url| {
-            matches!(url.scheme(), "http" | "https") || url.as_str() == "about:blank"
-        });
+        builder = builder
+            .on_navigation(|url| {
+                matches!(url.scheme(), "http" | "https") || url.as_str() == "about:blank"
+            })
+            .initialization_script(NO_POPUPS_JS);
     }
 
     window

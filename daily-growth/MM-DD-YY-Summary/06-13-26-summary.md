@@ -307,11 +307,12 @@ operator direction, moved the **entire browser chrome into the native layer**:
   Tauri command access; the chrome webview holds only the 4 nav commands.
 - **Navigation guard ✅** (`browser.rs`): the content webview's `on_navigation` allows
   only `http`/`https` (+ `about:blank`) — blocks `file://`, `tauri://`, `javascript:`,
-  `data:`, so a page can't read local files or jump into app/IPC schemes. `cargo check`
-  clean.
-- **Still open:** new-window/popup handling, device-permission denial (geo/cam/mic),
-  download policy, and noting the content webview's loopback reach (`/ws/file` only;
-  API needs a Bearer token).
+  `data:`, so a page can't read local files or jump into app/IPC schemes.
+- **Popup/new-window guard ✅** (`browser.rs` `initialization_script`): overrides
+  `window.open` and rewrites `target=_blank` links to navigate **in-place**, so pages
+  can't spawn uncontrolled OS windows.
+- **Deferred (operator opted out for now):** device-permission denial (geo/cam/mic),
+  download policy, and restricting the content webview's loopback reach to `/ws/file`.
 
 ### First-run onboarding — hyper-minimal 4-step flow
 
