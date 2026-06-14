@@ -26,6 +26,7 @@ defmodule BusterClaw.Commands do
     Calendar,
     Delivery,
     Dispatch,
+    Finance,
     Google,
     Hooks,
     Integrations,
@@ -499,6 +500,22 @@ defmodule BusterClaw.Commands do
         tier: :safe,
         description: "Fetch a URL and convert to markdown.",
         args: %{"url" => %{type: :string, required: true}}
+      },
+
+      # Finance (read-only research; every result carries source + as-of)
+      %{
+        name: "finance_filings",
+        type: :read,
+        tier: :safe,
+        description: "Recent SEC EDGAR filings for a ticker (10-K/10-Q/8-K …), newest first.",
+        args: %{"symbol" => %{type: :string, required: true}}
+      },
+      %{
+        name: "finance_fundamentals",
+        type: :read,
+        tier: :safe,
+        description: "Latest SEC XBRL fundamentals for a ticker (revenue, net income, assets …).",
+        args: %{"symbol" => %{type: :string, required: true}}
       },
 
       # Runtime
@@ -1104,6 +1121,20 @@ defmodule BusterClaw.Commands do
   # -----------------------------------------------------------------------
 
   def browser_fetch(%{"url" => url}), do: Browser.fetch(url, [])
+
+  # -----------------------------------------------------------------------
+  # Finance (read-only research)
+  # -----------------------------------------------------------------------
+
+  def finance_filings(%{"symbol" => symbol}) when is_binary(symbol) and symbol != "",
+    do: Finance.filings(symbol)
+
+  def finance_filings(_args), do: {:error, :missing_symbol}
+
+  def finance_fundamentals(%{"symbol" => symbol}) when is_binary(symbol) and symbol != "",
+    do: Finance.fundamentals(symbol)
+
+  def finance_fundamentals(_args), do: {:error, :missing_symbol}
 
   # -----------------------------------------------------------------------
   # Runtime

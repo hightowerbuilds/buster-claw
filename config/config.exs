@@ -30,7 +30,10 @@ config :buster_claw,
   agent_runner_codex: ["codex", "exec"],
   agent_run_timeout_ms: 600_000,
   agent_heartbeat_interval_ms: 30_000,
-  agent_heartbeat_stale_ms: 120_000
+  agent_heartbeat_stale_ms: 120_000,
+  # SEC EDGAR requires a descriptive User-Agent with a contact email. Set this to
+  # a real contact before relying on the finance_* commands in production.
+  finance_user_agent: "BusterClaw/0.1 (financial research; contact: set finance_user_agent)"
 
 # Configure the endpoint
 config :buster_claw, BusterClawWeb.Endpoint,
