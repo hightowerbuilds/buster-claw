@@ -92,17 +92,9 @@ defmodule BusterClaw.DispatchTest do
     assert queued.id == second.id
   end
 
-  test "running and finish transitions link Dispatch to shift, role session, and task" do
+  test "running and finish transitions link Dispatch to shift and role session" do
     {:ok, shift} = Orchestration.start_shift(job: "lookout")
     {:ok, assignment} = Orchestration.start_shift_assignment(role_key: "mail-triage")
-
-    {:ok, task} =
-      Orchestration.create_task(%{
-        name: "Dispatch: Mail request",
-        type: "agent",
-        engine: "codex",
-        prompt: "Handle the trusted mail request."
-      })
 
     {:ok, _item} =
       Dispatch.enqueue(%{
@@ -116,14 +108,12 @@ defmodule BusterClaw.DispatchTest do
     assert {:ok, running} =
              Dispatch.mark_running(claimed, %{
                shift_id: shift.id,
-               shift_assignment_id: assignment.id,
-               orchestrator_task_id: task.id
+               shift_assignment_id: assignment.id
              })
 
     assert running.status == "running"
     assert running.shift_id == shift.id
     assert running.shift_assignment_id == assignment.id
-    assert running.orchestrator_task_id == task.id
     assert running.started_at
     assert running.heartbeat_at
 

@@ -32,7 +32,6 @@ defmodule BusterClaw.Dispatch do
     status
     shift_id
     shift_assignment_id
-    orchestrator_task_id
     dedupe_key
     claimed_by
     claimed_at

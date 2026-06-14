@@ -1,23 +1,20 @@
 defmodule BusterClaw.Orchestration do
   @moduledoc """
-  Context for the unattended orchestration shift: shifts, scheduled
-  `orchestrator_tasks`, and their `agent_runs`.
+  Context for the unattended orchestration shift: shifts and their specialist
+  shift assignments.
 
-  The deterministic `BusterClaw.Orchestrator` GenServer drives this — selecting
-  due tasks, claiming them under a lease, dispatching, and recording outcomes.
-  All state lives here (SQLite) so a restart resumes from durable state; leases
-  with expiry let a crashed dispatch be reclaimed without double-running.
+  Shifts power `shift run`, the kill switch, and the Dispatch pull-queue. The
+  `BusterClaw.Orchestrator` GenServer watches the active shift for the kill
+  switch. All state lives here (SQLite) so a restart resumes from durable state.
   """
 
   import Ecto.Query
 
   alias BusterClaw.Library.Artifact
-  alias BusterClaw.Orchestration.{AgentRun, Shift, ShiftAssignment, Task}
+  alias BusterClaw.Orchestration.{Shift, ShiftAssignment}
   alias BusterClaw.Repo
-  alias BusterClaw.Scheduler.Cron
 
   @topic "orchestration"
-  @default_lease_ms :timer.minutes(30)
   @kill_switch_file "STOP"
   @shift_jobs [
     %{
@@ -379,259 +376,6 @@ defmodule BusterClaw.Orchestration do
   end
 
   # ---------------------------------------------------------------------------
-  # Tasks — CRUD
-  # ---------------------------------------------------------------------------
-
-  def list_tasks do
-    Task |> order_by([t], asc: t.name) |> Repo.all()
-  end
-
-  def get_task!(id), do: Repo.get!(Task, id)
-  def get_task(id), do: Repo.get(Task, id)
-
-  def create_task(attrs) do
-    %Task{}
-    |> Task.changeset(attrs)
-    |> Repo.insert()
-    |> tap_broadcast(:task_created)
-  end
-
-  def update_task(%Task{} = task, attrs) do
-    task
-    |> Task.changeset(attrs)
-    |> Repo.update()
-    |> tap_broadcast(:task_updated)
-  end
-
-  def delete_task(%Task{} = task) do
-    task |> Repo.delete() |> tap_broadcast(:task_deleted)
-  end
-
-  def change_task(%Task{} = task \\ %Task{}, attrs \\ %{}), do: Task.changeset(task, attrs)
-
-  # ---------------------------------------------------------------------------
-  # Tasks — scheduling, leasing, lifecycle
-  # ---------------------------------------------------------------------------
-
-  @doc "Give cron tasks without a next_run_at their first scheduled time."
-  def ensure_next_runs(at \\ nil) do
-    at = at || now()
-
-    Task
-    |> where([t], t.enabled == true and not is_nil(t.cron) and is_nil(t.next_run_at))
-    |> Repo.all()
-    |> Enum.each(fn task ->
-      case Cron.next_run(task.cron, at) do
-        {:ok, next} -> update_task(task, %{next_run_at: DateTime.truncate(next, :second)})
-        _ -> :ok
-      end
-    end)
-  end
-
-  @doc "Enabled, pending tasks whose due_at/next_run_at has arrived."
-  def list_due_tasks(at \\ nil) do
-    at = at || now()
-
-    Task
-    |> where([t], t.enabled == true and t.state == "pending")
-    |> where(
-      [t],
-      (not is_nil(t.due_at) and t.due_at <= ^at) or
-        (not is_nil(t.next_run_at) and t.next_run_at <= ^at)
-    )
-    |> order_by([t], asc: t.next_run_at, asc: t.due_at, asc: t.id)
-    |> Repo.all()
-  end
-
-  @doc """
-  Atomically claim a pending task for `owner` under a lease. Returns
-  `{:ok, task}` or `{:error, :not_claimable}` if it was already taken.
-  """
-  def claim_task(%Task{id: id}, owner, lease_ms \\ @default_lease_ms) do
-    expires = DateTime.add(now(), lease_ms, :millisecond) |> DateTime.truncate(:second)
-
-    {count, _} =
-      from(t in Task, where: t.id == ^id and t.state == "pending")
-      |> Repo.update_all(
-        set: [state: "claimed", lease_owner: owner, lease_expires_at: expires, updated_at: now()],
-        inc: [attempts: 1]
-      )
-
-    case count do
-      1 ->
-        task = get_task!(id)
-        broadcast(:task_updated)
-        {:ok, task}
-
-      _ ->
-        {:error, :not_claimable}
-    end
-  end
-
-  @doc "Return claimed/running tasks whose lease expired to the pending pool."
-  def reclaim_expired(at \\ nil) do
-    at = at || now()
-
-    {count, _} =
-      from(t in Task,
-        where:
-          t.state in ["claimed", "running"] and not is_nil(t.lease_expires_at) and
-            t.lease_expires_at < ^at
-      )
-      |> Repo.update_all(
-        set: [state: "pending", lease_owner: nil, lease_expires_at: nil, updated_at: now()]
-      )
-
-    if count > 0, do: broadcast(:tasks_reclaimed)
-    count
-  end
-
-  def mark_running(%Task{} = task) do
-    update_task(task, %{state: "running", last_run_at: now()})
-  end
-
-  @doc "Record success and either reschedule (cron) or close out (one-shot)."
-  def complete_task(%Task{} = task, result_path \\ nil) do
-    update_task(task, finish_attrs(task, :done, %{result_path: result_path, error: nil}))
-  end
-
-  @doc "Record failure: retry, reschedule (cron), or mark failed at max attempts."
-  def fail_task(%Task{} = task, error) do
-    update_task(task, finish_attrs(task, :failed, %{error: truncate(error)}))
-  end
-
-  defp finish_attrs(%Task{} = task, outcome, extra) do
-    base = Map.merge(%{lease_owner: nil, lease_expires_at: nil, last_run_at: now()}, extra)
-
-    cond do
-      is_binary(task.cron) and task.cron != "" ->
-        next =
-          case Cron.next_run(task.cron, now()) do
-            {:ok, dt} -> DateTime.truncate(dt, :second)
-            _ -> nil
-          end
-
-        Map.merge(base, %{state: "pending", next_run_at: next, attempts: 0})
-
-      outcome == :done ->
-        Map.put(base, :state, "done")
-
-      task.attempts < task.max_attempts ->
-        Map.put(base, :state, "pending")
-
-      true ->
-        Map.put(base, :state, "failed")
-    end
-  end
-
-  # ---------------------------------------------------------------------------
-  # Agent runs
-  # ---------------------------------------------------------------------------
-
-  def create_run(attrs) do
-    %AgentRun{}
-    |> AgentRun.changeset(Map.put_new(attrs, :started_at, now()))
-    |> Repo.insert()
-    |> tap_broadcast(:run_started)
-  end
-
-  def update_run(%AgentRun{} = run, attrs) do
-    run |> AgentRun.changeset(attrs) |> Repo.update() |> tap_broadcast(:run_updated)
-  end
-
-  def heartbeat_run(%AgentRun{} = run), do: update_run(run, %{last_heartbeat_at: now()})
-
-  def list_active_runs do
-    AgentRun
-    |> where([r], r.status == "running")
-    |> order_by([r], asc: r.started_at)
-    |> Repo.all()
-  end
-
-  def list_recent_runs(limit \\ 10) do
-    AgentRun |> order_by([r], desc: r.inserted_at) |> limit(^limit) |> Repo.all()
-  end
-
-  # ---------------------------------------------------------------------------
-  # Panel snapshot
-  # ---------------------------------------------------------------------------
-
-  @doc "Aggregated shift/runs/tasks snapshot (shifts power `shift run` + the dispatch queue)."
-  def snapshot do
-    shift = active_shift()
-
-    %{
-      shift: shift,
-      assignments: active_shift_assignments(shift),
-      running: running_tasks(),
-      upcoming: upcoming_tasks(),
-      recent: list_recent_runs(8),
-      vitals: vitals()
-    }
-  end
-
-  @doc """
-  Live operational gauges for the active shift: in-flight concurrency, the
-  rolling hourly dispatch rate (both against their configured caps), and
-  today's done/failed tallies. Computed via cheap aggregate queries.
-  """
-  def vitals do
-    now = now()
-    hour_ago = DateTime.add(now, -3600, :second)
-    day_start = DateTime.to_date(now) |> DateTime.new!(~T[00:00:00], "Etc/UTC")
-
-    # One pass over agent_runs with conditional counts, replacing four separate
-    # COUNT queries. Time windows (hour_ago / day_start) match the prior logic
-    # exactly. Failed-today counts the "failed"/"timeout"/"killed" terminal states.
-    %{running: running, runs_last_hour: runs_last_hour, done_today: done, failed_today: failed} =
-      from(r in AgentRun,
-        select: %{
-          running: fragment("COUNT(CASE WHEN ? = 'running' THEN 1 END)", r.status),
-          runs_last_hour: fragment("COUNT(CASE WHEN ? >= ? THEN 1 END)", r.started_at, ^hour_ago),
-          done_today:
-            fragment(
-              "COUNT(CASE WHEN ? = 'done' AND ? >= ? THEN 1 END)",
-              r.status,
-              r.inserted_at,
-              ^day_start
-            ),
-          failed_today:
-            fragment(
-              "COUNT(CASE WHEN ? IN ('failed', 'timeout', 'killed') AND ? >= ? THEN 1 END)",
-              r.status,
-              r.inserted_at,
-              ^day_start
-            )
-        }
-      )
-      |> Repo.one()
-
-    %{
-      running: running,
-      max_concurrent: Application.get_env(:buster_claw, :orchestrator_max_concurrent, 3),
-      runs_last_hour: runs_last_hour,
-      max_runs_per_hour: Application.get_env(:buster_claw, :orchestrator_max_runs_per_hour, 120),
-      done_today: done,
-      failed_today: failed
-    }
-  end
-
-  defp running_tasks do
-    Task
-    |> where([t], t.state in ["claimed", "running"])
-    |> order_by([t], asc: t.last_run_at)
-    |> Repo.all()
-  end
-
-  defp upcoming_tasks do
-    Task
-    |> where([t], t.enabled == true and t.state == "pending")
-    |> order_by([t], asc: t.next_run_at, asc: t.due_at, asc: t.id)
-    |> limit(8)
-    |> Repo.all()
-  end
-
-  # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
 
@@ -641,8 +385,4 @@ defmodule BusterClaw.Orchestration do
   end
 
   defp tap_broadcast(other, _event), do: other
-
-  defp truncate(nil), do: nil
-  defp truncate(text) when is_binary(text), do: String.slice(text, 0, 2000)
-  defp truncate(other), do: other |> inspect() |> String.slice(0, 2000)
 end

@@ -5,7 +5,7 @@ defmodule BusterClaw.Dispatch.Item do
 
   import Ecto.Changeset
 
-  alias BusterClaw.Orchestration.{Shift, ShiftAssignment, Task}
+  alias BusterClaw.Orchestration.{Shift, ShiftAssignment}
 
   @statuses ~w(queued claimed running done failed blocked cancelled)
 
@@ -30,7 +30,6 @@ defmodule BusterClaw.Dispatch.Item do
              :status,
              :shift_id,
              :shift_assignment_id,
-             :orchestrator_task_id,
              :dedupe_key,
              :claimed_by,
              :claimed_at,
@@ -72,7 +71,6 @@ defmodule BusterClaw.Dispatch.Item do
 
     belongs_to :shift, Shift
     belongs_to :shift_assignment, ShiftAssignment
-    belongs_to :orchestrator_task, Task
 
     timestamps(type: :utc_datetime)
   end
@@ -98,7 +96,6 @@ defmodule BusterClaw.Dispatch.Item do
       :status,
       :shift_id,
       :shift_assignment_id,
-      :orchestrator_task_id,
       :dedupe_key,
       :claimed_by,
       :claimed_at,

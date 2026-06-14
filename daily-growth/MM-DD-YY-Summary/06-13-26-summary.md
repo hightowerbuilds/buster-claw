@@ -214,6 +214,19 @@ Turned the `projects/financial-advisor/` research briefs into a phased build
   dispatch queue. The pull queue and `/scheduler` are untouched.
 - Full suite green (403).
 
+### Pruned the dead orchestrator task/run engine
+
+- Removed the headless-dispatch scheduling machinery the deleted page drove (no
+  production callers remained): the `Task` (`orchestrator_tasks`) and `AgentRun`
+  (`agent_runs`) schemas/tables, their CRUD/lease/scheduling/run functions in
+  `Orchestration`, and `snapshot/0` / `vitals/0`. Migration `20260613150000` drops both
+  tables, the FK index, and the vestigial `dispatch_items.orchestrator_task_id` column
+  (never set by any production path).
+- Simplified the `Orchestrator` janitor to a pure **kill-switch watcher** (dropped the
+  lease-reclaim branch). Removed the Dispatch→Task `belongs_to`. **Kept** Shifts /
+  ShiftAssignments and the Dispatch shift/role-session linkage intact.
+- Tests trimmed to match (dropped the task/run + vitals tests). Full suite green (393).
+
 ## Notes
 
 - Both objectives add migrations. They auto-apply on next `mix phx.server` boot
