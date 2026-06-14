@@ -146,9 +146,24 @@ fn ensure_webview(
     // or escape into app/IPC schemes. (The chrome webview only ever loads our own
     // loopback toolbar, so it doesn't need this.)
     if label == CONTENT_LABEL {
+        let app_for_nav = app.clone();
         builder = builder
-            .on_navigation(|url| {
-                matches!(url.scheme(), "http" | "https") || url.as_str() == "about:blank"
+            .on_navigation(move |url| {
+                let allowed =
+                    matches!(url.scheme(), "http" | "https") || url.as_str() == "about:blank";
+
+                // Reflect the destination in the chrome address bar so it tracks
+                // navigation driven by in-page clicks (folders, files, links).
+                if allowed {
+                    if let Some(chrome) = app_for_nav.get_webview(CHROME_LABEL) {
+                        let _ = chrome.eval(&format!(
+                            "window.__setAddress && window.__setAddress({})",
+                            js_str(url.as_str())
+                        ));
+                    }
+                }
+
+                allowed
             })
             .initialization_script(NO_POPUPS_JS);
     }
@@ -177,4 +192,23 @@ fn content_eval(app: AppHandle, js: &str) -> Result<(), String> {
         return Ok(());
     };
     webview.eval(js).map_err(|e| e.to_string())
+}
+
+// Encode a string as a JS string literal for safe interpolation into eval'd JS.
+fn js_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }

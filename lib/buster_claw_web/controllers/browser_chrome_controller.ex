@@ -76,6 +76,25 @@ defmodule BusterClawWeb.BrowserChromeController do
           if (v.startsWith("/")) return origin + "/ws/file?path=" + encodeURIComponent(v)
           return "https://" + v
         }
+        // Convert a loaded URL back to a friendly address: workspace paths for our
+        // own pages, the URL for external sites.
+        function display(u) {
+          try {
+            const url = new URL(u, origin)
+            if (url.origin === origin) {
+              if (url.pathname === "/browser/home") return ""
+              if (url.pathname === "/ws/file") return url.searchParams.get("path") || u
+              if (url.pathname === "/browser/workspace") return url.searchParams.get("q") || "/"
+            }
+            return u
+          } catch (e) { return u }
+        }
+        // Called from Rust on each content navigation so the bar tracks the page.
+        // Skips while the user is typing so it never clobbers in-progress input.
+        window.__setAddress = function (u) {
+          if (document.activeElement === addr) return
+          addr.value = display(u)
+        }
         function record(url, label) {
           if (!url || url === homeUrl) return
           try {

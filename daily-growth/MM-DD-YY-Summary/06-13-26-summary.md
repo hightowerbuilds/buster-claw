@@ -342,6 +342,15 @@ operator direction, moved the **entire browser chrome into the native layer**:
 - All Phoenix/JS (no Rust). Tests: workspace listing + prefix filter + parent link +
   relative-path resolution. Full suite green (407).
 
+### Browser — address bar tracks the current page
+
+- The content webview's `on_navigation` (Rust) now pushes each destination URL to the
+  chrome bar via `chrome.eval(window.__setAddress(...))`, so clicking folders/files or
+  in-page links updates the address. `__setAddress` shows a friendly form (workspace
+  path for `/ws/file` & `/browser/workspace`, empty for `/browser/home`, the URL for
+  external sites) and **skips while the input is focused** so it never clobbers typing.
+  `cargo check` clean. (Rust change → needs a Tauri rebuild.)
+
 ### First-run onboarding — hyper-minimal 4-step flow
 
 - Rebuilt `/setup` (`SetupLive`) into a welcome explainer + **4 progress dots**

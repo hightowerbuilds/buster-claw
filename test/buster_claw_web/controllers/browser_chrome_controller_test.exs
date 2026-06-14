@@ -9,7 +9,10 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
     assert body =~ ~s(id="addr")
     assert body =~ ~s(id="back")
     assert body =~ ~s(id="reload")
+    assert body =~ ~s(id="home")
     assert body =~ "browser_navigate"
+    # Address-sync hook the Rust nav handler calls on each content navigation.
+    assert body =~ "window.__setAddress"
   end
 
   test "seeds the address bar from ?url=", %{conn: conn} do
