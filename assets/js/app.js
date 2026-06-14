@@ -361,17 +361,15 @@ function openTerminalSplit(currentPath, side, labels = {}) {
 }
 
 const Hooks = {
-  // Drives the /browse embedded browser: a native Tauri child webview overlaid on
-  // the surface element. Only active in the desktop app (window.__TAURI__); in a
-  // plain browser it reveals the fallback notice. The toolbar is wired here so
-  // navigation never round-trips the server.
+  // Positions the embedded browser's two native child webviews (chrome toolbar +
+  // content) over the /browse surface. The toolbar lives in the native chrome
+  // webview, so it's never covered. Only active in the desktop app
+  // (window.__TAURI__); a plain browser shows the fallback notice.
   EmbeddedBrowser: {
     mounted() {
       this.invoke = window.__TAURI__?.core?.invoke || null
       this.surface = this.el.querySelector("[data-browser-surface]")
       this.fallback = this.el.querySelector("[data-browser-fallback]")
-      this.address = this.el.querySelector("[data-browser-address]")
-      this.form = this.el.querySelector("[data-browser-form]")
       this.origin = window.location.origin
       this.opened = false
 
@@ -383,36 +381,33 @@ const Hooks = {
         return
       }
 
-      this.onSubmit = (e) => {
-        e.preventDefault()
-        this.navigate(this.address ? this.address.value : "")
-      }
-      this.onClick = (e) => {
-        const action = e.target.closest("[data-browser-action]")
-        if (!action) return
-        const cmd = {back: "browser_back", forward: "browser_forward", reload: "browser_reload"}[
-          action.dataset.browserAction
-        ]
-        if (cmd) this.invoke(cmd).catch(() => {})
-      }
-      if (this.form) this.form.addEventListener("submit", this.onSubmit)
-      this.el.addEventListener("click", this.onClick)
+      const initial = (this.el.dataset.initialUrl || "").trim()
+      this.chromeUrl =
+        `${this.origin}/browser/chrome` + (initial ? `?url=${encodeURIComponent(initial)}` : "")
+      this.contentUrl = this.resolveContent(initial)
 
-      // Keep the native webview glued to the surface element's box.
+      // Keep both native webviews glued to the surface box. Tauri on macOS can
+      // position child webviews relative to the window frame (incl. title bar)
+      // rather than the content area, so correct by the chrome height (outer−inner).
       this.sync = () => {
         if (!this.surface) return
         const r = this.surface.getBoundingClientRect()
+        const offY = Math.max(0, window.outerHeight - window.innerHeight)
+        const offX = Math.max(0, Math.round((window.outerWidth - window.innerWidth) / 2))
         const bounds = {
-          x: Math.round(r.left),
-          y: Math.round(r.top),
+          x: Math.round(r.left) + offX,
+          y: Math.round(r.top) + offY,
           width: Math.round(r.width),
           height: Math.round(r.height)
         }
         if (bounds.width <= 0 || bounds.height <= 0) return
         if (!this.opened) {
           this.opened = true
-          this.invoke("browser_open", {url: this.resolve(this.el.dataset.initialUrl || ""), ...bounds})
-            .catch(() => {})
+          this.invoke("browser_open", {
+            chromeUrl: this.chromeUrl,
+            contentUrl: this.contentUrl,
+            ...bounds
+          }).catch(() => {})
         } else {
           this.invoke("browser_set_bounds", bounds).catch(() => {})
         }
@@ -429,24 +424,17 @@ const Hooks = {
       window.addEventListener("resize", this.onResize)
       window.addEventListener("scroll", this.onScroll, true)
       this.scheduleSync()
+      this.settle = setTimeout(() => this.scheduleSync(), 250)
     },
 
-    // URL or absolute workspace path → a loadable URL. Workspace paths are served
-    // by Phoenix at /ws/file; bare domains get https://.
-    resolve(raw) {
+    // Initial content URL: scheme kept, absolute workspace path → /ws/file,
+    // bare domain → https://, empty → about:blank.
+    resolveContent(raw) {
       const v = (raw || "").trim()
-      if (v === "" || v === "about:blank") return "about:blank"
+      if (v === "") return "about:blank"
       if (/^[a-z]+:\/\//i.test(v)) return v
       if (v.startsWith("/")) return `${this.origin}/ws/file?path=${encodeURIComponent(v)}`
       return `https://${v}`
-    },
-
-    navigate(raw) {
-      if (!this.invoke) return
-      const url = this.resolve(raw)
-      if (url === "about:blank") return
-      if (this.address) this.address.value = raw.trim()
-      this.invoke("browser_navigate", {url}).catch(() => {})
     },
 
     destroyed() {
@@ -454,7 +442,9 @@ const Hooks = {
       if (this.onResize) window.removeEventListener("resize", this.onResize)
       if (this.onScroll) window.removeEventListener("scroll", this.onScroll, true)
       if (this.raf) cancelAnimationFrame(this.raf)
-      if (this.invoke) this.invoke("browser_close").catch(() => {})
+      if (this.settle) clearTimeout(this.settle)
+      // Hide (don't close) so the page persists when the user returns to /browse.
+      if (this.invoke) this.invoke("browser_hide").catch(() => {})
     }
   },
 
@@ -949,6 +939,13 @@ const Hooks = {
       const tabs = this.load()
       const idx = tabs.findIndex((t) => t.path === path)
       if (idx === -1) return
+      // Closing the Browser tab must destroy its native webviews — the embedded
+      // browser hook only *hides* them on tab switch (to persist the page), so
+      // without this they'd linger after the tab is gone.
+      if (path.startsWith("/browse")) {
+        const invoke = window.__TAURI__?.core?.invoke
+        if (invoke) invoke("browser_close").catch(() => {})
+      }
       tabs.splice(idx, 1)
       this.save(tabs)
       if (path === this.currentKey()) {

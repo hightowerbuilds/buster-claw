@@ -279,6 +279,28 @@ Turned the `projects/financial-advisor/` research briefs into a phased build
 - **Not yet runtime-verified:** native positioning / live loads need the Tauri app
   (`./scripts/dev.sh`) — expect to iterate on overlay alignment and lifecycle.
 
+### Browser — two native webviews; chrome is native too (Part 2c, verified in-app)
+
+In-app testing showed the single content webview (with an HTML toolbar) covered the
+toolbar (native webviews always paint on top) and couldn't be aligned reliably. Per
+operator direction, moved the **entire browser chrome into the native layer**:
+
+- **Two stacked child webviews** (`browser.rs`): `browser-chrome` (thin top strip,
+  our toolbar) + `browser-content` (the site), positioned together by the hook. The
+  toolbar is now a webview, so it can never be covered. `browser_open(chrome_url,
+  content_url, …)`; `browser_set_bounds` moves both; nav commands act on the content
+  webview; `browser_hide`/`browser_close` affect both.
+- **Native chrome page** — `BrowserChromeController` at `/browser/chrome`: address bar
+  + ◀▶⟳, served from the Phoenix origin so it can call the `browser_*` commands;
+  granted them via a new **`browser-chrome` capability** (`webviews: ["browser-chrome"]`).
+  The content webview is in no capability (sandboxed).
+- **`BrowseLive`** reduced to a bare surface + fallback (HTML toolbar removed). The
+  **hook** positions both webviews (with an `outer−inner` chrome offset), passes both
+  URLs, and **hides** on tab switch (persist) — while **tab close** (`closeTab` in the
+  TabStrip hook) calls `browser_close` so the webviews are destroyed, not left lingering.
+- Verified in-app: aligned, navigable, persists across tab switches, closes with the
+  tab. `cargo check` + full suite green (397).
+
 ### First-run onboarding — hyper-minimal 4-step flow
 
 - Rebuilt `/setup` (`SetupLive`) into a welcome explainer + **4 progress dots**

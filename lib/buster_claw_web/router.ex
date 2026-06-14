@@ -63,6 +63,12 @@ defmodule BusterClawWeb.Router do
     get "/file", WorkspaceFileController, :show
   end
 
+  # Native chrome (toolbar) for the embedded browser's `browser-chrome` webview.
+  # Raw HTML; loopback-only; drives the sibling content webview via Tauri commands.
+  scope "/browser", BusterClawWeb do
+    get "/chrome", BrowserChromeController, :show
+  end
+
   scope "/", BusterClawWeb do
     pipe_through :api
 

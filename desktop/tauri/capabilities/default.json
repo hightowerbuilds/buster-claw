@@ -19,6 +19,7 @@
     "allow-browser-back",
     "allow-browser-forward",
     "allow-browser-reload",
+    "allow-browser-hide",
     "allow-browser-close"
   ]
 }

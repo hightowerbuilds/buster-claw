@@ -36,63 +36,12 @@ defmodule BusterClawWeb.BrowseLive do
         id="browse-shell"
         phx-hook="EmbeddedBrowser"
         data-initial-url={@initial_url}
-        class="flex min-h-0 flex-1 flex-col gap-3"
+        class="flex min-h-0 flex-1 flex-col"
       >
-        <div class="flex items-center gap-2">
-          <div class="flex items-center gap-1">
-            <button
-              type="button"
-              data-browser-action="back"
-              title="Back"
-              aria-label="Back"
-              class="grid size-9 place-items-center rounded-sm border-2 border-base-content/20 transition hover:border-primary hover:text-primary"
-            >
-              <.icon name="hero-arrow-left" class="size-4" />
-            </button>
-            <button
-              type="button"
-              data-browser-action="forward"
-              title="Forward"
-              aria-label="Forward"
-              class="grid size-9 place-items-center rounded-sm border-2 border-base-content/20 transition hover:border-primary hover:text-primary"
-            >
-              <.icon name="hero-arrow-right" class="size-4" />
-            </button>
-            <button
-              type="button"
-              data-browser-action="reload"
-              title="Reload"
-              aria-label="Reload"
-              class="grid size-9 place-items-center rounded-sm border-2 border-base-content/20 transition hover:border-primary hover:text-primary"
-            >
-              <.icon name="hero-arrow-path" class="size-4" />
-            </button>
-          </div>
-
-          <form data-browser-form class="flex flex-1 items-center gap-2">
-            <input
-              data-browser-address
-              type="text"
-              value={@initial_url}
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="https://… or /path in your workspace"
-              class="input min-w-0 flex-1 font-mono text-sm"
-            />
-            <button
-              type="submit"
-              class="shrink-0 rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
-            >
-              Go
-            </button>
-          </form>
-        </div>
-
-        <%!-- The native webview is positioned over this surface by the hook. --%>
-        <div
-          data-browser-surface
-          class="relative min-h-0 flex-1 rounded-sm border-2 border-base-content/15"
-        >
+        <%!-- The native chrome (toolbar) + content webviews are positioned over
+             this whole surface by the hook; the toolbar lives in the chrome
+             webview, so there's no HTML toolbar to be covered. --%>
+        <div data-browser-surface class="relative min-h-0 flex-1">
           <div
             data-browser-fallback
             class="hidden h-full place-items-center p-8 text-center text-sm text-base-content/60"

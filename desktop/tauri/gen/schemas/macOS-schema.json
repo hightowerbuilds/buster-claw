@@ -195,6 +195,12 @@
           "markdownDescription": "Enables the browser_forward command without any pre-configured scope."
         },
         {
+          "description": "Enables the browser_hide command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-hide",
+          "markdownDescription": "Enables the browser_hide command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_navigate command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-navigate",
@@ -265,6 +271,12 @@
           "type": "string",
           "const": "deny-browser-forward",
           "markdownDescription": "Denies the browser_forward command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_hide command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-hide",
+          "markdownDescription": "Denies the browser_hide command without any pre-configured scope."
         },
         {
           "description": "Denies the browser_navigate command without any pre-configured scope.",

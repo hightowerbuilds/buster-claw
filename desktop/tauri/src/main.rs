@@ -265,6 +265,7 @@ fn main() {
             browser::browser_back,
             browser::browser_forward,
             browser::browser_reload,
+            browser::browser_hide,
             browser::browser_close
         ])
         .setup(move |app| {
