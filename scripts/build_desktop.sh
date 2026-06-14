@@ -6,6 +6,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
 
+# Belt-and-suspenders: the bundle must never be compiled with dev/test config
+# (which carries publicly-known API tokens). Every mix call below also prefixes
+# this, and the release refuses to boot with dev tokens (BusterClaw.Application),
+# but pin it for the whole script too.
+export MIX_ENV=prod
+
+echo "==> Syncing version from VERSION file"
+"$REPO_ROOT/scripts/sync_version.sh"
+
 echo "==> Fetching prod dependencies"
 MIX_ENV=prod mix deps.get --only prod
 

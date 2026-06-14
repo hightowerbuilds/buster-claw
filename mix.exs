@@ -1,10 +1,15 @@
 defmodule BusterClaw.MixProject do
   use Mix.Project
 
+  # Single source of truth for the app version. The Tauri config and the Rust
+  # crate are kept in sync from this same file by scripts/sync_version.sh, so a
+  # release only ever requires editing VERSION.
+  @version File.read!(Path.join(__DIR__, "VERSION")) |> String.trim()
+
   def project do
     [
       app: :buster_claw,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,

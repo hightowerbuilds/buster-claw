@@ -5,8 +5,19 @@ defmodule BusterClaw.Application do
 
   use Application
 
+  # Compiled-in dev/test API tokens (config/dev.exs, config/test.exs). A real
+  # release generates tokens per-machine at first run, so none of these should
+  # ever be present in a packaged build.
+  @dev_token_sentinels [
+    "dev-token-loopback-only",
+    "dev-mcp-token-safe-tier-only",
+    "test-token-loopback-only"
+  ]
+
   @impl true
   def start(_type, _args) do
+    verify_release_token_safety!()
+
     children =
       [
         BusterClawWeb.Telemetry,
@@ -59,6 +70,33 @@ defmodule BusterClaw.Application do
   defp skip_migrations?() do
     # By default, sqlite migrations are run when using a release
     System.get_env("RELEASE_NAME") == nil
+  end
+
+  # Refuse to boot a packaged release (RELEASE_NAME is set only for releases)
+  # that was mistakenly built with dev/test config and therefore carries a
+  # publicly-known API token. Generated per-machine tokens are nil in config at
+  # this point, so a correctly-built prod release passes cleanly; this only
+  # trips on a misbuilt bundle.
+  defp verify_release_token_safety! do
+    if System.get_env("RELEASE_NAME") do
+      configured =
+        [
+          Application.get_env(:buster_claw, :api_token),
+          Application.get_env(:buster_claw, :mcp_api_token)
+        ]
+        |> Enum.filter(&is_binary/1)
+
+      if Enum.any?(configured, &(&1 in @dev_token_sentinels)) do
+        raise """
+        Refusing to boot: this release carries a compiled-in dev/test API token \
+        (#{inspect(@dev_token_sentinels)}), which is publicly known. It was built \
+        with dev/test config. Rebuild with MIX_ENV=prod (scripts/build_desktop.sh) \
+        so tokens are generated per-machine at first run.
+        """
+      end
+    end
+
+    :ok
   end
 
   defp dispatch_projector_child do
