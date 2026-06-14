@@ -46,6 +46,15 @@ trap cleanup EXIT INT TERM
 is_healthy() { curl -fsS -o /dev/null --max-time 2 "$HEALTH" 2>/dev/null; }
 
 start_phoenix() {
+  # Apply pending migrations before booting. In dev the Ecto.Migrator child is
+  # started with skip: true (migrations only auto-run in releases), so Phoenix's
+  # pending-migration guard would otherwise halt startup.
+  echo "==> Applying database migrations (mix ecto.migrate)"
+  if ! mix ecto.migrate; then
+    echo "error: mix ecto.migrate failed — fix the migration before starting" >&2
+    exit 1
+  fi
+
   echo "==> Starting Phoenix (logs: $PHX_LOG)"
   mkdir -p "$LOG_DIR"
   mix phx.server >"$PHX_LOG" 2>&1 &
