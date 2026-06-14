@@ -661,23 +661,11 @@ const Hooks = {
     render() {
       const active = this.currentKey()
       const tabs = this.load().map((t) => this.tabHtml(t, t.path === active)).join("")
-      this.el.innerHTML = tabs + this.newTabHtml()
+      this.el.innerHTML = tabs
       if (this.editingPath) {
         const input = this.el.querySelector("[data-tab-edit]")
         if (input) input.focus()
       }
-    },
-    newTabHtml() {
-      const button =
-        `grid size-7 shrink-0 place-items-center self-center rounded-sm text-base-content/60 ` +
-        `hover:bg-base-content/10 hover:text-primary`
-
-      return `<button type="button" data-newtab="1" title="New browser tab" aria-label="New browser tab" ` +
-        `class="${button}">` +
-        `<span class="text-lg leading-none">+</span></button>` +
-        `<button type="button" data-newterminal="1" title="New terminal tab" aria-label="New terminal tab" ` +
-        `class="${button}">` +
-        `<span class="font-mono text-[0.65rem] font-semibold leading-none">&gt;_</span></button>`
     },
     tabHtml(tab, isActive) {
       const wrap = isActive

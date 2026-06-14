@@ -42,8 +42,9 @@ defmodule BusterClawWeb.StatusLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <div class="ic-home-bg" aria-hidden="true"></div>
-      <section class="flex flex-1 flex-col space-y-8">
+      <section class="ic-home relative isolate flex flex-1 flex-col">
+        <div class="ic-home-bg" aria-hidden="true"></div>
+        <div class="relative z-10 flex min-h-0 flex-1 flex-col space-y-8">
         <div class="space-y-4 border-b-2 border-base-content/20 pb-5">
           <div
             id="bc-heading"
@@ -83,6 +84,7 @@ defmodule BusterClawWeb.StatusLive do
           </div>
 
           <.daily_calendar_panel today={@today} events={@daily_events} />
+        </div>
         </div>
       </section>
     </Layouts.app>

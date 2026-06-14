@@ -416,13 +416,25 @@ operator direction, moved the **entire browser chrome into the native layer**:
   new `CrtAberration` JS hook (rAF-throttled, writes `--crt-x/--crt-y` CSS vars; no
   server round-trips). `prefers-contrast: more` disables all of it.
 - **Homepage background.** `.ic-home-bg` fixed full-viewport layer (theme-tinted
-  gradient over a dark lunar-surface photo) sits behind the content.
+  gradient over a dark lunar-surface photo) sits behind the content. Made it
+  actually render + read edge-to-edge: wrapped the home content in an `isolate`d
+  `.ic-home` section with the bg at `z-0` and content lifted to `z-10` (a positive
+  z avoids the negative-z trap where a tab/shell stacking context painted the
+  layer behind the body fill); lightened the overlay gradient (`30%→58%`) so the
+  photo registers; and made the home panels translucent (`.ic-home .ic-panel`,
+  `70%` base-100 + 10px backdrop blur, border/shadow kept) so the image shows
+  through the cards as well as the gutters. `position: fixed` keeps it spanning
+  the full window and resizing with it, ignoring the shell's centered `max-w-7xl`.
 - **Image reorg + ignore.** All brand art (wordmarks / logo / `home-bg.jpg`)
   consolidated into `priv/static/images/brand/` and gitignored — local-only,
   matching the prior `busterclaw-logo.png` precedent. Code refs updated to
   `/images/brand/…`; redundant root-level source copies and the stale phx.digest
   hashed logo removed. Fresh-clone / packaged builds won't ship these images by
   design.
+- **Tab bar trim.** Removed the `+` (new browser tab) and `>_` (new terminal tab)
+  buttons from the `TabStrip` (`render()` no longer appends `newTabHtml()`, which
+  was deleted). The tab strip now shows only open tabs. `⌘T`/`⌘W` shortcuts are
+  untouched.
 
 ## Notes
 

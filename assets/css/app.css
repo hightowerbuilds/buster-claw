@@ -256,24 +256,35 @@ body { background-color: var(--color-base-100); }
   .ic-scanlines img.ic-crt-focus { display: none; }
 }
 
-/* Full-viewport background image for the homepage. Fixed and behind the
-   content (negative z sits above the body fill but under the panels). A
+/* Full-window background image for the homepage. Fixed to the viewport so it
+   spans edge-to-edge and resizes with the window (ignoring the shell's centered
+   max-width container). It sits at z-0 inside the isolated `.ic-home` stacking
+   context with content lifted to z-10 above it — so a positive z keeps it
+   reliably visible (no negative-z trap) while still painting behind content. A
    theme-tinted gradient keeps the photo subtle so text/panels stay legible. */
 .ic-home-bg {
   position: fixed;
   inset: 0;
-  z-index: -10;
+  z-index: 0;
   pointer-events: none;
   background-image:
     linear-gradient(
       to bottom,
-      color-mix(in oklab, var(--color-base-100) 68%, transparent),
-      color-mix(in oklab, var(--color-base-100) 86%, transparent)
+      color-mix(in oklab, var(--color-base-100) 30%, transparent),
+      color-mix(in oklab, var(--color-base-100) 58%, transparent)
     ),
     url("/images/brand/home-bg.jpg");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
+}
+
+/* On the homepage, panels go translucent so the background photo reads
+   through them (border + hard offset shadow are kept by .ic-panel). */
+.ic-home .ic-panel {
+  background: color-mix(in oklab, var(--color-base-100) 70%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 /* Solid bordered panel with a hard offset shadow — the core surface. */
