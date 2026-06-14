@@ -339,6 +339,24 @@ defmodule BusterClawWeb.CoreComponents do
   end
 
   @doc """
+  Renders a page's hand-drawn wordmark heading (the orange Industrial Claw
+  wordmarks shipped under `priv/static/images/*-icon.png`).
+
+  ## Examples
+
+      <.page_wordmark src={~p"/images/brand/workspace-icon.png"} alt="Workspace" />
+  """
+  attr :src, :string, required: true
+  attr :alt, :string, required: true
+  attr :class, :string, default: "h-12 w-auto sm:h-14"
+
+  def page_wordmark(assigns) do
+    ~H"""
+    <img src={@src} alt={@alt} class={["select-none", @class]} draggable="false" />
+    """
+  end
+
+  @doc """
   Renders a table with generic styling.
 
   ## Examples

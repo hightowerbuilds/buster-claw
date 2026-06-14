@@ -199,6 +199,83 @@ body { background-color: var(--color-base-100); }
   color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
 }
 
+/* CRT scanline overlay — wrap an image/wordmark for an old-TV look.
+   The ::after rides on top with thin horizontal lines; `multiply` keeps
+   them visible on bright pixels and near-invisible on the dark background.
+   The inner image gets a red/cyan drop-shadow pair for chromatic aberration. */
+.ic-scanlines { position: relative; --crt-x: 50%; --crt-y: 50%; }
+.ic-scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) 1.5px,
+    rgba(0, 0, 0, 0.5) 1.5px,
+    rgba(0, 0, 0, 0.5) 3px
+  );
+  mix-blend-mode: multiply;
+  z-index: 1;
+}
+.ic-scanlines img {
+  filter:
+    drop-shadow(2px 0 0 rgba(255, 0, 64, 0.6))
+    drop-shadow(-2px 0 0 rgba(0, 224, 255, 0.6));
+}
+
+/* A second, heavily-aberrated copy of the image stacked on top, revealed only
+   inside a soft circle that tracks the cursor (--crt-x/--crt-y are written by
+   the CrtAberration JS hook). Outside the circle the mask is transparent, so
+   the base subtle aberration shows through unchanged. */
+.ic-scanlines img.ic-crt-focus {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  filter:
+    drop-shadow(6px 0 0 rgba(255, 0, 64, 0.9))
+    drop-shadow(-6px 0 0 rgba(0, 224, 255, 0.9));
+  -webkit-mask-image: radial-gradient(
+    circle 90px at var(--crt-x) var(--crt-y),
+    #000 0%, rgba(0, 0, 0, 0.45) 45%, transparent 75%
+  );
+  mask-image: radial-gradient(
+    circle 90px at var(--crt-x) var(--crt-y),
+    #000 0%, rgba(0, 0, 0, 0.45) 45%, transparent 75%
+  );
+  transition: opacity 160ms ease-out;
+}
+.ic-scanlines[data-crt-active="1"] img.ic-crt-focus { opacity: 1; }
+
+@media (prefers-contrast: more) {
+  .ic-scanlines::after { background: none; }
+  .ic-scanlines img { filter: none; }
+  .ic-scanlines img.ic-crt-focus { display: none; }
+}
+
+/* Full-viewport background image for the homepage. Fixed and behind the
+   content (negative z sits above the body fill but under the panels). A
+   theme-tinted gradient keeps the photo subtle so text/panels stay legible. */
+.ic-home-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  background-image:
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-base-100) 68%, transparent),
+      color-mix(in oklab, var(--color-base-100) 86%, transparent)
+    ),
+    url("/images/brand/home-bg.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
 /* Solid bordered panel with a hard offset shadow — the core surface. */
 .ic-panel {
   background: var(--color-base-100);

@@ -6,22 +6,37 @@ defmodule BusterClawWeb.Layouts do
   use BusterClawWeb, :html
 
   @navigation_items [
-    %{label: "Home", path: "/", icon: "hero-home", image: "/images/home-icon.png"},
-    %{label: "Workspace", path: "/workspace", icon: "hero-folder"},
+    %{label: "Home", path: "/", icon: "hero-home", image: "/images/brand/home-icon.png"},
+    %{
+      label: "Workspace",
+      path: "/workspace",
+      icon: "hero-folder",
+      image: "/images/brand/workspace-icon.png"
+    },
     %{
       label: "Browser",
       path: "/browse",
       icon: "hero-globe-alt",
-      image: "/images/browser-icon.png"
+      image: "/images/brand/browser-icon.png"
     },
     %{
       label: "Terminal",
       path: "/terminal",
       icon: "hero-command-line",
-      image: "/images/terminal-icon.png"
+      image: "/images/brand/terminal-icon.png"
     },
-    %{label: "Calendar", path: "/calendar", icon: "hero-calendar-days"},
-    %{label: "Advanced", path: "/advanced", icon: "hero-adjustments-horizontal"},
+    %{
+      label: "Calendar",
+      path: "/calendar",
+      icon: "hero-calendar-days",
+      image: "/images/brand/calendar-icon.png"
+    },
+    %{
+      label: "Advanced",
+      path: "/advanced",
+      icon: "hero-adjustments-horizontal",
+      image: "/images/brand/advanced-icon.png"
+    },
     %{label: "Manual", path: "/manual", icon: "hero-book-open"},
     %{label: "Settings", path: "/settings", icon: "hero-cog-6-tooth"}
   ]

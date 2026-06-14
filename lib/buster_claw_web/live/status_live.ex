@@ -42,13 +42,26 @@ defmodule BusterClawWeb.StatusLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
+      <div class="ic-home-bg" aria-hidden="true"></div>
       <section class="flex flex-1 flex-col space-y-8">
         <div class="space-y-4 border-b-2 border-base-content/20 pb-5">
-          <img
-            src={~p"/images/busterclaw-logo.png"}
-            alt="Buster Claw"
-            class="block h-auto w-full max-w-[28rem]"
-          />
+          <div
+            id="bc-heading"
+            phx-hook="CrtAberration"
+            class="ic-scanlines block w-full max-w-[28rem]"
+          >
+            <img
+              src={~p"/images/brand/buster-claw-heading.png"}
+              alt="Buster Claw"
+              class="block h-auto w-full"
+            />
+            <img
+              src={~p"/images/brand/buster-claw-heading.png"}
+              alt=""
+              aria-hidden="true"
+              class="ic-crt-focus h-auto w-full"
+            />
+          </div>
           <div :if={not @setup_status.complete?} class="pt-1">
             <.link
               navigate={~p"/setup"}

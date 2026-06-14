@@ -212,15 +212,6 @@ defmodule BusterClawWeb.CalendarLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="space-y-6">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p class="ic-eyebrow">
-              Planning
-            </p>
-            <h1 class="font-display text-5xl font-black uppercase tracking-tight">Calendar</h1>
-          </div>
-        </div>
-
         <p :if={@result} class="rounded border border-base-300 bg-base-100 px-4 py-3 text-sm">
           {@result}
         </p>

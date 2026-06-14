@@ -108,6 +108,7 @@ defmodule BusterClawWeb.WorkspaceLive do
     <Layouts.app flash={@flash}>
       <section id="workspace" class="flex min-h-0 flex-1 flex-col space-y-4">
         <div class="flex flex-wrap items-end justify-between gap-3 border-b-2 border-base-content/20 pb-4">
+          <.page_wordmark src={~p"/images/brand/workspace-icon.png"} alt="Workspace" />
           <p class="font-mono text-xs text-base-content/55">
             Active workspace: {@workspace_root}
           </p>

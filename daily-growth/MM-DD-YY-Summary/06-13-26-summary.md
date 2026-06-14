@@ -398,6 +398,32 @@ operator direction, moved the **entire browser chrome into the native layer**:
   `docs/LOCAL_TRUST.md` still carries the same MCP staleness (flagged, not yet
   fixed).
 
+### Branding & homepage visuals (06-13 PM)
+
+- **Hand-drawn wordmarks wired in.** New Industrial-Claw wordmark art for
+  WORKSPACE / CALENDAR / ADVANCED plus the BUSTER CLAW heading. Added one reusable
+  `<.page_wordmark>` component (`core_components.ex`) and placed it as: the
+  Workspace page heading, the Advanced section heading (inside the shared
+  `AdvancedTabs`, so all 8 advanced sub-pages get it), and the homepage heading.
+  Calendar's text `<h1>` was removed entirely (date-only, per request); its
+  wordmark lives only in the dock.
+- **Dock buttons.** Workspace / Calendar / Advanced now render their wordmark
+  images in the bottom dock, matching Home/Browser/Terminal (`layouts.ex`).
+- **Homepage heading FX.** CRT treatment on the BUSTER CLAW heading: `.ic-scanlines`
+  (repeating-gradient scanlines, `multiply`) + base chromatic aberration (red/cyan
+  `drop-shadow` pair) + a **cursor-following aberration hotspot** — a masked second
+  copy of the image revealed in a soft circle that tracks the pointer. Driven by a
+  new `CrtAberration` JS hook (rAF-throttled, writes `--crt-x/--crt-y` CSS vars; no
+  server round-trips). `prefers-contrast: more` disables all of it.
+- **Homepage background.** `.ic-home-bg` fixed full-viewport layer (theme-tinted
+  gradient over a dark lunar-surface photo) sits behind the content.
+- **Image reorg + ignore.** All brand art (wordmarks / logo / `home-bg.jpg`)
+  consolidated into `priv/static/images/brand/` and gitignored — local-only,
+  matching the prior `busterclaw-logo.png` precedent. Code refs updated to
+  `/images/brand/…`; redundant root-level source copies and the stale phx.digest
+  hashed logo removed. Fresh-clone / packaged builds won't ship these images by
+  design.
+
 ## Notes
 
 - Both objectives add migrations. They auto-apply on next `mix phx.server` boot
