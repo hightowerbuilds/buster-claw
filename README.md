@@ -21,16 +21,23 @@ The way to use Buster Claw is to run **Claude Code or Codex in the built-in term
 
 ## Quick Start
 
-Requirements:
+Requirements (exact versions pinned in [`.tool-versions`](.tool-versions); `asdf install` matches them):
 
 - Elixir/Erlang
+- Node.js (assets: `cd assets && npm ci`)
 - Rust/Cargo
-- `cargo-tauri`
+- `cargo-tauri` (`cargo install tauri-cli`)
 
 The single-command launcher boots Phoenix, waits for `/_health`, then opens the desktop window (and tears down on Ctrl-C):
 
 ```bash
 ./scripts/dev.sh
+```
+
+To build a distributable desktop app (`.app` + `.dmg`) from a clone, see **[BUILD.md](BUILD.md)**:
+
+```bash
+./scripts/build_desktop.sh
 ```
 
 Manual fallback — run Phoenix and the shell in separate terminals:

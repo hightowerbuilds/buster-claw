@@ -10,11 +10,15 @@ Buster Claw packages as a single macOS `.app` containing the Tauri shell, a Mix 
 
 That script:
 
-1. Fetches prod dependencies (`MIX_ENV=prod mix deps.get`).
-2. Builds production assets (`MIX_ENV=prod mix assets.deploy` — tailwind, esbuild, digest).
-3. Assembles the Mix release (`MIX_ENV=prod mix release --overwrite`).
-4. Stages the release into `desktop/tauri/resources/release/` (gitignored).
-5. Runs `cargo tauri build` to produce the `.app` and `.dmg`.
+1. Preflights the toolchain and syncs the version from `VERSION`.
+2. Fetches prod dependencies (`MIX_ENV=prod mix deps.get`).
+3. Installs JS dependencies (`cd assets && npm ci` — esbuild bundles `@xterm/*` from there).
+4. Builds production assets (`MIX_ENV=prod mix assets.deploy` — tailwind, esbuild, digest).
+5. Assembles the Mix release (`MIX_ENV=prod mix release --overwrite`).
+6. Stages the release into `desktop/tauri/resources/release/` (gitignored).
+7. Runs `cargo tauri build` to produce the `.app` and `.dmg`.
+
+See [`../BUILD.md`](../BUILD.md) for prerequisites and a clone-to-`.dmg` walkthrough.
 
 Outputs:
 
@@ -26,15 +30,17 @@ Outputs:
 The Tauri shell (`desktop/tauri/src/main.rs`) performs the following on launch:
 
 1. Resolves the user data directory to `~/Library/Application Support/BusterClaw/`.
-2. Ensures `Library/raw/`, `Library/reports/`, and `logs/` exist.
-3. Reads or generates `secret_key_base` (64 alphanumeric chars) and persists it.
+2. Ensures the data dir and `logs/` exist. (The workspace library/sources/etc. live under the user-chosen workspace root, not the data dir.)
+3. Reads or generates the master key (`SECRET_KEY_BASE`) and the loopback API tokens in the **macOS Keychain** (service `BusterClaw`) — migrating any legacy plaintext files into the Keychain, and adopting a `RESTORE_SECRET_KEY` recovery file if the user dropped one in the data dir.
 4. Picks a free TCP port via `portpicker`.
 5. Spawns the bundled release at `Contents/Resources/release/bin/buster_claw start` with:
    - `PHX_SERVER=true`
    - `PORT=<chosen port>`
    - `DATABASE_PATH=<data_dir>/buster_claw.db`
-   - `BUSTER_CLAW_LIBRARY_ROOT=<data_dir>/Library`
-   - `SECRET_KEY_BASE=<persisted key>`
+   - `BUSTER_CLAW_WORKSPACE_ROOT=<workspace root>`
+   - `SECRET_KEY_BASE=<key from Keychain>`
+   - `BUSTER_CLAW_API_TOKEN=<token from Keychain>`
+   - `BUSTER_CLAW_MCP_API_TOKEN=<token from Keychain>`
    - `RELEASE_DISTRIBUTION=none`
 6. Redirects child stdout/stderr to `<data_dir>/logs/release.{stdout,stderr}.log`.
 7. Polls `http://127.0.0.1:<port>/_health` (250 ms interval, 30 s timeout).
@@ -49,22 +55,25 @@ The Phoenix release binds to `127.0.0.1` only and uses plain HTTP; SSL is unnece
 ```
 ~/Library/Application Support/BusterClaw/
 ├── buster_claw.db          # SQLite (configuration + workflow state)
-├── secret_key_base         # 64 chars, generated once on first launch
-├── Library/
-│   ├── raw/                # Ingested markdown documents
-│   └── reports/            # Generated analysis reports
 └── logs/
     ├── release.stdout.log  # BEAM stdout (append-only across launches)
     └── release.stderr.log  # BEAM stderr
 ```
 
-Deleting this directory resets the app to a fresh-install state.
+The master key and API tokens are **not** here — they live in the macOS Keychain
+(service `BusterClaw`). Workspace documents live under the user-chosen workspace
+root (its own tree of `library/`, `sources/`, `memory/`, etc.), not the data dir.
+
+Deleting the data directory resets app state but leaves the Keychain entries; to
+fully reset, also remove the `BusterClaw` Keychain items. Conversely, losing the
+Keychain entry without a backed-up recovery key makes encrypted secrets
+unrecoverable — back the key up from **Settings → Recovery key**.
 
 ## Deferred hardening
 
-- macOS code signing and notarization.
+- macOS code signing and notarization — planned for the website download channel (see the distribution roadmap, Channel B).
 - Windows and Linux installers (the runtime and Tauri config support them; only build/test paths are missing).
 - Bundled Playwright browser dependencies.
 - Log rotation and crash report collection.
-- Auto-update mechanism.
+- Auto-update mechanism — intentionally out of scope for v1 (users re-download the latest `.dmg`).
 - Dock/app menu customization.
