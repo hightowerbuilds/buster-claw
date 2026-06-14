@@ -122,9 +122,21 @@ fn ensure_webview(
         .ok_or_else(|| "main window missing".to_string())?;
     let parsed: Url = url.parse().map_err(|e| format!("invalid url {url}: {e}"))?;
 
+    let mut builder = WebviewBuilder::new(label, WebviewUrl::External(parsed));
+
+    // Lock the content webview down to web navigation only: block file://,
+    // tauri://, javascript:, data:, etc. so a loaded page can't read local files
+    // or escape into app/IPC schemes. (The chrome webview only ever loads our own
+    // loopback toolbar, so it doesn't need this.)
+    if label == CONTENT_LABEL {
+        builder = builder.on_navigation(|url| {
+            matches!(url.scheme(), "http" | "https") || url.as_str() == "about:blank"
+        });
+    }
+
     window
         .add_child(
-            WebviewBuilder::new(label, WebviewUrl::External(parsed)),
+            builder,
             LogicalPosition::new(x, y),
             LogicalSize::new(width, height),
         )

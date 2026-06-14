@@ -301,6 +301,18 @@ operator direction, moved the **entire browser chrome into the native layer**:
 - Verified in-app: aligned, navigable, persists across tab switches, closes with the
   tab. `cargo check` + full suite green (397).
 
+### Browser — webview security (in progress)
+
+- **Sandboxed ✅:** the content webview is in no capability → loaded pages get zero
+  Tauri command access; the chrome webview holds only the 4 nav commands.
+- **Navigation guard ✅** (`browser.rs`): the content webview's `on_navigation` allows
+  only `http`/`https` (+ `about:blank`) — blocks `file://`, `tauri://`, `javascript:`,
+  `data:`, so a page can't read local files or jump into app/IPC schemes. `cargo check`
+  clean.
+- **Still open:** new-window/popup handling, device-permission denial (geo/cam/mic),
+  download policy, and noting the content webview's loopback reach (`/ws/file` only;
+  API needs a Bearer token).
+
 ### First-run onboarding — hyper-minimal 4-step flow
 
 - Rebuilt `/setup` (`SetupLive`) into a welcome explainer + **4 progress dots**
