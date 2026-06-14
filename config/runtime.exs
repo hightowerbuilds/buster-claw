@@ -92,6 +92,14 @@ if finnhub_api_key = System.get_env("FINNHUB_API_KEY") do
   config :buster_claw, :finnhub_api_key, finnhub_api_key
 end
 
+# SEC EDGAR's Fair Access policy rejects requests whose User-Agent lacks a real
+# contact email (returns a 403 "Request Rate Threshold Exceeded" page). Set
+# FINANCE_USER_AGENT to e.g. "Your Name your@email.com" so the finance_filings /
+# finance_fundamentals commands can reach EDGAR.
+if finance_user_agent = System.get_env("FINANCE_USER_AGENT") do
+  config :buster_claw, :finance_user_agent, finance_user_agent
+end
+
 if config_env() == :prod do
   cli_eval? = System.get_env("BUSTER_CLAW_CLI_EVAL") in ["1", "true", "TRUE", "yes", "YES"]
 
