@@ -3,13 +3,6 @@ defmodule BusterClaw.SecurityHardeningTest do
 
   alias BusterClaw.Commands
 
-  describe "H1: hook_test is restricted" do
-    test "catalog marks hook_test as :restricted" do
-      entry = Enum.find(Commands.list_commands(), &(&1.name == "hook_test"))
-      assert entry.tier == :restricted
-    end
-  end
-
   describe "H2: MCP/agent callers cannot reach restricted commands via Commands.call/3" do
     alias BusterClaw.Sentinel.Pending
 

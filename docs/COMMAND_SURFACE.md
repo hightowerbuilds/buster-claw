@@ -1,7 +1,7 @@
 # Buster Claw Command Surface
 
-`BusterClaw.Commands` is the single command dispatcher used by the HTTP API,
-MCP endpoint, and CLI escript.
+`BusterClaw.Commands` is the single command dispatcher used by the HTTP API and
+CLI escript.
 
 The live catalog is the source of truth:
 
@@ -17,33 +17,29 @@ curl -H "Authorization: Bearer $BUSTER_CLAW_API_TOKEN" \
 ```
 
 Commands accept one JSON object and return either `{:ok, value}` or
-`{:error, reason}` internally. HTTP and MCP frontends serialize the same result
-shape into their transport-specific response format.
+`{:error, reason}` internally. The HTTP and CLI frontends serialize the same
+result shape into their transport-specific response format.
 
 ## Active Domains
 
 - Runtime status
 - Workspace document library
-- Memory
 - Calendar events
-- MCP server configuration and tool discovery
-- Webhooks
-- Hooks
-- Delivery destinations and dispatch
-- Scheduler jobs
 - Third-party integrations and integration runs
+- Finance (SEC EDGAR + Finnhub read surface)
 - Google Workspace accounts, Gmail, and Calendar sync
 - Web search and guarded browser fetch
+- The Dispatch pull-queue (list/claim/done/block/reply)
 - Orchestration shifts and in-shift role sessions
 - Visible in-app terminal tabs for role sessions
 
 ## Trust Tiers
 
-- `:safe` commands are reads and low-risk probes exposed to untrusted MCP
-  callers.
-- `:restricted` commands mutate state, trigger outbound effects, run scheduler
-  jobs, test operator-defined hooks, or send messages. Untrusted callers receive
-  `{:error, :requires_confirmation}` for these commands.
+- `:safe` commands are reads and low-risk probes exposed to untrusted callers
+  (e.g. the scoped `:mcp` token).
+- `:restricted` commands mutate state, trigger outbound effects, or send
+  messages. Untrusted callers receive `{:error, :requires_confirmation}` for
+  these commands.
 
 Restricted refusals and consequential command invocations are recorded through
 `BusterClaw.Sentinel`.
@@ -84,7 +80,9 @@ These older command-surface areas were removed or retired:
 - Source/provider/analysis/report/chat commands from the former built-in LLM
   pipeline.
 - Legacy source migration commands and importer inputs.
-- Custom scheduler command placeholders.
-- Webhook `custom_cmd` / `deliver_to` placeholder fields.
-- Bulk hook event execution; hooks remain individually testable.
-- Swoosh-backed email delivery; delivery now uses outbound HTTP destinations.
+- The MCP server/client surface (`mcp_*`) and the inbound `POST /mcp` endpoint.
+- Headless agent dispatch (`AgentRunner` / `Pipeline` / `Reporter`); work is now
+  pulled by a terminal agent through the Dispatch queue.
+- Delivery destinations, Webhooks, Hooks, Scheduler jobs, and DB-backed Memory —
+  retired as unused. Integrations (their one live consumer) is kept and now polls
+  manually or via `POST /integrations/:name/webhook`.

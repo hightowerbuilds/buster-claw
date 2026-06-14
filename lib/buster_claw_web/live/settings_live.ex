@@ -6,13 +6,9 @@ defmodule BusterClawWeb.SettingsLive do
   """
   use BusterClawWeb, :live_view
 
-  alias BusterClaw.Delivery
   alias BusterClaw.Google
-  alias BusterClaw.Hooks
   alias BusterClaw.Integrations
-  alias BusterClaw.Scheduler
   alias BusterClaw.Setup
-  alias BusterClaw.Webhooks
 
   @config_links [
     %{label: "Google Workspace", path: "/gws", icon: "hero-envelope", desc: "Gmail and Calendar"},
@@ -22,15 +18,6 @@ defmodule BusterClawWeb.SettingsLive do
       icon: "hero-puzzle-piece",
       desc: "Sentry, GitHub, Umami"
     },
-    %{
-      label: "Delivery",
-      path: "/delivery",
-      icon: "hero-paper-airplane",
-      desc: "Slack, Discord, Telegram"
-    },
-    %{label: "Scheduler", path: "/scheduler", icon: "hero-clock", desc: "Recurring jobs"},
-    %{label: "Hooks", path: "/hooks", icon: "hero-bolt", desc: "Shell and webhook hooks"},
-    %{label: "Webhooks", path: "/webhooks", icon: "hero-link", desc: "Incoming triggers"},
     %{label: "Security", path: "/security", icon: "hero-shield-check", desc: "Audit feed"}
   ]
 
@@ -167,10 +154,6 @@ defmodule BusterClawWeb.SettingsLive do
 
   defp config_done?("/gws"), do: Google.list_account_summaries() != []
   defp config_done?("/integrations"), do: Integrations.list_integrations() != []
-  defp config_done?("/delivery"), do: Delivery.list_destinations() != []
-  defp config_done?("/scheduler"), do: Scheduler.list_jobs() != []
-  defp config_done?("/hooks"), do: Hooks.list_hooks() != []
-  defp config_done?("/webhooks"), do: Webhooks.list_webhooks() != []
   defp config_done?(_path), do: false
 
   defp button_outline,

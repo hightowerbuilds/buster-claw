@@ -4,37 +4,37 @@ Mermaid diagrams describing both the **structure** (modules, schemas, supervisio
 **functionality** (request flows) of the codebase. Rendered automatically by GitHub and most
 Markdown viewers.
 
-> Source of truth: generated from `lib/` on 2026-06-05 (post terminal-driven-CLAW cut).
-> Re-derive after large refactors.
+> Source of truth: re-derived from `lib/` on 2026-06-14 (post pull-queue cut and the
+> Delivery / Hooks / Webhooks / Scheduler / Memory retirement). Re-derive after large refactors.
 
 ---
 
 ## 1. System layers (functional overview)
 
-How the three frontends, the unified command surface, the domain contexts, and the
-external world fit together. Buster Claw has no built-in LLM — the intelligence is a
-terminal agent (Claude Code / Codex) driving the command surface over MCP.
+How the frontends, the unified command surface, the domain contexts, and the external world
+fit together. Buster Claw has no built-in LLM — the intelligence is a terminal agent
+(Claude Code / Codex) running in the in-app PTY, driving the command surface over the CLI/HTTP
+and pulling work from the Dispatch queue.
 
 ```mermaid
 flowchart TB
     subgraph Frontends["Frontends / Entry points"]
         CLI["CLI escript<br/>(cli.ex)"]
-        WebUI["LiveView UI<br/>(~20 LiveViews)"]
+        WebUI["LiveView UI"]
         HTTP["HTTP API<br/>(api_controller)"]
-        MCP["MCP server<br/>(mcp_controller)"]
-        Webhooks_in["Inbound webhooks<br/>(webhook / integration_webhook)"]
+        Webhooks_in["Inbound integration webhooks<br/>(integration_webhook)"]
     end
 
     subgraph Surface["Unified Command Surface"]
-        Commands["Commands.call/2<br/>(~70 commands, tier-gated)"]
+        Commands["Commands.call/2<br/>(tier-gated)"]
         Schema["Commands.Schema"]
         Result["Commands.Result"]
     end
 
     subgraph Contexts["Domain Contexts"]
-        Library & Browser & Search & Memory & Calendar
-        Google & Integrations & Delivery
-        Automation & Orchestration & Sentinel & Settings
+        Library & Browser & Search & Calendar & Finance
+        Google & Integrations & Dispatch
+        Orchestration & Sentinel & Settings
     end
 
     subgraph Infra["Infrastructure"]
@@ -44,18 +44,18 @@ flowchart TB
     end
 
     subgraph External["External services"]
-        Agents["Headless agents<br/>(claude -p / codex exec)"]
+        TermAgent["Terminal agent<br/>(Claude Code / Codex in the PTY)"]
         GoogleAPI["Google Workspace<br/>(Gmail / Calendar)"]
-        BrowserBin["Browser sidecar<br/>(Playwright)"]
+        BrowserBin["Browser sidecar<br/>(Playwright, optional)"]
         Integr["GitHub / Sentry / Umami"]
-        DeliverOut["Slack / Discord / Telegram"]
+        FinanceAPI["SEC EDGAR / Finnhub"]
     end
 
     CLI -->|HTTP /api/run| HTTP
     WebUI --> Contexts
     HTTP --> Commands
-    MCP -->|safe-tier only| Commands
-    Webhooks_in --> Automation & Integrations
+    Webhooks_in --> Integrations
+    TermAgent -->|reads fridge, dispatch CLI| Dispatch
 
     Commands --> Schema
     Commands --> Result
@@ -68,8 +68,7 @@ flowchart TB
     Google --> GoogleAPI
     Browser --> BrowserBin
     Integrations --> Integr
-    Delivery --> DeliverOut
-    Orchestration --> Agents
+    Finance --> FinanceAPI
 
     PubSub -.live updates.-> WebUI
 ```
@@ -89,20 +88,13 @@ flowchart TD
     Sup --> Migrator["Ecto.Migrator"]
     Sup --> DNS["DNSCluster"]
     Sup --> PubSub["Phoenix.PubSub"]
+    Sup --> Projector["DispatchProjector *<br/>(dispatch_projector_enabled)"]
+    Sup --> TermWS["TerminalWorkspace"]
     Sup --> SentinelPending["Sentinel.Pending"]
     Sup --> Sidecar["Browser.Sidecar *<br/>(browser_sidecar_enabled)"]
-    Sup --> McpReg["Registry: MCP.Registry"]
-    Sup --> McpSup["MCP.Supervisor<br/>(DynamicSupervisor)"]
-    Sup --> McpBoot["MCP.Bootstrap"]
-    Sup --> Sched["Scheduler.Runner *<br/>(scheduler_enabled)"]
-    Sup --> RunnerSup["Orchestration.RunnerSupervisor<br/>(Task.Supervisor)"]
     Sup --> Orchestrator["Orchestrator *<br/>(orchestrator_enabled)"]
-    Sup --> Reporter["Orchestration.Reporter *"]
-    Sup --> Uptime["Orchestration.Uptime *"]
+    Sup --> Uptime["Orchestration.Uptime *<br/>(orchestrator_enabled)"]
     Sup --> Endpoint["BusterClawWeb.Endpoint"]
-
-    McpSup -.spawns.-> McpClient["MCP.Client<br/>(one per server)"]
-    RunnerSup -.spawns.-> AgentRunner["AgentRunner<br/>(one per dispatched task)"]
 ```
 
 ---
@@ -122,18 +114,6 @@ classDiagram
         +string status
         +string excerpt
     }
-    class DeliveryDestination {
-        +string name
-        +string type
-        +string url
-        +string token
-        +bool enabled
-    }
-    class DeliveryAttempt {
-        +string title
-        +string status
-        +string error
-    }
     class Integration {
         +string name
         +string service_type
@@ -148,61 +128,47 @@ classDiagram
         +string status
         +int records_fetched
     }
-    class Hook {
-        +string name
-        +string event
-        +string type
-        +string target
-        +bool async
+    class Shift {
+        +utc started_at
+        +string status
+        +string job_key
+        +string agent_name
+        +int dispatched_count
+        +int done_count
+        +int failed_count
+        +string stopped_reason
     }
-    class HookRun {
-        +string event
-        +int duration_ms
-        +bool success
-        +string stdout
-        +string stderr
-    }
-    class OrchestratorTask {
-        +string name
-        +string type
-        +string engine
-        +string command
-        +string prompt
-        +string cron
-        +utc due_at
-        +string state
-        +string lease_owner
-        +utc lease_expires_at
-        +int attempts
-    }
-    class AgentRun {
-        +string engine
-        +int os_pid
+    class ShiftAssignment {
+        +string role_key
+        +string agent_name
         +string status
         +utc started_at
-        +utc last_heartbeat_at
-        +int exit_code
-        +string output_path
+        +utc ended_at
+        +string purpose
+    }
+    class DispatchItem {
+        +string source
+        +string sender
+        +bool trusted
+        +string gmail_message_id
+        +string gmail_rfc_message_id
+        +string subject
+        +string recommended_role_key
+        +string status
+        +string claimed_by
+        +string outcome
     }
 
-    DeliveryDestination "1" --> "*" DeliveryAttempt : target of
     Integration "1" --> "*" IntegrationRun : has
-    Hook "1" --> "*" HookRun : has
-    OrchestratorTask "1" --> "*" AgentRun : dispatched as
+    Shift "1" --> "*" ShiftAssignment : has
+    Shift "1" --> "*" DispatchItem : scopes
+    ShiftAssignment "1" --> "*" DispatchItem : claims
 ```
 
 ### Standalone schemas (no foreign keys)
 
 ```mermaid
 classDiagram
-    class Shift {
-        +utc started_at
-        +string status
-        +int dispatched_count
-        +int done_count
-        +int failed_count
-        +string stopped_reason
-    }
     class SecurityEvent {
         +string kind
         +string command
@@ -232,41 +198,15 @@ classDiagram
         +string frequency
         +date recur_until
     }
-    class Memory {
-        +utc created_at
-        +string text
-    }
-    class McpServer {
-        +string name
-        +string command
-        +map args
-        +map env
-        +string last_status
-    }
-    class Webhook {
-        +string name
-        +string secret
-        +string action
-    }
-    class SchedulerJob {
-        +string job_id
-        +string type
-        +string cron
-        +utc next_run_at
-    }
-    class RuntimeEvent {
-        +string kind
-        +string message
-        +map metadata
-    }
 ```
 
 ---
 
 ## 4. Command surface dispatch (shared by all frontends)
 
-The single most important design property: **one** dispatcher, three callers. Restricted-tier
-commands are refused for the untrusted (MCP) caller and recorded in `Sentinel.Pending`.
+The single most important design property: **one** dispatcher, multiple callers. Restricted-tier
+commands are refused for an untrusted caller (the scoped `:mcp` token) and recorded in
+`Sentinel.Pending`.
 
 ```mermaid
 classDiagram
@@ -286,9 +226,6 @@ classDiagram
         +run(conn, params)
         +commands(conn, _)
     }
-    class McpController {
-        +handle(conn, params)
-    }
     class CLI {
         +main(argv)
     }
@@ -296,8 +233,7 @@ classDiagram
         +record(name, args, caller)
     }
 
-    ApiController ..> Commands : POST /api/run (trusted)
-    McpController ..> Commands : tools/call (mcp tier)
+    ApiController ..> Commands : POST /api/run (token-derived tier)
     CLI ..> ApiController : HTTP /api/run
     Commands ..> CommandsSchema : validates args
     Commands ..> CommandsResult : serializes output
@@ -312,7 +248,7 @@ How a single command request is authorized, dispatched, and audited.
 
 ```mermaid
 sequenceDiagram
-    participant Caller as CLI / HTTP / MCP
+    participant Caller as CLI / HTTP
     participant Commands as Commands.call/2
     participant Sentinel
     participant Context as Domain context
@@ -335,38 +271,31 @@ sequenceDiagram
 
 ---
 
-## 6. Orchestration shift (unattended dispatch)
+## 6. The Dispatch pull-queue (terminal-driven work)
 
-The deterministic brain (not an LLM) reads due tasks, leases them, and dispatches disposable
-headless agents — surviving crashes by resuming from SQLite.
+There is no headless dispatch. A human-run terminal agent reads the queue projected to the
+workspace fridge, claims items, does the work, and writes results back through the audited
+`buster-claw dispatch` CLI. The `Orchestrator` is a supervised janitor that only watches the
+kill switch; all work state is durable in SQLite, so an OTP restart resumes mid-shift.
 
 ```mermaid
 sequenceDiagram
-    participant Terminal as Terminal agent (shift_start)
-    participant Orchestrator as Orchestrator (GenServer tick)
-    participant DB as orchestrator_tasks / shifts
-    participant Runner as AgentRunner (Port)
-    participant Agent as claude -p / codex exec
-    participant Reporter
+    participant Poller as Gmail poll (mailman)
+    participant Dispatch as Dispatch queue (SQLite)
+    participant Projector as DispatchProjector
+    participant Fridge as shift/Dispatch.md
+    participant Agent as Terminal agent (Claude Code / Codex)
     participant Sentinel
 
-    Terminal->>Orchestrator: shift_start (clears kill switch)
-    Orchestrator->>DB: create Shift (active, runs until stopped)
-    loop every ~30s tick
-        Orchestrator->>DB: select due tasks, lease (pending → claimed)
-        alt :agent task
-            Orchestrator->>Runner: spawn(engine, prompt, workspace)
-            Runner->>Agent: run, wired to BusterClaw MCP
-            Agent-->>Runner: heartbeat / output
-            Runner->>DB: AgentRun status + result_path
-        else :pipeline task
-            Orchestrator->>Orchestrator: run deterministic command (GWS / noop)
-        end
-        Orchestrator->>Sentinel: observe dispatch
-        Note over Orchestrator: crash-loop brake, concurrency + rate caps
-    end
-    Orchestrator->>Reporter: shift end / failures
-    Reporter-->>Terminal: Delivery alert + morning report
+    Poller->>Dispatch: enqueue_gmail (trusted senders only)
+    Dispatch-->>Projector: {:dispatch, event, item} (PubSub)
+    Projector->>Fridge: render open items, grouped by job
+    Agent->>Fridge: read worklist
+    Agent->>Dispatch: dispatch claim --job <key>
+    Agent->>Agent: do the work (search / fetch / reply …)
+    Agent->>Dispatch: dispatch reply / done / block (audited)
+    Dispatch->>Sentinel: observe outbound send / mutation
+    Note over Agent,Dispatch: Orchestrator janitor only watches the STOP kill switch
 ```
 
 ---
@@ -378,17 +307,20 @@ From `lib/buster_claw_web/router.ex`.
 ```mermaid
 flowchart LR
     subgraph browser["pipe :browser (session, CSRF, LiveView)"]
-        R1["/ , /orchestration, /browse, /split, /terminal,<br/>/calendar, /gws, /memory, /integrations, /mcp,<br/>/scheduler, /webhooks, /hooks, /delivery, /advanced,<br/>/security, /settings, /appearance, /workspace, /setup"]
+        R1["/ , /browse, /split, /terminal, /calendar,<br/>/gws, /integrations, /security, /settings,<br/>/appearance, /workspace, /manual, /setup"]
         R2["/google/oauth/callback"]
+    end
+    subgraph raw["raw scopes (loopback, no auth)"]
+        W1["/ws/file"]
+        W2["/browser/{chrome,home,workspace}<br/>+ POST history/bookmarks"]
+        W3["/finance/api/{search,lookup}"]
     end
     subgraph api["pipe :api (unauthenticated)"]
         H1["GET /_health"]
-        H2["POST /integrations/:name/webhook<br/>(HMAC verified)"]
-        H3["POST /hooks/:name<br/>(secret verified)"]
+        H2["POST /integrations/:name/webhook<br/>(secret verified)"]
         H4["GET /api/commands (catalog metadata)"]
     end
     subgraph auth["pipe :api_authenticated (Bearer token)"]
         A1["POST /api/run"]
-        A2["POST /mcp"]
     end
 ```

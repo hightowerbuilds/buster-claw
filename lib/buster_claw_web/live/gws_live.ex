@@ -184,7 +184,7 @@ defmodule BusterClawWeb.GWSLive do
           </.link>
         </div>
 
-        <BusterClawWeb.AdvancedTabs.tabs active={:gws} />
+        <BusterClawWeb.SettingsTabs.tabs active={:gws} />
 
         <p
           :if={@result}

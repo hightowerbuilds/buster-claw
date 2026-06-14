@@ -179,8 +179,8 @@ defmodule BusterClawWeb.SplitLiveTest do
 
   test "every workspace tab embeds alongside the terminal without crashing", %{conn: conn} do
     for path <-
-          ~w(/ /browse /calendar /gws /memory /scheduler /workspace
-             /integrations /webhooks /hooks /delivery /advanced /security /settings
+          ~w(/ /browse /calendar /gws /workspace
+             /integrations /security /settings
              /appearance /manual) do
       assert {:ok, _view, _html} = live(conn, "/split?left=/terminal&right=#{path}"),
              "expected #{path} to embed in a split pane"
@@ -188,7 +188,7 @@ defmodule BusterClawWeb.SplitLiveTest do
   end
 
   test "Home can be joined and renders (not the unsupported fallback)", %{conn: conn} do
-    {:ok, view, html} = live(conn, "/split?left=/&right=/memory")
+    {:ok, view, html} = live(conn, "/split?left=/&right=/integrations")
 
     refute html =~ "can&#39;t be opened in a split pane"
     refute html =~ "can't be opened in a split pane"

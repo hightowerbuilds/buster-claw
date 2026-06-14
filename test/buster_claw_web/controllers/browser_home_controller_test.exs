@@ -1,7 +1,7 @@
 defmodule BusterClawWeb.BrowserHomeControllerTest do
   use BusterClawWeb.ConnCase, async: false
 
-  alias BusterClaw.BrowserHistory
+  alias BusterClaw.{Bookmarks, BrowserHistory}
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc-bhome-#{System.unique_integer([:positive])}")
@@ -21,6 +21,23 @@ defmodule BusterClawWeb.BrowserHomeControllerTest do
     body = conn |> get(~p"/browser/home") |> response(200)
     assert body =~ "Recent"
     assert body =~ "No recent pages yet"
+  end
+
+  test "homepage shows a Bookmarks section above Recent", %{conn: conn} do
+    body = conn |> get(~p"/browser/home") |> response(200)
+    assert body =~ "Bookmarks"
+    assert body =~ "No bookmarks yet"
+    # Bookmarks render above Recent.
+    assert :binary.match(body, "Bookmarks") < :binary.match(body, "Recent")
+  end
+
+  test "homepage lists saved bookmarks with a remove form", %{conn: conn} do
+    Bookmarks.add("https://saved.com", "Saved")
+
+    body = conn |> get(~p"/browser/home") |> response(200)
+    assert body =~ ~s(href="https://saved.com")
+    assert body =~ ~s(action="/browser/bookmarks/remove")
+    assert body =~ ~s(value="https://saved.com")
   end
 
   test "homepage lists recorded entries newest-first", %{conn: conn} do

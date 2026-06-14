@@ -122,7 +122,7 @@ defmodule BusterClawWeb.IntegrationsLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="space-y-6">
-        <BusterClawWeb.AdvancedTabs.tabs active={:integrations} />
+        <BusterClawWeb.SettingsTabs.tabs active={:integrations} />
 
         <section class="space-y-6">
           <div class="flex justify-end">

@@ -25,8 +25,8 @@ defmodule BusterClawWeb.UserGuideLiveTest do
     assert loop_html =~ "dispatch claim"
   end
 
-  test "the footer dock links to the Manual", %{conn: conn} do
+  test "the footer dock no longer links to the Manual", %{conn: conn} do
     {:ok, _view, html} = live(conn, ~p"/")
-    assert html =~ ~s(href="/manual")
+    refute html =~ ~s(href="/manual")
   end
 end

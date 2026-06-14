@@ -51,6 +51,13 @@ defmodule BusterClawWeb.BrowserChromeController do
         background: #ff4d1c; color: #121212; border: 0; border-radius: 3px;
         font-weight: 700; font-size: 12px;
       }
+      button.bm {
+        flex: 0 0 auto; height: 30px; padding: 0 12px; cursor: pointer;
+        background: transparent; color: #f4f1ea; border: 2px solid rgba(244,241,234,.2);
+        border-radius: 3px; font: 600 12px/1 ui-monospace, monospace; white-space: nowrap;
+      }
+      button.bm:hover { border-color: #ff4d1c; color: #ff4d1c; }
+      button.bm:disabled { opacity: .4; cursor: default; }
     </style>
     </head>
     <body>
@@ -64,11 +71,13 @@ defmodule BusterClawWeb.BrowserChromeController do
                value="#{escape_attr(initial)}" />
         <button class="go" type="submit">Go</button>
       </form>
+      <button class="bm" id="bookmark" type="button" title="Bookmark this page">+ Bookmark</button>
       <script>
         const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke
         const origin = window.location.origin
         const homeUrl = origin + "/browser/home"
         const addr = document.getElementById("addr")
+        const bookmarkBtn = document.getElementById("bookmark")
         function resolve(raw) {
           const v = (raw || "").trim()
           if (v === "") return null
@@ -89,11 +98,30 @@ defmodule BusterClawWeb.BrowserChromeController do
             return u
           } catch (e) { return u }
         }
+        // The URL currently loaded in the content webview (the bookmark target).
+        let currentUrl = resolve(addr.value)
         // Called from Rust on each content navigation so the bar tracks the page.
         // Skips while the user is typing so it never clobbers in-progress input.
         window.__setAddress = function (u) {
+          currentUrl = u
+          refreshBookmark()
           if (document.activeElement === addr) return
           addr.value = display(u)
+        }
+        // The bookmark button only acts on a real page (not the home tab).
+        function bookmarkable(u) { return u && u !== homeUrl }
+        function refreshBookmark() {
+          bookmarkBtn.disabled = !bookmarkable(currentUrl)
+          bookmarkBtn.textContent = "+ Bookmark"
+        }
+        function bookmark() {
+          if (!bookmarkable(currentUrl)) return
+          const label = display(currentUrl) || currentUrl
+          try {
+            fetch(origin + "/browser/bookmarks?url=" + encodeURIComponent(currentUrl) +
+                  "&label=" + encodeURIComponent(label), {method: "POST"})
+              .then(function () { bookmarkBtn.textContent = "Saved \\u2713" })
+          } catch (e) {}
         }
         function record(url, label) {
           if (!url || url === homeUrl) return
@@ -104,7 +132,10 @@ defmodule BusterClawWeb.BrowserChromeController do
         }
         function go() {
           const url = resolve(addr.value)
-          if (url && invoke) { record(url, addr.value.trim()); invoke("browser_navigate", {url}) }
+          if (url && invoke) {
+            currentUrl = url; refreshBookmark()
+            record(url, addr.value.trim()); invoke("browser_navigate", {url})
+          }
         }
         // When the address starts with "/", browse the workspace in the content
         // webview (folders/files under that path), debounced so it doesn't reload
@@ -126,6 +157,8 @@ defmodule BusterClawWeb.BrowserChromeController do
         document.getElementById("back").addEventListener("click", function () { invoke && invoke("browser_back") })
         document.getElementById("fwd").addEventListener("click", function () { invoke && invoke("browser_forward") })
         document.getElementById("reload").addEventListener("click", function () { invoke && invoke("browser_reload") })
+        bookmarkBtn.addEventListener("click", bookmark)
+        refreshBookmark()
         addr.focus()
       </script>
     </body>

@@ -29,15 +29,8 @@ defmodule BusterClawWeb.Router do
       live "/split", SplitLive, :index
       live "/terminal", TerminalLive, :index
       live "/calendar", CalendarLive, :index
-      live "/finance", FinanceLive, :index
       live "/gws", GWSLive, :index
-      live "/memory", MemoryLive, :index
       live "/integrations", IntegrationsLive, :index
-      live "/scheduler", SchedulerLive, :index
-      live "/webhooks", WebhooksLive, :index
-      live "/hooks", HooksLive, :index
-      live "/delivery", DeliveryLive, :index
-      live "/advanced", DeliveryLive, :advanced
       live "/security", SecurityLive, :index
       live "/settings", SettingsLive, :index
       live "/appearance", AppearanceLive, :index
@@ -70,6 +63,18 @@ defmodule BusterClawWeb.Router do
     get "/home", BrowserHomeController, :show
     get "/workspace", BrowserWorkspaceController, :show
     post "/history", BrowserHistoryController, :create
+    post "/bookmarks", BrowserBookmarkController, :create
+    post "/bookmarks/remove", BrowserBookmarkController, :delete
+  end
+
+  # Loopback JSON for the in-app browser's financial-informant.html page (its
+  # sandboxed content webview can't carry the API token). Read-only, safe-tier
+  # finance reads only; no auth — same posture as the /browser and /ws scopes.
+  scope "/finance/api", BusterClawWeb do
+    pipe_through :api
+
+    get "/search", FinanceApiController, :search
+    get "/lookup", FinanceApiController, :lookup
   end
 
   scope "/", BusterClawWeb do
@@ -77,7 +82,6 @@ defmodule BusterClawWeb.Router do
 
     get "/_health", HealthController, :show
     post "/integrations/:name/webhook", IntegrationWebhookController, :trigger
-    post "/hooks/:name", WebhookController, :trigger
   end
 
   scope "/api", BusterClawWeb do

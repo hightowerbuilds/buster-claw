@@ -32,32 +32,24 @@ defmodule BusterClawWeb.Layouts do
       image: "/images/brand/calendar-icon.png"
     },
     %{
-      label: "Advanced",
-      path: "/advanced",
-      icon: "hero-adjustments-horizontal",
-      image: "/images/brand/advanced-icon.png"
-    },
-    %{label: "Manual", path: "/manual", icon: "hero-book-open"},
-    %{label: "Settings", path: "/settings", icon: "hero-cog-6-tooth"}
+      label: "Settings",
+      path: "/settings",
+      icon: "hero-cog-6-tooth",
+      image: "/images/brand/settings-icon.png"
+    }
   ]
 
   # Path -> tab label for every route a tab can open, including routes reachable
-  # via in-page tabs (Library/Advanced) rather than the dock. Serialized into the
+  # via in-page tabs (e.g. Settings) rather than the dock. Serialized into the
   # tab strip for the client-side TabStrip hook to label tabs. The labels are a
   # compile-time constant, so the JSON is encoded once here rather than on every
   # `shell/1` render.
   @tab_labels Map.merge(
                 Map.new(@navigation_items, &{&1.path, &1.label}),
                 %{
-                  "/delivery" => "Delivery",
-                  "/hooks" => "Hooks",
-                  "/webhooks" => "Webhooks",
                   "/integrations" => "Integrations",
-                  "/memory" => "Memory",
-                  "/scheduler" => "Scheduler",
                   "/security" => "Security",
                   "/gws" => "GWS",
-                  "/finance" => "Financial Informant",
                   "/appearance" => "Settings",
                   "/workspace" => "Workspace",
                   "/manual" => "Manual"
@@ -176,8 +168,7 @@ defmodule BusterClawWeb.Layouts do
               alt={item.label}
               class="h-6 w-auto shrink-0"
             />
-            <.icon :if={!item[:image]} name={item.icon} class="size-5 shrink-0 text-base-content/70" />
-            <span :if={!item[:image]} class="hidden sm:inline">{item.label}</span>
+            <span :if={!item[:image]} class="font-medium">{item.label}</span>
           </.link>
         </nav>
 

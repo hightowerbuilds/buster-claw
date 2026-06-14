@@ -36,17 +36,24 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ "Get Started"
     assert response =~ "Go on duty"
     assert response =~ "./buster-claw shift run"
-    # Get Started links out to the Financial Advisor dashboard.
-    assert response =~ ~s(href="/finance")
-    assert response =~ "Open the Financial Informant"
+    # Get Started no longer links to the Financial Informant (it moved to Featured Pages).
+    refute response =~ ~s(href="/finance")
     assert response =~ ~s(id="home-left-panel")
     assert response =~ "Trusted Contacts"
     assert response =~ "No trusted contacts yet."
+    # Featured Pages links to both bundled HTML pages, opened in the in-app browser.
+    assert response =~ ~s(id="home-featured-pages")
+    assert response =~ "Featured Pages"
+    assert response =~ "/browse?url="
+    assert response =~ "pages%2FMANUAL.html"
+    assert response =~ "pages%2Ffinancial-informant.html"
+    assert response =~ "Financial Informant"
     refute response =~ ~s(id="home-shift-management")
     # The Connect-GWS panel was removed from the home page; GWS lives at /gws + /setup.
     refute response =~ ~s(id="home-google-workspace-login")
     refute response =~ ~s(id="home-recent-emails")
-    assert response =~ ~s(href="/advanced")
+    # Advanced was retired; its surviving feature (Integrations) lives under Settings.
+    refute response =~ ~s(href="/advanced")
     refute response =~ ~s(href="/webhooks")
     refute response =~ ~s(href="/mcp")
   end

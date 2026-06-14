@@ -24,20 +24,15 @@ defmodule BusterClaw.Commands do
   alias BusterClaw.{
     Browser,
     Calendar,
-    Delivery,
     Dispatch,
     Finance,
     Google,
-    Hooks,
     Integrations,
     Jobs,
     Library,
-    Memory,
     Orchestration,
-    Scheduler,
     Search,
-    TerminalWorkspace,
-    Webhooks
+    TerminalWorkspace
   }
 
   alias BusterClaw.Runtime.Status
@@ -68,16 +63,6 @@ defmodule BusterClaw.Commands do
   defp id_trigger_entry(name, desc, tier),
     do: %{name: name, type: :trigger, tier: tier, description: desc, args: @id_required}
 
-  defp id_payload_trigger_entry(name, desc, tier) do
-    %{
-      name: name,
-      type: :trigger,
-      tier: tier,
-      description: desc,
-      args: Map.put(@id_required, "payload", %{type: :map, required: false})
-    }
-  end
-
   defp build_catalog,
     do: [
       # Documents
@@ -98,17 +83,6 @@ defmodule BusterClaw.Commands do
         }
       },
       delete_entry("document_delete", "Delete a document's file and mark it deleted."),
-
-      # Memory
-      list_entry("memory_list", "List all persistent memory entries."),
-      %{
-        name: "memory_remember",
-        type: :mutate,
-        tier: :restricted,
-        description: "Save a new memory.",
-        args: %{"text" => %{type: :string, required: true}}
-      },
-      delete_entry("memory_forget", "Delete a memory by ID."),
 
       # Events
       list_entry("event_list", "List all calendar events."),
@@ -139,162 +113,6 @@ defmodule BusterClaw.Commands do
         }
       },
       delete_entry("event_delete", "Delete a calendar event."),
-
-      # Webhooks
-      list_entry("webhook_list", "List all webhooks."),
-      get_entry("webhook_get", "Fetch a webhook by ID."),
-      %{
-        name: "webhook_create",
-        type: :mutate,
-        tier: :restricted,
-        description: "Create a webhook.",
-        args: %{
-          "name" => %{type: :string, required: true},
-          "action" => %{
-            type: :string,
-            required: true,
-            enum: ["command"]
-          },
-          "secret" => %{type: :string, required: false},
-          "enabled" => %{type: :boolean, required: false, default: true}
-        }
-      },
-      %{
-        name: "webhook_update",
-        type: :mutate,
-        tier: :restricted,
-        description: "Update a webhook.",
-        args: %{
-          "id" => %{type: :integer, required: true},
-          "name" => %{type: :string, required: false},
-          "action" => %{type: :string, required: false, enum: ["command"]},
-          "secret" => %{type: :string, required: false},
-          "enabled" => %{type: :boolean, required: false}
-        }
-      },
-      delete_entry("webhook_delete", "Delete a webhook."),
-      %{
-        name: "webhook_trigger",
-        type: :trigger,
-        tier: :restricted,
-        description: "Trigger a webhook by name.",
-        args: %{
-          "name" => %{type: :string, required: true},
-          "headers" => %{type: :map, required: false},
-          "body" => %{type: :string, required: false}
-        }
-      },
-
-      # Hooks
-      list_entry("hook_list", "List all hooks."),
-      get_entry("hook_get", "Fetch a hook by ID."),
-      %{
-        name: "hook_create",
-        type: :mutate,
-        tier: :restricted,
-        description: "Create a hook.",
-        args: %{
-          "name" => %{type: :string, required: true},
-          "event" => %{type: :string, required: true},
-          "type" => %{type: :string, required: true, enum: ["shell", "webhook"]},
-          "target" => %{type: :string, required: true},
-          "async" => %{type: :boolean, required: false, default: true},
-          "enabled" => %{type: :boolean, required: false, default: true}
-        }
-      },
-      %{
-        name: "hook_update",
-        type: :mutate,
-        tier: :restricted,
-        description: "Update a hook.",
-        args: %{
-          "id" => %{type: :integer, required: true},
-          "name" => %{type: :string, required: false},
-          "event" => %{type: :string, required: false},
-          "type" => %{type: :string, required: false},
-          "target" => %{type: :string, required: false},
-          "async" => %{type: :boolean, required: false},
-          "enabled" => %{type: :boolean, required: false}
-        }
-      },
-      delete_entry("hook_delete", "Delete a hook."),
-      # Restricted: hook_test runs the hook's stored target, which for "shell"
-      # hooks is an arbitrary command. Must not be reachable by the chat agent.
-      id_payload_trigger_entry("hook_test", "Test-run a single hook.", :restricted),
-
-      # Delivery destinations
-      list_entry("delivery_destination_list", "List delivery destinations."),
-      get_entry("delivery_destination_get", "Fetch a delivery destination by ID."),
-      %{
-        name: "delivery_destination_create",
-        type: :mutate,
-        tier: :restricted,
-        description: "Create a delivery destination.",
-        args: %{
-          "name" => %{type: :string, required: true},
-          "type" => %{
-            type: :string,
-            required: true,
-            enum: ["slack", "discord", "telegram", "webhook"]
-          },
-          "url" => %{type: :string, required: false},
-          "token" => %{type: :string, required: false},
-          "chat_id" => %{type: :string, required: false},
-          "enabled" => %{type: :boolean, required: false, default: true}
-        }
-      },
-      %{
-        name: "delivery_destination_update",
-        type: :mutate,
-        tier: :restricted,
-        description: "Update a delivery destination.",
-        args: %{
-          "id" => %{type: :integer, required: true},
-          "name" => %{type: :string, required: false},
-          "type" => %{type: :string, required: false},
-          "url" => %{type: :string, required: false},
-          "token" => %{type: :string, required: false},
-          "chat_id" => %{type: :string, required: false},
-          "enabled" => %{type: :boolean, required: false}
-        }
-      },
-      delete_entry("delivery_destination_delete", "Delete a delivery destination."),
-      id_payload_trigger_entry(
-        "delivery_destination_test",
-        "Send a test payload to a destination.",
-        :safe
-      ),
-
-      # Scheduler
-      list_entry("scheduler_job_list", "List scheduler jobs."),
-      get_entry("scheduler_job_get", "Fetch a scheduler job by ID."),
-      %{
-        name: "scheduler_job_create",
-        type: :mutate,
-        tier: :restricted,
-        description: "Create a scheduler job.",
-        args: %{
-          "job_id" => %{type: :string, required: true},
-          "type" => %{type: :string, required: true, enum: ["integrations_poll"]},
-          "cron" => %{type: :string, required: true},
-          "enabled" => %{type: :boolean, required: false, default: true}
-        }
-      },
-      %{
-        name: "scheduler_job_update",
-        type: :mutate,
-        tier: :restricted,
-        description: "Update a scheduler job.",
-        args: %{
-          "id" => %{type: :integer, required: true},
-          "job_id" => %{type: :string, required: false},
-          "type" => %{type: :string, required: false, enum: ["integrations_poll"]},
-          "cron" => %{type: :string, required: false},
-          "enabled" => %{type: :boolean, required: false}
-        }
-      },
-      delete_entry("scheduler_job_delete", "Delete a scheduler job."),
-      id_trigger_entry("scheduler_job_run_now", "Run a scheduler job immediately.", :restricted),
 
       # Integrations
       list_entry("integration_list", "List service integrations."),
@@ -865,9 +683,6 @@ defmodule BusterClaw.Commands do
 
   for {prefix, context, ctx_singular, ctx_plural} <- [
         {:event, Calendar, :event, :events},
-        {:webhook, Webhooks, :webhook, :webhooks},
-        {:delivery_destination, Delivery, :destination, :destinations},
-        {:scheduler_job, Scheduler, :job, :jobs},
         {:integration, Integrations, :integration, :integrations}
       ] do
     list_fn = :"list_#{ctx_plural}"
@@ -914,83 +729,6 @@ defmodule BusterClaw.Commands do
 
   def document_delete(%{"id" => id}) do
     with_resource(Library, :get_document!, id, &Library.delete_raw_document/1)
-  end
-
-  # -----------------------------------------------------------------------
-  # Memory (asymmetric: remember/forget naming, create stamps timestamp)
-  # -----------------------------------------------------------------------
-
-  def memory_list(_args \\ %{}), do: {:ok, Memory.list_memories()}
-
-  def memory_remember(%{"text" => _} = args) do
-    attrs = Map.put_new_lazy(args, "created_at", &now_utc/0)
-    Memory.create_memory(attrs)
-  end
-
-  def memory_forget(%{"id" => id}) do
-    with_resource(Memory, :get_memory!, id, &Memory.delete_memory/1)
-  end
-
-  # -----------------------------------------------------------------------
-  # Webhooks (extras)
-  # -----------------------------------------------------------------------
-
-  def webhook_trigger(%{"name" => name} = args) do
-    headers = Map.get(args, "headers", %{}) |> Enum.into([])
-    body = Map.get(args, "body", "")
-    Webhooks.trigger(name, headers, body)
-  end
-
-  # -----------------------------------------------------------------------
-  # Hooks (asymmetric: list/get via Hooks; mutate via BusterClaw.Automation)
-  # -----------------------------------------------------------------------
-
-  def hook_list(_args \\ %{}), do: {:ok, Hooks.list_hooks()}
-
-  def hook_get(%{"id" => id}), do: safe_get(Hooks, :get_hook!, id)
-
-  def hook_create(args), do: BusterClaw.Automation.create_hook(args)
-
-  def hook_update(%{"id" => id} = args) do
-    with_resource(Hooks, :get_hook!, id, fn hook ->
-      BusterClaw.Automation.update_hook(hook, Map.delete(args, "id"))
-    end)
-  end
-
-  def hook_delete(%{"id" => id}) do
-    with_resource(Hooks, :get_hook!, id, &BusterClaw.Automation.delete_hook/1)
-  end
-
-  def hook_test(%{"id" => id} = args) do
-    payload = Map.get(args, "payload", %{})
-
-    with_resource(Hooks, :get_hook!, id, fn hook ->
-      Hooks.test_hook(hook, payload: payload)
-    end)
-  end
-
-  # -----------------------------------------------------------------------
-  # Delivery destinations (extras)
-  # -----------------------------------------------------------------------
-
-  def delivery_destination_test(%{"id" => id} = args) do
-    payload = Map.get(args, "payload", %{})
-
-    with_resource(Delivery, :get_destination!, id, fn destination ->
-      Delivery.test_destination(destination, payload: payload)
-    end)
-  end
-
-  # -----------------------------------------------------------------------
-  # Scheduler jobs (extras)
-  # -----------------------------------------------------------------------
-
-  def scheduler_job_run_now(%{"id" => id}) do
-    case Scheduler.run_now(id) do
-      {:ok, summary} -> {:ok, summary}
-      {:error, :not_found} -> {:error, :not_found}
-      other -> other
-    end
   end
 
   # -----------------------------------------------------------------------
@@ -1461,6 +1199,4 @@ defmodule BusterClaw.Commands do
   end
 
   defp truthy?(value), do: value in [true, "true", "1", 1, "yes", "YES", "on", "ON"]
-
-  defp now_utc, do: DateTime.utc_now() |> DateTime.truncate(:second)
 end

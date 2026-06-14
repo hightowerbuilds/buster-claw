@@ -20,7 +20,7 @@ defmodule BusterClawWeb.ApiControllerTest do
 
       names = Enum.map(commands, & &1["name"])
 
-      for representative <- ~w(runtime_status document_list memory_list web_search browser_fetch) do
+      for representative <- ~w(runtime_status document_list event_list web_search browser_fetch) do
         assert representative in names, "expected catalog to include #{representative}"
       end
     end
@@ -28,7 +28,7 @@ defmodule BusterClawWeb.ApiControllerTest do
 
   describe "POST /api/run — auth" do
     test "rejects requests without a token", %{conn: conn} do
-      conn = post(conn, ~p"/api/run", %{"command" => "memory_list"})
+      conn = post(conn, ~p"/api/run", %{"command" => "event_list"})
       assert %{"ok" => false, "error" => "unauthorized"} = json_response(conn, 401)
     end
 
@@ -36,13 +36,13 @@ defmodule BusterClawWeb.ApiControllerTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer wrong")
-        |> post(~p"/api/run", %{"command" => "memory_list"})
+        |> post(~p"/api/run", %{"command" => "event_list"})
 
       assert json_response(conn, 401)
     end
 
     test "accepts requests with the right token", %{conn: conn} do
-      conn = authed(conn) |> post(~p"/api/run", %{"command" => "memory_list"})
+      conn = authed(conn) |> post(~p"/api/run", %{"command" => "event_list"})
       assert %{"ok" => true, "result" => []} = json_response(conn, 200)
     end
   end

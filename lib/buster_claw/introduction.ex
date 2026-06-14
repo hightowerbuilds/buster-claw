@@ -89,7 +89,7 @@ defmodule BusterClaw.Introduction do
     minutes. Daily summaries live in a single workspace-root folder named
     `mm-dd-yy-summary/` (not inside the library). Each day, add one file named
     `MM-DD-YY-summary.md` (the current date — e.g. `#{example_date()}-summary.md`)
-    and write that day's minutes there: every command run, delivery, and notable
+    and write that day's minutes there: every command run, reply sent, and notable
     decision. Append throughout the day; one dated file per day so the history is
     easy to scan.
 

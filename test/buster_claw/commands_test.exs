@@ -69,14 +69,18 @@ defmodule BusterClaw.CommandsTest do
 
   describe "call/2 dispatcher" do
     test "dispatches to the matching command" do
-      assert {:ok, []} = Commands.call("memory_list", %{})
+      assert {:ok, []} = Commands.call("event_list", %{})
     end
 
     test "normalizes atom-keyed args to strings" do
-      assert {:ok, %{name: "n", text: "remember this"} = mem} =
-               normalize(Commands.call("memory_remember", %{text: "remember this"}))
+      assert {:ok, event} =
+               Commands.call("event_create", %{
+                 event_id: "e-atom",
+                 date: "2026-06-14",
+                 title: "remember this"
+               })
 
-      assert mem.text == "remember this"
+      assert event.title == "remember this"
     end
 
     test "returns :unknown_command for missing commands" do
@@ -88,8 +92,8 @@ defmodule BusterClaw.CommandsTest do
     test "trusted caller (the default) may run restricted commands" do
       assert {:ok, _} =
                Commands.call(
-                 "memory_remember",
-                 %{"text" => "trusted note"},
+                 "event_create",
+                 %{"event_id" => "e-trusted", "date" => "2026-06-14", "title" => "trusted note"},
                  caller: :trusted
                )
     end
@@ -97,19 +101,19 @@ defmodule BusterClaw.CommandsTest do
     test "untrusted callers may run safe-tier commands" do
       for caller <- [:agent, :mcp] do
         assert {:ok, _} = Commands.call("runtime_status", %{}, caller: caller)
-        assert {:ok, []} = Commands.call("memory_list", %{}, caller: caller)
+        assert {:ok, []} = Commands.call("event_list", %{}, caller: caller)
       end
     end
 
     test "untrusted callers are refused restricted commands and cause no side effect" do
       assert {:error, :requires_confirmation} =
                Commands.call(
-                 "memory_remember",
-                 %{"text" => "evil note"},
+                 "event_create",
+                 %{"event_id" => "e-evil", "date" => "2026-06-14", "title" => "evil note"},
                  caller: :mcp
                )
 
-      assert {:ok, []} = Commands.memory_list(%{})
+      assert {:ok, []} = Commands.event_list(%{})
     end
 
     test "unknown command for an untrusted caller still reports :unknown_command" do
@@ -125,8 +129,8 @@ defmodule BusterClaw.CommandsTest do
 
     test "safe_commands/0 and command_tier/1 agree with the catalog" do
       assert Enum.all?(Commands.safe_commands(), &(&1.tier == :safe))
-      assert Commands.command_tier("memory_list") == :safe
-      assert Commands.command_tier("memory_remember") == :restricted
+      assert Commands.command_tier("event_list") == :safe
+      assert Commands.command_tier("event_create") == :restricted
       assert Commands.command_tier("nope_nope") == nil
     end
 
@@ -144,23 +148,30 @@ defmodule BusterClaw.CommandsTest do
     end
 
     test "command_type/1 returns the catalog type and nil for unknowns" do
-      assert Commands.command_type("memory_list") == :read
-      assert Commands.command_type("memory_remember") == :mutate
+      assert Commands.command_type("event_list") == :read
+      assert Commands.command_type("event_create") == :mutate
       assert Commands.command_type("web_search") == :trigger
       assert Commands.command_type("nope_nope") == nil
     end
   end
 
-  describe "memory" do
-    test "remember/list/forget round trip" do
-      assert {:ok, mem} = Commands.memory_remember(%{"text" => "hello memory"})
-      assert {:ok, [^mem]} = Commands.memory_list(%{})
-      assert {:ok, _} = Commands.memory_forget(%{"id" => mem.id})
-      assert {:ok, []} = Commands.memory_list(%{})
+  describe "events (CRUD round trip)" do
+    test "create/list/delete round trip" do
+      assert {:ok, ev} =
+               Commands.event_create(%{
+                 "event_id" => "e-rt",
+                 "date" => "2026-06-14",
+                 "title" => "hello event"
+               })
+
+      assert {:ok, listed} = Commands.event_list(%{})
+      assert Enum.map(listed, & &1.id) == [ev.id]
+      assert {:ok, _} = Commands.event_delete(%{"id" => ev.id})
+      assert {:ok, []} = Commands.event_list(%{})
     end
 
-    test "forget returns :not_found for missing id" do
-      assert {:error, :not_found} = Commands.memory_forget(%{"id" => 99_999})
+    test "delete returns :not_found for missing id" do
+      assert {:error, :not_found} = Commands.event_delete(%{"id" => 99_999})
     end
   end
 
@@ -648,20 +659,12 @@ defmodule BusterClaw.CommandsTest do
     end
   end
 
-  defp normalize({:ok, %BusterClaw.Memory.Memory{} = memory}),
-    do: {:ok, %{name: "n", text: memory.text}}
-
-  defp normalize(other), do: other
-
   defp representative_commands do
     ~w(
       runtime_status
       terminal_tab_open
       document_save
-      memory_remember
       event_create
-      webhook_trigger
-      scheduler_job_run_now
       integration_poll_all
       google_account_list
       gmail_search

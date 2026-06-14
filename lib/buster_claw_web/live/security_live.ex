@@ -69,7 +69,7 @@ defmodule BusterClawWeb.SecurityLive do
           </button>
         </div>
 
-        <BusterClawWeb.AdvancedTabs.tabs active={:security} />
+        <BusterClawWeb.SettingsTabs.tabs active={:security} />
 
         <section class="rounded-lg border border-base-300 bg-base-100">
           <div class="border-b border-base-300 px-4 py-3 text-sm font-semibold">

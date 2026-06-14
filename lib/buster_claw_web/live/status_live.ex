@@ -45,46 +45,47 @@ defmodule BusterClawWeb.StatusLive do
       <section class="ic-home relative isolate flex flex-1 flex-col">
         <div class="ic-home-bg" aria-hidden="true"></div>
         <div class="relative z-10 flex min-h-0 flex-1 flex-col space-y-8">
-        <div class="space-y-4 border-b-2 border-base-content/20 pb-5">
-          <div
-            id="bc-heading"
-            phx-hook="CrtAberration"
-            class="ic-scanlines block w-full max-w-[28rem]"
-          >
-            <img
-              src={~p"/images/brand/buster-claw-heading.png"}
-              alt="Buster Claw"
-              class="block h-auto w-full"
-            />
-            <img
-              src={~p"/images/brand/buster-claw-heading.png"}
-              alt=""
-              aria-hidden="true"
-              class="ic-crt-focus h-auto w-full"
-            />
-          </div>
-          <div :if={not @setup_status.complete?} class="pt-1">
-            <.link
-              navigate={~p"/setup"}
-              class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
+          <div class="space-y-4 border-b-2 border-base-content/20 pb-5">
+            <div
+              id="bc-heading"
+              phx-hook="CrtAberration"
+              class="ic-scanlines block w-full max-w-[28rem]"
             >
-              <.icon name="hero-sparkles" class="size-4" />
-              <span :if={@setup_status.completed == 0}>Set up Buster Claw</span>
-              <span :if={@setup_status.completed > 0}>
-                Finish setup · {@setup_status.completed} of {@setup_status.total} complete
-              </span>
-            </.link>
+              <img
+                src={~p"/images/brand/buster-claw-heading.png"}
+                alt="Buster Claw"
+                class="block h-auto w-full"
+              />
+              <img
+                src={~p"/images/brand/buster-claw-heading.png"}
+                alt=""
+                aria-hidden="true"
+                class="ic-crt-focus h-auto w-full"
+              />
+            </div>
+            <div :if={not @setup_status.complete?} class="pt-1">
+              <.link
+                navigate={~p"/setup"}
+                class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
+              >
+                <.icon name="hero-sparkles" class="size-4" />
+                <span :if={@setup_status.completed == 0}>Set up Buster Claw</span>
+                <span :if={@setup_status.completed > 0}>
+                  Finish setup · {@setup_status.completed} of {@setup_status.total} complete
+                </span>
+              </.link>
+            </div>
           </div>
-        </div>
 
-        <div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
-          <div class="flex min-h-0 flex-col gap-6">
-            <.get_started_panel />
-            <BusterClawWeb.TrustedContactsPanel.panel entries={@trusted_contacts} />
+          <div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
+            <div class="flex min-h-0 flex-col gap-6">
+              <.get_started_panel />
+              <.featured_pages_panel />
+              <BusterClawWeb.TrustedContactsPanel.panel entries={@trusted_contacts} />
+            </div>
+
+            <.daily_calendar_panel today={@today} events={@daily_events} />
           </div>
-
-          <.daily_calendar_panel today={@today} events={@daily_events} />
-        </div>
         </div>
       </section>
     </Layouts.app>
@@ -162,16 +163,56 @@ defmodule BusterClawWeb.StatusLive do
           </div>
         </li>
       </ol>
-
-      <div class="border-t-2 border-base-content/20 px-5 py-4">
-        <.link
-          navigate={~p"/finance"}
-          class="inline-flex items-center gap-2 rounded-sm border-2 border-base-content/25 px-3 py-2 font-mono text-xs uppercase tracking-wide text-base-content/70 transition hover:border-primary hover:text-primary"
-        >
-          <.icon name="hero-chart-bar" class="size-4" /> Open the Financial Informant
-        </.link>
-      </div>
     </details>
+    """
+  end
+
+  defp featured_pages_panel(assigns) do
+    ~H"""
+    <section id="home-featured-pages" class="ic-panel">
+      <header class="border-b-2 border-base-content/20 px-5 py-4">
+        <p class="ic-eyebrow">Featured Pages</p>
+        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+          Featured Pages
+        </h2>
+      </header>
+
+      <div class="flex flex-col gap-3 p-5">
+        <.featured_page_link
+          href={~p"/browse?#{[url: "/pages/MANUAL.html"]}"}
+          icon="hero-book-open"
+          title="Manual"
+          blurb="Open the Buster Claw manual in the browser"
+        />
+        <.featured_page_link
+          href={~p"/browse?#{[url: "/pages/financial-informant.html"]}"}
+          icon="hero-chart-bar"
+          title="Financial Informant"
+          blurb="Look up a ticker — quote, fundamentals, filings, news"
+        />
+      </div>
+    </section>
+    """
+  end
+
+  attr :href, :string, required: true
+  attr :icon, :string, required: true
+  attr :title, :string, required: true
+  attr :blurb, :string, required: true
+
+  defp featured_page_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@href}
+      class="group flex items-center gap-3 rounded-sm border-2 border-base-content/25 px-3 py-2.5 transition hover:border-primary hover:text-primary"
+    >
+      <.icon name={@icon} class="size-5 shrink-0 text-base-content/60" />
+      <span class="min-w-0">
+        <span class="block font-semibold">{@title}</span>
+        <span class="block text-xs text-base-content/60">{@blurb}</span>
+      </span>
+      <.icon name="hero-chevron-right" class="ml-auto size-4 shrink-0 text-base-content/40" />
+    </.link>
     """
   end
 
@@ -200,7 +241,7 @@ defmodule BusterClawWeb.StatusLive do
 
   defp daily_calendar_panel(assigns) do
     ~H"""
-    <section id="home-daily-calendar" class="ic-panel">
+    <section id="home-daily-calendar" class="ic-panel self-start">
       <header class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
         <div>
           <p class="ic-eyebrow">Today's Calendar</p>

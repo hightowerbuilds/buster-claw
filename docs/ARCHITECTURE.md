@@ -15,18 +15,17 @@ Buster Claw has no built-in LLM and needs no API keys: the intelligence is a ter
 
 ## Core Contexts
 
-- `BusterClaw.Commands`: the single canonical command surface dispatched by every frontend (HTTP API, CLI escript, MCP server), with per-caller trust tiers.
+- `BusterClaw.Commands`: the single canonical command surface dispatched by every frontend (HTTP API, CLI escript), with per-caller trust tiers.
 - `BusterClaw.Library`: workspace documents and artifact metadata (markdown files under the Library root).
 - `BusterClaw.Browser` (+ `BusterClaw.Ingest.Content`): SSRF-guarded fetch and HTML→markdown rendering; optional Playwright sidecar.
 - `BusterClaw.Search`: web search.
 - `BusterClaw.Google`: Google OAuth, Gmail, and Calendar sync (tokens in `BusterClaw.Google.Vault`).
 - `BusterClaw.Calendar`: durable calendar events.
-- `BusterClaw.Integrations`: GitHub / Sentry / Umami polling.
-- `BusterClaw.Delivery`: outbound delivery to Slack / Discord / Telegram-compatible webhooks.
-- `BusterClaw.Automation`: MCP host/client, scheduler, webhooks, and hooks.
-- `BusterClaw.Orchestration`: the unattended "shift" — `Orchestrator` (deterministic GenServer brain), `AgentRunner` (headless `claude -p` / `codex exec`), `Pipeline`, `Reporter`, `Uptime`, and the `orchestrator_tasks` / `agent_runs` / `shifts` schemas.
+- `BusterClaw.Integrations`: GitHub / Sentry / Umami polling (manual or webhook-triggered via `POST /integrations/:name/webhook`).
+- `BusterClaw.Finance`: read-only SEC EDGAR + Finnhub research (backs the Financial Informant page).
+- `BusterClaw.Dispatch` (+ `BusterClaw.DispatchProjector`): the durable SQLite pull-queue and its projection to workspace markdown (`shift/Dispatch.md`) that a terminal agent works.
+- `BusterClaw.Orchestration`: the unattended, indefinite "shift" — `Orchestrator` (a supervised kill-switch janitor), `Uptime`, and the `shifts` / `shift_assignments` schemas.
 - `BusterClaw.Sentinel`: the security/audit spine — every command, outbound send, and untrusted fetch is recorded; restricted actions from untrusted callers are refused and queued.
-- `BusterClaw.Memory`: persistent agent memory.
 - `BusterClaw.Settings`: app settings.
 
 ## Desktop Shell

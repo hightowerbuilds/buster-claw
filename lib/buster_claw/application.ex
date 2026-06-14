@@ -19,7 +19,6 @@ defmodule BusterClaw.Application do
         BusterClaw.TerminalWorkspace,
         BusterClaw.Sentinel.Pending,
         browser_sidecar_child(),
-        scheduler_child(),
         orchestrator_child(),
         uptime_child(),
         # Start to serve requests, typically the last entry
@@ -35,6 +34,9 @@ defmodule BusterClaw.Application do
       {:ok, _pid} = ok ->
         # Install the model-facing workspace guide (best-effort).
         BusterClaw.Introduction.ensure()
+        # Install the bundled HTML pages (Manual, Financial Informant) into
+        # <workspace>/pages/ (best-effort).
+        BusterClaw.Pages.ensure()
         # Install the DataZone-local CLI launcher used by terminal role commands.
         BusterClaw.WorkspaceCLI.ensure()
         # Seed job descriptions + the trusted-sender policy template (best-effort).
@@ -57,12 +59,6 @@ defmodule BusterClaw.Application do
   defp skip_migrations?() do
     # By default, sqlite migrations are run when using a release
     System.get_env("RELEASE_NAME") == nil
-  end
-
-  defp scheduler_child do
-    if Application.get_env(:buster_claw, :scheduler_enabled, true) do
-      BusterClaw.Scheduler.Runner
-    end
   end
 
   defp dispatch_projector_child do

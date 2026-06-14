@@ -12,8 +12,7 @@ defmodule BusterClaw.Runtime.Status do
     %{key: :browse, label: "Browser", path: "/browse"},
     %{key: :calendar, label: "Calendar", path: "/calendar"},
     %{key: :gws, label: "GWS", path: "/gws"},
-    %{key: :webhooks, label: "Webhooks / Hooks", path: "/webhooks"},
-    %{key: :advanced, label: "Advanced", path: "/advanced"}
+    %{key: :integrations, label: "Integrations", path: "/integrations"}
   ]
 
   @services [
@@ -22,11 +21,7 @@ defmodule BusterClaw.Runtime.Status do
     "Endpoint",
     "Library",
     "Google Workspace",
-    "Scheduler",
-    "Webhooks",
-    "Hooks",
-    "Delivery",
-    "Memory",
+    "Integrations",
     "Calendar"
   ]
 

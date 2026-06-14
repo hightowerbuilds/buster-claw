@@ -1,6 +1,6 @@
 # Buster Claw
 
-`buster-claw` is a desktop runtime where an AI agent manages your web interactivity — browsing, Google Workspace, third-party integrations, and outbound delivery — through one auditable command surface. It's a Phoenix/LiveView application wrapped in a Tauri desktop shell; Phoenix lives at the repository root, the desktop shell in `desktop/tauri`.
+`buster-claw` is a desktop runtime where an AI agent manages your web interactivity — browsing, Google Workspace, and third-party integrations — through one auditable command surface. It's a Phoenix/LiveView application wrapped in a Tauri desktop shell; Phoenix lives at the repository root, the desktop shell in `desktop/tauri`.
 
 ## How it's used
 
@@ -12,17 +12,11 @@ The way to use Buster Claw is to run **Claude Code or Codex in the built-in term
 - **Web & Workspace interactivity**:
   - **Browsing & fetch**: Headless browser + HTTP fetchers (SSRF-guarded) to read and capture web pages and articles.
   - **Google Workspace**: Sync and act on Gmail and Google Calendar.
-  - **Integrations**: Pull and react to GitHub, Sentry, and Umami activity.
-  - **Delivery**: Push results to Slack, Discord, or Telegram-compatible webhooks.
+  - **Integrations**: Pull and react to GitHub, Sentry, and Umami activity (manual or webhook-triggered polls).
 - **Dispatch pull-queue**: Trusted inbound requests (e.g. from Gmail triage) land in a durable SQLite queue, projected to workspace markdown; a terminal agent pulls items and writes results back through the CLI.
 - **In-app terminal**: A real PTY where you run Claude Code, Codex, or any CLI; the primary surface for agents to drive Buster Claw.
 - **Orchestration**: An unattended, indefinite "shift" — a supervised Elixir janitor watches the kill switch (STOP file) and a crash-loop brake while a terminal agent pulls from the Dispatch queue. All work state is durable, so an OTP restart resumes mid-shift.
-- **Automation**:
-  - **Scheduler**: Cron-based integration polling jobs.
-  - **Webhooks**: Receive authenticated external HTTP events with runtime audit records.
-  - **Hooks**: Testable shell/webhook actions for operator-managed automation.
 - **Workspace library**: Documents and artifacts stored as markdown in the workspace, with a blog-style reading view.
-- **Persistent Memory**: Durable notes/context to keep the agent smart across sessions.
 - **Sentinel security layer**: Every command, outbound send, and untrusted fetch is recorded on an auditable feed; restricted actions are refused for untrusted callers.
 
 ## Quick Start
@@ -69,7 +63,7 @@ State is managed by Phoenix/Ecto and the local workspace directory:
 
 ## Driving Buster Claw (CLI, HTTP)
 
-Buster Claw exposes a single canonical command surface (~70 commands) across documents, memory, calendar events, Google Workspace (accounts/Gmail/Calendar), integrations, delivery, scheduler, webhooks, hooks, search, browser, runtime, the Dispatch queue, and the orchestration shift. Two frontends consume it:
+Buster Claw exposes a single canonical command surface across documents, calendar events, Google Workspace (accounts/Gmail/Calendar), integrations, finance, search, browser, runtime, the Dispatch queue, and the orchestration shift. Two frontends consume it:
 
 ### Authentication
 
@@ -104,7 +98,7 @@ The primary way an agent drives Buster Claw is the pull-queue. Trusted inbound r
 ./buster-claw dispatch done <id>                    # close it out (or: block <id>)
 ```
 
-Trust tiers still apply: untrusted callers may only run safe-tier commands, while restricted commands (deletes, `delivery_dispatch_all`, `document_save`, …) require a trusted caller.
+Trust tiers still apply: untrusted callers may only run safe-tier commands, while restricted commands (deletes, `document_save`, `gmail_send`, …) require a trusted caller.
 
 ### HTTP API (for direct integration)
 
