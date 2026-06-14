@@ -78,16 +78,26 @@ defmodule BusterClawWeb.StatusLive do
 
   defp get_started_panel(assigns) do
     ~H"""
-    <section id="home-get-started" class="ic-panel flex min-h-64 flex-1 flex-col">
-      <header class="border-b-2 border-base-content/20 px-5 py-4">
-        <p class="ic-eyebrow">Get Started</p>
-        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-          Get Started
-        </h2>
-        <p class="mt-1 text-sm text-base-content/65">
-          Three steps to put Buster Claw on email duty (Google Workspace already connected).
-        </p>
-      </header>
+    <details
+      id="home-get-started"
+      open
+      class="ic-panel group flex min-h-0 flex-col open:min-h-64 open:flex-1"
+    >
+      <summary class="flex cursor-pointer list-none items-start justify-between gap-3 border-base-content/20 px-5 py-4 transition group-open:border-b-2 hover:text-primary">
+        <div class="min-w-0">
+          <p class="ic-eyebrow">Get Started</p>
+          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+            Get Started
+          </h2>
+          <p class="mt-1 text-sm text-base-content/65">
+            Three steps to put Buster Claw on email duty (Google Workspace already connected).
+          </p>
+        </div>
+        <.icon
+          name="hero-chevron-right"
+          class="mt-1 size-5 shrink-0 transition group-open:rotate-90"
+        />
+      </summary>
 
       <ol class="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
         <li class="flex gap-3">
@@ -146,7 +156,7 @@ defmodule BusterClawWeb.StatusLive do
           <.icon name="hero-chart-bar" class="size-4" /> Open the Financial Informant
         </.link>
       </div>
-    </section>
+    </details>
     """
   end
 

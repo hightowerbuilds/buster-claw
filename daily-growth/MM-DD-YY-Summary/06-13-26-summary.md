@@ -227,6 +227,13 @@ Turned the `projects/financial-advisor/` research briefs into a phased build
   ShiftAssignments and the Dispatch shift/role-session linkage intact.
 - Tests trimmed to match (dropped the task/run + vitals tests). Full suite green (393).
 
+### Home — collapsible Get Started container
+
+- Converted the home **Get Started** panel to the same native `<details>`/`<summary>`
+  pattern as Trusted Contacts (open by default, rotating chevron, `open:` flex/min-h
+  variants so collapsing it lets the Trusted Contacts panel grow). Body stays in the
+  DOM, so existing render assertions hold. Status tests green.
+
 ## Notes
 
 - Both objectives add migrations. They auto-apply on next `mix phx.server` boot
