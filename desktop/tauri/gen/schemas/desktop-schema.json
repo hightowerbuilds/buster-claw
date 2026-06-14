@@ -177,6 +177,48 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the browser_back command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-back",
+          "markdownDescription": "Enables the browser_back command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-close",
+          "markdownDescription": "Enables the browser_close command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_forward command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-forward",
+          "markdownDescription": "Enables the browser_forward command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_navigate command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-navigate",
+          "markdownDescription": "Enables the browser_navigate command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-open",
+          "markdownDescription": "Enables the browser_open command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_reload command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-reload",
+          "markdownDescription": "Enables the browser_reload command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_set_bounds command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-set-bounds",
+          "markdownDescription": "Enables the browser_set_bounds command without any pre-configured scope."
+        },
+        {
           "description": "Enables the terminal_attach command without any pre-configured scope.",
           "type": "string",
           "const": "allow-terminal-attach",
@@ -205,6 +247,48 @@
           "type": "string",
           "const": "allow-terminal-resize",
           "markdownDescription": "Enables the terminal_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_back command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-back",
+          "markdownDescription": "Denies the browser_back command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-close",
+          "markdownDescription": "Denies the browser_close command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_forward command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-forward",
+          "markdownDescription": "Denies the browser_forward command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_navigate command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-navigate",
+          "markdownDescription": "Denies the browser_navigate command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-open",
+          "markdownDescription": "Denies the browser_open command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_reload command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-reload",
+          "markdownDescription": "Denies the browser_reload command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_set_bounds command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-set-bounds",
+          "markdownDescription": "Denies the browser_set_bounds command without any pre-configured scope."
         },
         {
           "description": "Denies the terminal_attach command without any pre-configured scope.",

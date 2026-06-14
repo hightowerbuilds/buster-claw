@@ -12,6 +12,13 @@
     "allow-terminal-attach",
     "allow-terminal-input",
     "allow-terminal-resize",
-    "allow-terminal-close"
+    "allow-terminal-close",
+    "allow-browser-open",
+    "allow-browser-set-bounds",
+    "allow-browser-navigate",
+    "allow-browser-back",
+    "allow-browser-forward",
+    "allow-browser-reload",
+    "allow-browser-close"
   ]
 }

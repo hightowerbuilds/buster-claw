@@ -12,6 +12,7 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use tauri::{Manager, RunEvent};
 
+mod browser;
 mod terminal;
 mod workspace;
 
@@ -257,7 +258,14 @@ fn main() {
             terminal::terminal_attach,
             terminal::terminal_input,
             terminal::terminal_resize,
-            terminal::terminal_close
+            terminal::terminal_close,
+            browser::browser_open,
+            browser::browser_set_bounds,
+            browser::browser_navigate,
+            browser::browser_back,
+            browser::browser_forward,
+            browser::browser_reload,
+            browser::browser_close
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

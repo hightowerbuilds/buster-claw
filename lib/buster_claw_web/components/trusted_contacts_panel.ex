@@ -16,7 +16,7 @@ defmodule BusterClawWeb.TrustedContactsPanel do
     <details
       id="home-left-panel"
       open
-      class="ic-panel group flex min-h-0 flex-col open:min-h-64 open:flex-1"
+      class="ic-panel group flex min-h-0 flex-col overflow-hidden open:min-h-64 open:flex-1"
     >
       <summary class="flex cursor-pointer list-none items-start justify-between gap-3 border-base-content/20 px-5 py-4 transition group-open:border-b-2 hover:text-primary">
         <div class="min-w-0">
