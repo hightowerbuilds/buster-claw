@@ -11,6 +11,9 @@
     "allow-browser-navigate",
     "allow-browser-back",
     "allow-browser-forward",
-    "allow-browser-reload"
+    "allow-browser-reload",
+    "allow-browser-new-tab",
+    "allow-browser-switch-tab",
+    "allow-browser-close-tab"
   ]
 }

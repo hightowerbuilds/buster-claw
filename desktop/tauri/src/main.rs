@@ -253,6 +253,7 @@ fn main() {
 
     let app = tauri::Builder::default()
         .manage(terminal::TerminalState::default())
+        .manage(browser::BrowserState::default())
         .invoke_handler(tauri::generate_handler![
             terminal::terminal_open,
             terminal::terminal_attach,
@@ -265,6 +266,9 @@ fn main() {
             browser::browser_back,
             browser::browser_forward,
             browser::browser_reload,
+            browser::browser_new_tab,
+            browser::browser_switch_tab,
+            browser::browser_close_tab,
             browser::browser_hide,
             browser::browser_close
         ])

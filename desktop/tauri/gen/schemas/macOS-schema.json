@@ -189,6 +189,12 @@
           "markdownDescription": "Enables the browser_close command without any pre-configured scope."
         },
         {
+          "description": "Enables the browser_close_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-close-tab",
+          "markdownDescription": "Enables the browser_close_tab command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_forward command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-forward",
@@ -207,6 +213,12 @@
           "markdownDescription": "Enables the browser_navigate command without any pre-configured scope."
         },
         {
+          "description": "Enables the browser_new_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-new-tab",
+          "markdownDescription": "Enables the browser_new_tab command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_open command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-open",
@@ -223,6 +235,12 @@
           "type": "string",
           "const": "allow-browser-set-bounds",
           "markdownDescription": "Enables the browser_set_bounds command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_switch_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-switch-tab",
+          "markdownDescription": "Enables the browser_switch_tab command without any pre-configured scope."
         },
         {
           "description": "Enables the terminal_attach command without any pre-configured scope.",
@@ -267,6 +285,12 @@
           "markdownDescription": "Denies the browser_close command without any pre-configured scope."
         },
         {
+          "description": "Denies the browser_close_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-close-tab",
+          "markdownDescription": "Denies the browser_close_tab command without any pre-configured scope."
+        },
+        {
           "description": "Denies the browser_forward command without any pre-configured scope.",
           "type": "string",
           "const": "deny-browser-forward",
@@ -285,6 +309,12 @@
           "markdownDescription": "Denies the browser_navigate command without any pre-configured scope."
         },
         {
+          "description": "Denies the browser_new_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-new-tab",
+          "markdownDescription": "Denies the browser_new_tab command without any pre-configured scope."
+        },
+        {
           "description": "Denies the browser_open command without any pre-configured scope.",
           "type": "string",
           "const": "deny-browser-open",
@@ -301,6 +331,12 @@
           "type": "string",
           "const": "deny-browser-set-bounds",
           "markdownDescription": "Denies the browser_set_bounds command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_switch_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-switch-tab",
+          "markdownDescription": "Denies the browser_switch_tab command without any pre-configured scope."
         },
         {
           "description": "Denies the terminal_attach command without any pre-configured scope.",

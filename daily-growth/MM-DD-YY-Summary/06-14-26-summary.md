@@ -114,3 +114,55 @@ genuinely-used feature (a real Umami integration), so it was kept and relocated.
   smoke-test rows and stops the every-minute erroring scheduler job.
 - Financial Informant's in-app behavior (native webview + live fetches) is
   runtime-only-testable in the Tauri app — verify with `./scripts/dev.sh`.
+
+---
+
+## Later 06-14 — `dev.sh` auto-migrate
+
+- In dev the `Ecto.Migrator` child runs with `skip: true` (migrations only
+  auto-run in releases), so the new drop migration halted startup on Phoenix's
+  pending-migration guard. `scripts/dev.sh` now runs `mix ecto.migrate` in
+  `start_phoenix()` before serving (fresh start + stale-restart; skipped when
+  reusing a healthy server); aborts loudly on failure. (`8c849cd`)
+
+## Later 06-14 — BEAM/concurrency assessment
+
+Reviewed how the app uses Elixir concurrency: 7 supervised GenServers
+(Orchestrator janitor, DispatchProjector, TerminalWorkspace, Sentinel.Pending,
+Uptime, Browser.Sidecar, Telemetry), `Task.async_stream` in the genuinely
+parallel IO paths (Gmail message fan-out + search, GitHub multi-endpoint),
+`Task.start` to offload Sentinel audit off the command path, PubSub fan-out to 15
+LiveViews, and SQLite (WAL, pool 5 — single-writer, not a bottleneck for one
+user). **Verdict: keep BEAM** — its payoff here is OTP supervision (durable,
+crash-isolated background work) + LiveView (collapses the frontend/backend
+boundary, no API surface), not raw throughput. Concurrency is used
+appropriately, not gratuitously.
+
+## Later 06-14 — Browser tab system
+
+The in-app browser now holds **multiple addresses open at once as native tabs**.
+
+- **`desktop/tauri/src/browser.rs`** — reworked from two singleton webviews to
+  one chrome + **N content webviews** (`browser-content-<id>`). New commands
+  `browser_new_tab` / `browser_switch_tab` / `browser_close_tab`; a managed
+  `BrowserState` tracks the active tab. Only the active content webview is shown
+  (others hidden but alive → instant switch, preserved state). Each tab keeps the
+  http(s) nav guard + popup guard and reports navigation back per-tab via
+  `__onContentNavigated(id, url)`.
+- **`browser_chrome_controller.ex`** — chrome grew to an 80px strip: a **tab bar**
+  (titles + per-tab `×`, plus a `+` new-tab button) over the toolbar. Chrome JS
+  owns the tab strip + lifecycle; nav/back/forward/reload now pass the chrome's
+  active tab id to Rust (with a fallback) so navigation can't no-op on a state
+  mismatch. All `browser_*` calls go through an `inv()` helper that logs failures
+  to the console.
+- **`main.rs`** registers the 3 new commands + `BrowserState`; 3 permission files
+  + the `browser-chrome` capability grant them (Tauri `gen/schemas` regenerated).
+- Verified in-app: open/Go, `/` workspace browse, new tab, switch, close all work.
+
+### Known issue (open)
+
+- **Blank-screen-on-restart:** on a cold app boot the main webview sometimes loads
+  the dead render but LiveSocket doesn't connect (black screen); reload doesn't
+  reliably clear it (native browser webviews persist across a main-webview
+  reload). Planned fix: guard the native webviews so a restored/inactive `/browse`
+  tab can't paint over the app, plus a one-shot LiveSocket reconnect in `app.js`.

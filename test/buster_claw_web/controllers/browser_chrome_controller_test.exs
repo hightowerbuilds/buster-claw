@@ -11,8 +11,15 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
     assert body =~ ~s(id="reload")
     assert body =~ ~s(id="home")
     assert body =~ "browser_navigate"
-    # Address-sync hook the Rust nav handler calls on each content navigation.
-    assert body =~ "window.__setAddress"
+    # Per-tab nav callback the Rust nav handler calls on each content navigation.
+    assert body =~ "window.__onContentNavigated"
+    # Tab strip container (the tabs + new-tab button are rendered client-side)
+    # and the tab-lifecycle commands the strip drives.
+    assert body =~ ~s(id="tabs")
+    assert body =~ "newtab"
+    assert body =~ "browser_new_tab"
+    assert body =~ "browser_switch_tab"
+    assert body =~ "browser_close_tab"
   end
 
   test "seeds the address bar from ?url=", %{conn: conn} do
