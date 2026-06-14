@@ -9,6 +9,21 @@ defmodule BusterClaw.TerminalCommands do
 
   @roles [
     %{
+      key: "agent-setup",
+      label: "Install Claude Code",
+      aliases: ["claude-setup", "install-claude"],
+      startup_profile: "agent-setup",
+      commands: [
+        %{
+          key: "install-claude",
+          label: "Install Claude Code",
+          description: "Install the Claude Code CLI with the official installer.",
+          command: "curl -fsSL https://claude.ai/install.sh | bash",
+          default?: true
+        }
+      ]
+    },
+    %{
       key: "mailman",
       label: "Mailman",
       aliases: ["mail-triage", "gmail-poller"],

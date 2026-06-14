@@ -245,6 +245,61 @@ Turned the `projects/financial-advisor/` research briefs into a phased build
   wiring the browser UI to this route — native (`unstable` multi-webview + JS↔Rust
   position sync), needs in-app iteration.
 
+### Browser — embedded-webview Rust foundation (Part 2a)
+
+- New `desktop/tauri/src/browser.rs`: commands `browser_open` / `browser_set_bounds` /
+  `browser_navigate` / `browser_back` / `browser_forward` / `browser_reload` /
+  `browser_close`. Uses Tauri's **`unstable` multi-webview** API (`window.add_child`,
+  `get_webview`, `set_position`/`set_size`, `navigate`, `eval`, `close`) to host a
+  child webview ("embedded-browser") over a placeholder in `/browse` — a real webview
+  ignores `X-Frame-Options`, so it loads any HTTPS. Not in any capability → the pages
+  it loads have no Tauri access (external content stays sandboxed).
+- Wiring: `mod browser` + commands registered in `main.rs`; `tauri` gains the
+  `unstable` feature; 7 `allow-browser-*` permission files + capability entries.
+  Validated with `cargo check` (clean).
+- **Next (Part 2b):** the `EmbeddedBrowser` JS hook (open + position-sync via
+  ResizeObserver, drive nav commands) and the BrowseLive shell rework + non-Tauri
+  fallback. Runtime-only-testable in the Tauri app → build-and-iterate.
+
+### First-run onboarding — hyper-minimal 4-step flow
+
+- Rebuilt `/setup` (`SetupLive`) into a welcome explainer + **4 progress dots**
+  (Workspace → Tools → Google → Go live), each filled from real state via
+  `Setup.status/0`. Dropped the old intro/identity/done steps; reframed as a
+  **personal assistant your trusted contacts reach by email while a shift is
+  open** (no Slack/Discord framing, no emojis).
+- **Auto-launch on first run:** new `RequireOnboarding` on_mount hook + a router
+  `live_session` redirect main routes to `/setup` until onboarding is complete
+  (lets `SetupLive`/`TerminalLive` through; "Skip for now" exits). Behind an
+  `:onboarding_gate` flag — off in the test env so the LiveView suite isn't
+  forced through setup; the first-run tests flip it on.
+- **`Setup` context** → 4 derived steps: `tools_complete?` (launcher on disk +
+  `claude`/`codex` detected, incl. `~/.local/bin/claude`), `live_complete?` +
+  `mark_went_live`.
+- **Tools step:** `buster-claw` launcher auto-placed; Claude Code detected with an
+  **Install Claude Code** button that opens a terminal pre-typed with
+  `curl -fsSL https://claude.ai/install.sh | bash`, plus Re-check.
+- **Terminal pre-type:** `TerminalWorkspace.request_open*` + a new
+  `startup_submit: false` path threaded to the xterm JS hook → the go-live step
+  drops the user into a terminal with `./buster-claw mailman poll` typed but not
+  run (press enter). Added an `agent-setup` install role; generalized the startup
+  profile whitelist to the catalog (still no arbitrary shell).
+- **Google step:** auto-trusts the connected address (`TrustedSenders.add_entry`)
+  so an email to yourself queues a Dispatch item the moment you go live. The OAuth
+  client_id/secret paste stays the one accepted bit of friction (Google owns it).
+- Plan/roadmap: `daily-growth/roadmaps/06-13-26-first-run-onboarding-roadmap.md`
+  (incl. the end-to-end smoke test). Built via 4 parallel agents + integration.
+- Tests: `setup_test` (4-step status), `setup_live_test` (flow + first-run gate),
+  `terminal_commands_test` (install role). `mix precommit` green (400).
+
+### Docs — pull-queue accuracy pass
+
+- `README.md` + `INTRODUCTION.md` (`introduction.ex`): removed stale `POST /mcp`
+  MCP-server + headless-agent-dispatch references (both deleted in the pull-queue
+  cut) and reframed the agent surface as CLI/HTTP + the Dispatch pull-queue.
+  `docs/LOCAL_TRUST.md` still carries the same MCP staleness (flagged, not yet
+  fixed).
+
 ## Notes
 
 - Both objectives add migrations. They auto-apply on next `mix phx.server` boot

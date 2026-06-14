@@ -29,6 +29,10 @@ config :buster_claw, :orchestrator_enabled, false
 # explicitly against a tmp workspace.
 config :buster_claw, :dispatch_projector_enabled, false
 
+# First-run onboarding gate off by default so the LiveView suite isn't forced
+# through /setup. The first-run tests flip it on explicitly.
+config :buster_claw, :onboarding_gate, false
+
 # Skip live DNS resolution in the SSRF guard during tests; literal-IP and
 # hostname checks still run. URLGuard's resolution path is covered directly in
 # its unit test.

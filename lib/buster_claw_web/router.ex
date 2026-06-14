@@ -23,26 +23,28 @@ defmodule BusterClawWeb.Router do
   scope "/", BusterClawWeb do
     pipe_through :browser
 
-    live "/", StatusLive, :home
-    live "/browse", BrowseLive, :index
-    live "/split", SplitLive, :index
-    live "/terminal", TerminalLive, :index
-    live "/calendar", CalendarLive, :index
-    live "/finance", FinanceLive, :index
-    live "/gws", GWSLive, :index
-    live "/memory", MemoryLive, :index
-    live "/integrations", IntegrationsLive, :index
-    live "/scheduler", SchedulerLive, :index
-    live "/webhooks", WebhooksLive, :index
-    live "/hooks", HooksLive, :index
-    live "/delivery", DeliveryLive, :index
-    live "/advanced", DeliveryLive, :advanced
-    live "/security", SecurityLive, :index
-    live "/settings", SettingsLive, :index
-    live "/appearance", AppearanceLive, :index
-    live "/workspace", WorkspaceLive, :index
-    live "/manual", UserGuideLive, :index
-    live "/setup", SetupLive, :index
+    live_session :default, on_mount: [BusterClawWeb.RequireOnboarding] do
+      live "/", StatusLive, :home
+      live "/browse", BrowseLive, :index
+      live "/split", SplitLive, :index
+      live "/terminal", TerminalLive, :index
+      live "/calendar", CalendarLive, :index
+      live "/finance", FinanceLive, :index
+      live "/gws", GWSLive, :index
+      live "/memory", MemoryLive, :index
+      live "/integrations", IntegrationsLive, :index
+      live "/scheduler", SchedulerLive, :index
+      live "/webhooks", WebhooksLive, :index
+      live "/hooks", HooksLive, :index
+      live "/delivery", DeliveryLive, :index
+      live "/advanced", DeliveryLive, :advanced
+      live "/security", SecurityLive, :index
+      live "/settings", SettingsLive, :index
+      live "/appearance", AppearanceLive, :index
+      live "/workspace", WorkspaceLive, :index
+      live "/manual", UserGuideLive, :index
+      live "/setup", SetupLive, :index
+    end
 
     get "/google/oauth/callback", GoogleOAuthController, :callback
   end

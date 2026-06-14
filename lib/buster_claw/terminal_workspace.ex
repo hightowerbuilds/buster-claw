@@ -36,10 +36,41 @@ defmodule BusterClaw.TerminalWorkspace do
   - `purpose`
   - `session_key` or `session`
   - `startup_profile`
+  - `startup_submit` (defaults true; set false to pre-fill the startup command
+    without pressing enter, so the user runs it themselves)
   - `activate` (defaults true)
   """
   def open(args) when is_map(args) do
     call({:open, args})
+  end
+
+  @doc """
+  Open a terminal tab for a role with its startup command PRE-FILLED but NOT
+  run, so the user presses enter to start it.
+
+  Convenience wrapper over `open/1` that forces `startup_submit: false`. The
+  onboarding flow uses this to drop the user into a terminal with
+  `./buster-claw mailman poll` typed and waiting.
+
+  ## Examples
+
+      # Mailman poll, pre-typed, un-submitted:
+      BusterClaw.TerminalWorkspace.request_open(%{"role" => "mailman"})
+
+  """
+  def request_open(args) when is_map(args) do
+    args
+    |> normalize_args()
+    |> Map.put("startup_submit", false)
+    |> open()
+  end
+
+  @doc """
+  Open the Mailman terminal tab with `./buster-claw mailman poll` pre-filled but
+  NOT executed. Shorthand the onboarding LiveView can call with no arguments.
+  """
+  def request_open_mailman do
+    request_open(%{"role" => "mailman", "label" => "Mailman"})
   end
 
   @doc "Return and clear any terminal requests that were queued before a UI connected."
@@ -117,6 +148,8 @@ defmodule BusterClaw.TerminalWorkspace do
         |> sanitize_startup_profile()
         |> Kernel.||(default_startup_profile(role_key))
 
+      startup_submit = truthy?(Map.get(args, "startup_submit", true))
+
       request = %{
         id: request_id(),
         role_key: role_key,
@@ -125,7 +158,8 @@ defmodule BusterClaw.TerminalWorkspace do
         purpose: first_present(args, ["purpose"]),
         session_key: session_key,
         startup_profile: startup_profile,
-        path: terminal_path(session_key, label, startup_profile),
+        startup_submit: startup_submit,
+        path: terminal_path(session_key, label, startup_profile, startup_submit),
         activate: truthy?(Map.get(args, "activate", true))
       }
 
@@ -180,8 +214,13 @@ defmodule BusterClaw.TerminalWorkspace do
     end
   end
 
-  defp sanitize_startup_profile(nil), do: nil
-  defp sanitize_startup_profile("mailman"), do: "mailman"
+  # Accept any profile that resolves to a command in the TerminalCommands
+  # catalog (mailman, agent-setup, …); reject anything else. The catalog is the
+  # whitelist, so this never admits arbitrary shell.
+  defp sanitize_startup_profile(value) when is_binary(value) do
+    if BusterClaw.TerminalCommands.startup_command(value), do: value, else: nil
+  end
+
   defp sanitize_startup_profile(_value), do: nil
 
   defp default_startup_profile(role_key),
@@ -207,10 +246,13 @@ defmodule BusterClaw.TerminalWorkspace do
     end
   end
 
-  defp terminal_path(session_key, label, startup_profile) do
+  defp terminal_path(session_key, label, startup_profile, startup_submit) do
     query =
       [{"session", session_key}, {"label", label}]
       |> maybe_append_query("startup_profile", startup_profile)
+      # Only emit the flag when we want prefill-without-run; omitting it keeps
+      # the default (run) and avoids churn in existing callers/tests.
+      |> maybe_append_query("startup_submit", if(startup_submit, do: nil, else: "false"))
 
     "/terminal?" <> URI.encode_query(query)
   end

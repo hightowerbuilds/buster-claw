@@ -361,6 +361,103 @@ function openTerminalSplit(currentPath, side, labels = {}) {
 }
 
 const Hooks = {
+  // Drives the /browse embedded browser: a native Tauri child webview overlaid on
+  // the surface element. Only active in the desktop app (window.__TAURI__); in a
+  // plain browser it reveals the fallback notice. The toolbar is wired here so
+  // navigation never round-trips the server.
+  EmbeddedBrowser: {
+    mounted() {
+      this.invoke = window.__TAURI__?.core?.invoke || null
+      this.surface = this.el.querySelector("[data-browser-surface]")
+      this.fallback = this.el.querySelector("[data-browser-fallback]")
+      this.address = this.el.querySelector("[data-browser-address]")
+      this.form = this.el.querySelector("[data-browser-form]")
+      this.origin = window.location.origin
+      this.opened = false
+
+      if (!this.invoke) {
+        if (this.fallback) {
+          this.fallback.classList.remove("hidden")
+          this.fallback.classList.add("grid")
+        }
+        return
+      }
+
+      this.onSubmit = (e) => {
+        e.preventDefault()
+        this.navigate(this.address ? this.address.value : "")
+      }
+      this.onClick = (e) => {
+        const action = e.target.closest("[data-browser-action]")
+        if (!action) return
+        const cmd = {back: "browser_back", forward: "browser_forward", reload: "browser_reload"}[
+          action.dataset.browserAction
+        ]
+        if (cmd) this.invoke(cmd).catch(() => {})
+      }
+      if (this.form) this.form.addEventListener("submit", this.onSubmit)
+      this.el.addEventListener("click", this.onClick)
+
+      // Keep the native webview glued to the surface element's box.
+      this.sync = () => {
+        if (!this.surface) return
+        const r = this.surface.getBoundingClientRect()
+        const bounds = {
+          x: Math.round(r.left),
+          y: Math.round(r.top),
+          width: Math.round(r.width),
+          height: Math.round(r.height)
+        }
+        if (bounds.width <= 0 || bounds.height <= 0) return
+        if (!this.opened) {
+          this.opened = true
+          this.invoke("browser_open", {url: this.resolve(this.el.dataset.initialUrl || ""), ...bounds})
+            .catch(() => {})
+        } else {
+          this.invoke("browser_set_bounds", bounds).catch(() => {})
+        }
+      }
+      this.scheduleSync = () => {
+        if (this.raf) cancelAnimationFrame(this.raf)
+        this.raf = requestAnimationFrame(() => this.sync())
+      }
+
+      this.ro = new ResizeObserver(() => this.scheduleSync())
+      if (this.surface) this.ro.observe(this.surface)
+      this.onResize = () => this.scheduleSync()
+      this.onScroll = () => this.scheduleSync()
+      window.addEventListener("resize", this.onResize)
+      window.addEventListener("scroll", this.onScroll, true)
+      this.scheduleSync()
+    },
+
+    // URL or absolute workspace path → a loadable URL. Workspace paths are served
+    // by Phoenix at /ws/file; bare domains get https://.
+    resolve(raw) {
+      const v = (raw || "").trim()
+      if (v === "" || v === "about:blank") return "about:blank"
+      if (/^[a-z]+:\/\//i.test(v)) return v
+      if (v.startsWith("/")) return `${this.origin}/ws/file?path=${encodeURIComponent(v)}`
+      return `https://${v}`
+    },
+
+    navigate(raw) {
+      if (!this.invoke) return
+      const url = this.resolve(raw)
+      if (url === "about:blank") return
+      if (this.address) this.address.value = raw.trim()
+      this.invoke("browser_navigate", {url}).catch(() => {})
+    },
+
+    destroyed() {
+      if (this.ro) this.ro.disconnect()
+      if (this.onResize) window.removeEventListener("resize", this.onResize)
+      if (this.onScroll) window.removeEventListener("scroll", this.onScroll, true)
+      if (this.raf) cancelAnimationFrame(this.raf)
+      if (this.invoke) this.invoke("browser_close").catch(() => {})
+    }
+  },
+
   CalendarDrag: {
     mounted() {
       let draggingId = null
@@ -989,6 +1086,10 @@ const Hooks = {
       this.sessionKey = this.el.dataset.sessionKey || null
       this.storageKey = this.sessionKey ? `bc:term:${this.sessionKey}` : null
       this.startupCommand = (this.el.dataset.startupCommand || "").trim()
+      // Whether to press enter after typing the startup command. Defaults to
+      // true; the onboarding/prefill path sets `data-startup-submit="false"`
+      // so the command is pre-typed and left for the user to run.
+      this.startupSubmit = this.el.dataset.startupSubmit !== "false"
       this.terminalPath = this.el.dataset.terminalPath || window.location.pathname + window.location.search
       this.toolbar = document.getElementById(this.el.dataset.toolbarId || "")
       this.statusEl = document.getElementById(this.el.dataset.statusId || "")
@@ -1101,8 +1202,11 @@ const Hooks = {
 
       this.setStatus("Starting")
       await new Promise((resolve) => window.setTimeout(resolve, 250))
-      await invoke("terminal_input", {id: this.id, data: `${this.startupCommand}\r`})
-      this.setStatus("Running")
+      // Prefill-only (onboarding): type the command without the trailing \r so
+      // the user presses enter themselves. Default: append \r to run it.
+      const data = this.startupSubmit ? `${this.startupCommand}\r` : this.startupCommand
+      await invoke("terminal_input", {id: this.id, data})
+      this.setStatus(this.startupSubmit ? "Running" : "Ready")
     },
     handleToolbarClick(e) {
       const button = e.target.closest("[data-terminal-action]")

@@ -16,6 +16,7 @@ defmodule BusterClawWeb.TerminalLive do
     terminal_session_key = terminal_session_key(params, session)
     terminal_label = terminal_label(params, session, terminal_session_key)
     startup_profile = startup_profile(params, session)
+    startup_submit = startup_submit(params, session)
     dom_id = "terminal-root-#{System.unique_integer([:positive])}"
 
     if connected?(socket) do
@@ -30,6 +31,7 @@ defmodule BusterClawWeb.TerminalLive do
      |> assign(:terminal_label, terminal_label)
      |> assign(:startup_profile, startup_profile)
      |> assign(:startup_command, startup_command(startup_profile))
+     |> assign(:startup_submit, startup_submit)
      |> assign(:terminal_commands_open, false)
      |> assign(:terminal_command_roles, BusterClaw.TerminalCommands.roles())
      |> assign(
@@ -168,6 +170,7 @@ defmodule BusterClawWeb.TerminalLive do
           data-terminal-path={@terminal_path}
           data-startup-profile={@startup_profile}
           data-startup-command={@startup_command}
+          data-startup-submit={to_string(@startup_submit)}
           data-toolbar-id={@toolbar_id}
           data-status-id={@status_id}
           data-terminal-embedded={to_string(@embedded?)}
@@ -344,8 +347,25 @@ defmodule BusterClawWeb.TerminalLive do
     |> sanitize_startup_profile()
   end
 
-  defp sanitize_startup_profile("mailman"), do: "mailman"
+  # Accept any profile that resolves to a command in the TerminalCommands
+  # catalog (mailman, agent-setup, …); reject anything else.
+  defp sanitize_startup_profile(value) when is_binary(value) do
+    if BusterClaw.TerminalCommands.startup_command(value), do: value, else: nil
+  end
+
   defp sanitize_startup_profile(_value), do: nil
+
+  # Whether the startup command should be auto-run (newline appended) on open.
+  # Defaults to true; the onboarding/prefill path passes `startup_submit=false`
+  # so the command is typed but left for the user to press enter.
+  defp startup_submit(params, session) do
+    raw =
+      params
+      |> param_value("startup_submit")
+      |> Kernel.||(present(to_string(Map.get(session, "startup_submit", ""))))
+
+    raw not in ["false", "0", "no", "off"]
+  end
 
   defp startup_command(profile), do: BusterClaw.TerminalCommands.startup_command(profile)
 
