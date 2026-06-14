@@ -33,6 +33,7 @@ defmodule BusterClawWeb.Layouts do
                   "/scheduler" => "Scheduler",
                   "/security" => "Security",
                   "/gws" => "GWS",
+                  "/finance" => "Financial Informant",
                   "/appearance" => "Settings",
                   "/workspace" => "Workspace",
                   "/manual" => "Manual"

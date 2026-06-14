@@ -20,6 +20,35 @@ defmodule BusterClaw.FinanceTest do
     }
   end
 
+  defp multi_ticker_map do
+    %{
+      "0" => %{"cik_str" => 320_193, "ticker" => "AAPL", "title" => "Apple Inc."},
+      "1" => %{"cik_str" => 789_019, "ticker" => "MSFT", "title" => "Microsoft Corp"},
+      "2" => %{"cik_str" => 1_18, "ticker" => "APP", "title" => "Applovin Corp"}
+    }
+  end
+
+  test "search matches by ticker and company name, ranked best-first" do
+    Req.Test.stub(@stub, fn conn -> Req.Test.json(conn, multi_ticker_map()) end)
+
+    assert {:ok, results} = Edgar.search("app", @opts)
+    symbols = Enum.map(results, & &1.symbol)
+
+    # All three contain "app" (AAPL ticker, APP ticker, Applovin/Apple names);
+    # exact/prefix ticker matches rank ahead of name-only matches.
+    assert "APP" in symbols and "AAPL" in symbols
+    assert hd(symbols) == "APP", "exact ticker match should rank first"
+    assert Enum.all?(results, &Map.has_key?(&1, :name))
+  end
+
+  test "search by full company name resolves to the ticker" do
+    Req.Test.stub(@stub, fn conn -> Req.Test.json(conn, multi_ticker_map()) end)
+
+    assert {:ok, "MSFT"} = Edgar.resolve("microsoft", @opts)
+    assert {:ok, "AAPL"} = Edgar.resolve("AAPL", @opts)
+    assert {:error, :no_match} = Edgar.resolve("nonexistent-co", @opts)
+  end
+
   test "filings resolves the CIK and returns provenance-stamped recent filings" do
     Req.Test.stub(@stub, fn conn ->
       case conn.request_path do

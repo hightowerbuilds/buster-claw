@@ -1,6 +1,6 @@
 defmodule BusterClawWeb.FinanceLive do
   @moduledoc """
-  Financial Advisor dashboard — look up a ticker and see its quote, fundamentals,
+  Financial Informant dashboard — look up a ticker or company and see its quote, fundamentals,
   recent SEC filings, and news. Read-only research: every figure is shown with its
   source and as-of timestamp, and the page is explicitly labeled "not financial
   advice." Backed by `BusterClaw.Finance` (EDGAR + Finnhub).
@@ -13,30 +13,56 @@ defmodule BusterClawWeb.FinanceLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:page_title, "Financial Advisor")
+     |> assign(:page_title, "Financial Informant")
+     |> assign(:query, "")
      |> assign(:symbol, nil)
+     |> assign(:suggestions, [])
      |> assign(:results, nil)}
   end
 
   @impl true
-  def handle_event("lookup", %{"symbol" => raw}, socket) do
-    case normalize(raw) do
-      "" ->
-        {:noreply, assign(socket, symbol: nil, results: nil)}
+  def handle_event("suggest", %{"symbol" => raw}, socket) do
+    query = to_string(raw)
 
-      symbol ->
-        results = %{
-          quote: Finance.quote(symbol),
-          fundamentals: Finance.fundamentals(symbol),
-          filings: Finance.filings(symbol),
-          news: Finance.news(symbol)
-        }
+    suggestions =
+      if String.length(String.trim(query)) >= 2 do
+        case Finance.search(query, limit: 8) do
+          {:ok, list} -> list
+          _ -> []
+        end
+      else
+        []
+      end
 
-        {:noreply, assign(socket, symbol: symbol, results: results)}
-    end
+    {:noreply, assign(socket, query: query, suggestions: suggestions)}
   end
 
-  defp normalize(value), do: value |> to_string() |> String.trim() |> String.upcase()
+  def handle_event("lookup", %{"symbol" => raw}, socket) do
+    query = String.trim(to_string(raw))
+
+    cond do
+      query == "" ->
+        {:noreply, assign(socket, query: "", symbol: nil, results: nil, suggestions: [])}
+
+      true ->
+        case Finance.resolve(query) do
+          {:ok, symbol} ->
+            results = %{
+              quote: Finance.quote(symbol),
+              fundamentals: Finance.fundamentals(symbol),
+              filings: Finance.filings(symbol),
+              news: Finance.news(symbol)
+            }
+
+            {:noreply,
+             assign(socket, query: symbol, symbol: symbol, results: results, suggestions: [])}
+
+          {:error, _reason} ->
+            {:noreply,
+             assign(socket, query: query, symbol: query, results: :no_match, suggestions: [])}
+        end
+    end
+  end
 
   @impl true
   def render(assigns) do
@@ -46,23 +72,42 @@ defmodule BusterClawWeb.FinanceLive do
         <div class="border-b-2 border-base-content/20 pb-5">
           <p class="ic-eyebrow">Markets</p>
           <h1 class="font-display text-3xl font-black uppercase tracking-tight">
-            Financial Advisor
+            Financial Informant
           </h1>
           <p class="mt-1 text-sm text-base-content/65">
-            Read-only research — every figure carries its source and as-of date.
+            Search by ticker or company name — every figure carries its source and as-of date.
             <span class="font-semibold">Not financial advice.</span>
           </p>
 
-          <form phx-submit="lookup" class="mt-4 flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              name="symbol"
-              value={@symbol}
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="Ticker, e.g. AAPL"
-              class="input w-48 font-mono uppercase"
-            />
+          <form phx-change="suggest" phx-submit="lookup" class="mt-4 flex flex-wrap items-start gap-2">
+            <div class="relative w-80 max-w-full">
+              <input
+                type="text"
+                name="symbol"
+                value={@query}
+                autocomplete="off"
+                spellcheck="false"
+                phx-debounce="200"
+                placeholder="Ticker or company — e.g. AAPL or Apple"
+                class="input w-full font-mono"
+              />
+              <ul
+                :if={@suggestions != []}
+                class="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-sm border-2 border-base-content/25 bg-base-100 shadow-lg"
+              >
+                <li :for={s <- @suggestions}>
+                  <button
+                    type="button"
+                    phx-click="lookup"
+                    phx-value-symbol={s.symbol}
+                    class="flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm hover:bg-base-200"
+                  >
+                    <span class="shrink-0 font-mono font-bold">{s.symbol}</span>
+                    <span class="truncate text-base-content/65">{s.name}</span>
+                  </button>
+                </li>
+              </ul>
+            </div>
             <button
               type="submit"
               phx-disable-with="Looking up…"
@@ -77,10 +122,18 @@ defmodule BusterClawWeb.FinanceLive do
           :if={is_nil(@results)}
           class="rounded border border-dashed border-base-300 px-4 py-16 text-center text-sm text-base-content/60"
         >
-          Enter a ticker symbol to see its quote, fundamentals, recent filings, and news.
+          Search by ticker or company name to see its quote, fundamentals, recent filings, and news.
         </div>
 
-        <div :if={@results} class="grid gap-6 lg:grid-cols-2">
+        <div
+          :if={@results == :no_match}
+          class="rounded border border-dashed border-base-300 px-4 py-16 text-center text-sm text-base-content/60"
+        >
+          No company found for <span class="font-mono">{@symbol}</span>. Try a ticker (AAPL) or a
+          company name (Apple).
+        </div>
+
+        <div :if={is_map(@results)} class="grid gap-6 lg:grid-cols-2">
           <.quote_card result={@results.quote} symbol={@symbol} />
           <.fundamentals_card result={@results.fundamentals} />
           <.filings_card result={@results.filings} />

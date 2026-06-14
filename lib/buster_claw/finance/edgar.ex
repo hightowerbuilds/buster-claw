@@ -75,6 +75,66 @@ defmodule BusterClaw.Finance.Edgar do
     end
   end
 
+  @doc """
+  Typeahead search over the SEC ticker list by **ticker or company name**.
+  Returns `[%{symbol, name}]` ranked best-first (exact ticker → ticker prefix →
+  name prefix → name/ticker substring), capped at `:limit` (default 8).
+  """
+  def search(query, opts \\ []) do
+    q = query |> to_string() |> String.trim() |> String.downcase()
+    limit = Keyword.get(opts, :limit, 8)
+
+    if q == "" do
+      {:ok, []}
+    else
+      with {:ok, map} <- ticker_map(opts) do
+        results =
+          map
+          |> Enum.reduce([], fn {ticker, %{title: title}}, acc ->
+            case match_score(String.downcase(ticker), String.downcase(to_string(title)), q) do
+              nil -> acc
+              score -> [{score, ticker, title} | acc]
+            end
+          end)
+          |> Enum.sort_by(fn {score, ticker, title} ->
+            {score, String.length(ticker), String.downcase(to_string(title))}
+          end)
+          |> Enum.take(limit)
+          |> Enum.map(fn {_score, ticker, title} -> %{symbol: ticker, name: title} end)
+
+        {:ok, results}
+      end
+    end
+  end
+
+  @doc "Resolve a free-text query (ticker or company name) to a ticker symbol."
+  def resolve(query, opts \\ []) do
+    key = query |> to_string() |> String.trim() |> String.upcase()
+
+    with {:ok, map} <- ticker_map(opts) do
+      if Map.has_key?(map, key) do
+        {:ok, key}
+      else
+        case search(query, Keyword.put(opts, :limit, 1)) do
+          {:ok, [%{symbol: sym} | _]} -> {:ok, sym}
+          {:ok, []} -> {:error, :no_match}
+          other -> other
+        end
+      end
+    end
+  end
+
+  defp match_score(ticker, title, q) do
+    cond do
+      ticker == q -> 0
+      String.starts_with?(ticker, q) -> 1
+      String.starts_with?(title, q) -> 2
+      String.contains?(title, q) -> 3
+      String.contains?(ticker, q) -> 4
+      true -> nil
+    end
+  end
+
   # --- ticker → CIK map (cached; the source file is large and rarely changes) ---
 
   defp ticker_map(opts) do

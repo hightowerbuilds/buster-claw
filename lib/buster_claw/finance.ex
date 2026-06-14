@@ -16,6 +16,12 @@ defmodule BusterClaw.Finance do
 
   alias BusterClaw.Finance.{Edgar, Finnhub}
 
+  @doc "Typeahead search by ticker or company name → `[%{symbol, name}]`."
+  def search(query, opts \\ []), do: Edgar.search(query, opts)
+
+  @doc "Resolve a free-text query (ticker or company name) to a ticker symbol."
+  def resolve(query, opts \\ []), do: Edgar.resolve(query, opts)
+
   @doc "Recent SEC filings for a ticker symbol."
   def filings(symbol, opts \\ []), do: Edgar.filings(symbol, opts)
 

@@ -180,6 +180,19 @@ Turned the `projects/financial-advisor/` research briefs into a phased build
   restarts the server, and boots fresh so `runtime.exs` re-runs. Otherwise it reuses
   as before. (Quotes in `.env` were a red herring — bash `source` strips them.)
 
+### Financial Informant — ticker/company-name search + rename
+
+- **Renamed** "Financial Advisor" → **Financial Informant** (page title, header, the
+  `/finance` tab label so the tab shows a friendly name, and the home Get Started link).
+- **Search by ticker *or* company name with as-you-type suggestions:** `Edgar.search/2`
+  ranks matches over the cached SEC ticker list (exact ticker → ticker prefix → name
+  prefix → substring); `Edgar.resolve/2` maps free text → ticker. The LiveView shows a
+  suggestion dropdown (`phx-change`, 200ms debounce); a clicked suggestion or a submit
+  resolves to a ticker, with a "no company found" state. Local + no-key (reuses the
+  `company_tickers.json` map already cached in `:persistent_term`).
+- Tests: search ranking + name→ticker resolve; the dashboard render asserts the rename
+  + suggest wiring.
+
 ## Notes
 
 - Both objectives add migrations. They auto-apply on next `mix phx.server` boot
