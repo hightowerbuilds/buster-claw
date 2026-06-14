@@ -98,6 +98,83 @@ orchestration container in the left column (orchestration still lives at
   (panel render, lists existing, add+remove via LiveView, invalid→flash).
 - Verification: `mix test` 382/0, compile warnings-as-errors + format clean.
 
+### Get Started polish + `shift run` + collapsible contacts
+
+- **Copy buttons** on the get-started command snippets (reuse the terminal's
+  clipboard handler).
+- **`./buster-claw shift run`** — new CLI subcommand that starts a shift *and*
+  enters the mailman poll loop, so "go on duty" is one command. Get Started
+  restructured to 3 steps (add contacts → start the agent → go on duty); escript
+  rebuilt.
+- **Trusted Contacts panel** made collapsible (native `<details>`/`<summary>` +
+  entry-count badge), only claiming flex space when open.
+- Committed: `32f7d58` (get-started + shift run), `7b37e1b` (collapsible panel).
+
+### Trusted-contact autonomy (full follow-through)
+
+Supersedes Objective 2's "email body is untrusted data" guard — the operator
+chose full autonomy for trusted senders.
+
+- Flipped the **mail-triage job prompt** + **INTRODUCTION.md**: a trusted-sender
+  email is now an **authorized instruction** to act on; the agent acts and replies
+  without asking permission.
+- **`Jobs.ensure`** seeds `.claude/settings.json` (`bypassPermissions`) into every
+  workspace so the on-shift Claude Code agent doesn't stall on tool prompts.
+- **Lookout job description** rewritten so "poll the GWS pipeline every 3 minutes"
+  is the loud primary duty.
+
+### Workspace folder delete (webview fix)
+
+- `FileTree` delete converted from the native `data-confirm` dialog (silently
+  no-ops in the Tauri webview) to an **inline confirm step**.
+
+### Whole-app performance & quality pass — `f9ae1ae`
+
+- 5-agent parallel review (DB / filesystem / external IO / web / command surface),
+  then implemented:
+  - **Hot-path:** command catalog built once + cached (O(1) lookups); dispatch
+    fridge not rebuilt on heartbeats; calendar reads date-scoped in SQL;
+    OrchestrationLive 30s refresh split.
+  - **Growth/IO:** trusted-sender policy cached; poll dedupe via `content_hash` +
+    SQL window; `save_raw_document` stops re-reading its own write; new
+    `agent_runs` indexes; Gmail search parallelized + label-only history skipped;
+    GitHub's 6 calls concurrent; Security/Memory feeds → LiveView streams;
+    Sentinel audit offloaded off the command path in prod.
+  - **3 correctness bugs fixed:** `dispatch_reply` post-send finish crash;
+    `integration_document?/1` nil-tags crash; `relative_to_root/1` absolute-path bug.
+- Verification: `mix test` 401/0, warnings-as-errors + format clean.
+
+### Multi-agent terminal roadmap — `49d9fb6`
+
+- Plan for terminal engines beyond Claude Code (Codex, Gemini, opencode, …): an
+  `AgentProfile` abstraction, per-engine autonomy + context-file seeding,
+  side-by-side selection. `daily-growth/roadmaps/06-13-26-multi-agent-terminal-roadmap.md`.
+
+### Financial Advisor — Phase 1 (read surface + UI) — `6c4680a`, `ee94484`, `50816bb`
+
+Turned the `projects/financial-advisor/` research briefs into a phased build
+(plan: `projects/financial-advisor/build-roadmap.md`, in the DataZone).
+
+- **`finance_filings` + `finance_fundamentals`** via SEC EDGAR (no key): cached
+  ticker→CIK, recent filings, curated XBRL fundamentals.
+- **`finance_quote` + `finance_news`** via Finnhub (key-gated; degrades to
+  "not configured" without a key). All four are safe-tier reads.
+- **`/finance` dashboard** (`FinanceLive`): ticker lookup → Quote / Fundamentals /
+  Filings / News cards, each stamped **source + as-of**, labeled "not financial
+  advice," missing facts shown "unavailable" (never fabricated). Linked from the
+  Get Started container.
+- **Secrets wiring:** gitignored `.env` (sourced by `scripts/dev.sh`) holds
+  `FINNHUB_API_KEY` + `FINANCE_USER_AGENT`; `runtime.exs` reads both.
+- **EDGAR 403 fix:** SEC Fair Access rejects a User-Agent without a contact email —
+  wired `FINANCE_USER_AGENT`.
+- Verified live: AAPL quote $291.13, 10 news articles, 10 filings.
+
+### Docs — README refresh
+
+- Added the **Financial research** feature; corrected the stale **Orchestration**
+  bullet (headless dispatch was cut → terminal agent pulls from the Dispatch queue,
+  Orchestrator is the janitor); nuanced "needs no API keys."
+
 ## Notes
 
 - Both objectives add migrations. They auto-apply on next `mix phx.server` boot
@@ -105,12 +182,7 @@ orchestration container in the left column (orchestration still lives at
   avoid stepping on a running dev server.
 - The mail-triage seed rewrite only affects **fresh** workspaces — `Jobs.ensure`
   never overwrites an operator's existing `job-descriptions/mail-triage.md`.
-- Nothing committed yet.
-
-## Verification
-
--
-
-## Notes
-
--
+- Earlier objectives (1, 2, trusted-contacts UI) committed in prior commits; the
+  session work above is committed/pushed through `50816bb`. Open dev items: restart
+  the dev server to pick up `.env`; add EDGAR backoff/retry; build the `finance`
+  integration adapter + `watchlist_research` cron (needs operator watchlist symbols).
