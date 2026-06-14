@@ -1,22 +1,22 @@
 # Buster Claw
 
-`buster-claw` is a desktop runtime where an AI agent manages your web interactivity — browsing, Google Workspace, third-party integrations, MCP servers, and outbound delivery — through one auditable command surface. It's a Phoenix/LiveView application wrapped in a Tauri desktop shell; Phoenix lives at the repository root, the desktop shell in `desktop/tauri`.
+`buster-claw` is a desktop runtime where an AI agent manages your web interactivity — browsing, Google Workspace, third-party integrations, and outbound delivery — through one auditable command surface. It's a Phoenix/LiveView application wrapped in a Tauri desktop shell; Phoenix lives at the repository root, the desktop shell in `desktop/tauri`.
 
 ## How it's used
 
-The way to use Buster Claw is to run **Claude Code or Codex in the built-in terminal**; those agents operate Buster Claw through its MCP server (`POST /mcp`) and the workspace files, while the desktop UI gives you the command surface, the Sentinel audit feed, and the results. The intelligence is remote — the agent, not the app. Buster Claw has no built-in LLM and needs no API keys.
+The way to use Buster Claw is to run **Claude Code or Codex in the built-in terminal**. Work lands in a durable **Dispatch queue** that Buster Claw projects to the workspace markdown the agent already reads (`shift/Dispatch.md`); the agent pulls items, does the work, and writes results back through the `./buster-claw` CLI. The desktop UI gives you the command surface, the Sentinel audit feed, and the results. The intelligence is remote — the agent, not the app. Buster Claw has no built-in LLM and needs no API keys.
 
 ## Features
 
-- **Agentic command surface**: One canonical catalog (~70 commands) an AI agent drives across every frontend — CLI, HTTP API, and MCP — with per-caller trust tiers and a full audit trail.
+- **Agentic command surface**: One canonical catalog (~70 commands) an AI agent drives across every frontend — CLI and HTTP API — with per-caller trust tiers and a full audit trail.
 - **Web & Workspace interactivity**:
   - **Browsing & fetch**: Headless browser + HTTP fetchers (SSRF-guarded) to read and capture web pages and articles.
   - **Google Workspace**: Sync and act on Gmail and Google Calendar.
   - **Integrations**: Pull and react to GitHub, Sentry, and Umami activity.
   - **Delivery**: Push results to Slack, Discord, or Telegram-compatible webhooks.
-- **MCP (both directions)**: Connect external MCP servers as agent tools, and expose Buster Claw's own safe-tier commands as an MCP server to other agents (Claude Code, Codex, …).
+- **Dispatch pull-queue**: Trusted inbound requests (e.g. from Gmail triage) land in a durable SQLite queue, projected to workspace markdown; a terminal agent pulls items and writes results back through the CLI.
 - **In-app terminal**: A real PTY where you run Claude Code, Codex, or any CLI; the primary surface for agents to drive Buster Claw.
-- **Orchestration**: An unattended "shift" — a deterministic Elixir brain dispatches disposable headless agents (`claude -p` / `codex exec`) with kill switch, caps, and audit.
+- **Orchestration**: An unattended, indefinite "shift" — a supervised Elixir janitor watches the kill switch (STOP file) and a crash-loop brake while a terminal agent pulls from the Dispatch queue. All work state is durable, so an OTP restart resumes mid-shift.
 - **Automation**:
   - **Scheduler**: Cron-based integration polling jobs.
   - **Webhooks**: Receive authenticated external HTTP events with runtime audit records.
@@ -67,9 +67,9 @@ State is managed by Phoenix/Ecto and the local workspace directory:
 - `Library/`: workspace documents and artifacts (markdown).
 - Legacy data files such as `sources.json` and `Library/*.json` are migration inputs.
 
-## Driving Buster Claw (CLI, MCP, HTTP)
+## Driving Buster Claw (CLI, HTTP)
 
-Buster Claw exposes a single canonical command surface (~70 commands) across documents, memory, calendar events, Google Workspace (accounts/Gmail/Calendar), integrations, delivery, scheduler, webhooks, hooks, MCP servers, search, browser, runtime, and the orchestration shift. Three frontends consume it:
+Buster Claw exposes a single canonical command surface (~70 commands) across documents, memory, calendar events, Google Workspace (accounts/Gmail/Calendar), integrations, delivery, scheduler, webhooks, hooks, search, browser, runtime, the Dispatch queue, and the orchestration shift. Two frontends consume it:
 
 ### Authentication
 
@@ -92,24 +92,19 @@ mix escript.build
 
 Token comes from `BUSTER_CLAW_API_TOKEN` env, then the file path above, then `--token <token>` flag. Base URL is `BUSTER_CLAW_URL` env or `--url <url>` flag (default `http://127.0.0.1:4000`).
 
-### MCP server (for Claude Code, Codex, other TUI agents)
+### Dispatch pull-queue (for Claude Code, Codex, other terminal agents)
 
-Buster Claw hosts an MCP server at `POST /mcp` using the Streamable HTTP transport (JSON-RPC, JSON response form). Add this to your Claude Code config (`~/Library/Application Support/Claude/claude_desktop_config.json` or similar):
+The primary way an agent drives Buster Claw is the pull-queue. Trusted inbound requests land in the durable Dispatch queue, which Buster Claw projects to the workspace markdown the agent reads (`shift/Dispatch.md`, grouped by job). A terminal agent works the queue through the `./buster-claw dispatch` verbs:
 
-```json
-{
-  "mcpServers": {
-    "buster-claw": {
-      "url": "http://127.0.0.1:4000/mcp",
-      "headers": {
-        "Authorization": "Bearer <your-token>"
-      }
-    }
-  }
-}
+```bash
+./buster-claw mailman poll --interval 60          # feed the queue from Gmail triage
+./buster-claw dispatch list                         # see open items
+./buster-claw dispatch claim --job mail-triage      # pull the next item for a job
+./buster-claw dispatch reply <id> --body "…"        # write a result back
+./buster-claw dispatch done <id>                    # close it out (or: block <id>)
 ```
 
-The full safe-tier catalog (read commands and low-risk triggers) appears in the agent's tool list. Restricted commands (deletes, `delivery_dispatch_all`, `document_save`, …) are still callable via the HTTP API and CLI but are not exposed to MCP for safety.
+Trust tiers still apply: untrusted callers may only run safe-tier commands, while restricted commands (deletes, `delivery_dispatch_all`, `document_save`, …) require a trusted caller.
 
 ### HTTP API (for direct integration)
 

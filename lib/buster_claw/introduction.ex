@@ -5,8 +5,8 @@ defmodule BusterClaw.Introduction do
   summaries), and the full CLI command surface.
 
   The document is installed into the workspace root (regenerated on launch and
-  whenever the workspace changes) and is also injected into the chat model's
-  system context so the model is given the command list directly.
+  whenever the workspace changes) so the terminal agent reads it directly for
+  orientation and the full command list.
   """
 
   alias BusterClaw.Commands
@@ -138,8 +138,8 @@ defmodule BusterClaw.Introduction do
 
     ## Command surface (CLI)
 
-    These are the commands you can run (via the `buster-claw` CLI / API / agent
-    tools). **Safe** commands you may run directly; **restricted** commands change
+    These are the commands you can run (via the `buster-claw` CLI or HTTP
+    API). **Safe** commands you may run directly; **restricted** commands change
     state or send data and require the user's confirmation before they execute.
 
     #{command_surface_markdown()}
