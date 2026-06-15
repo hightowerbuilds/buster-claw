@@ -7,6 +7,8 @@ defmodule BusterClawWeb.AppearanceLive do
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.Appearance
+
   # Swatch metadata for the terminal-theme picker. The actual xterm palettes
   # live in `assets/js/app.js` (TERM_THEMES); `key` must match. bg/fg/accent are
   # only used to render the preview chip. "industrial" mirrors the app's tokens.
@@ -28,9 +30,9 @@ defmodule BusterClawWeb.AppearanceLive do
      socket
      |> assign(:page_title, "Appearance")
      |> assign(:terminal_themes, @terminal_themes)
-     |> assign(:terminal_background_url, BusterClaw.Appearance.terminal_background_url())
+     |> assign_slots()
      |> allow_upload(:terminal_background,
-       accept: BusterClaw.Appearance.accepted_extensions(),
+       accept: Appearance.accepted_extensions(),
        max_entries: 1,
        max_file_size: 8_000_000
      )}
@@ -44,35 +46,45 @@ defmodule BusterClawWeb.AppearanceLive do
   end
 
   def handle_event("save_background", _params, socket) do
-    consumed =
-      consume_uploaded_entries(socket, :terminal_background, fn %{path: path}, entry ->
-        {:ok, BusterClaw.Appearance.put_terminal_background(path, entry.client_name)}
-      end)
+    case Appearance.next_empty_slot() do
+      nil ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "All #{Appearance.max_slots()} slots are full — remove one first."
+         )}
 
-    socket =
-      case consumed do
-        [{:ok, url}] ->
-          socket
-          |> assign(:terminal_background_url, url)
-          |> put_flash(:info, "Terminal background updated.")
+      slot ->
+        consumed =
+          consume_uploaded_entries(socket, :terminal_background, fn %{path: path}, entry ->
+            {:ok, Appearance.put_terminal_background(slot, path, entry.client_name)}
+          end)
 
-        [{:error, _reason}] ->
-          put_flash(socket, :error, "That image type isn't supported.")
+        socket =
+          case consumed do
+            [{:ok, _url}] -> socket |> assign_slots() |> put_flash(:info, "Background added.")
+            [{:error, _reason}] -> put_flash(socket, :error, "That image type isn't supported.")
+            [] -> put_flash(socket, :error, "Choose an image first.")
+          end
 
-        [] ->
-          put_flash(socket, :error, "Choose an image first.")
-      end
-
-    {:noreply, socket}
+        {:noreply, socket}
+    end
   end
 
-  def handle_event("remove_background", _params, socket) do
-    BusterClaw.Appearance.clear_terminal_background()
+  def handle_event("set_active", %{"slot" => slot}, socket) do
+    case Appearance.set_active_slot(String.to_integer(slot)) do
+      {:ok, _url} ->
+        {:noreply, socket |> assign_slots() |> put_flash(:info, "Background applied.")}
 
-    {:noreply,
-     socket
-     |> assign(:terminal_background_url, nil)
-     |> put_flash(:info, "Terminal background removed.")}
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That slot is empty.")}
+    end
+  end
+
+  def handle_event("remove_background", %{"slot" => slot}, socket) do
+    Appearance.clear_slot(String.to_integer(slot))
+    {:noreply, socket |> assign_slots() |> put_flash(:info, "Background removed.")}
   end
 
   @impl true
@@ -82,98 +94,135 @@ defmodule BusterClawWeb.AppearanceLive do
       <section class="space-y-6">
         <BusterClawWeb.SettingsTabs.tabs active={:appearance} />
 
-        <section class="ic-panel space-y-4 p-6">
-          <h2 class="ic-eyebrow">Theme</h2>
-          <p class="max-w-2xl text-sm leading-7 text-base-content/70">
-            Choose how Buster Claw looks. <span class="font-semibold">System</span>
-            follows your operating system's appearance.
-          </p>
-          <div class="flex flex-wrap gap-2">
-            <button
-              type="button"
-              phx-click={JS.dispatch("phx:set-theme")}
-              data-phx-theme="system"
-              class={theme_btn()}
-            >
-              <.icon name="hero-computer-desktop" class="size-4" /> System
-            </button>
-            <button
-              type="button"
-              phx-click={JS.dispatch("phx:set-theme")}
-              data-phx-theme="light"
-              class={theme_btn()}
-            >
-              <.icon name="hero-sun" class="size-4" /> Light
-            </button>
-            <button
-              type="button"
-              phx-click={JS.dispatch("phx:set-theme")}
-              data-phx-theme="dark"
-              class={theme_btn()}
-            >
-              <.icon name="hero-moon" class="size-4" /> Dark
-            </button>
-          </div>
-        </section>
-
-        <section class="ic-panel space-y-4 p-6">
-          <h2 class="ic-eyebrow">Terminal theme</h2>
-          <p class="max-w-2xl text-sm leading-7 text-base-content/70">
-            Color scheme for the in-app terminal — background, text, cursor, and ANSI colors.
-            Applies to open terminals immediately.
-          </p>
-          <div
-            id="terminal-theme-picker"
-            phx-hook="TermThemePicker"
-            class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            <button
-              :for={t <- @terminal_themes}
-              type="button"
-              phx-click={JS.dispatch("bc:set-term-theme")}
-              data-term-theme={t.key}
-              title={t.label}
-              class="group flex items-center gap-3 rounded-lg border-2 border-base-content/20 p-2.5 text-left transition hover:border-primary focus:outline-none"
-            >
-              <span
-                class="flex size-11 shrink-0 flex-col items-start justify-center gap-1 rounded-md px-2 font-mono"
-                style={"background:#{t.bg}"}
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+          <section class="ic-panel space-y-4 p-6">
+            <h2 class="ic-eyebrow">Theme</h2>
+            <p class="max-w-2xl text-sm leading-7 text-base-content/70">
+              Choose how Buster Claw looks. <span class="font-semibold">System</span>
+              follows your operating system's appearance.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                phx-click={JS.dispatch("phx:set-theme")}
+                data-phx-theme="system"
+                class={theme_btn()}
               >
-                <span class="text-xs font-bold leading-none" style={"color:#{t.fg}"}>$ ls</span>
-                <span class="h-1.5 w-5 rounded-full" style={"background:#{t.accent}"}></span>
-              </span>
-              <span class="min-w-0">
-                <span class="block text-sm font-semibold">{t.label}</span>
-                <span class="block font-mono text-xs text-base-content/55">{t.key}</span>
-              </span>
-            </button>
-          </div>
-        </section>
+                <.icon name="hero-computer-desktop" class="size-4" /> System
+              </button>
+              <button
+                type="button"
+                phx-click={JS.dispatch("phx:set-theme")}
+                data-phx-theme="light"
+                class={theme_btn()}
+              >
+                <.icon name="hero-sun" class="size-4" /> Light
+              </button>
+              <button
+                type="button"
+                phx-click={JS.dispatch("phx:set-theme")}
+                data-phx-theme="dark"
+                class={theme_btn()}
+              >
+                <.icon name="hero-moon" class="size-4" /> Dark
+              </button>
+            </div>
+          </section>
+
+          <section class="ic-panel space-y-4 p-6">
+            <h2 class="ic-eyebrow">Terminal theme</h2>
+            <p class="max-w-2xl text-sm leading-7 text-base-content/70">
+              Color scheme for the in-app terminal — background, text, cursor, and ANSI colors.
+              Applies to open terminals immediately.
+            </p>
+            <div
+              id="terminal-theme-picker"
+              phx-hook="TermThemePicker"
+              class="grid gap-3 sm:grid-cols-2"
+            >
+              <button
+                :for={t <- @terminal_themes}
+                type="button"
+                phx-click={JS.dispatch("bc:set-term-theme")}
+                data-term-theme={t.key}
+                title={t.label}
+                class="group flex items-center gap-3 rounded-lg border-2 border-base-content/20 p-2.5 text-left transition hover:border-primary focus:outline-none"
+              >
+                <span
+                  class="flex size-11 shrink-0 flex-col items-start justify-center gap-1 rounded-md px-2 font-mono"
+                  style={"background:#{t.bg}"}
+                >
+                  <span class="text-xs font-bold leading-none" style={"color:#{t.fg}"}>$ ls</span>
+                  <span class="h-1.5 w-5 rounded-full" style={"background:#{t.accent}"}></span>
+                </span>
+                <span class="min-w-0">
+                  <span class="block text-sm font-semibold">{t.label}</span>
+                  <span class="block font-mono text-xs text-base-content/55">{t.key}</span>
+                </span>
+              </button>
+            </div>
+          </section>
+        </div>
 
         <section class="ic-panel space-y-4 p-6">
           <h2 class="ic-eyebrow">Terminal background</h2>
           <p class="max-w-2xl text-sm leading-7 text-base-content/70">
-            Set an image behind the in-app terminal. One image is used everywhere;
-            when two terminals are joined in a split, it spans both as a single
-            continuous background.
+            Save up to {Appearance.max_slots()} images and switch the one painted
+            behind the in-app terminal. In a split, the active image spans both
+            panes as one continuous background.
           </p>
 
-          <div
-            :if={@terminal_background_url}
-            class="flex flex-wrap items-center gap-4"
-          >
+          <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <div
-              class="h-24 w-40 shrink-0 rounded-lg border-2 border-base-content/20 bg-base-300 bg-cover bg-center"
-              style={"background-image:url('#{@terminal_background_url}')"}
+              :for={slot <- @slots}
+              class={[
+                "flex aspect-video flex-col overflow-hidden rounded-lg border-2",
+                if(slot.active, do: "border-primary", else: "border-base-content/20")
+              ]}
             >
+              <div :if={slot.filled} class="flex min-h-0 flex-1 flex-col">
+                <div
+                  class="relative flex-1 bg-cover bg-center"
+                  style={"background-image:url('#{slot.url}')"}
+                >
+                  <span
+                    :if={slot.active}
+                    class="absolute left-1.5 top-1.5 rounded bg-primary px-1.5 py-0.5 text-xs font-bold text-primary-content"
+                  >
+                    Active
+                  </span>
+                </div>
+                <div class="flex items-center justify-between border-t border-base-content/15 bg-base-100 px-2 py-1.5">
+                  <button
+                    :if={!slot.active}
+                    type="button"
+                    phx-click="set_active"
+                    phx-value-slot={slot.slot}
+                    class="rounded px-2 py-1 text-xs font-semibold transition hover:bg-base-200"
+                  >
+                    Use
+                  </button>
+                  <span :if={slot.active} class="px-2 py-1 text-xs text-base-content/50">In use</span>
+                  <button
+                    type="button"
+                    phx-click="remove_background"
+                    phx-value-slot={slot.slot}
+                    class="rounded px-2 py-1 text-xs text-base-content/60 transition hover:text-error"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+
+              <div :if={!slot.filled} class="flex min-h-0 flex-1 flex-col">
+                <div class="flex flex-1 items-center justify-center text-xs text-base-content/40">
+                  Empty
+                </div>
+                <div class="border-t border-base-content/15 bg-base-100 px-2 py-1.5 text-center text-xs text-base-content/40">
+                  Slot {slot.slot}
+                </div>
+              </div>
             </div>
-            <button
-              type="button"
-              phx-click="remove_background"
-              class="inline-flex items-center gap-2 rounded border-2 border-base-content/30 px-4 py-2 text-sm font-semibold transition hover:border-error hover:text-error"
-            >
-              <.icon name="hero-trash" class="size-4" /> Remove background
-            </button>
           </div>
 
           <form
@@ -189,7 +238,7 @@ defmodule BusterClawWeb.AppearanceLive do
               <.icon name="hero-photo" class="size-7 text-base-content/50" />
               <span class="text-sm font-semibold">Drop an image here, or click to choose</span>
               <span class="font-mono text-xs text-base-content/50">
-                PNG, JPG, WEBP, GIF · up to 8 MB
+                PNG, JPG, WEBP, GIF · up to 8 MB · fills the next open slot
               </span>
               <.live_file_input upload={@uploads.terminal_background} class="sr-only" />
             </label>
@@ -221,12 +270,16 @@ defmodule BusterClawWeb.AppearanceLive do
               {upload_error_to_string(err)}
             </p>
 
+            <p :if={Enum.all?(@slots, & &1.filled)} class="text-sm text-base-content/60">
+              All {Appearance.max_slots()} slots are full — remove one to add another.
+            </p>
+
             <button
               type="submit"
-              disabled={@uploads.terminal_background.entries == []}
+              disabled={@uploads.terminal_background.entries == [] or Enum.all?(@slots, & &1.filled)}
               class="inline-flex items-center gap-2 rounded border-2 border-primary px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary hover:text-primary-content disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <.icon name="hero-arrow-up-tray" class="size-4" /> Set as background
+              <.icon name="hero-arrow-up-tray" class="size-4" /> Add background
             </button>
           </form>
         </section>
@@ -234,6 +287,8 @@ defmodule BusterClawWeb.AppearanceLive do
     </Layouts.app>
     """
   end
+
+  defp assign_slots(socket), do: assign(socket, :slots, Appearance.slots())
 
   defp upload_error_to_string(:too_large), do: "That image is larger than 8 MB."
   defp upload_error_to_string(:too_many_files), do: "Choose a single image."

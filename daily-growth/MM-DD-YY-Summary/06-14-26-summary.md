@@ -316,3 +316,22 @@ helpers unchanged.
 - Moved the **`{N} unacknowledged`** badge + **Acknowledge all** button from above
   the tab bar to **under** it (left-aligned), matching the GWS treatment.
   Render-only; `mix compile --warnings-as-errors` clean, `security_live_test` 2/2.
+
+## Later 06-14 — Appearance page: side-by-side themes + 5 background slots
+
+- **Theme** (app-wide) and **Terminal theme** panels now sit **side-by-side**
+  (`lg:grid-cols-2`); the terminal-theme swatches reflow to 2 columns for the
+  narrower panel.
+- **Terminal background → 5 saved slots.** Reworked from a single uploaded image to
+  up to `Appearance.max_slots()` (5) slots with an active selection. `BusterClaw.Appearance`
+  now stores per-slot `path`/`updated_at` + an `active` key: the first upload becomes
+  active, **Use** switches the active slot, **Remove** promotes the next filled slot
+  (or clears). URL / active / empty checks are setting-based; only the serve path
+  (`slot_image/1`) checks the file (so a missing file 404s). Served per-slot via
+  `GET /appearance/terminal-background/:slot`.
+- **AppearanceLive:** a 5-tile gallery (preview + Active badge + Use/Remove); the
+  uploader fills the next open slot and disables when full. `terminal_background_url/0`
+  still means "the active slot," so `TerminalLive`/`SplitLive` need no changes (they
+  already react to the `{:terminal_background, url}` broadcast).
+- **Tests:** new `appearance_test` (7); `terminal_live_test` / `split_live_test`
+  updated to the slot keys + `/:slot?v=` URL. 29 related tests green; format + compile clean.

@@ -88,7 +88,7 @@ defmodule BusterClawWeb.TerminalLiveTest do
 
     assert has_element?(
              view,
-             "[id^='terminal-root'][data-terminal-embedded='false'][data-terminal-bg-active='true'][data-terminal-bg-source='host'][data-terminal-bg-image='/appearance/terminal-background?v=123']"
+             "[id^='terminal-root'][data-terminal-embedded='false'][data-terminal-bg-active='true'][data-terminal-bg-source='host'][data-terminal-bg-image='/appearance/terminal-background/1?v=123']"
            )
   end
 
@@ -121,8 +121,9 @@ defmodule BusterClawWeb.TerminalLiveTest do
   end
 
   defp put_terminal_background do
-    Settings.put("terminal_background_path", "appearance/test.png")
-    Settings.put("terminal_background_updated_at", "123")
+    Settings.put("terminal_background_1_path", "appearance/test.png")
+    Settings.put("terminal_background_1_updated_at", "123")
+    Settings.put("terminal_background_active", "1")
   end
 
   test "terminal commands button is not rendered outside terminal routes", %{conn: conn} do

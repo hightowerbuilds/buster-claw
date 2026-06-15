@@ -79,7 +79,7 @@ defmodule BusterClawWeb.SplitLiveTest do
     # the JS anchoring it to the viewport (background-attachment: fixed).
     assert has_element?(
              view,
-             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='/appearance/terminal-background?v=123']"
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='/appearance/terminal-background/1?v=123']"
            )
   end
 
@@ -93,7 +93,7 @@ defmodule BusterClawWeb.SplitLiveTest do
     # through (which the opaque neighbor would block).
     assert has_element?(
              view,
-             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='/appearance/terminal-background?v=123']"
+             "[id^='terminal-root'][data-terminal-embedded='true'][data-terminal-bg-source='host'][data-terminal-bg-image='/appearance/terminal-background/1?v=123']"
            )
 
     assert has_element?(
@@ -197,8 +197,9 @@ defmodule BusterClawWeb.SplitLiveTest do
   end
 
   defp put_terminal_background do
-    Settings.put("terminal_background_path", "appearance/test.png")
-    Settings.put("terminal_background_updated_at", "123")
+    Settings.put("terminal_background_1_path", "appearance/test.png")
+    Settings.put("terminal_background_1_updated_at", "123")
+    Settings.put("terminal_background_active", "1")
   end
 
   defp occurrences(haystack, needle), do: length(String.split(haystack, needle)) - 1
