@@ -49,7 +49,9 @@ defmodule BusterClawWeb.SecurityLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="space-y-6">
-        <div class="flex items-center justify-end gap-3">
+        <BusterClawWeb.SettingsTabs.tabs active={:security} />
+
+        <div class="flex items-center gap-3">
           <span class={[
             "rounded-full px-3 py-1 text-sm font-semibold",
             if(@unacknowledged > 0,
@@ -68,8 +70,6 @@ defmodule BusterClawWeb.SecurityLive do
             Acknowledge all
           </button>
         </div>
-
-        <BusterClawWeb.SettingsTabs.tabs active={:security} />
 
         <section class="rounded-lg border border-base-300 bg-base-100">
           <div class="border-b border-base-300 px-4 py-3 text-sm font-semibold">

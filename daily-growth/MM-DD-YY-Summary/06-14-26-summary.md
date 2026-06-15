@@ -310,3 +310,9 @@ helpers unchanged.
   per-account **Reconnect** action (in the accounts list) triggers them.
 - **Verified:** `mix format` + `mix compile --warnings-as-errors` clean,
   `gws_live_test` 4/4.
+
+## Later 06-14 — Security tab: alert count under the sub-tab bar
+
+- Moved the **`{N} unacknowledged`** badge + **Acknowledge all** button from above
+  the tab bar to **under** it (left-aligned), matching the GWS treatment.
+  Render-only; `mix compile --warnings-as-errors` clean, `security_live_test` 2/2.
