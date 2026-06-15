@@ -2,10 +2,10 @@ defmodule BusterClawWeb.SettingsTabs do
   use BusterClawWeb, :html
 
   @tabs [
-    %{key: :configuration, label: "Configuration", path: "/settings"},
     %{key: :appearance, label: "Appearance", path: "/appearance"},
     %{key: :gws, label: "GWS", path: "/gws"},
     %{key: :integrations, label: "Integrations", path: "/integrations"},
+    %{key: :configuration, label: "Configuration", path: "/settings"},
     %{key: :security, label: "Security", path: "/security"}
   ]
 

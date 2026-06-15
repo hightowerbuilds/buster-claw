@@ -27,21 +27,15 @@ import topbar from "../vendor/topbar"
 import {Terminal as XTerm} from "@xterm/xterm"
 import {FitAddon} from "@xterm/addon-fit"
 
-// Some sections present several routes behind one in-page tab bar (Advanced,
-// Settings). In the top browser-style tab strip those routes collapse into a
-// single tab keyed by the group's canonical path, so traversing the sub-tabs
-// only moves the in-page highlight — it never spawns new top-level tabs.
+// The Settings section presents several routes behind one in-page tab bar
+// (Appearance, GWS, Integrations, Configuration, Security). In the top
+// browser-style tab strip those routes collapse into a single "Settings" tab
+// keyed by the group's canonical path, so traversing the sub-tabs only moves the
+// in-page highlight — it never spawns new top-level tabs.
 const TAB_GROUPS = [
   {
-    key: "/advanced",
-    paths: new Set([
-      "/advanced", "/hooks", "/webhooks", "/integrations", "/mcp",
-      "/runtime", "/memory", "/scheduler", "/security", "/gws"
-    ])
-  },
-  {
     key: "/settings",
-    paths: new Set(["/settings", "/appearance"])
+    paths: new Set(["/settings", "/appearance", "/gws", "/integrations", "/security"])
   }
 ]
 
@@ -595,8 +589,8 @@ const Hooks = {
     load() { return loadTabs() },
     save(tabs) { saveTabs(tabs) },
     // Tab key is the full path incl. query, so multiple /browse tabs
-    // (each /browse?t=<id>) are distinct, independent tabs. Any Advanced
-    // sub-route collapses to the single ADVANCED_KEY so they share one top tab.
+    // (each /browse?t=<id>) are distinct, independent tabs. Any Settings
+    // sub-route collapses to the single /settings key so they share one top tab.
     currentKey() {
       const group = canonicalGroupKey(window.location.pathname)
       if (group) return group

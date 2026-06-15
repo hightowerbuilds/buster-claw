@@ -33,7 +33,7 @@ defmodule BusterClawWeb.Layouts do
     },
     %{
       label: "Settings",
-      path: "/settings",
+      path: "/appearance",
       icon: "hero-cog-6-tooth",
       image: "/images/brand/settings-icon.png"
     }
@@ -50,6 +50,7 @@ defmodule BusterClawWeb.Layouts do
                   "/integrations" => "Integrations",
                   "/security" => "Security",
                   "/gws" => "GWS",
+                  "/settings" => "Settings",
                   "/appearance" => "Settings",
                   "/workspace" => "Workspace",
                   "/manual" => "Manual"

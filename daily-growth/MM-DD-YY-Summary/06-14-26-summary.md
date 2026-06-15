@@ -267,3 +267,28 @@ The in-app browser now holds **multiple addresses open at once as native tabs**.
 - **Not pushed** — per plan, push happens at the end of the whole distribution effort.
 - Remaining roadmap: F2 (bundled Google OAuth + PKCE; start Google verification
   early), then Channel B (sign/notarize → publish to GitHub Releases → download page).
+
+## Later 06-14 — Settings page cleanup (dev work, in `~/Developer`)
+
+Switched back to feature work and tidied the Settings surface.
+
+- **Removed the redundant "Configure" cards** (GWS / Integrations / Security links)
+  at the bottom of `SettingsLive` — those surfaces are already the Settings
+  sub-tabs, so the cards were duplicate navigation. Also dropped the now-orphaned
+  `@config_links`, its assign, the `config_links_with_status/0` + `config_done?/1`
+  helpers, and the unused `Google` / `Integrations` aliases.
+- **Reordered the settings sub-tabs** to **Appearance · GWS · Integrations ·
+  Configuration · Security** (Configuration is now 4th), and **made Appearance the
+  default**: the Settings dock button now opens `/appearance` instead of
+  `/settings`. Added a `/settings → "Settings"` tab-strip label so the
+  Configuration sub-page's top tab still reads "Settings."
+- **Killed the leftover "Advanced" top tab.** The Advanced tab/routes/`AdvancedTabs`
+  were removed from Elixir earlier on 06-14, but the **TabStrip JS** (`assets/js/app.js`)
+  still had an `/advanced` tab-group collapsing `/integrations`, `/gws`, `/security`
+  (plus the deleted `/hooks`, `/mcp`, `/scheduler`, …) into one "Advanced" top tab —
+  so opening Integrations spawned an "Advanced" tab. Removed that group and folded
+  the settings routes into the existing `/settings` group, so the whole Settings
+  family now collapses into a single **"Settings"** top tab.
+- **Verified:** `mix compile --warnings-as-errors` clean, `settings_live_test` 2/2,
+  `mix esbuild buster_claw` bundles clean. (Stale "Advanced" top tabs persisted in
+  `localStorage` clear by closing the tab once.)
