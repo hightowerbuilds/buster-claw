@@ -166,3 +166,104 @@ The in-app browser now holds **multiple addresses open at once as native tabs**.
   reliably clear it (native browser webviews persist across a main-webview
   reload). Planned fix: guard the native webviews so a restored/inactive `/browse`
   tab can't paint over the app, plus a one-shot LiveSocket reconnect in `app.js`.
+
+---
+
+## Later 06-14 — Distribution roadmap (review critique → two-channel plan)
+
+- Read an outside "senior assessment" review and **fact-checked it** rather than
+  accepting it: its "claw agent genre / 100+ reviews" landscape is fabricated, and
+  two load-bearing claims were wrong against the code — "70+ commands" (actually
+  33 in `build_catalog`) and "no LiveView interaction testing" (12 live test files
+  use `render_click`/`render_submit`/`render_hook`). Kept its grounded
+  architecture observations, discarded the grade/ranking.
+- Built **`daily-growth/roadmaps/06-14-26-distribution-roadmap.md`**, then reworked
+  it around **two delivery channels for the same `.dmg`**: **A** — developers
+  `git clone` + build locally (unsigned OK); **B** — end users download a
+  signed/notarized `.dmg` from a website.
+- **Locked decisions:** public audience; macOS **Keychain** key storage; bundled
+  Google OAuth with **deep GWS scopes** (CASA assessment accepted, not minimized);
+  **reveal** recovery key; **manual re-download** (no auto-updater in v1);
+  **GitHub Releases + simple page** hosting. Bundle id / domain still parked.
+
+## Later 06-14 — Phase 0: single-source version + dev-token boot guard (`7ad5d55`)
+
+- Root **`VERSION`** is the single source: `mix.exs` reads it; `scripts/sync_version.sh`
+  propagates it into `tauri.conf.json` + `Cargo.toml` (wired into `build_desktop.sh`).
+- **`BusterClaw.Application.verify_release_token_safety!/0`** refuses to boot a
+  release (`RELEASE_NAME` set) that carries a dev/test API-token sentinel — closes
+  the "built with `MIX_ENV=dev`" leak. `build_desktop.sh` also `export MIX_ENV=prod`.
+
+## Later 06-14 — Phase 1: Keychain-backed secrets + recovery (`d5bfdb9`)
+
+- The Tauri shell now sources `SECRET_KEY_BASE` + the loopback API tokens from the
+  **macOS Keychain** (`keyring` crate) instead of plaintext files in the data dir;
+  `ensure_secret` migrates legacy plaintext files into the Keychain and adopts a
+  user-dropped `RESTORE_SECRET_KEY` recovery file. Shell injects
+  `BUSTER_CLAW_API_TOKEN`/`BUSTER_CLAW_MCP_API_TOKEN`; prod `runtime.exs` adopts them.
+- **`BusterClaw.Recovery`** + a Settings **"Recovery key"** reveal panel (CSP-safe).
+  Tests: `recovery_test.exs`, `settings_live_test.exs`.
+
+## Later 06-14 — Channel A: reproducible clone-and-build (`cb3231d`, `47d6532`)
+
+- **Fixed the clean-clone blocker:** the build never installed JS deps, so esbuild
+  couldn't resolve `@xterm/*` and `assets.deploy` would die on a fresh clone. Added
+  `npm ci` (from the tracked lockfile) + a **toolchain preflight** to
+  `build_desktop.sh`, pinned `.tool-versions` (erlang 28.4.2 / elixir 1.19.5-otp-28
+  / nodejs 26.0.0), wrote **`BUILD.md`**, and corrected the now-stale
+  `docs/DESKTOP_PACKAGING.md` (Keychain, not a `secret_key_base` file).
+- **Headless-safe DMG:** `build_desktop.sh` auto-sets `CI=true` when run without a
+  TTY, so the DMG window-styling step (Finder/AppleScript, GUI-only) is skipped
+  instead of failing in agent/CI builds. Interactive runs still get the styled DMG.
+- **Verified end-to-end:** `build_desktop.sh` → `Buster Claw_0.1.0_x64.dmg` (26 MB),
+  mounted and confirmed it carries current code (`Recovery.beam`, "Recovery key"
+  panel, `RESTORE_SECRET_KEY`).
+
+## Later 06-14 — Environment: iCloud Drive was corrupting builds (repo relocated)
+
+- **Root cause of repeated "old/stale build" symptoms:** the repo lived under
+  `~/Desktop`, which is **iCloud-synced**. iCloud was evicting the multi-GB build
+  dirs (`desktop/tauri/target` = 6.4 GB), so a freshly built `.app`/`.dmg` had its
+  `Contents/` offloaded to placeholders — the app that opened was stale/empty
+  (looked "3000 commits behind", though the repo has ~116 commits). Tell-tale: a
+  binary `file` sees one moment and `ls` reports gone the next.
+- **Fix:** `rsync`'d the repo to **`~/Developer/buster-claw`** (local), excluding
+  regenerable heavy dirs, preserving `.git` (+ GitHub remote) and `.env`. Builds and
+  dev should run there now. **Lesson: never build a heavy Tauri/Elixir/Rust project
+  inside iCloud Desktop/Documents.**
+
+## Later 06-14 — "Old UI from /Applications" = shared webview cache (resolves the blank-screen issue above)
+
+- **Symptom:** identical `.dmg` bits showed the **current** UI when run from the
+  read-only DMG but an **old** UI when copied to `/Applications` and launched.
+  Confirmed the `/Applications` binary was byte-identical to the verified build
+  (same SHA-256), so it was never stale bits.
+- **Root cause:** every build — dev, old, new — shares the bundle id
+  `com.hightowerbuilds.busterclaw`, so they share **one** WebKit cache
+  (`~/Library/WebKit/<id>`, `~/Library/Caches/<id>`). A **May-26** cache was serving
+  a stale front-end; the read-only/translocated DMG launch happened to bypass it.
+- **Fix:** quit instances, clear those two cache dirs (app data in
+  `~/Library/Application Support/BusterClaw/` left untouched), relaunch — current UI.
+  Documented in `BUILD.md` troubleshooting.
+- **This is the same mechanism as the open "Blank-screen-on-restart" known issue
+  above** — a stale shared webview cache, not a code bug. Permanent cures are on the
+  distribution roadmap: a **locked/unique bundle id** (clean cache namespace) and
+  **code signing** (stable app identity).
+
+## Verification (this session)
+
+- Rust: `cargo check` + full `cargo tauri build` clean (compiles the Keychain
+  stack). Elixir: new tests pass; full suite green aside from a known flaky
+  `settings_test` "Database busy" (SQLite write contention, passes in isolation).
+- Full `build_desktop.sh` → signed-nothing-yet `.dmg`, mounted-and-verified current,
+  copied to `~/Desktop` with a matching SHA-256, installed to `/Applications`,
+  launches the current UI after the cache clear.
+
+## Notes / open
+
+- **Repo is now canonical at `~/Developer/buster-claw`** (HEAD `47d6532`). The old
+  `~/Desktop/websites/buster-claw` iCloud copy is stale and should be retired; dev
+  processes are still running from it (PIDs from this session) and should be moved.
+- **Not pushed** — per plan, push happens at the end of the whole distribution effort.
+- Remaining roadmap: F2 (bundled Google OAuth + PKCE; start Google verification
+  early), then Channel B (sign/notarize → publish to GitHub Releases → download page).
