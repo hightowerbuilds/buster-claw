@@ -175,16 +175,93 @@ defmodule BusterClawWeb.GWSLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="space-y-6">
-        <div class="flex justify-end">
+        <BusterClawWeb.SettingsTabs.tabs active={:gws} />
+
+        <div>
           <.link
             navigate={~p"/"}
-            class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85"
+            class="inline-block rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85"
           >
             Connect Account
           </.link>
         </div>
 
-        <BusterClawWeb.SettingsTabs.tabs active={:gws} />
+        <section id="gws-accounts" class="rounded-lg border border-base-300 bg-base-100">
+          <div class="flex items-center justify-between gap-3 border-b border-base-300 px-4 py-3">
+            <h2 class="text-sm font-semibold">{length(@accounts)} accounts</h2>
+          </div>
+
+          <div class="divide-y divide-base-300">
+            <div
+              :for={account <- @accounts}
+              id={"gws-account-#{account.id}"}
+              class="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto]"
+            >
+              <div class="min-w-0">
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <h3 class="truncate text-sm font-semibold">{account.email}</h3>
+                  <span class={account_enabled_class(account.enabled)}>
+                    {if account.enabled, do: "enabled", else: "disabled"}
+                  </span>
+                  <span class={account_token_class(account.has_refresh_token)}>
+                    {if account.has_refresh_token, do: "authorized", else: "needs auth"}
+                  </span>
+                </div>
+
+                <dl class="mt-3 grid gap-2 text-xs text-base-content/60 sm:grid-cols-2">
+                  <div>
+                    <dt class="font-semibold uppercase tracking-wide">Client ID</dt>
+                    <dd class="truncate font-mono">{account.client_id}</dd>
+                  </div>
+                  <div>
+                    <dt class="font-semibold uppercase tracking-wide">Scopes</dt>
+                    <dd class="truncate font-mono">{account.scopes || "default"}</dd>
+                  </div>
+                  <div>
+                    <dt class="font-semibold uppercase tracking-wide">Default Query</dt>
+                    <dd class="truncate font-mono">{account.default_query || "newer_than:7d"}</dd>
+                  </div>
+                  <div>
+                    <dt class="font-semibold uppercase tracking-wide">Access Token</dt>
+                    <dd>{token_expiry_label(account.access_token_expires_at)}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div class="flex flex-wrap items-start gap-2 lg:justify-end">
+                <button
+                  class="rounded border border-base-300 px-3 py-2 text-sm"
+                  phx-click="reconnect"
+                  phx-value-id={account.id}
+                >
+                  Reconnect
+                </button>
+                <button
+                  class="rounded border border-base-300 px-3 py-2 text-sm"
+                  phx-click="toggle"
+                  phx-value-id={account.id}
+                >
+                  {if account.enabled, do: "Disable", else: "Enable"}
+                </button>
+                <button
+                  class="rounded border border-error/40 px-3 py-2 text-sm text-error"
+                  phx-click="delete_account"
+                  phx-value-id={account.id}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+
+            <div
+              :if={@accounts == []}
+              id="gws-empty"
+              class="px-4 py-10 text-center text-sm text-base-content/60"
+            >
+              No Google Workspace accounts connected yet.
+            </div>
+          </div>
+        </section>
 
         <p
           :if={@result}
@@ -231,85 +308,13 @@ defmodule BusterClawWeb.GWSLive do
           />
         </div>
 
-        <section id="google-calendar-tools" class="rounded-lg border border-base-300 bg-base-100">
-          <div class="border-b border-base-300 px-4 py-3">
-            <h2 class="text-sm font-semibold">Google Calendar</h2>
-          </div>
-
-          <div class="grid gap-5 p-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
-            <.form
-              for={@calendar_sync_form}
-              id="google-calendar-sync-form"
-              phx-submit="sync_google_calendar"
-              class="space-y-3 rounded border border-base-300 p-3"
-            >
-              <.input
-                field={@calendar_sync_form[:account_id]}
-                id="google-calendar-account-id"
-                type="select"
-                label="Account"
-                options={account_options(@accounts)}
-              />
-              <.input
-                field={@calendar_sync_form[:calendar_id]}
-                id="google-calendar-id"
-                type="text"
-                label="Calendar ID"
-              />
-              <.input
-                field={@calendar_sync_form[:days_ahead]}
-                id="google-calendar-days-ahead"
-                type="number"
-                label="Days Ahead"
-                min="1"
-                max="365"
-              />
-              <button
-                class="w-full rounded bg-base-content px-3 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85 disabled:opacity-40"
-                disabled={@accounts == []}
-              >
-                Sync Calendar
-              </button>
-            </.form>
-
-            <div
-              :if={@calendar_sync}
-              id="google-calendar-sync-results"
-              class="rounded border border-base-300"
-            >
-              <div class="border-b border-base-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
-                Imported Events
-              </div>
-              <div class="divide-y divide-base-300">
-                <div
-                  :for={event <- @calendar_sync.events}
-                  id={"google-calendar-event-#{event.id}"}
-                  class="px-3 py-3"
-                >
-                  <h3 class="truncate text-sm font-semibold">{event.title}</h3>
-                  <p class="mt-1 text-xs text-base-content/60">
-                    {event.date} {event.start_time && Calendar.strftime(event.start_time, "%H:%M")}
-                  </p>
-                </div>
-
-                <div
-                  :if={@calendar_sync.events == []}
-                  class="px-3 py-6 text-center text-sm text-base-content/60"
-                >
-                  No Google Calendar events matched the sync window.
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <section id="gmail-tools" class="rounded-lg border border-base-300 bg-base-100">
           <div class="border-b border-base-300 px-4 py-3">
             <h2 class="text-sm font-semibold">Gmail</h2>
           </div>
 
-          <div class="grid gap-5 p-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
-            <div class="space-y-4">
+          <div class="space-y-5 p-4">
+            <div class="grid gap-4 md:grid-cols-3">
               <.form
                 for={@gmail_label_form}
                 id="gmail-label-form"
@@ -501,79 +506,74 @@ defmodule BusterClawWeb.GWSLive do
           </div>
         </section>
 
-        <section id="gws-accounts" class="rounded-lg border border-base-300 bg-base-100">
-          <div class="flex items-center justify-between gap-3 border-b border-base-300 px-4 py-3">
-            <h2 class="text-sm font-semibold">{length(@accounts)} accounts</h2>
+        <section id="google-calendar-tools" class="rounded-lg border border-base-300 bg-base-100">
+          <div class="border-b border-base-300 px-4 py-3">
+            <h2 class="text-sm font-semibold">Google Calendar</h2>
           </div>
 
-          <div class="divide-y divide-base-300">
-            <div
-              :for={account <- @accounts}
-              id={"gws-account-#{account.id}"}
-              class="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto]"
+          <div class="grid gap-5 p-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
+            <.form
+              for={@calendar_sync_form}
+              id="google-calendar-sync-form"
+              phx-submit="sync_google_calendar"
+              class="space-y-3 rounded border border-base-300 p-3"
             >
-              <div class="min-w-0">
-                <div class="flex min-w-0 flex-wrap items-center gap-2">
-                  <h3 class="truncate text-sm font-semibold">{account.email}</h3>
-                  <span class={account_enabled_class(account.enabled)}>
-                    {if account.enabled, do: "enabled", else: "disabled"}
-                  </span>
-                  <span class={account_token_class(account.has_refresh_token)}>
-                    {if account.has_refresh_token, do: "authorized", else: "needs auth"}
-                  </span>
+              <.input
+                field={@calendar_sync_form[:account_id]}
+                id="google-calendar-account-id"
+                type="select"
+                label="Account"
+                options={account_options(@accounts)}
+              />
+              <.input
+                field={@calendar_sync_form[:calendar_id]}
+                id="google-calendar-id"
+                type="text"
+                label="Calendar ID"
+              />
+              <.input
+                field={@calendar_sync_form[:days_ahead]}
+                id="google-calendar-days-ahead"
+                type="number"
+                label="Days Ahead"
+                min="1"
+                max="365"
+              />
+              <button
+                class="w-full rounded bg-base-content px-3 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85 disabled:opacity-40"
+                disabled={@accounts == []}
+              >
+                Sync Calendar
+              </button>
+            </.form>
+
+            <div
+              :if={@calendar_sync}
+              id="google-calendar-sync-results"
+              class="rounded border border-base-300"
+            >
+              <div class="border-b border-base-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+                Imported Events
+              </div>
+              <div class="divide-y divide-base-300">
+                <div
+                  :for={event <- @calendar_sync.events}
+                  id={"google-calendar-event-#{event.id}"}
+                  class="px-3 py-3"
+                >
+                  <h3 class="truncate text-sm font-semibold">{event.title}</h3>
+                  <p class="mt-1 text-xs text-base-content/60">
+                    {event.date} {event.start_time && Calendar.strftime(event.start_time, "%H:%M")}
+                  </p>
                 </div>
 
-                <dl class="mt-3 grid gap-2 text-xs text-base-content/60 sm:grid-cols-2">
-                  <div>
-                    <dt class="font-semibold uppercase tracking-wide">Client ID</dt>
-                    <dd class="truncate font-mono">{account.client_id}</dd>
-                  </div>
-                  <div>
-                    <dt class="font-semibold uppercase tracking-wide">Scopes</dt>
-                    <dd class="truncate font-mono">{account.scopes || "default"}</dd>
-                  </div>
-                  <div>
-                    <dt class="font-semibold uppercase tracking-wide">Default Query</dt>
-                    <dd class="truncate font-mono">{account.default_query || "newer_than:7d"}</dd>
-                  </div>
-                  <div>
-                    <dt class="font-semibold uppercase tracking-wide">Access Token</dt>
-                    <dd>{token_expiry_label(account.access_token_expires_at)}</dd>
-                  </div>
-                </dl>
+                <div
+                  :if={@calendar_sync.events == []}
+                  class="px-3 py-6 text-center text-sm text-base-content/60"
+                >
+                  No Google Calendar events matched the sync window.
+                </div>
               </div>
-
-              <div class="flex flex-wrap items-start gap-2 lg:justify-end">
-                <button
-                  class="rounded border border-base-300 px-3 py-2 text-sm"
-                  phx-click="reconnect"
-                  phx-value-id={account.id}
-                >
-                  Reconnect
-                </button>
-                <button
-                  class="rounded border border-base-300 px-3 py-2 text-sm"
-                  phx-click="toggle"
-                  phx-value-id={account.id}
-                >
-                  {if account.enabled, do: "Disable", else: "Enable"}
-                </button>
-                <button
-                  class="rounded border border-error/40 px-3 py-2 text-sm text-error"
-                  phx-click="delete_account"
-                  phx-value-id={account.id}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-
-            <div
-              :if={@accounts == []}
-              id="gws-empty"
-              class="px-4 py-10 text-center text-sm text-base-content/60"
-            >
-              No Google Workspace accounts connected yet.
             </div>
           </div>
         </section>

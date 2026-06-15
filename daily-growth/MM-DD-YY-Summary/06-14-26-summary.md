@@ -292,3 +292,21 @@ Switched back to feature work and tidied the Settings surface.
 - **Verified:** `mix compile --warnings-as-errors` clean, `settings_live_test` 2/2,
   `mix esbuild buster_claw` bundles clean. (Stale "Advanced" top tabs persisted in
   `localStorage` clear by closing the tab once.)
+
+## Later 06-14 — GWS tab layout
+
+Reorganized the Google Workspace page (`gws_live.ex`), render-only — handlers and
+helpers unchanged.
+
+- **New top-to-bottom order:** sub-tab bar → **Connect Account** button (moved out
+  of the top-right to sit under the tabs) → **Accounts** container (client id /
+  scopes / default query / access-token, now at the top) → **Gmail** tools →
+  **Google Calendar** (moved to the bottom).
+- **Gmail forms inlined:** the three forms (Load Labels · Search Gmail · Sync to
+  Library) now share **one container, side-by-side** (`md:grid-cols-3`, stacking on
+  narrow), with all results rendered full-width below them — replacing the old
+  left-rail-of-stacked-forms + right-results split.
+- Status + Google sign-in panels sit between Accounts and Gmail, where the
+  per-account **Reconnect** action (in the accounts list) triggers them.
+- **Verified:** `mix format` + `mix compile --warnings-as-errors` clean,
+  `gws_live_test` 4/4.
