@@ -91,3 +91,4 @@ The root [`VERSION`](VERSION) file is the single source of truth. Edit it, and
 | `npm ci` fails | Ensure Node 26.x; remove `assets/node_modules` and retry. |
 | "release binary not found" from the shell | Re-run `./scripts/build_desktop.sh` — it stages the release into `desktop/tauri/resources/release/`. |
 | App opens to an error screen | Check `~/Library/Application Support/BusterClaw/logs/release.stderr.log`. |
+| A newly built app shows an **old UI** | All builds share the bundle id `com.hightowerbuilds.busterclaw`, so they share one webview cache. Quit the app and clear it: `rm -rf ~/Library/WebKit/com.hightowerbuilds.busterclaw ~/Library/Caches/com.hightowerbuilds.busterclaw` (this does **not** touch app data in `~/Library/Application Support/BusterClaw/`). |

@@ -12,6 +12,15 @@ REPO_ROOT="$(pwd)"
 # but pin it for the whole script too.
 export MIX_ENV=prod
 
+# The DMG window-styling step (bundle_dmg.sh) drives Finder via AppleScript,
+# which only works in an interactive GUI session. In a headless / CI / agent
+# context (no controlling terminal) set CI=true so the bundler skips the
+# cosmetic step and still produces a functional .dmg instead of erroring.
+if [ ! -t 1 ] && [ -z "${CI:-}" ]; then
+  export CI=true
+  echo "==> Headless build detected — CI=true (DMG window styling skipped)"
+fi
+
 # --- Preflight: verify the toolchain a clean clone needs, with actionable
 # messages instead of a deep mid-build error. Versions are pinned in
 # .tool-versions; see BUILD.md. ---

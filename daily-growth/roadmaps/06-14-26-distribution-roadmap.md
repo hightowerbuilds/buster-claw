@@ -66,7 +66,8 @@ Replace per-user pasted `client_id`/`client_secret` with one OAuth Desktop-app c
 - **Fixed the clean-clone blocker:** the build never installed JS deps, so `assets.deploy` (esbuild) would die resolving `@xterm/*`. Added `npm ci` (assets) — verified clean from the tracked `assets/package-lock.json`.
 - **Toolchain pinned:** `.tool-versions` (erlang 28.4.2, elixir 1.19.5-otp-28, nodejs 26.0.0); Rust + `cargo-tauri` documented in BUILD.md.
 - **Preflight** added to `build_desktop.sh` — checks elixir/mix/erl/cargo/rustc/node/npm + `cargo tauri`, fails early with install hints. Syntax + logic verified.
-- *Not yet run end-to-end:* a full `build_desktop.sh` → `.dmg` on this machine (heavy `cargo tauri build`). Component steps verified; full run pending.
+- **Pipeline verified, artifact NOT trustworthy in this location:** `build_desktop.sh` compiled + staged current code (F1 `Recovery.beam` present in the staged release) and produced `Buster Claw_0.1.0_x64.dmg` + `.app`. **But the repo lives in iCloud Drive (`~/Desktop` synced), and iCloud evicts the multi-GB `target/` (6.4 GB) — the final bundle's `Contents/` was offloaded to a placeholder, so the app that opened was stale/empty.** Channel A is not truly verified until the project is built **outside iCloud**. ⚠️ Action: relocate the repo to a non-synced local path and rebuild there.
+- ⚠️ **Arch:** the build host's Rust is `x86_64-apple-darwin`, so the `.dmg` is **Intel-only** (runs on Apple Silicon only via Rosetta). For Channel B (website) we'll want an `aarch64` or **universal** binary; decide the target arch in B1. For Channel A, each dev builds for their own toolchain.
 
 ---
 
