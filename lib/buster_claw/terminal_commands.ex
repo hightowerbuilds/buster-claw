@@ -87,8 +87,6 @@ defmodule BusterClaw.TerminalCommands do
       commands: [
         %{
           key: "welcome-introduction",
-          label: "Welcome / Read Introduction",
-          description: "Greet the agent and point it at the introduction to start a session.",
           command: "Welcome to Buster Claw. Please read the introduction.",
           default?: true
         }

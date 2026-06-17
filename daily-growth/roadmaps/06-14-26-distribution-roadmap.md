@@ -59,7 +59,9 @@ Root `VERSION` single-sources the version (`scripts/sync_version.sh` → `tauri.
 Tauri shell sources `SECRET_KEY_BASE` + API tokens from macOS Keychain (`keyring`), migrates legacy plaintext files, adopts `RESTORE_SECRET_KEY`. `BusterClaw.Recovery` + Settings "Recovery key" reveal panel. *Keychain path is compile-verified only — verify end-to-end after signing (B1), since unsigned builds get unstable Keychain ACLs.*
 
 ### F2 — Bundled Google OAuth + PKCE — ⏳ TODO *(start verification day 1)*
-Replace per-user pasted `client_id`/`client_secret` with one OAuth Desktop-app client (PKCE + loopback redirect) and a one-click "Connect Google". **Scope posture LOCKED: deep GWS, expected to grow** — request the full restricted-scope set up front so we pass CASA once, not per feature. Both channels' users need Google to work. *Eng ~3–5 days; verification is the wall-clock pole.* Interim: ship to early users under Google's "unverified" 100-user cap.
+Replace per-user pasted `client_id`/`client_secret` with one OAuth Desktop-app client (PKCE + loopback redirect) and a one-click "Connect Google". **Scope posture LOCKED: deep GWS** — `gmail.readonly` + `gmail.compose` (both **restricted**) + `calendar.events.readonly` (sensitive). Both channels' users need Google to work. *Eng ~3–5 days; verification is the wall-clock pole.* Interim: ship to early users under Google's "unverified" 100-user cap.
+
+**Verification clock — corrected (2026-06-14):** the restricted scopes require **OAuth verification but very likely NOT the $15k–$75k/yr CASA security assessment.** Google's rule: only apps that "access data **from or through a third-party server**" need the assessment; *"purely client-side/desktop apps accessing only local user device data … need brand/OAuth verification only."* Buster Claw is local-first (Phoenix runs on-device/loopback, tokens in Keychain, Gmail synced into local SQLite, PKCE token exchange on-device), so it's in the **exempt** lane — verification is **weeks, ~free**, not months + $15k/yr. *Risk:* Google's reviewer must accept the client-side classification — the demo video + privacy policy must make "stays on the user's device" explicit. **Gating prerequisite: a domain** (homepage + privacy-policy URLs + authorized domain via Search Console) — blocked on the parked bundle-id/domain decision. Bonus: moving the app **Testing → In production** (part of submitting) removes the 7-day refresh-token expiry behind the recurring `invalid_grant` error. Source: [Google restricted-scope verification doc](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification).
 
 ### F3 — Reproducible build-from-source — ✅ DONE *(unblocks Channel A)*
 `git clone … && ./scripts/build_desktop.sh` → `.dmg` on a clean machine.
@@ -129,7 +131,7 @@ Public:  flip Channel B to "verified" when Google verification + CASA clear
 | Item | Cost | Lead time |
 |---|---|---|
 | Apple Developer Program | $99 / yr | Days |
-| Google OAuth verification + CASA (deep Gmail scopes) | Paid, recurring | Weeks–months |
+| Google OAuth verification (restricted Gmail scopes) | **~Free** — local-first app is likely exempt from the $15k–75k/yr CASA assessment (verification only) | Weeks |
 | GitHub Releases + Pages hosting | Free | — |
 
 ---

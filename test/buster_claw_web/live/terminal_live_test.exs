@@ -50,6 +50,10 @@ defmodule BusterClawWeb.TerminalLiveTest do
     assert has_element?(view, "[data-terminal-command='poll']", "Poll Gmail")
     assert has_element?(view, "[data-terminal-command='poll-shift-log']", "Poll + Shift Log")
 
+    # Regression: a command with no :label/:description keys (welcome-introduction)
+    # must render its prompt without crashing the cheat-sheet render.
+    assert has_element?(view, "[data-terminal-command='welcome-introduction']")
+
     assert has_element?(
              view,
              "button[data-terminal-command-copy='#{TerminalCommands.startup_command("mailman")}']"

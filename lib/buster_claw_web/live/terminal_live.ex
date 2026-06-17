@@ -158,9 +158,9 @@ defmodule BusterClawWeb.TerminalLive do
           data-terminal-bg-source={terminal_background_source(@terminal_background_url, @embedded?)}
           data-terminal-bg-image={terminal_host_background(@terminal_background_url, @embedded?)}
           class={[
-            "min-h-0 flex-1 overflow-hidden",
+            "min-h-0 flex-1 overflow-hidden p-3",
             if(@terminal_background_url, do: "bg-transparent", else: "bg-base-100"),
-            if(@embedded?, do: "h-full", else: "p-2")
+            if(@embedded?, do: "h-full", else: "")
           ]}
         >
         </div>
@@ -243,10 +243,10 @@ defmodule BusterClawWeb.TerminalLive do
               class="rounded-sm border border-base-300 bg-base-100 p-3"
             >
               <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <h3 class="text-sm font-semibold">{command.label}</h3>
-                  <p class="mt-1 text-xs leading-5 text-base-content/60">
-                    {command.description}
+                <div :if={command[:label]} class="min-w-0">
+                  <h3 class="text-sm font-semibold">{command[:label]}</h3>
+                  <p :if={command[:description]} class="mt-1 text-xs leading-5 text-base-content/60">
+                    {command[:description]}
                   </p>
                 </div>
                 <button
@@ -259,7 +259,10 @@ defmodule BusterClawWeb.TerminalLive do
                   <span data-terminal-command-copy-label>Copy</span>
                 </button>
               </div>
-              <code class="mt-3 block overflow-x-auto rounded-sm bg-base-200 px-2 py-1.5 font-mono text-xs text-base-content/75">
+              <code class={[
+                "block overflow-x-auto rounded-sm bg-base-200 px-2 py-1.5 font-mono text-xs text-base-content/75",
+                command[:label] && "mt-3"
+              ]}>
                 {command.command}
               </code>
             </article>

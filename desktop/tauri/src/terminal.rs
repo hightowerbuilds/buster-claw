@@ -116,10 +116,18 @@ pub fn terminal_open(
 
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
+        // A multi-byte UTF-8 sequence (box-drawing glyphs, emoji — both heavily
+        // used by TUIs like Claude Code) can straddle a read boundary. Decoding
+        // each 4 KB chunk independently would turn the split bytes into `�` and
+        // throw off cell widths, so hold back any incomplete trailing sequence
+        // and prepend it to the next read.
+        let mut carry: Vec<u8> = Vec::new();
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
+                    // Scrollback keeps the raw byte stream; it is decoded lossily
+                    // only when replayed on reattach.
                     if let Ok(mut sb) = reader_scrollback.lock() {
                         sb.extend_from_slice(&buf[..n]);
                         if sb.len() > MAX_SCROLLBACK {
@@ -128,8 +136,24 @@ pub fn terminal_open(
                         }
                     }
 
-                    let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
-                    let _ = reader_app.emit(&data_event, chunk);
+                    carry.extend_from_slice(&buf[..n]);
+                    // Emit the longest valid UTF-8 prefix; keep only a genuinely
+                    // incomplete trailing sequence for the next read. Invalid
+                    // bytes mid-stream are flushed lossily so the stream can't
+                    // wedge.
+                    let emit_upto = match std::str::from_utf8(&carry) {
+                        Ok(_) => carry.len(),
+                        Err(e) => match e.error_len() {
+                            None => e.valid_up_to(),
+                            Some(_) => carry.len(),
+                        },
+                    };
+
+                    if emit_upto > 0 {
+                        let chunk = String::from_utf8_lossy(&carry[..emit_upto]).to_string();
+                        carry.drain(0..emit_upto);
+                        let _ = reader_app.emit(&data_event, chunk);
+                    }
                 }
                 Err(_) => break,
             }
