@@ -17,8 +17,13 @@ The backend is **complete and tested** (full suite green, 423). Built in order 0
 | 3a — provenance gate (Commands layer) | ✅ done | `fe6ad9b` |
 | 3b — per-run provenance wiring (3rd token → ApiAuth → Dispatcher) | ✅ done | `823b639` |
 | 2 — budget governor (per-shift run cap + run timeout) | ✅ done | `6ce28b3` |
-| 4 — operator surface + weekly value report | ⬜ next | — |
+| 4 — operator surface: start/stop unattended + kill switch | ✅ done | `0850a35` |
+| 4c — approvals queue UI + weekly value report | ⬜ partial-todo | — |
 | 5 — always-on packaging (launchd headless boot) | ⬜ todo | — |
+
+**Unattended is now usable end-to-end:** `./buster-claw run shift_start --json '{"unattended":true}'` or the home-page **Unattended Shift** panel (start/stop, live counts, kill switch). The Dispatcher then works the queue with headless runs.
+
+**4c note — the approvals UI is premature.** Because untrusted mail is never enqueued (see finding above), the gated-action pending queue is empty in practice today, and `Sentinel.Pending` is still in-memory + record-only (no approve-executes). Building approval UI for an empty queue is wasted effort until a source actually enqueues untrusted items. The **weekly value report** half of 4c is real and worth doing (reads existing dispatch/Sentinel history).
 
 **Finding that reshaped Phase 3** (see `gmail_sync.ex:174`): untrusted mail is **never enqueued** — only trusted-sender mail reaches the queue. So the stranger-mail threat is already blocked *upstream*; the provenance gate is **fail-safe defense-in-depth** for any future/other source that queues an untrusted item (the `trusted` field defaults to `false`, so such an item is auto-gated). The unaddressed residual risk is injected content *inside trusted-sender mail* — out of scope here.
 
