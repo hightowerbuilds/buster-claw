@@ -18,6 +18,7 @@ defmodule BusterClaw.Orchestration.Shift do
     field :done_count, :integer, default: 0
     field :failed_count, :integer, default: 0
     field :stopped_reason, :string
+    field :unattended, :boolean, default: false
 
     timestamps(type: :utc_datetime)
   end
@@ -35,7 +36,8 @@ defmodule BusterClaw.Orchestration.Shift do
       :dispatched_count,
       :done_count,
       :failed_count,
-      :stopped_reason
+      :stopped_reason,
+      :unattended
     ])
     |> validate_required([:started_at, :status, :job_key, :job_name])
     |> validate_inclusion(:status, @statuses)

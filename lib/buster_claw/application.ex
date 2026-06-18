@@ -32,6 +32,7 @@ defmodule BusterClaw.Application do
         browser_sidecar_child(),
         orchestrator_child(),
         uptime_child(),
+        dispatcher_child(),
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
       ]
@@ -120,6 +121,14 @@ defmodule BusterClaw.Application do
   defp uptime_child do
     if Application.get_env(:buster_claw, :orchestrator_enabled, true) do
       BusterClaw.Orchestration.Uptime
+    end
+  end
+
+  # The unattended work pump. Gated separately from the orchestrator so it can be
+  # disabled on its own; off in tests (they drive a Dispatcher instance directly).
+  defp dispatcher_child do
+    if Application.get_env(:buster_claw, :dispatcher_enabled, true) do
+      BusterClaw.Dispatcher
     end
   end
 end

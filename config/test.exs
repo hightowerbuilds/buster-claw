@@ -23,6 +23,9 @@ config :buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHT
 config :buster_claw, :api_token, "test-token-loopback-only"
 config :buster_claw, :mcp_api_token, "test-mcp-token-safe-tier-only"
 config :buster_claw, :orchestrator_enabled, false
+# The unattended work pump is off in tests; the Dispatcher suite starts its own
+# instance with a stub runner and drives it via tick_now/1.
+config :buster_claw, :dispatcher_enabled, false
 # The projector writes into the workspace on every dispatch event; off by default
 # in tests so unrelated dispatch tests don't write files. Projector tests start it
 # explicitly against a tmp workspace.

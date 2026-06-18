@@ -101,7 +101,8 @@ defmodule BusterClaw.Orchestration do
       job_name: present(opt(opts, :job_name)) || job.name,
       job_description: present(opt(opts, :job_description)) || job.description,
       agent_name: present(opt(opts, :agent_name) || opt(opts, :agent)),
-      shell: present(opt(opts, :shell)) || job.shell
+      shell: present(opt(opts, :shell)) || job.shell,
+      unattended: opt(opts, :unattended) == true
     }
   end
 
