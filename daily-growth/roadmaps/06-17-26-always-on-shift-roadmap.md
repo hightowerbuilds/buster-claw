@@ -6,6 +6,26 @@
 
 ---
 
+## Build status (2026-06-17)
+
+The backend is **complete and tested** (full suite green, 423). Built in order 0 → 1 → 3 → 2:
+
+| Phase | Status | Commit |
+|---|---|---|
+| 0 — `AgentRunner` headless run primitive | ✅ done | `51c01f7` |
+| 1 — `Dispatcher` work-pump | ✅ done | `c973ae7` |
+| 3a — provenance gate (Commands layer) | ✅ done | `fe6ad9b` |
+| 3b — per-run provenance wiring (3rd token → ApiAuth → Dispatcher) | ✅ done | `823b639` |
+| 2 — budget governor (per-shift run cap + run timeout) | ✅ done | `6ce28b3` |
+| 4 — operator surface + weekly value report | ⬜ next | — |
+| 5 — always-on packaging (launchd headless boot) | ⬜ todo | — |
+
+**Finding that reshaped Phase 3** (see `gmail_sync.ex:174`): untrusted mail is **never enqueued** — only trusted-sender mail reaches the queue. So the stranger-mail threat is already blocked *upstream*; the provenance gate is **fail-safe defense-in-depth** for any future/other source that queues an untrusted item (the `trusted` field defaults to `false`, so such an item is auto-gated). The unaddressed residual risk is injected content *inside trusted-sender mail* — out of scope here.
+
+**Not yet usable end-to-end:** there is no way to *start* an unattended shift except programmatically (`Orchestration.start_shift(unattended: true)`). Exposing that (CLI verb + UI toggle) is Phase 4. The Dispatcher ships enabled but is inert until an unattended shift exists.
+
+---
+
 ## The thesis (settled in discussion)
 
 Going headless does **not** remove the in-terminal workaround. The workaround is *"BusterClaw ships no LLM and runs your agent on your subscription."* That survives — we're only **automating the launch** of the same agent. The in-terminal session was quietly doing two jobs; we keep one and replace the other:
