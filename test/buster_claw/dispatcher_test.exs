@@ -71,6 +71,17 @@ defmodule BusterClaw.DispatcherTest do
 
   defp reload_shift(id), do: BusterClaw.Repo.get!(Orchestration.Shift, id)
 
+  defp capturing_runner(test_pid) do
+    fn _prompt, opts ->
+      send(test_pid, {:opts, opts})
+      {:ok, %{agent: :stub, exit_status: 0, output: "", duration_ms: 1}}
+    end
+  end
+
+  defp env_token(opts) do
+    opts |> Keyword.get(:env, []) |> Map.new() |> Map.get("BUSTER_CLAW_API_TOKEN")
+  end
+
   test "runs and counts a clean outcome when an unattended shift has queued work" do
     {:ok, shift} = Orchestration.start_shift(unattended: true, job_key: "dispatcher")
     enqueue!()
@@ -155,7 +166,7 @@ defmodule BusterClaw.DispatcherTest do
   end
 
   test "serializes — a second tick does not start a second run while one is in flight" do
-    {:ok, _shift} = Orchestration.start_shift(unattended: true)
+    {:ok, shift} = Orchestration.start_shift(unattended: true)
     enqueue!()
     enqueue!()
     test_pid = self()
@@ -181,5 +192,34 @@ defmodule BusterClaw.DispatcherTest do
     refute_receive {:ran, _other}, 200
 
     send(run_pid, :release)
+    # Let the released run's completion write settle before teardown.
+    wait_until(fn -> reload_shift(shift.id).done_count == 1 end)
+  end
+
+  describe "provenance → token" do
+    test "a trusted-only queue runs with the full (trusted) token" do
+      {:ok, shift} = Orchestration.start_shift(unattended: true)
+      enqueue!(%{trusted: true})
+      server = start_dispatcher!(capturing_runner(self()))
+
+      Dispatcher.tick_now(server)
+
+      assert_receive {:opts, opts}, 1_000
+      assert env_token(opts) == BusterClaw.ApiToken.value()
+      # Let the run's completion write settle before teardown.
+      wait_until(fn -> reload_shift(shift.id).done_count == 1 end)
+    end
+
+    test "any untrusted item makes the run use the agent (untrusted) token" do
+      {:ok, shift} = Orchestration.start_shift(unattended: true)
+      enqueue!(%{trusted: false})
+      server = start_dispatcher!(capturing_runner(self()))
+
+      Dispatcher.tick_now(server)
+
+      assert_receive {:opts, opts}, 1_000
+      assert env_token(opts) == BusterClaw.ApiToken.agent_value()
+      wait_until(fn -> reload_shift(shift.id).done_count == 1 end)
+    end
   end
 end

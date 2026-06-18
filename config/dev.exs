@@ -92,3 +92,8 @@ config :buster_claw, :api_token, "dev-token-loopback-only"
 # Scoped MCP token: authenticates as the `:mcp` caller, which is restricted to
 # safe-tier commands. Hand this (not the full token) to external MCP agents.
 config :buster_claw, :mcp_api_token, "dev-mcp-token-safe-tier-only"
+
+# Agent-untrusted token: authenticates as the `:agent_untrusted` caller, handed
+# by the Dispatcher to a headless run working untrusted-origin content (refused
+# the gated outbound/irreversible commands).
+config :buster_claw, :agent_api_token, "dev-agent-token-untrusted-provenance"

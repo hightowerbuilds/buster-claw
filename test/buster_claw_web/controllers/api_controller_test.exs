@@ -47,6 +47,31 @@ defmodule BusterClawWeb.ApiControllerTest do
     end
   end
 
+  describe "POST /api/run — agent-untrusted provenance token" do
+    @agent_token "test-agent-token-untrusted-provenance"
+
+    test "is refused a gated command (gmail_send) with 403", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer #{@agent_token}")
+        |> post(~p"/api/run", %{
+          "command" => "gmail_send",
+          "args" => %{"subject" => "x", "body" => "y", "confirm_send" => true}
+        })
+
+      assert %{"ok" => false, "error" => "requires_confirmation"} = json_response(conn, 403)
+    end
+
+    test "may run a non-gated command", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer #{@agent_token}")
+        |> post(~p"/api/run", %{"command" => "event_list"})
+
+      assert %{"ok" => true, "result" => []} = json_response(conn, 200)
+    end
+  end
+
   describe "POST /api/run — dispatch" do
     test "returns 404 for unknown commands", %{conn: conn} do
       conn = authed(conn) |> post(~p"/api/run", %{"command" => "no_such_cmd"})

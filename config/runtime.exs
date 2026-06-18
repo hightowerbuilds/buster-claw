@@ -143,6 +143,10 @@ if config_env() == :prod do
     config :buster_claw, :mcp_api_token, mcp_token
   end
 
+  if agent_token = System.get_env("BUSTER_CLAW_AGENT_API_TOKEN") do
+    config :buster_claw, :agent_api_token, agent_token
+  end
+
   port = String.to_integer(System.get_env("PORT") || "4000")
 
   config :buster_claw, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")

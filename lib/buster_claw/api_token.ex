@@ -47,6 +47,23 @@ defmodule BusterClaw.ApiToken do
     end
   end
 
+  @doc """
+  Return the agent-untrusted provenance token, loading it on first access.
+
+  A *distinct* token the Dispatcher hands a headless run whose work originates
+  from untrusted content. It authenticates as the `:agent_untrusted` caller,
+  which `BusterClaw.Commands.call/3` allows to do a lot but refuses the `gated`
+  (outbound/irreversible) commands. Generated and stored next to the full token
+  (`agent_token`) in production; preset via `config :buster_claw, :agent_api_token`
+  in dev/test.
+  """
+  def agent_value do
+    case Application.get_env(@app, :agent_api_token) do
+      nil -> initialize_agent()
+      token when is_binary(token) -> token
+    end
+  end
+
   defp initialize do
     token = load_or_generate(token_path())
     Application.put_env(@app, :api_token, token)
@@ -56,6 +73,12 @@ defmodule BusterClaw.ApiToken do
   defp initialize_mcp do
     token = load_or_generate(mcp_token_path())
     Application.put_env(@app, :mcp_api_token, token)
+    token
+  end
+
+  defp initialize_agent do
+    token = load_or_generate(agent_token_path())
+    Application.put_env(@app, :agent_api_token, token)
     token
   end
 
@@ -88,6 +111,13 @@ defmodule BusterClaw.ApiToken do
   defp mcp_token_path do
     case Application.get_env(@app, :mcp_api_token_path) do
       nil -> Path.join(Path.dirname(token_path()), "mcp_token")
+      path when is_binary(path) -> path
+    end
+  end
+
+  defp agent_token_path do
+    case Application.get_env(@app, :agent_api_token_path) do
+      nil -> Path.join(Path.dirname(token_path()), "agent_token")
       path when is_binary(path) -> path
     end
   end

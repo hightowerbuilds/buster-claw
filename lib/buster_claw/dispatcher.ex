@@ -79,13 +79,14 @@ defmodule BusterClaw.Dispatcher do
   def handle_info({:dispatch, _event, _item}, state), do: {:noreply, state}
 
   # The run process reported its outcome (tagged with its own pid).
-  def handle_info({:run_done, pid, shift, result}, %{running_pid: pid} = state) do
-    record_outcome(shift, result)
+  def handle_info({:run_done, pid, shift, provenance, result}, %{running_pid: pid} = state) do
+    record_outcome(shift, provenance, result)
     if state.running_ref, do: Process.demonitor(state.running_ref, [:flush])
     {:noreply, %{state | running_ref: nil, running_pid: nil, last_finished_ms: now_ms()}}
   end
 
-  def handle_info({:run_done, _stale_pid, _shift, _result}, state), do: {:noreply, state}
+  def handle_info({:run_done, _stale_pid, _shift, _provenance, _result}, state),
+    do: {:noreply, state}
 
   # The run process died without reporting (crash). Reset so the pump recovers;
   # any item it had claimed is reclaimed on the next boot via reclaim_orphans/0.
@@ -125,8 +126,9 @@ defmodule BusterClaw.Dispatcher do
   defp start_run(state, shift) do
     Orchestration.bump_shift(shift, :dispatched)
 
+    provenance = queue_provenance()
     prompt = work_prompt(shift, state.batch)
-    run_opts = run_opts(state)
+    run_opts = run_opts(state, provenance)
     runner = state.runner
     parent = self()
 
@@ -136,14 +138,38 @@ defmodule BusterClaw.Dispatcher do
     {pid, ref} =
       spawn_monitor(fn ->
         result = runner.(prompt, run_opts)
-        send(parent, {:run_done, self(), shift, result})
+        send(parent, {:run_done, self(), shift, provenance, result})
       end)
 
     %{state | running_ref: ref, running_pid: pid}
   end
 
-  defp run_opts(%{run_timeout_ms: nil}), do: []
-  defp run_opts(%{run_timeout_ms: ms}), do: [timeout_ms: ms]
+  # Fail-closed: if ANY open item is untrusted, the whole run is untrusted-
+  # provenance and gets the agent token, so its gated (outbound/irreversible)
+  # actions are held. This can over-restrict a trusted item worked in the same
+  # run, which is the safe direction; per-item provenance binding is a future
+  # refinement. Today the gmail path only enqueues trusted mail, so runs are
+  # trusted unless some other source queues an untrusted item.
+  defp queue_provenance do
+    if Enum.any?(Dispatch.list_queued(limit: 50), &(&1.trusted != true)),
+      do: :untrusted,
+      else: :trusted
+  end
+
+  # The run's `./buster-claw` CLI reads BUSTER_CLAW_API_TOKEN first (cli.ex), so
+  # the token we set here is what ApiAuth classifies the run's calls as.
+  defp run_opts(state, provenance) do
+    timeout =
+      case state.run_timeout_ms do
+        nil -> []
+        ms -> [timeout_ms: ms]
+      end
+
+    [env: [{"BUSTER_CLAW_API_TOKEN", token_for(provenance)}]] ++ timeout
+  end
+
+  defp token_for(:untrusted), do: BusterClaw.ApiToken.agent_value()
+  defp token_for(:trusted), do: BusterClaw.ApiToken.value()
 
   defp work_prompt(%Shift{} = shift, batch) do
     """
@@ -164,35 +190,43 @@ defmodule BusterClaw.Dispatcher do
     """
   end
 
-  defp record_outcome(%Shift{} = shift, {:ok, %{exit_status: 0} = run}) do
+  defp record_outcome(%Shift{} = shift, provenance, {:ok, %{exit_status: 0} = run}) do
     Orchestration.bump_shift(shift, :done)
 
     Sentinel.observe(:command_invoke, "Unattended agent run completed", %{
       shift_id: shift.id,
+      provenance: provenance,
       agent: run.agent,
       exit_status: 0,
       duration_ms: run.duration_ms
     })
   end
 
-  defp record_outcome(%Shift{} = shift, {:ok, run}) do
+  defp record_outcome(%Shift{} = shift, provenance, {:ok, run}) do
     Orchestration.bump_shift(shift, :failed)
 
     Sentinel.observe(
       :command_invoke,
       "Unattended agent run exited non-zero (#{run.exit_status})",
-      %{shift_id: shift.id, agent: run.agent, exit_status: run.exit_status},
+      %{
+        shift_id: shift.id,
+        provenance: provenance,
+        agent: run.agent,
+        exit_status: run.exit_status
+      },
       severity: :warning
     )
   end
 
-  defp record_outcome(%Shift{} = shift, {:error, reason}) do
+  defp record_outcome(%Shift{} = shift, provenance, {:error, reason}) do
     Orchestration.bump_shift(shift, :failed)
 
     Sentinel.observe(
       :command_invoke,
       "Unattended agent run failed",
-      %{shift_id: shift.id, reason: inspect(reason)}, severity: :warning)
+      %{shift_id: shift.id, provenance: provenance, reason: inspect(reason)},
+      severity: :warning
+    )
   end
 
   defp configured(key, default), do: Application.get_env(:buster_claw, key, default)

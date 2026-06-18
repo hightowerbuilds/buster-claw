@@ -11,7 +11,9 @@ defmodule BusterClaw.Application do
   @dev_token_sentinels [
     "dev-token-loopback-only",
     "dev-mcp-token-safe-tier-only",
-    "test-token-loopback-only"
+    "dev-agent-token-untrusted-provenance",
+    "test-token-loopback-only",
+    "test-agent-token-untrusted-provenance"
   ]
 
   @impl true
@@ -83,7 +85,8 @@ defmodule BusterClaw.Application do
       configured =
         [
           Application.get_env(:buster_claw, :api_token),
-          Application.get_env(:buster_claw, :mcp_api_token)
+          Application.get_env(:buster_claw, :mcp_api_token),
+          Application.get_env(:buster_claw, :agent_api_token)
         ]
         |> Enum.filter(&is_binary/1)
 

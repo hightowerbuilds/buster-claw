@@ -8,6 +8,10 @@ defmodule BusterClawWeb.ApiAuth do
   - the scoped MCP token (`BusterClaw.ApiToken.mcp_value/0`) → `:mcp`
     (handed to external agents; may only run safe-tier commands, enforced
     centrally in `BusterClaw.Commands.call/3`)
+  - the agent-untrusted token (`BusterClaw.ApiToken.agent_value/0`) →
+    `:agent_untrusted` (handed by the Dispatcher to a headless run working
+    untrusted-origin content; may do a lot but is refused the `gated`
+    outbound/irreversible commands)
 
   The trust boundary is therefore *token-derived*, not route-derived: an agent
   holding only the MCP token is restricted on every route, including `/api/run`.
@@ -37,9 +41,17 @@ defmodule BusterClawWeb.ApiAuth do
   # wins if (mis)configured to equal the MCP token.
   defp classify(token) do
     cond do
-      Plug.Crypto.secure_compare(token, BusterClaw.ApiToken.value()) -> {:ok, :trusted}
-      Plug.Crypto.secure_compare(token, BusterClaw.ApiToken.mcp_value()) -> {:ok, :mcp}
-      true -> :error
+      Plug.Crypto.secure_compare(token, BusterClaw.ApiToken.value()) ->
+        {:ok, :trusted}
+
+      Plug.Crypto.secure_compare(token, BusterClaw.ApiToken.agent_value()) ->
+        {:ok, :agent_untrusted}
+
+      Plug.Crypto.secure_compare(token, BusterClaw.ApiToken.mcp_value()) ->
+        {:ok, :mcp}
+
+      true ->
+        :error
     end
   end
 end
