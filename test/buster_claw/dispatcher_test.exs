@@ -196,6 +196,34 @@ defmodule BusterClaw.DispatcherTest do
     wait_until(fn -> reload_shift(shift.id).done_count == 1 end)
   end
 
+  describe "budget governor" do
+    test "stops the shift when the per-shift run cap is reached (and does not run)" do
+      {:ok, shift} = Orchestration.start_shift(unattended: true)
+      enqueue!()
+      # cap 0: the very first eligible tick is already over budget.
+      server = start_dispatcher!(stub_runner(self()), max_runs_per_shift: 0)
+
+      Dispatcher.tick_now(server)
+      flush(server)
+
+      refute_receive {:ran, _pid}, 200
+      assert reload_shift(shift.id).status == "stopped"
+      refute Orchestration.shift_active?()
+    end
+
+    test "runs normally while under the cap" do
+      {:ok, shift} = Orchestration.start_shift(unattended: true)
+      enqueue!()
+      server = start_dispatcher!(stub_runner(self()), max_runs_per_shift: 5)
+
+      Dispatcher.tick_now(server)
+
+      assert_receive {:ran, _pid}, 1_000
+      wait_until(fn -> reload_shift(shift.id).done_count == 1 end)
+      assert reload_shift(shift.id).status == "active"
+    end
+  end
+
   describe "provenance → token" do
     test "a trusted-only queue runs with the full (trusted) token" do
       {:ok, shift} = Orchestration.start_shift(unattended: true)

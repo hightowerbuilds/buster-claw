@@ -18,6 +18,10 @@ config :buster_claw,
   dispatcher_tick_ms: 15_000,
   dispatcher_cooldown_ms: 10_000,
   dispatcher_batch: 5,
+  # Budget governor: a per-shift run cap (reaching it stops the shift) and a
+  # per-run wall-clock cap, so an unattended daemon can't burn tokens unbounded.
+  dispatcher_max_runs_per_shift: 50,
+  dispatcher_run_timeout_ms: 600_000,
   orchestrator_tick_ms: 30_000,
   orchestrator_max_concurrent: 3,
   # Crash-loop / rate brakes for the unattended shift.

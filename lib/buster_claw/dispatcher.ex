@@ -14,8 +14,11 @@ defmodule BusterClaw.Dispatcher do
   - **Serialized.** At most one run is in flight; new triggers while a run is
     running are ignored.
   - **Cooldown.** A minimum gap between runs stops a tight token-burning loop
-    when a run can't drain the queue (e.g. every item is blocked). The Phase 2
-    budget governor replaces this with real per-shift caps.
+    when a run can't drain the queue (e.g. every item is blocked).
+  - **Budget governor.** A per-shift run cap and a per-run wall-clock cap replace
+    the human as a rate limiter. Reaching the run cap *stops the shift* (with a
+    Sentinel `:security_block`), so it halts cleanly for the operator to restart
+    rather than burning tokens unbounded.
   - **Event- and tick-driven.** It reacts to `:dispatch_item_queued` for low
     latency and also ticks periodically as a backstop.
   - **Crash-safe.** A run runs in a monitored process; if it dies the pump resets
@@ -35,6 +38,8 @@ defmodule BusterClaw.Dispatcher do
   @default_interval_ms 15_000
   @default_cooldown_ms 10_000
   @default_batch 5
+  @default_max_runs_per_shift 50
+  @default_run_timeout_ms 10 * 60 * 1000
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
@@ -53,8 +58,18 @@ defmodule BusterClaw.Dispatcher do
       cooldown_ms:
         Keyword.get(opts, :cooldown_ms, configured(:dispatcher_cooldown_ms, @default_cooldown_ms)),
       batch: Keyword.get(opts, :batch, configured(:dispatcher_batch, @default_batch)),
+      max_runs_per_shift:
+        Keyword.get(
+          opts,
+          :max_runs_per_shift,
+          configured(:dispatcher_max_runs_per_shift, @default_max_runs_per_shift)
+        ),
       run_timeout_ms:
-        Keyword.get(opts, :run_timeout_ms, configured(:dispatcher_run_timeout_ms, nil)),
+        Keyword.get(
+          opts,
+          :run_timeout_ms,
+          configured(:dispatcher_run_timeout_ms, @default_run_timeout_ms)
+        ),
       runner: Keyword.get(opts, :runner, &BusterClaw.AgentRunner.run/2),
       running_ref: nil,
       running_pid: nil,
@@ -105,7 +120,12 @@ defmodule BusterClaw.Dispatcher do
          %Shift{unattended: true} = shift <- Orchestration.active_shift(),
          false <- Orchestration.kill_switch_engaged?(),
          [_ | _] <- Dispatch.list_queued(limit: 1) do
-      start_run(state, shift)
+      if within_budget?(shift, state) do
+        start_run(state, shift)
+      else
+        trip_budget_brake(shift, state)
+        state
+      end
     else
       _ -> state
     end
@@ -113,6 +133,25 @@ defmodule BusterClaw.Dispatcher do
     error ->
       Logger.error("Dispatcher decision failed: #{Exception.message(error)}")
       state
+  end
+
+  # The budget governor — replaces the human as a rate limiter so a daemon can't
+  # quietly burn tokens. A per-shift run cap (runs are counted in
+  # `dispatched_count`); the per-run wall-clock cap lives in `run_timeout_ms`.
+  # On breach we stop the shift outright (like the Orchestrator crash-loop brake)
+  # rather than just skipping, so it halts cleanly for the operator to restart.
+  defp within_budget?(%Shift{dispatched_count: runs}, %{max_runs_per_shift: cap}), do: runs < cap
+
+  defp trip_budget_brake(%Shift{} = shift, %{max_runs_per_shift: cap}) do
+    Logger.warning("Dispatcher budget cap reached (#{cap} runs); stopping shift #{shift.id}")
+    Orchestration.stop_shift("budget: run cap (#{cap})")
+
+    Sentinel.observe(
+      :security_block,
+      "Unattended shift stopped: run-cap budget reached (#{cap})",
+      %{shift_id: shift.id, max_runs_per_shift: cap, dispatched: shift.dispatched_count},
+      severity: :warning
+    )
   end
 
   defp idle?(%{running_ref: nil}), do: true
