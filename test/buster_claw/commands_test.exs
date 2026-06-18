@@ -127,6 +127,57 @@ defmodule BusterClaw.CommandsTest do
       end
     end
 
+    test "command_gated?/1 marks the outbound/irreversible commands" do
+      for name <- ~w(gmail_send document_delete event_delete integration_delete) do
+        assert Commands.command_gated?(name), "expected #{name} to be gated"
+      end
+
+      for name <- ~w(gmail_draft_create document_save event_create document_list runtime_status) do
+        refute Commands.command_gated?(name), "did not expect #{name} to be gated"
+      end
+    end
+
+    test ":agent_untrusted runs non-gated restricted commands autonomously" do
+      # A draft/save/calendar edit on untrusted-origin work is allowed without
+      # asking — only the gated set surfaces for approval.
+      assert {:ok, _} =
+               Commands.call(
+                 "event_create",
+                 %{"event_id" => "e-untrusted-ok", "date" => "2026-06-14", "title" => "ok"},
+                 caller: :agent_untrusted
+               )
+    end
+
+    test ":agent_untrusted is refused a gated command and it does NOT execute" do
+      {:ok, event} =
+        Commands.call(
+          "event_create",
+          %{"event_id" => "e-keep", "date" => "2026-06-14", "title" => "keep me"},
+          caller: :trusted
+        )
+
+      assert {:error, :requires_confirmation} =
+               Commands.call("event_delete", %{"id" => event.id}, caller: :agent_untrusted)
+
+      # Still there: the gated delete was refused before execution.
+      assert {:ok, _} = Commands.call("event_get", %{"id" => event.id})
+    end
+
+    test "EVERY gated command is refused for :agent_untrusted" do
+      for %{name: name} = entry <- Commands.list_commands(), Map.get(entry, :gated) do
+        assert {:error, :requires_confirmation} =
+                 Commands.call(name, %{}, caller: :agent_untrusted),
+               "expected gated command #{name} to be refused for :agent_untrusted"
+      end
+    end
+
+    test "a trusted caller bypasses the gate (a gated command reaches dispatch)" do
+      # Not refused: it runs and fails on its own terms (no such event), proving
+      # the gate does not apply to trusted callers.
+      assert {:error, :not_found} =
+               Commands.call("event_delete", %{"id" => 999_999}, caller: :trusted)
+    end
+
     test "safe_commands/0 and command_tier/1 agree with the catalog" do
       assert Enum.all?(Commands.safe_commands(), &(&1.tier == :safe))
       assert Commands.command_tier("event_list") == :safe

@@ -57,8 +57,18 @@ defmodule BusterClaw.Commands do
   defp get_entry(name, desc),
     do: %{name: name, type: :read, tier: :safe, description: desc, args: @id_required}
 
+  # Deletes are irreversible, so they are `gated`: an autonomous run working
+  # untrusted-origin content (`:agent_untrusted`) cannot fire them — they surface
+  # for human approval instead. See `command_gated?/1` and `authorize/2`.
   defp delete_entry(name, desc),
-    do: %{name: name, type: :mutate, tier: :restricted, description: desc, args: @id_required}
+    do: %{
+      name: name,
+      type: :mutate,
+      tier: :restricted,
+      gated: true,
+      description: desc,
+      args: @id_required
+    }
 
   defp id_trigger_entry(name, desc, tier),
     do: %{name: name, type: :trigger, tier: tier, description: desc, args: @id_required}
@@ -272,6 +282,7 @@ defmodule BusterClaw.Commands do
         name: "gmail_send",
         type: :mutate,
         tier: :restricted,
+        gated: true,
         description: "Send a Gmail message from a connected Google Workspace account.",
         args: %{
           "account_id" => %{type: :integer, required: false},
@@ -536,12 +547,16 @@ defmodule BusterClaw.Commands do
   Dispatch a command by string name with the given args. Returns
   `{:error, :unknown_command}` if the name is not in the catalog.
 
-  Accepts an optional `:caller` (`:trusted | :agent | :mcp`, default
-  `:trusted`). Untrusted callers (`:agent`, `:mcp`) may only run `:safe`-tier
-  commands; a `:restricted` command is refused with
-  `{:error, :requires_confirmation}`, recorded via `Sentinel.Pending`, and is
-  NOT executed. Internal callers and the user's own `/api/run` default to
-  `:trusted` and are unaffected.
+  Accepts an optional `:caller` (`:trusted | :agent_untrusted | :agent | :mcp`,
+  default `:trusted`):
+
+  - `:trusted` — internal callers and the user's own CLI/`/api/run`; runs anything.
+  - `:agent_untrusted` — an autonomous run working untrusted-origin content; runs
+    anything EXCEPT the `gated` (outbound/irreversible) set, which is refused.
+  - `:agent` / `:mcp` — may only run `:safe`-tier commands.
+
+  A refused command returns `{:error, :requires_confirmation}`, is recorded via
+  `Sentinel.Pending`, and is NOT executed.
   """
   def call(name, args \\ %{}, opts \\ []) when is_binary(name) do
     caller = Keyword.get(opts, :caller, :trusted)
@@ -642,12 +657,29 @@ defmodule BusterClaw.Commands do
     end
   end
 
+  @doc """
+  Whether a command is `gated` — an outbound or irreversible action (`gmail_send`
+  and the `*_delete` commands). An autonomous run working *untrusted-origin*
+  content (`caller: :agent_untrusted`) may not fire these; they are refused and
+  surfaced for human approval. Trusted callers are unaffected.
+  """
+  def command_gated?(name), do: match?(%{gated: true}, Map.get(by_name(), name))
+
   defp dispatch(name, args) do
     if has_command?(name) do
       apply(__MODULE__, String.to_existing_atom(name), [normalize_args(args)])
     else
       {:error, :unknown_command}
     end
+  end
+
+  # An autonomous run working untrusted-origin content is trusted enough to do a
+  # lot without asking (drafts, saves, calendar edits, the dispatch verbs) — it is
+  # only stopped from the `gated` set (outbound/irreversible), which surfaces for
+  # human approval. This is the one guardrail kept for the "agent does a lot
+  # without asking" model: untrusted input must not autonomously send or delete.
+  defp authorize(name, :agent_untrusted) do
+    if command_gated?(name), do: {:error, :requires_confirmation}, else: :ok
   end
 
   # Untrusted callers (chat agent / MCP) may only run safe-tier commands.
