@@ -130,6 +130,59 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert html =~ "No trusted contacts yet."
   end
 
+  describe "unattended shift panel" do
+    test "renders with no shift running and a start control", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ ~s(id="home-shift")
+      assert html =~ "Unattended Shift"
+      assert html =~ "No shift running."
+      assert html =~ ~s(phx-click="start_unattended_shift")
+    end
+
+    test "starts and stops an unattended shift from the panel", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      html =
+        view
+        |> element(~s(button[phx-click="start_unattended_shift"]))
+        |> render_click()
+
+      assert html =~ "Unattended shift"
+      assert html =~ ~s(phx-click="stop_shift")
+      assert BusterClaw.Orchestration.active_shift().unattended == true
+
+      html =
+        view
+        |> element(~s(button[phx-click="stop_shift"]))
+        |> render_click()
+
+      assert html =~ "No shift running."
+      refute BusterClaw.Orchestration.shift_active?()
+    end
+
+    test "engages and clears the kill switch from the panel", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/")
+      assert html =~ "clear"
+
+      html =
+        view
+        |> element(~s(button[phx-click="engage_kill_switch"]))
+        |> render_click()
+
+      assert html =~ "ENGAGED"
+      assert BusterClaw.Orchestration.kill_switch_engaged?()
+
+      html =
+        view
+        |> element(~s(button[phx-click="clear_kill_switch"]))
+        |> render_click()
+
+      refute html =~ "ENGAGED"
+      refute BusterClaw.Orchestration.kill_switch_engaged?()
+    end
+  end
+
   test "GET / uses the app-local date for the daily calendar", %{conn: conn} do
     previous = Application.get_env(:buster_claw, :local_today)
     Application.put_env(:buster_claw, :local_today, ~D[2026-05-26])

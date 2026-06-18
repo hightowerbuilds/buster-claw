@@ -263,6 +263,20 @@ defmodule BusterClaw.CommandsTest do
     end
   end
 
+  describe "unattended shift" do
+    test "shift_start defaults to attended; shift_status reflects it" do
+      assert {:ok, %{unattended: false}} = Commands.shift_start(%{"job" => "lookout"})
+      assert {:ok, %{active: true, unattended: false}} = Commands.shift_status(%{})
+    end
+
+    test "shift_start with unattended: true starts an unattended shift" do
+      assert {:ok, %{unattended: true}} =
+               Commands.shift_start(%{"job" => "dispatcher", "unattended" => true})
+
+      assert {:ok, %{active: true, unattended: true}} = Commands.shift_status(%{})
+    end
+  end
+
   describe "calendar events" do
     test "create + get + delete" do
       assert {:ok, event} =

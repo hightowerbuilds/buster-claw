@@ -388,11 +388,17 @@ defmodule BusterClaw.Commands do
         type: :trigger,
         tier: :safe,
         description:
-          "Start an unattended orchestration shift (runs until stopped) with job/agent assignment metadata.",
+          "Start an orchestration shift (runs until stopped) with job/agent assignment metadata. Set `unattended` to let the Dispatcher work the queue with headless agent runs (no human in the terminal).",
         args: %{
           "job" => %{type: :string, required: false, default: "lookout"},
           "agent_name" => %{type: :string, required: false},
-          "shell" => %{type: :string, required: false}
+          "shell" => %{type: :string, required: false},
+          "unattended" => %{
+            type: :boolean,
+            required: false,
+            default: false,
+            description: "Let the Dispatcher drive headless agent runs against the queue."
+          }
         }
       },
       %{
@@ -959,6 +965,7 @@ defmodule BusterClaw.Commands do
            job_description: shift.job_description,
            agent_name: shift.agent_name,
            shell: shift.shell,
+           unattended: shift.unattended,
            started_at: shift.started_at,
            dispatched: shift.dispatched_count,
            done: shift.done_count,
@@ -980,6 +987,7 @@ defmodule BusterClaw.Commands do
            job_name: shift.job_name,
            agent_name: shift.agent_name,
            shell: shift.shell,
+           unattended: shift.unattended,
            started_at: shift.started_at
          }}
 

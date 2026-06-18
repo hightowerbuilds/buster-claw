@@ -3,6 +3,7 @@ defmodule BusterClawWeb.StatusLive do
 
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.LocalTime
+  alias BusterClaw.Orchestration
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
   alias BusterClaw.TrustedSenders
@@ -11,6 +12,8 @@ defmodule BusterClawWeb.StatusLive do
   def mount(_params, _session, socket) do
     today = LocalTime.today()
 
+    if connected?(socket), do: Orchestration.subscribe()
+
     {:ok,
      socket
      |> assign(:page_title, "Home")
@@ -18,7 +21,14 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
      |> assign(:trusted_contacts, TrustedSenders.list_entries())
+     |> assign_shift()
      |> load_daily_events()}
+  end
+
+  defp assign_shift(socket) do
+    socket
+    |> assign(:shift, Orchestration.active_shift())
+    |> assign(:kill_switch, Orchestration.kill_switch_engaged?())
   end
 
   @impl true
@@ -37,6 +47,42 @@ defmodule BusterClawWeb.StatusLive do
     TrustedSenders.remove_entry(entry)
     {:noreply, assign(socket, :trusted_contacts, TrustedSenders.list_entries())}
   end
+
+  def handle_event("start_unattended_shift", _params, socket) do
+    case Orchestration.start_shift(unattended: true, job_key: "dispatcher") do
+      {:ok, _shift} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Unattended shift started — the Dispatcher will work the queue.")
+         |> assign_shift()}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not start the shift.")}
+    end
+  end
+
+  def handle_event("stop_shift", _params, socket) do
+    Orchestration.stop_shift("stopped from home")
+    {:noreply, socket |> put_flash(:info, "Shift stopped.") |> assign_shift()}
+  end
+
+  def handle_event("engage_kill_switch", _params, socket) do
+    Orchestration.engage_kill_switch()
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "Kill switch engaged — the active shift will halt.")
+     |> assign_shift()}
+  end
+
+  def handle_event("clear_kill_switch", _params, socket) do
+    Orchestration.clear_kill_switch()
+    {:noreply, assign_shift(socket)}
+  end
+
+  @impl true
+  def handle_info({:orchestration, _event}, socket), do: {:noreply, assign_shift(socket)}
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
@@ -80,6 +126,7 @@ defmodule BusterClawWeb.StatusLive do
           <div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
             <div class="flex min-h-0 flex-col gap-6">
               <.get_started_panel />
+              <.shift_panel shift={@shift} kill_switch={@kill_switch} />
               <.featured_pages_panel />
               <BusterClawWeb.TrustedContactsPanel.panel entries={@trusted_contacts} />
             </div>
@@ -164,6 +211,105 @@ defmodule BusterClawWeb.StatusLive do
         </li>
       </ol>
     </details>
+    """
+  end
+
+  attr :shift, :any, required: true
+  attr :kill_switch, :boolean, required: true
+
+  defp shift_panel(assigns) do
+    ~H"""
+    <section id="home-shift" class="ic-panel">
+      <header class="border-b-2 border-base-content/20 px-5 py-4">
+        <p class="ic-eyebrow">Unattended Shift</p>
+        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+          Unattended Shift
+        </h2>
+        <p class="mt-1 text-sm text-base-content/65">
+          Let Buster Claw work the queue with headless agent runs — no terminal to babysit.
+        </p>
+      </header>
+
+      <div class="flex flex-col gap-4 p-5">
+        <%= if @shift do %>
+          <div class="flex items-center gap-2">
+            <span class={[
+              "inline-block size-2.5 shrink-0 rounded-full",
+              if(@shift.unattended, do: "bg-primary", else: "bg-base-content/40")
+            ]}>
+            </span>
+            <span class="font-mono text-sm">
+              {if @shift.unattended, do: "Unattended", else: "Attended"} shift · {@shift.job_name}
+            </span>
+          </div>
+
+          <dl class="grid grid-cols-3 gap-2">
+            <.shift_stat label="Runs" value={@shift.dispatched_count} />
+            <.shift_stat label="Done" value={@shift.done_count} />
+            <.shift_stat label="Failed" value={@shift.failed_count} />
+          </dl>
+
+          <button
+            type="button"
+            phx-click="stop_shift"
+            class="inline-flex items-center justify-center gap-2 rounded border-2 border-base-content/30 px-4 py-2 text-sm font-semibold uppercase tracking-wide transition hover:border-primary hover:text-primary"
+          >
+            <.icon name="hero-stop" class="size-4" /> Stop shift
+          </button>
+        <% else %>
+          <p class="text-sm text-base-content/60">No shift running.</p>
+          <button
+            type="button"
+            phx-click="start_unattended_shift"
+            class="inline-flex items-center justify-center gap-2 rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
+          >
+            <.icon name="hero-bolt" class="size-4" /> Start unattended shift
+          </button>
+        <% end %>
+
+        <div class="flex items-center justify-between gap-3 border-t-2 border-base-content/15 pt-3">
+          <div class="min-w-0">
+            <p class="ic-eyebrow">Kill switch</p>
+            <p class={[
+              "font-mono text-sm",
+              @kill_switch && "text-primary"
+            ]}>
+              {if @kill_switch, do: "ENGAGED", else: "clear"}
+            </p>
+          </div>
+          <button
+            :if={not @kill_switch}
+            type="button"
+            phx-click="engage_kill_switch"
+            class="rounded-sm border-2 border-base-content/30 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition hover:border-primary hover:text-primary"
+          >
+            Engage
+          </button>
+          <button
+            :if={@kill_switch}
+            type="button"
+            phx-click="clear_kill_switch"
+            class="rounded-sm border-2 border-primary px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-primary transition hover:opacity-85"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :value, :integer, required: true
+
+  defp shift_stat(assigns) do
+    ~H"""
+    <div class="rounded-sm border-2 border-base-content/20 px-2 py-2 text-center">
+      <p class="font-display text-2xl font-black tabular-nums leading-none">{@value}</p>
+      <p class="mt-1 text-[0.62rem] font-semibold uppercase tracking-wide text-base-content/55">
+        {@label}
+      </p>
+    </div>
     """
   end
 
