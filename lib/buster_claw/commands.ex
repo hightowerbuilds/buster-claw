@@ -363,6 +363,14 @@ defmodule BusterClaw.Commands do
 
       # Runtime
       list_entry("runtime_status", "Snapshot of process and system state."),
+      %{
+        name: "activity_report",
+        type: :read,
+        tier: :safe,
+        description:
+          "Summary of work Buster Claw handled over a recent window: requests done/blocked/failed, currently open, and unattended runs.",
+        args: %{"days" => %{type: :integer, required: false, default: 7}}
+      },
 
       # Visible terminal workspace
       %{
@@ -941,6 +949,16 @@ defmodule BusterClaw.Commands do
   # -----------------------------------------------------------------------
 
   def runtime_status(_args \\ %{}), do: {:ok, Status.snapshot()}
+
+  def activity_report(args \\ %{}) do
+    days =
+      case Map.get(args, "days") do
+        n when is_integer(n) and n > 0 -> n
+        _ -> 7
+      end
+
+    {:ok, BusterClaw.ActivityReport.summary(days: days)}
+  end
 
   # -----------------------------------------------------------------------
   # Visible terminal workspace

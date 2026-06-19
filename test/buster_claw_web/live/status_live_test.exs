@@ -183,6 +183,14 @@ defmodule BusterClawWeb.StatusLiveTest do
     end
   end
 
+  test "renders the This Week activity panel", %{conn: conn} do
+    {:ok, _view, html} = live(conn, ~p"/")
+
+    assert html =~ ~s(id="home-activity")
+    assert html =~ "This Week"
+    assert html =~ "Handled"
+  end
+
   test "GET / uses the app-local date for the daily calendar", %{conn: conn} do
     previous = Application.get_env(:buster_claw, :local_today)
     Application.put_env(:buster_claw, :local_today, ~D[2026-05-26])

@@ -1,7 +1,9 @@
 defmodule BusterClawWeb.StatusLive do
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.ActivityReport
   alias BusterClaw.Calendar, as: AppCalendar
+  alias BusterClaw.Dispatch
   alias BusterClaw.LocalTime
   alias BusterClaw.Orchestration
   alias BusterClaw.Runtime.Status
@@ -12,7 +14,10 @@ defmodule BusterClawWeb.StatusLive do
   def mount(_params, _session, socket) do
     today = LocalTime.today()
 
-    if connected?(socket), do: Orchestration.subscribe()
+    if connected?(socket) do
+      Orchestration.subscribe()
+      Dispatch.subscribe()
+    end
 
     {:ok,
      socket
@@ -22,6 +27,7 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:setup_status, Setup.status())
      |> assign(:trusted_contacts, TrustedSenders.list_entries())
      |> assign_shift()
+     |> assign_report()
      |> load_daily_events()}
   end
 
@@ -30,6 +36,8 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:shift, Orchestration.active_shift())
     |> assign(:kill_switch, Orchestration.kill_switch_engaged?())
   end
+
+  defp assign_report(socket), do: assign(socket, :report, ActivityReport.summary())
 
   @impl true
   def handle_event("add_contact", %{"entry" => entry}, socket) do
@@ -81,7 +89,10 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   @impl true
-  def handle_info({:orchestration, _event}, socket), do: {:noreply, assign_shift(socket)}
+  def handle_info({:orchestration, _event}, socket),
+    do: {:noreply, socket |> assign_shift() |> assign_report()}
+
+  def handle_info({:dispatch, _event, _item}, socket), do: {:noreply, assign_report(socket)}
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
@@ -127,6 +138,7 @@ defmodule BusterClawWeb.StatusLive do
             <div class="flex min-h-0 flex-col gap-6">
               <.get_started_panel />
               <.shift_panel shift={@shift} kill_switch={@kill_switch} />
+              <.this_week_panel report={@report} />
               <.featured_pages_panel />
               <BusterClawWeb.TrustedContactsPanel.panel entries={@trusted_contacts} />
             </div>
@@ -294,6 +306,33 @@ defmodule BusterClawWeb.StatusLive do
             Clear
           </button>
         </div>
+      </div>
+    </section>
+    """
+  end
+
+  attr :report, :map, required: true
+
+  defp this_week_panel(assigns) do
+    ~H"""
+    <section id="home-activity" class="ic-panel">
+      <header class="border-b-2 border-base-content/20 px-5 py-4">
+        <p class="ic-eyebrow">Last {@report.days} Days</p>
+        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+          This Week
+        </h2>
+        <p class="mt-1 text-sm text-base-content/65">
+          What Buster Claw handled for you.
+        </p>
+      </header>
+
+      <div class="p-5">
+        <dl class="grid grid-cols-4 gap-2">
+          <.shift_stat label="Handled" value={@report.handled} />
+          <.shift_stat label="Open" value={@report.open} />
+          <.shift_stat label="Blocked" value={@report.blocked} />
+          <.shift_stat label="Runs" value={@report.runs} />
+        </dl>
       </div>
     </section>
     """

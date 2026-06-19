@@ -277,6 +277,20 @@ defmodule BusterClaw.CommandsTest do
     end
   end
 
+  describe "activity_report" do
+    test "returns a window summary (safe-tier; runs for untrusted callers too)" do
+      assert {:ok, report} = Commands.call("activity_report", %{"days" => 30}, caller: :mcp)
+      assert report.days == 30
+
+      for key <- [:handled, :blocked, :failed, :open, :runs],
+          do: assert(Map.has_key?(report, key))
+    end
+
+    test "defaults to a 7-day window" do
+      assert {:ok, %{days: 7}} = Commands.call("activity_report", %{}, caller: :trusted)
+    end
+  end
+
   describe "calendar events" do
     test "create + get + delete" do
       assert {:ok, event} =
