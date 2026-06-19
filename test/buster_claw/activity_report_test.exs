@@ -1,5 +1,7 @@
 defmodule BusterClaw.ActivityReportTest do
-  use BusterClaw.DataCase, async: true
+  # async: false — write-heavy (item inserts + Sentinel events); kept out of the
+  # parallel pool to avoid SQLite write contention with other async suites.
+  use BusterClaw.DataCase, async: false
 
   alias BusterClaw.ActivityReport
   alias BusterClaw.Dispatch.Item

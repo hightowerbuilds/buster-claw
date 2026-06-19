@@ -36,6 +36,27 @@ marks done.**
    "tested"` → watch it leave the fridge.
 5. Open **Security** and see both actions logged.
 
+## Hands-off (unattended) mode
+
+You don't have to sit in the terminal. On the **Home** page, the **Unattended
+Shift** panel has a **Start unattended shift** button (or run
+`./buster-claw run shift_start --json '{"unattended":true}'`). Once started,
+Buster Claw spawns your own agent in short headless runs to work the queue for
+you — no terminal to babysit.
+
+- **It stays up.** A shift runs until you stop it, and its state is durable, so
+  it resumes on its own after a restart or reboot (the launchd watchdog relaunches
+  the app).
+- **Guardrails.** Outbound or irreversible actions (sending mail, deletes) on
+  work from an **untrusted** sender are held for your approval, never fired
+  automatically. A per-shift **run cap** stops the shift if it loops, and the
+  **kill switch** on the Home panel halts it immediately.
+- **See what it did.** The **This Week** panel on Home shows requests handled,
+  what's open, what's blocked, and how many runs it took.
+
+> Needs your agent CLI (`claude`/`codex`) installed and logged in, since the
+> headless runs use your own subscription — same as the attended loop.
+
 ## Worth knowing
 
 - The agent treats email bodies as **untrusted data** — the fridge fences them in

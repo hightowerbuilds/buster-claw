@@ -4,9 +4,12 @@
   Buster Claw LaunchAgent (template).
 
   This is the outermost watchdog in the uptime stack: launchd relaunches the
-  whole `.app` if it crashes, is force-quit, or the machine reboots — keeping an
-  unattended 12-hour shift alive. The Tauri/Rust layer respawns the Phoenix
-  release on BEAM exit; this layer guards against the app process itself dying.
+  whole `.app` if it crashes, is force-quit, or the machine reboots. Because a
+  shift's state is durable (SQLite), an active unattended shift — which runs
+  until stopped — resumes automatically after any relaunch: the Dispatcher reads
+  the active shift on boot and keeps working the queue. The Tauri/Rust layer
+  respawns the Phoenix release on BEAM exit; this layer guards against the app
+  process itself dying.
 
   `__APP_PATH__` is a placeholder rendered by scripts/install_launchd.sh
   (defaults to "/Applications/Buster Claw.app"). We launch via `open -a` so the
