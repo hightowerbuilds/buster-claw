@@ -65,6 +65,30 @@ defmodule BusterClaw.WorkspaceCLITest do
     assert File.read!(path) == "#!/bin/sh\necho custom\n"
   end
 
+  test "the release launcher evals valid one-line Elixir (no collapsed multi-line case)",
+       %{root: root} do
+    # Force the release target: unset the explicit CLI path and point RELEASE_ROOT
+    # at a fake bundled release binary.
+    System.delete_env("BUSTER_CLAW_CLI_PATH")
+    release_bin = Path.join([root, "bin", "buster_claw"])
+    File.mkdir_p!(Path.dirname(release_bin))
+    File.write!(release_bin, "#!/bin/sh\nexit 0\n")
+    File.chmod!(release_bin, 0o755)
+    prev_release_root = System.get_env("RELEASE_ROOT")
+    System.put_env("RELEASE_ROOT", root)
+    on_exit(fn -> restore_env("RELEASE_ROOT", prev_release_root) end)
+
+    assert {:ok, path} = WorkspaceCLI.ensure()
+    content = File.read!(path)
+    assert content =~ "eval '"
+
+    [_, eval] = Regex.run(~r/eval '([^']*)'/, content)
+    # The old launcher collapsed the multi-line case to spaces — a SyntaxError.
+    # The eval must parse as valid Elixir.
+    assert {:ok, _ast} = Code.string_to_quoted(eval)
+    assert eval =~ "BusterClaw.CLI.main"
+  end
+
   defp restore_env(name, nil), do: System.delete_env(name)
   defp restore_env(name, value), do: System.put_env(name, value)
 end
