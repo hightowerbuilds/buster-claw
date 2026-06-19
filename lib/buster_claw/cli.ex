@@ -44,6 +44,7 @@ defmodule BusterClaw.CLI do
       ["dispatch", "reply", id] -> dispatch_reply_cmd(id, opts)
       ["jobs", "list"] -> dispatch_request("job_list", %{}, opts, &format_job_list/1)
       ["jobs", "show", key] -> dispatch_request("job_show", %{"key" => key}, opts, &format_job/1)
+      ["autopilot"] -> autopilot(opts)
       ["run", name] -> run(name, opts)
       [noun, verb] -> run("#{noun}_#{verb}", opts)
       [name] -> run(name, opts)
@@ -136,6 +137,21 @@ defmodule BusterClaw.CLI do
 
     IO.puts("Mailman polling Gmail through Buster Claw every #{interval}s.")
     poll_gmail(args, opts, interval, max_runs, 1)
+  end
+
+  # Run a headless Claude pass behind a space-themed TUI that animates what the
+  # agent is doing (scanning / incoming mail / transmitting).
+  defp autopilot(_opts) do
+    case BusterClaw.Autopilot.Tui.run() do
+      {:ok, _summary} ->
+        :ok
+
+      {:error, :no_agent_cli} ->
+        die("`claude` not found on PATH — install Claude Code first.", 1)
+
+      {:error, reason} ->
+        die("autopilot failed: #{inspect(reason)}", 1)
+    end
   end
 
   # Go on duty in one step: start an orchestration shift, then poll trusted mail.

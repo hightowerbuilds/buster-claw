@@ -25,10 +25,7 @@ defmodule BusterClaw.TerminalCommandsTest do
     assert %{key: "autopilot"} = TerminalCommands.role("auto")
     assert %{key: "autopilot"} = TerminalCommands.role("hands-off")
 
-    default = TerminalCommands.startup_command("autopilot")
-    assert default =~ "./buster-claw mailman poll --once"
-    assert default =~ "claude -p"
-    assert default =~ "--permission-mode bypassPermissions"
+    assert TerminalCommands.startup_command("autopilot") == "./buster-claw autopilot"
   end
 
   test "lists the Claude Code install role for onboarding" do
