@@ -88,6 +88,15 @@ pub fn terminal_open(
     if std::env::var_os("LANG").is_none() {
         cmd.env("LANG", "en_US.UTF-8");
     }
+    // Point the in-app `./buster-claw` CLI at this app's server + token. The
+    // packaged release sets these in the process env (main.rs); in dev they come
+    // from `.env`. Without them the CLI defaults to :4000 with no token and can't
+    // reach the running app.
+    for key in ["BUSTER_CLAW_URL", "BUSTER_CLAW_API_TOKEN"] {
+        if let Some(val) = std::env::var_os(key) {
+            cmd.env(key, val);
+        }
+    }
 
     let child = pair
         .slave

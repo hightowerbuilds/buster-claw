@@ -373,6 +373,14 @@ fn main() {
                 phoenix_url: format!("http://127.0.0.1:{port}"),
             };
 
+            // Make the in-app terminal's `./buster-claw` reach THIS release. The
+            // CLI reads BUSTER_CLAW_URL (this app's private port, not the CLI's
+            // :4000 default) and BUSTER_CLAW_API_TOKEN (the Keychain token, which
+            // the CLI cannot read on its own) from the environment; the terminal
+            // PTY (terminal.rs) forwards them from this process's env.
+            std::env::set_var("BUSTER_CLAW_URL", &launcher.phoenix_url);
+            std::env::set_var("BUSTER_CLAW_API_TOKEN", &launcher.api_token);
+
             // Initial boot: spawn the release, then transition the webview once
             // healthy. Done on a background thread so setup() returns promptly.
             launcher.spawn_release()?;
