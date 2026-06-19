@@ -82,6 +82,10 @@ defmodule BusterClaw.DispatcherTest do
     opts |> Keyword.get(:env, []) |> Map.new() |> Map.get("BUSTER_CLAW_API_TOKEN")
   end
 
+  defp env_url(opts) do
+    opts |> Keyword.get(:env, []) |> Map.new() |> Map.get("BUSTER_CLAW_URL")
+  end
+
   test "runs and counts a clean outcome when an unattended shift has queued work" do
     {:ok, shift} = Orchestration.start_shift(unattended: true, job_key: "dispatcher")
     enqueue!()
@@ -234,6 +238,9 @@ defmodule BusterClaw.DispatcherTest do
 
       assert_receive {:opts, opts}, 1_000
       assert env_token(opts) == BusterClaw.ApiToken.value()
+      # The run is pointed at this app's real endpoint, not the CLI's :4000 default.
+      assert env_url(opts) =~ "http://127.0.0.1:"
+      assert Keyword.get(opts, :login) == true
       # Let the run's completion write settle before teardown.
       wait_until(fn -> reload_shift(shift.id).done_count == 1 end)
     end

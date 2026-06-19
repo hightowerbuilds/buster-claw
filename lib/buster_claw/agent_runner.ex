@@ -67,6 +67,9 @@ defmodule BusterClaw.AgentRunner do
     * `:cwd` — working directory (default: the workspace root).
     * `:timeout_ms` — wall-clock cap (default: #{@default_timeout_ms}).
     * `:env` — extra `{name, value}` string pairs layered on the inherited env.
+    * `:shell` — shell to spawn through (default `/bin/sh`).
+    * `:login` — run the shell as a login shell so it sources the user's profile
+      (PATH/auth). Default `false`; the Dispatcher sets it for real runs.
   """
   @spec run(String.t(), keyword()) :: {:ok, run_result()} | {:error, term()}
   def run(prompt, opts \\ []) when is_binary(prompt) do
@@ -129,10 +132,18 @@ defmodule BusterClaw.AgentRunner do
   end
 
   defp exec(agent, binary, args, cwd, opts, timeout) do
-    # `sh -c 'exec "$@" 2>&1' sh <binary> <args...>` — `$@` starts after the
+    # `<shell> -c 'exec "$@" 2>&1' sh <binary> <args...>` — `$@` starts after the
     # `sh` placeholder (arg0), so the binary and prompt pass through untouched
     # and stderr is merged into stdout.
-    shell_args = ["-c", ~s(exec "$@" 2>&1), "sh", binary | args]
+    #
+    # `:login` runs the shell as a login shell (`-lc`) so it sources the user's
+    # profile (~/.zprofile etc.) — the same trick `terminal.rs` uses, so a
+    # daemon-spawned run reaches the same PATH/auth a human-launched terminal
+    # agent does (critical in the packaged `.app`, whose env is otherwise bare).
+    # Defaults stay `/bin/sh -c` so tests are hermetic.
+    shell = Keyword.get(opts, :shell) || "/bin/sh"
+    flag = if Keyword.get(opts, :login, false), do: "-lc", else: "-c"
+    shell_args = [flag, ~s(exec "$@" 2>&1), "sh", binary | args]
 
     port_opts =
       [:binary, :exit_status, :hide, {:args, shell_args}, {:cd, String.to_charlist(cwd)}] ++
@@ -140,7 +151,7 @@ defmodule BusterClaw.AgentRunner do
 
     start = now_ms()
 
-    port = Port.open({:spawn_executable, "/bin/sh"}, port_opts)
+    port = Port.open({:spawn_executable, shell}, port_opts)
     collect(port, "", start + timeout, agent, binary, start)
   rescue
     error ->

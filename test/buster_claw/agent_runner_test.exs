@@ -33,6 +33,18 @@ defmodule BusterClaw.AgentRunnerTest do
     assert String.trim(result.output) == "$(echo pwned)"
   end
 
+  test "runs through a login shell when :login is set" do
+    assert {:ok, %{exit_status: 0, output: out}} =
+             AgentRunner.run("ignored",
+               agent_binary: "/bin/echo",
+               argv: ["login-ok"],
+               cwd: @tmp,
+               login: true
+             )
+
+    assert out =~ "login-ok"
+  end
+
   test "reports a non-zero exit status without treating it as a crash" do
     assert {:ok, %{exit_status: 3}} =
              AgentRunner.run("ignored",

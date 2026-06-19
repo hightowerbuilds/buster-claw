@@ -195,8 +195,11 @@ defmodule BusterClaw.Dispatcher do
       else: :trusted
   end
 
-  # The run's `./buster-claw` CLI reads BUSTER_CLAW_API_TOKEN first (cli.ex), so
-  # the token we set here is what ApiAuth classifies the run's calls as.
+  # Build the run's environment + shell. The agent's `./buster-claw` CLI reads
+  # BUSTER_CLAW_API_TOKEN (→ provenance tier) and BUSTER_CLAW_URL first; the
+  # latter is essential in the packaged release, where Phoenix listens on a
+  # private port, not the CLI's :4000 default. The run goes through a login shell
+  # so it inherits the user's PATH/auth (matching the in-app terminal).
   defp run_opts(state, provenance) do
     timeout =
       case state.run_timeout_ms do
@@ -204,11 +207,25 @@ defmodule BusterClaw.Dispatcher do
         ms -> [timeout_ms: ms]
       end
 
-    [env: [{"BUSTER_CLAW_API_TOKEN", token_for(provenance)}]] ++ timeout
+    env = [
+      {"BUSTER_CLAW_API_TOKEN", token_for(provenance)},
+      {"BUSTER_CLAW_URL", endpoint_url()}
+    ]
+
+    [env: env, shell: login_shell(), login: true] ++ timeout
   end
 
   defp token_for(:untrusted), do: BusterClaw.ApiToken.agent_value()
   defp token_for(:trusted), do: BusterClaw.ApiToken.value()
+
+  # The endpoint's real bound port (random in the packaged release), read from
+  # config so the run's CLI calls reach this app, not the :4000 default.
+  defp endpoint_url do
+    http = Application.get_env(:buster_claw, BusterClawWeb.Endpoint, [])[:http] || []
+    "http://127.0.0.1:#{http[:port] || 4000}"
+  end
+
+  defp login_shell, do: System.get_env("SHELL") || "/bin/zsh"
 
   defp work_prompt(%Shift{} = shift, batch) do
     """
