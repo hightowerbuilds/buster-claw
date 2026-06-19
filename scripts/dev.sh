@@ -123,4 +123,13 @@ fi
 
 echo "==> Opening desktop window (cargo tauri dev)"
 cd desktop/tauri
+
+# Dev runs against the live Phoenix on :4000 and does NOT use the bundled release.
+# A prior `build_desktop.sh` stages the full ERTS release into resources/release/,
+# which `tauri-build` then chokes on while scanning it (Permission denied). Clear
+# it back to the tracked .gitkeep so dev always builds; the bundle re-stages it.
+if [ -d resources/release ]; then
+  find resources/release -mindepth 1 -not -name .gitkeep -delete 2>/dev/null || true
+fi
+
 exec cargo tauri dev
