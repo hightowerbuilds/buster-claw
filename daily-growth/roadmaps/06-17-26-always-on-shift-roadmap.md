@@ -18,8 +18,22 @@ The backend is **complete and tested** (full suite green, 423). Built in order 0
 | 3b — per-run provenance wiring (3rd token → ApiAuth → Dispatcher) | ✅ done | `823b639` |
 | 2 — budget governor (per-shift run cap + run timeout) | ✅ done | `6ce28b3` |
 | 4 — operator surface: start/stop unattended + kill switch | ✅ done | `0850a35` |
-| 4c — approvals queue UI + weekly value report | ⬜ partial-todo | — |
-| 5 — always-on packaging (launchd headless boot) | ⬜ todo | — |
+| 4c — weekly value report (This Week panel + activity_report) | ✅ done | `fb2412f` |
+| 4c — approvals queue UI | ⛔ deferred (premature — empty queue) | — |
+| 5 — always-on (durable-resume docs + plist fix) | ✅ done | `b140217` |
+
+**The build is functionally complete.** Always-on runs end to end: start an unattended
+shift (Home panel or `shift_start`), the Dispatcher works the queue with budgeted,
+provenance-gated headless runs, it survives restarts via durable state + launchd, and
+the operator sees activity (This Week) and holds the controls (stop / kill switch).
+
+**Remaining / out of scope:**
+- **Approvals UI** — deferred until a source actually enqueues untrusted items (today
+  the gated-pending queue is always empty; `Sentinel.Pending` stays record-only).
+- **Packaged-env auth** — the one thing that needs a real `.app`/launchd build to verify:
+  the BEAM env must carry `HOME`/`PATH`/agent-auth and `BUSTER_CLAW_URL` for headless runs.
+- **Injected content in *trusted* mail** — the residual risk the sender-keyed model
+  doesn't cover; a separate, content-level problem.
 
 **Unattended is now usable end-to-end:** `./buster-claw run shift_start --json '{"unattended":true}'` or the home-page **Unattended Shift** panel (start/stop, live counts, kill switch). The Dispatcher then works the queue with headless runs.
 
