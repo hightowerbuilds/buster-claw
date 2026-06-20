@@ -18,6 +18,7 @@ defmodule BusterClaw.Autopilot.Tui do
 
   @frame_ms 140
   @width 52
+  @rows 11
 
   @prompt """
   You are an autonomous Buster Claw operator. First sync new trusted mail with \
@@ -193,115 +194,71 @@ defmodule BusterClaw.Autopilot.Tui do
     do: compose(%{state: state, frame: n, last: "preview"})
 
   defp compose(s) do
-    [
-      starfield(s.frame, 0),
-      craft_lane(s.frame),
-      starfield(s.frame, 7)
-    ] ++
-      vignette(s.state, s.frame) ++
-      [
-        starfield(s.frame, 3),
-        status_bar(s.state, s.frame, s.last)
-      ]
+    star_field(s.state, s.frame) ++ ["", status_bar(s.state, s.frame, s.last)]
   end
 
-  # A shimmering starfield: a fixed set of columns whose glyph cycles per frame.
-  defp starfield(frame, seed) do
-    glyphs = {".", "*", "+", " ", ".", " "}
-
-    0..(@width - 1)
-    |> Enum.map(fn col ->
-      if rem(col * 7 + seed, 11) == 0 do
-        elem(glyphs, rem(frame + col + seed, tuple_size(glyphs)))
-      else
-        " "
-      end
-    end)
-    |> Enum.join()
+  # The whole animation IS the starfield — each state gives the stars a different
+  # behavior, so you read the agent's activity from the sky alone:
+  #
+  #   waiting → gentle scattered twinkle
+  #   booting → fast sparkle (igniting)
+  #   reading → a bright column sweeps across (a scan beam)
+  #   email   → bright streaks drift LEFT  (incoming transmission)
+  #   writing → bright streaks drift RIGHT (outbound transmission)
+  #   done    → a steady, dense bright field
+  defp star_field(state, frame) do
+    for row <- 0..(@rows - 1) do
+      0..(@width - 1)
+      |> Enum.map(&cell(state, row, &1, frame))
+      |> Enum.join()
+    end
   end
 
-  # A little craft drifting left→right across the lane.
-  defp craft_lane(frame) do
-    pos = rem(frame, @width - 5)
-    String.duplicate(" ", pos) <> "<=o>"
+  # Stable per-position noise so the base starfield doesn't jitter frame-to-frame.
+  defp noise(row, col), do: rem(row * 73 + col * 31 + row * col * 7, 97)
+
+  @dim "."
+  @mid "+"
+  @bright "*"
+
+  defp cell(:done, row, col, _frame),
+    do: if(rem(noise(row, col), 4) == 0, do: @bright, else: " ")
+
+  defp cell(:reading, row, col, frame) do
+    beam = rem(frame * 2, @width)
+
+    cond do
+      col == beam -> @bright
+      abs(col - beam) == 1 -> @mid
+      rem(noise(row, col), 7) == 0 -> @dim
+      true -> " "
+    end
   end
 
-  defp vignette(:booting, frame) do
-    flame = elem({"  .  ", "  ^  ", " ( ) ", " /^\\ "}, rem(frame, 4))
+  defp cell(:email, row, col, frame), do: streak(row, col, col + row + frame)
+  defp cell(:writing, row, col, frame), do: streak(row, col, col - row - frame)
 
-    center([
-      "   /\\",
-      "  |BC|",
-      "  |==|",
-      " /|  |\\",
-      flame
-    ])
+  defp cell(:booting, row, col, frame) do
+    if rem(noise(row, col), 6) == 0,
+      do: elem({@dim, @bright, @mid, @bright}, rem(frame + noise(row, col), 4)),
+      else: " "
   end
 
-  defp vignette(:waiting, frame) do
-    z = elem({"  z   ", "   z  ", "    z ", "      "}, rem(frame, 4))
-
-    center([
-      "    _.-\"\"-._",
-      "  .'  .  .  '.   " <> z,
-      "  |   ( )    |",
-      "  '._  .  _.'",
-      "     '----'"
-    ])
+  # waiting / default — gentle, slow scattered twinkle
+  defp cell(_state, row, col, frame) do
+    if rem(noise(row, col), 8) == 0,
+      do: elem({@dim, @mid, @bright, @mid, @dim, " "}, rem(div(frame, 2) + noise(row, col), 6)),
+      else: " "
   end
 
-  defp vignette(:reading, frame) do
-    sweep = elem({"-", "\\", "|", "/"}, rem(frame, 4))
-
-    center([
-      "     .--.",
-      "    ( oo )   " <> sweep <> " scan",
-      "  .--'--'--.",
-      "  |  (o)    |  )))",
-      "  '---------'"
-    ])
-  end
-
-  defp vignette(:email, frame) do
-    wave = elem({"<     ", "<<    ", "<<<   ", "<<<<  "}, rem(frame, 4))
-
-    center([
-      "   .------.",
-      "   |======|   " <> wave,
-      "   | @  @ |  INBOX",
-      "   |  /\\  |   " <> wave,
-      "   '------'"
-    ])
-  end
-
-  defp vignette(:writing, frame) do
-    beam = elem({"   >  ", "   >> ", "   >>>", " ((  >"}, rem(frame, 4))
-
-    center([
-      "    ___",
-      "   /BC/|   " <> beam,
-      "  /__/ |  TX",
-      "  |   |/   " <> beam,
-      "  '---'"
-    ])
-  end
-
-  defp vignette(:done, _frame) do
-    center([
-      "      ___",
-      "     /BC \\__",
-      "     \\____/ |==|",
-      "      |  |  | * |",
-      "    ~~JJ~~~~/----"
-    ])
-  end
-
-  # Center the whole figure as a block (one shared pad from the widest line) so
-  # multi-line ASCII art keeps its internal alignment instead of going ragged.
-  defp center(lines) do
-    width = lines |> Enum.map(&String.length/1) |> Enum.max()
-    prefix = String.duplicate(" ", max(div(@width - width, 2), 0))
-    Enum.map(lines, &(prefix <> &1))
+  # A diagonal bright streak over a dim background; `phase` carries direction so
+  # email drifts left and writing drifts right as the frame advances.
+  defp streak(row, col, phase) do
+    cond do
+      rem(phase, 9) == 0 -> @bright
+      rem(noise(row, col), 7) == 0 -> @dim
+      true -> " "
+    end
   end
 
   @labels %{
