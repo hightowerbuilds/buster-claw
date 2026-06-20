@@ -207,6 +207,27 @@ existing tier + gate guardrails. The architecture made this mostly pattern-repea
   capabilities by service, flagging read-only vs. confirmation-gated actions — so
   the overview tracks the live catalog instead of hardcoding a list.
 
+## Homepage polish — collapsible sections + a resizable chat
+
+Small UX pass on the home panel (`status_live.ex`, `app.css`, `app.js`):
+
+- **Collapsible Get Started + Quick chat.** The two blocks are now independent
+  native `<details>`/`<summary>` collapsibles (own header button + a chevron that
+  rotates open), `phx-update="ignore"` so LiveView never clobbers the open/closed
+  state on re-render — no new server state, no JS, CSP-safe. New `.ic-collapse-summary`
+  utility hides the default disclosure triangle and lays out label vs. chevron.
+
+- **Container sizes to content.** The Get Started panel dropped `flex-1` for
+  `flex flex-col max-h-full`, so it shrinks to just the two summary bars when both
+  sections are collapsed (instead of force-filling the column), and caps + scrolls
+  when expanded.
+
+- **Drag-to-resize chat.** A grab handle on the chat panel's bottom border; the
+  `AgentChat` hook drives a pointer-drag that sets the panel height live, clamped to
+  [240px, 90vh] and persisted in `localStorage` (`bc:chat-height`). Re-applied in
+  `updated()` (LiveView would otherwise drop the inline height on the next render)
+  with a `dragging` guard so an incoming message can't snap the height mid-drag.
+
 ## Verification
 
 - `mix test` — **525 tests, 0 failures** (was 481). New: 41 across the Google

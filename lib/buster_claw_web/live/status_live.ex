@@ -235,7 +235,7 @@ defmodule BusterClawWeb.StatusLive do
     <section
       id="home-agent-chat"
       phx-hook="AgentChat"
-      class="ic-panel flex h-[32rem] max-h-[70vh] min-h-0 flex-col self-start"
+      class="ic-panel flex h-[32rem] max-h-[90vh] min-h-0 flex-col self-start overflow-hidden"
     >
       <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
         <div>
@@ -287,6 +287,16 @@ defmodule BusterClawWeb.StatusLive do
           <.icon name="hero-paper-airplane" class="size-4" /> Send
         </button>
       </form>
+
+      <div
+        data-resize-handle
+        role="separator"
+        aria-orientation="horizontal"
+        title="Drag to resize the chat"
+        class="group/resize flex h-2.5 shrink-0 cursor-ns-resize items-center justify-center border-t-2 border-base-content/20 bg-base-200/40 transition hover:bg-base-200"
+      >
+        <span class="h-1 w-10 rounded-full bg-base-content/25 transition group-hover/resize:bg-primary"></span>
+      </div>
     </section>
     """
   end
@@ -422,7 +432,7 @@ defmodule BusterClawWeb.StatusLive do
     ~H"""
     <section
       id="home-get-started"
-      class="ic-panel flex min-h-0 flex-1 flex-col overflow-hidden"
+      class="ic-panel flex flex-col overflow-hidden max-h-full"
     >
       <header class="border-b-2 border-base-content/20 px-5 py-4">
         <p class="ic-eyebrow">Get Started</p>
@@ -434,63 +444,82 @@ defmodule BusterClawWeb.StatusLive do
         </p>
       </header>
 
-      <ol class="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
-        <li class="flex gap-3">
-          <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
-            1
-          </span>
-          <div class="min-w-0">
-            <h3 class="font-semibold">Add your trusted contacts</h3>
-            <p class="mt-0.5 text-sm text-base-content/65">
-              In the panel below, list the senders Buster Claw may read and reply to.
-              Mail from anyone else is ignored.
-            </p>
-          </div>
-        </li>
+      <div class="flex min-h-0 flex-1 flex-col overflow-auto">
+        <details id="get-started-steps" phx-update="ignore" open class="group/steps border-b-2 border-base-content/15">
+          <summary class="ic-collapse-summary">
+            <span class="ic-eyebrow">Setup steps</span>
+            <.icon
+              name="hero-chevron-down"
+              class="size-4 shrink-0 text-base-content/55 transition group-open/steps:rotate-180"
+            />
+          </summary>
 
-        <li class="flex gap-3">
-          <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
-            2
-          </span>
-          <div class="min-w-0">
-            <h3 class="font-semibold">Install Claude Code</h3>
-            <p class="mt-0.5 text-sm text-base-content/65">
-              Buster Claw has no built-in AI — it drives your own Claude Code CLI headlessly.
-              Install it once with <.copy_command command="brew install --cask claude-code" />, then
-              sign in (<span class="font-mono">claude</span> in a terminal).
-            </p>
-          </div>
-        </li>
+          <ol class="flex flex-col gap-4 px-5 pb-5">
+            <li class="flex gap-3">
+              <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
+                1
+              </span>
+              <div class="min-w-0">
+                <h3 class="font-semibold">Add your trusted contacts</h3>
+                <p class="mt-0.5 text-sm text-base-content/65">
+                  In the panel below, list the senders Buster Claw may read and reply to.
+                  Mail from anyone else is ignored.
+                </p>
+              </div>
+            </li>
 
-        <li class="flex gap-3">
-          <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
-            3
-          </span>
-          <div class="min-w-0">
-            <h3 class="font-semibold">Chat with Buster Claw</h3>
-            <p class="mt-0.5 text-sm text-base-content/65">
-              Use the chat on the right. Ask it to triage your inbox, draft a reply, or
-              look something up — it runs headless Claude for you, no terminal needed.
-            </p>
-          </div>
-        </li>
-      </ol>
+            <li class="flex gap-3">
+              <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
+                2
+              </span>
+              <div class="min-w-0">
+                <h3 class="font-semibold">Install Claude Code</h3>
+                <p class="mt-0.5 text-sm text-base-content/65">
+                  Buster Claw has no built-in AI — it drives your own Claude Code CLI headlessly.
+                  Install it once with <.copy_command command="brew install --cask claude-code" />, then
+                  sign in (<span class="font-mono">claude</span> in a terminal).
+                </p>
+              </div>
+            </li>
 
-      <div class="border-t-2 border-base-content/15 p-5">
-        <p class="ic-eyebrow mb-2">Quick chat</p>
-        <div class="flex flex-col gap-2">
-          <button
-            :for={prompt <- @quick_prompts}
-            type="button"
-            phx-click="quick_chat"
-            phx-value-prompt={prompt}
-            class="group flex items-center gap-3 rounded-sm border-2 border-base-content/25 px-3 py-2.5 text-left text-sm transition hover:border-primary hover:text-primary"
-          >
-            <.icon name="hero-chat-bubble-left-right" class="size-5 shrink-0 text-base-content/55" />
-            <span class="min-w-0 flex-1">{prompt}</span>
-            <.icon name="hero-arrow-right" class="size-4 shrink-0 text-base-content/40" />
-          </button>
-        </div>
+            <li class="flex gap-3">
+              <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
+                3
+              </span>
+              <div class="min-w-0">
+                <h3 class="font-semibold">Chat with Buster Claw</h3>
+                <p class="mt-0.5 text-sm text-base-content/65">
+                  Use the chat on the right. Ask it to triage your inbox, draft a reply, or
+                  look something up — it runs headless Claude for you, no terminal needed.
+                </p>
+              </div>
+            </li>
+          </ol>
+        </details>
+
+        <details id="get-started-quick-chat" phx-update="ignore" open class="group/quick">
+          <summary class="ic-collapse-summary">
+            <span class="ic-eyebrow">Quick chat</span>
+            <.icon
+              name="hero-chevron-down"
+              class="size-4 shrink-0 text-base-content/55 transition group-open/quick:rotate-180"
+            />
+          </summary>
+
+          <div class="flex flex-col gap-2 px-5 pb-5">
+            <button
+              :for={prompt <- @quick_prompts}
+              type="button"
+              phx-click="quick_chat"
+              phx-value-prompt={prompt}
+              class="group flex items-center gap-3 rounded-sm border-2 border-base-content/25 px-3 py-2.5 text-left text-sm transition hover:border-primary hover:text-primary"
+            >
+              <.icon name="hero-chat-bubble-left-right" class="size-5 shrink-0 text-base-content/55" />
+              <span class="min-w-0 flex-1">{prompt}</span>
+              <.icon name="hero-arrow-right" class="size-4 shrink-0 text-base-content/40" />
+            </button>
+          </div>
+        </details>
       </div>
     </section>
     """

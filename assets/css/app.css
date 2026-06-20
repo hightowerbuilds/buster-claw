@@ -199,6 +199,22 @@ body { background-color: var(--color-base-100); }
   color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
 }
 
+/* Clickable header for a native <details> collapsible. Hides the default
+   disclosure triangle (we render our own chevron) and lays the label out
+   opposite it. */
+.ic-collapse-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.ic-collapse-summary::-webkit-details-marker { display: none; }
+.ic-collapse-summary:hover { background-color: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
+
 /* CRT scanline overlay — wrap an image/wordmark for an old-TV look.
    The ::after rides on top with thin horizontal lines; `multiply` keeps
    them visible on bright pixels and near-invisible on the dark background.
