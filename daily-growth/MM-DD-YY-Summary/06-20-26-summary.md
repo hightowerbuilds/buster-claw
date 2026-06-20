@@ -154,7 +154,77 @@ number that was lying.
     push a live refresh.
   - Config flag `agent_chat_audit` (off in test).
 
+## Gmail attachments → then full Google Workspace control
+
+The evening thread, in two steps. First, **`gmail_send`/`gmail_draft_create` learned
+to attach files** (`google/gmail.ex`, `commands.ex`): a `multipart/mixed` MIME
+builder (RFC 2045 base64 line-wrapping, random boundary, extension→content-type
+guessing) with a backward-compatible plain-text path for the no-attachment case.
+Attachments are paths (workspace-relative via `Artifact.workspace_root()`, or
+absolute) or `{path, filename, content_type}` objects; an unreadable file fails
+**before** Google is called. Both send and draft flow through the same builder.
+
+Then the big one: **the agent can now drive the entire Google Workspace.** The
+catalog went **53 → 93 commands** (40 new), giving full read/write/delete across
+Gmail, Calendar, Drive, Docs, Sheets, Slides, Contacts, and Tasks — all behind the
+existing tier + gate guardrails. The architecture made this mostly pattern-repeat:
+`Client` already took a per-call `base_url`, so each service is a thin wrapper.
+
+- **Client extension** (`google/client.ex`). Factored token-refresh/401-retry into
+  a shared closure, then added `patch_json`/`put_json`/`delete` (tolerates 204), a
+  `decode: false` raw path (for Drive `alt=media` downloads + exports), and
+  `upload/4` — a `multipart/related` media upload to `/upload/drive/v3` that
+  bypasses JSON encoding while keeping the refresh path. The upload framing was the
+  one genuinely new mechanism (and the most-tested).
+
+- **Scopes** (`google/oauth.ex`). Swapped the 3 read-only scopes for the full
+  8-scope Workspace set. Three are Google **restricted** scopes (`mail.google.com`,
+  `drive`, `contacts`) → OAuth verification + the annual **CASA** assessment is now
+  the distribution gate (accepted; doesn't block dev or the owner's account).
+
+- **Service wrappers.** Extended `gmail.ex` (modify/trash/delete) and `calendar.ex`
+  (create/update/delete events); new `drive.ex`, `docs.ex`, `sheets.ex`,
+  `slides.ex`, `people.ex`, `tasks.ex`. Each returns `{:ok, summary_map}`; mind the
+  per-endpoint method (Docs/Sheets/Slides mutate via POST `:batchUpdate`,
+  Calendar/Tasks/People/Drive-metadata via PATCH).
+
+- **Command surface** (`commands.ex`). 40 catalog entries + handlers. Reads `:safe`,
+  writes `:restricted`, the **5 irreversible deletes** (`gmail_delete`,
+  `gcal_event_delete`, `drive_delete`, `contacts_delete`, `tasks_delete`) are
+  **gated**, and `drive_share` needs `confirm_share`. Drive download/export write
+  into the workspace; upload reads from it. The generic catalog tests (handler
+  exists per command, every gated command refused for `:agent_untrusted`)
+  auto-cover the new surface.
+
+- **Onboarding + reconnect UX** (`setup_live.ex`, `gws_live.ex`). Setup step 4 copy
+  now names all 8 services and sets consent-screen expectations. The GWS page shows
+  a **"Reconnect required — new permissions available"** badge (`missing_scopes?/1`
+  compares granted vs. current defaults) so existing accounts re-grant — without it,
+  writes silently 403 on stale read-only tokens.
+
+- **New "quick chat" prompt** (`status_live.ex`). A one-click Get Started prompt
+  that asks the agent to run `./buster-claw commands` and summarize the Google
+  capabilities by service, flagging read-only vs. confirmation-gated actions — so
+  the overview tracks the live catalog instead of hardcoding a list.
+
 ## Verification
+
+- `mix test` — **525 tests, 0 failures** (was 481). New: 41 across the Google
+  service wrappers (`client_test`, `calendar_test`, `drive_test`, `docs_test`,
+  `sheets_test`, `slides_test`, `people_test`, `tasks_test`, extended `gmail_test`),
+  the catalog tier/gate cases in `commands_test`, and the new quick-chat prompt
+  assertion. Highest-value cases: Drive multipart upload, 401-refresh-retry on the
+  new methods, Sheets `valueInputOption`, People etag + `updatePersonFields`, 204
+  deletes. Clean `--warnings-as-errors`.
+- In-process catalog dump confirmed all 40 new commands with correct tiers + the 5
+  gated deletes.
+- **Still unverified by me:** the live Google round-trip (tests stub `Req`). Needs a
+  real reconnect through the broader consent screen, then driving a few commands
+  (`drive_list`, `tasks_list`, `sheets_get_values`) against a real account. The CLI
+  reads `/api/commands` from the running server, so restart `mix phx.server` to see
+  the new catalog.
+
+## Earlier verification (chat build)
 
 - `mix test` — **481 tests, 0 failures**. New since the morning (446): the chat
   build — `stream_event_test` (26 incl. the migrated TUI cases), `chat_test` (5),

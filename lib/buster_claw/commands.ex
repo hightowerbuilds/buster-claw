@@ -275,7 +275,13 @@ defmodule BusterClaw.Commands do
           "cc" => %{type: :string, required: false},
           "bcc" => %{type: :string, required: false},
           "subject" => %{type: :string, required: true},
-          "body" => %{type: :string, required: true}
+          "body" => %{type: :string, required: true},
+          "attachments" => %{
+            type: :array,
+            required: false,
+            description:
+              "File paths (relative to the workspace, or absolute), or objects with path/filename/content_type."
+          }
         }
       },
       %{
@@ -293,7 +299,50 @@ defmodule BusterClaw.Commands do
           "bcc" => %{type: :string, required: false},
           "subject" => %{type: :string, required: true},
           "body" => %{type: :string, required: true},
+          "attachments" => %{
+            type: :array,
+            required: false,
+            description:
+              "File paths (relative to the workspace, or absolute), or objects with path/filename/content_type."
+          },
           "confirm_send" => %{type: :boolean, required: true, default: false}
+        }
+      },
+      %{
+        name: "gmail_modify",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Add/remove labels on a Gmail message (archive = remove INBOX, mark read = remove UNREAD).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "message_id" => %{type: :string, required: true},
+          "add" => %{type: :array, required: false, description: "Label IDs to add."},
+          "remove" => %{type: :array, required: false, description: "Label IDs to remove."}
+        }
+      },
+      %{
+        name: "gmail_trash",
+        type: :mutate,
+        tier: :restricted,
+        description: "Move a Gmail message to the trash (recoverable).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "message_id" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "gmail_delete",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description: "Permanently delete a Gmail message (irreversible).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "message_id" => %{type: :string, required: true}
         }
       },
       %{
@@ -307,6 +356,498 @@ defmodule BusterClaw.Commands do
           "calendar_id" => %{type: :string, required: false, default: "primary"},
           "days_ahead" => %{type: :integer, required: false, default: 90},
           "force_full" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "gcal_event_create",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Create a Google Calendar event. `event` is the raw Google event resource (summary/start/end/...).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "calendar_id" => %{type: :string, required: false, default: "primary"},
+          "event" => %{type: :object, required: true}
+        }
+      },
+      %{
+        name: "gcal_event_update",
+        type: :mutate,
+        tier: :restricted,
+        description: "Patch a Google Calendar event. `event` holds the fields to change.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "calendar_id" => %{type: :string, required: false, default: "primary"},
+          "event_id" => %{type: :string, required: true},
+          "event" => %{type: :object, required: true}
+        }
+      },
+      %{
+        name: "gcal_event_delete",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description: "Delete a Google Calendar event (irreversible).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "calendar_id" => %{type: :string, required: false, default: "primary"},
+          "event_id" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "tasks_list",
+        type: :read,
+        tier: :safe,
+        description:
+          "List Google task lists, or the tasks in a list when `tasklist_id` is given.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "tasklist_id" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "tasks_get",
+        type: :read,
+        tier: :safe,
+        description: "Read one Google task.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "tasklist_id" => %{type: :string, required: true},
+          "task_id" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "tasks_create",
+        type: :mutate,
+        tier: :restricted,
+        description: "Create a Google task in a list.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "tasklist_id" => %{type: :string, required: true},
+          "title" => %{type: :string, required: true},
+          "notes" => %{type: :string, required: false},
+          "due" => %{type: :string, required: false, description: "RFC 3339 timestamp."},
+          "status" => %{type: :string, required: false, description: "needsAction or completed."}
+        }
+      },
+      %{
+        name: "tasks_update",
+        type: :mutate,
+        tier: :restricted,
+        description: "Patch a Google task (title/notes/due/status).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "tasklist_id" => %{type: :string, required: true},
+          "task_id" => %{type: :string, required: true},
+          "title" => %{type: :string, required: false},
+          "notes" => %{type: :string, required: false},
+          "due" => %{type: :string, required: false},
+          "status" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "tasks_delete",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description: "Delete a Google task (irreversible).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "tasklist_id" => %{type: :string, required: true},
+          "task_id" => %{type: :string, required: true}
+        }
+      },
+
+      # Google Drive
+      %{
+        name: "drive_list",
+        type: :read,
+        tier: :safe,
+        description: "List/search Google Drive files. `q` is a Drive query string.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "q" => %{type: :string, required: false},
+          "order_by" => %{type: :string, required: false},
+          "page_size" => %{type: :integer, required: false, default: 50},
+          "page_token" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "drive_get",
+        type: :read,
+        tier: :safe,
+        description: "Get a Google Drive file's metadata.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "file_id" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "drive_download",
+        type: :read,
+        tier: :safe,
+        description:
+          "Download a Drive file's bytes into the workspace. Returns the saved path.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "file_id" => %{type: :string, required: true},
+          "destination" => %{
+            type: :string,
+            required: false,
+            description: "Workspace-relative (or absolute) path to write to."
+          }
+        }
+      },
+      %{
+        name: "drive_export",
+        type: :read,
+        tier: :safe,
+        description:
+          "Export a Google-native doc (Docs/Sheets/Slides) to a MIME type into the workspace.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "file_id" => %{type: :string, required: true},
+          "mime_type" => %{type: :string, required: true},
+          "destination" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "drive_folder_create",
+        type: :mutate,
+        tier: :restricted,
+        description: "Create a folder in Google Drive.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "name" => %{type: :string, required: true},
+          "parent_id" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "drive_upload",
+        type: :mutate,
+        tier: :restricted,
+        description: "Upload a local workspace file to Google Drive.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "path" => %{
+            type: :string,
+            required: true,
+            description: "Local file path (workspace-relative or absolute) to upload."
+          },
+          "name" => %{type: :string, required: false, description: "Drive file name; defaults to the basename."},
+          "parent_id" => %{type: :string, required: false},
+          "content_type" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "drive_update",
+        type: :mutate,
+        tier: :restricted,
+        description: "Rename/star a Drive file, or move it via add_parents/remove_parents.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "file_id" => %{type: :string, required: true},
+          "name" => %{type: :string, required: false},
+          "starred" => %{type: :boolean, required: false},
+          "add_parents" => %{type: :string, required: false},
+          "remove_parents" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "drive_copy",
+        type: :mutate,
+        tier: :restricted,
+        description: "Copy a Drive file.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "file_id" => %{type: :string, required: true},
+          "name" => %{type: :string, required: false},
+          "parent_id" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "drive_share",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Grant a permission on a Drive file (may email the grantee). Requires confirm_share.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "file_id" => %{type: :string, required: true},
+          "role" => %{type: :string, required: true, description: "reader/commenter/writer/owner."},
+          "type" => %{type: :string, required: true, description: "user/group/domain/anyone."},
+          "grantee_email" => %{type: :string, required: false},
+          "notify" => %{type: :boolean, required: false, default: false},
+          "confirm_share" => %{type: :boolean, required: true, default: false}
+        }
+      },
+      %{
+        name: "drive_delete",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description: "Permanently delete a Drive file (irreversible, bypasses trash).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "file_id" => %{type: :string, required: true}
+        }
+      },
+
+      # Google Docs
+      %{
+        name: "docs_get",
+        type: :read,
+        tier: :safe,
+        description: "Get a Google Doc's structure/content.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "document_id" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "docs_create",
+        type: :mutate,
+        tier: :restricted,
+        description: "Create a Google Doc with a title.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "title" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "docs_batch_update",
+        type: :mutate,
+        tier: :restricted,
+        description: "Apply edit requests to a Google Doc (insertText, replaceAllText, …).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "document_id" => %{type: :string, required: true},
+          "requests" => %{type: :array, required: true, description: "Google Docs request list."}
+        }
+      },
+
+      # Google Sheets
+      %{
+        name: "sheets_get",
+        type: :read,
+        tier: :safe,
+        description: "Get a Google Sheet's metadata.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "spreadsheet_id" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "sheets_get_values",
+        type: :read,
+        tier: :safe,
+        description: "Read a range of cell values from a Google Sheet (A1 notation).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "spreadsheet_id" => %{type: :string, required: true},
+          "range" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "sheets_create",
+        type: :mutate,
+        tier: :restricted,
+        description: "Create a Google Sheet with a title.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "title" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "sheets_update_values",
+        type: :mutate,
+        tier: :restricted,
+        description: "Overwrite a range with values (USER_ENTERED).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "spreadsheet_id" => %{type: :string, required: true},
+          "range" => %{type: :string, required: true},
+          "values" => %{type: :array, required: true, description: "2-D array of row values."}
+        }
+      },
+      %{
+        name: "sheets_append_values",
+        type: :mutate,
+        tier: :restricted,
+        description: "Append rows after a range/table.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "spreadsheet_id" => %{type: :string, required: true},
+          "range" => %{type: :string, required: true},
+          "values" => %{type: :array, required: true, description: "2-D array of row values."}
+        }
+      },
+      %{
+        name: "sheets_clear_values",
+        type: :mutate,
+        tier: :restricted,
+        description: "Clear the values in a range (keeps formatting).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "spreadsheet_id" => %{type: :string, required: true},
+          "range" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "sheets_batch_update",
+        type: :mutate,
+        tier: :restricted,
+        description: "Apply structural edit requests to a Sheet (add/delete sheets, formatting).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "spreadsheet_id" => %{type: :string, required: true},
+          "requests" => %{type: :array, required: true, description: "Google Sheets request list."}
+        }
+      },
+
+      # Google Slides
+      %{
+        name: "slides_get",
+        type: :read,
+        tier: :safe,
+        description: "Get a Google Slides presentation.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "presentation_id" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "slides_create",
+        type: :mutate,
+        tier: :restricted,
+        description: "Create a Google Slides presentation with a title.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "title" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "slides_batch_update",
+        type: :mutate,
+        tier: :restricted,
+        description: "Apply edit requests to a presentation (createSlide, insertText, …).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "presentation_id" => %{type: :string, required: true},
+          "requests" => %{type: :array, required: true, description: "Google Slides request list."}
+        }
+      },
+
+      # Contacts (People)
+      %{
+        name: "contacts_list",
+        type: :read,
+        tier: :safe,
+        description: "List the account's Google Contacts.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "page_size" => %{type: :integer, required: false, default: 100},
+          "page_token" => %{type: :string, required: false},
+          "sync_token" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "contacts_search",
+        type: :read,
+        tier: :safe,
+        description: "Search the account's Google Contacts.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "query" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "contacts_get",
+        type: :read,
+        tier: :safe,
+        description: "Get one contact by resource name (e.g. people/c123).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "resource_name" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "contacts_create",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Create a contact. Provide a raw `contact` Person resource, or given_name/family_name/contact_email/phone.",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "contact" => %{type: :object, required: false},
+          "given_name" => %{type: :string, required: false},
+          "family_name" => %{type: :string, required: false},
+          "contact_email" => %{type: :string, required: false},
+          "phone" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "contacts_update",
+        type: :mutate,
+        tier: :restricted,
+        description: "Update a contact. Requires the current etag (from contacts_get).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "resource_name" => %{type: :string, required: true},
+          "etag" => %{type: :string, required: true},
+          "contact" => %{type: :object, required: false},
+          "given_name" => %{type: :string, required: false},
+          "family_name" => %{type: :string, required: false},
+          "contact_email" => %{type: :string, required: false},
+          "phone" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "contacts_delete",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description: "Delete a contact (irreversible).",
+        args: %{
+          "account_id" => %{type: :integer, required: false},
+          "email" => %{type: :string, required: false},
+          "resource_name" => %{type: :string, required: true}
         }
       },
 
@@ -905,6 +1446,391 @@ defmodule BusterClaw.Commands do
     end)
   end
 
+  def gmail_modify(args) do
+    with_message_id(args, fn account, message_id ->
+      BusterClaw.Google.Gmail.modify(account, message_id, args)
+    end)
+  end
+
+  def gmail_trash(args) do
+    with_message_id(args, fn account, message_id ->
+      BusterClaw.Google.Gmail.trash(account, message_id)
+    end)
+  end
+
+  def gmail_delete(args) do
+    with_message_id(args, fn account, message_id ->
+      BusterClaw.Google.Gmail.delete(account, message_id)
+    end)
+  end
+
+  def gcal_event_create(args) do
+    event = Map.get(args, "event")
+
+    if is_map(event) do
+      with_google_account(args, fn account ->
+        BusterClaw.Google.Calendar.create_event(
+          account,
+          Map.get(args, "calendar_id", "primary"),
+          event
+        )
+      end)
+    else
+      {:error, :missing_event}
+    end
+  end
+
+  def gcal_event_update(args) do
+    event = Map.get(args, "event")
+    event_id = Map.get(args, "event_id") || Map.get(args, "id")
+
+    cond do
+      event_id in [nil, ""] -> {:error, :missing_event_id}
+      not is_map(event) -> {:error, :missing_event}
+      true ->
+        with_google_account(args, fn account ->
+          BusterClaw.Google.Calendar.update_event(
+            account,
+            Map.get(args, "calendar_id", "primary"),
+            event_id,
+            event
+          )
+        end)
+    end
+  end
+
+  def gcal_event_delete(args) do
+    event_id = Map.get(args, "event_id") || Map.get(args, "id")
+
+    if event_id in [nil, ""] do
+      {:error, :missing_event_id}
+    else
+      with_google_account(args, fn account ->
+        BusterClaw.Google.Calendar.delete_event(
+          account,
+          Map.get(args, "calendar_id", "primary"),
+          event_id
+        )
+      end)
+    end
+  end
+
+  def tasks_list(args \\ %{}) do
+    with_google_account(args, fn account ->
+      case Map.get(args, "tasklist_id") do
+        id when id in [nil, ""] -> BusterClaw.Google.Tasks.list_tasklists(account)
+        tasklist_id -> BusterClaw.Google.Tasks.list_tasks(account, tasklist_id)
+      end
+    end)
+  end
+
+  def tasks_get(args) do
+    with_tasklist_and_task(args, fn account, tasklist_id, task_id ->
+      BusterClaw.Google.Tasks.get_task(account, tasklist_id, task_id)
+    end)
+  end
+
+  def tasks_create(args) do
+    tasklist_id = Map.get(args, "tasklist_id")
+
+    cond do
+      tasklist_id in [nil, ""] ->
+        {:error, :missing_tasklist_id}
+
+      Map.get(args, "title") in [nil, ""] ->
+        {:error, :missing_title}
+
+      true ->
+        with_google_account(args, fn account ->
+          BusterClaw.Google.Tasks.create_task(account, tasklist_id, task_attrs(args))
+        end)
+    end
+  end
+
+  def tasks_update(args) do
+    with_tasklist_and_task(args, fn account, tasklist_id, task_id ->
+      BusterClaw.Google.Tasks.update_task(account, tasklist_id, task_id, task_attrs(args))
+    end)
+  end
+
+  def tasks_delete(args) do
+    with_tasklist_and_task(args, fn account, tasklist_id, task_id ->
+      BusterClaw.Google.Tasks.delete_task(account, tasklist_id, task_id)
+    end)
+  end
+
+  def drive_list(args \\ %{}) do
+    with_google_account(args, fn account ->
+      BusterClaw.Google.Drive.list(account,
+        q: Map.get(args, "q"),
+        order_by: Map.get(args, "order_by"),
+        page_size: Map.get(args, "page_size", 50),
+        page_token: Map.get(args, "page_token")
+      )
+    end)
+  end
+
+  def drive_get(args) do
+    with_file_id(args, fn account, file_id ->
+      BusterClaw.Google.Drive.get(account, file_id)
+    end)
+  end
+
+  def drive_download(args) do
+    with_file_id(args, fn account, file_id ->
+      with {:ok, data} <- BusterClaw.Google.Drive.download(account, file_id),
+           {:ok, dest} <- download_destination(account, file_id, args),
+           :ok <- File.mkdir_p(Path.dirname(dest)),
+           :ok <- File.write(dest, data) do
+        {:ok, %{id: file_id, path: dest, bytes: byte_size(data)}}
+      end
+    end)
+  end
+
+  def drive_export(args) do
+    mime_type = Map.get(args, "mime_type")
+
+    with_file_id(args, fn account, file_id ->
+      if mime_type in [nil, ""] do
+        {:error, :missing_mime_type}
+      else
+        with {:ok, data} <- BusterClaw.Google.Drive.export(account, file_id, mime_type),
+             {:ok, dest} <- download_destination(account, file_id, args),
+             :ok <- File.mkdir_p(Path.dirname(dest)),
+             :ok <- File.write(dest, data) do
+          {:ok, %{id: file_id, path: dest, bytes: byte_size(data), mime_type: mime_type}}
+        end
+      end
+    end)
+  end
+
+  def drive_folder_create(args) do
+    if Map.get(args, "name") in [nil, ""] do
+      {:error, :missing_name}
+    else
+      with_google_account(args, fn account ->
+        BusterClaw.Google.Drive.create_folder(
+          account,
+          Map.get(args, "name"),
+          Map.get(args, "parent_id")
+        )
+      end)
+    end
+  end
+
+  def drive_upload(args) do
+    path = Map.get(args, "path")
+
+    if path in [nil, ""] do
+      {:error, :missing_path}
+    else
+      abs = resolve_workspace_path(path)
+
+      case File.read(abs) do
+        {:ok, data} ->
+          with_google_account(args, fn account ->
+            BusterClaw.Google.Drive.upload(account, %{
+              "name" => Map.get(args, "name") || Path.basename(abs),
+              "data" => data,
+              "content_type" => Map.get(args, "content_type"),
+              "parent_id" => Map.get(args, "parent_id")
+            })
+          end)
+
+        {:error, reason} ->
+          {:error, {:file_unreadable, abs, reason}}
+      end
+    end
+  end
+
+  def drive_update(args) do
+    with_file_id(args, fn account, file_id ->
+      opts =
+        []
+        |> put_opt(:add_parents, Map.get(args, "add_parents"))
+        |> put_opt(:remove_parents, Map.get(args, "remove_parents"))
+
+      BusterClaw.Google.Drive.update_metadata(account, file_id, drive_update_attrs(args), opts)
+    end)
+  end
+
+  def drive_copy(args) do
+    with_file_id(args, fn account, file_id ->
+      attrs =
+        %{}
+        |> put_attr("name", Map.get(args, "name"))
+        |> put_parents_attr(Map.get(args, "parent_id"))
+
+      BusterClaw.Google.Drive.copy(account, file_id, attrs)
+    end)
+  end
+
+  def drive_share(args) do
+    cond do
+      not confirmed?(args, "confirm_share") ->
+        {:error, :missing_confirmation}
+
+      Map.get(args, "role") in [nil, ""] ->
+        {:error, :missing_role}
+
+      Map.get(args, "type") in [nil, ""] ->
+        {:error, :missing_type}
+
+      true ->
+        with_file_id(args, fn account, file_id ->
+          permission =
+            %{"role" => Map.get(args, "role"), "type" => Map.get(args, "type")}
+            |> put_attr("emailAddress", Map.get(args, "grantee_email"))
+
+          BusterClaw.Google.Drive.share(account, file_id, permission,
+            notify: truthy?(Map.get(args, "notify", false))
+          )
+        end)
+    end
+  end
+
+  def drive_delete(args) do
+    with_file_id(args, fn account, file_id ->
+      BusterClaw.Google.Drive.delete(account, file_id)
+    end)
+  end
+
+  def docs_get(args) do
+    with_required(args, "document_id", :missing_document_id, fn account, document_id ->
+      BusterClaw.Google.Docs.get(account, document_id)
+    end)
+  end
+
+  def docs_create(args) do
+    with_required(args, "title", :missing_title, fn account, title ->
+      BusterClaw.Google.Docs.create(account, title)
+    end)
+  end
+
+  def docs_batch_update(args) do
+    with_requests(args, "document_id", :missing_document_id, fn account, document_id, requests ->
+      BusterClaw.Google.Docs.batch_update(account, document_id, requests)
+    end)
+  end
+
+  def sheets_get(args) do
+    with_required(args, "spreadsheet_id", :missing_spreadsheet_id, fn account, id ->
+      BusterClaw.Google.Sheets.get(account, id)
+    end)
+  end
+
+  def sheets_get_values(args) do
+    with_range(args, fn account, id, range ->
+      BusterClaw.Google.Sheets.get_values(account, id, range)
+    end)
+  end
+
+  def sheets_create(args) do
+    with_required(args, "title", :missing_title, fn account, title ->
+      BusterClaw.Google.Sheets.create(account, title)
+    end)
+  end
+
+  def sheets_update_values(args) do
+    with_range_values(args, fn account, id, range, values ->
+      BusterClaw.Google.Sheets.update_values(account, id, range, values)
+    end)
+  end
+
+  def sheets_append_values(args) do
+    with_range_values(args, fn account, id, range, values ->
+      BusterClaw.Google.Sheets.append_values(account, id, range, values)
+    end)
+  end
+
+  def sheets_clear_values(args) do
+    with_range(args, fn account, id, range ->
+      BusterClaw.Google.Sheets.clear_values(account, id, range)
+    end)
+  end
+
+  def sheets_batch_update(args) do
+    with_requests(args, "spreadsheet_id", :missing_spreadsheet_id, fn account, id, requests ->
+      BusterClaw.Google.Sheets.batch_update(account, id, requests)
+    end)
+  end
+
+  def slides_get(args) do
+    with_required(args, "presentation_id", :missing_presentation_id, fn account, id ->
+      BusterClaw.Google.Slides.get(account, id)
+    end)
+  end
+
+  def slides_create(args) do
+    with_required(args, "title", :missing_title, fn account, title ->
+      BusterClaw.Google.Slides.create(account, title)
+    end)
+  end
+
+  def slides_batch_update(args) do
+    with_requests(args, "presentation_id", :missing_presentation_id, fn account, id, requests ->
+      BusterClaw.Google.Slides.batch_update(account, id, requests)
+    end)
+  end
+
+  def contacts_list(args \\ %{}) do
+    with_google_account(args, fn account ->
+      BusterClaw.Google.People.list(account,
+        page_size: Map.get(args, "page_size", 100),
+        page_token: Map.get(args, "page_token"),
+        sync_token: Map.get(args, "sync_token")
+      )
+    end)
+  end
+
+  def contacts_search(args) do
+    with_required(args, "query", :missing_query, fn account, query ->
+      BusterClaw.Google.People.search(account, query)
+    end)
+  end
+
+  def contacts_get(args) do
+    with_required(args, "resource_name", :missing_resource_name, fn account, resource_name ->
+      BusterClaw.Google.People.get(account, resource_name)
+    end)
+  end
+
+  def contacts_create(args) do
+    case person_resource(args) do
+      resource when resource == %{} ->
+        {:error, :missing_contact}
+
+      resource ->
+        with_google_account(args, fn account ->
+          BusterClaw.Google.People.create(account, resource)
+        end)
+    end
+  end
+
+  def contacts_update(args) do
+    resource_name = Map.get(args, "resource_name")
+    etag = Map.get(args, "etag")
+
+    cond do
+      resource_name in [nil, ""] ->
+        {:error, :missing_resource_name}
+
+      etag in [nil, ""] ->
+        {:error, :missing_etag}
+
+      true ->
+        with_google_account(args, fn account ->
+          BusterClaw.Google.People.update(account, resource_name, person_resource(args), etag)
+        end)
+    end
+  end
+
+  def contacts_delete(args) do
+    with_required(args, "resource_name", :missing_resource_name, fn account, resource_name ->
+      BusterClaw.Google.People.delete(account, resource_name)
+    end)
+  end
+
   # -----------------------------------------------------------------------
   # Search
   # -----------------------------------------------------------------------
@@ -1251,6 +2177,167 @@ defmodule BusterClaw.Commands do
         {:error, :no_google_account}
     end
   end
+
+  defp with_message_id(args, fun) do
+    message_id = Map.get(args, "message_id") || Map.get(args, "id")
+
+    if message_id in [nil, ""] do
+      {:error, :missing_message_id}
+    else
+      with_google_account(args, fn account -> fun.(account, message_id) end)
+    end
+  end
+
+  defp with_tasklist_and_task(args, fun) do
+    tasklist_id = Map.get(args, "tasklist_id")
+    task_id = Map.get(args, "task_id") || Map.get(args, "id")
+
+    cond do
+      tasklist_id in [nil, ""] -> {:error, :missing_tasklist_id}
+      task_id in [nil, ""] -> {:error, :missing_task_id}
+      true -> with_google_account(args, fn account -> fun.(account, tasklist_id, task_id) end)
+    end
+  end
+
+  # Build a Google Tasks resource from the supported flat fields, dropping blanks
+  # so a patch only touches what was provided.
+  defp task_attrs(args) do
+    ~w(title notes due status)
+    |> Enum.reduce(%{}, fn key, acc ->
+      case Map.get(args, key) do
+        value when value in [nil, ""] -> acc
+        value -> Map.put(acc, key, value)
+      end
+    end)
+  end
+
+  # Resolve the Google account and require one string arg before calling `fun`.
+  defp with_required(args, key, error, fun) do
+    case Map.get(args, key) do
+      value when value in [nil, ""] -> {:error, error}
+      value -> with_google_account(args, fn account -> fun.(account, value) end)
+    end
+  end
+
+  # Require an id arg plus a non-empty `requests` list (Docs/Sheets/Slides batchUpdate).
+  defp with_requests(args, id_key, id_error, fun) do
+    requests = Map.get(args, "requests")
+
+    cond do
+      Map.get(args, id_key) in [nil, ""] -> {:error, id_error}
+      not is_list(requests) or requests == [] -> {:error, :missing_requests}
+      true -> with_google_account(args, fn account -> fun.(account, Map.get(args, id_key), requests) end)
+    end
+  end
+
+  # Require spreadsheet_id + range (Sheets reads/clear).
+  defp with_range(args, fun) do
+    id = Map.get(args, "spreadsheet_id")
+    range = Map.get(args, "range")
+
+    cond do
+      id in [nil, ""] -> {:error, :missing_spreadsheet_id}
+      range in [nil, ""] -> {:error, :missing_range}
+      true -> with_google_account(args, fn account -> fun.(account, id, range) end)
+    end
+  end
+
+  # Require spreadsheet_id + range + a 2-D values list (Sheets writes).
+  defp with_range_values(args, fun) do
+    values = Map.get(args, "values")
+
+    with_range(args, fn account, id, range ->
+      if is_list(values), do: fun.(account, id, range, values), else: {:error, :missing_values}
+    end)
+  end
+
+  defp with_file_id(args, fun) do
+    file_id = Map.get(args, "file_id") || Map.get(args, "id")
+
+    if file_id in [nil, ""] do
+      {:error, :missing_file_id}
+    else
+      with_google_account(args, fn account -> fun.(account, file_id) end)
+    end
+  end
+
+  # Where a Drive download/export is written. An explicit destination wins;
+  # otherwise save under the workspace using the file's own name.
+  defp download_destination(account, file_id, args) do
+    case Map.get(args, "destination") do
+      dest when is_binary(dest) and dest != "" ->
+        {:ok, resolve_workspace_path(dest)}
+
+      _ ->
+        with {:ok, meta} <- BusterClaw.Google.Drive.get(account, file_id) do
+          {:ok, resolve_workspace_path(meta.name || to_string(file_id))}
+        end
+    end
+  end
+
+  defp resolve_workspace_path(path) do
+    case Path.type(path) do
+      :absolute -> Path.expand(path)
+      _relative -> Path.expand(path, BusterClaw.Library.Artifact.workspace_root())
+    end
+  end
+
+  defp drive_update_attrs(args) do
+    %{}
+    |> put_attr("name", Map.get(args, "name"))
+    |> put_starred(Map.get(args, "starred"))
+  end
+
+  defp put_starred(attrs, nil), do: attrs
+  defp put_starred(attrs, value), do: Map.put(attrs, "starred", truthy?(value))
+
+  defp put_attr(attrs, _key, value) when value in [nil, ""], do: attrs
+  defp put_attr(attrs, key, value), do: Map.put(attrs, key, value)
+
+  defp put_parents_attr(attrs, parent_id) when parent_id in [nil, ""], do: attrs
+  defp put_parents_attr(attrs, parent_id), do: Map.put(attrs, "parents", [parent_id])
+
+  defp put_opt(opts, _key, value) when value in [nil, ""], do: opts
+  defp put_opt(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp confirmed?(args, key) do
+    Map.get(args, key) in [true, "true", "yes", "YES", "confirm", "CONFIRM"]
+  end
+
+  # Build a People `Person` resource: a raw `contact` object wins; otherwise
+  # assemble one from the flat convenience fields.
+  defp person_resource(args) do
+    case Map.get(args, "contact") do
+      %{} = contact when contact != %{} -> contact
+      _ -> build_person(args)
+    end
+  end
+
+  defp build_person(args) do
+    %{}
+    |> put_person_name(args)
+    |> put_person_field("emailAddresses", Map.get(args, "contact_email"))
+    |> put_person_field("phoneNumbers", Map.get(args, "phone"))
+  end
+
+  defp put_person_name(person, args) do
+    given = Map.get(args, "given_name")
+    family = Map.get(args, "family_name")
+
+    if given in [nil, ""] and family in [nil, ""] do
+      person
+    else
+      name = %{} |> put_attr("givenName", given) |> put_attr("familyName", family)
+      Map.put(person, "names", [name])
+    end
+  end
+
+  defp put_person_field(person, _key, value) when value in [nil, ""], do: person
+  defp put_person_field(person, "emailAddresses", value),
+    do: Map.put(person, "emailAddresses", [%{"value" => value}])
+
+  defp put_person_field(person, "phoneNumbers", value),
+    do: Map.put(person, "phoneNumbers", [%{"value" => value}])
 
   defp send_confirmed?(args) do
     Map.get(args, "confirm_send") in [true, "true", "send", "SEND"]

@@ -6,10 +6,19 @@ defmodule BusterClaw.Google.OAuth do
 
   @authorize_endpoint "https://accounts.google.com/o/oauth2/v2/auth"
   @token_endpoint "https://oauth2.googleapis.com/token"
+  # Full read/write across the Workspace surface the agent drives. `mail.google.com`,
+  # `drive`, and `contacts` are Google *restricted* scopes (trigger OAuth verification
+  # + the annual CASA security assessment before public distribution); the rest are
+  # sensitive/non-sensitive. `mail.google.com` is a superset of gmail.readonly+compose.
   @default_scopes [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.compose",
-    "https://www.googleapis.com/auth/calendar.events.readonly"
+    "https://mail.google.com/",
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/presentations",
+    "https://www.googleapis.com/auth/contacts",
+    "https://www.googleapis.com/auth/tasks"
   ]
 
   def default_scopes, do: @default_scopes

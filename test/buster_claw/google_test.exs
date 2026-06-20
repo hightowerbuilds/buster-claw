@@ -103,8 +103,9 @@ defmodule BusterClaw.GoogleTest do
       assert params["response_type"] == "code"
       assert params["access_type"] == "offline"
       assert params["prompt"] == "consent"
-      assert params["scope"] =~ "gmail.readonly"
-      assert params["scope"] =~ "gmail.compose"
+      assert params["scope"] =~ "https://mail.google.com/"
+      assert params["scope"] =~ "https://www.googleapis.com/auth/drive"
+      assert params["scope"] =~ "https://www.googleapis.com/auth/calendar"
       assert params["state"] == "state"
     end
 
@@ -122,9 +123,12 @@ defmodule BusterClaw.GoogleTest do
 
       params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
-      assert params["scope"] =~ "gmail.readonly"
-      assert params["scope"] =~ "gmail.compose"
-      assert params["scope"] =~ "calendar.events.readonly"
+      # The account's previously-granted scope is preserved, and the new full
+      # defaults are unioned in so reconnect re-grants the broader access.
+      assert params["scope"] =~ "https://www.googleapis.com/auth/gmail.readonly"
+      assert params["scope"] =~ "https://mail.google.com/"
+      assert params["scope"] =~ "https://www.googleapis.com/auth/drive"
+      assert params["scope"] =~ "https://www.googleapis.com/auth/tasks"
     end
 
     test "exchanges a callback code and stores encrypted tokens" do

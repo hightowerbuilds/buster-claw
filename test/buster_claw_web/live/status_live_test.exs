@@ -181,6 +181,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(phx-click="quick_chat")
     assert response =~ "Please read through the introduction and BusterClawWorkspace"
     assert response =~ "Sentinel security layer"
+    assert response =~ "overview of everything you can do across my Google Workspace"
   end
 
   describe "Pages tab bookmarks" do

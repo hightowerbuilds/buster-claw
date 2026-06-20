@@ -284,6 +284,162 @@ defmodule BusterClaw.Google.GmailTest do
     assert message.thread_id == "thread-1"
   end
 
+  test "sends a Gmail message with a file attachment as a multipart/mixed payload" do
+    path = Path.join(System.tmp_dir!(), "buster-claw-attach-#{System.unique_integer([:positive])}.txt")
+    File.write!(path, "attachment contents")
+    on_exit(fn -> File.rm(path) end)
+
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      assert conn.request_path == "/gmail/v1/users/me/messages/send"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+      raw = payload |> Map.fetch!("raw") |> decode_base64url!()
+
+      # Top-level is multipart/mixed with a boundary; the text body is the first part.
+      assert raw =~ ~r/Content-Type: multipart\/mixed; boundary="(=_bc_[^"]+)"/
+      [_, boundary] = Regex.run(~r/boundary="(=_bc_[^"]+)"/, raw)
+
+      assert raw =~ "--#{boundary}\r\n"
+      assert raw =~ "--#{boundary}--\r\n"
+      assert raw =~ "Content-Type: text/plain; charset=\"UTF-8\"\r\n"
+      assert raw =~ "\r\n\r\nSee attached."
+
+      # The attachment part carries the right headers and base64-encoded bytes.
+      assert raw =~ ~r/Content-Type: text\/plain; name="[^"]+\.txt"/
+      assert raw =~ "Content-Transfer-Encoding: base64\r\n"
+      assert raw =~ ~r/Content-Disposition: attachment; filename="[^"]+\.txt"/
+      assert raw =~ Base.encode64("attachment contents")
+
+      Req.Test.json(conn, %{"id" => "msg-attach-1", "threadId" => "thread-attach-1"})
+    end)
+
+    account = connected_account!()
+
+    assert {:ok, message} =
+             Gmail.send_message(
+               account,
+               %{
+                 "to" => "Ada <ada@example.com>",
+                 "subject" => "With attachment",
+                 "body" => "See attached.",
+                 "attachments" => [path]
+               },
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert message.id == "msg-attach-1"
+  end
+
+  test "honors explicit filename and content_type on an attachment spec" do
+    path = Path.join(System.tmp_dir!(), "buster-claw-attach-#{System.unique_integer([:positive])}.bin")
+    File.write!(path, "%PDF-1.4 fake")
+    on_exit(fn -> File.rm(path) end)
+
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      raw = body |> Jason.decode!() |> Map.fetch!("raw") |> decode_base64url!()
+
+      assert raw =~ "Content-Type: application/pdf; name=\"report.pdf\"\r\n"
+      assert raw =~ "Content-Disposition: attachment; filename=\"report.pdf\"\r\n"
+
+      Req.Test.json(conn, %{"id" => "msg-attach-2", "threadId" => "thread-attach-2"})
+    end)
+
+    account = connected_account!()
+
+    assert {:ok, _message} =
+             Gmail.send_message(
+               account,
+               %{
+                 "to" => "Ada <ada@example.com>",
+                 "subject" => "Spec attachment",
+                 "body" => "See attached.",
+                 "attachments" => [
+                   %{"path" => path, "filename" => "report.pdf", "content_type" => "application/pdf"}
+                 ]
+               },
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+  end
+
+  test "fails before calling Google when an attachment is unreadable" do
+    missing = Path.join(System.tmp_dir!(), "buster-claw-missing-#{System.unique_integer([:positive])}.txt")
+
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn _conn ->
+      flunk("Google should not be called when an attachment cannot be read")
+    end)
+
+    account = connected_account!()
+
+    assert {:error, {:attachment_unreadable, _abs, :enoent}} =
+             Gmail.send_message(
+               account,
+               %{
+                 "to" => "Ada <ada@example.com>",
+                 "subject" => "Broken attachment",
+                 "body" => "See attached.",
+                 "attachments" => [missing]
+               },
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+  end
+
+  test "modify adds and removes labels on a message" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/gmail/v1/users/me/messages/msg-1/modify"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+      assert payload["addLabelIds"] == ["STARRED"]
+      assert payload["removeLabelIds"] == ["UNREAD", "INBOX"]
+
+      Req.Test.json(conn, %{"id" => "msg-1", "labelIds" => ["STARRED"]})
+    end)
+
+    assert {:ok, summary} =
+             Gmail.modify(
+               connected_account!(),
+               "msg-1",
+               %{"add" => ["STARRED"], "remove" => ["UNREAD", "INBOX"]},
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert summary.id == "msg-1"
+    assert summary.label_ids == ["STARRED"]
+  end
+
+  test "trash moves a message to the trash" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/gmail/v1/users/me/messages/msg-1/trash"
+      Req.Test.json(conn, %{"id" => "msg-1", "labelIds" => ["TRASH"]})
+    end)
+
+    assert {:ok, %{id: "msg-1", label_ids: ["TRASH"]}} =
+             Gmail.trash(
+               connected_account!(),
+               "msg-1",
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+  end
+
+  test "delete permanently removes a message" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      assert conn.method == "DELETE"
+      assert conn.request_path == "/gmail/v1/users/me/messages/msg-1"
+      Plug.Conn.send_resp(conn, 204, "")
+    end)
+
+    assert {:ok, %{id: "msg-1", deleted: true}} =
+             Gmail.delete(
+               connected_account!(),
+               "msg-1",
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+  end
+
   defp connected_account! do
     {:ok, account} =
       Google.create_account(%{

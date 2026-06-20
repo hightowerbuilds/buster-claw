@@ -206,6 +206,12 @@ defmodule BusterClawWeb.GWSLive do
                   <span class={account_token_class(account.has_refresh_token)}>
                     {if account.has_refresh_token, do: "authorized", else: "needs auth"}
                   </span>
+                  <span
+                    :if={missing_scopes?(account)}
+                    class="rounded-sm border border-warning/50 bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning"
+                  >
+                    Reconnect required — new permissions available
+                  </span>
                 </div>
 
                 <dl class="mt-3 grid gap-2 text-xs text-base-content/60 sm:grid-cols-2">
@@ -664,4 +670,16 @@ defmodule BusterClawWeb.GWSLive do
 
   defp token_expiry_label(nil), do: "not connected"
   defp token_expiry_label(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
+
+  # True when the account hasn't granted every current default scope — i.e. it was
+  # connected before the Workspace scope set expanded and must reconnect to
+  # re-grant. Drives the "Reconnect required" badge.
+  defp missing_scopes?(account) do
+    granted =
+      (account.scopes || "")
+      |> String.split(~r/\s+/, trim: true)
+      |> MapSet.new()
+
+    Enum.any?(BusterClaw.Google.OAuth.default_scopes(), &(not MapSet.member?(granted, &1)))
+  end
 end

@@ -411,6 +411,7 @@ defmodule BusterClawWeb.StatusLive do
   @quick_prompts [
     "Please read through the introduction and BusterClawWorkspace and give me an explanation.",
     "Explain Buster Claw's Sentinel security layer — what it audits, the safe vs restricted trust tiers, and the gate on irreversible actions. Then exemplify it: run one safe command and one restricted command through the ./buster-claw CLI, show how each is recorded on the audit feed, and point me to the Security tab to watch it live.",
+    "Give me an overview of everything you can do across my Google Workspace. Run `./buster-claw commands` to read your full catalog, then summarize the Google capabilities grouped by service — Gmail, Calendar, Drive, Docs, Sheets, Slides, Contacts, and Tasks — noting for each which actions are read-only (safe) versus those that change or delete data and need confirmation.",
     "Check my mail and tell me what needs a reply.",
     "What can you do? Show me a few things to try."
   ]

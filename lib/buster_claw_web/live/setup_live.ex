@@ -304,11 +304,13 @@ defmodule BusterClawWeb.SetupLive do
         <div :if={@step == :google} class="space-y-6">
           <div class="ic-panel space-y-4 p-6">
             <h2 class="font-display text-xl font-black uppercase tracking-tight">
-              Connect your email
+              Connect your Google Workspace
             </h2>
             <p class="text-sm leading-7 text-base-content/80">
-              Buster Claw works through your Gmail. Connecting is a one-time Google step — once it's
-              done, emails from you are trusted automatically.
+              Buster Claw manages your Google Workspace on your behalf — Gmail, Calendar, Drive,
+              Docs, Sheets, Slides, Contacts and Tasks. Connecting is a one-time Google step; the
+              consent screen will list each of these permissions, so approve them all to give your
+              agent full access. Once it's done, emails from you are trusted automatically.
             </p>
 
             <.form

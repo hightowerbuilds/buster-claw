@@ -54,6 +54,50 @@ defmodule BusterClaw.Google.Calendar do
     end
   end
 
+  @doc """
+  Create an event (`events.insert`). `attrs` is the raw Google event resource
+  (summary, start, end, description, location, attendees, …). `calendar_id`
+  defaults to `"primary"`.
+  """
+  def create_event(%Account{} = account, calendar_id, attrs, opts \\ []) when is_map(attrs) do
+    cal = calendar_id || "primary"
+    path = "calendars/#{URI.encode_www_form(cal)}/events"
+    opts = Keyword.put(opts, :base_url, @calendar_base_url)
+
+    with {:ok, body} <- Client.post_json(account, path, attrs, opts) do
+      {:ok, event_summary(body)}
+    end
+  end
+
+  @doc "Patch an existing event (`events.patch`)."
+  def update_event(%Account{} = account, calendar_id, event_id, attrs, opts \\ [])
+      when is_map(attrs) do
+    cal = calendar_id || "primary"
+
+    path =
+      "calendars/#{URI.encode_www_form(cal)}/events/#{URI.encode_www_form(to_string(event_id))}"
+
+    opts = Keyword.put(opts, :base_url, @calendar_base_url)
+
+    with {:ok, body} <- Client.patch_json(account, path, attrs, opts) do
+      {:ok, event_summary(body)}
+    end
+  end
+
+  @doc "Delete an event (`events.delete`, irreversible)."
+  def delete_event(%Account{} = account, calendar_id, event_id, opts \\ []) do
+    cal = calendar_id || "primary"
+
+    path =
+      "calendars/#{URI.encode_www_form(cal)}/events/#{URI.encode_www_form(to_string(event_id))}"
+
+    opts = Keyword.put(opts, :base_url, @calendar_base_url)
+
+    with {:ok, _} <- Client.delete(account, path, opts) do
+      {:ok, %{id: to_string(event_id), calendar_id: cal, deleted: true}}
+    end
+  end
+
   defp event_params(opts, nil, time_min, time_max) do
     [
       {"singleEvents", "true"},

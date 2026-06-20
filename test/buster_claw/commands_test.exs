@@ -128,13 +128,40 @@ defmodule BusterClaw.CommandsTest do
     end
 
     test "command_gated?/1 marks the outbound/irreversible commands" do
-      for name <- ~w(gmail_send document_delete event_delete integration_delete) do
+      for name <-
+            ~w(gmail_send document_delete event_delete integration_delete
+               gmail_delete gcal_event_delete drive_delete contacts_delete tasks_delete) do
         assert Commands.command_gated?(name), "expected #{name} to be gated"
       end
 
-      for name <- ~w(gmail_draft_create document_save event_create document_list runtime_status) do
+      # Restricted Workspace writes that are recoverable/non-outbound are NOT gated
+      # (an autonomous run may do them without surfacing for approval).
+      for name <-
+            ~w(gmail_draft_create document_save event_create document_list runtime_status
+               gmail_trash drive_upload sheets_update_values docs_batch_update contacts_update) do
         refute Commands.command_gated?(name), "did not expect #{name} to be gated"
       end
+    end
+
+    test "new Google Workspace commands carry the expected tiers" do
+      for name <- ~w(drive_list drive_get docs_get sheets_get sheets_get_values slides_get
+                     contacts_list contacts_search contacts_get tasks_list tasks_get) do
+        assert Commands.command_tier(name) == :safe, "expected #{name} to be safe-tier"
+      end
+
+      for name <- ~w(drive_upload drive_share docs_create sheets_update_values slides_create
+                     contacts_create gcal_event_create gmail_modify tasks_create) do
+        assert Commands.command_tier(name) == :restricted, "expected #{name} to be restricted"
+      end
+    end
+
+    test "drive_share requires its confirm flag before reaching Google" do
+      assert {:error, :missing_confirmation} =
+               Commands.call(
+                 "drive_share",
+                 %{"file_id" => "f-1", "role" => "reader", "type" => "anyone"},
+                 caller: :trusted
+               )
     end
 
     test ":agent_untrusted runs non-gated restricted commands autonomously" do
