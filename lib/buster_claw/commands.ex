@@ -871,6 +871,21 @@ defmodule BusterClaw.Commands do
         description: "Fetch a URL and convert to markdown.",
         args: %{"url" => %{type: :string, required: true}}
       },
+      %{
+        name: "browser_download",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Download a URL's raw bytes (SSRF-guarded) into the workspace downloads folder. Returns the saved path — chain into drive_upload to push it to Google Drive.",
+        args: %{
+          "url" => %{type: :string, required: true},
+          "filename" => %{
+            type: :string,
+            required: false,
+            description: "Override the saved filename (defaults to the server/URL name)."
+          }
+        }
+      },
 
       # Finance (read-only research; every result carries source + as-of)
       %{
@@ -1846,6 +1861,28 @@ defmodule BusterClaw.Commands do
 
   def browser_fetch(%{"url" => url}), do: Browser.fetch(url, [])
 
+  def browser_download(%{"url" => url} = args) when is_binary(url) and url != "" do
+    with {:ok, dl} <- Browser.download(url) do
+      filename = sanitize_download_name(Map.get(args, "filename") || dl.filename)
+      rel = Path.join(["downloads", Date.to_iso8601(BusterClaw.LocalTime.today()), filename])
+      abs = resolve_workspace_path(rel)
+
+      with :ok <- File.mkdir_p(Path.dirname(abs)),
+           :ok <- File.write(abs, dl.body) do
+        {:ok,
+         %{
+           path: rel,
+           absolute_path: abs,
+           url: url,
+           content_type: dl.content_type,
+           bytes: byte_size(dl.body)
+         }}
+      end
+    end
+  end
+
+  def browser_download(_args), do: {:error, :missing_url}
+
   # -----------------------------------------------------------------------
   # Finance (read-only research)
   # -----------------------------------------------------------------------
@@ -2279,6 +2316,24 @@ defmodule BusterClaw.Commands do
     case Path.type(path) do
       :absolute -> Path.expand(path)
       _relative -> Path.expand(path, BusterClaw.Library.Artifact.workspace_root())
+    end
+  end
+
+  # Reduce a downloaded filename to a safe basename (no path separators / traversal,
+  # only word chars, dot and dash), so it can't escape the downloads folder.
+  defp sanitize_download_name(name) do
+    cleaned =
+      name
+      |> to_string()
+      |> Path.basename()
+      |> String.replace(~r/[^\w.\-]+/u, "_")
+      |> String.trim("_")
+
+    case cleaned do
+      "" -> "download"
+      "." -> "download"
+      ".." -> "download"
+      other -> other
     end
   end
 

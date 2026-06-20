@@ -228,9 +228,32 @@ Small UX pass on the home panel (`status_live.ex`, `app.css`, `app.js`):
   `updated()` (LiveView would otherwise drop the inline height on the next render)
   with a `dragging` guard so an incoming message can't snap the height mid-drag.
 
+## Web → Drive pipeline — binary-safe download
+
+Closing the "go to a website, download a file, store it in Drive" chain. The Drive
+half (`drive_upload`) already landed above; the missing piece was capturing **binary**
+bytes — `browser_fetch` is a markdown extractor that discards the original file.
+
+- **`Browser.download/2`** (`browser.ex`). An SSRF-guarded GET (reuses `URLGuard`)
+  with `decode_body: false` so the bytes are preserved exactly as served (no
+  markdown, no JSON/gzip decoding); never uses the Playwright sidecar (that renders
+  pages); 100 MB cap; records an `:untrusted_ingest` Sentinel event. Derives the
+  filename from `Content-Disposition`, falling back to the URL path.
+
+- **`browser_download` command** (`commands.ex`, restricted/mutate). Writes the
+  fetched bytes into `workspace/downloads/<date>/<filename>` (filename sanitized to
+  a traversal-safe basename) and returns a workspace-relative `path` that
+  `drive_upload` consumes directly. So the pipeline is now two composable, audited
+  steps: `browser_download <url>` → `drive_upload path=<…>`. Kept as two commands
+  (not a URL-streaming upload) so the bytes are preserved on disk and each leg is
+  independently audited.
+
 ## Verification
 
-- `mix test` — **525 tests, 0 failures** (was 481). New: 41 across the Google
+- `mix test` — **530 tests, 0 failures** (was 481). New: `browser_download`/`Browser.download`
+  (3 wrapper cases — raw bytes + `Content-Disposition` filename, URL-derived
+  filename, blocked-URL refusal — and 2 command cases incl. an end-to-end write into
+  a temp workspace proving the file lands where `drive_upload` reads it). Plus 41 across the Google
   service wrappers (`client_test`, `calendar_test`, `drive_test`, `docs_test`,
   `sheets_test`, `slides_test`, `people_test`, `tasks_test`, extended `gmail_test`),
   the catalog tier/gate cases in `commands_test`, and the new quick-chat prompt

@@ -833,4 +833,49 @@ defmodule BusterClaw.CommandsTest do
       missing -> data <> String.duplicate("=", 4 - missing)
     end
   end
+
+  describe "browser_download → drive_upload pipeline" do
+    test "browser_download is restricted, not gated, and validates its url" do
+      assert Commands.command_tier("browser_download") == :restricted
+      refute Commands.command_gated?("browser_download")
+      assert {:error, :missing_url} = Commands.call("browser_download", %{}, caller: :trusted)
+    end
+
+    test "browser_download writes the fetched bytes into the workspace downloads folder" do
+      tmp = Path.join(System.tmp_dir!(), "bc-dl-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(tmp)
+      prev_ws = Application.get_env(:buster_claw, :workspace_root)
+      prev_req = Application.get_env(:buster_claw, :browser_req_options)
+      Application.put_env(:buster_claw, :workspace_root, tmp)
+      Application.put_env(:buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHTTP})
+
+      on_exit(fn ->
+        restore_env(:workspace_root, prev_ws)
+        restore_env(:browser_req_options, prev_req)
+        File.rm_rf(tmp)
+      end)
+
+      Req.Test.stub(BusterClaw.BrowserHTTP, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/pdf")
+        |> Plug.Conn.send_resp(200, <<37, 80, 68, 70>>)
+      end)
+
+      assert {:ok, result} =
+               Commands.call(
+                 "browser_download",
+                 %{"url" => "https://example.com/files/report.pdf"},
+                 caller: :trusted
+               )
+
+      assert result.path =~ ~r"^downloads/\d{4}-\d{2}-\d{2}/report\.pdf$"
+      assert result.bytes == 4
+      # The file is on disk under the workspace, so drive_upload can read it back.
+      assert String.starts_with?(result.absolute_path, tmp)
+      assert File.read!(result.absolute_path) == <<37, 80, 68, 70>>
+    end
+  end
+
+  defp restore_env(key, nil), do: Application.delete_env(:buster_claw, key)
+  defp restore_env(key, value), do: Application.put_env(:buster_claw, key, value)
 end
