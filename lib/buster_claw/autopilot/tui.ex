@@ -15,6 +15,7 @@ defmodule BusterClaw.Autopilot.Tui do
   """
 
   alias BusterClaw.AgentRunner
+  alias BusterClaw.Agent.StreamEvent
 
   @frame_ms 140
   @width 52
@@ -64,74 +65,29 @@ defmodule BusterClaw.Autopilot.Tui do
     end
   end
 
-  # --- event → state classification (pure) ---
-
-  @reading ~w(Read Grep Glob LS NotebookRead WebFetch WebSearch)
-  @writing ~w(Write Edit NotebookEdit)
+  # --- event → state classification ---
+  #
+  # The actual parsing/interpretation lives in `BusterClaw.Agent.StreamEvent`
+  # (shared with the chat backend). These wrappers keep the map-in API the TUI
+  # tests exercise, delegating to the normalized event.
 
   @doc """
   Classify a decoded stream-json event into a state, given the previous state
   (returned unchanged for events that don't imply an activity).
   """
-  def classify(%{"type" => "system"}, _prev), do: :booting
-  def classify(%{"type" => "result"}, _prev), do: :done
-  def classify(%{"type" => "user"}, _prev), do: :waiting
-
-  def classify(%{"type" => "assistant", "message" => %{"content" => content}}, prev)
-      when is_list(content) do
-    case Enum.find(content, &(&1["type"] == "tool_use")) do
-      %{"name" => name} = tool -> tool_state(name, tool["input"])
-      # An assistant turn with only text is the model talking / planning.
-      _ -> if prev == :booting, do: :booting, else: :waiting
-    end
-  end
-
-  def classify(_event, prev), do: prev
-
-  defp tool_state(name, _input) when name in @reading, do: :reading
-  defp tool_state(name, _input) when name in @writing, do: :writing
-  defp tool_state("Bash", input), do: bash_state(to_string(input["command"] || ""))
-  defp tool_state(_name, _input), do: :reading
-
-  # Order matters: an outbound/irreversible command is "transmitting" even though
-  # it mentions gmail; the mail-touching reads are "incoming".
-  defp bash_state(cmd) do
-    cond do
-      cmd =~ ~r/gmail_send|gmail_draft|dispatch\s+(reply|done|block)|document_save|\btee\b|>>/i ->
-        :writing
-
-      cmd =~ ~r/gmail|mailman|\binbox\b|dispatch\s+(list|claim|show)/i ->
-        :email
-
-      true ->
-        :reading
-    end
-  end
+  def classify(event_map, prev) when is_map(event_map),
+    do: event_map |> StreamEvent.normalize() |> StreamEvent.activity_state(prev)
 
   @doc "A short human label for the activity behind an event (for the status line)."
-  def activity(%{"type" => "assistant", "message" => %{"content" => content}})
-      when is_list(content) do
-    case Enum.find(content, &(&1["type"] == "tool_use")) do
-      %{"name" => "Bash", "input" => %{"command" => cmd}} ->
-        "$ " <> String.slice(to_string(cmd), 0, 38)
-
-      %{"name" => name} ->
-        name
-
-      _ ->
-        "thinking"
-    end
-  end
-
-  def activity(%{"type" => "result", "result" => r}) when is_binary(r), do: String.slice(r, 0, 40)
-  def activity(_), do: nil
+  def activity(event_map) when is_map(event_map),
+    do: event_map |> StreamEvent.normalize() |> StreamEvent.activity_label()
 
   # --- run loop ---
 
   defp loop(s) do
     receive do
       {port, {:data, data}} when port == s.port ->
-        {lines, buf} = split_lines(s.buf <> data)
+        {lines, buf} = StreamEvent.split_lines(s.buf <> data)
         s2 = Enum.reduce(lines, %{s | buf: buf}, &apply_line/2)
         render(s2)
         loop(s2)
@@ -147,13 +103,13 @@ defmodule BusterClaw.Autopilot.Tui do
   end
 
   defp apply_line(line, s) do
-    case line |> String.trim() |> decode() do
+    case StreamEvent.parse(line) do
       {:ok, event} ->
         %{
           s
-          | state: classify(event, s.state),
-            last: activity(event) || s.last,
-            summary: summary(event, s.summary)
+          | state: StreamEvent.activity_state(event, s.state),
+            last: StreamEvent.activity_label(event) || s.last,
+            summary: result_summary(event, s.summary)
         }
 
       :error ->
@@ -161,23 +117,8 @@ defmodule BusterClaw.Autopilot.Tui do
     end
   end
 
-  defp decode(""), do: :error
-
-  defp decode(line) do
-    case Jason.decode(line) do
-      {:ok, map} -> {:ok, map}
-      _ -> :error
-    end
-  end
-
-  defp summary(%{"type" => "result"} = r, _prev), do: r
-  defp summary(_event, prev), do: prev
-
-  defp split_lines(buf) do
-    parts = String.split(buf, "\n")
-    {complete, [rest]} = Enum.split(parts, length(parts) - 1)
-    {complete, rest}
-  end
+  defp result_summary(%StreamEvent{kind: :result} = event, _prev), do: event
+  defp result_summary(_event, prev), do: prev
 
   # --- rendering ---
 
@@ -284,7 +225,8 @@ defmodule BusterClaw.Autopilot.Tui do
     IO.write([show_cursor(), "\r\n"])
 
     case s.summary do
-      %{"result" => result, "total_cost_usd" => cost, "num_turns" => turns} ->
+      %StreamEvent{kind: :result, text: result, cost_usd: cost, num_turns: turns}
+      when is_number(cost) and is_integer(turns) ->
         IO.puts(
           "\n" <>
             IO.ANSI.faint() <>
@@ -292,6 +234,9 @@ defmodule BusterClaw.Autopilot.Tui do
         )
 
         IO.puts(to_string(result))
+
+      %StreamEvent{kind: :result, text: result} when is_binary(result) ->
+        IO.puts(result)
 
       _ ->
         IO.puts("\n(autopilot exited with status #{code})")

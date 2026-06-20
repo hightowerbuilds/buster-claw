@@ -356,6 +356,46 @@ function openTerminalSplit(currentPath, side, labels = {}) {
 }
 
 const Hooks = {
+  // Homepage chat: keep the transcript scrolled to the newest message, and make
+  // Enter submit the message (Shift+Enter inserts a newline). The textarea is
+  // cleared optimistically on submit; the user echo comes back over PubSub.
+  AgentChat: {
+    mounted() {
+      this.log = this.el.querySelector("[data-chat-log]")
+      this.input = this.el.querySelector("[data-chat-input]")
+      this.form = this.el.querySelector("[data-chat-form]")
+      this.scrollToBottom()
+
+      this.onKeydown = (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault()
+          if (this.input.value.trim() !== "") {
+            this.form.requestSubmit()
+            this.input.value = ""
+          }
+        }
+      }
+      this.onSubmit = () => {
+        // Clear after the framework has serialized the form values.
+        requestAnimationFrame(() => {
+          this.input.value = ""
+        })
+      }
+
+      this.input.addEventListener("keydown", this.onKeydown)
+      this.form.addEventListener("submit", this.onSubmit)
+    },
+    updated() {
+      this.scrollToBottom()
+    },
+    destroyed() {
+      this.input.removeEventListener("keydown", this.onKeydown)
+      this.form.removeEventListener("submit", this.onSubmit)
+    },
+    scrollToBottom() {
+      if (this.log) this.log.scrollTop = this.log.scrollHeight
+    },
+  },
   // Tracks the pointer over a `.ic-scanlines` heading and writes its position
   // into --crt-x/--crt-y so the CSS reveals a stronger chromatic-aberration
   // overlay in a circle under the cursor. Throttled to one write per frame; no

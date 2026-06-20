@@ -24,6 +24,29 @@ defmodule BusterClaw.TerminalCommands do
       ]
     },
     %{
+      key: "server",
+      label: "Dev Server",
+      aliases: ["phoenix", "phx", "start-server"],
+      startup_profile: "server",
+      commands: [
+        %{
+          key: "dev-server",
+          label: "Start App (Phoenix + window)",
+          description:
+            "Run in your OWN macOS terminal (Terminal.app), NOT this in-app terminal — this one opens in your workspace folder, not the code. Boots Phoenix, waits for health, opens the desktop window. Stop any running server first (Ctrl-C).",
+          command: "cd ~/Developer/buster-claw && ./scripts/dev.sh",
+          default?: true
+        },
+        %{
+          key: "phx-server",
+          label: "Restart Phoenix Only",
+          description:
+            "Run in your OWN macOS terminal. Just the Phoenix server (no new window); the open window reconnects when it's back. A restart is what picks up new supervised processes (like the chat backend) that a refresh can't.",
+          command: "cd ~/Developer/buster-claw && mix phx.server"
+        }
+      ]
+    },
+    %{
       key: "mailman",
       label: "Mailman",
       aliases: ["mail-triage", "gmail-poller"],

@@ -2,11 +2,14 @@ defmodule BusterClawWeb.StatusLive do
   use BusterClawWeb, :live_view
 
   alias BusterClaw.ActivityReport
+  alias BusterClaw.Agent.Chat
+  alias BusterClaw.Agent.Transcript, as: AgentTranscript
+  alias BusterClaw.Bookmarks
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Dispatch
   alias BusterClaw.LocalTime
-  alias BusterClaw.Orchestration
   alias BusterClaw.Runtime.Status
+  alias BusterClaw.Sentinel
   alias BusterClaw.Setup
   alias BusterClaw.TrustedSenders
 
@@ -15,8 +18,9 @@ defmodule BusterClawWeb.StatusLive do
     today = LocalTime.today()
 
     if connected?(socket) do
-      Orchestration.subscribe()
       Dispatch.subscribe()
+      Chat.subscribe()
+      Sentinel.subscribe()
     end
 
     {:ok,
@@ -26,18 +30,17 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
      |> assign(:trusted_contacts, TrustedSenders.list_entries())
-     |> assign_shift()
-     |> assign_report()
+     |> assign(:bookmarks, Bookmarks.list())
+     |> assign(:home_tab, "get-started")
+     |> assign(:activity_grain, "week")
+     |> assign(:chat_running, false)
+     |> load_chat_history()
+     |> assign_activity()
      |> load_daily_events()}
   end
 
-  defp assign_shift(socket) do
-    socket
-    |> assign(:shift, Orchestration.active_shift())
-    |> assign(:kill_switch, Orchestration.kill_switch_engaged?())
-  end
-
-  defp assign_report(socket), do: assign(socket, :report, ActivityReport.summary())
+  defp assign_activity(socket),
+    do: assign(socket, :activity, ActivityReport.timeline(socket.assigns.activity_grain))
 
   @impl true
   def handle_event("add_contact", %{"entry" => entry}, socket) do
@@ -56,44 +59,115 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, assign(socket, :trusted_contacts, TrustedSenders.list_entries())}
   end
 
-  def handle_event("start_unattended_shift", _params, socket) do
-    case Orchestration.start_shift(unattended: true, job_key: "dispatcher") do
-      {:ok, _shift} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Unattended shift started — the Dispatcher will work the queue.")
-         |> assign_shift()}
+  def handle_event("select_home_tab", %{"tab" => tab}, socket) do
+    socket = assign(socket, :home_tab, tab)
+    # Bookmarks are added from the in-app browser (outside this LiveView), so
+    # re-read them when the Pages tab is opened to pick up new ones.
+    socket = if tab == "pages", do: assign(socket, :bookmarks, Bookmarks.list()), else: socket
+    {:noreply, socket}
+  end
 
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Could not start the shift.")}
+  def handle_event("remove_bookmark", %{"url" => url}, socket) do
+    Bookmarks.remove(url)
+    {:noreply, assign(socket, :bookmarks, Bookmarks.list())}
+  end
+
+  def handle_event("select_activity_grain", %{"grain" => grain}, socket)
+      when grain in ["day", "week", "month"],
+      do: {:noreply, socket |> assign(:activity_grain, grain) |> assign_activity()}
+
+  def handle_event("quick_chat", %{"prompt" => prompt}, socket),
+    do: {:noreply, dispatch_chat(socket, prompt)}
+
+  def handle_event("chat_send", %{"message" => text}, socket) do
+    case String.trim(text) do
+      "" ->
+        {:noreply, socket}
+
+      trimmed ->
+        {:noreply, dispatch_chat(socket, trimmed)}
     end
   end
 
-  def handle_event("stop_shift", _params, socket) do
-    Orchestration.stop_shift("stopped from home")
-    {:noreply, socket |> put_flash(:info, "Shift stopped.") |> assign_shift()}
-  end
+  defp dispatch_chat(socket, text) do
+    # The user echo and all agent events arrive via the PubSub broadcast, so on
+    # success we don't append here (keeps every open tab consistent). Errors are
+    # appended inline as a persistent message rather than a transient flash, so
+    # they stay readable. `ensure_started/0` makes a dev refresh enough — no
+    # server restart needed to pick up the (live-reloaded) chat backend.
+    Chat.ensure_started()
 
-  def handle_event("engage_kill_switch", _params, socket) do
-    Orchestration.engage_kill_switch()
+    case Chat.send_message(text) do
+      :ok ->
+        socket
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Kill switch engaged — the active shift will halt.")
-     |> assign_shift()}
-  end
+      {:error, :busy} ->
+        push_msg(socket, :error, "Buster Claw is still working — wait for it to finish.")
 
-  def handle_event("clear_kill_switch", _params, socket) do
-    Orchestration.clear_kill_switch()
-    {:noreply, assign_shift(socket)}
+      {:error, :no_agent_cli} ->
+        # The Chat server already emitted an inline error message via broadcast.
+        socket
+
+      {:error, reason} ->
+        push_msg(socket, :error, "Could not start the run: #{inspect(reason)}")
+    end
+  catch
+    :exit, _reason ->
+      push_msg(
+        socket,
+        :error,
+        "Chat backend isn't running. Restart the server (stop mix phx.server and run it again) — the chat process is new since this server started."
+      )
   end
 
   @impl true
-  def handle_info({:orchestration, _event}, socket),
-    do: {:noreply, socket |> assign_shift() |> assign_report()}
-
-  def handle_info({:dispatch, _event, _item}, socket), do: {:noreply, assign_report(socket)}
+  def handle_info({:dispatch, _event, _item}, socket), do: {:noreply, assign_activity(socket)}
+  def handle_info({:security_event, _event}, socket), do: {:noreply, assign_activity(socket)}
+  def handle_info({:agent_chat, payload}, socket), do: {:noreply, apply_chat(socket, payload)}
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # --- chat transcript projection (from Chat's PubSub broadcasts) ---
+  #
+  # Chat broadcasts display-ready `{:message, %{role:, text:}}` entries (it owns
+  # the formatting, so persistence and every tab agree), plus `{:status, _}`.
+
+  defp apply_chat(socket, {:status, status}),
+    do: assign(socket, :chat_running, status == :running)
+
+  defp apply_chat(socket, {:message, %{role: role, text: text}}),
+    do: push_msg(socket, role, text)
+
+  defp apply_chat(socket, _other), do: socket
+
+  defp push_msg(socket, role, text) do
+    seq = socket.assigns.chat_seq + 1
+    msg = %{id: seq, role: role, text: text}
+
+    socket
+    |> assign(:chat_seq, seq)
+    |> update(:chat_messages, &(&1 ++ [msg]))
+  end
+
+  defp load_chat_history(socket) do
+    messages =
+      Chat.default_conv_id()
+      |> AgentTranscript.recent(limit: 50)
+      |> Enum.with_index(1)
+      |> Enum.map(fn {row, i} -> %{id: i, role: history_role(row.role), text: row.content} end)
+
+    socket
+    |> assign(:chat_messages, messages)
+    |> assign(:chat_seq, length(messages))
+  end
+
+  @history_roles %{
+    "user" => :user,
+    "assistant" => :assistant,
+    "tool" => :tool,
+    "meta" => :meta,
+    "error" => :error
+  }
+  defp history_role(role), do: Map.get(@history_roles, role, :assistant)
 
   @impl true
   def render(assigns) do
@@ -135,15 +209,17 @@ defmodule BusterClawWeb.StatusLive do
           </div>
 
           <div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
-            <div class="flex min-h-0 flex-col gap-6">
-              <.get_started_panel />
-              <.shift_panel shift={@shift} kill_switch={@kill_switch} />
-              <.this_week_panel report={@report} />
-              <.featured_pages_panel />
-              <BusterClawWeb.TrustedContactsPanel.panel entries={@trusted_contacts} />
-            </div>
+            <.home_tabs
+              tab={@home_tab}
+              entries={@trusted_contacts}
+              bookmarks={@bookmarks}
+              today={@today}
+              events={@daily_events}
+              activity={@activity}
+              grain={@activity_grain}
+            />
 
-            <.daily_calendar_panel today={@today} events={@daily_events} />
+            <.chat_panel messages={@chat_messages} running={@chat_running} />
           </div>
         </div>
       </section>
@@ -151,28 +227,211 @@ defmodule BusterClawWeb.StatusLive do
     """
   end
 
-  defp get_started_panel(assigns) do
+  attr :messages, :list, required: true
+  attr :running, :boolean, required: true
+
+  defp chat_panel(assigns) do
     ~H"""
-    <details
-      id="home-get-started"
-      open
-      class="ic-panel group flex min-h-0 flex-col overflow-hidden open:min-h-64 open:flex-1"
+    <section
+      id="home-agent-chat"
+      phx-hook="AgentChat"
+      class="ic-panel flex h-[32rem] max-h-[70vh] min-h-0 flex-col self-start"
     >
-      <summary class="flex cursor-pointer list-none items-start justify-between gap-3 border-base-content/20 px-5 py-4 transition group-open:border-b-2 hover:text-primary">
-        <div class="min-w-0">
-          <p class="ic-eyebrow">Get Started</p>
+      <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
+        <div>
+          <p class="ic-eyebrow">Chat</p>
           <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            Get Started
+            Talk to Buster Claw
           </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            Three steps to put Buster Claw on email duty (Google Workspace already connected).
-          </p>
         </div>
-        <.icon
-          name="hero-chevron-right"
-          class="mt-1 size-5 shrink-0 transition group-open:rotate-90"
-        />
-      </summary>
+        <span
+          :if={@running}
+          class="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-wide text-primary"
+        >
+          <span class="size-2 animate-pulse rounded-full bg-primary"></span> Working
+        </span>
+      </header>
+
+      <div
+        id="agent-chat-log"
+        data-chat-log
+        class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-5"
+      >
+        <div
+          :if={@messages == []}
+          class="m-auto max-w-xs text-center text-sm text-base-content/55"
+        >
+          Ask Buster Claw to check your mail, work the queue, or look something up.
+          It runs headless Claude — no terminal needed.
+        </div>
+
+        <.chat_bubble :for={msg <- @messages} msg={msg} />
+      </div>
+
+      <form
+        phx-submit="chat_send"
+        data-chat-form
+        class="flex items-end gap-2 border-t-2 border-base-content/20 p-3"
+      >
+        <textarea
+          name="message"
+          data-chat-input
+          rows="2"
+          placeholder="Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
+          class="min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+        ></textarea>
+        <button
+          type="submit"
+          class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-semibold text-primary-content transition hover:opacity-85"
+        >
+          <.icon name="hero-paper-airplane" class="size-4" /> Send
+        </button>
+      </form>
+    </section>
+    """
+  end
+
+  attr :msg, :map, required: true
+
+  defp chat_bubble(%{msg: %{role: :user}} = assigns) do
+    ~H"""
+    <div id={"chat-msg-#{@msg.id}"} class="flex justify-end">
+      <div class="max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-sm text-primary-content">
+        {@msg.text}
+      </div>
+    </div>
+    """
+  end
+
+  defp chat_bubble(%{msg: %{role: :assistant}} = assigns) do
+    ~H"""
+    <div id={"chat-msg-#{@msg.id}"} class="flex justify-start">
+      <div class="max-w-[85%] whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-100 px-3 py-2 text-sm">
+        {@msg.text}
+      </div>
+    </div>
+    """
+  end
+
+  defp chat_bubble(%{msg: %{role: :tool}} = assigns) do
+    ~H"""
+    <div
+      id={"chat-msg-#{@msg.id}"}
+      class="flex items-center gap-2 font-mono text-xs text-base-content/55"
+    >
+      <.icon name="hero-command-line" class="size-3.5 shrink-0" />
+      <span class="truncate">{@msg.text}</span>
+    </div>
+    """
+  end
+
+  defp chat_bubble(%{msg: %{role: :meta}} = assigns) do
+    ~H"""
+    <div id={"chat-msg-#{@msg.id}"} class="text-center font-mono text-[0.62rem] uppercase tracking-wide text-base-content/45">
+      {@msg.text}
+    </div>
+    """
+  end
+
+  defp chat_bubble(%{msg: %{role: :error}} = assigns) do
+    ~H"""
+    <div id={"chat-msg-#{@msg.id}"} class="flex justify-start">
+      <div class="max-w-[85%] rounded-sm border-2 border-error/50 bg-error/10 px-3 py-2 text-sm text-error">
+        {@msg.text}
+      </div>
+    </div>
+    """
+  end
+
+  attr :tab, :string, required: true
+  attr :entries, :list, required: true
+  attr :bookmarks, :list, required: true
+  attr :today, Date, required: true
+  attr :events, :list, required: true
+  attr :activity, :map, required: true
+  attr :grain, :string, required: true
+
+  @home_tabs [
+    {"calendar", "Calendar"},
+    {"pages", "Pages"},
+    {"contacts", "Contacts"},
+    {"activity", "Activity"},
+    {"get-started", "Get Started"}
+  ]
+
+  defp home_tabs(assigns) do
+    assigns = assign(assigns, :tabs, @home_tabs)
+
+    ~H"""
+    <div class="flex min-h-0 flex-col gap-3">
+      <div
+        role="tablist"
+        aria-label="Home sections"
+        class="flex flex-wrap gap-1 border-b-2 border-base-content/20"
+      >
+        <button
+          :for={{key, label} <- @tabs}
+          type="button"
+          role="tab"
+          aria-selected={to_string(@tab == key)}
+          phx-click="select_home_tab"
+          phx-value-tab={key}
+          class={[
+            "-mb-0.5 border-b-2 px-4 py-2 font-display text-sm font-bold uppercase tracking-wide transition",
+            if(@tab == key,
+              do: "border-primary text-primary",
+              else: "border-transparent text-base-content/55 hover:text-base-content"
+            )
+          ]}
+        >
+          {label}
+        </button>
+      </div>
+
+      <div class={["flex min-h-0 flex-1 flex-col", @tab != "get-started" && "hidden"]}>
+        <.get_started_panel />
+      </div>
+      <div class={["flex min-h-0 flex-1 flex-col gap-6", @tab != "pages" && "hidden"]}>
+        <.featured_pages_panel />
+        <.bookmarks_panel bookmarks={@bookmarks} />
+      </div>
+      <div class={["flex min-h-0 flex-1 flex-col", @tab != "contacts" && "hidden"]}>
+        <BusterClawWeb.TrustedContactsPanel.panel entries={@entries} />
+      </div>
+      <div class={["flex min-h-0 flex-1 flex-col", @tab != "calendar" && "hidden"]}>
+        <.daily_calendar_panel today={@today} events={@events} />
+      </div>
+      <div class={["flex min-h-0 flex-1 flex-col", @tab != "activity" && "hidden"]}>
+        <.activity_panel activity={@activity} grain={@grain} />
+      </div>
+    </div>
+    """
+  end
+
+  @quick_prompts [
+    "Please read through the introduction and BusterClawWorkspace and give me an explanation.",
+    "Explain Buster Claw's Sentinel security layer — what it audits, the safe vs restricted trust tiers, and the gate on irreversible actions. Then exemplify it: run one safe command and one restricted command through the ./buster-claw CLI, show how each is recorded on the audit feed, and point me to the Security tab to watch it live.",
+    "Check my mail and tell me what needs a reply.",
+    "What can you do? Show me a few things to try."
+  ]
+
+  defp get_started_panel(assigns) do
+    assigns = assign(assigns, :quick_prompts, @quick_prompts)
+
+    ~H"""
+    <section
+      id="home-get-started"
+      class="ic-panel flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
+      <header class="border-b-2 border-base-content/20 px-5 py-4">
+        <p class="ic-eyebrow">Get Started</p>
+        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+          Get Started
+        </h2>
+        <p class="mt-1 text-sm text-base-content/65">
+          Three steps and you're talking to Buster Claw (Google Workspace already connected).
+        </p>
+      </header>
 
       <ol class="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
         <li class="flex gap-3">
@@ -182,7 +441,7 @@ defmodule BusterClawWeb.StatusLive do
           <div class="min-w-0">
             <h3 class="font-semibold">Add your trusted contacts</h3>
             <p class="mt-0.5 text-sm text-base-content/65">
-              In the panel below, list the senders the agent may read and reply to.
+              In the panel below, list the senders Buster Claw may read and reply to.
               Mail from anyone else is ignored.
             </p>
           </div>
@@ -193,17 +452,11 @@ defmodule BusterClawWeb.StatusLive do
             2
           </span>
           <div class="min-w-0">
-            <h3 class="font-semibold">Start the agent</h3>
+            <h3 class="font-semibold">Install Claude Code</h3>
             <p class="mt-0.5 text-sm text-base-content/65">
-              Open the
-              <.link
-                navigate={~p"/terminal"}
-                class="font-semibold text-primary hover:underline"
-              >
-                Terminal
-              </.link>
-              and start a Claude Code session on the <span class="font-mono">mail-triage</span>
-              job. That's the worker that reads queued mail and writes the replies.
+              Buster Claw has no built-in AI — it drives your own Claude Code CLI headlessly.
+              Install it once with <.copy_command command="brew install --cask claude-code" />, then
+              sign in (<span class="font-mono">claude</span> in a terminal).
             </p>
           </div>
         </li>
@@ -213,97 +466,28 @@ defmodule BusterClawWeb.StatusLive do
             3
           </span>
           <div class="min-w-0">
-            <h3 class="font-semibold">Go on duty</h3>
+            <h3 class="font-semibold">Chat with Buster Claw</h3>
             <p class="mt-0.5 text-sm text-base-content/65">
-              In a terminal, run <.copy_command command="./buster-claw shift run" />. It starts a
-              shift and polls your trusted mail until you stop it (Ctrl-C, then
-              <.copy_command command="./buster-claw shift stop" />).
+              Use the chat on the right. Ask it to triage your inbox, draft a reply, or
+              look something up — it runs headless Claude for you, no terminal needed.
             </p>
           </div>
         </li>
       </ol>
-    </details>
-    """
-  end
 
-  attr :shift, :any, required: true
-  attr :kill_switch, :boolean, required: true
-
-  defp shift_panel(assigns) do
-    ~H"""
-    <section id="home-shift" class="ic-panel">
-      <header class="border-b-2 border-base-content/20 px-5 py-4">
-        <p class="ic-eyebrow">Unattended Shift</p>
-        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-          Unattended Shift
-        </h2>
-        <p class="mt-1 text-sm text-base-content/65">
-          Let Buster Claw work the queue with headless agent runs — no terminal to babysit.
-        </p>
-      </header>
-
-      <div class="flex flex-col gap-4 p-5">
-        <%= if @shift do %>
-          <div class="flex items-center gap-2">
-            <span class={[
-              "inline-block size-2.5 shrink-0 rounded-full",
-              if(@shift.unattended, do: "bg-primary", else: "bg-base-content/40")
-            ]}>
-            </span>
-            <span class="font-mono text-sm">
-              {if @shift.unattended, do: "Unattended", else: "Attended"} shift · {@shift.job_name}
-            </span>
-          </div>
-
-          <dl class="grid grid-cols-3 gap-2">
-            <.shift_stat label="Runs" value={@shift.dispatched_count} />
-            <.shift_stat label="Done" value={@shift.done_count} />
-            <.shift_stat label="Failed" value={@shift.failed_count} />
-          </dl>
-
+      <div class="border-t-2 border-base-content/15 p-5">
+        <p class="ic-eyebrow mb-2">Quick chat</p>
+        <div class="flex flex-col gap-2">
           <button
+            :for={prompt <- @quick_prompts}
             type="button"
-            phx-click="stop_shift"
-            class="inline-flex items-center justify-center gap-2 rounded border-2 border-base-content/30 px-4 py-2 text-sm font-semibold uppercase tracking-wide transition hover:border-primary hover:text-primary"
+            phx-click="quick_chat"
+            phx-value-prompt={prompt}
+            class="group flex items-center gap-3 rounded-sm border-2 border-base-content/25 px-3 py-2.5 text-left text-sm transition hover:border-primary hover:text-primary"
           >
-            <.icon name="hero-stop" class="size-4" /> Stop shift
-          </button>
-        <% else %>
-          <p class="text-sm text-base-content/60">No shift running.</p>
-          <button
-            type="button"
-            phx-click="start_unattended_shift"
-            class="inline-flex items-center justify-center gap-2 rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
-          >
-            <.icon name="hero-bolt" class="size-4" /> Start unattended shift
-          </button>
-        <% end %>
-
-        <div class="flex items-center justify-between gap-3 border-t-2 border-base-content/15 pt-3">
-          <div class="min-w-0">
-            <p class="ic-eyebrow">Kill switch</p>
-            <p class={[
-              "font-mono text-sm",
-              @kill_switch && "text-primary"
-            ]}>
-              {if @kill_switch, do: "ENGAGED", else: "clear"}
-            </p>
-          </div>
-          <button
-            :if={not @kill_switch}
-            type="button"
-            phx-click="engage_kill_switch"
-            class="rounded-sm border-2 border-base-content/30 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition hover:border-primary hover:text-primary"
-          >
-            Engage
-          </button>
-          <button
-            :if={@kill_switch}
-            type="button"
-            phx-click="clear_kill_switch"
-            class="rounded-sm border-2 border-primary px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-primary transition hover:opacity-85"
-          >
-            Clear
+            <.icon name="hero-chat-bubble-left-right" class="size-5 shrink-0 text-base-content/55" />
+            <span class="min-w-0 flex-1">{prompt}</span>
+            <.icon name="hero-arrow-right" class="size-4 shrink-0 text-base-content/40" />
           </button>
         </div>
       </div>
@@ -311,32 +495,126 @@ defmodule BusterClawWeb.StatusLive do
     """
   end
 
-  attr :report, :map, required: true
+  attr :activity, :map, required: true
+  attr :grain, :string, required: true
 
-  defp this_week_panel(assigns) do
+  @grain_window %{"day" => "Last 14 days", "week" => "Last 12 weeks", "month" => "Last 12 months"}
+  @grain_buttons [{"day", "Daily"}, {"week", "Weekly"}, {"month", "Monthly"}]
+
+  defp activity_panel(assigns) do
+    assigns =
+      assigns
+      |> assign(:window_label, Map.fetch!(@grain_window, assigns.grain))
+      |> assign(:grain_buttons, @grain_buttons)
+
     ~H"""
-    <section id="home-activity" class="ic-panel">
-      <header class="border-b-2 border-base-content/20 px-5 py-4">
-        <p class="ic-eyebrow">Last {@report.days} Days</p>
-        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-          This Week
-        </h2>
-        <p class="mt-1 text-sm text-base-content/65">
-          What Buster Claw handled for you.
-        </p>
+    <section id="home-activity" class="ic-panel flex min-h-0 flex-1 flex-col overflow-hidden">
+      <header class="flex flex-wrap items-start justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
+        <div>
+          <p class="ic-eyebrow">Activity</p>
+          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+            Activity
+          </h2>
+          <p class="mt-1 text-sm text-base-content/65">
+            Straight from the audit trail · {@window_label}
+          </p>
+        </div>
+        <div role="group" aria-label="Granularity" class="flex gap-1">
+          <button
+            :for={{key, label} <- @grain_buttons}
+            type="button"
+            phx-click="select_activity_grain"
+            phx-value-grain={key}
+            aria-pressed={to_string(@grain == key)}
+            class={[
+              "rounded-sm border-2 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide transition",
+              if(@grain == key,
+                do: "border-primary text-primary",
+                else: "border-base-content/25 text-base-content/55 hover:text-base-content"
+              )
+            ]}
+          >
+            {label}
+          </button>
+        </div>
       </header>
 
-      <div class="p-5">
+      <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-5">
         <dl class="grid grid-cols-4 gap-2">
-          <.shift_stat label="Handled" value={@report.handled} />
-          <.shift_stat label="Open" value={@report.open} />
-          <.shift_stat label="Blocked" value={@report.blocked} />
-          <.shift_stat label="Runs" value={@report.runs} />
+          <.shift_stat label="Runs" value={@activity.totals.runs} />
+          <.shift_stat label="Commands" value={@activity.totals.commands} />
+          <.shift_stat label="Handled" value={@activity.totals.handled} />
+          <.shift_stat label="Open" value={@activity.totals.open} />
         </dl>
+
+        <.activity_chart buckets={@activity.buckets} />
       </div>
     </section>
     """
   end
+
+  attr :buckets, :list, required: true
+
+  defp activity_chart(assigns) do
+    max =
+      assigns.buckets
+      |> Enum.flat_map(&[&1.runs, &1.commands])
+      |> Enum.max(fn -> 0 end)
+      |> max(1)
+
+    slot = 100 / max(length(assigns.buckets), 1)
+    assigns = assign(assigns, max: max, slot: slot)
+
+    ~H"""
+    <div>
+      <div class="mb-2 flex items-center gap-4 text-xs text-base-content/60">
+        <span class="inline-flex items-center gap-1">
+          <span class="size-2 rounded-sm bg-primary"></span> Runs
+        </span>
+        <span class="inline-flex items-center gap-1">
+          <span class="size-2 rounded-sm bg-base-content/40"></span> Commands
+        </span>
+      </div>
+
+      <svg
+        viewBox="0 0 100 90"
+        preserveAspectRatio="none"
+        class="h-36 w-full"
+        role="img"
+        aria-label="Runs and commands over time"
+      >
+        <line x1="0" y1="88" x2="100" y2="88" class="stroke-current text-base-content/20" stroke-width="0.3" />
+        <%= for {b, i} <- Enum.with_index(@buckets) do %>
+          <rect
+            x={i * @slot + @slot * 0.15}
+            y={88 - bar_h(b.runs, @max)}
+            width={@slot * 0.3}
+            height={bar_h(b.runs, @max)}
+            class="fill-current text-primary"
+          />
+          <rect
+            x={i * @slot + @slot * 0.52}
+            y={88 - bar_h(b.commands, @max)}
+            width={@slot * 0.3}
+            height={bar_h(b.commands, @max)}
+            class="fill-current text-base-content/40"
+          />
+        <% end %>
+      </svg>
+
+      <div class="mt-1 flex">
+        <span
+          :for={b <- @buckets}
+          class="flex-1 truncate text-center font-mono text-[0.55rem] text-base-content/45"
+        >
+          {b.label}
+        </span>
+      </div>
+    </div>
+    """
+  end
+
+  defp bar_h(value, max), do: value / max * 80
 
   attr :label, :string, required: true
   attr :value, :integer, required: true
@@ -375,6 +653,66 @@ defmodule BusterClawWeb.StatusLive do
           title="Financial Informant"
           blurb="Look up a ticker — quote, fundamentals, filings, news"
         />
+      </div>
+    </section>
+    """
+  end
+
+  attr :bookmarks, :list, required: true
+
+  defp bookmarks_panel(assigns) do
+    ~H"""
+    <section id="home-bookmarks" class="ic-panel flex min-h-0 flex-col overflow-hidden">
+      <header class="flex items-start justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
+        <div>
+          <p class="ic-eyebrow">Bookmarks</p>
+          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+            Bookmarks
+          </h2>
+          <p class="mt-1 text-sm text-base-content/65">
+            Saved from the in-app browser. Opens the page in the Browser.
+          </p>
+        </div>
+        <span class="shrink-0 rounded bg-base-200 px-2 py-0.5 font-mono text-xs font-bold text-base-content/60">
+          {length(@bookmarks)}
+        </span>
+      </header>
+
+      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-5">
+        <div
+          :for={bm <- @bookmarks}
+          id={"home-bookmark-#{bm["url"]}"}
+          class="group flex items-center gap-2 rounded-sm border-2 border-base-content/25 transition hover:border-primary"
+        >
+          <.link
+            navigate={~p"/browse?#{[url: bm["url"]]}"}
+            class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 hover:text-primary"
+          >
+            <.icon name="hero-bookmark" class="size-5 shrink-0 text-base-content/55" />
+            <span class="min-w-0">
+              <span class="block truncate font-semibold">{bm["label"]}</span>
+              <span class="block truncate font-mono text-xs text-base-content/55">{bm["url"]}</span>
+            </span>
+          </.link>
+          <button
+            type="button"
+            phx-click="remove_bookmark"
+            phx-value-url={bm["url"]}
+            data-confirm={"Remove bookmark for #{bm["label"]}?"}
+            aria-label={"Remove bookmark #{bm["label"]}"}
+            class="mr-2 shrink-0 rounded border border-base-content/20 px-2 py-1 font-mono text-[0.65rem] uppercase tracking-wide text-base-content/60 transition hover:border-error hover:text-error"
+          >
+            Remove
+          </button>
+        </div>
+
+        <div
+          :if={@bookmarks == []}
+          class="rounded border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60"
+        >
+          <p class="font-semibold text-base-content/80">No bookmarks yet.</p>
+          <p class="mt-1">Save a page from the in-app browser's “+ Bookmark” button.</p>
+        </div>
       </div>
     </section>
     """

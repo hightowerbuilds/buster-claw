@@ -22,6 +22,14 @@ config :buster_claw,
   # per-run wall-clock cap, so an unattended daemon can't burn tokens unbounded.
   dispatcher_max_runs_per_shift: 50,
   dispatcher_run_timeout_ms: 600_000,
+  # Homepage chat backend (headless Claude). Per-message run wall-clock cap;
+  # transcript persisted so a conversation survives reload/restart.
+  agent_chat_enabled: true,
+  agent_chat_timeout_ms: 600_000,
+  agent_chat_persist: true,
+  # Record each chat run on the Sentinel audit feed (also feeds the Activity
+  # "runs" metric). Chat spawns headless Claude, so the run belongs on the trail.
+  agent_chat_audit: true,
   orchestrator_tick_ms: 30_000,
   orchestrator_max_concurrent: 3,
   # Crash-loop / rate brakes for the unattended shift.

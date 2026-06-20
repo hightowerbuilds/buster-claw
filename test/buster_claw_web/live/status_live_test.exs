@@ -34,8 +34,14 @@ defmodule BusterClawWeb.StatusLiveTest do
     # Left column: Get Started explainer on top, trusted-contacts manager below.
     assert response =~ ~s(id="home-get-started")
     assert response =~ "Get Started"
-    assert response =~ "Go on duty"
-    assert response =~ "./buster-claw shift run"
+    # Get Started now points users at the chat pathway, not the terminal/shift one.
+    assert response =~ "Chat with Buster Claw"
+    assert response =~ "Install Claude Code"
+    refute response =~ "Go on duty"
+    refute response =~ "./buster-claw shift run"
+    # The unattended-shift panel was removed; the chat + prompt pathway replaces it.
+    refute response =~ ~s(id="home-shift")
+    refute response =~ "Unattended Shift"
     # Get Started no longer links to the Financial Informant (it moved to Featured Pages).
     refute response =~ ~s(href="/finance")
     assert response =~ ~s(id="home-left-panel")
@@ -130,65 +136,117 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert html =~ "No trusted contacts yet."
   end
 
-  describe "unattended shift panel" do
-    test "renders with no shift running and a start control", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/")
+  describe "agent chat panel" do
+    test "renders the chat column with an empty-state prompt", %{conn: conn} do
+      conn = get(conn, ~p"/")
+      response = html_response(conn, 200)
 
-      assert html =~ ~s(id="home-shift")
-      assert html =~ "Unattended Shift"
-      assert html =~ "No shift running."
-      assert html =~ ~s(phx-click="start_unattended_shift")
+      assert response =~ ~s(id="home-agent-chat")
+      assert response =~ ~s(phx-hook="AgentChat")
+      assert response =~ "Talk to Buster Claw"
+      assert response =~ ~s(form[phx-submit="chat_send"]) or response =~ ~s(phx-submit="chat_send")
     end
 
-    test "starts and stops an unattended shift from the panel", %{conn: conn} do
+    test "projects broadcast events into the transcript", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      html =
-        view
-        |> element(~s(button[phx-click="start_unattended_shift"]))
-        |> render_click()
-
-      assert html =~ "Unattended shift"
-      assert html =~ ~s(phx-click="stop_shift")
-      assert BusterClaw.Orchestration.active_shift().unattended == true
+      send(view.pid, {:agent_chat, {:message, %{role: :user, text: "work the queue"}}})
+      send(view.pid, {:agent_chat, {:status, :running}})
+      send(view.pid, {:agent_chat, {:message, %{role: :assistant, text: "On it."}}})
+      send(view.pid, {:agent_chat, {:message, %{role: :tool, text: "Bash: ./buster-claw dispatch list"}}})
 
       html =
-        view
-        |> element(~s(button[phx-click="stop_shift"]))
-        |> render_click()
+        send(view.pid, {:agent_chat, {:message, %{role: :meta, text: "2 turns · $0.01"}}})
+        |> then(fn _ -> render(view) end)
 
-      assert html =~ "No shift running."
-      refute BusterClaw.Orchestration.shift_active?()
+      assert html =~ "work the queue"
+      assert html =~ "On it."
+      assert html =~ "Bash: ./buster-claw dispatch list"
+      assert html =~ "2 turns"
     end
 
-    test "engages and clears the kill switch from the panel", %{conn: conn} do
-      {:ok, view, html} = live(conn, ~p"/")
-      assert html =~ "clear"
+    test "an error broadcast renders an inline error", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
 
-      html =
-        view
-        |> element(~s(button[phx-click="engage_kill_switch"]))
-        |> render_click()
-
-      assert html =~ "ENGAGED"
-      assert BusterClaw.Orchestration.kill_switch_engaged?()
-
-      html =
-        view
-        |> element(~s(button[phx-click="clear_kill_switch"]))
-        |> render_click()
-
-      refute html =~ "ENGAGED"
-      refute BusterClaw.Orchestration.kill_switch_engaged?()
+      send(view.pid, {:agent_chat, {:message, %{role: :error, text: "The run timed out and was stopped."}}})
+      assert render(view) =~ "The run timed out and was stopped."
     end
   end
 
-  test "renders the This Week activity panel", %{conn: conn} do
-    {:ok, _view, html} = live(conn, ~p"/")
+  test "Get Started offers quick-chat prompts", %{conn: conn} do
+    conn = get(conn, ~p"/")
+    response = html_response(conn, 200)
+
+    assert response =~ "Quick chat"
+    assert response =~ ~s(phx-click="quick_chat")
+    assert response =~ "Please read through the introduction and BusterClawWorkspace"
+    assert response =~ "Sentinel security layer"
+  end
+
+  describe "Pages tab bookmarks" do
+    test "lists in-app browser bookmarks, links into the Browser, and removes them",
+         %{conn: conn, root: root} do
+      File.write!(
+        Path.join(root, ".browser-bookmarks.json"),
+        Jason.encode!([
+          %{"url" => "https://example.com", "label" => "Example", "at" => "2026-06-20T00:00:00Z"}
+        ])
+      )
+
+      {:ok, view, html} = live(conn, ~p"/")
+
+      assert html =~ ~s(id="home-bookmarks")
+      assert html =~ "Example"
+      assert html =~ "https://example.com"
+      # The link opens the in-app Browser at that page.
+      assert html =~ "/browse?url=https"
+
+      html =
+        view
+        |> element(~s(button[phx-value-url="https://example.com"]))
+        |> render_click()
+
+      refute html =~ "https://example.com"
+      assert html =~ "No bookmarks yet."
+    end
+  end
+
+  describe "home left-column tabs" do
+    test "default to Get Started and switch tabs", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, ~s(button[phx-value-tab="get-started"][aria-selected="true"]))
+      assert has_element?(view, ~s(button[phx-value-tab="calendar"][aria-selected="false"]))
+
+      view |> element(~s(button[phx-value-tab="calendar"])) |> render_click()
+
+      assert has_element?(view, ~s(button[phx-value-tab="calendar"][aria-selected="true"]))
+      assert has_element?(view, ~s(button[phx-value-tab="get-started"][aria-selected="false"]))
+
+      # Activity tab carries the audit-trail activity panel.
+      html = view |> element(~s(button[phx-value-tab="activity"])) |> render_click()
+      assert has_element?(view, ~s(button[phx-value-tab="activity"][aria-selected="true"]))
+      assert html =~ "Activity"
+      assert html =~ "Commands"
+    end
+  end
+
+  test "renders the audit-trail Activity panel with a granularity toggle", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/")
 
     assert html =~ ~s(id="home-activity")
-    assert html =~ "This Week"
+    assert html =~ "Activity"
+    # Audit-trail metrics.
+    assert html =~ "Runs"
+    assert html =~ "Commands"
     assert html =~ "Handled"
+    # Granularity toggle defaults to weekly.
+    assert has_element?(view, ~s(button[phx-value-grain="week"][aria-pressed="true"]))
+    assert has_element?(view, ~s(button[phx-value-grain="month"]))
+
+    html = view |> element(~s(button[phx-value-grain="month"])) |> render_click()
+    assert html =~ "Last 12 months"
+    assert has_element?(view, ~s(button[phx-value-grain="month"][aria-pressed="true"]))
   end
 
   test "GET / uses the app-local date for the daily calendar", %{conn: conn} do

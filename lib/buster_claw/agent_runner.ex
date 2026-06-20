@@ -109,12 +109,41 @@ defmodule BusterClaw.AgentRunner do
 
   defp codex_path, do: System.find_executable("codex")
 
+  @doc """
+  Open a **streaming** Port running the agent, non-blocking. The caller owns the
+  receive loop (`{port, {:data, _}}` / `{port, {:exit_status, _}}`) and any
+  wall-clock deadline; this is the variant the chat backend uses to broadcast
+  events as they arrive. `run/2` is the blocking, collect-everything variant.
+
+  Streaming-specific agent flags (e.g. `--output-format stream-json`,
+  `--resume <id>`) go in `:extra_args`. Same `:cwd`/`:login`/`:env`/`:shell`
+  options as `run/2`.
+
+  Returns `{:ok, %{port: port, agent: agent, binary: binary}}` or
+  `{:error, :no_agent_cli}`.
+  """
+  @spec open(String.t(), keyword()) ::
+          {:ok, %{port: port(), agent: atom(), binary: String.t()}} | {:error, term()}
+  def open(prompt, opts \\ []) when is_binary(prompt) do
+    with {:ok, {agent, binary}} <- resolve_agent(opts) do
+      cwd = Keyword.get(opts, :cwd) || Artifact.workspace_root()
+      args = build_args(agent, prompt, opts)
+      port = open_port(binary, args, cwd, opts)
+      {:ok, %{port: port, agent: agent, binary: binary}}
+    end
+  rescue
+    error ->
+      Logger.error("AgentRunner failed to open stream: #{Exception.message(error)}")
+      {:error, {:spawn_failed, Exception.message(error)}}
+  end
+
   # `:argv` is an explicit escape hatch (tests, or unusual agents). Otherwise the
-  # known agents get their documented non-interactive invocation.
+  # known agents get their documented non-interactive invocation, with any
+  # `:extra_args` (streaming flags, --resume) appended.
   defp build_args(agent, prompt, opts) do
     case Keyword.get(opts, :argv) do
       argv when is_list(argv) -> argv
-      _ -> default_args(agent, prompt, opts)
+      _ -> default_args(agent, prompt, opts) ++ Keyword.get(opts, :extra_args, [])
     end
   end
 
@@ -132,15 +161,25 @@ defmodule BusterClaw.AgentRunner do
   end
 
   defp exec(agent, binary, args, cwd, opts, timeout) do
-    # `<shell> -c 'exec "$@" 2>&1' sh <binary> <args...>` — `$@` starts after the
-    # `sh` placeholder (arg0), so the binary and prompt pass through untouched
-    # and stderr is merged into stdout.
-    #
-    # `:login` runs the shell as a login shell (`-lc`) so it sources the user's
-    # profile (~/.zprofile etc.) — the same trick `terminal.rs` uses, so a
-    # daemon-spawned run reaches the same PATH/auth a human-launched terminal
-    # agent does (critical in the packaged `.app`, whose env is otherwise bare).
-    # Defaults stay `/bin/sh -c` so tests are hermetic.
+    start = now_ms()
+    port = open_port(binary, args, cwd, opts)
+    collect(port, "", start + timeout, agent, binary, start)
+  rescue
+    error ->
+      Logger.error("AgentRunner failed to spawn #{agent}: #{Exception.message(error)}")
+      {:error, {:spawn_failed, Exception.message(error)}}
+  end
+
+  # `<shell> -c 'exec "$@" 2>&1' sh <binary> <args...>` — `$@` starts after the
+  # `sh` placeholder (arg0), so the binary and prompt pass through untouched and
+  # stderr is merged into stdout.
+  #
+  # `:login` runs the shell as a login shell (`-lc`) so it sources the user's
+  # profile (~/.zprofile etc.) — the same trick `terminal.rs` uses, so a
+  # daemon-spawned run reaches the same PATH/auth a human-launched terminal agent
+  # does (critical in the packaged `.app`, whose env is otherwise bare). Defaults
+  # stay `/bin/sh -c` so tests are hermetic.
+  defp open_port(binary, args, cwd, opts) do
     shell = Keyword.get(opts, :shell) || "/bin/sh"
     flag = if Keyword.get(opts, :login, false), do: "-lc", else: "-c"
     shell_args = [flag, ~s(exec "$@" 2>&1), "sh", binary | args]
@@ -149,14 +188,7 @@ defmodule BusterClaw.AgentRunner do
       [:binary, :exit_status, :hide, {:args, shell_args}, {:cd, String.to_charlist(cwd)}] ++
         env_opt(opts)
 
-    start = now_ms()
-
-    port = Port.open({:spawn_executable, shell}, port_opts)
-    collect(port, "", start + timeout, agent, binary, start)
-  rescue
-    error ->
-      Logger.error("AgentRunner failed to spawn #{agent}: #{Exception.message(error)}")
-      {:error, {:spawn_failed, Exception.message(error)}}
+    Port.open({:spawn_executable, shell}, port_opts)
   end
 
   defp env_opt(opts) do
@@ -193,10 +225,13 @@ defmodule BusterClaw.AgentRunner do
     end
   end
 
-  # Kill the underlying OS process (it is the agent, thanks to `exec`) then close
-  # the port. Best-effort: a run that finished a microsecond before the deadline
-  # may have no os_pid left, which is fine.
-  defp kill_port(port) do
+  @doc """
+  Kill the underlying OS process (it is the agent, thanks to `exec`) then close
+  the port. Best-effort: a run that finished a microsecond before the deadline
+  may have no os_pid left, which is fine. Exposed for streaming callers
+  (`open/2`) that own their own deadline.
+  """
+  def kill_port(port) do
     case Port.info(port, :os_pid) do
       {:os_pid, os_pid} -> System.cmd("/bin/kill", ["-KILL", Integer.to_string(os_pid)])
       _ -> :ok

@@ -27,6 +27,16 @@ config :buster_claw, :orchestrator_enabled, false
 # The unattended work pump is off in tests; the Dispatcher suite starts its own
 # instance with a stub runner and drives it via tick_now/1.
 config :buster_claw, :dispatcher_enabled, false
+# The homepage chat backend is off in tests; the Chat suite starts its own
+# instance with an injected spawner so no real `claude` is launched.
+config :buster_claw, :agent_chat_enabled, false
+# Persistence is off by default in tests so the Chat suite stays DB-free; the
+# transcript suite drives `Transcript` directly and the persistence test starts a
+# Chat with `persist: true` under the SQL sandbox.
+config :buster_claw, :agent_chat_persist, false
+# Chat run auditing is off in tests (it writes to Sentinel/DB); the persistence
+# suite flips it on under the sandbox to assert the audit event is written.
+config :buster_claw, :agent_chat_audit, false
 # The projector writes into the workspace on every dispatch event; off by default
 # in tests so unrelated dispatch tests don't write files. Projector tests start it
 # explicitly against a tmp workspace.

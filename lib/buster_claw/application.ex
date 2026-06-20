@@ -35,6 +35,7 @@ defmodule BusterClaw.Application do
         orchestrator_child(),
         uptime_child(),
         dispatcher_child(),
+        agent_chat_child(),
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
       ]
@@ -132,6 +133,14 @@ defmodule BusterClaw.Application do
   defp dispatcher_child do
     if Application.get_env(:buster_claw, :dispatcher_enabled, true) do
       BusterClaw.Dispatcher
+    end
+  end
+
+  # The homepage chat backend (headless Claude). Off in tests (they start their
+  # own instance with an injected spawner).
+  defp agent_chat_child do
+    if Application.get_env(:buster_claw, :agent_chat_enabled, true) do
+      BusterClaw.Agent.Chat
     end
   end
 end

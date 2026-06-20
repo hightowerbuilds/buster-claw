@@ -40,6 +40,9 @@ defmodule BusterClaw.Sentinel do
   @doc "The PubSub topic security events are broadcast on."
   def topic, do: @topic
 
+  @doc "Subscribe the calling process to the security-event feed."
+  def subscribe, do: PubSub.subscribe(BusterClaw.PubSub, @topic)
+
   @doc """
   Record a security event. Returns `{:ok, event}` or `{:error, reason}`; callers
   generally ignore the result. `opts` may override `:severity` and `:caller`.

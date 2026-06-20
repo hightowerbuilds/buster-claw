@@ -36,6 +36,17 @@ defmodule BusterClaw.TerminalCommandsTest do
              "brew install --cask claude-code"
   end
 
+  test "lists the Dev Server role for starting/restarting Phoenix" do
+    assert %{key: "server", label: "Dev Server", commands: commands} =
+             TerminalCommands.role("server")
+
+    assert Enum.any?(commands, &(&1.command =~ "./scripts/dev.sh"))
+    assert Enum.any?(commands, &(&1.command =~ "mix phx.server"))
+
+    assert %{key: "server"} = TerminalCommands.role("phx")
+    assert TerminalCommands.startup_command("server") == "cd ~/Developer/buster-claw && ./scripts/dev.sh"
+  end
+
   test "resolves Mailman aliases" do
     assert %{key: "mailman"} = TerminalCommands.role("mailman")
     assert %{key: "mailman"} = TerminalCommands.role("mail-triage")

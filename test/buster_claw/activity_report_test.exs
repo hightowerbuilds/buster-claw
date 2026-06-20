@@ -66,6 +66,16 @@ defmodule BusterClaw.ActivityReportTest do
     assert report.runs == 2
   end
 
+  test "summary counts commands separately from runs" do
+    Sentinel.observe(:command_invoke, "Chat agent run completed", %{})
+    Sentinel.observe(:command_invoke, "gmail_send (ok)", %{})
+    Sentinel.observe(:command_invoke, "event_create (ok)", %{})
+
+    report = ActivityReport.summary(now: DateTime.utc_now())
+    assert report.runs == 1
+    assert report.commands == 2
+  end
+
   test "empty history yields zeros" do
     report = ActivityReport.summary(now: @now)
     assert report.handled == 0
@@ -73,5 +83,37 @@ defmodule BusterClaw.ActivityReportTest do
     assert report.failed == 0
     assert report.open == 0
     assert report.runs == 0
+    assert report.commands == 0
+  end
+
+  describe "timeline/2" do
+    test "buckets runs/commands/handled with zero-fill, newest last" do
+      today = Date.utc_today()
+      now = DateTime.utc_now()
+
+      Sentinel.observe(:command_invoke, "Chat agent run completed", %{})
+      Sentinel.observe(:command_invoke, "Unattended agent run completed", %{})
+      Sentinel.observe(:command_invoke, "event_create (ok)", %{})
+      item!(%{status: "done", finished_at: now})
+
+      tl = ActivityReport.timeline("day", today: today)
+
+      assert tl.grain == "day"
+      assert length(tl.buckets) == 14
+      assert tl.totals.runs == 2
+      assert tl.totals.commands == 1
+      assert tl.totals.handled == 1
+
+      last = List.last(tl.buckets)
+      assert last.runs == 2 and last.commands == 1 and last.handled == 1
+      # Everything before today is zero-filled.
+      assert tl.buckets |> Enum.take(13) |> Enum.all?(&(&1.runs == 0 and &1.commands == 0))
+    end
+
+    test "week and month granularities yield 12 buckets" do
+      today = Date.utc_today()
+      assert length(ActivityReport.timeline("week", today: today).buckets) == 12
+      assert length(ActivityReport.timeline("month", today: today).buckets) == 12
+    end
   end
 end
