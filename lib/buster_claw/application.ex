@@ -38,6 +38,7 @@ defmodule BusterClaw.Application do
         uptime_child(),
         dispatcher_child(),
         wallet_poller_child(),
+        analyzer_child(),
         # Per-conversation chat: a Registry for {:via} lookup by conv_id and a
         # DynamicSupervisor that starts one Chat process per open conversation,
         # lazily on the first message. Always on (cheap; tests use them too).
@@ -148,6 +149,14 @@ defmodule BusterClaw.Application do
   defp wallet_poller_child do
     if Application.get_env(:buster_claw, :wallet_poller_enabled, true) do
       BusterClaw.WalletPoller
+    end
+  end
+
+  # The self-improvement scanner (Phase 3): files skill *suggestions* from repeated
+  # command sequences. Off in tests (the Analyzer suite drives scan/1 directly).
+  defp analyzer_child do
+    if Application.get_env(:buster_claw, :analyzer_enabled, true) do
+      BusterClaw.Analyzer.Server
     end
   end
 end

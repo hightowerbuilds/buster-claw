@@ -92,6 +92,50 @@ defmodule BusterClaw.Skills do
   def load(_name), do: nil
 
   @doc """
+  Write an enabled composition skill file from structured attrs (`name`,
+  `description`, `tier`, `steps`). Refuses to overwrite an existing file or shadow
+  a native command. Returns `{:ok, path}` or `{:error, reason}`. Used by the Phase 3
+  approval flow; the format matches what `load/1` parses (single-line JSON `steps`).
+  """
+  def write(%{name: name, steps: steps} = attrs) do
+    cond do
+      not Regex.match?(~r/\A[a-z0-9][a-z0-9-]*\z/, to_string(name)) ->
+        {:error, :invalid_name}
+
+      File.exists?(skill_path(name)) ->
+        {:error, :exists}
+
+      not (is_list(steps) and steps != []) ->
+        {:error, :no_steps}
+
+      true ->
+        File.mkdir_p!(dir())
+        File.write!(skill_path(name), render(attrs))
+        {:ok, skill_path(name)}
+    end
+  end
+
+  defp render(%{name: name, steps: steps} = attrs) do
+    tier = attrs |> Map.get(:tier, :restricted) |> to_string()
+    description = Map.get(attrs, :description, "")
+
+    """
+    ---
+    name: #{name}
+    description: #{description}
+    tier: #{tier}
+    enabled: true
+    handler_kind: composition
+    steps: #{Jason.encode!(steps)}
+    ---
+
+    # #{name}
+
+    #{description}
+    """
+  end
+
+  @doc """
   Best-effort seed: create `skills/` with a roster README and one enabled
   example. Never overwrites an existing operator-authored file.
   """
