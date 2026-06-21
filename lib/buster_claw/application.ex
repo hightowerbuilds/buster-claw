@@ -44,6 +44,9 @@ defmodule BusterClaw.Application do
         # lazily on the first message. Always on (cheap; tests use them too).
         {Registry, keys: :unique, name: BusterClaw.Agent.ChatRegistry},
         BusterClaw.Agent.ChatSupervisor,
+        # Bounded fan-out for parallel sub-runs (Phase 4). Always on (cheap; an idle
+        # Task.Supervisor holds no resources).
+        {Task.Supervisor, name: BusterClaw.SwarmTaskSupervisor},
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
       ]
