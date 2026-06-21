@@ -82,8 +82,8 @@ defmodule BusterClaw.TerminalCommands do
     },
     %{
       key: "shift",
-      label: "Shift",
-      aliases: ["on-shift", "duty"],
+      label: "Shift & Autopilot",
+      aliases: ["on-shift", "duty", "autopilot", "auto", "hands-off"],
       startup_profile: "shift",
       commands: [
         %{
@@ -106,6 +106,20 @@ defmodule BusterClaw.TerminalCommands do
           description:
             "End the active shift — the Dispatcher stops pumping and no-sleep is released.",
           command: "./buster-claw shift stop"
+        },
+        %{
+          key: "autopilot-once",
+          label: "Autopilot — Work It Once",
+          description:
+            "No shift needed: sync trusted Gmail, then run headless Claude once to work the open items behind a TUI. The lightweight 'watch it work' tool (no run cap / no-sleep).",
+          command: "./buster-claw autopilot"
+        },
+        %{
+          key: "autopilot-loop",
+          label: "Autopilot — Every Minute",
+          description:
+            "Loop the autopilot TUI: poll mail, work the queue, wait 60s, repeat. Ctrl-C stops it.",
+          command: "while true; do ./buster-claw autopilot; sleep 60; done"
         }
       ]
     },
@@ -160,29 +174,6 @@ defmodule BusterClaw.TerminalCommands do
           description:
             "Recall past run summaries by full-text query. Edit the query text before running.",
           command: ~s(./buster-claw run memory_search --json '{"query":"shift"}')
-        }
-      ]
-    },
-    %{
-      key: "autopilot",
-      label: "Autopilot",
-      aliases: ["auto", "hands-off"],
-      startup_profile: "autopilot",
-      commands: [
-        %{
-          key: "autopilot-once",
-          label: "Open Mail + Work It",
-          description:
-            "Sync trusted Gmail, then run headless Claude once to work the open items — behind a space-themed TUI that shows what the agent is doing.",
-          command: "./buster-claw autopilot",
-          default?: true
-        },
-        %{
-          key: "autopilot-loop",
-          label: "Autopilot (every minute)",
-          description:
-            "Loop the autopilot TUI: poll mail, work the queue, wait 60s, repeat. Ctrl-C stops it.",
-          command: "while true; do ./buster-claw autopilot; sleep 60; done"
         }
       ]
     },

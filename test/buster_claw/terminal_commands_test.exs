@@ -17,15 +17,23 @@ defmodule BusterClaw.TerminalCommandsTest do
            )
   end
 
-  test "lists the Autopilot role: poll mail + run headless Claude in one command" do
-    assert %{key: "autopilot", label: "Autopilot", commands: commands} =
-             TerminalCommands.role("autopilot")
+  test "consolidates Autopilot commands into the Shift role" do
+    assert %{key: "shift", commands: commands} = TerminalCommands.role("shift")
 
-    assert length(commands) == 2
-    assert %{key: "autopilot"} = TerminalCommands.role("auto")
-    assert %{key: "autopilot"} = TerminalCommands.role("hands-off")
+    # Autopilot aliases now resolve to the consolidated Shift role.
+    assert %{key: "shift"} = TerminalCommands.role("autopilot")
+    assert %{key: "shift"} = TerminalCommands.role("auto")
+    assert %{key: "shift"} = TerminalCommands.role("hands-off")
 
-    assert TerminalCommands.startup_command("autopilot") == "./buster-claw autopilot"
+    # Both the shift controls and the autopilot commands live in the one group.
+    assert Enum.any?(commands, &(&1.command =~ "shift start --json"))
+    assert Enum.any?(commands, &(&1.command == "./buster-claw autopilot"))
+    assert Enum.any?(commands, &(&1.command =~ "while true; do ./buster-claw autopilot"))
+
+    # Opening a shift terminal reports status, not autopilot — there is no longer a
+    # standalone "autopilot" startup profile.
+    assert TerminalCommands.startup_command("shift") == "./buster-claw shift status"
+    refute TerminalCommands.startup_command("autopilot")
   end
 
   test "lists the Claude Code install role for onboarding" do
