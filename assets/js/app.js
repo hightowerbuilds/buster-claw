@@ -763,7 +763,12 @@ const Hooks = {
       this.el.addEventListener("dragstart", (e) => this.onDragStart(e))
       this.el.addEventListener("dragover", (e) => this.onDragOver(e))
       this.el.addEventListener("drop", (e) => this.onDrop(e))
-      // Right-click a tab for the context menu (Join tabs, ...).
+      // Right-click a tab for the context menu (Join tabs, ...). WebKit (the
+      // desktop app's WKWebView) does NOT fire `contextmenu` on draggable="true"
+      // elements — which our tabs are, for drag-to-join — so drive the menu from
+      // a right-button mousedown, which fires regardless. contextmenu stays as a
+      // de-duped fallback for non-WebKit browsers (and to suppress the native menu).
+      this.el.addEventListener("mousedown", (e) => this.onRightMouseDown(e))
       this.el.addEventListener("contextmenu", (e) => this.onContextMenu(e))
       // Double-click a tab to rename it; Enter/blur commits, Escape cancels.
       this.editingPath = null
@@ -1069,10 +1074,27 @@ const Hooks = {
       if (invoke) invoke("browser_close").catch(() => {})
     },
     // ----- Right-click context menu -----
-    onContextMenu(e) {
+    // Primary trigger in WebKit: right-button mousedown fires even on draggable
+    // tabs, where `contextmenu` does not.
+    onRightMouseDown(e) {
+      if (e.button !== 2) return
       const tab = e.target.closest("[data-path]")
       if (!tab) return
       e.preventDefault()
+      this.menuViaMouseDown = true
+      this.openMenu(tab.getAttribute("data-path"), e.clientX, e.clientY)
+    },
+    onContextMenu(e) {
+      const tab = e.target.closest("[data-path]")
+      if (!tab) return
+      // Always suppress the native menu over a tab.
+      e.preventDefault()
+      // mousedown already opened it (WebKit path) — don't reopen on the
+      // contextmenu that may follow in other browsers.
+      if (this.menuViaMouseDown) {
+        this.menuViaMouseDown = false
+        return
+      }
       this.openMenu(tab.getAttribute("data-path"), e.clientX, e.clientY)
     },
     openMenu(path, x, y) {
