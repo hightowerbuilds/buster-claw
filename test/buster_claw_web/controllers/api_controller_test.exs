@@ -23,6 +23,44 @@ defmodule BusterClawWeb.ApiControllerTest do
       for representative <- ~w(runtime_status document_list event_list web_search browser_fetch) do
         assert representative in names, "expected catalog to include #{representative}"
       end
+
+      # Native catalog entries are tagged so consumers can tell them apart from
+      # runtime-added composition skills.
+      native = Enum.find(commands, &(&1["name"] == "runtime_status"))
+      assert native["source"] == "native"
+    end
+
+    test "surfaces enabled composition skills tagged source=composition", %{conn: conn} do
+      root = Path.join(System.tmp_dir!(), "bc_api_skills_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(root, "skills"))
+      prev_ws = Application.get_env(:buster_claw, :workspace_root)
+      Application.put_env(:buster_claw, :workspace_root, root)
+
+      on_exit(fn ->
+        Application.put_env(:buster_claw, :workspace_root, prev_ws)
+        File.rm_rf(root)
+      end)
+
+      File.write!(Path.join([root, "skills", "ping-note.md"]), """
+      ---
+      name: ping-note
+      description: A runtime-added composition skill.
+      tier: safe
+      enabled: true
+      handler_kind: composition
+      args: {"title":{"type":"string"}}
+      steps: [{"command":"document_save","args":{"name":"$title","body":"hi"}}]
+      ---
+
+      # ping-note
+      """)
+
+      conn = get(conn, ~p"/api/commands")
+      assert %{"ok" => true, "commands" => commands} = json_response(conn, 200)
+
+      skill = Enum.find(commands, &(&1["name"] == "ping-note"))
+      assert skill, "expected the dropped skill to appear in /api/commands"
+      assert skill["source"] == "composition"
     end
   end
 

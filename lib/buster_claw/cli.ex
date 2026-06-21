@@ -97,7 +97,8 @@ defmodule BusterClaw.CLI do
     case http_get("/api/commands") do
       {:ok, %{"commands" => list}} ->
         Enum.each(list, fn cmd ->
-          IO.puts("#{pad(cmd["name"], 32)} #{cmd["description"]}")
+          marker = if cmd["source"] == "composition", do: " [skill]", else: ""
+          IO.puts("#{pad(cmd["name"], 32)} #{cmd["description"]}#{marker}")
         end)
 
       {:ok, other} ->

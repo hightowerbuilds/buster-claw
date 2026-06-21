@@ -14,12 +14,13 @@ defmodule BusterClawWeb.ApiController do
   @serialized_catalog_key {__MODULE__, :serialized_catalog}
 
   def commands(conn, _params) do
-    json(conn, %{ok: true, commands: serialized_catalog()})
+    json(conn, %{ok: true, commands: serialized_catalog() ++ serialized_skills()})
   end
 
-  # The catalog is immutable (compile-time in BusterClaw.Commands), so its
-  # JSON-ready/string-keyed form is deep-stringified once and cached in
-  # :persistent_term instead of being rebuilt on every GET /api/commands.
+  # The native catalog is immutable, so its JSON-ready/string-keyed form is
+  # stringified once and cached in :persistent_term. Composition skills are
+  # runtime-discovered files, so they are serialized fresh per request (cheap, and
+  # there is no cache to invalidate when a skill file is added/removed).
   defp serialized_catalog do
     case :persistent_term.get(@serialized_catalog_key, :miss) do
       :miss ->
@@ -31,6 +32,8 @@ defmodule BusterClawWeb.ApiController do
         catalog
     end
   end
+
+  defp serialized_skills, do: Enum.map(Commands.list_skills(), &serialize_catalog_entry/1)
 
   def run(conn, %{"command" => name} = params) do
     args = Map.get(params, "args", %{})
@@ -93,8 +96,10 @@ defmodule BusterClawWeb.ApiController do
     |> json(%{ok: false, error: message})
   end
 
+  # Every entry carries a `source` (`native | composition`) so consumers can tell a
+  # built-in command from a runtime-added skill. Native entries don't set it.
   defp serialize_catalog_entry(%{args: args} = entry) do
-    %{entry | args: stringify_keys(args)}
+    entry |> Map.put_new(:source, :native) |> Map.put(:args, stringify_keys(args))
   end
 
   defp stringify_keys(map) when is_map(map) do
