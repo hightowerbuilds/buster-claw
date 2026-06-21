@@ -79,4 +79,15 @@ defmodule BusterClaw.BookmarksTest do
     assert [%{"url" => "https://old.com"}] = Bookmarks.list()
     assert Bookmarks.list(tag: "news") == []
   end
+
+  test "stores a favicon url derived from the host" do
+    Bookmarks.add("https://example.com/page?x=1", "Example")
+    assert [%{"favicon_url" => fav}] = Bookmarks.list()
+    assert fav == "https://www.google.com/s2/favicons?domain=example.com&sz=64"
+  end
+
+  test "favicon_url returns nil for urls with no host" do
+    assert Bookmarks.favicon_url("not a url") == nil
+    assert Bookmarks.favicon_url(nil) == nil
+  end
 end

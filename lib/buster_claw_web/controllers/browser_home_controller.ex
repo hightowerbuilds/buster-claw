@@ -47,12 +47,33 @@ defmodule BusterClawWeb.BrowserHomeController do
       .url { color: rgba(244,241,234,.45); font: 12px/1.4 ui-monospace, monospace;
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .empty { color: rgba(244,241,234,.55); max-width: 40rem; }
+      .empty code { color: #ff4d1c; }
       form.rm { margin: 0; flex: 0 0 auto; }
       button.rm { background: transparent; border: 0; cursor: pointer; padding: 4px 8px;
                   color: rgba(244,241,234,.4); font-size: 16px; line-height: 1; }
       button.rm:hover { color: #ff4d1c; }
-      .tags { display: flex; gap: 6px; flex: 0 0 auto; margin-left: 8px; }
-      .tag { font: 600 10px/1 ui-monospace, monospace; padding: 2px 6px;
+
+      /* Bookmark cards */
+      .grid { display: grid; gap: 12px; margin: 12px 0 0; max-width: 60rem;
+              grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+      .card { position: relative; border: 1px solid rgba(244,241,234,.12);
+              border-radius: 8px; background: rgba(244,241,234,.02);
+              transition: border-color .15s ease, background .15s ease, transform .15s ease; }
+      .card:hover { border-color: rgba(255,77,28,.55); background: rgba(255,77,28,.05);
+                    transform: translateY(-1px); }
+      .card > a { display: block; padding: 14px; text-decoration: none; color: #f4f1ea; }
+      .card .head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .card .fav { width: 20px; height: 20px; flex: 0 0 auto; border-radius: 4px;
+                   background: rgba(244,241,234,.08); }
+      .card .label { font-weight: 700; font-size: 14px; overflow: hidden;
+                     text-overflow: ellipsis; white-space: nowrap; }
+      .card .host { margin-top: 8px; color: rgba(244,241,234,.45);
+                    font: 12px/1.3 ui-monospace, monospace; overflow: hidden;
+                    text-overflow: ellipsis; white-space: nowrap; }
+      .card .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+      .card .rm { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity .15s ease; }
+      .card:hover .rm { opacity: 1; }
+      .tag { font: 600 10px/1 ui-monospace, monospace; padding: 3px 7px;
              background: rgba(255,77,28,.18); color: #ff4d1c; border-radius: 3px;
              text-transform: uppercase; letter-spacing: .04em; }
     </style>
@@ -72,25 +93,44 @@ defmodule BusterClawWeb.BrowserHomeController do
   defp bookmarks_body([]) do
     """
     <p class="empty">No bookmarks yet. Open a page and press <code>+ Bookmark</code> in the
-    toolbar above to save it here.</p>
+    toolbar above to save it here — it'll show up as a card with its favicon and any tags.</p>
     """
   end
 
   defp bookmarks_body(entries) do
-    rows =
+    cards =
       Enum.map_join(entries, "\n", fn e ->
-        url = escape(e["url"])
-        label = escape(e["label"] || e["url"])
+        raw_url = e["url"]
+        url = escape(raw_url)
+        label = escape(e["label"] || raw_url)
+        host = escape(host(raw_url))
+        favicon = e["favicon_url"] || Bookmarks.favicon_url(raw_url)
         tags_html = tags_body(e["tags"])
 
-        ~s(<li><a href="#{url}"><span class="label">#{label}</span><span class="url">#{url}</span></a>#{tags_html}) <>
+        fav_html =
+          if favicon,
+            do: ~s(<img class="fav" src="#{escape(favicon)}" alt="" loading="lazy" />),
+            else: ~s(<span class="fav"></span>)
+
+        ~s(<div class="card">) <>
+          ~s(<a href="#{url}">) <>
+          ~s(<div class="head">#{fav_html}<span class="label">#{label}</span></div>) <>
+          ~s(<div class="host">#{host}</div>#{tags_html}) <>
+          ~s(</a>) <>
           ~s(<form class="rm" method="post" action="/browser/bookmarks/remove">) <>
           ~s(<input type="hidden" name="url" value="#{url}" />) <>
           ~s(<button class="rm" type="submit" title="Remove bookmark" aria-label="Remove bookmark">&times;</button>) <>
-          ~s(</form></li>)
+          ~s(</form></div>)
       end)
 
-    "<ul>\n#{rows}\n</ul>"
+    ~s(<div class="grid">\n#{cards}\n</div>)
+  end
+
+  defp host(url) do
+    case URI.parse(to_string(url)) do
+      %URI{host: host} when is_binary(host) and host != "" -> host
+      _ -> to_string(url)
+    end
   end
 
   defp tags_body(nil), do: ""

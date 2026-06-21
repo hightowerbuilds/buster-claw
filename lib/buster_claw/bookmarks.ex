@@ -38,6 +38,7 @@ defmodule BusterClaw.Bookmarks do
       "url" => url,
       "label" => label,
       "tags" => normalize_tags(tags),
+      "favicon_url" => favicon_url(url),
       "at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
     }
 
@@ -71,4 +72,22 @@ defmodule BusterClaw.Bookmarks do
   end
 
   def normalize_tags(_), do: []
+
+  @doc """
+  Best-effort favicon URL for a page. Returns Google's public favicon service
+  URL keyed by host (it serves a sensible globe fallback when a site has none),
+  or `nil` when the URL has no resolvable host. We store the URL, not the bytes;
+  the webview fetches it lazily when rendering the homepage.
+  """
+  def favicon_url(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{host: host} when is_binary(host) and host != "" ->
+        "https://www.google.com/s2/favicons?domain=#{host}&sz=64"
+
+      _ ->
+        nil
+    end
+  end
+
+  def favicon_url(_), do: nil
 end
