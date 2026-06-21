@@ -28,7 +28,7 @@ defmodule BusterClawWeb.BrowserChromeController do
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; overflow: hidden; }
       body {
-        display: flex; flex-direction: column; height: 80px;
+        display: flex; flex-direction: column; height: 112px;
         background: #121212; color: #f4f1ea;
         font: 13px/1 -apple-system, system-ui, sans-serif;
         border-bottom: 2px solid rgba(244,241,234,.18);
@@ -81,6 +81,21 @@ defmodule BusterClawWeb.BrowserChromeController do
         border-radius: 3px; font: 600 12px/1 ui-monospace, monospace; white-space: nowrap;
       }
       button.bm:hover { border-color: #ff4d1c; color: #ff4d1c; }
+      /* bookmark bar */
+      #bookmarkbar { display: flex; align-items: center; gap: 4px; height: 32px;
+                     padding: 0 8px; overflow-x: auto; overflow-y: hidden;
+                     border-top: 1px solid rgba(244,241,234,.1); }
+      #bookmarkbar::-webkit-scrollbar { height: 0; }
+      .bmk { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; max-width: 160px;
+             height: 24px; padding: 0 8px; cursor: pointer; background: transparent;
+             color: rgba(244,241,234,.75); border: 1px solid transparent; border-radius: 4px;
+             font: 12px/1 -apple-system, system-ui, sans-serif; }
+      .bmk:hover { background: rgba(244,241,234,.08); color: #f4f1ea;
+                   border-color: rgba(244,241,234,.14); }
+      .bmk img { width: 14px; height: 14px; flex: 0 0 auto; border-radius: 3px; }
+      .bmk .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #bookmarkbar .hint { color: rgba(244,241,234,.32); font-size: 11px; padding: 0 4px;
+                           white-space: nowrap; }
     </style>
     </head>
     <body>
@@ -98,12 +113,14 @@ defmodule BusterClawWeb.BrowserChromeController do
         </form>
         <button class="bm" id="bookmark" type="button" title="Bookmark this page">+ Bookmark</button>
       </div>
+      <div id="bookmarkbar"></div>
       <script>
         const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke
         const origin = window.location.origin
         const homeUrl = origin + "/browser/home"
         const addr = document.getElementById("addr")
         const tabsEl = document.getElementById("tabs")
+        const barEl = document.getElementById("bookmarkbar")
 
         // Invoke a Tauri command, surfacing failures in the console (so a denied
         // permission or a missing webview is visible rather than silent).
@@ -181,6 +198,41 @@ defmodule BusterClawWeb.BrowserChromeController do
         }
 
         function activeTab() { return tabs.find((t) => t.id === activeId) }
+
+        // --- bookmark bar (persistent quick-access strip below the toolbar) ---
+        function renderBookmarks(items) {
+          barEl.textContent = ""
+          if (!items || !items.length) {
+            const hint = document.createElement("span")
+            hint.className = "hint"
+            hint.textContent = "Bookmarks you save appear here"
+            barEl.appendChild(hint)
+            return
+          }
+          items.forEach((b) => {
+            const el = document.createElement("button")
+            el.type = "button"
+            el.className = "bmk"
+            el.title = (b.label || b.url) + "\\n" + b.url
+            if (b.favicon_url) {
+              const img = document.createElement("img")
+              img.src = b.favicon_url; img.alt = ""; img.loading = "lazy"
+              el.appendChild(img)
+            }
+            const t = document.createElement("span")
+            t.className = "t"
+            t.textContent = b.label || b.url
+            el.appendChild(t)
+            el.onclick = () => inv("browser_navigate", { tabId: activeId, url: b.url })
+            barEl.appendChild(el)
+          })
+        }
+        function loadBookmarks() {
+          fetch(origin + "/browser/bookmarks", { headers: { accept: "application/json" } })
+            .then((r) => r.json())
+            .then(renderBookmarks)
+            .catch(function () {})
+        }
 
         function newTab() {
           const id = String(nextId++)
@@ -273,6 +325,7 @@ defmodule BusterClawWeb.BrowserChromeController do
             .then(function () {
               btn.textContent = "Saved \\u2713"
               setTimeout(function () { btn.textContent = "+ Bookmark" }, 1500)
+              loadBookmarks()
             })
             .catch(function () {})
         }
@@ -285,6 +338,7 @@ defmodule BusterClawWeb.BrowserChromeController do
         document.getElementById("bookmark").addEventListener("click", bookmark)
 
         renderTabs()
+        loadBookmarks()
         addr.focus()
       </script>
     </body>

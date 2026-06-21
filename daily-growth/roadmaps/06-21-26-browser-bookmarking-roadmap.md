@@ -6,11 +6,11 @@
 
 The browser review identified bookmarks as the weakest surface in the browser (Grade C−). They work, but the homepage is a dense text list with no visual hierarchy, no categorization, no favicons, and no agent commands. This roadmap brings them up to parity with the rest of the app in four focused stages.
 
-> **Status (2026-06-21):** Stages 1–3 shipped. Stage 4 (chrome bookmark bar) deferred — explicitly the lowest priority.
+> **Status (2026-06-21):** All four stages shipped.
 > - Stage 1 — Tags + agent commands — ✅ `88691c2`
 > - Stage 2 — Favicons + card-grid homepage — ✅ `c35beb9`
-> - Stage 3 — Homepage search + tag filter — ✅ (this session)
-> - Stage 4 — Chrome bookmark bar — ⬜ deferred
+> - Stage 3 — Homepage search + tag filter — ✅ `57fcea3`
+> - Stage 4 — Chrome bookmark bar — ✅ (this session)
 
 ## What we are NOT doing
 

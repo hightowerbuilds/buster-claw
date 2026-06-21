@@ -20,6 +20,9 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
     assert body =~ "browser_new_tab"
     assert body =~ "browser_switch_tab"
     assert body =~ "browser_close_tab"
+    # Bookmark bar container + the loader that fetches saved bookmarks into it.
+    assert body =~ ~s(id="bookmarkbar")
+    assert body =~ "loadBookmarks"
   end
 
   test "seeds the address bar from ?url=", %{conn: conn} do

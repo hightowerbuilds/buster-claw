@@ -64,6 +64,7 @@ defmodule BusterClawWeb.Router do
     get "/home", BrowserHomeController, :show
     get "/workspace", BrowserWorkspaceController, :show
     post "/history", BrowserHistoryController, :create
+    get "/bookmarks", BrowserBookmarkController, :index
     post "/bookmarks", BrowserBookmarkController, :create
     post "/bookmarks/remove", BrowserBookmarkController, :delete
     post "/screenshot", BrowserScreenshotController, :create

@@ -4,12 +4,31 @@ defmodule BusterClawWeb.BrowserBookmarkController do
 
   `create` is called (POST, query params) by the native chrome toolbar's
   "+ Bookmark" button. `delete` is posted by the remove form on the browser
-  homepage and redirects back to it. Loopback-only, single-user; no CSRF (raw
-  scope).
+  homepage and redirects back to it. `index` returns the saved bookmarks as JSON
+  for the chrome's bookmark bar. Loopback-only, single-user; no CSRF (raw scope).
   """
   use BusterClawWeb, :controller
 
   alias BusterClaw.Bookmarks
+
+  @bar_limit 24
+
+  # Bookmarks for the chrome bookmark bar (newest first, capped). Favicon is
+  # backfilled for older entries saved before favicons existed.
+  def index(conn, _params) do
+    items =
+      Bookmarks.list()
+      |> Enum.take(@bar_limit)
+      |> Enum.map(fn e ->
+        %{
+          "url" => e["url"],
+          "label" => e["label"] || e["url"],
+          "favicon_url" => e["favicon_url"] || Bookmarks.favicon_url(e["url"])
+        }
+      end)
+
+    json(conn, items)
+  end
 
   def create(conn, %{"url" => url}) when is_binary(url) and url != "" do
     tags = parse_tags(conn.params["tags"])

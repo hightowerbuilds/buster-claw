@@ -375,13 +375,12 @@ turn) — which maps cleanly onto the Tetris metaphor.
   `--input-format stream-json` session, for real per-thinking-block timers) is a
   deferred spike against an undocumented protocol.
 
-## Fourth session — browser bookmarking (Stages 1–3)
+## Fourth session — browser bookmarking (Stages 1–4)
 
 Shifted from chat to the **embedded browser's bookmarks** — the surface a prior browser
 review graded C− (a dense text list: no hierarchy, no categories, no favicons, no agent
-commands). Worked the four-stage roadmap
-(`daily-growth/roadmaps/06-21-26-browser-bookmarking-roadmap.md`); shipped the first
-three, deferred Stage 4 (the chrome bookmark bar) as the explicit lowest priority.
+commands). Worked the four-stage roadmap end to end
+(`daily-growth/roadmaps/06-21-26-browser-bookmarking-roadmap.md`); all four stages shipped.
 
 - **Stage 1 — tags + agent commands (`88691c2`).** `Bookmarks.add/3` stores a normalized
   tag list (downcased/trimmed/deduped; accepts a list or a comma-string); `list/1` filters
@@ -402,16 +401,29 @@ three, deferred Stage 4 (the chrome bookmark bar) as the explicit lowest priorit
   `/browser/home` has **no `pipe_through`**, so the CSP plug never runs on it (which is also
   why the existing inline `<style>` works). Controls render only when bookmarks exist.
 
+- **Stage 4 — chrome bookmark bar (this session).** A persistent quick-access strip below
+  the toolbar in the native chrome (`browser_chrome_controller.ex`). New JSON endpoint
+  `GET /browser/bookmarks` (`BrowserBookmarkController.index`, loopback, capped at 24,
+  newest-first, favicon backfilled for pre-favicon entries); the chrome fetches it on load
+  and re-fetches after a save. Each item is a favicon+label button that navigates the
+  **active tab** via the existing `browser_navigate` Tauri command; the bar horizontally
+  scrolls when crowded and shows a faint hint when empty. The chrome webview is fixed-height
+  and Rust positions the content webview just below it, so `CHROME_HEIGHT` in
+  `desktop/tauri/src/browser.rs` was bumped `80 → 112` (tab strip + toolbar + 32px bar).
+
 ### Verification (fourth session)
 
-- `mix test` — **656 tests, 0 failures** (was 651). New coverage: bookmark tag
-  normalization/filtering + favicon derivation (`bookmarks_test.exs`), and the homepage
+- `mix test` — **658 tests, 0 failures** (was 651). New coverage: bookmark tag
+  normalization/filtering + favicon derivation (`bookmarks_test.exs`); the homepage
   controller rendering cards, favicons, tag chips, and the search/filter controls (present
-  with bookmarks, absent without).
+  with bookmarks, absent without); and the `GET /browser/bookmarks` JSON (shape + favicon
+  backfill) plus the chrome serving the `#bookmarkbar` + loader.
+- **Rust unverified by me** — the `CHROME_HEIGHT` bump is a one-line constant; a Tauri/cargo
+  build is heavy and the user drives the desktop build. Worth a visual check that the bar
+  shows and the content webview sits flush below it.
 - **Still unverified by me** (needs the running app the user drives): the live look of the
-  card grid, real favicons loading in the webview, and the search/tag-filter interaction.
-- **Deferred:** Stage 4 — a persistent bookmark bar in the chrome toolbar
-  (`browser_chrome_controller.ex`), the roadmap's own lowest priority.
+  card grid, real favicons loading in the webview, the search/tag-filter interaction, and
+  the bookmark bar navigating the active tab.
 
 ## Notes
 

@@ -35,4 +35,20 @@ defmodule BusterClawWeb.BrowserBookmarkControllerTest do
     assert redirected_to(conn) == ~p"/browser/home"
     assert Bookmarks.list() == []
   end
+
+  test "GET /browser/bookmarks returns JSON for the bookmark bar", %{conn: conn} do
+    Bookmarks.add("https://a.com/page", "A", ["news"])
+
+    body = conn |> get(~p"/browser/bookmarks") |> json_response(200)
+
+    assert [%{"url" => "https://a.com/page", "label" => "A", "favicon_url" => fav}] = body
+    assert fav =~ "favicons?domain=a.com"
+  end
+
+  test "GET /browser/bookmarks backfills a favicon for older faviconless entries", %{conn: conn} do
+    File.write(Bookmarks.path(), Jason.encode!([%{"url" => "https://old.com", "label" => "Old"}]))
+
+    body = conn |> get(~p"/browser/bookmarks") |> json_response(200)
+    assert [%{"favicon_url" => "https://www.google.com/s2/favicons?domain=old.com&sz=64"}] = body
+  end
 end

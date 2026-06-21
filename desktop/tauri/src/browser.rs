@@ -18,7 +18,7 @@ use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, Url, Webvie
 const CHROME_LABEL: &str = "browser-chrome";
 const CONTENT_PREFIX: &str = "browser-content-";
 const FIRST_TAB: &str = "1";
-const CHROME_HEIGHT: f64 = 80.0; // tab strip (~34) + toolbar (46)
+const CHROME_HEIGHT: f64 = 112.0; // tab strip (~34) + toolbar (46) + bookmark bar (32)
 
 /// The currently-active content tab id (the visible one). Managed by Tauri so it
 /// survives across commands; the chrome JS keeps it in sync via the tab commands.
