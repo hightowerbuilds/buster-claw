@@ -8,6 +8,7 @@ defmodule BusterClaw.Dispatch.Item do
   alias BusterClaw.Orchestration.{Shift, ShiftAssignment}
 
   @statuses ~w(queued claimed running done failed blocked cancelled)
+  @strategies ~w(single swarm)
 
   @derive {Jason.Encoder,
            only: [
@@ -28,6 +29,7 @@ defmodule BusterClaw.Dispatch.Item do
              :recommended_role_key,
              :risk,
              :status,
+             :strategy,
              :shift_id,
              :shift_assignment_id,
              :dedupe_key,
@@ -59,6 +61,7 @@ defmodule BusterClaw.Dispatch.Item do
     field :recommended_role_key, :string
     field :risk, :string
     field :status, :string, default: "queued"
+    field :strategy, :string, default: "single"
     field :dedupe_key, :string
     field :claimed_by, :string
     field :claimed_at, :utc_datetime
@@ -94,6 +97,7 @@ defmodule BusterClaw.Dispatch.Item do
       :recommended_role_key,
       :risk,
       :status,
+      :strategy,
       :shift_id,
       :shift_assignment_id,
       :dedupe_key,
@@ -108,8 +112,10 @@ defmodule BusterClaw.Dispatch.Item do
     ])
     |> validate_required([:source, :status, :dedupe_key])
     |> validate_inclusion(:status, @statuses)
+    |> validate_inclusion(:strategy, @strategies)
     |> unique_constraint(:dedupe_key)
   end
 
   def statuses, do: @statuses
+  def strategies, do: @strategies
 end

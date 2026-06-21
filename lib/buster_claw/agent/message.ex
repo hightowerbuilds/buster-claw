@@ -17,7 +17,16 @@ defmodule BusterClaw.Agent.Message do
   @roles ~w(user assistant tool meta error)
 
   @derive {Jason.Encoder,
-           only: [:id, :conv_id, :role, :content, :session_id, :cost_usd, :num_turns, :inserted_at]}
+           only: [
+             :id,
+             :conv_id,
+             :role,
+             :content,
+             :session_id,
+             :cost_usd,
+             :num_turns,
+             :inserted_at
+           ]}
   schema "agent_chat_messages" do
     field :conv_id, :string
     field :role, :string

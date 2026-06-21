@@ -21,7 +21,7 @@ defmodule BusterClaw.Agent.ConversationsTest do
     ids = Conversations.list() |> Enum.map(& &1.id)
     assert "default" in ids and conv.id in ids
     # Order is stable across calls (tabs don't reshuffle between renders).
-    assert ids == (Conversations.list() |> Enum.map(& &1.id))
+    assert ids == Conversations.list() |> Enum.map(& &1.id)
   end
 
   test "rename changes the title" do

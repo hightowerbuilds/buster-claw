@@ -251,6 +251,116 @@ defmodule BusterClaw.DispatcherTest do
     end
   end
 
+  describe "swarm strategy → coordinator path" do
+    # A coordinator stub: records the goal/opts it was handed and returns a canned
+    # swarm result, without planning or spawning real sub-runs.
+    defp stub_coordinator(test_pid, result) do
+      fn goal, opts ->
+        send(test_pid, {:coordinated, goal, opts})
+        result
+      end
+    end
+
+    defp swarm_summary(ok, total) do
+      results =
+        for i <- 0..(total - 1) do
+          %{role: "role-#{i}", index: i, status: if(i < ok, do: :ok, else: :error)}
+        end
+
+      %{swarm_id: 1, total: total, ok: ok, quorum: total, results: results}
+    end
+
+    test "a queued swarm item runs through the coordinator, not the generic runner" do
+      {:ok, shift} = Orchestration.start_shift(unattended: true)
+      enqueue!(%{strategy: "swarm", request_summary: "ship the thing"})
+
+      server =
+        start_dispatcher!(stub_runner(self()),
+          coordinator: stub_coordinator(self(), {:ok, swarm_summary(2, 2)})
+        )
+
+      Dispatcher.tick_now(server)
+
+      assert_receive {:coordinated, goal, _opts}, 1_000
+      assert goal =~ "ship the thing"
+      # The generic agent-pulls-queue runner must NOT fire for a swarm item.
+      refute_receive {:ran, _pid}, 200
+
+      wait_until(fn -> reload_shift(shift.id).done_count == 1 end)
+      reloaded = reload_shift(shift.id)
+      # dispatched counts the realized cost: planner (1) + sub-runs (2).
+      assert reloaded.dispatched_count == 3
+      assert reloaded.failed_count == 0
+    end
+
+    test "threads the provenance run_opts into the coordinator" do
+      {:ok, _shift} = Orchestration.start_shift(unattended: true)
+      enqueue!(%{strategy: "swarm", trusted: false, request_summary: "x"})
+
+      server =
+        start_dispatcher!(stub_runner(self()),
+          coordinator: stub_coordinator(self(), {:ok, swarm_summary(1, 1)})
+        )
+
+      Dispatcher.tick_now(server)
+
+      assert_receive {:coordinated, _goal, opts}, 1_000
+      run_opts = Keyword.get(opts, :run_opts)
+      assert env_token(run_opts) == BusterClaw.ApiToken.agent_value()
+    end
+
+    test "quorum-not-met blocks the item and counts a failure" do
+      {:ok, shift} = Orchestration.start_shift(unattended: true)
+      item = enqueue!(%{strategy: "swarm", request_summary: "hard job"})
+
+      result = {:error, {:quorum_not_met, swarm_summary(1, 3)}}
+
+      server =
+        start_dispatcher!(stub_runner(self()), coordinator: stub_coordinator(self(), result))
+
+      Dispatcher.tick_now(server)
+
+      assert_receive {:coordinated, _goal, _opts}, 1_000
+      wait_until(fn -> reload_shift(shift.id).failed_count == 1 end)
+      assert Dispatch.get_item(item.id).status == "blocked"
+      # planner (1) + 3 sub-runs.
+      assert reload_shift(shift.id).dispatched_count == 4
+    end
+
+    test "an unplannable goal blocks the item" do
+      {:ok, shift} = Orchestration.start_shift(unattended: true)
+      item = enqueue!(%{strategy: "swarm", request_summary: "vague"})
+
+      server =
+        start_dispatcher!(stub_runner(self()),
+          coordinator: stub_coordinator(self(), {:error, :unplannable})
+        )
+
+      Dispatcher.tick_now(server)
+
+      assert_receive {:coordinated, _goal, _opts}, 1_000
+      wait_until(fn -> reload_shift(shift.id).failed_count == 1 end)
+      assert Dispatch.get_item(item.id).status == "blocked"
+      # only the planner run was spent.
+      assert reload_shift(shift.id).dispatched_count == 1
+    end
+
+    test "a single-strategy item still uses the generic runner, not the coordinator" do
+      {:ok, _shift} = Orchestration.start_shift(unattended: true)
+      enqueue!(%{strategy: "single"})
+
+      server =
+        start_dispatcher!(stub_runner(self()),
+          coordinator: stub_coordinator(self(), {:ok, swarm_summary(1, 1)})
+        )
+
+      Dispatcher.tick_now(server)
+
+      assert_receive {:ran, _pid}, 1_000
+      refute_receive {:coordinated, _goal, _opts}, 200
+    end
+  end
+
   describe "provenance → token" do
     test "a trusted-only queue runs with the full (trusted) token" do
       {:ok, shift} = Orchestration.start_shift(unattended: true)

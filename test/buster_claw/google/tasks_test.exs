@@ -25,7 +25,10 @@ defmodule BusterClaw.Google.TasksTest do
     Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
       assert conn.request_path == "/tasks/v1/lists/list-1/tasks"
       assert conn.query_params["showCompleted"] == "true"
-      Req.Test.json(conn, %{"items" => [%{"id" => "t-1", "title" => "Ship it", "status" => "needsAction"}]})
+
+      Req.Test.json(conn, %{
+        "items" => [%{"id" => "t-1", "title" => "Ship it", "status" => "needsAction"}]
+      })
     end)
 
     assert {:ok, %{tasklist_id: "list-1", tasks: [%{id: "t-1", title: "Ship it"}]}} =

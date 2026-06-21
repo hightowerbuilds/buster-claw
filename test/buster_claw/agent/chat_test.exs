@@ -87,7 +87,10 @@ defmodule BusterClaw.Agent.ChatTest do
     {:ok, scripts} =
       Agent.start_link(fn ->
         [
-          [%{"type" => "system", "session_id" => "sess-xyz"}, %{"type" => "result", "result" => "ok"}],
+          [
+            %{"type" => "system", "session_id" => "sess-xyz"},
+            %{"type" => "result", "result" => "ok"}
+          ],
           [%{"type" => "result", "result" => "ok again"}]
         ]
       end)
@@ -111,7 +114,11 @@ defmodule BusterClaw.Agent.ChatTest do
     conv = start_chat(spawner, timeout_ms: 30)
 
     assert :ok = Chat.send_message(conv, "hang")
-    assert_receive {:agent_chat, ^conv, {:message, %{role: :error, text: "The run timed out" <> _}}}, 500
+
+    assert_receive {:agent_chat, ^conv,
+                    {:message, %{role: :error, text: "The run timed out" <> _}}},
+                   500
+
     assert_receive {:agent_chat, ^conv, {:status, :idle}}
     assert :idle = Chat.status(conv)
   end
@@ -136,7 +143,11 @@ defmodule BusterClaw.Agent.ChatTest do
       port = make_ref()
 
       spawn(fn ->
-        send(chat, {port, {:data, Jason.encode!(%{"type" => "result", "result" => "ok"}) <> "\n"}})
+        send(
+          chat,
+          {port, {:data, Jason.encode!(%{"type" => "result", "result" => "ok"}) <> "\n"}}
+        )
+
         send(chat, {port, {:exit_status, 0}})
       end)
 

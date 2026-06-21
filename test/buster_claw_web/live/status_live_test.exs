@@ -144,7 +144,9 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert response =~ ~s(id="home-agent-chat")
       assert response =~ ~s(phx-hook="AgentChat")
       assert response =~ "Talk to Buster Claw"
-      assert response =~ ~s(form[phx-submit="chat_send"]) or response =~ ~s(phx-submit="chat_send")
+
+      assert response =~ ~s(form[phx-submit="chat_send"]) or
+               response =~ ~s(phx-submit="chat_send")
     end
 
     test "projects the active conversation's broadcast events into the transcript", %{conn: conn} do
@@ -154,7 +156,12 @@ defmodule BusterClawWeb.StatusLiveTest do
       send(view.pid, {:agent_chat, active, {:message, %{role: :user, text: "work the queue"}}})
       send(view.pid, {:agent_chat, active, {:status, :running}})
       send(view.pid, {:agent_chat, active, {:message, %{role: :assistant, text: "On it."}}})
-      send(view.pid, {:agent_chat, active, {:message, %{role: :tool, text: "Bash: ./buster-claw dispatch list"}}})
+
+      send(
+        view.pid,
+        {:agent_chat, active,
+         {:message, %{role: :tool, text: "Bash: ./buster-claw dispatch list"}}}
+      )
 
       html =
         send(view.pid, {:agent_chat, active, {:message, %{role: :meta, text: "2 turns · $0.01"}}})
@@ -170,14 +177,24 @@ defmodule BusterClawWeb.StatusLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
       active = active_chat(view)
 
-      send(view.pid, {:agent_chat, active, {:message, %{role: :error, text: "The run timed out and was stopped."}}})
+      send(
+        view.pid,
+        {:agent_chat, active,
+         {:message, %{role: :error, text: "The run timed out and was stopped."}}}
+      )
+
       assert render(view) =~ "The run timed out and was stopped."
     end
 
     test "a background conversation's message does not touch the active transcript", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      send(view.pid, {:agent_chat, "some-other-conv", {:message, %{role: :assistant, text: "background reply"}}})
+      send(
+        view.pid,
+        {:agent_chat, "some-other-conv",
+         {:message, %{role: :assistant, text: "background reply"}}}
+      )
+
       refute render(view) =~ "background reply"
     end
 

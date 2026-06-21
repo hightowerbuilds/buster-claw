@@ -42,6 +42,7 @@ defmodule BusterClaw.CLI do
       ["dispatch", "done", id] -> dispatch_finish_cmd("dispatch_done", id, opts)
       ["dispatch", "block", id] -> dispatch_finish_cmd("dispatch_block", id, opts)
       ["dispatch", "reply", id] -> dispatch_reply_cmd(id, opts)
+      ["dispatch", "strategy", id, strategy] -> dispatch_strategy_cmd(id, strategy, opts)
       ["jobs", "list"] -> dispatch_request("job_list", %{}, opts, &format_job_list/1)
       ["jobs", "show", key] -> dispatch_request("job_show", %{"key" => key}, opts, &format_job/1)
       ["autopilot"] -> autopilot(opts)
@@ -282,6 +283,11 @@ defmodule BusterClaw.CLI do
   defp dispatch_finish_cmd(command, id, opts) do
     args = maybe_put(%{"id" => id}, "note", Keyword.get(opts, :note))
     dispatch_request(command, args, opts, &format_dispatch_finish/1)
+  end
+
+  defp dispatch_strategy_cmd(id, strategy, opts) do
+    args = %{"id" => id, "strategy" => strategy}
+    dispatch_request("dispatch_strategy", args, opts, &format_dispatch_finish/1)
   end
 
   defp dispatch_reply_cmd(id, opts) do

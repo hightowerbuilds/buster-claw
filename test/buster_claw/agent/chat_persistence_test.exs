@@ -85,6 +85,7 @@ defmodule BusterClaw.Agent.ChatPersistenceTest do
     assert_receive {:agent_chat, ^conv_id, {:status, :idle}}, 1000
 
     rows = Transcript.recent(conv_id)
+
     assert Enum.map(rows, &{&1.role, &1.content}) == [
              {"user", "do it"},
              {"assistant", "Working."},

@@ -190,6 +190,9 @@ defmodule BusterClaw.Agent.StreamEvent do
 
   def activity_label(%__MODULE__{kind: :tool_use, tool: name}), do: name
   def activity_label(%__MODULE__{kind: :assistant_text}), do: "thinking"
-  def activity_label(%__MODULE__{kind: :result, text: r}) when is_binary(r), do: String.slice(r, 0, 40)
+
+  def activity_label(%__MODULE__{kind: :result, text: r}) when is_binary(r),
+    do: String.slice(r, 0, 40)
+
   def activity_label(%__MODULE__{}), do: nil
 end

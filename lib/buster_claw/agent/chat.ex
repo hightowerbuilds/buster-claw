@@ -147,7 +147,8 @@ defmodule BusterClaw.Agent.Chat do
       port: nil,
       buf: "",
       timer: nil,
-      timeout_ms: Keyword.get(opts, :timeout_ms, configured(:agent_chat_timeout_ms, @default_timeout_ms)),
+      timeout_ms:
+        Keyword.get(opts, :timeout_ms, configured(:agent_chat_timeout_ms, @default_timeout_ms)),
       persist?: Keyword.get(opts, :persist, configured(:agent_chat_persist, true)),
       audit?: Keyword.get(opts, :audit, configured(:agent_chat_audit, true)),
       # Tracks the in-flight run for the Sentinel audit event on completion.
@@ -234,8 +235,11 @@ defmodule BusterClaw.Agent.Chat do
     state = %{state | run: stash_result(state.run, event)}
 
     case result_meta_line(event) do
-      nil -> state
-      line -> emit_message(state, :meta, line, cost_usd: event.cost_usd, num_turns: event.num_turns)
+      nil ->
+        state
+
+      line ->
+        emit_message(state, :meta, line, cost_usd: event.cost_usd, num_turns: event.num_turns)
     end
   end
 

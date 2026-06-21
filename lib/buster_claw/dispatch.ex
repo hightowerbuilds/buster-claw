@@ -30,6 +30,7 @@ defmodule BusterClaw.Dispatch do
     recommended_role_key
     risk
     status
+    strategy
     shift_id
     shift_assignment_id
     dedupe_key
@@ -53,6 +54,7 @@ defmodule BusterClaw.Dispatch do
     Item
     |> maybe_where_status(present(opt(opts, :status)))
     |> maybe_where_source(present(opt(opts, :source)))
+    |> maybe_where_strategy(present(opt(opts, :strategy)))
     |> order_by([item], desc: item.inserted_at, desc: item.id)
     |> limit(^limit)
     |> Repo.all()
@@ -146,6 +148,9 @@ defmodule BusterClaw.Dispatch do
     query =
       Item
       |> where([item], item.status == "queued")
+      # Swarm-strategy items are owned by the coordinator path — the generic
+      # agent-pulls-queue claim only ever takes "single" items.
+      |> where([item], item.strategy == "single")
       |> maybe_where_source(present(opt(opts, :source)))
       |> maybe_where_role(present(opt(opts, :role)))
       |> order_by([item], asc: item.inserted_at, asc: item.id)
@@ -193,6 +198,19 @@ defmodule BusterClaw.Dispatch do
 
   def heartbeat(%Item{} = item), do: update_item(item, %{heartbeat_at: timestamp()})
 
+  @doc """
+  Set a queued item's execution strategy (`"single"` | `"swarm"`). Only a still-
+  queued item may be re-targeted; once claimed/running the path is locked in.
+  """
+  def set_strategy(%Item{status: "queued"} = item, strategy)
+      when strategy in ["single", "swarm"],
+      do: update_item(item, %{strategy: strategy})
+
+  def set_strategy(%Item{}, strategy) when strategy in ["single", "swarm"],
+    do: {:error, :not_queued}
+
+  def set_strategy(%Item{}, _strategy), do: {:error, :bad_strategy}
+
   def finish(item, status, attrs \\ [])
 
   def finish(%Item{} = item, status, attrs) when status in ["done", "failed", "blocked"] do
@@ -212,6 +230,9 @@ defmodule BusterClaw.Dispatch do
 
   defp maybe_where_source(query, nil), do: query
   defp maybe_where_source(query, source), do: where(query, [item], item.source == ^source)
+
+  defp maybe_where_strategy(query, nil), do: query
+  defp maybe_where_strategy(query, strategy), do: where(query, [item], item.strategy == ^strategy)
 
   defp maybe_where_role(query, nil), do: query
 

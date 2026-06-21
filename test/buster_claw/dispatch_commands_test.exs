@@ -31,6 +31,28 @@ defmodule BusterClaw.DispatchCommandsTest do
     assert [%{recommended_role_key: "mail-triage"}] = scoped
   end
 
+  test "dispatch_strategy opts a queued item into the swarm path" do
+    item = enqueue!(%{dedupe_key: "strat"})
+
+    {:ok, updated} =
+      Commands.call("dispatch_strategy", %{"id" => item.id, "strategy" => "swarm"})
+
+    assert updated.strategy == "swarm"
+
+    # An unknown strategy is rejected.
+    assert {:error, :bad_strategy} =
+             Commands.call("dispatch_strategy", %{"id" => item.id, "strategy" => "nope"})
+  end
+
+  test "dispatch_claim skips swarm-strategy items (coordinator owns them)" do
+    swarm = enqueue!(%{dedupe_key: "sw"})
+    {:ok, _} = Commands.call("dispatch_strategy", %{"id" => swarm.id, "strategy" => "swarm"})
+    single = enqueue!(%{dedupe_key: "sg"})
+
+    {:ok, claimed} = Commands.call("dispatch_claim", %{"claimed_by" => "tester"})
+    assert claimed.id == single.id
+  end
+
   test "dispatch_claim claims the oldest open item, then reports empty" do
     item = enqueue!(%{dedupe_key: "c"})
 

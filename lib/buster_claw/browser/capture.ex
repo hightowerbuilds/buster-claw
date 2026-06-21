@@ -84,8 +84,12 @@ defmodule BusterClaw.Browser.Capture do
 
   defp reply_and_drop(pending, ref, result) do
     case Map.pop(pending, ref) do
-      {nil, pending} -> pending
-      {from, pending} -> GenServer.reply(from, result); pending
+      {nil, pending} ->
+        pending
+
+      {from, pending} ->
+        GenServer.reply(from, result)
+        pending
     end
   end
 

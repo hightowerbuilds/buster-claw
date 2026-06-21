@@ -19,7 +19,10 @@ defmodule BusterClawWeb.BrowserScreenshotControllerTest do
     {:ok, root: root}
   end
 
-  test "POST /browser/screenshot stores the PNG and fulfils the capture", %{conn: conn, root: root} do
+  test "POST /browser/screenshot stores the PNG and fulfils the capture", %{
+    conn: conn,
+    root: root
+  } do
     Capture.subscribe()
     task = Task.async(fn -> Capture.request() end)
     assert_receive {:capture, ref}, 1_000

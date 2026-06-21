@@ -186,7 +186,10 @@ defmodule BusterClawWeb.StatusLive do
 
   defp apply_chat(socket, conv_id, {:status, status}) do
     socket = update_tab(socket, conv_id, &%{&1 | running: status == :running})
-    if conv_id == socket.assigns.active_chat, do: assign(socket, :chat_running, status == :running), else: socket
+
+    if conv_id == socket.assigns.active_chat,
+      do: assign(socket, :chat_running, status == :running),
+      else: socket
   end
 
   defp apply_chat(socket, conv_id, {:message, %{role: role, text: text}}) do
@@ -445,7 +448,8 @@ defmodule BusterClawWeb.StatusLive do
         title="Drag to resize the chat"
         class="group/resize flex h-2.5 shrink-0 cursor-ns-resize items-center justify-center border-t-2 border-base-content/20 bg-base-200/40 transition hover:bg-base-200"
       >
-        <span class="h-1 w-10 rounded-full bg-base-content/25 transition group-hover/resize:bg-primary"></span>
+        <span class="h-1 w-10 rounded-full bg-base-content/25 transition group-hover/resize:bg-primary">
+        </span>
       </div>
     </section>
     """
@@ -487,7 +491,10 @@ defmodule BusterClawWeb.StatusLive do
 
   defp chat_bubble(%{msg: %{role: :meta}} = assigns) do
     ~H"""
-    <div id={"chat-msg-#{@msg.id}"} class="text-center font-mono text-[0.62rem] uppercase tracking-wide text-base-content/45">
+    <div
+      id={"chat-msg-#{@msg.id}"}
+      class="text-center font-mono text-[0.62rem] uppercase tracking-wide text-base-content/45"
+    >
       {@msg.text}
     </div>
     """
@@ -595,7 +602,12 @@ defmodule BusterClawWeb.StatusLive do
       </header>
 
       <div class="flex min-h-0 flex-1 flex-col overflow-auto">
-        <details id="get-started-steps" phx-update="ignore" open class="group/steps border-b-2 border-base-content/15">
+        <details
+          id="get-started-steps"
+          phx-update="ignore"
+          open
+          class="group/steps border-b-2 border-base-content/15"
+        >
           <summary class="ic-collapse-summary">
             <span class="ic-eyebrow">Setup steps</span>
             <.icon
@@ -626,7 +638,8 @@ defmodule BusterClawWeb.StatusLive do
                 <h3 class="font-semibold">Install Claude Code</h3>
                 <p class="mt-0.5 text-sm text-base-content/65">
                   Buster Claw has no built-in AI — it drives your own Claude Code CLI headlessly.
-                  Install it once with <.copy_command command="brew install --cask claude-code" />, then
+                  Install it once with
+                  <.copy_command command="brew install --cask claude-code" />, then
                   sign in (<span class="font-mono">claude</span> in a terminal).
                 </p>
               </div>
@@ -763,7 +776,14 @@ defmodule BusterClawWeb.StatusLive do
         role="img"
         aria-label="Runs and commands over time"
       >
-        <line x1="0" y1="88" x2="100" y2="88" class="stroke-current text-base-content/20" stroke-width="0.3" />
+        <line
+          x1="0"
+          y1="88"
+          x2="100"
+          y2="88"
+          class="stroke-current text-base-content/20"
+          stroke-width="0.3"
+        />
         <%= for {b, i} <- Enum.with_index(@buckets) do %>
           <rect
             x={i * @slot + @slot * 0.15}

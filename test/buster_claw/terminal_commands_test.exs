@@ -44,7 +44,9 @@ defmodule BusterClaw.TerminalCommandsTest do
     assert Enum.any?(commands, &(&1.command =~ "mix phx.server"))
 
     assert %{key: "server"} = TerminalCommands.role("phx")
-    assert TerminalCommands.startup_command("server") == "cd ~/Developer/buster-claw && ./scripts/dev.sh"
+
+    assert TerminalCommands.startup_command("server") ==
+             "cd ~/Developer/buster-claw && ./scripts/dev.sh"
   end
 
   test "resolves Mailman aliases" do

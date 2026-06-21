@@ -69,7 +69,12 @@ defmodule BusterClaw.Google.Drive do
     opts = Keyword.put(opts, :base_url, @drive_base_url)
 
     with {:ok, body} <-
-           Client.post_json(account, "files", metadata, Keyword.put(opts, :params, [{"fields", @file_fields}])) do
+           Client.post_json(
+             account,
+             "files",
+             metadata,
+             Keyword.put(opts, :params, [{"fields", @file_fields}])
+           ) do
       {:ok, file_summary(body)}
     end
   end

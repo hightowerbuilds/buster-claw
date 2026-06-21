@@ -937,6 +937,7 @@ defmodule BusterClaw.CommandsTest do
     test "browser_screenshot is restricted (audited) and refused for untrusted callers" do
       assert Commands.command_tier("browser_screenshot") == :restricted
       assert Commands.command_type("browser_screenshot") == :trigger
+
       assert {:error, :requires_confirmation} =
                Commands.call("browser_screenshot", %{}, caller: :mcp)
     end

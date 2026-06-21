@@ -1204,6 +1204,17 @@ defmodule BusterClaw.Commands do
         }
       },
       %{
+        name: "dispatch_strategy",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Set a queued Dispatch item's execution strategy (single | swarm). Swarm opts it into the parallel coordinator.",
+        args: %{
+          "id" => %{type: :integer, required: true},
+          "strategy" => %{type: :string, required: true}
+        }
+      },
+      %{
         name: "dispatch_reply",
         type: :mutate,
         tier: :restricted,
@@ -2537,6 +2548,20 @@ defmodule BusterClaw.Commands do
 
   def dispatch_done(%{"id" => id} = args), do: finish_dispatch(id, "done", args)
   def dispatch_block(%{"id" => id} = args), do: finish_dispatch(id, "blocked", args)
+
+  @doc """
+  Set a queued item's execution strategy (`single` | `swarm`). `swarm` opts the
+  item into the Phase 4 coordinator (parallel fan-out); only a still-queued item
+  may be re-targeted.
+  """
+  def dispatch_strategy(%{"id" => id} = args) do
+    with_resource(Dispatch, :get_item!, id, fn item ->
+      case blank_to_nil(Map.get(args, "strategy")) do
+        s when s in ["single", "swarm"] -> Dispatch.set_strategy(item, s)
+        _ -> {:error, :bad_strategy}
+      end
+    end)
+  end
 
   @doc """
   Send a threaded Gmail reply to a Dispatch item's sender and mark the item done.

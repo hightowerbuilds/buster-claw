@@ -285,7 +285,9 @@ defmodule BusterClaw.Google.GmailTest do
   end
 
   test "sends a Gmail message with a file attachment as a multipart/mixed payload" do
-    path = Path.join(System.tmp_dir!(), "buster-claw-attach-#{System.unique_integer([:positive])}.txt")
+    path =
+      Path.join(System.tmp_dir!(), "buster-claw-attach-#{System.unique_integer([:positive])}.txt")
+
     File.write!(path, "attachment contents")
     on_exit(fn -> File.rm(path) end)
 
@@ -332,7 +334,9 @@ defmodule BusterClaw.Google.GmailTest do
   end
 
   test "honors explicit filename and content_type on an attachment spec" do
-    path = Path.join(System.tmp_dir!(), "buster-claw-attach-#{System.unique_integer([:positive])}.bin")
+    path =
+      Path.join(System.tmp_dir!(), "buster-claw-attach-#{System.unique_integer([:positive])}.bin")
+
     File.write!(path, "%PDF-1.4 fake")
     on_exit(fn -> File.rm(path) end)
 
@@ -356,7 +360,11 @@ defmodule BusterClaw.Google.GmailTest do
                  "subject" => "Spec attachment",
                  "body" => "See attached.",
                  "attachments" => [
-                   %{"path" => path, "filename" => "report.pdf", "content_type" => "application/pdf"}
+                   %{
+                     "path" => path,
+                     "filename" => "report.pdf",
+                     "content_type" => "application/pdf"
+                   }
                  ]
                },
                req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
@@ -364,7 +372,11 @@ defmodule BusterClaw.Google.GmailTest do
   end
 
   test "fails before calling Google when an attachment is unreadable" do
-    missing = Path.join(System.tmp_dir!(), "buster-claw-missing-#{System.unique_integer([:positive])}.txt")
+    missing =
+      Path.join(
+        System.tmp_dir!(),
+        "buster-claw-missing-#{System.unique_integer([:positive])}.txt"
+      )
 
     Req.Test.stub(BusterClaw.GoogleHTTP, fn _conn ->
       flunk("Google should not be called when an attachment cannot be read")

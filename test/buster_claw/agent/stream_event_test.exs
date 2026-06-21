@@ -129,7 +129,9 @@ defmodule BusterClaw.Agent.StreamEventTest do
 
   describe "activity_label/1" do
     test "summarizes the current tool" do
-      assert StreamEvent.activity_label(StreamEvent.normalize(tool("Read", %{"file_path" => "x"}))) ==
+      assert StreamEvent.activity_label(
+               StreamEvent.normalize(tool("Read", %{"file_path" => "x"}))
+             ) ==
                "Read"
 
       assert StreamEvent.activity_label(

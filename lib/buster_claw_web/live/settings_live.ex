@@ -135,10 +135,8 @@ defmodule BusterClawWeb.SettingsLive do
               />
               <p class="text-xs text-base-content/60">
                 To restore on a new machine: save this value, then before first
-                launch create a file named
-                <code class="font-mono">RESTORE_SECRET_KEY</code>
-                containing it at
-                <code class="break-all font-mono">{@restore_path}</code>.
+                launch create a file named <code class="font-mono">RESTORE_SECRET_KEY</code>
+                containing it at <code class="break-all font-mono">{@restore_path}</code>.
               </p>
             </div>
           </div>

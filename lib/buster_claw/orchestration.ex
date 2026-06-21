@@ -249,10 +249,17 @@ defmodule BusterClaw.Orchestration do
     end
   end
 
-  @doc "Increment a shift counter (:dispatched | :done | :failed)."
-  def bump_shift(%Shift{} = shift, counter) when counter in [:dispatched, :done, :failed] do
+  @doc """
+  Increment a shift counter (:dispatched | :done | :failed) by `amount` (default 1).
+  A swarm tick passes its sub-run count so fan-out draws against the run-cap budget
+  the same as the equivalent number of serial runs.
+  """
+  def bump_shift(shift, counter, amount \\ 1)
+
+  def bump_shift(%Shift{} = shift, counter, amount)
+      when counter in [:dispatched, :done, :failed] and is_integer(amount) and amount > 0 do
     field = :"#{counter}_count"
-    {1, _} = Repo.update_all(from(s in Shift, where: s.id == ^shift.id), inc: [{field, 1}])
+    {1, _} = Repo.update_all(from(s in Shift, where: s.id == ^shift.id), inc: [{field, amount}])
     :ok
   end
 

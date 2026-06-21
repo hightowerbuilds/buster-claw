@@ -187,7 +187,13 @@ defmodule BusterClaw.ActivityReport do
 
     for i <- (count - 1)..0//-1 do
       first = Date.add(anchor, -i * 7)
-      %{key: Date.to_iso8601(first), label: md_label(first), first: first, last: Date.add(first, 6)}
+
+      %{
+        key: Date.to_iso8601(first),
+        label: md_label(first),
+        first: first,
+        last: Date.add(first, 6)
+      }
     end
   end
 

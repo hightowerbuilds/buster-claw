@@ -194,7 +194,10 @@ defmodule BusterClaw.Google.Gmail do
 
   defp normalize_label_ids(nil), do: []
   defp normalize_label_ids(list) when is_list(list), do: Enum.map(list, &to_string/1)
-  defp normalize_label_ids(value) when is_binary(value), do: String.split(value, ~r/[,\s]+/, trim: true)
+
+  defp normalize_label_ids(value) when is_binary(value),
+    do: String.split(value, ~r/[,\s]+/, trim: true)
+
   defp normalize_label_ids(value), do: [to_string(value)]
 
   # Including `threadId` makes Gmail file the sent message into the original

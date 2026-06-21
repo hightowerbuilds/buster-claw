@@ -71,6 +71,7 @@ defmodule BusterClaw.Dispatcher do
           configured(:dispatcher_run_timeout_ms, @default_run_timeout_ms)
         ),
       runner: Keyword.get(opts, :runner, &BusterClaw.AgentRunner.run/2),
+      coordinator: Keyword.get(opts, :coordinator, &BusterClaw.Swarm.Coordinator.coordinate/2),
       running_ref: nil,
       running_pid: nil,
       last_finished_ms: nil
@@ -121,7 +122,12 @@ defmodule BusterClaw.Dispatcher do
          false <- Orchestration.kill_switch_engaged?(),
          [_ | _] <- Dispatch.list_queued(limit: 1) do
       if within_budget?(shift, state) do
-        start_run(state, shift)
+        # A swarm-strategy item is coordinator-owned (the generic claim path skips
+        # it), so prefer it when one is queued; otherwise run the normal batch pump.
+        case Dispatch.list_queued(limit: 1, strategy: "swarm") do
+          [item | _] -> start_swarm_run(state, shift, item)
+          [] -> start_run(state, shift)
+        end
       else
         trip_budget_brake(shift, state)
         state
@@ -182,6 +188,60 @@ defmodule BusterClaw.Dispatcher do
 
     %{state | running_ref: ref, running_pid: pid}
   end
+
+  # The Phase 4 coordinator path: claim ONE swarm-strategy item, then in the
+  # monitored child run `Coordinator.coordinate/2` (serial planner → bounded Swarm).
+  # The whole swarm is one tick — a flaky sub-role is data, not a tick failure — so
+  # the crash-loop brake composes. Provenance is inherited fail-closed and threaded
+  # into every sub-run via `:run_opts`; budget is reconciled on completion (we don't
+  # know the sub-run count until the plan exists).
+  defp start_swarm_run(state, shift, item) do
+    # Capture provenance BEFORE claiming — once the item is marked running it
+    # leaves the queued pool that `queue_provenance/0` inspects.
+    provenance = queue_provenance()
+    run_opts = run_opts(state, provenance)
+
+    case Dispatch.mark_running(item, %{claimed_by: "coordinator"}) do
+      {:ok, running} ->
+        coordinate = state.coordinator
+        goal = swarm_goal(running)
+        parent = self()
+
+        {pid, ref} =
+          spawn_monitor(fn ->
+            result = coordinate.(goal, run_opts: run_opts, planner_run_opts: run_opts)
+            send(parent, {:run_done, self(), shift, provenance, {:swarm, running.id, result}})
+          end)
+
+        %{state | running_ref: ref, running_pid: pid}
+
+      {:error, reason} ->
+        Logger.warning("Dispatcher could not claim swarm item #{item.id}: #{inspect(reason)}")
+        state
+    end
+  end
+
+  # The goal handed to the planner — the item's own request text (what a human/agent
+  # would read off Dispatch.md), nothing more.
+  defp swarm_goal(item) do
+    [item.subject, item.request_summary, item.request_body_excerpt]
+    |> Enum.map(&present/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n\n")
+    |> case do
+      "" -> "Work Dispatch item ##{item.id}."
+      text -> text
+    end
+  end
+
+  defp present(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp present(_value), do: nil
 
   # Fail-closed: if ANY open item is untrusted, the whole run is untrusted-
   # provenance and gets the agent token, so its gated (outbound/irreversible)
@@ -246,6 +306,81 @@ defmodule BusterClaw.Dispatcher do
     """
   end
 
+  # --- swarm outcomes (the coordinator path) ---
+
+  # Quorum met: the item is done. `dispatched` is bumped by the realized cost
+  # (planner + sub-runs) so fan-out draws against the per-shift run cap; `done` by
+  # one (one item resolved).
+  defp record_outcome(%Shift{} = shift, provenance, {:swarm, item_id, {:ok, summary}}) do
+    runs = swarm_runs(summary)
+    Orchestration.bump_shift(shift, :dispatched, runs)
+    Orchestration.bump_shift(shift, :done)
+    finish_swarm_item(item_id, "done", summary)
+
+    Sentinel.observe(:command_invoke, "Unattended swarm completed", %{
+      shift_id: shift.id,
+      provenance: provenance,
+      swarm_id: summary[:swarm_id],
+      ok: summary[:ok],
+      total: summary[:total]
+    })
+
+    summarize_swarm(shift, provenance, "completed", summary)
+  end
+
+  # Quorum NOT met: the item blocks (halt cleanly for the operator), failed roles in
+  # the note. Still counts the runs it burned.
+  defp record_outcome(
+         %Shift{} = shift,
+         provenance,
+         {:swarm, item_id, {:error, {:quorum_not_met, summary}}}
+       ) do
+    runs = swarm_runs(summary)
+    Orchestration.bump_shift(shift, :dispatched, runs)
+    Orchestration.bump_shift(shift, :failed)
+    finish_swarm_item(item_id, "blocked", summary)
+
+    Sentinel.observe(
+      :command_invoke,
+      "Unattended swarm fell short of quorum (#{summary[:ok]}/#{summary[:total]})",
+      %{
+        shift_id: shift.id,
+        provenance: provenance,
+        swarm_id: summary[:swarm_id],
+        ok: summary[:ok],
+        total: summary[:total]
+      },
+      severity: :warning
+    )
+
+    summarize_swarm(shift, provenance, "failed", summary)
+  end
+
+  # The planner produced no usable plan (or the swarm couldn't start): block the
+  # item. Only the planner run was spent.
+  defp record_outcome(%Shift{} = shift, provenance, {:swarm, item_id, {:error, reason}}) do
+    Orchestration.bump_shift(shift, :dispatched)
+    Orchestration.bump_shift(shift, :failed)
+    finish_swarm_item(item_id, "blocked", %{reason: reason})
+
+    Sentinel.observe(
+      :command_invoke,
+      "Unattended swarm could not be planned",
+      %{shift_id: shift.id, provenance: provenance, reason: inspect(reason)},
+      severity: :warning
+    )
+
+    Memory.record_run(%{
+      goal: "Unattended swarm: #{shift.job_name}",
+      outcome: "error",
+      detail: "coordinator: #{inspect(reason)}",
+      agent: "swarm",
+      provenance: provenance,
+      shift_id: shift.id,
+      source: "swarm"
+    })
+  end
+
   defp record_outcome(%Shift{} = shift, provenance, {:ok, %{exit_status: 0} = run}) do
     Orchestration.bump_shift(shift, :done)
 
@@ -304,6 +439,42 @@ defmodule BusterClaw.Dispatcher do
       provenance: provenance,
       shift_id: shift.id,
       source: "dispatch"
+    })
+  end
+
+  # Realized cost of a swarm: the serial planner run (1) + each sub-run.
+  defp swarm_runs(%{total: total}) when is_integer(total), do: total + 1
+  defp swarm_runs(_summary), do: 1
+
+  defp finish_swarm_item(item_id, status, summary) do
+    case Dispatch.get_item(item_id) do
+      nil -> :ok
+      item -> Dispatch.finish(item, status, notes: swarm_note(summary))
+    end
+  end
+
+  defp swarm_note(%{ok: ok, total: total, results: results}) do
+    failed =
+      results
+      |> Enum.reject(&(&1.status == :ok))
+      |> Enum.map_join(", ", & &1.role)
+
+    base = "swarm #{ok}/#{total} roles ok"
+    if failed == "", do: base, else: base <> " (failed: #{failed})"
+  end
+
+  defp swarm_note(%{reason: reason}), do: "coordinator: #{inspect(reason)}"
+  defp swarm_note(_summary), do: "swarm finished"
+
+  defp summarize_swarm(%Shift{} = shift, provenance, outcome, summary) do
+    Memory.record_run(%{
+      goal: "Unattended swarm: #{shift.job_name}",
+      outcome: outcome,
+      detail: swarm_note(summary),
+      agent: "swarm",
+      provenance: provenance,
+      shift_id: shift.id,
+      source: "swarm"
     })
   end
 
