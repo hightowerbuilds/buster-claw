@@ -11,7 +11,9 @@ defmodule BusterClawWeb.BrowseLiveTest do
   test "renders the browser shell surface + fallback (chrome is native)", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/browse")
 
-    assert html =~ ~s(id="browse-shell")
+    # Solo /browse is the "main" native browser surface.
+    assert html =~ ~s(id="browse-shell-main")
+    assert html =~ ~s(data-surface-id="main")
     assert html =~ ~s(phx-hook="EmbeddedBrowser")
     assert html =~ "data-browser-surface"
     # Fallback notice (revealed client-side outside the desktop app).
@@ -27,7 +29,7 @@ defmodule BusterClawWeb.BrowseLiveTest do
   test "a new tab (?t=) opens blank", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/browse?t=abc123")
 
-    assert html =~ ~s(id="browse-shell")
+    assert html =~ ~s(id="browse-shell-main")
     refute html =~ ~s(data-initial-url="https)
   end
 end

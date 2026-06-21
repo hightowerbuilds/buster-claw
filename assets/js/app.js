@@ -612,6 +612,10 @@ const Hooks = {
       this.fallback = this.el.querySelector("[data-browser-fallback]")
       this.origin = window.location.origin
       this.opened = false
+      // Browser surface id: "main" for the solo /browse, "left"/"right" for the
+      // two panes of a browser+browser split. Keeps the native surfaces (and
+      // their chromes) independent so two browsers can sit side by side.
+      this.sid = this.el.dataset.surfaceId || "main"
 
       if (!this.invoke) {
         if (this.fallback) {
@@ -623,7 +627,8 @@ const Hooks = {
 
       const initial = (this.el.dataset.initialUrl || "").trim()
       this.chromeUrl =
-        `${this.origin}/browser/chrome` + (initial ? `?url=${encodeURIComponent(initial)}` : "")
+        `${this.origin}/browser/chrome?sid=${encodeURIComponent(this.sid)}` +
+        (initial ? `&url=${encodeURIComponent(initial)}` : "")
       this.contentUrl = this.resolveContent(initial)
 
       // Keep both native webviews glued to the surface box. Tauri on macOS can
@@ -644,12 +649,13 @@ const Hooks = {
         if (!this.opened) {
           this.opened = true
           this.invoke("browser_open", {
+            surfaceId: this.sid,
             chromeUrl: this.chromeUrl,
             contentUrl: this.contentUrl,
             ...bounds
           }).catch(() => {})
         } else {
-          this.invoke("browser_set_bounds", bounds).catch(() => {})
+          this.invoke("browser_set_bounds", { surfaceId: this.sid, ...bounds }).catch(() => {})
         }
       }
       this.scheduleSync = () => {
@@ -684,7 +690,7 @@ const Hooks = {
       if (this.raf) cancelAnimationFrame(this.raf)
       if (this.settle) clearTimeout(this.settle)
       // Hide (don't close) so the page persists when the user returns to /browse.
-      if (this.invoke) this.invoke("browser_hide").catch(() => {})
+      if (this.invoke) this.invoke("browser_hide", { surfaceId: this.sid }).catch(() => {})
     }
   },
 
@@ -1030,6 +1036,7 @@ const Hooks = {
       const params = new URLSearchParams(cur.split("?")[1] || "")
       const keep = side === "left" ? params.get("right") : params.get("left")
       if (!keep) return
+      this.tearDownSplitBrowsers(params.get("left"), params.get("right"))
       const tabs = this.load().filter((t) => t.path !== cur)
       if (!tabs.some((t) => t.path === keep)) {
         tabs.push({path: keep, label: this.labelFor(keep)})
@@ -1043,12 +1050,23 @@ const Hooks = {
       const left = params.get("left")
       const right = params.get("right")
       if (!left || !right) return
+      this.tearDownSplitBrowsers(left, right)
       const tabs = this.load().filter((t) => t.path !== splitPath)
       for (const p of [left, right]) {
         if (!tabs.some((t) => t.path === p)) tabs.push({path: p, label: this.labelFor(p)})
       }
       this.save(tabs)
       window.location.href = left
+    },
+    // Leaving a /split that held a browser pane: tear every native browser
+    // surface down (close-all) before navigating to the solo destination. The
+    // kept browser cold-restarts there — simplest and leak-free, since the
+    // EmbeddedBrowser hook can't tell a hide from a destroy. NOT used for swap
+    // (that stays a split, so the surfaces persist and just reposition).
+    tearDownSplitBrowsers(...panePaths) {
+      if (!panePaths.some((p) => (p || "").split("?")[0] === "/browse")) return
+      const invoke = window.__TAURI__?.core?.invoke
+      if (invoke) invoke("browser_close").catch(() => {})
     },
     // ----- Right-click context menu -----
     onContextMenu(e) {

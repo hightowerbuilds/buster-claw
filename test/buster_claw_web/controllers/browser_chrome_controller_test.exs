@@ -29,4 +29,21 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
     body = conn |> get(~p"/browser/chrome", url: "https://example.com") |> response(200)
     assert body =~ ~s(value="https://example.com")
   end
+
+  test "defaults to the main surface when no ?sid= is given", %{conn: conn} do
+    body = conn |> get(~p"/browser/chrome") |> response(200)
+    assert body =~ ~s(const SID = "main")
+  end
+
+  test "carries the ?sid= surface id into the chrome", %{conn: conn} do
+    body = conn |> get(~p"/browser/chrome", sid: "left") |> response(200)
+    assert body =~ ~s(const SID = "left")
+    # Every browser_* invoke is surface-scoped (injected centrally in inv()).
+    assert body =~ "Object.assign({ surfaceId: SID }"
+  end
+
+  test "sanitizes a hostile ?sid= to an alphanumeric id", %{conn: conn} do
+    body = conn |> get(~p"/browser/chrome", sid: ~s(a"-<b>/3)) |> response(200)
+    assert body =~ ~s(const SID = "ab3")
+  end
 end

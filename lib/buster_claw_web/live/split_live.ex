@@ -47,13 +47,13 @@ defmodule BusterClawWeb.SplitLive do
   def handle_params(params, _uri, socket) do
     {:noreply,
      socket
-     |> assign(:left, pane_spec(params["left"]))
-     |> assign(:right, pane_spec(params["right"]))}
+     |> assign(:left, pane_spec("left", params["left"]))
+     |> assign(:right, pane_spec("right", params["right"]))}
   end
 
-  defp pane_spec(nil), do: nil
+  defp pane_spec(_side, nil), do: nil
 
-  defp pane_spec(path) when is_binary(path) do
+  defp pane_spec(side, path) when is_binary(path) do
     pathname = path |> String.split("?") |> hd()
     url = pane_url(path)
 
@@ -64,7 +64,7 @@ defmodule BusterClawWeb.SplitLive do
           module: module,
           label: label,
           url: url,
-          child_session: pane_child_session(pathname, path, url)
+          child_session: pane_child_session(pathname, path, url, side)
         }
 
       :error ->
@@ -87,7 +87,7 @@ defmodule BusterClawWeb.SplitLive do
     end
   end
 
-  defp pane_child_session("/terminal", path, _url) do
+  defp pane_child_session("/terminal", path, _url, _side) do
     params = pane_params(path)
 
     %{}
@@ -95,8 +95,14 @@ defmodule BusterClawWeb.SplitLive do
     |> maybe_put("terminal_label", params["label"])
   end
 
-  defp pane_child_session(_pathname, _path, nil), do: %{}
-  defp pane_child_session(_pathname, _path, url), do: %{"url" => url}
+  # A browser pane carries its surface id ("left"/"right") so the native browser
+  # runs as an independent instance per side (two browsers side by side).
+  defp pane_child_session("/browse", _path, url, side) do
+    %{} |> maybe_put("url", url) |> Map.put("surface_id", side)
+  end
+
+  defp pane_child_session(_pathname, _path, nil, _side), do: %{}
+  defp pane_child_session(_pathname, _path, url, _side), do: %{"url" => url}
 
   defp maybe_put(map, _key, value) when value in [nil, ""], do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

@@ -1,22 +1,36 @@
 defmodule BusterClawWeb.BrowserChromeController do
   @moduledoc """
   The embedded browser's native chrome — a **tab strip** + a toolbar (back/forward/
-  reload + address bar + bookmark), loaded into the `browser-chrome` child webview.
-  Served from the Phoenix origin so it can call the `browser_*` Tauri commands
-  (granted via the `browser-chrome` capability). It owns the tab-strip UI and tab
-  lifecycle; Rust owns the per-tab content webviews and the active-tab pointer.
+  reload + address bar + bookmark), loaded into a `browser-chrome-<sid>` child
+  webview. Served from the Phoenix origin so it can call the `browser_*` Tauri
+  commands (granted via the `browser-chrome` capability, whose `browser-chrome-*`
+  glob covers every surface). It owns the tab-strip UI and tab lifecycle; Rust
+  owns the per-tab content webviews and the per-surface active-tab pointer.
+
+  `?sid=` identifies the browser surface this chrome drives (`main` for the solo
+  `/browse`, `left`/`right` for a browser+browser split); every `browser_*` invoke
+  carries it so two side-by-side browsers stay independent.
   """
   use BusterClawWeb, :controller
 
   def show(conn, params) do
     initial = params["url"] || ""
+    sid = sanitize_sid(params["sid"])
 
     conn
     |> put_resp_content_type("text/html")
-    |> send_resp(200, page(initial))
+    |> send_resp(200, page(initial, sid))
   end
 
-  defp page(initial) do
+  # Surface ids are alphanumeric only (matches the Rust sanitiser); default "main".
+  defp sanitize_sid(sid) do
+    case sid |> to_string() |> String.replace(~r/[^A-Za-z0-9]/, "") do
+      "" -> "main"
+      cleaned -> cleaned
+    end
+  end
+
+  defp page(initial, sid) do
     """
     <!DOCTYPE html>
     <html lang="en">
@@ -118,15 +132,19 @@ defmodule BusterClawWeb.BrowserChromeController do
         const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke
         const origin = window.location.origin
         const homeUrl = origin + "/browser/home"
+        // The browser surface this chrome drives. Every browser_* invoke carries
+        // it (injected by inv() below) so side-by-side browsers stay independent.
+        const SID = "#{sid}"
         const addr = document.getElementById("addr")
         const tabsEl = document.getElementById("tabs")
         const barEl = document.getElementById("bookmarkbar")
 
         // Invoke a Tauri command, surfacing failures in the console (so a denied
-        // permission or a missing webview is visible rather than silent).
+        // permission or a missing webview is visible rather than silent). Every
+        // browser_* command is surface-scoped, so inject surfaceId here.
         function inv(cmd, args) {
           if (!invoke) return Promise.resolve()
-          return invoke(cmd, args || {}).catch(function (e) {
+          return invoke(cmd, Object.assign({ surfaceId: SID }, args || {})).catch(function (e) {
             console.error("browser " + cmd + " failed:", e)
           })
         }

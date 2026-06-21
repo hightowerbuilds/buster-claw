@@ -1,41 +1,63 @@
-//! Embedded browser with a native tab system.
+//! Embedded browser with a native tab system, instanceable per **surface**.
 //!
-//! - **chrome** (`browser-chrome`): a strip on top loading our own toolbar + tab
-//!   bar page, served by Phoenix so it can call the `browser_*` Tauri commands.
-//! - **content** (`browser-content-<id>`): one webview per open tab, loading the
-//!   external site. Each is in no capability, so loaded pages get no Tauri access.
-//!   Exactly one content webview is shown at a time (the active tab); the rest are
-//!   hidden but kept alive so switching is instant and state is preserved.
+//! A *surface* is one on-screen browser instance, keyed by a short id
+//! (`"main"` for the solo `/browse`, `"left"`/`"right"` for the two panes of a
+//! browser+browser split). Each surface is fully independent — its own chrome,
+//! its own content tabs, its own active-tab pointer.
+//!
+//! - **chrome** (`browser-chrome-<sid>`): a strip on top loading our own toolbar
+//!   + tab bar page, served by Phoenix so it can call the `browser_*` Tauri
+//!   commands.
+//! - **content** (`browser-content-<sid>-<tabid>`): one webview per open tab,
+//!   loading the external site. Each is in no capability, so loaded pages get no
+//!   Tauri access. Exactly one content webview per surface is shown at a time
+//!   (that surface's active tab); the rest are hidden but kept alive so switching
+//!   is instant and state is preserved.
 //!
 //! The chrome JS owns the tab-strip UI and tab lifecycle; Rust owns the webviews
-//! and the active-tab pointer (`BrowserState`) so navigate/back/forward/reload and
-//! show-on-return act on the right tab without the chrome re-passing it each time.
+//! and the per-surface active-tab pointer (`BrowserState`) so navigate/back/
+//! forward/reload and show-on-return act on the right tab without the chrome
+//! re-passing it each time.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::webview::WebviewBuilder;
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, Url, WebviewUrl};
 
-const CHROME_LABEL: &str = "browser-chrome";
-const CONTENT_PREFIX: &str = "browser-content-";
+const CHROME_PREFIX: &str = "browser-chrome-"; // browser-chrome-<sid>
+const CONTENT_PREFIX: &str = "browser-content-"; // browser-content-<sid>-<tabid>
 const FIRST_TAB: &str = "1";
+const DEFAULT_SID: &str = "main";
 const CHROME_HEIGHT: f64 = 112.0; // tab strip (~34) + toolbar (46) + bookmark bar (32)
 
-/// The currently-active content tab id (the visible one). Managed by Tauri so it
-/// survives across commands; the chrome JS keeps it in sync via the tab commands.
+/// Per-surface active content tab id (the visible one for that surface). Managed
+/// by Tauri so it survives across commands; the chrome JS keeps it in sync via
+/// the tab commands.
 #[derive(Default)]
 pub struct BrowserState {
-    active: Mutex<Option<String>>,
+    // surface id -> active content tab id for that surface
+    surfaces: Mutex<HashMap<String, String>>,
 }
 
 impl BrowserState {
-    fn set(&self, id: &str) {
-        *self.active.lock().unwrap() = Some(id.to_string());
+    fn set(&self, sid: &str, tab_id: &str) {
+        self.surfaces
+            .lock()
+            .unwrap()
+            .insert(sid.to_string(), tab_id.to_string());
     }
-    fn get(&self) -> Option<String> {
-        self.active.lock().unwrap().clone()
+    fn get(&self, sid: &str) -> Option<String> {
+        self.surfaces.lock().unwrap().get(sid).cloned()
     }
-    fn clear(&self) {
-        *self.active.lock().unwrap() = None;
+    fn clear(&self, sid: &str) {
+        self.surfaces.lock().unwrap().remove(sid);
+    }
+    fn clear_all(&self) {
+        self.surfaces.lock().unwrap().clear();
+    }
+    // Any known surface — the default screenshot target when none is specified.
+    fn any_sid(&self) -> Option<String> {
+        self.surfaces.lock().unwrap().keys().next().cloned()
     }
 }
 
@@ -56,25 +78,54 @@ const NO_POPUPS_JS: &str = r#"
 })();
 "#;
 
-fn content_label(id: &str) -> String {
-    format!("{CONTENT_PREFIX}{id}")
+// Restrict surface ids to a hyphen-free alphanumeric alphabet so the
+// `browser-content-<sid>-<tabid>` label parses unambiguously and per-surface
+// prefix filtering is exact. Mirrors the dom-id sanitiser in split_live.ex.
+fn sanitize_sid(sid: &str) -> String {
+    let cleaned: String = sid.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    if cleaned.is_empty() {
+        DEFAULT_SID.to_string()
+    } else {
+        cleaned
+    }
 }
 
-fn content_labels(app: &AppHandle) -> Vec<String> {
+fn chrome_label(sid: &str) -> String {
+    format!("{CHROME_PREFIX}{sid}")
+}
+
+fn content_label(sid: &str, tab_id: &str) -> String {
+    format!("{CONTENT_PREFIX}{sid}-{tab_id}")
+}
+
+// All content webview labels belonging to one surface.
+fn content_labels_for(app: &AppHandle, sid: &str) -> Vec<String> {
+    let prefix = format!("{CONTENT_PREFIX}{sid}-");
     app.webviews()
         .keys()
-        .filter(|label| label.starts_with(CONTENT_PREFIX))
+        .filter(|label| label.starts_with(&prefix))
         .cloned()
         .collect()
 }
 
-/// Open the browser: ensure the chrome strip, then show the active content tab
-/// (creating the first tab on a cold open, or re-showing the saved active tab on
-/// return to `/browse` after `browser_hide`).
+// Every browser-owned webview (all chromes + all content) across all surfaces,
+// for global teardown.
+fn all_browser_labels(app: &AppHandle) -> Vec<String> {
+    app.webviews()
+        .keys()
+        .filter(|label| label.starts_with(CHROME_PREFIX) || label.starts_with(CONTENT_PREFIX))
+        .cloned()
+        .collect()
+}
+
+/// Open a browser surface: ensure its chrome strip, then show its active content
+/// tab (creating the first tab on a cold open, or re-showing the saved active tab
+/// on return to `/browse` after `browser_hide`).
 #[tauri::command]
 pub fn browser_open(
     app: AppHandle,
     state: State<BrowserState>,
+    surface_id: String,
     chrome_url: String,
     content_url: String,
     x: f64,
@@ -82,105 +133,120 @@ pub fn browser_open(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
+    let sid = sanitize_sid(&surface_id);
     let chrome_h = CHROME_HEIGHT.min(height);
     let content_h = (height - chrome_h).max(0.0);
     let cy = y + chrome_h;
 
-    ensure_chrome(&app, &chrome_url, x, y, width, chrome_h)?;
+    ensure_chrome(&app, &sid, &chrome_url, x, y, width, chrome_h)?;
 
     // Pick the tab to show: the saved active one if it still exists, else any
-    // existing content tab, else create the first tab.
-    let labels = content_labels(&app);
+    // existing content tab for this surface, else create the first tab.
+    let labels = content_labels_for(&app, &sid);
     let active = state
-        .get()
-        .filter(|id| labels.contains(&content_label(id)));
+        .get(&sid)
+        .filter(|id| labels.contains(&content_label(&sid, id)));
 
+    let content_prefix = format!("{CONTENT_PREFIX}{sid}-");
     let show_id = match active {
         Some(id) => id,
         None => match labels.first() {
-            Some(label) => label.trim_start_matches(CONTENT_PREFIX).to_string(),
+            Some(label) => label.trim_start_matches(&content_prefix).to_string(),
             None => {
-                create_content(&app, FIRST_TAB, &content_url, x, cy, width, content_h)?;
+                create_content(&app, &sid, FIRST_TAB, &content_url, x, cy, width, content_h)?;
                 FIRST_TAB.to_string()
             }
         },
     };
 
-    state.set(&show_id);
-    show_only(&app, &show_id, x, cy, width, content_h);
+    state.set(&sid, &show_id);
+    show_only(&app, &sid, &show_id, x, cy, width, content_h);
     Ok(())
 }
 
-/// Reposition/resize the chrome + every content webview to track the surface box.
+/// Reposition/resize a surface's chrome + every content webview to track its box.
 /// Does not change visibility (the active tab stays shown, hidden tabs stay hidden).
 #[tauri::command]
 pub fn browser_set_bounds(
     app: AppHandle,
+    surface_id: String,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
 ) -> Result<(), String> {
+    let sid = sanitize_sid(&surface_id);
     let chrome_h = CHROME_HEIGHT.min(height);
     let content_h = (height - chrome_h).max(0.0);
     let cy = y + chrome_h;
 
-    place(&app, CHROME_LABEL, x, y, width, chrome_h);
-    show(&app, CHROME_LABEL);
-    for label in content_labels(&app) {
+    let chrome = chrome_label(&sid);
+    place(&app, &chrome, x, y, width, chrome_h);
+    show(&app, &chrome);
+    for label in content_labels_for(&app, &sid) {
         place(&app, &label, x, cy, width, content_h);
     }
     Ok(())
 }
 
-/// Open a new tab: create its content webview and make it the active (visible) one.
-/// Bounds are copied from an existing content webview so it appears correctly placed.
+/// Open a new tab in a surface: create its content webview and make it the active
+/// (visible) one. Bounds are copied from an existing content webview of the same
+/// surface so it appears correctly placed.
 #[tauri::command]
 pub fn browser_new_tab(
     app: AppHandle,
     state: State<BrowserState>,
+    surface_id: String,
     tab_id: String,
     url: String,
 ) -> Result<(), String> {
-    let (x, y, w, h) = sample_content_bounds(&app).ok_or("no content bounds yet")?;
-    create_content(&app, &tab_id, &url, x, y, w, h)?;
-    state.set(&tab_id);
-    show_only(&app, &tab_id, x, y, w, h);
+    let sid = sanitize_sid(&surface_id);
+    let (x, y, w, h) = sample_content_bounds(&app, &sid).ok_or("no content bounds yet")?;
+    create_content(&app, &sid, &tab_id, &url, x, y, w, h)?;
+    state.set(&sid, &tab_id);
+    show_only(&app, &sid, &tab_id, x, y, w, h);
     Ok(())
 }
 
-/// Switch the visible tab to `tab_id`.
+/// Switch a surface's visible tab to `tab_id`.
 #[tauri::command]
 pub fn browser_switch_tab(
     app: AppHandle,
     state: State<BrowserState>,
+    surface_id: String,
     tab_id: String,
 ) -> Result<(), String> {
-    let (x, y, w, h) = sample_content_bounds(&app).unwrap_or((0.0, 0.0, 0.0, 0.0));
-    state.set(&tab_id);
-    show_only(&app, &tab_id, x, y, w, h);
+    let sid = sanitize_sid(&surface_id);
+    let (x, y, w, h) = sample_content_bounds(&app, &sid).unwrap_or((0.0, 0.0, 0.0, 0.0));
+    state.set(&sid, &tab_id);
+    show_only(&app, &sid, &tab_id, x, y, w, h);
     Ok(())
 }
 
-/// Close one tab's content webview. The chrome then switches to a neighbour.
+/// Close one tab's content webview in a surface. The chrome then switches to a
+/// neighbour.
 #[tauri::command]
-pub fn browser_close_tab(app: AppHandle, tab_id: String) -> Result<(), String> {
-    if let Some(webview) = app.get_webview(&content_label(&tab_id)) {
+pub fn browser_close_tab(app: AppHandle, surface_id: String, tab_id: String) -> Result<(), String> {
+    let sid = sanitize_sid(&surface_id);
+    if let Some(webview) = app.get_webview(&content_label(&sid, &tab_id)) {
         webview.close().map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
-/// Navigate a tab's content webview (called from the chrome toolbar with the
-/// chrome's active tab id). Falls back to the state's active tab, then any tab.
+/// Navigate a tab's content webview (called from a surface's chrome toolbar with
+/// that chrome's active tab id). Falls back to the surface's active tab, then any
+/// tab in the surface.
 #[tauri::command]
 pub fn browser_navigate(
     app: AppHandle,
     state: State<BrowserState>,
+    surface_id: String,
     tab_id: String,
     url: String,
 ) -> Result<(), String> {
-    let Some(webview) = resolve_target(&app, &state, &tab_id) else {
+    let sid = sanitize_sid(&surface_id);
+    let Some(webview) = resolve_target(&app, &state, &sid, &tab_id) else {
         return Err(format!("no content webview for tab {tab_id}"));
     };
     let parsed: Url = url.parse().map_err(|e| format!("invalid url: {e}"))?;
@@ -191,35 +257,42 @@ pub fn browser_navigate(
 pub fn browser_back(
     app: AppHandle,
     state: State<BrowserState>,
+    surface_id: String,
     tab_id: String,
 ) -> Result<(), String> {
-    tab_eval(&app, &state, &tab_id, "history.back()")
+    let sid = sanitize_sid(&surface_id);
+    tab_eval(&app, &state, &sid, &tab_id, "history.back()")
 }
 
 #[tauri::command]
 pub fn browser_forward(
     app: AppHandle,
     state: State<BrowserState>,
+    surface_id: String,
     tab_id: String,
 ) -> Result<(), String> {
-    tab_eval(&app, &state, &tab_id, "history.forward()")
+    let sid = sanitize_sid(&surface_id);
+    tab_eval(&app, &state, &sid, &tab_id, "history.forward()")
 }
 
 #[tauri::command]
 pub fn browser_reload(
     app: AppHandle,
     state: State<BrowserState>,
+    surface_id: String,
     tab_id: String,
 ) -> Result<(), String> {
-    tab_eval(&app, &state, &tab_id, "location.reload()")
+    let sid = sanitize_sid(&surface_id);
+    tab_eval(&app, &state, &sid, &tab_id, "location.reload()")
 }
 
-/// Hide the chrome + all content webviews without destroying them — used when
-/// leaving `/browse` so every tab persists when the user returns.
+/// Hide a surface's chrome + all its content webviews without destroying them —
+/// used when leaving `/browse` so every tab persists when the user returns.
 #[tauri::command]
-pub fn browser_hide(app: AppHandle) -> Result<(), String> {
-    let mut labels = content_labels(&app);
-    labels.push(CHROME_LABEL.to_string());
+pub fn browser_hide(app: AppHandle, surface_id: String) -> Result<(), String> {
+    let sid = sanitize_sid(&surface_id);
+    let mut labels = content_labels_for(&app, &sid);
+    labels.push(chrome_label(&sid));
     for label in labels {
         if let Some(webview) = app.get_webview(&label) {
             webview.hide().map_err(|e| e.to_string())?;
@@ -228,32 +301,56 @@ pub fn browser_hide(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Tear the chrome + every tab down entirely.
+/// Tear a browser down entirely. With a `surface_id`, closes just that surface's
+/// chrome + tabs; without one, closes **every** surface (the global teardown used
+/// when the Browser tab is closed or a split containing a browser is left).
 #[tauri::command]
-pub fn browser_close(app: AppHandle, state: State<BrowserState>) -> Result<(), String> {
-    let mut labels = content_labels(&app);
-    labels.push(CHROME_LABEL.to_string());
+pub fn browser_close(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: Option<String>,
+) -> Result<(), String> {
+    let labels = match &surface_id {
+        Some(raw) => {
+            let sid = sanitize_sid(raw);
+            let mut l = content_labels_for(&app, &sid);
+            l.push(chrome_label(&sid));
+            l
+        }
+        None => all_browser_labels(&app),
+    };
     for label in labels {
         if let Some(webview) = app.get_webview(&label) {
             webview.close().map_err(|e| e.to_string())?;
         }
     }
-    state.clear();
+    match &surface_id {
+        Some(raw) => state.clear(&sanitize_sid(raw)),
+        None => state.clear_all(),
+    }
     Ok(())
 }
 
-/// Capture the active content tab as a PNG. Returns base64-encoded bytes plus the
-/// tab's current URL, so the agent gets a screenshot of what the user is viewing.
-/// macOS path uses WKWebView's in-process `-takeSnapshot…` — no Screen-Recording
-/// permission prompt. Errors if no browser tab is open.
+/// Capture a surface's active content tab as a PNG. Returns base64-encoded bytes
+/// plus the tab's current URL, so the agent gets a screenshot of what the user is
+/// viewing. Without a `surface_id`, defaults to any open surface. macOS path uses
+/// WKWebView's in-process `-takeSnapshot…` — no Screen-Recording permission
+/// prompt. Errors if no browser tab is open.
 #[tauri::command]
 pub fn browser_screenshot(
     app: AppHandle,
     state: State<BrowserState>,
+    surface_id: Option<String>,
 ) -> Result<Screenshot, String> {
-    let id = state.get().ok_or_else(|| "no active browser tab".to_string())?;
+    let sid = surface_id
+        .map(|s| sanitize_sid(&s))
+        .or_else(|| state.any_sid())
+        .unwrap_or_else(|| DEFAULT_SID.to_string());
+    let id = state
+        .get(&sid)
+        .ok_or_else(|| "no active browser tab".to_string())?;
     let webview = app
-        .get_webview(&content_label(&id))
+        .get_webview(&content_label(&sid, &id))
         .ok_or_else(|| "active tab webview missing".to_string())?;
 
     let url = webview.url().map(|u| u.to_string()).unwrap_or_default();
@@ -359,10 +456,11 @@ fn capture_webview(_webview: &tauri::Webview) -> Result<Vec<u8>, String> {
 
 // --- internals ----------------------------------------------------------
 
-// Show one content tab, hide every other; (re)position the shown one.
-fn show_only(app: &AppHandle, id: &str, x: f64, y: f64, w: f64, h: f64) {
-    let target = content_label(id);
-    for label in content_labels(app) {
+// Show one content tab of a surface, hide every other in that surface;
+// (re)position the shown one.
+fn show_only(app: &AppHandle, sid: &str, tab_id: &str, x: f64, y: f64, w: f64, h: f64) {
+    let target = content_label(sid, tab_id);
+    for label in content_labels_for(app, sid) {
         if let Some(webview) = app.get_webview(&label) {
             if label == target {
                 if w > 0.0 && h > 0.0 {
@@ -377,13 +475,17 @@ fn show_only(app: &AppHandle, id: &str, x: f64, y: f64, w: f64, h: f64) {
     }
 }
 
-// Bounds of any existing content webview (so a new/switched tab lands correctly).
-fn sample_content_bounds(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
-    let label = content_labels(app).into_iter().next()?;
+// Bounds of any existing content webview in this surface (so a new/switched tab
+// lands correctly).
+fn sample_content_bounds(app: &AppHandle, sid: &str) -> Option<(f64, f64, f64, f64)> {
+    let label = content_labels_for(app, sid).into_iter().next()?;
     let webview = app.get_webview(&label)?;
     let pos = webview.position().ok()?;
     let size = webview.size().ok()?;
-    let scale = app.get_window("main").and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+    let scale = app
+        .get_window("main")
+        .and_then(|w| w.scale_factor().ok())
+        .unwrap_or(1.0);
     Some((
         pos.x as f64 / scale,
         pos.y as f64 / scale,
@@ -394,15 +496,17 @@ fn sample_content_bounds(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
 
 fn ensure_chrome(
     app: &AppHandle,
+    sid: &str,
     url: &str,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    if app.get_webview(CHROME_LABEL).is_some() {
-        place(app, CHROME_LABEL, x, y, width, height);
-        show(app, CHROME_LABEL);
+    let label = chrome_label(sid);
+    if app.get_webview(&label).is_some() {
+        place(app, &label, x, y, width, height);
+        show(app, &label);
         return Ok(());
     }
     let window = app
@@ -411,7 +515,7 @@ fn ensure_chrome(
     let parsed: Url = url.parse().map_err(|e| format!("invalid url {url}: {e}"))?;
     window
         .add_child(
-            WebviewBuilder::new(CHROME_LABEL, WebviewUrl::External(parsed)),
+            WebviewBuilder::new(&label, WebviewUrl::External(parsed)),
             LogicalPosition::new(x, y),
             LogicalSize::new(width, height),
         )
@@ -419,10 +523,11 @@ fn ensure_chrome(
     Ok(())
 }
 
-// Create a content webview for `tab_id` with the navigation guard, popup guard,
-// and per-tab navigation reporting back to the chrome.
+// Create a content webview for `tab_id` in a surface with the navigation guard,
+// popup guard, and per-tab navigation reporting back to that surface's chrome.
 fn create_content(
     app: &AppHandle,
+    sid: &str,
     tab_id: &str,
     url: &str,
     x: f64,
@@ -430,7 +535,7 @@ fn create_content(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    let label = content_label(tab_id);
+    let label = content_label(sid, tab_id);
     if app.get_webview(&label).is_some() {
         return Ok(());
     }
@@ -441,12 +546,13 @@ fn create_content(
 
     let app_for_nav = app.clone();
     let id_for_nav = tab_id.to_string();
+    let chrome_for_nav = chrome_label(sid);
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
         .on_navigation(move |url| {
             // Lock to web navigation: block file://, tauri://, javascript:, data:.
             let allowed = matches!(url.scheme(), "http" | "https") || url.as_str() == "about:blank";
             if allowed {
-                if let Some(chrome) = app_for_nav.get_webview(CHROME_LABEL) {
+                if let Some(chrome) = app_for_nav.get_webview(&chrome_for_nav) {
                     let _ = chrome.eval(&format!(
                         "window.__onContentNavigated && window.__onContentNavigated({}, {})",
                         js_str(&id_for_nav),
@@ -482,26 +588,37 @@ fn show(app: &AppHandle, label: &str) {
     }
 }
 
-// The content webview to act on: the requested tab, else the state's active
-// tab, else any open tab. Keeps nav working even if the chrome/Rust active
-// pointers briefly diverge.
+// The content webview to act on within a surface: the requested tab, else the
+// surface's active tab, else any open tab in the surface. Keeps nav working even
+// if the chrome/Rust active pointers briefly diverge.
 fn resolve_target(
     app: &AppHandle,
     state: &State<BrowserState>,
+    sid: &str,
     tab_id: &str,
 ) -> Option<tauri::Webview> {
-    app.get_webview(&content_label(tab_id))
-        .or_else(|| state.get().and_then(|id| app.get_webview(&content_label(&id))))
-        .or_else(|| content_labels(app).into_iter().next().and_then(|l| app.get_webview(&l)))
+    app.get_webview(&content_label(sid, tab_id))
+        .or_else(|| {
+            state
+                .get(sid)
+                .and_then(|id| app.get_webview(&content_label(sid, &id)))
+        })
+        .or_else(|| {
+            content_labels_for(app, sid)
+                .into_iter()
+                .next()
+                .and_then(|l| app.get_webview(&l))
+        })
 }
 
 fn tab_eval(
     app: &AppHandle,
     state: &State<BrowserState>,
+    sid: &str,
     tab_id: &str,
     js: &str,
 ) -> Result<(), String> {
-    if let Some(webview) = resolve_target(app, state, tab_id) {
+    if let Some(webview) = resolve_target(app, state, sid, tab_id) {
         webview.eval(js).map_err(|e| e.to_string())?;
     }
     Ok(())

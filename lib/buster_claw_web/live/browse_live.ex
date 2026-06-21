@@ -22,10 +22,16 @@ defmodule BusterClawWeb.BrowseLive do
         _ -> session["url"]
       end
 
+    # Native browser surface id: "main" for the solo /browse, "left"/"right" when
+    # embedded as a split pane (set by SplitLive). Keeps two side-by-side browsers
+    # independent.
+    surface_id = session["surface_id"] || "main"
+
     {:ok,
      socket
      |> assign(:page_title, "Browse")
-     |> assign(:initial_url, initial_url || "")}
+     |> assign(:initial_url, initial_url || "")
+     |> assign(:surface_id, surface_id)}
   end
 
   @impl true
@@ -33,9 +39,10 @@ defmodule BusterClawWeb.BrowseLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section
-        id="browse-shell"
+        id={"browse-shell-" <> @surface_id}
         phx-hook="EmbeddedBrowser"
         data-initial-url={@initial_url}
+        data-surface-id={@surface_id}
         class="flex min-h-0 flex-1 flex-col"
       >
         <%!-- The native chrome (toolbar) + content webviews are positioned over

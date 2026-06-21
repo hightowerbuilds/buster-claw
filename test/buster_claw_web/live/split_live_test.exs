@@ -141,6 +141,17 @@ defmodule BusterClawWeb.SplitLiveTest do
     assert occurrences(html, ~s(id="app-dock")) == 1
   end
 
+  test "two joined browsers get independent left/right native surfaces", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/split?left=/browse&right=/browse")
+
+    # Each pane drives its own native browser surface (distinct ids + surface tags)
+    # so the two browsers stay independent side by side.
+    assert html =~ ~s(id="browse-shell-left")
+    assert html =~ ~s(id="browse-shell-right")
+    assert html =~ ~s(data-surface-id="left")
+    assert html =~ ~s(data-surface-id="right")
+  end
+
   test "unsupported views show a fallback instead of embedding", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/split?left=/setup&right=/browse")
 
