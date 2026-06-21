@@ -240,13 +240,87 @@ The full ecosystem-roadmap arc now has its substrate built + tested:
 - **Phase 0–4 — complete.** Runtime composition skills (1A), declarative policy gate
   (1B), rate limits (1C), cross-run memory (2), self-improving propose/approve loop (3),
   and bounded parallel fan-out (4).
-- **Remaining integration / follow-ups:**
-  - Phase 4 **coordinator** (LLM decomposition of a Dispatch item into a plan) + Dispatcher
-    wiring — the real next product step.
-  - Surface skills in `/api/commands` + CLI `commands` (needs a `:persistent_term`
-    invalidate-on-write) — small.
+- **Remaining integration / follow-ups** (both integration items now **done** — see the
+  second-session section below):
+  - Phase 4 **coordinator** — ✅ shipped (`a1b84ee`).
+  - Surface skills in `/api/commands` + CLI `commands` — ✅ shipped (`4808fcb`).
   - Nothing in Phase 4 has been driven in the **running app** yet (tests use an injected
-    runner).
+    runner). Still open; needs a live shift the user drives.
+
+## Second session — integration completion + command-menu cleanup
+
+Picked the roadmap back up and closed the two remaining integration items, then did a
+pass on the in-app terminal command menu (the "cmd-list" dropdown) to match the
+headless-operator reality.
+
+### Skills surfaced in the command surface (`4808fcb`)
+
+`GET /api/commands` now appends runtime-discovered composition skills to the native
+catalog, each entry tagged `source: native | composition`; the CLI `commands` prints a
+`[skill]` marker. Native catalog stays `:persistent_term`-cached; skills are serialized
+fresh per request (no cache to invalidate when a skill file is dropped/removed). Closes
+the last Phase 1A integration gap. Test asserts a freshly-dropped `skills/*.md` shows up
+tagged `composition` without a restart.
+
+### Phase 4 coordinator (`a1b84ee`) — the roadmap's last substantive piece
+
+A Dispatch item marked `strategy: "swarm"` is routed through the new
+**`Swarm.Coordinator`** instead of the generic agent-pulls-queue pump:
+
+- `coordinate/2` = one **serial planner** `AgentRunner` pass (decomposes the item's
+  request into a JSON `[{role,prompt}]` plan, **depth-scanned** out of stdout so a stray
+  `[` in a string can't desync it, validated, capped at `:swarm_max_subtasks`) → the
+  unchanged `Swarm.run/2`. Planner + sub-runs independently injectable; an
+  unparseable/empty plan is `:unplannable` and the caller **blocks** the item rather than
+  guessing.
+- **Dispatcher wiring** — claims one swarm item, runs the coordinator in the monitored
+  child (whole swarm = one tick, so the crash-loop brake composes), threads queue
+  provenance **fail-closed** into every sub-run, finishes the item (quorum-met → done,
+  else blocked), bumps `dispatched_count` by the realized cost (planner + sub-runs)
+  against the per-shift run cap, and writes a cross-run memory summary.
+- **Surface** — new `strategy` column on `dispatch_items` (`single | swarm`) +
+  `dispatch_strategy` command + CLI `dispatch strategy <id> <single|swarm>`. The generic
+  claim path skips swarm items so it can't steal a coordinator-owned one. Wallet-cents
+  reservation stays deferred (cost bounded by concurrency cap + run cap).
+- 17 new tests (10 coordinator, 5 Dispatcher swarm-path, 2 dispatch-command). Design
+  written up in `daily-growth/roadmaps/06-21-26-swarm-coordinator-plan.md`.
+
+### Command-menu cleanup (`d12c984`, `5cf8c59`, `913751d`, `ada5251`)
+
+The dropdown (`lib/buster_claw/terminal_commands.ex`) was all long-running *operational
+processes* and missing the everyday work commands — and conflated three different
+autonomy models. Reworked it to read as "what an operator/agent does in here":
+
+- **Added** a **Dispatch Queue** group (list / claim / `strategy <id> swarm`) and a
+  **Commands** group (`commands` / `runtime_status` / `memory_search`). `d12c984`
+- **Reframed the Shift group around headless.** It only surfaced an *attended* `shift
+  run`; the genuinely useful walk-away mode (an **unattended** shift = Dispatcher pump +
+  run cap + kill-switch + no-sleep) wasn't in the menu. Now: Shift Status (default) /
+  Start Headless Shift / Stop Shift. The key clarification: an unattended shift *is* "run
+  headless indefinitely, but with brakes and a black box." `5cf8c59`
+- **Consolidated Autopilot into the Shift group** ("Shift & Autopilot") so the two
+  autonomy tools sit together with the trade-off legible (shift = supervised envelope;
+  autopilot = lightweight, no brakes, **no shift needed**). `913751d`
+- **Removed the dev Server group** — dev-only scaffolding (hardcoded `~/Developer/...`
+  path, "run in your OWN terminal", meaningless from the in-app terminal, broken in a
+  packaged build that spawns its own Phoenix). `ada5251`
+
+Menu is now: Install · Mailman · Shift & Autopilot · Dispatch Queue · Commands · Prompts.
+
+### Verification (second session)
+
+- `mix precommit` green after the coordinator: **640 tests, 0 failures** (was 623).
+- Each menu change: clean `--warnings-as-errors` + the 14 terminal-menu tests green.
+- **Still unverified by me** (needs the running app the user drives): a live swarm —
+  `dispatch strategy <id> swarm` then a shift that actually plans + fans out real agents.
+
+### Open threads
+
+- **Budget-gate tightening** (designed, not yet landed): cap a swarm's plan to the
+  shift's *remaining* run budget so a fan-out can't overshoot the per-shift cap (today the
+  pre-launch check is approximate — `n` isn't known until the plan exists; overshoot is
+  bounded to the planner).
+- Live-app validation of the swarm + the menu changes.
 
 ## Notes
 
