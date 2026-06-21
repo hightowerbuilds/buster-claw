@@ -87,17 +87,24 @@ defmodule BusterClaw.TerminalCommands do
       startup_profile: "shift",
       commands: [
         %{
-          key: "shift-run",
-          label: "Open Shift",
-          description:
-            "Start an orchestration shift, then poll trusted mail (Ctrl-C ends polling).",
-          command: "./buster-claw shift run",
+          key: "shift-status",
+          label: "Shift Status",
+          description: "Whether a shift is active, its mode, and dispatched/done/failed counts.",
+          command: "./buster-claw shift status",
           default?: true
         },
         %{
+          key: "shift-start-headless",
+          label: "Start Headless Shift",
+          description:
+            "Open an UNATTENDED shift: the Dispatcher works the queue with headless agent runs until stopped, under the per-shift run cap + kill-switch + no-sleep. Walk away.",
+          command: ~s(./buster-claw shift start --json '{"unattended":true}')
+        },
+        %{
           key: "shift-stop",
-          label: "Close Shift",
-          description: "End the current shift — the agent stops claiming new work.",
+          label: "Stop Shift",
+          description:
+            "End the active shift — the Dispatcher stops pumping and no-sleep is released.",
           command: "./buster-claw shift stop"
         }
       ]
