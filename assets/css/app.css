@@ -474,4 +474,27 @@ body { background-color: var(--color-base-100); }
 }
 .md-prose thead th { background: var(--color-base-200); }
 
+/* --- Chat queue (the Tetris rail) --- */
+
+/* A queued "piece" snapping into the rail. CSS animations only fire when an
+   element is inserted, so stable (reordered) pieces don't replay this — only
+   newly-queued ones do. The exit animation is driven by phx-remove in the heex. */
+@keyframes ic-piece-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.ic-piece { animation: ic-piece-in 180ms ease-out; }
+
+/* A message landing in the transcript — the back half of a piece "locking in"
+   when the front of the queue is dispatched (also used for plain sent messages). */
+@keyframes ic-drop-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.ic-drop-in { animation: ic-drop-in 200ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ic-piece, .ic-drop-in { animation: none; }
+}
+
 /* This file is for your main application CSS */

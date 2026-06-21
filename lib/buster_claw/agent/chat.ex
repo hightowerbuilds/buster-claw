@@ -104,6 +104,18 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   @doc """
+  Reorder the queue to match `ids` (a list of queue-item ids, front-first). Ids not
+  present are ignored; queued items missing from `ids` keep their relative order at
+  the back. A no-op if the conversation has no process.
+  """
+  def reorder_queue(conv_id, ids) when is_list(ids) do
+    case whereis(conv_id) do
+      nil -> :ok
+      pid -> GenServer.call(pid, {:reorder_queue, ids})
+    end
+  end
+
+  @doc """
   Ensure a conversation's chat process is running (started lazily under the
   DynamicSupervisor), returning `{:ok, pid}`. Idempotent and race-safe.
   """
@@ -202,6 +214,16 @@ defmodule BusterClaw.Agent.Chat do
 
   def handle_call({:remove_queued, id}, _from, state) do
     state = %{state | queue: Enum.reject(state.queue, &(&1.id == id))}
+    broadcast_queue(state)
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:reorder_queue, ids}, _from, state) do
+    # Stable sort by the requested position; unlisted items fall to the back in
+    # their existing order (Enum.sort_by/2 is stable).
+    rank = ids |> Enum.with_index() |> Map.new()
+    queue = Enum.sort_by(state.queue, &Map.get(rank, &1.id, length(ids)))
+    state = %{state | queue: queue}
     broadcast_queue(state)
     {:reply, :ok, state}
   end

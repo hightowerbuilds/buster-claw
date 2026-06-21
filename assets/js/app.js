@@ -511,6 +511,50 @@ const Hooks = {
       return (Math.max(0, ms) / 1000).toFixed(1) + "s"
     },
   },
+  // Drag-reorder the chat queue (the Tetris rail). Reorders the DOM optimistically
+  // during the drag, then pushes the new id order to the server, which re-broadcasts
+  // the canonical queue — so the rail snaps to the authoritative order on drop.
+  QueueRail: {
+    mounted() {
+      this.dragId = null
+      this.onDragStart = (e) => {
+        const li = e.target.closest("[data-id]")
+        if (!li) return
+        this.dragId = li.dataset.id
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"
+        // Defer so the drag image is captured before we dim the source.
+        requestAnimationFrame(() => li.classList.add("opacity-40"))
+      }
+      this.onDragOver = (e) => {
+        if (this.dragId == null) return
+        e.preventDefault()
+        const over = e.target.closest("[data-id]")
+        const dragged = this.el.querySelector(`[data-id="${this.dragId}"]`)
+        if (!over || !dragged || over === dragged) return
+        const rect = over.getBoundingClientRect()
+        const after = e.clientY - rect.top > rect.height / 2
+        this.el.insertBefore(dragged, after ? over.nextSibling : over)
+      }
+      this.onDrop = (e) => e.preventDefault()
+      this.onDragEnd = () => {
+        const dragged = this.dragId && this.el.querySelector(`[data-id="${this.dragId}"]`)
+        if (dragged) dragged.classList.remove("opacity-40")
+        const ids = [...this.el.querySelectorAll("[data-id]")].map((li) => li.dataset.id)
+        this.dragId = null
+        this.pushEvent("reorder_queue", { ids })
+      }
+      this.el.addEventListener("dragstart", this.onDragStart)
+      this.el.addEventListener("dragover", this.onDragOver)
+      this.el.addEventListener("drop", this.onDrop)
+      this.el.addEventListener("dragend", this.onDragEnd)
+    },
+    destroyed() {
+      this.el.removeEventListener("dragstart", this.onDragStart)
+      this.el.removeEventListener("dragover", this.onDragOver)
+      this.el.removeEventListener("drop", this.onDrop)
+      this.el.removeEventListener("dragend", this.onDragEnd)
+    },
+  },
   // Tracks the pointer over a `.ic-scanlines` heading and writes its position
   // into --crt-x/--crt-y so the CSS reveals a stronger chromatic-aberration
   // overlay in a circle under the cursor. Throttled to one write per frame; no

@@ -117,6 +117,24 @@ defmodule BusterClaw.Agent.ChatTest do
     assert :running = Chat.status(conv)
   end
 
+  test "reorder_queue reorders pending messages by id, front-first" do
+    spawner = fn _prompt, _opts -> {:ok, make_ref()} end
+    conv = start_chat(spawner)
+
+    assert :ok = Chat.send_message(conv, "first")
+    assert :ok = Chat.send_message(conv, "a")
+    assert :ok = Chat.send_message(conv, "b")
+    assert :ok = Chat.send_message(conv, "c")
+
+    assert [%{id: a, text: "a"}, %{id: b, text: "b"}, %{id: c, text: "c"}] = Chat.queue(conv)
+
+    assert :ok = Chat.reorder_queue(conv, [c, a, b])
+    assert Enum.map(Chat.queue(conv), & &1.text) == ["c", "a", "b"]
+    # An id missing from the list falls to the back, keeping relative order.
+    assert :ok = Chat.reorder_queue(conv, [b])
+    assert Enum.map(Chat.queue(conv), & &1.text) == ["b", "c", "a"]
+  end
+
   test "remove_queued drops a pending message before it is dispatched" do
     spawner = fn _prompt, _opts -> {:ok, make_ref()} end
     conv = start_chat(spawner)

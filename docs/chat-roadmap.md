@@ -57,11 +57,18 @@ sent are dropped on restart. One piece = one turn (clean `--resume` threading);
 optional "merge selected" left for later. `status_live` renders a minimal queue strip
 above the input (with per-item cancel) — Phase 2 turns it into the Tetris rail.
 
-### Phase 2 — The Tetris Rail UI · ~1–2 days
-Render `:chat_queue` as tetromino cards in a rail. Drag-reorder, delete, edit before
-consumption. Lock-in drop animation (card → user bubble morph) on turn finish. Styled
-in the `ic-` design language; animation lives entirely in JS/CSS, server out of the
-loop.
+### Phase 2 — The Tetris Rail UI · ~1–2 days · **shipped 2026-06-21**
+`:chat_queue` renders as tetromino "pieces" (7 classic shapes/colors, picked by id so
+a piece keeps its shape for life). Front piece is "armed" (hazard border + NEXT tag).
+Drag-reorder via the `QueueRail` hook (HTML5 DnD, optimistic DOM reorder →
+`reorder_queue` event → `Chat.reorder_queue/2` re-broadcasts canonical order). Cancel
+per-piece (hover ×). Entrance animation `ic-piece-in`; exit via `phx-remove` (JS.hide
+transition); landed messages get `ic-drop-in` — the back half of a "lock-in." All
+motion is CSS/JS, `prefers-reduced-motion` honored.
+
+**Deferred from this phase:** inline edit-before-consumption (add an update API + an
+editable field later); a direction-aware lock animation differentiating dispatch vs
+delete (currently one unified exit). Visual not yet eyeballed in the running app.
 
 ### Phase 3 — Hard-drop / Cut · ~1 day
 `Chat.interrupt/1`: kill the port (reuse `AgentRunner.kill_port`), flush the partial

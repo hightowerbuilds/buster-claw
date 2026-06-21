@@ -113,6 +113,20 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, socket}
   end
 
+  def handle_event("reorder_queue", %{"ids" => ids}, socket) do
+    parsed =
+      ids
+      |> List.wrap()
+      |> Enum.map(&Integer.parse/1)
+      |> Enum.flat_map(fn
+        {n, ""} -> [n]
+        _ -> []
+      end)
+
+    Chat.reorder_queue(socket.assigns.active_chat, parsed)
+    {:noreply, socket}
+  end
+
   def handle_event("select_chat", %{"id" => id}, socket),
     do: {:noreply, activate_chat(socket, id)}
 
@@ -512,8 +526,10 @@ defmodule BusterClawWeb.StatusLive do
     """
   end
 
-  # Pending messages typed while a run is in flight. Each is dispatched as its own
-  # turn when the current one finishes; Phase 2 turns this strip into the Tetris rail.
+  # The Tetris rail: messages typed while a run is in flight, stacked as tetromino
+  # "next pieces" and dispatched one-per-turn as the current run finishes. The
+  # front piece is "armed" (hazard border + NEXT tag); pieces are drag-reorderable
+  # (QueueRail hook), cancellable, and animate in/out (.ic-piece / phx-remove).
   attr :queue, :list, required: true
 
   defp queue_strip(%{queue: []} = assigns), do: ~H""
@@ -521,20 +537,43 @@ defmodule BusterClawWeb.StatusLive do
   defp queue_strip(assigns) do
     ~H"""
     <div class="flex flex-col gap-1.5 border-t-2 border-base-content/20 bg-base-200/40 px-3 py-2">
-      <p class="ic-eyebrow text-base-content/55">Queued · {length(@queue)}</p>
-      <ul class="flex flex-col gap-1">
+      <p class="ic-eyebrow text-base-content/55">On deck · {length(@queue)}</p>
+      <ul id="chat-queue-rail" phx-hook="QueueRail" phx-update="replace" class="flex flex-col gap-1">
         <li
-          :for={item <- @queue}
-          class="flex items-center gap-2 rounded-sm border-2 border-base-content/20 bg-base-100 px-2.5 py-1.5"
+          :for={{item, idx} <- Enum.with_index(@queue)}
+          id={"queue-#{item.id}"}
+          data-id={item.id}
+          draggable="true"
+          phx-remove={
+            JS.hide(
+              transition:
+                {"transition-all ease-in duration-200", "opacity-100 scale-100",
+                 "opacity-0 scale-95 -translate-y-1"},
+              time: 200
+            )
+          }
+          class={[
+            "ic-piece group flex cursor-grab items-center gap-2 rounded-sm border-2 bg-base-100 px-2.5 py-1.5 active:cursor-grabbing",
+            if(idx == 0,
+              do: "border-primary/70 shadow-[2px_2px_0_0] shadow-primary/30",
+              else: "border-base-content/20"
+            )
+          ]}
         >
-          <.icon name="hero-queue-list" class="size-3.5 shrink-0 text-base-content/45" />
+          <.tetromino index={item.id} />
           <span class="flex-1 truncate text-[15px]">{item.text}</span>
+          <span
+            :if={idx == 0}
+            class="shrink-0 font-mono text-[0.55rem] uppercase tracking-wider text-primary"
+          >
+            Next
+          </span>
           <button
             type="button"
             phx-click="cancel_queued"
             phx-value-id={item.id}
             title="Remove from queue"
-            class="shrink-0 text-base-content/45 transition hover:text-error"
+            class="shrink-0 text-base-content/40 opacity-0 transition hover:text-error group-hover:opacity-100"
           >
             <.icon name="hero-x-mark" class="size-4" />
           </button>
@@ -544,12 +583,48 @@ defmodule BusterClawWeb.StatusLive do
     """
   end
 
+  # The seven classic tetrominoes (shape cells in a 4-wide x 2-tall box, + color),
+  # picked by id so a piece keeps the same shape for its whole life in the rail.
+  @tetrominoes [
+    {[{0, 0}, {1, 0}, {2, 0}, {3, 0}], "#22d3ee"},
+    {[{0, 0}, {1, 0}, {0, 1}, {1, 1}], "#facc15"},
+    {[{0, 0}, {1, 0}, {2, 0}, {1, 1}], "#c084fc"},
+    {[{1, 0}, {2, 0}, {0, 1}, {1, 1}], "#4ade80"},
+    {[{0, 0}, {1, 0}, {1, 1}, {2, 1}], "#f87171"},
+    {[{0, 0}, {0, 1}, {1, 1}, {2, 1}], "#60a5fa"},
+    {[{2, 0}, {0, 1}, {1, 1}, {2, 1}], "#fb923c"}
+  ]
+
+  attr :index, :integer, required: true
+
+  defp tetromino(assigns) do
+    {cells, color} = Enum.at(@tetrominoes, Integer.mod(assigns.index, 7))
+    set = MapSet.new(cells)
+    grid = for row <- 0..1, col <- 0..3, do: MapSet.member?(set, {col, row})
+    assigns = assign(assigns, color: color, grid: grid)
+
+    ~H"""
+    <div
+      class="grid shrink-0"
+      style="grid-template-columns: repeat(4, 5px); grid-template-rows: repeat(2, 5px); gap: 1px;"
+      aria-hidden="true"
+    >
+      <span
+        :for={filled <- @grid}
+        class="block size-[5px] rounded-[1px]"
+        style={if filled, do: "background: #{@color};", else: ""}
+      >
+      </span>
+    </div>
+    """
+  end
+
   attr :msg, :map, required: true
 
   defp chat_bubble(%{msg: %{role: :user}} = assigns) do
     ~H"""
     <div id={"chat-msg-#{@msg.id}"} class="flex justify-end">
-      <div class="max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content">
+      <div class="ic-drop-in max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content">
         {@msg.text}
       </div>
     </div>
