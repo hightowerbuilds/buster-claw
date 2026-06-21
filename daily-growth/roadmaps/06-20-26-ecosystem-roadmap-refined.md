@@ -11,6 +11,31 @@ factual baseline and re-scopes three phases that were built on wrong premises.
 
 ---
 
+## Status (updated 2026-06-21) — Phases 0–4 substrate complete
+
+| Phase | Status | Commit(s) |
+|---|---|---|
+| 0 — Research spikes | ✅ done | (notes under `daily-growth/research/`) |
+| 1A — Composition skills (`skills/*.md`) | ✅ done | `4e5ead7` |
+| 1B — Policy engine (`policy.md`) | ✅ done | `584548e` |
+| 1C — Rate limits (ETS counter) | ✅ done | `a311bc4` |
+| 2 — Cross-run memory (run_summaries + FTS5) | ✅ done | `a64a85b` |
+| 3 — Self-improving (analyzer → propose → approve) | ✅ done | `de8356a` |
+| 4 — Parallel swarm mechanism (`Swarm.run/2`) | ✅ done | `85761d7` |
+
+**Also:** SQLite test flake root-caused + fixed (`ce44b16`), prod busy_timeout
+hardened (`67dfd61`).
+
+**Remaining (integration / follow-ups, not substrate):**
+- Phase 4 **coordinator** — the LLM step that decomposes a Dispatch item into a
+  `Swarm` plan, plus Dispatcher wiring + per-sub-run budget accounting. The real
+  next product step (needs design, not plumbing).
+- Surface dynamic skills in `/api/commands` + CLI `commands` (needs a
+  `:persistent_term` invalidate-on-write). Small.
+- Nothing in Phase 4 has been driven in the **running app** yet (tests inject a runner).
+
+---
+
 ## What the verification changed
 
 Seven claims in the original were wrong or understated. None of them sink the

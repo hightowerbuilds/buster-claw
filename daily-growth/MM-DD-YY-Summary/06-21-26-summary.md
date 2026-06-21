@@ -1,11 +1,12 @@
 # 06-21-2026 Summary
 
-A big day on the **Claw-ecosystem roadmap** — planning through shipping. Pressure-tested
-a Kimi-authored roadmap against the actual code (wrong in seven places), ran **Phase 0**
-as a six-spike research shift, then shipped all of **Phase 1** (1A composition skills,
-1B policy engine, 1C rate limits) and **Phase 2** (cross-run memory). Also root-caused
-and fixed a long-standing intermittent SQLite test flake. Suite green at **606** (started
-the day at 552); seven commits.
+A big day on the **Claw-ecosystem roadmap** — planning through shipping the whole arc.
+Pressure-tested a Kimi-authored roadmap against the actual code (wrong in seven places),
+ran **Phase 0** as a six-spike research shift, then shipped **Phase 1** (1A composition
+skills, 1B policy engine, 1C rate limits), **Phase 2** (cross-run memory), **Phase 3**
+(self-improving skills) and **Phase 4** (the parallel-swarm mechanism). Also root-caused
+and fixed a long-standing intermittent SQLite test flake. Suite green at **622** (started
+the day at 552); ten commits.
 
 ## Pressure-testing the Kimi roadmap
 
@@ -196,20 +197,56 @@ failed in production. Fixed by stringifying `agent`/`provenance`/`outcome` befor
   `./buster-claw run` round-trips for `save-note`, a `policy.md` deny, a rate-limit trip,
   and `memory_search`; plus a real unattended run writing a summary.
 
+## Phase 3 — Self-improving skills (analyzer → propose → approve)
+
+Heuristic self-improvement, no LLM. **Committed `de8356a`** (8 new tests).
+
+- **`Analyzer`** reads recent `command_invoke` audit events, groups them into sessions
+  (same caller within a time gap), and counts repeated consecutive command n-grams
+  (length 2–3, requiring ≥2 distinct commands so a plain loop isn't proposed). Anything
+  seen ≥ `:analyzer_min_occurrences` (default 3) is filed.
+- **`Skills.Suggestions`** + `skill_suggestions` table (steps as JSON text): `record`
+  dedupes a pending sequence by signature and bumps its count; `approve` writes the
+  **enabled** `skills/*.md` via a new `Skills.write/1`; `reject` keeps it for history.
+- **`Analyzer.Server`** — a slow (hourly), flag-gated GenServer that scans unattended;
+  **off in test** (heeding the earlier always-on-child flakiness lesson).
+- **Commands:** `skill_analyze` (restricted), `skill_suggestions` (safe read),
+  `skill_suggestion_approve` (**gated** — creating an enabled skill is human-only,
+  threat model T5), `skill_suggestion_reject`. A test asserts an untrusted caller is
+  refused approval and nothing gets enabled.
+
+## Phase 4 — Parallel swarm mechanism (bounded fan-out/fan-in)
+
+The S0.4 mechanism — the novel, reusable core. **Committed `85761d7`** (8 new tests).
+
+- **`Swarm.run/2`** over a supervised `SwarmTaskSupervisor` using
+  `Task.Supervisor.async_stream_nolink/4`: `nolink` makes a crashing sub-run *data*
+  (an `{:exit, _}`), `on_timeout: :kill_task` enforces the per-sub-run ceiling,
+  `ordered` aligns results to the plan, `max_concurrency` caps fan-out.
+- Every sub-run (ok/error/timeout/crash) yields one typed result and one
+  `:command_invoke` Sentinel event tagged `{swarm_id, role, index}` — auditable, nothing
+  silently dropped. Deterministic **quorum** fan-in: `{:ok, summary}` when successes ≥
+  quorum (default majority), else `{:error, {:quorum_not_met, summary}}` carrying every
+  result. Injectable `:runner` keeps tests from spawning real agents.
+- **Deliberately deferred** (need design, not plumbing): the **LLM coordinator** that
+  splits a Dispatch item into a plan, and the wallet-cents reservation (the wallet ledger
+  is the user's financial domain; cost is bounded instead by the concurrency cap +
+  `max_runs_per_shift`). `budget_cents` is carried through the plan shape for later.
+
 ## Roadmap status (where we are)
 
-- **Phase 0 — complete.** Six research notes + chosen schema + threat model.
-- **Phase 1 — complete.** 1A composition skills, 1B policy engine, 1C rate limits — the
-  full enforcement substrate the threat model required before anything dynamic touches a
-  gated action.
-- **Phase 2 — complete.** Cross-run memory (Tiers 1+2): run summaries + FTS5 +
-  `memory_search`.
-- **Phase 3 — next** (now unblocked; needs 1+2, both landed): analyzer reads
-  `security_events` + `run_summaries`, detects repeated sequences, proposes a
-  `skills/*.md` draft for human approval.
-- **Phase 4 — designed** (bounded parallel fan-out).
-- **Deferred follow-up:** surface skills in `/api/commands` + CLI `commands` (needs a
-  `:persistent_term` invalidate-on-write).
+The full ecosystem-roadmap arc now has its substrate built + tested:
+
+- **Phase 0–4 — complete.** Runtime composition skills (1A), declarative policy gate
+  (1B), rate limits (1C), cross-run memory (2), self-improving propose/approve loop (3),
+  and bounded parallel fan-out (4).
+- **Remaining integration / follow-ups:**
+  - Phase 4 **coordinator** (LLM decomposition of a Dispatch item into a plan) + Dispatcher
+    wiring — the real next product step.
+  - Surface skills in `/api/commands` + CLI `commands` (needs a `:persistent_term`
+    invalidate-on-write) — small.
+  - Nothing in Phase 4 has been driven in the **running app** yet (tests use an injected
+    runner).
 
 ## Notes
 
