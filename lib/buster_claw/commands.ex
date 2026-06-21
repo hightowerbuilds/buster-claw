@@ -1294,12 +1294,30 @@ defmodule BusterClaw.Commands do
 
     case PolicyEngine.check(request) do
       :allow ->
+        rate_limited(name, args, caller)
+
+      decision ->
+        refuse(name, args, caller, decision)
+    end
+  end
+
+  # Policy authorizes *what* may run; the rate limiter bounds *how often*. Checked
+  # only for calls policy already allowed, so refusals don't consume quota.
+  defp rate_limited(name, args, caller) do
+    case BusterClaw.RateLimiter.check(caller, name) do
+      :ok ->
         result = dispatch(name, args)
         audit_invoke(name, args, caller, result)
         result
 
-      decision ->
-        refuse(name, args, caller, decision)
+      {:error, :rate_limited} ->
+        record(
+          :security_block,
+          "Rate limit exceeded: #{name} for #{caller} caller",
+          %{command: name, args: args, caller: caller, reason: :rate_limited}
+        )
+
+        {:error, :rate_limited}
     end
   end
 

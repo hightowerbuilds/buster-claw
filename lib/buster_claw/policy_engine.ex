@@ -183,6 +183,19 @@ defmodule BusterClaw.PolicyEngine do
   defp parse_line(line) do
     line = line |> String.trim_leading("-") |> String.trim() |> strip_comment()
 
+    cond do
+      # Documentation/placeholder lines (`deny <pattern> for <caller>`) are never
+      # real rules — a command/caller token can't contain angle brackets. Skip
+      # them silently so prose and templates don't spam warnings.
+      String.contains?(line, ["<", ">"]) ->
+        []
+
+      true ->
+        parse_rule_tokens(line)
+    end
+  end
+
+  defp parse_rule_tokens(line) do
     case String.split(line) do
       [action, pattern | rest] when action in ["deny", "allow"] ->
         case parse_caller(rest) do

@@ -32,6 +32,7 @@ defmodule BusterClaw.Application do
         BusterClaw.TerminalWorkspace,
         BusterClaw.Browser.Capture,
         BusterClaw.Sentinel.Pending,
+        BusterClaw.RateLimiter,
         browser_sidecar_child(),
         orchestrator_child(),
         uptime_child(),
@@ -149,5 +150,4 @@ defmodule BusterClaw.Application do
       BusterClaw.WalletPoller
     end
   end
-
 end

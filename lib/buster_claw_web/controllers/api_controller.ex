@@ -46,6 +46,9 @@ defmodule BusterClawWeb.ApiController do
       {:error, :policy_blocked} ->
         send_error(conn, 403, "policy_blocked")
 
+      {:error, :rate_limited} ->
+        send_error(conn, 429, "rate_limited")
+
       {:error, :unknown_command} ->
         send_error(conn, 404, "unknown_command")
 
