@@ -103,6 +103,60 @@ defmodule BusterClaw.TerminalCommands do
       ]
     },
     %{
+      key: "queue",
+      label: "Dispatch Queue",
+      aliases: ["dispatch-queue", "queue"],
+      startup_profile: "queue",
+      commands: [
+        %{
+          key: "dispatch-list",
+          label: "List Queue",
+          description: "Show the open Dispatch items (queued / claimed / running).",
+          command: "./buster-claw dispatch list"
+        },
+        %{
+          key: "dispatch-claim",
+          label: "Claim Next",
+          description: "Claim the oldest single-strategy item to work it.",
+          command: "./buster-claw dispatch claim"
+        },
+        %{
+          key: "dispatch-strategy-swarm",
+          label: "Mark Item → Swarm",
+          description:
+            "Opt a queued item into the parallel coordinator (it decomposes into role-typed sub-runs). Replace <id> with the item id from `dispatch list`.",
+          command: "./buster-claw dispatch strategy <id> swarm"
+        }
+      ]
+    },
+    %{
+      key: "toolbox",
+      label: "Commands",
+      aliases: ["surface", "toolbox"],
+      startup_profile: "toolbox",
+      commands: [
+        %{
+          key: "commands-list",
+          label: "List Commands",
+          description: "Print the full command surface, including runtime skills ([skill]).",
+          command: "./buster-claw commands"
+        },
+        %{
+          key: "runtime-status",
+          label: "Runtime Status",
+          description: "Quick health/status snapshot of the running app.",
+          command: "./buster-claw run runtime_status"
+        },
+        %{
+          key: "memory-search",
+          label: "Search Memory",
+          description:
+            "Recall past run summaries by full-text query. Edit the query text before running.",
+          command: ~s(./buster-claw run memory_search --json '{"query":"shift"}')
+        }
+      ]
+    },
+    %{
       key: "autopilot",
       label: "Autopilot",
       aliases: ["auto", "hands-off"],
