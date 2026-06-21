@@ -27,6 +27,9 @@ config :buster_claw, :orchestrator_enabled, false
 # The unattended work pump is off in tests; the Dispatcher suite starts its own
 # instance with a stub runner and drives it via tick_now/1.
 config :buster_claw, :dispatcher_enabled, false
+# The wallet feed poller is off in tests; the WalletPoller suite starts its own
+# instance with injected fetchers and drives it via tick_now/1.
+config :buster_claw, :wallet_poller_enabled, false
 # The homepage chat backend is off in tests; the Chat suite starts its own
 # instance with an injected spawner so no real `claude` is launched.
 config :buster_claw, :agent_chat_enabled, false

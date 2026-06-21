@@ -67,6 +67,99 @@ defmodule BusterClaw.CommandsTest do
     end
   end
 
+  describe "wallet commands" do
+    test "wallet_* tiers: reads safe, writes restricted, delete gated" do
+      catalog = Commands.list_commands()
+      tier = fn name -> Enum.find(catalog, &(&1.name == name)) end
+
+      assert %{type: :read, tier: :safe} = tier.("wallet_list")
+      assert %{type: :read, tier: :safe} = tier.("wallet_list_transactions")
+      assert %{type: :mutate, tier: :restricted} = tier.("wallet_create")
+      assert %{type: :mutate, tier: :restricted} = tier.("wallet_add_transaction")
+      assert %{type: :mutate, tier: :restricted, gated: true} = tier.("wallet_delete")
+    end
+
+    test "create, add transaction, and read back through the dispatcher" do
+      assert {:ok, wallet} =
+               Commands.call("wallet_create", %{"name" => "Acme Ops", "type" => "business"},
+                 caller: :trusted
+               )
+
+      assert {:ok, _} =
+               Commands.call(
+                 "wallet_add_transaction",
+                 %{
+                   "wallet_id" => wallet.id,
+                   "kind" => "income",
+                   "amount_cents" => 50_000,
+                   "occurred_on" => "2026-06-20"
+                 },
+                 caller: :trusted
+               )
+
+      assert {:ok, reread} = Commands.call("wallet_get", %{"id" => wallet.id}, caller: :agent)
+      assert reread.balance_cents == 50_000
+    end
+
+    test "untrusted callers are blocked from restricted/gated wallet writes" do
+      {:ok, wallet} =
+        Commands.call("wallet_create", %{"name" => "Acme", "type" => "business"},
+          caller: :trusted
+        )
+
+      # agent/mcp may not run restricted commands at all
+      assert {:error, :requires_confirmation} =
+               Commands.call("wallet_create", %{"name" => "X", "type" => "business"},
+                 caller: :agent
+               )
+
+      # agent_untrusted may mutate, but not fire gated deletes
+      assert {:error, :requires_confirmation} =
+               Commands.call("wallet_delete", %{"id" => wallet.id}, caller: :agent_untrusted)
+
+      # safe reads are allowed for untrusted callers
+      assert {:ok, _} = Commands.call("wallet_list", %{}, caller: :agent)
+    end
+
+    test "feed commands: list safe, create restricted, delete gated, poll trigger" do
+      catalog = Commands.list_commands()
+      entry = fn name -> Enum.find(catalog, &(&1.name == name)) end
+
+      assert %{type: :read, tier: :safe} = entry.("wallet_feed_list")
+      assert %{type: :mutate, tier: :restricted} = entry.("wallet_feed_create")
+      assert %{type: :mutate, tier: :restricted, gated: true} = entry.("wallet_feed_delete")
+      assert %{type: :trigger, tier: :restricted} = entry.("wallet_poll")
+
+      {:ok, wallet} =
+        Commands.call("wallet_create", %{"name" => "Feeds", "type" => "business"},
+          caller: :trusted
+        )
+
+      assert {:ok, feed} =
+               Commands.call(
+                 "wallet_feed_create",
+                 %{
+                   "wallet_id" => wallet.id,
+                   "kind" => "market",
+                   "config" => %{"symbol" => "AAPL"}
+                 },
+                 caller: :trusted
+               )
+
+      assert {:ok, feeds} =
+               Commands.call("wallet_feed_list", %{"wallet_id" => wallet.id}, caller: :agent)
+
+      assert length(feeds) == 1
+
+      # wallet_poll with no FINNHUB key configured still succeeds (feed records error)
+      assert {:ok, %{results: 1}} =
+               Commands.call("wallet_poll", %{"id" => wallet.id}, caller: :trusted)
+
+      assert {:error, :requires_confirmation} =
+               Commands.call("wallet_feed_delete", %{"id" => feed.id}, caller: :agent_untrusted)
+    end
+  end
+
   describe "call/2 dispatcher" do
     test "dispatches to the matching command" do
       assert {:ok, []} = Commands.call("event_list", %{})
@@ -841,13 +934,23 @@ defmodule BusterClaw.CommandsTest do
       assert {:error, :missing_url} = Commands.call("browser_download", %{}, caller: :trusted)
     end
 
+    test "browser_screenshot is restricted (audited) and refused for untrusted callers" do
+      assert Commands.command_tier("browser_screenshot") == :restricted
+      assert Commands.command_type("browser_screenshot") == :trigger
+      assert {:error, :requires_confirmation} =
+               Commands.call("browser_screenshot", %{}, caller: :mcp)
+    end
+
     test "browser_download writes the fetched bytes into the workspace downloads folder" do
       tmp = Path.join(System.tmp_dir!(), "bc-dl-#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp)
       prev_ws = Application.get_env(:buster_claw, :workspace_root)
       prev_req = Application.get_env(:buster_claw, :browser_req_options)
       Application.put_env(:buster_claw, :workspace_root, tmp)
-      Application.put_env(:buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHTTP})
+
+      Application.put_env(:buster_claw, :browser_req_options,
+        plug: {Req.Test, BusterClaw.BrowserHTTP}
+      )
 
       on_exit(fn ->
         restore_env(:workspace_root, prev_ws)

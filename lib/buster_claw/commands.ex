@@ -32,7 +32,8 @@ defmodule BusterClaw.Commands do
     Library,
     Orchestration,
     Search,
-    TerminalWorkspace
+    TerminalWorkspace,
+    Wallets
   }
 
   alias BusterClaw.Runtime.Status
@@ -173,6 +174,118 @@ defmodule BusterClaw.Commands do
           "integration_id" => %{type: :integer, required: false}
         }
       },
+
+      # Wallets (financial management: ledger + budgets)
+      list_entry("wallet_list", "List wallets."),
+      get_entry("wallet_get", "Fetch a wallet by ID."),
+      %{
+        name: "wallet_create",
+        type: :mutate,
+        tier: :restricted,
+        description: "Create a wallet (business or personal).",
+        args: %{
+          "name" => %{type: :string, required: true},
+          "type" => %{type: :string, required: false, enum: ["business", "personal"]},
+          "currency" => %{type: :string, required: false, default: "USD"}
+        }
+      },
+      %{
+        name: "wallet_update",
+        type: :mutate,
+        tier: :restricted,
+        description: "Update a wallet.",
+        args: %{
+          "id" => %{type: :integer, required: true},
+          "name" => %{type: :string, required: false},
+          "type" => %{type: :string, required: false, enum: ["business", "personal"]},
+          "currency" => %{type: :string, required: false},
+          "archived" => %{type: :boolean, required: false}
+        }
+      },
+      delete_entry("wallet_delete", "Delete a wallet and its transactions."),
+      %{
+        name: "wallet_list_transactions",
+        type: :read,
+        tier: :safe,
+        description: "List a wallet's ledger transactions.",
+        args: %{"wallet_id" => %{type: :integer, required: true}}
+      },
+      %{
+        name: "wallet_add_transaction",
+        type: :mutate,
+        tier: :restricted,
+        description: "Add an income or expense transaction to a wallet's ledger.",
+        args: %{
+          "wallet_id" => %{type: :integer, required: true},
+          "kind" => %{type: :string, required: true, enum: ["income", "expense"]},
+          "amount_cents" => %{type: :integer, required: true},
+          "category" => %{type: :string, required: false},
+          "description" => %{type: :string, required: false},
+          "occurred_on" => %{type: :string, required: false},
+          "source" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "wallet_set_budget",
+        type: :mutate,
+        tier: :restricted,
+        description: "Set (or update) a wallet's monthly budget targets.",
+        args: %{
+          "wallet_id" => %{type: :integer, required: true},
+          "month" => %{type: :string, required: true},
+          "income_target_cents" => %{type: :integer, required: false},
+          "expense_target_cents" => %{type: :integer, required: false},
+          "savings_target_cents" => %{type: :integer, required: false}
+        }
+      },
+      %{
+        name: "wallet_budget_summary",
+        type: :read,
+        tier: :safe,
+        description: "Budget actuals vs. targets for a wallet/month.",
+        args: %{
+          "wallet_id" => %{type: :integer, required: true},
+          "month" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "wallet_feed_list",
+        type: :read,
+        tier: :safe,
+        description: "List a wallet's external polling feeds.",
+        args: %{"wallet_id" => %{type: :integer, required: true}}
+      },
+      %{
+        name: "wallet_feed_create",
+        type: :mutate,
+        tier: :restricted,
+        description: "Add a polling feed (market/url/integration/gmail) to a wallet.",
+        args: %{
+          "wallet_id" => %{type: :integer, required: true},
+          "kind" => %{
+            type: :string,
+            required: true,
+            enum: ["market", "url", "integration", "gmail"]
+          },
+          "config" => %{type: :map, required: false},
+          "polling_interval_minutes" => %{type: :integer, required: false, default: 60},
+          "enabled" => %{type: :boolean, required: false, default: true}
+        }
+      },
+      %{
+        name: "wallet_feed_update",
+        type: :mutate,
+        tier: :restricted,
+        description: "Update a wallet feed.",
+        args: %{
+          "id" => %{type: :integer, required: true},
+          "config" => %{type: :map, required: false},
+          "polling_interval_minutes" => %{type: :integer, required: false},
+          "enabled" => %{type: :boolean, required: false}
+        }
+      },
+      delete_entry("wallet_feed_delete", "Delete a wallet feed."),
+      id_trigger_entry("wallet_poll", "Poll a wallet's external feeds now.", :restricted),
 
       # Google Workspace accounts
       list_entry("google_account_list", "List configured Google Workspace accounts."),
@@ -496,8 +609,7 @@ defmodule BusterClaw.Commands do
         name: "drive_download",
         type: :read,
         tier: :safe,
-        description:
-          "Download a Drive file's bytes into the workspace. Returns the saved path.",
+        description: "Download a Drive file's bytes into the workspace. Returns the saved path.",
         args: %{
           "account_id" => %{type: :integer, required: false},
           "email" => %{type: :string, required: false},
@@ -548,7 +660,11 @@ defmodule BusterClaw.Commands do
             required: true,
             description: "Local file path (workspace-relative or absolute) to upload."
           },
-          "name" => %{type: :string, required: false, description: "Drive file name; defaults to the basename."},
+          "name" => %{
+            type: :string,
+            required: false,
+            description: "Drive file name; defaults to the basename."
+          },
           "parent_id" => %{type: :string, required: false},
           "content_type" => %{type: :string, required: false}
         }
@@ -591,7 +707,11 @@ defmodule BusterClaw.Commands do
           "account_id" => %{type: :integer, required: false},
           "email" => %{type: :string, required: false},
           "file_id" => %{type: :string, required: true},
-          "role" => %{type: :string, required: true, description: "reader/commenter/writer/owner."},
+          "role" => %{
+            type: :string,
+            required: true,
+            description: "reader/commenter/writer/owner."
+          },
           "type" => %{type: :string, required: true, description: "user/group/domain/anyone."},
           "grantee_email" => %{type: :string, required: false},
           "notify" => %{type: :boolean, required: false, default: false},
@@ -729,7 +849,11 @@ defmodule BusterClaw.Commands do
           "account_id" => %{type: :integer, required: false},
           "email" => %{type: :string, required: false},
           "spreadsheet_id" => %{type: :string, required: true},
-          "requests" => %{type: :array, required: true, description: "Google Sheets request list."}
+          "requests" => %{
+            type: :array,
+            required: true,
+            description: "Google Sheets request list."
+          }
         }
       },
 
@@ -765,7 +889,11 @@ defmodule BusterClaw.Commands do
           "account_id" => %{type: :integer, required: false},
           "email" => %{type: :string, required: false},
           "presentation_id" => %{type: :string, required: true},
-          "requests" => %{type: :array, required: true, description: "Google Slides request list."}
+          "requests" => %{
+            type: :array,
+            required: true,
+            description: "Google Slides request list."
+          }
         }
       },
 
@@ -885,6 +1013,14 @@ defmodule BusterClaw.Commands do
             description: "Override the saved filename (defaults to the server/URL name)."
           }
         }
+      },
+      %{
+        name: "browser_screenshot",
+        type: :trigger,
+        tier: :restricted,
+        description:
+          "Capture a PNG of the active browser tab the user is currently viewing, saved into the workspace. Returns the path + URL. Requires the desktop app to be open.",
+        args: %{}
       },
 
       # Finance (read-only research; every result carries source + as-of)
@@ -1285,7 +1421,8 @@ defmodule BusterClaw.Commands do
 
   for {prefix, context, ctx_singular, ctx_plural} <- [
         {:event, Calendar, :event, :events},
-        {:integration, Integrations, :integration, :integrations}
+        {:integration, Integrations, :integration, :integrations},
+        {:wallet, Wallets, :wallet, :wallets}
       ] do
     list_fn = :"list_#{ctx_plural}"
     get_fn = :"get_#{ctx_singular}!"
@@ -1356,6 +1493,64 @@ defmodule BusterClaw.Commands do
           {:ok, Integrations.list_runs_for_integration(integration)}
         end)
     end
+  end
+
+  # -----------------------------------------------------------------------
+  # Wallets (ledger transactions + budgets; CRUD comes from the auto-loop)
+  # -----------------------------------------------------------------------
+
+  def wallet_list_transactions(%{"wallet_id" => wallet_id}) do
+    with_resource(Wallets, :get_wallet!, wallet_id, fn wallet ->
+      {:ok, Wallets.list_transactions(wallet)}
+    end)
+  end
+
+  def wallet_add_transaction(%{"wallet_id" => wallet_id} = args) do
+    with_resource(Wallets, :get_wallet!, wallet_id, fn wallet ->
+      Wallets.add_transaction(wallet, Map.delete(args, "wallet_id"))
+    end)
+  end
+
+  def wallet_set_budget(%{"wallet_id" => wallet_id} = args) do
+    with_resource(Wallets, :get_wallet!, wallet_id, fn wallet ->
+      Wallets.upsert_budget(wallet, Map.delete(args, "wallet_id"))
+    end)
+  end
+
+  def wallet_budget_summary(%{"wallet_id" => wallet_id, "month" => month}) do
+    with_resource(Wallets, :get_wallet!, wallet_id, fn wallet ->
+      {:ok, Wallets.budget_summary(wallet, month)}
+    end)
+  end
+
+  def wallet_feed_list(%{"wallet_id" => wallet_id}) do
+    with_resource(Wallets, :get_wallet!, wallet_id, fn wallet ->
+      {:ok, Wallets.list_feeds(wallet)}
+    end)
+  end
+
+  def wallet_feed_create(%{"wallet_id" => wallet_id} = args) do
+    with_resource(Wallets, :get_wallet!, wallet_id, fn wallet ->
+      Wallets.create_feed(wallet, Map.delete(args, "wallet_id"))
+    end)
+  end
+
+  def wallet_feed_update(%{"id" => id} = args) do
+    with_resource(Wallets, :get_feed!, id, fn feed ->
+      Wallets.update_feed(feed, Map.delete(args, "id"))
+    end)
+  end
+
+  def wallet_feed_delete(%{"id" => id}) do
+    with_resource(Wallets, :get_feed!, id, fn feed ->
+      Wallets.delete_feed(feed)
+    end)
+  end
+
+  def wallet_poll(%{"id" => id}) do
+    with_resource(Wallets, :get_wallet!, id, fn wallet ->
+      {:ok, %{results: length(Wallets.poll_wallet_feeds(wallet))}}
+    end)
   end
 
   # -----------------------------------------------------------------------
@@ -1500,8 +1695,12 @@ defmodule BusterClaw.Commands do
     event_id = Map.get(args, "event_id") || Map.get(args, "id")
 
     cond do
-      event_id in [nil, ""] -> {:error, :missing_event_id}
-      not is_map(event) -> {:error, :missing_event}
+      event_id in [nil, ""] ->
+        {:error, :missing_event_id}
+
+      not is_map(event) ->
+        {:error, :missing_event}
+
       true ->
         with_google_account(args, fn account ->
           BusterClaw.Google.Calendar.update_event(
@@ -1883,6 +2082,10 @@ defmodule BusterClaw.Commands do
 
   def browser_download(_args), do: {:error, :missing_url}
 
+  def browser_screenshot(_args \\ %{}) do
+    BusterClaw.Browser.Capture.request()
+  end
+
   # -----------------------------------------------------------------------
   # Finance (read-only research)
   # -----------------------------------------------------------------------
@@ -2261,9 +2464,14 @@ defmodule BusterClaw.Commands do
     requests = Map.get(args, "requests")
 
     cond do
-      Map.get(args, id_key) in [nil, ""] -> {:error, id_error}
-      not is_list(requests) or requests == [] -> {:error, :missing_requests}
-      true -> with_google_account(args, fn account -> fun.(account, Map.get(args, id_key), requests) end)
+      Map.get(args, id_key) in [nil, ""] ->
+        {:error, id_error}
+
+      not is_list(requests) or requests == [] ->
+        {:error, :missing_requests}
+
+      true ->
+        with_google_account(args, fn account -> fun.(account, Map.get(args, id_key), requests) end)
     end
   end
 
@@ -2388,6 +2596,7 @@ defmodule BusterClaw.Commands do
   end
 
   defp put_person_field(person, _key, value) when value in [nil, ""], do: person
+
   defp put_person_field(person, "emailAddresses", value),
     do: Map.put(person, "emailAddresses", [%{"value" => value}])
 

@@ -57,6 +57,7 @@ defmodule BusterClawWeb do
       # live_render children, which is how the embedded flag reaches them.
       on_mount BusterClawWeb.ChromeHook
       on_mount BusterClawWeb.TerminalWorkspaceHook
+      on_mount BusterClawWeb.BrowserCaptureHook
 
       unquote(html_helpers())
     end

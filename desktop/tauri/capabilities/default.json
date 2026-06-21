@@ -20,6 +20,7 @@
     "allow-browser-forward",
     "allow-browser-reload",
     "allow-browser-hide",
-    "allow-browser-close"
+    "allow-browser-close",
+    "allow-browser-screenshot"
   ]
 }

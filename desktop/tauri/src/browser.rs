@@ -242,6 +242,121 @@ pub fn browser_close(app: AppHandle, state: State<BrowserState>) -> Result<(), S
     Ok(())
 }
 
+/// Capture the active content tab as a PNG. Returns base64-encoded bytes plus the
+/// tab's current URL, so the agent gets a screenshot of what the user is viewing.
+/// macOS path uses WKWebView's in-process `-takeSnapshot…` — no Screen-Recording
+/// permission prompt. Errors if no browser tab is open.
+#[tauri::command]
+pub fn browser_screenshot(
+    app: AppHandle,
+    state: State<BrowserState>,
+) -> Result<Screenshot, String> {
+    let id = state.get().ok_or_else(|| "no active browser tab".to_string())?;
+    let webview = app
+        .get_webview(&content_label(&id))
+        .ok_or_else(|| "active tab webview missing".to_string())?;
+
+    let url = webview.url().map(|u| u.to_string()).unwrap_or_default();
+    let png = capture_webview(&webview)?;
+
+    use base64::Engine as _;
+    Ok(Screenshot {
+        data: base64::engine::general_purpose::STANDARD.encode(png),
+        url,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct Screenshot {
+    /// Base64-encoded PNG bytes of the active tab.
+    pub data: String,
+    /// The active tab's current URL.
+    pub url: String,
+}
+
+// WKWebView snapshot is async (completion handler); bridge it back to this
+// (worker-thread) command over a channel. `with_webview` runs the closure on the
+// main thread, which is free to fire the completion while we block on `recv`.
+#[cfg(target_os = "macos")]
+fn capture_webview(webview: &tauri::Webview) -> Result<Vec<u8>, String> {
+    use block::ConcreteBlock;
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+    use std::sync::mpsc::channel;
+    use std::time::Duration;
+
+    let (tx, rx) = channel::<Result<Vec<u8>, String>>();
+
+    webview
+        .with_webview(move |pw| {
+            let wk = pw.inner() as *mut Object;
+            if wk.is_null() {
+                let _ = tx.send(Err("null webview handle".into()));
+                return;
+            }
+
+            let tx_block = tx.clone();
+            let completion = ConcreteBlock::new(move |image: *mut Object, _err: *mut Object| {
+                let result = if image.is_null() {
+                    Err("snapshot returned nil".to_string())
+                } else {
+                    unsafe { nsimage_to_png(image) }
+                };
+                let _ = tx_block.send(result);
+            });
+            // Move the block to the heap; WKWebView copies/retains it for the
+            // duration of the async call, so it outlives this closure.
+            let completion = completion.copy();
+
+            unsafe {
+                let nil: *mut Object = std::ptr::null_mut();
+                let _: () = msg_send![
+                    wk,
+                    takeSnapshotWithConfiguration: nil
+                    completionHandler: &*completion
+                ];
+            }
+        })
+        .map_err(|e| e.to_string())?;
+
+    match rx.recv_timeout(Duration::from_secs(8)) {
+        Ok(result) => result,
+        Err(_) => Err("screenshot timed out".into()),
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn nsimage_to_png(image: *mut objc::runtime::Object) -> Result<Vec<u8>, String> {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+
+    let tiff: *mut Object = msg_send![image, TIFFRepresentation];
+    if tiff.is_null() {
+        return Err("no TIFF representation".into());
+    }
+    let rep: *mut Object = msg_send![class!(NSBitmapImageRep), imageRepWithData: tiff];
+    if rep.is_null() {
+        return Err("no bitmap representation".into());
+    }
+    let props: *mut Object = msg_send![class!(NSDictionary), dictionary];
+    // NSBitmapImageFileType.png == 4
+    let png: *mut Object = msg_send![rep, representationUsingType: 4u64 properties: props];
+    if png.is_null() {
+        return Err("PNG encoding failed".into());
+    }
+    let len: usize = msg_send![png, length];
+    let bytes: *const u8 = msg_send![png, bytes];
+    if bytes.is_null() || len == 0 {
+        return Err("empty PNG data".into());
+    }
+    Ok(std::slice::from_raw_parts(bytes, len).to_vec())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn capture_webview(_webview: &tauri::Webview) -> Result<Vec<u8>, String> {
+    Err("browser_screenshot is only supported on macOS".into())
+}
+
 // --- internals ----------------------------------------------------------
 
 // Show one content tab, hide every other; (re)position the shown one.

@@ -278,7 +278,8 @@ fn main() {
             browser::browser_switch_tab,
             browser::browser_close_tab,
             browser::browser_hide,
-            browser::browser_close
+            browser::browser_close,
+            browser::browser_screenshot
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

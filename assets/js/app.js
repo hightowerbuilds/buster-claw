@@ -356,6 +356,35 @@ function openTerminalSplit(currentPath, side, labels = {}) {
 }
 
 const Hooks = {
+  // Always-mounted bridge (layout header). When the agent requests a screenshot,
+  // Phoenix pushes "bc:screenshot_request"; we invoke the Tauri browser_screenshot
+  // command for the active tab and POST the PNG (base64) back to /browser/screenshot,
+  // correlated by ref. Outside the desktop app there's no Tauri → report an error so
+  // the waiting command fails fast instead of timing out.
+  ScreenshotBridge: {
+    mounted() {
+      this.handleEvent("bc:screenshot_request", async ({ref}) => {
+        const invoke = window.__TAURI__?.core?.invoke
+        if (!invoke) {
+          this.report(ref, {error: "desktop app required for screenshots"})
+          return
+        }
+        try {
+          const shot = await invoke("browser_screenshot")
+          this.report(ref, {url: shot.url, data: shot.data})
+        } catch (e) {
+          this.report(ref, {error: String(e).slice(0, 200)})
+        }
+      })
+    },
+    report(ref, payload) {
+      fetch("/browser/screenshot", {
+        method: "POST",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify({ref, ...payload}),
+      }).catch(() => {})
+    },
+  },
   // Homepage chat: keep the transcript scrolled to the newest message, and make
   // Enter submit the message (Shift+Enter inserts a newline). The textarea is
   // cleared optimistically on submit; the user echo comes back over PubSub.

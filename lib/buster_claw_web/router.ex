@@ -29,6 +29,7 @@ defmodule BusterClawWeb.Router do
       live "/split", SplitLive, :index
       live "/terminal", TerminalLive, :index
       live "/calendar", CalendarLive, :index
+      live "/wallets", WalletsLive, :index
       live "/gws", GWSLive, :index
       live "/integrations", IntegrationsLive, :index
       live "/security", SecurityLive, :index
@@ -65,6 +66,7 @@ defmodule BusterClawWeb.Router do
     post "/history", BrowserHistoryController, :create
     post "/bookmarks", BrowserBookmarkController, :create
     post "/bookmarks/remove", BrowserBookmarkController, :delete
+    post "/screenshot", BrowserScreenshotController, :create
   end
 
   # Loopback JSON for the in-app browser's financial-informant.html page (its

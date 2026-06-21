@@ -31,6 +31,12 @@ defmodule BusterClawWeb.Layouts do
       icon: "hero-calendar-days",
       image: "/images/brand/calendar-icon.png"
     },
+    # No brand PNG yet — the dock falls back to the text label (see render below).
+    %{
+      label: "Wallets",
+      path: "/wallets",
+      icon: "hero-wallet"
+    },
     %{
       label: "Settings",
       path: "/appearance",
@@ -134,6 +140,9 @@ defmodule BusterClawWeb.Layouts do
           class="flex min-h-9 items-end gap-1 overflow-x-auto border-b border-base-300 bg-base-200/80 px-2 pt-1 backdrop-blur"
         >
         </div>
+        <%!-- Invisible bridge: invokes the Tauri browser_screenshot command when
+             the agent requests a capture, then POSTs the PNG back. --%>
+        <div id="screenshot-bridge" phx-hook="ScreenshotBridge" phx-update="ignore" hidden></div>
       </header>
 
       <main class={[

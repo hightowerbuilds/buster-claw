@@ -30,11 +30,13 @@ defmodule BusterClaw.Application do
         {Phoenix.PubSub, name: BusterClaw.PubSub},
         dispatch_projector_child(),
         BusterClaw.TerminalWorkspace,
+        BusterClaw.Browser.Capture,
         BusterClaw.Sentinel.Pending,
         browser_sidecar_child(),
         orchestrator_child(),
         uptime_child(),
         dispatcher_child(),
+        wallet_poller_child(),
         agent_chat_child(),
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
@@ -133,6 +135,14 @@ defmodule BusterClaw.Application do
   defp dispatcher_child do
     if Application.get_env(:buster_claw, :dispatcher_enabled, true) do
       BusterClaw.Dispatcher
+    end
+  end
+
+  # The wallet feed polling pump (market/url/integration feeds + Gmail signals).
+  # Off in tests (they drive a WalletPoller instance with injected fetchers).
+  defp wallet_poller_child do
+    if Application.get_env(:buster_claw, :wallet_poller_enabled, true) do
+      BusterClaw.WalletPoller
     end
   end
 
