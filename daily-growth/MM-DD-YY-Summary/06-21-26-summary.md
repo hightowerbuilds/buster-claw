@@ -375,8 +375,48 @@ turn) — which maps cleanly onto the Tetris metaphor.
   `--input-format stream-json` session, for real per-thinking-block timers) is a
   deferred spike against an undocumented protocol.
 
+## Fourth session — browser bookmarking (Stages 1–3)
+
+Shifted from chat to the **embedded browser's bookmarks** — the surface a prior browser
+review graded C− (a dense text list: no hierarchy, no categories, no favicons, no agent
+commands). Worked the four-stage roadmap
+(`daily-growth/roadmaps/06-21-26-browser-bookmarking-roadmap.md`); shipped the first
+three, deferred Stage 4 (the chrome bookmark bar) as the explicit lowest priority.
+
+- **Stage 1 — tags + agent commands (`88691c2`).** `Bookmarks.add/3` stores a normalized
+  tag list (downcased/trimmed/deduped; accepts a list or a comma-string); `list/1` filters
+  by `tag:`. Three commands on the surface — `bookmark_add` (restricted), `bookmark_list`
+  (safe), `bookmark_remove` (restricted) — so an agent can save findings directly. The
+  browser bookmark controller parses a `tags` param; the homepage renders tag chips.
+  Backward-compatible with untagged entries.
+- **Stage 2 — favicons + card-grid homepage (`c35beb9`).** Each bookmark stores a
+  host-derived `favicon_url` (Google's `s2/favicons` service — reliable, no server-side
+  fetch / SSRF surface, serves its own globe fallback). The homepage's `<ul>` became a
+  responsive **card grid**: favicon + bold label + hostname + tag chips, hover lift, and a
+  remove button that fades in on hover. Old faviconless entries derive an icon at render
+  time. Friendlier empty state.
+- **Stage 3 — homepage search + tag filter (this session).** A search box + clickable
+  tag-filter chips above the grid, filtering **client-side** (no server round-trip): cards
+  carry `data-search` (label+url+tags) and `data-tags`; an inline `<script>` does substring
+  search AND tag-toggle, with a Clear link and a "no matches" line. Safe to inline here —
+  `/browser/home` has **no `pipe_through`**, so the CSP plug never runs on it (which is also
+  why the existing inline `<style>` works). Controls render only when bookmarks exist.
+
+### Verification (fourth session)
+
+- `mix test` — **656 tests, 0 failures** (was 651). New coverage: bookmark tag
+  normalization/filtering + favicon derivation (`bookmarks_test.exs`), and the homepage
+  controller rendering cards, favicons, tag chips, and the search/filter controls (present
+  with bookmarks, absent without).
+- **Still unverified by me** (needs the running app the user drives): the live look of the
+  card grid, real favicons loading in the webview, and the search/tag-filter interaction.
+- **Deferred:** Stage 4 — a persistent bookmark bar in the chrome toolbar
+  (`browser_chrome_controller.ex`), the roadmap's own lowest priority.
+
 ## Notes
 
 - Roadmap + research artifacts live under `daily-growth/roadmaps/` and
   `daily-growth/research/`; `phase0-synthesis.md` is the decision record to read first.
 - Chat-harness roadmap + phase status: `docs/chat-roadmap.md`.
+- Browser-bookmarking roadmap + stage status:
+  `daily-growth/roadmaps/06-21-26-browser-bookmarking-roadmap.md`.

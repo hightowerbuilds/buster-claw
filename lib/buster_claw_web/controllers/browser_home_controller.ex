@@ -76,17 +76,123 @@ defmodule BusterClawWeb.BrowserHomeController do
       .tag { font: 600 10px/1 ui-monospace, monospace; padding: 3px 7px;
              background: rgba(255,77,28,.18); color: #ff4d1c; border-radius: 3px;
              text-transform: uppercase; letter-spacing: .04em; }
+
+      /* Search + tag filters */
+      .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+                  margin: 14px 0 0; max-width: 60rem; }
+      #search { flex: 1 1 220px; min-width: 180px; padding: 9px 12px;
+                background: rgba(244,241,234,.04); border: 1px solid rgba(244,241,234,.16);
+                border-radius: 6px; color: #f4f1ea; font: 14px/1 -apple-system, system-ui, sans-serif; }
+      #search:focus { outline: none; border-color: rgba(255,77,28,.6); }
+      #search::placeholder { color: rgba(244,241,234,.4); }
+      .filters { display: flex; flex-wrap: wrap; gap: 6px; }
+      .filter { cursor: pointer; border: 1px solid rgba(255,77,28,.35); background: transparent;
+                color: #ff4d1c; font: 600 10px/1 ui-monospace, monospace; padding: 4px 8px;
+                border-radius: 3px; text-transform: uppercase; letter-spacing: .04em;
+                transition: background .12s ease; }
+      .filter:hover { background: rgba(255,77,28,.12); }
+      .filter[aria-pressed="true"] { background: #ff4d1c; color: #121212; border-color: #ff4d1c; }
+      #clear { background: transparent; border: 0; cursor: pointer; padding: 4px 6px;
+               color: rgba(244,241,234,.5); font: 12px/1 -apple-system, system-ui, sans-serif;
+               text-decoration: underline; }
+      #clear:hover { color: #ff4d1c; }
+      #clear[hidden] { display: none; }
+      .nomatch { color: rgba(244,241,234,.55); margin: 14px 0 0; }
+      .nomatch[hidden] { display: none; }
     </style>
     </head>
     <body>
       <p class="eyebrow">Browser</p>
       <h1>Home</h1>
       <h2>Bookmarks</h2>
+      #{controls(bookmarks)}
       #{bookmarks_body(bookmarks)}
+      <p class="nomatch" id="nomatch" hidden>No bookmarks match.</p>
       <h2>Recent</h2>
       #{recent_body(history)}
+      #{script(bookmarks)}
     </body>
     </html>
+    """
+  end
+
+  # Search box + tag-filter chips. Rendered only when there are bookmarks; the
+  # filtering itself is pure client-side JS (see script/1) over the rendered cards.
+  defp controls([]), do: ""
+
+  defp controls(entries) do
+    tags =
+      entries
+      |> Enum.flat_map(&List.wrap(&1["tags"]))
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    chips =
+      Enum.map_join(tags, "", fn t ->
+        ~s(<button type="button" class="filter" data-tag="#{escape(t)}" aria-pressed="false">#{escape(t)}</button>)
+      end)
+
+    filters = if chips == "", do: "", else: ~s(<div class="filters">#{chips}</div>)
+
+    """
+    <div class="controls">
+      <input type="search" id="search" placeholder="Search bookmarks…" autocomplete="off" />
+      #{filters}
+      <button type="button" id="clear" hidden>Clear</button>
+    </div>
+    """
+  end
+
+  defp script([]), do: ""
+
+  defp script(_entries) do
+    """
+    <script>
+    (function () {
+      var search = document.getElementById("search");
+      var clear = document.getElementById("clear");
+      var nomatch = document.getElementById("nomatch");
+      var cards = Array.prototype.slice.call(document.querySelectorAll(".card"));
+      var filters = Array.prototype.slice.call(document.querySelectorAll(".filter"));
+      var activeTag = null;
+
+      function apply() {
+        var q = (search.value || "").trim().toLowerCase();
+        var shown = 0;
+        cards.forEach(function (card) {
+          var hay = card.getAttribute("data-search") || "";
+          var tags = (card.getAttribute("data-tags") || "").split(" ");
+          var matchText = !q || hay.indexOf(q) !== -1;
+          var matchTag = !activeTag || tags.indexOf(activeTag) !== -1;
+          var show = matchText && matchTag;
+          card.style.display = show ? "" : "none";
+          if (show) shown++;
+        });
+        nomatch.hidden = shown !== 0;
+        clear.hidden = !q && !activeTag;
+      }
+
+      search.addEventListener("input", apply);
+
+      filters.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var tag = btn.getAttribute("data-tag");
+          activeTag = activeTag === tag ? null : tag;
+          filters.forEach(function (b) {
+            b.setAttribute("aria-pressed", b.getAttribute("data-tag") === activeTag ? "true" : "false");
+          });
+          apply();
+        });
+      });
+
+      clear.addEventListener("click", function () {
+        search.value = "";
+        activeTag = null;
+        filters.forEach(function (b) { b.setAttribute("aria-pressed", "false"); });
+        apply();
+      });
+    })();
+    </script>
     """
   end
 
@@ -103,16 +209,22 @@ defmodule BusterClawWeb.BrowserHomeController do
         raw_url = e["url"]
         url = escape(raw_url)
         label = escape(e["label"] || raw_url)
+        tags = List.wrap(e["tags"])
         host = escape(host(raw_url))
         favicon = e["favicon_url"] || Bookmarks.favicon_url(raw_url)
-        tags_html = tags_body(e["tags"])
+        tags_html = tags_body(tags)
+
+        haystack =
+          [e["label"], raw_url | tags]
+          |> Enum.map_join(" ", &to_string/1)
+          |> String.downcase()
 
         fav_html =
           if favicon,
             do: ~s(<img class="fav" src="#{escape(favicon)}" alt="" loading="lazy" />),
             else: ~s(<span class="fav"></span>)
 
-        ~s(<div class="card">) <>
+        ~s(<div class="card" data-search="#{escape(haystack)}" data-tags="#{escape(Enum.join(tags, " "))}">) <>
           ~s(<a href="#{url}">) <>
           ~s(<div class="head">#{fav_html}<span class="label">#{label}</span></div>) <>
           ~s(<div class="host">#{host}</div>#{tags_html}) <>
