@@ -22,15 +22,13 @@ defmodule BusterClaw.Agent.ChatTest do
     end
   end
 
+  # Start a per-conversation chat process registered under a unique conv_id, and
+  # subscribe to its topic. Returns the conv_id used to address it.
   defp start_chat(spawner, opts \\ []) do
     conv_id = "test-#{System.unique_integer([:positive])}"
-    name = :"chat_#{System.unique_integer([:positive])}"
     Chat.subscribe(conv_id)
-
-    {:ok, pid} =
-      Chat.start_link([conv_id: conv_id, name: name, spawner: spawner] ++ opts)
-
-    {pid, conv_id}
+    {:ok, _pid} = Chat.start_link([conv_id: conv_id, spawner: spawner] ++ opts)
+    conv_id
   end
 
   defp text_event(t),
@@ -60,28 +58,29 @@ defmodule BusterClaw.Agent.ChatTest do
         ]
       end)
 
-    {pid, _conv} = start_chat(scripting_spawner(self(), scripts))
+    conv = start_chat(scripting_spawner(self(), scripts))
 
-    assert :ok = Chat.send_message(pid, "work the queue")
+    assert :ok = Chat.send_message(conv, "work the queue")
 
-    assert_receive {:agent_chat, {:message, %{role: :user, text: "work the queue"}}}
-    assert_receive {:agent_chat, {:status, :running}}
-    assert_receive {:agent_chat, {:message, %{role: :assistant, text: "On it."}}}
-    assert_receive {:agent_chat,
+    assert_receive {:agent_chat, ^conv, {:message, %{role: :user, text: "work the queue"}}}
+    assert_receive {:agent_chat, ^conv, {:status, :running}}
+    assert_receive {:agent_chat, ^conv, {:message, %{role: :assistant, text: "On it."}}}
+
+    assert_receive {:agent_chat, ^conv,
                     {:message, %{role: :tool, text: "Bash: ./buster-claw dispatch list"}}}
 
-    assert_receive {:agent_chat, {:message, %{role: :meta, text: "3 turns · $0.012"}}}
-    assert_receive {:agent_chat, {:status, :idle}}
+    assert_receive {:agent_chat, ^conv, {:message, %{role: :meta, text: "3 turns · $0.012"}}}
+    assert_receive {:agent_chat, ^conv, {:status, :idle}}
   end
 
   test "rejects a second message while a run is in flight" do
     # A spawner that returns a live port but never finishes, so status stays running.
     spawner = fn _prompt, _opts -> {:ok, make_ref()} end
-    {pid, _conv} = start_chat(spawner)
+    conv = start_chat(spawner)
 
-    assert :ok = Chat.send_message(pid, "first")
-    assert :running = Chat.status(pid)
-    assert {:error, :busy} = Chat.send_message(pid, "second")
+    assert :ok = Chat.send_message(conv, "first")
+    assert :running = Chat.status(conv)
+    assert {:error, :busy} = Chat.send_message(conv, "second")
   end
 
   test "captures the session id and resumes on the next message" do
@@ -93,14 +92,14 @@ defmodule BusterClaw.Agent.ChatTest do
         ]
       end)
 
-    {pid, _conv} = start_chat(scripting_spawner(self(), scripts))
+    conv = start_chat(scripting_spawner(self(), scripts))
 
-    assert :ok = Chat.send_message(pid, "hello")
+    assert :ok = Chat.send_message(conv, "hello")
     assert_receive {:spawned, "hello", first_opts}
     refute "--resume" in Keyword.fetch!(first_opts, :extra_args)
-    assert_receive {:agent_chat, {:status, :idle}}
+    assert_receive {:agent_chat, ^conv, {:status, :idle}}
 
-    assert :ok = Chat.send_message(pid, "again")
+    assert :ok = Chat.send_message(conv, "again")
     assert_receive {:spawned, "again", second_opts}
     extra = Keyword.fetch!(second_opts, :extra_args)
     assert "--resume" in extra
@@ -109,24 +108,53 @@ defmodule BusterClaw.Agent.ChatTest do
 
   test "a hung run is killed and reported as a timeout" do
     spawner = fn _prompt, _opts -> {:ok, make_ref()} end
-    {pid, _conv} = start_chat(spawner, timeout_ms: 30)
+    conv = start_chat(spawner, timeout_ms: 30)
 
-    assert :ok = Chat.send_message(pid, "hang")
-    assert_receive {:agent_chat, {:message, %{role: :error, text: "The run timed out" <> _}}}, 500
-    assert_receive {:agent_chat, {:status, :idle}}
-    assert :idle = Chat.status(pid)
+    assert :ok = Chat.send_message(conv, "hang")
+    assert_receive {:agent_chat, ^conv, {:message, %{role: :error, text: "The run timed out" <> _}}}, 500
+    assert_receive {:agent_chat, ^conv, {:status, :idle}}
+    assert :idle = Chat.status(conv)
   end
 
   test "reports an error when the agent cannot be launched" do
     spawner = fn _prompt, _opts -> {:error, :no_agent_cli} end
-    {pid, _conv} = start_chat(spawner)
+    conv = start_chat(spawner)
 
-    assert {:error, :no_agent_cli} = Chat.send_message(pid, "go")
-    assert_receive {:agent_chat, {:message, %{role: :user, text: "go"}}}
+    assert {:error, :no_agent_cli} = Chat.send_message(conv, "go")
+    assert_receive {:agent_chat, ^conv, {:message, %{role: :user, text: "go"}}}
 
-    assert_receive {:agent_chat,
+    assert_receive {:agent_chat, ^conv,
                     {:message, %{role: :error, text: "No agent CLI found." <> _}}}
 
-    assert :idle = Chat.status(pid)
+    assert :idle = Chat.status(conv)
+  end
+
+  test "two conversations run concurrently as separate, isolated processes" do
+    # A returns a result and goes idle; B is left running (never finishes).
+    finishing = fn _p, _o ->
+      chat = self()
+      port = make_ref()
+
+      spawn(fn ->
+        send(chat, {port, {:data, Jason.encode!(%{"type" => "result", "result" => "ok"}) <> "\n"}})
+        send(chat, {port, {:exit_status, 0}})
+      end)
+
+      {:ok, port}
+    end
+
+    hanging = fn _p, _o -> {:ok, make_ref()} end
+
+    a = start_chat(finishing)
+    b = start_chat(hanging)
+
+    assert :ok = Chat.send_message(a, "alpha")
+    assert :ok = Chat.send_message(b, "beta")
+
+    # A completes while B is still running — neither blocks the other.
+    assert_receive {:agent_chat, ^a, {:status, :idle}}, 1000
+    assert a != b
+    assert :idle = Chat.status(a)
+    assert :running = Chat.status(b)
   end
 end

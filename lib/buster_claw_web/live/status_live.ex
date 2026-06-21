@@ -3,6 +3,7 @@ defmodule BusterClawWeb.StatusLive do
 
   alias BusterClaw.ActivityReport
   alias BusterClaw.Agent.Chat
+  alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
   alias BusterClaw.Bookmarks
   alias BusterClaw.Calendar, as: AppCalendar
@@ -19,7 +20,6 @@ defmodule BusterClawWeb.StatusLive do
 
     if connected?(socket) do
       Dispatch.subscribe()
-      Chat.subscribe()
       Sentinel.subscribe()
     end
 
@@ -33,11 +33,27 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:bookmarks, Bookmarks.list())
      |> assign(:home_tab, "get-started")
      |> assign(:activity_grain, "week")
-     |> assign(:chat_running, false)
-     |> load_chat_history()
+     |> init_chats()
      |> assign_activity()
      |> load_daily_events()}
   end
+
+  # Load the open conversations (tabs), subscribe to each so background runs update
+  # the tab badges, and show the most recent one's transcript.
+  defp init_chats(socket) do
+    chats = Conversations.list() |> Enum.map(&to_chat_tab/1)
+    active = (List.first(chats) || %{id: Chat.default_conv_id()}).id
+
+    if connected?(socket), do: Enum.each(chats, &Chat.subscribe(&1.id))
+
+    socket
+    |> assign(:chats, chats)
+    |> assign(:active_chat, active)
+    |> assign(:chat_running, Chat.running?(active))
+    |> load_chat_history(active)
+  end
+
+  defp to_chat_tab(conv), do: %{id: conv.id, title: conv.title, running: false, unread: false}
 
   defp assign_activity(socket),
     do: assign(socket, :activity, ActivityReport.timeline(socket.assigns.activity_grain))
@@ -81,31 +97,68 @@ defmodule BusterClawWeb.StatusLive do
 
   def handle_event("chat_send", %{"message" => text}, socket) do
     case String.trim(text) do
-      "" ->
-        {:noreply, socket}
-
-      trimmed ->
-        {:noreply, dispatch_chat(socket, trimmed)}
+      "" -> {:noreply, socket}
+      trimmed -> {:noreply, dispatch_chat(socket, trimmed)}
     end
   end
 
-  defp dispatch_chat(socket, text) do
-    # The user echo and all agent events arrive via the PubSub broadcast, so on
-    # success we don't append here (keeps every open tab consistent). Errors are
-    # appended inline as a persistent message rather than a transient flash, so
-    # they stay readable. `ensure_started/0` makes a dev refresh enough — no
-    # server restart needed to pick up the (live-reloaded) chat backend.
-    Chat.ensure_started()
+  def handle_event("select_chat", %{"id" => id}, socket),
+    do: {:noreply, activate_chat(socket, id)}
 
-    case Chat.send_message(text) do
+  def handle_event("new_chat", _params, socket) do
+    {:ok, conv} = Conversations.create()
+    if connected?(socket), do: Chat.subscribe(conv.id)
+
+    socket =
+      socket
+      |> assign(:chats, socket.assigns.chats ++ [to_chat_tab(conv)])
+      |> assign(:active_chat, conv.id)
+      |> assign(:chat_running, false)
+      |> assign(:chat_messages, [])
+      |> assign(:chat_seq, 0)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("close_chat", %{"id" => id}, socket) do
+    Chat.stop(id)
+    Conversations.close(id)
+    remaining = Enum.reject(socket.assigns.chats, &(&1.id == id))
+
+    socket =
+      cond do
+        # Always keep at least one chat open.
+        remaining == [] ->
+          {:ok, conv} = Conversations.create()
+          if connected?(socket), do: Chat.subscribe(conv.id)
+          socket |> assign(:chats, [to_chat_tab(conv)]) |> activate_chat(conv.id)
+
+        # Closing the active tab → switch to the first remaining.
+        socket.assigns.active_chat == id ->
+          socket |> assign(:chats, remaining) |> activate_chat(hd(remaining).id)
+
+        true ->
+          assign(socket, :chats, remaining)
+      end
+
+    {:noreply, socket}
+  end
+
+  defp dispatch_chat(socket, text) do
+    # The user echo and all agent events arrive via the active conversation's
+    # PubSub broadcast, so on success we don't append here. send_message/2 starts
+    # the conversation's process on demand (a dev refresh is enough). Errors are
+    # appended inline as a persistent message.
+    conv_id = socket.assigns.active_chat
+
+    case Chat.send_message(conv_id, text) do
       :ok ->
-        socket
+        maybe_autotitle(socket, conv_id, text)
 
       {:error, :busy} ->
-        push_msg(socket, :error, "Buster Claw is still working — wait for it to finish.")
+        push_msg(socket, :error, "This chat is still working — wait for it to finish.")
 
       {:error, :no_agent_cli} ->
-        # The Chat server already emitted an inline error message via broadcast.
         socket
 
       {:error, reason} ->
@@ -113,31 +166,70 @@ defmodule BusterClawWeb.StatusLive do
     end
   catch
     :exit, _reason ->
-      push_msg(
-        socket,
-        :error,
-        "Chat backend isn't running. Restart the server (stop mix phx.server and run it again) — the chat process is new since this server started."
-      )
+      push_msg(socket, :error, "Chat backend isn't running — restart the server.")
   end
 
   @impl true
   def handle_info({:dispatch, _event, _item}, socket), do: {:noreply, assign_activity(socket)}
   def handle_info({:security_event, _event}, socket), do: {:noreply, assign_activity(socket)}
-  def handle_info({:agent_chat, payload}, socket), do: {:noreply, apply_chat(socket, payload)}
+
+  def handle_info({:agent_chat, conv_id, payload}, socket),
+    do: {:noreply, apply_chat(socket, conv_id, payload)}
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  # --- chat transcript projection (from Chat's PubSub broadcasts) ---
+  # --- chat transcript projection (from each conversation's PubSub broadcasts) ---
   #
-  # Chat broadcasts display-ready `{:message, %{role:, text:}}` entries (it owns
-  # the formatting, so persistence and every tab agree), plus `{:status, _}`.
+  # A status/message for the ACTIVE conversation updates the rendered transcript;
+  # for a background conversation it only flips that tab's running/unread badge —
+  # which is what makes concurrent chats visible.
 
-  defp apply_chat(socket, {:status, status}),
-    do: assign(socket, :chat_running, status == :running)
+  defp apply_chat(socket, conv_id, {:status, status}) do
+    socket = update_tab(socket, conv_id, &%{&1 | running: status == :running})
+    if conv_id == socket.assigns.active_chat, do: assign(socket, :chat_running, status == :running), else: socket
+  end
 
-  defp apply_chat(socket, {:message, %{role: role, text: text}}),
-    do: push_msg(socket, role, text)
+  defp apply_chat(socket, conv_id, {:message, %{role: role, text: text}}) do
+    if conv_id == socket.assigns.active_chat do
+      push_msg(socket, role, text)
+    else
+      update_tab(socket, conv_id, &%{&1 | unread: true})
+    end
+  end
 
-  defp apply_chat(socket, _other), do: socket
+  defp apply_chat(socket, _conv_id, _other), do: socket
+
+  defp activate_chat(socket, id) do
+    Conversations.touch(id)
+
+    socket
+    |> assign(:active_chat, id)
+    |> assign(:chat_running, Chat.running?(id))
+    |> update_tab(id, &%{&1 | unread: false})
+    |> load_chat_history(id)
+  end
+
+  defp update_tab(socket, conv_id, fun) do
+    chats = Enum.map(socket.assigns.chats, fn c -> if c.id == conv_id, do: fun.(c), else: c end)
+    assign(socket, :chats, chats)
+  end
+
+  # Title a still-"New chat" conversation from its first user message.
+  defp maybe_autotitle(socket, conv_id, text) do
+    tab = Enum.find(socket.assigns.chats, &(&1.id == conv_id))
+
+    if tab && tab.title == Conversations.default_title() do
+      title = title_from(text)
+      Conversations.rename(conv_id, title)
+      update_tab(socket, conv_id, &%{&1 | title: title})
+    else
+      socket
+    end
+  end
+
+  defp title_from(text) do
+    text |> String.trim() |> String.replace(~r/\s+/, " ") |> String.slice(0, 40)
+  end
 
   defp push_msg(socket, role, text) do
     seq = socket.assigns.chat_seq + 1
@@ -148,9 +240,9 @@ defmodule BusterClawWeb.StatusLive do
     |> update(:chat_messages, &(&1 ++ [msg]))
   end
 
-  defp load_chat_history(socket) do
+  defp load_chat_history(socket, conv_id) do
     messages =
-      Chat.default_conv_id()
+      conv_id
       |> AgentTranscript.recent(limit: 50)
       |> Enum.with_index(1)
       |> Enum.map(fn {row, i} -> %{id: i, role: history_role(row.role), text: row.content} end)
@@ -219,11 +311,69 @@ defmodule BusterClawWeb.StatusLive do
               grain={@activity_grain}
             />
 
-            <.chat_panel messages={@chat_messages} running={@chat_running} />
+            <div class="flex min-h-0 flex-col gap-2 self-start">
+              <.chat_tabs chats={@chats} active={@active_chat} />
+              <.chat_panel messages={@chat_messages} running={@chat_running} />
+            </div>
           </div>
         </div>
       </section>
     </Layouts.app>
+    """
+  end
+
+  attr :chats, :list, required: true
+  attr :active, :string, required: true
+
+  defp chat_tabs(assigns) do
+    ~H"""
+    <div class="flex items-center gap-1 overflow-x-auto" role="tablist" aria-label="Chats">
+      <div
+        :for={c <- @chats}
+        role="tab"
+        aria-selected={to_string(c.id == @active)}
+        phx-click="select_chat"
+        phx-value-id={c.id}
+        class={[
+          "group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-sm border-2 px-2.5 py-1.5 text-xs transition",
+          if(c.id == @active,
+            do: "border-base-content/30 bg-base-200 text-base-content",
+            else: "border-base-content/15 bg-base-200/40 text-base-content/55 hover:text-base-content"
+          )
+        ]}
+      >
+        <span
+          :if={c.running}
+          class="size-2 shrink-0 animate-pulse rounded-full bg-primary"
+          title="Working"
+        >
+        </span>
+        <span
+          :if={c.unread and c.id != @active}
+          class="size-2 shrink-0 rounded-full bg-warning"
+          title="New messages"
+        >
+        </span>
+        <span class="max-w-[10rem] truncate font-medium">{c.title}</span>
+        <span
+          phx-click="close_chat"
+          phx-value-id={c.id}
+          title="Close chat"
+          class="ml-0.5 grid size-4 shrink-0 place-items-center rounded-sm text-base-content/40 hover:bg-base-content/15 hover:text-primary"
+        >
+          ×
+        </span>
+      </div>
+      <button
+        type="button"
+        phx-click="new_chat"
+        title="New chat"
+        aria-label="New chat"
+        class="grid size-7 shrink-0 place-items-center rounded-sm border-2 border-base-content/20 text-base-content/70 transition hover:border-primary hover:text-primary"
+      >
+        +
+      </button>
+    </div>
     """
   end
 
@@ -235,7 +385,7 @@ defmodule BusterClawWeb.StatusLive do
     <section
       id="home-agent-chat"
       phx-hook="AgentChat"
-      class="ic-panel flex h-[32rem] max-h-[90vh] min-h-0 flex-col self-start overflow-hidden"
+      class="ic-panel flex h-[32rem] max-h-[90vh] min-h-0 w-full flex-col overflow-hidden"
     >
       <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
         <div>

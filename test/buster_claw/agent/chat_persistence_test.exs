@@ -33,14 +33,13 @@ defmodule BusterClaw.Agent.ChatPersistenceTest do
     {:ok, _pid} =
       Chat.start_link(
         conv_id: conv_id,
-        name: :chat_audit,
         spawner: emit_spawner(scripts),
         persist: false,
         audit: true
       )
 
-    assert :ok = Chat.send_message(:chat_audit, "do it")
-    assert_receive {:agent_chat, {:status, :idle}}, 1000
+    assert :ok = Chat.send_message(conv_id, "do it")
+    assert_receive {:agent_chat, ^conv_id, {:status, :idle}}, 1000
 
     events = Sentinel.list_events()
     run = Enum.find(events, &(&1.message == "Chat agent run completed"))
@@ -80,10 +79,10 @@ defmodule BusterClaw.Agent.ChatPersistenceTest do
 
     conv_id = "persist-#{System.unique_integer([:positive])}"
     Chat.subscribe(conv_id)
-    {:ok, _pid} = Chat.start_link(conv_id: conv_id, name: :chat_persist, spawner: spawner, persist: true)
+    {:ok, _pid} = Chat.start_link(conv_id: conv_id, spawner: spawner, persist: true)
 
-    assert :ok = Chat.send_message(:chat_persist, "do it")
-    assert_receive {:agent_chat, {:status, :idle}}, 1000
+    assert :ok = Chat.send_message(conv_id, "do it")
+    assert_receive {:agent_chat, ^conv_id, {:status, :idle}}, 1000
 
     rows = Transcript.recent(conv_id)
     assert Enum.map(rows, &{&1.role, &1.content}) == [

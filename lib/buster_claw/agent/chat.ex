@@ -41,14 +41,21 @@ defmodule BusterClaw.Agent.Chat do
 
   @default_conv_id "default"
   @default_timeout_ms 10 * 60 * 1000
+  @registry BusterClaw.Agent.ChatRegistry
+  @supervisor BusterClaw.Agent.ChatSupervisor
 
   # --- Public API ---
 
-  def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
+  @doc """
+  Start a conversation's chat process. `conv_id` is required and the process
+  registers under it in `ChatRegistry`, so each conversation is its own process.
+  """
+  def start_link(opts) do
+    conv_id = Keyword.get(opts, :conv_id, @default_conv_id)
+    GenServer.start_link(__MODULE__, Keyword.put(opts, :conv_id, conv_id), name: via(conv_id))
   end
 
-  @doc "The default conversation id (the single shared homepage conversation)."
+  @doc "The default (seeded) conversation id."
   def default_conv_id, do: @default_conv_id
 
   @doc "The PubSub topic a conversation's events are broadcast on."
@@ -59,37 +66,71 @@ defmodule BusterClaw.Agent.Chat do
     do: PubSub.subscribe(BusterClaw.PubSub, topic(conv_id))
 
   @doc """
-  Send a user message. Spawns a headless run unless one is already in flight.
-  Returns `:ok`, `{:error, :busy}`, or `{:error, reason}` if the agent can't be
-  launched (e.g. `:no_agent_cli`).
+  Send a user message to a conversation, starting its process on demand. Spawns a
+  headless run unless one is already in flight. Returns `:ok`, `{:error, :busy}`,
+  or `{:error, reason}`.
   """
-  def send_message(server \\ __MODULE__, text) when is_binary(text),
-    do: GenServer.call(server, {:send, text})
+  def send_message(conv_id, text) when is_binary(conv_id) and is_binary(text) do
+    with {:ok, _pid} <- ensure_started(conv_id) do
+      GenServer.call(via(conv_id), {:send, text})
+    end
+  end
 
-  @doc "Current run status: `:idle` or `:running`."
-  def status(server \\ __MODULE__), do: GenServer.call(server, :status)
+  @doc "Current run status of a conversation: `:idle`, `:running`, or `:idle` if no process."
+  def status(conv_id) do
+    case whereis(conv_id) do
+      nil -> :idle
+      pid -> GenServer.call(pid, :status)
+    end
+  end
+
+  @doc "Whether a conversation currently has a run in flight."
+  def running?(conv_id), do: status(conv_id) == :running
 
   @doc """
-  Ensure the default (named) chat backend is running, returning `{:ok, pid}`.
-
-  In a freshly booted server it's already supervised, so this is a no-op. In dev,
-  Phoenix live-reload recompiles modules without starting *new* supervised
-  children, so the process may be absent after the chat code is added mid-session;
-  this adds it to the running supervision tree on demand (supervised, not linked
-  to the caller), so a plain refresh is enough — no server restart.
+  Ensure a conversation's chat process is running (started lazily under the
+  DynamicSupervisor), returning `{:ok, pid}`. Idempotent and race-safe.
   """
-  def ensure_started do
-    case Process.whereis(__MODULE__) do
+  def ensure_started(conv_id) when is_binary(conv_id) do
+    case whereis(conv_id) do
       pid when is_pid(pid) ->
         {:ok, pid}
 
       nil ->
-        case Supervisor.start_child(BusterClaw.Supervisor, __MODULE__) do
-          {:ok, pid} -> {:ok, pid}
-          {:error, {:already_started, pid}} -> {:ok, pid}
-          other -> other
+        try do
+          case DynamicSupervisor.start_child(@supervisor, {__MODULE__, conv_id: conv_id}) do
+            {:ok, pid} -> {:ok, pid}
+            {:error, {:already_started, pid}} -> {:ok, pid}
+            other -> other
+          end
+        catch
+          # The supervisor isn't running (e.g. the server started before this code
+          # was added — a restart is needed). Degrade instead of crashing.
+          :exit, _ -> {:error, :chat_unavailable}
         end
     end
+  end
+
+  @doc "Stop a conversation's chat process (e.g. when its tab is closed)."
+  def stop(conv_id) do
+    case whereis(conv_id) do
+      nil -> :ok
+      pid -> DynamicSupervisor.terminate_child(@supervisor, pid)
+    end
+  end
+
+  defp via(conv_id), do: {:via, Registry, {@registry, conv_id}}
+
+  # Returns the conversation's pid, or nil if it isn't running — including when the
+  # ChatRegistry itself isn't started yet (pre-restart live-reload window), so reads
+  # like `status/1` degrade to `:idle` rather than raising.
+  defp whereis(conv_id) do
+    case Registry.lookup(@registry, conv_id) do
+      [{pid, _}] -> pid
+      [] -> nil
+    end
+  rescue
+    ArgumentError -> nil
   end
 
   # --- GenServer ---
@@ -270,7 +311,7 @@ defmodule BusterClaw.Agent.Chat do
   defp resume_args(session_id), do: ["--resume", session_id]
 
   defp broadcast(state, payload),
-    do: PubSub.broadcast(BusterClaw.PubSub, state.topic, {:agent_chat, payload})
+    do: PubSub.broadcast(BusterClaw.PubSub, state.topic, {:agent_chat, state.conv_id, payload})
 
   # The real spawner: open a streaming Port through AgentRunner (login shell, so a
   # packaged-app/daemon run reaches the user's PATH + agent auth).

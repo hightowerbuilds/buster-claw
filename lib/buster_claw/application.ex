@@ -37,7 +37,11 @@ defmodule BusterClaw.Application do
         uptime_child(),
         dispatcher_child(),
         wallet_poller_child(),
-        agent_chat_child(),
+        # Per-conversation chat: a Registry for {:via} lookup by conv_id and a
+        # DynamicSupervisor that starts one Chat process per open conversation,
+        # lazily on the first message. Always on (cheap; tests use them too).
+        {Registry, keys: :unique, name: BusterClaw.Agent.ChatRegistry},
+        BusterClaw.Agent.ChatSupervisor,
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
       ]
@@ -146,11 +150,4 @@ defmodule BusterClaw.Application do
     end
   end
 
-  # The homepage chat backend (headless Claude). Off in tests (they start their
-  # own instance with an injected spawner).
-  defp agent_chat_child do
-    if Application.get_env(:buster_claw, :agent_chat_enabled, true) do
-      BusterClaw.Agent.Chat
-    end
-  end
 end
