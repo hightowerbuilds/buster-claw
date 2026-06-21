@@ -12,25 +12,32 @@ defmodule BusterClaw.Bookmarks do
   @doc "Absolute path of the per-workspace bookmarks file."
   def path, do: Path.join(Artifact.workspace_root(), @filename)
 
-  @doc "Saved bookmarks, newest first: `[%{\"url\" => ..., \"label\" => ..., \"at\" => ...}]`."
-  def list do
-    with {:ok, body} <- File.read(path()),
-         {:ok, entries} when is_list(entries) <- Jason.decode(body) do
-      entries
-    else
-      _ -> []
+  @doc "Saved bookmarks, newest first. Pass `tag:` to filter."
+  def list(opts \\ []) do
+    entries =
+      with {:ok, body} <- File.read(path()),
+           {:ok, entries} when is_list(entries) <- Jason.decode(body) do
+        entries
+      else
+        _ -> []
+      end
+
+    case Keyword.get(opts, :tag) do
+      nil -> entries
+      tag -> Enum.filter(entries, &(tag in List.wrap(&1["tags"])))
     end
   end
 
-  @doc "Save a bookmark (with a display label), moving an existing match to the top."
-  def add(url, label \\ nil)
+  @doc "Save a bookmark (with a display label and optional tags), moving an existing match to the top."
+  def add(url, label \\ nil, tags \\ [])
 
-  def add(url, label) when is_binary(url) and url != "" do
+  def add(url, label, tags) when is_binary(url) and url != "" do
     label = if is_binary(label) and String.trim(label) != "", do: label, else: url
 
     entry = %{
       "url" => url,
       "label" => label,
+      "tags" => normalize_tags(tags),
       "at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
     }
 
@@ -38,7 +45,7 @@ defmodule BusterClaw.Bookmarks do
     File.write(path(), Jason.encode!(updated))
   end
 
-  def add(_url, _label), do: :ok
+  def add(_url, _label, _tags), do: :ok
 
   @doc "Remove the bookmark with the given URL."
   def remove(url) when is_binary(url) and url != "" do
@@ -46,4 +53,22 @@ defmodule BusterClaw.Bookmarks do
   end
 
   def remove(_url), do: :ok
+
+  @doc "Normalize tags to a list of downcased, trimmed, unique strings."
+  def normalize_tags(nil), do: []
+
+  def normalize_tags(tags) when is_list(tags) do
+    tags
+    |> Enum.map(fn t ->
+      t |> to_string() |> String.trim() |> String.downcase()
+    end)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  def normalize_tags(tag) when is_binary(tag) do
+    tag |> String.split(",") |> normalize_tags()
+  end
+
+  def normalize_tags(_), do: []
 end

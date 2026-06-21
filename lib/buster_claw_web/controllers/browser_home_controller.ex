@@ -51,6 +51,10 @@ defmodule BusterClawWeb.BrowserHomeController do
       button.rm { background: transparent; border: 0; cursor: pointer; padding: 4px 8px;
                   color: rgba(244,241,234,.4); font-size: 16px; line-height: 1; }
       button.rm:hover { color: #ff4d1c; }
+      .tags { display: flex; gap: 6px; flex: 0 0 auto; margin-left: 8px; }
+      .tag { font: 600 10px/1 ui-monospace, monospace; padding: 2px 6px;
+             background: rgba(255,77,28,.18); color: #ff4d1c; border-radius: 3px;
+             text-transform: uppercase; letter-spacing: .04em; }
     </style>
     </head>
     <body>
@@ -77,8 +81,9 @@ defmodule BusterClawWeb.BrowserHomeController do
       Enum.map_join(entries, "\n", fn e ->
         url = escape(e["url"])
         label = escape(e["label"] || e["url"])
+        tags_html = tags_body(e["tags"])
 
-        ~s(<li><a href="#{url}"><span class="label">#{label}</span><span class="url">#{url}</span></a>) <>
+        ~s(<li><a href="#{url}"><span class="label">#{label}</span><span class="url">#{url}</span></a>#{tags_html}) <>
           ~s(<form class="rm" method="post" action="/browser/bookmarks/remove">) <>
           ~s(<input type="hidden" name="url" value="#{url}" />) <>
           ~s(<button class="rm" type="submit" title="Remove bookmark" aria-label="Remove bookmark">&times;</button>) <>
@@ -87,6 +92,16 @@ defmodule BusterClawWeb.BrowserHomeController do
 
     "<ul>\n#{rows}\n</ul>"
   end
+
+  defp tags_body(nil), do: ""
+  defp tags_body([]), do: ""
+
+  defp tags_body(tags) when is_list(tags) do
+    chips = Enum.map_join(tags, "", fn t -> ~s(<span class="tag">#{escape(t)}</span>) end)
+    ~s(<span class="tags">#{chips}</span>)
+  end
+
+  defp tags_body(_), do: ""
 
   defp recent_body([]) do
     """

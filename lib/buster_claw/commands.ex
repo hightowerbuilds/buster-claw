@@ -1029,6 +1029,37 @@ defmodule BusterClaw.Commands do
         args: %{}
       },
 
+      # Bookmarks
+      %{
+        name: "bookmark_add",
+        type: :mutate,
+        tier: :restricted,
+        description: "Save a browser bookmark with optional tags.",
+        args: %{
+          "url" => %{type: :string, required: true},
+          "label" => %{type: :string, required: false},
+          "tags" => %{type: :array, required: false}
+        }
+      },
+      %{
+        name: "bookmark_list",
+        type: :read,
+        tier: :safe,
+        description: "List bookmarks, optionally filtered by tag.",
+        args: %{
+          "tag" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "bookmark_remove",
+        type: :mutate,
+        tier: :restricted,
+        description: "Remove a bookmark by URL.",
+        args: %{
+          "url" => %{type: :string, required: true}
+        }
+      },
+
       # Finance (read-only research; every result carries source + as-of)
       %{
         name: "finance_filings",
@@ -2296,6 +2327,32 @@ defmodule BusterClaw.Commands do
   def browser_screenshot(_args \\ %{}) do
     BusterClaw.Browser.Capture.request()
   end
+
+  def bookmark_add(args) do
+    url = Map.get(args, "url")
+    label = Map.get(args, "label")
+    tags = List.wrap(Map.get(args, "tags", []))
+
+    if url in [nil, ""] do
+      {:error, :missing_url}
+    else
+      BusterClaw.Bookmarks.add(url, label, tags)
+      {:ok, %{url: url, label: label || url, tags: BusterClaw.Bookmarks.normalize_tags(tags)}}
+    end
+  end
+
+  def bookmark_list(args \\ %{}) do
+    tag = blank_to_nil(Map.get(args, "tag"))
+    opts = if tag, do: [tag: tag], else: []
+    {:ok, BusterClaw.Bookmarks.list(opts)}
+  end
+
+  def bookmark_remove(%{"url" => url}) do
+    BusterClaw.Bookmarks.remove(url)
+    {:ok, %{removed: url}}
+  end
+
+  def bookmark_remove(_args), do: {:error, :missing_url}
 
   # -----------------------------------------------------------------------
   # Finance (read-only research)

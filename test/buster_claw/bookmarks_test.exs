@@ -46,4 +46,37 @@ defmodule BusterClaw.BookmarksTest do
     assert Bookmarks.add("", "x") == :ok
     assert Bookmarks.list() == []
   end
+
+  test "stores and normalizes tags" do
+    Bookmarks.add("https://a.com", "A", ["news", " Work ", "NEWS"])
+    assert [%{"tags" => ["news", "work"]}] = Bookmarks.list()
+  end
+
+  test "accepts tags as comma-separated string" do
+    Bookmarks.add("https://a.com", "A", "news, work ,NEWS")
+    assert [%{"tags" => ["news", "work"]}] = Bookmarks.list()
+  end
+
+  test "filters by tag" do
+    Bookmarks.add("https://a.com", "A", ["news"])
+    Bookmarks.add("https://b.com", "B", ["work"])
+    Bookmarks.add("https://c.com", "C", ["news", "work"])
+
+    assert Bookmarks.list(tag: "news") |> Enum.map(& &1["url"]) == [
+             "https://c.com",
+             "https://a.com"
+           ]
+
+    assert Bookmarks.list(tag: "work") |> Enum.map(& &1["url"]) == [
+             "https://c.com",
+             "https://b.com"
+           ]
+  end
+
+  test "backward compatible with entries that have no tags" do
+    # Simulate an old bookmark file without tags
+    File.write(Bookmarks.path(), Jason.encode!([%{"url" => "https://old.com", "label" => "Old"}]))
+    assert [%{"url" => "https://old.com"}] = Bookmarks.list()
+    assert Bookmarks.list(tag: "news") == []
+  end
 end
