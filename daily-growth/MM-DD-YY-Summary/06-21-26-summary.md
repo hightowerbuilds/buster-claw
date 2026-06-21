@@ -1,9 +1,11 @@
 # 06-21-2026 Summary
 
-A planning-then-build day on the **Claw-ecosystem roadmap**. Pressure-tested a
-Kimi-authored roadmap against the actual code (it was wrong in seven places), ran
-**Phase 0** as a six-spike research shift, then shipped **Phase 1A** — runtime-addable
-**composition skills**. Suite green at **577** (was 552).
+A big day on the **Claw-ecosystem roadmap** — planning through shipping. Pressure-tested
+a Kimi-authored roadmap against the actual code (wrong in seven places), ran **Phase 0**
+as a six-spike research shift, then shipped all of **Phase 1** (1A composition skills,
+1B policy engine, 1C rate limits) and **Phase 2** (cross-run memory). Also root-caused
+and fixed a long-standing intermittent SQLite test flake. Suite green at **606** (started
+the day at 552); seven commits.
 
 ## Pressure-testing the Kimi roadmap
 
@@ -115,14 +117,99 @@ catalog in `:persistent_term`, so it needs an invalidate-on-write — belongs wi
   `./buster-claw run save-note --json '{...}'` round-trip through the running server,
   and a fresh-dropped `skills/*.md` showing up callable without a restart.
 
+## Phase 1B — Policy engine (declarative authorization)
+
+Generalized the hardcoded `Commands.authorize/2` into **`PolicyEngine.check/1`**,
+evaluated at the `call/2` choke point for native commands and composition-skill
+steps alike. Two layers:
+
+- **Baseline** (non-overridable): `:agent`/`:mcp` → safe-tier only; `:agent_untrusted`
+  → no gated commands. Returns `{:confirm, _}` → surfaces for human approval (the
+  existing `:requires_confirmation` behavior).
+- **Operator rules** from `<workspace>/memory/policy.md` (file-backed,
+  `:persistent_term`-cached, mirroring `trusted-senders.md`): `deny`/`allow <glob>
+  for <caller>`. Rules run *after* the baseline passes, so they can only **tighten**,
+  never loosen. A matching `deny` → `{:block, _}` → hard refusal (`:policy_blocked`);
+  most-specific pattern wins, ties favor deny.
+
+`commands.ex` records both refusal kinds as critical `:security_block`s; `api_controller`
+maps `:policy_blocked` → 403; `jobs.ex` seeds a baseline-only `policy.md` (examples
+commented, so default == prior behavior). The parser strips fenced/`<!-- -->`/angle-
+bracket placeholder lines so prose and templates never log spurious bad-rule warnings.
+**Committed `584548e`** (9 new tests).
+
+## Phase 1C — Rate limiting (the last threat-model gap)
+
+Closes T4 (a non-gated command like `gmail_search` spammed in a loop). Policy
+authorizes *what* may run; **`RateLimiter`** bounds *how often*. A fixed-window
+counter keyed by `{caller, command, window}` in a public ETS table; `check/2` is an
+atomic `:ets.update_counter` (off the GenServer mailbox, ~no added latency); the
+GenServer owns the table and sweeps stale windows. Config-driven
+(`:rate_limit_enabled`/`_window_ms`/`_default`/`_overrides`), **fail-open**. Runs
+after `PolicyEngine` allows (refusals don't burn quota); applies to native commands
+and skill steps; a trip records a `:security_block` and returns `:rate_limited` →
+**429**. Always-on supervised child; off in test. **Committed `a311bc4`** (6 new tests).
+
+## SQLite flakiness — root-caused and fixed
+
+The full suite was intermittently failing `(Exqlite.Error) Database busy` — same seed,
+different results, in *unrelated* async tests. **Not from this work**: the committed 1B
+baseline flaked identically. Root cause: SQLite is **single-writer** at the file level;
+`pool_size: 5` gave each `async: true` test its own connection, so a common
+read-then-write transaction (`SELECT` then conditional `INSERT`, e.g. `*_seeded/0`)
+upgrades a shared lock to a write lock and, if another connection holds it, gets an
+**immediate `SQLITE_BUSY` that `busy_timeout` cannot wait out** (by design, to avoid
+deadlock). Fix: **`pool_size: 1`** in test so the sandbox serializes writers — verified
+with 10 consecutive green runs; suite still ~7.4s (was never DB-parallelism-bound).
+Also **hardened dev/prod** with a 5s `busy_timeout` (WAL keeps readers unblocked; this
+makes the app's background writers wait rather than error). **Committed `ce44b16`, `67dfd61`.**
+
+## Phase 2 — Cross-run memory (run summaries + FTS5 recall)
+
+Tier-2 memory (per `s0.3`): a structured summary of each headless agent run, plus
+full-text recall so a later run can answer "what have I done with X before?".
+
+- **Migration** — `run_summaries` table + an **FTS5 external-content** virtual table
+  over goal/detail/outcome, kept in sync by `AFTER INSERT`/`DELETE` triggers (the Ecto
+  write path stays a plain insert). Verified FTS5 is compiled into this exqlite build.
+- **`Memory` context + `RunSummary` schema** — `record_run/1` (best-effort, rescues so
+  a summary write never breaks the run), `recent/1`, `search/2` (FTS5 `MATCH` ranked by
+  bm25; user terms extracted + quoted so punctuation/operators can't break the query;
+  empty → `{:error, :empty_query}`).
+- **`Dispatcher.record_outcome/3`** writes a summary for every outcome
+  (completed/failed/error), capturing a bounded tail of the agent's stdout as `detail`.
+- **`memory_search`** command (safe-tier read), limit-capped.
+
+**The bug worth noting:** the runner returns `agent: :claude` (an *atom*), which Ecto
+rejected casting into a `:string` field — the summary silently returned
+`{:error, changeset}` and never persisted. The **Dispatcher integration test caught it**
+(it uses the real run shape, unlike the string-fed unit tests), confirming it would have
+failed in production. Fixed by stringifying `agent`/`provenance`/`outcome` before cast.
+**Committed `a64a85b`** (14 new memory tests + the integration test).
+
+## Verification (cumulative)
+
+- `mix test` — **606 tests, 0 failures** (started the day at 552). Suite is now
+  **reliably green** across seeds (the flake is gone).
+- Clean `--warnings-as-errors`; all changed files `mix format`-clean.
+- **Still unverified by me** (need the running app, which the user drives): the live
+  `./buster-claw run` round-trips for `save-note`, a `policy.md` deny, a rate-limit trip,
+  and `memory_search`; plus a real unattended run writing a summary.
+
 ## Roadmap status (where we are)
 
-- **Phase 0 — complete.** Six notes + chosen schema + threat model; exit criteria met.
-- **Phase 1A — done** (composition skills land at runtime, gated per step).
-- **Phase 1B/1C — next** (PolicyEngine over `policy.md`; per-caller rate limits;
-  `/api/commands` skill listing).
-- **Phases 2–4 — designed, not started** (memory Tiers 1+2; self-improve
-  analyzer→proposer; bounded parallel fan-out).
+- **Phase 0 — complete.** Six research notes + chosen schema + threat model.
+- **Phase 1 — complete.** 1A composition skills, 1B policy engine, 1C rate limits — the
+  full enforcement substrate the threat model required before anything dynamic touches a
+  gated action.
+- **Phase 2 — complete.** Cross-run memory (Tiers 1+2): run summaries + FTS5 +
+  `memory_search`.
+- **Phase 3 — next** (now unblocked; needs 1+2, both landed): analyzer reads
+  `security_events` + `run_summaries`, detects repeated sequences, proposes a
+  `skills/*.md` draft for human approval.
+- **Phase 4 — designed** (bounded parallel fan-out).
+- **Deferred follow-up:** surface skills in `/api/commands` + CLI `commands` (needs a
+  `:persistent_term` invalidate-on-write).
 
 ## Notes
 
