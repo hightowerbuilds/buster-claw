@@ -77,14 +77,57 @@ defmodule BusterClaw.Agent.ChatTest do
     assert_receive {:agent_chat, ^conv, {:status, :idle}}
   end
 
-  test "rejects a second message while a run is in flight" do
+  test "queues a second message while a run is in flight instead of rejecting it" do
     # A spawner that returns a live port but never finishes, so status stays running.
     spawner = fn _prompt, _opts -> {:ok, make_ref()} end
     conv = start_chat(spawner)
 
     assert :ok = Chat.send_message(conv, "first")
     assert :running = Chat.status(conv)
-    assert {:error, :busy} = Chat.send_message(conv, "second")
+
+    assert :ok = Chat.send_message(conv, "second")
+    assert_receive {:agent_chat, ^conv, {:queue, [%{text: "second"}]}}
+    assert [%{text: "second"}] = Chat.queue(conv)
+  end
+
+  test "dispatches the queue one turn at a time when each run finishes" do
+    # A spawner the test drives: it never finishes on its own, so finishing run one
+    # (by sending the exit_status ourselves) deterministically dispatches the queue.
+    parent = self()
+
+    spawner = fn prompt, _opts ->
+      port = make_ref()
+      send(parent, {:spawned, prompt, self(), port})
+      {:ok, port}
+    end
+
+    conv = start_chat(spawner)
+
+    assert :ok = Chat.send_message(conv, "one")
+    assert_receive {:spawned, "one", chat_pid, port1}
+
+    # "two" lands while "one" is mid-flight, so it queues.
+    assert :ok = Chat.send_message(conv, "two")
+    assert_receive {:agent_chat, ^conv, {:queue, [%{text: "two"}]}}
+
+    # Finishing run one dispatches "two" as its own turn and drains it from the queue.
+    send(chat_pid, {port1, {:exit_status, 0}})
+    assert_receive {:agent_chat, ^conv, {:queue, []}}
+    assert_receive {:spawned, "two", _chat_pid, _port2}
+    assert :running = Chat.status(conv)
+  end
+
+  test "remove_queued drops a pending message before it is dispatched" do
+    spawner = fn _prompt, _opts -> {:ok, make_ref()} end
+    conv = start_chat(spawner)
+
+    assert :ok = Chat.send_message(conv, "first")
+    assert :ok = Chat.send_message(conv, "scratch this")
+    assert_receive {:agent_chat, ^conv, {:queue, [%{id: id, text: "scratch this"}]}}
+
+    assert :ok = Chat.remove_queued(conv, id)
+    assert_receive {:agent_chat, ^conv, {:queue, []}}
+    assert [] = Chat.queue(conv)
   end
 
   test "captures the session id and resumes on the next message" do

@@ -47,12 +47,15 @@ rides along in the meta message text, so it survives reload.
 - `app.js` — `ThinkingTimer` hook drives the live count client-side (no server spam),
   freezes to the server-authoritative ms on `{:thinking, …}`.
 
-### Phase 1 — Queue backend · ~1 day
-`Chat` gains `queue: []`. `send_message` while `:running` **enqueues** instead of
-returning `{:error, :busy}`. On turn finish, pop the front → start the next turn.
-Broadcast `{:queue, items}` on the existing PubSub topic. Decision: one piece = one
-turn (clean `--resume` threading); optional "merge selected" later. Don't auto-
-concatenate everything.
+### Phase 1 — Queue backend · ~1 day · **shipped 2026-06-21**
+`Chat` gained `queue: []`. `send_message` while `:running` **enqueues** (returns
+`:ok`) instead of `{:error, :busy}`; `finish_run` → `dispatch_next/1` pops the front
+and starts it as the next turn (no idle flicker between turns), or broadcasts `:idle`
+when empty. `{:queue, items}` rides the existing PubSub topic. `Chat.queue/1` and
+`Chat.remove_queued/2` round out the API. The queue is in-memory only — items not yet
+sent are dropped on restart. One piece = one turn (clean `--resume` threading);
+optional "merge selected" left for later. `status_live` renders a minimal queue strip
+above the input (with per-item cancel) — Phase 2 turns it into the Tetris rail.
 
 ### Phase 2 — The Tetris Rail UI · ~1–2 days
 Render `:chat_queue` as tetromino cards in a rail. Drag-reorder, delete, edit before

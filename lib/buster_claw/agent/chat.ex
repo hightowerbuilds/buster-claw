@@ -87,6 +87,22 @@ defmodule BusterClaw.Agent.Chat do
   @doc "Whether a conversation currently has a run in flight."
   def running?(conv_id), do: status(conv_id) == :running
 
+  @doc "The conversation's pending message queue (`[]` if no process or none queued)."
+  def queue(conv_id) do
+    case whereis(conv_id) do
+      nil -> []
+      pid -> GenServer.call(pid, :queue)
+    end
+  end
+
+  @doc "Drop a not-yet-dispatched message from the queue by its id."
+  def remove_queued(conv_id, id) do
+    case whereis(conv_id) do
+      nil -> :ok
+      pid -> GenServer.call(pid, {:remove_queued, id})
+    end
+  end
+
   @doc """
   Ensure a conversation's chat process is running (started lazily under the
   DynamicSupervisor), returning `{:ok, pid}`. Idempotent and race-safe.
@@ -146,6 +162,8 @@ defmodule BusterClaw.Agent.Chat do
       status: :idle,
       port: nil,
       buf: "",
+      # Messages typed while a run is in flight, dispatched one-per-turn in order.
+      queue: [],
       timer: nil,
       timeout_ms:
         Keyword.get(opts, :timeout_ms, configured(:agent_chat_timeout_ms, @default_timeout_ms)),
@@ -160,36 +178,33 @@ defmodule BusterClaw.Agent.Chat do
     {:ok, state}
   end
 
+  # A run is already in flight: queue the message instead of rejecting it. It is
+  # dispatched as its own turn when the current run finishes (see dispatch_next/1).
+  # The queue is in-memory only — items not yet sent are dropped on restart.
   @impl true
-  def handle_call({:send, _text}, _from, %{status: :running} = state),
-    do: {:reply, {:error, :busy}, state}
+  def handle_call({:send, text}, _from, %{status: :running} = state) do
+    item = %{id: System.unique_integer([:positive, :monotonic]), text: text}
+    state = %{state | queue: state.queue ++ [item]}
+    broadcast_queue(state)
+    {:reply, :ok, state}
+  end
 
   def handle_call({:send, text}, _from, state) do
-    state =
-      state
-      |> emit_message(:user, text)
-      |> Map.put(:run, %{
-        started: System.monotonic_time(:millisecond),
-        first_token_at: nil,
-        turns: nil,
-        cost: nil
-      })
-
-    extra = ~w(--output-format stream-json --verbose) ++ resume_args(state.session_id)
-
-    case state.spawner.(text, extra_args: extra, login: true) do
-      {:ok, port} ->
-        broadcast(state, {:status, :running})
-        timer = Process.send_after(self(), :run_timeout, state.timeout_ms)
-        {:reply, :ok, %{state | status: :running, port: port, buf: "", timer: timer}}
-
-      {:error, reason} ->
-        state |> emit_message(:error, error_text(reason)) |> audit_run({:failed, reason})
-        {:reply, {:error, reason}, %{state | run: nil}}
+    case start_run(state, text) do
+      {:ok, state} -> {:reply, :ok, state}
+      {:error, reason, state} -> {:reply, {:error, reason}, state}
     end
   end
 
   def handle_call(:status, _from, state), do: {:reply, state.status, state}
+
+  def handle_call(:queue, _from, state), do: {:reply, state.queue, state}
+
+  def handle_call({:remove_queued, id}, _from, state) do
+    state = %{state | queue: Enum.reject(state.queue, &(&1.id == id))}
+    broadcast_queue(state)
+    {:reply, :ok, state}
+  end
 
   @impl true
   def handle_info({port, {:data, data}}, %{port: port} = state) do
@@ -215,6 +230,50 @@ defmodule BusterClaw.Agent.Chat do
   def handle_info(_msg, state), do: {:noreply, state}
 
   # --- run lifecycle ---
+
+  # Spawn a headless run for `text`. Returns `{:ok, state}` once streaming, or
+  # `{:error, reason, state}` if the spawn failed (already surfaced + audited).
+  defp start_run(state, text) do
+    state =
+      state
+      |> emit_message(:user, text)
+      |> Map.put(:run, %{
+        started: System.monotonic_time(:millisecond),
+        first_token_at: nil,
+        turns: nil,
+        cost: nil
+      })
+
+    extra = ~w(--output-format stream-json --verbose) ++ resume_args(state.session_id)
+
+    case state.spawner.(text, extra_args: extra, login: true) do
+      {:ok, port} ->
+        broadcast(state, {:status, :running})
+        timer = Process.send_after(self(), :run_timeout, state.timeout_ms)
+        {:ok, %{state | status: :running, port: port, buf: "", timer: timer}}
+
+      {:error, reason} ->
+        state = state |> emit_message(:error, error_text(reason)) |> audit_run({:failed, reason})
+        {:error, reason, %{state | run: nil, status: :idle}}
+    end
+  end
+
+  # Pull the next queued message into a fresh run, or settle into idle. Skips past
+  # an item whose spawn fails so one bad message can't wedge the whole queue.
+  defp dispatch_next(%{queue: []} = state) do
+    broadcast(state, {:status, :idle})
+    state
+  end
+
+  defp dispatch_next(%{queue: [next | rest]} = state) do
+    state = %{state | queue: rest}
+    broadcast_queue(state)
+
+    case start_run(state, next.text) do
+      {:ok, state} -> state
+      {:error, _reason, state} -> dispatch_next(state)
+    end
+  end
 
   defp apply_line(line, state) do
     case StreamEvent.parse(line) do
@@ -264,10 +323,12 @@ defmodule BusterClaw.Agent.Chat do
   defp stash_result(run, event),
     do: Map.merge(run || %{}, %{turns: event.num_turns, cost: event.cost_usd})
 
+  # End the current run, then hand off to the queue: dispatch_next/1 either starts
+  # the next queued turn (staying :running, no idle flicker between turns) or
+  # broadcasts :idle when the queue is empty.
   defp finish_run(state) do
     if state.timer, do: Process.cancel_timer(state.timer)
-    broadcast(state, {:status, :idle})
-    %{state | status: :idle, port: nil, buf: "", timer: nil, run: nil}
+    dispatch_next(%{state | status: :idle, port: nil, buf: "", timer: nil, run: nil})
   end
 
   # Record the run on the Sentinel audit feed (best-effort). This is both the
@@ -343,6 +404,8 @@ defmodule BusterClaw.Agent.Chat do
 
   defp broadcast(state, payload),
     do: PubSub.broadcast(BusterClaw.PubSub, state.topic, {:agent_chat, state.conv_id, payload})
+
+  defp broadcast_queue(state), do: broadcast(state, {:queue, state.queue})
 
   # The real spawner: open a streaming Port through AgentRunner (login shell, so a
   # packaged-app/daemon run reaches the user's PATH + agent auth).

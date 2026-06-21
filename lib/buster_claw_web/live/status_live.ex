@@ -51,6 +51,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:active_chat, active)
     |> assign(:chat_running, Chat.running?(active))
     |> assign(:chat_thinking, nil)
+    |> assign(:chat_queue, Chat.queue(active))
     |> load_chat_history(active)
   end
 
@@ -103,6 +104,15 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
+  def handle_event("cancel_queued", %{"id" => id}, socket) do
+    case Integer.parse(id) do
+      {qid, ""} -> Chat.remove_queued(socket.assigns.active_chat, qid)
+      _ -> :ok
+    end
+
+    {:noreply, socket}
+  end
+
   def handle_event("select_chat", %{"id" => id}, socket),
     do: {:noreply, activate_chat(socket, id)}
 
@@ -116,6 +126,7 @@ defmodule BusterClawWeb.StatusLive do
       |> assign(:active_chat, conv.id)
       |> assign(:chat_running, false)
       |> assign(:chat_thinking, nil)
+      |> assign(:chat_queue, [])
       |> assign(:chat_messages, [])
       |> assign(:chat_seq, 0)
 
@@ -153,12 +164,11 @@ defmodule BusterClawWeb.StatusLive do
     # appended inline as a persistent message.
     conv_id = socket.assigns.active_chat
 
+    # While a run is in flight send_message/2 queues the text (returns :ok) rather
+    # than rejecting it; the queued item arrives back over PubSub as {:queue, …}.
     case Chat.send_message(conv_id, text) do
       :ok ->
         maybe_autotitle(socket, conv_id, text)
-
-      {:error, :busy} ->
-        push_msg(socket, :error, "This chat is still working — wait for it to finish.")
 
       {:error, :no_agent_cli} ->
         socket
@@ -206,6 +216,12 @@ defmodule BusterClawWeb.StatusLive do
       else: socket
   end
 
+  defp apply_chat(socket, conv_id, {:queue, items}) do
+    if conv_id == socket.assigns.active_chat,
+      do: assign(socket, :chat_queue, items),
+      else: socket
+  end
+
   defp apply_chat(socket, conv_id, {:message, %{role: role, text: text}}) do
     if conv_id == socket.assigns.active_chat do
       push_msg(socket, role, text)
@@ -223,6 +239,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:active_chat, id)
     |> assign(:chat_running, Chat.running?(id))
     |> assign(:chat_thinking, if(Chat.running?(id), do: :running, else: nil))
+    |> assign(:chat_queue, Chat.queue(id))
     |> update_tab(id, &%{&1 | unread: false})
     |> load_chat_history(id)
   end
@@ -335,6 +352,7 @@ defmodule BusterClawWeb.StatusLive do
                 messages={@chat_messages}
                 running={@chat_running}
                 thinking={@chat_thinking}
+                queue={@chat_queue}
               />
             </div>
           </div>
@@ -402,6 +420,7 @@ defmodule BusterClawWeb.StatusLive do
   attr :messages, :list, required: true
   attr :running, :boolean, required: true
   attr :thinking, :any, required: true
+  attr :queue, :list, required: true
 
   defp chat_panel(assigns) do
     ~H"""
@@ -435,6 +454,8 @@ defmodule BusterClawWeb.StatusLive do
 
         <.chat_bubble :for={msg <- @messages} msg={msg} />
       </div>
+
+      <.queue_strip queue={@queue} />
 
       <form
         phx-submit="chat_send"
@@ -488,6 +509,38 @@ defmodule BusterClawWeb.StatusLive do
       <span class="size-2 animate-pulse rounded-full bg-primary"></span>
       <span data-thinking-label>Thinking…</span>
     </span>
+    """
+  end
+
+  # Pending messages typed while a run is in flight. Each is dispatched as its own
+  # turn when the current one finishes; Phase 2 turns this strip into the Tetris rail.
+  attr :queue, :list, required: true
+
+  defp queue_strip(%{queue: []} = assigns), do: ~H""
+
+  defp queue_strip(assigns) do
+    ~H"""
+    <div class="flex flex-col gap-1.5 border-t-2 border-base-content/20 bg-base-200/40 px-3 py-2">
+      <p class="ic-eyebrow text-base-content/55">Queued · {length(@queue)}</p>
+      <ul class="flex flex-col gap-1">
+        <li
+          :for={item <- @queue}
+          class="flex items-center gap-2 rounded-sm border-2 border-base-content/20 bg-base-100 px-2.5 py-1.5"
+        >
+          <.icon name="hero-queue-list" class="size-3.5 shrink-0 text-base-content/45" />
+          <span class="flex-1 truncate text-[15px]">{item.text}</span>
+          <button
+            type="button"
+            phx-click="cancel_queued"
+            phx-value-id={item.id}
+            title="Remove from queue"
+            class="shrink-0 text-base-content/45 transition hover:text-error"
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
+        </li>
+      </ul>
+    </div>
     """
   end
 
