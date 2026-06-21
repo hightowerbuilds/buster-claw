@@ -30,6 +30,7 @@ defmodule BusterClaw.Commands do
     Integrations,
     Jobs,
     Library,
+    Memory,
     Orchestration,
     PolicyEngine,
     Search,
@@ -1211,6 +1212,17 @@ defmodule BusterClaw.Commands do
           "account_id" => %{type: :integer, required: false},
           "email" => %{type: :string, required: false}
         }
+      },
+      # Cross-run memory (Phase 2) — recall what past runs did.
+      %{
+        name: "memory_search",
+        type: :read,
+        tier: :safe,
+        description: "Full-text search past agent run summaries (what was done before).",
+        args: %{
+          "query" => %{type: :string, required: true},
+          "limit" => %{type: :integer, required: false}
+        }
       }
     ]
 
@@ -2259,6 +2271,40 @@ defmodule BusterClaw.Commands do
     do: Finance.news(symbol)
 
   def finance_news(_args), do: {:error, :missing_symbol}
+
+  def memory_search(%{"query" => query} = args) when is_binary(query) do
+    limit = normalize_limit(Map.get(args, "limit"))
+
+    case Memory.search(query, limit: limit) do
+      {:ok, summaries} -> {:ok, Enum.map(summaries, &memory_view/1)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def memory_search(_args), do: {:error, :empty_query}
+
+  defp normalize_limit(n) when is_integer(n) and n > 0, do: min(n, 100)
+
+  defp normalize_limit(n) when is_binary(n) do
+    case Integer.parse(n) do
+      {i, _} when i > 0 -> min(i, 100)
+      _ -> 20
+    end
+  end
+
+  defp normalize_limit(_), do: 20
+
+  defp memory_view(summary) do
+    %{
+      goal: summary.goal,
+      outcome: summary.outcome,
+      detail: summary.detail,
+      agent: summary.agent,
+      provenance: summary.provenance,
+      source: summary.source,
+      at: summary.inserted_at
+    }
+  end
 
   # -----------------------------------------------------------------------
   # Runtime

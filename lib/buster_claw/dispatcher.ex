@@ -32,7 +32,7 @@ defmodule BusterClaw.Dispatcher do
 
   require Logger
 
-  alias BusterClaw.{Dispatch, Orchestration, Sentinel}
+  alias BusterClaw.{Dispatch, Memory, Orchestration, Sentinel}
   alias BusterClaw.Orchestration.Shift
 
   @default_interval_ms 15_000
@@ -256,6 +256,8 @@ defmodule BusterClaw.Dispatcher do
       exit_status: 0,
       duration_ms: run.duration_ms
     })
+
+    summarize(shift, provenance, "completed", run, excerpt(Map.get(run, :output)))
   end
 
   defp record_outcome(%Shift{} = shift, provenance, {:ok, run}) do
@@ -272,6 +274,8 @@ defmodule BusterClaw.Dispatcher do
       },
       severity: :warning
     )
+
+    summarize(shift, provenance, "failed", run, excerpt(Map.get(run, :output)))
   end
 
   defp record_outcome(%Shift{} = shift, provenance, {:error, reason}) do
@@ -283,7 +287,37 @@ defmodule BusterClaw.Dispatcher do
       %{shift_id: shift.id, provenance: provenance, reason: inspect(reason)},
       severity: :warning
     )
+
+    summarize(shift, provenance, "error", %{}, inspect(reason))
   end
+
+  # Persist a cross-run memory summary (Phase 2). Best-effort — `Memory.record_run`
+  # rescues its own failures, so a summary write never breaks the run outcome.
+  defp summarize(%Shift{} = shift, provenance, outcome, run, detail) do
+    Memory.record_run(%{
+      goal: "Unattended shift: #{shift.job_name}",
+      outcome: outcome,
+      detail: detail,
+      agent: Map.get(run, :agent),
+      exit_status: Map.get(run, :exit_status),
+      duration_ms: Map.get(run, :duration_ms),
+      provenance: provenance,
+      shift_id: shift.id,
+      source: "dispatch"
+    })
+  end
+
+  # The agent's stdout is the richest "what did I do" signal; keep a bounded tail
+  # (where dispatch done/block notes land) so summaries stay searchable but small.
+  defp excerpt(output) when is_binary(output) do
+    trimmed = String.trim(output)
+
+    if String.length(trimmed) > 2000,
+      do: "…" <> String.slice(trimmed, -2000, 2000),
+      else: trimmed
+  end
+
+  defp excerpt(_output), do: nil
 
   defp configured(key, default), do: Application.get_env(:buster_claw, key, default)
   defp now_ms, do: System.monotonic_time(:millisecond)

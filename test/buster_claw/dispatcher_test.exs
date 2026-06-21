@@ -102,6 +102,29 @@ defmodule BusterClaw.DispatcherTest do
     assert reloaded.failed_count == 0
   end
 
+  test "records a cross-run memory summary on a clean run" do
+    {:ok, shift} = Orchestration.start_shift(unattended: true, job_key: "mail-triage")
+    enqueue!()
+
+    result =
+      {:ok,
+       %{agent: :stub, exit_status: 0, output: "claimed and replied to acme", duration_ms: 5}}
+
+    server = start_dispatcher!(stub_runner(self(), result))
+
+    Dispatcher.tick_now(server)
+
+    assert_receive {:ran, _pid}, 1_000
+    # The summary is written just after the shift counter, in the Dispatcher
+    # process — wait on the summary itself, not on done_count.
+    wait_until(fn -> match?({:ok, [_]}, BusterClaw.Memory.search("acme")) end)
+
+    assert {:ok, [summary]} = BusterClaw.Memory.search("acme")
+    assert summary.outcome == "completed"
+    assert summary.detail =~ "acme"
+    assert summary.shift_id == shift.id
+  end
+
   test "counts a non-zero exit as failed" do
     {:ok, shift} = Orchestration.start_shift(unattended: true)
     enqueue!()
