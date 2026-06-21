@@ -1018,7 +1018,10 @@ const Hooks = {
       const right = this.paneParam(b)
       // The two source tabs now live inside the joined tab — drop them.
       this.save(this.load().filter((t) => t.path !== a && t.path !== b))
-      window.location.href = `/split?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`
+      const dest = `/split?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`
+      // Close a pre-existing solo browser surface so it can't linger over the
+      // split; the pane reopens it fresh on its side.
+      this.tearDownSplitBrowsers(a, b).finally(() => (window.location.href = dest))
     },
     // Swap the two sides of a joined tab.
     swapSides(splitPath) {
@@ -1032,7 +1035,9 @@ const Hooks = {
           t.path === splitPath ? {path: newPath, label: this.labelFor(newPath)} : t
         )
       )
-      window.location.href = newPath
+      // A browser's surface id is its side, so swapping moves it across; close the
+      // old surface first or it stays painted on the side it was on.
+      this.tearDownSplitBrowsers(left, right).finally(() => (window.location.href = newPath))
     },
     // Close one pane of a joined tab; the other side stays open as a solo tab.
     closeSplitPane(side) {
@@ -1041,13 +1046,14 @@ const Hooks = {
       const params = new URLSearchParams(cur.split("?")[1] || "")
       const keep = side === "left" ? params.get("right") : params.get("left")
       if (!keep) return
-      this.tearDownSplitBrowsers(params.get("left"), params.get("right"))
       const tabs = this.load().filter((t) => t.path !== cur)
       if (!tabs.some((t) => t.path === keep)) {
         tabs.push({path: keep, label: this.labelFor(keep)})
       }
       this.save(tabs)
-      window.location.href = keep
+      this.tearDownSplitBrowsers(params.get("left"), params.get("right")).finally(
+        () => (window.location.href = keep)
+      )
     },
     // Split a joined tab back into its two component tabs.
     separateTabs(splitPath) {
@@ -1055,23 +1061,24 @@ const Hooks = {
       const left = params.get("left")
       const right = params.get("right")
       if (!left || !right) return
-      this.tearDownSplitBrowsers(left, right)
       const tabs = this.load().filter((t) => t.path !== splitPath)
       for (const p of [left, right]) {
         if (!tabs.some((t) => t.path === p)) tabs.push({path: p, label: this.labelFor(p)})
       }
       this.save(tabs)
-      window.location.href = left
+      this.tearDownSplitBrowsers(left, right).finally(() => (window.location.href = left))
     },
-    // Leaving a /split that held a browser pane: tear every native browser
-    // surface down (close-all) before navigating to the solo destination. The
-    // kept browser cold-restarts there — simplest and leak-free, since the
-    // EmbeddedBrowser hook can't tell a hide from a destroy. NOT used for swap
-    // (that stays a split, so the surfaces persist and just reposition).
+    // Close every native browser surface if any of the given pane paths is a
+    // browser. Native webviews are owned by Rust and survive the full-page reload
+    // our split navigations do, so a stale surface stays pinned to its old box
+    // (wrong side / "stuck") unless we close it first. Returns a promise so the
+    // caller can wait for the close before the reload reopens a fresh surface on
+    // the correct side — otherwise the close can race ahead and kill the new one.
     tearDownSplitBrowsers(...panePaths) {
-      if (!panePaths.some((p) => (p || "").split("?")[0] === "/browse")) return
+      if (!panePaths.some((p) => (p || "").split("?")[0] === "/browse")) return Promise.resolve()
       const invoke = window.__TAURI__?.core?.invoke
-      if (invoke) invoke("browser_close").catch(() => {})
+      if (!invoke) return Promise.resolve()
+      return invoke("browser_close").catch(() => {})
     },
     // ----- Right-click context menu -----
     // Primary trigger in WebKit: right-button mousedown fires even on draggable
@@ -1207,18 +1214,22 @@ const Hooks = {
       const tabs = this.load()
       const idx = tabs.findIndex((t) => t.path === path)
       if (idx === -1) return
-      // Closing the Browser tab must destroy its native webviews — the embedded
-      // browser hook only *hides* them on tab switch (to persist the page), so
-      // without this they'd linger after the tab is gone.
-      if (path.startsWith("/browse")) {
-        const invoke = window.__TAURI__?.core?.invoke
-        if (invoke) invoke("browser_close").catch(() => {})
+      // Closing a tab that owns native browser webviews — a /browse tab, or a
+      // /split holding a browser pane — must destroy them, else they linger
+      // painted over whatever page we land on (the hook only *hides* on switch).
+      const base = path.split("?")[0]
+      let teardown = Promise.resolve()
+      if (base === "/browse") {
+        teardown = this.tearDownSplitBrowsers("/browse")
+      } else if (base === "/split") {
+        const params = new URLSearchParams(path.split("?")[1] || "")
+        teardown = this.tearDownSplitBrowsers(params.get("left"), params.get("right"))
       }
       tabs.splice(idx, 1)
       this.save(tabs)
       if (path === this.currentKey()) {
         const next = tabs[idx] || tabs[idx - 1]
-        window.location.href = next ? next.path : "/"
+        teardown.finally(() => (window.location.href = next ? next.path : "/"))
       } else {
         this.render()
       }
