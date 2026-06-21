@@ -116,6 +116,31 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   @doc """
+  Interrupt the in-flight run: kill it, mark the turn interrupted, and hand off to
+  the queue (the next queued message runs, or the chat settles idle). A no-op if the
+  conversation is idle. The killed turn's partial work is lost — `--resume` reverts
+  to the last completed turn.
+  """
+  def interrupt(conv_id) do
+    case whereis(conv_id) do
+      nil -> :ok
+      pid -> GenServer.call(pid, :interrupt)
+    end
+  end
+
+  @doc """
+  Hard-drop a queued message: move it to the front and, if a run is in flight, cut
+  that run so the barged message runs next (Tetris hard-drop). A no-op if `id` isn't
+  queued.
+  """
+  def barge(conv_id, id) do
+    case whereis(conv_id) do
+      nil -> :ok
+      pid -> GenServer.call(pid, {:barge, id})
+    end
+  end
+
+  @doc """
   Ensure a conversation's chat process is running (started lazily under the
   DynamicSupervisor), returning `{:ok, pid}`. Idempotent and race-safe.
   """
@@ -228,6 +253,30 @@ defmodule BusterClaw.Agent.Chat do
     {:reply, :ok, state}
   end
 
+  def handle_call(:interrupt, _from, %{status: :running} = state),
+    do: {:reply, :ok, interrupt_running(state)}
+
+  def handle_call(:interrupt, _from, state), do: {:reply, :ok, state}
+
+  def handle_call({:barge, id}, _from, state) do
+    case Enum.find(state.queue, &(&1.id == id)) do
+      nil ->
+        {:reply, :ok, state}
+
+      item ->
+        # Move the piece to the front, then either cut the running turn (so it runs
+        # next) or — if idle — dispatch it straight away.
+        state = %{state | queue: [item | Enum.reject(state.queue, &(&1.id == id))]}
+
+        state =
+          if state.status == :running,
+            do: interrupt_running(state),
+            else: dispatch_next(state)
+
+        {:reply, :ok, state}
+    end
+  end
+
   @impl true
   def handle_info({port, {:data, data}}, %{port: port} = state) do
     {lines, buf} = StreamEvent.split_lines(state.buf <> data)
@@ -295,6 +344,18 @@ defmodule BusterClaw.Agent.Chat do
       {:ok, state} -> state
       {:error, _reason, state} -> dispatch_next(state)
     end
+  end
+
+  # Kill the in-flight run, mark the turn interrupted, and hand off to the queue
+  # (finish_run → dispatch_next). The killed process's later exit/data messages
+  # carry the old port, so they no longer match handle_info and are ignored.
+  defp interrupt_running(state) do
+    if is_port(state.port), do: AgentRunner.kill_port(state.port)
+
+    state
+    |> emit_message(:meta, "interrupted")
+    |> audit_run(:interrupted)
+    |> finish_run()
   end
 
   defp apply_line(line, state) do
@@ -366,6 +427,7 @@ defmodule BusterClaw.Agent.Chat do
     {message, severity} =
       case outcome do
         :completed -> {"Chat agent run completed", :info}
+        :interrupted -> {"Chat agent run interrupted", :info}
         {:failed, reason} -> {"Chat agent run failed (#{inspect(reason)})", :warning}
       end
 

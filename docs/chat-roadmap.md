@@ -68,7 +68,21 @@ motion is CSS/JS, `prefers-reduced-motion` honored.
 
 **Deferred from this phase:** inline edit-before-consumption (add an update API + an
 editable field later); a direction-aware lock animation differentiating dispatch vs
-delete (currently one unified exit). Visual not yet eyeballed in the running app.
+delete (currently one unified exit).
+
+**Amended (post-eyeball):** the per-piece tetromino glyph was dropped on the user's
+call — pieces now show a plain drag-handle (`hero-bars-2`). The rail mechanics (armed
+front, drag-reorder, animations) stay.
+
+### Phase 3 — Hard-drop / Stop · ~1 day · **shipped 2026-06-21**
+`Chat.interrupt/1` kills the in-flight run (`AgentRunner.kill_port`, guarded by
+`is_port/1`), emits a `:meta` "interrupted" marker, audits it (`:interrupted`, info),
+then `finish_run` → `dispatch_next` hands off to the queue (next turn runs, or idle).
+`Chat.barge/2` moves a queued piece to the front and cuts the running turn so it runs
+next — the Tetris hard-drop. UI: a **Stop** button in the chat header (with an `Esc`
+hint) + a window-level Esc key in the `AgentChat` hook, both gated on `data-running`
+so Esc only fires mid-run. `barge/2` is wired (`barge_queued` event) and tested but
+has no per-piece UI button yet.
 
 ### Phase 3 — Hard-drop / Cut · ~1 day
 `Chat.interrupt/1`: kill the port (reuse `AgentRunner.kill_port`), flush the partial

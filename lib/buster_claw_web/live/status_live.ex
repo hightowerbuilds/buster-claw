@@ -113,6 +113,20 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, socket}
   end
 
+  def handle_event("cut_run", _params, socket) do
+    Chat.interrupt(socket.assigns.active_chat)
+    {:noreply, socket}
+  end
+
+  def handle_event("barge_queued", %{"id" => id}, socket) do
+    case Integer.parse(id) do
+      {qid, ""} -> Chat.barge(socket.assigns.active_chat, qid)
+      _ -> :ok
+    end
+
+    {:noreply, socket}
+  end
+
   def handle_event("reorder_queue", %{"ids" => ids}, socket) do
     parsed =
       ids
@@ -441,6 +455,7 @@ defmodule BusterClawWeb.StatusLive do
     <section
       id="home-agent-chat"
       phx-hook="AgentChat"
+      data-running={to_string(@running)}
       class="ic-panel flex h-[32rem] max-h-[90vh] min-h-0 w-full flex-col overflow-hidden"
     >
       <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
@@ -450,7 +465,19 @@ defmodule BusterClawWeb.StatusLive do
             Talk to Buster Claw
           </h2>
         </div>
-        <.thinking_chip thinking={@thinking} />
+        <div class="flex items-center gap-3">
+          <.thinking_chip thinking={@thinking} />
+          <button
+            :if={@running}
+            type="button"
+            phx-click="cut_run"
+            title="Stop the model"
+            class="inline-flex items-center gap-1.5 rounded border-2 border-error/50 px-2.5 py-1 font-mono text-[0.62rem] uppercase tracking-wide text-error transition hover:bg-error/10"
+          >
+            <.icon name="hero-stop" class="size-3.5" /> Stop
+            <kbd class="rounded-sm border border-error/40 px-1 text-[0.55rem] leading-none">Esc</kbd>
+          </button>
+        </div>
       </header>
 
       <div
@@ -526,8 +553,8 @@ defmodule BusterClawWeb.StatusLive do
     """
   end
 
-  # The Tetris rail: messages typed while a run is in flight, stacked as tetromino
-  # "next pieces" and dispatched one-per-turn as the current run finishes. The
+  # The queue rail: messages typed while a run is in flight, stacked as "next
+  # pieces" and dispatched one-per-turn as the current run finishes. The
   # front piece is "armed" (hazard border + NEXT tag); pieces are drag-reorderable
   # (QueueRail hook), cancellable, and animate in/out (.ic-piece / phx-remove).
   attr :queue, :list, required: true
@@ -560,7 +587,7 @@ defmodule BusterClawWeb.StatusLive do
             )
           ]}
         >
-          <.tetromino index={item.id} />
+          <.icon name="hero-bars-2" class="size-3.5 shrink-0 text-base-content/30" />
           <span class="flex-1 truncate text-[15px]">{item.text}</span>
           <span
             :if={idx == 0}
@@ -579,42 +606,6 @@ defmodule BusterClawWeb.StatusLive do
           </button>
         </li>
       </ul>
-    </div>
-    """
-  end
-
-  # The seven classic tetrominoes (shape cells in a 4-wide x 2-tall box, + color),
-  # picked by id so a piece keeps the same shape for its whole life in the rail.
-  @tetrominoes [
-    {[{0, 0}, {1, 0}, {2, 0}, {3, 0}], "#22d3ee"},
-    {[{0, 0}, {1, 0}, {0, 1}, {1, 1}], "#facc15"},
-    {[{0, 0}, {1, 0}, {2, 0}, {1, 1}], "#c084fc"},
-    {[{1, 0}, {2, 0}, {0, 1}, {1, 1}], "#4ade80"},
-    {[{0, 0}, {1, 0}, {1, 1}, {2, 1}], "#f87171"},
-    {[{0, 0}, {0, 1}, {1, 1}, {2, 1}], "#60a5fa"},
-    {[{2, 0}, {0, 1}, {1, 1}, {2, 1}], "#fb923c"}
-  ]
-
-  attr :index, :integer, required: true
-
-  defp tetromino(assigns) do
-    {cells, color} = Enum.at(@tetrominoes, Integer.mod(assigns.index, 7))
-    set = MapSet.new(cells)
-    grid = for row <- 0..1, col <- 0..3, do: MapSet.member?(set, {col, row})
-    assigns = assign(assigns, color: color, grid: grid)
-
-    ~H"""
-    <div
-      class="grid shrink-0"
-      style="grid-template-columns: repeat(4, 5px); grid-template-rows: repeat(2, 5px); gap: 1px;"
-      aria-hidden="true"
-    >
-      <span
-        :for={filled <- @grid}
-        class="block size-[5px] rounded-[1px]"
-        style={if filled, do: "background: #{@color};", else: ""}
-      >
-      </span>
     </div>
     """
   end

@@ -412,6 +412,15 @@ const Hooks = {
           this.input.value = ""
         })
       }
+      // Esc stops the model while a run is in flight (mirrors the header Stop
+      // button). Gated on data-running so it doesn't hijack Escape when idle.
+      this.onEscape = (e) => {
+        if (e.key === "Escape" && this.el.dataset.running === "true") {
+          e.preventDefault()
+          this.pushEvent("cut_run", {})
+        }
+      }
+      window.addEventListener("keydown", this.onEscape)
 
       // Drag the bottom handle to resize the chat height. Persisted in
       // localStorage and re-applied on updated() (LiveView patches would
@@ -451,6 +460,7 @@ const Hooks = {
       this.input.removeEventListener("keydown", this.onKeydown)
       this.form.removeEventListener("submit", this.onSubmit)
       this.handle?.removeEventListener("pointerdown", this.onHandleDown)
+      window.removeEventListener("keydown", this.onEscape)
       window.removeEventListener("pointermove", this.onHandleMove)
       window.removeEventListener("pointerup", this.onHandleUp)
     },

@@ -135,6 +135,70 @@ defmodule BusterClaw.Agent.ChatTest do
     assert Enum.map(Chat.queue(conv), & &1.text) == ["b", "c", "a"]
   end
 
+  test "interrupt cuts the running turn, marks it interrupted, and settles idle" do
+    spawner = fn _prompt, _opts -> {:ok, make_ref()} end
+    conv = start_chat(spawner)
+
+    assert :ok = Chat.send_message(conv, "go")
+    assert :running = Chat.status(conv)
+
+    assert :ok = Chat.interrupt(conv)
+    assert_receive {:agent_chat, ^conv, {:message, %{role: :meta, text: "interrupted"}}}
+    assert_receive {:agent_chat, ^conv, {:status, :idle}}
+    assert :idle = Chat.status(conv)
+  end
+
+  test "interrupt on an idle chat is a no-op" do
+    spawner = fn _prompt, _opts -> {:ok, make_ref()} end
+    conv = start_chat(spawner)
+
+    assert :ok = Chat.interrupt(conv)
+    assert :idle = Chat.status(conv)
+  end
+
+  test "interrupt dispatches the next queued message instead of going idle" do
+    test_pid = self()
+    spawner = fn prompt, _opts ->
+      send(test_pid, {:spawned, prompt})
+      {:ok, make_ref()}
+    end
+
+    conv = start_chat(spawner)
+
+    assert :ok = Chat.send_message(conv, "one")
+    assert_receive {:spawned, "one"}
+    assert :ok = Chat.send_message(conv, "two")
+
+    # Cutting "one" hands off to the queue, so "two" starts as its own turn.
+    assert :ok = Chat.interrupt(conv)
+    assert_receive {:spawned, "two"}
+    assert :running = Chat.status(conv)
+    assert [] = Chat.queue(conv)
+  end
+
+  test "barge hard-drops a queued piece to the front and cuts the line" do
+    test_pid = self()
+
+    spawner = fn prompt, _opts ->
+      send(test_pid, {:spawned, prompt})
+      {:ok, make_ref()}
+    end
+
+    conv = start_chat(spawner)
+
+    assert :ok = Chat.send_message(conv, "one")
+    assert_receive {:spawned, "one"}
+    assert :ok = Chat.send_message(conv, "two")
+    assert :ok = Chat.send_message(conv, "three")
+    assert [%{text: "two"}, %{id: three_id, text: "three"}] = Chat.queue(conv)
+
+    # Hard-drop "three": it jumps the line and runs next; "two" stays queued behind.
+    assert :ok = Chat.barge(conv, three_id)
+    assert_receive {:spawned, "three"}
+    assert :running = Chat.status(conv)
+    assert [%{text: "two"}] = Chat.queue(conv)
+  end
+
   test "remove_queued drops a pending message before it is dispatched" do
     spawner = fn _prompt, _opts -> {:ok, make_ref()} end
     conv = start_chat(spawner)
