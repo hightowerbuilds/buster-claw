@@ -322,7 +322,61 @@ Menu is now: Install · Mailman · Shift & Autopilot · Dispatch Queue · Comman
   bounded to the planner).
 - Live-app validation of the swarm + the menu changes.
 
+## Third session — chat harness enhancements (the Tetris rail)
+
+Shifted from the ecosystem backend to the **homepage chat UX** (`StatusLive` →
+`BusterClaw.Agent.Chat`): a live thinking timer, a queue you can pile ideas into
+mid-turn, and a Stop/Esc interrupt — built as a four-phase roadmap, three phases
+shipped. Roadmap doc: `docs/chat-roadmap.md`.
+
+**The constraint that shaped it.** A claude-code-guide spike confirmed the harness
+spawns a fresh `claude -p … --resume <id>` subprocess *per turn* — the prompt is
+fixed at spawn, there's no stdin into a running turn, and the CLI's
+`--input-format stream-json` is undocumented/risky. So true mid-thought injection
+isn't available; "drop ideas in while it's thinking" resolves into **soft drop**
+(queue, runs next turn) vs **hard drop** (interrupt = kill + restart, losing the
+turn) — which maps cleanly onto the Tetris metaphor.
+
+- **Phase 0 — thinking timer (`d005338`).** Time-to-first-token: `chat.ex` stamps
+  `run.first_token_at` on the first assistant/tool event, broadcasts `{:thinking, ms}`,
+  and prepends `thought Xs` to the result `:meta` line. **No DB migration** — the
+  duration rides in the meta text, so it survives reload. `ThinkingTimer` JS hook ticks
+  the label client-side (no per-second server round-trips), snapping to the
+  server-authoritative ms on first token.
+- **Phase 1 — queue backend (`50230d7`).** `send_message` while `:running` now
+  **enqueues** (returns `:ok`) instead of `{:error, :busy}`; `finish_run` →
+  `dispatch_next/1` pops the front as the next turn (no idle flicker between turns) or
+  broadcasts `:idle`. New API `queue/1`, `remove_queued/2`; `{:queue, items}` over the
+  existing PubSub topic. In-memory only (unsent items dropped on restart).
+- **Phase 2 — the queue rail (`6b20721`).** `:chat_queue` renders as draggable "next
+  pieces" — front piece armed (hazard border + NEXT tag), per-item cancel, entrance
+  `ic-piece-in` / exit `phx-remove` / landed-message `ic-drop-in` (the back half of a
+  lock-in), `prefers-reduced-motion` honored. `QueueRail` JS hook does HTML5
+  drag-reorder (optimistic DOM move → `reorder_queue` event → `Chat.reorder_queue/2`
+  re-broadcasts canonical order). Shipped with a tetromino glyph per piece —
+  **dropped on the user's call** in Phase 3 for a plain drag-handle.
+- **Phase 3 — Stop / interrupt (`97d4f63`).** `Chat.interrupt/1` kills the in-flight
+  run (`AgentRunner.kill_port`, guarded by `is_port/1` so the test make-ref path is a
+  no-op), emits a `:meta` "interrupted" marker, audits `:interrupted` (info), then
+  hands off to the queue. `Chat.barge/2` moves a queued piece to the front and cuts the
+  running turn (the literal Tetris hard-drop) — wired + tested, no per-piece UI button
+  yet. UI: a **Stop** button in the chat header (with an `Esc` hint) + a window-level
+  Esc key in `AgentChat`, both gated on a `data-running` flag so Esc only fires mid-run.
+
+### Verification (third session)
+
+- `mix test` — **651 tests, 0 failures** (was 640). 14 new chat tests across the phases:
+  first-token `{:thinking}` broadcast + `thought Xs` meta, queue/dispatch/reorder/remove,
+  interrupt (cut → idle, idle no-op, cut → dispatch-next), and barge hard-drop.
+- Clean `--warnings-as-errors`; `mix assets.build` bundles clean.
+- **Still unverified by me** (needs the running app the user drives): the live feel of
+  the timer, drag-reorder, the drop animations, and the Stop button / Esc — confirmed
+  working by the user ("works great"), not by me. Phase 4 (persistent
+  `--input-format stream-json` session, for real per-thinking-block timers) is a
+  deferred spike against an undocumented protocol.
+
 ## Notes
 
 - Roadmap + research artifacts live under `daily-growth/roadmaps/` and
   `daily-growth/research/`; `phase0-synthesis.md` is the decision record to read first.
+- Chat-harness roadmap + phase status: `docs/chat-roadmap.md`.
