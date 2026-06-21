@@ -117,7 +117,13 @@ if config_env() == :prod do
 
   config :buster_claw, BusterClaw.Repo,
     database: database_path,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5")
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5"),
+    # SQLite is single-writer; WAL (the adapter default) lets readers run alongside
+    # the one writer, but two writers still serialize. Wait up to 5s for the write
+    # lock (the adapter default is 2s) so brief contention between the app's
+    # background writers (Dispatcher, WalletPoller, chat/Sentinel audit) doesn't
+    # surface as "Database busy".
+    busy_timeout: 5_000
 
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||

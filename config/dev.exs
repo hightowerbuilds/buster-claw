@@ -4,6 +4,11 @@ import Config
 config :buster_claw, BusterClaw.Repo,
   database: Path.expand("../buster_claw_dev.db", __DIR__),
   pool_size: 5,
+  # SQLite is single-writer; WAL (the adapter default) lets readers run alongside
+  # the one writer, but two writers still serialize. Wait up to 5s for the write
+  # lock (the adapter default is 2s) so brief contention between background writers
+  # doesn't surface as "Database busy".
+  busy_timeout: 5_000,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true
 
