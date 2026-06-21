@@ -32,6 +32,7 @@ defmodule BusterClaw.Commands do
     Library,
     Orchestration,
     Search,
+    Skills,
     TerminalWorkspace,
     Wallets
   }
@@ -1267,6 +1268,21 @@ defmodule BusterClaw.Commands do
   def call(name, args \\ %{}, opts \\ []) when is_binary(name) do
     caller = Keyword.get(opts, :caller, :trusted)
 
+    # Native commands win. A name that misses the catalog may resolve to an
+    # enabled composition skill (a runtime-added, file-defined ordered list of
+    # native commands). Unknown names fall back to native dispatch, which returns
+    # {:error, :unknown_command}.
+    if has_command?(name) do
+      call_native(name, args, caller)
+    else
+      case Skills.fetch(name) do
+        {:ok, skill} -> call_skill(skill, args, caller)
+        :error -> call_native(name, args, caller)
+      end
+    end
+  end
+
+  defp call_native(name, args, caller) do
     result =
       case authorize(name, caller) do
         :ok ->
@@ -1279,6 +1295,107 @@ defmodule BusterClaw.Commands do
 
     audit(name, args, caller, result)
     result
+  end
+
+  # A composition skill owns no new capability: every step is dispatched back
+  # through `call/2` as the *same* caller, so the catalog's tier/gated rules
+  # apply per step and the skill can never exceed its invoker's trust. Steps go
+  # through `call/2`, never `apply/3` — that is the load-bearing security rule
+  # (see daily-growth/research/s0.5-dynamic-skill-threat-model.md).
+  defp call_skill(skill, args, caller) do
+    case authorize_skill(skill, caller) do
+      :ok ->
+        record(
+          :command_invoke,
+          "skill #{skill.name} (#{length(skill.steps)} steps)",
+          %{skill: skill.name, caller: caller, tier: skill.tier, steps: length(skill.steps)}
+        )
+
+        run_steps(skill, args, caller)
+
+      {:error, :requires_confirmation} = refusal ->
+        BusterClaw.Sentinel.Pending.record(skill.name, args, caller)
+
+        record(
+          :security_block,
+          "Refused skill #{skill.name} for #{caller} caller",
+          %{skill: skill.name, caller: caller, tier: skill.tier}
+        )
+
+        refusal
+    end
+  end
+
+  # A `:restricted` skill may not be run by the safe-only callers (chat agent /
+  # MCP), mirroring `authorize/2` for restricted commands. The gated set is still
+  # enforced per step regardless of the skill's declared tier.
+  defp authorize_skill(%{tier: :restricted}, caller) when caller in [:agent, :mcp],
+    do: {:error, :requires_confirmation}
+
+  defp authorize_skill(_skill, _caller), do: :ok
+
+  # Run a skill's steps in order, threading each step's args through the skill's
+  # invocation args (`$name`) and the previous step's value (`$prior`). Steps must
+  # be native commands (no skill-to-skill recursion in this slice). Stops at the
+  # first failing step. Returns `{:ok, results}` (a list of `%{command, result}`)
+  # or `{:error, {:step_failed, command, reason}}`.
+  defp run_steps(%{steps: steps}, args, caller) do
+    steps
+    |> Enum.reduce_while({[], nil}, fn step, {acc, prior} ->
+      command = step["command"]
+      step_args = resolve_args(Map.get(step, "args", %{}), args, prior)
+
+      cond do
+        not has_command?(command) ->
+          {:halt, {:error, {:step_failed, command, :unknown_command}}}
+
+        true ->
+          case call(command, step_args, caller: caller) do
+            {:ok, value} -> {:cont, {[%{command: command, result: value} | acc], value}}
+            {:error, reason} -> {:halt, {:error, {:step_failed, command, reason}}}
+          end
+      end
+    end)
+    |> case do
+      {:error, _reason} = err -> err
+      {results, _prior} -> {:ok, Enum.reverse(results)}
+    end
+  end
+
+  defp resolve_args(step_args, args, prior) when is_map(step_args) do
+    Map.new(step_args, fn {key, value} -> {key, resolve_value(value, args, prior)} end)
+  end
+
+  defp resolve_args(_step_args, _args, _prior), do: %{}
+
+  # A value that is exactly "$prior" passes the previous result through unchanged
+  # (any type). Otherwise tokens are interpolated into strings; non-string values
+  # pass through untouched.
+  defp resolve_value("$prior", _args, prior), do: prior
+
+  defp resolve_value(value, args, prior) when is_binary(value) do
+    value
+    |> replace_prior(prior)
+    |> replace_args(args)
+  end
+
+  defp resolve_value(value, _args, _prior), do: value
+
+  defp replace_prior(value, prior) when is_binary(prior),
+    do: String.replace(value, "$prior", prior)
+
+  defp replace_prior(value, _prior), do: value
+
+  defp replace_args(value, args) do
+    Regex.replace(~r/\$([a-zA-Z_][a-zA-Z0-9_]*)/, value, fn whole, name ->
+      case Map.fetch(args, name) do
+        {:ok, v} when is_binary(v) -> v
+        {:ok, v} when is_number(v) or is_atom(v) -> to_string(v)
+        # Non-scalar (map/list) or missing arg: leave the token literal rather
+        # than crash interpolation.
+        _ -> whole
+      end
+    end)
   end
 
   # Feed the Sentinel audit/notify spine. Refused restricted calls are critical
@@ -1335,8 +1452,19 @@ defmodule BusterClaw.Commands do
     end
   end
 
-  @doc "Return the command catalog as a list of maps."
+  @doc "Return the native command catalog as a list of maps."
   def list_commands, do: catalog()
+
+  @doc """
+  Return enabled composition skills as catalog-style entries (marked
+  `source: :composition`). A skill whose name collides with a native command is
+  dropped — native always wins. Kept separate from `list_commands/0` so the native
+  catalog's invariant (every entry is a dispatchable function) holds.
+  """
+  def list_skills do
+    native_names = MapSet.new(catalog(), & &1.name)
+    Enum.reject(Skills.catalog_entries(), &MapSet.member?(native_names, &1.name))
+  end
 
   @doc "Return only the `:safe`-tier commands (the ones untrusted callers may run)."
   def safe_commands, do: safe_catalog()
