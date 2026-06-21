@@ -43,6 +43,9 @@ defmodule BusterClawWeb.ApiController do
       {:error, :requires_confirmation} ->
         send_error(conn, 403, "requires_confirmation")
 
+      {:error, :policy_blocked} ->
+        send_error(conn, 403, "policy_blocked")
+
       {:error, :unknown_command} ->
         send_error(conn, 404, "unknown_command")
 

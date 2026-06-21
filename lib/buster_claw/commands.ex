@@ -31,6 +31,7 @@ defmodule BusterClaw.Commands do
     Jobs,
     Library,
     Orchestration,
+    PolicyEngine,
     Search,
     Skills,
     TerminalWorkspace,
@@ -61,7 +62,7 @@ defmodule BusterClaw.Commands do
 
   # Deletes are irreversible, so they are `gated`: an autonomous run working
   # untrusted-origin content (`:agent_untrusted`) cannot fire them — they surface
-  # for human approval instead. See `command_gated?/1` and `authorize/2`.
+  # for human approval instead. See `command_gated?/1` and `PolicyEngine.check/1`.
   defp delete_entry(name, desc),
     do: %{
       name: name,
@@ -1283,28 +1284,42 @@ defmodule BusterClaw.Commands do
   end
 
   defp call_native(name, args, caller) do
-    result =
-      case authorize(name, caller) do
-        :ok ->
-          dispatch(name, args)
+    request = %{
+      name: name,
+      caller: caller,
+      tier: command_tier(name),
+      gated: command_gated?(name),
+      source: :native
+    }
 
-        {:error, :requires_confirmation} = refusal ->
-          BusterClaw.Sentinel.Pending.record(name, args, caller)
-          refusal
-      end
+    case PolicyEngine.check(request) do
+      :allow ->
+        result = dispatch(name, args)
+        audit_invoke(name, args, caller, result)
+        result
 
-    audit(name, args, caller, result)
-    result
+      decision ->
+        refuse(name, args, caller, decision)
+    end
   end
 
   # A composition skill owns no new capability: every step is dispatched back
-  # through `call/2` as the *same* caller, so the catalog's tier/gated rules
-  # apply per step and the skill can never exceed its invoker's trust. Steps go
-  # through `call/2`, never `apply/3` — that is the load-bearing security rule
-  # (see daily-growth/research/s0.5-dynamic-skill-threat-model.md).
+  # through `call/2` as the *same* caller, so the policy check + catalog tier/gated
+  # rules apply per step and the skill can never exceed its invoker's trust. Steps
+  # go through `call/2`, never `apply/3` — the load-bearing security rule (see
+  # daily-growth/research/s0.5-dynamic-skill-threat-model.md). The skill name
+  # itself is also policy-checked here (declared `tier` + operator deny rules).
   defp call_skill(skill, args, caller) do
-    case authorize_skill(skill, caller) do
-      :ok ->
+    request = %{
+      name: skill.name,
+      caller: caller,
+      tier: skill.tier,
+      gated: false,
+      source: :composition
+    }
+
+    case PolicyEngine.check(request) do
+      :allow ->
         record(
           :command_invoke,
           "skill #{skill.name} (#{length(skill.steps)} steps)",
@@ -1313,26 +1328,42 @@ defmodule BusterClaw.Commands do
 
         run_steps(skill, args, caller)
 
-      {:error, :requires_confirmation} = refusal ->
-        BusterClaw.Sentinel.Pending.record(skill.name, args, caller)
-
-        record(
-          :security_block,
-          "Refused skill #{skill.name} for #{caller} caller",
-          %{skill: skill.name, caller: caller, tier: skill.tier}
-        )
-
-        refusal
+      decision ->
+        refuse(skill.name, args, caller, decision)
     end
   end
 
-  # A `:restricted` skill may not be run by the safe-only callers (chat agent /
-  # MCP), mirroring `authorize/2` for restricted commands. The gated set is still
-  # enforced per step regardless of the skill's declared tier.
-  defp authorize_skill(%{tier: :restricted}, caller) when caller in [:agent, :mcp],
-    do: {:error, :requires_confirmation}
+  # A baseline gate (`{:confirm, _}`) surfaces the action for human approval via
+  # `Sentinel.Pending` and returns `:requires_confirmation`. An operator `deny`
+  # (`{:block, _}`) is a hard refusal — there is nothing to confirm — and returns
+  # `:policy_blocked`. Both land on the Sentinel feed as a critical security block.
+  defp refuse(name, args, caller, {:confirm, meta}) do
+    BusterClaw.Sentinel.Pending.record(name, args, caller)
 
-  defp authorize_skill(_skill, _caller), do: :ok
+    record(
+      :security_block,
+      "Refused #{name} for #{caller} caller",
+      refusal_meta(name, args, meta)
+    )
+
+    {:error, :requires_confirmation}
+  end
+
+  defp refuse(name, args, caller, {:block, meta}) do
+    record(
+      :security_block,
+      "Blocked #{name} for #{caller} caller",
+      refusal_meta(name, args, meta)
+    )
+
+    {:error, :policy_blocked}
+  end
+
+  # Keep `command`/`args` in the recorded metadata (the audit feed + tests key off
+  # them) and carry the policy decision's own fields (reason, rule source).
+  defp refusal_meta(name, args, meta) do
+    meta |> Map.put(:command, name) |> Map.put(:args, args)
+  end
 
   # Run a skill's steps in order, threading each step's args through the skill's
   # invocation args (`$name`) and the previous step's value (`$prior`). Steps must
@@ -1398,20 +1429,10 @@ defmodule BusterClaw.Commands do
     end)
   end
 
-  # Feed the Sentinel audit/notify spine. Refused restricted calls are critical
-  # security blocks; otherwise only consequential (mutating/triggering) commands
-  # are recorded — pure reads are skipped to keep the audit log signal-rich.
-  defp audit(name, args, caller, {:error, :requires_confirmation}) do
-    record(
-      :security_block,
-      ~s(Refused restricted command "#{name}" for #{caller} caller),
-      %{command: name, args: args, caller: caller, tier: command_tier(name)}
-    )
-
-    :ok
-  end
-
-  defp audit(name, args, caller, result) do
+  # Feed the Sentinel audit/notify spine for a *dispatched* command (refusals are
+  # recorded in `refuse/4`). Only consequential (mutating/triggering) commands are
+  # recorded — pure reads are skipped to keep the audit log signal-rich.
+  defp audit_invoke(name, args, caller, result) do
     if command_type(name) in [:mutate, :trigger] do
       outcome = if match?({:ok, _}, result), do: "ok", else: "error"
 
@@ -1507,26 +1528,9 @@ defmodule BusterClaw.Commands do
     end
   end
 
-  # An autonomous run working untrusted-origin content is trusted enough to do a
-  # lot without asking (drafts, saves, calendar edits, the dispatch verbs) — it is
-  # only stopped from the `gated` set (outbound/irreversible), which surfaces for
-  # human approval. This is the one guardrail kept for the "agent does a lot
-  # without asking" model: untrusted input must not autonomously send or delete.
-  defp authorize(name, :agent_untrusted) do
-    if command_gated?(name), do: {:error, :requires_confirmation}, else: :ok
-  end
-
-  # Untrusted callers (chat agent / MCP) may only run safe-tier commands.
-  # Unknown names fall through to `dispatch/2`, which returns
-  # `{:error, :unknown_command}` — we don't leak "restricted" for those.
-  defp authorize(name, caller) when caller in [:agent, :mcp] do
-    case command_tier(name) do
-      :restricted -> {:error, :requires_confirmation}
-      _ -> :ok
-    end
-  end
-
-  defp authorize(_name, _caller), do: :ok
+  # Authorization (the gated/tier baseline + operator deny rules) now lives in
+  # `BusterClaw.PolicyEngine.check/1`, evaluated at the `call/2` choke point for
+  # native commands and composition-skill steps alike.
 
   defp has_command?(name), do: Map.has_key?(by_name(), name)
 

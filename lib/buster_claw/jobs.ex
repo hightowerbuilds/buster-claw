@@ -89,6 +89,7 @@ defmodule BusterClaw.Jobs do
     memory = Path.join(Artifact.workspace_root(), "memory")
     File.mkdir_p!(memory)
     maybe_write(Path.join(memory, "trusted-email-senders.md"), default_trusted_senders())
+    maybe_write(Path.join(memory, "policy.md"), BusterClaw.PolicyEngine.default_policy())
   end
 
   # The on-shift agent runs Claude Code in the workspace. Seed `.claude/settings.json`
