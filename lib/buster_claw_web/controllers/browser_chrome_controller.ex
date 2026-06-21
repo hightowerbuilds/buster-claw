@@ -221,6 +221,11 @@ defmodule BusterClawWeb.BrowserChromeController do
           const t = tabs.find((x) => x.id === id)
           if (t) { t.url = u; t.label = deriveLabel(u) }
           if (id === activeId && document.activeElement !== addr) addr.value = display(u)
+          // New page → reset the bookmark button so a fresh save reads clearly.
+          if (id === activeId) {
+            const bm = document.getElementById("bookmark")
+            if (bm) bm.textContent = "+ Bookmark"
+          }
           renderTabs()
           if (id === activeId) record(u, display(u))
         }
@@ -253,15 +258,23 @@ defmodule BusterClawWeb.BrowserChromeController do
         })
 
         function bookmark() {
+          // Bookmark what the address bar actually shows for the active tab,
+          // resolved back to a full URL. This stays correct even when a
+          // programmatic navigation didn't fire the content-navigated callback —
+          // which would otherwise leave activeTab().url stale and re-bookmark the
+          // previous page (so changing the URL appeared to make no new bookmark).
           const t = activeTab()
-          const url = t && t.url
+          const url = resolve(addr.value) || (t && t.url)
           if (!url || url === homeUrl) return
-          const label = display(url) || url
-          try {
-            fetch(origin + "/browser/bookmarks?url=" + encodeURIComponent(url) +
-                  "&label=" + encodeURIComponent(label), {method: "POST"})
-              .then(function () { document.getElementById("bookmark").textContent = "Saved \\u2713" })
-          } catch (e) {}
+          const label = (t && t.label && t.label !== "New tab" && t.label) || display(url) || url
+          const btn = document.getElementById("bookmark")
+          fetch(origin + "/browser/bookmarks?url=" + encodeURIComponent(url) +
+                "&label=" + encodeURIComponent(label), {method: "POST"})
+            .then(function () {
+              btn.textContent = "Saved \\u2713"
+              setTimeout(function () { btn.textContent = "+ Bookmark" }, 1500)
+            })
+            .catch(function () {})
         }
 
         document.getElementById("form").addEventListener("submit", function (e) { e.preventDefault(); go() })
