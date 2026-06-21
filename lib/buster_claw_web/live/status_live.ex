@@ -259,7 +259,7 @@ defmodule BusterClawWeb.StatusLive do
       >
         <div
           :if={@messages == []}
-          class="m-auto max-w-xs text-center text-sm text-base-content/55"
+          class="m-auto max-w-xs text-center text-[17px] text-base-content/55"
         >
           Ask Buster Claw to check your mail, work the queue, or look something up.
           It runs headless Claude — no terminal needed.
@@ -278,7 +278,7 @@ defmodule BusterClawWeb.StatusLive do
           data-chat-input
           rows="2"
           placeholder="Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
-          class="min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+          class="min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-[17px] focus:border-primary focus:outline-none"
         ></textarea>
         <button
           type="submit"
@@ -306,7 +306,7 @@ defmodule BusterClawWeb.StatusLive do
   defp chat_bubble(%{msg: %{role: :user}} = assigns) do
     ~H"""
     <div id={"chat-msg-#{@msg.id}"} class="flex justify-end">
-      <div class="max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-sm text-primary-content">
+      <div class="max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content">
         {@msg.text}
       </div>
     </div>
@@ -316,7 +316,7 @@ defmodule BusterClawWeb.StatusLive do
   defp chat_bubble(%{msg: %{role: :assistant}} = assigns) do
     ~H"""
     <div id={"chat-msg-#{@msg.id}"} class="flex justify-start">
-      <div class="max-w-[85%] whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-100 px-3 py-2 text-sm">
+      <div class="max-w-[85%] whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-100 px-3 py-2 text-[17px]">
         {@msg.text}
       </div>
     </div>
@@ -346,7 +346,7 @@ defmodule BusterClawWeb.StatusLive do
   defp chat_bubble(%{msg: %{role: :error}} = assigns) do
     ~H"""
     <div id={"chat-msg-#{@msg.id}"} class="flex justify-start">
-      <div class="max-w-[85%] rounded-sm border-2 border-error/50 bg-error/10 px-3 py-2 text-sm text-error">
+      <div class="max-w-[85%] rounded-sm border-2 border-error/50 bg-error/10 px-3 py-2 text-[17px] text-error">
         {@msg.text}
       </div>
     </div>

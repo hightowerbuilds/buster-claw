@@ -228,6 +228,21 @@ Small UX pass on the home panel (`status_live.ex`, `app.css`, `app.js`):
   `updated()` (LiveView would otherwise drop the inline height on the next render)
   with a `dragging` guard so an incoming message can't snap the height mid-drag.
 
+- **Bigger chat font.** Bumped the message bubbles, empty state, and input from
+  `text-sm` (14px) to `text-[17px]` (+3px) for readability; left the mono tool-lines
+  and meta footer at their caption sizes.
+
+## GWS went live
+
+The full Workspace surface is now serving from a freshly restarted dev server
+(catalog 53 → 75). The connected account reconnected through the broader consent
+screen — all **8 scopes granted** (`mail.google.com`, calendar, drive, documents,
+spreadsheets, presentations, contacts, tasks), confirmed via `google_account_list`.
+A live `gmail_search` works; `drive_list`/`tasks_list` still **403** because those
+service **APIs aren't enabled in the Cloud project yet** (auth + scope are fine —
+isolated by the passing Gmail control). Enabling Drive/Docs/Sheets/Slides/People/Tasks
+in the console is the last operational step before the surface is fully usable.
+
 ## Web → Drive pipeline — binary-safe download
 
 Closing the "go to a website, download a file, store it in Drive" chain. The Drive
