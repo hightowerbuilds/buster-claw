@@ -86,11 +86,14 @@ defmodule BusterClaw.Agent.ChatPersistenceTest do
 
     rows = Transcript.recent(conv_id)
 
-    assert Enum.map(rows, &{&1.role, &1.content}) == [
+    assert [
              {"user", "do it"},
              {"assistant", "Working."},
-             {"meta", "4 turns · $0.02"}
-           ]
+             {"meta", meta}
+           ] = Enum.map(rows, &{&1.role, &1.content})
+
+    # The meta line leads with the thinking time (time-to-first-token), then turns/cost.
+    assert meta =~ ~r/^thought [\d.]+s · 4 turns · \$0\.02$/
 
     # The session id captured mid-run is stamped on subsequently-written rows.
     assert Enum.any?(rows, &(&1.session_id == "sess-9"))

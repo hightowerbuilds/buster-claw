@@ -65,11 +65,15 @@ defmodule BusterClaw.Agent.ChatTest do
     assert_receive {:agent_chat, ^conv, {:message, %{role: :user, text: "work the queue"}}}
     assert_receive {:agent_chat, ^conv, {:status, :running}}
     assert_receive {:agent_chat, ^conv, {:message, %{role: :assistant, text: "On it."}}}
+    # First token ends the "thinking" phase and freezes the live timer.
+    assert_receive {:agent_chat, ^conv, {:thinking, ms}}
+    assert is_integer(ms) and ms >= 0
 
     assert_receive {:agent_chat, ^conv,
                     {:message, %{role: :tool, text: "Bash: ./buster-claw dispatch list"}}}
 
-    assert_receive {:agent_chat, ^conv, {:message, %{role: :meta, text: "3 turns · $0.012"}}}
+    assert_receive {:agent_chat, ^conv, {:message, %{role: :meta, text: meta}}}
+    assert meta =~ ~r/^thought [\d.]+s · 3 turns · \$0\.012$/
     assert_receive {:agent_chat, ^conv, {:status, :idle}}
   end
 

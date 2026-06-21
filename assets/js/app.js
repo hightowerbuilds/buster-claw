@@ -468,6 +468,49 @@ const Hooks = {
       if (!isNaN(saved)) this.el.style.height = this.clampHeight(saved) + "px"
     },
   },
+  // Live chat "thinking" timer. While data-state="running" it ticks up from the
+  // moment it mounted (no server round-trips); when the first token lands the
+  // server flips data-state="done" with the authoritative data-ms, and we freeze
+  // the label to that. The element only exists while a turn is in flight, so
+  // mount/destroy bound the timer's lifetime.
+  ThinkingTimer: {
+    mounted() {
+      this.labelEl = this.el.querySelector("[data-thinking-label]")
+      this.render()
+    },
+    updated() {
+      this.render()
+    },
+    destroyed() {
+      this.stop()
+    },
+    render() {
+      if (this.el.dataset.state === "done") {
+        this.stop()
+        const ms = parseInt(this.el.dataset.ms, 10)
+        this.setLabel("Thought " + this.fmt(isNaN(ms) ? 0 : ms))
+      } else {
+        if (this.startedAt == null) this.startedAt = performance.now()
+        if (!this.timer) this.timer = setInterval(() => this.tick(), 100)
+        this.tick()
+      }
+    },
+    tick() {
+      if (this.startedAt != null) this.setLabel("Thinking " + this.fmt(performance.now() - this.startedAt))
+    },
+    stop() {
+      if (this.timer) {
+        clearInterval(this.timer)
+        this.timer = null
+      }
+    },
+    setLabel(text) {
+      if (this.labelEl) this.labelEl.textContent = text
+    },
+    fmt(ms) {
+      return (Math.max(0, ms) / 1000).toFixed(1) + "s"
+    },
+  },
   // Tracks the pointer over a `.ic-scanlines` heading and writes its position
   // into --crt-x/--crt-y so the CSS reveals a stronger chromatic-aberration
   // overlay in a circle under the cursor. Throttled to one write per frame; no

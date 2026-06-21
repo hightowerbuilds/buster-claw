@@ -168,7 +168,12 @@ defmodule BusterClaw.Agent.Chat do
     state =
       state
       |> emit_message(:user, text)
-      |> Map.put(:run, %{started: System.monotonic_time(:millisecond), turns: nil, cost: nil})
+      |> Map.put(:run, %{
+        started: System.monotonic_time(:millisecond),
+        first_token_at: nil,
+        turns: nil,
+        cost: nil
+      })
 
     extra = ~w(--output-format stream-json --verbose) ++ resume_args(state.session_id)
 
@@ -225,16 +230,16 @@ defmodule BusterClaw.Agent.Chat do
 
   defp project_event(state, %StreamEvent{kind: :assistant_text, text: text})
        when is_binary(text) and text != "",
-       do: emit_message(state, :assistant, text)
+       do: state |> mark_first_token() |> emit_message(:assistant, text)
 
   defp project_event(state, %StreamEvent{kind: :tool_use, summary: summary})
        when is_binary(summary),
-       do: emit_message(state, :tool, summary)
+       do: state |> mark_first_token() |> emit_message(:tool, summary)
 
   defp project_event(state, %StreamEvent{kind: :result} = event) do
     state = %{state | run: stash_result(state.run, event)}
 
-    case result_meta_line(event) do
+    case result_meta_line(state.run, event) do
       nil ->
         state
 
@@ -244,6 +249,17 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   defp project_event(state, _event), do: state
+
+  # The first model output (text or a tool call) ends the "thinking" phase. Stamp
+  # it once and tell the UI to freeze its live thinking timer at the measured
+  # time-to-first-token. A no-op once stamped, or if there's no run in flight.
+  defp mark_first_token(%{run: %{first_token_at: nil, started: started} = run} = state) do
+    now = System.monotonic_time(:millisecond)
+    broadcast(state, {:thinking, now - started})
+    %{state | run: %{run | first_token_at: now}}
+  end
+
+  defp mark_first_token(state), do: state
 
   defp stash_result(run, event),
     do: Map.merge(run || %{}, %{turns: event.num_turns, cost: event.cost_usd})
@@ -301,11 +317,22 @@ defmodule BusterClaw.Agent.Chat do
     state
   end
 
-  defp result_meta_line(%StreamEvent{cost_usd: cost, num_turns: turns})
-       when is_number(cost) and is_integer(turns),
-       do: "#{turns} turns · $#{Float.round(cost * 1.0, 4)}"
+  defp result_meta_line(run, %StreamEvent{cost_usd: cost, num_turns: turns})
+       when is_number(cost) and is_integer(turns) do
+    [thinking_label(run), "#{turns} turns", "$#{Float.round(cost * 1.0, 4)}"]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" · ")
+  end
 
-  defp result_meta_line(_event), do: nil
+  defp result_meta_line(_run, _event), do: nil
+
+  defp thinking_label(%{started: started, first_token_at: ft})
+       when is_integer(started) and is_integer(ft),
+       do: "thought #{format_secs(ft - started)}"
+
+  defp thinking_label(_run), do: nil
+
+  defp format_secs(ms), do: :erlang.float_to_binary(max(ms, 0) / 1000, decimals: 1) <> "s"
 
   defp error_text(:timeout), do: "The run timed out and was stopped."
   defp error_text(:no_agent_cli), do: "No agent CLI found. Install Claude Code to chat."

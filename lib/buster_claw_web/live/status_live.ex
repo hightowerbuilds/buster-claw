@@ -50,6 +50,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chats, chats)
     |> assign(:active_chat, active)
     |> assign(:chat_running, Chat.running?(active))
+    |> assign(:chat_thinking, nil)
     |> load_chat_history(active)
   end
 
@@ -114,6 +115,7 @@ defmodule BusterClawWeb.StatusLive do
       |> assign(:chats, socket.assigns.chats ++ [to_chat_tab(conv)])
       |> assign(:active_chat, conv.id)
       |> assign(:chat_running, false)
+      |> assign(:chat_thinking, nil)
       |> assign(:chat_messages, [])
       |> assign(:chat_seq, 0)
 
@@ -187,8 +189,20 @@ defmodule BusterClawWeb.StatusLive do
   defp apply_chat(socket, conv_id, {:status, status}) do
     socket = update_tab(socket, conv_id, &%{&1 | running: status == :running})
 
+    if conv_id == socket.assigns.active_chat do
+      socket
+      |> assign(:chat_running, status == :running)
+      # Start the live timer on :running; clear it on :idle (the finished duration
+      # lives on in the transcript's :meta line, so the header chip can disappear).
+      |> assign(:chat_thinking, if(status == :running, do: :running, else: nil))
+    else
+      socket
+    end
+  end
+
+  defp apply_chat(socket, conv_id, {:thinking, ms}) do
     if conv_id == socket.assigns.active_chat,
-      do: assign(socket, :chat_running, status == :running),
+      do: assign(socket, :chat_thinking, {:done, ms}),
       else: socket
   end
 
@@ -208,6 +222,7 @@ defmodule BusterClawWeb.StatusLive do
     socket
     |> assign(:active_chat, id)
     |> assign(:chat_running, Chat.running?(id))
+    |> assign(:chat_thinking, if(Chat.running?(id), do: :running, else: nil))
     |> update_tab(id, &%{&1 | unread: false})
     |> load_chat_history(id)
   end
@@ -316,7 +331,11 @@ defmodule BusterClawWeb.StatusLive do
 
             <div class="flex min-h-0 flex-col gap-2 self-start">
               <.chat_tabs chats={@chats} active={@active_chat} />
-              <.chat_panel messages={@chat_messages} running={@chat_running} />
+              <.chat_panel
+                messages={@chat_messages}
+                running={@chat_running}
+                thinking={@chat_thinking}
+              />
             </div>
           </div>
         </div>
@@ -382,6 +401,7 @@ defmodule BusterClawWeb.StatusLive do
 
   attr :messages, :list, required: true
   attr :running, :boolean, required: true
+  attr :thinking, :any, required: true
 
   defp chat_panel(assigns) do
     ~H"""
@@ -397,12 +417,7 @@ defmodule BusterClawWeb.StatusLive do
             Talk to Buster Claw
           </h2>
         </div>
-        <span
-          :if={@running}
-          class="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-wide text-primary"
-        >
-          <span class="size-2 animate-pulse rounded-full bg-primary"></span> Working
-        </span>
+        <.thinking_chip thinking={@thinking} />
       </header>
 
       <div
@@ -452,6 +467,27 @@ defmodule BusterClawWeb.StatusLive do
         </span>
       </div>
     </section>
+    """
+  end
+
+  # Live "thinking" timer in the chat header. `ThinkingTimer` (app.js) ticks the
+  # label client-side from data-state/data-ms — no server round-trips per second.
+  attr :thinking, :any, required: true
+
+  defp thinking_chip(%{thinking: nil} = assigns), do: ~H""
+
+  defp thinking_chip(assigns) do
+    ~H"""
+    <span
+      id="chat-thinking"
+      phx-hook="ThinkingTimer"
+      data-state={if(match?({:done, _}, @thinking), do: "done", else: "running")}
+      data-ms={with({:done, ms} <- @thinking, do: ms, else: (_ -> nil))}
+      class="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-wide text-primary"
+    >
+      <span class="size-2 animate-pulse rounded-full bg-primary"></span>
+      <span data-thinking-label>Thinking…</span>
+    </span>
     """
   end
 
