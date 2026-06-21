@@ -7,7 +7,14 @@ import Config
 # Run `mix help test` for more information.
 config :buster_claw, BusterClaw.Repo,
   database: Path.expand("../buster_claw_test.db", __DIR__),
-  pool_size: 5,
+  # SQLite is single-writer at the file level, so multiple pooled connections only
+  # race each other: a read-then-write transaction (common via *_seeded/0 helpers)
+  # upgrades from a shared to a write lock and, if another connection holds it, gets
+  # an immediate SQLITE_BUSY that `busy_timeout` cannot wait out. One connection
+  # makes the sandbox serialize writers, so that collision can't happen. Async tests
+  # still run — they just queue on DB checkout rather than holding rival connections.
+  pool_size: 1,
+  busy_timeout: 5_000,
   pool: Ecto.Adapters.SQL.Sandbox
 
 # We don't run a server during test. If one is required,
