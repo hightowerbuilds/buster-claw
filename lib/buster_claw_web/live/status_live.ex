@@ -667,7 +667,6 @@ defmodule BusterClawWeb.StatusLive do
           aria-label="Widget"
           class="flex gap-1 border-b-2 border-base-content/20 px-2 pt-2"
         >
-          <button type="button">STATIC</button>
           <%= for {key, text} <- [
             {"get-started", "Get Started"},
             {"calendar", "Calendar"},
@@ -687,7 +686,7 @@ defmodule BusterClawWeb.StatusLive do
                 )
               ]}
             >
-              TEST<%= text %>
+              {text}
             </button>
           <% end %>
         </div>
