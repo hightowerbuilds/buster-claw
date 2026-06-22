@@ -143,6 +143,9 @@ defmodule BusterClawWeb.Layouts do
         <%!-- Invisible bridge: invokes the Tauri browser_screenshot command when
              the agent requests a capture, then POSTs the PNG back. --%>
         <div id="screenshot-bridge" phx-hook="ScreenshotBridge" phx-update="ignore" hidden></div>
+        <%!-- Invisible bridge: speaks assistant replies via the Tauri `speak`
+             command when the server pushes "bc:speak" (gated on the Voice toggle). --%>
+        <div id="voice-bridge" phx-hook="VoiceBridge" phx-update="ignore" hidden></div>
       </header>
 
       <main class={[

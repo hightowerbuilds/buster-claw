@@ -21,6 +21,8 @@
     "allow-browser-reload",
     "allow-browser-hide",
     "allow-browser-close",
-    "allow-browser-screenshot"
+    "allow-browser-screenshot",
+    "allow-speak",
+    "allow-stop-speaking"
   ]
 }

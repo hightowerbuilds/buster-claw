@@ -249,6 +249,18 @@
           "markdownDescription": "Enables the browser_switch_tab command without any pre-configured scope."
         },
         {
+          "description": "Enables the speak command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-speak",
+          "markdownDescription": "Enables the speak command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_speaking command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stop-speaking",
+          "markdownDescription": "Enables the stop_speaking command without any pre-configured scope."
+        },
+        {
           "description": "Enables the terminal_attach command without any pre-configured scope.",
           "type": "string",
           "const": "allow-terminal-attach",
@@ -349,6 +361,18 @@
           "type": "string",
           "const": "deny-browser-switch-tab",
           "markdownDescription": "Denies the browser_switch_tab command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the speak command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-speak",
+          "markdownDescription": "Denies the speak command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_speaking command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stop-speaking",
+          "markdownDescription": "Denies the stop_speaking command without any pre-configured scope."
         },
         {
           "description": "Denies the terminal_attach command without any pre-configured scope.",

@@ -14,6 +14,7 @@ use tauri::{Manager, RunEvent};
 
 mod browser;
 mod terminal;
+mod voice;
 mod workspace;
 
 const APP_DATA_DIR_NAME: &str = "BusterClaw";
@@ -279,7 +280,9 @@ fn main() {
             browser::browser_close_tab,
             browser::browser_hide,
             browser::browser_close,
-            browser::browser_screenshot
+            browser::browser_screenshot,
+            voice::speak,
+            voice::stop_speaking
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
