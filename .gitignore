@@ -49,3 +49,5 @@ erl_crash.dump
 # Local environment / secrets (never commit)
 .env
 .env.local
+priv/plts/*.plt
+priv/plts/*.plt.hash
