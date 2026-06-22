@@ -425,6 +425,55 @@ commands). Worked the four-stage roadmap end to end
   card grid, real favicons loading in the webview, the search/tag-filter interaction, and
   the bookmark bar navigating the active tab.
 
+## Voice — speech-to-text input (fifth session)
+
+Building on the native-macOS **TTS** that shipped earlier today (`091ec0d` — the home
+chat speaks its replies), this session added the other half: **on-device speech-to-text**,
+so you can talk *to* Buster Claw, not just hear it. Roadmap + status:
+`daily-growth/roadmaps/06-21-26-voice-roadmap.md`. The whole feature lives in the Tauri
+shell (device I/O, not an agent-callable command) and runs **fully offline** — no audio
+egress, no API keys. The locked decision (de-risk the build before feature code) drove the
+order.
+
+- **Phase 0 (STT slice) — the de-risk gate.** Added `cpal 0.18` (CoreAudio capture) +
+  `whisper-rs 0.16` (static whisper.cpp, Metal) to the macOS target deps. The trick: a
+  `voice::run_selfcheck` that *references both crates* (probes the default input device,
+  loads the model), so a plain `cargo build` genuinely exercises the link rather than
+  leaving the deps unused. Mic perms wired (`Info.plist` `NSMicrophoneUsageDescription` +
+  `Entitlements.plist` `audio-input`); the ~142MB `ggml-base.en.bin` is *fetched*
+  (`scripts/fetch_whisper_model.sh`), not committed, into a **stable `resources/models/`
+  mapping** — deliberately separate from the volatile `resources/release/` that
+  `build_desktop.sh` and `dev.sh` wipe and re-stage.
+
+- **Phase 2 (STT input).** `start_recording`/`stop_recording` in `desktop/tauri/src/voice.rs`
+  (macOS `mod stt`): cpal captures mono PCM on a dedicated thread (the `!Send` stream lives
+  and dies there, parking until stop), downmixed + linear-resampled to 16kHz, transcribed by
+  a **cached** `WhisperContext` (loaded once; fresh state per call). One recording at a time;
+  a too-short tap returns empty text, not an error. UI: a 🎤 button in the composer
+  (`chat_panel.ex`), hidden until the `AgentChat` hook sees the Tauri shell, with
+  listening/transcribing states; push-to-talk on hold **and the ⌘/ hotkey**, which cuts any
+  TTS first (barge-in) and **fills the composer without auto-sending** (v1 — you review +
+  Enter). Errors (mic denied, model missing) route through a new `voice_error` LiveView
+  event → flash.
+
+### Verification (fifth session)
+
+- **`cargo build` PASSES — the de-risk gate is cleared.** whisper.cpp (whisper-rs-sys 0.15)
+  compiled from source and **linked statically** in the toolchain; 0 errors, 0 `voice.rs`
+  warnings, a 39M debug binary. The `whisper-cli` shell-out fallback is unneeded. The build
+  flushed out real cpal-0.18 / whisper-rs-0.16 API drift the docs had wrong:
+  `build_input_stream` takes `StreamConfig` **by value**; `SampleRate` is now `type = u32`
+  (no `.0`); `Device` name via `description().name()`; segment text via
+  `get_segment(i).to_str_lossy()` (not `full_get_segment_text`).
+- **Phoenix/JS green** — `mix compile --warnings-as-errors`, esbuild, and `mix format` all
+  clean; `StatusLiveTest` **14/14** (added: mic button renders + hidden-until-Tauri,
+  `voice_error` flashes).
+- **Still unverified by me** (needs the running app + a real microphone, which the user
+  drives): the first-run mic-permission prompt and its denied path, live transcription
+  accuracy, the boot self-check log line, and barge-in (TTS pausing while recording). Run
+  `./scripts/dev.sh`, hold 🎤 / ⌘/, speak, release → transcript should fill the composer.
+- Shipped as `f45bf58` (23 files).
+
 ## Notes
 
 - Roadmap + research artifacts live under `daily-growth/roadmaps/` and
@@ -432,3 +481,5 @@ commands). Worked the four-stage roadmap end to end
 - Chat-harness roadmap + phase status: `docs/chat-roadmap.md`.
 - Browser-bookmarking roadmap + stage status:
   `daily-growth/roadmaps/06-21-26-browser-bookmarking-roadmap.md`.
+- Voice (TTS + STT) roadmap + status:
+  `daily-growth/roadmaps/06-21-26-voice-roadmap.md`.
