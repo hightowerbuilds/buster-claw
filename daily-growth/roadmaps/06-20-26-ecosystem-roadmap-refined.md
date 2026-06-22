@@ -17,6 +17,7 @@ factual baseline and re-scopes three phases that were built on wrong premises.
 |---|---|---|
 | 0 — Research spikes | ✅ done | (notes under `daily-growth/research/`) |
 | 1A — Composition skills (`skills/*.md`) | ✅ done | `4e5ead7` |
+| 1A.1 — Surface skills in `/api/commands` + CLI | ✅ done | `4808fcb` |
 | 1B — Policy engine (`policy.md`) | ✅ done | `584548e` |
 | 1C — Rate limits (ETS counter) | ✅ done | `a311bc4` |
 | 2 — Cross-run memory (run_summaries + FTS5) | ✅ done | `a64a85b` |
@@ -26,12 +27,20 @@ factual baseline and re-scopes three phases that were built on wrong premises.
 **Also:** SQLite test flake root-caused + fixed (`ce44b16`), prod busy_timeout
 hardened (`67dfd61`).
 
+**Done since this roadmap was written:**
+- ✅ **Surface dynamic skills in `/api/commands` + CLI `commands`** (`4808fcb`).
+  `/api/commands` returns `list_commands ++ list_skills`; `list_skills/0` reads
+  `skills/*.md` **live from disk** each call, so the feared `:persistent_term`
+  invalidate-on-write was unnecessary — only the static native catalog is cached;
+  runtime-added skills are always fresh. Covered by `skills_test.exs` +
+  `api_controller_test.exs` ("surfaces enabled composition skills tagged
+  source=composition").
+
 **Remaining (integration / follow-ups, not substrate):**
 - Phase 4 **coordinator** — the LLM step that decomposes a Dispatch item into a
   `Swarm` plan, plus Dispatcher wiring + per-sub-run budget accounting. The real
-  next product step (needs design, not plumbing).
-- Surface dynamic skills in `/api/commands` + CLI `commands` (needs a
-  `:persistent_term` invalidate-on-write). Small.
+  next product step (needs design, not plumbing). See
+  `06-21-26-swarm-coordinator-plan.md`.
 - Nothing in Phase 4 has been driven in the **running app** yet (tests inject a runner).
 
 ---
