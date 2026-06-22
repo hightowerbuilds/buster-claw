@@ -315,6 +315,73 @@ body { background-color: var(--color-base-100); }
   box-shadow: 4px 4px 0 0 color-mix(in oklab, var(--color-base-content) 12%, transparent);
 }
 
+/* Home Calendar/Contacts corner widget (StatusLive `corner_widget` + the
+   CornerWidget JS hook). Docked, it's a flex item that fills the header gap to
+   the right of the banner; its card is absolute so the card's content scrolls
+   rather than growing the header row's height. When the header is too narrow to
+   fit it beside the banner the hook adds `is-collapsed`: the widget shrinks out
+   of the row to a right-edge bumper, and the bumper pops the card back out as an
+   overlay (`is-popped`). */
+.ic-corner-widget {
+  flex: 1 1 0%;
+}
+
+.ic-corner-card {
+  position: absolute;
+  inset: 0;
+}
+
+.ic-corner-bumper {
+  display: none;
+}
+
+/* Collapsed: leave the header flow (so the banner gets the width back) and show
+   a bumper pinned to the right edge. */
+.ic-corner-widget.is-collapsed {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.ic-corner-widget.is-collapsed .ic-corner-card {
+  display: none;
+}
+
+.ic-corner-widget.is-collapsed .ic-corner-bumper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: 0.5rem;
+  right: 0;
+  width: 1.75rem;
+  height: 3rem;
+  border: 2px solid color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  border-right: 0;
+  border-top-left-radius: var(--radius-box);
+  border-bottom-left-radius: var(--radius-box);
+  background: var(--color-base-100);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  box-shadow: -3px 3px 0 0 color-mix(in oklab, black 28%, transparent);
+  cursor: pointer;
+}
+
+.ic-corner-widget.is-collapsed .ic-corner-bumper:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+/* Popped: the bumper slid the card back out as a right-edge overlay. */
+.ic-corner-widget.is-collapsed.is-popped .ic-corner-card {
+  display: flex;
+  inset: auto;
+  top: 0;
+  right: 0;
+  width: 20rem;
+  max-width: 80vw;
+  max-height: 70vh;
+  z-index: 30;
+}
+
 /* Translucent variant for chrome / overlays — the "balanced" glass touch. */
 .ic-glass {
   background: color-mix(in oklab, var(--color-base-100) 62%, transparent);

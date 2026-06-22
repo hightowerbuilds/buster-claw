@@ -22,7 +22,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     {:ok, root: root}
   end
 
-  test "GET / renders the home shell with the trusted-contacts panel", %{conn: conn} do
+  test "GET / renders the home shell with the corner widget and chat", %{conn: conn} do
     conn = get(conn, ~p"/")
     response = html_response(conn, 200)
 
@@ -31,7 +31,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(id="tab-strip")
     assert response =~ ~s(phx-hook="TabStrip")
     assert response =~ ~s(id="app-dock")
-    # Left column: Get Started explainer on top, trusted-contacts manager below.
+    # Left column: Get Started explainer.
     assert response =~ ~s(id="home-get-started")
     assert response =~ "Get Started"
     # Get Started now points users at the chat pathway, not the terminal/shift one.
@@ -42,18 +42,19 @@ defmodule BusterClawWeb.StatusLiveTest do
     # The unattended-shift panel was removed; the chat + prompt pathway replaces it.
     refute response =~ ~s(id="home-shift")
     refute response =~ "Unattended Shift"
-    # Get Started no longer links to the Financial Informant (it moved to Featured Pages).
-    refute response =~ ~s(href="/finance")
+    # Corner widget: calendar + contacts tabs.
+    assert response =~ ~s(id="home-corner-widget")
+    assert response =~ ~s(phx-hook="CornerWidget")
+    assert response =~ "Calendar"
+    assert response =~ "Contacts"
+    # Trusted contacts live inside the corner widget.
     assert response =~ ~s(id="home-left-panel")
     assert response =~ "Trusted Contacts"
     assert response =~ "No trusted contacts yet."
-    # Featured Pages links to both bundled HTML pages, opened in the in-app browser.
-    assert response =~ ~s(id="home-featured-pages")
-    assert response =~ "Featured Pages"
-    assert response =~ "/browse?url="
-    assert response =~ "pages%2FMANUAL.html"
-    assert response =~ "pages%2Ffinancial-informant.html"
-    assert response =~ "Financial Informant"
+    # Right column: agent chat panel.
+    assert response =~ ~s(id="home-agent-chat")
+    assert response =~ ~s(phx-hook="AgentChat")
+    assert response =~ "Talk to Buster Claw"
     refute response =~ ~s(id="home-shift-management")
     # The Connect-GWS panel was removed from the home page; GWS lives at /gws + /setup.
     refute response =~ ~s(id="home-google-workspace-login")
@@ -220,70 +221,24 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ "overview of everything you can do across my Google Workspace"
   end
 
-  describe "Pages tab bookmarks" do
-    test "lists in-app browser bookmarks, links into the Browser, and removes them",
-         %{conn: conn, root: root} do
-      File.write!(
-        Path.join(root, ".browser-bookmarks.json"),
-        Jason.encode!([
-          %{"url" => "https://example.com", "label" => "Example", "at" => "2026-06-20T00:00:00Z"}
-        ])
-      )
-
-      {:ok, view, html} = live(conn, ~p"/")
-
-      assert html =~ ~s(id="home-bookmarks")
-      assert html =~ "Example"
-      assert html =~ "https://example.com"
-      # The link opens the in-app Browser at that page.
-      assert html =~ "/browse?url=https"
-
-      html =
-        view
-        |> element(~s(button[phx-value-url="https://example.com"]))
-        |> render_click()
-
-      refute html =~ "https://example.com"
-      assert html =~ "No bookmarks yet."
-    end
-  end
-
-  describe "home left-column tabs" do
-    test "default to Get Started and switch tabs", %{conn: conn} do
+  describe "corner widget tabs" do
+    test "default to Get Started and switch between Calendar and Contacts", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       assert has_element?(view, ~s(button[phx-value-tab="get-started"][aria-selected="true"]))
       assert has_element?(view, ~s(button[phx-value-tab="calendar"][aria-selected="false"]))
+      assert has_element?(view, ~s(button[phx-value-tab="contacts"][aria-selected="false"]))
+
+      view |> element(~s(button[phx-value-tab="contacts"])) |> render_click()
+
+      assert has_element?(view, ~s(button[phx-value-tab="contacts"][aria-selected="true"]))
+      assert has_element?(view, ~s(button[phx-value-tab="get-started"][aria-selected="false"]))
 
       view |> element(~s(button[phx-value-tab="calendar"])) |> render_click()
 
       assert has_element?(view, ~s(button[phx-value-tab="calendar"][aria-selected="true"]))
-      assert has_element?(view, ~s(button[phx-value-tab="get-started"][aria-selected="false"]))
-
-      # Activity tab carries the audit-trail activity panel.
-      html = view |> element(~s(button[phx-value-tab="activity"])) |> render_click()
-      assert has_element?(view, ~s(button[phx-value-tab="activity"][aria-selected="true"]))
-      assert html =~ "Activity"
-      assert html =~ "Commands"
+      assert has_element?(view, ~s(button[phx-value-tab="contacts"][aria-selected="false"]))
     end
-  end
-
-  test "renders the audit-trail Activity panel with a granularity toggle", %{conn: conn} do
-    {:ok, view, html} = live(conn, ~p"/")
-
-    assert html =~ ~s(id="home-activity")
-    assert html =~ "Activity"
-    # Audit-trail metrics.
-    assert html =~ "Runs"
-    assert html =~ "Commands"
-    assert html =~ "Handled"
-    # Granularity toggle defaults to weekly.
-    assert has_element?(view, ~s(button[phx-value-grain="week"][aria-pressed="true"]))
-    assert has_element?(view, ~s(button[phx-value-grain="month"]))
-
-    html = view |> element(~s(button[phx-value-grain="month"])) |> render_click()
-    assert html =~ "Last 12 months"
-    assert has_element?(view, ~s(button[phx-value-grain="month"][aria-pressed="true"]))
   end
 
   test "GET / uses the app-local date for the daily calendar", %{conn: conn} do

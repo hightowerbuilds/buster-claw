@@ -1,27 +1,18 @@
 defmodule BusterClawWeb.StatusLive do
   use BusterClawWeb, :live_view
 
-  alias BusterClaw.ActivityReport
   alias BusterClaw.Agent.Chat
   alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
-  alias BusterClaw.Bookmarks
   alias BusterClaw.Calendar, as: AppCalendar
-  alias BusterClaw.Dispatch
   alias BusterClaw.LocalTime
   alias BusterClaw.Runtime.Status
-  alias BusterClaw.Sentinel
   alias BusterClaw.Setup
   alias BusterClaw.TrustedSenders
 
   @impl true
   def mount(_params, _session, socket) do
     today = LocalTime.today()
-
-    if connected?(socket) do
-      Dispatch.subscribe()
-      Sentinel.subscribe()
-    end
 
     {:ok,
      socket
@@ -30,11 +21,9 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
      |> assign(:trusted_contacts, TrustedSenders.list_entries())
-     |> assign(:bookmarks, Bookmarks.list())
-     |> assign(:home_tab, "get-started")
-     |> assign(:activity_grain, "week")
+     # Header widget: which sub-tab is showing (Get Started / Calendar / Contacts).
+     |> assign(:widget_tab, "get-started")
      |> init_chats()
-     |> assign_activity()
      |> load_daily_events()}
   end
 
@@ -57,9 +46,6 @@ defmodule BusterClawWeb.StatusLive do
 
   defp to_chat_tab(conv), do: %{id: conv.id, title: conv.title, running: false, unread: false}
 
-  defp assign_activity(socket),
-    do: assign(socket, :activity, ActivityReport.timeline(socket.assigns.activity_grain))
-
   @impl true
   def handle_event("add_contact", %{"entry" => entry}, socket) do
     case TrustedSenders.add_entry(entry) do
@@ -77,22 +63,9 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, assign(socket, :trusted_contacts, TrustedSenders.list_entries())}
   end
 
-  def handle_event("select_home_tab", %{"tab" => tab}, socket) do
-    socket = assign(socket, :home_tab, tab)
-    # Bookmarks are added from the in-app browser (outside this LiveView), so
-    # re-read them when the Pages tab is opened to pick up new ones.
-    socket = if tab == "pages", do: assign(socket, :bookmarks, Bookmarks.list()), else: socket
-    {:noreply, socket}
-  end
-
-  def handle_event("remove_bookmark", %{"url" => url}, socket) do
-    Bookmarks.remove(url)
-    {:noreply, assign(socket, :bookmarks, Bookmarks.list())}
-  end
-
-  def handle_event("select_activity_grain", %{"grain" => grain}, socket)
-      when grain in ["day", "week", "month"],
-      do: {:noreply, socket |> assign(:activity_grain, grain) |> assign_activity()}
+  def handle_event("select_widget_tab", %{"tab" => tab}, socket)
+      when tab in ["get-started", "calendar", "contacts"],
+      do: {:noreply, assign(socket, :widget_tab, tab)}
 
   def handle_event("quick_chat", %{"prompt" => prompt}, socket),
     do: {:noreply, dispatch_chat(socket, prompt)}
@@ -210,9 +183,6 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   @impl true
-  def handle_info({:dispatch, _event, _item}, socket), do: {:noreply, assign_activity(socket)}
-  def handle_info({:security_event, _event}, socket), do: {:noreply, assign_activity(socket)}
-
   def handle_info({:agent_chat, conv_id, payload}, socket),
     do: {:noreply, apply_chat(socket, conv_id, payload)}
 
@@ -331,58 +301,54 @@ defmodule BusterClawWeb.StatusLive do
       <section class="ic-home relative isolate flex flex-1 flex-col">
         <div class="ic-home-bg" aria-hidden="true"></div>
         <div class="relative z-10 flex min-h-0 flex-1 flex-col space-y-8">
-          <div class="space-y-4 border-b-2 border-base-content/20 pb-5">
-            <div
-              id="bc-heading"
-              phx-hook="CrtAberration"
-              class="ic-scanlines block w-full max-w-[28rem]"
-            >
-              <img
-                src={~p"/images/brand/buster-claw-heading.png"}
-                alt="Buster Claw"
-                class="block h-auto w-full"
-              />
-              <img
-                src={~p"/images/brand/buster-claw-heading.png"}
-                alt=""
-                aria-hidden="true"
-                class="ic-crt-focus h-auto w-full"
-              />
-            </div>
-            <div :if={not @setup_status.complete?} class="pt-1">
-              <.link
-                navigate={~p"/setup"}
-                class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
+          <div class="flex items-stretch gap-4 border-b-2 border-base-content/20 pb-5">
+            <div class="shrink-0 space-y-4">
+              <div
+                id="bc-heading"
+                phx-hook="CrtAberration"
+                class="ic-scanlines block w-full max-w-[28rem]"
               >
-                <.icon name="hero-sparkles" class="size-4" />
-                <span :if={@setup_status.completed == 0}>Set up Buster Claw</span>
-                <span :if={@setup_status.completed > 0}>
-                  Finish setup · {@setup_status.completed} of {@setup_status.total} complete
-                </span>
-              </.link>
+                <img
+                  src={~p"/images/brand/buster-claw-heading.png"}
+                  alt="Buster Claw"
+                  class="block h-auto w-full"
+                />
+                <img
+                  src={~p"/images/brand/buster-claw-heading.png"}
+                  alt=""
+                  aria-hidden="true"
+                  class="ic-crt-focus h-auto w-full"
+                />
+              </div>
+              <div :if={not @setup_status.complete?} class="pt-1">
+                <.link
+                  navigate={~p"/setup"}
+                  class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition hover:opacity-85"
+                >
+                  <.icon name="hero-sparkles" class="size-4" />
+                  <span :if={@setup_status.completed == 0}>Set up Buster Claw</span>
+                  <span :if={@setup_status.completed > 0}>
+                    Finish setup · {@setup_status.completed} of {@setup_status.total} complete
+                  </span>
+                </.link>
+              </div>
             </div>
-          </div>
-
-          <div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
-            <.home_tabs
-              tab={@home_tab}
-              entries={@trusted_contacts}
-              bookmarks={@bookmarks}
+            <.corner_widget
+              tab={@widget_tab}
               today={@today}
               events={@daily_events}
-              activity={@activity}
-              grain={@activity_grain}
+              entries={@trusted_contacts}
             />
+          </div>
 
-            <div class="flex min-h-0 flex-col gap-2 self-start">
-              <.chat_tabs chats={@chats} active={@active_chat} />
-              <.chat_panel
-                messages={@chat_messages}
-                running={@chat_running}
-                thinking={@chat_thinking}
-                queue={@chat_queue}
-              />
-            </div>
+          <div class="flex min-h-0 flex-1 flex-col gap-2">
+            <.chat_tabs chats={@chats} active={@active_chat} />
+            <.chat_panel
+              messages={@chat_messages}
+              running={@chat_running}
+              thinking={@chat_thinking}
+              queue={@chat_queue}
+            />
           </div>
         </div>
       </section>
@@ -456,7 +422,7 @@ defmodule BusterClawWeb.StatusLive do
       id="home-agent-chat"
       phx-hook="AgentChat"
       data-running={to_string(@running)}
-      class="ic-panel flex h-[32rem] max-h-[90vh] min-h-0 w-full flex-col overflow-hidden"
+      class="ic-panel flex min-h-0 w-full flex-1 flex-col overflow-hidden"
     >
       <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
         <div>
@@ -667,64 +633,76 @@ defmodule BusterClawWeb.StatusLive do
 
   attr :tab, :string, required: true
   attr :entries, :list, required: true
-  attr :bookmarks, :list, required: true
   attr :today, Date, required: true
   attr :events, :list, required: true
-  attr :activity, :map, required: true
-  attr :grain, :string, required: true
 
-  @home_tabs [
-    {"calendar", "Calendar"},
-    {"pages", "Pages"},
-    {"contacts", "Contacts"},
-    {"activity", "Activity"},
-    {"get-started", "Get Started"}
-  ]
-
-  defp home_tabs(assigns) do
-    assigns = assign(assigns, :tabs, @home_tabs)
-
+  # Calendar + Contacts as a rectangle filling the header gap to the right of the
+  # banner. The card is absolutely positioned to fill the widget box, so its
+  # content scrolls instead of growing the header. When the CornerWidget hook
+  # finds the header too narrow to fit the widget beside the banner it collapses
+  # the widget to a right-edge bumper that pops the card back out on click.
+  defp corner_widget(assigns) do
     ~H"""
-    <div class="flex min-h-0 flex-col gap-3">
-      <div
-        role="tablist"
-        aria-label="Home sections"
-        class="flex flex-wrap gap-1 border-b-2 border-base-content/20"
+    <div
+      id="home-corner-widget"
+      phx-hook="CornerWidget"
+      data-banner="#bc-heading"
+      class="ic-corner-widget relative min-w-0"
+    >
+      <button
+        type="button"
+        data-corner-bumper
+        aria-label="Show Calendar and Contacts"
+        class="ic-corner-bumper"
       >
-        <button
-          :for={{key, label} <- @tabs}
-          type="button"
-          role="tab"
-          aria-selected={to_string(@tab == key)}
-          phx-click="select_home_tab"
-          phx-value-tab={key}
-          class={[
-            "-mb-0.5 border-b-2 px-4 py-2 font-display text-sm font-bold uppercase tracking-wide transition",
-            if(@tab == key,
-              do: "border-primary text-primary",
-              else: "border-transparent text-base-content/55 hover:text-base-content"
-            )
-          ]}
-        >
-          {label}
-        </button>
-      </div>
+        <.icon name="hero-chevron-left" class="size-4" />
+      </button>
 
-      <div class={["flex min-h-0 flex-1 flex-col", @tab != "get-started" && "hidden"]}>
-        <.get_started_panel />
-      </div>
-      <div class={["flex min-h-0 flex-1 flex-col gap-6", @tab != "pages" && "hidden"]}>
-        <.featured_pages_panel />
-        <.bookmarks_panel bookmarks={@bookmarks} />
-      </div>
-      <div class={["flex min-h-0 flex-1 flex-col", @tab != "contacts" && "hidden"]}>
-        <BusterClawWeb.TrustedContactsPanel.panel entries={@entries} />
-      </div>
-      <div class={["flex min-h-0 flex-1 flex-col", @tab != "calendar" && "hidden"]}>
-        <.daily_calendar_panel today={@today} events={@events} />
-      </div>
-      <div class={["flex min-h-0 flex-1 flex-col", @tab != "activity" && "hidden"]}>
-        <.activity_panel activity={@activity} grain={@grain} />
+      <div
+        data-corner-card
+        class="ic-corner-card ic-panel flex flex-col overflow-hidden"
+      >
+        <div
+          role="tablist"
+          aria-label="Widget"
+          class="flex gap-1 border-b-2 border-base-content/20 px-2 pt-2"
+        >
+          <button type="button">STATIC</button>
+          <%= for {key, text} <- [
+            {"get-started", "Get Started"},
+            {"calendar", "Calendar"},
+            {"contacts", "Contacts"}
+          ] do %>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={to_string(@tab == key)}
+              phx-click="select_widget_tab"
+              phx-value-tab={key}
+              class={[
+                "-mb-0.5 border-b-2 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide transition",
+                if(@tab == key,
+                  do: "border-primary text-primary",
+                  else: "border-transparent text-base-content/55 hover:text-base-content"
+                )
+              ]}
+            >
+              TEST<%= text %>
+            </button>
+          <% end %>
+        </div>
+
+        <div class="min-h-0 flex-1 overflow-auto">
+          <div class={@tab != "get-started" && "hidden"}>
+            <.get_started_panel />
+          </div>
+          <div class={@tab != "calendar" && "hidden"}>
+            <.daily_calendar_panel today={@today} events={@events} />
+          </div>
+          <div class={@tab != "contacts" && "hidden"}>
+            <BusterClawWeb.TrustedContactsPanel.panel entries={@entries} />
+          </div>
+        </div>
       </div>
     </div>
     """
@@ -840,257 +818,6 @@ defmodule BusterClawWeb.StatusLive do
         </details>
       </div>
     </section>
-    """
-  end
-
-  attr :activity, :map, required: true
-  attr :grain, :string, required: true
-
-  @grain_window %{"day" => "Last 14 days", "week" => "Last 12 weeks", "month" => "Last 12 months"}
-  @grain_buttons [{"day", "Daily"}, {"week", "Weekly"}, {"month", "Monthly"}]
-
-  defp activity_panel(assigns) do
-    assigns =
-      assigns
-      |> assign(:window_label, Map.fetch!(@grain_window, assigns.grain))
-      |> assign(:grain_buttons, @grain_buttons)
-
-    ~H"""
-    <section id="home-activity" class="ic-panel flex min-h-0 flex-1 flex-col overflow-hidden">
-      <header class="flex flex-wrap items-start justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
-        <div>
-          <p class="ic-eyebrow">Activity</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            Activity
-          </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            Straight from the audit trail · {@window_label}
-          </p>
-        </div>
-        <div role="group" aria-label="Granularity" class="flex gap-1">
-          <button
-            :for={{key, label} <- @grain_buttons}
-            type="button"
-            phx-click="select_activity_grain"
-            phx-value-grain={key}
-            aria-pressed={to_string(@grain == key)}
-            class={[
-              "rounded-sm border-2 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide transition",
-              if(@grain == key,
-                do: "border-primary text-primary",
-                else: "border-base-content/25 text-base-content/55 hover:text-base-content"
-              )
-            ]}
-          >
-            {label}
-          </button>
-        </div>
-      </header>
-
-      <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-5">
-        <dl class="grid grid-cols-4 gap-2">
-          <.shift_stat label="Runs" value={@activity.totals.runs} />
-          <.shift_stat label="Commands" value={@activity.totals.commands} />
-          <.shift_stat label="Handled" value={@activity.totals.handled} />
-          <.shift_stat label="Open" value={@activity.totals.open} />
-        </dl>
-
-        <.activity_chart buckets={@activity.buckets} />
-      </div>
-    </section>
-    """
-  end
-
-  attr :buckets, :list, required: true
-
-  defp activity_chart(assigns) do
-    max =
-      assigns.buckets
-      |> Enum.flat_map(&[&1.runs, &1.commands])
-      |> Enum.max(fn -> 0 end)
-      |> max(1)
-
-    slot = 100 / max(length(assigns.buckets), 1)
-    assigns = assign(assigns, max: max, slot: slot)
-
-    ~H"""
-    <div>
-      <div class="mb-2 flex items-center gap-4 text-xs text-base-content/60">
-        <span class="inline-flex items-center gap-1">
-          <span class="size-2 rounded-sm bg-primary"></span> Runs
-        </span>
-        <span class="inline-flex items-center gap-1">
-          <span class="size-2 rounded-sm bg-base-content/40"></span> Commands
-        </span>
-      </div>
-
-      <svg
-        viewBox="0 0 100 90"
-        preserveAspectRatio="none"
-        class="h-36 w-full"
-        role="img"
-        aria-label="Runs and commands over time"
-      >
-        <line
-          x1="0"
-          y1="88"
-          x2="100"
-          y2="88"
-          class="stroke-current text-base-content/20"
-          stroke-width="0.3"
-        />
-        <%= for {b, i} <- Enum.with_index(@buckets) do %>
-          <rect
-            x={i * @slot + @slot * 0.15}
-            y={88 - bar_h(b.runs, @max)}
-            width={@slot * 0.3}
-            height={bar_h(b.runs, @max)}
-            class="fill-current text-primary"
-          />
-          <rect
-            x={i * @slot + @slot * 0.52}
-            y={88 - bar_h(b.commands, @max)}
-            width={@slot * 0.3}
-            height={bar_h(b.commands, @max)}
-            class="fill-current text-base-content/40"
-          />
-        <% end %>
-      </svg>
-
-      <div class="mt-1 flex">
-        <span
-          :for={b <- @buckets}
-          class="flex-1 truncate text-center font-mono text-[0.55rem] text-base-content/45"
-        >
-          {b.label}
-        </span>
-      </div>
-    </div>
-    """
-  end
-
-  defp bar_h(value, max), do: value / max * 80
-
-  attr :label, :string, required: true
-  attr :value, :integer, required: true
-
-  defp shift_stat(assigns) do
-    ~H"""
-    <div class="rounded-sm border-2 border-base-content/20 px-2 py-2 text-center">
-      <p class="font-display text-2xl font-black tabular-nums leading-none">{@value}</p>
-      <p class="mt-1 text-[0.62rem] font-semibold uppercase tracking-wide text-base-content/55">
-        {@label}
-      </p>
-    </div>
-    """
-  end
-
-  defp featured_pages_panel(assigns) do
-    ~H"""
-    <section id="home-featured-pages" class="ic-panel">
-      <header class="border-b-2 border-base-content/20 px-5 py-4">
-        <p class="ic-eyebrow">Featured Pages</p>
-        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-          Featured Pages
-        </h2>
-      </header>
-
-      <div class="flex flex-col gap-3 p-5">
-        <.featured_page_link
-          href={~p"/browse?#{[url: "/pages/MANUAL.html"]}"}
-          icon="hero-book-open"
-          title="Manual"
-          blurb="Open the Buster Claw manual in the browser"
-        />
-        <.featured_page_link
-          href={~p"/browse?#{[url: "/pages/financial-informant.html"]}"}
-          icon="hero-chart-bar"
-          title="Financial Informant"
-          blurb="Look up a ticker — quote, fundamentals, filings, news"
-        />
-      </div>
-    </section>
-    """
-  end
-
-  attr :bookmarks, :list, required: true
-
-  defp bookmarks_panel(assigns) do
-    ~H"""
-    <section id="home-bookmarks" class="ic-panel flex min-h-0 flex-col overflow-hidden">
-      <header class="flex items-start justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
-        <div>
-          <p class="ic-eyebrow">Bookmarks</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            Bookmarks
-          </h2>
-          <p class="mt-1 text-sm text-base-content/65">
-            Saved from the in-app browser. Opens the page in the Browser.
-          </p>
-        </div>
-        <span class="shrink-0 rounded bg-base-200 px-2 py-0.5 font-mono text-xs font-bold text-base-content/60">
-          {length(@bookmarks)}
-        </span>
-      </header>
-
-      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-5">
-        <div
-          :for={bm <- @bookmarks}
-          id={"home-bookmark-#{bm["url"]}"}
-          class="group flex items-center gap-2 rounded-sm border-2 border-base-content/25 transition hover:border-primary"
-        >
-          <.link
-            navigate={~p"/browse?#{[url: bm["url"]]}"}
-            class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 hover:text-primary"
-          >
-            <.icon name="hero-bookmark" class="size-5 shrink-0 text-base-content/55" />
-            <span class="min-w-0">
-              <span class="block truncate font-semibold">{bm["label"]}</span>
-              <span class="block truncate font-mono text-xs text-base-content/55">{bm["url"]}</span>
-            </span>
-          </.link>
-          <button
-            type="button"
-            phx-click="remove_bookmark"
-            phx-value-url={bm["url"]}
-            data-confirm={"Remove bookmark for #{bm["label"]}?"}
-            aria-label={"Remove bookmark #{bm["label"]}"}
-            class="mr-2 shrink-0 rounded border border-base-content/20 px-2 py-1 font-mono text-[0.65rem] uppercase tracking-wide text-base-content/60 transition hover:border-error hover:text-error"
-          >
-            Remove
-          </button>
-        </div>
-
-        <div
-          :if={@bookmarks == []}
-          class="rounded border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60"
-        >
-          <p class="font-semibold text-base-content/80">No bookmarks yet.</p>
-          <p class="mt-1">Save a page from the in-app browser's “+ Bookmark” button.</p>
-        </div>
-      </div>
-    </section>
-    """
-  end
-
-  attr :href, :string, required: true
-  attr :icon, :string, required: true
-  attr :title, :string, required: true
-  attr :blurb, :string, required: true
-
-  defp featured_page_link(assigns) do
-    ~H"""
-    <.link
-      navigate={@href}
-      class="group flex items-center gap-3 rounded-sm border-2 border-base-content/25 px-3 py-2.5 transition hover:border-primary hover:text-primary"
-    >
-      <.icon name={@icon} class="size-5 shrink-0 text-base-content/60" />
-      <span class="min-w-0">
-        <span class="block font-semibold">{@title}</span>
-        <span class="block text-xs text-base-content/60">{@blurb}</span>
-      </span>
-      <.icon name="hero-chevron-right" class="ml-auto size-4 shrink-0 text-base-content/40" />
-    </.link>
     """
   end
 
