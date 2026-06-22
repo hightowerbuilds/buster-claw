@@ -1104,24 +1104,35 @@ const Hooks = {
       }
       this.openMenu(tab.getAttribute("data-path"), e.clientX, e.clientY)
     },
-    openMenu(path, x, y) {
+    openMenu(path, x, _y) {
       this.closeMenu()
       this.menuPath = path
       const menu = document.createElement("div")
+      // A horizontal flyout that lives in the tab-strip band and unfurls to the
+      // right. The native browser webview is painted over the page area BELOW the
+      // strip and always sits above HTML, so a normal dropdown falling into that
+      // area gets clipped behind it. Staying inside the strip's own vertical band
+      // keeps the menu fully visible. It scrolls horizontally if it overflows.
       menu.className =
-        "fixed z-50 min-w-44 rounded-lg border border-base-300 bg-base-100 p-1 text-sm shadow-lg"
+        "fixed z-50 flex items-stretch gap-1 overflow-x-auto rounded-md border " +
+        "border-base-300 bg-base-100 px-1 text-sm shadow-lg"
       menu.addEventListener("click", (e) => this.onMenuClick(e))
       menu.addEventListener("contextmenu", (e) => e.preventDefault())
       document.body.appendChild(menu)
       this.menuEl = menu
-      this.renderMenuRoot()
+      this.renderMenu()
 
-      // Position at the cursor, clamped to the viewport.
-      const rect = menu.getBoundingClientRect()
-      const left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))
-      const top = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))
+      // Pin to the tab strip's band; start at the clicked tab's right edge (so the
+      // tab stays visible) and unfurl rightward, clamped to the viewport width.
+      const strip = this.el.getBoundingClientRect()
+      const sel = window.CSS && CSS.escape ? CSS.escape(path) : path
+      const tabEl = this.el.querySelector(`[data-path="${sel}"]`)
+      const anchorLeft = tabEl ? tabEl.getBoundingClientRect().right + 4 : x
+      const left = Math.max(8, Math.min(anchorLeft, window.innerWidth - 120))
+      menu.style.top = `${strip.top}px`
+      menu.style.height = `${strip.height}px`
       menu.style.left = `${left}px`
-      menu.style.top = `${top}px`
+      menu.style.maxWidth = `${Math.max(120, window.innerWidth - left - 8)}px`
 
       // Dismiss on outside click / Escape (deferred so the opening event doesn't close it).
       this.onDocClick = (ev) => {
@@ -1135,42 +1146,39 @@ const Hooks = {
         document.addEventListener("keydown", this.onMenuKey)
       }, 0)
     },
-    renderMenuRoot() {
+    // One horizontal row of actions. A /split tab gets Swap/Separate; any other
+    // tab gets a "Join with" label followed by a chip per joinable tab — flat, no
+    // submenu, since the bar has room to the right.
+    renderMenu() {
       const isSplit = (this.menuPath || "").split("?")[0] === "/split"
-      const item = "flex w-full items-center gap-3 rounded px-3 py-1.5 text-left hover:bg-base-200"
-      this.menuEl.innerHTML = isSplit
-        ? `<button type="button" data-menu="swap" class="${item}"><span>Swap sides</span></button>` +
-            `<button type="button" data-menu="separate" class="${item}"><span>Separate tabs</span></button>`
-        : `<button type="button" data-menu="join" class="${item} justify-between">` +
-            `<span>Join tabs</span><span class="text-base-content/40">&#9656;</span></button>`
-    },
-    renderJoinList() {
+      const btn =
+        "flex shrink-0 items-center rounded px-3 whitespace-nowrap hover:bg-base-200"
+      const lbl =
+        "flex shrink-0 items-center px-2 text-xs font-semibold uppercase " +
+        "tracking-wide text-base-content/50 whitespace-nowrap"
+      if (isSplit) {
+        this.menuEl.innerHTML =
+          `<button type="button" data-menu="swap" class="${btn}">Swap sides</button>` +
+          `<button type="button" data-menu="separate" class="${btn}">Separate tabs</button>`
+        return
+      }
       const candidates = this.load().filter(
         (t) => t.path !== this.menuPath && !t.path.startsWith("/split")
       )
-      const header =
-        `<div class="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-base-content/50">Join with…</div>`
       if (candidates.length === 0) {
-        this.menuEl.innerHTML =
-          header + `<div class="px-3 py-2 text-xs text-base-content/50">No other tabs open.</div>`
+        this.menuEl.innerHTML = `<span class="${lbl}">No other tabs to join</span>`
         return
       }
-      const rows = candidates
+      const chips = candidates
         .map(
           (t) =>
             `<button type="button" data-jointarget="${this.escape(t.path)}" ` +
-            `class="block w-full truncate rounded px-3 py-1.5 text-left hover:bg-base-200">${this.escape(t.label)}</button>`
+            `class="${btn} max-w-[12rem] truncate">${this.escape(t.label)}</button>`
         )
         .join("")
-      this.menuEl.innerHTML = header + rows
+      this.menuEl.innerHTML = `<span class="${lbl}">Join with</span>` + chips
     },
     onMenuClick(e) {
-      const join = e.target.closest("[data-menu='join']")
-      if (join) {
-        e.stopPropagation()
-        this.renderJoinList()
-        return
-      }
       const swap = e.target.closest("[data-menu='swap']")
       if (swap) {
         e.stopPropagation()
