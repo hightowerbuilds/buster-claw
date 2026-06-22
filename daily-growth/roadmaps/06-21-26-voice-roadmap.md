@@ -8,12 +8,37 @@ The home chat is text-only. We want Buster Claw to **speak its replies** (TTS) a
 
 The whole feature runs **inside the Rust/Tauri shell** and is exposed to the webview as Tauri commands, exactly like the existing `browser_*`, `terminal_*`, and `browser_screenshot` bridges. Nothing here goes through `BusterClaw.Commands` — voice is local device I/O (microphone, speaker), not an agent-callable capability, so it does not belong on the policy/tier/audit command surface.
 
-> **Status (2026-06-21):** Phase 1 (TTS output) shipped — Buster Claw speaks its replies.
+> **Status (2026-06-21):** Phase 1 (TTS) shipped; Phase 0 + Phase 2 (STT) code-complete.
 > - Phase 0 (TTS slice) — capability + permissions + non-desktop fallback — ✅
 > - Phase 1 — TTS output (speak/stop, bridge, server push, barge-in, toggle) — ✅
-> - Phase 0 (STT slice) — mic entitlement, cpal/whisper deps, model bundle — ⏳ (with Phase 2)
-> - Phase 2 — STT input — ⏳
+> - Phase 0 (STT slice) — mic entitlement + Info.plist, cpal/whisper-rs deps, model bundle plumbing + boot self-check — ✅
+> - Phase 2 — STT input (cpal capture → whisper transcribe → composer) — ✅ **code-complete; `cargo build` PASSES (whisper.cpp builds + links statically, 39M binary), Elixir/JS + tests green. Only the on-device mic test remains.**
 > - Phase 3 — polish — ⏳
+>
+> **Phase 2 note (2026-06-21):** `voice.rs` gained `start_recording`/`stop_recording`
+> (macOS `mod stt`): cpal captures mono PCM on a dedicated thread (the `!Send`
+> stream lives and dies there), downmixed + linear-resampled to 16 kHz, transcribed
+> by a cached `WhisperContext` (loaded once). Commands registered in `main.rs` +
+> capabilities + permission TOMLs; the model path is published via
+> `voice::set_model_path`. UI: a hidden-until-Tauri 🎤 button in the composer
+> (`chat_panel.ex`) with listening/transcribing states; the `AgentChat` hook
+> (`app.js`) wires push-to-talk on press/hold and the ⌘/ hotkey, cuts TTS first
+> (barge-in), and **fills the composer without auto-sending** (v1). Errors route
+> through a new `voice_error` LiveView event → **flash** (a deliberate simplification
+> of the roadmap's "inline :error chat bubble" — flash avoids touching the
+> PubSub-owned transcript model; revisit in Phase 3 if a bubble is wanted).
+>
+> **Phase 0 STT note (2026-06-21):** Per the locked decision, de-risk the build
+> before feature code. Added `cpal = "0.18"` + `whisper-rs = "0.16"` (metal) to
+> the macOS target deps; a `voice::run_selfcheck` (called from `main.rs` `setup()`,
+> threaded, non-fatal) references both crates so a plain `cargo build` actually
+> links whisper.cpp — and at runtime logs a mic-present + model-load check.
+> Model bundles via a new stable `resources/models/` mapping (NOT the volatile
+> `resources/release/`), fetched by `scripts/fetch_whisper_model.sh`. Mic perms:
+> `Info.plist` (`NSMicrophoneUsageDescription`) + `Entitlements.plist`
+> (`audio-input`), wired in `tauri.conf.json`. **Next: user runs `cargo build`
+> (or `cargo tauri dev`) in `desktop/tauri` to confirm whisper-rs links cleanly;
+> if it fights notarization later, fall back to bundled `whisper-cli` + shell out.**
 >
 > **Implementation note:** v1 TTS drives macOS's built-in `say(1)` (the system
 > synthesizer — same voices as AVSpeechSynthesizer, fully offline) from a worker
@@ -54,22 +79,22 @@ The whole feature runs **inside the Rust/Tauri shell** and is exposed to the web
 *Foundation. Nothing user-visible. De-risks the build (whisper linking, model bundling, mic entitlement) before any feature code.*
 
 ### 0A. Microphone permission + entitlement
-- [ ] Add `NSMicrophoneUsageDescription` (e.g. "Buster Claw uses the microphone for voice input in chat.") to the macOS Info.plist. In Tauri v2, add/merge a `desktop/tauri/Info.plist`.
-- [ ] Add the `com.apple.security.device.audio-input` entitlement (hardened runtime needs it for notarized builds). Fold into the existing Apple-signing entitlements file / `tauri.conf.json` `bundle.macOS`.
-- [ ] Note in `daily-growth/roadmaps` cross-ref: this rides the distribution roadmap's Apple-signing critical path.
+- [x] Add `NSMicrophoneUsageDescription` to the macOS Info.plist — created `desktop/tauri/Info.plist` (Tauri v2 merges a project-root Info.plist).
+- [x] Add the `com.apple.security.device.audio-input` entitlement — created `desktop/tauri/Entitlements.plist`, referenced from `tauri.conf.json` `bundle.macOS.entitlements`.
+- [x] Cross-ref: rides the distribution roadmap's Apple-signing critical path (noted in `docs/DESKTOP_PACKAGING.md`).
 
 ### 0B. Rust dependencies
-- [ ] Add `cpal` (CoreAudio microphone capture) to `desktop/tauri/Cargo.toml`.
-- [ ] Add `whisper-rs` (statically compiles whisper.cpp — no separate binary to ship/sign; Metal/Accelerate backend on macOS) to `Cargo.toml`.
-- [ ] Confirm a clean `cargo build` and that whisper-rs links against the macOS backend. **Fallback if linking/notarization fights us:** ship a prebuilt `whisper-cli` binary in resources and shell out instead.
+- [x] Add `cpal` (CoreAudio microphone capture) to `desktop/tauri/Cargo.toml` (`0.18`, macOS target deps).
+- [x] Add `whisper-rs` (statically compiles whisper.cpp; Metal backend) — `0.16`, `features = ["metal"]`.
+- [x] **Confirm a clean `cargo build` and that whisper-rs links** — ✅ **PASSED 2026-06-21.** whisper.cpp (whisper-rs-sys 0.15) built from source and linked statically; `cargo build` produces a 39M debug binary with 0 errors / 0 voice.rs warnings. The de-risk gate is cleared; the `whisper-cli` shell-out fallback is unneeded. (Fixing surfaced real cpal 0.18 / whisper-rs 0.16 API drift: `build_input_stream` takes `StreamConfig` by value, `SampleRate` is `type = u32`, `Device` name via `description().name()`, segment text via `get_segment(i).to_str_lossy()`.)
 
 ### 0C. Bundle the model
-- [ ] Add `ggml-base.en.bin` (~142MB; good speed/accuracy for v1) to `desktop/tauri/resources/release/`.
-- [ ] Resolve the model path at runtime the same way `main.rs` resolves the bundled release binary (resource dir lookup).
-- [ ] Document the model + bundle-size delta (~150MB) in `docs/DESKTOP_PACKAGING.md` and `BUILD.md`.
+- [x] Stable bundle location: `desktop/tauri/resources/models/ggml-base.en.bin` via a new `resources/models` → `models` mapping (kept out of the volatile `resources/release/` that the build/dev launcher wipe). Fetched by `scripts/fetch_whisper_model.sh`; gitignored.
+- [x] Resolve the model path at runtime — `resolve_voice_model(app)` in `main.rs` (resource-dir lookup in release, in-repo path in dev).
+- [x] Document the model + bundle-size delta (~150MB) in `docs/DESKTOP_PACKAGING.md` and `BUILD.md`.
 
 ### 0D. Tauri command capabilities
-- [x] Register `speak`, `stop_speaking` in `desktop/tauri/capabilities/default.json` + invoke_handler. *(`start_recording`/`stop_recording` deferred to Phase 2.)*
+- [x] Register `speak`, `stop_speaking` in `desktop/tauri/capabilities/default.json` + invoke_handler. *(`start_recording`/`stop_recording` added in Phase 2 — capabilities + `start_recording.toml`/`stop_recording.toml`.)*
 - [x] Add matching `permissions/autogenerated/*.toml` entries (`speak.toml`, `stop_speaking.toml`).
 
 ### 0E. Non-desktop fallback plumbing
@@ -103,7 +128,7 @@ The whole feature runs **inside the Rust/Tauri shell** and is exposed to the web
 - [ ] Confirm on-device that it fires once per assistant block (multiple per turn → multiple enqueued utterances, played in order).
 
 ### 1D. Barge-in
-- [x] Emit `bc:stop_speak` on: `cut_run` / Esc, and a new user `chat_send`. Toggle-off fires the local `bc:voice-stop` event. (Recording-start hook lands in Phase 2.)
+- [x] Emit `bc:stop_speak` on: `cut_run` / Esc, and a new user `chat_send`. Toggle-off fires the local `bc:voice-stop` event. (Recording-start also cuts TTS — `startListening` calls `stop_speaking` first; landed in Phase 2.)
 - [ ] Verify on-device that Esc both stops the model **and** cuts speech.
 
 ### 1E. UI toggle (`lib/buster_claw_web/components/chat_panel.ex`)
@@ -122,29 +147,30 @@ The whole feature runs **inside the Rust/Tauri shell** and is exposed to the web
 *The heavier half: native mic capture + on-device whisper transcription, wired into the existing composer.*
 
 ### 2A. Rust — capture + transcribe (`desktop/tauri/src/voice.rs`)
-- [ ] `start_recording()` — open a `cpal` input stream into a shared PCM buffer (16 kHz mono f32, whisper's expected format). One in-flight recording at a time (Mutex-guarded; reject re-entry).
-- [ ] `stop_recording()` — stop the stream, run `whisper-rs` on the captured buffer with the bundled model, return `{ text }`.
-- [ ] Resample/convert if the device's native sample rate ≠ 16 kHz mono.
-- [ ] Handle the empty/too-short capture case → return empty text (not an error).
+- [x] `start_recording()` — opens a `cpal` input stream into a shared PCM buffer; capture thread owns the `!Send` stream and parks until stop. One in-flight recording (rejects re-entry).
+- [x] `stop_recording()` — stops the stream, transcribes via a cached `WhisperContext`, returns `{ text }`.
+- [x] Resample/downmix — callback downmixes to mono; `resample_to_16k` linear-resamples to 16 kHz when the device rate differs.
+- [x] Empty/too-short capture (< ~0.2s) → returns empty text, not an error.
 
 ### 2B. Composer UI (`lib/buster_claw_web/components/chat_panel.ex`)
-- [ ] Add a 🎤 mic button to the chat `<form>`, between the textarea and Send.
-- [ ] Recording state visuals: a pulse on the button while capturing, a spinner while transcribing (reuse the thinking-chip visual language).
-- [ ] Hide the mic button when `__TAURI__` is absent (plain browser).
+- [x] 🎤 mic button in the chat `<form>` between textarea and Send.
+- [x] State visuals: hazard-accent border while listening, spinner while transcribing (`data-state` driven).
+- [x] Hidden until the `AgentChat` hook confirms `__TAURI__` (plain browser never shows it).
 
-### 2C. `AgentChat` hook — wire push-to-talk (`assets/js/app.js`, extend the existing hook)
-- [ ] On mic `pointerdown` (and hotkey, e.g. `⌘/`): first `stop_speaking()` (don't transcribe our own TTS), then `invoke("start_recording")`, set "listening" state.
-- [ ] On `pointerup` / hotkey-release: `invoke("stop_recording")` → insert the returned text into `[data-chat-input]`.
-- [ ] **v1:** fill the textarea and let the user review + Enter (do **not** auto-send).
-- [ ] Clean up listeners in `destroyed()` (the hook already follows this pattern).
+### 2C. `AgentChat` hook — push-to-talk (`assets/js/app.js`)
+- [x] mic `pointerdown` / ⌘/ hotkey: `stop_speaking()` first (barge-in), then `start_recording()`, "listening" state.
+- [x] `pointerup` / hotkey-release: `stop_recording()` → insert text into `[data-chat-input]`.
+- [x] v1: fills the textarea, does **not** auto-send.
+- [x] Listeners cleaned up in `destroyed()`.
 
 ### 2D. Robustness
-- [ ] Mic-permission-denied path → inline `:error` chat message ("Microphone access denied — enable it in System Settings").
-- [ ] Recognizer/model-load failure → graceful inline error, button returns to idle.
-- [ ] Guard against starting a recording while one is already in flight.
+- [x] Mic-denied path → friendly message (System Settings hint), surfaced via the `voice_error` → flash. *(flash, not a chat `:error` bubble — see status note.)*
+- [x] Model-load / transcription failure → error surfaced, button returns to idle (`finally`).
+- [x] Re-entry guarded (`start` rejects while active; `setMicState` gates the hook).
 
 ### Exit criteria
-- [ ] Hold the mic (or hotkey), speak, release → transcript appears in the composer; user reviews and sends; errors degrade gracefully; speech is paused while recording.
+- [x] Code-complete; Elixir `--warnings-as-errors` + esbuild clean; `StatusLiveTest` green (mic button rendered, `voice_error` flashes).
+- [ ] **On-device:** hold mic/hotkey → speak → release → transcript fills the composer; user reviews + sends; mic-denied/model-missing degrade gracefully; TTS pauses while recording. *(Requires the user to build/run the desktop app with the model fetched.)*
 
 ---
 

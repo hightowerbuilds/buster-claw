@@ -255,6 +255,18 @@
           "markdownDescription": "Enables the speak command without any pre-configured scope."
         },
         {
+          "description": "Enables the start_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-recording",
+          "markdownDescription": "Enables the start_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stop-recording",
+          "markdownDescription": "Enables the stop_recording command without any pre-configured scope."
+        },
+        {
           "description": "Enables the stop_speaking command without any pre-configured scope.",
           "type": "string",
           "const": "allow-stop-speaking",
@@ -367,6 +379,18 @@
           "type": "string",
           "const": "deny-speak",
           "markdownDescription": "Denies the speak command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-recording",
+          "markdownDescription": "Denies the start_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stop-recording",
+          "markdownDescription": "Denies the stop_recording command without any pre-configured scope."
         },
         {
           "description": "Denies the stop_speaking command without any pre-configured scope.",

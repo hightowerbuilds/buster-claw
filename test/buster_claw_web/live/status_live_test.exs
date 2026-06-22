@@ -148,6 +148,20 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       assert response =~ ~s(form[phx-submit="chat_send"]) or
                response =~ ~s(phx-submit="chat_send")
+
+      # Push-to-talk mic button: present in the composer but hidden until the
+      # AgentChat hook detects the Tauri desktop shell.
+      assert response =~ ~s(data-mic)
+      assert response =~ "hero-microphone"
+    end
+
+    test "a client voice_error surfaces as a flash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      html =
+        render_hook(view, "voice_error", %{"message" => "Microphone access denied — enable it."})
+
+      assert html =~ "Microphone access denied — enable it."
     end
 
     test "projects the active conversation's broadcast events into the transcript", %{conn: conn} do

@@ -21,6 +21,13 @@ base64 = "0.22"
 
 # macOS-only: reach the underlying WKWebView (via tauri's PlatformWebview::inner())
 # to call -takeSnapshotWithConfiguration:completionHandler: for browser_screenshot.
+#
+# Voice input (STT, voice roadmap Phase 2): `cpal` captures microphone audio via
+# CoreAudio; `whisper-rs` statically compiles whisper.cpp (Metal backend) for
+# on-device transcription — nothing extra to ship or sign. Both are macOS-only
+# because the shell is macOS-only today.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 block = "0.1"
+cpal = "0.18"
+whisper-rs = { version = "0.16", features = ["metal"] }

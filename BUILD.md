@@ -41,6 +41,29 @@ anything is missing), syncs the version, installs JS deps (`npm ci`), builds the
 Phoenix release + production assets, and runs `cargo tauri build`. The first
 build compiles the Rust shell and bundles ERTS — expect several minutes.
 
+### Voice input (optional)
+
+The desktop shell can transcribe speech on-device (voice roadmap). It bundles a
+whisper.cpp model (~142MB), fetched rather than committed. Run once before
+building if you want voice input in the bundle:
+
+```bash
+./scripts/fetch_whisper_model.sh
+```
+
+This adds ~150MB to the `.app`. The Rust STT crates (`cpal`, `whisper-rs`) build
+unconditionally; the model and microphone entitlement only matter at runtime.
+`whisper-rs` compiles whisper.cpp from source, so it needs the C/C++ toolchain
+(Xcode Command Line Tools, already required above); if its build script asks for
+CMake, `brew install cmake`. To confirm the STT stack links before any feature
+work, build the shell directly:
+
+```bash
+cd desktop/tauri && cargo build
+```
+
+On boot the shell logs a one-line mic + model self-check (`[buster-claw][voice]`).
+
 ## Output
 
 | Artifact | Path |

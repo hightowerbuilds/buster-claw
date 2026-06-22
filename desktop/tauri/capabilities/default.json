@@ -23,6 +23,8 @@
     "allow-browser-close",
     "allow-browser-screenshot",
     "allow-speak",
-    "allow-stop-speaking"
+    "allow-stop-speaking",
+    "allow-start-recording",
+    "allow-stop-recording"
   ]
 }

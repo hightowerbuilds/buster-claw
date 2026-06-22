@@ -572,6 +572,46 @@ const Hooks = {
       this.input.addEventListener("keydown", this.onKeydown)
       this.form.addEventListener("submit", this.onSubmit)
       this.handle?.addEventListener("pointerdown", this.onHandleDown)
+
+      // Push-to-talk (voice input). Only wired inside the desktop app, where the
+      // Tauri `start_recording`/`stop_recording` commands exist; in a plain
+      // browser the mic button stays hidden. Hold the button (or ⌘/), speak,
+      // release: the transcript fills the composer for review (v1 never auto-sends).
+      this.invoke = window.__TAURI__?.core?.invoke || null
+      this.mic = this.el.querySelector("[data-mic]")
+      this.micIdleIcon = this.el.querySelector("[data-mic-idle]")
+      this.micBusy = this.el.querySelector("[data-mic-busy]")
+      this.micState = "idle"
+
+      this.onMicUp = () => {
+        window.removeEventListener("pointerup", this.onMicUp)
+        this.stopListening()
+      }
+      this.onMicDown = (e) => {
+        e.preventDefault()
+        window.addEventListener("pointerup", this.onMicUp)
+        this.startListening()
+      }
+      // Hotkey hold-to-talk: ⌘/ (or Ctrl+/). `repeat` guards key auto-repeat;
+      // releasing / or the modifier ends the capture.
+      this.onHotkey = (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "/" && !e.repeat) {
+          e.preventDefault()
+          this.startListening()
+        }
+      }
+      this.onHotkeyUp = (e) => {
+        if (this.micState === "listening" && (e.key === "/" || e.key === "Meta" || e.key === "Control")) {
+          this.stopListening()
+        }
+      }
+
+      if (this.mic && this.invoke) {
+        this.mic.hidden = false
+        this.mic.addEventListener("pointerdown", this.onMicDown)
+        window.addEventListener("keydown", this.onHotkey)
+        window.addEventListener("keyup", this.onHotkeyUp)
+      }
     },
     updated() {
       this.applyHeight()
@@ -584,6 +624,63 @@ const Hooks = {
       window.removeEventListener("keydown", this.onEscape)
       window.removeEventListener("pointermove", this.onHandleMove)
       window.removeEventListener("pointerup", this.onHandleUp)
+      this.mic?.removeEventListener("pointerdown", this.onMicDown)
+      window.removeEventListener("pointerup", this.onMicUp)
+      window.removeEventListener("keydown", this.onHotkey)
+      window.removeEventListener("keyup", this.onHotkeyUp)
+    },
+    // --- Push-to-talk ---
+    async startListening() {
+      if (this.micState !== "idle" || !this.invoke) return
+      // Don't transcribe our own spoken reply: cut any TTS first.
+      this.invoke("stop_speaking").catch(() => {})
+      this.setMicState("listening")
+      try {
+        await this.invoke("start_recording")
+      } catch (err) {
+        this.setMicState("idle")
+        this.voiceError(err)
+      }
+    },
+    async stopListening() {
+      if (this.micState !== "listening" || !this.invoke) return
+      this.setMicState("transcribing")
+      try {
+        const res = await this.invoke("stop_recording")
+        this.insertTranscript(res && res.text)
+      } catch (err) {
+        this.voiceError(err)
+      } finally {
+        this.setMicState("idle")
+      }
+    },
+    insertTranscript(text) {
+      const t = (text || "").trim()
+      if (!t || !this.input) return
+      const cur = this.input.value
+      this.input.value = cur && !/\s$/.test(cur) ? cur + " " + t : cur + t
+      this.input.focus()
+      const end = this.input.value.length
+      this.input.setSelectionRange(end, end)
+    },
+    voiceError(err) {
+      const raw = String(err && err.message ? err.message : err)
+      const denied = /denied|authoriz|permission|not authorized/i.test(raw)
+      const message = denied
+        ? "Microphone access denied — enable it in System Settings › Privacy & Security › Microphone."
+        : "Voice input failed: " + raw.slice(0, 160)
+      this.pushEvent("voice_error", {message})
+    },
+    setMicState(state) {
+      this.micState = state
+      if (!this.mic) return
+      this.mic.dataset.state = state
+      const busy = state === "transcribing"
+      if (this.micIdleIcon) this.micIdleIcon.hidden = busy
+      if (this.micBusy) this.micBusy.hidden = !busy
+      this.mic.style.pointerEvents = busy ? "none" : ""
+      if (state === "listening") this.mic.setAttribute("aria-pressed", "true")
+      else this.mic.removeAttribute("aria-pressed")
     },
     scrollToBottom() {
       if (this.log) this.log.scrollTop = this.log.scrollHeight

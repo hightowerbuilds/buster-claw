@@ -142,6 +142,24 @@ defmodule BusterClawWeb.ChatPanel do
           class="min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-[17px] focus:border-primary focus:outline-none"
         ></textarea>
         <button
+          type="button"
+          data-mic
+          hidden
+          aria-label="Hold to talk"
+          title="Hold to talk · ⌘/"
+          class="inline-grid size-11 shrink-0 place-items-center self-stretch rounded border-2 border-base-content/25 text-base-content/70 transition hover:border-primary hover:text-primary data-[state=listening]:border-primary data-[state=listening]:bg-primary/10 data-[state=listening]:text-primary data-[state=transcribing]:border-primary/60 data-[state=transcribing]:text-primary"
+        >
+          <span data-mic-idle class="inline-grid place-items-center">
+            <.icon name="hero-microphone" class="size-5" />
+          </span>
+          <span
+            data-mic-busy
+            hidden
+            class="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+          >
+          </span>
+        </button>
+        <button
           type="submit"
           class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-semibold text-primary-content transition hover:opacity-85"
         >

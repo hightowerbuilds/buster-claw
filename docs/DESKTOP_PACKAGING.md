@@ -20,6 +20,19 @@ That script:
 
 See [`../BUILD.md`](../BUILD.md) for prerequisites and a clone-to-`.dmg` walkthrough.
 
+### Voice (STT) model bundle
+
+Voice input transcribes on-device with a bundled whisper.cpp model
+(`ggml-base.en.bin`, ~142MB), so the bundle is **~150MB larger** when voice is
+built in. The model is fetched, not committed — run `./scripts/fetch_whisper_model.sh`
+once before building. It lands in `desktop/tauri/resources/models/` (mapped into
+the bundle as `Contents/Resources/models/`), a stable mapping kept separate from
+the volatile `resources/release/` staging dir. The shell resolves it at runtime
+via `resolve_voice_model` in `main.rs`. Microphone access needs the
+`NSMicrophoneUsageDescription` string (`Info.plist`) and the
+`com.apple.security.device.audio-input` entitlement (`Entitlements.plist`,
+referenced from `tauri.conf.json`); both ride the Apple-signing critical path.
+
 Outputs:
 
 - `desktop/tauri/target/release/bundle/macos/Buster Claw.app`

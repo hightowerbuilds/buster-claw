@@ -23,6 +23,9 @@ npm-debug.log
 
 # Tauri desktop shell generated files
 desktop/tauri/target/
+# Bundled whisper STT model (~142MB) — fetched, not committed
+# (scripts/fetch_whisper_model.sh). Keep the dir via its .gitkeep.
+desktop/tauri/resources/models/*.bin
 
 # Local runtime data
 /Library/

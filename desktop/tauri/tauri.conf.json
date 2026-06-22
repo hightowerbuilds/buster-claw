@@ -32,10 +32,12 @@
     "targets": ["app", "dmg"],
     "icon": ["icons/icon.png"],
     "resources": {
-      "resources/release": "release"
+      "resources/release": "release",
+      "resources/models": "models"
     },
     "macOS": {
-      "minimumSystemVersion": "11.0"
+      "minimumSystemVersion": "11.0",
+      "entitlements": "Entitlements.plist"
     }
   }
 }
