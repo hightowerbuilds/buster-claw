@@ -158,6 +158,7 @@ defmodule BusterClaw.Agent.ChatTest do
 
   test "interrupt dispatches the next queued message instead of going idle" do
     test_pid = self()
+
     spawner = fn prompt, _opts ->
       send(test_pid, {:spawned, prompt})
       {:ok, make_ref()}

@@ -32,6 +32,22 @@ defmodule BusterClaw.Commands.Helpers do
     end
   end
 
+  @doc """
+  Clamp a caller-supplied result limit into `1..100`, accepting integers or
+  numeric strings and defaulting to 20 for anything missing or invalid. Shared
+  by the search-style commands (memory, skill suggestions).
+  """
+  def normalize_limit(n) when is_integer(n) and n > 0, do: min(n, 100)
+
+  def normalize_limit(n) when is_binary(n) do
+    case Integer.parse(n) do
+      {i, _} when i > 0 -> min(i, 100)
+      _ -> 20
+    end
+  end
+
+  def normalize_limit(_), do: 20
+
   @doc "Trim a binary, returning `nil` for blank/whitespace-only values; pass other types through."
   def blank_to_nil(nil), do: nil
 
