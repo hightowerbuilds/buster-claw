@@ -796,6 +796,8 @@ const Hooks = {
       window.addEventListener("bc:close-split-pane", this.onCloseSplitPane)
       this.sync()
       this.render()
+      // Heal any native browser surface left stuck by a prior full-page reload.
+      this.reconcileBrowserSurfaces()
     },
     destroyed() {
       this.closeMenu()
@@ -1079,6 +1081,22 @@ const Hooks = {
       const invoke = window.__TAURI__?.core?.invoke
       if (!invoke) return Promise.resolve()
       return invoke("browser_close").catch(() => {})
+    },
+    // Reconcile native browser surfaces against the current route on a fresh page
+    // load. Surfaces are owned by the Rust shell and survive the full-page reload
+    // our window.location.href navigations do; on such a reload the EmbeddedBrowser
+    // hook's destroyed() (which hides its surface) doesn't fire, so a surface can
+    // be left stuck on top of the next page. The route says which are valid —
+    // "main" on /browse, "left"/"right" on /split, none anywhere else — so close
+    // the rest. Closing an absent or about-to-be-reopened surface is a safe no-op
+    // (each pane's hook opens its own id, never one we close here).
+    reconcileBrowserSurfaces() {
+      const invoke = window.__TAURI__?.core?.invoke
+      if (!invoke) return
+      const base = window.location.pathname
+      const stale =
+        base === "/browse" ? ["left", "right"] : base === "/split" ? ["main"] : ["main", "left", "right"]
+      for (const sid of stale) invoke("browser_close", {surfaceId: sid}).catch(() => {})
     },
     // ----- Right-click context menu -----
     // Primary trigger in WebKit: right-button mousedown fires even on draggable
