@@ -13,6 +13,7 @@ defmodule BusterClaw.Application do
     "dev-mcp-token-safe-tier-only",
     "dev-agent-token-untrusted-provenance",
     "test-token-loopback-only",
+    "test-mcp-token-safe-tier-only",
     "test-agent-token-untrusted-provenance"
   ]
 

@@ -71,6 +71,9 @@ defmodule BusterClawWeb.StatusLive do
     do: {:noreply, dispatch_chat(socket, prompt)}
 
   def handle_event("chat_send", %{"message" => text}, socket) do
+    # Sending barges in on any reply still being spoken.
+    socket = push_event(socket, "bc:stop_speak", %{})
+
     case String.trim(text) do
       "" -> {:noreply, socket}
       trimmed -> {:noreply, dispatch_chat(socket, trimmed)}
@@ -88,7 +91,7 @@ defmodule BusterClawWeb.StatusLive do
 
   def handle_event("cut_run", _params, socket) do
     Chat.interrupt(socket.assigns.active_chat)
-    {:noreply, socket}
+    {:noreply, push_event(socket, "bc:stop_speak", %{})}
   end
 
   def handle_event("barge_queued", %{"id" => id}, socket) do
@@ -222,13 +225,21 @@ defmodule BusterClawWeb.StatusLive do
 
   defp apply_chat(socket, conv_id, {:message, %{role: role, text: text}}) do
     if conv_id == socket.assigns.active_chat do
-      push_msg(socket, role, text)
+      socket
+      |> maybe_speak(role, text)
+      |> push_msg(role, text)
     else
       update_tab(socket, conv_id, &%{&1 | unread: true})
     end
   end
 
   defp apply_chat(socket, _conv_id, _other), do: socket
+
+  # Speak the model's replies aloud (client gates on the Voice toggle + desktop
+  # app). Only `:assistant` text — never tool/meta/error lines. A turn emits one
+  # `:assistant` message per text block; each is enqueued and spoken in order.
+  defp maybe_speak(socket, :assistant, text), do: push_event(socket, "bc:speak", %{text: text})
+  defp maybe_speak(socket, _role, _text), do: socket
 
   defp activate_chat(socket, id) do
     Conversations.touch(id)
@@ -333,7 +344,7 @@ defmodule BusterClawWeb.StatusLive do
                 </.link>
               </div>
             </div>
-            <.corner_widget
+            <BusterClawWeb.HomeWidget.corner_widget
               tab={@widget_tab}
               today={@today}
               events={@daily_events}
@@ -342,8 +353,8 @@ defmodule BusterClawWeb.StatusLive do
           </div>
 
           <div class="flex min-h-0 flex-1 flex-col gap-2">
-            <.chat_tabs chats={@chats} active={@active_chat} />
-            <.chat_panel
+            <BusterClawWeb.ChatPanel.chat_tabs chats={@chats} active={@active_chat} />
+            <BusterClawWeb.ChatPanel.chat_panel
               messages={@chat_messages}
               running={@chat_running}
               thinking={@chat_thinking}
@@ -354,576 +365,6 @@ defmodule BusterClawWeb.StatusLive do
       </section>
     </Layouts.app>
     """
-  end
-
-  attr :chats, :list, required: true
-  attr :active, :string, required: true
-
-  defp chat_tabs(assigns) do
-    ~H"""
-    <div class="flex items-center gap-1 overflow-x-auto" role="tablist" aria-label="Chats">
-      <div
-        :for={c <- @chats}
-        role="tab"
-        aria-selected={to_string(c.id == @active)}
-        phx-click="select_chat"
-        phx-value-id={c.id}
-        class={[
-          "group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-sm border-2 px-2.5 py-1.5 text-xs transition",
-          if(c.id == @active,
-            do: "border-base-content/30 bg-base-200 text-base-content",
-            else: "border-base-content/15 bg-base-200/40 text-base-content/55 hover:text-base-content"
-          )
-        ]}
-      >
-        <span
-          :if={c.running}
-          class="size-2 shrink-0 animate-pulse rounded-full bg-primary"
-          title="Working"
-        >
-        </span>
-        <span
-          :if={c.unread and c.id != @active}
-          class="size-2 shrink-0 rounded-full bg-warning"
-          title="New messages"
-        >
-        </span>
-        <span class="max-w-[10rem] truncate font-medium">{c.title}</span>
-        <span
-          phx-click="close_chat"
-          phx-value-id={c.id}
-          title="Close chat"
-          class="ml-0.5 grid size-4 shrink-0 place-items-center rounded-sm text-base-content/40 hover:bg-base-content/15 hover:text-primary"
-        >
-          ×
-        </span>
-      </div>
-      <button
-        type="button"
-        phx-click="new_chat"
-        title="New chat"
-        aria-label="New chat"
-        class="grid size-7 shrink-0 place-items-center rounded-sm border-2 border-base-content/20 text-base-content/70 transition hover:border-primary hover:text-primary"
-      >
-        +
-      </button>
-    </div>
-    """
-  end
-
-  attr :messages, :list, required: true
-  attr :running, :boolean, required: true
-  attr :thinking, :any, required: true
-  attr :queue, :list, required: true
-
-  defp chat_panel(assigns) do
-    ~H"""
-    <section
-      id="home-agent-chat"
-      phx-hook="AgentChat"
-      data-running={to_string(@running)}
-      class="ic-panel flex min-h-0 w-full flex-1 flex-col overflow-hidden"
-    >
-      <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
-        <div>
-          <p class="ic-eyebrow">Chat</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            Talk to Buster Claw
-          </h2>
-        </div>
-        <div class="flex items-center gap-3">
-          <.thinking_chip thinking={@thinking} />
-          <button
-            :if={@running}
-            type="button"
-            phx-click="cut_run"
-            title="Stop the model"
-            class="inline-flex items-center gap-1.5 rounded border-2 border-error/50 px-2.5 py-1 font-mono text-[0.62rem] uppercase tracking-wide text-error transition hover:bg-error/10"
-          >
-            <.icon name="hero-stop" class="size-3.5" /> Stop
-            <kbd class="rounded-sm border border-error/40 px-1 text-[0.55rem] leading-none">Esc</kbd>
-          </button>
-        </div>
-      </header>
-
-      <div
-        id="agent-chat-log"
-        data-chat-log
-        class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-5"
-      >
-        <div
-          :if={@messages == []}
-          class="m-auto max-w-xs text-center text-[17px] text-base-content/55"
-        >
-          Ask Buster Claw to check your mail, work the queue, or look something up.
-          It runs headless Claude — no terminal needed.
-        </div>
-
-        <.chat_bubble :for={msg <- @messages} msg={msg} />
-      </div>
-
-      <.queue_strip queue={@queue} />
-
-      <form
-        phx-submit="chat_send"
-        data-chat-form
-        class="flex items-end gap-2 border-t-2 border-base-content/20 p-3"
-      >
-        <textarea
-          name="message"
-          data-chat-input
-          rows="2"
-          placeholder="Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
-          class="min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-[17px] focus:border-primary focus:outline-none"
-        ></textarea>
-        <button
-          type="submit"
-          class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-semibold text-primary-content transition hover:opacity-85"
-        >
-          <.icon name="hero-paper-airplane" class="size-4" /> Send
-        </button>
-      </form>
-
-      <div
-        data-resize-handle
-        role="separator"
-        aria-orientation="horizontal"
-        title="Drag to resize the chat"
-        class="group/resize flex h-2.5 shrink-0 cursor-ns-resize items-center justify-center border-t-2 border-base-content/20 bg-base-200/40 transition hover:bg-base-200"
-      >
-        <span class="h-1 w-10 rounded-full bg-base-content/25 transition group-hover/resize:bg-primary">
-        </span>
-      </div>
-    </section>
-    """
-  end
-
-  # Live "thinking" timer in the chat header. `ThinkingTimer` (app.js) ticks the
-  # label client-side from data-state/data-ms — no server round-trips per second.
-  attr :thinking, :any, required: true
-
-  defp thinking_chip(%{thinking: nil} = assigns), do: ~H""
-
-  defp thinking_chip(assigns) do
-    ~H"""
-    <span
-      id="chat-thinking"
-      phx-hook="ThinkingTimer"
-      data-state={if(match?({:done, _}, @thinking), do: "done", else: "running")}
-      data-ms={with({:done, ms} <- @thinking, do: ms, else: (_ -> nil))}
-      class="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-wide text-primary"
-    >
-      <span class="size-2 animate-pulse rounded-full bg-primary"></span>
-      <span data-thinking-label>Thinking…</span>
-    </span>
-    """
-  end
-
-  # The queue rail: messages typed while a run is in flight, stacked as "next
-  # pieces" and dispatched one-per-turn as the current run finishes. The
-  # front piece is "armed" (hazard border + NEXT tag); pieces are drag-reorderable
-  # (QueueRail hook), cancellable, and animate in/out (.ic-piece / phx-remove).
-  attr :queue, :list, required: true
-
-  defp queue_strip(%{queue: []} = assigns), do: ~H""
-
-  defp queue_strip(assigns) do
-    ~H"""
-    <div class="flex flex-col gap-1.5 border-t-2 border-base-content/20 bg-base-200/40 px-3 py-2">
-      <p class="ic-eyebrow text-base-content/55">On deck · {length(@queue)}</p>
-      <ul id="chat-queue-rail" phx-hook="QueueRail" phx-update="replace" class="flex flex-col gap-1">
-        <li
-          :for={{item, idx} <- Enum.with_index(@queue)}
-          id={"queue-#{item.id}"}
-          data-id={item.id}
-          draggable="true"
-          phx-remove={
-            JS.hide(
-              transition:
-                {"transition-all ease-in duration-200", "opacity-100 scale-100",
-                 "opacity-0 scale-95 -translate-y-1"},
-              time: 200
-            )
-          }
-          class={[
-            "ic-piece group flex cursor-grab items-center gap-2 rounded-sm border-2 bg-base-100 px-2.5 py-1.5 active:cursor-grabbing",
-            if(idx == 0,
-              do: "border-primary/70 shadow-[2px_2px_0_0] shadow-primary/30",
-              else: "border-base-content/20"
-            )
-          ]}
-        >
-          <.icon name="hero-bars-2" class="size-3.5 shrink-0 text-base-content/30" />
-          <span class="flex-1 truncate text-[15px]">{item.text}</span>
-          <span
-            :if={idx == 0}
-            class="shrink-0 font-mono text-[0.55rem] uppercase tracking-wider text-primary"
-          >
-            Next
-          </span>
-          <button
-            type="button"
-            phx-click="cancel_queued"
-            phx-value-id={item.id}
-            title="Remove from queue"
-            class="shrink-0 text-base-content/40 opacity-0 transition hover:text-error group-hover:opacity-100"
-          >
-            <.icon name="hero-x-mark" class="size-4" />
-          </button>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
-  attr :msg, :map, required: true
-
-  defp chat_bubble(%{msg: %{role: :user}} = assigns) do
-    ~H"""
-    <div id={"chat-msg-#{@msg.id}"} class="flex justify-end">
-      <div class="ic-drop-in max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content">
-        {@msg.text}
-      </div>
-    </div>
-    """
-  end
-
-  defp chat_bubble(%{msg: %{role: :assistant}} = assigns) do
-    ~H"""
-    <div id={"chat-msg-#{@msg.id}"} class="flex justify-start">
-      <div class="max-w-[85%] whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-100 px-3 py-2 text-[17px]">
-        {@msg.text}
-      </div>
-    </div>
-    """
-  end
-
-  defp chat_bubble(%{msg: %{role: :tool}} = assigns) do
-    ~H"""
-    <div
-      id={"chat-msg-#{@msg.id}"}
-      class="flex items-center gap-2 font-mono text-xs text-base-content/55"
-    >
-      <.icon name="hero-command-line" class="size-3.5 shrink-0" />
-      <span class="truncate">{@msg.text}</span>
-    </div>
-    """
-  end
-
-  defp chat_bubble(%{msg: %{role: :meta}} = assigns) do
-    ~H"""
-    <div
-      id={"chat-msg-#{@msg.id}"}
-      class="text-center font-mono text-[0.62rem] uppercase tracking-wide text-base-content/45"
-    >
-      {@msg.text}
-    </div>
-    """
-  end
-
-  defp chat_bubble(%{msg: %{role: :error}} = assigns) do
-    ~H"""
-    <div id={"chat-msg-#{@msg.id}"} class="flex justify-start">
-      <div class="max-w-[85%] rounded-sm border-2 border-error/50 bg-error/10 px-3 py-2 text-[17px] text-error">
-        {@msg.text}
-      </div>
-    </div>
-    """
-  end
-
-  attr :tab, :string, required: true
-  attr :entries, :list, required: true
-  attr :today, Date, required: true
-  attr :events, :list, required: true
-
-  # Calendar + Contacts as a rectangle filling the header gap to the right of the
-  # banner. The card is absolutely positioned to fill the widget box, so its
-  # content scrolls instead of growing the header. When the CornerWidget hook
-  # finds the header too narrow to fit the widget beside the banner it collapses
-  # the widget to a right-edge bumper that pops the card back out on click.
-  defp corner_widget(assigns) do
-    ~H"""
-    <div
-      id="home-corner-widget"
-      phx-hook="CornerWidget"
-      data-banner="#bc-heading"
-      class="ic-corner-widget relative min-w-0"
-    >
-      <button
-        type="button"
-        data-corner-bumper
-        aria-label="Show Calendar and Contacts"
-        class="ic-corner-bumper"
-      >
-        <.icon name="hero-chevron-left" class="size-4" />
-      </button>
-
-      <div
-        data-corner-card
-        class="ic-corner-card ic-panel flex flex-col overflow-hidden"
-      >
-        <div
-          role="tablist"
-          aria-label="Widget"
-          class="flex gap-1 border-b-2 border-base-content/20 px-2 pt-2"
-        >
-          <%= for {key, text} <- [
-            {"get-started", "Get Started"},
-            {"calendar", "Calendar"},
-            {"contacts", "Contacts"}
-          ] do %>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={to_string(@tab == key)}
-              phx-click="select_widget_tab"
-              phx-value-tab={key}
-              class={[
-                "-mb-0.5 border-b-2 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide transition",
-                if(@tab == key,
-                  do: "border-primary text-primary",
-                  else: "border-transparent text-base-content/55 hover:text-base-content"
-                )
-              ]}
-            >
-              {text}
-            </button>
-          <% end %>
-        </div>
-
-        <div class="min-h-0 flex-1 overflow-auto">
-          <div class={@tab != "get-started" && "hidden"}>
-            <.get_started_panel />
-          </div>
-          <div class={@tab != "calendar" && "hidden"}>
-            <.daily_calendar_panel today={@today} events={@events} />
-          </div>
-          <div class={@tab != "contacts" && "hidden"}>
-            <BusterClawWeb.TrustedContactsPanel.panel entries={@entries} />
-          </div>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  @quick_prompts [
-    "Please read through the introduction and BusterClawWorkspace and give me an explanation.",
-    "Explain Buster Claw's Sentinel security layer — what it audits, the safe vs restricted trust tiers, and the gate on irreversible actions. Then exemplify it: run one safe command and one restricted command through the ./buster-claw CLI, show how each is recorded on the audit feed, and point me to the Security tab to watch it live.",
-    "Give me an overview of everything you can do across my Google Workspace. Run `./buster-claw commands` to read your full catalog, then summarize the Google capabilities grouped by service — Gmail, Calendar, Drive, Docs, Sheets, Slides, Contacts, and Tasks — noting for each which actions are read-only (safe) versus those that change or delete data and need confirmation.",
-    "Check my mail and tell me what needs a reply.",
-    "What can you do? Show me a few things to try."
-  ]
-
-  defp get_started_panel(assigns) do
-    assigns = assign(assigns, :quick_prompts, @quick_prompts)
-
-    ~H"""
-    <section
-      id="home-get-started"
-      class="ic-panel flex flex-col overflow-hidden max-h-full"
-    >
-      <header class="border-b-2 border-base-content/20 px-5 py-4">
-        <p class="ic-eyebrow">Get Started</p>
-        <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-          Get Started
-        </h2>
-        <p class="mt-1 text-sm text-base-content/65">
-          Three steps and you're talking to Buster Claw (Google Workspace already connected).
-        </p>
-      </header>
-
-      <div class="flex min-h-0 flex-1 flex-col overflow-auto">
-        <details
-          id="get-started-steps"
-          phx-update="ignore"
-          open
-          class="group/steps border-b-2 border-base-content/15"
-        >
-          <summary class="ic-collapse-summary">
-            <span class="ic-eyebrow">Setup steps</span>
-            <.icon
-              name="hero-chevron-down"
-              class="size-4 shrink-0 text-base-content/55 transition group-open/steps:rotate-180"
-            />
-          </summary>
-
-          <ol class="flex flex-col gap-4 px-5 pb-5">
-            <li class="flex gap-3">
-              <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
-                1
-              </span>
-              <div class="min-w-0">
-                <h3 class="font-semibold">Add your trusted contacts</h3>
-                <p class="mt-0.5 text-sm text-base-content/65">
-                  In the panel below, list the senders Buster Claw may read and reply to.
-                  Mail from anyone else is ignored.
-                </p>
-              </div>
-            </li>
-
-            <li class="flex gap-3">
-              <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
-                2
-              </span>
-              <div class="min-w-0">
-                <h3 class="font-semibold">Install Claude Code</h3>
-                <p class="mt-0.5 text-sm text-base-content/65">
-                  Buster Claw has no built-in AI — it drives your own Claude Code CLI headlessly.
-                  Install it once with
-                  <.copy_command command="brew install --cask claude-code" />, then
-                  sign in (<span class="font-mono">claude</span> in a terminal).
-                </p>
-              </div>
-            </li>
-
-            <li class="flex gap-3">
-              <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
-                3
-              </span>
-              <div class="min-w-0">
-                <h3 class="font-semibold">Chat with Buster Claw</h3>
-                <p class="mt-0.5 text-sm text-base-content/65">
-                  Use the chat on the right. Ask it to triage your inbox, draft a reply, or
-                  look something up — it runs headless Claude for you, no terminal needed.
-                </p>
-              </div>
-            </li>
-          </ol>
-        </details>
-
-        <details id="get-started-quick-chat" phx-update="ignore" open class="group/quick">
-          <summary class="ic-collapse-summary">
-            <span class="ic-eyebrow">Quick chat</span>
-            <.icon
-              name="hero-chevron-down"
-              class="size-4 shrink-0 text-base-content/55 transition group-open/quick:rotate-180"
-            />
-          </summary>
-
-          <div class="flex flex-col gap-2 px-5 pb-5">
-            <button
-              :for={prompt <- @quick_prompts}
-              type="button"
-              phx-click="quick_chat"
-              phx-value-prompt={prompt}
-              class="group flex items-center gap-3 rounded-sm border-2 border-base-content/25 px-3 py-2.5 text-left text-sm transition hover:border-primary hover:text-primary"
-            >
-              <.icon name="hero-chat-bubble-left-right" class="size-5 shrink-0 text-base-content/55" />
-              <span class="min-w-0 flex-1">{prompt}</span>
-              <.icon name="hero-arrow-right" class="size-4 shrink-0 text-base-content/40" />
-            </button>
-          </div>
-        </details>
-      </div>
-    </section>
-    """
-  end
-
-  attr :command, :string, required: true
-
-  defp copy_command(assigns) do
-    ~H"""
-    <span class="inline-flex items-center gap-1 align-middle">
-      <code class="rounded bg-base-200 px-1.5 py-0.5 font-mono text-[0.8rem]">{@command}</code>
-      <button
-        type="button"
-        data-terminal-command-copy={@command}
-        aria-label={"Copy command: #{@command}"}
-        title="Copy"
-        class="inline-flex shrink-0 items-center gap-1 rounded-sm border border-base-content/20 px-1.5 py-0.5 font-mono text-[0.62rem] font-semibold uppercase tracking-wide text-base-content/60 transition hover:border-primary hover:text-primary"
-      >
-        <.icon name="hero-clipboard-document" class="size-3" />
-        <span data-terminal-command-copy-label>Copy</span>
-      </button>
-    </span>
-    """
-  end
-
-  attr :today, Date, required: true
-  attr :events, :list, required: true
-
-  defp daily_calendar_panel(assigns) do
-    ~H"""
-    <section id="home-daily-calendar" class="ic-panel self-start">
-      <header class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
-        <div>
-          <p class="ic-eyebrow">Today's Calendar</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            {Elixir.Calendar.strftime(@today, "%A, %B %-d")}
-          </h2>
-        </div>
-
-        <.link
-          navigate={~p"/calendar"}
-          class="rounded-sm border-2 border-base-content/25 px-3 py-2 font-mono text-xs uppercase tracking-wide text-base-content/70 transition hover:border-primary hover:text-primary"
-        >
-          Open Calendar
-        </.link>
-      </header>
-
-      <div class="p-5">
-        <ol :if={@events != []} class="divide-y divide-base-300 rounded border border-base-300">
-          <li
-            :for={event <- @events}
-            id={"home-event-#{event.id}-#{Date.to_iso8601(event.date)}"}
-            class="grid gap-3 px-4 py-3 text-sm sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-start"
-          >
-            <div class="font-mono text-xs font-semibold uppercase tracking-wide text-primary">
-              {event_time_label(event)}
-            </div>
-            <div class="min-w-0">
-              <div class="flex min-w-0 items-center gap-2">
-                <span class={["size-2.5 shrink-0 rounded-full", event_dot_class(event.color)]} />
-                <h3 class="truncate font-semibold">{event.title}</h3>
-                <span
-                  :if={event.frequency}
-                  class="rounded-full bg-base-200 px-2 py-0.5 text-xs font-semibold text-base-content/60"
-                >
-                  {event.frequency}
-                </span>
-              </div>
-              <p
-                :if={event.notes not in [nil, ""]}
-                class="mt-1 line-clamp-2 text-sm text-base-content/60"
-              >
-                {event.notes}
-              </p>
-            </div>
-          </li>
-        </ol>
-
-        <div
-          :if={@events == []}
-          class="rounded border border-dashed border-base-300 px-4 py-10 text-center text-sm text-base-content/60"
-        >
-          Nothing scheduled today.
-        </div>
-      </div>
-    </section>
-    """
-  end
-
-  defp event_time_label(%{start_time: nil}), do: "All day"
-
-  defp event_time_label(%{start_time: start_time, end_time: nil}),
-    do: format_event_time(start_time)
-
-  defp event_time_label(%{start_time: start_time, end_time: end_time}),
-    do: "#{format_event_time(start_time)}-#{format_event_time(end_time)}"
-
-  defp format_event_time(%Time{} = time), do: Elixir.Calendar.strftime(time, "%H:%M")
-
-  defp event_dot_class(color) do
-    case color do
-      "work" -> "bg-info"
-      "personal" -> "bg-secondary"
-      "social" -> "bg-accent"
-      "travel" -> "bg-warning"
-      "health" -> "bg-success"
-      "holiday" -> "bg-error"
-      _ -> "bg-base-content/40"
-    end
   end
 
   defp load_daily_events(socket) do

@@ -104,7 +104,8 @@ defmodule BusterClaw.MixProject do
       {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false}
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -135,7 +136,14 @@ defmodule BusterClaw.MixProject do
         "credo --strict",
         "test"
       ],
-      lint: ["credo --strict", "sobelow --config"]
+      # GHSA-52mm-h59v-f3c7 (earmark stored-XSS via HTML attribute) has no
+      # upstream patch; rendered markdown is run through html_sanitize_ex, which
+      # mitigates it. Revisit if earmark ships a fix or the render path changes.
+      lint: [
+        "credo --strict",
+        "sobelow --config",
+        "deps.audit --ignore-advisory-ids GHSA-52mm-h59v-f3c7"
+      ]
     ]
   end
 end

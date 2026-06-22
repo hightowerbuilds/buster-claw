@@ -126,7 +126,7 @@ defmodule BusterClawWeb.SetupLive do
   def handle_event("validate_google", %{"google_account" => params}, socket) do
     changeset =
       %GoogleAccount{}
-      |> GoogleAccount.changeset(put_google_defaults(params))
+      |> Google.change_account(put_google_defaults(params))
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, :google_form, to_form(changeset, as: :google_account))}
@@ -516,7 +516,7 @@ defmodule BusterClawWeb.SetupLive do
 
   defp assign_google_form(socket) do
     changeset =
-      GoogleAccount.changeset(%GoogleAccount{}, %{
+      Google.change_account(%GoogleAccount{}, %{
         "scopes" => GoogleOAuthCore.default_scope_string(),
         "default_query" => @google_default_query,
         "enabled" => true
