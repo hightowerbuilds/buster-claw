@@ -95,4 +95,53 @@ defmodule BusterClaw.DispatchCommandsTest do
       assert Commands.command_tier(name) == :safe
     end
   end
+
+  test "dispatch_enqueue queues a manual single-strategy item by default" do
+    {:ok, item} = Commands.call("dispatch_enqueue", %{"summary" => "do the thing"})
+
+    assert item.request_summary == "do the thing"
+    assert item.source == "manual"
+    assert item.strategy == "single"
+    assert item.status == "queued"
+    # Operator-authored via a restricted command → trusted provenance by default.
+    assert item.trusted == true
+
+    # It is now claimable on the generic (single) path.
+    {:ok, claimed} = Commands.call("dispatch_claim", %{"claimed_by" => "tester"})
+    assert claimed.id == item.id
+  end
+
+  test "dispatch_enqueue with strategy=swarm lands on the coordinator path, not the generic claim" do
+    {:ok, item} =
+      Commands.call("dispatch_enqueue", %{
+        "summary" => "research and summarize",
+        "subject" => "Quarterly review",
+        "strategy" => "swarm"
+      })
+
+    assert item.strategy == "swarm"
+    assert item.subject == "Quarterly review"
+
+    # Swarm items are owned by the coordinator — the generic claim skips them.
+    assert {:ok, %{"empty" => true}} = Commands.call("dispatch_claim", %{})
+    assert [%{id: id}] = Dispatch.list_queued(strategy: "swarm")
+    assert id == item.id
+  end
+
+  test "dispatch_enqueue can downgrade to untrusted provenance and rejects bad input" do
+    {:ok, untrusted} =
+      Commands.call("dispatch_enqueue", %{"summary" => "untrusted work", "trusted" => false})
+
+    assert untrusted.trusted == false
+
+    assert {:error, :missing_summary} = Commands.call("dispatch_enqueue", %{"summary" => "   "})
+    assert {:error, :missing_summary} = Commands.call("dispatch_enqueue", %{})
+
+    assert {:error, :bad_strategy} =
+             Commands.call("dispatch_enqueue", %{"summary" => "x", "strategy" => "nope"})
+  end
+
+  test "dispatch_enqueue is restricted-tier (not freely agent/mcp-callable)" do
+    assert Commands.command_tier("dispatch_enqueue") == :restricted
+  end
 end

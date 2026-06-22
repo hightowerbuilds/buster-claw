@@ -1201,6 +1201,20 @@ defmodule BusterClaw.Commands.Catalog do
         }
       },
       %{
+        name: "dispatch_enqueue",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Enqueue a manual Dispatch item (operator/agent worklist entry, not from Gmail). strategy=swarm opts it into the parallel coordinator.",
+        args: %{
+          "summary" => %{type: :string, required: true},
+          "subject" => %{type: :string, required: false},
+          "source" => %{type: :string, required: false},
+          "strategy" => %{type: :string, required: false},
+          "trusted" => %{type: :boolean, required: false}
+        }
+      },
+      %{
         name: "dispatch_reply",
         type: :mutate,
         tier: :restricted,

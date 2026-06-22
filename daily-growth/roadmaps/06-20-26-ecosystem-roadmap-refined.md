@@ -23,6 +23,8 @@ factual baseline and re-scopes three phases that were built on wrong premises.
 | 2 — Cross-run memory (run_summaries + FTS5) | ✅ done | `a64a85b` |
 | 3 — Self-improving (analyzer → propose → approve) | ✅ done | `de8356a` |
 | 4 — Parallel swarm mechanism (`Swarm.run/2`) | ✅ done | `85761d7` |
+| 4.1 — Swarm coordinator (planner → fan-out) + Dispatcher wiring | ✅ done | `a1b84ee` |
+| 4.2 — `dispatch_enqueue` operator/agent seam (drives the swarm path live) | ✅ done | (this session) |
 
 **Also:** SQLite test flake root-caused + fixed (`ce44b16`), prod busy_timeout
 hardened (`67dfd61`).
@@ -35,13 +37,39 @@ hardened (`67dfd61`).
   runtime-added skills are always fresh. Covered by `skills_test.exs` +
   `api_controller_test.exs` ("surfaces enabled composition skills tagged
   source=composition").
+- ✅ **Phase 4 coordinator — built and wired** (`a1b84ee`). `Swarm.Coordinator`
+  runs a serial planner (one `AgentRunner` pass → JSON `[{role,prompt}]`, parsed
+  fail-closed) then the unchanged `Swarm.run/2` fan-out. The Dispatcher claims
+  `strategy: "swarm"` items via `start_swarm_run`, inherits `queue_provenance`
+  fail-closed into every sub-run, counts `planner + sub-runs` against the per-shift
+  cap, and `record_outcome/3` has swarm clauses (completed / quorum-not-met →
+  blocked / unplannable → blocked) that also write a `run_summaries` row. The
+  **opt-in decision** was settled as **(A) explicit per-item `strategy` field**
+  (`dispatch_strategy` / `dispatch strategy <id> swarm`). Covered by
+  `coordinator_test.exs` + the swarm branches of `dispatcher_test.exs`.
+- ✅ **`dispatch_enqueue` operator/agent seam** (this session). Previously items
+  only entered the queue via Gmail triage, so the swarm path could not be driven
+  by hand — that was the real blocker behind "nothing driven in the running app."
+  New restricted-tier command + CLI `dispatch add <summary> [--swarm] [--subject]
+  [--source] [--untrusted]` enqueues a manual item (trusted by default).
+  Also fixed a latent gap: `Dispatch.enqueue/1` now mints a unique `dedupe_key`
+  for any non-Gmail source instead of failing the changeset.
 
-**Remaining (integration / follow-ups, not substrate):**
-- Phase 4 **coordinator** — the LLM step that decomposes a Dispatch item into a
-  `Swarm` plan, plus Dispatcher wiring + per-sub-run budget accounting. The real
-  next product step (needs design, not plumbing). See
-  `06-21-26-swarm-coordinator-plan.md`.
-- Nothing in Phase 4 has been driven in the **running app** yet (tests inject a runner).
+**Remaining — one manual smoke test, no code:**
+- **Live validation in the running app.** Every path is unit-tested with injected
+  runners; what's left is one real end-to-end run with a live `AgentRunner`
+  (Claude Code) under an unattended shift — the Phase 4 exit criterion ("one item
+  decomposes into ≥3 parallel sub-runs that aggregate into one result, all on the
+  audit feed, within budgets"). Runbook (server running, a few open dispatch
+  items / a live agent in the terminal):
+  ```
+  ./buster-claw dispatch add "Research X across 3 angles and write a combined brief" --swarm
+  ./buster-claw dispatch list          # confirm the item is queued, strategy=swarm
+  ./buster-claw shift start --json '{"unattended":true}'   # Dispatcher pumps the swarm item
+  ./buster-claw shift status           # watch dispatched/done counts
+  # Then check the Sentinel feed for per-sub-run provenance + the swarm outcome.
+  ```
+  Once this passes once, this whole roadmap retires to `old-maps/`.
 
 ---
 

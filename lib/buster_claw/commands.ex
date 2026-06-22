@@ -538,6 +538,7 @@ defmodule BusterClaw.Commands do
   defdelegate dispatch_claim(args \\ %{}), to: BusterClaw.Commands.Dispatch
   defdelegate dispatch_done(args), to: BusterClaw.Commands.Dispatch
   defdelegate dispatch_block(args), to: BusterClaw.Commands.Dispatch
+  defdelegate dispatch_enqueue(args), to: BusterClaw.Commands.Dispatch
   defdelegate dispatch_strategy(args), to: BusterClaw.Commands.Dispatch
   defdelegate dispatch_reply(args), to: BusterClaw.Commands.Dispatch
   # Jobs

@@ -45,6 +45,37 @@ defmodule BusterClaw.Commands.Dispatch do
   def dispatch_block(%{"id" => id} = args), do: finish_dispatch(id, "blocked", args)
 
   @doc """
+  Enqueue a manual Dispatch item — an operator/agent-authored worklist entry, not
+  from Gmail. `summary` is the goal text the unattended shift will work. Optional:
+  `subject`, `source` (default `"manual"`), `strategy` (`single` | `swarm`,
+  default `single` — `swarm` opts the item into the Phase 4 coordinator's parallel
+  fan-out), and `trusted` (default `true`; the command is restricted-tier, so only
+  a trusted operator reaches it — set `false` to enqueue with untrusted provenance).
+
+  This is the operator/agent seam for putting work on the queue without a Gmail
+  trigger, so the Dispatcher's single- and swarm-strategy paths can be driven
+  directly in the running app.
+  """
+  def dispatch_enqueue(%{"summary" => summary} = args) when is_binary(summary) do
+    with goal when is_binary(goal) <- blank_to_nil(summary),
+         {:ok, strategy} <- strategy_arg(Map.get(args, "strategy")) do
+      %{
+        source: blank_to_nil(Map.get(args, "source")) || "manual",
+        request_summary: goal,
+        strategy: strategy,
+        trusted: trusted_arg(Map.get(args, "trusted"))
+      }
+      |> maybe_put_subject(blank_to_nil(Map.get(args, "subject")))
+      |> Dispatch.enqueue()
+    else
+      nil -> {:error, :missing_summary}
+      :error -> {:error, :bad_strategy}
+    end
+  end
+
+  def dispatch_enqueue(_args), do: {:error, :missing_summary}
+
+  @doc """
   Set a queued item's execution strategy (`single` | `swarm`). `swarm` opts the
   item into the Phase 4 coordinator (parallel fan-out); only a still-queued item
   may be re-targeted.
@@ -172,4 +203,21 @@ defmodule BusterClaw.Commands.Dispatch do
 
   defp filter_by_job(items, nil), do: items
   defp filter_by_job(items, job), do: Enum.filter(items, &(&1.recommended_role_key == job))
+
+  defp strategy_arg(value) do
+    case blank_to_nil(value) do
+      nil -> {:ok, "single"}
+      s when s in ["single", "swarm"] -> {:ok, s}
+      _ -> :error
+    end
+  end
+
+  # Default trusted (operator-authored via a restricted command); only an explicit
+  # false/"false" downgrades to untrusted provenance.
+  defp trusted_arg(false), do: false
+  defp trusted_arg("false"), do: false
+  defp trusted_arg(_), do: true
+
+  defp maybe_put_subject(attrs, nil), do: attrs
+  defp maybe_put_subject(attrs, subject), do: Map.put(attrs, :subject, subject)
 end

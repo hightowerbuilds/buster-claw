@@ -36,6 +36,7 @@ defmodule BusterClaw.CLI do
       ["terminal", "open", role] -> terminal_open(opts, role)
       ["mailman", "poll"] -> mailman_poll(opts)
       ["shift", "run"] -> shift_run(opts)
+      ["dispatch", "add" | rest] -> dispatch_add_cmd(rest, opts)
       ["dispatch", "list"] -> dispatch_list_cmd(opts)
       ["dispatch", "show", id] -> dispatch_show_cmd(id, opts)
       ["dispatch", "claim"] -> dispatch_claim_cmd(opts)
@@ -80,6 +81,10 @@ defmodule BusterClaw.CLI do
       note: :string,
       body: :string,
       job: :string,
+      subject: :string,
+      source: :string,
+      swarm: :boolean,
+      untrusted: :boolean,
       help: :boolean
     ]
   end
@@ -257,6 +262,26 @@ defmodule BusterClaw.CLI do
 
   # ---- Dispatch queue ----
 
+  defp dispatch_add_cmd(words, opts) do
+    summary = words |> Enum.join(" ") |> String.trim()
+
+    if summary == "" do
+      die(
+        ~s(dispatch add requires a summary, e.g. ./buster-claw dispatch add "research X" --swarm),
+        1
+      )
+    else
+      args =
+        %{"summary" => summary}
+        |> maybe_put("subject", Keyword.get(opts, :subject))
+        |> maybe_put("source", Keyword.get(opts, :source))
+        |> maybe_put("strategy", if(Keyword.get(opts, :swarm), do: "swarm"))
+        |> maybe_put("trusted", if(Keyword.get(opts, :untrusted), do: false))
+
+      dispatch_request("dispatch_enqueue", args, opts, &format_dispatch_enqueue/1)
+    end
+  end
+
   defp dispatch_list_cmd(opts) do
     args =
       %{}
@@ -359,6 +384,13 @@ defmodule BusterClaw.CLI do
     do: "Marked ##{item["id"]} #{item["status"]}."
 
   def format_dispatch_finish(other), do: pretty(other)
+
+  @doc false
+  def format_dispatch_enqueue(item) when is_map(item),
+    do:
+      "Queued ##{item["id"]} (#{item["strategy"]}): #{item["request_summary"] || item["subject"]}"
+
+  def format_dispatch_enqueue(other), do: pretty(other)
 
   @doc false
   def format_dispatch_reply(%{"dispatch_item_id" => id} = result) do
@@ -678,11 +710,13 @@ defmodule BusterClaw.CLI do
       terminal open [role]   Open a role-labeled terminal tab inside Buster Claw.
       mailman poll           Continuously sync Gmail through the local API.
       shift run              Start an orchestration shift, then poll trusted mail.
+      dispatch add <summary> Enqueue a manual item (--swarm, --subject, --source, --untrusted).
       dispatch list          List open queue items (--status, --job, --limit).
       dispatch show <id>     Show one queue item.
       dispatch claim         Claim the next open item (--job to scope, --session).
       dispatch done <id>     Mark an item done (--note).
       dispatch block <id>    Mark an item blocked (--note).
+      dispatch strategy <id> <single|swarm>  Set an item's execution strategy.
       jobs list              List the defined jobs (role roster).
       jobs show <key>        Read one job description.
 

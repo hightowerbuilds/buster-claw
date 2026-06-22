@@ -248,8 +248,15 @@ defmodule BusterClaw.Dispatch do
         Map.put(attrs, :dedupe_key, gmail_dedupe_key(Map.get(attrs, :gmail_message_id)))
 
       true ->
-        attrs
+        # Non-Gmail sources (e.g. a manually-enqueued item) have no natural dedupe
+        # identity, so mint a unique key — each such enqueue is a distinct item.
+        Map.put(attrs, :dedupe_key, generated_dedupe_key(Map.get(attrs, :source)))
     end
+  end
+
+  defp generated_dedupe_key(source) do
+    prefix = present(source) || "item"
+    "#{prefix}:#{System.unique_integer([:positive])}:#{System.os_time(:millisecond)}"
   end
 
   defp gmail_dedupe_key(nil), do: nil
