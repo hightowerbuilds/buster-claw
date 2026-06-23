@@ -34,7 +34,9 @@ defmodule BusterClaw.CLI do
       ["--help"] -> usage()
       ["terminal", "open"] -> terminal_open(opts)
       ["terminal", "open", role] -> terminal_open(opts, role)
-      ["mailman", "poll"] -> mailman_poll(opts)
+      ["on-duty"] -> on_duty(opts)
+      ["off-duty"] -> off_duty(opts)
+      ["mailman", "poll"] -> mailman_poll_deprecated(opts)
       ["shift", "run"] -> shift_run(opts)
       ["dispatch", "add" | rest] -> dispatch_add_cmd(rest, opts)
       ["dispatch", "list"] -> dispatch_list_cmd(opts)
@@ -130,6 +132,14 @@ defmodule BusterClaw.CLI do
     run("terminal_tab_open", opts, args)
   end
 
+  # `mailman poll` and `shift run` predate `on-duty`, which now covers the whole
+  # go-on-duty loop in one verb. They still work for backward compatibility, but
+  # nudge toward the consolidated command.
+  defp mailman_poll_deprecated(opts) do
+    IO.puts(:stderr, "note: `mailman poll` is superseded by `./buster-claw on-duty` (one command to go on duty).")
+    mailman_poll(opts)
+  end
+
   defp mailman_poll(opts) do
     args =
       opts
@@ -163,6 +173,8 @@ defmodule BusterClaw.CLI do
 
   # Go on duty in one step: start an orchestration shift, then poll trusted mail.
   defp shift_run(opts) do
+    IO.puts(:stderr, "note: `shift run` is superseded by `./buster-claw on-duty` (autonomous; the agent works and replies).")
+
     shift_args =
       %{}
       |> maybe_put("job", Keyword.get(opts, :job))
@@ -184,6 +196,103 @@ defmodule BusterClaw.CLI do
 
       {:error, reason} ->
         die(reason, 1)
+    end
+  end
+
+  # The one front-door verb: go on duty. Start an *unattended* shift — that flag
+  # is what wakes the app-side Dispatcher, which engages the agent on each queued
+  # request — then poll trusted mail in the foreground until the operator stands
+  # down. Trusted-sender mail auto-enqueues; the agent works it and replies.
+  # Closing is one keystroke: Ctrl-C stops polling *and* stops the shift.
+  defp on_duty(opts) do
+    shift_args =
+      %{"unattended" => true}
+      |> maybe_put("job", Keyword.get(opts, :job))
+      |> maybe_put("agent_name", Keyword.get(opts, :agent))
+      |> maybe_put("shell", Keyword.get(opts, :startup_profile))
+
+    case http_post("/api/run", %{"command" => "shift_start", "args" => shift_args},
+           auth: true,
+           opts: opts
+         ) do
+      {:ok, %{"ok" => true, "result" => result}} ->
+        trap_off_duty(opts, result)
+        IO.puts(format_on_duty(result))
+        mailman_poll(opts)
+
+      {:ok, %{"ok" => false, "error" => error} = payload} ->
+        IO.puts(:stderr, "error: #{error}")
+        if errors = payload["errors"], do: IO.puts(:stderr, pretty(errors))
+        System.halt(1)
+
+      {:error, reason} ->
+        die(reason, 1)
+    end
+  end
+
+  # Explicit stand-down (and the fallback when Ctrl-C can't be trapped, e.g. a
+  # SIGTERM/kill or a remote close): stop the active shift.
+  defp off_duty(opts) do
+    args = maybe_put(%{}, "reason", Keyword.get(opts, :note) || "off duty")
+
+    case http_post("/api/run", %{"command" => "shift_stop", "args" => args}, auth: true, opts: opts) do
+      {:ok, %{"ok" => true, "result" => result}} ->
+        IO.puts(format_off_duty(result))
+
+      {:ok, %{"ok" => false, "error" => error}} ->
+        IO.puts(off_duty_error(error))
+
+      {:error, reason} ->
+        die(reason, 1)
+    end
+  end
+
+  # Stop the shift when the operator presses Ctrl-C, so a single keystroke closes
+  # the whole loop. Best-effort: if signal trapping isn't available in this
+  # runtime, `off-duty` is the documented fallback.
+  defp trap_off_duty(opts, result) do
+    shift_id = if is_map(result), do: result["shift_id"]
+
+    System.trap_signal(:sigint, fn ->
+      IO.puts("\nStanding down#{if shift_id, do: " (shift ##{shift_id})", else: ""} — stopping shift…")
+
+      _ =
+        http_post(
+          "/api/run",
+          %{"command" => "shift_stop", "args" => %{"reason" => "off duty (Ctrl-C)"}},
+          auth: true,
+          opts: opts
+        )
+
+      System.halt(0)
+    end)
+  rescue
+    _ -> :ok
+  end
+
+  defp format_on_duty(result) when is_map(result) do
+    job = result["job_name"] || result["job_key"] || "lookout"
+    id = result["shift_id"]
+
+    """
+    On duty#{if id, do: " (shift ##{id})", else: ""} — #{job}, unattended.
+    Trusted-sender mail is worked end to end: the agent reads each request, does
+    the work with Buster Claw's command surface, and replies in-thread.
+    Polling Gmail below. Press Ctrl-C to go off duty (stops the shift).
+    """
+    |> String.trim_trailing()
+  end
+
+  defp format_on_duty(result), do: pretty(result)
+
+  defp format_off_duty(%{"shift_id" => id}), do: "Off duty — shift ##{id} stopped."
+  defp format_off_duty(result), do: pretty(result)
+
+  defp off_duty_error(error) do
+    if is_binary(error) and String.contains?(error, "no_active_shift") do
+      "Already off duty — no active shift."
+    else
+      "error: #{error}"
     end
   end
 
@@ -708,8 +817,9 @@ defmodule BusterClaw.CLI do
       run <name> [opts]      Invoke a command by name.
       <noun> <verb> [opts]   Shorthand for `run <noun>_<verb>`.
       terminal open [role]   Open a role-labeled terminal tab inside Buster Claw.
-      mailman poll           Continuously sync Gmail through the local API.
-      shift run              Start an orchestration shift, then poll trusted mail.
+      on-duty                Go on duty: watch Gmail and let the agent work and
+                             reply to trusted-sender requests until Ctrl-C.
+      off-duty               Stand down — stop the active shift.
       dispatch add <summary> Enqueue a manual item (--swarm, --subject, --source, --untrusted).
       dispatch list          List open queue items (--status, --job, --limit).
       dispatch show <id>     Show one queue item.
@@ -728,19 +838,19 @@ defmodule BusterClaw.CLI do
       --purpose <text>       Purpose metadata for `terminal open`.
       --session <key>        Explicit terminal session key for `terminal open`.
       --startup-profile <p>  Known terminal startup profile; currently: mailman.
-      --account-id <id>      Google account id for `mailman poll`.
-      --email <email>        Google account email for `mailman poll`.
-      --query <query>        Gmail query for `mailman poll`.
-      --limit <n>            Gmail sync limit for `mailman poll`.
-      --interval <seconds>   Poll interval for `mailman poll` (default 60).
-      --timeout <seconds>    HTTP receive timeout (mailman default 300).
-      --max-runs <n>         Stop `mailman poll` after n sync attempts.
-      --once                 Run `mailman poll` once.
+      --account-id <id>      Google account id for `on-duty`.
+      --email <email>        Google account email for `on-duty`.
+      --query <query>        Gmail query for `on-duty`.
+      --limit <n>            Gmail sync limit for `on-duty`.
+      --interval <seconds>   Gmail poll interval for `on-duty` (default 60).
+      --timeout <seconds>    HTTP receive timeout (Gmail sync default 300).
+      --max-runs <n>         Stop `on-duty` polling after n sync attempts.
+      --once                 Poll once, then exit.
       --status <status>      Filter `dispatch list` (e.g. queued, claimed).
-      --job <key>            Scope `dispatch list` / `dispatch claim` to a job.
-      --note <text>          Note for `dispatch done` / `dispatch block`.
+      --job <key>            Scope `on-duty` / `dispatch list` / `dispatch claim` to a job.
+      --note <text>          Note for `dispatch done` / `dispatch block` / `off-duty`.
       --no-activate          Queue the tab without navigating to it.
-      --verbose              Print full JSON for `mailman poll`.
+      --verbose              Print full JSON for Gmail sync output.
       --url <url>            Override BUSTER_CLAW_URL (default #{@default_url}).
       --token <token>        Override BUSTER_CLAW_API_TOKEN.
       -h, --help             Print this message.
@@ -751,7 +861,7 @@ defmodule BusterClaw.CLI do
       ./buster-claw run web_search --json '{"query":"phoenix liveview"}'
       ./buster-claw run document_save --json '{"name":"Note","body":"# Note"}'
       ./buster-claw terminal open --role mailman --label Mailman
-      ./buster-claw mailman poll --interval 60
+      ./buster-claw on-duty --interval 60
     """)
   end
 

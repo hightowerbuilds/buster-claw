@@ -18,9 +18,9 @@ defmodule BusterClaw.CLITest do
     output = capture_io(fn -> CLI.main(["help"]) end)
 
     assert output =~ "--timeout <seconds>"
-    assert output =~ "mailman default 300"
+    assert output =~ "Gmail sync default 300"
     assert output =~ "--verbose"
-    assert output =~ "shift run"
+    assert output =~ "on-duty"
   end
 
   test "formats Mailman poll results for terminal reading" do
