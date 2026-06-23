@@ -47,8 +47,8 @@ defmodule BusterClawWeb.TerminalLiveTest do
 
     assert has_element?(view, "[data-terminal-commands-menu][role='menu']")
     assert has_element?(view, "[data-terminal-command-role='mailman']")
-    assert has_element?(view, "[data-terminal-command='poll']", "Poll Gmail")
-    assert has_element?(view, "[data-terminal-command='poll-shift-log']", "Poll + Shift Log")
+    assert has_element?(view, "[data-terminal-command='on-duty']", "Go On Duty")
+    assert has_element?(view, "[data-terminal-command='off-duty']", "Off Duty")
 
     # Regression: a command with no :label/:description keys (welcome-introduction)
     # must render its prompt without crashing the cheat-sheet render.

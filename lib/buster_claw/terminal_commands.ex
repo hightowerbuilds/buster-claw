@@ -25,35 +25,29 @@ defmodule BusterClaw.TerminalCommands do
     },
     %{
       key: "mailman",
-      label: "Mailman",
-      aliases: ["mail-triage", "gmail-poller"],
+      label: "On Duty",
+      aliases: ["mail-triage", "gmail-poller", "on-duty", "off-duty"],
       startup_profile: "mailman",
       commands: [
         %{
-          key: "poll",
-          label: "Poll Gmail",
-          description: "Continuously sync Gmail through the local command API.",
-          command: "./buster-claw mailman poll",
+          key: "on-duty",
+          label: "Go On Duty",
+          description:
+            "Watch Gmail and let the agent work and reply in-thread to trusted-sender requests, until you stand down (Ctrl-C).",
+          command: "./buster-claw on-duty",
           default?: true
         },
         %{
-          key: "poll-once",
-          label: "Poll Once",
-          description: "Run one Gmail sync and return.",
-          command: "./buster-claw mailman poll --once"
+          key: "on-duty-minute",
+          label: "Go On Duty — Poll Every Minute",
+          description: "Same, with a 60-second Gmail poll cadence.",
+          command: "./buster-claw on-duty --interval 60"
         },
         %{
-          key: "poll-minute",
-          label: "Poll Every Minute",
-          description: "Sync Gmail every 60 seconds.",
-          command: "./buster-claw mailman poll --interval 60"
-        },
-        %{
-          key: "poll-shift-log",
-          label: "Poll + Shift Log",
-          description: "Continuously sync Gmail and append output to the shift log.",
-          command:
-            "./buster-claw mailman poll 2>&1 | tee -a shift/2026-06-08/mailman-native-poll.log"
+          key: "off-duty",
+          label: "Off Duty",
+          description: "Stand down — stop the active shift.",
+          command: "./buster-claw off-duty"
         }
       ]
     },
@@ -71,18 +65,18 @@ defmodule BusterClaw.TerminalCommands do
           default?: true
         },
         %{
-          key: "shift-start-headless",
-          label: "Start Headless Shift",
+          key: "on-duty",
+          label: "Go On Duty",
           description:
-            "Open an UNATTENDED shift: the Dispatcher works the queue with headless agent runs until stopped, under the per-shift run cap + kill-switch + no-sleep. Walk away.",
-          command: ~s(./buster-claw shift start --json '{"unattended":true}')
+            "The one command: open an unattended shift AND watch Gmail. The agent works the queue and replies in-thread to trusted-sender requests under the per-shift run cap + kill-switch + no-sleep. Ctrl-C stands down.",
+          command: "./buster-claw on-duty"
         },
         %{
-          key: "shift-stop",
-          label: "Stop Shift",
+          key: "off-duty",
+          label: "Off Duty",
           description:
             "End the active shift — the Dispatcher stops pumping and no-sleep is released.",
-          command: "./buster-claw shift stop"
+          command: "./buster-claw off-duty"
         },
         %{
           key: "autopilot-once",

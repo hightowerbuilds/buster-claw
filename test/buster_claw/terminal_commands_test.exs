@@ -3,18 +3,15 @@ defmodule BusterClaw.TerminalCommandsTest do
 
   alias BusterClaw.TerminalCommands
 
-  test "lists the Mailman role and approved commands" do
-    assert %{key: "mailman", label: "Mailman", commands: commands} =
+  test "lists the On Duty role pointing at the consolidated on-duty verb" do
+    assert %{key: "mailman", label: "On Duty", commands: commands} =
              TerminalCommands.role("mailman")
 
-    assert Enum.any?(commands, &(&1.command == "./buster-claw mailman poll"))
-    assert Enum.any?(commands, &(&1.command == "./buster-claw mailman poll --once"))
-
-    assert Enum.any?(
-             commands,
-             &(&1.command ==
-                 "./buster-claw mailman poll 2>&1 | tee -a shift/2026-06-08/mailman-native-poll.log")
-           )
+    # Consolidated to a single front-door verb (the old mailman-poll commands are gone).
+    assert Enum.any?(commands, &(&1.command == "./buster-claw on-duty"))
+    assert Enum.any?(commands, &(&1.command == "./buster-claw on-duty --interval 60"))
+    assert Enum.any?(commands, &(&1.command == "./buster-claw off-duty"))
+    refute Enum.any?(commands, &(&1.command =~ "mailman poll"))
   end
 
   test "consolidates Autopilot commands into the Shift role" do
@@ -25,8 +22,11 @@ defmodule BusterClaw.TerminalCommandsTest do
     assert %{key: "shift"} = TerminalCommands.role("auto")
     assert %{key: "shift"} = TerminalCommands.role("hands-off")
 
-    # Both the shift controls and the autopilot commands live in the one group.
-    assert Enum.any?(commands, &(&1.command =~ "shift start --json"))
+    # Both the shift controls and the autopilot commands live in the one group;
+    # the headless start/stop are the consolidated on-duty / off-duty verbs.
+    assert Enum.any?(commands, &(&1.command == "./buster-claw on-duty"))
+    assert Enum.any?(commands, &(&1.command == "./buster-claw off-duty"))
+    refute Enum.any?(commands, &(&1.command =~ "shift start --json"))
     assert Enum.any?(commands, &(&1.command == "./buster-claw autopilot"))
     assert Enum.any?(commands, &(&1.command =~ "while true; do ./buster-claw autopilot"))
 
@@ -59,7 +59,7 @@ defmodule BusterClaw.TerminalCommandsTest do
   test "resolves startup profile and command from the catalog" do
     assert TerminalCommands.startup_profile_for_role("mail-triage") == "mailman"
 
-    assert TerminalCommands.startup_command("mailman") == "./buster-claw mailman poll"
+    assert TerminalCommands.startup_command("mailman") == "./buster-claw on-duty"
 
     refute TerminalCommands.startup_profile_for_role("unknown-role")
     refute TerminalCommands.startup_command("unknown-profile")

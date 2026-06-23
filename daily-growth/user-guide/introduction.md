@@ -13,6 +13,21 @@ subscription** — Buster Claw does not need its own API key. Its job is to:
 Work is **pulled, not pushed**: things land in a queue, and the agent picks them
 up when it is ready.
 
+## Going on duty — one command
+
+When you want Buster Claw to start handling mail, open the in-app terminal and
+run a single command:
+
+    ./buster-claw on-duty
+
+That puts you **on duty**: it watches Gmail, and as trusted-sender email arrives,
+your agent reads each request, does the work through Buster Claw's command
+surface, and **replies in-thread** — every step on the audit feed. It stays open
+until you stand down: press **Ctrl-C** (or run `./buster-claw off-duty`) to stop.
+
+> `on-duty` is the consolidated front door. The older `mailman poll` and
+> `shift run` commands still work, but they now just point you back here.
+
 ## What's in the app
 
 The dock at the bottom switches surfaces:
