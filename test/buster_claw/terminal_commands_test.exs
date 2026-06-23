@@ -14,26 +14,20 @@ defmodule BusterClaw.TerminalCommandsTest do
     refute Enum.any?(commands, &(&1.command =~ "mailman poll"))
   end
 
-  test "consolidates Autopilot commands into the Shift role" do
+  test "shift role exposes status + the consolidated on-duty / off-duty verbs" do
     assert %{key: "shift", commands: commands} = TerminalCommands.role("shift")
 
-    # Autopilot aliases now resolve to the consolidated Shift role.
-    assert %{key: "shift"} = TerminalCommands.role("autopilot")
-    assert %{key: "shift"} = TerminalCommands.role("auto")
-    assert %{key: "shift"} = TerminalCommands.role("hands-off")
-
-    # Both the shift controls and the autopilot commands live in the one group;
-    # the headless start/stop are the consolidated on-duty / off-duty verbs.
     assert Enum.any?(commands, &(&1.command == "./buster-claw on-duty"))
     assert Enum.any?(commands, &(&1.command == "./buster-claw off-duty"))
-    refute Enum.any?(commands, &(&1.command =~ "shift start --json"))
-    assert Enum.any?(commands, &(&1.command == "./buster-claw autopilot"))
-    assert Enum.any?(commands, &(&1.command =~ "while true; do ./buster-claw autopilot"))
+    assert Enum.any?(commands, &(&1.command == "./buster-claw shift status"))
 
-    # Opening a shift terminal reports status, not autopilot — there is no longer a
-    # standalone "autopilot" startup profile.
+    # Autopilot has been removed: no commands and no aliases resolve to it.
+    refute Enum.any?(commands, &(&1.command =~ "autopilot"))
+    refute TerminalCommands.role("autopilot")
+    refute TerminalCommands.role("hands-off")
+
+    # Opening a shift terminal reports status.
     assert TerminalCommands.startup_command("shift") == "./buster-claw shift status"
-    refute TerminalCommands.startup_command("autopilot")
   end
 
   test "lists the Claude Code install role for onboarding" do

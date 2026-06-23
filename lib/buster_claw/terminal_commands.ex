@@ -53,8 +53,8 @@ defmodule BusterClaw.TerminalCommands do
     },
     %{
       key: "shift",
-      label: "Shift & Autopilot",
-      aliases: ["on-shift", "duty", "autopilot", "auto", "hands-off"],
+      label: "Shift",
+      aliases: ["on-shift", "duty"],
       startup_profile: "shift",
       commands: [
         %{
@@ -77,20 +77,6 @@ defmodule BusterClaw.TerminalCommands do
           description:
             "End the active shift — the Dispatcher stops pumping and no-sleep is released.",
           command: "./buster-claw off-duty"
-        },
-        %{
-          key: "autopilot-once",
-          label: "Autopilot — Work It Once",
-          description:
-            "No shift needed: sync trusted Gmail, then run headless Claude once to work the open items behind a TUI. The lightweight 'watch it work' tool (no run cap / no-sleep).",
-          command: "./buster-claw autopilot"
-        },
-        %{
-          key: "autopilot-loop",
-          label: "Autopilot — Every Minute",
-          description:
-            "Loop the autopilot TUI: poll mail, work the queue, wait 60s, repeat. Ctrl-C stops it.",
-          command: "while true; do ./buster-claw autopilot; sleep 60; done"
         }
       ]
     },

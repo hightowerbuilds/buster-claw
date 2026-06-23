@@ -4,13 +4,14 @@ defmodule BusterClaw.Agent.StreamEvent do
 
   Headless Claude emits one JSON object per line (NDJSON). This module turns a
   raw byte stream into normalized `%StreamEvent{}` structs, and is the single
-  source of truth for *interpreting* those events. Two consumers share it:
+  source of truth for *interpreting* those events. The consumer is:
 
-    * `BusterClaw.Autopilot.Tui` — maps events to starfield activity states
-      (`activity_state/2`) and a one-line status label (`activity_label/1`).
     * `BusterClaw.Agent.Chat` — broadcasts `:assistant_text` / `:tool_use` /
       `:result` events to a LiveView chat transcript, and threads the
       `:session_id` for `--resume`.
+
+  The `activity_state/2` / `activity_label/1` helpers (an event → coarse
+  activity classification) are also provided here and covered by tests.
 
   Everything here is pure and easy to test. Streaming I/O (the Port, buffering,
   PubSub) lives in the consumers.
