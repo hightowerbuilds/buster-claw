@@ -36,8 +36,6 @@ defmodule BusterClaw.CLI do
       ["terminal", "open", role] -> terminal_open(opts, role)
       ["on-duty"] -> on_duty(opts)
       ["off-duty"] -> off_duty(opts)
-      ["mailman", "poll"] -> mailman_poll_deprecated(opts)
-      ["shift", "run"] -> shift_run(opts)
       ["dispatch", "add" | rest] -> dispatch_add_cmd(rest, opts)
       ["dispatch", "list"] -> dispatch_list_cmd(opts)
       ["dispatch", "show", id] -> dispatch_show_cmd(id, opts)
@@ -131,14 +129,6 @@ defmodule BusterClaw.CLI do
     run("terminal_tab_open", opts, args)
   end
 
-  # `mailman poll` and `shift run` predate `on-duty`, which now covers the whole
-  # go-on-duty loop in one verb. They still work for backward compatibility, but
-  # nudge toward the consolidated command.
-  defp mailman_poll_deprecated(opts) do
-    IO.puts(:stderr, "note: `mailman poll` is superseded by `./buster-claw on-duty` (one command to go on duty).")
-    mailman_poll(opts)
-  end
-
   defp mailman_poll(opts) do
     args =
       opts
@@ -153,34 +143,6 @@ defmodule BusterClaw.CLI do
 
     IO.puts("Mailman polling Gmail through Buster Claw every #{interval}s.")
     poll_gmail(args, opts, interval, max_runs, 1)
-  end
-
-  # Go on duty in one step: start an orchestration shift, then poll trusted mail.
-  defp shift_run(opts) do
-    IO.puts(:stderr, "note: `shift run` is superseded by `./buster-claw on-duty` (autonomous; the agent works and replies).")
-
-    shift_args =
-      %{}
-      |> maybe_put("job", Keyword.get(opts, :job))
-      |> maybe_put("agent_name", Keyword.get(opts, :agent))
-      |> maybe_put("shell", Keyword.get(opts, :startup_profile))
-
-    case http_post("/api/run", %{"command" => "shift_start", "args" => shift_args},
-           auth: true,
-           opts: opts
-         ) do
-      {:ok, %{"ok" => true, "result" => result}} ->
-        IO.puts(format_shift_started(result))
-        mailman_poll(opts)
-
-      {:ok, %{"ok" => false, "error" => error} = payload} ->
-        IO.puts(:stderr, "error: #{error}")
-        if errors = payload["errors"], do: IO.puts(:stderr, pretty(errors))
-        System.halt(1)
-
-      {:error, reason} ->
-        die(reason, 1)
-    end
   end
 
   # The one front-door verb: go on duty. Start an *unattended* shift — that flag
@@ -279,16 +241,6 @@ defmodule BusterClaw.CLI do
       "error: #{error}"
     end
   end
-
-  defp format_shift_started(result) when is_map(result) do
-    job = result["job_name"] || result["job_key"] || "lookout"
-    id = result["shift_id"]
-
-    "Shift #{if id, do: "##{id} ", else: ""}started on #{job}." <>
-      " Polling begins below — stop with Ctrl-C, then `./buster-claw shift stop` to end the shift."
-  end
-
-  defp format_shift_started(result), do: pretty(result)
 
   defp run(name, opts, args \\ nil) do
     args = args || parse_args(opts)
