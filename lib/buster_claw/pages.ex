@@ -24,7 +24,7 @@ defmodule BusterClaw.Pages do
   ]
 
   @doc "Absolute path of the `pages/` directory in the current workspace."
-  def dir, do: Path.join(Artifact.workspace_root(), @subdir)
+  def dir, do: Artifact.workspace_path(@subdir)
 
   @doc "Absolute path of a bundled page file."
   def path(file), do: Path.join(dir(), file)
@@ -53,7 +53,7 @@ defmodule BusterClaw.Pages do
 
   # MANUAL.html previously lived at the workspace root; relocate by removing it.
   defp cleanup_legacy do
-    legacy = Path.join(Artifact.workspace_root(), "MANUAL.html")
+    legacy = Artifact.workspace_path("MANUAL.html")
     if File.exists?(legacy), do: File.rm(legacy)
   end
 

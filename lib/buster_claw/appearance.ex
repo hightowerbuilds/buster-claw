@@ -43,7 +43,7 @@ defmodule BusterClaw.Appearance do
   def accepted_extensions, do: Map.keys(@content_types)
 
   @doc "Absolute path to the appearance directory under the workspace."
-  def dir, do: Path.join(Artifact.workspace_root(), @subdir)
+  def dir, do: Artifact.workspace_path(@subdir)
 
   @doc "Content-type for a stored image path, by extension."
   def content_type(path) do
@@ -184,7 +184,7 @@ defmodule BusterClaw.Appearance do
   # stored path whose file has gone missing 404s instead of being served.
   defp slot_abs_path(n) do
     with rel when is_binary(rel) <- slot_rel(n),
-         abs = Path.join(Artifact.workspace_root(), rel),
+         abs = Artifact.workspace_path(rel),
          true <- File.regular?(abs) do
       abs
     else

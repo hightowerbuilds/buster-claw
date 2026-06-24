@@ -11,7 +11,7 @@ defmodule BusterClaw.BrowserHistory do
   @max 50
 
   @doc "Absolute path of the per-workspace history file."
-  def path, do: Path.join(Artifact.workspace_root(), @filename)
+  def path, do: Artifact.workspace_path(@filename)
 
   @doc "Recent entries, newest first: `[%{\"url\" => ..., \"label\" => ..., \"at\" => ...}]`."
   def list do

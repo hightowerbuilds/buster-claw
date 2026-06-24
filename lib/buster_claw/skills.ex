@@ -37,7 +37,7 @@ defmodule BusterClaw.Skills do
   @subdir "skills"
   @roster "README.md"
 
-  def dir, do: Path.join(Artifact.workspace_root(), @subdir)
+  def dir, do: Artifact.workspace_path(@subdir)
   def roster_path, do: Path.join(dir(), @roster)
   def skill_path(name), do: Path.join(dir(), name <> ".md")
 

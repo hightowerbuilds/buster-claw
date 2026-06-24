@@ -247,7 +247,7 @@ defmodule BusterClaw.PolicyEngine do
     end
   end
 
-  defp policy_path, do: Path.join([Artifact.workspace_root(), "memory", @policy_file])
+  defp policy_path, do: Artifact.workspace_path(["memory", @policy_file])
 
   @doc "The default `policy.md` seed (baseline-only; examples are commented out)."
   def default_policy do

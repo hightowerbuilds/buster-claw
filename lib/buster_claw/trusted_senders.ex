@@ -222,6 +222,6 @@ defmodule BusterClaw.TrustedSenders do
   end
 
   defp policy_path do
-    Path.join([Artifact.workspace_root(), "memory", @policy_file])
+    Artifact.workspace_path(["memory", @policy_file])
   end
 end

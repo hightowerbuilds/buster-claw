@@ -30,7 +30,7 @@ defmodule BusterClaw.WorkspaceCLI do
 
   @doc "Absolute path to the generated launcher in the current workspace."
   def launcher_path do
-    Path.join(Artifact.workspace_root(), @launcher_name)
+    Artifact.workspace_path(@launcher_name)
   end
 
   defp write_launcher(path, content) do

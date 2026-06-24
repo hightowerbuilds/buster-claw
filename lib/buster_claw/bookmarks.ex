@@ -10,7 +10,7 @@ defmodule BusterClaw.Bookmarks do
   @filename ".browser-bookmarks.json"
 
   @doc "Absolute path of the per-workspace bookmarks file."
-  def path, do: Path.join(Artifact.workspace_root(), @filename)
+  def path, do: Artifact.workspace_path(@filename)
 
   @doc "Saved bookmarks, newest first. Pass `tag:` to filter."
   def list(opts \\ []) do

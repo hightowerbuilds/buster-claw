@@ -17,7 +17,7 @@ defmodule BusterClaw.Jobs do
   @subdir "job-descriptions"
   @roster "README.md"
 
-  def dir, do: Path.join(Artifact.workspace_root(), @subdir)
+  def dir, do: Artifact.workspace_path(@subdir)
   def roster_path, do: Path.join(dir(), @roster)
   def job_path(key), do: Path.join(dir(), slug(key) <> ".md")
 
@@ -86,7 +86,7 @@ defmodule BusterClaw.Jobs do
   defp job_file?(name), do: Path.extname(name) == ".md" and name != @roster
 
   defp seed_trusted_senders do
-    memory = Path.join(Artifact.workspace_root(), "memory")
+    memory = Artifact.workspace_path("memory")
     File.mkdir_p!(memory)
     maybe_write(Path.join(memory, "trusted-email-senders.md"), default_trusted_senders())
     maybe_write(Path.join(memory, "policy.md"), BusterClaw.PolicyEngine.default_policy())
@@ -98,7 +98,7 @@ defmodule BusterClaw.Jobs do
   # scope + Sentinel audit are the guardrails, not interactive prompts). Never
   # overwrites an operator-authored settings file.
   defp seed_agent_settings do
-    claude_dir = Path.join(Artifact.workspace_root(), ".claude")
+    claude_dir = Artifact.workspace_path(".claude")
     File.mkdir_p!(claude_dir)
     maybe_write(Path.join(claude_dir, "settings.json"), default_agent_settings())
   end

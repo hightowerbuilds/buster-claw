@@ -27,6 +27,15 @@ defmodule BusterClaw.Library.Artifact do
     end
   end
 
+  @doc """
+  Build an absolute path inside the workspace from one or more segments.
+
+  Accepts a single segment or a list, so both `workspace_path("bookmarks.json")`
+  and `workspace_path(["memory", "policy.md"])` work. The single source of truth
+  for "this file/dir lives under the workspace root".
+  """
+  def workspace_path(segments), do: Path.join([workspace_root() | List.wrap(segments)])
+
   @doc "Names of the workspace sub-directories scaffolded alongside `library/`."
   def workspace_subdirs, do: @workspace_subdirs
 

@@ -240,7 +240,7 @@ defmodule BusterClaw.DispatchProjector do
     value |> to_string() |> String.replace(~r/\s+/, " ") |> String.trim()
   end
 
-  defp shift_root, do: Path.join(Artifact.workspace_root(), "shift")
+  defp shift_root, do: Artifact.workspace_path("shift")
   defp fridge_path, do: Path.join(shift_root(), "Dispatch.md")
   defp diary_dir(date), do: Path.join(shift_root(), Date.to_iso8601(date))
 end

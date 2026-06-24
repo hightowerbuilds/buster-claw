@@ -199,7 +199,7 @@ defmodule BusterClaw.Orchestration do
 
   # --- kill switch (a STOP file in the workspace the Orchestrator checks) ---
 
-  def kill_switch_path, do: Path.join(Artifact.workspace_root(), @kill_switch_file)
+  def kill_switch_path, do: Artifact.workspace_path(@kill_switch_file)
   def kill_switch_engaged?, do: File.exists?(kill_switch_path())
   def engage_kill_switch, do: File.write(kill_switch_path(), "stop\n")
 

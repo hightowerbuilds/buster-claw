@@ -18,7 +18,7 @@ defmodule BusterClaw.Introduction do
   def filename, do: @filename
 
   @doc "Absolute path of the installed introduction in the current workspace."
-  def path, do: Path.join(Artifact.workspace_root(), @filename)
+  def path, do: Artifact.workspace_path(@filename)
 
   @doc """
   Write the freshly generated introduction to the workspace root, skipping the
