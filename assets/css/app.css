@@ -564,4 +564,35 @@ body { background-color: var(--color-base-100); }
   .ic-piece, .ic-drop-in { animation: none; }
 }
 
+/* Voice input "listening" equalizer — shown over the composer while the mic is
+   capturing (the reusable Mic hook flips the overlay visible). */
+.ic-voice-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 1.15rem;
+  color: var(--color-primary);
+}
+.ic-voice-bars i {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 9999px;
+  background: currentColor;
+  transform: scaleY(0.3);
+  animation: ic-voice-bar 900ms ease-in-out infinite;
+}
+.ic-voice-bars i:nth-child(1) { animation-delay: 0ms; }
+.ic-voice-bars i:nth-child(2) { animation-delay: 120ms; }
+.ic-voice-bars i:nth-child(3) { animation-delay: 240ms; }
+.ic-voice-bars i:nth-child(4) { animation-delay: 360ms; }
+.ic-voice-bars i:nth-child(5) { animation-delay: 180ms; }
+@keyframes ic-voice-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ic-voice-bars i { animation: none; transform: scaleY(0.6); }
+}
+
 /* This file is for your main application CSS */

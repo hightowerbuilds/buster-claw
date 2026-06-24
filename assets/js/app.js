@@ -509,6 +509,115 @@ const Hooks = {
   // Homepage chat: keep the transcript scrolled to the newest message, and make
   // Enter submit the message (Shift+Enter inserts a newline). The textarea is
   // cleared optimistically on submit; the user echo comes back over PubSub.
+  // Reusable voice-to-text mic. Self-contained so it can attach to ANY text
+  // input across the app (chat, terminal, browser, calendar): put phx-hook="Mic"
+  // on a button, point `data-voice-target` at the input's selector, and
+  // (optionally) `data-voice-overlay` at an element to flip visible while
+  // listening. Click to start, click again to stop; the on-device whisper
+  // transcript is appended to the target input (never auto-sent). Voice runs in
+  // the Tauri desktop shell — outside it, a click reports a friendly notice.
+  Mic: {
+    mounted() {
+      this.invoke = window.__TAURI__?.core?.invoke || null
+      this.target = this.resolve(this.el.dataset.voiceTarget)
+      this.overlay = this.resolve(this.el.dataset.voiceOverlay)
+      this.idleIcon = this.el.querySelector("[data-mic-idle]")
+      this.busyIcon = this.el.querySelector("[data-mic-busy]")
+      this.state = "idle"
+
+      this.onClick = (e) => { e.preventDefault(); this.toggle() }
+      this.el.addEventListener("click", this.onClick)
+      // ⌘/ (or Ctrl+/) toggles too, for keyboard users.
+      this.onHotkey = (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "/" && !e.repeat) {
+          e.preventDefault()
+          this.toggle()
+        }
+      }
+      window.addEventListener("keydown", this.onHotkey)
+    },
+    destroyed() {
+      this.el.removeEventListener("click", this.onClick)
+      window.removeEventListener("keydown", this.onHotkey)
+      this.setOverlay(false)
+    },
+    // Resolve a selector, preferring a match inside the same form so multiple
+    // mics on a page each bind to their own input.
+    resolve(sel) {
+      if (!sel) return null
+      const root = this.el.closest("form") || document
+      return root.querySelector(sel) || document.querySelector(sel)
+    },
+    toggle() {
+      if (this.state === "idle") this.start()
+      else if (this.state === "listening") this.stop()
+      // "transcribing" is a brief, non-interactive window — ignore clicks.
+    },
+    async start() {
+      if (!this.invoke) {
+        this.notify("Voice input is only available in the desktop app.")
+        return
+      }
+      // Don't transcribe our own spoken reply: cut any TTS first.
+      this.invoke("stop_speaking").catch(() => {})
+      this.setState("listening")
+      try {
+        await this.invoke("start_recording")
+      } catch (err) {
+        this.setState("idle")
+        this.error(err)
+      }
+    },
+    async stop() {
+      if (!this.invoke) return
+      this.setState("transcribing")
+      try {
+        const res = await this.invoke("stop_recording")
+        this.insert(res && res.text)
+      } catch (err) {
+        this.error(err)
+      } finally {
+        this.setState("idle")
+      }
+    },
+    insert(text) {
+      const t = (text || "").trim()
+      if (!t || !this.target) return
+      const cur = this.target.value || ""
+      this.target.value = cur && !/\s$/.test(cur) ? cur + " " + t : cur + t
+      // Let LiveView / other listeners see the change (e.g. send-button enable).
+      this.target.dispatchEvent(new Event("input", {bubbles: true}))
+      this.target.focus()
+      const end = this.target.value.length
+      if (this.target.setSelectionRange) this.target.setSelectionRange(end, end)
+    },
+    setState(state) {
+      this.state = state
+      this.el.dataset.state = state
+      const busy = state === "transcribing"
+      if (this.idleIcon) this.idleIcon.hidden = busy
+      if (this.busyIcon) this.busyIcon.hidden = !busy
+      this.el.style.pointerEvents = busy ? "none" : ""
+      if (state === "listening") this.el.setAttribute("aria-pressed", "true")
+      else this.el.removeAttribute("aria-pressed")
+      this.setOverlay(state === "listening")
+    },
+    setOverlay(on) {
+      if (this.overlay) this.overlay.hidden = !on
+    },
+    notify(message) {
+      this.pushEvent("voice_error", {message})
+    },
+    error(err) {
+      const raw = String(err && err.message ? err.message : err)
+      const denied = /denied|authoriz|permission|not authorized/i.test(raw)
+      this.notify(
+        denied
+          ? "Microphone access denied — enable it in System Settings › Privacy & Security › Microphone."
+          : "Voice input failed: " + raw.slice(0, 160)
+      )
+    },
+  },
   AgentChat: {
     mounted() {
       this.log = this.el.querySelector("[data-chat-log]")
@@ -572,46 +681,7 @@ const Hooks = {
       this.input.addEventListener("keydown", this.onKeydown)
       this.form.addEventListener("submit", this.onSubmit)
       this.handle?.addEventListener("pointerdown", this.onHandleDown)
-
-      // Push-to-talk (voice input). Only wired inside the desktop app, where the
-      // Tauri `start_recording`/`stop_recording` commands exist; in a plain
-      // browser the mic button stays hidden. Hold the button (or ⌘/), speak,
-      // release: the transcript fills the composer for review (v1 never auto-sends).
-      this.invoke = window.__TAURI__?.core?.invoke || null
-      this.mic = this.el.querySelector("[data-mic]")
-      this.micIdleIcon = this.el.querySelector("[data-mic-idle]")
-      this.micBusy = this.el.querySelector("[data-mic-busy]")
-      this.micState = "idle"
-
-      this.onMicUp = () => {
-        window.removeEventListener("pointerup", this.onMicUp)
-        this.stopListening()
-      }
-      this.onMicDown = (e) => {
-        e.preventDefault()
-        window.addEventListener("pointerup", this.onMicUp)
-        this.startListening()
-      }
-      // Hotkey hold-to-talk: ⌘/ (or Ctrl+/). `repeat` guards key auto-repeat;
-      // releasing / or the modifier ends the capture.
-      this.onHotkey = (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === "/" && !e.repeat) {
-          e.preventDefault()
-          this.startListening()
-        }
-      }
-      this.onHotkeyUp = (e) => {
-        if (this.micState === "listening" && (e.key === "/" || e.key === "Meta" || e.key === "Control")) {
-          this.stopListening()
-        }
-      }
-
-      if (this.mic && this.invoke) {
-        this.mic.hidden = false
-        this.mic.addEventListener("pointerdown", this.onMicDown)
-        window.addEventListener("keydown", this.onHotkey)
-        window.addEventListener("keyup", this.onHotkeyUp)
-      }
+      // Voice input lives in its own reusable `Mic` hook on the mic button.
     },
     updated() {
       this.applyHeight()
@@ -624,63 +694,6 @@ const Hooks = {
       window.removeEventListener("keydown", this.onEscape)
       window.removeEventListener("pointermove", this.onHandleMove)
       window.removeEventListener("pointerup", this.onHandleUp)
-      this.mic?.removeEventListener("pointerdown", this.onMicDown)
-      window.removeEventListener("pointerup", this.onMicUp)
-      window.removeEventListener("keydown", this.onHotkey)
-      window.removeEventListener("keyup", this.onHotkeyUp)
-    },
-    // --- Push-to-talk ---
-    async startListening() {
-      if (this.micState !== "idle" || !this.invoke) return
-      // Don't transcribe our own spoken reply: cut any TTS first.
-      this.invoke("stop_speaking").catch(() => {})
-      this.setMicState("listening")
-      try {
-        await this.invoke("start_recording")
-      } catch (err) {
-        this.setMicState("idle")
-        this.voiceError(err)
-      }
-    },
-    async stopListening() {
-      if (this.micState !== "listening" || !this.invoke) return
-      this.setMicState("transcribing")
-      try {
-        const res = await this.invoke("stop_recording")
-        this.insertTranscript(res && res.text)
-      } catch (err) {
-        this.voiceError(err)
-      } finally {
-        this.setMicState("idle")
-      }
-    },
-    insertTranscript(text) {
-      const t = (text || "").trim()
-      if (!t || !this.input) return
-      const cur = this.input.value
-      this.input.value = cur && !/\s$/.test(cur) ? cur + " " + t : cur + t
-      this.input.focus()
-      const end = this.input.value.length
-      this.input.setSelectionRange(end, end)
-    },
-    voiceError(err) {
-      const raw = String(err && err.message ? err.message : err)
-      const denied = /denied|authoriz|permission|not authorized/i.test(raw)
-      const message = denied
-        ? "Microphone access denied — enable it in System Settings › Privacy & Security › Microphone."
-        : "Voice input failed: " + raw.slice(0, 160)
-      this.pushEvent("voice_error", {message})
-    },
-    setMicState(state) {
-      this.micState = state
-      if (!this.mic) return
-      this.mic.dataset.state = state
-      const busy = state === "transcribing"
-      if (this.micIdleIcon) this.micIdleIcon.hidden = busy
-      if (this.micBusy) this.micBusy.hidden = !busy
-      this.mic.style.pointerEvents = busy ? "none" : ""
-      if (state === "listening") this.mic.setAttribute("aria-pressed", "true")
-      else this.mic.removeAttribute("aria-pressed")
     },
     scrollToBottom() {
       if (this.log) this.log.scrollTop = this.log.scrollHeight

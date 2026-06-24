@@ -134,20 +134,17 @@ defmodule BusterClawWeb.ChatPanel do
         data-chat-form
         class="flex items-end gap-2 border-t-2 border-base-content/20 p-3"
       >
-        <textarea
-          name="message"
-          data-chat-input
-          rows="2"
-          placeholder="Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
-          class="min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-[17px] focus:border-primary focus:outline-none"
-        ></textarea>
+        <%!-- Voice-to-text. Always visible on the left of the composer; the
+              reusable `Mic` hook records on-device whisper and fills the input. --%>
         <button
+          id="chat-mic"
           type="button"
-          data-mic
-          hidden
-          aria-label="Hold to talk"
-          title="Hold to talk · ⌘/"
-          class="inline-grid size-11 shrink-0 place-items-center self-stretch rounded border-2 border-base-content/25 text-base-content/70 transition hover:border-primary hover:text-primary data-[state=listening]:border-primary data-[state=listening]:bg-primary/10 data-[state=listening]:text-primary data-[state=transcribing]:border-primary/60 data-[state=transcribing]:text-primary"
+          phx-hook="Mic"
+          data-voice-target="[data-chat-input]"
+          data-voice-overlay="[data-chat-listening]"
+          aria-label="Voice input — click to talk"
+          title="Click to talk · ⌘/"
+          class="inline-grid size-11 shrink-0 place-items-center self-stretch rounded border-2 border-base-content/25 text-base-content/70 transition hover:border-primary hover:text-primary data-[state=listening]:border-primary data-[state=listening]:bg-primary/10 data-[state=listening]:text-primary data-[state=listening]:animate-pulse data-[state=transcribing]:border-primary/60 data-[state=transcribing]:text-primary"
         >
           <span data-mic-idle class="inline-grid place-items-center">
             <.icon name="hero-microphone" class="size-5" />
@@ -159,6 +156,30 @@ defmodule BusterClawWeb.ChatPanel do
           >
           </span>
         </button>
+
+        <div class="relative flex-1">
+          <textarea
+            name="message"
+            data-chat-input
+            rows="2"
+            placeholder="Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
+            class="min-h-0 w-full resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-[17px] focus:border-primary focus:outline-none"
+          ></textarea>
+          <%!-- Listening animation — flipped visible by the Mic hook while recording. --%>
+          <div
+            data-chat-listening
+            hidden
+            class="pointer-events-none absolute inset-0 flex items-center justify-center gap-3 rounded-sm bg-base-100/85 backdrop-blur-sm"
+          >
+            <span class="ic-voice-bars" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i>
+            </span>
+            <span class="font-display text-xs font-bold uppercase tracking-wide text-primary">
+              Listening…
+            </span>
+          </div>
+        </div>
+
         <button
           type="submit"
           class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-semibold text-primary-content transition hover:opacity-85"
