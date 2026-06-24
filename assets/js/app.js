@@ -36,7 +36,7 @@ import {WebglAddon} from "@xterm/addon-webgl"
 const TAB_GROUPS = [
   {
     key: "/settings",
-    paths: new Set(["/settings", "/appearance", "/gws", "/integrations", "/security"])
+    paths: new Set(["/settings", "/appearance", "/gws", "/integrations", "/security", "/get-started"])
   }
 ]
 
