@@ -86,3 +86,21 @@ shows no new issues, full suite **657/657** after each commit.
 - Continues the `on-duty` consolidation from the 06-22 summary. The operator now
   has exactly one way to go hands-off: `./buster-claw on-duty` (governed shift +
   Gmail poll + in-thread replies), not a second ungoverned autopilot loop.
+
+## Terminal command-menu cleanup (continued)
+
+Tightened the terminal cmd-list dropdown further:
+
+- **Folded the Shift role into On Duty** (`ac97d99`) — the Shift and On Duty
+  groups both carried `on-duty`/`off-duty`, so the menu showed two Go On Duty and
+  two Off Duty entries. Merged into one On Duty role (Go On Duty / Every Minute /
+  Off Duty / Shift Status), carried the `shift`/`on-shift`/`duty` aliases over so
+  old references still resolve, and dropped the unused `shift` startup profile.
+- **Hid the Install Claude Code role from the menu** (`751ba94`) — added a
+  `hidden: true` flag + `menu_roles/0` so the dropdown skips it, while `roles/0`
+  keeps it resolvable. The first-run Setup wizard's install button and the
+  Home-screen install card still work (`startup_command("agent-setup")` →
+  `brew install --cask claude-code`); only the power-user terminal menu drops it.
+
+The menu is now: **On Duty · Dispatch Queue · Commands · Prompts**. Tests updated
+for both; full suite **657/657**.
