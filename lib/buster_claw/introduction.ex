@@ -79,7 +79,7 @@ defmodule BusterClaw.Introduction do
     - `memory/` — durable notes/context, including the trusted-sender policy (`memory/trusted-email-senders.md`).
     - `job-descriptions/` — the jobs you can run, one `<key>.md` each; see `job-descriptions/README.md` for the roster.
     - `analysis/` — per-request analysis/job files (findings inline; one job = one file).
-    - `shift/` — your worklist + record: `shift/Dispatch.md` is the **fridge** (all currently-open queue items, grouped by job); `shift/<date>/Dispatch.{md,jsonl}` is the dated diary.
+    - `shift/` — your worklist + record: `shift/Dispatch.md` is the **dispatch queue** (all currently-open queue items, grouped by job); `shift/<date>/Dispatch.{md,jsonl}` is the dated diary.
     - `projects/` — working folders for ongoing projects.
     - `mm-dd-yy-summary/` — daily activity minutes (see below).
 
@@ -101,7 +101,7 @@ defmodule BusterClaw.Introduction do
     for the roster — don't assume a fixed set.
 
     Work is **pulled, not pushed**. Trusted-sender email is queued automatically;
-    your live worklist is the fridge, `shift/Dispatch.md`. Take the next item and
+    your live worklist is the dispatch queue, `shift/Dispatch.md`. Take the next item and
     close it out through the CLI:
 
         ./buster-claw dispatch claim --job <key>     # claim the next open item
@@ -119,7 +119,7 @@ defmodule BusterClaw.Introduction do
 
     1. **Verify the runtime** — confirm the API is reachable and a shift is active
        (`shift_status`); start one if it is expected and missing.
-    2. **Read the mail** — check the fridge (`shift/Dispatch.md`) and the inbox for
+    2. **Read the mail** — check the dispatch queue (`shift/Dispatch.md`) and the inbox for
        queued trusted-sender items, and read each one fully (`gmail_read`).
     3. **Start your roles** — engage the specialists the work needs (wake Mailman /
        Research Assistant via shift assignments) and claim the queued items.

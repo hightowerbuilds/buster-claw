@@ -47,7 +47,7 @@ defmodule BusterClaw.IntroductionTest do
     refute md =~ "one dated folder per day"
 
     # Jobs & the pull queue: points at the job-descriptions roster as the source
-    # of truth and describes pulling work from the fridge via the CLI.
+    # of truth and describes pulling work from the dispatch queue via the CLI.
     assert md =~ "Jobs & the pull queue"
     assert md =~ "job-descriptions/README.md"
     assert md =~ "shift/Dispatch.md"
