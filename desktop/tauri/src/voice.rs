@@ -342,10 +342,14 @@ mod stt {
             0.0
         };
         let dur = n as f32 / active.sample_rate.max(1) as f32;
-        eprintln!(
-            "[buster-claw][voice] stop: captured {n} samples ({dur:.2}s @ {} Hz), peak={peak:.4}, rms={rms:.4}",
+        let summary = format!(
+            "stop: captured {n} samples ({dur:.2}s @ {} Hz), peak={peak:.4}, rms={rms:.4}",
             active.sample_rate
         );
+        eprintln!("[buster-claw][voice] {summary}");
+        debug_log(&summary);
+        // Save exactly what the mic captured (native rate) so we can play it back.
+        write_debug_wav("voice-debug-raw.wav", &captured, active.sample_rate);
 
         let mut audio = resample_to_16k(&captured, active.sample_rate);
         eprintln!(
@@ -359,6 +363,7 @@ mod stt {
                 "[buster-claw][voice] too short ({} samples) — skipping transcription",
                 audio.len()
             );
+            debug_log("  -> too short, skipped");
             return Ok(Transcript {
                 text: String::new(),
             });
@@ -379,13 +384,69 @@ mod stt {
             );
         }
 
+        // Save the exact 16 kHz audio handed to whisper — play it back to hear
+        // what whisper hears (clean speech vs. distorted/aliased vs. silence).
+        write_debug_wav("voice-debug-16k.wav", &audio, TARGET_RATE);
+
         let transcript = transcribe(&audio)?;
-        eprintln!(
-            "[buster-claw][voice] transcript ({} chars): {:?}",
+        let tline = format!(
+            "  -> transcript ({} chars): {:?}",
             transcript.text.len(),
             transcript.text
         );
+        eprintln!("[buster-claw][voice]{tline}");
+        debug_log(&tline);
         Ok(transcript)
+    }
+
+    /// Append a line to a voice debug log in the app-support dir, so diagnostics
+    /// survive even when stderr isn't visible (e.g. a bundled .app, not dev).
+    fn debug_log(line: &str) {
+        if let Some(path) = debug_path("voice-debug.log") {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                let _ = writeln!(f, "{line}");
+            }
+        }
+    }
+
+    /// Write mono f32 audio as a 16-bit PCM WAV next to the debug log, so the
+    /// captured/resampled audio can be played back and inspected by ear.
+    fn write_debug_wav(name: &str, audio: &[f32], rate: u32) {
+        let Some(path) = debug_path(name) else {
+            return;
+        };
+        let data_len = (audio.len() * 2) as u32;
+        let mut bytes: Vec<u8> = Vec::with_capacity(44 + data_len as usize);
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&(36 + data_len).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend_from_slice(b"fmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes()); // chunk size
+        bytes.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        bytes.extend_from_slice(&1u16.to_le_bytes()); // mono
+        bytes.extend_from_slice(&rate.to_le_bytes());
+        bytes.extend_from_slice(&(rate * 2).to_le_bytes()); // byte rate
+        bytes.extend_from_slice(&2u16.to_le_bytes()); // block align
+        bytes.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&data_len.to_le_bytes());
+        for &s in audio {
+            let v = (s.clamp(-1.0, 1.0) * 32767.0) as i16;
+            bytes.extend_from_slice(&v.to_le_bytes());
+        }
+        let _ = std::fs::write(path, bytes);
+    }
+
+    fn debug_path(name: &str) -> Option<std::path::PathBuf> {
+        let home = std::env::var("HOME").ok()?;
+        let dir = std::path::PathBuf::from(home).join("Library/Application Support/BusterClaw");
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir.join(name))
     }
 
     fn build_stream(
