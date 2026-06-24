@@ -3,31 +3,33 @@ defmodule BusterClaw.TerminalCommandsTest do
 
   alias BusterClaw.TerminalCommands
 
-  test "lists the On Duty role pointing at the consolidated on-duty verb" do
+  test "On Duty is the single role for the duty verbs + shift status" do
     assert %{key: "mailman", label: "On Duty", commands: commands} =
              TerminalCommands.role("mailman")
 
     # Consolidated to a single front-door verb (the old mailman-poll commands are gone).
     assert Enum.any?(commands, &(&1.command == "./buster-claw on-duty"))
     assert Enum.any?(commands, &(&1.command == "./buster-claw on-duty --interval 60"))
-    assert Enum.any?(commands, &(&1.command == "./buster-claw off-duty"))
-    refute Enum.any?(commands, &(&1.command =~ "mailman poll"))
-  end
-
-  test "shift role exposes status + the consolidated on-duty / off-duty verbs" do
-    assert %{key: "shift", commands: commands} = TerminalCommands.role("shift")
-
-    assert Enum.any?(commands, &(&1.command == "./buster-claw on-duty"))
-    assert Enum.any?(commands, &(&1.command == "./buster-claw off-duty"))
     assert Enum.any?(commands, &(&1.command == "./buster-claw shift status"))
+    refute Enum.any?(commands, &(&1.command =~ "mailman poll"))
 
-    # Autopilot has been removed: no commands and no aliases resolve to it.
+    # Exactly one Go On Duty and one Off Duty — no duplicate from a separate Shift role.
+    assert Enum.count(commands, &(&1.command == "./buster-claw on-duty")) == 1
+    assert Enum.count(commands, &(&1.command == "./buster-claw off-duty")) == 1
+
+    # Autopilot is gone; nothing resolves to it.
     refute Enum.any?(commands, &(&1.command =~ "autopilot"))
     refute TerminalCommands.role("autopilot")
-    refute TerminalCommands.role("hands-off")
+  end
 
-    # Opening a shift terminal reports status.
-    assert TerminalCommands.startup_command("shift") == "./buster-claw shift status"
+  test "the old Shift role folded into On Duty (aliases still resolve)" do
+    # No standalone Shift role; shift/on-shift/duty now resolve to On Duty.
+    assert %{key: "mailman"} = TerminalCommands.role("shift")
+    assert %{key: "mailman"} = TerminalCommands.role("on-shift")
+    assert %{key: "mailman"} = TerminalCommands.role("duty")
+
+    # There is no longer a standalone "shift" startup profile.
+    refute TerminalCommands.startup_command("shift")
   end
 
   test "lists the Claude Code install role for onboarding" do

@@ -26,14 +26,14 @@ defmodule BusterClaw.TerminalCommands do
     %{
       key: "mailman",
       label: "On Duty",
-      aliases: ["mail-triage", "gmail-poller", "on-duty", "off-duty"],
+      aliases: ["mail-triage", "gmail-poller", "on-duty", "off-duty", "shift", "on-shift", "duty"],
       startup_profile: "mailman",
       commands: [
         %{
           key: "on-duty",
           label: "Go On Duty",
           description:
-            "Watch Gmail and let the agent work and reply in-thread to trusted-sender requests, until you stand down (Ctrl-C).",
+            "Open an unattended shift AND watch Gmail: the agent works the queue and replies in-thread to trusted-sender requests under the per-shift run cap + kill-switch + no-sleep. Ctrl-C stands down.",
           command: "./buster-claw on-duty",
           default?: true
         },
@@ -46,37 +46,14 @@ defmodule BusterClaw.TerminalCommands do
         %{
           key: "off-duty",
           label: "Off Duty",
-          description: "Stand down — stop the active shift.",
+          description: "Stand down — end the active shift (the Dispatcher stops pumping).",
           command: "./buster-claw off-duty"
-        }
-      ]
-    },
-    %{
-      key: "shift",
-      label: "Shift",
-      aliases: ["on-shift", "duty"],
-      startup_profile: "shift",
-      commands: [
+        },
         %{
           key: "shift-status",
           label: "Shift Status",
           description: "Whether a shift is active, its mode, and dispatched/done/failed counts.",
-          command: "./buster-claw shift status",
-          default?: true
-        },
-        %{
-          key: "on-duty",
-          label: "Go On Duty",
-          description:
-            "The one command: open an unattended shift AND watch Gmail. The agent works the queue and replies in-thread to trusted-sender requests under the per-shift run cap + kill-switch + no-sleep. Ctrl-C stands down.",
-          command: "./buster-claw on-duty"
-        },
-        %{
-          key: "off-duty",
-          label: "Off Duty",
-          description:
-            "End the active shift — the Dispatcher stops pumping and no-sleep is released.",
-          command: "./buster-claw off-duty"
+          command: "./buster-claw shift status"
         }
       ]
     },
