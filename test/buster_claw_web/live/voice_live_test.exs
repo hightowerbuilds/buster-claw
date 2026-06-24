@@ -17,6 +17,12 @@ defmodule BusterClawWeb.VoiceLiveTest do
     assert response =~ ~s(data-voice-test-input)
     assert response =~ "ic-voice-bars"
     assert response =~ "Test your microphone"
+
+    # Device picker: populated client-side by the VoiceDevices hook.
+    assert response =~ ~s(id="voice-devices")
+    assert response =~ ~s(phx-hook="VoiceDevices")
+    assert response =~ ~s(data-voice-device-select)
+    assert response =~ ~s(data-voice-device-refresh)
   end
 
   test "a client voice_error surfaces as a flash", %{conn: conn} do

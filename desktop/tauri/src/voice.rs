@@ -203,13 +203,21 @@ pub struct Transcript {
     pub text: String,
 }
 
-/// Begin capturing the microphone. One recording at a time; a second call while
-/// one is active is rejected. Errors (no mic, permission denied) surface to the
-/// caller so the UI can show them.
+/// A selectable microphone input device.
+#[derive(serde::Serialize)]
+pub struct DeviceInfo {
+    pub name: String,
+    pub is_default: bool,
+}
+
+/// Begin capturing the microphone. `device` selects an input by name (from
+/// `list_input_devices`); an empty/absent value uses the system default. One
+/// recording at a time; a second call while one is active is rejected. Errors
+/// (no mic, permission denied) surface to the caller so the UI can show them.
 #[cfg(target_os = "macos")]
 #[tauri::command]
-pub fn start_recording() -> Result<(), String> {
-    stt::start()
+pub fn start_recording(device: Option<String>) -> Result<(), String> {
+    stt::start(device)
 }
 
 /// Stop capturing and transcribe what was captured. Returns empty text for a
@@ -220,15 +228,28 @@ pub fn stop_recording() -> Result<Transcript, String> {
     stt::stop()
 }
 
+/// List the available microphone input devices, flagging the system default.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn list_input_devices() -> Result<Vec<DeviceInfo>, String> {
+    stt::list_devices()
+}
+
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
-pub fn start_recording() -> Result<(), String> {
+pub fn start_recording(_device: Option<String>) -> Result<(), String> {
     Err("voice input is only available in the macOS desktop app".into())
 }
 
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub fn stop_recording() -> Result<Transcript, String> {
+    Err("voice input is only available in the macOS desktop app".into())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn list_input_devices() -> Result<Vec<DeviceInfo>, String> {
     Err("voice input is only available in the macOS desktop app".into())
 }
 
@@ -263,15 +284,49 @@ mod stt {
         REC.get_or_init(|| Mutex::new(None))
     }
 
-    pub fn start() -> Result<(), String> {
+    // This cpal version exposes the device name via `description().name()`
+    // (a `&str`), not the usual `name() -> Result<String>`.
+    fn device_name(device: &cpal::Device) -> Option<String> {
+        device.description().ok().map(|d| d.name().to_string())
+    }
+
+    /// Enumerate input devices, marking the system default.
+    pub fn list_devices() -> Result<Vec<super::DeviceInfo>, String> {
+        let host = cpal::default_host();
+        let default_name = host.default_input_device().and_then(|d| device_name(&d));
+        let devices = host
+            .input_devices()
+            .map_err(|e| format!("could not list input devices: {e}"))?;
+        let mut out = Vec::new();
+        for d in devices {
+            if let Some(name) = device_name(&d) {
+                let is_default = default_name.as_deref() == Some(name.as_str());
+                out.push(super::DeviceInfo { name, is_default });
+            }
+        }
+        Ok(out)
+    }
+
+    fn find_input_device(host: &cpal::Host, name: &str) -> Option<cpal::Device> {
+        host.input_devices()
+            .ok()?
+            .find(|d| device_name(d).as_deref() == Some(name))
+    }
+
+    pub fn start(device_name: Option<String>) -> Result<(), String> {
         let mut guard = recorder().lock().unwrap();
         if guard.is_some() {
             return Err("already recording".into());
         }
 
-        let device = cpal::default_host()
-            .default_input_device()
-            .ok_or("no microphone available")?;
+        let host = cpal::default_host();
+        let device = match device_name {
+            Some(name) if !name.is_empty() => find_input_device(&host, &name)
+                .ok_or_else(|| format!("microphone '{name}' not found"))?,
+            _ => host
+                .default_input_device()
+                .ok_or("no microphone available")?,
+        };
         let supported = device
             .default_input_config()
             .map_err(|e| format!("no microphone input config: {e}"))?;

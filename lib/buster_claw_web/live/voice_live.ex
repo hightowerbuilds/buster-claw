@@ -50,6 +50,41 @@ defmodule BusterClawWeb.VoiceLive do
           </ul>
         </div>
 
+        <div id="voice-devices" phx-hook="VoiceDevices" class="ic-panel overflow-hidden">
+          <header class="border-b-2 border-base-content/20 px-5 py-4">
+            <p class="ic-eyebrow">Microphone</p>
+            <h2 class="font-display text-2xl font-black uppercase tracking-tight">
+              Input device
+            </h2>
+            <p class="mt-1 text-sm text-base-content/65">
+              Choose which microphone Buster Claw listens to. Detected from your Mac.
+            </p>
+          </header>
+
+          <div class="flex flex-col gap-3 p-5 sm:flex-row sm:items-end">
+            <label class="min-w-0 flex-1">
+              <span class="ic-eyebrow">Device</span>
+              <select
+                data-voice-device-select
+                class="mt-1 w-full rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              >
+                <option value="">Default microphone</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              data-voice-device-refresh
+              class="inline-flex shrink-0 items-center gap-2 rounded border-2 border-base-content/25 px-4 py-2 text-sm font-semibold transition hover:border-primary hover:text-primary"
+            >
+              <.icon name="hero-arrow-path" class="size-4" /> Refresh
+            </button>
+          </div>
+
+          <p data-voice-device-status class="px-5 pb-5 text-sm text-base-content/60">
+            Finding microphones…
+          </p>
+        </div>
+
         <div class="ic-panel overflow-hidden">
           <header class="border-b-2 border-base-content/20 px-5 py-4">
             <p class="ic-eyebrow">Test</p>

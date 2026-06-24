@@ -284,7 +284,8 @@ fn main() {
             voice::speak,
             voice::stop_speaking,
             voice::start_recording,
-            voice::stop_recording
+            voice::stop_recording,
+            voice::list_input_devices
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

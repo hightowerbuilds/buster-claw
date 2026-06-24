@@ -509,6 +509,72 @@ const Hooks = {
   // Homepage chat: keep the transcript scrolled to the newest message, and make
   // Enter submit the message (Shift+Enter inserts a newline). The textarea is
   // cleared optimistically on submit; the user echo comes back over PubSub.
+  // Microphone device picker (Settings → Voice). Lists the Mac's input devices
+  // via the Tauri `list_input_devices` command and persists the choice to
+  // localStorage["bc:mic-device"], which the Mic hook reads when it records.
+  VoiceDevices: {
+    mounted() {
+      this.invoke = window.__TAURI__?.core?.invoke || null
+      this.select = this.el.querySelector("[data-voice-device-select]")
+      this.statusEl = this.el.querySelector("[data-voice-device-status]")
+      this.refreshBtn = this.el.querySelector("[data-voice-device-refresh]")
+
+      this.onChange = () => {
+        const v = this.select ? this.select.value : ""
+        if (v) localStorage.setItem("bc:mic-device", v)
+        else localStorage.removeItem("bc:mic-device")
+      }
+      this.onRefresh = () => this.load()
+      this.select?.addEventListener("change", this.onChange)
+      this.refreshBtn?.addEventListener("click", this.onRefresh)
+      this.load()
+    },
+    destroyed() {
+      this.select?.removeEventListener("change", this.onChange)
+      this.refreshBtn?.removeEventListener("click", this.onRefresh)
+    },
+    async load() {
+      if (!this.invoke) {
+        this.setStatus("Device selection is available in the desktop app.")
+        return
+      }
+      this.setStatus("Finding microphones…")
+      try {
+        const devices = await this.invoke("list_input_devices")
+        this.populate(Array.isArray(devices) ? devices : [])
+      } catch (err) {
+        this.setStatus("Could not list microphones: " + String(err?.message || err).slice(0, 120))
+      }
+    },
+    populate(devices) {
+      if (!this.select) return
+      const saved = localStorage.getItem("bc:mic-device") || ""
+      this.select.innerHTML = ""
+      const def = document.createElement("option")
+      def.value = ""
+      def.textContent = "Default microphone"
+      this.select.appendChild(def)
+
+      let savedPresent = false
+      for (const d of devices) {
+        const opt = document.createElement("option")
+        opt.value = d.name
+        opt.textContent = d.is_default ? `${d.name} (default)` : d.name
+        if (d.name === saved) { opt.selected = true; savedPresent = true }
+        this.select.appendChild(opt)
+      }
+      // A previously-chosen device that's now unplugged falls back to default.
+      if (saved && !savedPresent) {
+        localStorage.removeItem("bc:mic-device")
+        this.select.value = ""
+      }
+      const n = devices.length
+      this.setStatus(n ? `${n} microphone${n === 1 ? "" : "s"} found.` : "No microphones found.")
+    },
+    setStatus(text) {
+      if (this.statusEl) this.statusEl.textContent = text
+    },
+  },
   // Reusable voice-to-text mic. Self-contained so it can attach to ANY text
   // input across the app (chat, terminal, browser, calendar): put phx-hook="Mic"
   // on a button, point `data-voice-target` at the input's selector, and
@@ -562,7 +628,9 @@ const Hooks = {
       this.invoke("stop_speaking").catch(() => {})
       this.setState("listening")
       try {
-        await this.invoke("start_recording")
+        // Use the device chosen in Settings → Voice, else the system default.
+        const device = localStorage.getItem("bc:mic-device") || null
+        await this.invoke("start_recording", {device})
       } catch (err) {
         this.setState("idle")
         this.error(err)
