@@ -31,12 +31,9 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(id="tab-strip")
     assert response =~ ~s(phx-hook="TabStrip")
     assert response =~ ~s(id="app-dock")
-    # Left column: Get Started explainer.
-    assert response =~ ~s(id="home-get-started")
-    assert response =~ "Get Started"
-    # Get Started now points users at the chat pathway, not the terminal/shift one.
-    assert response =~ "Chat with Buster Claw"
-    assert response =~ "Install Claude Code"
+    # Get Started moved to a Settings sub-tab — the home page no longer carries it.
+    refute response =~ ~s(id="home-get-started")
+    refute response =~ "Install Claude Code"
     refute response =~ "Go on duty"
     refute response =~ "./buster-claw shift run"
     # The unattended-shift panel was removed; the chat + prompt pathway replaces it.
@@ -224,34 +221,20 @@ defmodule BusterClawWeb.StatusLiveTest do
   # The active conversation id is the first seeded conversation ("default").
   defp active_chat(_view), do: "default"
 
-  test "Get Started offers quick-chat prompts", %{conn: conn} do
-    conn = get(conn, ~p"/")
-    response = html_response(conn, 200)
-
-    assert response =~ "Quick chat"
-    assert response =~ ~s(phx-click="quick_chat")
-    assert response =~ "Please read through the introduction and BusterClawWorkspace"
-    assert response =~ "Sentinel security layer"
-    assert response =~ "overview of everything you can do across my Google Workspace"
-  end
-
   describe "corner widget tabs" do
-    test "default to Get Started and switch between Calendar and Contacts", %{conn: conn} do
+    test "default to Calendar and switch to Contacts (Get Started has moved)", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      assert has_element?(view, ~s(button[phx-value-tab="get-started"][aria-selected="true"]))
-      assert has_element?(view, ~s(button[phx-value-tab="calendar"][aria-selected="false"]))
+      # Get Started is no longer a corner-widget tab.
+      refute has_element?(view, ~s(button[phx-value-tab="get-started"]))
+
+      assert has_element?(view, ~s(button[phx-value-tab="calendar"][aria-selected="true"]))
       assert has_element?(view, ~s(button[phx-value-tab="contacts"][aria-selected="false"]))
 
       view |> element(~s(button[phx-value-tab="contacts"])) |> render_click()
 
       assert has_element?(view, ~s(button[phx-value-tab="contacts"][aria-selected="true"]))
-      assert has_element?(view, ~s(button[phx-value-tab="get-started"][aria-selected="false"]))
-
-      view |> element(~s(button[phx-value-tab="calendar"])) |> render_click()
-
-      assert has_element?(view, ~s(button[phx-value-tab="calendar"][aria-selected="true"]))
-      assert has_element?(view, ~s(button[phx-value-tab="contacts"][aria-selected="false"]))
+      assert has_element?(view, ~s(button[phx-value-tab="calendar"][aria-selected="false"]))
     end
   end
 

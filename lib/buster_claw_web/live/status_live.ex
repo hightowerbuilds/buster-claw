@@ -21,8 +21,8 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
      |> assign(:trusted_contacts, TrustedSenders.list_entries())
-     # Header widget: which sub-tab is showing (Get Started / Calendar / Contacts).
-     |> assign(:widget_tab, "get-started")
+     # Header widget: which sub-tab is showing (Calendar / Contacts).
+     |> assign(:widget_tab, "calendar")
      |> init_chats()
      |> load_daily_events()}
   end
@@ -64,11 +64,8 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
-      when tab in ["get-started", "calendar", "contacts"],
+      when tab in ["calendar", "contacts"],
       do: {:noreply, assign(socket, :widget_tab, tab)}
-
-  def handle_event("quick_chat", %{"prompt" => prompt}, socket),
-    do: {:noreply, dispatch_chat(socket, prompt)}
 
   def handle_event("chat_send", %{"message" => text}, socket) do
     # Sending barges in on any reply still being spoken.

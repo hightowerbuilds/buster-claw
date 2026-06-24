@@ -35,6 +35,7 @@ defmodule BusterClawWeb.Router do
       live "/security", SecurityLive, :index
       live "/settings", SettingsLive, :index
       live "/appearance", AppearanceLive, :index
+      live "/get-started", GetStartedLive, :index
       live "/workspace", WorkspaceLive, :index
       live "/manual", UserGuideLive, :index
       live "/setup", SetupLive, :index
