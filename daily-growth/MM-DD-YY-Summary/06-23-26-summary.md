@@ -42,6 +42,45 @@ tests went with the module).
   Shift role" test now asserts autopilot is absent — no commands, no aliases).
 - Full suite **657/657**.
 
+## Code-quality pass — dead code + redundancy
+
+Ran a focused audit (deterministic tooling + three read-only scout agents) for
+orphaned/dead/suppressed code and redundancy. Headline: **the codebase is
+clean** — the scouts' aggressive "unused public function" list was mostly false
+positives (they ignored test call-sites; e.g. `Introduction.markdown/read/
+install!`, `TrustedSenders.trusted?/1` are all exercised by tests). Five focused
+commits:
+
+- **Retired the deprecated `mailman poll` / `shift run` CLI verbs** (`c746f33`)
+  — routes + `mailman_poll_deprecated/1` + `shift_run/1` + the now-orphaned
+  `format_shift_started/1`. `on-duty` is the only path. `mailman_poll/poll_gmail`
+  stay (on-duty uses them).
+- **Removed the dead `agent_chat_enabled` config** (`f6df797`) — defined in
+  config.exs + test.exs, read nowhere (chat gates on `_persist`/`_audit`/
+  `_timeout_ms`). The test-config comment claiming it disabled chat was stale.
+- **`Artifact.workspace_path/1`** (`464af2f`) — collapsed ~16 repetitions of
+  `Path.join(Artifact.workspace_root(), …)` into one helper that takes a string
+  or a list of segments. Applied via a scoped, reviewed regex across 12 modules.
+- **`google_args/1` in the catalog** (`97ab0b5`) — the `account_id`/`email`
+  account-selector pair was hand-written on 48 Google command entries; now
+  defined once as `@google_account` and merged in. Guarded with a before/after
+  snapshot: the resolved args for all 119 catalog entries are **byte-identical**.
+
+Deliberately **kept** (judged not-dead, with reasons): `Dispatch.heartbeat/1`
+(a designed liveness API the projector handles — caller side just not wired;
+removing it would cascade), the symmetric `topic/0` getters, and the legacy
+migration shims (`MANUAL.html` cleanup, encrypted-plaintext backfill).
+
+**Declined two proposed refactors** on judgment: a macro to wrap the ~26
+`with_google_account/2` call sites (resolution is already centralized — a macro
+would obscure clean delegation), and consolidating the `value/2` accessor into
+`Commands.Helpers` (it's command-layer + context-agnostic by its own docs;
+importing it into two *contexts* to dedupe a 5-line private helper is a worse
+smell than the duplication).
+
+Verification across the pass: `mix compile --warnings-as-errors` clean, credo
+shows no new issues, full suite **657/657** after each commit.
+
 ## Notes
 
 - Continues the `on-duty` consolidation from the 06-22 summary. The operator now
