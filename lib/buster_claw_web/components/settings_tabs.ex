@@ -4,6 +4,7 @@ defmodule BusterClawWeb.SettingsTabs do
   @tabs [
     %{key: :get_started, label: "Get Started", path: "/get-started"},
     %{key: :appearance, label: "Appearance", path: "/appearance"},
+    %{key: :voice, label: "Voice", path: "/voice"},
     %{key: :gws, label: "GWS", path: "/gws"},
     %{key: :integrations, label: "Integrations", path: "/integrations"},
     %{key: :configuration, label: "Configuration", path: "/settings"},
