@@ -43,9 +43,6 @@ config :buster_claw, :analyzer_enabled, false
 # Call-rate limiting is off in tests so command-heavy suites aren't throttled; the
 # RateLimiter suite flips it on with a low limit to exercise enforcement.
 config :buster_claw, :rate_limit_enabled, false
-# The homepage chat backend is off in tests; the Chat suite starts its own
-# instance with an injected spawner so no real `claude` is launched.
-config :buster_claw, :agent_chat_enabled, false
 # Persistence is off by default in tests so the Chat suite stays DB-free; the
 # transcript suite drives `Transcript` directly and the persistence test starts a
 # Chat with `persist: true` under the SQL sandbox.

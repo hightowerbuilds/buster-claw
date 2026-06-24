@@ -24,7 +24,6 @@ config :buster_claw,
   dispatcher_run_timeout_ms: 600_000,
   # Homepage chat backend (headless Claude). Per-message run wall-clock cap;
   # transcript persisted so a conversation survives reload/restart.
-  agent_chat_enabled: true,
   agent_chat_timeout_ms: 600_000,
   agent_chat_persist: true,
   # Record each chat run on the Sentinel audit feed (also feeds the Activity
