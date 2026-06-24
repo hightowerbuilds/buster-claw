@@ -280,6 +280,10 @@ mod stt {
         let sample_format = supported.sample_format();
         let config = supported.config();
 
+        eprintln!(
+            "[buster-claw][voice] start: rate={sample_rate} Hz, channels={channels}, format={sample_format:?}"
+        );
+
         let samples = Arc::new(Mutex::new(Vec::<f32>::new()));
         let samples_for_thread = Arc::clone(&samples);
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
@@ -330,13 +334,58 @@ mod stt {
         let _ = active.join.join();
 
         let captured = active.samples.lock().unwrap().clone();
-        let audio = resample_to_16k(&captured, active.sample_rate);
+        let n = captured.len();
+        let peak = captured.iter().fold(0.0_f32, |m, &s| m.max(s.abs()));
+        let rms = if n > 0 {
+            (captured.iter().map(|s| s * s).sum::<f32>() / n as f32).sqrt()
+        } else {
+            0.0
+        };
+        let dur = n as f32 / active.sample_rate.max(1) as f32;
+        eprintln!(
+            "[buster-claw][voice] stop: captured {n} samples ({dur:.2}s @ {} Hz), peak={peak:.4}, rms={rms:.4}",
+            active.sample_rate
+        );
+
+        let mut audio = resample_to_16k(&captured, active.sample_rate);
+        eprintln!(
+            "[buster-claw][voice] resampled -> {} samples (16 kHz, {:.2}s)",
+            audio.len(),
+            audio.len() as f32 / TARGET_RATE as f32
+        );
+
         if audio.len() < MIN_SAMPLES {
+            eprintln!(
+                "[buster-claw][voice] too short ({} samples) — skipping transcription",
+                audio.len()
+            );
             return Ok(Transcript {
                 text: String::new(),
             });
         }
-        transcribe(&audio)
+
+        // Gentle peak normalization: lift a quiet mic toward a healthy level, but
+        // leave a near-silent buffer alone so whisper isn't handed amplified noise
+        // (which is exactly what makes it hallucinate a stray word or two).
+        let apeak = audio.iter().fold(0.0_f32, |m, &s| m.max(s.abs()));
+        if apeak > 0.02 && apeak < 0.7 {
+            let gain = (0.85 / apeak).min(12.0);
+            for s in audio.iter_mut() {
+                *s *= gain;
+            }
+            eprintln!(
+                "[buster-claw][voice] normalized: peak {apeak:.4} -> ~{:.4} (gain {gain:.1}x)",
+                apeak * gain
+            );
+        }
+
+        let transcript = transcribe(&audio)?;
+        eprintln!(
+            "[buster-claw][voice] transcript ({} chars): {:?}",
+            transcript.text.len(),
+            transcript.text
+        );
+        Ok(transcript)
     }
 
     fn build_stream(
@@ -383,24 +432,51 @@ mod stt {
         }
     }
 
-    /// Linear-resample mono f32 to 16 kHz. Adequate for speech at the base model;
-    /// avoids pulling in a DSP crate for v1.
+    /// Resample mono f32 to 16 kHz for whisper. Downsampling (the common case —
+    /// mics run at 44.1/48 kHz) averages each source window into one output
+    /// sample: a cheap box low-pass so frequencies above 8 kHz don't ALIAS back
+    /// into the speech band (naive decimation aliases, which garbles whisper).
+    /// Upsampling uses linear interpolation.
     fn resample_to_16k(input: &[f32], from_rate: u32) -> Vec<f32> {
         if from_rate == TARGET_RATE || input.is_empty() {
             return input.to_vec();
         }
-        let ratio = TARGET_RATE as f32 / from_rate as f32;
-        let out_len = (input.len() as f32 * ratio).round() as usize;
-        let mut out = Vec::with_capacity(out_len);
-        for i in 0..out_len {
-            let src = i as f32 / ratio;
-            let idx = src.floor() as usize;
-            let frac = src - idx as f32;
-            let a = input.get(idx).copied().unwrap_or(0.0);
-            let b = input.get(idx + 1).copied().unwrap_or(a);
-            out.push(a + (b - a) * frac);
+        let n = input.len();
+
+        if from_rate > TARGET_RATE {
+            let ratio = from_rate as f64 / TARGET_RATE as f64; // source samples per output sample
+            let out_len = (n as f64 / ratio).round() as usize;
+            let mut out = Vec::with_capacity(out_len);
+            for i in 0..out_len {
+                let start = ((i as f64) * ratio) as usize;
+                let mut end = (((i + 1) as f64) * ratio) as usize;
+                if end <= start {
+                    end = start + 1;
+                }
+                let end = end.min(n);
+                let window = &input[start.min(n)..end];
+                let avg = if window.is_empty() {
+                    0.0
+                } else {
+                    window.iter().copied().sum::<f32>() / window.len() as f32
+                };
+                out.push(avg);
+            }
+            out
+        } else {
+            let ratio = TARGET_RATE as f32 / from_rate as f32;
+            let out_len = (n as f32 * ratio).round() as usize;
+            let mut out = Vec::with_capacity(out_len);
+            for i in 0..out_len {
+                let src = i as f32 / ratio;
+                let idx = src.floor() as usize;
+                let frac = src - idx as f32;
+                let a = input.get(idx).copied().unwrap_or(0.0);
+                let b = input.get(idx + 1).copied().unwrap_or(a);
+                out.push(a + (b - a) * frac);
+            }
+            out
         }
-        out
     }
 
     /// The whisper context is expensive to build (loads the ~142MB model), so
