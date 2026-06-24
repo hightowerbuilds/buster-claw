@@ -12,6 +12,17 @@ defmodule BusterClaw.Commands.Catalog do
 
   @id_required %{"id" => %{type: :integer, required: true}}
 
+  # Google commands all accept an optional account selector — `account_id` or
+  # `email` — to choose which connected Workspace account to act as. `google_args/1`
+  # merges that shared pair into each command's own args, so the selector is
+  # defined once here instead of repeated on every Google entry.
+  @google_account %{
+    "account_id" => %{type: :integer, required: false},
+    "email" => %{type: :string, required: false}
+  }
+
+  defp google_args(extra), do: Map.merge(@google_account, extra)
+
   defp list_entry(name, desc),
     do: %{name: name, type: :read, tier: :safe, description: desc, args: %{}}
 
@@ -292,71 +303,64 @@ defmodule BusterClaw.Commands.Catalog do
         type: :read,
         tier: :safe,
         description: "List Gmail labels for a connected Google Workspace account.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false}
-        }
+        args: @google_account
       },
       %{
         name: "gmail_search",
         type: :read,
         tier: :safe,
         description: "Search Gmail messages for a connected Google Workspace account.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "query" => %{type: :string, required: false},
-          "limit" => %{type: :integer, required: false, default: 10},
-          "incremental" => %{type: :boolean, required: false, default: false},
-          "start_history_id" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "query" => %{type: :string, required: false},
+            "limit" => %{type: :integer, required: false, default: 10},
+            "incremental" => %{type: :boolean, required: false, default: false},
+            "start_history_id" => %{type: :string, required: false}
+          })
       },
       %{
         name: "gmail_read",
         type: :read,
         tier: :safe,
         description: "Read one Gmail message by message ID.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "message_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "message_id" => %{type: :string, required: true}
+          })
       },
       %{
         name: "gmail_sync",
         type: :trigger,
         tier: :safe,
         description: "Sync Gmail search results or history deltas into Library raw documents.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "query" => %{type: :string, required: false},
-          "limit" => %{type: :integer, required: false, default: 10},
-          "incremental" => %{type: :boolean, required: false, default: false},
-          "start_history_id" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "query" => %{type: :string, required: false},
+            "limit" => %{type: :integer, required: false, default: 10},
+            "incremental" => %{type: :boolean, required: false, default: false},
+            "start_history_id" => %{type: :string, required: false}
+          })
       },
       %{
         name: "gmail_draft_create",
         type: :mutate,
         tier: :restricted,
         description: "Create a Gmail draft for a connected Google Workspace account.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "to" => %{type: :string, required: false},
-          "recipient" => %{type: :string, required: false, description: "Alias for to."},
-          "cc" => %{type: :string, required: false},
-          "bcc" => %{type: :string, required: false},
-          "subject" => %{type: :string, required: true},
-          "body" => %{type: :string, required: true},
-          "attachments" => %{
-            type: :array,
-            required: false,
-            description:
-              "File paths (relative to the workspace, or absolute), or objects with path/filename/content_type."
-          }
-        }
+        args:
+          google_args(%{
+            "to" => %{type: :string, required: false},
+            "recipient" => %{type: :string, required: false, description: "Alias for to."},
+            "cc" => %{type: :string, required: false},
+            "bcc" => %{type: :string, required: false},
+            "subject" => %{type: :string, required: true},
+            "body" => %{type: :string, required: true},
+            "attachments" => %{
+              type: :array,
+              required: false,
+              description:
+                "File paths (relative to the workspace, or absolute), or objects with path/filename/content_type."
+            }
+          })
       },
       %{
         name: "gmail_send",
@@ -364,23 +368,22 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         gated: true,
         description: "Send a Gmail message from a connected Google Workspace account.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "to" => %{type: :string, required: false},
-          "recipient" => %{type: :string, required: false, description: "Alias for to."},
-          "cc" => %{type: :string, required: false},
-          "bcc" => %{type: :string, required: false},
-          "subject" => %{type: :string, required: true},
-          "body" => %{type: :string, required: true},
-          "attachments" => %{
-            type: :array,
-            required: false,
-            description:
-              "File paths (relative to the workspace, or absolute), or objects with path/filename/content_type."
-          },
-          "confirm_send" => %{type: :boolean, required: true, default: false}
-        }
+        args:
+          google_args(%{
+            "to" => %{type: :string, required: false},
+            "recipient" => %{type: :string, required: false, description: "Alias for to."},
+            "cc" => %{type: :string, required: false},
+            "bcc" => %{type: :string, required: false},
+            "subject" => %{type: :string, required: true},
+            "body" => %{type: :string, required: true},
+            "attachments" => %{
+              type: :array,
+              required: false,
+              description:
+                "File paths (relative to the workspace, or absolute), or objects with path/filename/content_type."
+            },
+            "confirm_send" => %{type: :boolean, required: true, default: false}
+          })
       },
       %{
         name: "gmail_modify",
@@ -388,24 +391,22 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         description:
           "Add/remove labels on a Gmail message (archive = remove INBOX, mark read = remove UNREAD).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "message_id" => %{type: :string, required: true},
-          "add" => %{type: :array, required: false, description: "Label IDs to add."},
-          "remove" => %{type: :array, required: false, description: "Label IDs to remove."}
-        }
+        args:
+          google_args(%{
+            "message_id" => %{type: :string, required: true},
+            "add" => %{type: :array, required: false, description: "Label IDs to add."},
+            "remove" => %{type: :array, required: false, description: "Label IDs to remove."}
+          })
       },
       %{
         name: "gmail_trash",
         type: :mutate,
         tier: :restricted,
         description: "Move a Gmail message to the trash (recoverable).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "message_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "message_id" => %{type: :string, required: true}
+          })
       },
       %{
         name: "gmail_delete",
@@ -413,24 +414,22 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         gated: true,
         description: "Permanently delete a Gmail message (irreversible).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "message_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "message_id" => %{type: :string, required: true}
+          })
       },
       %{
         name: "google_calendar_sync",
         type: :trigger,
         tier: :safe,
         description: "One-way sync Google Calendar events into the app calendar.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "calendar_id" => %{type: :string, required: false, default: "primary"},
-          "days_ahead" => %{type: :integer, required: false, default: 90},
-          "force_full" => %{type: :boolean, required: false, default: false}
-        }
+        args:
+          google_args(%{
+            "calendar_id" => %{type: :string, required: false, default: "primary"},
+            "days_ahead" => %{type: :integer, required: false, default: 90},
+            "force_full" => %{type: :boolean, required: false, default: false}
+          })
       },
       %{
         name: "gcal_event_create",
@@ -438,25 +437,23 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         description:
           "Create a Google Calendar event. `event` is the raw Google event resource (summary/start/end/...).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "calendar_id" => %{type: :string, required: false, default: "primary"},
-          "event" => %{type: :object, required: true}
-        }
+        args:
+          google_args(%{
+            "calendar_id" => %{type: :string, required: false, default: "primary"},
+            "event" => %{type: :object, required: true}
+          })
       },
       %{
         name: "gcal_event_update",
         type: :mutate,
         tier: :restricted,
         description: "Patch a Google Calendar event. `event` holds the fields to change.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "calendar_id" => %{type: :string, required: false, default: "primary"},
-          "event_id" => %{type: :string, required: true},
-          "event" => %{type: :object, required: true}
-        }
+        args:
+          google_args(%{
+            "calendar_id" => %{type: :string, required: false, default: "primary"},
+            "event_id" => %{type: :string, required: true},
+            "event" => %{type: :object, required: true}
+          })
       },
       %{
         name: "gcal_event_delete",
@@ -464,12 +461,11 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         gated: true,
         description: "Delete a Google Calendar event (irreversible).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "calendar_id" => %{type: :string, required: false, default: "primary"},
-          "event_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "calendar_id" => %{type: :string, required: false, default: "primary"},
+            "event_id" => %{type: :string, required: true}
+          })
       },
       %{
         name: "tasks_list",
@@ -477,54 +473,54 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :safe,
         description:
           "List Google task lists, or the tasks in a list when `tasklist_id` is given.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "tasklist_id" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "tasklist_id" => %{type: :string, required: false}
+          })
       },
       %{
         name: "tasks_get",
         type: :read,
         tier: :safe,
         description: "Read one Google task.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "tasklist_id" => %{type: :string, required: true},
-          "task_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "tasklist_id" => %{type: :string, required: true},
+            "task_id" => %{type: :string, required: true}
+          })
       },
       %{
         name: "tasks_create",
         type: :mutate,
         tier: :restricted,
         description: "Create a Google task in a list.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "tasklist_id" => %{type: :string, required: true},
-          "title" => %{type: :string, required: true},
-          "notes" => %{type: :string, required: false},
-          "due" => %{type: :string, required: false, description: "RFC 3339 timestamp."},
-          "status" => %{type: :string, required: false, description: "needsAction or completed."}
-        }
+        args:
+          google_args(%{
+            "tasklist_id" => %{type: :string, required: true},
+            "title" => %{type: :string, required: true},
+            "notes" => %{type: :string, required: false},
+            "due" => %{type: :string, required: false, description: "RFC 3339 timestamp."},
+            "status" => %{
+              type: :string,
+              required: false,
+              description: "needsAction or completed."
+            }
+          })
       },
       %{
         name: "tasks_update",
         type: :mutate,
         tier: :restricted,
         description: "Patch a Google task (title/notes/due/status).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "tasklist_id" => %{type: :string, required: true},
-          "task_id" => %{type: :string, required: true},
-          "title" => %{type: :string, required: false},
-          "notes" => %{type: :string, required: false},
-          "due" => %{type: :string, required: false},
-          "status" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "tasklist_id" => %{type: :string, required: true},
+            "task_id" => %{type: :string, required: true},
+            "title" => %{type: :string, required: false},
+            "notes" => %{type: :string, required: false},
+            "due" => %{type: :string, required: false},
+            "status" => %{type: :string, required: false}
+          })
       },
       %{
         name: "tasks_delete",
@@ -532,12 +528,11 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         gated: true,
         description: "Delete a Google task (irreversible).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "tasklist_id" => %{type: :string, required: true},
-          "task_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "tasklist_id" => %{type: :string, required: true},
+            "task_id" => %{type: :string, required: true}
+          })
       },
 
       # Google Drive
@@ -546,41 +541,38 @@ defmodule BusterClaw.Commands.Catalog do
         type: :read,
         tier: :safe,
         description: "List/search Google Drive files. `q` is a Drive query string.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "q" => %{type: :string, required: false},
-          "order_by" => %{type: :string, required: false},
-          "page_size" => %{type: :integer, required: false, default: 50},
-          "page_token" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "q" => %{type: :string, required: false},
+            "order_by" => %{type: :string, required: false},
+            "page_size" => %{type: :integer, required: false, default: 50},
+            "page_token" => %{type: :string, required: false}
+          })
       },
       %{
         name: "drive_get",
         type: :read,
         tier: :safe,
         description: "Get a Google Drive file's metadata.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "file_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "file_id" => %{type: :string, required: true}
+          })
       },
       %{
         name: "drive_download",
         type: :read,
         tier: :safe,
         description: "Download a Drive file's bytes into the workspace. Returns the saved path.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "file_id" => %{type: :string, required: true},
-          "destination" => %{
-            type: :string,
-            required: false,
-            description: "Workspace-relative (or absolute) path to write to."
-          }
-        }
+        args:
+          google_args(%{
+            "file_id" => %{type: :string, required: true},
+            "destination" => %{
+              type: :string,
+              required: false,
+              description: "Workspace-relative (or absolute) path to write to."
+            }
+          })
       },
       %{
         name: "drive_export",
@@ -588,75 +580,70 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :safe,
         description:
           "Export a Google-native doc (Docs/Sheets/Slides) to a MIME type into the workspace.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "file_id" => %{type: :string, required: true},
-          "mime_type" => %{type: :string, required: true},
-          "destination" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "file_id" => %{type: :string, required: true},
+            "mime_type" => %{type: :string, required: true},
+            "destination" => %{type: :string, required: false}
+          })
       },
       %{
         name: "drive_folder_create",
         type: :mutate,
         tier: :restricted,
         description: "Create a folder in Google Drive.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "name" => %{type: :string, required: true},
-          "parent_id" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "name" => %{type: :string, required: true},
+            "parent_id" => %{type: :string, required: false}
+          })
       },
       %{
         name: "drive_upload",
         type: :mutate,
         tier: :restricted,
         description: "Upload a local workspace file to Google Drive.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "path" => %{
-            type: :string,
-            required: true,
-            description: "Local file path (workspace-relative or absolute) to upload."
-          },
-          "name" => %{
-            type: :string,
-            required: false,
-            description: "Drive file name; defaults to the basename."
-          },
-          "parent_id" => %{type: :string, required: false},
-          "content_type" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "path" => %{
+              type: :string,
+              required: true,
+              description: "Local file path (workspace-relative or absolute) to upload."
+            },
+            "name" => %{
+              type: :string,
+              required: false,
+              description: "Drive file name; defaults to the basename."
+            },
+            "parent_id" => %{type: :string, required: false},
+            "content_type" => %{type: :string, required: false}
+          })
       },
       %{
         name: "drive_update",
         type: :mutate,
         tier: :restricted,
         description: "Rename/star a Drive file, or move it via add_parents/remove_parents.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "file_id" => %{type: :string, required: true},
-          "name" => %{type: :string, required: false},
-          "starred" => %{type: :boolean, required: false},
-          "add_parents" => %{type: :string, required: false},
-          "remove_parents" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "file_id" => %{type: :string, required: true},
+            "name" => %{type: :string, required: false},
+            "starred" => %{type: :boolean, required: false},
+            "add_parents" => %{type: :string, required: false},
+            "remove_parents" => %{type: :string, required: false}
+          })
       },
       %{
         name: "drive_copy",
         type: :mutate,
         tier: :restricted,
         description: "Copy a Drive file.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "file_id" => %{type: :string, required: true},
-          "name" => %{type: :string, required: false},
-          "parent_id" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "file_id" => %{type: :string, required: true},
+            "name" => %{type: :string, required: false},
+            "parent_id" => %{type: :string, required: false}
+          })
       },
       %{
         name: "drive_share",
@@ -664,20 +651,19 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         description:
           "Grant a permission on a Drive file (may email the grantee). Requires confirm_share.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "file_id" => %{type: :string, required: true},
-          "role" => %{
-            type: :string,
-            required: true,
-            description: "reader/commenter/writer/owner."
-          },
-          "type" => %{type: :string, required: true, description: "user/group/domain/anyone."},
-          "grantee_email" => %{type: :string, required: false},
-          "notify" => %{type: :boolean, required: false, default: false},
-          "confirm_share" => %{type: :boolean, required: true, default: false}
-        }
+        args:
+          google_args(%{
+            "file_id" => %{type: :string, required: true},
+            "role" => %{
+              type: :string,
+              required: true,
+              description: "reader/commenter/writer/owner."
+            },
+            "type" => %{type: :string, required: true, description: "user/group/domain/anyone."},
+            "grantee_email" => %{type: :string, required: false},
+            "notify" => %{type: :boolean, required: false, default: false},
+            "confirm_share" => %{type: :boolean, required: true, default: false}
+          })
       },
       %{
         name: "drive_delete",
@@ -685,11 +671,10 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         gated: true,
         description: "Permanently delete a Drive file (irreversible, bypasses trash).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "file_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "file_id" => %{type: :string, required: true}
+          })
       },
 
       # Google Docs
@@ -698,34 +683,35 @@ defmodule BusterClaw.Commands.Catalog do
         type: :read,
         tier: :safe,
         description: "Get a Google Doc's structure/content.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "document_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "document_id" => %{type: :string, required: true}
+          })
       },
       %{
         name: "docs_create",
         type: :mutate,
         tier: :restricted,
         description: "Create a Google Doc with a title.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "title" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "title" => %{type: :string, required: true}
+          })
       },
       %{
         name: "docs_batch_update",
         type: :mutate,
         tier: :restricted,
         description: "Apply edit requests to a Google Doc (insertText, replaceAllText, …).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "document_id" => %{type: :string, required: true},
-          "requests" => %{type: :array, required: true, description: "Google Docs request list."}
-        }
+        args:
+          google_args(%{
+            "document_id" => %{type: :string, required: true},
+            "requests" => %{
+              type: :array,
+              required: true,
+              description: "Google Docs request list."
+            }
+          })
       },
 
       # Google Sheets
@@ -734,88 +720,81 @@ defmodule BusterClaw.Commands.Catalog do
         type: :read,
         tier: :safe,
         description: "Get a Google Sheet's metadata.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "spreadsheet_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "spreadsheet_id" => %{type: :string, required: true}
+          })
       },
       %{
         name: "sheets_get_values",
         type: :read,
         tier: :safe,
         description: "Read a range of cell values from a Google Sheet (A1 notation).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "spreadsheet_id" => %{type: :string, required: true},
-          "range" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "spreadsheet_id" => %{type: :string, required: true},
+            "range" => %{type: :string, required: true}
+          })
       },
       %{
         name: "sheets_create",
         type: :mutate,
         tier: :restricted,
         description: "Create a Google Sheet with a title.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "title" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "title" => %{type: :string, required: true}
+          })
       },
       %{
         name: "sheets_update_values",
         type: :mutate,
         tier: :restricted,
         description: "Overwrite a range with values (USER_ENTERED).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "spreadsheet_id" => %{type: :string, required: true},
-          "range" => %{type: :string, required: true},
-          "values" => %{type: :array, required: true, description: "2-D array of row values."}
-        }
+        args:
+          google_args(%{
+            "spreadsheet_id" => %{type: :string, required: true},
+            "range" => %{type: :string, required: true},
+            "values" => %{type: :array, required: true, description: "2-D array of row values."}
+          })
       },
       %{
         name: "sheets_append_values",
         type: :mutate,
         tier: :restricted,
         description: "Append rows after a range/table.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "spreadsheet_id" => %{type: :string, required: true},
-          "range" => %{type: :string, required: true},
-          "values" => %{type: :array, required: true, description: "2-D array of row values."}
-        }
+        args:
+          google_args(%{
+            "spreadsheet_id" => %{type: :string, required: true},
+            "range" => %{type: :string, required: true},
+            "values" => %{type: :array, required: true, description: "2-D array of row values."}
+          })
       },
       %{
         name: "sheets_clear_values",
         type: :mutate,
         tier: :restricted,
         description: "Clear the values in a range (keeps formatting).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "spreadsheet_id" => %{type: :string, required: true},
-          "range" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "spreadsheet_id" => %{type: :string, required: true},
+            "range" => %{type: :string, required: true}
+          })
       },
       %{
         name: "sheets_batch_update",
         type: :mutate,
         tier: :restricted,
         description: "Apply structural edit requests to a Sheet (add/delete sheets, formatting).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "spreadsheet_id" => %{type: :string, required: true},
-          "requests" => %{
-            type: :array,
-            required: true,
-            description: "Google Sheets request list."
-          }
-        }
+        args:
+          google_args(%{
+            "spreadsheet_id" => %{type: :string, required: true},
+            "requests" => %{
+              type: :array,
+              required: true,
+              description: "Google Sheets request list."
+            }
+          })
       },
 
       # Google Slides
@@ -824,38 +803,35 @@ defmodule BusterClaw.Commands.Catalog do
         type: :read,
         tier: :safe,
         description: "Get a Google Slides presentation.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "presentation_id" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "presentation_id" => %{type: :string, required: true}
+          })
       },
       %{
         name: "slides_create",
         type: :mutate,
         tier: :restricted,
         description: "Create a Google Slides presentation with a title.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "title" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "title" => %{type: :string, required: true}
+          })
       },
       %{
         name: "slides_batch_update",
         type: :mutate,
         tier: :restricted,
         description: "Apply edit requests to a presentation (createSlide, insertText, …).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "presentation_id" => %{type: :string, required: true},
-          "requests" => %{
-            type: :array,
-            required: true,
-            description: "Google Slides request list."
-          }
-        }
+        args:
+          google_args(%{
+            "presentation_id" => %{type: :string, required: true},
+            "requests" => %{
+              type: :array,
+              required: true,
+              description: "Google Slides request list."
+            }
+          })
       },
 
       # Contacts (People)
@@ -864,35 +840,32 @@ defmodule BusterClaw.Commands.Catalog do
         type: :read,
         tier: :safe,
         description: "List the account's Google Contacts.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "page_size" => %{type: :integer, required: false, default: 100},
-          "page_token" => %{type: :string, required: false},
-          "sync_token" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "page_size" => %{type: :integer, required: false, default: 100},
+            "page_token" => %{type: :string, required: false},
+            "sync_token" => %{type: :string, required: false}
+          })
       },
       %{
         name: "contacts_search",
         type: :read,
         tier: :safe,
         description: "Search the account's Google Contacts.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "query" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "query" => %{type: :string, required: true}
+          })
       },
       %{
         name: "contacts_get",
         type: :read,
         tier: :safe,
         description: "Get one contact by resource name (e.g. people/c123).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "resource_name" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "resource_name" => %{type: :string, required: true}
+          })
       },
       %{
         name: "contacts_create",
@@ -900,32 +873,30 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         description:
           "Create a contact. Provide a raw `contact` Person resource, or given_name/family_name/contact_email/phone.",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "contact" => %{type: :object, required: false},
-          "given_name" => %{type: :string, required: false},
-          "family_name" => %{type: :string, required: false},
-          "contact_email" => %{type: :string, required: false},
-          "phone" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "contact" => %{type: :object, required: false},
+            "given_name" => %{type: :string, required: false},
+            "family_name" => %{type: :string, required: false},
+            "contact_email" => %{type: :string, required: false},
+            "phone" => %{type: :string, required: false}
+          })
       },
       %{
         name: "contacts_update",
         type: :mutate,
         tier: :restricted,
         description: "Update a contact. Requires the current etag (from contacts_get).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "resource_name" => %{type: :string, required: true},
-          "etag" => %{type: :string, required: true},
-          "contact" => %{type: :object, required: false},
-          "given_name" => %{type: :string, required: false},
-          "family_name" => %{type: :string, required: false},
-          "contact_email" => %{type: :string, required: false},
-          "phone" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "resource_name" => %{type: :string, required: true},
+            "etag" => %{type: :string, required: true},
+            "contact" => %{type: :object, required: false},
+            "given_name" => %{type: :string, required: false},
+            "family_name" => %{type: :string, required: false},
+            "contact_email" => %{type: :string, required: false},
+            "phone" => %{type: :string, required: false}
+          })
       },
       %{
         name: "contacts_delete",
@@ -933,11 +904,10 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         gated: true,
         description: "Delete a contact (irreversible).",
-        args: %{
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false},
-          "resource_name" => %{type: :string, required: true}
-        }
+        args:
+          google_args(%{
+            "resource_name" => %{type: :string, required: true}
+          })
       },
 
       # Search
@@ -1220,12 +1190,11 @@ defmodule BusterClaw.Commands.Catalog do
         tier: :restricted,
         description:
           "Send a threaded Gmail reply to a Dispatch item's sender and mark the item done.",
-        args: %{
-          "id" => %{type: :integer, required: true},
-          "body" => %{type: :string, required: true},
-          "account_id" => %{type: :integer, required: false},
-          "email" => %{type: :string, required: false}
-        }
+        args:
+          google_args(%{
+            "id" => %{type: :integer, required: true},
+            "body" => %{type: :string, required: true}
+          })
       },
       # Cross-run memory (Phase 2) — recall what past runs did.
       %{
