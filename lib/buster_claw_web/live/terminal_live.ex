@@ -33,7 +33,7 @@ defmodule BusterClawWeb.TerminalLive do
      |> assign(:startup_command, startup_command(startup_profile))
      |> assign(:startup_submit, startup_submit)
      |> assign(:terminal_commands_open, false)
-     |> assign(:terminal_command_roles, BusterClaw.TerminalCommands.roles())
+     |> assign(:terminal_command_roles, BusterClaw.TerminalCommands.menu_roles())
      |> assign(
        :terminal_path,
        terminal_path(terminal_session_key, terminal_label, startup_profile)

@@ -13,6 +13,9 @@ defmodule BusterClaw.TerminalCommands do
       label: "Install Claude Code",
       aliases: ["claude-setup", "install-claude"],
       startup_profile: "agent-setup",
+      # Kept resolvable (the Setup wizard's install button + startup-profile
+      # validation rely on it), but hidden from the terminal command menu.
+      hidden: true,
       commands: [
         %{
           key: "install-claude",
@@ -142,8 +145,14 @@ defmodule BusterClaw.TerminalCommands do
     }
   ]
 
-  @doc "Return every visible terminal role command group."
+  @doc "Return every terminal role command group, including menu-hidden ones."
   def roles, do: @roles
+
+  @doc """
+  Roles to surface in the terminal command menu — everything except those flagged
+  `hidden: true` (which stay resolvable for startup profiles but aren't listed).
+  """
+  def menu_roles, do: Enum.reject(@roles, &Map.get(&1, :hidden, false))
 
   @doc "Find a role by key or alias."
   def role(key) when is_binary(key) do

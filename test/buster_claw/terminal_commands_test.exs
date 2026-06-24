@@ -32,12 +32,18 @@ defmodule BusterClaw.TerminalCommandsTest do
     refute TerminalCommands.startup_command("shift")
   end
 
-  test "lists the Claude Code install role for onboarding" do
+  test "the Claude Code install role stays resolvable but is hidden from the menu" do
+    # Still resolvable — the Setup wizard's install button + startup-profile
+    # validation depend on it.
     assert %{key: "agent-setup", startup_profile: "agent-setup"} =
              TerminalCommands.role("agent-setup")
 
     assert TerminalCommands.startup_command("agent-setup") ==
              "brew install --cask claude-code"
+
+    # ...but not surfaced in the terminal command menu.
+    assert Enum.any?(TerminalCommands.roles(), &(&1.key == "agent-setup"))
+    refute Enum.any?(TerminalCommands.menu_roles(), &(&1.key == "agent-setup"))
   end
 
   test "does not surface the dev server (dev-only, not a runtime menu command)" do
