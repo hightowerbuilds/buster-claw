@@ -4,7 +4,7 @@ A running list of small, high-priority fixes and features to pick up.
 
 ## Items
 
-### 1. Cmd-W should not close the whole app  🔵 IN REVIEW (PR #1)
+### 1. Cmd-W should not close the whole app  🔵 IN REVIEW (PR #1) — ⚠️ STILL BROKEN
 
 **Problem:** With a single tab open, pressing **Cmd-W** closes the entire
 application. Cmd-W should only ever close a tab.
@@ -13,7 +13,22 @@ application. Cmd-W should only ever close a tab.
 - **Cmd-W** closes the current tab only.
 - If the last remaining tab is closed, the app should *not* quit — keep the
   window open (e.g. fall back to an empty/home tab) instead of terminating.
-- **Cmd-Q** is the only shortcut that closes the app.
+- **Cmd-Q** (and the red traffic-light X) are the only ways to close the window.
+
+**Root cause — it's a TWO-layer fix (PR #1's JS-only change is not enough):**
+Confirmed still broken on `main`. `desktop/tauri/src/main.rs` defines **no custom
+menu and no window-close handling**, so the app gets Tauri's **default macOS
+menu**, whose "Close Window" item is bound to **Cmd-W at the native level**. That
+native accelerator fires regardless of the TabStrip hook's
+`window.addEventListener("keydown", …, true)` + `preventDefault`, so JS can never
+fully intercept it.
+- **Native (main.rs / Tauri):** remove the Cmd-W accelerator from the default
+  menu (build a menu without the standard Window→Close item, or override it) so
+  Cmd-W is no longer a native window-close shortcut. Do **not** blanket-prevent
+  the window `CloseRequested` event — the red X and Cmd-Q must still close it.
+- **JS (`assets/js/hooks/tab_strip.js`):** change `closeCurrentTabOrWindow` to
+  **never** call `closeWindow` — always close the active tab, and when it's the
+  last tab, open a fresh home tab instead (keep the window alive).
 
 ### 2. Right-click on joined tabs to rename  🔵 IN REVIEW (PR #1)
 
@@ -149,6 +164,69 @@ aggregate into one result**, all on the Sentinel audit feed, within wallet budge
 # Then check the Sentinel feed for per-sub-run provenance + the swarm outcome.
 ```
 Once this passes once, the ecosystem roadmap is fully retired (already archived).
+
+---
+
+### 10. Tab switching by position (Cmd-1 … Cmd-9)
+
+**Problem:** There's no keyboard shortcut to jump to a specific tab by its
+position in the tab bar. Cmd-T opens a tab and Cmd-W closes one (TabStrip hook),
+but *switching* between open tabs still requires a click.
+
+**Desired behavior:**
+- **Cmd-1** activates the 1st tab, **Cmd-2** the 2nd, … **Cmd-8** the 8th, and
+  (matching the browser convention) **Cmd-9** jumps to the *last* tab regardless
+  of count.
+- Position follows the visible left-to-right order in the tab strip (the
+  persisted tab order), so it tracks drag-reorders.
+- No-op if there's no tab at that index.
+
+**Notes / scope:**
+- Lives in the **TabStrip** hook (`assets/js/hooks/tab_strip.js`): extend
+  `handleShortcut/1` (already handling Cmd-T / Cmd-W) to catch Cmd-1…9. Read the
+  ordered list via `this.load()`, pick the Nth tab, and navigate with
+  `window.location.href = tab.path` (the same path TabStrip already uses).
+- Capture-phase keydown is already wired (`window.addEventListener("keydown",
+  this.onKeydown, true)`), so it beats xterm's own key handling when a terminal
+  is focused.
+- The handler already gates on `metaKey || ctrlKey`, so Ctrl-1…9 comes along for
+  free on non-mac.
+- Numbering counts **top-level** tabs only — Settings sub-routes that collapse
+  into one tab share a single key, which `this.load()` already reflects.
+
+### 11. Confirm before closing a busy terminal
+
+**Problem:** A terminal tab can be closed with a single Cmd-W / × click while a
+process is still running in it (a build, a long command, or — worst — a live
+Claude Code / Codex agent session). There's no guard, so it's easy to
+**accidentally kill a running terminal** and lose the work in flight.
+
+**Desired behavior:**
+- When closing a terminal tab whose PTY has a **running foreground process**
+  (anything beyond an idle shell prompt), show a **confirmation modal** —
+  "This terminal is running something. Close it anyway?" — before the tab/PTY is
+  destroyed.
+- An **idle** terminal (shell at the prompt) closes with no prompt, as today.
+- Goal: eliminate *accidental* closes; deliberate ones still go through with one
+  confirm.
+
+**Notes / scope:**
+- Closing a terminal tab flows through `TabStrip.closeTab` (`tab_strip.js`) →
+  navigation → `TerminalView.destroyed` (`terminal.js`), which invokes
+  `terminal_close` for keyless PTYs. The confirm has to gate **both** the × click
+  and the **Cmd-W** path (and any future Cmd-9-style close).
+- **The hard part is the "is it busy?" signal** — the PTY lives in Rust
+  (`desktop/tauri/src/terminal.rs`), not JS. Most reliable: on the native side,
+  compare the PTY master's **foreground process group** (`tcgetpgrp` on the pty
+  fd) against the shell's own pid — if they differ, a child is running. Expose it
+  as a `terminal_busy(id)` Tauri command (or fold a `busy` flag into the existing
+  tab metadata) that the close path queries before destroying.
+- Heuristic fallback if the fg-pgrp read is awkward: treat a terminal as busy if
+  it was opened with a `startup_command` / agent `role_key` (the
+  Claude-Code/Codex tabs we most want to protect) — coarser but cheap.
+- Reuse the app's existing confirm UX where possible; the simple `data-confirm`
+  attribute won't work here because the decision is **async/native**, so this
+  likely needs a small custom modal triggered after the busy query resolves.
 
 ---
 
