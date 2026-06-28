@@ -70,6 +70,7 @@ defmodule BusterClawWeb.Router do
     post "/bookmarks", BrowserBookmarkController, :create
     post "/bookmarks/remove", BrowserBookmarkController, :delete
     post "/screenshot", BrowserScreenshotController, :create
+    post "/command", BrowserCommandController, :create
   end
 
   # Loopback JSON for the in-app browser's financial-informant.html page (its

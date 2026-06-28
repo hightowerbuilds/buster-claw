@@ -443,9 +443,43 @@ const Hooks = {
           this.report(ref, {error: String(e).slice(0, 200)})
         }
       })
+      // Agent co-presence: read/drive the live browser tab. The server pushes
+      // "bc:browser_command" with {ref, action, payload}; we invoke the matching
+      // Tauri command and POST the result back to /browser/command.
+      this.handleEvent("bc:browser_command", async ({ref, action, payload}) => {
+        const invoke = window.__TAURI__?.core?.invoke
+        if (!invoke) {
+          this.reportCommand(ref, {error: "desktop app required for browser commands"})
+          return
+        }
+        try {
+          let data = {ok: true}
+          if (action === "current") {
+            const cur = await invoke("browser_current")
+            data = {ok: true, url: cur.url, title: cur.title}
+          } else if (action === "navigate") {
+            await invoke("browser_navigate_active", {url: payload.url})
+          } else if (action === "open_tab") {
+            await invoke("browser_open_tab_active", {url: payload.url})
+          } else {
+            this.reportCommand(ref, {error: "unknown browser command"})
+            return
+          }
+          this.reportCommand(ref, data)
+        } catch (e) {
+          this.reportCommand(ref, {error: String(e).slice(0, 200)})
+        }
+      })
     },
     report(ref, payload) {
       fetch("/browser/screenshot", {
+        method: "POST",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify({ref, ...payload}),
+      }).catch(() => {})
+    },
+    reportCommand(ref, payload) {
+      fetch("/browser/command", {
         method: "POST",
         headers: {"content-type": "application/json"},
         body: JSON.stringify({ref, ...payload}),
