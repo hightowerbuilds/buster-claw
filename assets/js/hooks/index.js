@@ -2,7 +2,7 @@
 // lives in its own domain module; add new ones here.
 import {CornerWidget} from "./corner_widget.js"
 import {ScreenshotBridge, EmbeddedBrowser} from "./browser.js"
-import {VoiceBridge, VoiceToggle, VoiceDevices, Mic} from "./voice.js"
+import {VoiceBridge, VoiceToggle} from "./voice.js"
 import {AgentChat, ThinkingTimer, QueueRail} from "./chat.js"
 import {CrtAberration} from "./crt.js"
 import {CalendarDrag, CalendarPopover} from "./calendar.js"
@@ -15,8 +15,6 @@ export const Hooks = {
   ScreenshotBridge,
   VoiceBridge,
   VoiceToggle,
-  VoiceDevices,
-  Mic,
   AgentChat,
   ThinkingTimer,
   QueueRail,

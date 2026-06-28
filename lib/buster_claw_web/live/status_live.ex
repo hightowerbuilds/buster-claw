@@ -77,13 +77,6 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
-  # Voice input (push-to-talk) failed client-side — surface it to the user. The
-  # capture/transcription itself is device I/O in the Tauri shell; this just
-  # reports the failure (mic denied, model missing, …) via the flash.
-  def handle_event("voice_error", %{"message" => message}, socket) do
-    {:noreply, put_flash(socket, :error, message)}
-  end
-
   def handle_event("cancel_queued", %{"id" => id}, socket) do
     case Integer.parse(id) do
       {qid, ""} -> Chat.remove_queued(socket.assigns.active_chat, qid)

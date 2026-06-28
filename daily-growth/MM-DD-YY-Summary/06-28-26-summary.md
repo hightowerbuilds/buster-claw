@@ -4,6 +4,65 @@ Returned to the **voice STT** effort and finally found the root cause that five
 prior laps had missed. Diagnosed it, proved the wrong fixes wrong, made the code
 crash-safe, and rewrote the roadmap around the real path (the packaged `.app`).
 
+**Then — end of day — demolished the whole thing.** A review asked the harder
+question the five laps never did: *is Whisper even the right tool here?* The answer
+was no. The sections below this one are now history; the reversal is the decision
+that stands.
+
+## Reversal — demolished the Whisper STT stack
+
+After the root-cause work above, a focused review concluded that **Whisper was
+overkill for the job it was actually doing.** The feature is push-to-talk dictation
+into the chat composer that the user *reviews and sends manually* (never
+auto-sent) — the most commodity speech task there is — yet it carried the heaviest
+possible implementation: a statically-linked whisper.cpp on Metal, a bundled 142MB
+model, a hand-rolled resampler, anti-hallucination decode tuning, and an unproven
+notarization/entitlement gamble riding the same critical path as Apple signing.
+Five sessions in, it had **never transcribed a single real word.** Voice *control*
+(hands-free, agent-driven, streaming) is a genuinely separate product that
+batch-PTT Whisper doesn't seed — so finishing this bought a polished dictation box,
+not a step toward that. Verdict: rip out Whisper STT; if dictation comes back, lean
+on the OS (`SFSpeechRecognizer`), which is TCC-native, free, and model-less.
+
+**Kept** — the text-to-speech half, which never touched Whisper: the `/usr/bin/say`
+worker (`voice.rs`), `speak`/`stop_speaking`, the `VoiceBridge`/`VoiceToggle` hooks,
+`maybe_speak` + the `bc:speak`/`bc:stop_speak` pipeline. Spoken replies + the Voice
+on/off toggle are unchanged.
+
+**Removed** — everything STT:
+
+- `desktop/tauri/src/voice.rs` — truncated to TTS only (828 → 111 lines): dropped the
+  `stt` + `mic_auth` modules, `start/stop_recording`, `list_input_devices`, the boot
+  self-check, `MODEL_PATH`/`set_model_path`, `Transcript`/`DeviceInfo`.
+- `main.rs` — the 3 STT command registrations, the model-path setup block, and
+  `resolve_voice_model`.
+- `Cargo.toml` — `cpal` + `whisper-rs` deps (kept `objc`/`block` — browser screenshot
+  uses them).
+- `tauri.conf.json` — the `resources/models` bundle mapping; deleted the 141MB
+  `resources/models/ggml-base.en.bin` and the dir.
+- `Info.plist` — deleted (only held `NSMicrophoneUsageDescription`). `Entitlements.plist`
+  — dropped `audio-input`, kept as an empty placeholder for future signing.
+- Frontend — `hooks/voice.js` truncated to `VoiceBridge`/`VoiceToggle` (dropped `Mic`
+  + `VoiceDevices`); `hooks/index.js` registry trimmed; orphaned `.ic-voice-bars` CSS
+  removed.
+- LiveView — removed the chat-composer mic button + listening overlay
+  (`chat_panel.ex`); rewrote `voice_live.ex` to a TTS-only "Spoken replies" page
+  (route + Settings tab kept); dropped the dead `voice_error` handler from
+  `status_live.ex`.
+- Scripts/docs — deleted `scripts/fetch_whisper_model.sh`; stripped the STT sections
+  from `BUILD.md` and `docs/DESKTOP_PACKAGING.md`.
+- Moved `06-28-26-voice-stt-packaging-verification-roadmap.md` to
+  `daily-growth/old-maps/`.
+
+Verified: `cargo check` clean (pre-existing `browser.rs` clippy warnings only),
+`mix compile --warnings-as-errors` clean, both edited JS modules pass `node --check`,
+and a full source grep for STT/whisper/mic-capture symbols comes back empty.
+
+---
+
+> The sections below predate the reversal and describe the now-removed STT work.
+> They're kept for the record of how the decision was reached.
+
 ## Root cause — found it
 
 The "garbage transcripts" were **whisper hallucinating on pure silence.** Every
