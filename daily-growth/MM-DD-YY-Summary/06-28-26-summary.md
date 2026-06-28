@@ -268,3 +268,10 @@ Scanlines are `pointer-events:none`, so CalendarDrag and clicks pass through —
 change. Verified clean under `--warnings-as-errors` + esbuild + tailwind; not yet
 smoke-tested live (empty-cell scanline legibility and wash visibility on the dark
 theme are the eyeball items).
+
+**Full-width follow-up** — the `/calendar` grid was capped by the layout's
+`max-w-7xl`. Added a `wide` opt-in to `Layouts.app` that drops *only* the
+centered max-width (keeping padding + the normal no-scroll vertical behavior —
+unlike `full_bleed`, which also changes height/scroll). `CalendarLive` passes
+`wide`; the grid now fills the full window width while the vertical sizing is
+unchanged. Scoped to the calendar — every other page keeps the centered max-width.

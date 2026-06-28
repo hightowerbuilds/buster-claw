@@ -201,7 +201,7 @@ defmodule BusterClawWeb.CalendarLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} wide>
       <section class="space-y-6">
         <p :if={@result} class="ic-panel px-4 py-3 text-sm">
           {@result}
@@ -438,7 +438,7 @@ defmodule BusterClawWeb.CalendarLive do
 
   defp day_view(assigns) do
     ~H"""
-    <div class="border-b border-base-300 px-4 py-3 text-sm">
+    <div class="border-b border-base-content/15 px-4 py-3 text-sm">
       <span class="font-semibold">{Elixir.Calendar.strftime(@day.date, "%A")}</span>
       <span class="ml-2 text-base-content/60">
         {Elixir.Calendar.strftime(@day.date, "%B %-d, %Y")}
