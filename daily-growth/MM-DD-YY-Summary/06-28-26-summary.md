@@ -73,3 +73,79 @@ error; in the bare dev binary the feature degrades gracefully.
 - Open distribution gap noted in the roadmap: `scripts/build_desktop.sh` does not
   yet call `scripts/fetch_whisper_model.sh`, so a clean build bundles an empty
   models dir → voice silently dead in the `.app`.
+
+## Front-end — modularized `assets/js/app.js`
+
+A code-quality pass flagged `app.js` as the largest file in the app at **2,094
+lines** (a single monolith holding every LiveView hook plus shared helpers). Split
+it into focused ES modules; `app.js` is now **72 lines** and just wires up the
+LiveSocket.
+
+- **`lib/`** — shared helpers: `theme.js` (terminal color themes + the
+  `liveTerminals` registry), `ansi.js` (the CSI/SGR transparent-background
+  stripper), `tabs.js` (tab model + path/label helpers), `voice.js`
+  (`voiceOutEnabled`), `globals.js` (documents sidebar + copy buttons).
+- **`hooks/`** — one file per hook domain: `tab_strip.js` (547), `terminal.js`
+  (TerminalView + TermThemePicker), `voice.js` (Bridge/Toggle/Devices/Mic),
+  `chat.js` (AgentChat/ThinkingTimer/QueueRail), `browser.js`
+  (ScreenshotBridge + EmbeddedBrowser), plus `corner_widget`, `split`,
+  `calendar`, `crt`. `hooks/index.js` merges all 16 into one `Hooks` export.
+
+Behavior-preserving — code was moved, not rewritten; shared state like
+`liveTerminals` lives in one module and is imported where needed (ES modules are
+singletons). esbuild bundles it back into one file at build time, so the split has
+zero runtime cost. Verified: `mix esbuild buster_claw` builds clean (exit 0), all
+16 hooks present (one per module, all wired into the index), and every
+shared-helper reference is properly imported (no silent runtime `ReferenceError`).
+Not yet smoke-tested live in the running app.
+
+## Shortlist consolidation + parallel batch (5 PRs)
+
+Consolidated the leftover items from the two retired roadmaps
+(`06-20-26-browser-review`, `06-20-26-ecosystem-roadmap-refined`) into
+`daily-growth/roadmaps/Shortlist.md` — only the *unshipped* work, since most of
+both maps already landed (screenshots, bookmark tags/agent commands, favicons,
+search, bookmark bar; ecosystem Phases 0–4). Archived both maps to `old-maps/`.
+
+Then ran a parallel batch — 5 background worker agents, each in its own git
+worktree, one PR apiece — to clear the actionable Shortlist items (1, 2, 4, 5, 6,
+7). Item 3 (CRT calendar) was already done; item 8 (LRU eviction) deferred as "not
+urgent"; item 9 (swarm smoke-test) stays a manual live-app test.
+
+- **PR #1 — Tab UX (items 1 & 2):** Cmd-W never quits (falls back to a home tab,
+  Cmd-Q untouched) + "Rename" added to the tab flyout menu, reusing the existing
+  inline-rename path.
+- **PR #2 — History → SQLite (item 6):** moved `BrowserHistory` to an Ecto/SQLite
+  table with FTS5 search, visit counts, day-grouping, ranged clear; no 50-cap, no
+  silent-drop. Added a deduped `recent/0` for display.
+- **PR #3 — Chrome polish (item 5):** loading indicator (spinner + top progress
+  bar), real page-title tabs via a new `on_page_load` WKWebView title read, tab
+  favicons, + a 20s spinner safety timeout.
+- **PR #4 — Bookmark folders + import/export (item 7):** `folder` field +
+  grouped rendering, `export`/`export_html`/`import`, two new agent commands
+  (`bookmark_export`/`bookmark_import`); backward-compatible with flat files.
+- **PR #5 — Agent co-presence commands (item 4):** `browser_current` /
+  `browser_navigate` / `browser_open_tab`, all `:restricted` + Sentinel-audited,
+  copying the `browser_screenshot` bridge pattern (Elixir bridge + Tauri command +
+  JS hook).
+
+Verification bar was **compile + tests** (each passed `mix test` 660–673, 0
+failures; `cargo check` where relevant) — interactive desktop click-through is
+left as a manual checklist appended to `Shortlist.md`. Each worker ran the
+`code-review` skill and fixed real findings (spinner-stuck, history dup-flood,
+folder-clobber, dead-command wiring).
+
+Two follow-ups flagged: (1) the `assets/js/hooks/` + `assets/js/lib/` split is
+still uncommitted on `main`, so PRs #1/#5 (JS) need that committed/rebased before
+merge; (2) `mix precommit` halts on a pre-existing repo-wide `credo --strict`
+backlog (fails on `main` too) — worth a dedicated cleanup pass.
+
+### Solid.js — considered and declined
+
+Evaluated Solid.js for the modularization (raised as a "premiere option"). Declined:
+this is a **Phoenix LiveView** app where the server owns and patches the DOM and
+client JS is imperative hook glue, not declarative UI components. Solid would fight
+LiveView for DOM ownership (`phx-update="ignore"` islands + manual lifecycle
+bridging) and add a JSX/compile step + runtime dependency to solve a problem the
+file doesn't have. Plain ES modules — already in the toolchain — delivered the full
+modularization win with no new dependency.
