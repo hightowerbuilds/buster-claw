@@ -253,6 +253,97 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, String> {
     Err("voice input is only available in the macOS desktop app".into())
 }
 
+/// Microphone authorization (macOS TCC). Opening a cpal stream does NOT prompt
+/// for mic access — an unauthorized app is handed a *silent* stream (all-zero
+/// samples), which then makes whisper hallucinate words out of the silence.
+///
+/// IMPORTANT macOS constraint: `requestAccessForMediaType` shows the system prompt
+/// only when macOS can read `NSMicrophoneUsageDescription`, and it reads that from
+/// a real `.app` BUNDLE's Info.plist — NOT from the section embedded in a bare
+/// executable. Calling it without that string visible HARD-CRASHES the process
+/// (SIGABRT, "Namespace TCC … without a usage description"). A bare `cargo tauri
+/// dev` binary has no bundle, so we must never request from one. We therefore only
+/// REQUEST when running inside a bundle (the packaged app); from a bare dev binary
+/// we just READ the status (which never crashes) — already-granted access (e.g.
+/// inherited from the launching terminal) still works, and anything else returns a
+/// clear error instead of crashing or silently transcribing zeros.
+#[cfg(target_os = "macos")]
+mod mic_auth {
+    use block::ConcreteBlock;
+    use objc::runtime::{Object, BOOL};
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    // AVAuthorizationStatus (NSInteger).
+    const RESTRICTED: i64 = 1;
+    const DENIED: i64 = 2;
+    const AUTHORIZED: i64 = 3;
+
+    #[link(name = "AVFoundation", kind = "framework")]
+    extern "C" {
+        // AVMediaType is an NSString constant; for audio it is @"soun".
+        static AVMediaTypeAudio: *const Object;
+    }
+
+    const SETTINGS_HINT: &str =
+        "microphone access not granted — open System Settings → Privacy & Security → \
+         Microphone, enable it, then try again";
+
+    const DEV_HINT: &str =
+        "microphone can't be requested from the bare dev binary (macOS would crash). \
+         Grant mic access to the terminal you launched from under System Settings → \
+         Privacy & Security → Microphone, or run the packaged .app, then try again";
+
+    /// True only when this executable lives inside a `.app` bundle, where macOS can
+    /// read the usage string and `requestAccess` is safe to call.
+    fn in_app_bundle() -> bool {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.contains(".app/Contents/MacOS/")))
+            .unwrap_or(false)
+    }
+
+    /// Read-only status check — never shows UI, never crashes.
+    unsafe fn status() -> i64 {
+        let cls = class!(AVCaptureDevice);
+        msg_send![cls, authorizationStatusForMediaType: AVMediaTypeAudio]
+    }
+
+    /// Ensure the app is authorized to use the microphone. Safe to call from a
+    /// Tauri command worker thread (it may block on a first-run prompt).
+    pub fn ensure_authorized() -> Result<(), String> {
+        unsafe {
+            match status() {
+                AUTHORIZED => return Ok(()),
+                DENIED => return Err(SETTINGS_HINT.into()),
+                RESTRICTED => return Err("microphone access is restricted on this device".into()),
+                _ => {} // NotDetermined — fall through to a request (bundle only).
+            }
+
+            // NotDetermined. Requesting is only safe inside a bundle (see module
+            // docs); from a bare binary, refuse with guidance rather than crash.
+            if !in_app_bundle() {
+                return Err(DEV_HINT.into());
+            }
+
+            let (tx, rx) = mpsc::channel::<bool>();
+            let handler = ConcreteBlock::new(move |granted: BOOL| {
+                let _ = tx.send(granted != 0);
+            })
+            .copy();
+            let cls = class!(AVCaptureDevice);
+            let _: () =
+                msg_send![cls, requestAccessForMediaType: AVMediaTypeAudio completionHandler: &*handler];
+            match rx.recv_timeout(Duration::from_secs(120)) {
+                Ok(true) => Ok(()),
+                Ok(false) => Err(SETTINGS_HINT.into()),
+                Err(_) => Err("microphone permission request timed out".into()),
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod stt {
     use std::sync::{mpsc, Arc, Mutex, OnceLock};
@@ -318,6 +409,11 @@ mod stt {
         if guard.is_some() {
             return Err("already recording".into());
         }
+
+        // Ask macOS for mic access *before* opening the stream. Without this the
+        // stream opens fine but yields all-zero samples (silent denial), the root
+        // cause behind whisper transcribing garbage from "captured" silence.
+        super::mic_auth::ensure_authorized()?;
 
         let host = cpal::default_host();
         let device = match device_name {
@@ -406,9 +502,14 @@ mod stt {
         // Save exactly what the mic captured (native rate) so we can play it back.
         write_debug_wav("voice-debug-raw.wav", &captured, active.sample_rate);
 
-        let mut audio = resample_to_16k(&captured, active.sample_rate);
+        let resampled = resample_to_16k(&captured, active.sample_rate);
+        // Trim leading/trailing near-silence before whisper sees it: dead air is
+        // whisper's prime hallucination trigger, so hand it speech, not the quiet
+        // around it. Conservative threshold + padding so a word is never clipped.
+        let mut audio = trim_silence(&resampled, TARGET_RATE);
         eprintln!(
-            "[buster-claw][voice] resampled -> {} samples (16 kHz, {:.2}s)",
+            "[buster-claw][voice] resampled -> {} samples, trimmed -> {} samples (16 kHz, {:.2}s)",
+            resampled.len(),
             audio.len(),
             audio.len() as f32 / TARGET_RATE as f32
         );
@@ -595,6 +696,52 @@ mod stt {
         }
     }
 
+    /// Trim leading/trailing near-silence from a 16 kHz mono buffer so whisper is
+    /// handed speech, not the dead air around it (the main hallucination trigger).
+    /// Energy is measured in 20 ms windows against a threshold relative to the
+    /// clip's own peak; the kept span is padded by 100 ms each side so the first
+    /// and last words are never clipped. If no window crosses the threshold the
+    /// buffer is returned untouched — the caller's MIN_SAMPLES check and whisper's
+    /// own no-speech threshold decide what to do with an all-quiet clip.
+    fn trim_silence(audio: &[f32], rate: u32) -> Vec<f32> {
+        if audio.is_empty() {
+            return audio.to_vec();
+        }
+        let peak = audio.iter().fold(0.0_f32, |m, &s| m.max(s.abs()));
+        if peak <= 0.0 {
+            return audio.to_vec();
+        }
+
+        let threshold = (peak * 0.08).max(0.005);
+        let win = (rate as usize / 50).max(1); // 20 ms windows
+        let pad = (rate as usize / 10).max(0); // 100 ms padding each side
+
+        let mut first: Option<usize> = None;
+        let mut last = 0usize;
+        let mut i = 0;
+        while i < audio.len() {
+            let end = (i + win).min(audio.len());
+            let window = &audio[i..end];
+            let rms = (window.iter().map(|s| s * s).sum::<f32>() / window.len() as f32).sqrt();
+            if rms > threshold {
+                if first.is_none() {
+                    first = Some(i);
+                }
+                last = end;
+            }
+            i = end;
+        }
+
+        match first {
+            None => audio.to_vec(),
+            Some(start) => {
+                let start = start.saturating_sub(pad);
+                let stop = (last + pad).min(audio.len());
+                audio[start..stop].to_vec()
+            }
+        }
+    }
+
     /// The whisper context is expensive to build (loads the ~142MB model), so
     /// load it once and reuse it; each transcription gets a fresh state.
     fn whisper() -> Result<Arc<WhisperContext>, String> {
@@ -624,13 +771,38 @@ mod stt {
             .create_state()
             .map_err(|e| format!("whisper state: {e}"))?;
 
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        // Beam search beats greedy on short utterances and, with the thresholds
+        // below, is far less prone to inventing words on quiet/non-speech audio.
+        // beam_size 5 matches whisper.cpp's default; patience -1.0 is its default.
+        let mut params = FullParams::new(SamplingStrategy::BeamSearch {
+            beam_size: 5,
+            patience: -1.0,
+        });
         let threads = std::thread::available_parallelism()
             .map(|n| n.get().min(8) as i32)
             .unwrap_or(4);
         params.set_n_threads(threads);
         params.set_language(Some("en"));
         params.set_translate(false);
+
+        // A push-to-talk clip is one short utterance with no prior context: don't
+        // condition on history, and decode it as a single segment so there's no
+        // segment boundary for whisper to hallucinate trailing text at.
+        params.set_no_context(true);
+        params.set_single_segment(true);
+
+        // Pin temperature at 0 and disable the temperature-fallback retries that,
+        // on hard or near-empty audio, are exactly what make whisper start
+        // inventing text instead of returning nothing.
+        params.set_temperature(0.0);
+        params.set_temperature_inc(0.0);
+
+        // Treat a segment past this no-speech probability as silence (empty), and
+        // suppress blank + non-speech tokens so background noise isn't "transcribed".
+        params.set_no_speech_thold(0.6);
+        params.set_suppress_blank(true);
+        params.set_suppress_nst(true);
+
         params.set_print_special(false);
         params.set_print_progress(false);
         params.set_print_realtime(false);
