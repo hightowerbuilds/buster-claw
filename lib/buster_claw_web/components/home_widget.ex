@@ -12,7 +12,7 @@ defmodule BusterClawWeb.HomeWidget do
   attr :tab, :string, required: true
   attr :entries, :list, required: true
   attr :today, Date, required: true
-  attr :events, :list, required: true
+  attr :days, :list, required: true
 
   # Calendar + Contacts as a rectangle filling the header gap to the right of the
   # banner. The card is absolutely positioned to fill the widget box, so its
@@ -38,7 +38,7 @@ defmodule BusterClawWeb.HomeWidget do
 
       <div
         data-corner-card
-        class="ic-corner-card ic-panel flex flex-col overflow-hidden"
+        class="ic-corner-card ic-panel ic-scanlines flex flex-col overflow-hidden"
       >
         <div
           role="tablist"
@@ -70,9 +70,9 @@ defmodule BusterClawWeb.HomeWidget do
 
         <div class="min-h-0 flex-1 overflow-auto">
           <div class={["h-full", @tab != "calendar" && "hidden"]}>
-            <.daily_calendar_panel today={@today} events={@events} />
+            <.month_calendar today={@today} days={@days} />
           </div>
-          <div class={@tab != "contacts" && "hidden"}>
+          <div class={["h-full", @tab != "contacts" && "hidden"]}>
             <BusterClawWeb.TrustedContactsPanel.panel entries={@entries} />
           </div>
         </div>
@@ -81,195 +81,89 @@ defmodule BusterClawWeb.HomeWidget do
     """
   end
 
-  # Vertical channel (px) left below each region so the track separator line
-  # stays visible between stacked tracks.
-  @lane_gap_px 4
-
   attr :today, Date, required: true
-  attr :events, :list, required: true
+  attr :days, :list, required: true
 
-  defp daily_calendar_panel(assigns) do
-    {all_day, timed} = Enum.split_with(assigns.events, &(&1.start_time == nil))
-    assigns = assign(assigns, timeline: build_timeline(timed), all_day: all_day)
-
+  # The current month as a Sunday-aligned grid that fills the card both axes.
+  # Today is highlighted; days with events carry a dot and a hidden detail block
+  # the CalendarPopover hook reveals as a floating popover on hover.
+  defp month_calendar(assigns) do
     ~H"""
-    <section id="home-daily-calendar" class="ic-panel flex h-full flex-col">
-      <header class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
-        <div>
-          <p class="ic-eyebrow">Today's Calendar</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            {Elixir.Calendar.strftime(@today, "%A, %B %-d")}
-          </h2>
-        </div>
-
-        <.link
-          navigate={~p"/calendar"}
-          class="rounded-sm border-2 border-base-content/25 px-3 py-2 font-mono text-xs uppercase tracking-wide text-base-content/70 transition hover:border-primary hover:text-primary"
-        >
-          Open Calendar
-        </.link>
-      </header>
-
-      <div class="flex min-h-0 flex-1 flex-col gap-3 p-5">
-        <%!-- All-day events: full-width rectangle bars above the hour grid. Like
-              the timed regions, the label is revealed only on hover. --%>
-        <div :if={@all_day != []} class="flex shrink-0 flex-col gap-1">
-          <div
-            :for={event <- @all_day}
-            id={"home-allday-#{event.id}-#{Date.to_iso8601(event.date)}"}
-            class={["ic-daygrid-bar flex items-center px-1.5 py-1.5", event_color_class(event.color)]}
-            title={"All day · #{event.title}"}
-          >
-            <span class="truncate font-mono text-[0.625rem] font-bold uppercase leading-none tracking-wide">
-              {event.title}
-            </span>
-          </div>
-        </div>
-
-        <%!-- The day as a Pro Tools–style timeline. Fluid: hour columns split the
-              full width, tracks split the full remaining height. --%>
-        <div :if={@timeline != :empty} class="flex min-h-0 flex-1 select-none flex-col">
-          <div class="ic-daygrid-ruler flex shrink-0">
-            <div
-              :for={hour <- @timeline.hours}
-              class="ic-ruler-cell flex-1 pl-1.5 pt-px font-mono text-[0.625rem] font-semibold uppercase leading-none tracking-wide text-base-content/70"
-            >
-              {hour_label(hour)}
-            </div>
-          </div>
-
-          <div
-            class="ic-daygrid relative min-h-0 flex-1"
-            style={"--hour-w: #{@timeline.hour_w}%; --lane-h: #{@timeline.lane_h}%"}
-          >
-            <div
-              :for={block <- @timeline.blocks}
-              id={"home-block-#{block.event.id}-#{Date.to_iso8601(block.event.date)}"}
-              class={["ic-daygrid-block", event_color_class(block.event.color)]}
-              style={block_style(block, @timeline.lane_count)}
-              title={"#{block_time_label(block.event)} · #{block.event.title}"}
-            >
-              <p class="ic-daygrid-head truncate px-1.5 py-0.5 font-mono text-[0.625rem] font-bold uppercase leading-none tracking-wide">
-                {block.event.title}
-              </p>
-              <p class="truncate px-1.5 pt-0.5 font-mono text-[0.625rem] leading-none tracking-wide text-base-content/70">
-                {block_time_label(block.event)}
-              </p>
-            </div>
-          </div>
-        </div>
-
+    <section class="ic-panel flex h-full flex-col">
+      <div class="grid shrink-0 grid-cols-7 gap-1.5 border-b border-base-content/15 px-3 pb-2 pt-3">
         <div
-          :if={@timeline == :empty and @all_day == []}
-          class="flex flex-1 items-center justify-center rounded border border-dashed border-base-300 px-4 text-center text-sm text-base-content/60"
+          :for={label <- ~w(Sun Mon Tue Wed Thu Fri Sat)}
+          class="text-center font-mono text-[0.625rem] font-bold uppercase tracking-wide text-base-content/45"
         >
-          Nothing scheduled today.
+          {String.first(label)}
+        </div>
+      </div>
+
+      <div
+        id="home-month-grid"
+        phx-hook="CalendarPopover"
+        class="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1.5 px-3 py-3"
+      >
+        <div
+          :for={day <- @days}
+          data-day
+          data-has-events={day.events != [] && "1"}
+          class={[
+            "relative flex items-center justify-center rounded-xs font-mono text-xs transition",
+            day_cell_class(day, @today)
+          ]}
+        >
+          {day.date.day}
+
+          <div :if={day.events != []} data-day-detail hidden>
+            <p class="mb-1 font-mono text-[0.625rem] font-bold uppercase tracking-wide text-base-content/60">
+              {Elixir.Calendar.strftime(day.date, "%a · %b %-d")}
+            </p>
+            <ul class="space-y-0.5">
+              <li
+                :for={event <- day.events}
+                class={["flex items-baseline gap-1.5 font-mono text-[0.6875rem]", event_color_class(event.color)]}
+              >
+                <span class="shrink-0 text-current">{event_time_label(event)}</span>
+                <span class="truncate text-base-content">{event.title}</span>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </section>
     """
   end
 
-  # Lay timed events out on the hour grid: clamp the visible window to the span
-  # that actually holds events, assign overlapping events to stacked tracks, and
-  # express geometry as fractions of the (fluid) grid so it fills the card both
-  # axes. Returns `:empty` when nothing is timed. `hour_w`/`lane_h` are the
-  # column/row sizes as percentages, fed to the CSS ruling via custom props.
-  defp build_timeline([]), do: :empty
-
-  defp build_timeline(events) do
-    items = Enum.map(events, &with_minutes/1)
-
-    start_min = items |> Enum.map(& &1.start_min) |> Enum.min() |> floor_hour()
-    end_min = items |> Enum.map(& &1.end_min) |> Enum.max() |> ceil_hour()
-    span = end_min - start_min
-
-    {blocks, lane_count} = assign_lanes(items)
-    first_hour = div(start_min, 60)
-    last_hour = div(end_min, 60) - 1
-    hours = Enum.to_list(first_hour..last_hour)
-
-    blocks =
-      Enum.map(blocks, fn item ->
-        Map.merge(item, %{
-          left_pct: pct((item.start_min - start_min) / span * 100),
-          width_pct: pct((item.end_min - item.start_min) / span * 100)
-        })
-      end)
-
-    %{
-      blocks: blocks,
-      hours: hours,
-      lane_count: lane_count,
-      hour_w: pct(100 / length(hours)),
-      lane_h: pct(100 / lane_count)
-    }
+  # Today wins (solid primary fill); then days with events take a translucent
+  # fill of the first event's category color so the whole cell reads as "busy" at
+  # a glance (the hover popover lists them). Out-of-month empty days are dimmed.
+  defp day_cell_class(day, today) do
+    cond do
+      day.date == today -> "bg-primary font-bold text-primary-content"
+      day.events != [] -> event_bg_class(hd(day.events).color)
+      not day.in_month? -> "text-base-content/35 hover:bg-base-content/5"
+      true -> "text-base-content hover:bg-base-content/5"
+    end
   end
 
-  # Annotate an event with start/end minutes-from-midnight. A missing end_time
-  # defaults to a one-hour block; enforce a 15-minute floor so zero/short spans
-  # still render.
-  defp with_minutes(event) do
-    start_min = minutes(event.start_time)
-    end_min = if event.end_time, do: minutes(event.end_time), else: start_min + 60
-    %{event: event, start_min: start_min, end_min: max(end_min, start_min + 15)}
+  defp event_bg_class(color) do
+    case color do
+      "work" -> "bg-info/35 text-base-content"
+      "personal" -> "bg-secondary/35 text-base-content"
+      "social" -> "bg-accent/35 text-base-content"
+      "travel" -> "bg-warning/35 text-base-content"
+      "health" -> "bg-success/35 text-base-content"
+      "holiday" -> "bg-error/35 text-base-content"
+      _ -> "bg-primary/35 text-base-content"
+    end
   end
 
-  # Greedy interval partition: place each event in the first lane whose previous
-  # block has already ended, else open a new lane. Returns {blocks, lane_count}.
-  defp assign_lanes(items) do
-    items
-    |> Enum.sort_by(& &1.start_min)
-    |> Enum.reduce({[], []}, fn item, {placed, lane_ends} ->
-      case Enum.find_index(lane_ends, &(&1 <= item.start_min)) do
-        nil ->
-          {[Map.put(item, :lane, length(lane_ends)) | placed], lane_ends ++ [item.end_min]}
+  defp event_time_label(%{start_time: nil}), do: "All day"
+  defp event_time_label(%{start_time: %Time{} = time}), do: Elixir.Calendar.strftime(time, "%H:%M")
 
-        idx ->
-          {[Map.put(item, :lane, idx) | placed], List.replace_at(lane_ends, idx, item.end_min)}
-      end
-    end)
-    |> then(fn {placed, lane_ends} -> {Enum.reverse(placed), max(length(lane_ends), 1)} end)
-  end
-
-  # Geometry as fractions of the fluid grid: x/width track the event's span,
-  # the track row splits the height evenly (less a channel for the separator).
-  defp block_style(block, lane_count) do
-    top = pct(block.lane / lane_count * 100)
-
-    "left: #{block.left_pct}%; width: #{block.width_pct}%; top: #{top}%; " <>
-      "height: calc(100% / #{lane_count} - #{@lane_gap_px}px)"
-  end
-
-  defp minutes(%Time{hour: hour, minute: minute}), do: hour * 60 + minute
-  defp floor_hour(min), do: div(min, 60) * 60
-  defp ceil_hour(min), do: div(min + 59, 60) * 60
-
-  # Round a percentage to 2 decimals for compact, stable inline styles.
-  defp pct(value), do: Float.round(value / 1, 2)
-
-  defp hour_label(hour) do
-    suffix = if hour < 12, do: "a", else: "p"
-
-    h12 =
-      case rem(hour, 12) do
-        0 -> 12
-        other -> other
-      end
-
-    "#{h12}#{suffix}"
-  end
-
-  defp block_time_label(%{start_time: start_time, end_time: nil}),
-    do: format_event_time(start_time)
-
-  defp block_time_label(%{start_time: start_time, end_time: end_time}),
-    do: "#{format_event_time(start_time)}–#{format_event_time(end_time)}"
-
-  defp format_event_time(%Time{} = time), do: Elixir.Calendar.strftime(time, "%H:%M")
-
-  # Sets `color` for a region/bar: the border + label take the hue at full
-  # strength while the translucent fill is derived from the same `currentColor`.
+  # Sets `color` for an event dot/label: the hue is applied as `currentColor` so a
+  # `bg-current` dot or `text-current` time label both pick it up.
   defp event_color_class(color) do
     case color do
       "work" -> "text-info"

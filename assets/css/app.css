@@ -458,6 +458,27 @@ body { background-color: var(--color-base-100); }
   box-shadow: 4px 4px 0 0 color-mix(in oklab, var(--color-base-content) 12%, transparent);
 }
 
+/* Floating event popover for the home month grid. Appended to <body> by the
+   CalendarPopover hook (so it escapes the corner widget's overflow clipping) and
+   positioned `fixed` from JS. Matches the brutalist panel — solid border + hard
+   offset shadow. Non-interactive: it's a hover read-out, not a menu. */
+.ic-cal-popover {
+  position: fixed;
+  z-index: 60;
+  min-width: 9rem;
+  max-width: 16rem;
+  padding: 0.5rem 0.625rem;
+  background: var(--color-base-100);
+  border: 2px solid color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  border-radius: var(--radius-box);
+  box-shadow: 4px 4px 0 0 color-mix(in oklab, black 28%, transparent);
+  pointer-events: none;
+}
+[data-theme="light"] .ic-cal-popover {
+  border-color: color-mix(in oklab, var(--color-base-content) 28%, transparent);
+  box-shadow: 4px 4px 0 0 color-mix(in oklab, var(--color-base-content) 12%, transparent);
+}
+
 /* Home Calendar/Contacts corner widget (StatusLive `corner_widget` + the
    CornerWidget JS hook). Docked, it's a flex item that fills the header gap to
    the right of the banner; its card is absolute so the card's content scrolls

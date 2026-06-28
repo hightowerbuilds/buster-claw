@@ -24,7 +24,7 @@ defmodule BusterClawWeb.StatusLive do
      # Header widget: which sub-tab is showing (Calendar / Contacts).
      |> assign(:widget_tab, "calendar")
      |> init_chats()
-     |> load_daily_events()}
+     |> load_calendar_month()}
   end
 
   # Load the open conversations (tabs), subscribe to each so background runs update
@@ -351,7 +351,7 @@ defmodule BusterClawWeb.StatusLive do
             <BusterClawWeb.HomeWidget.corner_widget
               tab={@widget_tab}
               today={@today}
-              events={@daily_events}
+              days={@calendar_days}
               entries={@trusted_contacts}
             />
           </div>
@@ -371,15 +371,35 @@ defmodule BusterClawWeb.StatusLive do
     """
   end
 
-  defp load_daily_events(socket) do
+  # Build the current month as a Sunday-aligned 6-week grid (42 cells) for the
+  # home corner widget. Each cell carries its date, whether it's in the current
+  # month, and its sorted events; the widget highlights today and the
+  # CalendarPopover hook reveals a cell's events on hover.
+  defp load_calendar_month(socket) do
     today = socket.assigns.today
+    first = Date.beginning_of_month(today)
+    grid_start = Date.add(first, -(Date.day_of_week(first, :sunday) - 1))
 
-    events =
-      today
-      |> AppCalendar.events_in_range(today)
-      |> Enum.sort_by(&daily_event_sort_key/1)
+    by_date =
+      grid_start
+      |> AppCalendar.events_in_range(Date.add(grid_start, 41))
+      |> Enum.group_by(& &1.date)
+      |> Map.new(fn {date, events} ->
+        {date, Enum.sort_by(events, &daily_event_sort_key/1)}
+      end)
 
-    assign(socket, :daily_events, events)
+    days =
+      Enum.map(0..41, fn offset ->
+        date = Date.add(grid_start, offset)
+
+        %{
+          date: date,
+          in_month?: date.month == today.month,
+          events: Map.get(by_date, date, [])
+        }
+      end)
+
+    assign(socket, :calendar_days, days)
   end
 
   defp daily_event_sort_key(%{start_time: nil}), do: {0, ~T[00:00:00]}

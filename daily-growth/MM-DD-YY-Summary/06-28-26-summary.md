@@ -149,3 +149,35 @@ LiveView for DOM ownership (`phx-update="ignore"` islands + manual lifecycle
 bridging) and add a JSX/compile step + runtime dependency to solve a problem the
 file doesn't have. Plain ES modules — already in the toolchain — delivered the full
 modularization win with no new dependency.
+
+## Home widget — calendar & contacts redesign
+
+Reworked both tabs of the home corner widget (`HomeWidget` + `TrustedContactsPanel`,
+`StatusLive`) toward a compact, non-scrolling, CRT-flavored look.
+
+**Calendar tab** — replaced the single-day Pro Tools timeline with a **month grid**.
+`StatusLive` now loads a Sunday-aligned 6-week grid (42 cells, `{date, in_month?,
+events}`) via `events_in_range/2` instead of just today's events. The grid fills the
+container (`grid-cols-7 grid-rows-6`), today is the solid-primary tile, and **days
+with events tint the whole cell** with their category color (`bg-info/35` etc.) —
+dropped the earlier dot. Cells are spread apart with `gap-1.5` (no continuous ruling)
+and tightened to `rounded-xs`. A new **`CalendarPopover`** JS hook shows a floating
+event popover above a hovered day, populated from a hidden per-cell detail block and
+appended to `<body>` so it escapes the widget's overflow clip. Removed the
+"This Month / Open" header per design feedback; dropped the dead timeline helpers.
+
+**Scanlines** — added `ic-scanlines` to the whole widget card, so the CRT scanline
+overlay sits over both tabs (pointer-events-none, interaction intact).
+
+**Contacts tab** — redesigned minimalist + **no scroll**: a compact add row over
+**wrapping sender chips** that fill the panel (each = value + `×` remove, green
+border for an address, blue for a `*@domain` wildcard). Dropped the redundant
+header/description/count. Same functions (`add_contact`/`remove_contact`, domain
+distinction) preserved. Tradeoff noted: many contacts clip rather than scroll —
+fine for typical counts, revisit if it bites.
+
+Verified: `mix compile --warnings-as-errors`, `mix esbuild`, and `mix tailwind` all
+clean. Not yet smoke-tested live (popover positioning, tint/scanline legibility,
+chip density are the eyeball items). This commit also finally lands the
+`assets/js/{hooks,lib}` split that was described but uncommitted — unblocking the
+JS PRs (#1/#5) that depend on it.
