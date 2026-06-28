@@ -181,3 +181,31 @@ clean. Not yet smoke-tested live (popover positioning, tint/scanline legibility,
 chip density are the eyeball items). This commit also finally lands the
 `assets/js/{hooks,lib}` split that was described but uncommitted — unblocking the
 JS PRs (#1/#5) that depend on it.
+
+## Full calendar page restyled to echo the widget
+
+Brought `CalendarLive` (the `/calendar` page) into the same industrial/CRT language
+as the home widget — a restyle pass, every behavior preserved (drag-to-move,
+inspect, select-date, view switching, prev/today/next, add/edit/delete).
+
+**Shared color module** — extracted `BusterClawWeb.CalendarColors` (`cell_fill`,
+`cell_wash`, `chip`, `text`, `swatch`) as one source of truth for category hues, so
+the widget and the full page can't drift. Both now route through it; the widget
+fix-along-the-way is that "neutral" events render gray instead of orange. Class
+strings are full literals so Tailwind's scanner picks them up.
+
+**CalendarLive** — panels (grid, inspect, event form, result banner) → `ic-panel`;
+header → `ic-scanlines` chrome + `ic-eyebrow` + `font-display` title + brutalist
+view-switcher/nav with the primary accent on the active view + Today. Day cells
+implement the two locked decisions: **scanlines on chrome + empty cells only** (the
+day number and chips are pulled to `z-[2]` so they stay crisp above the stripes —
+event text never sits under scanlines), and **faint cell-wash + chips on busy days**
+(a day with events gets a faint `cell_wash` of its first event's color under the
+chips). Today = primary wash + a solid-primary day-number badge. Event chips and
+day-view rows use the shared `chip` tint (`rounded-xs`, `font-mono`). Removed the
+old `@color_classes` / `color_class` / `swatch_class`.
+
+Scanlines are `pointer-events:none`, so CalendarDrag and clicks pass through — no JS
+change. Verified clean under `--warnings-as-errors` + esbuild + tailwind; not yet
+smoke-tested live (empty-cell scanline legibility and wash visibility on the dark
+theme are the eyeball items).

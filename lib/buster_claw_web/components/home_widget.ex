@@ -9,6 +9,8 @@ defmodule BusterClawWeb.HomeWidget do
   """
   use BusterClawWeb, :html
 
+  alias BusterClawWeb.CalendarColors
+
   attr :tab, :string, required: true
   attr :entries, :list, required: true
   attr :today, Date, required: true
@@ -122,7 +124,7 @@ defmodule BusterClawWeb.HomeWidget do
             <ul class="space-y-0.5">
               <li
                 :for={event <- day.events}
-                class={["flex items-baseline gap-1.5 font-mono text-[0.6875rem]", event_color_class(event.color)]}
+                class={["flex items-baseline gap-1.5 font-mono text-[0.6875rem]", CalendarColors.text(event.color)]}
               >
                 <span class="shrink-0 text-current">{event_time_label(event)}</span>
                 <span class="truncate text-base-content">{event.title}</span>
@@ -141,38 +143,12 @@ defmodule BusterClawWeb.HomeWidget do
   defp day_cell_class(day, today) do
     cond do
       day.date == today -> "bg-primary font-bold text-primary-content"
-      day.events != [] -> event_bg_class(hd(day.events).color)
+      day.events != [] -> CalendarColors.cell_fill(hd(day.events).color) <> " text-base-content"
       not day.in_month? -> "text-base-content/35 hover:bg-base-content/5"
       true -> "text-base-content hover:bg-base-content/5"
     end
   end
 
-  defp event_bg_class(color) do
-    case color do
-      "work" -> "bg-info/35 text-base-content"
-      "personal" -> "bg-secondary/35 text-base-content"
-      "social" -> "bg-accent/35 text-base-content"
-      "travel" -> "bg-warning/35 text-base-content"
-      "health" -> "bg-success/35 text-base-content"
-      "holiday" -> "bg-error/35 text-base-content"
-      _ -> "bg-primary/35 text-base-content"
-    end
-  end
-
   defp event_time_label(%{start_time: nil}), do: "All day"
   defp event_time_label(%{start_time: %Time{} = time}), do: Elixir.Calendar.strftime(time, "%H:%M")
-
-  # Sets `color` for an event dot/label: the hue is applied as `currentColor` so a
-  # `bg-current` dot or `text-current` time label both pick it up.
-  defp event_color_class(color) do
-    case color do
-      "work" -> "text-info"
-      "personal" -> "text-secondary"
-      "social" -> "text-accent"
-      "travel" -> "text-warning"
-      "health" -> "text-success"
-      "holiday" -> "text-error"
-      _ -> "text-primary"
-    end
-  end
 end
