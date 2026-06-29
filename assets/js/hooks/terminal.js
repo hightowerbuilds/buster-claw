@@ -4,7 +4,7 @@ import {WebglAddon} from "@xterm/addon-webgl"
 
 import {liveTerminals, currentTermTheme, termThemeWithBackground} from "../lib/theme.js"
 import {stripTransparentBackgroundPaint, flushTransparentBackgroundPaint} from "../lib/ansi.js"
-import {openNewTerminalTab, openTerminalSplit} from "../lib/tabs.js"
+import {openNewTerminalTab, openTerminalSplit, registerTerminal, unregisterTerminal} from "../lib/tabs.js"
 
 // PTY-backed terminal (desktop only). xterm.js renders here; the PTY lives in
 // the Tauri Rust backend, reached over IPC. In a plain browser (no Tauri) we
@@ -123,6 +123,9 @@ export const TerminalView = {
         this.setStatus("Exited")
       })
       term.onData((data) => this.id && invoke("terminal_input", {id: this.id, data}))
+      // Let the TabStrip check this terminal before closing its tab, so a
+      // running build/command/agent session prompts for confirmation.
+      registerTerminal(this)
 
       // Debounce refits: a burst of ResizeObserver callbacks (window drag,
       // split open) would otherwise fire fit()/PTY-resize many times a frame
@@ -283,7 +286,20 @@ export const TerminalView = {
       this.setStatus("Copy failed")
     }
   },
+  // Whether this PTY has a foreground process other than its idle shell — asked
+  // by the TabStrip before closing the tab. Native query (tcgetpgrp); any error
+  // or a torn-down session reads as not-busy so it never blocks closing.
+  async isBusy() {
+    const invoke = window.__TAURI__?.core?.invoke
+    if (!this.id || !invoke) return false
+    try {
+      return await invoke("terminal_busy", {id: this.id})
+    } catch (_e) {
+      return false
+    }
+  },
   destroyed() {
+    unregisterTerminal(this)
     if (this.toolbar && this.onToolbarClick) {
       this.toolbar.removeEventListener("click", this.onToolbarClick)
     }
