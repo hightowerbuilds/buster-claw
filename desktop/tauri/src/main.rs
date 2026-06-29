@@ -282,21 +282,10 @@ fn main() {
             browser::browser_close,
             browser::browser_screenshot,
             voice::speak,
-            voice::stop_speaking,
-            voice::start_recording,
-            voice::stop_recording,
-            voice::list_input_devices
+            voice::stop_speaking
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
-
-            // Voice STT: publish the bundled-model path (used by start/stop_recording)
-            // and run a best-effort self-check (links cpal + whisper.cpp; logs a mic
-            // + model-load check). Runs in both dev and release, on its own thread —
-            // never blocks startup.
-            let voice_model = resolve_voice_model(app);
-            voice::set_model_path(voice_model.clone());
-            voice::run_selfcheck(voice_model);
 
             if cfg!(debug_assertions) {
                 // Dev mode: expect `mix phx.server` running externally on :4000.
@@ -516,25 +505,6 @@ fn ensure_secret(
     let generated = random_alphanumeric(len);
     keychain_set(account, &generated)?;
     Ok(generated)
-}
-
-/// Resolve the bundled whisper STT model. Lives under `resources/models/` (a
-/// stable mapping — deliberately *not* `resources/release/`, which the build
-/// and dev launcher wipe and re-stage). In dev the bundle isn't assembled, so
-/// fall back to the in-repo resource path; release reads it from the app bundle.
-fn resolve_voice_model(app: &tauri::App) -> PathBuf {
-    const MODEL_REL: &str = "models/ggml-base.en.bin";
-
-    if cfg!(debug_assertions) {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("resources")
-            .join(MODEL_REL)
-    } else {
-        match app.path().resource_dir() {
-            Ok(dir) => dir.join(MODEL_REL),
-            Err(_) => PathBuf::from(MODEL_REL),
-        }
-    }
 }
 
 fn resolve_release_binary(app: &tauri::App) -> Result<PathBuf, String> {
