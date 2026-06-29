@@ -275,3 +275,56 @@ centered max-width (keeping padding + the normal no-scroll vertical behavior —
 unlike `full_bleed`, which also changes height/scroll). `CalendarLive` passes
 `wide`; the grid now fills the full window width while the vertical sizing is
 unchanged. Scoped to the calendar — every other page keeps the centered max-width.
+
+## Evening — second Shortlist batch + integrated all 7 PRs to merge-ready
+
+Picked up the Shortlist again and cleared the *remaining* actionable items, then
+did the integration work to get every open PR green at once.
+
+**Greened `main` first.** Discovered the Tauri build was actually red on `main`:
+the STT demolition removed the Whisper functions from `voice.rs` but the matching
+calls/registrations were still live in `main.rs` (only fixed in an uncommitted
+working-tree copy). Committed that cleanup (`6d7641c`) so the build compiles —
+completes the demolition rather than re-adding STT.
+
+**Three new items, three parallel worktree agents (disjoint files, no conflicts):**
+
+- **Item 1 — native half of "Cmd-W ≠ quit" (PR #8):** PR #1 was JS-only and *still
+  broken* on `main` — the default macOS menu binds Cmd-W to Close-Window at the
+  native level, beneath any JS handler. Added a custom Tauri menu that replicates
+  the default minus the `close_window` item, so Cmd-W is no longer a native
+  accelerator and the JS owns it. Cmd-Q + the traffic-light X still close normally.
+- **Item 10 — Cmd-1…9 jump-to-tab (PR #7):** extended the TabStrip shortcut
+  handler; Cmd-1…8 → Nth tab, Cmd-9 → last (browser convention), reading the
+  persisted order so it tracks drag-reorders.
+- **Item 12 — `/browse` full-bleed (PR #6):** one-line `full_bleed` on
+  `Layouts.app`, matching `SplitLive`; the native webview tracks the wider surface
+  via its live bounding box (confirmed the `sync()` math).
+
+**Item 11 — confirm before closing a busy terminal (PR #9)** — the heavy one, run
+after the above as it overlaps `main.rs` + `tab_strip.js`. New `terminal_busy(id)`
+Tauri command reads the PTY master's foreground process group (via portable-pty's
+`process_group_leader()`, i.e. `tcgetpgrp`) and compares it to the shell pid — a
+child in the foreground = busy. JS gates the close in `closeTab` (covers both the ×
+click and Cmd-W), with a minimal Industrial-Claw confirm modal. Idle terminals and
+non-terminal tabs never prompt.
+
+**Merged item 1 (both halves) and resolved every conflict.** Merged PR #8 (native)
++ PR #1 (JS) together — Cmd-W is only fixed with both. That merge renamed
+`closeCurrentTabOrWindow` → `closeCurrentTab` and rippled into three open PRs;
+resolved all three by merging `main` into each branch and grafting the feature onto
+the new base rather than clobbering:
+
+- **PR #7** — kept `activateTabAt`, dropped the stale `closeCurrentTabOrWindow`.
+- **PR #9** — the busy-confirm already lived in `closeTab` (which Cmd-W now routes
+  through), so the redundant window-close guard came out cleanly.
+- **PR #5** — branch predated the `app.js` module split; isolated its real change
+  (`bc:browser_command` handler + `reportCommand`) and grafted it into
+  `hooks/browser.js`. Elixir compiles, 63/63 of its tests pass.
+
+**Result: all 7 open PRs (#2–#7, #9) are MERGEABLE and verified** (cargo check / node
+--check / mix test as relevant). Interactive desktop click-through remains the merge
+gate — the Shortlist checklist (PRs #1–#5) covers it; PRs #6/#7/#9 need their own
+walk. Remaining Shortlist: item 9 (swarm e2e smoke — live `mix phx.server` run) and
+item 8 (tab LRU, deferred). Worktrees under `.claude/worktrees/` are still pinned to
+the PR branches — `git worktree prune` after merges.
