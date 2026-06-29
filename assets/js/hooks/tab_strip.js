@@ -30,8 +30,9 @@ export const TabStrip = {
     this.handleEvent("bc:tab_meta", (m) => this.onTabMeta(m))
     // Commands/CLI can request a visible in-app terminal tab.
     this.handleEvent("bc:open_terminal", (request) => this.onOpenTerminalRequest(request))
-    // ⌘T opens a terminal tab; ⌘W closes the active tab, then the window once
-    // no tabs remain. Capture phase so we beat xterm's own key handling.
+    // ⌘T opens a terminal tab; ⌘W only ever closes the active tab (never the
+    // window — quitting is reserved for the native ⌘Q). Capture phase so we beat
+    // xterm's own key handling.
     this.onKeydown = (e) => this.handleShortcut(e)
     window.addEventListener("keydown", this.onKeydown, true)
     // The joined-tab "swap sides" control (rendered in /split) asks us to swap,
@@ -422,8 +423,11 @@ export const TabStrip = {
     const lbl =
       "flex shrink-0 items-center px-2 text-xs font-semibold uppercase " +
       "tracking-wide text-base-content/50 whitespace-nowrap"
+    // Rename is offered for every tab, joined or not.
+    const rename = `<button type="button" data-menu="rename" class="${btn}">Rename</button>`
     if (isSplit) {
       this.menuEl.innerHTML =
+        rename +
         `<button type="button" data-menu="swap" class="${btn}">Swap sides</button>` +
         `<button type="button" data-menu="separate" class="${btn}">Separate tabs</button>`
       return
@@ -432,7 +436,7 @@ export const TabStrip = {
       (t) => t.path !== this.menuPath && !t.path.startsWith("/split")
     )
     if (candidates.length === 0) {
-      this.menuEl.innerHTML = `<span class="${lbl}">No other tabs to join</span>`
+      this.menuEl.innerHTML = rename + `<span class="${lbl}">No other tabs to join</span>`
       return
     }
     const chips = candidates
@@ -442,9 +446,20 @@ export const TabStrip = {
           `class="${btn} max-w-[12rem] truncate">${this.escape(t.label)}</button>`
       )
       .join("")
-    this.menuEl.innerHTML = `<span class="${lbl}">Join with</span>` + chips
+    this.menuEl.innerHTML = rename + `<span class="${lbl}">Join with</span>` + chips
   },
   onMenuClick(e) {
+    const rename = e.target.closest("[data-menu='rename']")
+    if (rename) {
+      e.stopPropagation()
+      const source = this.menuPath
+      this.closeMenu()
+      // Reuse the existing inline-edit path: render() focuses the input, and
+      // Enter/blur commits through commitRename → saveTabs.
+      this.editingPath = source
+      this.render()
+      return
+    }
     const swap = e.target.closest("[data-menu='swap']")
     if (swap) {
       e.stopPropagation()
@@ -523,7 +538,7 @@ export const TabStrip = {
     e.preventDefault()
     e.stopPropagation()
     if (key === "t") this.openTerminalTab()
-    else this.closeCurrentTabOrWindow()
+    else this.closeCurrentTab()
   },
   // Activate the tab at a 1-indexed position in the visible (persisted) order.
   // 9 is special-cased to the last tab, matching browser tab shortcuts. No-op
@@ -533,16 +548,15 @@ export const TabStrip = {
     const tab = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1]
     if (tab) window.location.href = tab.path
   },
-  // ⌘W closes the active tab; once none remain it closes the window instead.
-  closeCurrentTabOrWindow() {
-    const active = this.currentKey()
-    const remaining = this.load().filter((t) => t.path !== active)
-    if (remaining.length === 0) {
-      this.closeWindow()
-    } else {
-      this.closeTab(active)
-    }
+  // ⌘W only ever closes the active tab. Closing the last remaining tab navigates
+  // to "/" (which re-seeds the strip with a fresh home tab on the next page
+  // load), so the window stays alive — quitting the app is reserved for the
+  // native ⌘Q.
+  closeCurrentTab() {
+    this.closeTab(this.currentKey())
   },
+  // Defined for completeness but intentionally unreachable from the ⌘W path:
+  // ⌘W must never quit the app (see closeCurrentTab).
   closeWindow() {
     try {
       const appWindow = window.__TAURI__?.window?.getCurrentWindow?.()
