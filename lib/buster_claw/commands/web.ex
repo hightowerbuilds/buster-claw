@@ -4,6 +4,7 @@ defmodule BusterClaw.Commands.Web do
   import BusterClaw.Commands.Helpers
 
   alias BusterClaw.{Browser, Search}
+  alias BusterClaw.Browser.{Bridge, Capture}
 
   def web_search(%{"query" => query} = args) do
     limit = Map.get(args, "limit", 10)
@@ -39,7 +40,32 @@ defmodule BusterClaw.Commands.Web do
   def browser_download(_args), do: {:error, :missing_url}
 
   def browser_screenshot(_args \\ %{}) do
-    BusterClaw.Browser.Capture.request()
+    Capture.request()
+  end
+
+  # Agent co-presence: read and drive the live browser tab the user is viewing.
+
+  def browser_current(_args \\ %{}) do
+    Bridge.request(:current)
+  end
+
+  def browser_navigate(%{"url" => url}) when is_binary(url) and url != "",
+    do: trigger_browser(:navigate, url, :navigated)
+
+  def browser_navigate(_args), do: {:error, :missing_url}
+
+  def browser_open_tab(%{"url" => url}) when is_binary(url) and url != "",
+    do: trigger_browser(:open_tab, url, :opened)
+
+  def browser_open_tab(_args), do: {:error, :missing_url}
+
+  # Drive the live browser via the co-presence bridge, echoing the requested URL
+  # under `key` on success.
+  defp trigger_browser(action, url, key) do
+    case Bridge.request(action, %{"url" => url}) do
+      {:ok, _result} -> {:ok, %{key => url}}
+      other -> other
+    end
   end
 
   def bookmark_add(args) do

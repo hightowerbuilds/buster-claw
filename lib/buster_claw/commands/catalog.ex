@@ -953,6 +953,30 @@ defmodule BusterClaw.Commands.Catalog do
           "Capture a PNG of the active browser tab the user is currently viewing, saved into the workspace. Returns the path + URL. Requires the desktop app to be open.",
         args: %{}
       },
+      %{
+        name: "browser_current",
+        type: :read,
+        tier: :restricted,
+        description:
+          "Read the active browser tab the user is currently viewing: returns its URL and page title. Requires the desktop app to be open.",
+        args: %{}
+      },
+      %{
+        name: "browser_navigate",
+        type: :trigger,
+        tier: :restricted,
+        description:
+          "Navigate the active browser tab to a URL, driving the user's live view. Provide a full http(s) URL including scheme. Requires the desktop app to be open.",
+        args: %{"url" => %{type: :string, required: true}}
+      },
+      %{
+        name: "browser_open_tab",
+        type: :trigger,
+        tier: :restricted,
+        description:
+          "Open a new browser tab at a URL and make it active in the user's live view. Provide a full http(s) URL including scheme. Requires the desktop app to be open.",
+        args: %{"url" => %{type: :string, required: true}}
+      },
 
       # Bookmarks
       %{
