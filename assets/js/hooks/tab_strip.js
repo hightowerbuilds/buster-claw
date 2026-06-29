@@ -511,12 +511,27 @@ export const TabStrip = {
   handleShortcut(e) {
     if (e.altKey || e.shiftKey || !(e.metaKey || e.ctrlKey)) return
     const key = (e.key || "").toLowerCase()
+    // ⌘1…8 jump to the Nth tab; ⌘9 jumps to the last tab (browser convention).
+    if (key >= "1" && key <= "9") {
+      e.preventDefault()
+      e.stopPropagation()
+      this.activateTabAt(Number(key))
+      return
+    }
     if (key !== "t" && key !== "w") return
     // Handle it ourselves and keep it from reaching the terminal / PTY.
     e.preventDefault()
     e.stopPropagation()
     if (key === "t") this.openTerminalTab()
     else this.closeCurrentTabOrWindow()
+  },
+  // Activate the tab at a 1-indexed position in the visible (persisted) order.
+  // 9 is special-cased to the last tab, matching browser tab shortcuts. No-op
+  // when there's no tab at that slot.
+  activateTabAt(n) {
+    const tabs = this.load()
+    const tab = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1]
+    if (tab) window.location.href = tab.path
   },
   // ⌘W closes the active tab; once none remain it closes the window instead.
   closeCurrentTabOrWindow() {
