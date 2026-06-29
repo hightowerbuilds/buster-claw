@@ -249,6 +249,95 @@ fn run_release_monitor(launcher: ReleaseLauncher) {
     }
 }
 
+/// Build the application menu: the standard macOS menu with the Window →
+/// "Close Window" item (Cmd-W) removed, so the JS-side tab-close handler can
+/// fully own Cmd-W instead of the OS closing the whole window out from under it.
+///
+/// Tauri's `Menu::default` binds Cmd-W to a native `close_window` predefined
+/// item, and that accelerator fires regardless of the webview's `keydown`
+/// capture handler — so with a single tab open Cmd-W would close the entire
+/// window before JS ever saw it. We replicate the default macOS menu verbatim
+/// minus that one item; everything else (Quit/Cmd-Q, copy/paste, minimize,
+/// fullscreen, etc.) stays intact so the app still feels native. The red
+/// traffic-light X and Cmd-Q are untouched and still close/quit normally.
+#[cfg(target_os = "macos")]
+fn build_app_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{AboutMetadataBuilder, Menu, PredefinedMenuItem, Submenu};
+
+    let pkg_info = handle.package_info();
+    let config = handle.config();
+    let about_metadata = AboutMetadataBuilder::new()
+        .name(Some(pkg_info.name.clone()))
+        .version(Some(pkg_info.version.to_string()))
+        .copyright(config.bundle.copyright.clone())
+        .authors(config.bundle.publisher.clone().map(|p| vec![p]))
+        .build();
+
+    let app_menu = Submenu::with_items(
+        handle,
+        pkg_info.name.clone(),
+        true,
+        &[
+            &PredefinedMenuItem::about(handle, None, Some(about_metadata))?,
+            &PredefinedMenuItem::separator(handle)?,
+            &PredefinedMenuItem::services(handle, None)?,
+            &PredefinedMenuItem::separator(handle)?,
+            &PredefinedMenuItem::hide(handle, None)?,
+            &PredefinedMenuItem::hide_others(handle, None)?,
+            &PredefinedMenuItem::show_all(handle, None)?,
+            &PredefinedMenuItem::separator(handle)?,
+            &PredefinedMenuItem::quit(handle, None)?,
+        ],
+    )?;
+
+    let edit_menu = Submenu::with_items(
+        handle,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(handle, None)?,
+            &PredefinedMenuItem::redo(handle, None)?,
+            &PredefinedMenuItem::separator(handle)?,
+            &PredefinedMenuItem::cut(handle, None)?,
+            &PredefinedMenuItem::copy(handle, None)?,
+            &PredefinedMenuItem::paste(handle, None)?,
+            &PredefinedMenuItem::select_all(handle, None)?,
+        ],
+    )?;
+
+    let view_menu = Submenu::with_items(
+        handle,
+        "View",
+        true,
+        &[&PredefinedMenuItem::fullscreen(handle, None)?],
+    )?;
+
+    // Standard Window menu MINUS `PredefinedMenuItem::close_window` (Cmd-W).
+    // Dropping that item is the whole point of this custom menu — see the doc
+    // comment above. The trailing separator that preceded it in the default
+    // menu is dropped with it.
+    let window_menu = Submenu::with_items(
+        handle,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(handle, None)?,
+            &PredefinedMenuItem::maximize(handle, None)?,
+            &PredefinedMenuItem::separator(handle)?,
+            &PredefinedMenuItem::fullscreen(handle, None)?,
+        ],
+    )?;
+
+    Menu::with_items(handle, &[&app_menu, &edit_menu, &view_menu, &window_menu])
+}
+
+/// Non-macOS targets keep Tauri's stock menu unchanged — the Cmd-W concern is
+/// macOS-specific and this app ships only on macOS.
+#[cfg(not(target_os = "macos"))]
+fn build_app_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    tauri::menu::Menu::default(handle)
+}
+
 fn main() {
     let release_child: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
     let release_child_for_setup = Arc::clone(&release_child);
@@ -261,6 +350,7 @@ fn main() {
     let shutting_down_for_run = Arc::clone(&shutting_down);
 
     let app = tauri::Builder::default()
+        .menu(build_app_menu)
         .manage(terminal::TerminalState::default())
         .manage(browser::BrowserState::default())
         .invoke_handler(tauri::generate_handler![
@@ -283,21 +373,10 @@ fn main() {
             browser::browser_close,
             browser::browser_screenshot,
             voice::speak,
-            voice::stop_speaking,
-            voice::start_recording,
-            voice::stop_recording,
-            voice::list_input_devices
+            voice::stop_speaking
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
-
-            // Voice STT: publish the bundled-model path (used by start/stop_recording)
-            // and run a best-effort self-check (links cpal + whisper.cpp; logs a mic
-            // + model-load check). Runs in both dev and release, on its own thread —
-            // never blocks startup.
-            let voice_model = resolve_voice_model(app);
-            voice::set_model_path(voice_model.clone());
-            voice::run_selfcheck(voice_model);
 
             if cfg!(debug_assertions) {
                 // Dev mode: expect `mix phx.server` running externally on :4000.
@@ -517,25 +596,6 @@ fn ensure_secret(
     let generated = random_alphanumeric(len);
     keychain_set(account, &generated)?;
     Ok(generated)
-}
-
-/// Resolve the bundled whisper STT model. Lives under `resources/models/` (a
-/// stable mapping — deliberately *not* `resources/release/`, which the build
-/// and dev launcher wipe and re-stage). In dev the bundle isn't assembled, so
-/// fall back to the in-repo resource path; release reads it from the app bundle.
-fn resolve_voice_model(app: &tauri::App) -> PathBuf {
-    const MODEL_REL: &str = "models/ggml-base.en.bin";
-
-    if cfg!(debug_assertions) {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("resources")
-            .join(MODEL_REL)
-    } else {
-        match app.path().resource_dir() {
-            Ok(dir) => dir.join(MODEL_REL),
-            Err(_) => PathBuf::from(MODEL_REL),
-        }
-    }
 }
 
 fn resolve_release_binary(app: &tauri::App) -> Result<PathBuf, String> {
