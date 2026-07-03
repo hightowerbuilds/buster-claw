@@ -98,6 +98,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     #   MIX_ENV=test mix run --no-start -e 'BusterClaw.Commands.Catalog.entries() |> Enum.filter(&(&1.tier == :safe)) |> Enum.map(& &1.name) |> Enum.sort() |> Enum.each(&IO.puts("        \"#{&1}\","))'
     @safe_tier ~w(
       activity_report
+      bookmark_export
       bookmark_list
       browser_fetch
       contacts_get

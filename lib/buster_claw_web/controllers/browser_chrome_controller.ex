@@ -284,7 +284,7 @@ defmodule BusterClawWeb.BrowserChromeController do
             const el = document.createElement("button")
             el.type = "button"
             el.className = "bmk"
-            el.title = (b.label || b.url) + "\\n" + b.url
+            el.title = (b.folder ? b.folder + " / " : "") + (b.label || b.url) + "\\n" + b.url
             if (b.favicon_url) {
               const img = document.createElement("img")
               img.src = b.favicon_url; img.alt = ""; img.loading = "lazy"

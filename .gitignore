@@ -54,3 +54,6 @@ erl_crash.dump
 .env.local
 priv/plts/*.plt
 priv/plts/*.plt.hash
+
+# Claude Code local session data (agent worktrees, settings)
+/.claude/
