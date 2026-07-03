@@ -13,8 +13,8 @@ defmodule BusterClawWeb.BrowserBookmarkController do
 
   @bar_limit 24
 
-  # Bookmarks for the chrome bookmark bar (newest first, capped). Favicon is
-  # backfilled for older entries saved before favicons existed.
+  # Bookmarks for the chrome bookmark bar (newest first, capped). Favicons are
+  # derived per-URL (local /browser/favicon endpoint), never read from the file.
   def index(conn, _params) do
     items =
       Bookmarks.list()
@@ -24,7 +24,7 @@ defmodule BusterClawWeb.BrowserBookmarkController do
           "url" => e["url"],
           "label" => e["label"] || e["url"],
           "folder" => Bookmarks.normalize_folder(e["folder"]),
-          "favicon_url" => e["favicon_url"] || Bookmarks.favicon_url(e["url"])
+          "favicon_url" => Bookmarks.favicon_url(e["url"])
         }
       end)
 

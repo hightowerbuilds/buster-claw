@@ -42,13 +42,23 @@ defmodule BusterClawWeb.BrowserBookmarkControllerTest do
     body = conn |> get(~p"/browser/bookmarks") |> json_response(200)
 
     assert [%{"url" => "https://a.com/page", "label" => "A", "favicon_url" => fav}] = body
-    assert fav =~ "favicons?domain=a.com"
+    assert fav == "/browser/favicon?host=a.com"
   end
 
-  test "GET /browser/bookmarks backfills a favicon for older faviconless entries", %{conn: conn} do
-    File.write(Bookmarks.path(), Jason.encode!([%{"url" => "https://old.com", "label" => "Old"}]))
+  test "GET /browser/bookmarks ignores stale stored favicons (incl. retired Google s2 URLs)",
+       %{conn: conn} do
+    File.write(
+      Bookmarks.path(),
+      Jason.encode!([
+        %{
+          "url" => "https://old.com",
+          "label" => "Old",
+          "favicon_url" => "https://www.google.com/s2/favicons?domain=old.com&sz=64"
+        }
+      ])
+    )
 
     body = conn |> get(~p"/browser/bookmarks") |> json_response(200)
-    assert [%{"favicon_url" => "https://www.google.com/s2/favicons?domain=old.com&sz=64"}] = body
+    assert [%{"favicon_url" => "/browser/favicon?host=old.com"}] = body
   end
 end

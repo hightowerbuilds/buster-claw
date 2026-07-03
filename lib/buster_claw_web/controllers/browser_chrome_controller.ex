@@ -18,13 +18,19 @@ defmodule BusterClawWeb.BrowserChromeController do
   """
   use BusterClawWeb, :controller
 
+  # Omnibox search engine: query text is appended to this prefix. Overridable
+  # via the `browser_search_url` setting; DuckDuckGo default fits the app's
+  # no-third-party-reporting posture.
+  @default_search_url "https://duckduckgo.com/?q="
+
   def show(conn, params) do
     initial = params["url"] || ""
     sid = sanitize_sid(params["sid"])
+    search_url = BusterClaw.Settings.get("browser_search_url", @default_search_url)
 
     conn
     |> put_resp_content_type("text/html")
-    |> send_resp(200, page(initial, sid))
+    |> send_resp(200, page(initial, sid, search_url))
   end
 
   # Surface ids are alphanumeric only (matches the Rust sanitiser); default "main".
@@ -35,7 +41,7 @@ defmodule BusterClawWeb.BrowserChromeController do
     end
   end
 
-  defp page(initial, sid) do
+  defp page(initial, sid, search_url) do
     """
     <!DOCTYPE html>
     <html lang="en">
@@ -134,7 +140,7 @@ defmodule BusterClawWeb.BrowserChromeController do
                            white-space: nowrap; }
     </style>
     </head>
-    <body data-sid="#{sid}">
+    <body data-sid="#{sid}" data-search-url="#{escape_attr(search_url)}">
       <div id="progress"></div>
       <div id="tabs"></div>
       <div id="toolbar">
@@ -144,7 +150,7 @@ defmodule BusterClawWeb.BrowserChromeController do
         <button class="nav" id="reload" title="Reload" aria-label="Reload">&#8635;</button>
         <form id="form">
           <input id="addr" type="text" autocomplete="off" spellcheck="false"
-                 placeholder="https://… or /path in your workspace"
+                 placeholder="Search, https://…, or /path in your workspace"
                  value="#{escape_attr(initial)}" />
           <button class="go" type="submit">Go</button>
         </form>

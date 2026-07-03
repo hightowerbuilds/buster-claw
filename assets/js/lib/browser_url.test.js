@@ -1,7 +1,7 @@
 // bun test — pure-logic tests for the shared browser URL heuristics.
 // Run: bun test assets/js/lib/ (from the repo root)
 import {describe, expect, test} from "bun:test"
-import {resolve, display, deriveLabel, faviconFor} from "./browser_url.js"
+import {resolve, display, deriveLabel, faviconFor, DEFAULT_SEARCH_URL} from "./browser_url.js"
 
 const ORIGIN = "http://127.0.0.1:4000"
 
@@ -26,6 +26,29 @@ describe("resolve", () => {
   test("prefixes bare domains with https", () => {
     expect(resolve("example.com", ORIGIN)).toBe("https://example.com")
     expect(resolve("  example.com/p  ", ORIGIN)).toBe("https://example.com/p")
+    expect(resolve("rust-lang.org", ORIGIN)).toBe("https://rust-lang.org")
+  })
+
+  test("routes text with spaces to the search engine", () => {
+    expect(resolve("tauri webview zoom", ORIGIN)).toBe(
+      DEFAULT_SEARCH_URL + encodeURIComponent("tauri webview zoom")
+    )
+  })
+
+  test("routes dotless single words to the search engine", () => {
+    expect(resolve("elixir", ORIGIN)).toBe(DEFAULT_SEARCH_URL + "elixir")
+    expect(resolve("hello?", ORIGIN)).toBe(DEFAULT_SEARCH_URL + encodeURIComponent("hello?"))
+  })
+
+  test("localhost (with or without port) is a URL, not a search", () => {
+    expect(resolve("localhost", ORIGIN)).toBe("https://localhost")
+    expect(resolve("localhost:4000/x", ORIGIN)).toBe("https://localhost:4000/x")
+  })
+
+  test("honors a custom search engine", () => {
+    expect(resolve("cats", ORIGIN, {searchUrl: "https://kagi.com/search?q="})).toBe(
+      "https://kagi.com/search?q=cats"
+    )
   })
 })
 
@@ -71,7 +94,9 @@ describe("faviconFor", () => {
     expect(faviconFor("about:blank", ORIGIN)).toBeNull()
   })
 
-  test("http(s) hosts get a favicon URL", () => {
-    expect(faviconFor("https://example.com/x", ORIGIN)).toContain("example.com")
+  test("http(s) hosts get the LOCAL favicon endpoint (never a third party)", () => {
+    expect(faviconFor("https://example.com/x", ORIGIN)).toBe(
+      `${ORIGIN}/browser/favicon?host=example.com`
+    )
   })
 })

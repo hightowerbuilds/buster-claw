@@ -81,10 +81,15 @@ defmodule BusterClaw.BookmarksTest do
     assert Bookmarks.list(tag: "news") == []
   end
 
-  test "stores a favicon url derived from the host" do
+  test "favicon_url points at the local favicon endpoint, keyed by host" do
+    assert Bookmarks.favicon_url("https://example.com/page?x=1") ==
+             "/browser/favicon?host=example.com"
+  end
+
+  test "entries do not persist a favicon_url (derived at render instead)" do
     Bookmarks.add("https://example.com/page?x=1", "Example")
-    assert [%{"favicon_url" => fav}] = Bookmarks.list()
-    assert fav == "https://www.google.com/s2/favicons?domain=example.com&sz=64"
+    assert [entry] = Bookmarks.list()
+    refute Map.has_key?(entry, "favicon_url")
   end
 
   test "favicon_url returns nil for urls with no host" do

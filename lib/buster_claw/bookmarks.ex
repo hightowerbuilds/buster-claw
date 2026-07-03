@@ -6,8 +6,10 @@ defmodule BusterClaw.Bookmarks do
   the homepage renders them above the recent-URL list and removes them via a form.
 
   Each entry is a map with `url`, `label`, `tags` (list), `folder` (string or
-  `nil` = root), `favicon_url`, and `at`. Older flat files written before folders
-  existed (no `folder` key) load fine and render at the root.
+  `nil` = root), and `at`. Older flat files written before folders existed (no
+  `folder` key) load fine and render at the root. Favicons are not stored —
+  renderers derive them per-URL via `favicon_url/1` (older files that carry a
+  stored `favicon_url`, including the retired Google s2 URLs, are ignored).
   """
   alias BusterClaw.Library.Artifact
 
@@ -72,7 +74,6 @@ defmodule BusterClaw.Bookmarks do
       "label" => label,
       "tags" => normalize_tags(tags),
       "folder" => normalize_folder(folder),
-      "favicon_url" => favicon_url(url),
       "at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
     }
 
@@ -180,15 +181,16 @@ defmodule BusterClaw.Bookmarks do
   def normalize_folder(_), do: nil
 
   @doc """
-  Best-effort favicon URL for a page. Returns Google's public favicon service
-  URL keyed by host (it serves a sensible globe fallback when a site has none),
-  or `nil` when the URL has no resolvable host. We store the URL, not the bytes;
-  the webview fetches it lazily when rendering the homepage.
+  Best-effort favicon URL for a page: the local `/browser/favicon` endpoint
+  keyed by host (served from `BusterClaw.Favicons`' disk cache), or `nil` when
+  the URL has no resolvable host. Relative on purpose — every consumer (the
+  chrome, the homepage, the bookmark-bar JSON) renders on the Phoenix origin,
+  and visited hosts never leave the machine.
   """
   def favicon_url(url) when is_binary(url) do
     case URI.parse(url) do
       %URI{host: host} when is_binary(host) and host != "" ->
-        "https://www.google.com/s2/favicons?domain=#{host}&sz=64"
+        "/browser/favicon?host=#{URI.encode_www_form(host)}"
 
       _ ->
         nil
@@ -245,7 +247,6 @@ defmodule BusterClaw.Bookmarks do
       normalize_folder(existing["folder"]) || normalize_folder(incoming["folder"])
     )
     |> Map.put("label", existing["label"] || incoming["label"])
-    |> Map.put("favicon_url", existing["favicon_url"] || incoming["favicon_url"])
   end
 
   defp valid_entry?(%{"url" => url}) when is_binary(url) and url != "", do: true
@@ -257,7 +258,6 @@ defmodule BusterClaw.Bookmarks do
       "label" => entry_label(m["label"], url),
       "tags" => normalize_tags(m["tags"]),
       "folder" => normalize_folder(m["folder"]),
-      "favicon_url" => m["favicon_url"] || favicon_url(url),
       "at" => m["at"] || DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
     }
   end

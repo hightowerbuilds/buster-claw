@@ -27,6 +27,10 @@ config :buster_claw, BusterClawWeb.Endpoint,
 config :buster_claw, :search_req_options, plug: {Req.Test, BusterClaw.SearchHTTP}
 config :buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHTTP}
 
+config :buster_claw, :favicons,
+  req_options: [plug: {Req.Test, BusterClaw.FaviconHTTP}],
+  cache_dir: Path.join(System.tmp_dir!(), "buster_claw_test_favicons")
+
 config :buster_claw, :api_token, "test-token-loopback-only"
 config :buster_claw, :mcp_api_token, "test-mcp-token-safe-tier-only"
 config :buster_claw, :agent_api_token, "test-agent-token-untrusted-provenance"

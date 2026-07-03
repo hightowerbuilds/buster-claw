@@ -23,14 +23,23 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
     assert body =~ ~s(value="https://example.com")
   end
 
+  test "injects the omnibox search engine (browser_search_url setting)", %{conn: conn} do
+    body = conn |> get(~p"/browser/chrome") |> response(200)
+    assert body =~ ~s(data-search-url="https://duckduckgo.com/?q=")
+
+    BusterClaw.Settings.put("browser_search_url", "https://kagi.com/search?q=")
+    body = conn |> get(~p"/browser/chrome") |> response(200)
+    assert body =~ ~s(data-search-url="https://kagi.com/search?q=")
+  end
+
   test "defaults to the main surface when no ?sid= is given", %{conn: conn} do
     body = conn |> get(~p"/browser/chrome") |> response(200)
-    assert body =~ ~s(<body data-sid="main">)
+    assert body =~ ~s(data-sid="main")
   end
 
   test "carries the ?sid= surface id into the chrome via data-sid", %{conn: conn} do
     body = conn |> get(~p"/browser/chrome", sid: "left") |> response(200)
-    assert body =~ ~s(<body data-sid="left">)
+    assert body =~ ~s(data-sid="left")
   end
 
   # Parity fixtures: keep in lockstep with the `sanitize_sid` unit tests in
@@ -50,7 +59,7 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
 
     for {input, expected} <- fixtures do
       body = conn |> get(~p"/browser/chrome", sid: input) |> response(200)
-      assert body =~ ~s(<body data-sid="#{expected}">), "sid #{inspect(input)}"
+      assert body =~ ~s(data-sid="#{expected}"), "sid #{inspect(input)}"
     end
   end
 end

@@ -17,6 +17,9 @@ const homeUrl = origin + "/browser/home"
 // The browser surface this chrome drives. Every browser_* invoke carries it
 // (injected by inv() below).
 const SID = document.body.dataset.sid || "main"
+// Omnibox search engine (query appended); server-injected from the
+// browser_search_url setting.
+const SEARCH_URL = document.body.dataset.searchUrl || undefined
 
 const addr = document.getElementById("addr")
 const tabsEl = document.getElementById("tabs")
@@ -33,7 +36,7 @@ function inv(cmd, args) {
   })
 }
 
-const resolve = (raw) => resolveUrl(raw, origin)
+const resolve = (raw) => resolveUrl(raw, origin, {searchUrl: SEARCH_URL})
 const display = (u) => displayUrl(u, origin)
 
 // --- tab state (chrome owns the strip; Rust owns the webviews) ---

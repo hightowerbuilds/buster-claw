@@ -245,7 +245,7 @@ defmodule BusterClawWeb.BrowserHomeController do
     label = escape(e["label"] || raw_url)
     tags = List.wrap(e["tags"])
     host = escape(host(raw_url))
-    favicon = e["favicon_url"] || Bookmarks.favicon_url(raw_url)
+    favicon = Bookmarks.favicon_url(raw_url)
     tags_html = tags_body(tags)
 
     haystack =
