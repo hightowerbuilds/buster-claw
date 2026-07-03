@@ -122,7 +122,7 @@ without opening Chrome once.
    `BrowserHistory.search/2` + visit-frequency ranking (`visit_counts`) +
    bookmark matches. Keyboard navigable (↑↓ Enter Esc). This single item wires
    most of the dead `BrowserHistory` API.
-3. **History page + agent commands.** (S–M) — **SHIPPED 07-03**: /history LiveView (day-grouped, FTS search, per-day + full clears, dock entry) + history_search/history_recent safe-tier commands. Nothing in BrowserHistory is dead.
+3. **History page + agent commands.** (S–M) — **SHIPPED 07-03**: /history LiveView (day-grouped, FTS search, per-day + full clears, dock entry) + history_search/history_recent safe-tier commands. Nothing in BrowserHistory is dead. REVISED same day: history lives in the BROWSER, not the app dock — /browser/history is a content-webview-native page (home styling, GET ?q= search, POST clears) linked "Full history →" from the homepage; the /history LiveView + dock entry were cut.
    `/history` LiveView: day-grouped (`grouped_by_day/1`), searchable, clear /
    clear-range controls. Catalog additions: `history_search`, `history_recent`
    (safe tier). After this, nothing in `BrowserHistory` is dead.

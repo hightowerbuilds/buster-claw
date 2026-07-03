@@ -19,8 +19,6 @@ defmodule BusterClawWeb.Layouts do
       icon: "hero-globe-alt",
       image: "/images/brand/browser-icon.png"
     },
-    # No brand PNG yet — the dock falls back to the text label (see render below).
-    %{label: "History", path: "/history", icon: "hero-clock"},
     %{
       label: "Terminal",
       path: "/terminal",

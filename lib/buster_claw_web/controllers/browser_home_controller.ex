@@ -37,6 +37,10 @@ defmodule BusterClawWeb.BrowserHomeController do
       h1 { margin: 6px 0 24px; font-size: 26px; font-weight: 900; letter-spacing: -.01em; }
       h2 { margin: 32px 0 0; font-size: 13px; font-weight: 700; letter-spacing: .08em;
            text-transform: uppercase; color: rgba(244,241,234,.55); }
+      h2 .more { margin-left: 10px; font: 600 11px/1 ui-monospace, monospace;
+                 letter-spacing: 0; text-transform: none; color: #ff4d1c;
+                 text-decoration: none; }
+      h2 .more:hover { text-decoration: underline; }
       ul { list-style: none; margin: 8px 0 0; padding: 0; max-width: 52rem; }
       li { border-top: 1px solid rgba(244,241,234,.12); display: flex; align-items: center; }
       a { display: flex; align-items: baseline; gap: 12px; padding: 11px 4px;
@@ -112,7 +116,7 @@ defmodule BusterClawWeb.BrowserHomeController do
       #{controls(bookmarks)}
       #{bookmarks_body(bookmarks)}
       <p class="nomatch" id="nomatch" hidden>No bookmarks match.</p>
-      <h2>Recent</h2>
+      <h2>Recent <a class="more" href="/browser/history">Full history →</a></h2>
       #{recent_body(history)}
       #{script(bookmarks)}
     </body>
