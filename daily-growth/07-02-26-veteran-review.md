@@ -232,7 +232,7 @@ The archive has no lifecycle, so it's growing strata (`old-maps/older-maps/`). G
 
 **Done when:** `find daily-growth -type d | grep -c old` returns 0 and there is exactly one archive level.
 
-## P2-3 · Docs-drift backstop in CI
+## P2-3 · Docs-drift backstop in CI  ✅ DONE (07-02 — check caught 4 more stale refs on arrival; wired into lint + CI)
 
 **Files:** `.github/workflows/ci.yml` + small script · **Effort:** ~2 hours
 
@@ -249,9 +249,11 @@ P1-1 fixes today's drift; this keeps it fixed. Cheap version, no framework:
 
 | Sitting | Items | Outcome |
 |---|---|---|
-| **Session 1** (~1 day) | P0-1, P0-2, P1-1 | SSRF closed + governed; front door correct. Safe to run unattended shifts again with a clear conscience. |
-| **Session 2** (~half day) | P0-3, P1-2 | Trust model armored against typos and atom leaks; Credo guards the door going forward. |
-| **Session 3** (cleanup day) | P1-3, P2-2, P2-1 | Tree hygiene: crash triaged, archive flattened, catalog split behind the new tests. |
-| **Session 4** (opportunistic) | P2-3 | Drift can't regress. |
+| **Session 1** (~1 day) | P0-1, P0-2, P1-1 | SSRF closed + governed; front door correct. Safe to run unattended shifts again with a clear conscience. ✅ |
+| **Session 2** (~half day) | P0-3, P1-2 | Trust model armored against typos and atom leaks; Credo guards the door going forward. ✅ |
+| **Session 3** (cleanup day) | P1-3, P2-2, P2-1 | Tree hygiene: crash triaged, archive flattened, catalog split behind the new tests. Plus: all 10 stale LiveView tests fixed — suite fully green. ✅ |
+| **Session 4** (opportunistic) | P2-3 | Drift can't regress. ✅ |
+
+**All four sessions shipped 2026-07-02. The roadmap is fully retired.**
 
 Everything above is sized for the existing quality gates — each item lands as a conventional commit that passes `mix precommit`, and nothing requires touching the Tauri side. Wrap each session with the usual dated-summary → commit → push routine.

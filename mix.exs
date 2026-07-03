@@ -142,7 +142,8 @@ defmodule BusterClaw.MixProject do
       lint: [
         "credo --strict",
         "sobelow --config",
-        "deps.audit --ignore-advisory-ids GHSA-52mm-h59v-f3c7"
+        "deps.audit --ignore-advisory-ids GHSA-52mm-h59v-f3c7",
+        "cmd scripts/check_docs_drift.sh"
       ]
     ]
   end

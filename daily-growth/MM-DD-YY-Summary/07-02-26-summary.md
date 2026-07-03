@@ -127,8 +127,30 @@ into the same VM and compared with **strict term equality** — `==` → true,
 119 entries, identical order — plus the Session-2 invariant/snapshot tests.
 Credo clean on all 11 files.
 
-## Roadmap state
+## Session 4 — shipped (same day). Roadmap fully retired.
 
-Sessions 1–3 complete; every P0/P1 item and both P2 hygiene items are done.
-Remaining: **Session 4 — P2-3** (the 30-line docs-drift CI check wiring CLI
-verbs to README/docs).
+**P2-3 · Docs-drift check (`scripts/check_docs_drift.sh`), wired into `mix
+lint` + CI.** Validates every `./buster-claw <verb>` example in README, docs/,
+and the user-guide against two sources of truth: the CLI dispatch table
+(extracted from `cli.ex`'s case block) and the command catalog (dumped from
+the compiled app, not grepped — exact against refactors). Handles `run <name>`,
+two-word dispatch verbs, the generic noun-verb fallthrough
+(`document list` → `document_list`), and bare family mentions in prose.
+Proven both ways: injected `mailman poll` + `run bogus_command` → exit 1 with
+file:line; clean docs → OK.
+
+**The check earned its keep before it existed:** writing it surfaced **four
+more stale references** Session 1 missed — 3× `mailman poll` in
+`user-guide/daily-loop.md` plus `introduction.md`'s claim that the old
+commands "still work" (they don't; they error as unknown commands). Fixing
+those pulled the thread on deeper user-guide drift: daily-loop still directed
+users to the **removed** "Unattended Shift" home panel and a "This Week"
+panel that no longer exists. Rewrote both around the consolidated `on-duty` /
+`off-duty` front door, the STOP-file kill switch, and the Security audit feed.
+
+## Final state — all four roadmap sessions shipped in one day
+
+P0-1/2/3, P1-1/2/3, P2-1/2/3 all done, plus the 10 stale LiveView tests.
+Suite: **673 tests, 0 failures.** The veteran review's entire punch list is
+retired; the doc lives on as a reference
+(`daily-growth/07-02-26-veteran-review.md`).
