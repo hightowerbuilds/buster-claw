@@ -523,6 +523,7 @@ defmodule BusterClaw.Commands do
   defdelegate web_session_open(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate web_session_close(args), to: BusterClaw.Commands.Web
   defdelegate web_session_list(args \\ %{}), to: BusterClaw.Commands.Web
+  defdelegate web_session_view(args), to: BusterClaw.Commands.Web
   defdelegate web_navigate(args), to: BusterClaw.Commands.Web
   defdelegate web_read(args), to: BusterClaw.Commands.Web
   defdelegate web_find_elements(args), to: BusterClaw.Commands.Web

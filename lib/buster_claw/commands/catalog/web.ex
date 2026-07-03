@@ -195,6 +195,14 @@ defmodule BusterClaw.Commands.Catalog.Web do
         args: %{}
       },
       %{
+        name: "web_session_view",
+        type: :trigger,
+        tier: :restricted,
+        description:
+          "Show an agent cloud session's LIVE VIEW as a tab in the BusterClaw browser — watch the agent work in real time and take the wheel (e.g. to enter a login or card). Requires the desktop app to be open.",
+        args: %{"session_id" => %{type: :string, required: true}}
+      },
+      %{
         name: "web_navigate",
         type: :trigger,
         tier: :restricted,

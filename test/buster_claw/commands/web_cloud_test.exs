@@ -2,6 +2,7 @@ defmodule BusterClaw.Commands.WebCloudTest do
   @moduledoc "Phase 2: the web_* cloud-browser primitive commands."
   use BusterClaw.DataCase, async: false
 
+  alias BusterClaw.Browser.Bridge
   alias BusterClaw.Browserbase.Session, as: CloudSession
   alias BusterClaw.Browserbase.SessionManager
   alias BusterClaw.Commands.Web
@@ -161,6 +162,20 @@ defmodule BusterClaw.Commands.WebCloudTest do
     assert {:ok, %{count: 1, sessions: [%{session_id: ^sid}]}} = Web.web_session_list(%{})
     assert {:ok, %{closed: ^sid}} = Web.web_session_close(%{"session_id" => sid})
     assert {:ok, %{count: 0}} = Web.web_session_list(%{})
+  end
+
+  test "web_session_view opens the live-view url as an ephemeral tab in the browser" do
+    sid = open_session()
+    Bridge.subscribe()
+
+    task = Task.async(fn -> Web.web_session_view(%{"session_id" => sid}) end)
+
+    assert_receive {:browser_command, ref, :open_tab, payload}, 2_000
+    assert payload["url"] == "https://live/bb-1"
+    assert payload["session"] == "ephemeral"
+    Bridge.fulfill(ref, {:ok, %{}})
+
+    assert {:ok, %{opened: true, live_view_url: "https://live/bb-1"}} = Task.await(task)
   end
 
   test "commands return :not_configured when Browserbase is disabled" do

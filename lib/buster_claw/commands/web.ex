@@ -333,6 +333,9 @@ defmodule BusterClaw.Commands.Web do
 
   def web_session_list(_args \\ %{}), do: CloudSession.list()
 
+  def web_session_view(%{"session_id" => id}) when is_binary(id), do: CloudSession.view(id)
+  def web_session_view(_args), do: {:error, :missing_session_id}
+
   def web_navigate(%{"session_id" => id, "url" => url})
       when is_binary(id) and is_binary(url) do
     with {:ok, result} <- CloudSession.navigate(id, url) do

@@ -13,7 +13,7 @@ defmodule BusterClaw.Browserbase.Session do
   `SessionManager` + `Browserbase` client).
   """
 
-  alias BusterClaw.Browser.SessionClient
+  alias BusterClaw.Browser.{Bridge, SessionClient}
   alias BusterClaw.Browserbase
   alias BusterClaw.Browserbase.SessionManager
   alias BusterClaw.Ingest.Content
@@ -51,6 +51,25 @@ defmodule BusterClaw.Browserbase.Session do
     with :ok <- ensure_available() do
       SessionManager.close(session_id)
       {:ok, %{closed: session_id}}
+    end
+  end
+
+  @doc """
+  Show a session's live view as a native tab in the BusterClaw browser — the
+  interactive mirror the user watches (and can take the wheel of, e.g. for a
+  login). Opens as an ephemeral tab (the live view is transient and must not
+  ride the user's cookies). Best-effort: needs the desktop app open, so a
+  headless/CLI-only run gets `:browser_unavailable`.
+  """
+  def view(session_id) do
+    with :ok <- ensure_available(),
+         {:ok, meta} <- SessionManager.get(session_id),
+         url when is_binary(url) <- meta.live_view_url,
+         {:ok, _} <- Bridge.request(:open_tab, %{"url" => url, "session" => "ephemeral"}) do
+      {:ok, %{session_id: session_id, live_view_url: url, opened: true}}
+    else
+      nil -> {:error, :no_live_view}
+      {:error, reason} -> {:error, reason}
     end
   end
 
