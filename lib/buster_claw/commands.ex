@@ -514,6 +514,9 @@ defmodule BusterClaw.Commands do
   defdelegate browser_current(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_read(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_capture_page(args \\ %{}), to: BusterClaw.Commands.Web
+  defdelegate browser_find_elements(args \\ %{}), to: BusterClaw.Commands.Web
+  defdelegate browser_click(args), to: BusterClaw.Commands.Web
+  defdelegate browser_fill(args), to: BusterClaw.Commands.Web
   defdelegate browser_tabs(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_navigate(args), to: BusterClaw.Commands.Web
   defdelegate browser_open_tab(args), to: BusterClaw.Commands.Web

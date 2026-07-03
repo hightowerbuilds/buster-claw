@@ -37,6 +37,18 @@ export const ScreenshotBridge = {
           // JSON string, decoded server-side by the browser_read command.
           const page = await invoke("browser_read_active")
           data = {ok: true, data: page.data}
+        } else if (action === "find_elements") {
+          // Visible interactive elements of the active tab, registered in the
+          // page's window.__bcEls; `data` is the script's JSON string, decoded
+          // server-side by the browser_find_elements command.
+          const found = await invoke("browser_find_elements_active", {query: payload.query || null})
+          data = {ok: true, data: found.data}
+        } else if (action === "click") {
+          const res = await invoke("browser_click_active", {index: payload.index})
+          data = {ok: true, data: res.data}
+        } else if (action === "fill") {
+          const res = await invoke("browser_fill_active", {index: payload.index, value: payload.value})
+          data = {ok: true, data: res.data}
         } else if (action === "navigate") {
           await invoke("browser_navigate_active", {url: payload.url})
         } else if (action === "open_tab") {

@@ -165,6 +165,119 @@ defmodule BusterClaw.Commands.Web do
   end
 
   @doc """
+  List the visible interactive elements (links, buttons, inputs, selects,
+  textareas) of the active tab — the user's live, logged-in session. Registers
+  the live element references in the page's `window.__bcEls` and returns the
+  indexed descriptions `browser_click`/`browser_fill` act on. The registry is
+  **per-page**: any navigation invalidates the indices, so re-find after
+  navigating. Like `browser_read`, the labels are untrusted page content pulled
+  into the agent's context, so every find lands on the Sentinel feed.
+  """
+  def browser_find_elements(args \\ %{}) do
+    payload =
+      case Map.get(args, "query") do
+        query when is_binary(query) and query != "" -> %{"query" => query}
+        _ -> %{}
+      end
+
+    case Bridge.request(:find_elements, payload) do
+      {:ok, %{data: raw}} when is_binary(raw) -> decode_elements(raw, payload["query"])
+      {:ok, _other} -> {:error, :bad_elements_payload}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp decode_elements(raw, query) do
+    case Jason.decode(raw) do
+      {:ok, elements} when is_list(elements) ->
+        BusterClaw.Sentinel.observe(
+          :untrusted_ingest,
+          "Listed #{length(elements)} interactive elements in the live tab",
+          %{count: length(elements), query: query, trust: "fetched", via: "browser_find_elements"}
+        )
+
+        {:ok, %{elements: elements, count: length(elements)}}
+
+      _ ->
+        {:error, :bad_elements_payload}
+    end
+  end
+
+  @doc """
+  Click element `index` from the latest `browser_find_elements` registry,
+  acting **inside the user's live, logged-in session**. Indices are per-page
+  and go stale on navigation — re-find first. Every click records an explicit
+  Sentinel event with its provenance (index + element label).
+  """
+  def browser_click(%{"index" => index}) when is_integer(index) and index >= 0 do
+    with {:ok, result} <- element_action(:click, %{"index" => index}) do
+      label = element_label(result)
+
+      BusterClaw.Sentinel.observe(
+        :outbound_send,
+        "Clicked element ##{index} (#{label}) in the user's live tab",
+        %{via: "browser_click", index: index, label: label}
+      )
+
+      {:ok, %{clicked: index, label: label}}
+    end
+  end
+
+  def browser_click(_args), do: {:error, :missing_index}
+
+  @doc """
+  Fill element `index` (input/textarea/select) from the latest
+  `browser_find_elements` registry with `value`, dispatching bubbling
+  `input`/`change` events so framework listeners notice — acting **inside the
+  user's live, logged-in session**. Indices are per-page and go stale on
+  navigation — re-find first. Every fill records an explicit Sentinel event
+  with its provenance (index, element label, and the value's *length* — never
+  the raw value).
+  """
+  def browser_fill(%{"index" => index, "value" => value})
+      when is_integer(index) and index >= 0 and is_binary(value) do
+    with {:ok, result} <- element_action(:fill, %{"index" => index, "value" => value}) do
+      label = element_label(result)
+
+      BusterClaw.Sentinel.observe(
+        :outbound_send,
+        "Filled element ##{index} (#{label}) in the user's live tab",
+        %{via: "browser_fill", index: index, label: label, value_length: String.length(value)}
+      )
+
+      {:ok, %{filled: index, label: label, value_length: String.length(value)}}
+    end
+  end
+
+  def browser_fill(_args), do: {:error, :missing_index_or_value}
+
+  # Run a click/fill through the bridge and decode the page script's small JSON
+  # result, so failures ("stale index — call browser_find_elements again",
+  # "not fillable") surface as errors instead of silence.
+  defp element_action(action, payload) do
+    case Bridge.request(action, payload) do
+      {:ok, %{data: raw}} when is_binary(raw) -> decode_element_result(raw)
+      {:ok, _other} -> {:error, :bad_element_payload}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp decode_element_result(raw) do
+    case Jason.decode(raw) do
+      {:ok, %{"ok" => true} = result} ->
+        {:ok, result}
+
+      {:ok, %{"ok" => false, "error" => error}} when is_binary(error) ->
+        {:error, {:element_action_failed, error}}
+
+      _ ->
+        {:error, :bad_element_payload}
+    end
+  end
+
+  defp element_label(result), do: result |> Map.get("label", "") |> to_string()
+
+  @doc """
   The browser's current tab strip, read from the durable per-surface tab state
   the chrome persists (`browser_tabs.<sid>` in Settings) — no desktop
   round-trip needed, and it works even while the browser is hidden.

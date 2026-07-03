@@ -567,6 +567,154 @@ pub struct ReadPage {
     pub data: String,
 }
 
+/// Interaction script for `browser_find_elements_active`: collects the page's
+/// visible interactive elements, registers the live references in
+/// `window.__bcEls` (the per-page index registry `browser_click_active` /
+/// `browser_fill_active` act on — navigation invalidates it), and returns a
+/// JSON string: an array of `{i, tag, type, label, value, href}`. `query`
+/// (page-controlled once eval'd, so it arrives via `js_str`) is a
+/// case-insensitive substring filter on the label.
+fn find_elements_js(query: &str) -> String {
+    format!(
+        r#"
+JSON.stringify((function () {{
+  var q = {query}.toLowerCase();
+  var sel = 'a[href], button, input, select, textarea, [role="button"], [onclick]';
+  var nodes = document.querySelectorAll(sel);
+  var els = [];
+  var out = [];
+  for (var i = 0; i < nodes.length && out.length < 100; i++) {{
+    var el = nodes[i];
+    if (el.offsetParent === null && el.getClientRects().length === 0) continue;
+    var label = (el.innerText || el.placeholder || el.getAttribute("aria-label") ||
+      el.getAttribute("name") || "").replace(/\s+/g, " ").trim().slice(0, 120);
+    if (q && label.toLowerCase().indexOf(q) === -1) continue;
+    out.push({{
+      i: els.length,
+      tag: el.tagName.toLowerCase(),
+      type: el.getAttribute("type") || "",
+      label: label,
+      value: typeof el.value === "string" ? el.value.slice(0, 120) : "",
+      href: typeof el.href === "string" ? el.href : ""
+    }});
+    els.push(el);
+  }}
+  window.__bcEls = els;
+  return out;
+}})())
+"#,
+        query = js_str(query)
+    )
+}
+
+// Shared JS snippet: a registered element's human label (mirrors the label
+// logic in find_elements_js).
+const EL_LABEL_JS: &str = r#"(el.innerText || el.placeholder || el.getAttribute("aria-label") ||
+    el.getAttribute("name") || "").replace(/\s+/g, " ").trim().slice(0, 120)"#;
+
+// Look up `window.__bcEls[index]`; stale/missing entries return the "stale
+// index" error the agent recovers from by re-running browser_find_elements.
+fn el_lookup_js(index: usize) -> String {
+    format!(
+        r#"var els = window.__bcEls;
+  var el = els && els[{index}];
+  if (!el || !el.isConnected)
+    return {{ok: false, error: "stale index — call browser_find_elements again"}};"#
+    )
+}
+
+fn click_js(index: usize) -> String {
+    format!(
+        r#"
+JSON.stringify((function () {{
+  {lookup}
+  var label = {label};
+  if (el.focus) el.focus();
+  el.click();
+  return {{ok: true, label: label}};
+}})())
+"#,
+        lookup = el_lookup_js(index),
+        label = EL_LABEL_JS
+    )
+}
+
+fn fill_js(index: usize, value: &str) -> String {
+    format!(
+        r#"
+JSON.stringify((function () {{
+  {lookup}
+  var tag = el.tagName.toLowerCase();
+  if (tag !== "input" && tag !== "textarea" && tag !== "select")
+    return {{ok: false, error: "not fillable (" + tag + ")"}};
+  if (el.focus) el.focus();
+  el.value = {value};
+  el.dispatchEvent(new Event("input", {{bubbles: true}}));
+  el.dispatchEvent(new Event("change", {{bubbles: true}}));
+  return {{ok: true, label: {label}}};
+}})())
+"#,
+        lookup = el_lookup_js(index),
+        value = js_str(value),
+        label = EL_LABEL_JS
+    )
+}
+
+/// A JSON string result from an interaction script run in the active tab.
+#[derive(serde::Serialize)]
+pub struct EvalData {
+    pub data: String,
+}
+
+/// List the visible interactive elements of the active content tab (agent
+/// co-presence) and register them in the page's `window.__bcEls` for
+/// `browser_click_active` / `browser_fill_active`. Returns `{data}`: a JSON
+/// string of `[{i, tag, type, label, value, href}]`.
+#[tauri::command]
+pub fn browser_find_elements_active(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: Option<String>,
+    query: Option<String>,
+) -> Result<EvalData, String> {
+    let webview = active_content(&app, &state, surface_id)?;
+    let js = find_elements_js(query.as_deref().unwrap_or(""));
+    let data = eval_with_result(&webview, &js)?;
+    Ok(EvalData { data })
+}
+
+/// Click element `index` from the tab's `window.__bcEls` registry (agent
+/// co-presence — acts inside the user's live session). Returns `{data}`: a
+/// JSON string of `{ok, label}` or `{ok: false, error}`.
+#[tauri::command]
+pub fn browser_click_active(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: Option<String>,
+    index: usize,
+) -> Result<EvalData, String> {
+    let webview = active_content(&app, &state, surface_id)?;
+    let data = eval_with_result(&webview, &click_js(index))?;
+    Ok(EvalData { data })
+}
+
+/// Fill element `index` from the tab's `window.__bcEls` registry with `value`,
+/// dispatching bubbling `input` + `change` events so framework listeners
+/// notice (agent co-presence — acts inside the user's live session). Returns
+/// `{data}`: a JSON string of `{ok, label}` or `{ok: false, error}`.
+#[tauri::command]
+pub fn browser_fill_active(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: Option<String>,
+    index: usize,
+    value: String,
+) -> Result<EvalData, String> {
+    let webview = active_content(&app, &state, surface_id)?;
+    let data = eval_with_result(&webview, &fill_js(index, &value))?;
+    Ok(EvalData { data })
+}
+
 // Run JS in a webview and return its (string) result — the completion-handler
 // variant of `eval`. Same objc bridge pattern as the screenshot/title paths:
 // `with_webview` runs on the main thread, which is free to fire the completion
@@ -1317,6 +1465,24 @@ mod tests {
         for (input, expected) in fixtures {
             assert_eq!(sanitize_sid(input), expected, "sid {input:?}");
         }
+    }
+
+    // The interaction scripts interpolate agent-supplied strings; they must
+    // ride through js_str, never raw format — a hostile value/query can't
+    // break out of the eval'd literal.
+    #[test]
+    fn interaction_scripts_escape_agent_supplied_strings() {
+        let fill = fill_js(3, "a\"; alert(1); //\u{2028}");
+        assert!(fill.contains(r#"el.value = "a\"; alert(1); //\u2028""#));
+        assert!(fill.contains("window.__bcEls"));
+        assert!(fill.contains("els[3]"));
+
+        let find = find_elements_js("Sign\" out");
+        assert!(find.contains(r#"var q = "Sign\" out".toLowerCase()"#));
+
+        let click = click_js(7);
+        assert!(click.contains("els[7]"));
+        assert!(click.contains("el.click()"));
     }
 
     #[test]

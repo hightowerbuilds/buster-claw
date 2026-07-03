@@ -78,6 +78,53 @@ defmodule BusterClaw.Commands.Catalog.Web do
         }
       },
       %{
+        name: "browser_find_elements",
+        type: :read,
+        tier: :restricted,
+        description:
+          "List the visible interactive elements (links, buttons, inputs) of the active browser tab — the user's live, logged-in session (Sentinel-audited). Returns indexed {i, tag, type, label, value, href} entries for browser_click/browser_fill. The index registry is per-page: navigation invalidates it, so re-run this after navigating. Requires the desktop app to be open.",
+        args: %{
+          "query" => %{
+            type: :string,
+            required: false,
+            description: "Case-insensitive substring filter on element labels."
+          }
+        }
+      },
+      %{
+        name: "browser_click",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Click element #index from the latest browser_find_elements — this acts inside the user's live, logged-in session (Sentinel-audited with index + label). Indices go stale on navigation: call browser_find_elements again first. Requires the desktop app to be open.",
+        args: %{
+          "index" => %{
+            type: :integer,
+            required: true,
+            description: "Element index from the latest browser_find_elements."
+          }
+        }
+      },
+      %{
+        name: "browser_fill",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Fill element #index (input/textarea/select) from the latest browser_find_elements with a value, dispatching input+change events — this types into the user's live, logged-in session (Sentinel-audited with index, label, and value length). Indices go stale on navigation: call browser_find_elements again first. Requires the desktop app to be open.",
+        args: %{
+          "index" => %{
+            type: :integer,
+            required: true,
+            description: "Element index from the latest browser_find_elements."
+          },
+          "value" => %{
+            type: :string,
+            required: true,
+            description: "The value to set on the element."
+          }
+        }
+      },
+      %{
         name: "browser_tabs",
         type: :read,
         tier: :restricted,

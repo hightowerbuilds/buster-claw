@@ -4,8 +4,8 @@ defmodule BusterClaw.Browser.Bridge do
 
   Mirrors `BusterClaw.Browser.Capture`, but instead of a single screenshot action
   it carries a small set of co-presence commands (`:current`, `:read`,
-  `:navigate`, `:open_tab`) the agent can issue to read and drive the tab the
-  user is viewing.
+  `:find_elements`, `:click`, `:fill`, `:navigate`, `:open_tab`) the agent can
+  issue to read and drive the tab the user is viewing.
 
   The agent drives the Phoenix command surface, but the webviews live in the
   separate Tauri process. `request/2` issues a command: it broadcasts it (tagged
@@ -19,7 +19,7 @@ defmodule BusterClaw.Browser.Bridge do
 
   @topic "browser_bridge"
   @default_timeout_ms 8_000
-  @actions ~w(current read navigate open_tab)a
+  @actions ~w(current read find_elements click fill navigate open_tab)a
 
   # The internal expiry; overridable in tests via :browser_bridge_timeout_ms.
   defp timeout_ms,

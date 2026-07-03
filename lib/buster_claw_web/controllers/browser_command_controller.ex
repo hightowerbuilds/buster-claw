@@ -22,8 +22,8 @@ defmodule BusterClawWeb.BrowserCommandController do
 
   defp result_for(%{"ok" => true} = params) do
     # `current` returns url + title; the trigger actions send neither, yielding an
-    # empty map that simply confirms success. `read` returns data — the page
-    # script's JSON, decoded by the browser_read command.
+    # empty map that simply confirms success. `read`/`find_elements`/`click`/`fill`
+    # return data — the page script's JSON, decoded by the matching command.
     {:ok,
      params
      |> Map.take(["url", "title", "data"])
