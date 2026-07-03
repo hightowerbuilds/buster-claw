@@ -315,6 +315,19 @@ defmodule BusterClawWeb.BrowserChromeController do
           addr.focus()
         }
 
+        // Agent co-presence: open a new tab at `rawUrl` and make it active,
+        // routed through the chrome so the tab strip stays in sync. Called from
+        // Rust (browser_open_tab_active) via eval.
+        window.__agentOpenTab = function (rawUrl) {
+          const url = resolve(rawUrl) || homeUrl
+          const id = String(nextId++)
+          tabs.push({ id, url: "", label: "New tab" })
+          activeId = id
+          renderTabs()
+          inv("browser_new_tab", { tabId: id, url })
+          if (document.activeElement !== addr) addr.value = display(url)
+        }
+
         function switchTab(id) {
           if (id === activeId) return
           activeId = id

@@ -342,16 +342,7 @@ pub fn browser_screenshot(
     state: State<BrowserState>,
     surface_id: Option<String>,
 ) -> Result<Screenshot, String> {
-    let sid = surface_id
-        .map(|s| sanitize_sid(&s))
-        .or_else(|| state.any_sid())
-        .unwrap_or_else(|| DEFAULT_SID.to_string());
-    let id = state
-        .get(&sid)
-        .ok_or_else(|| "no active browser tab".to_string())?;
-    let webview = app
-        .get_webview(&content_label(&sid, &id))
-        .ok_or_else(|| "active tab webview missing".to_string())?;
+    let webview = active_content(&app, &state, surface_id)?;
 
     let url = webview.url().map(|u| u.to_string()).unwrap_or_default();
     let png = capture_webview(&webview)?;
@@ -369,6 +360,150 @@ pub struct Screenshot {
     pub data: String,
     /// The active tab's current URL.
     pub url: String,
+}
+
+/// The active content tab's URL + page title, for agent co-presence.
+#[derive(serde::Serialize)]
+pub struct CurrentTab {
+    pub url: String,
+    pub title: String,
+}
+
+/// Read the active content tab the user is viewing. Without a `surface_id`,
+/// defaults to any open surface. Returns the tab's current URL + page title.
+#[tauri::command]
+pub fn browser_current(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: Option<String>,
+) -> Result<CurrentTab, String> {
+    let webview = active_content(&app, &state, surface_id)?;
+    let url = webview.url().map(|u| u.to_string()).unwrap_or_default();
+    let title = webview_title(&webview).unwrap_or_default();
+    Ok(CurrentTab { url, title })
+}
+
+/// Navigate the active content tab to `url` (agent-driven co-presence). The
+/// surface's chrome updates its address bar/tab label via the on_navigation
+/// callback fired for the content webview. Without a `surface_id`, defaults to
+/// any open surface. Only http(s) URLs are allowed.
+#[tauri::command]
+pub fn browser_navigate_active(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: Option<String>,
+    url: String,
+) -> Result<(), String> {
+    let parsed = parse_web_url(&url)?;
+    let webview = active_content(&app, &state, surface_id)?;
+    webview.navigate(parsed).map_err(|e| e.to_string())
+}
+
+/// Open a new tab at `url` in the active surface and make it active. Routed
+/// through that surface's chrome (`window.__agentOpenTab`) so its tab strip
+/// stays in sync. Without a `surface_id`, defaults to any open surface. Only
+/// http(s) URLs are allowed.
+#[tauri::command]
+pub fn browser_open_tab_active(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: Option<String>,
+    url: String,
+) -> Result<(), String> {
+    let parsed = parse_web_url(&url)?;
+    let sid = active_sid(&state, surface_id);
+    let chrome = app
+        .get_webview(&chrome_label(&sid))
+        .ok_or_else(|| "no browser surface open".to_string())?;
+    chrome
+        .eval(&format!(
+            "window.__agentOpenTab && window.__agentOpenTab({})",
+            js_str(parsed.as_str())
+        ))
+        .map_err(|e| e.to_string())
+}
+
+// Parse a URL and require an http(s) scheme (the content webviews refuse other
+// schemes anyway; reject early with a clear message).
+fn parse_web_url(url: &str) -> Result<Url, String> {
+    let parsed: Url = url.parse().map_err(|e| format!("invalid url: {e}"))?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(parsed),
+        other => Err(format!("only http(s) URLs are allowed, got {other}")),
+    }
+}
+
+// The surface to act on: the requested one (sanitised), else any open surface,
+// else the default.
+fn active_sid(state: &State<BrowserState>, surface_id: Option<String>) -> String {
+    surface_id
+        .map(|s| sanitize_sid(&s))
+        .or_else(|| state.any_sid())
+        .unwrap_or_else(|| DEFAULT_SID.to_string())
+}
+
+// The active content webview of the resolved surface (the tab the user sees).
+fn active_content(
+    app: &AppHandle,
+    state: &State<BrowserState>,
+    surface_id: Option<String>,
+) -> Result<tauri::Webview, String> {
+    let sid = active_sid(state, surface_id);
+    let id = state
+        .get(&sid)
+        .ok_or_else(|| "no active browser tab".to_string())?;
+    app.get_webview(&content_label(&sid, &id))
+        .ok_or_else(|| "active tab webview missing".to_string())
+}
+
+// Read a content webview's page title. macOS reads WKWebView's `title` property
+// on the main thread (mirrors the screenshot snapshot bridge).
+#[cfg(target_os = "macos")]
+fn webview_title(webview: &tauri::Webview) -> Option<String> {
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+    use std::sync::mpsc::channel;
+    use std::time::Duration;
+
+    let (tx, rx) = channel::<Option<String>>();
+    webview
+        .with_webview(move |pw| {
+            let wk = pw.inner() as *mut Object;
+            let title = if wk.is_null() {
+                None
+            } else {
+                unsafe {
+                    let ns: *mut Object = msg_send![wk, title];
+                    nsstring_to_string(ns)
+                }
+            };
+            let _ = tx.send(title);
+        })
+        .ok()?;
+
+    rx.recv_timeout(Duration::from_secs(2)).ok().flatten()
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn nsstring_to_string(s: *mut objc::runtime::Object) -> Option<String> {
+    use objc::{msg_send, sel, sel_impl};
+
+    if s.is_null() {
+        return None;
+    }
+    let utf8: *const std::os::raw::c_char = msg_send![s, UTF8String];
+    if utf8.is_null() {
+        return None;
+    }
+    std::ffi::CStr::from_ptr(utf8)
+        .to_str()
+        .ok()
+        .map(|s| s.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn webview_title(_webview: &tauri::Webview) -> Option<String> {
+    None
 }
 
 // WKWebView snapshot is async (completion handler); bridge it back to this

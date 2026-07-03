@@ -32,6 +32,7 @@ defmodule BusterClaw.Application do
         dispatch_projector_child(),
         BusterClaw.TerminalWorkspace,
         BusterClaw.Browser.Capture,
+        BusterClaw.Browser.Bridge,
         BusterClaw.Sentinel.Pending,
         BusterClaw.RateLimiter,
         browser_sidecar_child(),
