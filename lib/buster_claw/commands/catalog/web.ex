@@ -163,6 +163,134 @@ defmodule BusterClaw.Commands.Catalog.Web do
         }
       },
 
+      # Cloud browser (Browserbase) — the agent's own driven sessions.
+      %{
+        name: "web_session_open",
+        type: :trigger,
+        tier: :restricted,
+        description:
+          "Open an agent-driven CLOUD browser session (Browserbase) — separate from the user's local tabs. Returns a session_id to pass to every other web_* command, plus a live_view_url the user can watch. Optionally pass url to navigate immediately.",
+        args: %{
+          "url" => %{
+            type: :string,
+            required: false,
+            description: "Navigate here immediately after opening (full http(s) URL)."
+          }
+        }
+      },
+      %{
+        name: "web_session_close",
+        type: :trigger,
+        tier: :restricted,
+        description:
+          "Close an agent cloud session and release the cloud browser (stops billing). Idempotent.",
+        args: %{"session_id" => %{type: :string, required: true}}
+      },
+      %{
+        name: "web_session_list",
+        type: :read,
+        tier: :restricted,
+        description:
+          "List the open agent cloud sessions (session_id, live_view_url, timestamps).",
+        args: %{}
+      },
+      %{
+        name: "web_navigate",
+        type: :trigger,
+        tier: :restricted,
+        description:
+          "Navigate an agent cloud session to a URL (SSRF-guarded, full http(s) URL). Sentinel-audited.",
+        args: %{
+          "session_id" => %{type: :string, required: true},
+          "url" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "web_read",
+        type: :read,
+        tier: :restricted,
+        description:
+          "Read an agent cloud session's rendered page as markdown (title + content, 200 KB cap). Sentinel-audited.",
+        args: %{"session_id" => %{type: :string, required: true}}
+      },
+      %{
+        name: "web_find_elements",
+        type: :read,
+        tier: :restricted,
+        description:
+          "List interactive elements of an agent cloud session's page — returns stable CSS selectors + roles/labels for web_fill/web_select/web_click. Sentinel-audited.",
+        args: %{
+          "session_id" => %{type: :string, required: true},
+          "query" => %{
+            type: :string,
+            required: false,
+            description: "Case-insensitive substring filter on element labels."
+          }
+        }
+      },
+      %{
+        name: "web_fill",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Fill a form field (by CSS selector) in an agent cloud session. Sentinel-audited with the value's length only — never the raw value.",
+        args: %{
+          "session_id" => %{type: :string, required: true},
+          "selector" => %{type: :string, required: true},
+          "value" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "web_select",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Select a dropdown option (by CSS selector) in an agent cloud session. Sentinel-audited.",
+        args: %{
+          "session_id" => %{type: :string, required: true},
+          "selector" => %{type: :string, required: true},
+          "value" => %{
+            type: :string,
+            required: true,
+            description: "Option value or visible label to select."
+          }
+        }
+      },
+      %{
+        name: "web_click",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Click an element (by CSS selector) in an agent cloud session. REFUSES submit/pay/checkout-shaped selectors — purchasing is Phase 4, gated. Sentinel-audited.",
+        args: %{
+          "session_id" => %{type: :string, required: true},
+          "selector" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "web_screenshot",
+        type: :trigger,
+        tier: :restricted,
+        description:
+          "Capture a PNG of an agent cloud session's page into the workspace downloads folder. Returns the saved path.",
+        args: %{"session_id" => %{type: :string, required: true}}
+      },
+      %{
+        name: "web_extract",
+        type: :read,
+        tier: :restricted,
+        description:
+          "Extract structured data from an agent cloud session via a selector map: spec = %{\"fields\" => %{name => css_selector}} for one object, or %{\"type\" => \"list\", \"item\" => css, \"fields\" => %{...}} for rows. Sentinel-audited.",
+        args: %{
+          "session_id" => %{type: :string, required: true},
+          "spec" => %{
+            type: :map,
+            required: true,
+            description: "Selector map (field → CSS selector), or a list spec with item + fields."
+          }
+        }
+      },
+
       # Bookmarks
       %{
         name: "bookmark_add",

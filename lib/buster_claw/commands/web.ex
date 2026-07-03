@@ -5,6 +5,8 @@ defmodule BusterClaw.Commands.Web do
 
   alias BusterClaw.{Browser, BrowserHistory, Search}
   alias BusterClaw.Browser.{Bridge, Capture}
+  alias BusterClaw.Browserbase.Session, as: CloudSession
+  alias BusterClaw.Sentinel
 
   def web_search(%{"query" => query} = args) do
     limit = Map.get(args, "limit", 10)
@@ -315,6 +317,177 @@ defmodule BusterClaw.Commands.Web do
   end
 
   def browser_open_tab(_args), do: {:error, :missing_url}
+
+  # -----------------------------------------------------------------------
+  # Cloud browser (Browserbase) — the agent's own driven sessions. Distinct
+  # from the browser_* co-presence verbs above (which drive the USER's live
+  # local tab). All restricted-tier; all Sentinel-audited. Cannot submit or
+  # pay by construction (web_click refuses submit affordances; purchasing is
+  # Phase 4, gated).
+  # -----------------------------------------------------------------------
+
+  def web_session_open(args \\ %{}), do: CloudSession.open(args)
+
+  def web_session_close(%{"session_id" => id}) when is_binary(id), do: CloudSession.close(id)
+  def web_session_close(_args), do: {:error, :missing_session_id}
+
+  def web_session_list(_args \\ %{}), do: CloudSession.list()
+
+  def web_navigate(%{"session_id" => id, "url" => url})
+      when is_binary(id) and is_binary(url) do
+    with {:ok, result} <- CloudSession.navigate(id, url) do
+      Sentinel.observe(:untrusted_ingest, "Navigated cloud session to #{result.url}", %{
+        url: result.url,
+        title: result.title,
+        trust: "fetched",
+        via: "web_navigate",
+        session_id: id
+      })
+
+      {:ok, result}
+    end
+  end
+
+  def web_navigate(_args), do: {:error, :missing_session_or_url}
+
+  def web_read(%{"session_id" => id}) when is_binary(id) do
+    with {:ok, result} <- CloudSession.read(id) do
+      Sentinel.observe(:untrusted_ingest, "Read cloud session #{result.url}", %{
+        url: result.url,
+        title: result.title,
+        trust: "fetched",
+        via: "web_read",
+        session_id: id
+      })
+
+      {:ok, result}
+    end
+  end
+
+  def web_read(_args), do: {:error, :missing_session_id}
+
+  def web_find_elements(%{"session_id" => id} = args) when is_binary(id) do
+    query =
+      case Map.get(args, "query") do
+        q when is_binary(q) and q != "" -> q
+        _ -> nil
+      end
+
+    with {:ok, result} <- CloudSession.find_elements(id, query) do
+      Sentinel.observe(
+        :untrusted_ingest,
+        "Listed #{result.count} interactive elements in cloud session",
+        %{
+          count: result.count,
+          query: query,
+          trust: "fetched",
+          via: "web_find_elements",
+          session_id: id
+        }
+      )
+
+      {:ok, result}
+    end
+  end
+
+  def web_find_elements(_args), do: {:error, :missing_session_id}
+
+  def web_fill(%{"session_id" => id, "selector" => selector, "value" => value})
+      when is_binary(id) and is_binary(selector) and is_binary(value) do
+    with {:ok, result} <- CloudSession.fill(id, selector, value) do
+      # Never the raw value — only its length (and a redaction flag).
+      Sentinel.observe(:outbound_send, "Filled #{selector} in cloud session", %{
+        via: "web_fill",
+        selector: selector,
+        value_length: result.value_length,
+        redacted: result.redacted,
+        session_id: id
+      })
+
+      {:ok, result}
+    end
+  end
+
+  def web_fill(_args), do: {:error, :missing_fill_args}
+
+  def web_select(%{"session_id" => id, "selector" => selector, "value" => value})
+      when is_binary(id) and is_binary(selector) and is_binary(value) do
+    with {:ok, result} <- CloudSession.select(id, selector, value) do
+      Sentinel.observe(:outbound_send, "Selected #{value} on #{selector} in cloud session", %{
+        via: "web_select",
+        selector: selector,
+        session_id: id
+      })
+
+      {:ok, result}
+    end
+  end
+
+  def web_select(_args), do: {:error, :missing_select_args}
+
+  def web_click(%{"session_id" => id, "selector" => selector})
+      when is_binary(id) and is_binary(selector) do
+    case CloudSession.click(id, selector) do
+      {:ok, result} ->
+        Sentinel.observe(:outbound_send, "Clicked #{selector} in cloud session", %{
+          via: "web_click",
+          selector: selector,
+          session_id: id
+        })
+
+        {:ok, result}
+
+      {:error, {:submit_affordance_refused, _} = reason} ->
+        Sentinel.observe(
+          :security_block,
+          "Refused submit/payment-shaped click in cloud session",
+          %{
+            via: "web_click",
+            selector: selector,
+            reason: :submit_affordance,
+            session_id: id
+          }
+        )
+
+        {:error, reason}
+
+      other ->
+        other
+    end
+  end
+
+  def web_click(_args), do: {:error, :missing_click_args}
+
+  def web_screenshot(%{"session_id" => id}) when is_binary(id) do
+    with {:ok, %{png: png, bytes: bytes}} <- CloudSession.screenshot(id) do
+      filename = "cloud-#{System.unique_integer([:positive])}.png"
+      rel = Path.join(["downloads", Date.to_iso8601(BusterClaw.LocalTime.today()), filename])
+      abs = resolve_workspace_path(rel)
+
+      with :ok <- File.mkdir_p(Path.dirname(abs)),
+           :ok <- File.write(abs, png) do
+        {:ok, %{session_id: id, path: rel, absolute_path: abs, bytes: bytes}}
+      end
+    end
+  end
+
+  def web_screenshot(_args), do: {:error, :missing_session_id}
+
+  def web_extract(%{"session_id" => id, "spec" => spec})
+      when is_binary(id) and is_map(spec) do
+    with {:ok, result} <- CloudSession.extract(id, spec) do
+      Sentinel.observe(:untrusted_ingest, "Extracted structured data from cloud session", %{
+        count: result.count,
+        trust: "fetched",
+        via: "web_extract",
+        session_id: id
+      })
+
+      {:ok, result}
+    end
+  end
+
+  def web_extract(_args), do: {:error, :missing_extract_args}
 
   # Drive the live browser via the co-presence bridge, echoing the requested URL
   # under `key` on success.

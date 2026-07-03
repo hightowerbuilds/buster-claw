@@ -62,6 +62,14 @@ defmodule BusterClaw.Browserbase.SessionManager do
     GenServer.call(server(opts), {:get, session_id})
   end
 
+  @doc """
+  Resolve a session's sidecar-driver id and defer its idle clock in one call —
+  the seam the `Session` facade uses before every primitive.
+  """
+  def checkout(session_id, opts \\ []) when is_binary(session_id) do
+    GenServer.call(server(opts), {:checkout, session_id})
+  end
+
   @doc "Release a session now and forget it. Idempotent."
   def close(session_id, opts \\ []) when is_binary(session_id) do
     GenServer.call(server(opts), {:close, session_id}, 60_000)
@@ -131,6 +139,17 @@ defmodule BusterClaw.Browserbase.SessionManager do
     case Map.fetch(state.sessions, session_id) do
       {:ok, session} -> {:reply, {:ok, public(session)}, state}
       :error -> {:reply, {:error, :unknown_session}, state}
+    end
+  end
+
+  def handle_call({:checkout, session_id}, _from, state) do
+    case Map.fetch(state.sessions, session_id) do
+      {:ok, %{sidecar_id: sidecar_id} = session} when is_binary(sidecar_id) ->
+        touched = %{session | last_used_at: now_ms()}
+        {:reply, {:ok, sidecar_id}, put_in(state.sessions[session_id], touched)}
+
+      _ ->
+        {:reply, {:error, :unknown_session}, state}
     end
   end
 
