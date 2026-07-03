@@ -21,7 +21,7 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::webview::WebviewBuilder;
+use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, Url, WebviewUrl};
 
 const CHROME_PREFIX: &str = "browser-chrome-"; // browser-chrome-<sid>
@@ -547,20 +547,39 @@ fn create_content(
     let app_for_nav = app.clone();
     let id_for_nav = tab_id.to_string();
     let chrome_for_nav = chrome_label(sid);
+    let app_for_load = app.clone();
+    let id_for_load = tab_id.to_string();
+    let chrome_for_load = chrome_label(sid);
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
         .on_navigation(move |url| {
             // Lock to web navigation: block file://, tauri://, javascript:, data:.
             let allowed = matches!(url.scheme(), "http" | "https") || url.as_str() == "about:blank";
             if allowed {
+                // Fires *before* the page loads — tell the chrome this tab is now
+                // loading (spinner + optimistic address-bar/url update). The real
+                // title arrives on completion via `on_page_load` below.
                 if let Some(chrome) = app_for_nav.get_webview(&chrome_for_nav) {
                     let _ = chrome.eval(&format!(
-                        "window.__onContentNavigated && window.__onContentNavigated({}, {})",
+                        "window.__onContentLoading && window.__onContentLoading({}, {})",
                         js_str(&id_for_nav),
                         js_str(url.as_str())
                     ));
                 }
             }
             allowed
+        })
+        .on_page_load(move |webview, payload| {
+            // Fires when the page finishes loading — clear the spinner and hand
+            // the chrome the real document title for the tab label.
+            if payload.event() == PageLoadEvent::Finished {
+                notify_navigated(
+                    &app_for_load,
+                    &chrome_for_load,
+                    &id_for_load,
+                    payload.url().as_str(),
+                    &webview,
+                );
+            }
         })
         .initialization_script(NO_POPUPS_JS);
 
@@ -624,6 +643,80 @@ fn tab_eval(
     Ok(())
 }
 
+// Tell a surface's chrome that a tab finished loading, passing the page's real
+// title so the tab label can show it (the chrome falls back to the hostname when
+// the title is empty). The favicon is derived host-side in the chrome JS.
+//
+// macOS reads WKWebView's `title` directly (same in-process objc bridge the
+// screenshot path uses); other platforms pass an empty title and the chrome
+// keeps the hostname label.
+#[cfg(target_os = "macos")]
+fn notify_navigated(
+    app: &AppHandle,
+    chrome_label: &str,
+    tab_id: &str,
+    url: &str,
+    content: &tauri::Webview,
+) {
+    let app = app.clone();
+    let chrome_label = chrome_label.to_string();
+    let tab_id = tab_id.to_string();
+    let url = url.to_string();
+    // `with_webview` runs on the main thread, where reading the WKWebView title
+    // and dispatching the chrome eval are both safe.
+    let _ = content.with_webview(move |pw| {
+        use objc::runtime::Object;
+        use objc::{msg_send, sel, sel_impl};
+        let title = unsafe {
+            let wk = pw.inner() as *mut Object;
+            if wk.is_null() {
+                String::new()
+            } else {
+                let ns: *mut Object = msg_send![wk, title];
+                nsstring_to_string(ns)
+            }
+        };
+        emit_navigated(&app, &chrome_label, &tab_id, &url, &title);
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn notify_navigated(
+    app: &AppHandle,
+    chrome_label: &str,
+    tab_id: &str,
+    url: &str,
+    _content: &tauri::Webview,
+) {
+    emit_navigated(app, chrome_label, tab_id, url, "");
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn nsstring_to_string(ns: *mut objc::runtime::Object) -> String {
+    use objc::{msg_send, sel, sel_impl};
+    if ns.is_null() {
+        return String::new();
+    }
+    let utf8: *const std::os::raw::c_char = msg_send![ns, UTF8String];
+    if utf8.is_null() {
+        return String::new();
+    }
+    std::ffi::CStr::from_ptr(utf8)
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn emit_navigated(app: &AppHandle, chrome_label: &str, tab_id: &str, url: &str, title: &str) {
+    if let Some(chrome) = app.get_webview(chrome_label) {
+        let _ = chrome.eval(&format!(
+            "window.__onContentNavigated && window.__onContentNavigated({}, {}, {})",
+            js_str(tab_id),
+            js_str(url),
+            js_str(title)
+        ));
+    }
+}
+
 // Encode a string as a JS string literal for safe interpolation into eval'd JS.
 fn js_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
@@ -635,6 +728,11 @@ fn js_str(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
+            // U+2028/U+2029 are valid in modern JS string literals but are line
+            // terminators on older engines; escape them so a page-controlled title
+            // can never break out of the eval'd literal.
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
             c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
             c => out.push(c),
         }
