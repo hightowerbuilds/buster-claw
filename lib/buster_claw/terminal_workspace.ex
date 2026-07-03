@@ -50,11 +50,11 @@ defmodule BusterClaw.TerminalWorkspace do
 
   Convenience wrapper over `open/1` that forces `startup_submit: false`. The
   onboarding flow uses this to drop the user into a terminal with
-  `./buster-claw mailman poll` typed and waiting.
+  `./buster-claw on-duty` typed and waiting.
 
   ## Examples
 
-      # Mailman poll, pre-typed, un-submitted:
+      # On-duty loop, pre-typed, un-submitted:
       BusterClaw.TerminalWorkspace.request_open(%{"role" => "mailman"})
 
   """
@@ -66,7 +66,7 @@ defmodule BusterClaw.TerminalWorkspace do
   end
 
   @doc """
-  Open the Mailman terminal tab with `./buster-claw mailman poll` pre-filled but
+  Open the Mailman terminal tab with `./buster-claw on-duty` pre-filled but
   NOT executed. Shorthand the onboarding LiveView can call with no arguments.
   """
   def request_open_mailman do

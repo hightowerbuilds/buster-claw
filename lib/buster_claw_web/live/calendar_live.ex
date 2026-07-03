@@ -125,7 +125,7 @@ defmodule BusterClawWeb.CalendarLive do
   def handle_event("set_view", %{"view" => view}, socket) when view in ~w(month week day) do
     {:noreply,
      socket
-     |> assign(:view, String.to_atom(view))
+     |> assign(:view, view_atom(view))
      |> rebuild_view()}
   end
 
@@ -285,7 +285,10 @@ defmodule BusterClawWeb.CalendarLive do
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0 space-y-1">
               <div class="flex items-center gap-2">
-                <span class={["inline-block size-3 rounded-xs", CalendarColors.swatch(@viewing_event.color)]} />
+                <span class={[
+                  "inline-block size-3 rounded-xs",
+                  CalendarColors.swatch(@viewing_event.color)
+                ]} />
                 <h3 class="text-lg font-semibold">{@viewing_event.title}</h3>
                 <span
                   :if={@viewing_event.frequency}
@@ -496,7 +499,7 @@ defmodule BusterClawWeb.CalendarLive do
       <span class={[
         "relative z-[2] self-end font-mono font-semibold",
         @day.date == @today && "rounded-xs bg-primary px-1.5 py-0.5 text-primary-content",
-        @dim_other_month and not @day.in_month? && @day.date != @today && "text-base-content/40"
+        (@dim_other_month and not @day.in_month?) && @day.date != @today && "text-base-content/40"
       ]}>
         {@day.date.day}
       </span>
@@ -601,6 +604,12 @@ defmodule BusterClawWeb.CalendarLive do
 
   defp header_label(:day, anchor),
     do: Elixir.Calendar.strftime(anchor, "%A, %B %-d, %Y")
+
+  # Param-derived input must never mint atoms (the atom table is not GC'd), so
+  # the view name maps through explicit clauses instead of String.to_atom/1.
+  defp view_atom("month"), do: :month
+  defp view_atom("week"), do: :week
+  defp view_atom("day"), do: :day
 
   # ---- Anchor shifts ----
 

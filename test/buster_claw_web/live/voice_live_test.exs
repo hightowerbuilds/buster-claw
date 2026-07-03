@@ -1,9 +1,10 @@
 defmodule BusterClawWeb.VoiceLiveTest do
   use BusterClawWeb.ConnCase, async: true
 
-  import Phoenix.LiveViewTest
-
-  test "renders the Voice settings page with a mic test", %{conn: conn} do
+  # Voice is now a static settings page explaining spoken replies (TTS via the
+  # native macOS synthesizer). The microphone/STT feature was demolished 06-28;
+  # there is no mic test, device picker, or voice_error handler anymore.
+  test "renders the Voice settings page describing spoken replies", %{conn: conn} do
     conn = get(conn, ~p"/voice")
     response = html_response(conn, 200)
 
@@ -11,24 +12,15 @@ defmodule BusterClawWeb.VoiceLiveTest do
     assert response =~ ~s(id="settings-tabs")
     assert response =~ ~s(id="settings-tab-voice")
 
-    # The mic test reuses the reusable Mic hook + listening overlay.
-    assert response =~ ~s(id="voice-test-mic")
-    assert response =~ ~s(phx-hook="Mic")
-    assert response =~ ~s(data-voice-test-input)
-    assert response =~ "ic-voice-bars"
-    assert response =~ "Test your microphone"
+    # Text-to-speech explainer content.
+    assert response =~ "Spoken replies"
+    assert response =~ "speech"
+    assert response =~ "Voice on / off"
 
-    # Device picker: populated client-side by the VoiceDevices hook.
-    assert response =~ ~s(id="voice-devices")
-    assert response =~ ~s(phx-hook="VoiceDevices")
-    assert response =~ ~s(data-voice-device-select)
-    assert response =~ ~s(data-voice-device-refresh)
-  end
-
-  test "a client voice_error surfaces as a flash", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/voice")
-
-    html = render_hook(view, "voice_error", %{"message" => "Microphone access denied — enable it."})
-    assert html =~ "Microphone access denied — enable it."
+    # No STT remnants: the mic test, device picker, and Mic hook are gone.
+    refute response =~ ~s(id="voice-test-mic")
+    refute response =~ ~s(phx-hook="Mic")
+    refute response =~ ~s(id="voice-devices")
+    refute response =~ "Test your microphone"
   end
 end

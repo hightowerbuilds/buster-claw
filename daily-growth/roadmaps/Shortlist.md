@@ -76,7 +76,7 @@ day things happen or how long they run — there's no sense of the day's shape.
 ---
 
 > Items 4–9 consolidated from now-retired roadmaps (`06-20-26-browser-review`,
-> `06-20-26-ecosystem-roadmap-refined`, both archived to `old-maps/`). Only the
+> `06-20-26-ecosystem-roadmap-refined`, both archived to `../archive/`). Only the
 > *remaining* (unshipped) work is carried over — the bulk of both roadmaps is
 > already done (see each map's status notes / git history).
 
@@ -227,6 +227,52 @@ Claude Code / Codex agent session). There's no guard, so it's easy to
 - Reuse the app's existing confirm UX where possible; the simple `data-confirm`
   attribute won't work here because the decision is **async/native**, so this
   likely needs a small custom modal triggered after the busy query resolves.
+
+### 12. Browser page should fill the window width
+
+**Problem:** The `/browse` page is capped at a **doc/letter width** — it renders
+through `<Layouts.app flash={@flash}>` with no width flag, so the layout's
+`max-w-7xl` centers it and leaves dead space on either side. Because the
+`EmbeddedBrowser` hook positions the native child webviews from the surface
+element's `getBoundingClientRect`, the actual browser content is letter-width too.
+
+**Desired behavior:** the browser surface fills the full window width (and reads
+like the rest of the app's full-surface views).
+
+**Notes / scope:**
+- One-line fix in `lib/buster_claw_web/live/browse_live.ex`: pass a width flag to
+  `Layouts.app`. The layout already supports both (added in commit `5b6d95f`):
+  - **`full_bleed`** — edge-to-edge, no padding, like the terminal and the
+    browser+browser split (`SplitLive` already uses `full_bleed`). **Recommended**
+    for consistency with `/split`, which is the same browser surface.
+  - **`wide`** — full width but keeps the page padding (no edge-to-edge), if a
+    framed look is preferred.
+- After widening, sanity-check the `EmbeddedBrowser` `sync()` math (`browser.js`)
+  — the native webview should track the wider surface automatically since it reads
+  the live bounding box, but confirm the chrome/content offsets still line up.
+- `/split` (browser+browser) is already full-bleed, so this only affects solo
+  `/browse`.
+
+### 13. SSRF guard — pin connections to the vetted IP (DNS-rebinding fix)
+
+**Problem:** `BusterClaw.URLGuard` resolves a hostname at *check* time, but Req/
+Finch resolves it again at *connect* time — a rebinding DNS server can pass the
+check with a public answer and then serve an internal address for the connect.
+The 07-02 hardening (dual-family resolution + fail-closed on unresolvable) closed
+the IPv6 gap but deliberately left rebinding as a documented accepted risk (see
+`docs/LOCAL_TRUST.md` → "Known accepted risks").
+
+**Desired behavior:** resolve once, vet the address, then **pin the connection
+to that exact IP** so the check-time and connect-time answers cannot diverge —
+e.g. rewrite the request host to the vetted IP and set SNI/`Host` from the
+original name (Finch `:transport_opts` / Req connect options).
+
+**Notes / scope:**
+- The tricky parts are TLS (SNI + hostname verification against the original
+  name, not the IP) and keeping redirect hops pinned per-hop.
+- Bounded urgency: `req_step/1` already re-validates each hop, the command API
+  needs a Bearer token even if reached, and the softest internal target is the
+  Playwright sidecar.
 
 ---
 

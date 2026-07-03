@@ -394,6 +394,10 @@ defmodule BusterClaw.Commands do
         {:integration, Integrations, :integration, :integrations},
         {:wallet, Wallets, :wallet, :wallets}
       ] do
+    # These atoms are minted at COMPILE time (the `for` runs over a hardcoded
+    # literal list during module compilation), so no runtime input can reach
+    # them — UnsafeToAtom is a false positive here.
+    # credo:disable-for-lines:5 Credo.Check.Warning.UnsafeToAtom
     list_fn = :"list_#{ctx_plural}"
     get_fn = :"get_#{ctx_singular}!"
     create_fn = :"create_#{ctx_singular}"
@@ -513,6 +517,8 @@ defmodule BusterClaw.Commands do
   defdelegate bookmark_add(args), to: BusterClaw.Commands.Web
   defdelegate bookmark_list(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate bookmark_remove(args), to: BusterClaw.Commands.Web
+  defdelegate bookmark_export(args \\ %{}), to: BusterClaw.Commands.Web
+  defdelegate bookmark_import(args), to: BusterClaw.Commands.Web
   # Finance
   defdelegate finance_filings(args), to: BusterClaw.Commands.Finance
   defdelegate finance_fundamentals(args), to: BusterClaw.Commands.Finance

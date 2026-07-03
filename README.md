@@ -87,8 +87,8 @@ mix escript.build
 ./buster-claw document list                      # noun-verb shorthand
 ./buster-claw run web_search --json '{"query": "phoenix liveview"}'
 ./buster-claw run shift_status --json '{}'
-./buster-claw terminal open --role mailman --label Mailman
-./buster-claw mailman poll --interval 60
+./buster-claw terminal open --role mailman --label "On Duty"
+./buster-claw on-duty --interval 60
 ```
 
 Token comes from `BUSTER_CLAW_API_TOKEN` env, then the file path above, then `--token <token>` flag. Base URL is `BUSTER_CLAW_URL` env or `--url <url>` flag (default `http://127.0.0.1:4000`).
@@ -98,7 +98,7 @@ Token comes from `BUSTER_CLAW_API_TOKEN` env, then the file path above, then `--
 The primary way an agent drives Buster Claw is the pull-queue. Trusted inbound requests land in the durable Dispatch queue, which Buster Claw projects to the workspace markdown the agent reads (`shift/Dispatch.md`, grouped by job). A terminal agent works the queue through the `./buster-claw dispatch` verbs:
 
 ```bash
-./buster-claw mailman poll --interval 60          # feed the queue from Gmail triage
+./buster-claw on-duty --interval 60               # go on duty: watch Gmail, feed and work the queue
 ./buster-claw dispatch list                         # see open items
 ./buster-claw dispatch claim --job mail-triage      # pull the next item for a job
 ./buster-claw dispatch reply <id> --body "…"        # write a result back
@@ -129,7 +129,7 @@ curl -X POST http://127.0.0.1:4000/api/run \
 - [UML / architecture diagrams](docs/UML.md) — Mermaid diagrams of the system layers, supervision tree, domain model, command surface, and HTTP routing.
 - [Local trust model](docs/LOCAL_TRUST.md) documents shell hooks, webhooks, stored secrets, fetched markdown, and MCP boundaries.
 - [Desktop packaging notes](docs/DESKTOP_PACKAGING.md) document the Phoenix/Tauri desktop path.
-- Historical quality plans are archived in `daily-growth/old-maps/`.
+- Historical quality plans are archived in `daily-growth/archive/`.
 
 ## License
 

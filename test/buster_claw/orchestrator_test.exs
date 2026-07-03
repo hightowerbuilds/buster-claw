@@ -9,6 +9,9 @@ defmodule BusterClaw.OrchestratorTest do
 
   # Run ticks against an autostart:false server so each tick is explicit.
   defp start_orchestrator(opts \\ []) do
+    # Unique per-test GenServer name; atom growth is bounded by the number of
+    # test runs in a throwaway VM, so minting here is fine.
+    # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
     name = :"orch_#{System.unique_integer([:positive])}"
 
     {:ok, pid} =

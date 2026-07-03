@@ -42,11 +42,24 @@ defmodule BusterClawWeb.BrowserChromeController do
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; overflow: hidden; }
       body {
+        position: relative;
         display: flex; flex-direction: column; height: 112px;
         background: #121212; color: #f4f1ea;
         font: 13px/1 -apple-system, system-ui, sans-serif;
         border-bottom: 2px solid rgba(244,241,234,.18);
       }
+      /* loading affordance: indeterminate hazard-orange bar across the top, shown
+         while the active tab is loading. Overlaid (absolute) so it adds no layout
+         height — the chrome webview stays exactly 112px tall. */
+      #progress { position: absolute; top: 0; left: 0; right: 0; height: 2px;
+                  overflow: hidden; pointer-events: none; opacity: 0;
+                  transition: opacity .15s; z-index: 5; }
+      #progress.on { opacity: 1; }
+      #progress::after { content: ""; display: block; height: 100%; width: 35%;
+                         background: #ff4d1c; }
+      #progress.on::after { animation: ic-load 1s ease-in-out infinite; }
+      @keyframes ic-load { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+      @keyframes ic-spin { to { transform: rotate(360deg); } }
       /* tab strip */
       #tabs { display: flex; align-items: stretch; gap: 4px; height: 34px;
               padding: 4px 6px 0; overflow-x: auto; overflow-y: hidden; }
@@ -59,6 +72,10 @@ defmodule BusterClawWeb.BrowserChromeController do
       .tab.active { background: #2a2a2a; color: #f4f1ea; border-color: rgba(244,241,234,.3); }
       .tab .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                     font-size: 12px; max-width: 150px; }
+      .tab .fav { width: 14px; height: 14px; flex: 0 0 auto; border-radius: 3px; }
+      .tab .spin { width: 12px; height: 12px; flex: 0 0 auto; border-radius: 50%;
+                   border: 2px solid rgba(244,241,234,.25); border-top-color: #ff4d1c;
+                   animation: ic-spin .7s linear infinite; }
       .tab .x { display: grid; place-items: center; width: 16px; height: 16px;
                 border-radius: 3px; color: rgba(244,241,234,.45); font-size: 13px;
                 flex: 0 0 auto; }
@@ -113,6 +130,7 @@ defmodule BusterClawWeb.BrowserChromeController do
     </style>
     </head>
     <body>
+      <div id="progress"></div>
       <div id="tabs"></div>
       <div id="toolbar">
         <button class="nav" id="home" title="Home" aria-label="Home">&#8962;</button>
@@ -138,6 +156,7 @@ defmodule BusterClawWeb.BrowserChromeController do
         const addr = document.getElementById("addr")
         const tabsEl = document.getElementById("tabs")
         const barEl = document.getElementById("bookmarkbar")
+        const progressEl = document.getElementById("progress")
 
         // Invoke a Tauri command, surfacing failures in the console (so a denied
         // permission or a missing webview is visible rather than silent). Every
@@ -150,7 +169,9 @@ defmodule BusterClawWeb.BrowserChromeController do
         }
 
         // --- tab state (chrome owns the strip; Rust owns the webviews) ---
-        let tabs = [{ id: "1", url: "", label: "New tab" }]
+        // Each tab also tracks `loading` (spinner while a navigation is in flight)
+        // and `favicon` (host favicon, mirroring the bookmark-bar pattern).
+        let tabs = [{ id: "1", url: "", label: "New tab", loading: false, favicon: null }]
         let activeId = "1"
         let nextId = 2
 
@@ -189,6 +210,25 @@ defmodule BusterClawWeb.BrowserChromeController do
             return url.hostname.replace(/^www\\./, "") || u
           } catch (e) { return u }
         }
+        // Host favicon for a tab, matching the bookmark bar's Google s2 pattern
+        // (BusterClaw.Bookmarks.favicon_url/1). Only for real http(s) hosts —
+        // workspace/home pages on our own origin get no favicon.
+        function faviconFor(u) {
+          try {
+            const url = new URL(u, origin)
+            if (url.origin === origin) return null
+            if (url.protocol !== "http:" && url.protocol !== "https:") return null
+            if (!url.hostname) return null
+            return "https://www.google.com/s2/favicons?domain=" +
+                   encodeURIComponent(url.hostname) + "&sz=64"
+          } catch (e) { return null }
+        }
+
+        // Reflect the active tab's loading state in the top progress bar.
+        function updateProgress() {
+          const t = activeTab()
+          progressEl.classList.toggle("on", !!(t && t.loading))
+        }
 
         function renderTabs() {
           tabsEl.textContent = ""
@@ -196,6 +236,18 @@ defmodule BusterClawWeb.BrowserChromeController do
             const tab = document.createElement("div")
             tab.className = "tab" + (t.id === activeId ? " active" : "")
             tab.title = t.label
+            // Leading affordance: a spinner while loading, otherwise the favicon.
+            if (t.loading) {
+              const spin = document.createElement("span")
+              spin.className = "spin"
+              tab.appendChild(spin)
+            } else if (t.favicon) {
+              const fav = document.createElement("img")
+              fav.className = "fav"
+              fav.src = t.favicon; fav.alt = ""; fav.loading = "lazy"
+              fav.onerror = () => fav.remove()
+              tab.appendChild(fav)
+            }
             const label = document.createElement("span")
             label.className = "label"
             label.textContent = t.label
@@ -213,6 +265,7 @@ defmodule BusterClawWeb.BrowserChromeController do
           add.id = "newtab"; add.type = "button"; add.title = "New tab"; add.textContent = "+"
           add.onclick = () => newTab()
           tabsEl.appendChild(add)
+          updateProgress()
         }
 
         function activeTab() { return tabs.find((t) => t.id === activeId) }
@@ -231,7 +284,7 @@ defmodule BusterClawWeb.BrowserChromeController do
             const el = document.createElement("button")
             el.type = "button"
             el.className = "bmk"
-            el.title = (b.label || b.url) + "\\n" + b.url
+            el.title = (b.folder ? b.folder + " / " : "") + (b.label || b.url) + "\\n" + b.url
             if (b.favicon_url) {
               const img = document.createElement("img")
               img.src = b.favicon_url; img.alt = ""; img.loading = "lazy"
@@ -254,7 +307,7 @@ defmodule BusterClawWeb.BrowserChromeController do
 
         function newTab() {
           const id = String(nextId++)
-          tabs.push({ id, url: "", label: "New tab" })
+          tabs.push({ id, url: "", label: "New tab", loading: false, favicon: null })
           activeId = id
           addr.value = ""
           renderTabs()
@@ -299,10 +352,48 @@ defmodule BusterClawWeb.BrowserChromeController do
           renderTabs()
         }
 
-        // Called from Rust on each content navigation, per tab id.
-        window.__onContentNavigated = function (id, u) {
+        // Called from Rust when a tab *starts* navigating (before the page loads):
+        // show the spinner and update the address bar/url optimistically. The real
+        // title arrives on completion via __onContentNavigated below.
+        window.__onContentLoading = function (id, u) {
           const t = tabs.find((x) => x.id === id)
-          if (t) { t.url = u; t.label = deriveLabel(u) }
+          if (t) {
+            t.url = u
+            t.loading = true
+            t.favicon = faviconFor(u)
+            t.label = deriveLabel(u)
+            // Safety net: some loads never report completion — network errors,
+            // downloads, and blocked navigations don't fire on_page_load Finished,
+            // so __onContentNavigated never clears the spinner. Drop it after a
+            // grace period so it can't spin forever.
+            clearTimeout(t.loadTimer)
+            t.loadTimer = setTimeout(function () {
+              const cur = tabs.find((x) => x.id === id)
+              if (cur && cur.loading) { cur.loading = false; renderTabs() }
+            }, 20000)
+          }
+          if (id === activeId && document.activeElement !== addr) addr.value = display(u)
+          // New page → reset the bookmark button so a fresh save reads clearly.
+          if (id === activeId) {
+            const bm = document.getElementById("bookmark")
+            if (bm) bm.textContent = "+ Bookmark"
+          }
+          renderTabs()
+        }
+
+        // Called from Rust when a tab finishes loading, per tab id. `title` is the
+        // page's document.title (empty when unavailable); `favicon` is optional and
+        // falls back to a host-derived icon.
+        window.__onContentNavigated = function (id, u, title, favicon) {
+          const t = tabs.find((x) => x.id === id)
+          if (t) {
+            clearTimeout(t.loadTimer)
+            t.url = u
+            t.loading = false
+            t.favicon = favicon || faviconFor(u)
+            const named = (title || "").trim()
+            t.label = named || deriveLabel(u)
+          }
           if (id === activeId && document.activeElement !== addr) addr.value = display(u)
           // New page → reset the bookmark button so a fresh save reads clearly.
           if (id === activeId) {

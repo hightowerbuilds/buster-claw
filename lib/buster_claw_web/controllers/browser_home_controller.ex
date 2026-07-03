@@ -14,7 +14,7 @@ defmodule BusterClawWeb.BrowserHomeController do
   def show(conn, _params) do
     conn
     |> put_resp_content_type("text/html")
-    |> send_resp(200, page(Bookmarks.list(), BrowserHistory.list()))
+    |> send_resp(200, page(Bookmarks.list(), BrowserHistory.recent()))
   end
 
   defp page(bookmarks, history) do
@@ -76,6 +76,10 @@ defmodule BusterClawWeb.BrowserHomeController do
       .tag { font: 600 10px/1 ui-monospace, monospace; padding: 3px 7px;
              background: rgba(255,77,28,.18); color: #ff4d1c; border-radius: 3px;
              text-transform: uppercase; letter-spacing: .04em; }
+      h3.folder { margin: 22px 0 0; font: 700 12px/1 ui-monospace, monospace;
+                  letter-spacing: .08em; text-transform: uppercase;
+                  color: rgba(244,241,234,.7); }
+      h3.folder::before { content: "▸ "; color: #ff4d1c; }
 
       /* Search + tag filters */
       .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
@@ -153,6 +157,7 @@ defmodule BusterClawWeb.BrowserHomeController do
       var clear = document.getElementById("clear");
       var nomatch = document.getElementById("nomatch");
       var cards = Array.prototype.slice.call(document.querySelectorAll(".card"));
+      var groups = Array.prototype.slice.call(document.querySelectorAll(".bmgroup"));
       var filters = Array.prototype.slice.call(document.querySelectorAll(".filter"));
       var activeTag = null;
 
@@ -167,6 +172,14 @@ defmodule BusterClawWeb.BrowserHomeController do
           var show = matchText && matchTag;
           card.style.display = show ? "" : "none";
           if (show) shown++;
+        });
+        // Hide a folder group (header + grid) when none of its cards survive.
+        groups.forEach(function (g) {
+          var visible = Array.prototype.some.call(
+            g.querySelectorAll(".card"),
+            function (c) { return c.style.display !== "none"; }
+          );
+          g.style.display = visible ? "" : "none";
         });
         nomatch.hidden = shown !== 0;
         clear.hidden = !q && !activeTag;
@@ -203,39 +216,57 @@ defmodule BusterClawWeb.BrowserHomeController do
     """
   end
 
+  # Bookmarks render grouped by folder: the root (folderless) grid first, then a
+  # labelled grid per folder (A→Z). Older flat files with no folder land at root.
   defp bookmarks_body(entries) do
-    cards =
-      Enum.map_join(entries, "\n", fn e ->
-        raw_url = e["url"]
-        url = escape(raw_url)
-        label = escape(e["label"] || raw_url)
-        tags = List.wrap(e["tags"])
-        host = escape(host(raw_url))
-        favicon = e["favicon_url"] || Bookmarks.favicon_url(raw_url)
-        tags_html = tags_body(tags)
+    entries
+    |> Bookmarks.group()
+    |> Enum.map_join("\n", fn {folder, items} -> folder_section(folder, items) end)
+  end
 
-        haystack =
-          [e["label"], raw_url | tags]
-          |> Enum.map_join(" ", &to_string/1)
-          |> String.downcase()
+  defp folder_section(folder, items) do
+    cards = Enum.map_join(items, "\n", &card/1)
+    grid = ~s(<div class="grid">\n#{cards}\n</div>)
 
-        fav_html =
-          if favicon,
-            do: ~s(<img class="fav" src="#{escape(favicon)}" alt="" loading="lazy" />),
-            else: ~s(<span class="fav"></span>)
+    header =
+      case folder do
+        nil -> ""
+        name -> ~s(<h3 class="folder">#{escape(name)}</h3>\n)
+      end
 
-        ~s(<div class="card" data-search="#{escape(haystack)}" data-tags="#{escape(Enum.join(tags, " "))}">) <>
-          ~s(<a href="#{url}">) <>
-          ~s(<div class="head">#{fav_html}<span class="label">#{label}</span></div>) <>
-          ~s(<div class="host">#{host}</div>#{tags_html}) <>
-          ~s(</a>) <>
-          ~s(<form class="rm" method="post" action="/browser/bookmarks/remove">) <>
-          ~s(<input type="hidden" name="url" value="#{url}" />) <>
-          ~s(<button class="rm" type="submit" title="Remove bookmark" aria-label="Remove bookmark">&times;</button>) <>
-          ~s(</form></div>)
-      end)
+    # Wrap each group so the search/tag JS can hide a whole folder (header + grid)
+    # once filtering empties it.
+    ~s(<section class="bmgroup">\n#{header}#{grid}\n</section>)
+  end
 
-    ~s(<div class="grid">\n#{cards}\n</div>)
+  defp card(e) do
+    raw_url = e["url"]
+    url = escape(raw_url)
+    label = escape(e["label"] || raw_url)
+    tags = List.wrap(e["tags"])
+    host = escape(host(raw_url))
+    favicon = e["favicon_url"] || Bookmarks.favicon_url(raw_url)
+    tags_html = tags_body(tags)
+
+    haystack =
+      [e["label"], raw_url, e["folder"] | tags]
+      |> Enum.map_join(" ", &to_string/1)
+      |> String.downcase()
+
+    fav_html =
+      if favicon,
+        do: ~s(<img class="fav" src="#{escape(favicon)}" alt="" loading="lazy" />),
+        else: ~s(<span class="fav"></span>)
+
+    ~s(<div class="card" data-search="#{escape(haystack)}" data-tags="#{escape(Enum.join(tags, " "))}">) <>
+      ~s(<a href="#{url}">) <>
+      ~s(<div class="head">#{fav_html}<span class="label">#{label}</span></div>) <>
+      ~s(<div class="host">#{host}</div>#{tags_html}) <>
+      ~s(</a>) <>
+      ~s(<form class="rm" method="post" action="/browser/bookmarks/remove">) <>
+      ~s(<input type="hidden" name="url" value="#{url}" />) <>
+      ~s(<button class="rm" type="submit" title="Remove bookmark" aria-label="Remove bookmark">&times;</button>) <>
+      ~s(</form></div>)
   end
 
   defp host(url) do
@@ -265,8 +296,8 @@ defmodule BusterClawWeb.BrowserHomeController do
   defp recent_body(entries) do
     rows =
       Enum.map_join(entries, "\n", fn e ->
-        url = escape(e["url"])
-        label = escape(e["label"] || e["url"])
+        url = escape(e.url)
+        label = escape(e.title || e.url)
 
         ~s(<li><a href="#{url}"><span class="label">#{label}</span><span class="url">#{url}</span></a></li>)
       end)

@@ -10,29 +10,44 @@ defmodule BusterClaw.URLGuard do
 
   `validate/1` checks the scheme, blocks obvious internal hostnames and IP
   literals, and — when DNS resolution is enabled (config `:ssrf_resolve_dns`,
-  default true; disabled in test) — resolves the host and rejects any address
-  in a blocked range. `req_step/1` applies the same check to every request hop,
-  so redirects are re-validated.
+  default true; disabled in test) — resolves the host over **both** IPv4 and
+  IPv6 and rejects it if *any* resolved address is in a blocked range. A host
+  that resolves to nothing is refused (fail closed): a name we can't vet is a
+  name we don't fetch. `req_step/1` applies the same check to every request
+  hop, so redirects are re-validated.
 
-  Residual gaps: DNS-rebinding (TOCTOU between resolution and connect) and
-  fail-open on resolution error are not addressed here.
+  Residual gap: DNS-rebinding (TOCTOU between resolution and connect) is not
+  addressed here — see docs/LOCAL_TRUST.md "Known accepted risks". Note that
+  `req_step/1` re-validates per hop, so the practical rebinding window is a
+  single request.
   """
+
+  require Logger
 
   @blocked_hostnames ~w(localhost)
 
-  @doc "Returns `:ok` if `url` is safe to fetch, or `{:error, reason}`."
-  def validate(url) when is_binary(url) do
+  @doc """
+  Returns `:ok` if `url` is safe to fetch, or `{:error, reason}`.
+
+  Options (used by tests; production callers rely on config defaults):
+
+  - `:resolve_dns` — override config `:ssrf_resolve_dns`
+  - `:resolver` — a `(charlist, :inet | :inet6) -> {:ok, [addr]} | {:error, term}`
+    fun standing in for `:inet.getaddrs/2`
+  """
+  def validate(url, opts \\ [])
+
+  def validate(url, opts) when is_binary(url) do
     uri = URI.parse(url)
 
     with :ok <- check_scheme(uri),
          {:ok, host} <- fetch_host(uri),
-         :ok <- check_hostname(host),
-         :ok <- check_resolved(host) do
-      :ok
+         :ok <- check_hostname(host) do
+      check_resolved(host, opts)
     end
   end
 
-  def validate(_url), do: {:error, :invalid_url}
+  def validate(_url, _opts), do: {:error, :invalid_url}
 
   @doc """
   Req request step that re-validates the URL of every hop (including redirects).
@@ -75,21 +90,41 @@ defmodule BusterClaw.URLGuard do
     end
   end
 
-  defp check_resolved(host) do
+  defp check_resolved(host, opts) do
     cond do
-      not resolve_dns?() -> :ok
+      not resolve_dns?(opts) -> :ok
       match?({:ok, _}, parse_ip(host)) -> :ok
-      true -> resolve_and_check(host)
+      true -> resolve_and_check(host, opts)
     end
   end
 
-  defp resolve_and_check(host) do
-    case :inet.getaddrs(String.to_charlist(host), :inet) do
-      {:ok, addrs} ->
-        if Enum.any?(addrs, &blocked_ip?/1), do: {:error, :blocked_host}, else: :ok
+  # Resolve BOTH address families and vet every answer — an AAAA-only host must
+  # not slip past the IPv6 blocklist just because the A lookup failed. A host
+  # with no answers in either family fails CLOSED: it can't be fetched anyway,
+  # and refusing removes the "unresolvable at check time, resolvable at connect
+  # time" escape hatch.
+  defp resolve_and_check(host, opts) do
+    resolver = Keyword.get(opts, :resolver, &:inet.getaddrs/2)
+    charlist = String.to_charlist(host)
 
-      # Fail-open on resolution failure: the literal/hostname checks already passed.
-      {:error, _reason} ->
+    addrs =
+      Enum.flat_map([:inet, :inet6], fn family ->
+        case resolver.(charlist, family) do
+          {:ok, addrs} -> addrs
+          {:error, _reason} -> []
+        end
+      end)
+
+    cond do
+      addrs == [] ->
+        Logger.warning("URLGuard: refusing unresolvable host #{host}")
+        {:error, :unresolvable_host}
+
+      Enum.any?(addrs, &blocked_ip?/1) ->
+        Logger.warning("URLGuard: blocked host #{host} (resolves to an internal address)")
+        {:error, :blocked_host}
+
+      true ->
         :ok
     end
   end
@@ -126,5 +161,7 @@ defmodule BusterClaw.URLGuard do
   defp blocked_ip?({a, _, _, _, _, _, _, _}) when a >= 0xFC00 and a <= 0xFDFF, do: true
   defp blocked_ip?(_addr), do: false
 
-  defp resolve_dns?, do: Application.get_env(:buster_claw, :ssrf_resolve_dns, true)
+  defp resolve_dns?(opts) do
+    Keyword.get(opts, :resolve_dns, Application.get_env(:buster_claw, :ssrf_resolve_dns, true))
+  end
 end

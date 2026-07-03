@@ -175,7 +175,19 @@ defmodule BusterClaw.Google.OAuth do
 
   defp token_attrs(body, _opts), do: {:error, {:bad_token_response, body}}
 
-  defp get_value(map, key), do: Map.get(map, key) || Map.get(map, String.to_atom(key))
+  # Token responses normally arrive JSON-decoded with string keys; the atom
+  # fallback exists for atom-keyed maps handed in by tests. Uses
+  # to_existing_atom so a hostile/unexpected response body can never mint new
+  # atoms (the atom table is not GC'd) — if the atom doesn't already exist,
+  # no caller is using it as a key anyway.
+  defp get_value(map, key) do
+    case Map.get(map, key) do
+      nil -> Map.get(map, String.to_existing_atom(key))
+      value -> value
+    end
+  rescue
+    ArgumentError -> nil
+  end
 
   defp put_if_present(value, attrs, _key) when value in [nil, ""], do: attrs
   defp put_if_present(value, attrs, key), do: Map.put(attrs, key, value)

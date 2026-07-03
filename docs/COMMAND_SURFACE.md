@@ -67,11 +67,12 @@ The `mailman`, `mail-triage`, and `gmail-poller` roles map to the fixed
 `mailman` startup profile. A fresh terminal for that profile runs:
 
 ```sh
-./buster-claw mailman poll
+./buster-claw on-duty
 ```
 
-That visible loop calls `gmail_sync` through the local command API on an
-interval. Agents cannot pass arbitrary shell text through this safe command.
+That visible loop starts an unattended shift and calls `gmail_sync` through the
+local command API on an interval; Ctrl-C stands down (stops the shift). Agents
+cannot pass arbitrary shell text through this safe command.
 
 ## Current Cuts
 

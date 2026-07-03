@@ -258,10 +258,15 @@ defmodule BusterClaw.Orchestration do
 
   def bump_shift(%Shift{} = shift, counter, amount)
       when counter in [:dispatched, :done, :failed] and is_integer(amount) and amount > 0 do
-    field = :"#{counter}_count"
+    field = counter_field(counter)
     {1, _} = Repo.update_all(from(s in Shift, where: s.id == ^shift.id), inc: [{field, amount}])
     :ok
   end
+
+  # Explicit clauses (not :"#{counter}_count") so no runtime input can mint atoms.
+  defp counter_field(:dispatched), do: :dispatched_count
+  defp counter_field(:done), do: :done_count
+  defp counter_field(:failed), do: :failed_count
 
   # ---------------------------------------------------------------------------
   # Shift assignments — specialist shells inside one active shift
