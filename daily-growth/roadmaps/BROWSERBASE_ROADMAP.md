@@ -49,6 +49,86 @@ Cross-cutting §A).
 
 ---
 
+## Outstanding — the to-complete list (as of 07-03, paused here)
+
+Shipped so far: **Phase 0 backbone** (0.1 client, 0.2 sidecar session driver,
+0.3 SessionManager), **Phase 2** (all `web_*` primitives), **Phase 3 core**
+(`web_session_view` live-view tab + free takeover). What's left, in priority
+order:
+
+### A. Decisions needed from Luke (these block the money tier)
+
+- [ ] **Confirmation UX surface (blocks Phase 4.3):** where a purchase/submit
+  approval appears when the user may be in the terminal, the app, or away —
+  modal, Sentinel feed, terminal prompt, push notification, or several. Ship the
+  LiveView surface first regardless; this decides the rest.
+- [ ] **Default spending cap (blocks Phase 4.2):** the per-transaction (and
+  rolling) number that auto-denies even on a human "yes". Fail closed until set.
+- [ ] **Persistent-context storage (blocks Phase 5.1):** accept Browserbase
+  cloud-stored logged-in sessions for convenience, or require takeover login
+  every time (privacy vs. friction).
+- [ ] **First seller/mailing platforms (scopes Phase 5):** which sites the
+  product-selling recipes target first.
+
+### B. Needs the running app to finish/verify (Phase 3 remainder)
+
+- [ ] **Drive a `web_*` session live in the app** — confirm the live-view tab
+  renders and takeover (click/type in the tab) feels right. The one gap between
+  "tests pass" and "seen working."
+- [ ] **"Agent session — live" chrome indicator** (Phase 3.2) — hazard-orange
+  marker while a cloud session is open; chrome JS.
+- [ ] **Tab ↔ session lifecycle** (Phase 3.4) — closing the tab soft-closes the
+  session; session death (timeout/crash) reflects in the tab, not a dead frame.
+- [ ] **Decide auto-open vs. on-demand view** — currently on-demand
+  (`web_session_view`); revisit whether `web_session_open` should auto-open the
+  tab once the live flow is seen.
+
+### C. Phase 4 — the money tier (build, once A is answered)
+
+- [ ] **Make `Sentinel.Pending` approvable** — it's a write-only stub today
+  (records refusals, no approve/deny/execute). Add `approve/1` (re-dispatches via
+  `Commands.call(cmd, raw_args, caller: :trusted)` back through the PolicyEngine
+  choke point so caps re-check), `deny/1`, a status + short TTL, and carry
+  `raw_args` that are never broadcast/logged.
+- [ ] **Spend caps + domain allowlist** in `policy_engine.ex` as a
+  caller-independent `{:block}` (auto-denies even on human approval).
+- [ ] **Rolling-spend ledger** — aggregate `:outbound_send` audit events carrying
+  an amount over a window (no new store).
+- [ ] **Value-shape redactor** — current redaction is key-name-only, so a
+  `cardNumber` *value* leaks into event bodies. Add Luhn/PAN/CVV/SSN detection
+  shared by `Sentinel.redact` + `Pending`. (Selector-side flag already exists in
+  the `Session` facade.)
+- [ ] **`web_purchase` / `web_submit`** gated (`gated: true`) commands — a
+  provenance-wrapped submit (domain, amount) that fires only on approval.
+- [ ] **SecurityLive approval surface** — it currently ignores
+  `{:pending_action, _}`; render an "Awaiting approval" section with
+  domain/amount/summary + Approve/Deny.
+
+### D. Backbone follow-ups / debt (non-blocking, do opportunistically)
+
+- [ ] **Durable session records + boot-time reaping** in SessionManager —
+  in-memory today, so a hard VM crash orphans cloud sessions until Browserbase's
+  own timeout. Persist records; on boot, `release/1` strays.
+- [ ] **Full-path live smoke test** (`@tag :browserbase_live`) —
+  SessionManager → sidecar → real Browserbase open/drive/close, so the seam is
+  covered end-to-end behind the money-guard tag.
+- [ ] **OS-keychain for the Browserbase key** in a packaged build (env only
+  today) — ties to `distribution_roadmap`; reuse `vault.ex`.
+- [ ] **Phase 1 (cloud fetch parity)** — optional Browserbase backend for
+  `browser_fetch` + fallback/health surface. Skipped so far (went straight to
+  primitives); revisit if the read path wants proxies/stealth.
+- [ ] **Note:** `SessionManager.open` does its HTTP (create/debug/sidecar-open)
+  inside `handle_call`, serializing opens. Fine at low concurrency; revisit if
+  parallel sessions (Phase 6) need it.
+
+### E. Later phases (5 product-selling, 6 stretch)
+
+- [ ] Persistent contexts, "set up mailing" Skill recipe, templated flows (Phase 5).
+- [ ] Session recording → Library, proxies/CAPTCHA, concurrency, cost dashboard,
+  cloud downloads (Phase 6).
+
+---
+
 ## Phase 0 — Backbone (no agent-visible capability; unblocks everything)
 
 *Build the plumbing and prove it with the safest possible payload.*
