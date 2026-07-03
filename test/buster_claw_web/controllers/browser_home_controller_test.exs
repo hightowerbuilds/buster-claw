@@ -82,6 +82,6 @@ defmodule BusterClawWeb.BrowserHomeControllerTest do
   test "POST /browser/history records a url", %{conn: conn} do
     conn = post(conn, ~p"/browser/history?url=https://recorded.com&label=Rec")
     assert conn.status == 204
-    assert [%{"url" => "https://recorded.com", "label" => "Rec"}] = BrowserHistory.list()
+    assert [%{url: "https://recorded.com", title: "Rec"}] = BrowserHistory.list()
   end
 end

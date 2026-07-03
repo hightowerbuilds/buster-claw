@@ -14,7 +14,7 @@ defmodule BusterClawWeb.BrowserHomeController do
   def show(conn, _params) do
     conn
     |> put_resp_content_type("text/html")
-    |> send_resp(200, page(Bookmarks.list(), BrowserHistory.list()))
+    |> send_resp(200, page(Bookmarks.list(), BrowserHistory.recent()))
   end
 
   defp page(bookmarks, history) do
@@ -265,8 +265,8 @@ defmodule BusterClawWeb.BrowserHomeController do
   defp recent_body(entries) do
     rows =
       Enum.map_join(entries, "\n", fn e ->
-        url = escape(e["url"])
-        label = escape(e["label"] || e["url"])
+        url = escape(e.url)
+        label = escape(e.title || e.url)
 
         ~s(<li><a href="#{url}"><span class="label">#{label}</span><span class="url">#{url}</span></a></li>)
       end)
