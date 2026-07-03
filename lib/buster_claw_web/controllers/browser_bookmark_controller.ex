@@ -23,6 +23,7 @@ defmodule BusterClawWeb.BrowserBookmarkController do
         %{
           "url" => e["url"],
           "label" => e["label"] || e["url"],
+          "folder" => Bookmarks.normalize_folder(e["folder"]),
           "favicon_url" => e["favicon_url"] || Bookmarks.favicon_url(e["url"])
         }
       end)
@@ -32,7 +33,7 @@ defmodule BusterClawWeb.BrowserBookmarkController do
 
   def create(conn, %{"url" => url}) when is_binary(url) and url != "" do
     tags = parse_tags(conn.params["tags"])
-    Bookmarks.add(url, conn.params["label"], tags)
+    Bookmarks.add(url, conn.params["label"], tags, conn.params["folder"])
     send_resp(conn, 204, "")
   end
 

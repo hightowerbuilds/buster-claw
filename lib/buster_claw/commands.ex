@@ -510,6 +510,8 @@ defmodule BusterClaw.Commands do
   defdelegate bookmark_add(args), to: BusterClaw.Commands.Web
   defdelegate bookmark_list(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate bookmark_remove(args), to: BusterClaw.Commands.Web
+  defdelegate bookmark_export(args \\ %{}), to: BusterClaw.Commands.Web
+  defdelegate bookmark_import(args), to: BusterClaw.Commands.Web
   # Finance
   defdelegate finance_filings(args), to: BusterClaw.Commands.Finance
   defdelegate finance_fundamentals(args), to: BusterClaw.Commands.Finance
