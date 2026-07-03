@@ -29,6 +29,21 @@ defmodule BusterClaw.Browserbase.SessionManagerTest do
     def release(_id, _opts), do: :ok
   end
 
+  # Fake sidecar session driver — hands back a sidecar id, no HTTP.
+  defmodule FakeSessionClient do
+    def open(_connect_url, _opts) do
+      {:ok, %{"id" => "sc_" <> Integer.to_string(System.unique_integer([:positive]))}}
+    end
+
+    def close(_sidecar_id, _opts), do: :ok
+  end
+
+  # Sidecar that refuses to take the session — exercises the no-leak path.
+  defmodule FailingSessionClient do
+    def open(_connect_url, _opts), do: {:error, :sidecar_unavailable}
+    def close(_sidecar_id, _opts), do: :ok
+  end
+
   setup do
     Application.put_env(:buster_claw, :test_bb_pid, self())
     on_exit(fn -> Application.delete_env(:buster_claw, :test_bb_pid) end)
@@ -40,7 +55,12 @@ defmodule BusterClaw.Browserbase.SessionManagerTest do
 
     opts =
       Keyword.merge(
-        [client: FakeClient, name: name, sweep_interval_ms: 10_000],
+        [
+          client: FakeClient,
+          session_client: FakeSessionClient,
+          name: name,
+          sweep_interval_ms: 10_000
+        ],
         opts
       )
 
@@ -118,5 +138,14 @@ defmodule BusterClaw.Browserbase.SessionManagerTest do
   test "propagates a client create failure" do
     opts = start_manager(client: FailingClient)
     assert {:error, :not_configured} = SessionManager.open(opts)
+  end
+
+  test "releases the paid session (no leak) when the sidecar refuses to drive it" do
+    opts = start_manager(session_client: FailingSessionClient)
+
+    assert {:error, {:sidecar_open_failed, :sidecar_unavailable}} = SessionManager.open(opts)
+    # the Browserbase session created moments earlier was released, not orphaned
+    assert_receive {:released, _id}
+    assert [] = SessionManager.list(opts)
   end
 end

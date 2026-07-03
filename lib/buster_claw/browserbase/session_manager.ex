@@ -25,6 +25,7 @@ defmodule BusterClaw.Browserbase.SessionManager do
 
   require Logger
 
+  alias BusterClaw.Browser.SessionClient
   alias BusterClaw.Browserbase
 
   @default_idle_timeout_ms :timer.minutes(5)
@@ -81,6 +82,7 @@ defmodule BusterClaw.Browserbase.SessionManager do
 
     state = %{
       client: Keyword.get(opts, :client, Browserbase),
+      session_client: Keyword.get(opts, :session_client, SessionClient),
       client_opts: Keyword.get(opts, :client_opts, []),
       sessions: %{},
       idle_timeout_ms: Keyword.get(opts, :idle_timeout_ms, @default_idle_timeout_ms),
@@ -166,9 +168,13 @@ defmodule BusterClaw.Browserbase.SessionManager do
 
   @impl true
   def terminate(_reason, state) do
-    # Best-effort: release every session we hold so a graceful stop never leaks
-    # a paid cloud browser.
-    for {id, _session} <- state.sessions do
+    # Best-effort: close the sidecar handle and release every session we hold so
+    # a graceful stop never leaks a paid cloud browser.
+    for {id, session} <- state.sessions do
+      if session.sidecar_id do
+        state.session_client.close(session.sidecar_id, state.client_opts)
+      end
+
       state.client.release(id, state.client_opts)
     end
 
@@ -179,11 +185,13 @@ defmodule BusterClaw.Browserbase.SessionManager do
 
   defp do_open(state) do
     with {:ok, created} <- state.client.create(state.client_opts),
-         {:ok, dbg} <- state.client.debug(created.id, state.client_opts) do
+         {:ok, dbg} <- state.client.debug(created.id, state.client_opts),
+         {:ok, sidecar_id} <- open_sidecar(state, created) do
       now = now_ms()
 
       session = %{
         id: created.id,
+        sidecar_id: sidecar_id,
         connect_url: created.connect_url,
         live_view_url: dbg.live_view_url,
         opened_at: now,
@@ -194,12 +202,37 @@ defmodule BusterClaw.Browserbase.SessionManager do
     end
   end
 
+  # Hand the session's connect_url to the sidecar to drive. If the sidecar can't
+  # take it, release the paid Browserbase session immediately — never leave a
+  # cloud browser we can't drive still billing.
+  defp open_sidecar(state, created) do
+    case state.session_client.open(created.connect_url, state.client_opts) do
+      {:ok, body} ->
+        {:ok, body["id"] || body[:id]}
+
+      {:error, reason} ->
+        state.client.release(created.id, state.client_opts)
+        {:error, {:sidecar_open_failed, reason}}
+    end
+  end
+
   defp release_and_forget(session_id, state) do
-    if Map.has_key?(state.sessions, session_id) do
-      case state.client.release(session_id, state.client_opts) do
-        :ok -> :ok
-        {:error, reason} -> Logger.warning("Failed to release #{session_id}: #{inspect(reason)}")
-      end
+    case Map.fetch(state.sessions, session_id) do
+      {:ok, session} ->
+        if session.sidecar_id do
+          state.session_client.close(session.sidecar_id, state.client_opts)
+        end
+
+        case state.client.release(session.id, state.client_opts) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning("Failed to release #{session_id}: #{inspect(reason)}")
+        end
+
+      :error ->
+        :ok
     end
 
     %{state | sessions: Map.delete(state.sessions, session_id)}
