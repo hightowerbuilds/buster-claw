@@ -290,6 +290,61 @@ window.__onContentNavigated = function (id, u, title, favicon) {
   // tab's page-load finish — the chrome is presentation only.
 }
 
+// --- downloads shelf (left cluster of the bottom row) ---
+// Rust's on_download hook (browser.rs) drives these: a chip with a spinner
+// while the file lands in ~/Downloads, then ✓ (click to reveal in Finder,
+// resolved by id — never by a page-supplied path) or ✕ on failure. Finished
+// chips fade out after 20s.
+const downloadsEl = document.getElementById("downloads")
+const downloads = [] // {id, name, state: "active" | "done" | "failed"}
+
+function renderDownloads() {
+  if (!downloadsEl) return
+  downloadsEl.textContent = ""
+  downloads.forEach((d) => {
+    const el = document.createElement("button")
+    el.type = "button"
+    el.className = "dl " + d.state
+    el.title = d.state === "done" ? "Reveal in Finder" : d.name
+    if (d.state === "active") {
+      const spin = document.createElement("span")
+      spin.className = "spin"
+      el.appendChild(spin)
+    } else {
+      const mark = document.createElement("span")
+      mark.textContent = d.state === "done" ? "✓" : "✕"
+      el.appendChild(mark)
+    }
+    const t = document.createElement("span")
+    t.className = "t"
+    t.textContent = d.name
+    el.appendChild(t)
+    if (d.state === "done") {
+      el.onclick = () => inv("browser_reveal_download", {downloadId: d.id})
+    }
+    downloadsEl.appendChild(el)
+  })
+}
+
+window.__onDownloadStarted = function (id, name) {
+  downloads.unshift({id, name, state: "active"})
+  // A download never fires page-load-finished, so the tab spinner would hang
+  // for its full 20s safety net — clear it now that we know why it's spinning.
+  const t = activeTab()
+  if (t && t.loading) { clearTimeout(t.loadTimer); t.loading = false; renderTabs() }
+  renderDownloads()
+}
+
+window.__onDownloadFinished = function (id, success) {
+  const d = downloads.find((x) => x.id === id)
+  if (d) d.state = success ? "done" : "failed"
+  renderDownloads()
+  setTimeout(function () {
+    const i = downloads.findIndex((x) => x.id === id)
+    if (i >= 0) { downloads.splice(i, 1); renderDownloads() }
+  }, 20000)
+}
+
 function go() {
   const url = resolve(addr.value)
   if (url) inv("browser_navigate", {tabId: activeId, url})

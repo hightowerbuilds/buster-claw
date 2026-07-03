@@ -438,6 +438,7 @@ fn main() {
             browser::browser_navigate_active,
             browser::browser_open_tab_active,
             browser::browser_app_navigate,
+            browser::browser_reveal_download,
             voice::speak,
             voice::stop_speaking
         ])

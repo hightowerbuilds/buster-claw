@@ -143,10 +143,31 @@ defmodule BusterClawWeb.BrowserChromeController do
         border-radius: 3px; font: 600 12px/1 ui-monospace, monospace; white-space: nowrap;
       }
       button.bm:hover { border-color: #ff4d1c; color: #ff4d1c; }
+      /* bottom row: downloads shelf (left, only while present) + bookmark bar */
+      #row2 { display: flex; align-items: center; height: 32px; min-width: 0;
+              border-top: 1px solid rgba(244,241,234,.1); }
+      #downloads { display: flex; align-items: center; gap: 4px; flex: 0 0 auto;
+                   max-width: 45%; padding: 0 0 0 8px; overflow-x: auto;
+                   overflow-y: hidden; }
+      #downloads:not(:empty) { padding-right: 8px; margin-right: 4px;
+                               border-right: 1px solid rgba(244,241,234,.14); }
+      #downloads::-webkit-scrollbar { height: 0; }
+      .dl { display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
+            max-width: 220px; height: 24px; padding: 0 8px; background: #1c1c1c;
+            color: rgba(244,241,234,.75); border: 1px solid rgba(244,241,234,.2);
+            border-radius: 4px; font: 600 11px/1 ui-monospace, monospace;
+            white-space: nowrap; }
+      .dl .t { overflow: hidden; text-overflow: ellipsis; }
+      .dl.done { cursor: pointer; }
+      .dl.done:hover { color: #f4f1ea; border-color: rgba(244,241,234,.45); }
+      .dl.failed { color: #ff4d1c; border-color: rgba(255,77,28,.5); }
+      .dl .spin { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%;
+                  border: 2px solid rgba(244,241,234,.25); border-top-color: #ff4d1c;
+                  animation: ic-spin .7s linear infinite; }
       /* bookmark bar */
-      #bookmarkbar { display: flex; align-items: center; gap: 4px; height: 32px;
-                     padding: 0 8px; overflow-x: auto; overflow-y: hidden;
-                     border-top: 1px solid rgba(244,241,234,.1); }
+      #bookmarkbar { display: flex; align-items: center; gap: 4px; flex: 1 1 auto;
+                     min-width: 0; height: 32px; padding: 0 8px 0 0;
+                     overflow-x: auto; overflow-y: hidden; }
       #bookmarkbar::-webkit-scrollbar { height: 0; }
       .bmk { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; max-width: 160px;
              height: 24px; padding: 0 8px; cursor: pointer; background: transparent;
@@ -179,7 +200,10 @@ defmodule BusterClawWeb.BrowserChromeController do
         </form>
         <button class="bm" id="bookmark" type="button" title="Bookmark this page">+ Bookmark</button>
       </div>
-      <div id="bookmarkbar"></div>
+      <div id="row2">
+        <div id="downloads"></div>
+        <div id="bookmarkbar"></div>
+      </div>
       <script src="/assets/js/chrome.js"></script>
     </body>
     </html>

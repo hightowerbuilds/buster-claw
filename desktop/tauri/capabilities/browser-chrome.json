@@ -15,6 +15,7 @@
     "allow-browser-new-tab",
     "allow-browser-switch-tab",
     "allow-browser-close-tab",
-    "allow-browser-app-navigate"
+    "allow-browser-app-navigate",
+    "allow-browser-reveal-download"
   ]
 }

@@ -23,6 +23,7 @@ fn main() {
                 "browser_close",
                 "browser_screenshot",
                 "browser_app_navigate",
+                "browser_reveal_download",
             ]),
         ),
     )

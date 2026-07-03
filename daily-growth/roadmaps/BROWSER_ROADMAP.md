@@ -89,7 +89,7 @@ behavior change visible to the user.
    `postMessage` back-channel may still break under (b); (a) is the real fix.
    *Done when:* GitHub sign-in-with-Google on a third-party site completes
    in-app.
-3. **Downloads.** (L)
+3. **Downloads.** (L) — **SHIPPED 07-03** via tauri on_download (no objc needed — wry ships the WKDownloadDelegate): deduped ~/Downloads saves, chrome shelf chips with reveal-by-id, Sentinel :untrusted_ingest per download, tab spinner cleared on download start.
    WKDownloadDelegate (macOS 11.3+) via objc bridge → save to `~/Downloads` (or
    the workspace downloads dir — decide in Settings), minimal shelf strip in the
    chrome (filename, progress, reveal-in-Finder), and a **Sentinel

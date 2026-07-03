@@ -20,8 +20,9 @@
 //! re-passing it each time.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::webview::{PageLoadEvent, WebviewBuilder};
+use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, Url, WebviewUrl};
 
 const CHROME_PREFIX: &str = "browser-chrome-"; // browser-chrome-<sid>
@@ -41,6 +42,23 @@ pub struct BrowserState {
     // unmark). Menu accelerators route to a shown surface's chrome; when this
     // is empty the shortcut falls through to the app webview instead.
     shown: Mutex<HashSet<String>>,
+    // Files the content webviews downloaded this session. The chrome's shelf
+    // reveals them by id (never by a page-supplied path), and Finished events
+    // — which carry no path on macOS — resolve their file here by URL.
+    downloads: Mutex<DownloadLog>,
+}
+
+#[derive(Default)]
+struct DownloadLog {
+    items: Vec<DownloadItem>,
+    next_id: u64,
+}
+
+struct DownloadItem {
+    id: u64,
+    url: String,
+    path: PathBuf,
+    finished: bool,
 }
 
 impl BrowserState {
@@ -73,6 +91,34 @@ impl BrowserState {
     }
     fn any_shown(&self) -> Option<String> {
         self.shown.lock().unwrap().iter().next().cloned()
+    }
+    fn download_started(&self, url: &str, path: PathBuf) -> u64 {
+        let mut log = self.downloads.lock().unwrap();
+        log.next_id += 1;
+        let id = log.next_id;
+        log.items.push(DownloadItem {
+            id,
+            url: url.to_string(),
+            path,
+            finished: false,
+        });
+        id
+    }
+    // Resolve a Finished event (url only on macOS) to the newest unfinished
+    // download of that url, marking it done.
+    fn download_finished(&self, url: &str) -> Option<(u64, PathBuf)> {
+        let mut log = self.downloads.lock().unwrap();
+        let item = log
+            .items
+            .iter_mut()
+            .rev()
+            .find(|i| !i.finished && i.url == url)?;
+        item.finished = true;
+        Some((item.id, item.path.clone()))
+    }
+    fn download_path(&self, id: u64) -> Option<PathBuf> {
+        let log = self.downloads.lock().unwrap();
+        log.items.iter().find(|i| i.id == id).map(|i| i.path.clone())
     }
 }
 
@@ -461,6 +507,55 @@ pub fn browser_open_tab_active(
         .map_err(|e| e.to_string())
 }
 
+// Report a finished download to Phoenix (`POST /browser/download`) so it lands
+// on the Sentinel audit feed — a download pulls untrusted bytes onto disk, the
+// one browser ingress the server-side fetch pipeline never sees.
+fn report_download(app: &AppHandle, chrome_label: &str, url: &str, file: &PathBuf, success: bool) {
+    let Some(origin) = phoenix_origin(app, chrome_label) else {
+        return;
+    };
+    let endpoint = format!("{origin}/browser/download");
+    let query = vec![
+        ("url".to_string(), url.to_string()),
+        ("file".to_string(), file.display().to_string()),
+        ("success".to_string(), success.to_string()),
+    ];
+    tauri::async_runtime::spawn(async move {
+        let _ = reqwest::Client::new()
+            .post(endpoint)
+            .query(&query)
+            .send()
+            .await;
+    });
+}
+
+/// Reveal a downloaded file in the Finder. Paths are resolved from the
+/// session's download log by id — the chrome can never pass a raw path, so a
+/// hostile page title/URL can't turn this into an arbitrary-path probe.
+#[tauri::command]
+pub fn browser_reveal_download(
+    state: State<BrowserState>,
+    download_id: u64,
+) -> Result<(), String> {
+    let path = state
+        .download_path(download_id)
+        .ok_or_else(|| "unknown download".to_string())?;
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        Err("reveal is only supported on macOS".into())
+    }
+}
+
 /// Route a native menu accelerator (menu item ids `bc_<action>`) to the right
 /// webview: the shown browser surface's chrome (`window.__menuShortcut`) when
 /// one is on-screen, else the app webview (`window.__bcMenuShortcut`, handled
@@ -769,7 +864,44 @@ fn create_content(
     let app_for_load = app.clone();
     let id_for_load = tab_id.to_string();
     let chrome_for_load = chrome_label(sid);
+    let app_for_dl = app.clone();
+    let chrome_for_dl = chrome_label(sid);
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
+        // Downloads (a click on a PDF/zip/attachment): wry pre-fills
+        // `destination` with a deduped ~/Downloads/<suggested> path — accept
+        // it, log the file by id, and drive the chrome's download shelf. On
+        // Finished (which carries no path on macOS) the log resolves the file
+        // by URL for the shelf and the Sentinel report.
+        .on_download(move |_webview, event| {
+            let state = app_for_dl.state::<BrowserState>();
+            match event {
+                DownloadEvent::Requested { url, destination } => {
+                    let id = state.download_started(url.as_str(), destination.clone());
+                    let name = destination
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "download".to_string());
+                    if let Some(chrome) = app_for_dl.get_webview(&chrome_for_dl) {
+                        let _ = chrome.eval(&format!(
+                            "window.__onDownloadStarted && window.__onDownloadStarted({id}, {})",
+                            js_str(&name)
+                        ));
+                    }
+                }
+                DownloadEvent::Finished { url, success, .. } => {
+                    if let Some((id, path)) = state.download_finished(url.as_str()) {
+                        if let Some(chrome) = app_for_dl.get_webview(&chrome_for_dl) {
+                            let _ = chrome.eval(&format!(
+                                "window.__onDownloadFinished && window.__onDownloadFinished({id}, {success})"
+                            ));
+                        }
+                        report_download(&app_for_dl, &chrome_for_dl, url.as_str(), &path, success);
+                    }
+                }
+                _ => {}
+            }
+            true
+        })
         .on_navigation(move |url| {
             // Popup sentinel from POPUPS_AS_TABS_JS: cancel the navigation and
             // open the carried URL as a new tab via this surface's chrome, so
@@ -946,16 +1078,19 @@ fn emit_navigated(app: &AppHandle, chrome_label: &str, tab_id: &str, url: &str, 
 /// tab's loads are recorded, not just the active one's, and a chrome hiccup
 /// can't silently drop history. The Phoenix origin is read off the chrome
 /// webview (which always lives on it); the browser homepage is skipped.
+// The Phoenix origin, read off a chrome webview (which always lives on it).
+fn phoenix_origin(app: &AppHandle, chrome_label: &str) -> Option<String> {
+    app.get_webview(chrome_label)
+        .and_then(|chrome| chrome.url().ok())
+        .map(|u| u.origin().ascii_serialization())
+}
+
 fn record_history(app: &AppHandle, chrome_label: &str, url: &str, title: &str) {
     let Ok(parsed) = url.parse::<Url>() else { return };
     if !matches!(parsed.scheme(), "http" | "https") {
         return;
     }
-    let Some(origin) = app
-        .get_webview(chrome_label)
-        .and_then(|chrome| chrome.url().ok())
-        .map(|u| u.origin().ascii_serialization())
-    else {
+    let Some(origin) = phoenix_origin(app, chrome_label) else {
         return;
     };
     if parsed.origin().ascii_serialization() == origin && parsed.path() == "/browser/home" {

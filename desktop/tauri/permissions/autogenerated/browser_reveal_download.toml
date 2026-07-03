@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-reveal-download"
+description = "Enables the browser_reveal_download command without any pre-configured scope."
+commands.allow = ["browser_reveal_download"]
+
+[[permission]]
+identifier = "deny-browser-reveal-download"
+description = "Denies the browser_reveal_download command without any pre-configured scope."
+commands.deny = ["browser_reveal_download"]
