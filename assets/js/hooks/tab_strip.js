@@ -331,21 +331,24 @@ export const TabStrip = {
     if (!invoke) return Promise.resolve()
     return invoke("browser_close").catch(() => {})
   },
-  // Reconcile native browser surfaces against the current route on a fresh page
-  // load. Surfaces are owned by the Rust shell and survive the full-page reload
-  // our window.location.href navigations do; on such a reload the EmbeddedBrowser
+  // Reconcile native browser surfaces against the current route. Surfaces are
+  // owned by the Rust shell and survive the full-page reload our
+  // window.location.href navigations do; on such a reload the EmbeddedBrowser
   // hook's destroyed() (which hides its surface) doesn't fire, so a surface can
   // be left stuck on top of the next page. The route says which are valid —
-  // "main" on /browse, "left"/"right" on /split, none anywhere else — so close
-  // the rest. Closing an absent or about-to-be-reopened surface is a safe no-op
-  // (each pane's hook opens its own id, never one we close here).
+  // "main" on /browse, "left"/"right" on /split, none anywhere else — so HIDE
+  // the rest. Hide, never close: this hook remounts on every LiveView
+  // navigation (the app shell renders inside each LiveView), and closing here
+  // destroyed all browser tabs on any tab switch away from /browse. Hiding is
+  // idempotent, safe on absent surfaces, and keeps every tab alive for the
+  // return to /browse (browser_open re-shows the saved active tab).
   reconcileBrowserSurfaces() {
     const invoke = window.__TAURI__?.core?.invoke
     if (!invoke) return
     const base = window.location.pathname
     const stale =
       base === "/browse" ? ["left", "right"] : base === "/split" ? ["main"] : ["main", "left", "right"]
-    for (const sid of stale) invoke("browser_close", {surfaceId: sid}).catch(() => {})
+    for (const sid of stale) invoke("browser_hide", {surfaceId: sid}).catch(() => {})
   },
   // ----- Right-click context menu -----
   // Primary trigger in WebKit: right-button mousedown fires even on draggable

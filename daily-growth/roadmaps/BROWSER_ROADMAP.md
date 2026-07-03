@@ -32,6 +32,32 @@ Effort tags: **S** = a sitting, **M** = a day-ish, **L** = multi-day / has unkno
 **Exit criteria:** chrome JS has tests; `mix precommit` + `bun test` green; no
 behavior change visible to the user.
 
+## Phase 0.5 — Field findings (07-03, from first real desktop use)
+
+1. **Browser tabs were destroyed on every app-tab switch.** ~~Root cause: the
+   app shell (and its TabStrip hook) renders *inside* each LiveView, so the
+   hook remounts on every live navigation, and its `reconcileBrowserSurfaces()`
+   — written to heal surfaces left stuck by full-page reloads — called
+   `browser_close` on all surfaces whenever the page wasn't `/browse`,
+   destroying the tabs that `EmbeddedBrowser.destroyed()` had just hidden for
+   persistence.~~ **Fixed 07-03:** reconcile now hides instead of closes — hide
+   is idempotent, safe on absent surfaces, and solves the only real stuck-case
+   (a surface left *visible* over the wrong page) while keeping every tab
+   alive. Note for Phase 2.1: this preserves tabs across navigation within an
+   app session; app-*restart* restore still needs the durable tab state.
+   Related cleanup for 2.1: `tearDownSplitBrowsers()` still closes surfaces on
+   split rearrangement — revisit whether hide + reposition suffices there too.
+2. **The app-wide tab strip is not visible while the browser is open.** (M —
+   needs in-app measurement) Native child webviews always render above the DOM,
+   so any overlap hides the strip entirely. Suspects, in order: the
+   `sync()` bounds math in `hooks/browser.js` (its `outerHeight − innerHeight`
+   title-bar correction may compute 0 in WKWebView and misplace the chrome over
+   the strip), or the surface rect being measured before the sticky header
+   settles. Diagnose by logging the computed bounds vs the strip's rect in the
+   running shell; fix the offset (or explicitly reserve the strip's height when
+   positioning the surface). This blocks comfortable multi-tab app use while
+   browsing, and made #1 sting worse.
+
 ## Phase 1 — Stop the bleeding (Tier 1: broken → working)
 
 *Each of these currently forces the alt-tab within minutes. Highest priority.*
