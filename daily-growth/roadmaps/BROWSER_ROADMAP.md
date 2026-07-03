@@ -62,7 +62,7 @@ behavior change visible to the user.
 
 *Each of these currently forces the alt-tab within minutes. Highest priority.*
 
-1. **Omnibox search.** (S–M)
+1. **Omnibox search.** (S–M) — **SHIPPED 07-03** (DuckDuckGo default, `browser_search_url` setting)
    Schemeless input with no dot/`localhost` → search engine query; everything else
    keeps current behavior (`/path` → workspace, URL-ish → https). Default engine a
    Settings entry (DuckDuckGo default — fits the privacy posture; Google/Kagi
@@ -89,7 +89,7 @@ behavior change visible to the user.
    webview — chrome-JS key handlers can't hear it): ⌘T new tab, ⌘W close tab,
    ⌘L focus omnibox, ⌘R reload, ⌘⇧] / ⌘⇧[ and ⌘1–9 tab switching. Menu events
    route to the active surface's chrome via the existing eval bridge.
-5. **Favicon privacy fix.** (S–M)
+5. **Favicon privacy fix.** (S–M) — **SHIPPED 07-03** (`BusterClaw.Favicons` disk cache + /browser/favicon; bookmarks stop persisting favicon_url)
    `/browser/favicon?host=` endpoint: SSRF-guarded fetch of `/favicon.ico` (+
    HTML `<link rel=icon>` fallback), cached on disk. Swap both consumers (chrome
    JS, `Bookmarks.favicon_url/1`) off `google.com/s2`. Kills the
