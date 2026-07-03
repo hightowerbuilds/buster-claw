@@ -181,7 +181,10 @@ defmodule BusterClaw.CLI do
   defp off_duty(opts) do
     args = maybe_put(%{}, "reason", Keyword.get(opts, :note) || "off duty")
 
-    case http_post("/api/run", %{"command" => "shift_stop", "args" => args}, auth: true, opts: opts) do
+    case http_post("/api/run", %{"command" => "shift_stop", "args" => args},
+           auth: true,
+           opts: opts
+         ) do
       {:ok, %{"ok" => true, "result" => result}} ->
         IO.puts(format_off_duty(result))
 
@@ -200,7 +203,9 @@ defmodule BusterClaw.CLI do
     shift_id = if is_map(result), do: result["shift_id"]
 
     System.trap_signal(:sigint, fn ->
-      IO.puts("\nStanding down#{if shift_id, do: " (shift ##{shift_id})", else: ""} — stopping shift…")
+      IO.puts(
+        "\nStanding down#{if shift_id, do: " (shift ##{shift_id})", else: ""} — stopping shift…"
+      )
 
       _ =
         http_post(

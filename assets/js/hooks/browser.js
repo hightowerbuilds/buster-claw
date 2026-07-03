@@ -62,6 +62,8 @@ export const ScreenshotBridge = {
   },
 }
 
+import {resolve as resolveUrl} from "../lib/browser_url.js"
+
 // Positions the embedded browser's two native child webviews (chrome toolbar +
 // content) over the /browse surface. The toolbar lives in the native chrome
 // webview, so it's never covered. Only active in the desktop app
@@ -134,14 +136,11 @@ export const EmbeddedBrowser = {
     this.settle = setTimeout(() => this.scheduleSync(), 250)
   },
 
-  // Initial content URL: scheme kept, absolute workspace path → /ws/file,
-  // bare domain → https://, empty → the browser homepage (recent URLs).
+  // Initial content URL (shared heuristic in lib/browser_url.js): scheme kept,
+  // absolute workspace path → /ws/file, bare domain → https://, empty → the
+  // browser homepage (recent URLs).
   resolveContent(raw) {
-    const v = (raw || "").trim()
-    if (v === "") return `${this.origin}/browser/home`
-    if (/^[a-z]+:\/\//i.test(v)) return v
-    if (v.startsWith("/")) return `${this.origin}/ws/file?path=${encodeURIComponent(v)}`
-    return `https://${v}`
+    return resolveUrl(raw, this.origin) || `${this.origin}/browser/home`
   },
 
   destroyed() {

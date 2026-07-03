@@ -65,7 +65,8 @@ defmodule BusterClawWeb.ContentSecurityPolicy do
       "script-src 'self' 'nonce-#{nonce}'",
       # LiveView/daisyUI set inline style attributes; allow them.
       "style-src 'self' 'unsafe-inline'",
-      # Reader/in-app browser renders remote images; images aren't an RCE vector.
+      # In-app browser pages (home, bookmarks) render remote favicons/images;
+      # images aren't an RCE vector.
       "img-src 'self' data: blob: https: http:",
       "font-src 'self' data:",
       # LiveView socket (ws/wss) + Tauri IPC custom origins. 'self' covers the

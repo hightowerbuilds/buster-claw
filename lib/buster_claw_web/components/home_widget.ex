@@ -124,7 +124,10 @@ defmodule BusterClawWeb.HomeWidget do
             <ul class="space-y-0.5">
               <li
                 :for={event <- day.events}
-                class={["flex items-baseline gap-1.5 font-mono text-[0.6875rem]", CalendarColors.text(event.color)]}
+                class={[
+                  "flex items-baseline gap-1.5 font-mono text-[0.6875rem]",
+                  CalendarColors.text(event.color)
+                ]}
               >
                 <span class="shrink-0 text-current">{event_time_label(event)}</span>
                 <span class="truncate text-base-content">{event.title}</span>
@@ -150,5 +153,7 @@ defmodule BusterClawWeb.HomeWidget do
   end
 
   defp event_time_label(%{start_time: nil}), do: "All day"
-  defp event_time_label(%{start_time: %Time{} = time}), do: Elixir.Calendar.strftime(time, "%H:%M")
+
+  defp event_time_label(%{start_time: %Time{} = time}),
+    do: Elixir.Calendar.strftime(time, "%H:%M")
 end

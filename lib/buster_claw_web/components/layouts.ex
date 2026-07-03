@@ -97,7 +97,8 @@ defmodule BusterClawWeb.Layouts do
 
   attr :wide, :boolean,
     default: false,
-    doc: "drop only the centered max-width (keep padding + normal scroll) so content fills the window width"
+    doc:
+      "drop only the centered max-width (keep padding + normal scroll) so content fills the window width"
 
   slot :inner_block, required: true
 

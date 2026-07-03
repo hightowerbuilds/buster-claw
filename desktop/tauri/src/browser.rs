@@ -836,6 +836,43 @@ fn emit_navigated(app: &AppHandle, chrome_label: &str, tab_id: &str, url: &str, 
             js_str(title)
         ));
     }
+    record_history(app, chrome_label, url, title);
+}
+
+/// Record a finished page load into Phoenix browser history
+/// (`POST /browser/history`). Runs here — not in the chrome JS — so *every*
+/// tab's loads are recorded, not just the active one's, and a chrome hiccup
+/// can't silently drop history. The Phoenix origin is read off the chrome
+/// webview (which always lives on it); the browser homepage is skipped.
+fn record_history(app: &AppHandle, chrome_label: &str, url: &str, title: &str) {
+    let Ok(parsed) = url.parse::<Url>() else { return };
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return;
+    }
+    let Some(origin) = app
+        .get_webview(chrome_label)
+        .and_then(|chrome| chrome.url().ok())
+        .map(|u| u.origin().ascii_serialization())
+    else {
+        return;
+    };
+    if parsed.origin().ascii_serialization() == origin && parsed.path() == "/browser/home" {
+        return;
+    }
+
+    let endpoint = format!("{origin}/browser/history");
+    let mut query = vec![("url".to_string(), url.to_string())];
+    let label = title.trim();
+    if !label.is_empty() {
+        query.push(("label".to_string(), label.to_string()));
+    }
+    tauri::async_runtime::spawn(async move {
+        let _ = reqwest::Client::new()
+            .post(endpoint)
+            .query(&query)
+            .send()
+            .await;
+    });
 }
 
 // Encode a string as a JS string literal for safe interpolation into eval'd JS.
@@ -860,4 +897,44 @@ fn js_str(s: &str) -> String {
     }
     out.push('"');
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Parity fixtures: keep in lockstep with the sanitiser test in
+    // test/buster_claw_web/controllers/browser_chrome_controller_test.exs. Both
+    // sides must agree on the sanitised id or the chrome and Rust address
+    // different surfaces and the browser goes blank.
+    #[test]
+    fn sanitize_sid_matches_the_phoenix_sanitiser() {
+        let fixtures = [
+            ("main", "main"),
+            ("left", "left"),
+            ("A1b2", "A1b2"),
+            ("a\"-<b>/3", "ab3"),
+            ("we-ird_id", "weirdid"),
+            ("../etc", "etc"),
+            ("", "main"),
+            ("!!!", "main"),
+        ];
+        for (input, expected) in fixtures {
+            assert_eq!(sanitize_sid(input), expected, "sid {input:?}");
+        }
+    }
+
+    #[test]
+    fn js_str_escapes_page_controlled_input() {
+        assert_eq!(js_str("plain"), "\"plain\"");
+        assert_eq!(js_str("a\"b"), "\"a\\\"b\"");
+        assert_eq!(js_str("a\\b"), "\"a\\\\b\"");
+        assert_eq!(js_str("a\nb\tc"), "\"a\\nb\\tc\"");
+        // A hostile title can't break out of the eval'd literal.
+        assert_eq!(
+            js_str("</script>\u{2028}alert(1)"),
+            "\"</script>\\u2028alert(1)\""
+        );
+        assert_eq!(js_str("\u{1}"), "\"\\u0001\"");
+    }
 }

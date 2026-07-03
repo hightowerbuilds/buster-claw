@@ -1,0 +1,278 @@
+// The embedded browser's chrome — tab strip + toolbar + bookmark bar. Loaded by
+// /browser/chrome (BusterClawWeb.BrowserChromeController, which is now a thin
+// HTML shell) into a `browser-chrome-<sid>` child webview. Bundled by esbuild as
+// its own entry point → /assets/js/chrome.js.
+//
+// Ownership: this file owns the tab-strip UI and tab lifecycle; Rust
+// (desktop/tauri/src/browser.rs) owns the content webviews and the per-surface
+// active-tab pointer. `?sid=` (surfaced here via <body data-sid>) identifies the
+// browser surface this chrome drives so side-by-side browsers stay independent.
+
+import {resolve as resolveUrl, display as displayUrl, deriveLabel, faviconFor} from "./lib/browser_url.js"
+
+const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke
+const origin = window.location.origin
+const homeUrl = origin + "/browser/home"
+
+// The browser surface this chrome drives. Every browser_* invoke carries it
+// (injected by inv() below).
+const SID = document.body.dataset.sid || "main"
+
+const addr = document.getElementById("addr")
+const tabsEl = document.getElementById("tabs")
+const barEl = document.getElementById("bookmarkbar")
+const progressEl = document.getElementById("progress")
+
+// Invoke a Tauri command, surfacing failures in the console (so a denied
+// permission or a missing webview is visible rather than silent). Every
+// browser_* command is surface-scoped, so inject surfaceId here.
+function inv(cmd, args) {
+  if (!invoke) return Promise.resolve()
+  return invoke(cmd, Object.assign({surfaceId: SID}, args || {})).catch(function (e) {
+    console.error("browser " + cmd + " failed:", e)
+  })
+}
+
+const resolve = (raw) => resolveUrl(raw, origin)
+const display = (u) => displayUrl(u, origin)
+
+// --- tab state (chrome owns the strip; Rust owns the webviews) ---
+// Each tab also tracks `loading` (spinner while a navigation is in flight)
+// and `favicon` (host favicon, mirroring the bookmark-bar pattern).
+let tabs = [{id: "1", url: "", label: "New tab", loading: false, favicon: null}]
+let activeId = "1"
+let nextId = 2
+
+// Reflect the active tab's loading state in the top progress bar.
+function updateProgress() {
+  const t = activeTab()
+  progressEl.classList.toggle("on", !!(t && t.loading))
+}
+
+function renderTabs() {
+  tabsEl.textContent = ""
+  tabs.forEach((t) => {
+    const tab = document.createElement("div")
+    tab.className = "tab" + (t.id === activeId ? " active" : "")
+    tab.title = t.label
+    // Leading affordance: a spinner while loading, otherwise the favicon.
+    if (t.loading) {
+      const spin = document.createElement("span")
+      spin.className = "spin"
+      tab.appendChild(spin)
+    } else if (t.favicon) {
+      const fav = document.createElement("img")
+      fav.className = "fav"
+      fav.src = t.favicon; fav.alt = ""; fav.loading = "lazy"
+      fav.onerror = () => fav.remove()
+      tab.appendChild(fav)
+    }
+    const label = document.createElement("span")
+    label.className = "label"
+    label.textContent = t.label
+    label.onclick = () => switchTab(t.id)
+    const x = document.createElement("span")
+    x.className = "x"
+    x.textContent = "×"
+    x.title = "Close tab"
+    x.onclick = (e) => { e.stopPropagation(); closeTab(t.id) }
+    tab.appendChild(label)
+    tab.appendChild(x)
+    tabsEl.appendChild(tab)
+  })
+  const add = document.createElement("button")
+  add.id = "newtab"; add.type = "button"; add.title = "New tab"; add.textContent = "+"
+  add.onclick = () => newTab()
+  tabsEl.appendChild(add)
+  updateProgress()
+}
+
+function activeTab() { return tabs.find((t) => t.id === activeId) }
+
+// --- bookmark bar (persistent quick-access strip below the toolbar) ---
+function renderBookmarks(items) {
+  barEl.textContent = ""
+  if (!items || !items.length) {
+    const hint = document.createElement("span")
+    hint.className = "hint"
+    hint.textContent = "Bookmarks you save appear here"
+    barEl.appendChild(hint)
+    return
+  }
+  items.forEach((b) => {
+    const el = document.createElement("button")
+    el.type = "button"
+    el.className = "bmk"
+    el.title = (b.folder ? b.folder + " / " : "") + (b.label || b.url) + "\n" + b.url
+    if (b.favicon_url) {
+      const img = document.createElement("img")
+      img.src = b.favicon_url; img.alt = ""; img.loading = "lazy"
+      el.appendChild(img)
+    }
+    const t = document.createElement("span")
+    t.className = "t"
+    t.textContent = b.label || b.url
+    el.appendChild(t)
+    el.onclick = () => inv("browser_navigate", {tabId: activeId, url: b.url})
+    barEl.appendChild(el)
+  })
+}
+
+function loadBookmarks() {
+  fetch(origin + "/browser/bookmarks", {headers: {accept: "application/json"}})
+    .then((r) => r.json())
+    .then(renderBookmarks)
+    .catch(function () {})
+}
+
+function newTab() {
+  const id = String(nextId++)
+  tabs.push({id, url: "", label: "New tab", loading: false, favicon: null})
+  activeId = id
+  addr.value = ""
+  renderTabs()
+  inv("browser_new_tab", {tabId: id, url: homeUrl})
+  addr.focus()
+}
+
+// Agent co-presence: open a new tab at `rawUrl` and make it active, routed
+// through the chrome so the tab strip stays in sync. Called from Rust
+// (browser_open_tab_active) via eval.
+window.__agentOpenTab = function (rawUrl) {
+  const url = resolve(rawUrl) || homeUrl
+  const id = String(nextId++)
+  tabs.push({id, url: "", label: "New tab"})
+  activeId = id
+  renderTabs()
+  inv("browser_new_tab", {tabId: id, url})
+  if (document.activeElement !== addr) addr.value = display(url)
+}
+
+function switchTab(id) {
+  if (id === activeId) return
+  activeId = id
+  const t = activeTab()
+  if (t && document.activeElement !== addr) addr.value = display(t.url)
+  renderTabs()
+  inv("browser_switch_tab", {tabId: id})
+}
+
+function closeTab(id) {
+  inv("browser_close_tab", {tabId: id})
+  const i = tabs.findIndex((t) => t.id === id)
+  if (i < 0) return
+  tabs.splice(i, 1)
+  if (!tabs.length) { renderTabs(); newTab(); return }
+  if (activeId === id) {
+    const next = tabs[Math.max(0, i - 1)]
+    activeId = next.id
+    addr.value = display(next.url)
+    inv("browser_switch_tab", {tabId: next.id})
+  }
+  renderTabs()
+}
+
+// Called from Rust when a tab *starts* navigating (before the page loads):
+// show the spinner and update the address bar/url optimistically. The real
+// title arrives on completion via __onContentNavigated below.
+window.__onContentLoading = function (id, u) {
+  const t = tabs.find((x) => x.id === id)
+  if (t) {
+    t.url = u
+    t.loading = true
+    t.favicon = faviconFor(u, origin)
+    t.label = deriveLabel(u, origin)
+    // Safety net: some loads never report completion — network errors,
+    // downloads, and blocked navigations don't fire on_page_load Finished,
+    // so __onContentNavigated never clears the spinner. Drop it after a
+    // grace period so it can't spin forever.
+    clearTimeout(t.loadTimer)
+    t.loadTimer = setTimeout(function () {
+      const cur = tabs.find((x) => x.id === id)
+      if (cur && cur.loading) { cur.loading = false; renderTabs() }
+    }, 20000)
+  }
+  if (id === activeId && document.activeElement !== addr) addr.value = display(u)
+  // New page → reset the bookmark button so a fresh save reads clearly.
+  if (id === activeId) {
+    const bm = document.getElementById("bookmark")
+    if (bm) bm.textContent = "+ Bookmark"
+  }
+  renderTabs()
+}
+
+// Called from Rust when a tab finishes loading, per tab id. `title` is the
+// page's document.title (empty when unavailable); `favicon` is optional and
+// falls back to a host-derived icon.
+window.__onContentNavigated = function (id, u, title, favicon) {
+  const t = tabs.find((x) => x.id === id)
+  if (t) {
+    clearTimeout(t.loadTimer)
+    t.url = u
+    t.loading = false
+    t.favicon = favicon || faviconFor(u, origin)
+    const named = (title || "").trim()
+    t.label = named || deriveLabel(u, origin)
+  }
+  if (id === activeId && document.activeElement !== addr) addr.value = display(u)
+  // New page → reset the bookmark button so a fresh save reads clearly.
+  if (id === activeId) {
+    const bm = document.getElementById("bookmark")
+    if (bm) bm.textContent = "+ Bookmark"
+  }
+  renderTabs()
+  // History recording happens in Rust (record_history in browser.rs) on every
+  // tab's page-load finish — the chrome is presentation only.
+}
+
+function go() {
+  const url = resolve(addr.value)
+  if (url) inv("browser_navigate", {tabId: activeId, url})
+}
+
+// "/"-prefixed addresses browse the workspace in the active tab (debounced).
+let browseTimer
+addr.addEventListener("input", function () {
+  if (!addr.value.startsWith("/")) return
+  clearTimeout(browseTimer)
+  browseTimer = setTimeout(function () {
+    if (addr.value.startsWith("/")) {
+      inv("browser_navigate", {
+        tabId: activeId,
+        url: origin + "/browser/workspace?q=" + encodeURIComponent(addr.value)
+      })
+    }
+  }, 300)
+})
+
+function bookmark() {
+  // Bookmark what the address bar actually shows for the active tab, resolved
+  // back to a full URL. This stays correct even when a programmatic navigation
+  // didn't fire the content-navigated callback — which would otherwise leave
+  // activeTab().url stale and re-bookmark the previous page (so changing the
+  // URL appeared to make no new bookmark).
+  const t = activeTab()
+  const url = resolve(addr.value) || (t && t.url)
+  if (!url || url === homeUrl) return
+  const label = (t && t.label && t.label !== "New tab" && t.label) || display(url) || url
+  const btn = document.getElementById("bookmark")
+  fetch(origin + "/browser/bookmarks?url=" + encodeURIComponent(url) +
+        "&label=" + encodeURIComponent(label), {method: "POST"})
+    .then(function () {
+      btn.textContent = "Saved ✓"
+      setTimeout(function () { btn.textContent = "+ Bookmark" }, 1500)
+      loadBookmarks()
+    })
+    .catch(function () {})
+}
+
+document.getElementById("form").addEventListener("submit", function (e) { e.preventDefault(); go() })
+document.getElementById("home").addEventListener("click", function () { inv("browser_navigate", {tabId: activeId, url: homeUrl}) })
+document.getElementById("back").addEventListener("click", function () { inv("browser_back", {tabId: activeId}) })
+document.getElementById("fwd").addEventListener("click", function () { inv("browser_forward", {tabId: activeId}) })
+document.getElementById("reload").addEventListener("click", function () { inv("browser_reload", {tabId: activeId}) })
+document.getElementById("bookmark").addEventListener("click", bookmark)
+
+renderTabs()
+loadBookmarks()
+addr.focus()
