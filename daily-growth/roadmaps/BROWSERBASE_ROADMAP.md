@@ -53,7 +53,7 @@ Cross-cutting §A).
 
 *Build the plumbing and prove it with the safest possible payload.*
 
-1. **`BusterClaw.Browserbase` API client.** (M)
+1. **`BusterClaw.Browserbase` API client.** (M) — **SHIPPED 07-03** (2932bf0): create/debug/retrieve/list/release, key-gated, live-verified; `:browserbase_live` smoke test excluded by default.
    Req-based client (per house rule — no httpoison/tesla) for the endpoints we
    need: `create/1`, `debug/1` (live-view URLs), `retrieve/1`, `list/0`,
    `release/1` (end a session — the cost lever). Header `X-BB-API-Key`; project
@@ -66,7 +66,7 @@ Cross-cutting §A).
    `browser_test.exs`'s `BrowserSidecarHTTP` stub), and a **live smoke test**
    exists behind a `@tag :browserbase_live` + env guard so CI never spends money.
 
-2. **Pick and build the CDP driving seam.** (L — the load-bearing decision)
+2. **Pick and build the CDP driving seam.** (L — the load-bearing decision) — **SHIPPED 07-03** (499e565): sidecar `/session/*` driver + `BusterClaw.Browser.SessionClient`; 404 unknown_session / 409 session_closed wire contract; proven against local Chromium + real Browserbase.
    There is no mature Elixir CDP client; Playwright is. **Decision: extend the
    sandboxed Node sidecar we just shipped into a stateful session driver.** It
    already has Playwright vendored and now runs under Seatbelt; it gains
@@ -76,7 +76,7 @@ Cross-cutting §A).
    *Done when:* the sidecar can hold a Browserbase-backed session open across
    multiple HTTP calls and drive it, proven by a sidecar-level test.
 
-3. **`BusterClaw.Browserbase.SessionManager` GenServer.** (M)
+3. **`BusterClaw.Browserbase.SessionManager` GenServer.** (M) — **SHIPPED 07-03** (5990fbb): concurrency cap, idle/over-age reaping, release-on-shutdown, no-leak-on-sidecar-failure. In-memory records; durable records + boot reaping still the noted follow-up.
    Owns session lifecycle in the BEAM: `session_id → {bb_session, live_view_url,
    sidecar_ref, opened_at, last_used_at, owner_tier}`. Enforces **idle timeout**
    and **max lifetime** (reaps and `release/1`s — the cost guardrail). Survives
