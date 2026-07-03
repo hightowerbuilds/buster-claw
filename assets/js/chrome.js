@@ -46,6 +46,84 @@ let tabs = [{id: "1", url: "", label: "New tab", loading: false, favicon: null}]
 let activeId = "1"
 let nextId = 2
 
+// --- session persistence (roadmap Phase 2.1) ---
+// The model above lives in this webview's JS heap, so an app restart forgets
+// every tab. Every mutation schedules a debounced POST of {tabs, active} to
+// Phoenix (keyed by surface); restoreTabs() below hydrates on a cold load.
+const INITIAL_VALUE = addr.value.trim()
+
+function serializeTabs() {
+  return {
+    tabs: tabs.map((t) => ({url: t.url, label: t.label})),
+    active: Math.max(0, tabs.findIndex((t) => t.id === activeId))
+  }
+}
+
+let saveTimer
+function scheduleSaveTabs() {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(function () {
+    fetch(origin + "/browser/tabs?sid=" + encodeURIComponent(SID), {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify(serializeTabs())
+    }).catch(function () {})
+  }, 500)
+}
+
+// Hydrate the strip from the saved state. Runs once at chrome boot — a fresh
+// chrome means a fresh browser (Rust just created content tab "1"), so the
+// saved tabs are recreated through the normal new-tab path. A deep link
+// (?url=) owns tab 1 and the saved tabs append after it; otherwise tab 1 (the
+// homepage Rust opened) is navigated to the first saved tab.
+async function restoreTabs() {
+  let saved
+  try {
+    const r = await fetch(origin + "/browser/tabs?sid=" + encodeURIComponent(SID), {
+      headers: {accept: "application/json"}
+    })
+    if (!r.ok) return
+    saved = await r.json()
+  } catch (e) { return }
+
+  const entries = (saved && Array.isArray(saved.tabs) ? saved.tabs : []).filter(
+    (t) => t && typeof t.url === "string" && t.url !== "" && t.url !== homeUrl
+  )
+  if (!entries.length) return
+
+  const deepLinked = INITIAL_VALUE !== ""
+  const first = tabs[0]
+  if (!deepLinked) {
+    const e = entries[0]
+    first.url = e.url
+    first.label = e.label || deriveLabel(e.url, origin)
+    first.favicon = faviconFor(e.url, origin)
+    inv("browser_navigate", {tabId: first.id, url: e.url})
+  }
+  entries.slice(deepLinked ? 0 : 1).forEach((e) => {
+    const id = String(nextId++)
+    tabs.push({
+      id,
+      url: e.url,
+      label: e.label || deriveLabel(e.url, origin),
+      loading: false,
+      favicon: faviconFor(e.url, origin)
+    })
+    inv("browser_new_tab", {tabId: id, url: e.url})
+  })
+
+  // Reactivate: the deep link keeps the front (it's what was asked for);
+  // otherwise the saved active tab. Rust's active pointer moved with every
+  // browser_new_tab above, so always re-sync it explicitly.
+  const idx = Number.isInteger(saved.active) && saved.active >= 0 ? saved.active : 0
+  const target = deepLinked ? first : tabs[Math.min(idx, tabs.length - 1)] || first
+  activeId = target.id
+  if (document.activeElement !== addr) addr.value = display(target.url)
+  renderTabs()
+  inv("browser_switch_tab", {tabId: target.id})
+  scheduleSaveTabs()
+}
+
 // Reflect the active tab's loading state in the top progress bar.
 function updateProgress() {
   const t = activeTab()
@@ -197,6 +275,7 @@ function newTab() {
   addr.value = ""
   renderTabs()
   inv("browser_new_tab", {tabId: id, url: homeUrl})
+  scheduleSaveTabs()
   addr.focus()
 }
 
@@ -210,6 +289,7 @@ window.__agentOpenTab = function (rawUrl) {
   activeId = id
   renderTabs()
   inv("browser_new_tab", {tabId: id, url})
+  scheduleSaveTabs()
   if (document.activeElement !== addr) addr.value = display(url)
 }
 
@@ -220,6 +300,7 @@ function switchTab(id) {
   if (t && document.activeElement !== addr) addr.value = display(t.url)
   renderTabs()
   inv("browser_switch_tab", {tabId: id})
+  scheduleSaveTabs()
 }
 
 function closeTab(id) {
@@ -235,6 +316,7 @@ function closeTab(id) {
     inv("browser_switch_tab", {tabId: next.id})
   }
   renderTabs()
+  scheduleSaveTabs()
 }
 
 // Called from Rust when a tab *starts* navigating (before the page loads):
@@ -264,6 +346,7 @@ window.__onContentLoading = function (id, u) {
     if (bm) bm.textContent = "+ Bookmark"
   }
   renderTabs()
+  scheduleSaveTabs()
 }
 
 // Called from Rust when a tab finishes loading, per tab id. `title` is the
@@ -286,6 +369,7 @@ window.__onContentNavigated = function (id, u, title, favicon) {
     if (bm) bm.textContent = "+ Bookmark"
   }
   renderTabs()
+  scheduleSaveTabs()
   // History recording happens in Rust (record_history in browser.rs) on every
   // tab's page-load finish — the chrome is presentation only.
 }
@@ -396,4 +480,5 @@ document.getElementById("bookmark").addEventListener("click", bookmark)
 renderTabs()
 renderAppTabs()
 loadBookmarks()
+restoreTabs()
 addr.focus()

@@ -111,7 +111,7 @@ without opening Chrome once.
 
 ## Phase 2 — Table stakes (Tier 2: missing → present)
 
-1. **Durable tab state + session restore.** (M)
+1. **Durable tab state + session restore.** (M) — **SHIPPED 07-03**: settings-blob per surface via GET/POST /browser/tabs; chrome saves debounced on every mutation, hydrates on cold load (deep links own tab 1, saved tabs append).
    Persist per-surface tab state (url, label, order, active id) to Elixir —
    `browser_tabs` table or a settings blob — written on every mutation, hydrated
    by the chrome on mount. Kills the three-owners problem from the QX review

@@ -67,6 +67,8 @@ defmodule BusterClawWeb.Router do
     get "/workspace", BrowserWorkspaceController, :show
     post "/history", BrowserHistoryController, :create
     post "/download", BrowserDownloadController, :create
+    get "/tabs", BrowserTabsController, :show
+    post "/tabs", BrowserTabsController, :update
     get "/favicon", BrowserFaviconController, :show
     get "/bookmarks", BrowserBookmarkController, :index
     post "/bookmarks", BrowserBookmarkController, :create
