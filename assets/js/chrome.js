@@ -212,11 +212,23 @@ setInterval(renderAppTabs, 10000)
 // Native menu accelerators land here while a browser surface is shown — Rust
 // (handle_menu_shortcut in browser.rs) evals into this chrome. Actions mirror
 // the Tabs menu ids minus the bc_ prefix.
+// Per-tab page zoom (⌘+/⌘−/⌘0 land here via the menu router). The factor
+// lives here; Rust just applies it to the tab's webview.
+const zoomLevels = {} // tab id -> factor
+
 window.__menuShortcut = function (action) {
   if (action === "new_tab") return newTab()
   if (action === "close_tab") return closeTab(activeId)
   if (action === "reload") return inv("browser_reload", {tabId: activeId})
   if (action === "focus_address") { addr.focus(); addr.select(); return }
+  if (action === "zoom_in" || action === "zoom_out" || action === "zoom_reset") {
+    const cur = zoomLevels[activeId] || 1
+    const next = action === "zoom_reset"
+      ? 1
+      : Math.min(5, Math.max(0.25, Math.round((cur + (action === "zoom_in" ? 0.1 : -0.1)) * 10) / 10))
+    zoomLevels[activeId] = next
+    return inv("browser_set_zoom", {tabId: activeId, factor: next})
+  }
   if (action === "next_tab" || action === "prev_tab") {
     if (tabs.length < 2) return
     const i = tabs.findIndex((t) => t.id === activeId)

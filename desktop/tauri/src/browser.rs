@@ -354,6 +354,24 @@ pub fn browser_forward(
     tab_eval(&app, &state, &sid, &tab_id, "history.forward()")
 }
 
+/// Set a content tab's page zoom (⌘+/⌘−/⌘0 through the chrome). The chrome
+/// tracks the per-tab factor; this just applies it, clamped to a sane range.
+#[tauri::command]
+pub fn browser_set_zoom(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: String,
+    tab_id: String,
+    factor: f64,
+) -> Result<(), String> {
+    let sid = sanitize_sid(&surface_id);
+    let factor = factor.clamp(0.25, 5.0);
+    let Some(webview) = resolve_target(&app, &state, &sid, &tab_id) else {
+        return Err(format!("no content webview for tab {tab_id}"));
+    };
+    webview.set_zoom(factor).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn browser_reload(
     app: AppHandle,

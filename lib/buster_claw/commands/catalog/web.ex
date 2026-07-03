@@ -144,6 +144,25 @@ defmodule BusterClaw.Commands.Catalog.Web do
             description: "Alternatively, a JSON string encoding the same array."
           }
         }
+      },
+      %{
+        name: "history_search",
+        type: :read,
+        tier: :safe,
+        description: "Search the in-app browser's visit history (FTS-ranked by relevance).",
+        args: %{
+          "query" => %{type: :string, required: true},
+          "limit" => %{type: :integer, required: false, description: "Max results (default 20, cap 100)."}
+        }
+      },
+      %{
+        name: "history_recent",
+        type: :read,
+        tier: :safe,
+        description: "Recently visited pages from the in-app browser (newest visit per URL).",
+        args: %{
+          "limit" => %{type: :integer, required: false, description: "Max results (default 20, cap 100)."}
+        }
       }
     ]
 end

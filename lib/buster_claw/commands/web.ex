@@ -1,9 +1,9 @@
 defmodule BusterClaw.Commands.Web do
-  @moduledoc "Web-facing commands: search, browser fetch/download/screenshot, and bookmarks. Delegated to from `BusterClaw.Commands`."
+  @moduledoc "Web-facing commands: search, browser fetch/download/screenshot, bookmarks, and browsing history. Delegated to from `BusterClaw.Commands`."
 
   import BusterClaw.Commands.Helpers
 
-  alias BusterClaw.{Browser, Search}
+  alias BusterClaw.{Browser, BrowserHistory, Search}
   alias BusterClaw.Browser.{Bridge, Capture}
 
   def web_search(%{"query" => query} = args) do
@@ -118,5 +118,27 @@ defmodule BusterClaw.Commands.Web do
       {:ok, count} -> {:ok, %{imported: count}}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # -----------------------------------------------------------------------
+  # Browsing history (read-only; recording happens in the desktop shell)
+  # -----------------------------------------------------------------------
+
+  def history_search(%{"query" => query} = args) when is_binary(query) do
+    case BrowserHistory.search(query, limit: normalize_limit(Map.get(args, "limit"))) do
+      {:ok, entries} -> {:ok, %{entries: Enum.map(entries, &history_entry/1)}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def history_search(_args), do: {:error, :missing_query}
+
+  def history_recent(args \\ %{}) do
+    entries = BrowserHistory.recent(normalize_limit(Map.get(args, "limit")))
+    {:ok, %{entries: Enum.map(entries, &history_entry/1)}}
+  end
+
+  defp history_entry(entry) do
+    %{url: entry.url, title: entry.title, visited_at: entry.visited_at}
   end
 end

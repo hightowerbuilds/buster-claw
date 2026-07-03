@@ -26,6 +26,7 @@ defmodule BusterClawWeb.Router do
     live_session :default, on_mount: [BusterClawWeb.RequireOnboarding] do
       live "/", StatusLive, :home
       live "/browse", BrowseLive, :index
+      live "/history", HistoryLive, :index
       live "/split", SplitLive, :index
       live "/terminal", TerminalLive, :index
       live "/calendar", CalendarLive, :index

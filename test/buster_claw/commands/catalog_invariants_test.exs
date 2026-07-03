@@ -130,6 +130,8 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       google_account_get
       google_account_list
       google_calendar_sync
+      history_recent
+      history_search
       integration_get
       integration_list
       integration_poll

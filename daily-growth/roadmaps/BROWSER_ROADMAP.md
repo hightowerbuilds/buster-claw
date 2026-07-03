@@ -122,13 +122,13 @@ without opening Chrome once.
    `BrowserHistory.search/2` + visit-frequency ranking (`visit_counts`) +
    bookmark matches. Keyboard navigable (↑↓ Enter Esc). This single item wires
    most of the dead `BrowserHistory` API.
-3. **History page + agent commands.** (S–M)
+3. **History page + agent commands.** (S–M) — **SHIPPED 07-03**: /history LiveView (day-grouped, FTS search, per-day + full clears, dock entry) + history_search/history_recent safe-tier commands. Nothing in BrowserHistory is dead.
    `/history` LiveView: day-grouped (`grouped_by_day/1`), searchable, clear /
    clear-range controls. Catalog additions: `history_search`, `history_recent`
    (safe tier). After this, nothing in `BrowserHistory` is dead.
 4. **Find-in-page (⌘F).** (M) Small find bar in the chrome; match
    navigation via WKWebView's find API (objc bridge) or eval-based highlighting.
-5. **Zoom (⌘+ / ⌘− / ⌘0).** (S) Tauri `set_zoom` per content webview; persist
+5. **Zoom (⌘+ / ⌘− / ⌘0).** (S) — **SHIPPED 07-03**: Tabs-menu items → chrome per-tab factor → browser_set_zoom (clamped 0.25–5). Tauri `set_zoom` per content webview; persist
    per-host zoom in settings if cheap.
 6. **Context menu: "Open link in new tab".** (M) Injected handler routes through
    the popup→tab path from Phase 1.2.
