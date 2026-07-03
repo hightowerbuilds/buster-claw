@@ -161,7 +161,7 @@ Don't build IP pinning this week — it means threading a custom connect hostnam
 
 **Done when:** the risk is written down where an operator can read it, with a named future fix.
 
-## P0-3 · Catalog tier invariants — property test over `catalog.ex`
+## P0-3 · Catalog tier invariants — property test over `catalog.ex`  ✅ DONE (07-02 — 7 tests incl. safe-tier snapshot)
 
 **Files:** new `test/buster_claw/commands/catalog_invariants_test.exs` · **Effort:** ~2–3 hours
 
@@ -185,7 +185,7 @@ The whole trust model keys off tier/gated metadata in a 1,246-line file. One typ
 
 **Done when:** every command in README/docs copy-pastes cleanly against the current escript.
 
-## P1-2 · `String.to_atom` on non-constant input
+## P1-2 · `String.to_atom` on non-constant input  ✅ DONE (07-02 — all sites fixed/justified; Credo UnsafeToAtom enabled, repo-clean)
 
 **Files:** `lib/buster_claw_web/live/calendar_live.ex:128`, `lib/buster_claw/google/oauth.ex:178` · **Effort:** ~1 hour
 

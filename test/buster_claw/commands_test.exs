@@ -45,8 +45,17 @@ defmodule BusterClaw.CommandsTest do
 
     test "every command name matches a function in the module" do
       for %{name: name} <- Commands.list_commands() do
-        assert function_exported?(Commands, String.to_atom(name), 1),
-               "missing implementation for command #{name}/1"
+        # to_existing_atom: if the atom doesn't even exist, the function
+        # certainly isn't defined — report that as a missing implementation
+        # rather than minting an atom (or raising a confusing ArgumentError).
+        exported? =
+          try do
+            function_exported?(Commands, String.to_existing_atom(name), 1)
+          rescue
+            ArgumentError -> false
+          end
+
+        assert exported?, "missing implementation for command #{name}/1"
       end
     end
 

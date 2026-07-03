@@ -57,9 +57,43 @@ default command is `./buster-claw on-duty`, verified against
   cleanup pass** (noted for Session 3's hygiene day).
 - `mix compile --warnings-as-errors` clean; credo clean on touched files.
 
-## Next (Session 2, per the roadmap)
+## Session 2 — shipped (same day)
 
-- **P0-3** — catalog tier invariant test (denylist heuristic + safe-tier
-  snapshot) so a one-char tier typo can't loosen the trust model.
-- **P1-2** — replace the `String.to_atom` sites (calendar_live, oauth) and turn
-  on Credo's `UnsafeToAtom`.
+**P0-3 · Catalog tier invariants
+(`test/buster_claw/commands/catalog_invariants_test.exs`, 7 tests).** The trust
+model keys off tier/gated metadata in a 1,246-line data file; now a typo can't
+loosen it silently. Structural checks (unique policy-glob-friendly names, valid
+tier/type, boolean gated, non-empty descriptions), **gated ⟹ restricted**, a
+destructive-name heuristic (`send|delete|create|update|save|reply|…` must be
+restricted or gated — current catalog is clean, exception allowlist starts
+empty and is itself checked for staleness), and the crown jewel: a **safe-tier
+snapshot** asserting the exact sorted 60-command list an MCP/agent token may
+run. Any tier promotion now fails CI with the command named and a
+regeneration one-liner in the test comment.
+
+**P1-2 · Atom-minting closed off repo-wide.** Fixed the runtime sites — 
+`calendar_live.ex` (param-derived view → explicit `view_atom/1` clauses),
+`google/oauth.ex` (`get_value` → `to_existing_atom` + rescue-to-nil),
+`policy_engine.ex` (guarded action token → explicit `action_atom/1`, call
+eliminated) — then enabled **Credo `UnsafeToAtom`** (moved from the disabled
+list), which caught four more sites grep missed: `orchestration.ex`
+(`:"#{counter}_count"` → explicit `counter_field/1` clauses), `commands.ex`
+(compile-time CRUD codegen — false positive, justified
+`credo:disable-for-lines`), and two test files (unique-name pattern justified;
+`commands_test` now uses `to_existing_atom` with a rescue that reads as
+"missing implementation" instead of a confusing raise). Check runs repo-clean:
+290 files, 0 issues.
+
+**Verification:** 675 tests (was 668, +7), same 10 pre-existing Voice/Status/
+Split failures, none new. `--warnings-as-errors` clean; UnsafeToAtom clean;
+the 7 strict-credo findings in touched files are all pre-existing lines (part
+of the known ~50 on main).
+
+## Next (Session 3, per the roadmap)
+
+- **P1-3** — triage `erl_crash.dump` (read the `Slogan:` line), sweep root
+  artifacts, verify `.gitignore`.
+- **P2-2 / P2-1** — flatten `old-maps/older-maps/` into a single `archive/`;
+  split `catalog.ex` by domain now that the invariant tests watch its back.
+- Also queued from Session 1: the 10 pre-existing LiveView test failures
+  (voice-demolition fallout) need their own pass.
