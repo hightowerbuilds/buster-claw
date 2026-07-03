@@ -94,9 +94,47 @@ Phase 2 polish with findings recorded in the roadmap.
 
 **Verification at close:** mix test 710/710, bun test 17/17, cargo test 2/2.
 
+## Afternoon/evening — Phases 1, 2, and 3 all shipped the same day
+
+**Phase 1 completed.** Popups/target=_blank → real tabs via a bcpopup://
+sentinel the nav guard intercepts (window.opener OAuth stays the known
+ceiling); native Tabs menu with ⌘T/⌘W/⌘R/⌘L/⌘F/⌘±0/⌘⇧[]/⌘1-9 routed to the
+shown surface's chrome or the app TabStrip (menu accelerators fire regardless
+of webview focus — the whole point); downloads via tauri's on_download (wry
+ships the WKDownloadDelegate — the budgeted objc bridge wasn't needed) with a
+chrome shelf, reveal-by-id, and a Sentinel event per download.
+
+**Phase 2 completed.** Durable tab state + session restore (settings blob per
+surface; deep links own tab 1); omnibox suggestions as bookmark-row chips
+(the 112px chrome clips dropdowns) from bookmarks + FTS history; find-in-page
+(window.find via browser_find); zoom; ⌘/middle-click links → tabs; drag
+reorder + middle-click close. History moved INTO the browser by operator
+call: /browser/history is a content-webview-native page linked from the
+homepage; the dock entry and LiveView were cut. history_search/history_recent
+joined the safe tier (snapshot reviewed).
+
+**Phase 3 core completed — the co-presence moat.** browser_read returns the
+active tab's RENDERED DOM (objc evaluateJavaScript-with-result — page CSP
+can't block it), Sentinel-audited, restricted tier. Two parallel worktree
+agents then shipped browser_capture_page (read + screenshot → tagged Library
+artifact) and the interaction verbs browser_find_elements/click/fill
+(per-page window.__bcEls index registry; click/fill record :outbound_send
+with provenance, value LENGTH only). Finale: agent sandbox tabs —
+browser_open_tab is EPHEMERAL BY DEFAULT (wry incognito →
+WKWebsiteDataStore.nonPersistentDataStore; the "L" collapsed to a builder
+flag); session: "user" opts back in; dashed-orange tabs, excluded from
+restore. browser_tabs reads the strip from durable state.
+
+**Also:** app-tab switcher in the chrome (unified bar, orange chips) after
+diagnosing the covered DOM strip with an in-app measurement loop; operator
+shipped sidecar seatbelt hardening + sandboxed launch in parallel.
+
+**Close:** mix 747/747, cargo 3/3, bun 17/17. The review's Tier 1+2 scorecard
+rows all flipped in one day; Phases 0–3 of the roadmap shipped.
+
 ## Next
 
-Phase 1 remainder: popups→new tabs (WKUIDelegate), downloads
-(WKDownloadDelegate + Sentinel event), keyboard shortcuts (native menu
-accelerators — ⌘1-9 across the unified bar). Then Phase 2.1 durable tab state
-for app-restart session restore.
+Phase 4 stretch (WKContentRuleList content blocking, human private mode, tab
+suspension) + two small leftovers: the "agent is reading" chrome indicator
+and opt-in navigation events. The window.opener OAuth ceiling and the
+residual native-offset bug stay documented in the roadmap.
