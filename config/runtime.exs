@@ -76,9 +76,17 @@ browser_sidecar_enabled =
     value -> value in ["1", "true", "TRUE", "yes", "YES"]
   end
 
+# Seatbelt sandbox around the sidecar (macOS): on unless explicitly disabled.
+browser_sidecar_sandbox =
+  case System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_SANDBOX") do
+    nil -> true
+    value -> value in ["1", "true", "TRUE", "yes", "YES"]
+  end
+
 config :buster_claw,
   browser_sidecar_enabled: browser_sidecar_enabled,
-  browser_sidecar_command: System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_COMMAND", "node")
+  browser_sidecar_command: System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_COMMAND", "node"),
+  browser_sidecar_sandbox: browser_sidecar_sandbox
 
 if browser_sidecar_url = System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_URL") do
   config :buster_claw, :browser_sidecar_url, browser_sidecar_url

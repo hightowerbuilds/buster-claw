@@ -161,7 +161,8 @@ defmodule BusterClaw.Browser do
           sidecar: sidecar_status.health,
           health: sidecar_status.health,
           url: sidecar_status.url,
-          error: sidecar_status.error
+          error: sidecar_status.error,
+          sandbox: sidecar_status.sandbox
         }
 
       true ->

@@ -72,6 +72,55 @@ defmodule BusterClaw.BrowserTest do
     assert :unavailable = BusterClaw.Browser.Sidecar.url()
   end
 
+  describe "sidecar sandbox launch_spec/2" do
+    @script Path.join([:code.priv_dir(:buster_claw), "playwright_sidecar", "server.js"])
+
+    test "wraps the launch in sandbox-exec with the profile and params on macOS" do
+      if :os.type() == {:unix, :darwin} do
+        node = System.find_executable("node") || "/usr/bin/true"
+
+        assert {"/usr/bin/sandbox-exec", args, true} =
+                 BusterClaw.Browser.Sidecar.launch_spec(node, @script)
+
+        assert ["-f", profile | rest] = args
+        assert String.ends_with?(profile, "playwright_sidecar/sandbox.sb")
+        assert List.last(rest) == @script
+
+        params =
+          rest
+          |> Enum.chunk_every(2)
+          |> Enum.filter(&match?(["-D", _], &1))
+          |> Enum.map(fn ["-D", kv] -> kv |> String.split("=", parts: 2) |> hd() end)
+
+        assert Enum.sort(params) ==
+                 ~w(NODE_BIN NODE_ROOT PW_BROWSERS SIDECAR_DIR USER_CACHE USER_TEMP)
+
+        # every param value must be an absolute path with no trailing slash
+        for ["-D", kv] <- Enum.chunk_every(rest, 2), String.contains?(kv, "=") do
+          [_name, value] = String.split(kv, "=", parts: 2)
+          assert String.starts_with?(value, "/")
+          refute String.ends_with?(value, "/")
+        end
+      end
+    end
+
+    test "runs unsandboxed when the sandbox is disabled by config" do
+      previous = Application.get_env(:buster_claw, :browser_sidecar_sandbox)
+      Application.put_env(:buster_claw, :browser_sidecar_sandbox, false)
+
+      on_exit(fn ->
+        if is_nil(previous) do
+          Application.delete_env(:buster_claw, :browser_sidecar_sandbox)
+        else
+          Application.put_env(:buster_claw, :browser_sidecar_sandbox, previous)
+        end
+      end)
+
+      assert {"/usr/bin/node", [@script], false} =
+               BusterClaw.Browser.Sidecar.launch_spec("/usr/bin/node", @script)
+    end
+  end
+
   describe "download/2" do
     test "returns raw bytes (no markdown) with the server-declared filename" do
       Req.Test.stub(BusterClaw.BrowserHTTP, fn conn ->

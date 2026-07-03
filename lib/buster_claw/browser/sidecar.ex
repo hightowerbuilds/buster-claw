@@ -1,11 +1,19 @@
 defmodule BusterClaw.Browser.Sidecar do
-  @moduledoc "Supervises the optional Node Playwright browser sidecar."
+  @moduledoc """
+  Supervises the optional Node Playwright browser sidecar.
+
+  On macOS the sidecar runs inside a Seatbelt sandbox (`sandbox-exec` with
+  `priv/playwright_sidecar/sandbox.sb`): reads of user data, writes outside
+  the user temp/cache dirs, and exec of anything but node/the Playwright
+  browsers are denied. Disable with `BUSTER_CLAW_BROWSER_SIDECAR_SANDBOX=0`.
+  """
 
   use GenServer
 
   require Logger
 
   @restart_delay_ms 2_000
+  @sandbox_exec "/usr/bin/sandbox-exec"
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -39,7 +47,8 @@ defmodule BusterClaw.Browser.Sidecar do
       port_ref: nil,
       url: nil,
       health: "starting",
-      error: nil
+      error: nil,
+      sandbox: false
     }
 
     {:ok, start_port(state)}
@@ -58,7 +67,8 @@ defmodule BusterClaw.Browser.Sidecar do
        enabled: true,
        health: state.health,
        url: state.url,
-       error: state.error
+       error: state.error,
+       sandbox: state.sandbox
      }, state}
   end
 
@@ -96,15 +106,24 @@ defmodule BusterClaw.Browser.Sidecar do
 
     with {:ok, command} <- find_command(executable),
          {:ok, script} <- script_path() do
+      {spawn_command, args, sandboxed?} = launch_spec(command, script)
+
       port =
-        Port.open({:spawn_executable, command}, [
+        Port.open({:spawn_executable, spawn_command}, [
           :binary,
           :exit_status,
           {:line, 4096},
-          args: [script]
+          args: args
         ])
 
-      %{state | port: port, port_ref: Port.monitor(port), health: "starting", error: nil}
+      %{
+        state
+        | port: port,
+          port_ref: Port.monitor(port),
+          health: "starting",
+          error: nil,
+          sandbox: sandboxed?
+      }
     else
       {:error, reason} ->
         Logger.warning("Browser sidecar unavailable: #{inspect(reason)}")
@@ -135,6 +154,121 @@ defmodule BusterClaw.Browser.Sidecar do
 
   defp executable do
     Application.get_env(:buster_claw, :browser_sidecar_command, "node")
+  end
+
+  @doc false
+  # Returns {command, args, sandboxed?} for Port.open. Public for tests.
+  def launch_spec(command, script) do
+    if sandbox_enabled?() do
+      case sandbox_args(command, script) do
+        {:ok, args} ->
+          {@sandbox_exec, args, true}
+
+        {:error, reason} ->
+          Logger.warning(
+            "Browser sidecar sandbox unavailable (#{inspect(reason)}); running unsandboxed"
+          )
+
+          {command, [script], false}
+      end
+    else
+      {command, [script], false}
+    end
+  end
+
+  defp sandbox_enabled? do
+    :os.type() == {:unix, :darwin} and
+      Application.get_env(:buster_claw, :browser_sidecar_sandbox, true) and
+      File.exists?(@sandbox_exec)
+  end
+
+  defp sandbox_args(command, script) do
+    with {:ok, node_bin} <- resolve_symlinks(command),
+         {:ok, sidecar_dir} <- resolve_symlinks(Path.dirname(script)),
+         {:ok, profile} <- profile_path(script),
+         {:ok, user_temp} <- darwin_user_dir("DARWIN_USER_TEMP_DIR"),
+         {:ok, user_cache} <- darwin_user_dir("DARWIN_USER_CACHE_DIR") do
+      params = [
+        {"NODE_BIN", node_bin},
+        {"NODE_ROOT", node_root(node_bin)},
+        {"SIDECAR_DIR", sidecar_dir},
+        {"PW_BROWSERS", playwright_browsers_dir()},
+        {"USER_TEMP", user_temp},
+        {"USER_CACHE", user_cache}
+      ]
+
+      args =
+        ["-f", profile] ++
+          Enum.flat_map(params, fn {name, value} -> ["-D", "#{name}=#{value}"] end) ++
+          [node_bin, script]
+
+      {:ok, args}
+    end
+  end
+
+  defp profile_path(script) do
+    path = Path.join(Path.dirname(script), "sandbox.sb")
+
+    if File.exists?(path) do
+      {:ok, path}
+    else
+      {:error, {:missing_sandbox_profile, path}}
+    end
+  end
+
+  # Seatbelt evaluates canonical (symlink-resolved) paths, so the -D params
+  # must be canonical too. Symlinks can sit mid-path (_build/.../priv points
+  # at the source priv), so every component is resolved, not just the leaf.
+  defp resolve_symlinks(path) do
+    path |> Path.expand() |> Path.split() |> resolve_components(nil, 0)
+  end
+
+  defp resolve_components([], acc, _hops), do: {:ok, acc}
+
+  defp resolve_components([component | rest], acc, hops) do
+    candidate = if acc, do: Path.join(acc, component), else: component
+
+    case File.read_link(candidate) do
+      {:ok, _target} when hops >= 32 ->
+        {:error, :symlink_loop}
+
+      {:ok, target} ->
+        resolved = Path.expand(target, Path.dirname(candidate))
+        resolve_components(Path.split(resolved) ++ rest, nil, hops + 1)
+
+      {:error, _} ->
+        resolve_components(rest, candidate, hops)
+    end
+  end
+
+  # The prefix that holds node plus the dylibs it links (Homebrew links ICU
+  # and friends from the prefix root, not node's own tree).
+  defp node_root(node_bin) do
+    cond do
+      String.starts_with?(node_bin, "/usr/local/") -> "/usr/local"
+      String.starts_with?(node_bin, "/opt/homebrew/") -> "/opt/homebrew"
+      true -> node_bin |> Path.dirname() |> Path.dirname()
+    end
+  end
+
+  defp playwright_browsers_dir do
+    System.get_env("PLAYWRIGHT_BROWSERS_PATH") ||
+      Path.expand("~/Library/Caches/ms-playwright")
+  end
+
+  defp darwin_user_dir(name) do
+    case System.cmd("getconf", [name]) do
+      {out, 0} ->
+        dir = out |> String.trim() |> String.trim_trailing("/")
+        # canonicalize: /var is a symlink to /private/var
+        dir = if String.starts_with?(dir, "/var/"), do: "/private" <> dir, else: dir
+        {:ok, dir}
+
+      {_out, status} ->
+        {:error, {:getconf_failed, name, status}}
+    end
+  rescue
+    error -> {:error, {:getconf_unavailable, Exception.message(error)}}
   end
 
   defp find_command(command) do
