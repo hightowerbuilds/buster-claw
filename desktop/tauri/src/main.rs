@@ -358,6 +358,7 @@ fn main() {
             terminal::terminal_attach,
             terminal::terminal_input,
             terminal::terminal_resize,
+            terminal::terminal_busy,
             terminal::terminal_close,
             browser::browser_open,
             browser::browser_set_bounds,

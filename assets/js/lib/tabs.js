@@ -104,3 +104,33 @@ export function openTerminalSplit(currentPath, side, labels = {}) {
   saveTabs(tabs)
   window.location.href = splitPath
 }
+
+// ---- Live terminal registry ------------------------------------------------
+// Mounted TerminalView hooks register here so the TabStrip can ask, before a
+// tab close, whether a terminal is running a foreground process (a build, a
+// long command, or a live agent session) and would lose work if killed. Only
+// the active route is mounted, so the registry only ever holds the terminal(s)
+// of the tab being closed.
+const liveTerminals = new Set()
+
+export function registerTerminal(hook) {
+  liveTerminals.add(hook)
+}
+
+export function unregisterTerminal(hook) {
+  liveTerminals.delete(hook)
+}
+
+// True if any mounted terminal currently has a foreground child process. Each
+// hook's isBusy() is best-effort (native fg-pgrp query); a throw counts as
+// not-busy so a flaky probe can never block closing.
+export async function anyTerminalBusy() {
+  for (const hook of liveTerminals) {
+    try {
+      if (await hook.isBusy()) return true
+    } catch (_e) {
+      /* treat an unreadable terminal as idle */
+    }
+  }
+  return false
+}

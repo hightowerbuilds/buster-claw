@@ -257,6 +257,36 @@ pub fn terminal_resize(
         .map_err(|e| format!("terminal resize failed: {e}"))
 }
 
+/// Whether the terminal has a foreground process other than its own shell — a
+/// build, a long-running command, or a live agent (Claude Code / Codex) session.
+///
+/// Reads the PTY master's foreground process-group id (`tcgetpgrp`, surfaced by
+/// portable-pty as `process_group_leader`) and compares it to the shell's own
+/// pid. The shell is the session/group leader of its PTY, so when it sits at the
+/// prompt the foreground pgid equals its pid → idle. A different foreground pgid
+/// means a child has the terminal → busy. The webview uses this to confirm
+/// before closing a tab that would kill running work; an idle terminal closes
+/// silently. Returns `false` on any unknown/closed-fd case so a dead terminal is
+/// never treated as busy.
+#[tauri::command]
+pub fn terminal_busy(state: State<TerminalState>, id: String) -> Result<bool, String> {
+    let sessions = state
+        .sessions
+        .lock()
+        .map_err(|e| format!("terminal state lock poisoned: {e}"))?;
+    let Some(session) = sessions.get(&id) else {
+        return Ok(false);
+    };
+    let busy = match (
+        session.master.process_group_leader(),
+        session.child.process_id(),
+    ) {
+        (Some(fg_pgid), Some(shell_pid)) => i64::from(fg_pgid) != i64::from(shell_pid),
+        _ => false,
+    };
+    Ok(busy)
+}
+
 #[tauri::command]
 pub fn terminal_close(state: State<TerminalState>, id: String) -> Result<(), String> {
     let mut sessions = state
