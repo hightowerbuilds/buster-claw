@@ -808,7 +808,7 @@ fn notify_navigated(
                 String::new()
             } else {
                 let ns: *mut Object = msg_send![wk, title];
-                nsstring_to_string(ns)
+                nsstring_to_string(ns).unwrap_or_default()
             }
         };
         emit_navigated(&app, &chrome_label, &tab_id, &url, &title);
@@ -826,20 +826,6 @@ fn notify_navigated(
     emit_navigated(app, chrome_label, tab_id, url, "");
 }
 
-#[cfg(target_os = "macos")]
-unsafe fn nsstring_to_string(ns: *mut objc::runtime::Object) -> String {
-    use objc::{msg_send, sel, sel_impl};
-    if ns.is_null() {
-        return String::new();
-    }
-    let utf8: *const std::os::raw::c_char = msg_send![ns, UTF8String];
-    if utf8.is_null() {
-        return String::new();
-    }
-    std::ffi::CStr::from_ptr(utf8)
-        .to_string_lossy()
-        .into_owned()
-}
 
 fn emit_navigated(app: &AppHandle, chrome_label: &str, tab_id: &str, url: &str, title: &str) {
     if let Some(chrome) = app.get_webview(chrome_label) {
