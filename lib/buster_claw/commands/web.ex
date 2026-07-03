@@ -87,6 +87,84 @@ defmodule BusterClaw.Commands.Web do
   end
 
   @doc """
+  Capture the active tab into the Library: `browser_read/1` (which records its
+  own Sentinel `:untrusted_ingest` event) filed as a markdown artifact — title,
+  captured-at timestamp, source URL, page text, and links — plus a best-effort
+  screenshot through the same capture path `browser_screenshot/1` uses. A failed
+  or timed-out screenshot never sinks the capture: the text artifact still
+  lands and `screenshot` comes back `nil`.
+  """
+  def browser_capture_page(args \\ %{}) do
+    with {:ok, page} <- browser_read(%{}) do
+      title = capture_title(args, page)
+      captured_at = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      with {:ok, document} <-
+             BusterClaw.Library.save_raw_document(%{
+               name: title,
+               source_url: page.url,
+               tags: ["browser-capture"],
+               fetched_at: captured_at,
+               content: capture_markdown(title, page, captured_at)
+             }) do
+        {:ok,
+         %{
+           document_id: document.id,
+           path: document.artifact_path,
+           absolute_path: BusterClaw.Library.absolute_artifact_path(document.artifact_path),
+           url: page.url,
+           title: title,
+           screenshot: capture_screenshot()
+         }}
+      end
+    end
+  end
+
+  defp capture_title(args, page) do
+    Enum.find([Map.get(args, "title"), page.title, page.url], "Untitled page", fn value ->
+      is_binary(value) and String.trim(value) != ""
+    end)
+  end
+
+  defp capture_markdown(title, page, captured_at) do
+    """
+    # #{title}
+
+    - Captured: #{DateTime.to_iso8601(captured_at)}
+    - Source: #{page.url}
+
+    ## Page text
+
+    #{page.text |> to_string() |> String.trim()}
+    #{links_section(page.links)}
+    """
+  end
+
+  defp links_section(links) when is_list(links) and links != [] do
+    "\n## Links\n\n" <> Enum.map_join(links, "\n", &link_line/1) <> "\n"
+  end
+
+  defp links_section(_links), do: ""
+
+  defp link_line(%{"url" => url} = link) do
+    case Map.get(link, "label") do
+      label when is_binary(label) and label != "" -> "- [#{label}](#{url})"
+      _ -> "- #{url}"
+    end
+  end
+
+  defp link_line(other), do: "- #{inspect(other)}"
+
+  # Best-effort: same machinery as `browser_screenshot/1`. Any error (no
+  # desktop, timeout, desktop-reported failure) degrades to `nil`.
+  defp capture_screenshot do
+    case Capture.request() do
+      {:ok, %{path: path}} -> path
+      _other -> nil
+    end
+  end
+
+  @doc """
   The browser's current tab strip, read from the durable per-surface tab state
   the chrome persists (`browser_tabs.<sid>` in Settings) — no desktop
   round-trip needed, and it works even while the browser is hidden.

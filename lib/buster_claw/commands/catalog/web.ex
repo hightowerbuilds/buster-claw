@@ -64,6 +64,20 @@ defmodule BusterClaw.Commands.Catalog.Web do
         args: %{}
       },
       %{
+        name: "browser_capture_page",
+        type: :trigger,
+        tier: :restricted,
+        description:
+          "Capture the active browser tab into the Library: files the rendered page (title, text, links; Sentinel-audited via browser_read) as a markdown artifact, plus a best-effort screenshot into the workspace. Requires the desktop app to be open.",
+        args: %{
+          "title" => %{
+            type: :string,
+            required: false,
+            description: "Override the artifact title (defaults to the page title, then the URL)."
+          }
+        }
+      },
+      %{
         name: "browser_tabs",
         type: :read,
         tier: :restricted,
