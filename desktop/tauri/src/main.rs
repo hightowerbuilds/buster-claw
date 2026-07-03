@@ -375,6 +375,7 @@ fn main() {
             browser::browser_current,
             browser::browser_navigate_active,
             browser::browser_open_tab_active,
+            browser::browser_app_navigate,
             voice::speak,
             voice::stop_speaking
         ])

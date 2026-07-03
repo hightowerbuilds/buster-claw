@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-app-navigate"
+description = "Enables the browser_app_navigate command without any pre-configured scope."
+commands.allow = ["browser_app_navigate"]
+
+[[permission]]
+identifier = "deny-browser-app-navigate"
+description = "Denies the browser_app_navigate command without any pre-configured scope."
+commands.deny = ["browser_app_navigate"]

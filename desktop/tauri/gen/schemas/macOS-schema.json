@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the browser_app_navigate command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-app-navigate",
+          "markdownDescription": "Enables the browser_app_navigate command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_back command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-back",
@@ -301,6 +307,12 @@
           "type": "string",
           "const": "allow-terminal-resize",
           "markdownDescription": "Enables the terminal_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_app_navigate command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-app-navigate",
+          "markdownDescription": "Denies the browser_app_navigate command without any pre-configured scope."
         },
         {
           "description": "Denies the browser_back command without any pre-configured scope.",

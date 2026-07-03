@@ -10,7 +10,8 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
     assert body =~ ~s(id="back")
     assert body =~ ~s(id="reload")
     assert body =~ ~s(id="home")
-    # Tab strip + bookmark bar containers (rendered client-side).
+    # App-tab switcher + tab strip + bookmark bar containers (rendered client-side).
+    assert body =~ ~s(id="apptabs")
     assert body =~ ~s(id="tabs")
     assert body =~ ~s(id="bookmarkbar")
     # The behavior lives in the bundled chrome app, not inline script.

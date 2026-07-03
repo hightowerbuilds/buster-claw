@@ -423,6 +423,24 @@ pub fn browser_open_tab_active(
         .map_err(|e| e.to_string())
 }
 
+/// Navigate the app's **main** webview (the Phoenix UI) to an app route.
+/// Backs the chrome's app-tab switcher: the native browser webviews cover the
+/// DOM tab strip, so the chrome renders its own Home/app-tab chips and drives
+/// the app through this. Only same-origin absolute paths are allowed —
+/// `path` must start with `/` (and not `//`, which the URL parser would treat
+/// as a protocol-relative external URL).
+#[tauri::command]
+pub fn browser_app_navigate(app: AppHandle, path: String) -> Result<(), String> {
+    if !path.starts_with('/') || path.starts_with("//") {
+        return Err("only absolute app paths are allowed".into());
+    }
+    let main = app
+        .get_webview("main")
+        .ok_or_else(|| "main webview missing".to_string())?;
+    main.eval(&format!("window.location.href = {}", js_str(&path)))
+        .map_err(|e| e.to_string())
+}
+
 // Parse a URL and require an http(s) scheme (the content webviews refuse other
 // schemes anyway; reject early with a clear message).
 fn parse_web_url(url: &str) -> Result<Url, String> {

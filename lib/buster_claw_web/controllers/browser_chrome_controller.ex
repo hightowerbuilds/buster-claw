@@ -71,9 +71,26 @@ defmodule BusterClawWeb.BrowserChromeController do
       #progress.on::after { animation: ic-load 1s ease-in-out infinite; }
       @keyframes ic-load { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
       @keyframes ic-spin { to { transform: rotate(360deg); } }
-      /* tab strip */
-      #tabs { display: flex; align-items: stretch; gap: 4px; height: 34px;
-              padding: 4px 6px 0; overflow-x: auto; overflow-y: hidden; }
+      /* top row: app-tab switcher (left) + browser tab strip (right) */
+      #row { display: flex; align-items: stretch; height: 34px; min-width: 0; }
+      /* App-tab chips: the native browser webviews cover the app's DOM tab
+         strip, so the chrome carries its own switcher (Home + open app tabs). */
+      #apptabs { display: flex; align-items: stretch; gap: 4px; flex: 0 1 auto;
+                 max-width: 45%; padding: 4px 6px 0 6px; overflow-x: auto;
+                 overflow-y: hidden; border-right: 1px solid rgba(244,241,234,.14); }
+      #apptabs::-webkit-scrollbar { height: 0; }
+      .atab { display: flex; align-items: center; flex: 0 0 auto; max-width: 140px;
+              height: 30px; padding: 0 10px; cursor: pointer; background: transparent;
+              color: rgba(244,241,234,.5); border: 1px solid rgba(244,241,234,.14);
+              border-bottom: none; border-radius: 6px 6px 0 0;
+              font: 600 11px/1 ui-monospace, monospace; white-space: nowrap;
+              overflow: hidden; text-overflow: ellipsis; }
+      .atab:hover { color: #ff4d1c; border-color: #ff4d1c; }
+      .atab.current { color: #f4f1ea; background: #2a2a2a;
+                      border-color: rgba(244,241,234,.3); cursor: default; }
+      /* browser tab strip */
+      #tabs { display: flex; align-items: stretch; gap: 4px; flex: 1 1 auto;
+              min-width: 0; padding: 4px 6px 0; overflow-x: auto; overflow-y: hidden; }
       #tabs::-webkit-scrollbar { height: 0; }
       .tab { display: flex; align-items: center; gap: 6px; max-width: 200px;
              padding: 0 8px; height: 30px; cursor: pointer; flex: 0 0 auto;
@@ -142,7 +159,10 @@ defmodule BusterClawWeb.BrowserChromeController do
     </head>
     <body data-sid="#{sid}" data-search-url="#{escape_attr(search_url)}">
       <div id="progress"></div>
-      <div id="tabs"></div>
+      <div id="row">
+        <div id="apptabs" role="tablist" aria-label="App tabs"></div>
+        <div id="tabs"></div>
+      </div>
       <div id="toolbar">
         <button class="nav" id="home" title="Home" aria-label="Home">&#8962;</button>
         <button class="nav" id="back" title="Back" aria-label="Back">&#9664;</button>

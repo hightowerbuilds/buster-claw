@@ -22,6 +22,7 @@ fn main() {
                 "browser_hide",
                 "browser_close",
                 "browser_screenshot",
+                "browser_app_navigate",
             ]),
         ),
     )

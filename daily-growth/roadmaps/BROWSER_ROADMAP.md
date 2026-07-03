@@ -47,16 +47,27 @@ behavior change visible to the user.
    app session; app-*restart* restore still needs the durable tab state.
    Related cleanup for 2.1: `tearDownSplitBrowsers()` still closes surfaces on
    split rearrangement — revisit whether hide + reposition suffices there too.
-2. **The app-wide tab strip is not visible while the browser is open.** (M —
-   needs in-app measurement) Native child webviews always render above the DOM,
-   so any overlap hides the strip entirely. Suspects, in order: the
-   `sync()` bounds math in `hooks/browser.js` (its `outerHeight − innerHeight`
-   title-bar correction may compute 0 in WKWebView and misplace the chrome over
-   the strip), or the surface rect being measured before the sticky header
-   settles. Diagnose by logging the computed bounds vs the strip's rect in the
-   running shell; fix the offset (or explicitly reserve the strip's height when
-   positioning the surface). This blocks comfortable multi-tab app use while
-   browsing, and made #1 sting worse.
+2. **The app-wide tab strip is not visible while the browser is open.**
+   **Mitigated 07-03** by an app-tab switcher carried *in the browser chrome*:
+   a Home chip + every open app tab (read from the same `bc:tabs` localStorage
+   the TabStrip persists — the chrome shares the app's origin and data store),
+   navigating the main webview via a new `browser_app_navigate` Tauri command
+   (absolute app paths only). The chrome is our own native webview, so it's
+   visible above content *by construction* — no geometry required — and it's
+   arguably the better switcher while browsing anyway.
+
+   The underlying offset bug stays open (downgraded to Phase 2 polish).
+   Measured 07-03 with in-app diagnostics: the JS side is **correct** — strip
+   present at `0,0,w,39`, surface at `y=39`, and `offY = 0` because WKWebView
+   reports `window.outerHeight` as 0 (so the old outer−inner "title-bar
+   correction" in `hooks/browser.js` is dead code — a no-op by accident, kept
+   harmless). wry 0.55.1 source (read, not guessed): child webviews are
+   subviews of the window's `contentView`, flipped within the *parent view's*
+   frame — so pure DOM coords should land exactly right, and tao only sets
+   `FullSizeContentView` for custom title-bar styles we don't use. The
+   remaining suspect is the *initial* `add_child` placement path diverging
+   from `set_bounds`. Next probe when it matters: a Rust command that reads
+   back `webview.position()` for the chrome and compares with intent.
 
 ## Phase 1 — Stop the bleeding (Tier 1: broken → working)
 

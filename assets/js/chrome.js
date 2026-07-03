@@ -92,6 +92,45 @@ function renderTabs() {
 
 function activeTab() { return tabs.find((t) => t.id === activeId) }
 
+// --- app-tab switcher (chrome-carried; see Phase 0.5 #2 in the roadmap) ---
+// The native browser webviews render above the app's DOM, covering its tab
+// strip — so the chrome carries its own: a Home chip plus every open app tab,
+// read from the same localStorage the TabStrip hook persists ("bc:tabs"; the
+// chrome shares the app's origin and WKWebView data store). Clicking a chip
+// navigates the MAIN webview via Rust (browser_app_navigate); the surfaces
+// hide-and-persist through the existing reconcile path.
+const appTabsEl = document.getElementById("apptabs")
+
+function loadAppTabs() {
+  try { return JSON.parse(localStorage.getItem("bc:tabs")) || [] } catch (e) { return [] }
+}
+
+function renderAppTabs() {
+  if (!appTabsEl) return
+  appTabsEl.textContent = ""
+  const chips = [{path: "/", label: "⌂ Home"}].concat(loadAppTabs())
+  chips.forEach((t) => {
+    if (!t || typeof t.path !== "string" || !t.path.startsWith("/")) return
+    // The browser's own app tab is where we already are — show it as current.
+    const base = t.path.split("?")[0]
+    const isCurrent = base === "/browse" || (base === "/split" && t.path.includes("%2Fbrowse"))
+    const el = document.createElement("button")
+    el.type = "button"
+    el.className = "atab" + (isCurrent ? " current" : "")
+    el.title = isCurrent ? "You are here" : "Switch to " + (t.label || t.path)
+    el.textContent = t.label || t.path
+    if (!isCurrent) {
+      el.onclick = () => inv("browser_app_navigate", {path: t.path})
+    }
+    appTabsEl.appendChild(el)
+  })
+}
+
+// The tab list changes while we're hidden (tabs opened/closed elsewhere);
+// re-read whenever this chrome regains focus or is re-shown, plus a slow tick.
+window.addEventListener("focus", renderAppTabs)
+setInterval(renderAppTabs, 10000)
+
 // --- bookmark bar (persistent quick-access strip below the toolbar) ---
 function renderBookmarks(items) {
   barEl.textContent = ""
@@ -277,5 +316,6 @@ document.getElementById("reload").addEventListener("click", function () { inv("b
 document.getElementById("bookmark").addEventListener("click", bookmark)
 
 renderTabs()
+renderAppTabs()
 loadBookmarks()
 addr.focus()
