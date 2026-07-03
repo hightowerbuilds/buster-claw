@@ -95,6 +95,10 @@ defmodule BusterClawWeb.Layouts do
     default: false,
     doc: "drop the centered max-width/padding so content fills the window (e.g. split panes)"
 
+  attr :wide, :boolean,
+    default: false,
+    doc: "drop only the centered max-width (keep padding + normal scroll) so content fills the window width"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -154,10 +158,11 @@ defmodule BusterClawWeb.Layouts do
       ]}>
         <div class={[
           "flex w-full flex-1 flex-col",
-          if(@full_bleed,
-            do: "min-h-0",
-            else: "mx-auto max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8"
-          )
+          cond do
+            @full_bleed -> "min-h-0"
+            @wide -> "space-y-4 px-4 py-8 sm:px-6 lg:px-8"
+            true -> "mx-auto max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8"
+          end
         ]}>
           {render_slot(@inner_block)}
         </div>

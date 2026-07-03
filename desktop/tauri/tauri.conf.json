@@ -32,8 +32,7 @@
     "targets": ["app", "dmg"],
     "icon": ["icons/icon.png"],
     "resources": {
-      "resources/release": "release",
-      "resources/models": "models"
+      "resources/release": "release"
     },
     "macOS": {
       "minimumSystemVersion": "11.0",

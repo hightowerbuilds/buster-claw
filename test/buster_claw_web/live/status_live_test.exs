@@ -44,10 +44,10 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(phx-hook="CornerWidget")
     assert response =~ "Calendar"
     assert response =~ "Contacts"
-    # Trusted contacts live inside the corner widget.
-    assert response =~ ~s(id="home-left-panel")
-    assert response =~ "Trusted Contacts"
-    assert response =~ "No trusted contacts yet."
+    # Trusted contacts live inside the corner widget (Contacts tab renders
+    # hidden alongside the Calendar tab).
+    assert response =~ ~s(id="home-contacts-panel")
+    assert response =~ "No trusted senders"
     # Right column: agent chat panel.
     assert response =~ ~s(id="home-agent-chat")
     assert response =~ ~s(phx-hook="AgentChat")
@@ -78,7 +78,9 @@ defmodule BusterClawWeb.StatusLiveTest do
     conn = get(conn, ~p"/")
     response = html_response(conn, 200)
 
-    assert response =~ ~s(id="home-daily-calendar")
+    # The corner widget's month grid carries each event day's detail in a
+    # hidden popover block, so title + time are in the rendered HTML.
+    assert response =~ ~s(id="home-month-grid")
     assert response =~ "Home page planning block"
     assert response =~ "09:30"
   end
@@ -94,7 +96,7 @@ defmodule BusterClawWeb.StatusLiveTest do
 
     assert response =~ "alice@example.com"
     assert response =~ "*@acme.com"
-    refute response =~ "No trusted contacts yet."
+    refute response =~ "No trusted senders"
   end
 
   test "adds and removes a trusted contact from the home panel", %{conn: conn} do
@@ -102,7 +104,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     contact = "dana@example.org"
 
     {:ok, view, html} = live(conn, ~p"/")
-    assert html =~ "No trusted contacts yet."
+    assert html =~ "No trusted senders"
     refute html =~ contact
 
     html =
@@ -111,14 +113,14 @@ defmodule BusterClawWeb.StatusLiveTest do
       |> render_submit()
 
     assert html =~ contact
-    refute html =~ "No trusted contacts yet."
+    refute html =~ "No trusted senders"
 
     html =
       view
       |> element(~s(button[phx-value-entry="#{contact}"]))
       |> render_click()
 
-    assert html =~ "No trusted contacts yet."
+    assert html =~ "No trusted senders"
     refute html =~ contact
   end
 
@@ -131,7 +133,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       |> render_submit()
 
     assert html =~ "Enter a full email address or a *@domain wildcard."
-    assert html =~ "No trusted contacts yet."
+    assert html =~ "No trusted senders"
   end
 
   describe "agent chat panel" do
@@ -146,23 +148,14 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert response =~ ~s(form[phx-submit="chat_send"]) or
                response =~ ~s(phx-submit="chat_send")
 
-      # Voice-to-text mic: always visible on the left of the composer, wired to
-      # the reusable Mic hook (click to talk), with a listening-animation overlay.
-      assert response =~ ~s(id="chat-mic")
-      assert response =~ ~s(phx-hook="Mic")
-      assert response =~ "Click to talk"
-      assert response =~ "hero-microphone"
-      assert response =~ ~s(data-chat-listening)
-      assert response =~ "ic-voice-bars"
-    end
-
-    test "a client voice_error surfaces as a flash", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      html =
-        render_hook(view, "voice_error", %{"message" => "Microphone access denied — enable it."})
-
-      assert html =~ "Microphone access denied — enable it."
+      # Spoken replies (TTS): the Voice on/off toggle in the chat header. The
+      # STT mic (Mic hook, listening overlay) was demolished 06-28.
+      assert response =~ ~s(id="voice-toggle")
+      assert response =~ ~s(phx-hook="VoiceToggle")
+      assert response =~ "Voice on"
+      refute response =~ ~s(id="chat-mic")
+      refute response =~ ~s(phx-hook="Mic")
+      refute response =~ "Click to talk"
     end
 
     test "projects the active conversation's broadcast events into the transcript", %{conn: conn} do
@@ -261,17 +254,21 @@ defmodule BusterClawWeb.StatusLiveTest do
         title: "Local today event"
       })
 
+    # An event in the REAL current (UTC) month. The month grid must be anchored
+    # to the app-local date (May 2026), so this event's month is never shown —
+    # if the grid used UTC "today" instead, this title would render and the
+    # May event would not.
     {:ok, _event} =
       Calendar.create_event(%{
-        event_id: "home-utc-tomorrow",
-        date: ~D[2026-05-27],
-        title: "UTC tomorrow event"
+        event_id: "home-utc-month",
+        date: Date.utc_today(),
+        title: "UTC month event"
       })
 
     conn = get(conn, ~p"/")
     response = html_response(conn, 200)
 
     assert response =~ "Local today event"
-    refute response =~ "UTC tomorrow event"
+    refute response =~ "UTC month event"
   end
 end

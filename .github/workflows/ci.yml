@@ -53,6 +53,12 @@ jobs:
       - name: Credo (strict)
         run: mix credo --strict
 
+      # Every ./buster-claw example in README/docs/user-guide must reference a
+      # real CLI verb or catalog command — renaming a verb without updating the
+      # docs fails here instead of rotting the front door.
+      - name: Docs drift check
+        run: scripts/check_docs_drift.sh
+
       - name: Sobelow security scan
         run: mix sobelow --config
 

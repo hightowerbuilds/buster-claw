@@ -25,8 +25,8 @@ your agent reads each request, does the work through Buster Claw's command
 surface, and **replies in-thread** — every step on the audit feed. It stays open
 until you stand down: press **Ctrl-C** (or run `./buster-claw off-duty`) to stop.
 
-> `on-duty` is the consolidated front door. The older `mailman poll` and
-> `shift run` commands still work, but they now just point you back here.
+> `on-duty` is the consolidated front door — it replaced the older
+> `mailman poll` and `shift run` commands, which no longer exist.
 
 ## What's in the app
 

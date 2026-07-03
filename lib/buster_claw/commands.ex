@@ -394,6 +394,10 @@ defmodule BusterClaw.Commands do
         {:integration, Integrations, :integration, :integrations},
         {:wallet, Wallets, :wallet, :wallets}
       ] do
+    # These atoms are minted at COMPILE time (the `for` runs over a hardcoded
+    # literal list during module compilation), so no runtime input can reach
+    # them — UnsafeToAtom is a false positive here.
+    # credo:disable-for-lines:5 Credo.Check.Warning.UnsafeToAtom
     list_fn = :"list_#{ctx_plural}"
     get_fn = :"get_#{ctx_singular}!"
     create_fn = :"create_#{ctx_singular}"

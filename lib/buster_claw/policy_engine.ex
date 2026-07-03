@@ -200,7 +200,7 @@ defmodule BusterClaw.PolicyEngine do
       [action, pattern | rest] when action in ["deny", "allow"] ->
         case parse_caller(rest) do
           {:ok, caller} ->
-            [%{action: String.to_atom(action), pattern: pattern, caller: caller}]
+            [%{action: action_atom(action), pattern: pattern, caller: caller}]
 
           :error ->
             Logger.warning("PolicyEngine: ignoring rule with bad caller: #{inspect(line)}")
@@ -211,6 +211,10 @@ defmodule BusterClaw.PolicyEngine do
         []
     end
   end
+
+  # Explicit clauses (not String.to_atom) so file-derived input can't mint atoms.
+  defp action_atom("deny"), do: :deny
+  defp action_atom("allow"), do: :allow
 
   # `<action> <pattern>` (no `for`) implies any caller; `<action> <pattern> for <caller>`.
   defp parse_caller([]), do: {:ok, :any}
