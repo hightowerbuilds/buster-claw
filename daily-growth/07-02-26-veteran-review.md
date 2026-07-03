@@ -196,7 +196,7 @@ The whole trust model keys off tier/gated metadata in a 1,246-line file. One typ
 
 **Done when:** grep for `String.to_atom` in `lib/` returns only justified, commented sites and Credo guards the door.
 
-## P1-3 · Crash-dump triage + working-tree sweep
+## P1-3 · Crash-dump triage + working-tree sweep  ✅ DONE (07-02 — benign boot crash w/ closed stderr; dump deleted, gitignore already covered)
 
 **Files:** `erl_crash.dump`, root artifacts, `.gitignore`, `mix.exs` · **Effort:** ~1–2 hours (unknown-shaped: the dump may be nothing or something)
 
@@ -207,7 +207,7 @@ The whole trust model keys off tier/gated metadata in a 1,246-line file. One typ
 
 **Done when:** root directory contains only source-of-truth files; the crash cause is known (or ruled out) and noted in the daily summary.
 
-## P2-1 · Split `catalog.ex` by domain
+## P2-1 · Split `catalog.ex` by domain  ✅ DONE (07-02 — 10 domain modules + Helpers, strict term-equality verified)
 
 **Files:** `lib/buster_claw/commands/catalog.ex` → `catalog/*.ex` · **Effort:** ~half a day, purely mechanical
 
@@ -219,7 +219,7 @@ Do this *after* P0-3, so the invariant tests watch the refactor's back.
 
 **Done when:** no catalog file exceeds ~300 lines and the snapshot test passes untouched.
 
-## P2-2 · `daily-growth/` lifecycle — stop the `older-maps` recursion
+## P2-2 · `daily-growth/` lifecycle — stop the `older-maps` recursion  ✅ DONE (07-02 — 52 files flattened to archive/, one-rule README, .rgignore)
 
 **Files:** `daily-growth/**` · **Effort:** ~1 hour of moving + a rule
 

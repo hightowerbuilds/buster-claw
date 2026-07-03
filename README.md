@@ -129,7 +129,7 @@ curl -X POST http://127.0.0.1:4000/api/run \
 - [UML / architecture diagrams](docs/UML.md) — Mermaid diagrams of the system layers, supervision tree, domain model, command surface, and HTTP routing.
 - [Local trust model](docs/LOCAL_TRUST.md) documents shell hooks, webhooks, stored secrets, fetched markdown, and MCP boundaries.
 - [Desktop packaging notes](docs/DESKTOP_PACKAGING.md) document the Phoenix/Tauri desktop path.
-- Historical quality plans are archived in `daily-growth/old-maps/`.
+- Historical quality plans are archived in `daily-growth/archive/`.
 
 ## License
 

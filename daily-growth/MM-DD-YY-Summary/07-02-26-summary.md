@@ -89,11 +89,46 @@ Split failures, none new. `--warnings-as-errors` clean; UnsafeToAtom clean;
 the 7 strict-credo findings in touched files are all pre-existing lines (part
 of the known ~50 on main).
 
-## Next (Session 3, per the roadmap)
+## Session 3 — shipped (same day). Suite is fully green.
 
-- **P1-3** — triage `erl_crash.dump` (read the `Slogan:` line), sweep root
-  artifacts, verify `.gitignore`.
-- **P2-2 / P2-1** — flatten `old-maps/older-maps/` into a single `archive/`;
-  split `catalog.ex` by domain now that the invariant tests watch its back.
-- Also queued from Session 1: the 10 pre-existing LiveView test failures
-  (voice-demolition fallout) need their own pass.
+**The 10 pre-existing LiveView failures — fixed.** All were stale *tests*, not
+broken code, from two shipped changes: the 06-28 voice STT demolition (tests
+asserting the mic test, `Mic` hook, `chat-mic`, and a `voice_error` handler
+that no longer exists) and the home redesign (`#home-daily-calendar` /
+`#home-left-panel` → the corner widget's `#home-month-grid` /
+`#home-contacts-panel`; "No trusted contacts yet." → "No trusted senders").
+Rewrote VoiceLive's test as a TTS-explainer check (with refutes pinning the
+STT removal), updated StatusLive/SplitLive to current markup, deleted the two
+dead `voice_error` render_hook tests, and rebuilt the local-date test around a
+cross-**month** refute (the month grid legitimately shows same-month
+"tomorrow" events, so the old same-month refute was wrong by design).
+**673 tests, 0 failures — first fully green suite since the demolition.**
+
+**P1-3 · Crash dump triaged + deleted.** Slogan decoded: "Runtime terminating
+during boot" — a process tried to write its crash report to `standard_error`
+and **the device didn't exist** (stderr closed). Classic detached/agent-spawned
+process dying at boot; matches the known SIGTERM'd-dev-server pattern, dated to
+the Jun 21 50-commit day. Not an app bug; ruled out and removed. `.gitignore`
+already covered dump/DBs/escript.
+
+**P2-2 · `daily-growth` archive flattened.** All 52 files from
+`old-maps/` + `old-maps/older-maps/{,research,mockups}` moved into a single
+flat `daily-growth/archive/` (git detected all 52 as renames — history
+preserved; zero basename collisions). One-rule `archive/README.md` (flat
+forever; tombstone in Shortlist when archiving), `.rgignore` keeps repo-wide
+searches focused on live docs, README + Shortlist references updated.
+
+**P2-1 · Catalog split by domain.** The 1,246-line `catalog.ex` is now a
+40-line facade concatenating 10 domain modules under `commands/catalog/`
+(Library, Integrations, Wallets, Google, GoogleFiles, GoogleContacts, Web,
+Finance, Orchestration + shared Helpers), largest 308 lines. Verified as pure
+motion the strong way: the ORIGINAL catalog (from `git show HEAD`) compiled
+into the same VM and compared with **strict term equality** — `==` → true,
+119 entries, identical order — plus the Session-2 invariant/snapshot tests.
+Credo clean on all 11 files.
+
+## Roadmap state
+
+Sessions 1–3 complete; every P0/P1 item and both P2 hygiene items are done.
+Remaining: **Session 4 — P2-3** (the 30-line docs-drift CI check wiring CLI
+verbs to README/docs).

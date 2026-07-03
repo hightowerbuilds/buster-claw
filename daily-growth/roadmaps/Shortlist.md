@@ -76,7 +76,7 @@ day things happen or how long they run — there's no sense of the day's shape.
 ---
 
 > Items 4–9 consolidated from now-retired roadmaps (`06-20-26-browser-review`,
-> `06-20-26-ecosystem-roadmap-refined`, both archived to `old-maps/`). Only the
+> `06-20-26-ecosystem-roadmap-refined`, both archived to `../archive/`). Only the
 > *remaining* (unshipped) work is carried over — the bulk of both roadmaps is
 > already done (see each map's status notes / git history).
 
