@@ -4,7 +4,7 @@ A running list of small, high-priority fixes and features to pick up.
 
 ## Items
 
-### 1. Cmd-W should not close the whole app  🔵 IN REVIEW (PR #1) — ⚠️ STILL BROKEN
+### 1. Cmd-W should not close the whole app  ✅ DONE (PR #1 JS layer + PR #8 native accelerator, both merged)
 
 **Problem:** With a single tab open, pressing **Cmd-W** closes the entire
 application. Cmd-W should only ever close a tab.
@@ -30,7 +30,7 @@ fully intercept it.
   **never** call `closeWindow` — always close the active tab, and when it's the
   last tab, open a fresh home tab instead (keep the window alive).
 
-### 2. Right-click on joined tabs to rename  🔵 IN REVIEW (PR #1)
+### 2. Right-click on joined tabs to rename  ✅ MERGED (PR #1) — desktop walk pending
 
 **Problem:** Joined tabs can't be renamed.
 
@@ -80,7 +80,7 @@ day things happen or how long they run — there's no sense of the day's shape.
 > *remaining* (unshipped) work is carried over — the bulk of both roadmaps is
 > already done (see each map's status notes / git history).
 
-### 4. Browser — agent co-presence commands (`browser_current` + drive-the-view)  🔵 IN REVIEW (PR #5)
+### 4. Browser — agent co-presence commands (`browser_current` + drive-the-view)  ✅ MERGED (PR #5, 07-02) — desktop walk pending
 
 **Status:** `browser_screenshot` already ships (commit `10119e6`). The pairing
 commands that make the agent *co-present* with the user are still missing.
@@ -99,7 +99,7 @@ commands that make the agent *co-present* with the user are still missing.
 `browser_screenshot` lives), bridge from the chrome webview (content tabs have no
 IPC).
 
-### 5. Browser — chrome polish (loading + real page-title tabs)  🔵 IN REVIEW (PR #3)
+### 5. Browser — chrome polish (loading + real page-title tabs)  ✅ MERGED (PR #3, 07-02) — desktop walk pending
 
 **Problem:** The native chrome strip
 (`lib/buster_claw_web/controllers/browser_chrome_controller.ex`) still derives tab
@@ -116,7 +116,7 @@ favicons shipped, but tabs themselves don't show them.
 **Notes:** most fixes live in that one controller's inline `<script>`/`<style>`
 plus the `on_navigation` callback already in `browser.rs`.
 
-### 6. Browser — history → SQLite  🔵 IN REVIEW (PR #2)
+### 6. Browser — history → SQLite  ✅ MERGED (PR #2, 07-02) — desktop walk pending
 
 **Problem:** `<workspace>/.browser-history.json`
 (`lib/buster_claw/browser_history.ex`) is **capped at 50** and **deduped by URL**,
@@ -130,7 +130,7 @@ in the browser.
   and lets the agent query "what did the user look at today."
 - Fix the silent-drop-on-failure path.
 
-### 7. Browser — bookmark folders + import/export  🔵 IN REVIEW (PR #4)
+### 7. Browser — bookmark folders + import/export  ✅ MERGED (PR #4, 07-02) — desktop walk pending
 
 **Problem:** Bookmarks (`lib/buster_claw/bookmarks.ex`) have tags, search, a
 bookmark bar, favicons, and agent commands (`bookmark_add/list/remove`), but are
@@ -167,7 +167,7 @@ Once this passes once, the ecosystem roadmap is fully retired (already archived)
 
 ---
 
-### 10. Tab switching by position (Cmd-1 … Cmd-9)
+### 10. Tab switching by position (Cmd-1 … Cmd-9)  ✅ MERGED (PR #7, 07-02) — desktop walk pending
 
 **Problem:** There's no keyboard shortcut to jump to a specific tab by its
 position in the tab bar. Cmd-T opens a tab and Cmd-W closes one (TabStrip hook),
@@ -194,7 +194,7 @@ but *switching* between open tabs still requires a click.
 - Numbering counts **top-level** tabs only — Settings sub-routes that collapse
   into one tab share a single key, which `this.load()` already reflects.
 
-### 11. Confirm before closing a busy terminal
+### 11. Confirm before closing a busy terminal  ✅ MERGED (PR #9, 07-02) — desktop walk pending
 
 **Problem:** A terminal tab can be closed with a single Cmd-W / × click while a
 process is still running in it (a build, a long command, or — worst — a live
@@ -228,7 +228,7 @@ Claude Code / Codex agent session). There's no guard, so it's easy to
   attribute won't work here because the decision is **async/native**, so this
   likely needs a small custom modal triggered after the busy query resolves.
 
-### 12. Browser page should fill the window width
+### 12. Browser page should fill the window width  ✅ MERGED (PR #6, 07-02) — desktop walk pending
 
 **Problem:** The `/browse` page is capped at a **doc/letter width** — it renders
 through `<Layouts.app flash={@flash}>` with no width flag, so the layout's
@@ -278,15 +278,14 @@ original name (Finch `:transport_opts` / Req connect options).
 
 ## Manual testing checklist (PRs #1–#5)
 
-Items 1, 2, 4, 5, 6, 7 shipped as five parallel PRs. Each passed
-compile + `mix test` (and `cargo check` where relevant), but the verification bar
-was **compile + tests only** — interactive desktop click-through is on me. Run the
-desktop app and walk these before merging.
-
-**Before testing the JS PRs (#1, #5):** the `assets/js/hooks/` + `assets/js/lib/`
-split (the app.js refactor) is still **uncommitted/untracked on `main`**. Commit
-that on `main` first, or rebase #1/#5 onto it — otherwise their JS bases won't
-line up cleanly.
+**All seven PRs are merged to `main` (07-02)** — #4/#5 needed their catalog
+entries relocated into the split `catalog/` domain modules, and #5 needed a
+`nsstring_to_string` dedupe against #3's chrome changes. Main is verified green
+(705 tests, cargo check clean, docs-drift OK), but the verification bar was
+**compile + tests only** — walk this checklist once in the desktop app ON MAIN
+and fix forward anything that's off (same pattern as Cmd-W #1→#8). Also walk
+Cmd-1…9 (item 10), the busy-terminal close confirm (item 11), and /browse
+full-width (item 12), which merged in the same batch.
 
 - [ ] **PR #1 — Tab UX (items 1 & 2)**
   - With a **single tab** open, press **Cmd-W** → the tab closes but the **app

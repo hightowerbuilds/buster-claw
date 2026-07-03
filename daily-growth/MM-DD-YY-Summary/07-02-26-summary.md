@@ -154,3 +154,38 @@ P0-1/2/3, P1-1/2/3, P2-1/2/3 all done, plus the 10 stale LiveView tests.
 Suite: **673 tests, 0 failures.** The veteran review's entire punch list is
 retired; the doc lives on as a reference
 (`daily-growth/07-02-26-veteran-review.md`).
+
+## Evening — Shortlist PR sweep: all 7 open PRs merged
+
+Decision: merge everything and do ONE consolidated desktop walk on `main`
+(fix-forward, same pattern as Cmd-W #1→#8), instead of click-testing seven
+stale branches.
+
+- **Merged clean** (test-merge verified first, full suite after each):
+  **#6** /browse full-width, **#7** Cmd-1…9 tab jump, **#2** history → SQLite,
+  **#9** busy-terminal close confirm, **#3** chrome polish (loading indicator +
+  real page titles + favicons).
+- **#4 bookmark folders + import/export** — conflicted on the now-split
+  `catalog.ex`; relocated its entries into `catalog/web.ex`. Its new
+  `bookmark_export` is safe-tier, so the Session-2 **snapshot test forced a
+  deliberate review** before it could land (read-only → correctly safe;
+  snapshot updated). First real-world win for that guardrail.
+- **#5 co-presence commands** (`browser_current` / `browser_navigate` /
+  `browser_open_tab`, all `:restricted`) — catalog relocation plus a real
+  semantic collision the textual merge missed: **both #3 and #5 had added a
+  `nsstring_to_string`** with different signatures (`Option<String>` vs
+  `String`); caught by `cargo check`, deduped to the Option variant.
+- Also: `.claude/` (local agent worktrees) accidentally staged by a
+  `git add -A` during conflict resolution — caught pre-push, stripped, and
+  **`.gitignore` now excludes `/.claude/`** so it can't recur.
+
+**Main after the sweep: 705 tests / 0 failures, `--warnings-as-errors` clean,
+cargo check clean, docs-drift OK.**
+
+### Shortlist now
+
+- Items 1, 2, 4, 5, 6, 7, 10, 11, 12 — merged; **one desktop click-through on
+  main pending** (checklist updated in the Shortlist).
+- Still open: **#9 swarm e2e smoke** (needs a live agent run), **#8 tab LRU**
+  (later), **#13 SSRF connection pinning**, and the **~50 pre-existing
+  credo-strict findings** blocking `mix lint`/`precommit` end-to-end.
