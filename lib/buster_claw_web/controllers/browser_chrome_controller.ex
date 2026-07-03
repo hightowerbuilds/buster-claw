@@ -101,6 +101,10 @@ defmodule BusterClawWeb.BrowserChromeController do
              border: 1px solid rgba(244,241,234,.14); border-bottom: none;
              border-radius: 6px 6px 0 0; }
       .tab.active { background: #2a2a2a; color: #f4f1ea; border-color: rgba(244,241,234,.3); }
+      /* Ephemeral (agent sandbox) tabs: dashed outline — the session dies with
+         the tab and it's excluded from session restore. */
+      .tab.eph { border-style: dashed; border-color: rgba(255,77,28,.45); }
+      .tab.eph.active { border-color: rgba(255,77,28,.7); }
       .tab .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                     font-size: 12px; max-width: 150px; }
       .tab .fav { width: 14px; height: 14px; flex: 0 0 auto; border-radius: 3px; }

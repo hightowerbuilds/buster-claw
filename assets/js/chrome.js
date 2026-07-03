@@ -53,9 +53,12 @@ let nextId = 2
 const INITIAL_VALUE = addr.value.trim()
 
 function serializeTabs() {
+  // Ephemeral tabs are excluded: their non-persistent session dies with them,
+  // so restoring the URL alone would silently change what the tab IS.
+  const durable = tabs.filter((t) => !t.ephemeral)
   return {
-    tabs: tabs.map((t) => ({url: t.url, label: t.label})),
-    active: Math.max(0, tabs.findIndex((t) => t.id === activeId))
+    tabs: durable.map((t) => ({url: t.url, label: t.label})),
+    active: Math.max(0, durable.findIndex((t) => t.id === activeId))
   }
 }
 
@@ -136,8 +139,8 @@ function renderTabs() {
   tabsEl.textContent = ""
   tabs.forEach((t) => {
     const tab = document.createElement("div")
-    tab.className = "tab" + (t.id === activeId ? " active" : "")
-    tab.title = t.label
+    tab.className = "tab" + (t.id === activeId ? " active" : "") + (t.ephemeral ? " eph" : "")
+    tab.title = t.label + (t.ephemeral ? " — ephemeral session (nothing persists)" : "")
     // Drag to reorder (chrome-local: Rust doesn't care about strip order) and
     // middle-click to close — standard tab-strip ergonomics.
     tab.draggable = true
@@ -468,13 +471,15 @@ function newTab() {
 // Agent co-presence: open a new tab at `rawUrl` and make it active, routed
 // through the chrome so the tab strip stays in sync. Called from Rust
 // (browser_open_tab_active) via eval.
-window.__agentOpenTab = function (rawUrl) {
+window.__agentOpenTab = function (rawUrl, ephemeral) {
   const url = resolve(rawUrl) || homeUrl
   const id = String(nextId++)
-  tabs.push({id, url: "", label: "New tab"})
+  // Ephemeral (agent sandbox, Phase 3.4): non-persistent data store, dashed
+  // tab, excluded from session restore — the session dies with the tab.
+  tabs.push({id, url: "", label: "New tab", loading: false, favicon: null, ephemeral: !!ephemeral})
   activeId = id
   renderTabs()
-  inv("browser_new_tab", {tabId: id, url})
+  inv("browser_new_tab", {tabId: id, url, ephemeral: !!ephemeral})
   scheduleSaveTabs()
   if (document.activeElement !== addr) addr.value = display(url)
 }

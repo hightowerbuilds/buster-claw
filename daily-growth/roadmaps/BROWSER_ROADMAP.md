@@ -149,15 +149,14 @@ that acts on (not just reads) the page lands in the restricted tier.*
    server-side `browser_fetch` can never see. Audited as `:untrusted_ingest`;
    consider requiring an open co-presence "session" the user can see in the
    chrome (a visible "agent is reading" indicator — trust is the product). (M)
-2. **Page → Library capture.** `browser_capture_page`: `browser_read` +
+2. **Page → Library capture.** — **SHIPPED 07-03** (agent worktree): browser_capture_page files browser_read + best-effort screenshot as a tagged Library artifact. `browser_capture_page`: `browser_read` +
    screenshot bundled into a Library artifact (the authed-DOM sibling of the
    existing fetch pipeline). (S after #1)
-3. **Interaction primitives: `browser_find_elements`, `browser_click`,
-   `browser_fill`.** Restricted tier, Sentinel-logged with selector + value
+3. **Interaction primitives** — **SHIPPED 07-03** (agent worktree): browser_find_elements / browser_click / browser_fill via a per-page window.__bcEls index registry; click/fill record :outbound_send Sentinel events with provenance (value LENGTH only); find also records :untrusted_ingest. Original spec: `browser_find_elements`, `browser_click`,   `browser_fill`.** Restricted tier, Sentinel-logged with selector + value
    provenance, and a visible in-chrome indicator while the agent drives.
    Deliberately *not* a full CDP/Playwright surface — small verbs the audit feed
    can narrate. (L)
-4. **Agent sandbox tabs.** Ephemeral, non-persistent `WKWebsiteDataStore` for
+4. **Agent sandbox tabs.** — **SHIPPED 07-03**: wry maps incognito → WKWebsiteDataStore.nonPersistentDataStore, so this cost a builder flag, not objc. browser_open_tab is ephemeral BY DEFAULT (session: "user" opts back in); dashed-orange tabs, excluded from session restore. Original: Ephemeral, non-persistent `WKWebsiteDataStore` for
    agent-opened tabs by default (`browser_open_tab` gains `session: "user" |
    "ephemeral"`), so agent work stops riding the user's cookies unless
    explicitly granted. Doubles as the foundation for user-facing private

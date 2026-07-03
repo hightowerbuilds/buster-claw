@@ -302,8 +302,17 @@ defmodule BusterClaw.Commands.Web do
 
   def browser_navigate(_args), do: {:error, :missing_url}
 
-  def browser_open_tab(%{"url" => url}) when is_binary(url) and url != "",
-    do: trigger_browser(:open_tab, url, :opened)
+  def browser_open_tab(%{"url" => url} = args) when is_binary(url) and url != "" do
+    # Agent sandbox tabs (roadmap Phase 3.4): agent-opened tabs get an
+    # ephemeral, non-persistent session UNLESS session: "user" explicitly
+    # grants riding the user's cookies. Anything else normalizes to ephemeral.
+    session = if Map.get(args, "session") == "user", do: "user", else: "ephemeral"
+
+    case Bridge.request(:open_tab, %{"url" => url, "session" => session}) do
+      {:ok, _result} -> {:ok, %{opened: url, session: session}}
+      other -> other
+    end
+  end
 
   def browser_open_tab(_args), do: {:error, :missing_url}
 

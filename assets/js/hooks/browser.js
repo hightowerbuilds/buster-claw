@@ -52,7 +52,9 @@ export const ScreenshotBridge = {
         } else if (action === "navigate") {
           await invoke("browser_navigate_active", {url: payload.url})
         } else if (action === "open_tab") {
-          await invoke("browser_open_tab_active", {url: payload.url})
+          // session: "user" rides the user's cookies; anything else (the
+          // default) opens an ephemeral sandbox tab (Phase 3.4).
+          await invoke("browser_open_tab_active", {url: payload.url, session: payload.session})
         } else {
           this.reportCommand(ref, {error: "unknown browser command"})
           return

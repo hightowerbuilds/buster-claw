@@ -151,8 +151,16 @@ defmodule BusterClaw.Commands.Catalog.Web do
         type: :trigger,
         tier: :restricted,
         description:
-          "Open a new browser tab at a URL and make it active in the user's live view. Provide a full http(s) URL including scheme. Requires the desktop app to be open.",
-        args: %{"url" => %{type: :string, required: true}}
+          "Open a new browser tab at a URL and make it active in the user's live view. By DEFAULT the tab is an ephemeral sandbox (non-persistent session — no user cookies, nothing saved, excluded from restore); pass session: \"user\" to explicitly ride the user's logged-in session. Provide a full http(s) URL including scheme. Requires the desktop app to be open.",
+        args: %{
+          "url" => %{type: :string, required: true},
+          "session" => %{
+            type: :string,
+            required: false,
+            description:
+              ~s|"ephemeral" (default: sandboxed, no user cookies) or "user" (the user's live session).|
+          }
+        }
       },
 
       # Bookmarks

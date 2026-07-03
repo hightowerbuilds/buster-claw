@@ -179,4 +179,29 @@ defmodule BusterClaw.Commands.WebCopresenceTest do
     # Unknown/hostile surface ids collapse safely and read as empty.
     assert {:ok, %{surface: "etc", tabs: []}} = Commands.browser_tabs(%{"surface" => "../etc"})
   end
+
+  test "browser_open_tab defaults to an ephemeral sandbox session" do
+    Bridge.subscribe()
+    task = Task.async(fn -> Commands.browser_open_tab(%{"url" => "https://example.com"}) end)
+    assert_receive {:browser_command, ref, :open_tab, payload}, 1_000
+    assert payload["session"] == "ephemeral"
+
+    Bridge.fulfill(ref, {:ok, %{}})
+    assert {:ok, %{opened: "https://example.com", session: "ephemeral"}} = Task.await(task)
+  end
+
+  test ~s(browser_open_tab session: "user" explicitly rides the user's session) do
+    Bridge.subscribe()
+
+    task =
+      Task.async(fn ->
+        Commands.browser_open_tab(%{"url" => "https://example.com", "session" => "user"})
+      end)
+
+    assert_receive {:browser_command, ref, :open_tab, payload}, 1_000
+    assert payload["session"] == "user"
+
+    Bridge.fulfill(ref, {:ok, %{}})
+    assert {:ok, %{session: "user"}} = Task.await(task)
+  end
 end

@@ -245,7 +245,7 @@ pub fn browser_open(
         None => match labels.first() {
             Some(label) => label.trim_start_matches(&content_prefix).to_string(),
             None => {
-                create_content(&app, &sid, FIRST_TAB, &content_url, x, cy, width, content_h)?;
+                create_content(&app, &sid, FIRST_TAB, &content_url, x, cy, width, content_h, false)?;
                 FIRST_TAB.to_string()
             }
         },
@@ -294,10 +294,21 @@ pub fn browser_new_tab(
     surface_id: String,
     tab_id: String,
     url: String,
+    ephemeral: Option<bool>,
 ) -> Result<(), String> {
     let sid = sanitize_sid(&surface_id);
     let (x, y, w, h) = sample_content_bounds(&app, &sid).ok_or("no content bounds yet")?;
-    create_content(&app, &sid, &tab_id, &url, x, y, w, h)?;
+    create_content(
+        &app,
+        &sid,
+        &tab_id,
+        &url,
+        x,
+        y,
+        w,
+        h,
+        ephemeral.unwrap_or(false),
+    )?;
     state.set(&sid, &tab_id);
     show_only(&app, &sid, &tab_id, x, y, w, h);
     Ok(())
@@ -799,15 +810,20 @@ pub fn browser_open_tab_active(
     state: State<BrowserState>,
     surface_id: Option<String>,
     url: String,
+    session: Option<String>,
 ) -> Result<(), String> {
     let parsed = parse_web_url(&url)?;
+    // Agent sandbox tabs (roadmap Phase 3.4): agent-opened tabs get an
+    // ephemeral, non-persistent data store BY DEFAULT — agent work doesn't
+    // ride the user's cookies unless session == "user" grants it explicitly.
+    let ephemeral = session.as_deref() != Some("user");
     let sid = active_sid(&state, surface_id);
     let chrome = app
         .get_webview(&chrome_label(&sid))
         .ok_or_else(|| "no browser surface open".to_string())?;
     chrome
         .eval(&format!(
-            "window.__agentOpenTab && window.__agentOpenTab({})",
+            "window.__agentOpenTab && window.__agentOpenTab({}, {ephemeral})",
             js_str(parsed.as_str())
         ))
         .map_err(|e| e.to_string())
@@ -1145,6 +1161,7 @@ fn ensure_chrome(
 
 // Create a content webview for `tab_id` in a surface with the navigation guard,
 // popup guard, and per-tab navigation reporting back to that surface's chrome.
+#[allow(clippy::too_many_arguments)]
 fn create_content(
     app: &AppHandle,
     sid: &str,
@@ -1154,6 +1171,7 @@ fn create_content(
     y: f64,
     width: f64,
     height: f64,
+    ephemeral: bool,
 ) -> Result<(), String> {
     let label = content_label(sid, tab_id);
     if app.get_webview(&label).is_some() {
@@ -1172,7 +1190,12 @@ fn create_content(
     let chrome_for_load = chrome_label(sid);
     let app_for_dl = app.clone();
     let chrome_for_dl = chrome_label(sid);
+    // Ephemeral tabs (agent sandbox, Phase 3.4) get a non-persistent
+    // WKWebsiteDataStore — no cookies/storage shared with the user session,
+    // nothing persisted to disk. wry maps incognito to
+    // WKWebsiteDataStore.nonPersistentDataStore on macOS.
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
+        .incognito(ephemeral)
         // Downloads (a click on a PDF/zip/attachment): wry pre-fills
         // `destination` with a deduped ~/Downloads/<suggested> path — accept
         // it, log the file by id, and drive the chrome's download shelf. On
