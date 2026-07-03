@@ -113,6 +113,12 @@ local, and the user can see which backend served a fetch.
 
 ## Phase 2 — Session primitives (the core capability — read & fill, **no submit**)
 
+**SHIPPED 07-03** (2c921ad): all 11 `web_*` commands (session_open/close/list,
+navigate/read/find_elements/fill/select/click/screenshot/extract) as
+restricted-tier, Sentinel-audited catalog entries delegating to a new
+`BusterClaw.Browserbase.Session` facade (URL guard, 200 KB read cap, non-submit
+click guard, Luhn secret-flagging). Fills audit value-length only.
+
 *The verbs the agent composes. All restricted-tier, all Sentinel-logged with
 selector/value provenance. Deliberately small and narratable — not a raw CDP
 surface. This phase cannot spend money or submit anything, by construction.*
