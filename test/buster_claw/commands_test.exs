@@ -66,6 +66,15 @@ defmodule BusterClaw.CommandsTest do
       end
     end
 
+    test "browser co-presence commands surface as restricted" do
+      catalog = Commands.list_commands()
+      tier = fn name -> Enum.find(catalog, &(&1.name == name)) end
+
+      assert %{type: :read, tier: :restricted} = tier.("browser_current")
+      assert %{type: :trigger, tier: :restricted} = tier.("browser_navigate")
+      assert %{type: :trigger, tier: :restricted} = tier.("browser_open_tab")
+    end
+
     test "serializes nested status tuples for API/MCP command results" do
       assert %{
                "items" => [

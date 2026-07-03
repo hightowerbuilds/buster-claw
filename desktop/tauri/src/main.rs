@@ -372,6 +372,9 @@ fn main() {
             browser::browser_hide,
             browser::browser_close,
             browser::browser_screenshot,
+            browser::browser_current,
+            browser::browser_navigate_active,
+            browser::browser_open_tab_active,
             voice::speak,
             voice::stop_speaking
         ])
