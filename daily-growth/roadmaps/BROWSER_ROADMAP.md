@@ -78,7 +78,7 @@ behavior change visible to the user.
    keeps current behavior (`/path` → workspace, URL-ish → https). Default engine a
    Settings entry (DuckDuckGo default — fits the privacy posture; Google/Kagi
    options).
-2. **Popups and `target=_blank` open new tabs.** (M–L)
+2. **Popups and `target=_blank` open new tabs.** (M–L) — **SHIPPED 07-03** via mechanism (b): sentinel-scheme shim + nav-guard intercept → `__agentOpenTab`. The `window.opener` ceiling stands (needs (a), WKUIDelegate).
    Replace the same-tab `NO_POPUPS_JS` stub: the shim routes the URL through the
    existing new-tab path instead of clobbering the current page. Two candidate
    mechanisms, in order of preference: (a) a WKUIDelegate
@@ -95,7 +95,7 @@ behavior change visible to the user.
    chrome (filename, progress, reveal-in-Finder), and a **Sentinel
    `:untrusted_ingest` event per download** so the audit story stays whole. The
    20s spinner "safety net" in the chrome dies with this.
-4. **Keyboard shortcuts.** (M)
+4. **Keyboard shortcuts.** (M) — **SHIPPED 07-03**: Tabs menu with ⌘T/⌘W/⌘R/⌘L, ⌘⇧[/], ⌘1-9; routed to the shown surface chrome, else the app TabStrip.
    Native menu accelerators (shortcuts must work while focus is inside a content
    webview — chrome-JS key handlers can't hear it): ⌘T new tab, ⌘W close tab,
    ⌘L focus omnibox, ⌘R reload, ⌘⇧] / ⌘⇧[ and ⌘1–9 tab switching. Menu events

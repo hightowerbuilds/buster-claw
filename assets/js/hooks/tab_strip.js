@@ -43,6 +43,11 @@ export const TabStrip = {
     // other as a solo tab.
     this.onCloseSplitPane = (e) => this.closeSplitPane(e.detail && e.detail.side)
     window.addEventListener("bc:close-split-pane", this.onCloseSplitPane)
+    // Native menu accelerators (Tabs menu) land here when no browser surface
+    // is shown — Rust (handle_menu_shortcut in browser.rs) evals into the app
+    // webview. The menu owns the bound keys regardless of focus, so this is
+    // how ⌘T/⌘W/⌘1-9 keep driving app tabs outside the browser.
+    window.__bcMenuShortcut = (action) => this.menuShortcut(action)
     this.sync()
     this.render()
     // Heal any native browser surface left stuck by a prior full-page reload.
@@ -50,10 +55,27 @@ export const TabStrip = {
   },
   destroyed() {
     this.closeMenu()
+    if (window.__bcMenuShortcut) delete window.__bcMenuShortcut
     window.removeEventListener("phx:page-loading-stop", this.onNav)
     window.removeEventListener("keydown", this.onKeydown, true)
     window.removeEventListener("bc:swap-split", this.onSwapSplit)
     window.removeEventListener("bc:close-split-pane", this.onCloseSplitPane)
+  },
+  // Menu-accelerator actions, mirroring handleShortcut's keydown behavior.
+  menuShortcut(action) {
+    if (action === "new_tab") return this.openTerminalTab()
+    if (action === "close_tab") return this.closeCurrentTab()
+    if (action === "reload") return window.location.reload()
+    if (action === "next_tab" || action === "prev_tab") {
+      const tabs = this.load()
+      if (tabs.length < 2) return
+      const i = tabs.findIndex((t) => t.path === this.currentKey())
+      const n = action === "next_tab" ? (i + 1) % tabs.length : (i - 1 + tabs.length) % tabs.length
+      window.location.href = tabs[n].path
+      return
+    }
+    const m = /^tab_([1-9])$/.exec(action)
+    if (m) this.activateTabAt(Number(m[1]))
   },
   parseLabels() {
     try { return JSON.parse(this.el.dataset.labels || "{}") } catch (_e) { return {} }

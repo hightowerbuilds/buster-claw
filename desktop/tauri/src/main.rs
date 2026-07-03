@@ -328,7 +328,68 @@ fn build_app_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<
         ],
     )?;
 
-    Menu::with_items(handle, &[&app_menu, &edit_menu, &view_menu, &window_menu])
+    let tabs_menu = build_tabs_menu(handle)?;
+
+    Menu::with_items(
+        handle,
+        &[&app_menu, &edit_menu, &view_menu, &tabs_menu, &window_menu],
+    )
+}
+
+/// The Tabs menu carries every keyboard shortcut (⌘T/⌘W/⌘R/⌘L, ⌘⇧[/],
+/// ⌘1-9). Accelerators must live on menu items on macOS — they fire regardless
+/// of which webview has focus, which is exactly what the browser needs (its
+/// chrome/content webviews can't be reached by the app webview's JS keydown
+/// handlers). Events route through `browser::handle_menu_shortcut`: the shown
+/// browser surface's chrome first, else the app webview's TabStrip.
+#[cfg(target_os = "macos")]
+fn build_tabs_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
+    use tauri::menu::{IsMenuItem, MenuItem, PredefinedMenuItem, Submenu};
+
+    // Prefer the accelerator; fall back to a plain item rather than failing
+    // the whole menu build if the accelerator string doesn't parse.
+    let item = |id: &str, label: &str, accel: &str| {
+        MenuItem::with_id(handle, id, label, true, Some(accel))
+            .or_else(|_| MenuItem::with_id(handle, id, label, true, None::<&str>))
+    };
+
+    let new_tab = item("bc_new_tab", "New Tab", "CmdOrCtrl+T")?;
+    let close_tab = item("bc_close_tab", "Close Tab", "CmdOrCtrl+W")?;
+    let sep1 = PredefinedMenuItem::separator(handle)?;
+    let reload = item("bc_reload", "Reload Page", "CmdOrCtrl+R")?;
+    let focus_address = item("bc_focus_address", "Open Location", "CmdOrCtrl+L")?;
+    let sep2 = PredefinedMenuItem::separator(handle)?;
+    let prev_tab = item("bc_prev_tab", "Previous Tab", "CmdOrCtrl+Shift+[")?;
+    let next_tab = item("bc_next_tab", "Next Tab", "CmdOrCtrl+Shift+]")?;
+    let sep3 = PredefinedMenuItem::separator(handle)?;
+
+    let numbered: Vec<tauri::menu::MenuItem<tauri::Wry>> = (1..=9)
+        .map(|n| {
+            let label = if n == 9 {
+                "Last Tab".to_string()
+            } else {
+                format!("Tab {n}")
+            };
+            item(&format!("bc_tab_{n}"), &label, &format!("CmdOrCtrl+{n}"))
+        })
+        .collect::<Result<_, _>>()?;
+
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![
+        &new_tab,
+        &close_tab,
+        &sep1,
+        &reload,
+        &focus_address,
+        &sep2,
+        &prev_tab,
+        &next_tab,
+        &sep3,
+    ];
+    for it in &numbered {
+        items.push(it);
+    }
+
+    Submenu::with_items(handle, "Tabs", true, &items)
 }
 
 /// Non-macOS targets keep Tauri's stock menu unchanged — the Cmd-W concern is
@@ -351,6 +412,7 @@ fn main() {
 
     let app = tauri::Builder::default()
         .menu(build_app_menu)
+        .on_menu_event(|app, event| browser::handle_menu_shortcut(app, event.id().as_ref()))
         .manage(terminal::TerminalState::default())
         .manage(browser::BrowserState::default())
         .invoke_handler(tauri::generate_handler![

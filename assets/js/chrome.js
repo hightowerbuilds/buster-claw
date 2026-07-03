@@ -131,6 +131,29 @@ function renderAppTabs() {
 window.addEventListener("focus", renderAppTabs)
 setInterval(renderAppTabs, 10000)
 
+// Native menu accelerators land here while a browser surface is shown — Rust
+// (handle_menu_shortcut in browser.rs) evals into this chrome. Actions mirror
+// the Tabs menu ids minus the bc_ prefix.
+window.__menuShortcut = function (action) {
+  if (action === "new_tab") return newTab()
+  if (action === "close_tab") return closeTab(activeId)
+  if (action === "reload") return inv("browser_reload", {tabId: activeId})
+  if (action === "focus_address") { addr.focus(); addr.select(); return }
+  if (action === "next_tab" || action === "prev_tab") {
+    if (tabs.length < 2) return
+    const i = tabs.findIndex((t) => t.id === activeId)
+    const n = action === "next_tab" ? (i + 1) % tabs.length : (i - 1 + tabs.length) % tabs.length
+    return switchTab(tabs[n].id)
+  }
+  const m = /^tab_([1-9])$/.exec(action)
+  if (m) {
+    // ⌘9 = last tab, matching the browser convention (and the app TabStrip).
+    const n = Number(m[1])
+    const t = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1]
+    if (t) switchTab(t.id)
+  }
+}
+
 // --- bookmark bar (persistent quick-access strip below the toolbar) ---
 function renderBookmarks(items) {
   barEl.textContent = ""

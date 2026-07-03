@@ -19,7 +19,7 @@
 //! forward/reload and show-on-return act on the right tab without the chrome
 //! re-passing it each time.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, Url, WebviewUrl};
@@ -37,6 +37,10 @@ const CHROME_HEIGHT: f64 = 112.0; // tab strip (~34) + toolbar (46) + bookmark b
 pub struct BrowserState {
     // surface id -> active content tab id for that surface
     surfaces: Mutex<HashMap<String, String>>,
+    // Surfaces currently shown on-screen (open/set_bounds mark, hide/close
+    // unmark). Menu accelerators route to a shown surface's chrome; when this
+    // is empty the shortcut falls through to the app webview instead.
+    shown: Mutex<HashSet<String>>,
 }
 
 impl BrowserState {
@@ -51,27 +55,53 @@ impl BrowserState {
     }
     fn clear(&self, sid: &str) {
         self.surfaces.lock().unwrap().remove(sid);
+        self.shown.lock().unwrap().remove(sid);
     }
     fn clear_all(&self) {
         self.surfaces.lock().unwrap().clear();
+        self.shown.lock().unwrap().clear();
     }
     // Any known surface — the default screenshot target when none is specified.
     fn any_sid(&self) -> Option<String> {
         self.surfaces.lock().unwrap().keys().next().cloned()
     }
+    fn set_shown(&self, sid: &str) {
+        self.shown.lock().unwrap().insert(sid.to_string());
+    }
+    fn set_hidden(&self, sid: &str) {
+        self.shown.lock().unwrap().remove(sid);
+    }
+    fn any_shown(&self) -> Option<String> {
+        self.shown.lock().unwrap().iter().next().cloned()
+    }
 }
 
-// Injected into each content webview before page scripts: keep popups and
-// target=_blank links in-place instead of spawning uncontrolled OS windows.
-const NO_POPUPS_JS: &str = r#"
+// Injected into each content webview before page scripts. Popups and
+// target=_blank links open as real tabs: the shim routes the URL through a
+// sentinel scheme (`bcpopup://open?u=…`) that this surface's `on_navigation`
+// guard intercepts, cancels, and hands to the chrome's `__agentOpenTab` — so
+// the tab strip stays in sync and the current page is never clobbered.
+// Documented ceiling (roadmap Phase 1.2): `window.open` returns null, so flows
+// that need a live `window.opener`/`postMessage` back-channel still fail;
+// fixing those requires a real WKUIDelegate popup webview.
+const POPUPS_AS_TABS_JS: &str = r#"
 (function () {
   try {
-    window.open = function (url) { if (url) { window.location.href = url; } return null; };
+    function openAsTab(url) {
+      if (url) {
+        try {
+          var abs = new URL(String(url), window.location.href).href;
+          window.location.href = "bcpopup://open?u=" + encodeURIComponent(abs);
+        } catch (_e) {}
+      }
+      return null;
+    }
+    window.open = openAsTab;
     document.addEventListener("click", function (e) {
       var a = e.target && e.target.closest && e.target.closest("a[target]");
       if (a && a.target && a.target !== "_self" && a.href) {
         e.preventDefault();
-        window.location.href = a.href;
+        openAsTab(a.href);
       }
     }, true);
   } catch (_e) {}
@@ -160,6 +190,7 @@ pub fn browser_open(
     };
 
     state.set(&sid, &show_id);
+    state.set_shown(&sid);
     show_only(&app, &sid, &show_id, x, cy, width, content_h);
     Ok(())
 }
@@ -169,6 +200,7 @@ pub fn browser_open(
 #[tauri::command]
 pub fn browser_set_bounds(
     app: AppHandle,
+    state: State<BrowserState>,
     surface_id: String,
     x: f64,
     y: f64,
@@ -180,6 +212,7 @@ pub fn browser_set_bounds(
     let content_h = (height - chrome_h).max(0.0);
     let cy = y + chrome_h;
 
+    state.set_shown(&sid);
     let chrome = chrome_label(&sid);
     place(&app, &chrome, x, y, width, chrome_h);
     show(&app, &chrome);
@@ -289,8 +322,13 @@ pub fn browser_reload(
 /// Hide a surface's chrome + all its content webviews without destroying them —
 /// used when leaving `/browse` so every tab persists when the user returns.
 #[tauri::command]
-pub fn browser_hide(app: AppHandle, surface_id: String) -> Result<(), String> {
+pub fn browser_hide(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: String,
+) -> Result<(), String> {
     let sid = sanitize_sid(&surface_id);
+    state.set_hidden(&sid);
     let mut labels = content_labels_for(&app, &sid);
     labels.push(chrome_label(&sid));
     for label in labels {
@@ -421,6 +459,34 @@ pub fn browser_open_tab_active(
             js_str(parsed.as_str())
         ))
         .map_err(|e| e.to_string())
+}
+
+/// Route a native menu accelerator (menu item ids `bc_<action>`) to the right
+/// webview: the shown browser surface's chrome (`window.__menuShortcut`) when
+/// one is on-screen, else the app webview (`window.__bcMenuShortcut`, handled
+/// by the TabStrip hook) so app-tab shortcuts keep working outside the
+/// browser. Menu accelerators fire regardless of webview focus (see the
+/// build_app_menu doc in main.rs), so this router is the single owner of the
+/// bound keys.
+pub fn handle_menu_shortcut(app: &AppHandle, id: &str) {
+    let Some(action) = id.strip_prefix("bc_") else {
+        return;
+    };
+    let state: State<BrowserState> = app.state();
+    let chrome = state
+        .any_shown()
+        .and_then(|sid| app.get_webview(&chrome_label(&sid)));
+    let (webview, hook) = match chrome {
+        Some(w) => (w, "__menuShortcut"),
+        None => match app.get_webview("main") {
+            Some(w) => (w, "__bcMenuShortcut"),
+            None => return,
+        },
+    };
+    let _ = webview.eval(&format!(
+        "window.{hook} && window.{hook}({})",
+        js_str(action)
+    ));
 }
 
 /// Navigate the app's **main** webview (the Phoenix UI) to an app route.
@@ -705,6 +771,24 @@ fn create_content(
     let chrome_for_load = chrome_label(sid);
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
         .on_navigation(move |url| {
+            // Popup sentinel from POPUPS_AS_TABS_JS: cancel the navigation and
+            // open the carried URL as a new tab via this surface's chrome, so
+            // the tab strip stays in sync.
+            if url.scheme() == "bcpopup" {
+                let carried = url
+                    .query_pairs()
+                    .find(|(k, _)| k == "u")
+                    .map(|(_, v)| v.into_owned());
+                if let Some(Ok(target)) = carried.map(|u| parse_web_url(&u)) {
+                    if let Some(chrome) = app_for_nav.get_webview(&chrome_for_nav) {
+                        let _ = chrome.eval(&format!(
+                            "window.__agentOpenTab && window.__agentOpenTab({})",
+                            js_str(target.as_str())
+                        ));
+                    }
+                }
+                return false;
+            }
             // Lock to web navigation: block file://, tauri://, javascript:, data:.
             let allowed = matches!(url.scheme(), "http" | "https") || url.as_str() == "about:blank";
             if allowed {
@@ -734,7 +818,7 @@ fn create_content(
                 );
             }
         })
-        .initialization_script(NO_POPUPS_JS);
+        .initialization_script(POPUPS_AS_TABS_JS);
 
     window
         .add_child(
