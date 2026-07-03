@@ -146,24 +146,17 @@ memory with no eviction. Fine for normal use.
 **Desired behavior:** if many tabs become common, add an LRU that destroys cold
 tabs and lazily reloads them.
 
-### 9. Swarm — one live end-to-end smoke test (no code)
+### 9. Swarm — one live end-to-end smoke test  ❌ CUT (07-02, operator decision)
 
-**Status:** Ecosystem Phases 0–4 substrate is fully shipped and unit-tested with
-injected runners. The **only** remaining item is one real end-to-end run with a
-live `AgentRunner` (Claude Code) — the Phase 4 exit criterion.
+**Cut — not needed.** The Phases 0–4 substrate is fully shipped and unit-tested
+with injected runners; the first real swarm-strategy Dispatch item will exercise
+the live path in production anyway, and a broken run is *visible*, not silent
+(it lands as a blocked item + on the Sentinel feed). With this cut the
+**ecosystem roadmap is fully retired** — no exit criteria remain.
 
-**Exit criterion:** one Dispatch item decomposes into **≥3 parallel sub-runs that
-aggregate into one result**, all on the Sentinel audit feed, within wallet budgets.
-
-**Runbook** (server running; front door is now `on-duty`, not the old
-`shift start`):
-```
-./buster-claw dispatch add "Research X across 3 angles and write a combined brief" --swarm
-./buster-claw dispatch list          # confirm queued, strategy=swarm
-./buster-claw on-duty                 # the autonomous loop pumps the swarm item
-# Then check the Sentinel feed for per-sub-run provenance + the swarm outcome.
-```
-Once this passes once, the ecosystem roadmap is fully retired (already archived).
+If a live check is ever wanted after all, the one-liner runbook:
+`./buster-claw dispatch add "<goal>" --swarm` → `./buster-claw on-duty`, then
+read the Sentinel feed for per-sub-run provenance + the swarm outcome.
 
 ---
 

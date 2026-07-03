@@ -186,6 +186,9 @@ cargo check clean, docs-drift OK.**
 
 - Items 1, 2, 4, 5, 6, 7, 10, 11, 12 — merged; **one desktop click-through on
   main pending** (checklist updated in the Shortlist).
-- Still open: **#9 swarm e2e smoke** (needs a live agent run), **#8 tab LRU**
-  (later), **#13 SSRF connection pinning**, and the **~50 pre-existing
-  credo-strict findings** blocking `mix lint`/`precommit` end-to-end.
+- **#9 swarm e2e smoke — CUT** (operator decision): the first real
+  swarm-strategy item exercises the live path, and failures are visible, not
+  silent. With the cut, the **ecosystem roadmap is fully retired**.
+- Still open: **#8 tab LRU** (later), **#13 SSRF connection pinning**, and the
+  **~50 pre-existing credo-strict findings** blocking `mix lint`/`precommit`
+  end-to-end.
