@@ -18,7 +18,10 @@ defmodule BusterClawWeb.BrowserSuggestController do
     if q == "" do
       json(conn, [])
     else
-      json(conn, (bookmark_hits(q) ++ history_hits(q)) |> Enum.uniq_by(& &1.url) |> Enum.take(@cap))
+      json(
+        conn,
+        (bookmark_hits(q) ++ history_hits(q)) |> Enum.uniq_by(& &1.url) |> Enum.take(@cap)
+      )
     end
   end
 

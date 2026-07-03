@@ -49,6 +49,63 @@ defmodule BusterClaw.Commands.Web do
     Bridge.request(:current)
   end
 
+  @doc """
+  Read the active tab's **rendered DOM** — the page as the user's live session
+  sees it (logged-in views included), which the server-side fetch pipeline can
+  never reach. Returns `{url, title, text, links}`. Every read lands on the
+  Sentinel feed: it ingests untrusted page content through the user's own
+  sessions.
+  """
+  def browser_read(_args \\ %{}) do
+    case Bridge.request(:read) do
+      {:ok, %{data: raw}} when is_binary(raw) -> decode_page(raw)
+      {:ok, _other} -> {:error, :bad_page_payload}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp decode_page(raw) do
+    case Jason.decode(raw) do
+      {:ok, page} when is_map(page) ->
+        BusterClaw.Sentinel.observe(
+          :untrusted_ingest,
+          "Read live tab #{page["url"]}",
+          %{url: page["url"], title: page["title"], trust: "fetched", via: "browser_read"}
+        )
+
+        {:ok,
+         %{
+           url: page["url"],
+           title: page["title"],
+           text: page["text"],
+           links: page["links"] || []
+         }}
+
+      _ ->
+        {:error, :bad_page_payload}
+    end
+  end
+
+  @doc """
+  The browser's current tab strip, read from the durable per-surface tab state
+  the chrome persists (`browser_tabs.<sid>` in Settings) — no desktop
+  round-trip needed, and it works even while the browser is hidden.
+  """
+  def browser_tabs(args \\ %{}) do
+    sid =
+      case Map.get(args, "surface") |> to_string() |> String.replace(~r/[^A-Za-z0-9]/, "") do
+        "" -> "main"
+        cleaned -> cleaned
+      end
+
+    with raw when is_binary(raw) <- BusterClaw.Settings.get("browser_tabs." <> sid),
+         {:ok, %{"tabs" => tabs} = state} when is_list(tabs) <- Jason.decode(raw) do
+      {:ok, %{surface: sid, tabs: tabs, active: Map.get(state, "active", 0)}}
+    else
+      _ -> {:ok, %{surface: sid, tabs: [], active: 0}}
+    end
+  end
+
   def browser_navigate(%{"url" => url}) when is_binary(url) and url != "",
     do: trigger_browser(:navigate, url, :navigated)
 

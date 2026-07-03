@@ -445,6 +445,7 @@ fn main() {
             browser::browser_current,
             browser::browser_navigate_active,
             browser::browser_open_tab_active,
+            browser::browser_read_active,
             browser::browser_app_navigate,
             browser::browser_reveal_download,
             browser::browser_set_zoom,

@@ -54,8 +54,17 @@ defmodule BusterClaw.FaviconsTest do
   end
 
   test "rejects hosts that could escape the cache path or the URL", %{dir: dir} do
-    for bad <- ["", "a/b", "../up", "host name", "evil.com/", "-lead.com", String.duplicate("a", 300)] do
-      assert :error = Favicons.fetch(bad, cache_dir: dir), "expected rejection for #{inspect(bad)}"
+    for bad <- [
+          "",
+          "a/b",
+          "../up",
+          "host name",
+          "evil.com/",
+          "-lead.com",
+          String.duplicate("a", 300)
+        ] do
+      assert :error = Favicons.fetch(bad, cache_dir: dir),
+             "expected rejection for #{inspect(bad)}"
     end
   end
 

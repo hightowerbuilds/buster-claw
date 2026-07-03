@@ -22,10 +22,11 @@ defmodule BusterClawWeb.BrowserCommandController do
 
   defp result_for(%{"ok" => true} = params) do
     # `current` returns url + title; the trigger actions send neither, yielding an
-    # empty map that simply confirms success.
+    # empty map that simply confirms success. `read` returns data — the page
+    # script's JSON, decoded by the browser_read command.
     {:ok,
      params
-     |> Map.take(["url", "title"])
+     |> Map.take(["url", "title", "data"])
      |> Map.new(fn {k, v} -> {String.to_existing_atom(k), v} end)}
   end
 

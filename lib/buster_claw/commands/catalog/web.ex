@@ -56,6 +56,28 @@ defmodule BusterClaw.Commands.Catalog.Web do
         args: %{}
       },
       %{
+        name: "browser_read",
+        type: :read,
+        tier: :restricted,
+        description:
+          "Read the active browser tab's RENDERED page — title, visible text, and links — as the user's live session sees it (logged-in views included; Sentinel-audited). Requires the desktop app to be open.",
+        args: %{}
+      },
+      %{
+        name: "browser_tabs",
+        type: :read,
+        tier: :restricted,
+        description:
+          "List the browser's open tabs (url, label, active index) from the durable tab state. Works even while the browser is hidden.",
+        args: %{
+          "surface" => %{
+            type: :string,
+            required: false,
+            description: ~s|Browser surface id ("main" default; "left"/"right" for split panes).|
+          }
+        }
+      },
+      %{
         name: "browser_navigate",
         type: :trigger,
         tier: :restricted,
@@ -152,7 +174,11 @@ defmodule BusterClaw.Commands.Catalog.Web do
         description: "Search the in-app browser's visit history (FTS-ranked by relevance).",
         args: %{
           "query" => %{type: :string, required: true},
-          "limit" => %{type: :integer, required: false, description: "Max results (default 20, cap 100)."}
+          "limit" => %{
+            type: :integer,
+            required: false,
+            description: "Max results (default 20, cap 100)."
+          }
         }
       },
       %{
@@ -161,7 +187,11 @@ defmodule BusterClaw.Commands.Catalog.Web do
         tier: :safe,
         description: "Recently visited pages from the in-app browser (newest visit per URL).",
         args: %{
-          "limit" => %{type: :integer, required: false, description: "Max results (default 20, cap 100)."}
+          "limit" => %{
+            type: :integer,
+            required: false,
+            description: "Max results (default 20, cap 100)."
+          }
         }
       }
     ]

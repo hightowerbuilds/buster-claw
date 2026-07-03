@@ -32,6 +32,11 @@ export const ScreenshotBridge = {
         if (action === "current") {
           const cur = await invoke("browser_current")
           data = {ok: true, url: cur.url, title: cur.title}
+        } else if (action === "read") {
+          // Rendered-DOM read of the active tab; `data` is the page script's
+          // JSON string, decoded server-side by the browser_read command.
+          const page = await invoke("browser_read_active")
+          data = {ok: true, data: page.data}
         } else if (action === "navigate") {
           await invoke("browser_navigate_active", {url: payload.url})
         } else if (action === "open_tab") {

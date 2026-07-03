@@ -522,6 +522,109 @@ pub fn browser_current(
     Ok(CurrentTab { url, title })
 }
 
+/// Extraction script for `browser_read_active`: the rendered page as the user
+/// sees it — title, visible text (innerText, capped), and deduped http(s)
+/// links. Returns a JSON string (WebKit hands JS strings back to the
+/// completion handler as NSString).
+const READ_PAGE_JS: &str = r#"
+JSON.stringify((function () {
+  var links = [];
+  var seen = {};
+  var as = document.links || [];
+  for (var i = 0; i < as.length && links.length < 200; i++) {
+    var a = as[i];
+    var label = (a.innerText || "").replace(/\s+/g, " ").trim().slice(0, 120);
+    if (!a.href || !/^https?:/i.test(a.href) || !label) continue;
+    var key = label + "|" + a.href;
+    if (seen[key]) continue;
+    seen[key] = 1;
+    links.push({label: label, url: a.href});
+  }
+  var text = ((document.body && document.body.innerText) || "").slice(0, 200000);
+  return {url: location.href, title: document.title || "", text: text, links: links};
+})())
+"#;
+
+/// The page the user is viewing, read from the **rendered DOM** of the active
+/// content tab (agent co-presence). Unlike the server-side fetch pipeline,
+/// this sees the page as the user's session sees it — logged-in views
+/// included; the Phoenix command layer records the Sentinel event for that.
+/// Returns `{data}`: a JSON string of `{url, title, text, links}`.
+#[tauri::command]
+pub fn browser_read_active(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: Option<String>,
+) -> Result<ReadPage, String> {
+    let webview = active_content(&app, &state, surface_id)?;
+    let data = eval_with_result(&webview, READ_PAGE_JS)?;
+    Ok(ReadPage { data })
+}
+
+#[derive(serde::Serialize)]
+pub struct ReadPage {
+    /// JSON-encoded `{url, title, text, links}` straight from the page script.
+    pub data: String,
+}
+
+// Run JS in a webview and return its (string) result — the completion-handler
+// variant of `eval`. Same objc bridge pattern as the screenshot/title paths:
+// `with_webview` runs on the main thread, which is free to fire the completion
+// while this (worker-thread) command blocks on the channel.
+#[cfg(target_os = "macos")]
+fn eval_with_result(webview: &tauri::Webview, js: &str) -> Result<String, String> {
+    use block::ConcreteBlock;
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::sync::mpsc::channel;
+    use std::time::Duration;
+
+    let (tx, rx) = channel::<Result<String, String>>();
+    let js = std::ffi::CString::new(js).map_err(|e| e.to_string())?;
+
+    webview
+        .with_webview(move |pw| {
+            let wk = pw.inner() as *mut Object;
+            if wk.is_null() {
+                let _ = tx.send(Err("null webview handle".into()));
+                return;
+            }
+            let tx_block = tx.clone();
+            let completion = ConcreteBlock::new(move |result: *mut Object, error: *mut Object| {
+                let out = if !error.is_null() {
+                    Err("page script failed".to_string())
+                } else if result.is_null() {
+                    Err("page returned no result".to_string())
+                } else {
+                    unsafe { nsstring_to_string(result) }
+                        .ok_or_else(|| "page returned a non-string result".to_string())
+                };
+                let _ = tx_block.send(out);
+            });
+            let completion = completion.copy();
+            unsafe {
+                let ns_js: *mut Object =
+                    msg_send![class!(NSString), stringWithUTF8String: js.as_ptr()];
+                let _: () = msg_send![
+                    wk,
+                    evaluateJavaScript: ns_js
+                    completionHandler: &*completion
+                ];
+            }
+        })
+        .map_err(|e| e.to_string())?;
+
+    match rx.recv_timeout(Duration::from_secs(6)) {
+        Ok(result) => result,
+        Err(_) => Err("page read timed out".into()),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn eval_with_result(_webview: &tauri::Webview, _js: &str) -> Result<String, String> {
+    Err("browser_read_active is only supported on macOS".into())
+}
+
 /// Navigate the active content tab to `url` (agent-driven co-presence). The
 /// surface's chrome updates its address bar/tab label via the on_navigation
 /// callback fired for the content webview. Without a `surface_id`, defaults to

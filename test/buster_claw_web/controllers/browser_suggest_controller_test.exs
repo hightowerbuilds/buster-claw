@@ -16,7 +16,10 @@ defmodule BusterClawWeb.BrowserSuggestControllerTest do
 
     hits = conn |> get(~p"/browser/suggest?q=elixir") |> json_response(200)
 
-    assert [%{"type" => "bookmark", "url" => "https://elixir-lang.org", "label" => "Elixir"} | rest] =
+    assert [
+             %{"type" => "bookmark", "url" => "https://elixir-lang.org", "label" => "Elixir"}
+             | rest
+           ] =
              hits
 
     assert Enum.any?(rest, &(&1["type"] == "history" and &1["url"] =~ "elixirforum"))

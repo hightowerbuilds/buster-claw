@@ -144,7 +144,7 @@ the scorecard's ❌ rows in Tiers 1–2 all flip.
 sharing the user's live session. All new commands are Sentinel-audited; anything
 that acts on (not just reads) the page lands in the restricted tier.*
 
-1. **`browser_read`** — extract the active tab's rendered DOM as
+1. **`browser_read`** — **SHIPPED 07-03** (restricted tier, Sentinel :untrusted_ingest per read; objc evaluateJavaScript-with-result bridge, so page CSP can never block it; visible-text + 200 links, 200KB cap). The "agent is reading" chrome indicator is still open — — extract the active tab's rendered DOM as
    markdown/text+links via the eval bridge. This reads *logged-in* pages the
    server-side `browser_fetch` can never see. Audited as `:untrusted_ingest`;
    consider requiring an open co-presence "session" the user can see in the
@@ -162,7 +162,7 @@ that acts on (not just reads) the page lands in the restricted tier.*
    "ephemeral"`), so agent work stops riding the user's cookies unless
    explicitly granted. Doubles as the foundation for user-facing private
    mode. (L — data-store-per-webview needs the objc bridge)
-5. **Tab-aware events for the agent.** `browser_tabs_list` command + optional
+5. **Tab-aware events for the agent.** — browser_tabs command **SHIPPED 07-03** (reads the durable Phase-2.1 state, works while hidden); the opt-in navigation events remain open. `browser_tabs_list` command + optional
    Dispatch/PubSub event on navigation, so an on-duty shift can react to what
    the user is browsing (opt-in, off by default — Sentinel visibility again).
    (S–M)
