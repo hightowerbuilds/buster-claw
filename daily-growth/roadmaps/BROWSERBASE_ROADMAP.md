@@ -155,9 +155,17 @@ end-to-end, audited, and demonstrably unable to submit or pay.
 
 ## Phase 3 — Live view in the BusterClaw browser (the "watch it work" request)
 
+**CORE SHIPPED 07-03** (1fedefd): `web_session_view` opens a session's
+`live_view_url` as a native ephemeral tab via the co-presence Bridge (item 1).
+Takeover (item 3) is **free** — the live view is interactive, so it's a normal
+WKWebView tab you can click/type in; nothing to build. Remaining and **needing
+the running app to verify**: the "agent session — live" chrome indicator (item
+2, chrome JS) and tighter tab↔session lifecycle binding (item 4). Embeddability
+already de-risked 07-03 (no framing headers → native tab, no iframe).
+
 *The cloud session becomes a native tab the user watches and can seize.*
 
-1. **Confirm embeddability for real, then render it.** (M)
+1. **Confirm embeddability for real, then render it.** (M) — **SHIPPED** as `web_session_view` (on demand, not auto-on-open — avoids blocking programmatic multi-session use; the agent gets `live_view_url` from `web_session_open` and calls view when the user should watch).
    Resolve the 308 caveat: fetch the *final* live-view page's headers from a live
    session and confirm no `frame-ancestors`/`X-Frame-Options` block. Then, on
    `web_session_open`, open a browser tab at `debuggerFullscreenUrl` via the
@@ -170,10 +178,12 @@ end-to-end, audited, and demonstrably unable to submit or pay.
    marker while a cloud session is open (trust is the product — same stance as
    native co-presence's "agent is reading" indicator). Distinct styling from
    user tabs (hazard-orange, per the design identity).
-3. **Human takeover.** (M) Interactive live view (drop `pointer-events:none`) so
-   the user can click/type — the credential-delegation path: agent drives to the
-   login/card step, hands off, user completes it, agent resumes. The agent
-   **never receives the secret**. This is the safety story for Phase 4.
+3. **Human takeover.** (M) — **FREE with 3.1**: the live-view tab is already
+   interactive (Browserbase's fullscreen view supports click/type/scroll), so
+   opening it *is* takeover — the credential-delegation path (agent drives to the
+   login/card step, user completes it in the tab, agent resumes) needs no extra
+   code. The agent **never receives the secret**. This is the safety story for
+   Phase 4.
 4. **Tab ↔ session lifecycle.** (S) Closing the tab prompts/soft-closes the
    session (cost); session death (timeout/crash) reflects in the tab, not a dead
    frame.
