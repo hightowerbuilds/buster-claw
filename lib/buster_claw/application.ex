@@ -36,6 +36,7 @@ defmodule BusterClaw.Application do
         BusterClaw.Sentinel.Pending,
         BusterClaw.RateLimiter,
         browser_sidecar_child(),
+        browserbase_session_manager_child(),
         orchestrator_child(),
         uptime_child(),
         dispatcher_child(),
@@ -126,6 +127,15 @@ defmodule BusterClaw.Application do
   defp browser_sidecar_child do
     if Application.get_env(:buster_claw, :browser_sidecar_enabled, false) do
       BusterClaw.Browser.Sidecar
+    end
+  end
+
+  # Cost guardrail for cloud browser sessions: caps concurrency, reaps idle
+  # sessions, releases everything on shutdown. Only runs when Browserbase is
+  # configured + enabled.
+  defp browserbase_session_manager_child do
+    if Application.get_env(:buster_claw, :browserbase_enabled, false) do
+      BusterClaw.Browserbase.SessionManager
     end
   end
 
