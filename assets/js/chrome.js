@@ -233,16 +233,26 @@ window.__menuShortcut = function (action) {
 }
 
 // --- bookmark bar (persistent quick-access strip below the toolbar) ---
+// The bar has two modes: bookmarks (default) and omnibox suggestions (while
+// typing — see the suggestions block below). Bookmarks are cached so the bar
+// can swap back the moment suggest mode ends.
+let bookmarksCache = []
+
 function renderBookmarks(items) {
+  bookmarksCache = items || []
+  if (!suggestions.length) drawBookmarks()
+}
+
+function drawBookmarks() {
   barEl.textContent = ""
-  if (!items || !items.length) {
+  if (!bookmarksCache.length) {
     const hint = document.createElement("span")
     hint.className = "hint"
     hint.textContent = "Bookmarks you save appear here"
     barEl.appendChild(hint)
     return
   }
-  items.forEach((b) => {
+  bookmarksCache.forEach((b) => {
     const el = document.createElement("button")
     el.type = "button"
     el.className = "bmk"
@@ -267,6 +277,92 @@ function loadBookmarks() {
     .then(renderBookmarks)
     .catch(function () {})
 }
+
+// --- omnibox suggestions (roadmap Phase 2.2) ---
+// The chrome webview is a fixed 112px strip, so a classic dropdown would be
+// clipped at its edge; while typing, suggestions take over the bookmark row
+// as chips instead. ↓/↑ (or Tab/⇧Tab) select, Enter opens, Esc restores the
+// bookmarks. Fed by /browser/suggest: bookmark matches + FTS history.
+let suggestions = []
+let suggestIndex = -1
+let suggestTimer
+let suggestSeq = 0
+
+function drawSuggestions() {
+  barEl.textContent = ""
+  suggestions.forEach((s, i) => {
+    const el = document.createElement("button")
+    el.type = "button"
+    el.className = "sug" + (i === suggestIndex ? " sel" : "")
+    el.title = s.url
+    const mark = document.createElement("span")
+    mark.className = "k"
+    mark.textContent = s.type === "bookmark" ? "★" : "⏱"
+    el.appendChild(mark)
+    const t = document.createElement("span")
+    t.className = "t"
+    t.textContent = s.label || s.url
+    el.appendChild(t)
+    // mousedown (not click) so the address bar's blur can't cancel the pick.
+    el.onmousedown = (e) => { e.preventDefault(); openSuggestion(s) }
+    barEl.appendChild(el)
+  })
+}
+
+function clearSuggestions() {
+  clearTimeout(suggestTimer)
+  suggestions = []
+  suggestIndex = -1
+  drawBookmarks()
+}
+
+function openSuggestion(s) {
+  addr.value = display(s.url)
+  clearSuggestions()
+  inv("browser_navigate", {tabId: activeId, url: s.url})
+}
+
+function requestSuggestions(q) {
+  const seq = ++suggestSeq
+  fetch(origin + "/browser/suggest?q=" + encodeURIComponent(q), {
+    headers: {accept: "application/json"}
+  })
+    .then((r) => r.json())
+    .then((items) => {
+      if (seq !== suggestSeq) return // a newer keystroke owns the bar
+      suggestions = Array.isArray(items) ? items : []
+      suggestIndex = -1
+      if (suggestions.length) drawSuggestions()
+      else drawBookmarks()
+    })
+    .catch(function () {})
+}
+
+addr.addEventListener("input", function () {
+  const v = addr.value.trim()
+  clearTimeout(suggestTimer)
+  // "/" is the workspace-browse prefix (handled by its own listener below).
+  if (v.length < 2 || v.startsWith("/")) { clearSuggestions(); return }
+  suggestTimer = setTimeout(function () { requestSuggestions(v) }, 150)
+})
+
+addr.addEventListener("keydown", function (e) {
+  if (!suggestions.length) return
+  if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) {
+    e.preventDefault()
+    suggestIndex = (suggestIndex + 1) % suggestions.length
+    drawSuggestions()
+  } else if (e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey)) {
+    e.preventDefault()
+    suggestIndex = (suggestIndex - 1 + suggestions.length) % suggestions.length
+    drawSuggestions()
+  } else if (e.key === "Escape") {
+    e.preventDefault()
+    clearSuggestions()
+  }
+})
+
+addr.addEventListener("blur", function () { setTimeout(clearSuggestions, 150) })
 
 function newTab() {
   const id = String(nextId++)
@@ -430,7 +526,12 @@ window.__onDownloadFinished = function (id, success) {
 }
 
 function go() {
+  // Enter with a chip selected opens the suggestion; otherwise resolve as typed.
+  if (suggestIndex >= 0 && suggestions[suggestIndex]) {
+    return openSuggestion(suggestions[suggestIndex])
+  }
   const url = resolve(addr.value)
+  clearSuggestions()
   if (url) inv("browser_navigate", {tabId: activeId, url})
 }
 

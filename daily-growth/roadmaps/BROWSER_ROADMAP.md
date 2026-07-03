@@ -117,7 +117,7 @@ without opening Chrome once.
    by the chrome on mount. Kills the three-owners problem from the QX review
    (Rust's `resolve_target` fallback chain shrinks), and app relaunch restores
    every tab. This is the QX fix and the user feature in one change.
-2. **Omnibox suggestions.** (M)
+2. **Omnibox suggestions.** (M) — **SHIPPED 07-03** as bookmark-row chips (the 112px chrome would clip a dropdown): /browser/suggest merges bookmarks + FTS history; ↓/↑/Tab select, Enter opens, Esc restores bookmarks.
    Dropdown under the address bar fed by the *already-built* backends:
    `BrowserHistory.search/2` + visit-frequency ranking (`visit_counts`) +
    bookmark matches. Keyboard navigable (↑↓ Enter Esc). This single item wires

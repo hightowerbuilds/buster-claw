@@ -179,6 +179,16 @@ defmodule BusterClawWeb.BrowserChromeController do
       .bmk .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       #bookmarkbar .hint { color: rgba(244,241,234,.32); font-size: 11px; padding: 0 4px;
                            white-space: nowrap; }
+      /* omnibox suggestion chips (take over the bookmark row while typing) */
+      .sug { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; max-width: 220px;
+             height: 24px; padding: 0 8px; cursor: pointer; background: #1c1c1c;
+             color: rgba(244,241,234,.75); border: 1px solid rgba(244,241,234,.2);
+             border-radius: 4px; font: 12px/1 -apple-system, system-ui, sans-serif;
+             white-space: nowrap; }
+      .sug .k { color: rgba(244,241,234,.4); font-size: 10px; flex: 0 0 auto; }
+      .sug .t { overflow: hidden; text-overflow: ellipsis; }
+      .sug:hover, .sug.sel { color: #f4f1ea; border-color: #ff4d1c; }
+      .sug.sel { background: rgba(255,77,28,.14); }
     </style>
     </head>
     <body data-sid="#{sid}" data-search-url="#{escape_attr(search_url)}">

@@ -1,0 +1,113 @@
+;; Seatbelt profile for the Playwright browser sidecar (macOS only).
+;;
+;; Launched by BusterClaw.Browser.Sidecar as:
+;;   /usr/bin/sandbox-exec -f sandbox.sb -D PARAM=... <node> server.js
+;;
+;; Containment goals, in order:
+;;   1. No file writes outside the user temp/cache dirs (no persistence,
+;;      no tampering with the workspace or repo).
+;;   2. No reads of user data (~/.ssh, Documents, other repos, ...) —
+;;      only system libraries, Homebrew, the sidecar itself, and the
+;;      Playwright browser cache.
+;;   3. Exec restricted to node and the Playwright browser binaries.
+;; Network stays open: fetching arbitrary URLs is the sidecar's job.
+;;
+;; Parameters (injected via -D):
+;;   NODE_BIN     resolved path of the node executable
+;;   NODE_ROOT    prefix that contains node and its dylibs (e.g. /usr/local)
+;;   SIDECAR_DIR  priv/playwright_sidecar (server.js + node_modules)
+;;   PW_BROWSERS  Playwright browser download dir
+;;   USER_TEMP    DARWIN_USER_TEMP_DIR (/var/folders/.../T/)
+;;   USER_CACHE   DARWIN_USER_CACHE_DIR (/var/folders/.../C/)
+
+(version 1)
+(deny default)
+
+;; ---- process lifecycle ----------------------------------------------------
+(allow process-fork)
+(allow process-exec
+  (literal (param "NODE_BIN"))
+  (subpath (param "NODE_ROOT"))
+  (subpath (param "SIDECAR_DIR"))
+  (subpath (param "PW_BROWSERS")))
+(allow signal (target same-sandbox))
+(allow process-info* (target same-sandbox))
+
+;; ---- file reads -------------------------------------------------------------
+;; Metadata everywhere: path resolution (realpath, cwd walks) touches parent
+;; directories; contents stay locked down below.
+(allow file-read-metadata)
+
+(allow file-read*
+  ;; system code + data
+  (subpath "/System")
+  (subpath "/usr/lib")
+  (subpath "/usr/share")
+  (subpath "/Library/Frameworks")
+  (subpath "/Library/Preferences")
+  (subpath "/private/var/db/dyld")
+  (subpath "/private/var/db/timezone")
+  (subpath "/private/etc")
+  ;; devices
+  (literal "/dev/null")
+  (literal "/dev/zero")
+  (literal "/dev/random")
+  (literal "/dev/urandom")
+  (literal "/dev/autofs_nowait")
+  ;; node + its Homebrew-linked dylibs
+  (literal (param "NODE_BIN"))
+  (subpath (param "NODE_ROOT"))
+  ;; the sidecar and its vendored node_modules
+  (subpath (param "SIDECAR_DIR"))
+  ;; playwright browser binaries
+  (subpath (param "PW_BROWSERS"))
+  ;; scratch space (chromium re-reads its own profile/temp files)
+  (subpath (param "USER_TEMP"))
+  (subpath (param "USER_CACHE")))
+
+;; ---- file writes ------------------------------------------------------------
+(allow file-write*
+  (subpath (param "USER_TEMP"))
+  (subpath (param "USER_CACHE"))
+  (literal "/dev/null")
+  (literal "/dev/dtracehelper"))
+(allow file-write-data (literal "/dev/tty"))
+(allow file-ioctl
+  (literal "/dev/null")
+  (literal "/dev/dtracehelper")
+  (literal "/dev/tty"))
+
+;; ---- network ----------------------------------------------------------------
+;; Outbound anywhere (that is the sidecar's purpose); inbound only loopback
+;; (the control HTTP server binds an ephemeral 127.0.0.1 port).
+(allow network-outbound)
+(allow network-bind (local ip "localhost:*"))
+(allow network-inbound (local ip "localhost:*"))
+(allow system-socket)
+
+;; ---- OS services chromium/node need ------------------------------------------
+(allow sysctl-read)
+(allow user-preference-read)
+(allow ipc-posix-shm)
+(allow ipc-posix-sem)
+(allow mach-lookup
+  (global-name "com.apple.SystemConfiguration.configd")
+  (global-name "com.apple.system.notification_center")
+  (global-name "com.apple.cfprefsd.daemon")
+  (global-name "com.apple.cfprefsd.agent")
+  (global-name "com.apple.system.opendirectoryd.libinfo")
+  (global-name "com.apple.system.logger")
+  (global-name "com.apple.logd")
+  (global-name "com.apple.diagnosticd")
+  (global-name "com.apple.SecurityServer")
+  (global-name "com.apple.trustd")
+  (global-name "com.apple.trustd.agent")
+  (global-name "com.apple.networkd")
+  (global-name "com.apple.dnssd.service")
+  (global-name "com.apple.usymptomsd")
+  (global-name "com.apple.analyticsd")
+  (global-name "com.apple.coreservices.launchservicesd")
+  (global-name "com.apple.FSEvents")
+  (global-name "com.apple.fonts")
+  (global-name "com.apple.FontObjectsServer")
+  (global-name "com.apple.lsd.mapdb"))
