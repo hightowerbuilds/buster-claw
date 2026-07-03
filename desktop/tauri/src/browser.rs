@@ -144,8 +144,24 @@ const POPUPS_AS_TABS_JS: &str = r#"
     }
     window.open = openAsTab;
     document.addEventListener("click", function (e) {
+      var link = e.target && e.target.closest && e.target.closest("a[href]");
+      // Cmd/Ctrl-click any link -> new tab (browser convention).
+      if (link && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        openAsTab(link.href);
+        return;
+      }
       var a = e.target && e.target.closest && e.target.closest("a[target]");
       if (a && a.target && a.target !== "_self" && a.href) {
+        e.preventDefault();
+        openAsTab(a.href);
+      }
+    }, true);
+    // Middle-click a link -> new tab.
+    document.addEventListener("auxclick", function (e) {
+      if (e.button !== 1) return;
+      var a = e.target && e.target.closest && e.target.closest("a[href]");
+      if (a && a.href) {
         e.preventDefault();
         openAsTab(a.href);
       }
@@ -352,6 +368,27 @@ pub fn browser_forward(
 ) -> Result<(), String> {
     let sid = sanitize_sid(&surface_id);
     tab_eval(&app, &state, &sid, &tab_id, "history.forward()")
+}
+
+/// Find-in-page (⌘F through the chrome's find bar): select the next/previous
+/// match via WebKit's `window.find` — selection + scroll with wraparound.
+/// Cheap but effective; match *counts* would need the native WKWebView find
+/// API (an objc bridge for later, if ever missed).
+#[tauri::command]
+pub fn browser_find(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: String,
+    tab_id: String,
+    query: String,
+    backwards: bool,
+) -> Result<(), String> {
+    let sid = sanitize_sid(&surface_id);
+    if query.is_empty() {
+        return Ok(());
+    }
+    let js = format!("window.find({}, false, {backwards}, true)", js_str(&query));
+    tab_eval(&app, &state, &sid, &tab_id, &js)
 }
 
 /// Set a content tab's page zoom (⌘+/⌘−/⌘0 through the chrome). The chrome

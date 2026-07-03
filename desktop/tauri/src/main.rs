@@ -358,6 +358,7 @@ fn build_tabs_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Subm
     let sep1 = PredefinedMenuItem::separator(handle)?;
     let reload = item("bc_reload", "Reload Page", "CmdOrCtrl+R")?;
     let focus_address = item("bc_focus_address", "Open Location", "CmdOrCtrl+L")?;
+    let find = item("bc_find", "Find…", "CmdOrCtrl+F")?;
     let zoom_in = item("bc_zoom_in", "Zoom In", "CmdOrCtrl+=")?;
     let zoom_out = item("bc_zoom_out", "Zoom Out", "CmdOrCtrl+-")?;
     let zoom_reset = item("bc_zoom_reset", "Actual Size", "CmdOrCtrl+0")?;
@@ -383,6 +384,7 @@ fn build_tabs_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Subm
         &sep1,
         &reload,
         &focus_address,
+        &find,
         &zoom_in,
         &zoom_out,
         &zoom_reset,
@@ -446,6 +448,7 @@ fn main() {
             browser::browser_app_navigate,
             browser::browser_reveal_download,
             browser::browser_set_zoom,
+            browser::browser_find,
             voice::speak,
             voice::stop_speaking
         ])

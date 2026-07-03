@@ -130,12 +130,37 @@ function updateProgress() {
   progressEl.classList.toggle("on", !!(t && t.loading))
 }
 
+let dragId = null // tab id being drag-reordered
+
 function renderTabs() {
   tabsEl.textContent = ""
   tabs.forEach((t) => {
     const tab = document.createElement("div")
     tab.className = "tab" + (t.id === activeId ? " active" : "")
     tab.title = t.label
+    // Drag to reorder (chrome-local: Rust doesn't care about strip order) and
+    // middle-click to close — standard tab-strip ergonomics.
+    tab.draggable = true
+    tab.addEventListener("dragstart", (e) => {
+      dragId = t.id
+      e.dataTransfer.effectAllowed = "move"
+    })
+    tab.addEventListener("dragover", (e) => e.preventDefault())
+    tab.addEventListener("drop", (e) => {
+      e.preventDefault()
+      if (!dragId || dragId === t.id) return
+      const from = tabs.findIndex((x) => x.id === dragId)
+      const to = tabs.findIndex((x) => x.id === t.id)
+      dragId = null
+      if (from < 0 || to < 0) return
+      const [moved] = tabs.splice(from, 1)
+      tabs.splice(to, 0, moved)
+      renderTabs()
+      scheduleSaveTabs()
+    })
+    tab.addEventListener("auxclick", (e) => {
+      if (e.button === 1) { e.preventDefault(); closeTab(t.id) }
+    })
     // Leading affordance: a spinner while loading, otherwise the favicon.
     if (t.loading) {
       const spin = document.createElement("span")
@@ -221,6 +246,7 @@ window.__menuShortcut = function (action) {
   if (action === "close_tab") return closeTab(activeId)
   if (action === "reload") return inv("browser_reload", {tabId: activeId})
   if (action === "focus_address") { addr.focus(); addr.select(); return }
+  if (action === "find") return openFindBar()
   if (action === "zoom_in" || action === "zoom_out" || action === "zoom_reset") {
     const cur = zoomLevels[activeId] || 1
     const next = action === "zoom_reset"
@@ -252,7 +278,7 @@ let bookmarksCache = []
 
 function renderBookmarks(items) {
   bookmarksCache = items || []
-  if (!suggestions.length) drawBookmarks()
+  if (!suggestions.length && !findOpen) drawBookmarks()
 }
 
 function drawBookmarks() {
@@ -375,6 +401,58 @@ addr.addEventListener("keydown", function (e) {
 })
 
 addr.addEventListener("blur", function () { setTimeout(clearSuggestions, 150) })
+
+// --- find in page (⌘F; roadmap Phase 2.4) ---
+// The find bar takes over the bookmark row (same trick as suggestions — the
+// 112px chrome can't host a floating panel). Enter steps forward, ⇧Enter
+// back, Esc closes. Matching runs in the content webview via browser_find
+// (WebKit window.find): selection + scroll with wraparound.
+let findOpen = false
+let findInput = null
+
+function openFindBar() {
+  findOpen = true
+  drawFindBar()
+  if (findInput) { findInput.focus(); findInput.select() }
+}
+
+function closeFindBar() {
+  findOpen = false
+  findInput = null
+  drawBookmarks()
+}
+
+function findStep(backwards) {
+  const q = findInput && findInput.value.trim()
+  if (q) inv("browser_find", {tabId: activeId, query: q, backwards: !!backwards})
+}
+
+function drawFindBar() {
+  barEl.textContent = ""
+  const wrap = document.createElement("div")
+  wrap.className = "findbar"
+  findInput = document.createElement("input")
+  findInput.id = "find"
+  findInput.type = "text"
+  findInput.placeholder = "Find in page…"
+  findInput.autocomplete = "off"
+  findInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); findStep(e.shiftKey) }
+    else if (e.key === "Escape") { e.preventDefault(); closeFindBar() }
+  })
+  findInput.addEventListener("input", function () { findStep(false) })
+  const mk = (label, title, fn) => {
+    const b = document.createElement("button")
+    b.type = "button"; b.className = "fbtn"; b.title = title; b.textContent = label
+    b.onclick = fn
+    return b
+  }
+  wrap.appendChild(findInput)
+  wrap.appendChild(mk("‹", "Previous match (⇧↵)", () => findStep(true)))
+  wrap.appendChild(mk("›", "Next match (↵)", () => findStep(false)))
+  wrap.appendChild(mk("×", "Close (Esc)", closeFindBar))
+  barEl.appendChild(wrap)
+}
 
 function newTab() {
   const id = String(nextId++)

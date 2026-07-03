@@ -189,6 +189,17 @@ defmodule BusterClawWeb.BrowserChromeController do
       .sug .t { overflow: hidden; text-overflow: ellipsis; }
       .sug:hover, .sug.sel { color: #f4f1ea; border-color: #ff4d1c; }
       .sug.sel { background: rgba(255,77,28,.14); }
+      /* find-in-page bar (takes over the bookmark row while open) */
+      .findbar { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; }
+      #find { flex: 0 1 320px; min-width: 120px; height: 24px; padding: 0 8px;
+              background: #1c1c1c; color: #f4f1ea; border: 1px solid rgba(244,241,234,.2);
+              border-radius: 4px; font: 12px/1 ui-monospace, monospace; outline: none; }
+      #find:focus { border-color: rgba(255,77,28,.6); }
+      .fbtn { display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 auto;
+              background: transparent; color: rgba(244,241,234,.7);
+              border: 1px solid rgba(244,241,234,.2); border-radius: 4px; cursor: pointer;
+              font-size: 13px; line-height: 1; }
+      .fbtn:hover { border-color: #ff4d1c; color: #ff4d1c; }
     </style>
     </head>
     <body data-sid="#{sid}" data-search-url="#{escape_attr(search_url)}">

@@ -126,13 +126,13 @@ without opening Chrome once.
    `/history` LiveView: day-grouped (`grouped_by_day/1`), searchable, clear /
    clear-range controls. Catalog additions: `history_search`, `history_recent`
    (safe tier). After this, nothing in `BrowserHistory` is dead.
-4. **Find-in-page (⌘F).** (M) Small find bar in the chrome; match
+4. **Find-in-page (⌘F).** (M) — **SHIPPED 07-03**: find bar in the bookmark row, browser_find → WebKit window.find (select+scroll, wraps; no match counts — needs the objc find API if ever missed). Small find bar in the chrome; match
    navigation via WKWebView's find API (objc bridge) or eval-based highlighting.
 5. **Zoom (⌘+ / ⌘− / ⌘0).** (S) — **SHIPPED 07-03**: Tabs-menu items → chrome per-tab factor → browser_set_zoom (clamped 0.25–5). Tauri `set_zoom` per content webview; persist
    per-host zoom in settings if cheap.
-6. **Context menu: "Open link in new tab".** (M) Injected handler routes through
+6. **Context menu: "Open link in new tab".** (M) — **SHIPPED 07-03 as modifier-click** (⌘-click + middle-click any link → new tab, via the injected shim; a real context-menu entry needs the WKUIDelegate objc work, same ceiling as popups (a)). Injected handler routes through
    the popup→tab path from Phase 1.2.
-7. **Tab strip ergonomics.** (S–M) Drag-reorder, middle-click close, ⌘-click a
+7. **Tab strip ergonomics.** (S–M) — **SHIPPED 07-03**: drag-reorder (persisted), middle-click close; modifier-click links land in 2.6. Opened tabs are active-not-background (background needs show-less tab creation — punt). Drag-reorder, middle-click close, ⌘-click a
    link opens a background tab (recorded in history thanks to Phase 0.4).
 
 **Exit criteria:** feature checklist parity with "a minimal but real browser" —

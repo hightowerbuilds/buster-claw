@@ -17,6 +17,7 @@
     "allow-browser-close-tab",
     "allow-browser-app-navigate",
     "allow-browser-reveal-download",
-    "allow-browser-set-zoom"
+    "allow-browser-set-zoom",
+    "allow-browser-find"
   ]
 }

@@ -25,6 +25,7 @@ fn main() {
                 "browser_app_navigate",
                 "browser_reveal_download",
                 "browser_set_zoom",
+                "browser_find",
             ]),
         ),
     )

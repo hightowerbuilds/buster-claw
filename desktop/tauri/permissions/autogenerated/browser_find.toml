@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-find"
+description = "Enables the browser_find command without any pre-configured scope."
+commands.allow = ["browser_find"]
+
+[[permission]]
+identifier = "deny-browser-find"
+description = "Denies the browser_find command without any pre-configured scope."
+commands.deny = ["browser_find"]
