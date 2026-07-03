@@ -79,14 +79,17 @@ defmodule BusterClawWeb.BrowserChromeController do
                  max-width: 45%; padding: 4px 6px 0 6px; overflow-x: auto;
                  overflow-y: hidden; border-right: 1px solid rgba(244,241,234,.14); }
       #apptabs::-webkit-scrollbar { height: 0; }
+      /* App tabs: same chrome as site tabs, but a translucent hazard-orange
+         BACKGROUND (only the fill differs) so they can't be mistaken for sites. */
       .atab { display: flex; align-items: center; flex: 0 0 auto; max-width: 140px;
-              height: 30px; padding: 0 10px; cursor: pointer; background: transparent;
-              color: rgba(244,241,234,.5); border: 1px solid rgba(244,241,234,.14);
+              height: 30px; padding: 0 10px; cursor: pointer;
+              background: rgba(255,77,28,.14); color: rgba(244,241,234,.7);
+              border: 1px solid rgba(244,241,234,.14);
               border-bottom: none; border-radius: 6px 6px 0 0;
               font: 600 11px/1 ui-monospace, monospace; white-space: nowrap;
               overflow: hidden; text-overflow: ellipsis; }
-      .atab:hover { color: #ff4d1c; border-color: #ff4d1c; }
-      .atab.current { color: #f4f1ea; background: #2a2a2a;
+      .atab:hover { background: rgba(255,77,28,.26); color: #f4f1ea; }
+      .atab.current { background: rgba(255,77,28,.34); color: #f4f1ea;
                       border-color: rgba(244,241,234,.3); cursor: default; }
       /* browser tab strip */
       #tabs { display: flex; align-items: stretch; gap: 4px; flex: 1 1 auto;
