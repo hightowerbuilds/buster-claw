@@ -161,9 +161,45 @@ tests green. The rest of the review (Medium/Low: Browserbase GenServer
 head-of-line blocking, streaming-download OOM ceiling, runtime orphan-reclaim
 gap, `encrypted.ex` fail-open on decrypt error, et al.) is logged for follow-up.
 
+## Late — QX review second pass: the four promoted HIGHs
+
+After the CRITICAL/HIGH chain, fixed the next tier — the highest-impact
+Medium/High leftovers, each verified against the code before touching it:
+
+- **[HIGH] Download OOM** (`browser.ex`). `do_download` buffered the entire
+  response body into memory before the `byte_size > max_bytes` check, so a
+  hostile/misconfigured host streaming an oversized (or unbounded) body could OOM
+  the BEAM first. Now streams via Req's `into:` collector with a running byte cap
+  that halts the transfer the instant it's exceeded — peak memory bounded to
+  ~`max_bytes`. Req 0.5.17's `{:halt, {req, resp}}` works under both Finch and the
+  Req.Test plug adapter (verified in the dep source).
+- **[HIGH] Runtime orphan-reclaim gap** (`dispatcher.ex`). A swarm run crashing
+  after `mark_running` (or single-path items the agent CLI-claimed) stranded the
+  item in `"running"` forever — reclaim was boot-only. The `:DOWN` handler now
+  calls `reclaim_orphans/0` immediately; the normal `:run_done` path demonitors
+  with `:flush`, so this fires only on a genuine crash. Safe because the pump is
+  serialized and attended/unattended shifts never overlap.
+- **[HIGH] Encrypted fields fail *open*** (`encrypted.ex`). `load/1` returned the
+  raw bytes as "plaintext" on *any* decrypt error, conflating legacy plaintext
+  with a key mismatch / tampered ciphertext (handing back ciphertext-as-secret).
+  Added `Vault.ciphertext?/1` (frame-only check, no decrypt) so `load/1` now
+  distinguishes the two: genuinely-unframed → legacy plaintext passthrough;
+  framed-but-undecryptable → log loudly and load as `nil` (fail closed).
+- **[HIGH] Rust release-monitor orphaned the BEAM on quit** (`main.rs`). The
+  monitor `take()`-ed the Phoenix `Child` out of the shared mutex and polled it in
+  a local for ~500 ms cycles, leaving the guard `None`; a quit landing in that
+  window made `shutdown_release` see `None` and return without SIGTERM, orphaning
+  the release (port bound / DB locked next launch). Now polls the child *in place*
+  (`try_wait` is non-blocking, so the lock is held only for the poll), so
+  shutdown always finds and reaps it.
+
+Regression tests added for all four (download too_large, dispatcher crash-reclaim,
+`Vault.ciphertext?`, `Encrypted` fail-closed). 796 tests green; `cargo check`
+clean. The remaining Medium/Low findings stay logged for follow-up.
+
 ## Next
 
 Browser roadmap is done. Open workstreams remaining: Browserbase (agentic cloud
 web — Phase 3 live-view tab, then Phase 4 money-gating) and distribution
 (Google restricted-scope verification + Apple signing). Also queued: the
-Medium/Low findings from the QX review.
+remaining Medium/Low findings from the QX review.

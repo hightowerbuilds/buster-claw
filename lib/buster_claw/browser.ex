@@ -58,9 +58,13 @@ defmodule BusterClaw.Browser do
         headers: [{"user-agent", @user_agent}, {"accept", "*/*"}],
         receive_timeout: timeout,
         retry: false,
-        # Raw bytes — never let Req decode JSON/gzip into a term; we want the file
-        # exactly as served.
-        decode_body: false
+        # Stream the body through a running byte cap and abort as soon as it is
+        # exceeded, so a hostile/misconfigured host streaming an oversized (or
+        # unbounded) response can't OOM the BEAM before a post-hoc size check —
+        # peak memory is bounded to ~max_bytes rather than the full body. The
+        # collector also gives us the raw bytes exactly as served (streaming
+        # skips Req's decode/decompress steps).
+        into: download_collector(max_bytes)
       ]
       |> Keyword.merge(Application.get_env(:buster_claw, :browser_req_options, []))
       |> Keyword.merge(Keyword.get(opts, :req_options, []))
@@ -72,18 +76,16 @@ defmodule BusterClaw.Browser do
       |> Req.Request.append_request_steps(ssrf_guard: &URLGuard.req_step/1)
 
     case Req.request(req) do
-      {:ok, %{status: status, headers: headers, body: body}} when status in 200..299 ->
-        bytes = IO.iodata_to_binary(body)
-
-        if byte_size(bytes) > max_bytes do
-          {:error, {:too_large, byte_size(bytes)}}
+      {:ok, %{status: status} = resp} when status in 200..299 ->
+        if Req.Response.get_private(resp, :download_too_large, false) do
+          {:error, {:too_large, Req.Response.get_private(resp, :downloaded_bytes, 0)}}
         else
           {:ok,
            %{
              url: url,
-             body: bytes,
-             content_type: header_value(headers, "content-type"),
-             filename: download_filename(url, headers)
+             body: IO.iodata_to_binary(resp.body),
+             content_type: header_value(resp.headers, "content-type"),
+             filename: download_filename(url, resp.headers)
            }}
         end
 
@@ -92,6 +94,28 @@ defmodule BusterClaw.Browser do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  # Streaming collector for `download/2`: accumulates raw chunks as iodata while
+  # tracking a running total, halting the transfer the moment it crosses
+  # `max_bytes`. On halt it flags the response private so the caller returns
+  # `{:too_large, bytes}` instead of buffering the whole (potentially unbounded)
+  # body first.
+  defp download_collector(max_bytes) do
+    fn {:data, chunk}, {req, resp} ->
+      downloaded = Req.Response.get_private(resp, :downloaded_bytes, 0) + byte_size(chunk)
+
+      resp =
+        resp
+        |> Map.update!(:body, &[&1, chunk])
+        |> Req.Response.put_private(:downloaded_bytes, downloaded)
+
+      if downloaded > max_bytes do
+        {:halt, {req, Req.Response.put_private(resp, :download_too_large, true)}}
+      else
+        {:cont, {req, resp}}
+      end
     end
   end
 

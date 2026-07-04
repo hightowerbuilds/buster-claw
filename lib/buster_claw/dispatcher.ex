@@ -22,8 +22,9 @@ defmodule BusterClaw.Dispatcher do
   - **Event- and tick-driven.** It reacts to `:dispatch_item_queued` for low
     latency and also ticks periodically as a backstop.
   - **Crash-safe.** A run runs in a monitored process; if it dies the pump resets
-    and `Dispatch.reclaim_orphans/0` (already called on boot) returns any item it
-    had claimed to the pool.
+    and `Dispatch.reclaim_orphans/0` runs immediately (in the `:DOWN` handler) —
+    not only on the next boot — so an item the dead run had marked running/claimed
+    returns to the queued pool right away instead of stranding on a live daemon.
 
   Attended shifts are left entirely alone — they are worked by the human-launched
   terminal agent, so the pump must not also drive them.
@@ -104,10 +105,21 @@ defmodule BusterClaw.Dispatcher do
   def handle_info({:run_done, _stale_pid, _shift, _provenance, _result}, state),
     do: {:noreply, state}
 
-  # The run process died without reporting (crash). Reset so the pump recovers;
-  # any item it had claimed is reclaimed on the next boot via reclaim_orphans/0.
+  # The run process died without reporting (crash). Reset so the pump recovers,
+  # AND reclaim right now — the normal `:run_done` path demonitors with `:flush`,
+  # so reaching here means a genuine crash with no outcome recorded. Without this
+  # a swarm item already flipped to "running" (or single-path items the agent
+  # CLI-claimed) would strand until the next boot's reclaim_orphans/0. The pump is
+  # serialized and attended/unattended shifts never overlap, so the only in-flight
+  # items belong to this dead run — reclaiming them globally is safe.
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{running_ref: ref} = state) do
     Logger.warning("Dispatcher run process went down: #{inspect(reason)}")
+
+    case Dispatch.reclaim_orphans() do
+      0 -> :ok
+      n -> Logger.warning("Dispatcher reclaimed #{n} orphaned item(s) after the crash")
+    end
+
     {:noreply, %{state | running_ref: nil, running_pid: nil, last_finished_ms: now_ms()}}
   end
 

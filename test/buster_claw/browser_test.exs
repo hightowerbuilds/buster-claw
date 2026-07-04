@@ -154,5 +154,19 @@ defmodule BusterClaw.BrowserTest do
     test "refuses a blocked / invalid URL before any request" do
       assert {:error, {:blocked_url, _reason}} = Browser.download("not-a-url")
     end
+
+    test "aborts and reports too_large when the body exceeds max_bytes" do
+      Req.Test.stub(BusterClaw.BrowserHTTP, fn conn ->
+        Plug.Conn.send_resp(conn, 200, String.duplicate("x", 5_000))
+      end)
+
+      assert {:error, {:too_large, bytes}} =
+               Browser.download("https://example.com/big.bin",
+                 max_bytes: 1_000,
+                 req_options: [plug: {Req.Test, BusterClaw.BrowserHTTP}]
+               )
+
+      assert bytes > 1_000
+    end
   end
 end

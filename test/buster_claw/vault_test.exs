@@ -39,4 +39,25 @@ defmodule BusterClaw.VaultTest do
     refute Vault.encrypted?("plain-api-key")
     refute Vault.encrypted?(nil)
   end
+
+  test "ciphertext?/1 recognizes the frame without decrypting" do
+    {:ok, <<version, rest::binary>> = ciphertext} = Vault.encrypt("secret")
+    assert Vault.ciphertext?(ciphertext)
+
+    # A framed value whose GCM tag is corrupt is still recognized as *framed*
+    # (that's the whole point — it should not be mistaken for legacy plaintext),
+    # even though it no longer decrypts.
+    <<last>> = :binary.part(rest, byte_size(rest) - 1, 1)
+
+    tampered =
+      <<version>> <> :binary.part(rest, 0, byte_size(rest) - 1) <> <<Bitwise.bxor(last, 1)>>
+
+    assert Vault.ciphertext?(tampered)
+    refute Vault.encrypted?(tampered)
+
+    # Plaintext / too-short / nil are not framed.
+    refute Vault.ciphertext?("plain-api-key")
+    refute Vault.ciphertext?(<<1, 2, 3>>)
+    refute Vault.ciphertext?(nil)
+  end
 end

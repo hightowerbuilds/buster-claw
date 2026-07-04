@@ -155,49 +155,48 @@ fn run_release_monitor(launcher: ReleaseLauncher) {
     let mut window_start = Instant::now();
 
     loop {
-        // Take ownership of the current child handle so we can wait on it without
-        // holding the mutex (shutdown and respawn both need the lock).
-        let mut child = {
-            let Ok(mut guard) = launcher.release_child.lock() else {
-                return;
-            };
-            match guard.take() {
-                Some(c) => c,
-                None => {
-                    // No child to watch (already shut down, or never spawned).
-                    if launcher.shutting_down.load(Ordering::SeqCst) {
-                        return;
-                    }
-                    // Nothing tracked yet; brief pause then re-check.
-                    drop(guard);
-                    std::thread::sleep(Duration::from_millis(250));
-                    continue;
-                }
-            }
-        };
-
-        // Poll for child exit while we still own it. We don't hold the mutex,
-        // so the Exit handler can't reap it; that's fine — once we detect an
-        // intentional shutdown we drop our handle and let shutdown_release run.
+        // Poll the child for exit *in place* — it stays in the mutex the whole
+        // time so a concurrent `shutdown_release` can always reap it. `try_wait`
+        // is non-blocking, so we hold the lock only for the poll itself and never
+        // across the sleep (respawn and shutdown both still get the lock between
+        // polls). The previous design `take()`-ed the child into a local for the
+        // whole poll loop, leaving the guard `None`; a quit landing in that window
+        // saw `None` and returned without SIGTERM, orphaning the BEAM.
         loop {
             if launcher.shutting_down.load(Ordering::SeqCst) {
-                // Intentional quit: hand the child back so shutdown_release can
-                // SIGTERM it, then exit the monitor.
-                if let Ok(mut guard) = launcher.release_child.lock() {
-                    if guard.is_none() {
-                        *guard = Some(child);
-                    }
-                }
+                // Intentional quit: leave the child in the mutex for
+                // shutdown_release to SIGTERM, then stand down.
                 return;
             }
-            match child.try_wait() {
+
+            let wait = {
+                let Ok(mut guard) = launcher.release_child.lock() else {
+                    return;
+                };
+                match guard.as_mut() {
+                    // Not spawned yet (startup) or already reaped — nothing to poll.
+                    None => Ok(None),
+                    Some(child) => child.try_wait(),
+                }
+            };
+
+            match wait {
+                // Still running: release the lock and pause before the next poll.
+                Ok(None) => std::thread::sleep(Duration::from_millis(500)),
+                // Exited on its own — drop the dead handle, then fall through to
+                // the restart guard / respawn below.
                 Ok(Some(status)) => {
                     eprintln!("[buster-claw] Phoenix release exited unexpectedly: {status}");
+                    if let Ok(mut guard) = launcher.release_child.lock() {
+                        let _ = guard.take();
+                    }
                     break;
                 }
-                Ok(None) => std::thread::sleep(Duration::from_millis(500)),
                 Err(e) => {
                     eprintln!("[buster-claw] error waiting on release child: {e}");
+                    if let Ok(mut guard) = launcher.release_child.lock() {
+                        let _ = guard.take();
+                    }
                     break;
                 }
             }

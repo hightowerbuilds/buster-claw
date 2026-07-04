@@ -293,6 +293,28 @@ defmodule BusterClaw.DispatcherTest do
       assert reloaded.failed_count == 0
     end
 
+    test "a crashing swarm run reclaims its in-flight item back to queued at runtime" do
+      {:ok, _shift} = Orchestration.start_shift(unattended: true)
+      item = enqueue!(%{strategy: "swarm", request_summary: "boom job"})
+
+      # The coordinator crashes the monitored child *after* the item was marked
+      # running. The :DOWN handler must reclaim it now, not wait for the next boot.
+      crashing = fn _goal, _opts -> raise "kaboom" end
+
+      server = start_dispatcher!(stub_runner(self()), coordinator: crashing)
+
+      Dispatcher.tick_now(server)
+
+      wait_until(fn -> Dispatch.get_item!(item.id).status == "queued" end)
+      reclaimed = Dispatch.get_item!(item.id)
+      assert reclaimed.status == "queued"
+      assert reclaimed.claimed_by == nil
+      assert reclaimed.started_at == nil
+
+      # The pump survived the crash and is idle again.
+      flush(server)
+    end
+
     test "threads the provenance run_opts into the coordinator" do
       {:ok, _shift} = Orchestration.start_shift(unattended: true)
       enqueue!(%{strategy: "swarm", trusted: false, request_summary: "x"})

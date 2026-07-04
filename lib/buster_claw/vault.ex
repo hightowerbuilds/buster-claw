@@ -63,6 +63,22 @@ defmodule BusterClaw.Vault do
 
   def encrypted?(_value), do: false
 
+  @doc """
+  True when `value` is *framed* as this vault's ciphertext (correct version byte
+  and minimum length), WITHOUT attempting decryption.
+
+  Unlike `encrypted?/1`, this does not care whether decryption succeeds — it
+  distinguishes a value that is *meant* to be ciphertext (and whose decrypt
+  failure therefore signals a key mismatch or corruption) from a genuinely
+  unencrypted legacy plaintext value. A legacy token/API key is printable text,
+  so it will not begin with the `@version` control byte and satisfy the length
+  floor.
+  """
+  def ciphertext?(<<@version, rest::binary>>) when byte_size(rest) >= @iv_bytes + @tag_bytes,
+    do: true
+
+  def ciphertext?(_value), do: false
+
   defp key do
     :crypto.hash(:sha256, "vault:v1:" <> secret_key_base())
   end
