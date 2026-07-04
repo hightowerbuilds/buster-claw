@@ -37,12 +37,6 @@ defmodule BusterClawWeb.Layouts do
       path: "/wallets",
       icon: "hero-wallet"
     },
-    # No brand PNG yet — text label. The shader-driven chat surface (HUMO_ROADMAP.md).
-    %{
-      label: "Humo",
-      path: "/humo",
-      icon: "hero-cloud"
-    },
     %{
       label: "Settings",
       path: "/appearance",

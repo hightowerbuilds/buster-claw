@@ -10,7 +10,7 @@ export const clamp01 = (x) => Math.max(0, Math.min(1, x))
 
 export const clampR = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
 
-// Uniform buffer layout — must mirror `struct U` in screen.wgsl.js:
+// Uniform buffer layout — must mirror `struct U` in smoke.wgsl.js:
 // six vec4<f32> = 24 floats = 96 bytes.
 //   [0] res.x  [1] res.y  [2..3] pad
 //   [4] time   [5] intensity  [6] reveal  [7] freezeTime (lens hold timestamp)

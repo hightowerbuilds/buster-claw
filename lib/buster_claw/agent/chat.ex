@@ -225,8 +225,8 @@ defmodule BusterClaw.Agent.Chat do
       audit?: Keyword.get(opts, :audit, configured(:agent_chat_audit, true)),
       # Tracks the in-flight run for the Sentinel audit event on completion.
       run: nil,
-      # Optional per-conversation system-prompt addendum (e.g. Humo teaches its
-      # agent the expression vocabulary). Passed to `claude` as
+      # Optional per-conversation system-prompt addendum (e.g. the homepage chat
+      # teaches the sketchpad ```svg vocabulary). Passed to `claude` as
       # `--append-system-prompt` on every turn; nil = unchanged behaviour.
       append_system_prompt: Keyword.get(opts, :append_system_prompt),
       # Injectable for tests: `spawner.(prompt, opts) :: {:ok, port} | {:error, reason}`.

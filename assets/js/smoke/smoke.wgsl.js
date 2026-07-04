@@ -1,5 +1,7 @@
-// The Humo screen shader — WGSL source of truth for the one pipeline that IS
-// the surface (HUMO screen rewrite; see .claude/plans/vivid-hopping-dahl.md).
+// The smoke shader — WGSL source of truth for the one pipeline that draws the
+// ambient smoke background behind the homepage chat. As a background it is
+// driven with no content and reveal/lens at 0, so the content/reveal/lens code
+// below no-ops and it renders pure fbm smoke + the hi-fi post stack.
 //
 // This is the whole engine: a single fullscreen pass that draws an fbm smoke
 // atmosphere and composites the *content texture* (chat type / diagrams /
@@ -21,7 +23,7 @@
 //               circle time freezes and the rim fringes chromatically.
 //   mood      = (energy, temp -1 cool..+1 warm, density, _)
 //   style     = (pixelCell 1=off, paletteAmt 0=off, _, _)
-export const SCREEN_WGSL = /* wgsl */ `
+export const SMOKE_WGSL = /* wgsl */ `
 struct U {
   res: vec4<f32>,
   params: vec4<f32>,

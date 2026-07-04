@@ -166,6 +166,48 @@ defmodule BusterClawWeb.ChatPanel do
     """
   end
 
+  @doc """
+  The sketchpad sidebar: every SVG Claude drew this conversation, shown as a real,
+  crisp SVG. `svgs` is a list of `%{id, svg}` (already sanitized upstream). Click
+  a card to enlarge it. Rendered beside the chat only when non-empty.
+  """
+  attr :svgs, :list, required: true
+
+  def sketchpad(assigns) do
+    ~H"""
+    <aside
+      class="ic-panel flex w-80 min-h-0 shrink-0 flex-col overflow-hidden"
+      aria-label="Sketchpad"
+    >
+      <header class="flex items-center justify-between border-b-2 border-base-content/20 px-4 py-3">
+        <p class="ic-eyebrow">Sketchpad</p>
+        <span class="font-mono text-[0.62rem] text-base-content/45">{length(@svgs)}</span>
+      </header>
+      <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
+        <div :for={item <- @svgs}>
+          <button
+            type="button"
+            phx-click={JS.remove_class("hidden", to: "#sketch-zoom-#{item.id}")}
+            title="Click to enlarge"
+            class="ic-sketch-card block w-full rounded-sm border-2 border-base-content/20 bg-base-100 p-2 transition hover:border-primary"
+          >
+            {Phoenix.HTML.raw(item.svg)}
+          </button>
+          <div
+            id={"sketch-zoom-#{item.id}"}
+            phx-click={JS.add_class("hidden", to: "#sketch-zoom-#{item.id}")}
+            class="ic-sketch-zoom hidden fixed inset-0 z-50 grid place-items-center bg-black/70 p-8 backdrop-blur"
+          >
+            <div class="max-h-full max-w-3xl overflow-auto rounded-sm border-2 border-base-content/30 bg-base-100 p-4">
+              {Phoenix.HTML.raw(item.svg)}
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    """
+  end
+
   # Live "thinking" timer in the chat header. `ThinkingTimer` (app.js) ticks the
   # label client-side from data-state/data-ms — no server round-trips per second.
   attr :thinking, :any, required: true

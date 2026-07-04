@@ -1,48 +1,51 @@
-// The Humo screen — the one WebGPU pipeline that is the surface (HUMO screen
-// rewrite; see .claude/plans/vivid-hopping-dahl.md). Owns the whole GPU
-// lifecycle (device, pipeline, uniform buffer, content texture) behind a small
-// handle so the hook only drives a render loop. Bare WebGPU on one fullscreen
-// triangle, no framework — and crucially ONE pipeline fed by a uniform buffer +
-// a texture, the pattern WKWebView's WebGPU is stable with. There is no second
-// pipeline and no storage buffer: that combination crashed the GPU process
-// (the black-screen bug this rewrite exists to kill).
+// The smoke field — the one WebGPU pipeline behind the homepage chat. Owns the
+// GPU lifecycle (device, pipeline, uniform buffer) behind a small handle so the
+// hook only drives a render loop. Bare WebGPU on one fullscreen triangle, ONE
+// pipeline fed by a uniform buffer + a texture — the pattern WKWebView's WebGPU
+// is stable with (no second pipeline, no storage buffer; that combination once
+// crashed the GPU process).
 //
-// If WebGPU is unavailable this throws HumoGpuError with the probe reason and
-// the caller falls back to the plain DOM transcript — a dead canvas never ships.
-import {SCREEN_WGSL} from "./screen.wgsl.js"
+// Honest note: this shader still carries a content-texture sampling path (it was
+// once Humo's reading surface). As a *background* we never upload content —
+// `render` is called with `contentDirty: false`, and reveal/lens are held at 0 —
+// so that path no-ops and the shader draws pure drifting smoke + the post stack.
+//
+// If WebGPU is unavailable this throws SmokeGpuError with the probe reason and
+// the caller simply drops the canvas — the chat above it is unaffected.
+import {SMOKE_WGSL} from "./smoke.wgsl.js"
 import {UNIFORM_FLOATS} from "./params.js"
 
-export class HumoGpuError extends Error {
+export class SmokeGpuError extends Error {
   constructor(reason) {
     super("WebGPU unavailable: " + reason)
     this.reason = reason
   }
 }
 
-export async function createScreen(canvas, {contentWidth = 1024, contentHeight = 512} = {}) {
-  if (!navigator.gpu) throw new HumoGpuError("navigator.gpu absent")
+export async function createSmoke(canvas, {contentWidth = 2, contentHeight = 2} = {}) {
+  if (!navigator.gpu) throw new SmokeGpuError("navigator.gpu absent")
   let adapter
   try {
     adapter = await navigator.gpu.requestAdapter()
   } catch (e) {
-    throw new HumoGpuError("requestAdapter threw: " + e.message)
+    throw new SmokeGpuError("requestAdapter threw: " + e.message)
   }
-  if (!adapter) throw new HumoGpuError("adapter null")
+  if (!adapter) throw new SmokeGpuError("adapter null")
   const device = await adapter.requestDevice().catch((e) => {
-    throw new HumoGpuError("requestDevice threw: " + e.message)
+    throw new SmokeGpuError("requestDevice threw: " + e.message)
   })
 
   const ctx = canvas.getContext("webgpu")
-  if (!ctx) throw new HumoGpuError("canvas webgpu context null")
+  if (!ctx) throw new SmokeGpuError("canvas webgpu context null")
   const format = navigator.gpu.getPreferredCanvasFormat()
   const configure = () => ctx.configure({device, format, alphaMode: "opaque"})
   configure()
 
-  const module = device.createShaderModule({code: SCREEN_WGSL})
+  const module = device.createShaderModule({code: SMOKE_WGSL})
   const info = await module.getCompilationInfo()
   const fatal = info.messages.filter((m) => m.type === "error")
   if (fatal.length) {
-    throw new HumoGpuError(
+    throw new SmokeGpuError(
       "WGSL: " + fatal.map((m) => m.lineNum + ":" + m.message).join(" | ")
     )
   }
@@ -58,12 +61,9 @@ export async function createScreen(canvas, {contentWidth = 1024, contentHeight =
     size: UNIFORM_FLOATS * 4,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   })
-  // The content texture: chat type / diagrams / drawings, authored on a Canvas2D
-  // and uploaded here on dirty frames. RENDER_ATTACHMENT is REQUIRED even though
-  // we never render into it ourselves: copyExternalImageToTexture uses an
-  // internal render pass, so the spec mandates COPY_DST | RENDER_ATTACHMENT on
-  // the destination. Dropping it silently makes every upload a no-op (smoke
-  // renders, but nothing ever condenses).
+  // Content texture — the shader samples it, but for the background it is never
+  // written (kept tiny). RENDER_ATTACHMENT is kept because
+  // copyExternalImageToTexture (unused here) would require it.
   const contentTex = device.createTexture({
     size: [contentWidth, contentHeight],
     format: "rgba8unorm",
@@ -84,12 +84,12 @@ export async function createScreen(canvas, {contentWidth = 1024, contentHeight =
 
   return {
     // Resolves when the GPU goes away (never rejects) — the hook uses it to
-    // drop to the fallback surface instead of drawing on a dead device.
+    // stop drawing on a dead device.
     lost: device.lost,
 
-    // Draw one frame. `uniforms` is the packed Float32Array; `contentSource` (a
-    // canvas) is uploaded to the content texture only when `contentDirty` —
-    // per-token, never per-frame.
+    // Draw one frame. `uniforms` is the packed Float32Array. `contentSource` /
+    // `contentDirty` are unused by the background (always false) but kept so the
+    // renderer stays general.
     render({uniforms, contentSource, contentDirty}) {
       if (contentDirty && contentSource) {
         device.queue.copyExternalImageToTexture(

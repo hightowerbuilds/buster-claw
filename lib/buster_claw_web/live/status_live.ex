@@ -8,6 +8,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.LocalTime
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
+  alias BusterClaw.Sketchpad
   alias BusterClaw.TrustedSenders
 
   @impl true
@@ -130,6 +131,8 @@ defmodule BusterClawWeb.StatusLive do
       |> assign(:chat_queue, [])
       |> assign(:chat_messages, [])
       |> assign(:chat_seq, 0)
+      |> assign(:chat_svgs, [])
+      |> assign(:svg_seq, 0)
 
     {:noreply, socket}
   end
@@ -164,6 +167,10 @@ defmodule BusterClawWeb.StatusLive do
     # the conversation's process on demand (a dev refresh is enough). Errors are
     # appended inline as a persistent message.
     conv_id = socket.assigns.active_chat
+
+    # Start the conversation taught the sketchpad vocabulary (idempotent — the
+    # guide is fixed at first start; a no-op once the process exists).
+    Chat.ensure_started(conv_id, append_system_prompt: Sketchpad.guide())
 
     # While a run is in flight send_message/2 queues the text (returns :ok) rather
     # than rejecting it; the queued item arrives back over PubSub as {:queue, …}.
@@ -218,6 +225,24 @@ defmodule BusterClawWeb.StatusLive do
     if conv_id == socket.assigns.active_chat,
       do: assign(socket, :chat_queue, items),
       else: socket
+  end
+
+  # Assistant replies may carry ```svg blocks: route those to the sketchpad
+  # sidebar (as real SVGs) and strip them from the spoken/shown bubble text. A
+  # reply that was *only* an SVG adds no bubble.
+  defp apply_chat(socket, conv_id, {:message, %{role: :assistant, text: text}}) do
+    if conv_id == socket.assigns.active_chat do
+      {clean, svgs} = Sketchpad.extract(text)
+      socket = collect_svgs(socket, svgs)
+
+      if clean == "" do
+        socket
+      else
+        socket |> maybe_speak(:assistant, clean) |> push_msg(:assistant, clean)
+      end
+    else
+      update_tab(socket, conv_id, &%{&1 | unread: true})
+    end
   end
 
   defp apply_chat(socket, conv_id, {:message, %{role: role, text: text}}) do
@@ -281,16 +306,51 @@ defmodule BusterClawWeb.StatusLive do
     |> update(:chat_messages, &(&1 ++ [msg]))
   end
 
+  # Append newly-drawn SVGs to the sketchpad (sanitized before they're stored,
+  # since they render live in the DOM).
+  defp collect_svgs(socket, []), do: socket
+
+  defp collect_svgs(socket, svgs) do
+    base = socket.assigns.svg_seq
+
+    new =
+      svgs
+      |> Enum.with_index(base + 1)
+      |> Enum.map(fn {svg, i} -> %{id: i, svg: Sketchpad.sanitize(svg)} end)
+
+    socket
+    |> assign(:svg_seq, base + length(svgs))
+    |> update(:chat_svgs, &(&1 ++ new))
+  end
+
+  # Rebuild the transcript AND the sketchpad from history: assistant rows are
+  # stored with their ```svg blocks intact, so re-extract them so the bubbles
+  # show clean text and the sidebar re-fills on reload/tab-switch.
   defp load_chat_history(socket, conv_id) do
-    messages =
+    {messages, svgs} =
       conv_id
       |> AgentTranscript.recent(limit: 50)
-      |> Enum.with_index(1)
-      |> Enum.map(fn {row, i} -> %{id: i, role: history_role(row.role), text: row.content} end)
+      |> Enum.reduce({[], []}, fn row, {msgs, svgs} ->
+        case history_role(row.role) do
+          :assistant ->
+            {clean, block_svgs} = Sketchpad.extract(row.content)
+            svgs = svgs ++ Enum.map(block_svgs, &Sketchpad.sanitize/1)
+            msgs = if clean == "", do: msgs, else: msgs ++ [%{role: :assistant, text: clean}]
+            {msgs, svgs}
+
+          role ->
+            {msgs ++ [%{role: role, text: row.content}], svgs}
+        end
+      end)
+
+    messages = messages |> Enum.with_index(1) |> Enum.map(fn {m, i} -> Map.put(m, :id, i) end)
+    svgs = svgs |> Enum.with_index(1) |> Enum.map(fn {svg, i} -> %{id: i, svg: svg} end)
 
     socket
     |> assign(:chat_messages, messages)
     |> assign(:chat_seq, length(messages))
+    |> assign(:chat_svgs, svgs)
+    |> assign(:svg_seq, length(svgs))
   end
 
   @history_roles %{
@@ -307,7 +367,17 @@ defmodule BusterClawWeb.StatusLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="ic-home relative isolate flex flex-1 flex-col">
-        <div class="ic-home-bg" aria-hidden="true"></div>
+        <%!-- Ambient smoke background — a hook-owned WebGPU canvas; LiveView
+              never patches inside it. --%>
+        <div
+          id="smoke-bg"
+          phx-hook="SmokeBackground"
+          phx-update="ignore"
+          class="ic-home-bg"
+          aria-hidden="true"
+        >
+          <canvas data-smoke-canvas></canvas>
+        </div>
         <div class="relative z-10 flex min-h-0 flex-1 flex-col space-y-8">
           <div class="flex items-stretch gap-4 border-b-2 border-base-content/20 pb-5">
             <div class="shrink-0 space-y-4">
@@ -351,12 +421,15 @@ defmodule BusterClawWeb.StatusLive do
 
           <div class="flex min-h-0 flex-1 flex-col gap-2">
             <BusterClawWeb.ChatPanel.chat_tabs chats={@chats} active={@active_chat} />
-            <BusterClawWeb.ChatPanel.chat_panel
-              messages={@chat_messages}
-              running={@chat_running}
-              thinking={@chat_thinking}
-              queue={@chat_queue}
-            />
+            <div class="flex min-h-0 flex-1 gap-4">
+              <BusterClawWeb.ChatPanel.chat_panel
+                messages={@chat_messages}
+                running={@chat_running}
+                thinking={@chat_thinking}
+                queue={@chat_queue}
+              />
+              <BusterClawWeb.ChatPanel.sketchpad :if={@chat_svgs != []} svgs={@chat_svgs} />
+            </div>
           </div>
         </div>
       </section>
