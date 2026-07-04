@@ -91,25 +91,13 @@ defmodule BusterClaw.Humo do
       A calm explanation: ```humo-style {"energy":0.2,"temp":"cool"}```
       Something playful: ```humo-style {"mode":"gameboy"}```
 
-    You can also DRAW into the smoke by composing shapes. Emit a block:
-    ```humo-draw {"shapes":[ ... ]}``` — it is stripped from the shown text and
-    the composition condenses out of the fog. Draw space is centered, y up, about
-    -1..1 tall (a circle r=0.5 is half the height). Each shape has a "kind", an
-    "op" that combines it with the shapes before it (union | subtract | intersect
-    | smooth), and an optional "rot" (radians). Kinds and their fields:
-      circle   x y r
-      box      x y w h            (w,h are half-width/height)
-      roundbox x y w h radius
-      hexagon  x y r
-      star     x y r inner        (inner 0..1 = point sharpness)
-      segment  x1 y1 x2 y2 th     (a line of thickness th)
-      triangle x1 y1 x2 y2 x3 y3
-    Example — a face: ```humo-draw {"shapes":[
-      {"kind":"circle","x":0,"y":0,"r":0.6,"op":"union"},
-      {"kind":"circle","x":-0.22,"y":0.15,"r":0.08,"op":"subtract"},
-      {"kind":"circle","x":0.22,"y":0.15,"r":0.08,"op":"subtract"},
-      {"kind":"segment","x1":-0.2,"y1":-0.25,"x2":0.2,"y2":-0.25,"th":0.03,"op":"subtract"}]}```
-    Draw when a picture or diagram conveys more than words. Keep it under ~40 shapes.
+    You can also render a DIAGRAM. Emit a block:
+    ```humo-graph {"nodes":[{"id":"a","label":"Client"},{"id":"b","label":"Server"},{"id":"c","label":"DB"}],"edges":[["a","b"],["b","c"]]}```
+    — it is stripped from the shown text and the graph condenses onto the screen,
+    laid out left-to-right by dependency. Every node has an "id" and a "label";
+    every edge is ["fromId","toId"]. Keep it under ~24 nodes. Use it when the
+    structure — a flow, a dependency graph, a small architecture — reads clearer
+    drawn than described.
     """
   end
 end

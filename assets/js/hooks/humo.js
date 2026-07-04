@@ -22,12 +22,15 @@ import {
   POST_DEFAULT,
 } from "../humo/params.js"
 import {createChatPresenter} from "../humo/presenters/chat.js"
+import {createDiagramPresenter} from "../humo/presenters/diagram.js"
 
 // Readout cadence: blocks arrive whole (stream-json is block-level), so this
 // is a presentation clock — how fast the screen "speaks".
 const MS_PER_WORD = 90
 const CONDENSE_MS = 800
 const DISSOLVE_MS = 700
+// How long an authored static page (a diagram) takes to condense out of smoke.
+const STATIC_CONDENSE_MS = 1100
 
 export const HumoSurface = {
   mounted() {
@@ -37,9 +40,14 @@ export const HumoSurface = {
     this.screen = null
     this.destroyed_ = false
 
-    // The chat presenter authors the conversation onto its own Canvas2D, which
-    // feeds the screen's content texture.
-    this.content = createChatPresenter()
+    // Presenters author content onto their own Canvas2D; the *active* one feeds
+    // the screen's content texture. Chat is the default scene; a `humo-graph`
+    // switches to the diagram scene until the next reply. Both presenters share
+    // the screen's content-texture dimensions.
+    this.chatContent = createChatPresenter()
+    this.diagramContent = createDiagramPresenter()
+    this.activeContent = this.chatContent
+    this.mode = "chat" // "chat" = readout-driven; "static" = an authored page
 
     // Conversation state, server-driven. `hasText` keeps the last page legible
     // while idle.
@@ -56,20 +64,37 @@ export const HumoSurface = {
       this.exprTarget = styleFromSpec(spec)
     })
 
-    // Cleared conversation: drop any readout, blank the content texture so
-    // nothing lingers under the fog, and settle to empty drifting smoke.
+    // A diagram: author the graph onto the diagram canvas and switch scenes.
+    // Same content-texture path as text, so it condenses out of the smoke and
+    // holds until the next reply.
+    this.handleEvent("humo:graph", ({graph}) => {
+      this.diagramContent.draw(graph)
+      this.activeContent = this.diagramContent
+      this.mode = "static"
+      this.staticAt = performance.now()
+      this.readout = null
+      this.chat = {phase: "streaming", hasText: true}
+    })
+
+    // Cleared conversation: drop any readout, revert to the chat scene, blank
+    // the content so nothing lingers under the fog, settle to drifting smoke.
     this.handleEvent("humo:reset", () => {
       this.readout = null
-      this.content.clear()
+      this.mode = "chat"
+      this.activeContent = this.chatContent
+      this.chatContent.clear()
       this.exprTarget = {...NEUTRAL_EXPRESSION}
       this.chat = {phase: "idle", hasText: false}
     })
 
     this.handleEvent("humo:phase", ({phase}) => {
       if (phase === "thinking") {
-        // New turn: the old page dissolves under the churn (reveal → 0), and
-        // the style eases back to neutral unless this reply sets one.
+        // New turn: the old page dissolves under the churn (reveal → 0), the
+        // scene reverts to chat, and the style eases back to neutral unless
+        // this reply sets one.
         this.readout = null
+        this.mode = "chat"
+        this.activeContent = this.chatContent
         this.chat.phase = "thinking"
         this.exprTarget = {...NEUTRAL_EXPRESSION}
       } else if (this.readout) {
@@ -84,12 +109,15 @@ export const HumoSurface = {
     this.handleEvent("humo:text", ({text}) => {
       const words = text.split(/\s+/).filter(Boolean)
       if (words.length === 0) return
+      // A text reply reverts from any diagram scene back to chat.
+      this.mode = "chat"
+      this.activeContent = this.chatContent
       if (this.readout) {
         // Another block in the same turn: queue its words onto the readout.
         this.readout.words.push(...words)
       } else {
         const now = performance.now()
-        this.content.clear()
+        this.chatContent.clear()
         this.readout = {
           words,
           idx: 0,
@@ -164,8 +192,8 @@ export const HumoSurface = {
   async boot() {
     try {
       this.screen = await createScreen(this.canvas, {
-        contentWidth: this.content.dims.width,
-        contentHeight: this.content.dims.height,
+        contentWidth: this.chatContent.dims.width,
+        contentHeight: this.chatContent.dims.height,
       })
     } catch (e) {
       // No GPU → say so plainly; the DOM transcript is the real fallback,
@@ -197,7 +225,12 @@ export const HumoSurface = {
     if (this.frames.length > 120) this.frames.shift()
     this.lastFrameAt = now
 
-    const state = this.readout ? this.tickReadout(now) : this.chat
+    const state =
+      this.mode === "static"
+        ? this.tickStatic(now)
+        : this.readout
+          ? this.tickReadout(now)
+          : this.chat
     const mapped = mapChatState(state)
     // Ease the lens in/out; while fully off it costs the shader nothing.
     this.lens.strength += (this.lens.target - this.lens.strength) * 0.14
@@ -220,10 +253,10 @@ export const HumoSurface = {
     )
     this.screen.render({
       uniforms: this.uniforms,
-      contentSource: this.content.source,
-      contentDirty: this.content.dirty,
+      contentSource: this.activeContent.source,
+      contentDirty: this.activeContent.dirty,
     })
-    this.content.markClean()
+    this.activeContent.markClean()
 
     if (now - (this.statusAt || 0) > 500) {
       this.statusAt = now
@@ -248,14 +281,14 @@ export const HumoSurface = {
       r.pagePhase = "filling"
       r.phaseStartedAt = now
       r.nextWordAt = now
-      this.content.clear()
+      this.chatContent.clear()
     }
 
     if (r.pagePhase === "filling") {
       let drew = false
       while (r.idx < r.words.length && now >= r.nextWordAt) {
         const candidate = r.page.concat(r.words[r.idx])
-        if (!this.content.fits(candidate)) {
+        if (!this.chatContent.fits(candidate)) {
           // Page is full — let it dissolve to make room for the next words.
           r.pagePhase = "dissolving"
           r.phaseStartedAt = now
@@ -266,7 +299,7 @@ export const HumoSurface = {
         r.nextWordAt = now + MS_PER_WORD
         drew = true
       }
-      if (drew) this.content.draw(r.page)
+      if (drew) this.chatContent.draw(r.page)
 
       if (r.idx >= r.words.length && r.pagePhase === "filling") {
         // Fully spoken — the final page settles and holds.
@@ -282,6 +315,14 @@ export const HumoSurface = {
       condenseMs: CONDENSE_MS,
       dissolveMs: DISSOLVE_MS,
     })
+    return {phase: "streaming", streamProgress: reveal}
+  },
+
+  // A static authored page (a diagram) is already in the content texture; ramp
+  // reveal 0 → 1 so it condenses out of the smoke, then holds settled.
+  tickStatic(now) {
+    const reveal = Math.min(1, (now - this.staticAt) / STATIC_CONDENSE_MS)
+    if (reveal >= 1) return {phase: "settled"}
     return {phase: "streaming", streamProgress: reveal}
   },
 

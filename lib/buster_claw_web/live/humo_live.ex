@@ -157,6 +157,9 @@ defmodule BusterClawWeb.HumoLive do
   defp apply_expression(%{type: "style", data: data}, socket),
     do: push_event(socket, "humo:style", %{spec: data})
 
+  defp apply_expression(%{type: "graph", data: data}, socket) when is_map(data),
+    do: push_event(socket, "humo:graph", %{graph: data})
+
   defp apply_expression(%{type: "draw", data: %{"shapes" => shapes}}, socket)
        when is_list(shapes),
        do: push_event(socket, "humo:draw", %{shapes: shapes})

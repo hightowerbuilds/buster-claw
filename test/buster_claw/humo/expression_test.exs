@@ -45,4 +45,13 @@ defmodule BusterClaw.Humo.ExpressionTest do
     assert expr.type == "draw"
     assert %{"shapes" => [%{"kind" => "circle"}, %{"kind" => "box"}]} = expr.data
   end
+
+  test "parses a graph block (nodes + edges) and strips it from the text" do
+    text = ~s(Here:\n```humo-graph {"nodes":[{"id":"a","label":"A"}],"edges":[["a","a"]]}```)
+    {clean, [expr]} = Expression.extract(text)
+
+    assert clean == "Here:"
+    assert expr.type == "graph"
+    assert %{"nodes" => [%{"id" => "a"}], "edges" => [["a", "a"]]} = expr.data
+  end
 end
