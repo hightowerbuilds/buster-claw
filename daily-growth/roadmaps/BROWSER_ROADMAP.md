@@ -1,5 +1,14 @@
 # Browser Build-Out Roadmap
 
+> **STATUS: CLOSED 2026-07-04.** All five phases shipped or deliberately
+> resolved. The final session shipped the co-presence badge, background-tab
+> suspension, content blocking (WKContentRuleList), the TLS padlock, and private
+> tabs for humans. Deferred-with-reason: nav-events *push* (read/poll half
+> already ships; push needs a consumer that doesn't exist), reader mode (standing
+> non-goal), the native-offset bug (parked). The **WKUIDelegate ceiling is
+> accepted by operator decision** — see the Phase 1.2 note; do not re-propose the
+> delegate swap.
+
 *2026-07-03. Sequenced from `BROWSER_REVIEW.md` (same folder). Governing principle:
 **the browser must never be the reason the user alt-tabs to Chrome** — every
 alt-tab removes the agent's eyes from the page. Strategy: stop the bleeding, then
