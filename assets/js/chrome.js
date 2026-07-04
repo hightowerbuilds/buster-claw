@@ -468,6 +468,43 @@ function newTab() {
   addr.focus()
 }
 
+// Agent co-presence indicator: a hazard-orange badge that appears whenever the
+// agent reads or drives THIS tab (Rust pings `__agentActivity` at the top of
+// every co-presence command) and auto-fades when it stops. Trust is the product
+// — the user always sees when the agent has its hands on the live page.
+;(function () {
+  const style = document.createElement("style")
+  style.textContent =
+    "#agent-activity{position:fixed;top:6px;right:12px;z-index:2147483647;display:flex;" +
+    "align-items:center;gap:6px;padding:3px 10px;border-radius:999px;" +
+    "background:rgba(255,77,28,.14);border:1px solid #ff4d1c;color:#ff4d1c;" +
+    "font:600 11px ui-monospace,Menlo,monospace;letter-spacing:.04em;white-space:nowrap;" +
+    "opacity:0;transform:translateY(-5px);transition:opacity .18s,transform .18s;pointer-events:none}" +
+    "#agent-activity.on{opacity:1;transform:translateY(0)}" +
+    "#agent-activity .dot{width:7px;height:7px;border-radius:50%;background:#ff4d1c;" +
+    "animation:agentPulse 1s ease-in-out infinite}" +
+    "@keyframes agentPulse{0%,100%{opacity:1}50%{opacity:.25}}"
+  document.head.appendChild(style)
+
+  const badge = document.createElement("div")
+  badge.id = "agent-activity"
+  badge.setAttribute("aria-live", "polite")
+  const dot = document.createElement("span")
+  dot.className = "dot"
+  const lbl = document.createElement("span")
+  badge.appendChild(dot)
+  badge.appendChild(lbl)
+  document.body.appendChild(badge)
+
+  let fadeTimer = null
+  window.__agentActivity = function (action) {
+    lbl.textContent = "Agent · " + (action || "working")
+    badge.classList.add("on")
+    clearTimeout(fadeTimer)
+    fadeTimer = setTimeout(() => badge.classList.remove("on"), 1700)
+  }
+})()
+
 // Agent co-presence: open a new tab at `rawUrl` and make it active, routed
 // through the chrome so the tab strip stays in sync. Called from Rust
 // (browser_open_tab_active) via eval.

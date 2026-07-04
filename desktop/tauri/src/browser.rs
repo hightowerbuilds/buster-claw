@@ -527,6 +527,7 @@ pub fn browser_current(
     state: State<BrowserState>,
     surface_id: Option<String>,
 ) -> Result<CurrentTab, String> {
+    ping_agent_activity(&app, &state, surface_id.clone(), "reading");
     let webview = active_content(&app, &state, surface_id)?;
     let url = webview.url().map(|u| u.to_string()).unwrap_or_default();
     let title = webview_title(&webview).unwrap_or_default();
@@ -567,6 +568,7 @@ pub fn browser_read_active(
     state: State<BrowserState>,
     surface_id: Option<String>,
 ) -> Result<ReadPage, String> {
+    ping_agent_activity(&app, &state, surface_id.clone(), "reading");
     let webview = active_content(&app, &state, surface_id)?;
     let data = eval_with_result(&webview, READ_PAGE_JS)?;
     Ok(ReadPage { data })
@@ -688,6 +690,7 @@ pub fn browser_find_elements_active(
     surface_id: Option<String>,
     query: Option<String>,
 ) -> Result<EvalData, String> {
+    ping_agent_activity(&app, &state, surface_id.clone(), "scanning");
     let webview = active_content(&app, &state, surface_id)?;
     let js = find_elements_js(query.as_deref().unwrap_or(""));
     let data = eval_with_result(&webview, &js)?;
@@ -704,6 +707,7 @@ pub fn browser_click_active(
     surface_id: Option<String>,
     index: usize,
 ) -> Result<EvalData, String> {
+    ping_agent_activity(&app, &state, surface_id.clone(), "clicking");
     let webview = active_content(&app, &state, surface_id)?;
     let data = eval_with_result(&webview, &click_js(index))?;
     Ok(EvalData { data })
@@ -721,6 +725,7 @@ pub fn browser_fill_active(
     index: usize,
     value: String,
 ) -> Result<EvalData, String> {
+    ping_agent_activity(&app, &state, surface_id.clone(), "typing");
     let webview = active_content(&app, &state, surface_id)?;
     let data = eval_with_result(&webview, &fill_js(index, &value))?;
     Ok(EvalData { data })
@@ -795,6 +800,7 @@ pub fn browser_navigate_active(
     surface_id: Option<String>,
     url: String,
 ) -> Result<(), String> {
+    ping_agent_activity(&app, &state, surface_id.clone(), "navigating");
     let parsed = parse_web_url(&url)?;
     let webview = active_content(&app, &state, surface_id)?;
     webview.navigate(parsed).map_err(|e| e.to_string())
@@ -812,6 +818,7 @@ pub fn browser_open_tab_active(
     url: String,
     session: Option<String>,
 ) -> Result<(), String> {
+    ping_agent_activity(&app, &state, surface_id.clone(), "opening a tab");
     let parsed = parse_web_url(&url)?;
     // Agent sandbox tabs (roadmap Phase 3.4): agent-opened tabs get an
     // ephemeral, non-persistent data store BY DEFAULT — agent work doesn't
@@ -955,6 +962,25 @@ fn active_content(
         .ok_or_else(|| "no active browser tab".to_string())?;
     app.get_webview(&content_label(&sid, &id))
         .ok_or_else(|| "active tab webview missing".to_string())
+}
+
+// Flash the co-presence badge in the surface's chrome so the user always sees
+// when the agent has its hands on their live tab (trust is the product). Best
+// effort — a closed browser (no chrome) is a silent no-op. Each co-presence
+// command pings this at the top; the chrome shows the badge and auto-fades.
+fn ping_agent_activity(
+    app: &AppHandle,
+    state: &State<BrowserState>,
+    surface_id: Option<String>,
+    action: &str,
+) {
+    let sid = active_sid(state, surface_id);
+    if let Some(chrome) = app.get_webview(&chrome_label(&sid)) {
+        let _ = chrome.eval(&format!(
+            "window.__agentActivity && window.__agentActivity({})",
+            js_str(action)
+        ));
+    }
 }
 
 // Read a content webview's page title. macOS reads WKWebView's `title` property
