@@ -3,9 +3,9 @@
 // a mid/accent, and a highlight — each shader uses them in its own natural way.
 export const SHADER_PALETTES = {
   smoke: ["#0e0e0e", "#ff4d1c", "#f4f1ea"],
-  aurora: ["#050d0a", "#1ad98c", "#594df2"],
   waves: ["#080a10", "#5a99e6", "#a8c8f2"],
   lava: ["#0d0303", "#f25a0d", "#ffd973"],
+  zigzag: ["#030305", "#20263a", "#ffffff"],
 }
 
 export const DEFAULT_PALETTE = SHADER_PALETTES.smoke

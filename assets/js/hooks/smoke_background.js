@@ -27,6 +27,7 @@ const BG_POST = {glow: 0.0, grain: 0.03, scanline: 0.06, vignette: 0.5}
 export const SmokeBackground = {
   mounted() {
     this.canvas = this.el.querySelector("[data-smoke-canvas]")
+    this.shader = this.el.getAttribute("data-shader") || "smoke"
     this.raf = null
     this.smoke = null
     this.destroyed_ = false
@@ -65,9 +66,7 @@ export const SmokeBackground = {
 
   async boot() {
     try {
-      this.smoke = await createSmoke(this.canvas, {
-        shader: this.el.getAttribute("data-shader") || "smoke",
-      })
+      this.smoke = await createSmoke(this.canvas, {shader: this.shader})
     } catch (e) {
       const reason = e instanceof SmokeGpuError ? e.reason : e.message
       this.el.setAttribute("data-smoke", "unavailable:" + reason)
@@ -116,10 +115,21 @@ export const SmokeBackground = {
   },
 
   fitCanvas() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const rect = this.el.getBoundingClientRect()
-    const w = Math.max(1, Math.round(rect.width * dpr))
-    const h = Math.max(1, Math.round(rect.height * dpr))
+    // Zigzag is a heavy per-pixel row march; it's an ambient background behind a
+    // blurred panel, so render it low-res and capped rather than at full retina.
+    const heavy = this.shader === "zigzag"
+    const density = heavy ? 0.6 : Math.min(window.devicePixelRatio || 1, 2)
+    const maxDim = heavy ? 820 : Infinity
+
+    let w = Math.max(1, Math.round(rect.width * density))
+    let h = Math.max(1, Math.round(rect.height * density))
+    const over = Math.max(w, h) / maxDim
+    if (over > 1) {
+      w = Math.max(1, Math.round(w / over))
+      h = Math.max(1, Math.round(h / over))
+    }
+
     if (w !== this.canvas.width || h !== this.canvas.height) {
       this.canvas.width = w
       this.canvas.height = h

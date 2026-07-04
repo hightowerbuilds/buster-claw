@@ -35,7 +35,7 @@ defmodule BusterClaw.Appearance do
   @home_image_stamp_key "home_background_image_updated_at"
   @home_basename "home-background"
   @home_topic "appearance:home_background"
-  @home_shaders ~w(smoke aurora waves lava)
+  @home_shaders ~w(smoke waves lava zigzag)
   @home_default_mode "smoke"
   # Custom 3-color palette (one shared set, applied to the selected shader when
   # `custom` is on). Default seed = the smoke palette.
@@ -203,9 +203,16 @@ defmodule BusterClaw.Appearance do
   saved `\"image\"` mode has no image on disk.
   """
   def home_background_state do
-    mode = home_background_mode()
     url = home_background_image_url()
-    mode = if mode == "image" and is_nil(url), do: @home_default_mode, else: mode
+
+    # Resolve to a known shader, "image" (only with an image), else the default —
+    # so a removed/stale mode (e.g. a retired shader) falls back gracefully.
+    mode =
+      case home_background_mode() do
+        "image" when not is_nil(url) -> "image"
+        m when m in @home_shaders -> m
+        _ -> @home_default_mode
+      end
 
     %{
       mode: mode,
