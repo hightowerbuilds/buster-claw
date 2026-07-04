@@ -26,6 +26,7 @@ fn main() {
                 "browser_reveal_download",
                 "browser_set_zoom",
                 "browser_find",
+                "browser_set_content_blocking",
             ]),
         ),
     )

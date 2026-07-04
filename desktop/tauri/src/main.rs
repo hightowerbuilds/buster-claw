@@ -453,6 +453,7 @@ fn main() {
             browser::browser_reveal_download,
             browser::browser_set_zoom,
             browser::browser_find,
+            browser::browser_set_content_blocking,
             voice::speak,
             voice::stop_speaking
         ])

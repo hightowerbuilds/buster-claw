@@ -21,6 +21,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, Url, WebviewUrl};
@@ -30,6 +31,16 @@ const CONTENT_PREFIX: &str = "browser-content-"; // browser-content-<sid>-<tabid
 const FIRST_TAB: &str = "1";
 const DEFAULT_SID: &str = "main";
 const CHROME_HEIGHT: f64 = 112.0; // tab strip (~34) + toolbar (46) + bookmark bar (32)
+
+// Native content blocking (roadmap Phase 4). A curated EasyList subset of the
+// highest-impact ad/tracker/analytics hosts, compiled once by WebKit's own
+// WKContentRuleListStore and applied to every content webview — Safari's
+// content-blocker engine, uniquely available to us because we chose WKWebView.
+// Bump the identifier's version suffix whenever blocklist.json changes so the
+// store recompiles instead of serving a stale cached list.
+const BLOCKLIST_ID: &str = "buster-blocklist-v1";
+#[cfg(target_os = "macos")]
+const BLOCKLIST_JSON: &str = include_str!("blocklist.json");
 
 /// Per-surface active content tab id (the visible one for that surface). Managed
 /// by Tauri so it survives across commands; the chrome JS keeps it in sync via
@@ -55,6 +66,9 @@ pub struct BrowserState {
     // non-persistent data store can't survive an evict→reload round-trip, so
     // dropping the webview would silently lose the session it promised to keep.
     ephemeral: Mutex<HashSet<String>>,
+    // Content blocking is ON by default. We store the *disabled* flag so the
+    // derived Default (false) means enabled; toggled by browser_set_content_blocking.
+    blocking_disabled: AtomicBool,
 }
 
 // How many content webviews may stay live per surface before the least-recently
@@ -137,6 +151,12 @@ impl BrowserState {
     }
     fn is_ephemeral(&self, sid: &str, tab_id: &str) -> bool {
         self.ephemeral.lock().unwrap().contains(&content_label(sid, tab_id))
+    }
+    fn content_blocking(&self) -> bool {
+        !self.blocking_disabled.load(Ordering::Relaxed)
+    }
+    fn set_content_blocking(&self, enabled: bool) {
+        self.blocking_disabled.store(!enabled, Ordering::Relaxed);
     }
     // Any known surface — the default screenshot target when none is specified.
     fn any_sid(&self) -> Option<String> {
@@ -269,6 +289,15 @@ fn all_browser_labels(app: &AppHandle) -> Vec<String> {
         .collect()
 }
 
+// Every content webview across all surfaces (content blocking applies to all).
+fn all_content_labels(app: &AppHandle) -> Vec<String> {
+    app.webviews()
+        .keys()
+        .filter(|label| label.starts_with(CONTENT_PREFIX))
+        .cloned()
+        .collect()
+}
+
 /// Open a browser surface: ensure its chrome strip, then show its active content
 /// tab (creating the first tab on a cold open, or re-showing the saved active tab
 /// on return to `/browse` after `browser_hide`).
@@ -304,7 +333,10 @@ pub fn browser_open(
         None => match labels.first() {
             Some(label) => label.trim_start_matches(&content_prefix).to_string(),
             None => {
-                create_content(&app, &sid, FIRST_TAB, &content_url, x, cy, width, content_h, false)?;
+                let blocking = state.content_blocking();
+                create_content(
+                    &app, &sid, FIRST_TAB, &content_url, x, cy, width, content_h, false, blocking,
+                )?;
                 FIRST_TAB.to_string()
             }
         },
@@ -359,7 +391,7 @@ pub fn browser_new_tab(
     let sid = sanitize_sid(&surface_id);
     let is_ephemeral = ephemeral.unwrap_or(false);
     let (x, y, w, h) = sample_content_bounds(&app, &sid).ok_or("no content bounds yet")?;
-    create_content(&app, &sid, &tab_id, &url, x, y, w, h, is_ephemeral)?;
+    create_content(&app, &sid, &tab_id, &url, x, y, w, h, is_ephemeral, state.content_blocking())?;
     state.mark_ephemeral(&sid, &tab_id, is_ephemeral);
     state.set(&sid, &tab_id);
     show_only(&app, &sid, &tab_id, x, y, w, h);
@@ -384,7 +416,7 @@ pub fn browser_switch_tab(
     if app.get_webview(&content_label(&sid, &tab_id)).is_none() {
         if let Some(u) = url.as_deref().filter(|u| !u.is_empty()) {
             if w > 0.0 && h > 0.0 {
-                create_content(&app, &sid, &tab_id, u, x, y, w, h, false)?;
+                create_content(&app, &sid, &tab_id, u, x, y, w, h, false, state.content_blocking())?;
             }
         }
     }
@@ -408,6 +440,25 @@ pub fn browser_close_tab(
     state.mark_ephemeral(&sid, &tab_id, false);
     if let Some(webview) = app.get_webview(&content_label(&sid, &tab_id)) {
         webview.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Toggle native content blocking for the whole browser. Persisted client-side by
+/// the chrome (which re-syncs this on load); here it flips the session flag —
+/// which future tabs read at creation — and applies/clears the rule list on every
+/// live content webview immediately (taking visible effect on their next reload).
+#[tauri::command]
+pub fn browser_set_content_blocking(
+    app: AppHandle,
+    state: State<BrowserState>,
+    enabled: bool,
+) -> Result<(), String> {
+    state.set_content_blocking(enabled);
+    for label in all_content_labels(&app) {
+        if let Some(webview) = app.get_webview(&label) {
+            apply_content_blocking(&webview, enabled);
+        }
     }
     Ok(())
 }
@@ -861,6 +912,75 @@ fn eval_with_result(_webview: &tauri::Webview, _js: &str) -> Result<String, Stri
     Err("browser_read_active is only supported on macOS".into())
 }
 
+// Apply (or clear) native content blocking on one content webview via WebKit's
+// WKContentRuleListStore — Safari's own content-blocker engine. When enabling,
+// compile the curated blocklist (the store caches the compiled result on disk by
+// identifier, so this is fast after the first tab) and add it to the webview's
+// user-content controller; when disabling, drop all rule lists. Rule-list changes
+// take effect on the next resource load, so a live page reflects a toggle on
+// reload. Fire-and-forget: compilation completes on the main thread after this
+// (worker-thread) call returns.
+#[cfg(target_os = "macos")]
+fn apply_content_blocking(webview: &tauri::Webview, enabled: bool) {
+    use block::ConcreteBlock;
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+
+    let ident = match std::ffi::CString::new(BLOCKLIST_ID) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let json = std::ffi::CString::new(BLOCKLIST_JSON).ok();
+
+    let _ = webview.with_webview(move |pw| {
+        let wk = pw.inner() as *mut Object;
+        if wk.is_null() {
+            return;
+        }
+        unsafe {
+            let config: *mut Object = msg_send![wk, configuration];
+            let ucc: *mut Object = msg_send![config, userContentController];
+            if ucc.is_null() {
+                return;
+            }
+            if !enabled {
+                let _: () = msg_send![ucc, removeAllContentRuleLists];
+                return;
+            }
+            let Some(json) = json else { return };
+            let store: *mut Object = msg_send![class!(WKContentRuleListStore), defaultStore];
+            if store.is_null() {
+                return;
+            }
+            let ns_id: *mut Object =
+                msg_send![class!(NSString), stringWithUTF8String: ident.as_ptr()];
+            let ns_json: *mut Object =
+                msg_send![class!(NSString), stringWithUTF8String: json.as_ptr()];
+            // The completion fires (async) on the main thread; capture the
+            // controller by address (raw pointers aren't Send) and retain it so a
+            // tab closed mid-compile can't free it out from under the add. WebKit
+            // guarantees the completion runs, so the paired release always fires.
+            let _: *mut Object = msg_send![ucc, retain];
+            let ucc_addr = ucc as usize;
+            let completion = ConcreteBlock::new(move |list: *mut Object, err: *mut Object| {
+                let ucc = ucc_addr as *mut Object;
+                if err.is_null() && !list.is_null() {
+                    let _: () = msg_send![ucc, addContentRuleList: list];
+                }
+                let _: () = msg_send![ucc, release];
+            });
+            let completion = completion.copy();
+            let _: () = msg_send![store,
+                compileContentRuleListForIdentifier: ns_id
+                encodedContentRuleList: ns_json
+                completionHandler: &*completion];
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply_content_blocking(_webview: &tauri::Webview, _enabled: bool) {}
+
 /// Navigate the active content tab to `url` (agent-driven co-presence). The
 /// surface's chrome updates its address bar/tab label via the on_navigation
 /// callback fired for the content webview. Without a `surface_id`, defaults to
@@ -1304,6 +1424,7 @@ fn create_content(
     width: f64,
     height: f64,
     ephemeral: bool,
+    blocking: bool,
 ) -> Result<(), String> {
     let label = content_label(sid, tab_id);
     if app.get_webview(&label).is_some() {
@@ -1420,6 +1541,14 @@ fn create_content(
             LogicalSize::new(width, height),
         )
         .map_err(|e| format!("failed to create {label}: {e}"))?;
+
+    // Attach native content blocking to the fresh webview (a no-op when off, so
+    // the compiled rule list is never even looked up while blocking is disabled).
+    if blocking {
+        if let Some(webview) = app.get_webview(&label) {
+            apply_content_blocking(&webview, true);
+        }
+    }
     Ok(())
 }
 

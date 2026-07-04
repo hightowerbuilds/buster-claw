@@ -132,6 +132,12 @@ defmodule BusterClawWeb.BrowserChromeController do
         border-radius: 3px; cursor: pointer; font-size: 14px; line-height: 1;
       }
       button.nav:hover { border-color: #ff4d1c; color: #ff4d1c; }
+      /* Content-blocking shield: lit (hazard-orange) when blocking is on,
+         dimmed when off. Title is set from JS to reflect state. */
+      button.shield { font-size: 13px; }
+      button.shield.on { border-color: #ff4d1c; color: #ff4d1c;
+                         background: rgba(255,77,28,.12); }
+      button.shield.off { opacity: .5; }
       form { flex: 1 1 auto; display: flex; gap: 6px; min-width: 0; }
       input {
         flex: 1 1 auto; min-width: 0; height: 30px; padding: 0 10px;
@@ -226,6 +232,7 @@ defmodule BusterClawWeb.BrowserChromeController do
                  value="#{escape_attr(initial)}" />
           <button class="go" type="submit">Go</button>
         </form>
+        <button class="nav shield" id="shield" type="button" aria-label="Content blocking">&#128737;</button>
         <button class="bm" id="bookmark" type="button" title="Bookmark this page">+ Bookmark</button>
       </div>
       <div id="row2">

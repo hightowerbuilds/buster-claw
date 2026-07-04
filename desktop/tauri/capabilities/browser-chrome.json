@@ -18,6 +18,7 @@
     "allow-browser-app-navigate",
     "allow-browser-reveal-download",
     "allow-browser-set-zoom",
-    "allow-browser-find"
+    "allow-browser-find",
+    "allow-browser-set-content-blocking"
   ]
 }

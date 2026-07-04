@@ -732,6 +732,32 @@ document.getElementById("fwd").addEventListener("click", function () { inv("brow
 document.getElementById("reload").addEventListener("click", function () { inv("browser_reload", {tabId: activeId}) })
 document.getElementById("bookmark").addEventListener("click", bookmark)
 
+// --- content blocking (WKContentRuleList shield) ---
+// The block engine lives in Rust/WebKit; the chrome owns the on/off preference
+// (persisted here) and reflects it in the shield. Toggling re-syncs Rust, which
+// applies/clears the compiled rule list on every live tab (effect on next
+// reload). Default ON.
+const shieldEl = document.getElementById("shield")
+let blocking = localStorage.getItem("bc:block") !== "0"
+function renderShield() {
+  shieldEl.classList.toggle("on", blocking)
+  shieldEl.classList.toggle("off", !blocking)
+  shieldEl.title = blocking
+    ? "Content blocking on — ads & trackers blocked (click to disable; reload to apply)"
+    : "Content blocking off (click to enable)"
+}
+function setBlocking(on) {
+  blocking = on
+  localStorage.setItem("bc:block", on ? "1" : "0")
+  renderShield()
+  inv("browser_set_content_blocking", {enabled: on})
+}
+shieldEl.addEventListener("click", function () { setBlocking(!blocking) })
+renderShield()
+// Rust's in-session default is ON; sync it to the persisted preference on load
+// (matters when the user previously turned blocking off).
+inv("browser_set_content_blocking", {enabled: blocking})
+
 renderTabs()
 renderAppTabs()
 loadBookmarks()
