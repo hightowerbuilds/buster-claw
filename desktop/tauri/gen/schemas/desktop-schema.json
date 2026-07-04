@@ -261,6 +261,12 @@
           "markdownDescription": "Enables the browser_set_bounds command without any pre-configured scope."
         },
         {
+          "description": "Enables the browser_set_content_blocking command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-set-content-blocking",
+          "markdownDescription": "Enables the browser_set_content_blocking command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_set_zoom command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-set-zoom",
@@ -409,6 +415,12 @@
           "type": "string",
           "const": "deny-browser-set-bounds",
           "markdownDescription": "Denies the browser_set_bounds command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_set_content_blocking command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-set-content-blocking",
+          "markdownDescription": "Denies the browser_set_content_blocking command without any pre-configured scope."
         },
         {
           "description": "Denies the browser_set_zoom command without any pre-configured scope.",

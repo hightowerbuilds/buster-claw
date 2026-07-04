@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-set-content-blocking"
+description = "Enables the browser_set_content_blocking command without any pre-configured scope."
+commands.allow = ["browser_set_content_blocking"]
+
+[[permission]]
+identifier = "deny-browser-set-content-blocking"
+description = "Denies the browser_set_content_blocking command without any pre-configured scope."
+commands.deny = ["browser_set_content_blocking"]
