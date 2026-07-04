@@ -1,5 +1,20 @@
 # Humo Expression — the agent's own drawing library
 
+> **PIVOT + DONE (2026-07-03).** The SDF/WGSL drawing approach below (Phases 1–5
+> here) was **superseded** mid-build: a second WebGPU pipeline with a
+> fragment-stage storage buffer hard-crashed WKWebView's GPU process (whole-app
+> black screen). It was replaced by the **Humo Screen rewrite** — one
+> shader-driven "screen" (game-console range) where chat, diagrams, and drawings
+> are all presented; shaders are the engine (glow, film grain, scanlines, ACES),
+> content is authored on Canvas2D and fed in as a texture (no second pipeline, no
+> storage buffers). Plan: `.claude/plans/vivid-hopping-dahl.md`. **Phases 0–5 all
+> SHIPPED + committed** (Phase 0 single-pipeline screen; 1 hi-fi post stack; 2
+> scene model; 3 Canvas2D diagrams `humo-graph`; 4 Canvas2D drawing `humo-draw`;
+> 5 cross-dissolve + reduced-motion). The expression **channel** (`humo-<type>`
+> blocks, `Expression.extract`) and **style** facet from Phase 0 below carried
+> over unchanged. Full suite green (794 mix / 41 bun). Visual once-over pending in
+> the app.
+
 *2026-07-03. Builds on `HUMO_ROADMAP.md`. Supersedes and absorbs the earlier
 narrow "Humo Draw" plan. The thesis, in Luke's words: **let Humo's agent convey
 and express whatever it needs to** — mood, diagrams, retro pixel styles, freeform
