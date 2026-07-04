@@ -144,7 +144,7 @@ the scorecard's ❌ rows in Tiers 1–2 all flip.
 sharing the user's live session. All new commands are Sentinel-audited; anything
 that acts on (not just reads) the page lands in the restricted tier.*
 
-1. **`browser_read`** — **SHIPPED 07-03** (restricted tier, Sentinel :untrusted_ingest per read; objc evaluateJavaScript-with-result bridge, so page CSP can never block it; visible-text + 200 links, 200KB cap). The "agent is reading" chrome indicator is still open — — extract the active tab's rendered DOM as
+1. **`browser_read`** — **SHIPPED 07-03** (restricted tier, Sentinel :untrusted_ingest per read; objc evaluateJavaScript-with-result bridge, so page CSP can never block it; visible-text + 200 links, 200KB cap). **Co-presence indicator SHIPPED 07-04**: every co-presence command (`browser_current`/`_read`/`_find_elements`/`_click`/`_fill`/`_navigate`/`_open_tab`) pings the chrome's `window.__agentActivity`, which flashes a hazard-orange "Agent · reading / clicking / typing…" pill that pulses and auto-fades ~1.7s after the last action — the user always sees when the agent has its hands on the live page. Original: extract the active tab's rendered DOM as
    markdown/text+links via the eval bridge. This reads *logged-in* pages the
    server-side `browser_fetch` can never see. Audited as `:untrusted_ingest`;
    consider requiring an open co-presence "session" the user can see in the
@@ -178,9 +178,13 @@ trace in the user's sessions.
   content-blocker engine; compiling an EasyList subset gives real ad/tracker
   blocking with no extension ecosystem needed. Uniquely available to us *because*
   we chose WKWebView. (L, high delight)
-- **Background-tab suspension** — evict content webviews beyond N most-recent
-  (tab entry survives via Phase 2.1 state; switch = reload). Caps the
-  process-per-tab memory ceiling. (M)
+- **Background-tab suspension** — **SHIPPED 07-04**: per-surface MRU in
+  `BrowserState`; only the 6 most-recently-used content webviews stay live,
+  the rest are evicted on every activation. `browser_switch_tab` now carries the
+  chip URL so a switch-back resurrects + reloads the tab; active + ephemeral tabs
+  are never suspended; suspended chips dim/italicize. Original: evict content
+  webviews beyond N most-recent (tab entry survives via Phase 2.1 state;
+  switch = reload). Caps the process-per-tab memory ceiling. (M)
 - **Per-site permissions & TLS indicator** — camera/mic prompt handling, padlock
   in the omnibox. (M)
 - **Reader mode** — only if a real need reappears; note the old `Reader` module
