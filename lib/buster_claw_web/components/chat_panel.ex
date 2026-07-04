@@ -189,7 +189,7 @@ defmodule BusterClawWeb.ChatPanel do
     >
       <aside
         :if={@open}
-        class="ic-panel flex w-80 min-h-0 flex-col overflow-hidden"
+        class="ic-panel flex w-80 min-h-0 max-h-full flex-col self-start overflow-hidden"
         aria-label="SVG Viewer"
       >
         <header class="flex items-center justify-between border-b-2 border-base-content/20 px-4 py-3">
@@ -222,7 +222,7 @@ defmodule BusterClawWeb.ChatPanel do
         phx-click="toggle_svg_viewer"
         aria-expanded={to_string(@open)}
         title={if @open, do: "Hide SVG viewer", else: "Show SVG viewer"}
-        class="ic-panel flex w-8 shrink-0 flex-col items-center gap-3 py-3 text-base-content/60 transition hover:border-primary hover:text-primary"
+        class="ic-panel flex w-8 shrink-0 self-start flex-col items-center gap-3 py-3 text-base-content/60 transition hover:border-primary hover:text-primary"
       >
         <.icon name={if @open, do: "hero-chevron-left", else: "hero-chevron-right"} class="size-4" />
         <span class="font-mono text-[0.6rem] uppercase tracking-widest [writing-mode:vertical-rl]">

@@ -48,7 +48,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
     |> assign(:zoomed_id, nil)
-    |> assign(:svg_viewer_open, true)
+    |> assign(:svg_viewer_open, false)
     |> load_chat_history(active)
   end
 
