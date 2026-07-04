@@ -86,6 +86,15 @@ export async function createSmoke(
     ],
   })
 
+  // Set the moment the GPU device is lost. The hook watches `lost` (the promise)
+  // to tear the canvas down, but that cleanup is async — frames can still fire in
+  // the gap between loss and teardown. This flag lets `render` bail synchronously
+  // so a queue/getCurrentTexture call never throws out of the rAF callback.
+  let deviceLost = false
+  device.lost.then(() => {
+    deviceLost = true
+  })
+
   return {
     // Resolves when the GPU goes away (never rejects) — the hook uses it to
     // stop drawing on a dead device.
@@ -95,30 +104,39 @@ export async function createSmoke(
     // `contentDirty` are unused by the background (always false) but kept so the
     // renderer stays general.
     render({uniforms, contentSource, contentDirty}) {
-      if (contentDirty && contentSource) {
-        device.queue.copyExternalImageToTexture(
-          {source: contentSource},
-          {texture: contentTex},
-          [contentWidth, contentHeight]
-        )
+      // Bail if the device is (or has just gone) lost — issuing GPU work against
+      // a dead device throws, and here that would escape the rAF callback.
+      if (deviceLost) return
+      try {
+        if (contentDirty && contentSource) {
+          device.queue.copyExternalImageToTexture(
+            {source: contentSource},
+            {texture: contentTex},
+            [contentWidth, contentHeight]
+          )
+        }
+        device.queue.writeBuffer(ubuf, 0, uniforms)
+        const enc = device.createCommandEncoder()
+        const pass = enc.beginRenderPass({
+          colorAttachments: [
+            {
+              view: ctx.getCurrentTexture().createView(),
+              loadOp: "clear",
+              storeOp: "store",
+              clearValue: {r: 0.055, g: 0.055, b: 0.055, a: 1},
+            },
+          ],
+        })
+        pass.setPipeline(pipeline)
+        pass.setBindGroup(0, bind)
+        pass.draw(3)
+        pass.end()
+        device.queue.submit([enc.finish()])
+      } catch (_e) {
+        // Device lost mid-frame (before device.lost resolved): mark it so the
+        // loop stops instead of throwing every frame until teardown catches up.
+        deviceLost = true
       }
-      device.queue.writeBuffer(ubuf, 0, uniforms)
-      const enc = device.createCommandEncoder()
-      const pass = enc.beginRenderPass({
-        colorAttachments: [
-          {
-            view: ctx.getCurrentTexture().createView(),
-            loadOp: "clear",
-            storeOp: "store",
-            clearValue: {r: 0.055, g: 0.055, b: 0.055, a: 1},
-          },
-        ],
-      })
-      pass.setPipeline(pipeline)
-      pass.setBindGroup(0, bind)
-      pass.draw(3)
-      pass.end()
-      device.queue.submit([enc.finish()])
     },
 
     // Call after the canvas backing size changes.

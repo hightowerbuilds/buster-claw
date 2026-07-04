@@ -45,8 +45,14 @@ defmodule BusterClaw.Settings do
   @doc "Delete a setting by key. Returns `:ok` regardless of prior existence."
   def delete(key) when is_binary(key) do
     case Repo.get_by(Setting, key: key) do
-      nil -> :ok
-      %Setting{} = setting -> Repo.delete(setting) && :ok
+      nil ->
+        :ok
+
+      %Setting{} = setting ->
+        case Repo.delete(setting) do
+          {:ok, _} -> :ok
+          {:error, changeset} -> {:error, changeset}
+        end
     end
   end
 

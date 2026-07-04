@@ -82,19 +82,25 @@ defmodule BusterClawWeb.CalendarLive do
   end
 
   def handle_event("inspect", %{"id" => id}, socket) do
-    event = Calendar.get_event!(id)
-    {:noreply, assign(socket, viewing_event: event, result: nil)}
+    case safe_get_event(id) do
+      nil -> {:noreply, socket}
+      event -> {:noreply, assign(socket, viewing_event: event, result: nil)}
+    end
   end
 
   def handle_event("edit", %{"id" => id}, socket) do
-    event = Calendar.get_event!(id)
+    case safe_get_event(id) do
+      nil ->
+        {:noreply, socket}
 
-    {:noreply,
-     socket
-     |> assign(:editing_event, event)
-     |> assign(:viewing_event, nil)
-     |> assign(:result, nil)
-     |> assign_form(Event.changeset(event, %{}))}
+      event ->
+        {:noreply,
+         socket
+         |> assign(:editing_event, event)
+         |> assign(:viewing_event, nil)
+         |> assign(:result, nil)
+         |> assign_form(Event.changeset(event, %{}))}
+    end
   end
 
   def handle_event("close_inspect", _params, socket) do
@@ -110,16 +116,21 @@ defmodule BusterClawWeb.CalendarLive do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    event = Calendar.get_event!(id)
-    {:ok, _event} = Calendar.delete_event(event)
+    case safe_get_event(id) do
+      nil ->
+        {:noreply, socket}
 
-    {:noreply,
-     socket
-     |> assign(:editing_event, nil)
-     |> assign(:viewing_event, nil)
-     |> assign(:result, "Event deleted.")
-     |> assign_form(Event.changeset(%Event{}, default_attrs(socket.assigns.today)))
-     |> rebuild_view()}
+      event ->
+        {:ok, _event} = Calendar.delete_event(event)
+
+        {:noreply,
+         socket
+         |> assign(:editing_event, nil)
+         |> assign(:viewing_event, nil)
+         |> assign(:result, "Event deleted.")
+         |> assign_form(Event.changeset(%Event{}, default_attrs(socket.assigns.today)))
+         |> rebuild_view()}
+    end
   end
 
   def handle_event("set_view", %{"view" => view}, socket) when view in ~w(month week day) do

@@ -123,9 +123,11 @@ defmodule BusterClaw.Integrations.GitHub do
   end
 
   @impl true
+  # Fail closed: an integration with no configured secret cannot authenticate a
+  # webhook, so reject it rather than accepting arbitrary unauthenticated POSTs.
   def verify_webhook(%Integration{webhook_secret: secret}, _headers, _body)
       when secret in [nil, ""] do
-    :ok
+    {:error, :webhook_secret_not_configured}
   end
 
   def verify_webhook(%Integration{webhook_secret: secret}, headers, body) do
@@ -217,8 +219,45 @@ defmodule BusterClaw.Integrations.GitHub do
 
     case Req.get(req_options) do
       {:ok, %{status: status, body: body}} when status in 200..299 -> {:ok, body}
-      {:ok, %{status: status, body: body}} -> {:error, {:http_error, status, body}}
+      {:ok, %Req.Response{} = resp} -> classify_http_error(resp)
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Surface 429/secondary-rate-limit distinctly so callers can back off, instead
+  # of collapsing everything into a generic http_error. GitHub signals a primary
+  # limit with 429 and a secondary limit with 403 + `retry-after` /
+  # `x-ratelimit-remaining: 0`.
+  defp classify_http_error(%Req.Response{status: status} = resp) when status in [429, 403] do
+    case rate_limit_retry_after(resp) do
+      nil when status == 403 -> {:error, {:http_error, 403, resp.body}}
+      retry_after -> {:error, {:rate_limited, status, retry_after}}
+    end
+  end
+
+  defp classify_http_error(%Req.Response{status: status, body: body}) do
+    {:error, {:http_error, status, body}}
+  end
+
+  defp rate_limit_retry_after(resp) do
+    case Req.Response.get_header(resp, "retry-after") do
+      [value | _] ->
+        parse_retry_after(value)
+
+      _ ->
+        case Req.Response.get_header(resp, "x-ratelimit-remaining") do
+          ["0" | _] -> 0
+          _ -> nil
+        end
+    end
+  end
+
+  # Only the numeric-seconds form is parsed; HTTP-date Retry-After values fall
+  # back to nil (still surfaced as :rate_limited, just without a delay hint).
+  defp parse_retry_after(value) do
+    case Integer.parse(to_string(value)) do
+      {seconds, _rest} when seconds >= 0 -> seconds
+      _ -> nil
     end
   end
 

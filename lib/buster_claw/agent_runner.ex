@@ -20,8 +20,10 @@ defmodule BusterClaw.AgentRunner do
     it reaches the agent's *persisted* login — headless auth needs no TTY. Tests
     override `:agent_binary`/`:argv`/`:env` to stay hermetic.
   - A wall-clock deadline kills a hung run (the `exec` means the captured os_pid
-    *is* the agent, so the kill lands on it). Grandchildren the agent itself
-    spawns are out of scope here — the Phase 2 budget governor owns that.
+    *is* the agent, so the kill lands on it). The run is launched as its own
+    process-group leader (`setpgrp` before the final `exec`), so a timeout kills
+    the whole group — the agent AND the tool subprocesses (Bash/MCP) it spawned —
+    instead of leaking grandchildren behind the reaped parent.
 
   ## Trust boundary (important)
 
@@ -170,9 +172,15 @@ defmodule BusterClaw.AgentRunner do
       {:error, {:spawn_failed, Exception.message(error)}}
   end
 
-  # `<shell> -c 'exec "$@" 2>&1' sh <binary> <args...>` — `$@` starts after the
-  # `sh` placeholder (arg0), so the binary and prompt pass through untouched and
-  # stderr is merged into stdout.
+  # `<shell> -c '…perl… exec @ARGV… 2>&1' sh <binary> <args...>` — `$@` starts
+  # after the `sh` placeholder (arg0), so the binary and prompt pass through
+  # untouched and stderr is merged into stdout.
+  #
+  # We `exec perl -e 'setpgrp(0,0); exec @ARGV'` so the run becomes its own
+  # process-group leader (pgid == os_pid, preserved across the final `exec` into
+  # the agent) — this is what lets `kill_port/1` reap the whole group (agent +
+  # its Bash/MCP tool subprocesses) on a timeout instead of orphaning them. `perl`
+  # is universally present on macOS and, unlike `setsid`, needs no extra binary.
   #
   # `:login` runs the shell as a login shell (`-lc`) so it sources the user's
   # profile (~/.zprofile etc.) — the same trick `terminal.rs` uses, so a
@@ -182,7 +190,8 @@ defmodule BusterClaw.AgentRunner do
   defp open_port(binary, args, cwd, opts) do
     shell = Keyword.get(opts, :shell) || "/bin/sh"
     flag = if Keyword.get(opts, :login, false), do: "-lc", else: "-c"
-    shell_args = [flag, ~s(exec "$@" 2>&1), "sh", binary | args]
+    cmd = ~s|exec perl -e 'setpgrp(0,0); exec @ARGV or exit 127' "$@" 2>&1|
+    shell_args = [flag, cmd, "sh", binary | args]
 
     port_opts =
       [:binary, :exit_status, :hide, {:args, shell_args}, {:cd, String.to_charlist(cwd)}] ++
@@ -226,15 +235,24 @@ defmodule BusterClaw.AgentRunner do
   end
 
   @doc """
-  Kill the underlying OS process (it is the agent, thanks to `exec`) then close
-  the port. Best-effort: a run that finished a microsecond before the deadline
-  may have no os_pid left, which is fine. Exposed for streaming callers
-  (`open/2`) that own their own deadline.
+  Kill the underlying OS process group (the run is its own group leader via
+  `setpgrp`, so pgid == os_pid) then close the port. Signalling the negative
+  pgid reaps the agent AND the Bash/MCP tool subprocesses it spawned, so a
+  timeout doesn't leak grandchildren. Best-effort: a run that finished a
+  microsecond before the deadline may have no os_pid left, which is fine.
+  Exposed for streaming callers (`open/2`) that own their own deadline.
   """
   def kill_port(port) do
     case Port.info(port, :os_pid) do
-      {:os_pid, os_pid} -> System.cmd("/bin/kill", ["-KILL", Integer.to_string(os_pid)])
-      _ -> :ok
+      {:os_pid, os_pid} ->
+        # Kill the whole group (pgid == os_pid), then the leader directly as a
+        # belt-and-suspenders in case the group signal missed it (e.g. `setpgrp`
+        # was unavailable and the process never became a leader).
+        System.cmd("/bin/kill", ["-KILL", "-#{os_pid}"], stderr_to_stdout: true)
+        System.cmd("/bin/kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
+
+      _ ->
+        :ok
     end
 
     try do

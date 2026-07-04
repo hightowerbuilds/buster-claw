@@ -68,14 +68,41 @@ defmodule BusterClaw.Wallets do
   # Transactions
   # ---------------------------------------------------------------------------
 
-  def list_transactions(%Wallet{} = wallet), do: list_transactions(wallet.id)
+  # Default cap so the ledger view never pulls a wallet's entire history in one
+  # query. Callers wanting everything can pass `limit: :infinity`.
+  @default_transaction_limit 500
 
-  def list_transactions(wallet_id) do
+  @doc """
+  List a wallet's transactions, newest first.
+
+  Options:
+    * `:limit`  — max rows (default `#{@default_transaction_limit}`; `:infinity` for no cap)
+    * `:offset` — rows to skip, for paging
+  """
+  def list_transactions(wallet, opts \\ [])
+
+  def list_transactions(%Wallet{} = wallet, opts), do: list_transactions(wallet.id, opts)
+
+  def list_transactions(wallet_id, opts) do
+    limit = Keyword.get(opts, :limit, @default_transaction_limit)
+    offset = Keyword.get(opts, :offset, 0)
+
     Transaction
     |> where([t], t.wallet_id == ^wallet_id)
     |> order_by([t], desc: t.occurred_on, desc: t.inserted_at)
+    |> maybe_limit(limit)
+    |> maybe_offset(offset)
     |> Repo.all()
   end
+
+  defp maybe_limit(query, :infinity), do: query
+  defp maybe_limit(query, nil), do: query
+  defp maybe_limit(query, limit) when is_integer(limit), do: limit(query, ^limit)
+
+  defp maybe_offset(query, offset) when is_integer(offset) and offset > 0,
+    do: offset(query, ^offset)
+
+  defp maybe_offset(query, _offset), do: query
 
   def change_transaction(%Transaction{} = transaction \\ %Transaction{}, attrs \\ %{}) do
     Transaction.changeset(transaction, attrs)
@@ -112,8 +139,10 @@ defmodule BusterClaw.Wallets do
   def delete_transaction(%Transaction{} = transaction) do
     result =
       Repo.transaction(fn ->
-        {:ok, deleted} = Repo.delete(transaction)
-        {recompute_balance!(transaction.wallet_id), deleted}
+        case Repo.delete(transaction) do
+          {:ok, deleted} -> {recompute_balance!(transaction.wallet_id), deleted}
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
       end)
 
     case result do
@@ -194,7 +223,30 @@ defmodule BusterClaw.Wallets do
     base
     |> Budget.changeset(attrs)
     |> Repo.insert_or_update()
+    |> resolve_budget_race(wallet.id, month, attrs)
     |> broadcast_budget()
+  end
+
+  # A concurrent writer can insert the [wallet_id, month] row between our read and
+  # our insert; the unique index then trips as a changeset error. Rather than
+  # surface a spurious "has already been taken", re-read the winning row and apply
+  # our update on top of it.
+  defp resolve_budget_race({:error, changeset} = result, wallet_id, month, attrs)
+       when is_binary(month) do
+    if unique_conflict?(changeset) do
+      case get_budget(wallet_id, month) do
+        %Budget{} = existing -> existing |> Budget.changeset(attrs) |> Repo.update()
+        nil -> result
+      end
+    else
+      result
+    end
+  end
+
+  defp resolve_budget_race(result, _wallet_id, _month, _attrs), do: result
+
+  defp unique_conflict?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn {_field, {_msg, opts}} -> opts[:constraint] == :unique end)
   end
 
   @doc """

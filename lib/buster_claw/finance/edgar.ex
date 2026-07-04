@@ -16,6 +16,8 @@ defmodule BusterClaw.Finance.Edgar do
   @data_host "https://data.sec.gov"
   @default_user_agent "BusterClaw/0.1 (financial research; set :buster_claw, :finance_user_agent)"
   @default_filings_limit 10
+  # How long the ticker→CIK map is cached in :persistent_term before a refetch.
+  @ticker_ttl_ms 24 * 60 * 60 * 1000
 
   # us-gaap concepts surfaced by `fundamentals/2`, in display order. Anything
   # missing from a company's facts is reported as unavailable, never guessed.
@@ -138,16 +140,20 @@ defmodule BusterClaw.Finance.Edgar do
   # --- ticker → CIK map (cached; the source file is large and rarely changes) ---
 
   defp ticker_map(opts) do
+    now = System.monotonic_time(:millisecond)
+
     case :persistent_term.get({__MODULE__, :ticker_map}, nil) do
-      nil ->
+      {map, expires_at} when expires_at > now ->
+        {:ok, map}
+
+      # Missing, or past its TTL — (re)build so newly listed tickers resolve
+      # without a restart.
+      _ ->
         with {:ok, body} <- get_json(@ticker_url, opts) do
           map = build_ticker_map(body)
-          :persistent_term.put({__MODULE__, :ticker_map}, map)
+          :persistent_term.put({__MODULE__, :ticker_map}, {map, now + @ticker_ttl_ms})
           {:ok, map}
         end
-
-      map ->
-        {:ok, map}
     end
   end
 
@@ -185,8 +191,7 @@ defmodule BusterClaw.Finance.Edgar do
     docs = List.wrap(recent["primaryDocument"])
 
     [forms, dates, reports, accessions, docs]
-    |> zip_columns()
-    |> Enum.take(limit)
+    |> zip_columns(limit)
     |> Enum.map(fn [form, filing_date, report_date, accession, doc] ->
       %{
         form: form,
@@ -200,9 +205,16 @@ defmodule BusterClaw.Finance.Edgar do
 
   defp parse_filings(_body, _cik, _limit), do: []
 
-  defp zip_columns(columns) do
-    rows = columns |> Enum.map(&length/1) |> Enum.min(fn -> 0 end)
-    for i <- 0..(rows - 1)//1, rows > 0, do: Enum.map(columns, &Enum.at(&1, i))
+  # Zip the parallel filing columns into per-filing rows, materializing only the
+  # first `limit` rows. Columns are list-backed, so we slice each to `limit`
+  # BEFORE zipping — otherwise building every row via repeated `Enum.at/2` is
+  # O(n²) over the (potentially thousands of) filings. `Enum.zip/1` truncates to
+  # the shortest column, matching the previous min-length behaviour.
+  defp zip_columns(columns, limit) do
+    columns
+    |> Enum.map(&Enum.take(&1, limit))
+    |> Enum.zip()
+    |> Enum.map(&Tuple.to_list/1)
   end
 
   defp filing_url(_cik, accession, doc) when accession in [nil, ""] or doc in [nil, ""], do: nil

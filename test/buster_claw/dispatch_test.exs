@@ -148,4 +148,34 @@ defmodule BusterClaw.DispatchTest do
     # Everything is back in the open/queued pool, nothing stuck in-flight.
     assert length(Dispatch.list_queued()) == 2
   end
+
+  test "any_untrusted_open? weighs the whole open pool, not a newest-first sample" do
+    # An empty pool is trusted; a trusted-only pool stays trusted.
+    refute Dispatch.any_untrusted_open?()
+
+    {:ok, _} =
+      Dispatch.enqueue(%{source: "gmail", gmail_message_id: "trusted-1", trusted: true})
+
+    refute Dispatch.any_untrusted_open?()
+
+    # Bury an untrusted item under more than a default page of trusted items; the
+    # EXISTS probe must still find it (the old newest-first sample would miss it).
+    {:ok, buried} =
+      Dispatch.enqueue(%{source: "gmail", gmail_message_id: "untrusted", trusted: false})
+
+    for i <- 1..60 do
+      {:ok, _} = Dispatch.enqueue(%{source: "gmail", gmail_message_id: "t-#{i}", trusted: true})
+    end
+
+    assert Dispatch.any_untrusted_open?()
+
+    # Resolving the untrusted item out of the open pool clears the flag (only
+    # queued/claimed/running items count).
+    {:ok, _done} = Dispatch.finish(buried, "done")
+    refute Dispatch.any_untrusted_open?()
+
+    # A freshly-queued untrusted item flips it back.
+    {:ok, _} = Dispatch.enqueue(%{source: "manual", trusted: false})
+    assert Dispatch.any_untrusted_open?()
+  end
 end

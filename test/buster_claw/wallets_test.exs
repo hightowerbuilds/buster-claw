@@ -78,6 +78,53 @@ defmodule BusterClaw.WalletsTest do
     assert Wallets.get_wallet!(wallet.id).balance_cents == -4_000
   end
 
+  test "update_wallet cannot overwrite the ledger-derived cached balance" do
+    wallet = wallet!()
+
+    {:ok, _} =
+      Wallets.add_transaction(wallet, %{
+        kind: "income",
+        amount_cents: 8_000,
+        occurred_on: ~D[2026-06-01]
+      })
+
+    wallet = Wallets.get_wallet!(wallet.id)
+    assert wallet.balance_cents == 8_000
+
+    # A stray balance_cents in the attrs must be ignored — only recompute writes it.
+    assert {:ok, updated} =
+             Wallets.update_wallet(wallet, %{name: "Renamed", balance_cents: 999_999})
+
+    assert updated.name == "Renamed"
+    assert updated.balance_cents == 8_000
+    assert Wallets.get_wallet!(wallet.id).balance_cents == 8_000
+  end
+
+  test "list_transactions honors an explicit limit and default cap ordering" do
+    wallet = wallet!()
+
+    for day <- 1..5 do
+      {:ok, _} =
+        Wallets.add_transaction(wallet, %{
+          kind: "income",
+          amount_cents: day * 1_000,
+          occurred_on: Date.new!(2026, 6, day)
+        })
+    end
+
+    assert length(Wallets.list_transactions(wallet, limit: 2)) == 2
+    # newest-first ordering: most recent occurred_on comes back first
+    [first | _] = Wallets.list_transactions(wallet, limit: 2)
+    assert first.occurred_on == ~D[2026-06-05]
+
+    # offset pages past the first row
+    [second] = Wallets.list_transactions(wallet, limit: 1, offset: 1)
+    assert second.occurred_on == ~D[2026-06-04]
+
+    # :infinity disables the cap
+    assert length(Wallets.list_transactions(wallet, limit: :infinity)) == 5
+  end
+
   test "rejects non-positive transaction amounts" do
     wallet = wallet!()
 

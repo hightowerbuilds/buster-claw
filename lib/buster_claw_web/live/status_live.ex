@@ -12,6 +12,13 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.SvgViewer
   alias BusterClaw.TrustedSenders
 
+  # Cap the retained in-memory transcript / SVG bank on the always-open home tab
+  # so a long-lived session can't grow its assigns unbounded (oldest drop off the
+  # front). The rendered history stays generous; the persisted transcript is the
+  # source of truth and is re-read on tab-switch / reload.
+  @max_chat_messages 200
+  @max_chat_svgs 200
+
   @impl true
   def mount(_params, _session, socket) do
     today = LocalTime.today()
@@ -181,6 +188,11 @@ defmodule BusterClawWeb.StatusLive do
   def handle_event("close_chat", %{"id" => id}, socket) do
     Chat.stop(id)
     Conversations.close(id)
+    # Drop the subscription to the now-closed conversation's topic so its future
+    # broadcasts (if any) no longer reach this LiveView.
+    if connected?(socket),
+      do: Phoenix.PubSub.unsubscribe(BusterClaw.PubSub, Chat.topic(id))
+
     remaining = Enum.reject(socket.assigns.chats, &(&1.id == id))
 
     socket =
@@ -349,7 +361,13 @@ defmodule BusterClawWeb.StatusLive do
 
     socket
     |> assign(:chat_seq, seq)
-    |> update(:chat_messages, &(&1 ++ [msg]))
+    |> update(:chat_messages, &cap_list(&1 ++ [msg], @max_chat_messages))
+  end
+
+  # Keep an appended list to a bound by dropping the oldest entries off the front.
+  defp cap_list(list, max) do
+    over = length(list) - max
+    if over > 0, do: Enum.drop(list, over), else: list
   end
 
   # Append newly-drawn SVGs to the SVG viewer (sanitized before they're stored,
@@ -366,7 +384,7 @@ defmodule BusterClawWeb.StatusLive do
 
     socket
     |> assign(:svg_seq, base + length(svgs))
-    |> update(:chat_svgs, &(&1 ++ new))
+    |> update(:chat_svgs, &cap_list(&1 ++ new, @max_chat_svgs))
   end
 
   # Move the zoomed image one step through the SVG viewer (clamped at the ends).

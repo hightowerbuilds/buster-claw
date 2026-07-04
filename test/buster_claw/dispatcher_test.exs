@@ -238,6 +238,37 @@ defmodule BusterClaw.DispatcherTest do
       refute Orchestration.shift_active?()
     end
 
+    test "does not start a swarm whose worst-case fan-out would overshoot the cap" do
+      prev = Application.get_env(:buster_claw, :swarm_max_subtasks)
+      Application.put_env(:buster_claw, :swarm_max_subtasks, 6)
+
+      on_exit(fn ->
+        if prev,
+          do: Application.put_env(:buster_claw, :swarm_max_subtasks, prev),
+          else: Application.delete_env(:buster_claw, :swarm_max_subtasks)
+      end)
+
+      {:ok, shift} = Orchestration.start_shift(unattended: true)
+      enqueue!(%{strategy: "swarm", request_summary: "big job"})
+
+      test_pid = self()
+      coordinator = fn goal, opts -> send(test_pid, {:coordinated, goal, opts}) end
+
+      # cap 3 admits a single run (0 < 3) but NOT a swarm's worst case
+      # (planner 1 + swarm_max_subtasks 6 = 7 > 3): the shift stops cleanly rather
+      # than letting the on-completion `dispatched` bump overshoot.
+      server =
+        start_dispatcher!(stub_runner(self()), coordinator: coordinator, max_runs_per_shift: 3)
+
+      Dispatcher.tick_now(server)
+      flush(server)
+
+      refute_receive {:coordinated, _goal, _opts}, 200
+      refute_receive {:ran, _pid}, 200
+      assert reload_shift(shift.id).status == "stopped"
+      refute Orchestration.shift_active?()
+    end
+
     test "runs normally while under the cap" do
       {:ok, shift} = Orchestration.start_shift(unattended: true)
       enqueue!()
@@ -403,6 +434,22 @@ defmodule BusterClaw.DispatcherTest do
     test "any untrusted item makes the run use the agent (untrusted) token" do
       {:ok, shift} = Orchestration.start_shift(unattended: true)
       enqueue!(%{trusted: false})
+      server = start_dispatcher!(capturing_runner(self()))
+
+      Dispatcher.tick_now(server)
+
+      assert_receive {:opts, opts}, 1_000
+      assert env_token(opts) == BusterClaw.ApiToken.agent_value()
+      wait_until(fn -> reload_shift(shift.id).done_count == 1 end)
+    end
+
+    test "an untrusted item buried beyond the newest 50 still forces the agent token" do
+      {:ok, shift} = Orchestration.start_shift(unattended: true)
+      # Oldest item is untrusted; a full page of newer trusted items would hide it
+      # from a bounded newest-first sample, but the EXISTS gate must still catch it.
+      enqueue!(%{trusted: false})
+      for _ <- 1..55, do: enqueue!(%{trusted: true})
+
       server = start_dispatcher!(capturing_runner(self()))
 
       Dispatcher.tick_now(server)

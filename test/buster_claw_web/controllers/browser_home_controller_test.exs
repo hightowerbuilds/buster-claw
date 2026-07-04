@@ -84,4 +84,28 @@ defmodule BusterClawWeb.BrowserHomeControllerTest do
     assert conn.status == 204
     assert [%{url: "https://recorded.com", title: "Rec"}] = BrowserHistory.list()
   end
+
+  test "neutralises a javascript: bookmark href to '#'", %{conn: conn} do
+    Bookmarks.add("javascript:alert(1)", "Sneaky")
+
+    body = conn |> get(~p"/browser/home") |> response(200)
+    # The scheme survives html-escaping, so it must not remain a clickable href.
+    refute body =~ ~s(href="javascript:)
+    assert body =~ ~s(<a href="#">)
+  end
+
+  test "neutralises a javascript: recent href to '#'", %{conn: conn} do
+    BrowserHistory.record("javascript:alert(1)", "Sneaky")
+
+    body = conn |> get(~p"/browser/home") |> response(200)
+    refute body =~ ~s(href="javascript:)
+    assert body =~ ~s(<a href="#">)
+  end
+
+  test "keeps a scheme-less workspace path as a clickable href", %{conn: conn} do
+    BrowserHistory.record("/library/notes.md", "Notes")
+
+    body = conn |> get(~p"/browser/home") |> response(200)
+    assert body =~ ~s(href="/library/notes.md")
+  end
 end

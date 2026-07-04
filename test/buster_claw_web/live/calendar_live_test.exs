@@ -68,6 +68,17 @@ defmodule BusterClawWeb.CalendarLiveTest do
     assert [] = Calendar.list_events()
   end
 
+  test "a crafted non-integer event id does not crash the LiveView", %{conn: conn} do
+    {:ok, view, _html} = live_isolated(conn, BusterClawWeb.CalendarLive)
+
+    # A malformed phx-value-id would raise on Calendar.get_event!/1; the guarded
+    # handlers must swallow it and keep the view alive.
+    assert render_click(view, "inspect", %{"id" => "not-a-number"})
+    assert render_click(view, "edit", %{"id" => "not-a-number"})
+    assert render_click(view, "delete", %{"id" => "999999999"})
+    assert Process.alive?(view.pid)
+  end
+
   defp pad(n) when n < 10, do: "0#{n}"
   defp pad(n), do: "#{n}"
 end

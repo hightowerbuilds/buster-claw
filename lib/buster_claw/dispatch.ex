@@ -78,6 +78,23 @@ defmodule BusterClaw.Dispatch do
   end
 
   @doc """
+  True if ANY open item (queued/claimed/running) is not explicitly trusted.
+
+  A cheap EXISTS probe for the Dispatcher's fail-closed provenance gate: it must
+  weigh the WHOLE open pool, never a bounded newest-first sample, or an older
+  untrusted item beyond the sample window would be invisible and a run could get
+  the trusted token while an untrusted item is queued. A `nil` `trusted` counts
+  as untrusted (fail closed).
+  """
+  def any_untrusted_open? do
+    from(item in Item,
+      where: item.status in @open_statuses,
+      where: is_nil(item.trusted) or item.trusted == false
+    )
+    |> Repo.exists?()
+  end
+
+  @doc """
   Return orphaned in-flight items (`claimed`/`running`) to the `queued` pool and
   clear their claim fields. Called on boot so a hard restart that left no session
   owning an item doesn't strand it. Returns the count reset.

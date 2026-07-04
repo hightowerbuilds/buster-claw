@@ -184,7 +184,40 @@ defmodule BusterClaw.Google.Calendar do
 
   defp event_time(_other), do: %{date: nil, date_time: nil, time: nil, all_day?: true}
 
+  # Google's `dateTime` is RFC3339 carrying its own UTC offset (often `Z` for
+  # UTC). Honour that offset and convert the instant to the runtime's local
+  # wall-clock, so a `Z`/non-local-offset event lands at the correct local time
+  # while an event already expressed in the local offset is unchanged. Falls back
+  # to a naive parse only when no parseable offset is present.
   defp parse_wall_datetime(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, %DateTime{} = utc, _offset} ->
+        local_wall_datetime(utc)
+
+      _other ->
+        parse_naive_wall_datetime(value)
+    end
+  end
+
+  defp parse_wall_datetime(_value), do: nil
+
+  # `DateTime.from_iso8601/1` returns the instant already normalised to UTC;
+  # `:calendar` shifts it to the OS-local zone (honouring DST at that instant).
+  defp local_wall_datetime(%DateTime{} = utc) do
+    {{year, month, day}, {hour, minute, second}} =
+      :calendar.universal_time_to_local_time(
+        {{utc.year, utc.month, utc.day}, {utc.hour, utc.minute, utc.second}}
+      )
+
+    with {:ok, date} <- Date.new(year, month, day),
+         {:ok, time} <- Time.new(hour, minute, second) do
+      {date, time}
+    else
+      _other -> nil
+    end
+  end
+
+  defp parse_naive_wall_datetime(value) do
     value
     |> String.slice(0, 19)
     |> NaiveDateTime.from_iso8601()
@@ -196,8 +229,6 @@ defmodule BusterClaw.Google.Calendar do
         nil
     end
   end
-
-  defp parse_wall_datetime(_value), do: nil
 
   defp time_window(opts) do
     today = LocalTime.today()

@@ -44,6 +44,36 @@ defmodule BusterClaw.Browserbase.SessionManagerTest do
     def close(_sidecar_id, _opts), do: :ok
   end
 
+  # Client whose `create` parks until the test releases it, simulating a slow
+  # network open. It announces the task pid so the test can decide when to let it
+  # proceed — used to prove the manager loop is not blocked on an in-flight open.
+  defmodule GatedClient do
+    def create(opts) do
+      gate = Keyword.fetch!(opts, :gate)
+      send(gate, {:create_started, self()})
+
+      receive do
+        :go -> :ok
+      after
+        30_000 -> :ok
+      end
+
+      id = "sess-" <> Integer.to_string(System.unique_integer([:positive]))
+      {:ok, %{id: id, connect_url: "wss://connect/" <> id, status: "RUNNING"}}
+    end
+
+    def debug(id, _opts), do: {:ok, %{live_view_url: "https://live/" <> id}}
+
+    def release(id, _opts) do
+      case Application.get_env(:buster_claw, :test_bb_pid) do
+        pid when is_pid(pid) -> send(pid, {:released, id})
+        _ -> :ok
+      end
+
+      :ok
+    end
+  end
+
   setup do
     Application.put_env(:buster_claw, :test_bb_pid, self())
     on_exit(fn -> Application.delete_env(:buster_claw, :test_bb_pid) end)
@@ -147,5 +177,42 @@ defmodule BusterClaw.Browserbase.SessionManagerTest do
     # the Browserbase session created moments earlier was released, not orphaned
     assert_receive {:released, _id}
     assert [] = SessionManager.list(opts)
+  end
+
+  test "a slow open never blocks touch on other sessions (no head-of-line blocking)" do
+    opts = start_manager(client: GatedClient, client_opts: [gate: self()])
+
+    # First open — let it proceed immediately so we have a live session to touch.
+    first = Task.async(fn -> SessionManager.open(opts) end)
+    assert_receive {:create_started, t1}, 1_000
+    send(t1, :go)
+    assert {:ok, %{session_id: sid}} = Task.await(first)
+
+    # Second open — leave its network I/O parked in flight.
+    second = Task.async(fn -> SessionManager.open(opts) end)
+    assert_receive {:create_started, t2}, 1_000
+
+    # With the blocking I/O off the loop, touch of the first session still
+    # returns promptly. (Under the old serialized do_open it would sit behind the
+    # parked open and blow the 5s call timeout.)
+    assert :ok = SessionManager.touch(sid, opts)
+
+    # Release the parked open so nothing leaks/hangs on teardown.
+    send(t2, :go)
+    assert {:ok, _} = Task.await(second)
+  end
+
+  test "an in-flight open counts toward max concurrency (no cap breach)" do
+    opts = start_manager(client: GatedClient, client_opts: [gate: self()], max_concurrent: 1)
+
+    parked = Task.async(fn -> SessionManager.open(opts) end)
+    assert_receive {:create_started, gate_pid}, 1_000
+
+    # While the first open is still creating, a second open must be rejected —
+    # the reserved slot counts, so a slow open can't overshoot the paid-session cap.
+    assert {:error, :max_sessions} = SessionManager.open(opts)
+
+    send(gate_pid, :go)
+    assert {:ok, _} = Task.await(parked)
   end
 end

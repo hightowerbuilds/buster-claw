@@ -32,6 +32,10 @@ defmodule BusterClawWeb.IntegrationsLive do
     {:noreply, load_integrations(socket)}
   end
 
+  # Ignore any unexpected message shape on the subscribed topic rather than
+  # crashing the LiveView with a FunctionClauseError.
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   @impl true
   def handle_event("validate", %{"integration" => params}, socket) do
     integration = socket.assigns.editing_integration || %Integration{}

@@ -194,6 +194,24 @@ defmodule BusterClaw.Integrations.SentryTest do
     assert [] = Library.list_documents()
   end
 
+  test "rejects a Sentry webhook when no secret is configured (fail closed)" do
+    body = Jason.encode!(%{"action" => "issue.created"})
+
+    {:ok, integration} =
+      Integrations.create_integration(%{
+        name: "Sentry No Secret",
+        service_type: "sentry",
+        config_text: ~s({"org":"acme","project":"checkout"})
+      })
+
+    assert {:error, run} =
+             Integrations.handle_webhook(integration, [{"sentry-hook-signature", "x"}], body)
+
+    assert run.status == "error"
+    assert run.error =~ "webhook_secret_not_configured"
+    assert [] = Library.list_documents()
+  end
+
   defp hmac(secret, body) do
     :crypto.mac(:hmac, :sha256, secret, body) |> Base.encode16(case: :lower)
   end

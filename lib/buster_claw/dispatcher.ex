@@ -75,18 +75,24 @@ defmodule BusterClaw.Dispatcher do
       coordinator: Keyword.get(opts, :coordinator, &BusterClaw.Swarm.Coordinator.coordinate/2),
       running_ref: nil,
       running_pid: nil,
-      last_finished_ms: nil
+      last_finished_ms: nil,
+      tick_ref: nil
     }
 
     if Keyword.get(opts, :autostart, true), do: send(self(), :tick)
     {:ok, state}
   end
 
+  # ONE periodic timer, no matter how many `:tick` messages arrive. `tick_now/1`
+  # and boot inject `:tick` out-of-band; if each rescheduled unconditionally, every
+  # nudge would fork its own self-perpetuating timer chain. Instead we cancel the
+  # stored timer and replace it, so there is always exactly one pending scheduled
+  # tick — an out-of-band nudge just triggers an immediate evaluation and resets
+  # the backstop rather than spawning a parallel chain.
   @impl true
   def handle_info(:tick, state) do
     state = maybe_run(state)
-    Process.send_after(self(), :tick, state.interval_ms)
-    {:noreply, state}
+    {:noreply, schedule_tick(state)}
   end
 
   # A freshly-queued item is the strongest signal there is work; react at once.
@@ -137,8 +143,21 @@ defmodule BusterClaw.Dispatcher do
         # A swarm-strategy item is coordinator-owned (the generic claim path skips
         # it), so prefer it when one is queued; otherwise run the normal batch pump.
         case Dispatch.list_queued(limit: 1, strategy: "swarm") do
-          [item | _] -> start_swarm_run(state, shift, item)
-          [] -> start_run(state, shift)
+          [item | _] ->
+            # A swarm fans out to planner + up to `swarm_max_subtasks` runs, counted
+            # only on completion, so `within_budget?` (runs < cap) can be true yet the
+            # realized cost overshoot the cap. Reserve the worst case against the cap
+            # BEFORE starting; if it wouldn't fit, stop the shift cleanly rather than
+            # overshoot (the safe direction — see `within_swarm_budget?/2`).
+            if within_swarm_budget?(shift, state) do
+              start_swarm_run(state, shift, item)
+            else
+              trip_budget_brake(shift, state)
+              state
+            end
+
+          [] ->
+            start_run(state, shift)
         end
       else
         trip_budget_brake(shift, state)
@@ -159,6 +178,16 @@ defmodule BusterClaw.Dispatcher do
   # On breach we stop the shift outright (like the Orchestrator crash-loop brake)
   # rather than just skipping, so it halts cleanly for the operator to restart.
   defp within_budget?(%Shift{dispatched_count: runs}, %{max_runs_per_shift: cap}), do: runs < cap
+
+  # A swarm's worst-case realized cost is the serial planner (1) + the configured
+  # `:swarm_max_subtasks` cap (the same bound the Coordinator enforces on the plan,
+  # matching `swarm_runs/1`'s `total + 1` accounting). Only start a swarm if even
+  # that worst case stays within the per-shift run cap, so the on-completion
+  # `dispatched` bump can never push past `cap`.
+  defp within_swarm_budget?(%Shift{dispatched_count: runs}, %{max_runs_per_shift: cap}),
+    do: runs + swarm_worst_case() <= cap
+
+  defp swarm_worst_case, do: 1 + configured(:swarm_max_subtasks, 6)
 
   defp trip_budget_brake(%Shift{} = shift, %{max_runs_per_shift: cap}) do
     Logger.warning("Dispatcher budget cap reached (#{cap} runs); stopping shift #{shift.id}")
@@ -261,10 +290,12 @@ defmodule BusterClaw.Dispatcher do
   # run, which is the safe direction; per-item provenance binding is a future
   # refinement. Today the gmail path only enqueues trusted mail, so runs are
   # trusted unless some other source queues an untrusted item.
+  #
+  # The check is an EXISTS over the ENTIRE open pool (see
+  # `Dispatch.any_untrusted_open?/0`), not a bounded newest-first sample: an
+  # older untrusted item beyond a 50-item window must still fail the run closed.
   defp queue_provenance do
-    if Enum.any?(Dispatch.list_queued(limit: 50), &(&1.trusted != true)),
-      do: :untrusted,
-      else: :trusted
+    if Dispatch.any_untrusted_open?(), do: :untrusted, else: :trusted
   end
 
   # Build the run's environment + shell. The agent's `./buster-claw` CLI reads
@@ -511,6 +542,13 @@ defmodule BusterClaw.Dispatcher do
   end
 
   defp excerpt(_output), do: nil
+
+  # Cancel any pending scheduled tick and arm a fresh one, keeping exactly one
+  # periodic timer alive regardless of out-of-band nudges.
+  defp schedule_tick(state) do
+    if state.tick_ref, do: Process.cancel_timer(state.tick_ref)
+    %{state | tick_ref: Process.send_after(self(), :tick, state.interval_ms)}
+  end
 
   defp configured(key, default), do: Application.get_env(:buster_claw, key, default)
   defp now_ms, do: System.monotonic_time(:millisecond)

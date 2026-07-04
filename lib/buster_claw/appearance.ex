@@ -340,15 +340,26 @@ defmodule BusterClaw.Appearance do
   defp slot_present?(n), do: not is_nil(slot_rel(n))
 
   # File-checked absolute path — used only when actually serving the bytes, so a
-  # stored path whose file has gone missing 404s instead of being served.
+  # stored path whose file has gone missing 404s instead of being served. The
+  # `within_dir?/1` guard stops a tampered Settings `rel` (with `..` or an
+  # absolute path) from escaping the appearance dir.
   defp slot_abs_path(n) do
     with rel when is_binary(rel) <- slot_rel(n),
          abs = Artifact.workspace_path(rel),
+         true <- within_dir?(abs),
          true <- File.regular?(abs) do
       abs
     else
       _ -> nil
     end
+  end
+
+  # A served path must resolve inside the appearance dir; a stored `rel` that
+  # normalizes outside it (via `..`/an absolute path) is rejected.
+  defp within_dir?(abs) do
+    base = Path.expand(dir())
+    abs = Path.expand(abs)
+    abs == base or String.starts_with?(abs, base <> "/")
   end
 
   defp next_filled_slot, do: Enum.find(1..@max_slots, &slot_present?(&1))
@@ -385,6 +396,7 @@ defmodule BusterClaw.Appearance do
   defp home_image_abs_path do
     with rel when is_binary(rel) <- present(Settings.get(@home_image_path_key)),
          abs = Artifact.workspace_path(rel),
+         true <- within_dir?(abs),
          true <- File.regular?(abs) do
       abs
     else

@@ -37,6 +37,21 @@ defmodule BusterClaw.Sentinel do
   @topic "security_alerts"
   @sensitive_fragments ~w(token secret password api_key apikey authorization auth credential private_key client_secret refresh_token access_token cookie)
 
+  # Value-shape redaction (in addition to key-name redaction): a secret carried
+  # under a benign key (an OAuth `code`, a token in a `url` query string, a card
+  # number in free text) must not persist cleartext. These heuristics are kept
+  # deliberately conservative to avoid mangling ordinary prose:
+  #
+  #   * @secret_prefix_re — values with well-known credential prefixes
+  #     (Bearer/Basic, sk-/pk-, GitHub ghp_/github_pat_, Slack xox*, AWS AKIA,
+  #     JWT eyJ). Requires a prefix, so false positives are near zero.
+  #   * @long_token_re — a single unbroken 40+ char run mixing letters AND
+  #     digits (opaque API keys). 40 is above a canonical UUID (36) to spare them.
+  #   * card numbers — 13–19 digit runs that also pass a Luhn check.
+  @secret_prefix_re ~r/(?:Bearer\s+|Basic\s+|sk-|pk-|ghp_|gho_|ghs_|ghu_|ghr_|github_pat_|xox[baprs]-|AKIA|eyJ)[A-Za-z0-9._\/+=-]{8,}/
+  @long_token_re ~r/(?=[A-Za-z0-9_-]*[0-9])(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{40,}/
+  @card_run_re ~r/\d(?:[ -]?\d){12,18}/
+
   @doc "The PubSub topic security events are broadcast on."
   def topic, do: @topic
 
@@ -149,7 +164,46 @@ defmodule BusterClaw.Sentinel do
       sensitive_key?(key) -> "[redacted]"
       is_map(value) and not is_struct(value) -> redact(value)
       is_list(value) -> Enum.map(value, &redact_value(key, &1))
+      is_binary(value) -> value |> mask_secret_values() |> safe_scalar()
       true -> safe_scalar(value)
+    end
+  end
+
+  # Mask secret-shaped substrings regardless of the key that carries them. Runs
+  # on every recorded action, so it must never raise; all ops here are on plain
+  # binaries.
+  defp mask_secret_values(value) do
+    value
+    |> mask_cards()
+    |> then(&Regex.replace(@secret_prefix_re, &1, "[redacted]"))
+    |> then(&Regex.replace(@long_token_re, &1, "[redacted]"))
+  end
+
+  defp mask_cards(value) do
+    Regex.replace(@card_run_re, value, fn match ->
+      digits = String.replace(match, ~r/[ -]/, "")
+      if luhn_valid?(digits), do: "[redacted]", else: match
+    end)
+  end
+
+  defp luhn_valid?(digits) do
+    len = String.length(digits)
+
+    if len < 13 or len > 19 do
+      false
+    else
+      digits
+      |> String.to_charlist()
+      |> Enum.reverse()
+      |> Enum.with_index()
+      |> Enum.reduce(0, fn {char, idx}, acc ->
+        d = char - ?0
+        d = if rem(idx, 2) == 1, do: d * 2, else: d
+        d = if d > 9, do: d - 9, else: d
+        acc + d
+      end)
+      |> rem(10)
+      |> Kernel.==(0)
     end
   end
 

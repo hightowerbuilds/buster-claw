@@ -60,4 +60,21 @@ defmodule BusterClaw.FileManagerTest do
     assert {:error, :invalid_name} = FileManager.create_dir(base, "../escape", base)
     assert {:error, :invalid_name} = FileManager.rename(Path.join(base, "alpha"), "../x", base)
   end
+
+  test "rejects a symlink inside the base that points outside it", %{base: base} do
+    outside =
+      Path.join(System.tmp_dir!(), "buster-claw-fm-outside-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(outside)
+    File.write!(Path.join(outside, "secret.txt"), "top secret\n")
+    on_exit(fn -> File.rm_rf(outside) end)
+
+    link = Path.join(base, "escape")
+    :ok = File.ln_s(outside, link)
+
+    # Lexically `base/escape/...` looks contained, but it resolves outside `base`.
+    refute FileManager.within?(Path.join(link, "secret.txt"), base)
+    assert {:error, :outside_base} = FileManager.list(link, base)
+    assert {:error, :outside_base} = FileManager.read_file(Path.join(link, "secret.txt"), base)
+  end
 end

@@ -140,4 +140,17 @@ defmodule BusterClaw.DispatchProjectorTest do
     assert DispatchProjector.render_fridge([]) =~ "0 open"
     assert DispatchProjector.render_fridge([]) =~ "Nothing open"
   end
+
+  test "the diary md is appended per event under a single header", %{tmp: tmp} do
+    item = enqueue!(%{subject: "First", dedupe_key: "d-1"})
+    {:ok, _} = Dispatch.finish(item, "done")
+    sync()
+
+    md = File.read!(Path.join(tmp, "shift/2026-06-09/Dispatch.md"))
+    # Append-only: one header for the day, one row per logged event.
+    headers = md |> String.split("\n") |> Enum.count(&String.starts_with?(&1, "# Dispatch"))
+    assert headers == 1
+    assert md =~ "· queued · #"
+    assert md =~ "· finished · #"
+  end
 end

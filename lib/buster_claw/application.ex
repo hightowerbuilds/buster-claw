@@ -17,6 +17,13 @@ defmodule BusterClaw.Application do
     "test-agent-token-untrusted-provenance"
   ]
 
+  # Graceful-shutdown window for the Browserbase session manager. Its terminate/2
+  # releases every held (paid) cloud session concurrently, each capped at
+  # @shutdown_release_timeout_ms (20s). This window must exceed that cap, or the
+  # supervisor brutally kills the manager mid-release and orphans a paid session.
+  # 25s = 20s per-session cap + headroom.
+  @browserbase_shutdown_ms :timer.seconds(25)
+
   @impl true
   def start(_type, _args) do
     verify_release_token_safety!()
@@ -135,7 +142,11 @@ defmodule BusterClaw.Application do
   # configured + enabled.
   defp browserbase_session_manager_child do
     if Application.get_env(:buster_claw, :browserbase_enabled, false) do
-      BusterClaw.Browserbase.SessionManager
+      # Extend the default 5s shutdown so terminate/2 can finish releasing held
+      # paid sessions before the supervisor gives up and brutally kills it.
+      Supervisor.child_spec(BusterClaw.Browserbase.SessionManager,
+        shutdown: @browserbase_shutdown_ms
+      )
     end
   end
 

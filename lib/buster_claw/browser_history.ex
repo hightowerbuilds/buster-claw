@@ -5,9 +5,11 @@ defmodule BusterClaw.BrowserHistory do
   external URLs and workspace files opened via the address bar (the native chrome
   toolbar posts each navigation here).
 
-  Unlike the old JSON file this keeps **every** visit — no cap, no URL-dedupe —
-  so revisit frequency is real and queryable (`visit_count/1`, `search/1`,
-  `grouped_by_day/0`).
+  Unlike the old JSON file this keeps **every** visit — no URL-dedupe — so revisit
+  frequency is real and queryable (`visit_count/1`, `search/1`, `grouped_by_day/0`).
+  Retention is bounded to the newest `max_entries/0` rows (default 10 000): every
+  insert prunes anything older so the table can't grow without limit, while still
+  keeping far more than any UI renders.
   """
   import Ecto.Query
 
@@ -17,6 +19,7 @@ defmodule BusterClaw.BrowserHistory do
   alias BusterClaw.Repo
 
   @default_limit 200
+  @default_max_entries 10_000
 
   @doc """
   Recent entries, newest first. Returns `%Entry{}` structs (fields `:url`,
@@ -65,6 +68,7 @@ defmodule BusterClaw.BrowserHistory do
 
     case %Entry{} |> Entry.changeset(attrs) |> Repo.insert() do
       {:ok, entry} ->
+        prune()
         {:ok, entry}
 
       {:error, changeset} ->
@@ -151,6 +155,21 @@ defmodule BusterClaw.BrowserHistory do
       |> Repo.delete_all()
 
     count
+  end
+
+  @doc "Retention cap: the most rows kept before older visits are pruned."
+  def max_entries,
+    do: Application.get_env(:buster_claw, :browser_history_max_entries, @default_max_entries)
+
+  # Bounded retention: keep only the newest `max_entries/0` rows. The kept set is
+  # the newest ids exactly (gap-immune, unlike id arithmetic), and the delete
+  # trigger keeps the FTS index in sync. Runs after each insert; navigations are
+  # human-paced, so the per-insert cost is negligible for a local history.
+  defp prune do
+    keep = from(e in Entry, order_by: [desc: e.id], limit: ^max_entries(), select: e.id)
+    Entry |> where([e], e.id not in subquery(keep)) |> Repo.delete_all()
+  rescue
+    error -> Logger.warning("BrowserHistory.prune crashed: #{inspect(error)}")
   end
 
   defp maybe_limit(query, :infinity), do: query

@@ -88,4 +88,18 @@ defmodule BusterClaw.AppearanceTest do
     assert Appearance.slot_image(1) == nil
     assert Appearance.slot_image(99) == nil
   end
+
+  test "a tampered stored path can't escape the appearance dir" do
+    {:ok, _} = Appearance.put_terminal_background(1, fake_image(), "a.png")
+    assert Appearance.slot_image(1) |> File.regular?()
+
+    # A real file outside the appearance dir, reachable only by traversing out.
+    root = Application.get_env(:buster_claw, :workspace_root)
+    outside = Path.join(root, "outside.png")
+    File.write!(outside, "img-bytes")
+
+    # Point the slot at it via a `..` path; the containment guard must reject it.
+    BusterClaw.Settings.put("terminal_background_1_path", "appearance/../outside.png")
+    assert Appearance.slot_image(1) == nil
+  end
 end

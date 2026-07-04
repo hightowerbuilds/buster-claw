@@ -141,9 +141,28 @@ defmodule BusterClaw.FileManager do
 
   @doc "Whether `path` is the same as or nested under `base`."
   def within?(path, base) do
-    base = Path.expand(base)
-    path = Path.expand(path)
+    base = canonical(base)
+    path = canonical(path)
     path == base or String.starts_with?(path, base <> "/")
+  end
+
+  # Canonicalize by resolving symlinks along the path (one hop per component,
+  # over the parts that exist), so a symlink *inside* `base` that points outside
+  # it can't slip past the lexical containment check. Non-existent tail
+  # components (e.g. a create target) are kept as-is. This is a guard, not a full
+  # `realpath` — it defeats a planted-symlink escape without heavier machinery.
+  defp canonical(path) do
+    path
+    |> Path.expand()
+    |> Path.split()
+    |> Enum.reduce("/", fn part, acc ->
+      joined = Path.join(acc, part)
+
+      case File.read_link(joined) do
+        {:ok, target} -> Path.expand(target, acc)
+        _ -> joined
+      end
+    end)
   end
 
   # --- internals ----------------------------------------------------------

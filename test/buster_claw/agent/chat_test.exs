@@ -253,6 +253,25 @@ defmodule BusterClaw.Agent.ChatTest do
     assert :idle = Chat.status(conv)
   end
 
+  test "ignores a timeout whose token doesn't match the current run" do
+    spawner = fn _p, _o -> {:ok, make_ref()} end
+    conv = start_chat(spawner)
+
+    assert :ok = Chat.send_message(conv, "go")
+    assert :running = Chat.status(conv)
+
+    [{pid, _}] = Registry.lookup(BusterClaw.Agent.ChatRegistry, conv)
+    # A stale timeout from a prior turn (tokens are positive, so -1 never matches)
+    # must not false-kill the fresh in-flight run.
+    send(pid, {:run_timeout, -1})
+
+    refute_receive {:agent_chat, ^conv,
+                    {:message, %{role: :error, text: "The run timed out" <> _}}},
+                   100
+
+    assert :running = Chat.status(conv)
+  end
+
   test "reports an error when the agent cannot be launched" do
     spawner = fn _prompt, _opts -> {:error, :no_agent_cli} end
     conv = start_chat(spawner)

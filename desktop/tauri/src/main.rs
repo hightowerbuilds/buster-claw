@@ -104,7 +104,7 @@ impl ReleaseLauncher {
 
             if let Err(e) = window.eval(&format!(
                 "window.location.replace({})",
-                js_string_literal(&target)
+                browser::js_str(&target)
             )) {
                 eprintln!("[buster-claw] failed to navigate webview: {e}");
             }
@@ -123,7 +123,7 @@ impl ReleaseLauncher {
         };
         if let Err(e) = window.eval(&format!(
             "window.location.replace({})",
-            js_string_literal("error.html")
+            browser::js_str("error.html")
         )) {
             eprintln!("[buster-claw] failed to navigate webview to error.html: {e}");
         }
@@ -490,7 +490,7 @@ fn main() {
 
                         if let Err(e) = window.eval(&format!(
                             "window.location.replace({})",
-                            js_string_literal(&target)
+                            browser::js_str(&target)
                         )) {
                             eprintln!("[buster-claw] failed to navigate webview: {e}");
                         }
@@ -746,24 +746,4 @@ fn shutdown_release(child: &Arc<Mutex<Option<Child>>>) {
     }
     let _ = process.kill();
     let _ = process.wait();
-}
-
-fn js_string_literal(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                out.push_str(&format!("\\u{:04x}", c as u32));
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
 }

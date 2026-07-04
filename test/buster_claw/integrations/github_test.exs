@@ -339,6 +339,22 @@ defmodule BusterClaw.Integrations.GitHubTest do
     assert [] = Library.list_documents()
   end
 
+  test "rejects a GitHub webhook when no secret is configured (fail closed)" do
+    body = Jason.encode!(%{"action" => "opened", "issue" => %{"title" => "Bug"}})
+
+    {:ok, integration} =
+      Integrations.create_integration(%{
+        name: "GitHub No Secret",
+        service_type: "github",
+        config_text: ~s({"owner":"acme","repo":"checkout"})
+      })
+
+    assert {:error, run} = Integrations.handle_webhook(integration, [], body)
+    assert run.status == "error"
+    assert run.error =~ "webhook_secret_not_configured"
+    assert [] = Library.list_documents()
+  end
+
   defp hmac(secret, body) do
     :crypto.mac(:hmac, :sha256, secret, body) |> Base.encode16(case: :lower)
   end

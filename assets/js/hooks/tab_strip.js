@@ -1,4 +1,5 @@
 import {canonicalGroupKey, loadTabs, saveTabs, labelForPath, openNewTerminalTab, anyTerminalBusy} from "../lib/tabs.js"
+import {escapeHtml} from "../lib/html.js"
 
 // Browser-style tab strip. Open routes are persisted client-side in
 // localStorage so they survive LiveView navigations; the dock buttons open
@@ -159,8 +160,8 @@ export const TabStrip = {
     const wrap = isActive
       ? "group flex shrink-0 items-center gap-1 rounded-t-lg border border-b-0 border-base-300 bg-base-100 px-3 py-1.5 text-sm font-medium text-base-content"
       : "group flex shrink-0 items-center gap-1 rounded-t-lg border border-transparent bg-base-200 px-3 py-1.5 text-sm text-base-content/60 hover:bg-base-100/70 hover:text-base-content"
-    const label = this.escape(tab.label)
-    const path = this.escape(tab.path)
+    const label = escapeHtml(tab.label)
+    const path = escapeHtml(tab.path)
     // While renaming: the name is replaced by an empty focused input.
     if (tab.path === this.editingPath) {
       return `<span class="${wrap}" data-path="${path}">` +
@@ -467,8 +468,8 @@ export const TabStrip = {
     const chips = candidates
       .map(
         (t) =>
-          `<button type="button" data-jointarget="${this.escape(t.path)}" ` +
-          `class="${btn} max-w-[12rem] truncate">${this.escape(t.label)}</button>`
+          `<button type="button" data-jointarget="${escapeHtml(t.path)}" ` +
+          `class="${btn} max-w-[12rem] truncate">${escapeHtml(t.label)}</button>`
       )
       .join("")
     this.menuEl.innerHTML = rename + `<span class="${lbl}">Join with</span>` + chips
@@ -640,8 +641,4 @@ export const TabStrip = {
     }
     window.close()
   },
-  escape(s) {
-    return String(s).replace(/[&<>"']/g, (c) =>
-      ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[c]))
-  }
 }

@@ -123,6 +123,24 @@ pub fn terminal_open(
     let scrollback = Arc::new(Mutex::new(Vec::new()));
     let reader_scrollback = Arc::clone(&scrollback);
 
+    // Insert the session BEFORE spawning the reader. An instant shell EOF makes
+    // the reader remove `reader_id` from the map; if that removal raced ahead of
+    // this insert it would leave a dead Session behind. Inserting first means the
+    // reader either finds and removes a real entry or (already-removed) no-ops.
+    state
+        .sessions
+        .lock()
+        .map_err(|e| format!("terminal state lock poisoned: {e}"))?
+        .insert(
+            id.clone(),
+            Session {
+                master: pair.master,
+                child,
+                writer,
+                scrollback,
+            },
+        );
+
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
         // A multi-byte UTF-8 sequence (box-drawing glyphs, emoji — both heavily
@@ -175,20 +193,6 @@ pub fn terminal_open(
             }
         }
     });
-
-    state
-        .sessions
-        .lock()
-        .map_err(|e| format!("terminal state lock poisoned: {e}"))?
-        .insert(
-            id.clone(),
-            Session {
-                master: pair.master,
-                child,
-                writer,
-                scrollback,
-            },
-        );
 
     Ok(id)
 }

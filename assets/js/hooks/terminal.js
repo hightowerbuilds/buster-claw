@@ -5,6 +5,7 @@ import {WebglAddon} from "@xterm/addon-webgl"
 import {liveTerminals, currentTermTheme, termThemeWithBackground} from "../lib/theme.js"
 import {stripTransparentBackgroundPaint, flushTransparentBackgroundPaint} from "../lib/ansi.js"
 import {openNewTerminalTab, openTerminalSplit, registerTerminal, unregisterTerminal} from "../lib/tabs.js"
+import {escapeHtml} from "../lib/html.js"
 
 // PTY-backed terminal (desktop only). xterm.js renders here; the PTY lives in
 // the Tauri Rust backend, reached over IPC. In a plain browser (no Tauri) we
@@ -152,7 +153,7 @@ export const TerminalView = {
       } else {
         this.el.innerHTML =
           `<div class="grid h-full place-items-center p-8 text-center text-sm text-error">` +
-          `Failed to open terminal: ${this.escapeHtml(e)}</div>`
+          `Failed to open terminal: ${escapeHtml(e)}</div>`
       }
       console.error("Buster Claw terminal failed to open", e)
     }
@@ -272,10 +273,6 @@ export const TerminalView = {
       this.el.style.backgroundImage = ""
       this.el.style.backgroundAttachment = ""
     }
-  },
-  escapeHtml(value) {
-    return String(value).replace(/[&<>"']/g, (c) =>
-      ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[c]))
   },
   async copySessionKey() {
     const key = this.sessionKey || "main"

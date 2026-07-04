@@ -144,6 +144,25 @@ defmodule BusterClaw.Google.ClientTest do
              )
   end
 
+  test "surfaces a distinct retryable error on 429 with Retry-After" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_header("retry-after", "30")
+      |> Plug.Conn.put_status(429)
+      |> Req.Test.json(%{"error" => %{"message" => "Rate Limit Exceeded"}})
+    end)
+
+    assert {:error, {:google_api_rate_limited, 429, 30, body}} =
+             Client.get_json(
+               connected_account!(),
+               "files/file-1",
+               base_url: @base,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert body["error"]["message"] == "Rate Limit Exceeded"
+  end
+
   defp connected_account! do
     {:ok, account} =
       Google.create_account(%{

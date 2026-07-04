@@ -77,6 +77,13 @@ export const AgentChat = {
     window.removeEventListener("keydown", this.onEscape)
     window.removeEventListener("pointermove", this.onHandleMove)
     window.removeEventListener("pointerup", this.onHandleUp)
+    // If destroyed mid-drag, onHandleUp never fired — restore the body styles it
+    // would have reset, or the page is left with text selection disabled and a
+    // stuck ns-resize cursor.
+    if (this.dragging) {
+      document.body.style.userSelect = ""
+      document.body.style.cursor = ""
+    }
   },
   scrollToBottom() {
     if (this.log) this.log.scrollTop = this.log.scrollHeight

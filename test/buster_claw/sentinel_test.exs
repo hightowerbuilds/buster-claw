@@ -41,6 +41,23 @@ defmodule BusterClaw.SentinelTest do
       assert {:ok, event} = Sentinel.observe(:command_invoke, "weird", {:a, :tuple})
       assert is_map(event.metadata)
     end
+
+    test "redacts secret-shaped values carried under non-sensitive keys" do
+      assert {:ok, event} =
+               Sentinel.observe(:command_invoke, "leaky", %{
+                 code: "ghp_0123456789abcdefghijABCDEFGHIJ0123",
+                 url: "https://api.example.com/cb?auth=Bearer sk-abcdefghijklmnop1234567890",
+                 card: "4242 4242 4242 4242",
+                 note: "just a normal sentence with no secrets in it"
+               })
+
+      assert event.metadata["code"] == "[redacted]"
+      refute event.metadata["url"] =~ "sk-"
+      refute event.metadata["url"] =~ "Bearer"
+      refute event.metadata["card"] =~ "4242"
+      # Conservative: ordinary prose is left untouched.
+      assert event.metadata["note"] == "just a normal sentence with no secrets in it"
+    end
   end
 
   describe "list / count / acknowledge" do

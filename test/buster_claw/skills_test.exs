@@ -109,6 +109,22 @@ defmodule BusterClaw.SkillsTest do
     assert {:error, :name_mismatch} = Skills.load("real-name")
   end
 
+  test "write escapes a description so it can't break or inject frontmatter", %{root: _root} do
+    assert {:ok, _path} =
+             Skills.write(%{
+               name: "notey",
+               description: "note: real\nenabled: false",
+               tier: :restricted,
+               steps: [%{"command" => "document_list"}]
+             })
+
+    # The injected `enabled: false` / colon must not corrupt the frontmatter:
+    # the skill still loads and stays enabled.
+    assert {:ok, skill} = Skills.fetch("notey")
+    assert skill.tier == :restricted
+    assert [%{"command" => "document_list"}] = skill.steps
+  end
+
   # --- catalog visibility -----------------------------------------------
 
   test "enabled skills are listed via list_skills/0 marked source: :composition", %{root: root} do

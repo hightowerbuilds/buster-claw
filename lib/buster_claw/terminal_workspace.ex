@@ -134,6 +134,7 @@ defmodule BusterClaw.TerminalWorkspace do
       label =
         args
         |> first_present(["label", "agent_name"])
+        |> sanitize_label()
         |> Kernel.||(label_from_role(role_key))
 
       session_key =
@@ -153,7 +154,7 @@ defmodule BusterClaw.TerminalWorkspace do
       request = %{
         id: request_id(),
         role_key: role_key,
-        agent_name: first_present(args, ["agent_name"]),
+        agent_name: args |> first_present(["agent_name"]) |> sanitize_label(),
         label: label,
         purpose: first_present(args, ["purpose"]),
         session_key: session_key,
@@ -211,6 +212,23 @@ defmodule BusterClaw.TerminalWorkspace do
     |> case do
       "" -> nil
       session_key -> session_key
+    end
+  end
+
+  # A display label reaches the `/terminal?...&label=` URL + broadcast, so strip
+  # control characters and collapse whitespace (keeping human-readable spacing),
+  # then cap the length — consistent with the role_key/session_key sanitizers.
+  defp sanitize_label(nil), do: nil
+
+  defp sanitize_label(value) do
+    value
+    |> String.replace(~r/[[:cntrl:]]+/, " ")
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+    |> String.slice(0, 96)
+    |> case do
+      "" -> nil
+      label -> label
     end
   end
 

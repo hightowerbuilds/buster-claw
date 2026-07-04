@@ -79,18 +79,30 @@ defmodule BusterClawWeb.AppearanceLive do
   end
 
   def handle_event("set_active", %{"slot" => slot}, socket) do
-    case Appearance.set_active_slot(String.to_integer(slot)) do
-      {:ok, _url} ->
-        {:noreply, socket |> assign_slots() |> put_flash(:info, "Background applied.")}
+    case parse_slot(slot) do
+      nil ->
+        {:noreply, socket}
 
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "That slot is empty.")}
+      n ->
+        case Appearance.set_active_slot(n) do
+          {:ok, _url} ->
+            {:noreply, socket |> assign_slots() |> put_flash(:info, "Background applied.")}
+
+          {:error, _reason} ->
+            {:noreply, put_flash(socket, :error, "That slot is empty.")}
+        end
     end
   end
 
   def handle_event("remove_background", %{"slot" => slot}, socket) do
-    Appearance.clear_slot(String.to_integer(slot))
-    {:noreply, socket |> assign_slots() |> put_flash(:info, "Background removed.")}
+    case parse_slot(slot) do
+      nil ->
+        {:noreply, socket}
+
+      n ->
+        Appearance.clear_slot(n)
+        {:noreply, socket |> assign_slots() |> put_flash(:info, "Background removed.")}
+    end
   end
 
   # --- homepage background ---
@@ -521,6 +533,17 @@ defmodule BusterClawWeb.AppearanceLive do
       )
 
   defp assign_home_bg(socket), do: assign(socket, :home_bg, Appearance.home_background_state())
+
+  # Safely parse a `phx-value-slot` into an integer; a crafted/non-integer value
+  # yields nil (handler no-ops) rather than raising and crashing the LiveView.
+  defp parse_slot(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {n, ""} -> n
+      _ -> nil
+    end
+  end
+
+  defp parse_slot(_value), do: nil
 
   defp home_opt_btn(active?) do
     [

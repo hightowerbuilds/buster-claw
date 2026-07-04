@@ -72,6 +72,43 @@ defmodule BusterClaw.Google.CalendarTest do
              )
   end
 
+  test "parses a UTC (Z) dateTime to the same local wall-clock as an equivalent offset" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      Req.Test.json(conn, %{
+        "items" => [
+          %{
+            "id" => "z",
+            "status" => "confirmed",
+            "start" => %{"dateTime" => "2026-07-04T19:00:00Z"},
+            "end" => %{"dateTime" => "2026-07-04T20:00:00Z"}
+          },
+          %{
+            "id" => "offset",
+            "status" => "confirmed",
+            # Same instants as above, expressed with an explicit offset
+            # (19:00Z == 14:00-05:00).
+            "start" => %{"dateTime" => "2026-07-04T14:00:00-05:00"},
+            "end" => %{"dateTime" => "2026-07-04T15:00:00-05:00"}
+          }
+        ]
+      })
+    end)
+
+    assert {:ok, %{events: [z, offset]}} =
+             Calendar.events(
+               connected_account!(),
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    # The offset must be honoured: the same instant expressed two ways must parse
+    # to the same local wall-clock. (Before the fix, `Z` was read as naive local
+    # time, so these diverged by the UTC offset.)
+    refute z.start.all_day?
+    assert z.start.date == offset.start.date
+    assert z.start.time == offset.start.time
+    assert z.end.time == offset.end.time
+  end
+
   defp connected_account! do
     {:ok, account} =
       Google.create_account(%{

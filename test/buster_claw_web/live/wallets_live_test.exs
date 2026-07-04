@@ -97,4 +97,22 @@ defmodule BusterClawWeb.WalletsLiveTest do
     assert html =~ "Wallet deleted."
     assert [] = Wallets.list_wallets()
   end
+
+  test "a crafted non-integer wallet id does not crash the LiveView", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/wallets")
+
+    # A malformed phx-value-id would raise on Wallets.get_wallet!/1; the guarded
+    # handlers must swallow it and keep the view alive.
+    assert render_click(view, "open", %{"id" => "not-a-number"})
+    assert render_click(view, "delete_wallet", %{"id" => "not-a-number"})
+    assert Process.alive?(view.pid)
+  end
+
+  test "an unexpected topic message does not crash the LiveView", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/wallets")
+
+    send(view.pid, {:totally_unexpected, :shape})
+    assert Process.alive?(view.pid)
+    assert render(view) =~ "Wallets"
+  end
 end

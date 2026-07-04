@@ -33,6 +33,10 @@ defmodule BusterClawWeb.GWSLive do
     {:noreply, socket |> load_accounts() |> assign_gmail_forms() |> assign_calendar_form()}
   end
 
+  # Ignore any unexpected message shape on the subscribed topic rather than
+  # crashing the LiveView with a FunctionClauseError.
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   @impl true
   def handle_event("reconnect", %{"id" => id}, socket) do
     account = Google.get_account!(id)

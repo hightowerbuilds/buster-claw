@@ -31,7 +31,11 @@ defmodule BusterClaw.Google.Gmail do
       ]
       |> maybe_put_query(query)
 
-    with {:ok, body} <-
+    # Refresh once up front so the concurrent `fetch_summary` fan-out below shares
+    # a single fresh token instead of each task independently refreshing an
+    # expired one (a refresh stampede + racing account writes).
+    with {:ok, account} <- Client.ensure_fresh_token(account, opts),
+         {:ok, body} <-
            Client.get_json(account, "users/me/messages", Keyword.put(opts, :params, params)) do
       # Each id needs its own metadata GET (an independent HTTP round trip), so
       # fan them out concurrently rather than mapping sequentially. `ordered: true`

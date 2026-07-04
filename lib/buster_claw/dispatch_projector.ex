@@ -10,10 +10,12 @@ defmodule BusterClaw.DispatchProjector do
     The `.jsonl` is append-only (one line per primary event); the `.md` is a
     readable render of that day's events.
 
-  Coherence: SQLite is the source of truth. Both `.md` files are full overwrites
-  (so they never accumulate stale items); only the dated `.jsonl` is appended (so
-  history is never rewritten). The rendered `.md` content is a pure function of
-  its inputs — no wall-clock — so re-rendering with no change is byte-identical.
+  Coherence: SQLite is the source of truth. The fridge `.md` is a full overwrite
+  (so it never accumulates stale items) and carries no wall-clock, so re-rendering
+  with no change is byte-identical. The dated diary `.jsonl` **and** `.md` are
+  append-only — one line/row per logged event, never re-read or re-rendered — so a
+  busy day is O(1) per event, not O(n²). `render_diary/2` reproduces the diary
+  bytes from a decoded event list.
 
   Writes are best-effort: a filesystem error logs and never crashes the projector
   or the action that triggered it.
@@ -97,16 +99,25 @@ defmodule BusterClaw.DispatchProjector do
     File.write!(path, render_fridge(Dispatch.list_open()))
   end
 
+  # Append-only: each logged event adds one `.jsonl` line and one diary `.md` row
+  # (writing the header first when the day's file is new). No re-read of the
+  # growing file, so a day's projection is O(1) per event. Heartbeats/incidental
+  # updates aren't logged, so they touch neither file.
   defp write_diary(date, event, item) do
-    dir = diary_dir(date)
-    File.mkdir_p!(dir)
-    jsonl = Path.join(dir, "Dispatch.jsonl")
-
     if event in @logged_events and item do
-      File.write!(jsonl, event_line(event, item), [:append])
-    end
+      dir = diary_dir(date)
+      File.mkdir_p!(dir)
+      entry = event_entry(event, item)
 
-    File.write!(Path.join(dir, "Dispatch.md"), render_diary(date, read_events(jsonl)))
+      File.write!(Path.join(dir, "Dispatch.jsonl"), Jason.encode!(entry) <> "\n", [:append])
+
+      md = Path.join(dir, "Dispatch.md")
+      row = diary_row(entry)
+
+      if File.exists?(md),
+        do: File.write!(md, row, [:append]),
+        else: File.write!(md, diary_header(date) <> row)
+    end
   end
 
   # --- fridge (live open worklist) ---------------------------------------
@@ -155,18 +166,15 @@ defmodule BusterClaw.DispatchProjector do
 
   # --- diary (dated record) ----------------------------------------------
 
-  @doc "Render the dated diary `.md` from the day's decoded `.jsonl` events. Pure."
+  @doc """
+  Render the dated diary `.md` from a list of decoded `.jsonl` events. Pure, and
+  byte-identical to the append-only file for the same event sequence.
+  """
   def render_diary(date, events) do
-    header = "# Dispatch — #{Date.to_iso8601(date)}\n\n#{length(events)} events\n\n"
-
-    rows =
-      case events do
-        [] -> "_No events yet._\n"
-        _ -> Enum.map_join(events, "\n", &diary_row/1) <> "\n"
-      end
-
-    header <> rows
+    diary_header(date) <> Enum.map_join(events, "", &diary_row/1)
   end
+
+  defp diary_header(date), do: "# Dispatch — #{Date.to_iso8601(date)}\n\n"
 
   defp diary_row(event) do
     ts = Map.get(event, "ts", "?")
@@ -177,40 +185,25 @@ defmodule BusterClaw.DispatchProjector do
     sender = Map.get(event, "sender")
     suffix = if is_binary(sender) and sender != "", do: " (#{inline(sender)})", else: ""
 
-    "- #{ts} · #{name} · ##{id} · #{status} · #{subject}#{suffix}"
+    "- #{ts} · #{name} · ##{id} · #{status} · #{subject}#{suffix}\n"
   end
 
-  defp event_line(event, item) do
-    Jason.encode!(%{
-      ts: DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
-      event: short_event(event),
-      id: item.id,
-      status: item.status,
-      source: item.source,
-      sender: item.sender,
-      subject: item.subject
-    }) <> "\n"
+  # One decoded event map (string keys, matching the `.jsonl`), fed to both the
+  # appended `.jsonl` line and the appended `.md` row so they stay in lockstep.
+  defp event_entry(event, item) do
+    %{
+      "ts" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
+      "event" => short_event(event),
+      "id" => item.id,
+      "status" => item.status,
+      "source" => item.source,
+      "sender" => item.sender,
+      "subject" => item.subject
+    }
   end
 
   defp short_event(event) do
     event |> Atom.to_string() |> String.replace_prefix("dispatch_item_", "")
-  end
-
-  defp read_events(jsonl) do
-    case File.read(jsonl) do
-      {:ok, contents} ->
-        contents
-        |> String.split("\n", trim: true)
-        |> Enum.flat_map(fn line ->
-          case Jason.decode(line) do
-            {:ok, map} -> [map]
-            _ -> []
-          end
-        end)
-
-      _ ->
-        []
-    end
   end
 
   # --- helpers -----------------------------------------------------------

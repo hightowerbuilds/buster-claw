@@ -52,6 +52,21 @@ defmodule BusterClaw.TerminalWorkspaceTest do
     assert request.label == "Ci Fix"
   end
 
+  test "sanitizes the label before it reaches the URL and broadcast" do
+    assert {:ok, request} =
+             TerminalWorkspace.open(%{
+               "role_key" => "email",
+               "label" => "Mail\nTriage\tQueue  "
+             })
+
+    # Control chars stripped, whitespace collapsed/trimmed — no newline/tab leaks
+    # into the `/terminal?...&label=` URL or the broadcast payload.
+    assert request.label == "Mail Triage Queue"
+    refute request.label =~ "\n"
+    refute request.label =~ "\t"
+    refute request.path =~ "\n"
+  end
+
   test "mailman can be requested as an explicit startup profile" do
     assert {:ok, request} =
              TerminalWorkspace.open(%{

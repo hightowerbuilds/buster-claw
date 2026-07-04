@@ -89,6 +89,39 @@ defmodule BusterClaw.FinanceTest do
     assert second.report_date == nil
   end
 
+  test "filings honors :limit and only materializes the requested rows" do
+    # 50 parallel-array filings; limit far below the total. Regression guard for
+    # the O(n²) zip that used to build every row before taking the limit.
+    n = 50
+
+    Req.Test.stub(@stub, fn conn ->
+      case conn.request_path do
+        "/files/company_tickers.json" ->
+          Req.Test.json(conn, ticker_map_response())
+
+        "/submissions/CIK0000320193.json" ->
+          Req.Test.json(conn, %{
+            "filings" => %{
+              "recent" => %{
+                "form" => List.duplicate("8-K", n),
+                "filingDate" =>
+                  for(i <- 1..n, do: "2025-01-#{String.pad_leading("#{i}", 2, "0")}"),
+                "reportDate" => List.duplicate("", n),
+                "accessionNumber" =>
+                  for(i <- 1..n, do: "0000320193-25-#{String.pad_leading("#{i}", 6, "0")}"),
+                "primaryDocument" => for(i <- 1..n, do: "doc#{i}.htm")
+              }
+            }
+          })
+      end
+    end)
+
+    assert {:ok, result} = Edgar.filings("aapl", Keyword.put(@opts, :limit, 3))
+    assert length(result.filings) == 3
+    assert Enum.at(result.filings, 0).filing_date == "2025-01-01"
+    assert Enum.at(result.filings, 2).filing_date == "2025-01-03"
+  end
+
   test "fundamentals picks the most recent value per concept with its as-of and source" do
     Req.Test.stub(@stub, fn conn ->
       case conn.request_path do

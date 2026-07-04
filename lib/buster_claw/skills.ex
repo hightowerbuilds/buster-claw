@@ -117,13 +117,13 @@ defmodule BusterClaw.Skills do
 
   defp render(%{name: name, steps: steps} = attrs) do
     tier = attrs |> Map.get(:tier, :restricted) |> to_string()
-    description = Map.get(attrs, :description, "")
+    description = Map.get(attrs, :description, "") |> to_string()
 
     """
     ---
     name: #{name}
-    description: #{description}
-    tier: #{tier}
+    description: #{yaml_quote(description)}
+    tier: #{yaml_quote(tier)}
     enabled: true
     handler_kind: composition
     steps: #{Jason.encode!(steps)}
@@ -133,6 +133,21 @@ defmodule BusterClaw.Skills do
 
     #{description}
     """
+  end
+
+  # Quote interpolated frontmatter scalars so arbitrary text (a `:` metacharacter,
+  # an embedded newline, a quote) can't break the YAML structure or smuggle in
+  # extra fields. Newlines collapse to spaces; the escaping matches what
+  # `Frontmatter.split/1` unquotes (`\"` and `\\`).
+  defp yaml_quote(value) do
+    escaped =
+      value
+      |> to_string()
+      |> String.replace("\\", "\\\\")
+      |> String.replace("\"", "\\\"")
+      |> String.replace(["\r\n", "\n", "\r"], " ")
+
+    ~s("#{escaped}")
   end
 
   @doc """

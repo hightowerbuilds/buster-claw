@@ -32,6 +32,24 @@ defmodule BusterClaw.Google.Client do
   end
 
   @doc """
+  Ensure the account holds a currently-valid access token, refreshing ONCE if it
+  is expired/near-expiry, and return a fresh `%Account{}`.
+
+  Callers that fan out concurrent requests should invoke this a single time
+  *before* the fan-out. Otherwise every task observes the same stale token and
+  independently fires its own refresh POST + account write, so one expired token
+  triggers a refresh stampede and racing DB updates. Sharing the fresh account
+  collapses that to a single refresh.
+  """
+  def ensure_fresh_token(%Account{} = account, opts \\ []) do
+    if token_current?(account) do
+      {:ok, account}
+    else
+      OAuth.refresh_access_token(account, opts)
+    end
+  end
+
+  @doc """
   Upload media (Drive). `attrs` is `%{metadata: map, data: binary, content_type: string}`
   and is sent as a `multipart/related` body to the multipart upload host, so it
   bypasses JSON body encoding. Token refresh + 401 retry still apply.
@@ -159,6 +177,11 @@ defmodule BusterClaw.Google.Client do
       {:ok, %{status: 401}} ->
         {:error, {:unauthorized, account.id}}
 
+      {:ok, %{status: status} = response} when status in [429, 503] ->
+        {:error,
+         {:google_api_rate_limited, status, retry_after_seconds(response),
+          decode_body(response.body)}}
+
       {:ok, %{status: status, body: body}} ->
         {:error, {:google_api_error, status, decode_body(body)}}
 
@@ -166,6 +189,28 @@ defmodule BusterClaw.Google.Client do
         {:error, reason}
     end
   end
+
+  # 429 (rate limited) / 503 (backend overloaded) may carry a `Retry-After`
+  # header (delta-seconds or an HTTP-date). Surface the delay when present so a
+  # caller can back off; the distinct `:google_api_rate_limited` error already
+  # signals that the request is retryable (unlike the generic api error).
+  defp retry_after_seconds(%Req.Response{} = response) do
+    response
+    |> Req.Response.get_header("retry-after")
+    |> List.first()
+    |> parse_retry_after()
+  end
+
+  defp retry_after_seconds(_response), do: nil
+
+  defp parse_retry_after(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {seconds, ""} when seconds >= 0 -> seconds
+      _other -> nil
+    end
+  end
+
+  defp parse_retry_after(_value), do: nil
 
   defp merged_req_options(opts) do
     []

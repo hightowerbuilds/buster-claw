@@ -326,6 +326,60 @@ defmodule BusterClaw.Google.GmailSyncTest do
     assert Dispatch.list_open() == []
   end
 
+  test "refreshes an expired access token exactly once for the whole fan-out" do
+    {:ok, refreshes} = Agent.start_link(fn -> 0 end)
+
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+
+      case {conn.request_path, conn.query_params["format"]} do
+        {"/token", _format} ->
+          Agent.update(refreshes, &(&1 + 1))
+          Req.Test.json(conn, %{"access_token" => "fresh-token", "expires_in" => 3600})
+
+        {"/gmail/v1/users/me/messages", nil} ->
+          Req.Test.json(conn, %{
+            "resultSizeEstimate" => 3,
+            "messages" => [
+              %{"id" => "msg-1", "threadId" => "t1"},
+              %{"id" => "msg-2", "threadId" => "t2"},
+              %{"id" => "msg-3", "threadId" => "t3"}
+            ]
+          })
+
+        {"/gmail/v1/users/me/messages/" <> id, "full"} ->
+          Req.Test.json(
+            conn,
+            full_message(%{
+              "id" => id,
+              "threadId" => "t-#{id}",
+              "historyId" => "h-#{id}",
+              "subject" => "Subject #{id}",
+              "body" => "Body #{id}"
+            })
+          )
+      end
+    end)
+
+    # An already-expired token: without the pre-fan-out refresh, each of the 3
+    # concurrent message fetches would refresh independently.
+    account =
+      connected_account!(%{
+        "access_token_expires_at" => DateTime.utc_now() |> DateTime.add(-60, :second)
+      })
+
+    assert {:ok, result} =
+             GmailSync.sync(account,
+               query: "in:inbox",
+               limit: 3,
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+
+    assert result.synced == 3
+    assert result.errors == []
+    assert Agent.get(refreshes, & &1) == 1
+  end
+
   defp connected_account!(attrs \\ %{}) do
     {:ok, account} =
       %{

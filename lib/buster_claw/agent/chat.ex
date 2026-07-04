@@ -330,7 +330,8 @@ defmodule BusterClaw.Agent.Chat do
   def handle_info({port, {:exit_status, _code}}, %{port: port} = state),
     do: {:noreply, state |> audit_run(:completed) |> finish_run()}
 
-  def handle_info(:run_timeout, %{status: :running} = state) do
+  def handle_info({:run_timeout, token}, %{status: :running, run: %{token: run_token}} = state)
+      when token == run_token do
     if is_port(state.port), do: AgentRunner.kill_port(state.port)
 
     state =
@@ -341,7 +342,12 @@ defmodule BusterClaw.Agent.Chat do
     {:noreply, finish_run(%{state | timer: nil})}
   end
 
-  # Stale messages from a prior run's port, or :run_timeout while idle.
+  # A stale timeout: it fired as its turn completed (or after a reset/interrupt),
+  # so its token no longer matches the in-flight run. Ignore it — otherwise it
+  # would false-kill the next turn's fresh run.
+  def handle_info({:run_timeout, _token}, state), do: {:noreply, state}
+
+  # Stale messages from a prior run's port.
   def handle_info(_msg, state), do: {:noreply, state}
 
   # --- run lifecycle ---
@@ -349,10 +355,15 @@ defmodule BusterClaw.Agent.Chat do
   # Spawn a headless run for `text`. Returns `{:ok, state}` once streaming, or
   # `{:error, reason, state}` if the spawn failed (already surfaced + audited).
   defp start_run(state, text) do
+    # A per-run token stamps the timeout timer so a stale `:run_timeout` (fired
+    # just as its turn ended) can't be mistaken for the next run's timeout.
+    token = System.unique_integer([:positive, :monotonic])
+
     state =
       state
       |> emit_message(:user, text)
       |> Map.put(:run, %{
+        token: token,
         started: System.monotonic_time(:millisecond),
         first_token_at: nil,
         turns: nil,
@@ -367,7 +378,7 @@ defmodule BusterClaw.Agent.Chat do
     case state.spawner.(text, extra_args: extra, login: true) do
       {:ok, port} ->
         broadcast(state, {:status, :running})
-        timer = Process.send_after(self(), :run_timeout, state.timeout_ms)
+        timer = Process.send_after(self(), {:run_timeout, token}, state.timeout_ms)
         {:ok, %{state | status: :running, port: port, buf: "", timer: timer}}
 
       {:error, reason} ->

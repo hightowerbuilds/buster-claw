@@ -45,6 +45,16 @@ defmodule BusterClawWeb.ErrorFormatter do
     end
   end
 
+  def format({:google_api_rate_limited, status, retry_after, _body}) when is_integer(status) do
+    case retry_after do
+      seconds when is_integer(seconds) ->
+        "Google API rate limited (HTTP #{status}); retry after #{seconds}s"
+
+      _ ->
+        "Google API rate limited (HTTP #{status})"
+    end
+  end
+
   def format({:missing_config, key}), do: "missing config: #{key}"
   def format({:unexpected_response, _body}), do: "unexpected response from upstream"
 

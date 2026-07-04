@@ -44,9 +44,11 @@ defmodule BusterClaw.Integrations.Sentry do
   end
 
   @impl true
+  # Fail closed: without a configured secret there is nothing to authenticate
+  # against, so reject rather than accept any unauthenticated POST.
   def verify_webhook(%Integration{webhook_secret: secret}, _headers, _body)
       when secret in [nil, ""] do
-    :ok
+    {:error, :webhook_secret_not_configured}
   end
 
   def verify_webhook(%Integration{webhook_secret: secret}, headers, body) do
@@ -131,9 +133,33 @@ defmodule BusterClaw.Integrations.Sentry do
       )
 
     case Req.get(req_options) do
-      {:ok, %{status: status, body: body}} when status in 200..299 -> {:ok, body}
-      {:ok, %{status: status, body: body}} -> {:error, {:http_error, status, body}}
-      {:error, reason} -> {:error, reason}
+      {:ok, %{status: status, body: body}} when status in 200..299 ->
+        {:ok, body}
+
+      {:ok, %Req.Response{status: 429} = resp} ->
+        {:error, {:rate_limited, 429, retry_after(resp)}}
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, {:http_error, status, body}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Surface a 429 distinctly (with any Retry-After seconds) so callers can back
+  # off rather than treating it as an opaque http_error. HTTP-date Retry-After
+  # values fall back to nil.
+  defp retry_after(resp) do
+    case Req.Response.get_header(resp, "retry-after") do
+      [value | _] ->
+        case Integer.parse(to_string(value)) do
+          {seconds, _rest} when seconds >= 0 -> seconds
+          _ -> nil
+        end
+
+      _ ->
+        nil
     end
   end
 

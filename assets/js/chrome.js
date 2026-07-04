@@ -570,6 +570,7 @@ function switchTab(id) {
 
 function closeTab(id) {
   inv("browser_close_tab", {tabId: id})
+  delete zoomLevels[id] // don't leak a zoom entry per tab ever opened
   const i = tabs.findIndex((t) => t.id === id)
   if (i < 0) return
   tabs.splice(i, 1)

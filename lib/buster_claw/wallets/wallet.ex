@@ -22,9 +22,13 @@ defmodule BusterClaw.Wallets.Wallet do
 
   def types, do: @types
 
+  # NOTE: `:balance_cents` is intentionally NOT cast here. It is a cache of the
+  # transaction ledger and must only ever be written by `Wallets.recompute_balance!/1`
+  # (which uses `Ecto.Changeset.change/2` directly). Casting it would let the generic
+  # `update_wallet/2` overwrite the ledger-derived balance with an arbitrary value.
   def changeset(wallet, attrs) do
     wallet
-    |> cast(attrs, [:name, :type, :currency, :balance_cents, :archived])
+    |> cast(attrs, [:name, :type, :currency, :archived])
     |> validate_required([:name, :type, :currency])
     |> validate_inclusion(:type, @types)
     |> validate_length(:currency, is: 3)

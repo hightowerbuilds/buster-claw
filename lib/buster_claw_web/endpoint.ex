@@ -54,18 +54,27 @@ defmodule BusterClawWeb.Endpoint do
   plug Plug.Session, @session_options
   plug BusterClawWeb.Router
 
+  # Only the webhook endpoint consumes `conn.assigns[:raw_body]` (to verify the
+  # provider's HMAC signature over the exact bytes), so only that path pays for a
+  # full duplicate of the request body. Every other request reads its body
+  # straight through the parser without the extra copy.
   def cache_raw_body(conn, opts) do
-    case Plug.Conn.read_body(conn, opts) do
-      {:ok, body, conn} ->
-        conn = update_in(conn.assigns[:raw_body], &((&1 || "") <> body))
-        {:ok, body, conn}
+    if capture_raw_body?(conn) do
+      case Plug.Conn.read_body(conn, opts) do
+        {:ok, body, conn} ->
+          {:ok, body, update_in(conn.assigns[:raw_body], &((&1 || "") <> body))}
 
-      {:more, body, conn} ->
-        conn = update_in(conn.assigns[:raw_body], &((&1 || "") <> body))
-        {:more, body, conn}
+        {:more, body, conn} ->
+          {:more, body, update_in(conn.assigns[:raw_body], &((&1 || "") <> body))}
 
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      Plug.Conn.read_body(conn, opts)
     end
   end
+
+  defp capture_raw_body?(%Plug.Conn{path_info: ["integrations", _name, "webhook"]}), do: true
+  defp capture_raw_body?(_conn), do: false
 end

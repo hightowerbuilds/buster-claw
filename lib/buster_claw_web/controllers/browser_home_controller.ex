@@ -246,6 +246,7 @@ defmodule BusterClawWeb.BrowserHomeController do
   defp card(e) do
     raw_url = e["url"]
     url = escape(raw_url)
+    href = safe_href(raw_url)
     label = escape(e["label"] || raw_url)
     tags = List.wrap(e["tags"])
     host = escape(host(raw_url))
@@ -263,7 +264,7 @@ defmodule BusterClawWeb.BrowserHomeController do
         else: ~s(<span class="fav"></span>)
 
     ~s(<div class="card" data-search="#{escape(haystack)}" data-tags="#{escape(Enum.join(tags, " "))}">) <>
-      ~s(<a href="#{url}">) <>
+      ~s(<a href="#{href}">) <>
       ~s(<div class="head">#{fav_html}<span class="label">#{label}</span></div>) <>
       ~s(<div class="host">#{host}</div>#{tags_html}) <>
       ~s(</a>) <>
@@ -301,9 +302,10 @@ defmodule BusterClawWeb.BrowserHomeController do
     rows =
       Enum.map_join(entries, "\n", fn e ->
         url = escape(e.url)
+        href = safe_href(e.url)
         label = escape(e.title || e.url)
 
-        ~s(<li><a href="#{url}"><span class="label">#{label}</span><span class="url">#{url}</span></a></li>)
+        ~s(<li><a href="#{href}"><span class="label">#{label}</span><span class="url">#{url}</span></a></li>)
       end)
 
     "<ul>\n#{rows}\n</ul>"
@@ -311,4 +313,17 @@ defmodule BusterClawWeb.BrowserHomeController do
 
   defp escape(value),
     do: value |> to_string() |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+  # A clickable href allowlist: only http(s) and scheme-less (workspace) paths
+  # like "/library/notes.md" survive as links. A `javascript:`/`data:`/etc.
+  # scheme is neutralised to "#" so an escaped-but-clickable link can't run.
+  defp safe_href(raw_url) do
+    url = to_string(raw_url)
+
+    case URI.parse(url) do
+      %URI{scheme: nil} -> escape(url)
+      %URI{scheme: scheme} when scheme in ["http", "https"] -> escape(url)
+      _ -> "#"
+    end
+  end
 end

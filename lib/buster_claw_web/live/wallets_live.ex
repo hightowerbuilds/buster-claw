@@ -72,6 +72,10 @@ defmodule BusterClawWeb.WalletsLive do
     end
   end
 
+  # Ignore any unexpected message shape on the subscribed topic rather than
+  # crashing the LiveView with a FunctionClauseError.
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   # --- wallet CRUD -----------------------------------------------------------
 
   @impl true
@@ -98,7 +102,10 @@ defmodule BusterClawWeb.WalletsLive do
   end
 
   def handle_event("open", %{"id" => id}, socket) do
-    {:noreply, select_wallet(socket, Wallets.get_wallet!(id))}
+    case safe_get_wallet(id) do
+      nil -> {:noreply, socket}
+      wallet -> {:noreply, select_wallet(socket, wallet)}
+    end
   end
 
   def handle_event("close", _params, socket) do
@@ -106,15 +113,20 @@ defmodule BusterClawWeb.WalletsLive do
   end
 
   def handle_event("delete_wallet", %{"id" => id}, socket) do
-    wallet = Wallets.get_wallet!(id)
-    {:ok, _} = Wallets.delete_wallet(wallet)
+    case safe_get_wallet(id) do
+      nil ->
+        {:noreply, socket}
 
-    socket =
-      if selected?(socket, wallet.id),
-        do: assign(socket, selected: nil, transactions: [], feeds: [], budget_summary: nil),
-        else: socket
+      wallet ->
+        {:ok, _} = Wallets.delete_wallet(wallet)
 
-    {:noreply, socket |> assign(:result, "Wallet deleted.") |> load_wallets()}
+        socket =
+          if selected?(socket, wallet.id),
+            do: assign(socket, selected: nil, transactions: [], feeds: [], budget_summary: nil),
+            else: socket
+
+        {:noreply, socket |> assign(:result, "Wallet deleted.") |> load_wallets()}
+    end
   end
 
   # --- transactions ----------------------------------------------------------
@@ -537,6 +549,14 @@ defmodule BusterClawWeb.WalletsLive do
 
   defp selected?(%{assigns: %{selected: %Wallet{id: id}}}, wallet_id), do: id == wallet_id
   defp selected?(_socket, _wallet_id), do: false
+
+  # Look up a wallet from a `phx-value-id`, tolerating a missing or malformed id
+  # (returns nil) so a crafted value can't crash the LiveView.
+  defp safe_get_wallet(id) do
+    Wallets.get_wallet(id)
+  rescue
+    Ecto.Query.CastError -> nil
+  end
 
   defp load_wallets(socket) do
     wallets = Wallets.list_wallets()

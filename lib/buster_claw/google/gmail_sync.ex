@@ -4,6 +4,7 @@ defmodule BusterClaw.Google.GmailSync do
   alias BusterClaw.Dispatch
   alias BusterClaw.Google
   alias BusterClaw.Google.Account
+  alias BusterClaw.Google.Client
   alias BusterClaw.Google.Gmail
   alias BusterClaw.Library
   alias BusterClaw.LocalTime
@@ -28,17 +29,21 @@ defmodule BusterClaw.Google.GmailSync do
     if is_nil(start_history_id) do
       {:ok, full_sync_required_result(account, start_history_id, :missing_history_id)}
     else
-      account
-      |> history_pages(start_history_id, opts)
-      |> case do
-        {:ok, pages} ->
-          sync_history_pages(account, start_history_id, pages, opts)
+      # Refresh once up front so the sequential history pulls and the concurrent
+      # `sync_messages` fan-out share one fresh token (see Client.ensure_fresh_token).
+      with {:ok, account} <- Client.ensure_fresh_token(account, opts) do
+        account
+        |> history_pages(start_history_id, opts)
+        |> case do
+          {:ok, pages} ->
+            sync_history_pages(account, start_history_id, pages, opts)
 
-        {:error, {:google_api_error, 404, body}} ->
-          {:ok, full_sync_required_result(account, start_history_id, :history_id_too_old, body)}
+          {:error, {:google_api_error, 404, body}} ->
+            {:ok, full_sync_required_result(account, start_history_id, :history_id_too_old, body)}
 
-        error ->
-          error
+          error ->
+            error
+        end
       end
     end
   end
@@ -51,8 +56,11 @@ defmodule BusterClaw.Google.GmailSync do
 
     # Use the list call's ids directly: the sync path re-fetches each message
     # with `format=full`, so the per-message metadata GETs that `search/3` would
-    # issue are wasted here.
-    with {:ok, search} <- Gmail.list_ids(account, query, Keyword.put(opts, :limit, limit)) do
+    # issue are wasted here. Refresh once up front so the list call and the
+    # concurrent `sync_messages` fan-out share one fresh token rather than each
+    # message task refreshing an expired one independently (a refresh stampede).
+    with {:ok, account} <- Client.ensure_fresh_token(account, opts),
+         {:ok, search} <- Gmail.list_ids(account, query, Keyword.put(opts, :limit, limit)) do
       results = sync_messages(account, search.message_ids, opts)
 
       documents = synced_documents(results)

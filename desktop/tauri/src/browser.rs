@@ -93,35 +93,40 @@ impl BrowserState {
     fn set(&self, sid: &str, tab_id: &str) {
         self.surfaces
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .insert(sid.to_string(), tab_id.to_string());
     }
     fn get(&self, sid: &str) -> Option<String> {
-        self.surfaces.lock().unwrap().get(sid).cloned()
+        self.surfaces.lock().unwrap_or_else(|e| e.into_inner()).get(sid).cloned()
+    }
+    // Drop just the active-tab pointer for a surface (its chrome + other state
+    // survive). Used when the active tab is closed and no sibling remains.
+    fn unset(&self, sid: &str) {
+        self.surfaces.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
     }
     fn clear(&self, sid: &str) {
-        self.surfaces.lock().unwrap().remove(sid);
-        self.shown.lock().unwrap().remove(sid);
-        self.mru.lock().unwrap().remove(sid);
+        self.surfaces.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
+        self.shown.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
+        self.mru.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
         let prefix = format!("{CONTENT_PREFIX}{sid}-");
-        self.ephemeral.lock().unwrap().retain(|l| !l.starts_with(&prefix));
+        self.ephemeral.lock().unwrap_or_else(|e| e.into_inner()).retain(|l| !l.starts_with(&prefix));
     }
     fn clear_all(&self) {
-        self.surfaces.lock().unwrap().clear();
-        self.shown.lock().unwrap().clear();
-        self.mru.lock().unwrap().clear();
-        self.ephemeral.lock().unwrap().clear();
+        self.surfaces.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.shown.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.mru.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.ephemeral.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
     // Mark a tab most-recently-used (front of its surface's LRU list).
     fn touch(&self, sid: &str, tab_id: &str) {
-        let mut mru = self.mru.lock().unwrap();
+        let mut mru = self.mru.lock().unwrap_or_else(|e| e.into_inner());
         let list = mru.entry(sid.to_string()).or_default();
         list.retain(|id| id != tab_id);
         list.insert(0, tab_id.to_string());
     }
     // Drop a tab from the LRU list (its chip was closed).
     fn forget(&self, sid: &str, tab_id: &str) {
-        if let Some(list) = self.mru.lock().unwrap().get_mut(sid) {
+        if let Some(list) = self.mru.lock().unwrap_or_else(|e| e.into_inner()).get_mut(sid) {
             list.retain(|id| id != tab_id);
         }
     }
@@ -129,7 +134,7 @@ impl BrowserState {
     // set of tab ids that currently have a webview; MRU order drives which of them
     // to keep when the budget is exceeded.
     fn live_by_recency(&self, sid: &str, live: &HashSet<String>) -> Vec<String> {
-        let mru = self.mru.lock().unwrap();
+        let mru = self.mru.lock().unwrap_or_else(|e| e.into_inner());
         let order = mru.get(sid).cloned().unwrap_or_default();
         let mut out: Vec<String> = order.iter().filter(|id| live.contains(*id)).cloned().collect();
         // Any live tab the LRU never saw (defensive) goes to the back.
@@ -142,7 +147,7 @@ impl BrowserState {
     }
     fn mark_ephemeral(&self, sid: &str, tab_id: &str, on: bool) {
         let label = content_label(sid, tab_id);
-        let mut set = self.ephemeral.lock().unwrap();
+        let mut set = self.ephemeral.lock().unwrap_or_else(|e| e.into_inner());
         if on {
             set.insert(label);
         } else {
@@ -150,7 +155,7 @@ impl BrowserState {
         }
     }
     fn is_ephemeral(&self, sid: &str, tab_id: &str) -> bool {
-        self.ephemeral.lock().unwrap().contains(&content_label(sid, tab_id))
+        self.ephemeral.lock().unwrap_or_else(|e| e.into_inner()).contains(&content_label(sid, tab_id))
     }
     fn content_blocking(&self) -> bool {
         !self.blocking_disabled.load(Ordering::Relaxed)
@@ -160,19 +165,19 @@ impl BrowserState {
     }
     // Any known surface — the default screenshot target when none is specified.
     fn any_sid(&self) -> Option<String> {
-        self.surfaces.lock().unwrap().keys().next().cloned()
+        self.surfaces.lock().unwrap_or_else(|e| e.into_inner()).keys().next().cloned()
     }
     fn set_shown(&self, sid: &str) {
-        self.shown.lock().unwrap().insert(sid.to_string());
+        self.shown.lock().unwrap_or_else(|e| e.into_inner()).insert(sid.to_string());
     }
     fn set_hidden(&self, sid: &str) {
-        self.shown.lock().unwrap().remove(sid);
+        self.shown.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
     }
     fn any_shown(&self) -> Option<String> {
-        self.shown.lock().unwrap().iter().next().cloned()
+        self.shown.lock().unwrap_or_else(|e| e.into_inner()).iter().next().cloned()
     }
     fn download_started(&self, url: &str, path: PathBuf) -> u64 {
-        let mut log = self.downloads.lock().unwrap();
+        let mut log = self.downloads.lock().unwrap_or_else(|e| e.into_inner());
         log.next_id += 1;
         let id = log.next_id;
         log.items.push(DownloadItem {
@@ -186,7 +191,7 @@ impl BrowserState {
     // Resolve a Finished event (url only on macOS) to the newest unfinished
     // download of that url, marking it done.
     fn download_finished(&self, url: &str) -> Option<(u64, PathBuf)> {
-        let mut log = self.downloads.lock().unwrap();
+        let mut log = self.downloads.lock().unwrap_or_else(|e| e.into_inner());
         let item = log
             .items
             .iter_mut()
@@ -196,7 +201,7 @@ impl BrowserState {
         Some((item.id, item.path.clone()))
     }
     fn download_path(&self, id: u64) -> Option<PathBuf> {
-        let log = self.downloads.lock().unwrap();
+        let log = self.downloads.lock().unwrap_or_else(|e| e.into_inner());
         log.items.iter().find(|i| i.id == id).map(|i| i.path.clone())
     }
 }
@@ -440,6 +445,22 @@ pub fn browser_close_tab(
     state.mark_ephemeral(&sid, &tab_id, false);
     if let Some(webview) = app.get_webview(&content_label(&sid, &tab_id)) {
         webview.close().map_err(|e| e.to_string())?;
+    }
+    // If we just closed the surface's active tab, advance the active pointer to a
+    // surviving sibling (else clear it). Otherwise co-presence commands
+    // (active_content → state.get) keep resolving to the just-closed label and
+    // fail until the chrome's follow-up browser_switch_tab lands.
+    if state.get(&sid).as_deref() == Some(tab_id.as_str()) {
+        let closed = content_label(&sid, &tab_id);
+        let prefix = format!("{CONTENT_PREFIX}{sid}-");
+        let sibling = content_labels_for(&app, &sid)
+            .into_iter()
+            .find(|l| *l != closed)
+            .map(|l| l.trim_start_matches(&prefix).to_string());
+        match sibling {
+            Some(next) => state.set(&sid, &next),
+            None => state.unset(&sid),
+        }
     }
     Ok(())
 }
@@ -1703,7 +1724,9 @@ fn record_history(app: &AppHandle, chrome_label: &str, url: &str, title: &str) {
 }
 
 // Encode a string as a JS string literal for safe interpolation into eval'd JS.
-fn js_str(s: &str) -> String {
+// The single crate-wide encoder (main.rs's release-monitor navigation uses it
+// too), so the U+2028/U+2029 escaping below is applied everywhere.
+pub(crate) fn js_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for c in s.chars() {
