@@ -98,6 +98,25 @@ live — in-app pass pending: 🛡 lit → ad-heavy site → ads gone → toggle
 reload → ads back; open/close ~8 tabs → old ones reload on click; 🕳 opens a
 dashed private tab.
 
+## Late — two more homepage shaders (Mandelbrot, Weather)
+
+The Appearance shader roster grew from four to six.
+
+- **Mandelbrot.** A homepage background that slowly zooms/pans the Mandelbrot
+  set, coloured through the `colA/B/C` palette. Per-pixel iteration loop, so it
+  renders at 0.6× / capped 820px like Zigzag to stay cheap behind the blur.
+- **Weather.** An evolving ~2-minute sky clock that blends overlapping
+  conditions rather than switching them: **sunny → windy → rain + lightning →
+  snow**, looping back to sunny. Domain-warped fbm clouds, three depth-layered
+  rain/snow passes, a forked lightning bolt with a localized sky flash, and
+  wind-driven slant/gusts — precip blocks are gated behind time-only `if`s so
+  clear stretches stay cheap. The **sunny** spell is a palette-tinted sun (crisp
+  disk + soft halo + slowly-turning god-rays) high in the sky, warmed into the
+  whole gradient and occluded by drifting cloud cover. Weather needs its detail
+  crisp, so it renders closer to retina (`dpr·0.85`, capped 1400px) — a higher
+  budget than the Zigzag/Mandelbrot tier. Registered across `shaders.js`,
+  `palettes.js`, the `@home_shaders` list, and the Appearance picker label map.
+
 ## Next
 
 Browser roadmap is done. Open workstreams remaining: Browserbase (agentic cloud

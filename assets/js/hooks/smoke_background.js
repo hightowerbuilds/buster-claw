@@ -116,12 +116,18 @@ export const SmokeBackground = {
 
   fitCanvas() {
     const rect = this.el.getBoundingClientRect()
-    // Zigzag (per-pixel row march) and Mandelbrot (per-pixel iteration loop) are
-    // heavy; they're ambient backgrounds behind a blurred panel, so render them
-    // low-res and capped rather than at full retina.
-    const heavy = this.shader === "zigzag" || this.shader === "mandel"
-    const density = heavy ? 0.6 : Math.min(window.devicePixelRatio || 1, 2)
-    const maxDim = heavy ? 820 : Infinity
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    // Per-pixel-heavy shaders render below full retina and capped, since they're
+    // ambient backgrounds behind a blurred panel. Zigzag (row march) and
+    // Mandelbrot (iteration loop) can go quite low; Weather needs more pixels so
+    // its fine rain/snow stay crisp, so it caps higher and closer to retina.
+    const cfg =
+      this.shader === "weather"
+        ? {density: dpr * 0.85, maxDim: 1400}
+        : this.shader === "zigzag" || this.shader === "mandel"
+          ? {density: 0.6, maxDim: 820}
+          : {density: dpr, maxDim: Infinity}
+    const {density, maxDim} = cfg
 
     let w = Math.max(1, Math.round(rect.width * density))
     let h = Math.max(1, Math.round(rect.height * density))

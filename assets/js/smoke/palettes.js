@@ -7,6 +7,7 @@ export const SHADER_PALETTES = {
   lava: ["#0d0303", "#f25a0d", "#ffd973"],
   zigzag: ["#030305", "#20263a", "#ffffff"],
   mandel: ["#04060d", "#3b6ea5", "#ffd089"],
+  weather: ["#1a2838", "#6b7a89", "#eef4f8"],
 }
 
 export const DEFAULT_PALETTE = SHADER_PALETTES.smoke

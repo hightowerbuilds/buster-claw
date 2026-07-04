@@ -511,7 +511,8 @@ defmodule BusterClawWeb.AppearanceLive do
     "waves" => "Waves",
     "lava" => "Lava",
     "zigzag" => "Zigzag",
-    "mandel" => "Mandelbrot"
+    "mandel" => "Mandelbrot",
+    "weather" => "Weather"
   }
   defp home_shader_options,
     do:
