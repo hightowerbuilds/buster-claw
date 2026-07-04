@@ -15,9 +15,10 @@ defmodule BusterClaw.Humo.Expression do
   expression but still stripped from the text — fail closed, never leak.
   """
 
-  # ```humo-<type> {json}``` — the json is any brace-balanced-enough object; the
-  # non-greedy `.*?` with the `s` flag stops at the first closing fence.
-  @block ~r/```humo-([a-z]+)\s*(\{.*?\})\s*```/s
+  # ```humo-<type> <json>``` — capture the whole body up to the closing fence
+  # (non-greedy, `s` flag) rather than brace-matching, so nested JSON like a
+  # `humo-draw` shape list parses correctly.
+  @block ~r/```humo-([a-z]+)\s*(.*?)```/s
 
   @doc """
   Split assistant text into `{clean_text, expressions}`. `expressions` is a list
@@ -29,8 +30,8 @@ defmodule BusterClaw.Humo.Expression do
     expressions =
       @block
       |> Regex.scan(text)
-      |> Enum.flat_map(fn [_full, type, json] ->
-        case Jason.decode(json) do
+      |> Enum.flat_map(fn [_full, type, body] ->
+        case Jason.decode(String.trim(body)) do
           {:ok, data} when is_map(data) -> [%{type: type, data: data}]
           _ -> []
         end

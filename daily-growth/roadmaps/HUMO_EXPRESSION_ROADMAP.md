@@ -119,11 +119,35 @@ the content texture so a composition condenses out of the smoke. Pure
 composition/param math bun-tested. **(L — the load-bearing renderer.)**
 *Exit:* a hardcoded shape composition (e.g. hexagon ∪ smooth-min circle) renders
 from data and condenses in the fog.
+**SHIPPED 07-03 (code-complete; live eyeball pending).** The full path is wired:
+`sdf/primitives.wgsl.js` (iq MIT SDFs + `smin`), `sdf/pass.wgsl.js` (the Path-B
+interpreter — walks the shape buffer, composites union/subtract/intersect/smooth,
+writes the mask into the *content texture* so a drawing condenses like text),
+`draw.js` (the encoder/trust boundary), and the `renderer.js` `renderDrawing`
+pass built in a try/catch so a bad SDF shader degrades to "no drawings" while the
+smoke keeps running. `humo.ex` teaches the `humo-draw` vocabulary; `expression.ex`
+strips the block; `HumoLive` dispatches `humo:draw`; the hook adds a `contentMode`
++ `tickDraw` condense clock. *Fix on pickup:* `renderer.js` had a duplicate
+`renderDrawing` in the return object referencing try-scoped consts — it threw
+`ReferenceError` on the first draw and defeated the degradation; now the return
+exposes the safe closure and `destroy()` guards the null SDF buffers. The visual
+exit (a composition in the fog) needs the running Tauri app — verify by asking
+Humo's Claude to draw.
 
 ### Phase 2 — The drawing spec + schema + validation
 The JSON scene-tree schema, validator (clamped params, bounded counts), and
 spec→instruction-buffer compiler. Golden-spec tests; malformed/oversized specs
 fail closed. **(M)**
+**SHIPPED 07-03.** The vocabulary is now a declarative schema, `sdf/schema.js` —
+the single source of truth for every kind's GPU `code` and each param's
+slot/clamp/default, mirroring `sdf/pass.wgsl.js`. `draw.js` is a generic walk
+over it (no more hand-written switch): adding a shape is one schema entry + one
+interpreter branch, so the JSON the agent sends and the bytes the GPU reads can't
+drift by hand. `encodeShapes` now returns fail-closed diagnostics —
+`report{total,count,dropped,capped}` — distinguishing unknown-kind drops from
+over-cap truncation; the hook `console.warn`s so a truncation never reads as
+"drew it all." Golden-spec tests pin the canonical hexagon ∪ smooth-circle buffer
+float-for-float; report tests cover dropped/capped. bun 55, mix humo 5.
 
 ### Phase 3 — Diagrams (curated, our layout)
 A `humo-graph` / `humo-uml` element set with home-grown Canvas2D layout

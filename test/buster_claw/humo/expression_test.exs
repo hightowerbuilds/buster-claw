@@ -36,4 +36,13 @@ defmodule BusterClaw.Humo.ExpressionTest do
     assert clean == "just words"
     assert exprs == []
   end
+
+  test "parses a draw block with nested JSON (shapes list)" do
+    text = ~s(Look:\n```humo-draw {"shapes":[{"kind":"circle","r":0.5},{"kind":"box"}]}```)
+    {clean, [expr]} = Expression.extract(text)
+
+    assert clean == "Look:"
+    assert expr.type == "draw"
+    assert %{"shapes" => [%{"kind" => "circle"}, %{"kind" => "box"}]} = expr.data
+  end
 end

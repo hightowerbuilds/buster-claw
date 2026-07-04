@@ -21,6 +21,9 @@ import {
   NEUTRAL_EXPRESSION,
 } from "../humo/params.js"
 import {layoutPage} from "../humo/text_layout.js"
+import {encodeShapes, MAX_SHAPES} from "../humo/draw.js"
+
+const DRAW_CONDENSE_MS = 1200
 
 const TEXT_W = 1024
 const TEXT_H = 512
@@ -58,6 +61,11 @@ export const HumoSurface = {
     this.chat = {phase: "idle", hasText: false}
     // Active readout: the words still being spoken into the smoke.
     this.readout = null
+    // Content source for the smoke: "text" (the readout) or "draw" (an SDF
+    // scene rendered into the same content texture). A drawing condenses in and
+    // holds; the next text reply or new turn reverts to text.
+    this.contentMode = "text"
+    this.draw = null
 
     // Expression (mood + render mode), server-driven. Each reply's style eases
     // from neutral: a new turn resets the target so styling is per-reply, and a
@@ -68,11 +76,32 @@ export const HumoSurface = {
       this.exprTarget = styleFromSpec(spec)
     })
 
+    // A drawing: encode the agent's shapes → the SDF pass renders them into the
+    // content texture → the smoke condenses the composition like text.
+    this.handleEvent("humo:draw", ({shapes}) => {
+      if (!this.renderer) return
+      const encoded = encodeShapes(shapes)
+      // Fail-closed diagnostics: never let a truncation read as "drew it all".
+      const {dropped, capped} = encoded.report
+      if (dropped || capped) {
+        console.warn(
+          `Humo draw: ${encoded.count} shape(s) rendered, ${dropped} dropped (unknown kind), ${capped} over the ${MAX_SHAPES}-shape cap`
+        )
+      }
+      if (encoded.count === 0) return
+      this.renderer.renderDrawing(encoded)
+      this.contentMode = "draw"
+      this.draw = {startedAt: performance.now()}
+      this.textDirty = false // don't let a stale text upload clobber the scene
+      this.chat = {phase: "streaming", hasText: true}
+    })
+
     this.handleEvent("humo:phase", ({phase}) => {
       if (phase === "thinking") {
         // New turn: the old page dissolves under the churn (reveal → 0), and
         // the style eases back to neutral unless this reply sets one.
         this.readout = null
+        this.contentMode = "text"
         this.chat.phase = "thinking"
         this.exprTarget = {...NEUTRAL_EXPRESSION}
       } else if (this.readout) {
@@ -86,6 +115,7 @@ export const HumoSurface = {
     this.handleEvent("humo:text", ({text}) => {
       const words = text.split(/\s+/).filter(Boolean)
       if (words.length === 0) return
+      this.contentMode = "text" // a text reply reverts from any drawing
       if (this.readout) {
         // Another block in the same turn: queue its words onto the readout.
         this.readout.words.push(...words)
@@ -193,7 +223,12 @@ export const HumoSurface = {
     if (this.frames.length > 120) this.frames.shift()
     this.lastFrameAt = now
 
-    const state = this.readout ? this.tickReadout(now) : this.chat
+    const state =
+      this.contentMode === "draw"
+        ? this.tickDraw(now)
+        : this.readout
+          ? this.tickReadout(now)
+          : this.chat
     const mapped = mapChatState(state)
     // Ease the lens in/out; while fully off it costs the shader nothing.
     this.lens.strength += (this.lens.target - this.lens.strength) * 0.14
@@ -278,6 +313,14 @@ export const HumoSurface = {
       condenseMs: CONDENSE_MS,
       dissolveMs: DISSOLVE_MS,
     })
+    return {phase: "streaming", streamProgress: reveal}
+  },
+
+  // The drawing's condense clock: the SDF scene is already in the content
+  // texture; ramp reveal 0→1 so it materializes out of the smoke, then holds.
+  tickDraw(now) {
+    const reveal = Math.min(1, (now - this.draw.startedAt) / DRAW_CONDENSE_MS)
+    if (reveal >= 1) return {phase: "settled"}
     return {phase: "streaming", streamProgress: reveal}
   },
 
