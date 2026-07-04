@@ -16,7 +16,7 @@ export const clampR = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
 //   [4] time   [5] intensity  [6] reveal  [7] freezeTime (lens hold timestamp)
 //   [8] lens.x [9] lens.y (uv, y-up)  [10] lens radius  [11] lens strength
 //   [12] mood energy  [13] mood temp (-1 cool .. +1 warm)  [14] mood density  [15] pad
-//   [16] style pixelCell (1 = off)  [17] style paletteAmt (0 = off)  [18..19] pad
+//   [16] style pixelCell (1 = off)  [17] style paletteAmt (0 = off)  [18] motion (1 = full)  [19] pad
 //   [20] post glow  [21] post grain  [22] post scanline  [23] post vignette
 export const UNIFORM_FLOATS = 24
 
@@ -42,7 +42,7 @@ export const NEUTRAL_EXPRESSION = {
 }
 
 export function packUniforms(
-  {width, height, timeSec, intensity, reveal, freezeTime = 0, lens, expression, post},
+  {width, height, timeSec, intensity, reveal, freezeTime = 0, lens, expression, post, motion = 1},
   out
 ) {
   const e = expression || NEUTRAL_EXPRESSION
@@ -66,7 +66,7 @@ export function packUniforms(
   u[15] = 0
   u[16] = Math.max(1, e.pixelCell)
   u[17] = clamp01(e.paletteAmt)
-  u[18] = 0
+  u[18] = clamp01(motion)
   u[19] = 0
   u[20] = clamp01(pp.glow)
   u[21] = clamp01(pp.grain)

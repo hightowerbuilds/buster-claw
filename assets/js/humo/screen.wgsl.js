@@ -27,7 +27,7 @@ struct U {
   params: vec4<f32>,
   lens: vec4<f32>,
   mood: vec4<f32>,   // energy, temp (-1 cool .. +1 warm), density, _
-  style: vec4<f32>,  // pixelCell (1 = off), paletteAmt (0 = off), _, _
+  style: vec4<f32>,  // pixelCell (1 = off), paletteAmt (0 = off), motion (1 = full), _
   post: vec4<f32>,   // glow, grain, scanline, vignette (the hi-fi post stack)
 };
 @group(0) @binding(0) var<uniform> u: U;
@@ -134,7 +134,8 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   // second, swapped-reuse warp pass (free — no extra fbm samples) pulls the
   // field into stringier, wispier filaments. Energy scales the drift (how fast
   // the smoke moves) and the curl warp (how turbulent).
-  let drift = t * 0.085 * e_drift;
+  // motion (style.z) globally scales the smoke drift — reduced-motion calms it.
+  let drift = t * 0.085 * e_drift * u.style.z;
   let curl_a = fbm(p * 3.1 + vec2<f32>(0.0, drift));
   let curl_b = fbm(p * 4.8 + vec2<f32>(drift * -0.7, 0.16));
   p = p + vec2<f32>(curl_a - 0.5, curl_b - 0.5) * 0.42 * e_warp;

@@ -56,6 +56,7 @@ describe("packUniforms", () => {
     expect(base[21]).toBeCloseTo(POST_DEFAULT.grain)
     expect(base[22]).toBeCloseTo(POST_DEFAULT.scanline)
     expect(base[23]).toBeCloseTo(POST_DEFAULT.vignette)
+    expect(base[18]).toBe(1) // motion defaults to full
 
     // Reduced-motion drops grain to 0; other terms clamp to [0,1].
     const u = packUniforms({
@@ -68,6 +69,9 @@ describe("packUniforms", () => {
     })
     expect(u[20]).toBe(1) // clamped
     expect(u[21]).toBe(0) // grain off
+
+    // Reduced-motion passes a low motion scale.
+    expect(packUniforms({width: 1, height: 1, timeSec: 0, intensity: 1, reveal: 0, motion: 0.25})[18]).toBe(0.25)
   })
 
   test("clamps reveal and lens strength, reuses a provided buffer", () => {

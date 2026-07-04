@@ -32,6 +32,8 @@ const CONDENSE_MS = 800
 const DISSOLVE_MS = 700
 // How long an authored static page (a diagram) takes to condense out of smoke.
 const STATIC_CONDENSE_MS = 1100
+// Cross-dissolve when switching scenes over already-visible content.
+const TRANSITION_MS = 420
 
 export const HumoSurface = {
   mounted() {
@@ -84,6 +86,7 @@ export const HumoSurface = {
     // the content so nothing lingers under the fog, settle to drifting smoke.
     this.handleEvent("humo:reset", () => {
       this.readout = null
+      this.transition = null
       this.mode = "chat"
       this.activeContent = this.chatContent
       this.chatContent.clear()
@@ -97,6 +100,7 @@ export const HumoSurface = {
         // scene reverts to chat, and the style eases back to neutral unless
         // this reply sets one.
         this.readout = null
+        this.transition = null
         this.mode = "chat"
         this.activeContent = this.chatContent
         this.chat.phase = "thinking"
@@ -113,7 +117,8 @@ export const HumoSurface = {
     this.handleEvent("humo:text", ({text}) => {
       const words = text.split(/\s+/).filter(Boolean)
       if (words.length === 0) return
-      // A text reply reverts from any diagram scene back to chat.
+      // A text reply reverts from any diagram/drawing scene back to chat.
+      this.transition = null
       this.mode = "chat"
       this.activeContent = this.chatContent
       if (this.readout) {
@@ -139,8 +144,14 @@ export const HumoSurface = {
     // The hi-fi post stack (glow / grain / scanlines / vignette). Grain is the
     // only animated term, so honour prefers-reduced-motion by dropping it.
     this.post = {...POST_DEFAULT}
-    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    if (reduce) this.post.grain = 0
+    this.reduceMotion =
+      !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    if (this.reduceMotion) this.post.grain = 0 // drop the only animated post term
+
+    // A scene cross-dissolve in flight (dissolve the old out, then condense the
+    // new in), and the last frame's reveal so we know whether to bother.
+    this.transition = null
+    this.lastReveal = 0
 
     // The still lens: hovering holds the smoke under a soft circle (frozen
     // clock in-shader) with chromatic fringing at the rim. Strength eases in
@@ -229,13 +240,15 @@ export const HumoSurface = {
     if (this.frames.length > 120) this.frames.shift()
     this.lastFrameAt = now
 
-    const state =
-      this.mode === "static"
+    const state = this.transition
+      ? this.tickTransition(now)
+      : this.mode === "static"
         ? this.tickStatic(now)
         : this.readout
           ? this.tickReadout(now)
           : this.chat
     const mapped = mapChatState(state)
+    this.lastReveal = mapped.reveal
     // Ease the lens in/out; while fully off it costs the shader nothing.
     this.lens.strength += (this.lens.target - this.lens.strength) * 0.14
     if (this.lens.strength < 0.005 && this.lens.target === 0) this.lens.strength = 0
@@ -252,6 +265,7 @@ export const HumoSurface = {
         lens: this.lens,
         expression: this.expr,
         post: this.post,
+        motion: this.reduceMotion ? 0.25 : 1,
       },
       this.uniforms
     )
@@ -322,14 +336,36 @@ export const HumoSurface = {
     return {phase: "streaming", streamProgress: reveal}
   },
 
-  // Switch to a static scene (a diagram or a drawing already authored onto
-  // `presenter`'s canvas): make it active and start its condense clock.
+  // Switch to a static scene (a diagram or drawing already authored onto
+  // `presenter`'s canvas). If something is already visible, cross-dissolve:
+  // dissolve the current content out, then swap + condense the new one in. If the
+  // screen is just smoke, skip straight to the condense.
   enterStatic(presenter) {
-    this.activeContent = presenter
-    this.mode = "static"
-    this.staticAt = performance.now()
     this.readout = null
     this.chat = {phase: "streaming", hasText: true}
+    if (this.lastReveal > 0.15) {
+      this.transition = {startedAt: performance.now(), next: presenter}
+    } else {
+      this.transition = null
+      this.activeContent = presenter
+      this.mode = "static"
+      this.staticAt = performance.now()
+    }
+  },
+
+  // Drive a scene cross-dissolve: reveal sweeps 1 → 0 on the old content, then at
+  // the halfway point we swap to the new (already-drawn) presenter and hand off
+  // to its condense clock.
+  tickTransition(now) {
+    const t = now - this.transition.startedAt
+    if (t >= TRANSITION_MS) {
+      this.activeContent = this.transition.next
+      this.mode = "static"
+      this.staticAt = now
+      this.transition = null
+      return {phase: "streaming", streamProgress: 0}
+    }
+    return {phase: "streaming", streamProgress: 1 - t / TRANSITION_MS}
   },
 
   // A static authored page (a diagram or drawing) is already in the content
