@@ -73,73 +73,49 @@ export async function createSmokeRenderer(canvas, {textWidth = 1024, textHeight 
     ],
   })
 
-  // --- SDF drawing pass ---------------------------------------------------
-  // A self-contained pipeline that renders a composed SDF scene INTO textTex
-  // (the same content texture the smoke samples). Isolated on purpose: it is
-  // built in a try/catch so a bug in the *drawing* shader degrades to "no
-  // drawings" while the smoke keeps running — the working surface is never
-  // hostage to this newer path. See sdf/pass.wgsl.js.
-  let shapeBuf = null
-  let drawUbuf = null
-  let renderDrawing = () => {} // no-op until/unless the pass builds cleanly
+  // --- SDF drawing pass (built lazily on first draw) ----------------------
+  // Renders a composed SDF scene INTO textTex (the same content texture the
+  // smoke samples). Deliberately NOT built at renderer init: creating a second
+  // WebGPU pipeline — with a fragment-stage storage buffer — is exactly the
+  // kind of thing a stricter webview (WKWebView) can choke on, and *opening*
+  // Humo must never risk the smoke. So only the smoke pipeline above boots; the
+  // SDF pass is constructed on demand the first time a drawing arrives, isolated
+  // in try/catch. A failure degrades to "no drawings" while the smoke keeps
+  // running (roadmap Cross-cutting §B). See sdf/pass.wgsl.js.
+  let drawPass = null
+  let drawFailed = false
 
-  try {
-    const drawModule = device.createShaderModule({code: SDF_PASS_WGSL})
-    const drawInfo = await drawModule.getCompilationInfo()
-    const drawErrs = drawInfo.messages.filter((m) => m.type === "error")
-    if (drawErrs.length) {
-      throw new Error(drawErrs.map((m) => m.lineNum + ":" + m.message).join(" | "))
-    }
-    const drawPipeline = device.createRenderPipeline({
-      layout: "auto",
-      vertex: {module: drawModule, entryPoint: "vs_main"},
-      fragment: {module: drawModule, entryPoint: "fs_main", targets: [{format: "rgba8unorm"}]},
-      primitive: {topology: "triangle-list"},
-    })
-    drawUbuf = device.createBuffer({
-      size: 32, // two vec4: res, cfg
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    })
-    shapeBuf = device.createBuffer({
-      size: MAX_SHAPES * SHAPE_STRIDE * 4,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    })
-    const drawBind = device.createBindGroup({
-      layout: drawPipeline.getBindGroupLayout(0),
-      entries: [
-        {binding: 0, resource: {buffer: drawUbuf}},
-        {binding: 1, resource: {buffer: shapeBuf}},
-      ],
-    })
-    const drawU = new Float32Array(8)
-
-    renderDrawing = ({buffer, count, edge = 0.006}) => {
-      device.queue.writeBuffer(shapeBuf, 0, buffer)
-      drawU[0] = textWidth
-      drawU[1] = textHeight
-      drawU[4] = count
-      drawU[5] = edge
-      device.queue.writeBuffer(drawUbuf, 0, drawU)
-
-      const enc = device.createCommandEncoder()
-      const pass = enc.beginRenderPass({
-        colorAttachments: [
-          {
-            view: textTex.createView(),
-            loadOp: "clear",
-            storeOp: "store",
-            clearValue: {r: 0, g: 0, b: 0, a: 0},
-          },
+  function buildDrawPass() {
+    if (drawPass || drawFailed) return drawPass
+    try {
+      const module = device.createShaderModule({code: SDF_PASS_WGSL})
+      const pipeline = device.createRenderPipeline({
+        layout: "auto",
+        vertex: {module, entryPoint: "vs_main"},
+        fragment: {module, entryPoint: "fs_main", targets: [{format: "rgba8unorm"}]},
+        primitive: {topology: "triangle-list"},
+      })
+      const ubuf = device.createBuffer({
+        size: 32, // two vec4: res, cfg
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      })
+      const shapeBuf = device.createBuffer({
+        size: MAX_SHAPES * SHAPE_STRIDE * 4,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      })
+      const bind = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          {binding: 0, resource: {buffer: ubuf}},
+          {binding: 1, resource: {buffer: shapeBuf}},
         ],
       })
-      pass.setPipeline(drawPipeline)
-      pass.setBindGroup(0, drawBind)
-      pass.draw(3)
-      pass.end()
-      device.queue.submit([enc.finish()])
+      drawPass = {pipeline, ubuf, shapeBuf, bind, u: new Float32Array(8)}
+    } catch (e) {
+      drawFailed = true
+      console.warn("Humo: SDF drawing pass unavailable, smoke unaffected —", e.message)
     }
-  } catch (e) {
-    console.warn("Humo: SDF drawing pass unavailable, smoke unaffected —", e.message)
+    return drawPass
   }
 
   return {
@@ -181,9 +157,36 @@ export async function createSmokeRenderer(canvas, {textWidth = 1024, textHeight 
     // Render a composed SDF scene into the content texture, replacing whatever
     // text was there. `encoded` is the {buffer, count} from draw.js. The smoke
     // then condenses it exactly like text (the hook stops uploading the text
-    // canvas while a drawing is live). This is the closure built above: a no-op
-    // if the SDF pass failed to compile, so the smoke is never held hostage.
-    renderDrawing,
+    // canvas while a drawing is live). Builds the pass on first use; a no-op if
+    // the SDF pass can't build, so the smoke is never held hostage.
+    renderDrawing({buffer, count, edge = 0.006}) {
+      const dp = buildDrawPass()
+      if (!dp) return
+
+      device.queue.writeBuffer(dp.shapeBuf, 0, buffer)
+      dp.u[0] = textWidth
+      dp.u[1] = textHeight
+      dp.u[4] = count
+      dp.u[5] = edge
+      device.queue.writeBuffer(dp.ubuf, 0, dp.u)
+
+      const enc = device.createCommandEncoder()
+      const pass = enc.beginRenderPass({
+        colorAttachments: [
+          {
+            view: textTex.createView(),
+            loadOp: "clear",
+            storeOp: "store",
+            clearValue: {r: 0, g: 0, b: 0, a: 0},
+          },
+        ],
+      })
+      pass.setPipeline(dp.pipeline)
+      pass.setBindGroup(0, dp.bind)
+      pass.draw(3)
+      pass.end()
+      device.queue.submit([enc.finish()])
+    },
 
     // Call after the canvas backing size changes.
     resize: configure,
@@ -191,10 +194,10 @@ export async function createSmokeRenderer(canvas, {textWidth = 1024, textHeight 
     destroy() {
       textTex.destroy()
       ubuf.destroy()
-      // These are null if the SDF pass never built — guard so teardown of a
+      // Null unless a drawing built the SDF pass — guard so teardown of a
       // smoke-only surface can't throw.
-      shapeBuf?.destroy()
-      drawUbuf?.destroy()
+      drawPass?.shapeBuf.destroy()
+      drawPass?.ubuf.destroy()
       device.destroy()
     },
   }
