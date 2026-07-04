@@ -123,7 +123,7 @@ async function restoreTabs() {
   activeId = target.id
   if (document.activeElement !== addr) addr.value = display(target.url)
   renderTabs()
-  inv("browser_switch_tab", {tabId: target.id})
+  inv("browser_switch_tab", {tabId: target.id, url: target.url})
   scheduleSaveTabs()
 }
 
@@ -139,8 +139,13 @@ function renderTabs() {
   tabsEl.textContent = ""
   tabs.forEach((t) => {
     const tab = document.createElement("div")
-    tab.className = "tab" + (t.id === activeId ? " active" : "") + (t.ephemeral ? " eph" : "")
-    tab.title = t.label + (t.ephemeral ? " — ephemeral session (nothing persists)" : "")
+    tab.className =
+      "tab" + (t.id === activeId ? " active" : "") + (t.ephemeral ? " eph" : "") +
+      (t.suspended ? " suspended" : "")
+    tab.title =
+      t.label +
+      (t.ephemeral ? " — ephemeral session (nothing persists)" : "") +
+      (t.suspended ? " — suspended (reloads on click)" : "")
     // Drag to reorder (chrome-local: Rust doesn't care about strip order) and
     // middle-click to close — standard tab-strip ergonomics.
     tab.draggable = true
@@ -526,8 +531,10 @@ function switchTab(id) {
   activeId = id
   const t = activeTab()
   if (t && document.activeElement !== addr) addr.value = display(t.url)
+  // Pass the chip's saved URL so Rust can resurrect the tab if it was suspended
+  // (background-tab eviction closed its webview while the chip lived on).
   renderTabs()
-  inv("browser_switch_tab", {tabId: id})
+  inv("browser_switch_tab", {tabId: id, url: t ? t.url : ""})
   scheduleSaveTabs()
 }
 
@@ -541,7 +548,7 @@ function closeTab(id) {
     const next = tabs[Math.max(0, i - 1)]
     activeId = next.id
     addr.value = display(next.url)
-    inv("browser_switch_tab", {tabId: next.id})
+    inv("browser_switch_tab", {tabId: next.id, url: next.url})
   }
   renderTabs()
   scheduleSaveTabs()
@@ -555,6 +562,7 @@ window.__onContentLoading = function (id, u) {
   if (t) {
     t.url = u
     t.loading = true
+    t.suspended = false // it's live again the moment it starts loading
     t.favicon = faviconFor(u, origin)
     t.label = deriveLabel(u, origin)
     // Safety net: some loads never report completion — network errors,
@@ -575,6 +583,20 @@ window.__onContentLoading = function (id, u) {
   }
   renderTabs()
   scheduleSaveTabs()
+}
+
+// Called from Rust when background-tab suspension evicts a tab's content
+// webview (LRU beyond the live-tab budget). The chip lives on with its saved
+// URL; we dim it so the user knows a click will reload. Cleared in
+// __onContentLoading when the switch-back resurrects it.
+window.__onTabSuspended = function (id) {
+  const t = tabs.find((x) => x.id === id)
+  if (t && !t.suspended) {
+    t.suspended = true
+    t.loading = false
+    t.favicon = null
+    renderTabs()
+  }
 }
 
 // Called from Rust when a tab finishes loading, per tab id. `title` is the

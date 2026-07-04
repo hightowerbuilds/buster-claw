@@ -105,6 +105,9 @@ defmodule BusterClawWeb.BrowserChromeController do
          the tab and it's excluded from session restore. */
       .tab.eph { border-style: dashed; border-color: rgba(255,77,28,.45); }
       .tab.eph.active { border-color: rgba(255,77,28,.7); }
+      /* Suspended (background-tab eviction freed the webview): dimmed to signal
+         a click will reload it. The chip and its URL survive. */
+      .tab.suspended .label { opacity: .5; font-style: italic; }
       .tab .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                     font-size: 12px; max-width: 150px; }
       .tab .fav { width: 14px; height: 14px; flex: 0 0 auto; border-radius: 3px; }

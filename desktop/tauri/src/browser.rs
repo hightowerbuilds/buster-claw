@@ -46,7 +46,21 @@ pub struct BrowserState {
     // reveals them by id (never by a page-supplied path), and Finished events
     // — which carry no path on macOS — resolve their file here by URL.
     downloads: Mutex<DownloadLog>,
+    // surface id -> tab ids in most-recently-active order (front = most recent).
+    // The LRU key for background-tab suspension: live content webviews beyond
+    // MAX_LIVE_TABS get evicted least-recent-first (the chip survives; a
+    // switch-back reloads). See enforce_tab_budget.
+    mru: Mutex<HashMap<String, Vec<String>>>,
+    // Content labels of ephemeral (agent sandbox) tabs. Never suspended: their
+    // non-persistent data store can't survive an evict→reload round-trip, so
+    // dropping the webview would silently lose the session it promised to keep.
+    ephemeral: Mutex<HashSet<String>>,
 }
+
+// How many content webviews may stay live per surface before the least-recently
+// used ones are suspended. Caps the process-per-tab memory ceiling; the tab chip
+// (and its saved URL) survives, so a switch-back just reloads.
+const MAX_LIVE_TABS: usize = 6;
 
 #[derive(Default)]
 struct DownloadLog {
@@ -74,10 +88,55 @@ impl BrowserState {
     fn clear(&self, sid: &str) {
         self.surfaces.lock().unwrap().remove(sid);
         self.shown.lock().unwrap().remove(sid);
+        self.mru.lock().unwrap().remove(sid);
+        let prefix = format!("{CONTENT_PREFIX}{sid}-");
+        self.ephemeral.lock().unwrap().retain(|l| !l.starts_with(&prefix));
     }
     fn clear_all(&self) {
         self.surfaces.lock().unwrap().clear();
         self.shown.lock().unwrap().clear();
+        self.mru.lock().unwrap().clear();
+        self.ephemeral.lock().unwrap().clear();
+    }
+    // Mark a tab most-recently-used (front of its surface's LRU list).
+    fn touch(&self, sid: &str, tab_id: &str) {
+        let mut mru = self.mru.lock().unwrap();
+        let list = mru.entry(sid.to_string()).or_default();
+        list.retain(|id| id != tab_id);
+        list.insert(0, tab_id.to_string());
+    }
+    // Drop a tab from the LRU list (its chip was closed).
+    fn forget(&self, sid: &str, tab_id: &str) {
+        if let Some(list) = self.mru.lock().unwrap().get_mut(sid) {
+            list.retain(|id| id != tab_id);
+        }
+    }
+    // Live tab ids for a surface, ordered most-recently-used first. `live` is the
+    // set of tab ids that currently have a webview; MRU order drives which of them
+    // to keep when the budget is exceeded.
+    fn live_by_recency(&self, sid: &str, live: &HashSet<String>) -> Vec<String> {
+        let mru = self.mru.lock().unwrap();
+        let order = mru.get(sid).cloned().unwrap_or_default();
+        let mut out: Vec<String> = order.iter().filter(|id| live.contains(*id)).cloned().collect();
+        // Any live tab the LRU never saw (defensive) goes to the back.
+        for id in live {
+            if !out.contains(id) {
+                out.push(id.clone());
+            }
+        }
+        out
+    }
+    fn mark_ephemeral(&self, sid: &str, tab_id: &str, on: bool) {
+        let label = content_label(sid, tab_id);
+        let mut set = self.ephemeral.lock().unwrap();
+        if on {
+            set.insert(label);
+        } else {
+            set.remove(&label);
+        }
+    }
+    fn is_ephemeral(&self, sid: &str, tab_id: &str) -> bool {
+        self.ephemeral.lock().unwrap().contains(&content_label(sid, tab_id))
     }
     // Any known surface — the default screenshot target when none is specified.
     fn any_sid(&self) -> Option<String> {
@@ -254,6 +313,7 @@ pub fn browser_open(
     state.set(&sid, &show_id);
     state.set_shown(&sid);
     show_only(&app, &sid, &show_id, x, cy, width, content_h);
+    enforce_tab_budget(&app, &state, &sid, &show_id);
     Ok(())
 }
 
@@ -297,43 +357,55 @@ pub fn browser_new_tab(
     ephemeral: Option<bool>,
 ) -> Result<(), String> {
     let sid = sanitize_sid(&surface_id);
+    let is_ephemeral = ephemeral.unwrap_or(false);
     let (x, y, w, h) = sample_content_bounds(&app, &sid).ok_or("no content bounds yet")?;
-    create_content(
-        &app,
-        &sid,
-        &tab_id,
-        &url,
-        x,
-        y,
-        w,
-        h,
-        ephemeral.unwrap_or(false),
-    )?;
+    create_content(&app, &sid, &tab_id, &url, x, y, w, h, is_ephemeral)?;
+    state.mark_ephemeral(&sid, &tab_id, is_ephemeral);
     state.set(&sid, &tab_id);
     show_only(&app, &sid, &tab_id, x, y, w, h);
+    enforce_tab_budget(&app, &state, &sid, &tab_id);
     Ok(())
 }
 
-/// Switch a surface's visible tab to `tab_id`.
+/// Switch a surface's visible tab to `tab_id`. If that tab was suspended
+/// (background-tab eviction closed its webview), `url` — the chrome's saved
+/// address for the chip — recreates it on demand so the switch-back reloads.
 #[tauri::command]
 pub fn browser_switch_tab(
     app: AppHandle,
     state: State<BrowserState>,
     surface_id: String,
     tab_id: String,
+    url: Option<String>,
 ) -> Result<(), String> {
     let sid = sanitize_sid(&surface_id);
     let (x, y, w, h) = sample_content_bounds(&app, &sid).unwrap_or((0.0, 0.0, 0.0, 0.0));
+    // Resurrect a suspended tab: no webview, but the chrome still holds its URL.
+    if app.get_webview(&content_label(&sid, &tab_id)).is_none() {
+        if let Some(u) = url.as_deref().filter(|u| !u.is_empty()) {
+            if w > 0.0 && h > 0.0 {
+                create_content(&app, &sid, &tab_id, u, x, y, w, h, false)?;
+            }
+        }
+    }
     state.set(&sid, &tab_id);
     show_only(&app, &sid, &tab_id, x, y, w, h);
+    enforce_tab_budget(&app, &state, &sid, &tab_id);
     Ok(())
 }
 
 /// Close one tab's content webview in a surface. The chrome then switches to a
 /// neighbour.
 #[tauri::command]
-pub fn browser_close_tab(app: AppHandle, surface_id: String, tab_id: String) -> Result<(), String> {
+pub fn browser_close_tab(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: String,
+    tab_id: String,
+) -> Result<(), String> {
     let sid = sanitize_sid(&surface_id);
+    state.forget(&sid, &tab_id);
+    state.mark_ephemeral(&sid, &tab_id, false);
     if let Some(webview) = app.get_webview(&content_label(&sid, &tab_id)) {
         webview.close().map_err(|e| e.to_string())?;
     }
@@ -1132,6 +1204,40 @@ fn show_only(app: &AppHandle, sid: &str, tab_id: &str, x: f64, y: f64, w: f64, h
                 let _ = webview.show();
             } else {
                 let _ = webview.hide();
+            }
+        }
+    }
+}
+
+// Tab ids that currently have a live content webview in this surface.
+fn live_tab_ids(app: &AppHandle, sid: &str) -> HashSet<String> {
+    let prefix = format!("{CONTENT_PREFIX}{sid}-");
+    content_labels_for(app, sid)
+        .iter()
+        .map(|label| label.trim_start_matches(&prefix).to_string())
+        .collect()
+}
+
+// Background-tab suspension: after `active_id` is made current, keep only the
+// MAX_LIVE_TABS most-recently-used live content webviews; close the rest to cap
+// the process-per-tab memory ceiling. The active tab and ephemeral tabs are
+// never evicted. Evicting only drops the webview — the chrome keeps the chip and
+// its saved URL, so switching back recreates it (browser_switch_tab reloads it).
+fn enforce_tab_budget(app: &AppHandle, state: &State<BrowserState>, sid: &str, active_id: &str) {
+    state.touch(sid, active_id);
+    let live = live_tab_ids(app, sid);
+    let ordered = state.live_by_recency(sid, &live);
+    for id in ordered.iter().skip(MAX_LIVE_TABS) {
+        if id == active_id || state.is_ephemeral(sid, id) {
+            continue;
+        }
+        if let Some(webview) = app.get_webview(&content_label(sid, id)) {
+            let _ = webview.close();
+            if let Some(chrome) = app.get_webview(&chrome_label(sid)) {
+                let _ = chrome.eval(&format!(
+                    "window.__onTabSuspended && window.__onTabSuspended({})",
+                    js_str(id)
+                ));
             }
         }
     }
