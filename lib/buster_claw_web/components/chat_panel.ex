@@ -182,14 +182,18 @@ defmodule BusterClawWeb.ChatPanel do
       assign(assigns, :zoom_idx, Enum.find_index(assigns.svgs, &(&1.id == assigns.zoomed)))
 
     ~H"""
-    <div id="home-sketchpad" phx-hook="SketchpadDock" class="flex min-h-0 shrink-0 gap-1 overflow-hidden">
+    <div
+      id="home-sketchpad"
+      phx-hook="SketchpadDock"
+      class="flex min-h-0 shrink-0 gap-1 overflow-hidden"
+    >
       <aside
         :if={@open}
         class="ic-panel flex w-80 min-h-0 flex-col overflow-hidden"
-        aria-label="Sketchpad"
+        aria-label="SVG Viewer"
       >
         <header class="flex items-center justify-between border-b-2 border-base-content/20 px-4 py-3">
-          <p class="ic-eyebrow">Sketchpad</p>
+          <p class="ic-eyebrow">SVG Viewer</p>
           <span class="font-mono text-[0.62rem] text-base-content/45">{length(@svgs)}</span>
         </header>
         <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
@@ -217,12 +221,12 @@ defmodule BusterClawWeb.ChatPanel do
         type="button"
         phx-click="toggle_sketchpad"
         aria-expanded={to_string(@open)}
-        title={if @open, do: "Hide sketchpad", else: "Show sketchpad"}
+        title={if @open, do: "Hide SVG viewer", else: "Show SVG viewer"}
         class="ic-panel flex w-8 shrink-0 flex-col items-center gap-3 py-3 text-base-content/60 transition hover:border-primary hover:text-primary"
       >
         <.icon name={if @open, do: "hero-chevron-left", else: "hero-chevron-right"} class="size-4" />
         <span class="font-mono text-[0.6rem] uppercase tracking-widest [writing-mode:vertical-rl]">
-          Sketchpad
+          SVG Viewer
         </span>
         <span
           :if={@svgs != []}

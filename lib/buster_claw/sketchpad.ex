@@ -69,7 +69,7 @@ defmodule BusterClaw.Sketchpad do
     DRAW it: emit a fenced ```svg block containing one complete, self-contained \
     <svg>…</svg> (give it a viewBox; no external references, scripts, or event \
     handlers). The block is stripped from your message and rendered crisply in the \
-    sketchpad panel beside the chat — so refer to it naturally ("see the sketch"), \
+    SVG viewer beside the chat — so refer to it naturally ("see the drawing"), \
     never paste or describe the raw SVG markup. Use it only when it genuinely helps.\
     """
   end
