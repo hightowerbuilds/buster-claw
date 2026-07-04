@@ -42,6 +42,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chat_running, Chat.running?(active))
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
+    |> assign(:zoomed_svg, nil)
     |> load_chat_history(active)
   end
 
@@ -133,9 +134,26 @@ defmodule BusterClawWeb.StatusLive do
       |> assign(:chat_seq, 0)
       |> assign(:chat_svgs, [])
       |> assign(:svg_seq, 0)
+      |> assign(:zoomed_svg, nil)
 
     {:noreply, socket}
   end
+
+  # Open a sketchpad SVG full-screen in a modal (and close it).
+  def handle_event("zoom_svg", %{"id" => id}, socket) do
+    svg =
+      with {n, ""} <- Integer.parse(id),
+           %{svg: svg} <- Enum.find(socket.assigns.chat_svgs, &(&1.id == n)) do
+        svg
+      else
+        _ -> nil
+      end
+
+    {:noreply, assign(socket, :zoomed_svg, svg)}
+  end
+
+  def handle_event("close_zoom", _params, socket),
+    do: {:noreply, assign(socket, :zoomed_svg, nil)}
 
   def handle_event("close_chat", %{"id" => id}, socket) do
     Chat.stop(id)
@@ -271,6 +289,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chat_running, Chat.running?(id))
     |> assign(:chat_thinking, if(Chat.running?(id), do: :running, else: nil))
     |> assign(:chat_queue, Chat.queue(id))
+    |> assign(:zoomed_svg, nil)
     |> update_tab(id, &%{&1 | unread: false})
     |> load_chat_history(id)
   end
@@ -428,7 +447,11 @@ defmodule BusterClawWeb.StatusLive do
                 thinking={@chat_thinking}
                 queue={@chat_queue}
               />
-              <BusterClawWeb.ChatPanel.sketchpad :if={@chat_svgs != []} svgs={@chat_svgs} />
+              <BusterClawWeb.ChatPanel.sketchpad
+                :if={@chat_svgs != []}
+                svgs={@chat_svgs}
+                zoomed={@zoomed_svg}
+              />
             </div>
           </div>
         </div>

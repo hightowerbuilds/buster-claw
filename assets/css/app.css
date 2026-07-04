@@ -450,12 +450,12 @@ body { background-color: var(--color-base-100); }
   height: auto;
   max-height: 220px;
 }
-.ic-sketch-zoom svg {
+.ic-sketch-modal svg {
   display: block;
   width: auto;
   height: auto;
-  max-width: 100%;
-  max-height: 80vh;
+  max-width: 90vw;
+  max-height: 85vh;
 }
 
 /* Solid bordered panel with a hard offset shadow — the core surface. */

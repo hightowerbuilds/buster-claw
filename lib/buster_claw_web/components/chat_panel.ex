@@ -169,9 +169,11 @@ defmodule BusterClawWeb.ChatPanel do
   @doc """
   The sketchpad sidebar: every SVG Claude drew this conversation, shown as a real,
   crisp SVG. `svgs` is a list of `%{id, svg}` (already sanitized upstream). Click
-  a card to enlarge it. Rendered beside the chat only when non-empty.
+  a card to open it full-screen (`zoomed` holds the SVG currently in the modal, or
+  nil). Rendered beside the chat only when non-empty.
   """
   attr :svgs, :list, required: true
+  attr :zoomed, :any, required: true
 
   def sketchpad(assigns) do
     ~H"""
@@ -184,25 +186,42 @@ defmodule BusterClawWeb.ChatPanel do
         <span class="font-mono text-[0.62rem] text-base-content/45">{length(@svgs)}</span>
       </header>
       <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
-        <div :for={item <- @svgs}>
-          <button
-            type="button"
-            phx-click={JS.remove_class("hidden", to: "#sketch-zoom-#{item.id}")}
-            title="Click to enlarge"
-            class="ic-sketch-card block w-full rounded-sm border-2 border-base-content/20 bg-base-100 p-2 transition hover:border-primary"
-          >
-            {Phoenix.HTML.raw(item.svg)}
-          </button>
-          <div
-            id={"sketch-zoom-#{item.id}"}
-            phx-click={JS.add_class("hidden", to: "#sketch-zoom-#{item.id}")}
-            class="ic-sketch-zoom hidden fixed inset-0 z-50 grid place-items-center bg-black/70 p-8 backdrop-blur"
-          >
-            <div class="max-h-full max-w-3xl overflow-auto rounded-sm border-2 border-base-content/30 bg-base-100 p-4">
-              {Phoenix.HTML.raw(item.svg)}
-            </div>
+        <button
+          :for={item <- @svgs}
+          type="button"
+          phx-click="zoom_svg"
+          phx-value-id={item.id}
+          title="Click to view full screen"
+          class="ic-sketch-card block w-full rounded-sm border-2 border-base-content/20 bg-base-100 p-2 transition hover:border-primary"
+        >
+          {Phoenix.HTML.raw(item.svg)}
+        </button>
+      </div>
+
+      <%!-- Full-screen modal. The backdrop button closes; the content sits above
+            it (pointer-events-auto) so clicking the image doesn't close. Esc
+            closes too. --%>
+      <div :if={@zoomed} class="fixed inset-0 z-50" phx-window-keydown="close_zoom" phx-key="Escape">
+        <button
+          type="button"
+          phx-click="close_zoom"
+          aria-label="Close full-screen"
+          class="absolute inset-0 h-full w-full cursor-zoom-out bg-black/80 backdrop-blur"
+        >
+        </button>
+        <div class="pointer-events-none absolute inset-0 grid place-items-center p-8">
+          <div class="ic-sketch-modal pointer-events-auto overflow-auto rounded-sm border-2 border-base-content/30 bg-base-100 p-4 shadow-2xl">
+            {Phoenix.HTML.raw(@zoomed)}
           </div>
         </div>
+        <button
+          type="button"
+          phx-click="close_zoom"
+          aria-label="Close full-screen"
+          class="absolute right-4 top-4 z-10 grid size-10 place-items-center rounded-sm border-2 border-base-content/40 bg-base-100 text-xl leading-none transition hover:border-primary hover:text-primary"
+        >
+          ×
+        </button>
       </div>
     </aside>
     """
