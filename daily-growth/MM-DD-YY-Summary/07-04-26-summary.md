@@ -197,9 +197,44 @@ Regression tests added for all four (download too_large, dispatcher crash-reclai
 `Vault.ciphertext?`, `Encrypted` fail-closed). 796 tests green; `cargo check`
 clean. The remaining Medium/Low findings stay logged for follow-up.
 
+## Late — QX review consolidated + Medium/Low tail cleared (8-agent sweep)
+
+Wrote the review up as a durable repo doc (`daily-growth/roadmaps/CODE_REVIEW.md`)
+— every finding with severity, `file:line`, and status. Then cleared the entire
+remaining Medium/Low tail in one **8-agent parallel sweep**, partitioned by
+disjoint file ownership so agents couldn't collide (edit-only, no builds/git),
+verified + committed centrally.
+
+- **A** dispatch loop: provenance EXISTS-probe (kills the 50-item blind spot),
+  swarm worst-case budget reservation, single `tick_ref` timer, process-group
+  kill for grandchild reaping.
+- **B** security: Sentinel value-shape redaction (token/Luhn), skills YAML
+  quoting, webhooks fail-closed on empty secret, 429 surfacing.
+- **C** Google: UTC/Z → local wall time, one up-front token refresh (no 5-way
+  stampede).
+- **D** finance/wallets: `balance_cents` un-castable, EDGAR O(limit) zip + ticker
+  TTL, delete paths stop masking errors, ledger pagination.
+- **E** web/LiveView: capped home assigns, `phx-value` guards, catch-all
+  `handle_info`, `javascript:` href allowlist.
+- **F** misc Elixir: symlink-resolving path guards, label sanitize, per-run
+  timeout token, append-only diary, history retention, scoped raw-body copy.
+- **G** Rust+JS: close-tab pointer, de-poisoned `BrowserState` locks, PTY
+  ordering, unified js-literal encoder, WebGPU device-loss guard, zoom/drag/
+  escapeHtml cleanups.
+- **H** Browserbase (design change): blocking HTTP off the GenServer onto a
+  per-manager `Task.Supervisor`; `terminate/2` releases paid sessions
+  concurrently inside a 25s shutdown window; in-flight opens count toward the cap.
+
+Verified centrally: `--warnings-as-errors` clean, format clean, **826 tests, 0
+failures**, `cargo check` + `mix assets.build` clean. A handful of judgment calls
+(swarm-stops-vs-skips, Browserbase 20s/25s windows, Sentinel over-redaction
+thresholds, `perl`-based process-group kill) are recorded under *Flagged for
+review* in CODE_REVIEW.md.
+
 ## Next
 
 Browser roadmap is done. Open workstreams remaining: Browserbase (agentic cloud
-web — Phase 3 live-view tab, then Phase 4 money-gating) and distribution
-(Google restricted-scope verification + Apple signing). Also queued: the
-remaining Medium/Low findings from the QX review.
+web — Phase 3 live-view tab, then Phase 4 money-gating; the review's async-open
++ shutdown-window rework is now in) and distribution (Google restricted-scope
+verification + Apple signing). The QX review is fully cleared — its flagged
+judgment calls are the only open threads.
