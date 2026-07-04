@@ -59,13 +59,18 @@ export async function createScreen(canvas, {contentWidth = 1024, contentHeight =
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   })
   // The content texture: chat type / diagrams / drawings, authored on a Canvas2D
-  // and uploaded here (COPY_DST) on dirty frames. No RENDER_ATTACHMENT — nothing
-  // renders *into* it on the GPU (that was the retired SDF pass); it is a pure
-  // content source the fullscreen shader samples.
+  // and uploaded here on dirty frames. RENDER_ATTACHMENT is REQUIRED even though
+  // we never render into it ourselves: copyExternalImageToTexture uses an
+  // internal render pass, so the spec mandates COPY_DST | RENDER_ATTACHMENT on
+  // the destination. Dropping it silently makes every upload a no-op (smoke
+  // renders, but nothing ever condenses).
   const contentTex = device.createTexture({
     size: [contentWidth, contentHeight],
     format: "rgba8unorm",
-    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    usage:
+      GPUTextureUsage.TEXTURE_BINDING |
+      GPUTextureUsage.COPY_DST |
+      GPUTextureUsage.RENDER_ATTACHMENT,
   })
   const sampler = device.createSampler({magFilter: "linear", minFilter: "linear"})
   const bind = device.createBindGroup({
