@@ -442,15 +442,15 @@ body { background-color: var(--color-base-100); }
   -webkit-backdrop-filter: blur(10px);
 }
 
-/* Sketchpad SVG sizing — cards scale the drawing to the column; the enlarge
+/* SVG viewer sizing — cards scale the drawing to the column; the enlarge
    overlay lets it grow to most of the viewport. */
-.ic-sketch-card svg {
+.ic-svg-card svg {
   display: block;
   width: 100%;
   height: auto;
   max-height: 220px;
 }
-.ic-sketch-modal svg {
+.ic-svg-modal svg {
   display: block;
   width: auto;
   height: auto;

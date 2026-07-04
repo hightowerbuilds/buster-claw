@@ -1,14 +1,14 @@
-defmodule BusterClaw.SketchpadTest do
+defmodule BusterClaw.SvgViewerTest do
   use ExUnit.Case, async: true
 
-  alias BusterClaw.Sketchpad
+  alias BusterClaw.SvgViewer
 
   describe "extract/1" do
     test "pulls an svg block and strips it from the text" do
       text =
         "Here is a moon:\n```svg\n<svg viewBox=\"0 0 10 10\"><circle r=\"5\"/></svg>\n```\nHope it helps."
 
-      {clean, [svg]} = Sketchpad.extract(text)
+      {clean, [svg]} = SvgViewer.extract(text)
 
       assert clean == "Here is a moon:\n\nHope it helps."
       assert svg =~ ~r/^<svg/
@@ -17,7 +17,7 @@ defmodule BusterClaw.SketchpadTest do
 
     test "keeps multiple blocks in order and leaves prose clean" do
       text = "a ```svg\n<svg>1</svg>``` b ```svg\n<svg>2</svg>``` c"
-      {clean, svgs} = Sketchpad.extract(text)
+      {clean, svgs} = SvgViewer.extract(text)
 
       assert length(svgs) == 2
       assert Enum.at(svgs, 0) =~ "1"
@@ -26,13 +26,13 @@ defmodule BusterClaw.SketchpadTest do
     end
 
     test "drops a block whose body is not an <svg>" do
-      {clean, svgs} = Sketchpad.extract("```svg\njust talking about svg\n```")
+      {clean, svgs} = SvgViewer.extract("```svg\njust talking about svg\n```")
       assert svgs == []
       assert clean == ""
     end
 
     test "no svg block yields the text unchanged and an empty list" do
-      assert Sketchpad.extract("plain reply") == {"plain reply", []}
+      assert SvgViewer.extract("plain reply") == {"plain reply", []}
     end
   end
 
@@ -41,7 +41,7 @@ defmodule BusterClaw.SketchpadTest do
       dirty =
         ~s|<svg onload="steal()"><script>evil()</script><foreignObject><b>x</b></foreignObject><image href="https://evil/x.png"/><use xlink:href="//evil/y"/><a href="#ok"/></svg>|
 
-      clean = Sketchpad.sanitize(dirty)
+      clean = SvgViewer.sanitize(dirty)
 
       refute clean =~ "<script"
       refute clean =~ "foreignObject"
@@ -54,7 +54,7 @@ defmodule BusterClaw.SketchpadTest do
 
     test "leaves a clean svg untouched" do
       ok = ~s(<svg viewBox="0 0 4 4"><path d="M0 0L4 4" stroke="white"/></svg>)
-      assert Sketchpad.sanitize(ok) == ok
+      assert SvgViewer.sanitize(ok) == ok
     end
   end
 end

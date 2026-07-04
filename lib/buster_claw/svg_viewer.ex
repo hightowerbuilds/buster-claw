@@ -1,14 +1,14 @@
-defmodule BusterClaw.Sketchpad do
+defmodule BusterClaw.SvgViewer do
   @moduledoc """
-  The sketchpad channel for the homepage chat.
+  The SVG-viewer channel for the homepage chat.
 
   Claude draws by emitting a fenced ```` ```svg … ``` ```` block in its reply.
   `extract/1` pulls those blocks out of the assistant text so they render as
-  **real, crisp SVGs** in the sketchpad sidebar rather than as raw markup in the
+  **real, crisp SVGs** in the SVG viewer rather than as raw markup in the
   message bubble. Honest framing: an SVG is shown as an SVG — there is no smoke
   or shader involved here.
 
-  `sanitize/1` is the trust boundary. Unlike a rasterized canvas, a sketchpad SVG
+  `sanitize/1` is the trust boundary. Unlike a rasterized canvas, the SVG here
   is injected **live into the DOM** (via `Phoenix.HTML.raw/1`), so scripts, event
   handlers, `<foreignObject>`, and external references are stripped before it is
   ever stored or rendered. The app CSP (`script-src 'self' 'nonce-…'`) is the

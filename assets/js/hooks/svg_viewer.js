@@ -1,7 +1,7 @@
-// Sizes the sketchpad dock to match the chat panel's (resizable) height, so its
+// Sizes the SVG-viewer dock to match the chat panel's (resizable) height, so its
 // cards scroll inside the panel instead of growing the whole page. Follows the
 // chat as it's dragged (ResizeObserver) and on window resize.
-export const SketchpadDock = {
+export const SvgViewerDock = {
   mounted() {
     this.chat = document.getElementById("home-agent-chat")
     this.sync = () => {

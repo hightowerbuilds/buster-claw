@@ -167,7 +167,7 @@ defmodule BusterClawWeb.ChatPanel do
   end
 
   @doc """
-  The sketchpad sidebar (left of the chat): every SVG Claude drew this session,
+  The SVG viewer sidebar (left of the chat): every SVG Claude drew this session,
   shown as a real, crisp SVG. `svgs` is a list of `%{id, svg}` (sanitized upstream,
   session-live — never persisted). Always present via a tap-to-toggle bumper;
   `open` shows/hides the panel. Click a card to open it full-screen; `zoomed` is
@@ -177,14 +177,14 @@ defmodule BusterClawWeb.ChatPanel do
   attr :zoomed, :any, required: true
   attr :open, :boolean, required: true
 
-  def sketchpad(assigns) do
+  def svg_viewer(assigns) do
     assigns =
       assign(assigns, :zoom_idx, Enum.find_index(assigns.svgs, &(&1.id == assigns.zoomed)))
 
     ~H"""
     <div
-      id="home-sketchpad"
-      phx-hook="SketchpadDock"
+      id="home-svg-viewer"
+      phx-hook="SvgViewerDock"
       class="flex min-h-0 shrink-0 gap-1 overflow-hidden"
     >
       <aside
@@ -209,7 +209,7 @@ defmodule BusterClawWeb.ChatPanel do
             phx-click="zoom_svg"
             phx-value-id={item.id}
             title="Click to view full screen"
-            class="ic-sketch-card block w-full rounded-sm border-2 border-base-content/20 bg-base-100 p-2 transition hover:border-primary"
+            class="ic-svg-card block w-full rounded-sm border-2 border-base-content/20 bg-base-100 p-2 transition hover:border-primary"
           >
             {Phoenix.HTML.raw(item.svg)}
           </button>
@@ -219,7 +219,7 @@ defmodule BusterClawWeb.ChatPanel do
       <%!-- The bumper: always visible; tap to open/close the panel. --%>
       <button
         type="button"
-        phx-click="toggle_sketchpad"
+        phx-click="toggle_svg_viewer"
         aria-expanded={to_string(@open)}
         title={if @open, do: "Hide SVG viewer", else: "Show SVG viewer"}
         class="ic-panel flex w-8 shrink-0 flex-col items-center gap-3 py-3 text-base-content/60 transition hover:border-primary hover:text-primary"
@@ -238,7 +238,7 @@ defmodule BusterClawWeb.ChatPanel do
 
       <%!-- Full-screen modal. The backdrop button closes; the image sits above it
             (pointer-events-auto) so clicking it doesn't close. ← / → page through
-            the sketchpad, Esc closes. --%>
+            the viewer, Esc closes. --%>
       <div :if={@zoom_idx} class="fixed inset-0 z-50" phx-window-keydown="zoom_key">
         <button
           type="button"
@@ -248,7 +248,7 @@ defmodule BusterClawWeb.ChatPanel do
         >
         </button>
         <div class="pointer-events-none absolute inset-0 grid place-items-center p-8">
-          <div class="ic-sketch-modal pointer-events-auto overflow-auto rounded-sm border-2 border-base-content/30 bg-base-100 p-4 shadow-2xl">
+          <div class="ic-svg-modal pointer-events-auto overflow-auto rounded-sm border-2 border-base-content/30 bg-base-100 p-4 shadow-2xl">
             {Phoenix.HTML.raw(Enum.at(@svgs, @zoom_idx).svg)}
           </div>
         </div>

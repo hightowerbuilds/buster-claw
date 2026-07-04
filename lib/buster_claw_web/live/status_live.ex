@@ -9,7 +9,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.LocalTime
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
-  alias BusterClaw.Sketchpad
+  alias BusterClaw.SvgViewer
   alias BusterClaw.TrustedSenders
 
   @impl true
@@ -48,7 +48,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
     |> assign(:zoomed_id, nil)
-    |> assign(:sketchpad_open, true)
+    |> assign(:svg_viewer_open, true)
     |> load_chat_history(active)
   end
 
@@ -145,7 +145,7 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, socket}
   end
 
-  # Open / close / page the full-screen sketchpad modal. `@zoomed_id` is the id of
+  # Open / close / page the full-screen SVG viewer modal. `@zoomed_id` is the id of
   # the SVG currently shown (or nil).
   def handle_event("zoom_svg", %{"id" => id}, socket) do
     zoomed =
@@ -160,13 +160,13 @@ defmodule BusterClawWeb.StatusLive do
   def handle_event("close_zoom", _params, socket),
     do: {:noreply, assign(socket, :zoomed_id, nil)}
 
-  def handle_event("toggle_sketchpad", _params, socket),
-    do: {:noreply, update(socket, :sketchpad_open, &(!&1))}
+  def handle_event("toggle_svg_viewer", _params, socket),
+    do: {:noreply, update(socket, :svg_viewer_open, &(!&1))}
 
   def handle_event("zoom_nav", %{"dir" => dir}, socket),
     do: {:noreply, zoom_step(socket, dir)}
 
-  # Keyboard while the modal is open: Esc closes, arrows page through the sketchpad.
+  # Keyboard while the modal is open: Esc closes, arrows page through the SVG viewer.
   def handle_event("zoom_key", %{"key" => "Escape"}, socket),
     do: {:noreply, assign(socket, :zoomed_id, nil)}
 
@@ -209,9 +209,9 @@ defmodule BusterClawWeb.StatusLive do
     # appended inline as a persistent message.
     conv_id = socket.assigns.active_chat
 
-    # Start the conversation taught the sketchpad vocabulary (idempotent — the
+    # Start the conversation taught the SVG viewer vocabulary (idempotent — the
     # guide is fixed at first start; a no-op once the process exists).
-    Chat.ensure_started(conv_id, append_system_prompt: Sketchpad.guide())
+    Chat.ensure_started(conv_id, append_system_prompt: SvgViewer.guide())
 
     # While a run is in flight send_message/2 queues the text (returns :ok) rather
     # than rejecting it; the queued item arrives back over PubSub as {:queue, …}.
@@ -272,12 +272,12 @@ defmodule BusterClawWeb.StatusLive do
       else: socket
   end
 
-  # Assistant replies may carry ```svg blocks: route those to the sketchpad
+  # Assistant replies may carry ```svg blocks: route those to the SVG viewer
   # sidebar (as real SVGs) and strip them from the spoken/shown bubble text. A
   # reply that was *only* an SVG adds no bubble.
   defp apply_chat(socket, conv_id, {:message, %{role: :assistant, text: text}}) do
     if conv_id == socket.assigns.active_chat do
-      {clean, svgs} = Sketchpad.extract(text)
+      {clean, svgs} = SvgViewer.extract(text)
       socket = collect_svgs(socket, svgs)
 
       if clean == "" do
@@ -352,7 +352,7 @@ defmodule BusterClawWeb.StatusLive do
     |> update(:chat_messages, &(&1 ++ [msg]))
   end
 
-  # Append newly-drawn SVGs to the sketchpad (sanitized before they're stored,
+  # Append newly-drawn SVGs to the SVG viewer (sanitized before they're stored,
   # since they render live in the DOM).
   defp collect_svgs(socket, []), do: socket
 
@@ -362,14 +362,14 @@ defmodule BusterClawWeb.StatusLive do
     new =
       svgs
       |> Enum.with_index(base + 1)
-      |> Enum.map(fn {svg, i} -> %{id: i, svg: Sketchpad.sanitize(svg)} end)
+      |> Enum.map(fn {svg, i} -> %{id: i, svg: SvgViewer.sanitize(svg)} end)
 
     socket
     |> assign(:svg_seq, base + length(svgs))
     |> update(:chat_svgs, &(&1 ++ new))
   end
 
-  # Move the zoomed image one step through the sketchpad (clamped at the ends).
+  # Move the zoomed image one step through the SVG viewer (clamped at the ends).
   defp zoom_step(socket, dir) do
     svgs = socket.assigns.chat_svgs
 
@@ -389,9 +389,9 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
-  # Restore the transcript AND the sketchpad from the conversation's history:
+  # Restore the transcript AND the SVG viewer from the conversation's history:
   # assistant rows are stored with their ```svg blocks intact, so re-extract them
-  # to (a) strip the raw markup from the bubble and (b) refill the sketchpad. The
+  # to (a) strip the raw markup from the bubble and (b) refill the SVG viewer. The
   # bank thus reflects every SVG in the conversation and survives reload /
   # tab-switch. It is NOT a saved gallery — the drawings only live as long as the
   # chat's transcript does, so deleting the chat takes them with it.
@@ -402,8 +402,8 @@ defmodule BusterClawWeb.StatusLive do
       |> Enum.reduce({[], []}, fn row, {msgs, svgs} ->
         case history_role(row.role) do
           :assistant ->
-            {clean, block_svgs} = Sketchpad.extract(row.content)
-            svgs = svgs ++ Enum.map(block_svgs, &Sketchpad.sanitize/1)
+            {clean, block_svgs} = SvgViewer.extract(row.content)
+            svgs = svgs ++ Enum.map(block_svgs, &SvgViewer.sanitize/1)
             msgs = if clean == "", do: msgs, else: msgs ++ [%{role: :assistant, text: clean}]
             {msgs, svgs}
 
@@ -503,10 +503,10 @@ defmodule BusterClawWeb.StatusLive do
           <div class="flex min-h-0 flex-1 flex-col gap-2">
             <BusterClawWeb.ChatPanel.chat_tabs chats={@chats} active={@active_chat} />
             <div class="flex min-h-0 flex-1 gap-4">
-              <BusterClawWeb.ChatPanel.sketchpad
+              <BusterClawWeb.ChatPanel.svg_viewer
                 svgs={@chat_svgs}
                 zoomed={@zoomed_id}
-                open={@sketchpad_open}
+                open={@svg_viewer_open}
               />
               <BusterClawWeb.ChatPanel.chat_panel
                 messages={@chat_messages}

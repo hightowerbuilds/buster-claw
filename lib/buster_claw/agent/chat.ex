@@ -226,7 +226,7 @@ defmodule BusterClaw.Agent.Chat do
       # Tracks the in-flight run for the Sentinel audit event on completion.
       run: nil,
       # Optional per-conversation system-prompt addendum (e.g. the homepage chat
-      # teaches the sketchpad ```svg vocabulary). Passed to `claude` as
+      # teaches the SVG-viewer ```svg vocabulary). Passed to `claude` as
       # `--append-system-prompt` on every turn; nil = unchanged behaviour.
       append_system_prompt: Keyword.get(opts, :append_system_prompt),
       # Injectable for tests: `spawner.(prompt, opts) :: {:ok, port} | {:error, reason}`.
