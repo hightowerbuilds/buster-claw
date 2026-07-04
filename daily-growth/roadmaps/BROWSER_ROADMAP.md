@@ -174,10 +174,19 @@ trace in the user's sessions.
 
 - **Private mode & containers for humans** — falls out of Phase 3.4's data-store
   work; UI is a tab-strip affordance. (M after 3.4)
-- **Content blocking via `WKContentRuleList`** — WebKit ships Safari's
-  content-blocker engine; compiling an EasyList subset gives real ad/tracker
-  blocking with no extension ecosystem needed. Uniquely available to us *because*
-  we chose WKWebView. (L, high delight)
+- **Content blocking via `WKContentRuleList`** — **SHIPPED 07-04**: curated
+  EasyList subset (`desktop/tauri/src/blocklist.json`, 75 ad/tracker/analytics
+  hosts, third-party load-type) compiled by `WKContentRuleListStore` and added to
+  every content webview's userContentController via the objc bridge
+  (`apply_content_blocking`; controller retained across the async compile).
+  `BrowserState` holds the ON-by-default flag; `browser_set_content_blocking`
+  flips it + re-applies to live tabs; chrome shield button (🛡) persists the pref
+  in localStorage. Bump `BLOCKLIST_ID`'s version when blocklist.json changes.
+  Cosmetic (css-display-none) filtering intentionally skipped for v1 — network
+  block only, honest + safe. Original: WebKit ships Safari's content-blocker
+  engine; compiling an EasyList subset gives real ad/tracker blocking with no
+  extension ecosystem needed. Uniquely available to us *because* we chose
+  WKWebView. (L, high delight)
 - **Background-tab suspension** — **SHIPPED 07-04**: per-surface MRU in
   `BrowserState`; only the 6 most-recently-used content webviews stay live,
   the rest are evicted on every activation. `browser_switch_tab` now carries the
