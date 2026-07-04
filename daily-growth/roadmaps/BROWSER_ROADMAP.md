@@ -89,6 +89,30 @@ behavior change visible to the user.
    `postMessage` back-channel may still break under (b); (a) is the real fix.
    *Done when:* GitHub sign-in-with-Google on a third-party site completes
    in-app.
+
+   **WKUIDelegate ceiling — researched 07-04 (wry-0.55.1 source, not guessed):**
+   (b) is shipped (the JS `bcpopup://` shim). (a) is HARD and regression-risky:
+   - wry sets its OWN `WryWebViewUIDelegate` on *every* WKWebView, unconditionally
+     (`src/wkwebview/mod.rs:599-602`). WKWebView holds exactly one `uiDelegate`, so
+     our `setUIDelegate:` would REPLACE wry's, not augment it.
+   - wry's delegate implements three methods we'd inherit responsibility for:
+     `runOpenPanelWithParameters` (drives `<input type=file>` uploads — clobbering
+     it silently breaks file pickers), `requestMediaCapturePermissionForOrigin`
+     (currently auto-grants camera/mic), and `createWebViewWithConfiguration`
+     (returns nil today because Tauri never sets wry's `new_window_req_handler`,
+     which is exactly why `window.open` returns null).
+   - Even done right, `createWebViewWithConfiguration` must return a live WKWebView
+     to preserve `window.opener`; but a hand-built WKWebView isn't a Tauri/wry
+     tracked webview (no tab chrome, nav guard, download/page-load callbacks), so
+     the live-opener OAuth case can't cleanly become a managed tab within wry's
+     model. Returning nil + routing the URL to `__agentOpenTab` == mechanism (b),
+     which already loses the opener.
+   - Crate note: repo uses `objc` 0.2 + `block` 0.1 (not `objc2`); a real delegate
+     needs `objc::declare::ClassDecl` (+`class_addMethod` for all 3 selectors) or
+     adding `objc2`/`objc2-web-kit` and mirroring wry's `define_class!`.
+   Verdict: this is the accepted architectural ceiling, not a quick win — the safe
+   half (route popups to tabs) is already done; the live-opener fix trades a real
+   file-upload regression risk for an uncertain, model-fighting partial gain.
 3. **Downloads.** (L) — **SHIPPED 07-03** via tauri on_download (no objc needed — wry ships the WKDownloadDelegate): deduped ~/Downloads saves, chrome shelf chips with reveal-by-id, Sentinel :untrusted_ingest per download, tab spinner cleared on download start.
    WKDownloadDelegate (macOS 11.3+) via objc bridge → save to `~/Downloads` (or
    the workspace downloads dir — decide in Settings), minimal shelf strip in the
@@ -161,10 +185,15 @@ that acts on (not just reads) the page lands in the restricted tier.*
    "ephemeral"`), so agent work stops riding the user's cookies unless
    explicitly granted. Doubles as the foundation for user-facing private
    mode. (L — data-store-per-webview needs the objc bridge)
-5. **Tab-aware events for the agent.** — browser_tabs command **SHIPPED 07-03** (reads the durable Phase-2.1 state, works while hidden); the opt-in navigation events remain open. `browser_tabs_list` command + optional
-   Dispatch/PubSub event on navigation, so an on-duty shift can react to what
-   the user is browsing (opt-in, off by default — Sentinel visibility again).
-   (S–M)
+5. **Tab-aware events for the agent.** — **RESOLVED 07-04.** The *read/poll*
+   half is shipped: `browser_tabs` (durable Phase-2.1 state, works while hidden)
+   + the safe-tier `history_recent`/`history_search` already let an agent see
+   what the user has been browsing. The *reactive-push* half (a PubSub/Dispatch
+   event per navigation) is **deliberately deferred** — it only pays off with a
+   persistent consumer (an on-duty "react to browsing" loop) that doesn't exist
+   yet; building the broadcast pipe now would be dead plumbing. Revisit when a
+   concrete on-duty consumer lands. Original: `browser_tabs_list` command +
+   optional Dispatch/PubSub event on navigation, opt-in, off by default. (S–M)
 
 **Exit criteria:** an agent can research *as the user* (read authed pages, file
 artifacts), act under audit, and do scratch work in a sandbox that leaves no
@@ -172,8 +201,12 @@ trace in the user's sessions.
 
 ## Phase 4 — Opportunistic / stretch
 
-- **Private mode & containers for humans** — falls out of Phase 3.4's data-store
-  work; UI is a tab-strip affordance. (M after 3.4)
+- **Private mode & containers for humans** — **SHIPPED 07-04**: a 🕳 button in
+  the tab strip (`newTab(true)` in chrome.js) opens an ephemeral tab reusing the
+  same non-persistent WKWebsiteDataStore as the agent's Phase-3.4 sandbox tabs —
+  no cookies/storage shared, nothing on disk, excluded from session restore;
+  dashed hazard outline echoing the .eph chips. Original: falls out of Phase
+  3.4's data-store work; UI is a tab-strip affordance. (M after 3.4)
 - **Content blocking via `WKContentRuleList`** — **SHIPPED 07-04**: curated
   EasyList subset (`desktop/tauri/src/blocklist.json`, 75 ad/tracker/analytics
   hosts, third-party load-type) compiled by `WKContentRuleListStore` and added to
@@ -194,8 +227,17 @@ trace in the user's sessions.
   are never suspended; suspended chips dim/italicize. Original: evict content
   webviews beyond N most-recent (tab entry survives via Phase 2.1 state;
   switch = reload). Caps the process-per-tab memory ceiling. (M)
-- **Per-site permissions & TLS indicator** — camera/mic prompt handling, padlock
-  in the omnibox. (M)
+- **Per-site permissions & TLS indicator** — TLS half **SHIPPED 07-04**: a
+  padlock left of the address bar (`#secure` in the chrome; muted 🔒 HTTPS,
+  hazard ⚠ HTTP, hidden for workspace/blank pages), synced from the active tab
+  on each renderTabs. **camera/mic prompt half BLOCKED on the WKUIDelegate
+  ceiling** — wry installs its OWN WKUIDelegate on every WKWebView and its
+  `requestMediaCapturePermissionForOrigin` unconditionally *auto-grants* camera/
+  mic (wry-0.55.1 `wry_web_view_ui_delegate.rs:126-137`). Adding a real prompt
+  means REPLACING wry's single uiDelegate slot, which also owns `<input
+  type=file>` open panels (`runOpenPanelWithParameters`) — clobbering it silently
+  breaks file uploads unless faithfully reimplemented. See the ceiling note under
+  Phase 1.2 below. (M → L once the delegate swap is in scope)
 - **Reader mode** — only if a real need reappears; note the old `Reader` module
   was deleted for cause, don't resurrect its approach.
 
