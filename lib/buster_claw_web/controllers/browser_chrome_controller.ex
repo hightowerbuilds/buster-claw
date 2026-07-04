@@ -118,11 +118,14 @@ defmodule BusterClawWeb.BrowserChromeController do
                 border-radius: 3px; color: rgba(244,241,234,.45); font-size: 13px;
                 flex: 0 0 auto; }
       .tab .x:hover { background: rgba(244,241,234,.12); color: #ff4d1c; }
-      #newtab { flex: 0 0 auto; width: 28px; height: 30px; display: grid;
+      #newtab, #newprivate { flex: 0 0 auto; width: 28px; height: 30px; display: grid;
                 place-items: center; background: transparent; color: #f4f1ea;
                 border: 1px solid rgba(244,241,234,.2); border-radius: 6px 6px 0 0;
                 cursor: pointer; font-size: 16px; line-height: 1; }
-      #newtab:hover { border-color: #ff4d1c; color: #ff4d1c; }
+      #newtab:hover, #newprivate:hover { border-color: #ff4d1c; color: #ff4d1c; }
+      /* Private-tab button: dashed hazard outline, echoing the .tab.eph chips. */
+      #newprivate { border-style: dashed; border-color: rgba(255,77,28,.45);
+                    font-size: 13px; }
       /* toolbar */
       #toolbar { display: flex; align-items: center; gap: 6px; padding: 0 8px;
                  height: 46px; }
@@ -132,6 +135,13 @@ defmodule BusterClawWeb.BrowserChromeController do
         border-radius: 3px; cursor: pointer; font-size: 14px; line-height: 1;
       }
       button.nav:hover { border-color: #ff4d1c; color: #ff4d1c; }
+      /* TLS indicator: a padlock left of the address bar. Muted for HTTPS, a
+         hazard-orange warning for plaintext HTTP; hidden for our own workspace
+         pages and blank tabs. */
+      .secure { flex: 0 0 auto; display: none; place-items: center; width: 20px;
+                height: 30px; font-size: 12px; cursor: default; }
+      .secure.https { display: grid; color: rgba(244,241,234,.55); }
+      .secure.http { display: grid; color: #ff4d1c; }
       /* Content-blocking shield: lit (hazard-orange) when blocking is on,
          dimmed when off. Title is set from JS to reflect state. */
       button.shield { font-size: 13px; }
@@ -226,6 +236,7 @@ defmodule BusterClawWeb.BrowserChromeController do
         <button class="nav" id="back" title="Back" aria-label="Back">&#9664;</button>
         <button class="nav" id="fwd" title="Forward" aria-label="Forward">&#9654;</button>
         <button class="nav" id="reload" title="Reload" aria-label="Reload">&#8635;</button>
+        <span id="secure" class="secure" aria-hidden="true"></span>
         <form id="form">
           <input id="addr" type="text" autocomplete="off" spellcheck="false"
                  placeholder="Search, https://…, or /path in your workspace"

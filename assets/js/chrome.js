@@ -25,6 +25,7 @@ const addr = document.getElementById("addr")
 const tabsEl = document.getElementById("tabs")
 const barEl = document.getElementById("bookmarkbar")
 const progressEl = document.getElementById("progress")
+const secureEl = document.getElementById("secure")
 
 // Invoke a Tauri command, surfacing failures in the console (so a denied
 // permission or a missing webview is visible rather than silent). Every
@@ -196,9 +197,35 @@ function renderTabs() {
   })
   const add = document.createElement("button")
   add.id = "newtab"; add.type = "button"; add.title = "New tab"; add.textContent = "+"
-  add.onclick = () => newTab()
+  add.onclick = () => newTab(false)
   tabsEl.appendChild(add)
+  // Private (ephemeral) tab — a human-facing entry to the same non-persistent
+  // data store the agent's sandbox tabs use: no cookies/storage shared with the
+  // normal session, nothing written to disk, excluded from session restore.
+  const priv = document.createElement("button")
+  priv.id = "newprivate"; priv.type = "button"; priv.textContent = "🕳"
+  priv.title = "New private tab — ephemeral, nothing persists"
+  priv.onclick = () => newTab(true)
+  tabsEl.appendChild(priv)
   updateProgress()
+  updateSecurity(activeTab())
+}
+
+// Reflect the active tab's transport security in the padlock left of the address
+// bar. Our own workspace pages (same origin) and blank tabs show nothing.
+function updateSecurity(t) {
+  const u = (t && t.url) || ""
+  secureEl.classList.remove("https", "http")
+  if (!u || u.indexOf(origin) === 0) { secureEl.textContent = ""; return }
+  if (u.indexOf("https://") === 0) {
+    secureEl.classList.add("https"); secureEl.textContent = "🔒"
+    secureEl.title = "Secure — HTTPS"
+  } else if (u.indexOf("http://") === 0) {
+    secureEl.classList.add("http"); secureEl.textContent = "⚠"
+    secureEl.title = "Not secure — HTTP (traffic can be read/modified in transit)"
+  } else {
+    secureEl.textContent = ""
+  }
 }
 
 function activeTab() { return tabs.find((t) => t.id === activeId) }
@@ -462,13 +489,16 @@ function drawFindBar() {
   barEl.appendChild(wrap)
 }
 
-function newTab() {
+function newTab(priv) {
   const id = String(nextId++)
-  tabs.push({id, url: "", label: "New tab", loading: false, favicon: null})
+  tabs.push({
+    id, url: "", label: priv ? "Private tab" : "New tab",
+    loading: false, favicon: null, ephemeral: !!priv,
+  })
   activeId = id
   addr.value = ""
   renderTabs()
-  inv("browser_new_tab", {tabId: id, url: homeUrl})
+  inv("browser_new_tab", {tabId: id, url: homeUrl, ephemeral: !!priv})
   scheduleSaveTabs()
   addr.focus()
 }
