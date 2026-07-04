@@ -11,13 +11,25 @@ export const clamp01 = (x) => Math.max(0, Math.min(1, x))
 export const clampR = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
 
 // Uniform buffer layout — must mirror `struct U` in screen.wgsl.js:
-// five vec4<f32> = 20 floats = 80 bytes.
+// six vec4<f32> = 24 floats = 96 bytes.
 //   [0] res.x  [1] res.y  [2..3] pad
 //   [4] time   [5] intensity  [6] reveal  [7] freezeTime (lens hold timestamp)
 //   [8] lens.x [9] lens.y (uv, y-up)  [10] lens radius  [11] lens strength
 //   [12] mood energy  [13] mood temp (-1 cool .. +1 warm)  [14] mood density  [15] pad
 //   [16] style pixelCell (1 = off)  [17] style paletteAmt (0 = off)  [18..19] pad
-export const UNIFORM_FLOATS = 20
+//   [20] post glow  [21] post grain  [22] post scanline  [23] post vignette
+export const UNIFORM_FLOATS = 24
+
+// The hi-fi post stack, on by default — this is the modern/hi-fi look (glow,
+// film grain, scanlines, edge vignette). Amounts are conservative starting
+// points, tuned by eye in the app. `grain` is the only animated term, so
+// reduced-motion drops it to 0 (the hook does this).
+export const POST_DEFAULT = {
+  glow: 0.5,
+  grain: 0.05,
+  scanline: 0.12,
+  vignette: 0.35,
+}
 
 // The neutral expression: reproduces the base look exactly (energy/density 0.5,
 // temp 0, no pixelation). Every field eases toward this when nothing is set.
@@ -30,10 +42,11 @@ export const NEUTRAL_EXPRESSION = {
 }
 
 export function packUniforms(
-  {width, height, timeSec, intensity, reveal, freezeTime = 0, lens, expression},
+  {width, height, timeSec, intensity, reveal, freezeTime = 0, lens, expression, post},
   out
 ) {
   const e = expression || NEUTRAL_EXPRESSION
+  const pp = post || POST_DEFAULT
   const u = out || new Float32Array(UNIFORM_FLOATS)
   u[0] = width
   u[1] = height
@@ -55,6 +68,10 @@ export function packUniforms(
   u[17] = clamp01(e.paletteAmt)
   u[18] = 0
   u[19] = 0
+  u[20] = clamp01(pp.glow)
+  u[21] = clamp01(pp.grain)
+  u[22] = clamp01(pp.scanline)
+  u[23] = clamp01(pp.vignette)
   return u
 }
 

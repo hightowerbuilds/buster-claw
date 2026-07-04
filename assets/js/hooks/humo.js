@@ -19,6 +19,7 @@ import {
   styleFromSpec,
   easeExpression,
   NEUTRAL_EXPRESSION,
+  POST_DEFAULT,
 } from "../humo/params.js"
 import {createChatPresenter} from "../humo/presenters/chat.js"
 
@@ -102,6 +103,12 @@ export const HumoSurface = {
     })
 
     this.uniforms = packUniforms({width: 0, height: 0, timeSec: 0, intensity: 1, reveal: 0})
+
+    // The hi-fi post stack (glow / grain / scanlines / vignette). Grain is the
+    // only animated term, so honour prefers-reduced-motion by dropping it.
+    this.post = {...POST_DEFAULT}
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (reduce) this.post.grain = 0
 
     // The still lens: hovering holds the smoke under a soft circle (frozen
     // clock in-shader) with chromatic fringing at the rim. Strength eases in
@@ -207,6 +214,7 @@ export const HumoSurface = {
         freezeTime: this.freezeAt,
         lens: this.lens,
         expression: this.expr,
+        post: this.post,
       },
       this.uniforms
     )

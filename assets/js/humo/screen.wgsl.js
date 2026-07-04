@@ -28,6 +28,7 @@ struct U {
   lens: vec4<f32>,
   mood: vec4<f32>,   // energy, temp (-1 cool .. +1 warm), density, _
   style: vec4<f32>,  // pixelCell (1 = off), paletteAmt (0 = off), _, _
+  post: vec4<f32>,   // glow, grain, scanline, vignette (the hi-fi post stack)
 };
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var smp: sampler;
@@ -39,6 +40,17 @@ fn dmg(level: i32) -> vec3<f32> {
   if (level == 1) { return vec3<f32>(0.188, 0.384, 0.188); }
   if (level == 2) { return vec3<f32>(0.545, 0.675, 0.059); }
   return vec3<f32>(0.608, 0.737, 0.059);
+}
+
+// ACES filmic tonemap (Narkowicz approximation) — rolls highlights off so the
+// glow blooms smoothly instead of clipping; lifts low-mids, keeps blacks black.
+fn aces(x: vec3<f32>) -> vec3<f32> {
+  let a = 2.51;
+  let b = 0.03;
+  let c = 2.43;
+  let d = 0.59;
+  let e = 0.14;
+  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 struct VOut {
@@ -198,6 +210,39 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   col = col + ash * ring * 0.14;
   col = col + vec3<f32>(1.0, 0.35, 0.15) * ring_warm * 0.10;
   col = col + vec3<f32>(0.35, 0.55, 1.0) * ring_cool * 0.10;
+
+  // --- Hi-fi post stack -------------------------------------------------
+  // Glow: a soft emissive halo off the content, single-pass multi-tap (12 taps
+  // on two rings). Follows reveal (rl) so it blooms as content condenses;
+  // ash-tinted since content is authored white/alpha. textureSampleLevel keeps
+  // it out of derivative/uniformity trouble.
+  let glow_amt = u.post.x;
+  if (glow_amt > 0.001) {
+    var halo = 0.0;
+    for (var gi = 0; gi < 12; gi = gi + 1) {
+      let ga = f32(gi) * 0.5235988; // 30° steps
+      let grad = select(0.022, 0.011, (gi % 2) == 0);
+      let goff = vec2<f32>(cos(ga), sin(ga)) * grad;
+      halo = halo + textureSampleLevel(contentTex, smp, tuv + goff, 0.0).a;
+    }
+    col = col + ash * (halo / 12.0) * rl * glow_amt * 0.85;
+  }
+
+  // Filmic tonemap so the glow rolls off smoothly rather than clipping.
+  col = aces(col);
+
+  // Post vignette: gently darken the screen edges.
+  let pvig = smoothstep(1.15, 0.30, length((in.uv - vec2<f32>(0.5)) * vec2<f32>(aspect, 1.0)));
+  col = col * mix(1.0, pvig, u.post.w);
+
+  // Scanlines: soft horizontal lines in device space (~4px period).
+  let scan = 0.5 + 0.5 * sin(in.uv.y * res.y * 1.57079633);
+  col = col * (1.0 - u.post.z * (1.0 - scan));
+
+  // Film grain: per-pixel animated luminance noise (the only animated post term;
+  // reduced-motion drops post.grain to 0 hook-side).
+  let gnoise = hash(in.uv * res + vec2<f32>(fract(time) * 431.0, fract(time * 1.37) * 197.0)) - 0.5;
+  col = col + vec3<f32>(gnoise) * u.post.y;
 
   // Game Boy palette quantization: bucket luminance into the 4 DMG greens.
   // paletteAmt eases the whole reply between full-color smoke and retro green.

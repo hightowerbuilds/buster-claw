@@ -9,6 +9,7 @@ import {
   easeExpression,
   NEUTRAL_EXPRESSION,
   UNIFORM_FLOATS,
+  POST_DEFAULT,
 } from "./params.js"
 
 describe("clamp01", () => {
@@ -47,6 +48,26 @@ describe("packUniforms", () => {
     const u = packUniforms({width: 1, height: 1, timeSec: 0, intensity: 1, reveal: 0})
     expect(u[7]).toBe(0)
     expect(u[11]).toBe(0)
+  })
+
+  test("post stack defaults to the hi-fi look and honours an override", () => {
+    const base = packUniforms({width: 1, height: 1, timeSec: 0, intensity: 1, reveal: 0})
+    expect(base[20]).toBeCloseTo(POST_DEFAULT.glow)
+    expect(base[21]).toBeCloseTo(POST_DEFAULT.grain)
+    expect(base[22]).toBeCloseTo(POST_DEFAULT.scanline)
+    expect(base[23]).toBeCloseTo(POST_DEFAULT.vignette)
+
+    // Reduced-motion drops grain to 0; other terms clamp to [0,1].
+    const u = packUniforms({
+      width: 1,
+      height: 1,
+      timeSec: 0,
+      intensity: 1,
+      reveal: 0,
+      post: {glow: 2, grain: 0, scanline: 0.3, vignette: 0.4},
+    })
+    expect(u[20]).toBe(1) // clamped
+    expect(u[21]).toBe(0) // grain off
   })
 
   test("clamps reveal and lens strength, reuses a provided buffer", () => {
