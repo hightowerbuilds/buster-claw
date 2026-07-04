@@ -35,7 +35,7 @@ defmodule BusterClaw.Appearance do
   @home_image_stamp_key "home_background_image_updated_at"
   @home_basename "home-background"
   @home_topic "appearance:home_background"
-  @home_shaders ~w(smoke waves lava zigzag)
+  @home_shaders ~w(smoke waves lava zigzag mandel)
   @home_default_mode "smoke"
   # Custom 3-color palette (one shared set, applied to the selected shader when
   # `custom` is on). Default seed = the smoke palette.

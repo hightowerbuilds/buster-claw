@@ -116,9 +116,10 @@ export const SmokeBackground = {
 
   fitCanvas() {
     const rect = this.el.getBoundingClientRect()
-    // Zigzag is a heavy per-pixel row march; it's an ambient background behind a
-    // blurred panel, so render it low-res and capped rather than at full retina.
-    const heavy = this.shader === "zigzag"
+    // Zigzag (per-pixel row march) and Mandelbrot (per-pixel iteration loop) are
+    // heavy; they're ambient backgrounds behind a blurred panel, so render them
+    // low-res and capped rather than at full retina.
+    const heavy = this.shader === "zigzag" || this.shader === "mandel"
     const density = heavy ? 0.6 : Math.min(window.devicePixelRatio || 1, 2)
     const maxDim = heavy ? 820 : Infinity
 
