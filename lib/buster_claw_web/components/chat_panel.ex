@@ -182,7 +182,7 @@ defmodule BusterClawWeb.ChatPanel do
       assign(assigns, :zoom_idx, Enum.find_index(assigns.svgs, &(&1.id == assigns.zoomed)))
 
     ~H"""
-    <div class="flex min-h-0 shrink-0 gap-1">
+    <div id="home-sketchpad" phx-hook="SketchpadDock" class="flex min-h-0 shrink-0 gap-1 overflow-hidden">
       <aside
         :if={@open}
         class="ic-panel flex w-80 min-h-0 flex-col overflow-hidden"

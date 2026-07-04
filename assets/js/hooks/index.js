@@ -10,6 +10,7 @@ import {TabStrip} from "./tab_strip.js"
 import {SplitResizer} from "./split.js"
 import {TerminalView, TermThemePicker} from "./terminal.js"
 import {SmokeBackground} from "./smoke_background.js"
+import {SketchpadDock} from "./sketchpad.js"
 
 export const Hooks = {
   CornerWidget,
@@ -28,4 +29,5 @@ export const Hooks = {
   TerminalView,
   TermThemePicker,
   SmokeBackground,
+  SketchpadDock,
 }
