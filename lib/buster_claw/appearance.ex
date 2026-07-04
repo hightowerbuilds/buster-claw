@@ -35,7 +35,7 @@ defmodule BusterClaw.Appearance do
   @home_image_stamp_key "home_background_image_updated_at"
   @home_basename "home-background"
   @home_topic "appearance:home_background"
-  @home_shaders ~w(smoke aurora waves)
+  @home_shaders ~w(smoke aurora waves lava)
   @home_default_mode "smoke"
 
   # Accepted upload extensions mapped to the content-type used when serving.

@@ -446,7 +446,12 @@ defmodule BusterClawWeb.AppearanceLive do
     """
   end
 
-  @home_shader_labels %{"smoke" => "Smoke", "aurora" => "Aurora", "waves" => "Waves"}
+  @home_shader_labels %{
+    "smoke" => "Smoke",
+    "aurora" => "Aurora",
+    "waves" => "Waves",
+    "lava" => "Lava"
+  }
   defp home_shader_options,
     do:
       Enum.map(
