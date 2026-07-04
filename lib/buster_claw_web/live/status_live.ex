@@ -389,34 +389,37 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
-  # Restore the transcript from history. SVGs are ephemeral: we STRIP the ```svg
-  # blocks out of restored assistant bubbles (so no raw markup shows) but do NOT
-  # rebuild the sketchpad — a drawing lives only in the open session and vanishes
-  # on reload / tab-switch / chat deletion. Nothing is saved; to keep one, the
-  # user asks the agent to write it into the workspace.
+  # Restore the transcript AND the sketchpad from the conversation's history:
+  # assistant rows are stored with their ```svg blocks intact, so re-extract them
+  # to (a) strip the raw markup from the bubble and (b) refill the sketchpad. The
+  # bank thus reflects every SVG in the conversation and survives reload /
+  # tab-switch. It is NOT a saved gallery — the drawings only live as long as the
+  # chat's transcript does, so deleting the chat takes them with it.
   defp load_chat_history(socket, conv_id) do
-    messages =
+    {messages, svgs} =
       conv_id
-      |> AgentTranscript.recent(limit: 50)
-      |> Enum.map(fn row ->
+      |> AgentTranscript.recent(limit: 200)
+      |> Enum.reduce({[], []}, fn row, {msgs, svgs} ->
         case history_role(row.role) do
           :assistant ->
-            {clean, _svgs} = Sketchpad.extract(row.content)
-            %{role: :assistant, text: clean}
+            {clean, block_svgs} = Sketchpad.extract(row.content)
+            svgs = svgs ++ Enum.map(block_svgs, &Sketchpad.sanitize/1)
+            msgs = if clean == "", do: msgs, else: msgs ++ [%{role: :assistant, text: clean}]
+            {msgs, svgs}
 
           role ->
-            %{role: role, text: row.content}
+            {msgs ++ [%{role: role, text: row.content}], svgs}
         end
       end)
-      |> Enum.reject(&(&1.role == :assistant and &1.text == ""))
-      |> Enum.with_index(1)
-      |> Enum.map(fn {m, i} -> Map.put(m, :id, i) end)
+
+    messages = messages |> Enum.with_index(1) |> Enum.map(fn {m, i} -> Map.put(m, :id, i) end)
+    svgs = svgs |> Enum.with_index(1) |> Enum.map(fn {svg, i} -> %{id: i, svg: svg} end)
 
     socket
     |> assign(:chat_messages, messages)
     |> assign(:chat_seq, length(messages))
-    |> assign(:chat_svgs, [])
-    |> assign(:svg_seq, 0)
+    |> assign(:chat_svgs, svgs)
+    |> assign(:svg_seq, length(svgs))
     |> assign(:zoomed_id, nil)
   end
 
