@@ -74,6 +74,20 @@ describe("packUniforms", () => {
     expect(packUniforms({width: 1, height: 1, timeSec: 0, intensity: 1, reveal: 0, motion: 0.25})[18]).toBe(0.25)
   })
 
+  test("packs the 3-color palette into slots 24..34 (rgb, padded)", () => {
+    const u = packUniforms({
+      width: 1,
+      height: 1,
+      timeSec: 0,
+      intensity: 1,
+      reveal: 0,
+      colors: {a: [1, 0, 0], b: [0, 0.5, 0], c: [0, 0, 1]},
+    })
+    expect([u[24], u[25], u[26], u[27]]).toEqual([1, 0, 0, 0])
+    expect([u[28], u[29], u[30], u[31]]).toEqual([0, 0.5, 0, 0])
+    expect([u[32], u[33], u[34], u[35]]).toEqual([0, 0, 1, 0])
+  })
+
   test("clamps reveal and lens strength, reuses a provided buffer", () => {
     const buf = new Float32Array(UNIFORM_FLOATS)
     const out = packUniforms(

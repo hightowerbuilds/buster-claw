@@ -24,14 +24,8 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   heat = heat + 0.5 * fbm(p * 6.0 + warp * 0.8 + vec2<f32>(time * 0.03, 0.0));
   heat = clamp(heat * intensity * 1.1, 0.0, 1.0);
 
-  // Molten palette: near-black → deep red → orange → yellow-white.
-  let c1 = vec3<f32>(0.05, 0.01, 0.01);
-  let c2 = vec3<f32>(0.55, 0.06, 0.02);
-  let c3 = vec3<f32>(0.95, 0.35, 0.05);
-  let c4 = vec3<f32>(1.00, 0.85, 0.45);
-  var col = mix(c1, c2, smoothstep(0.15, 0.45, heat));
-  col = mix(col, c3, smoothstep(0.45, 0.70, heat));
-  col = mix(col, c4, smoothstep(0.70, 0.95, heat));
+  // Molten palette through the 3 stops: colA base → colB mid → colC hot.
+  var col = grad3(heat, u.colA.xyz, u.colB.xyz, u.colC.xyz);
 
   col = col + vec3<f32>(touch());
   col = bg_post(col, uv, res, time, u.post);

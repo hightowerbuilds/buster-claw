@@ -31,6 +31,9 @@ struct U {
   mood: vec4<f32>,   // energy, temp (-1 cool .. +1 warm), density, _
   style: vec4<f32>,  // pixelCell (1 = off), paletteAmt (0 = off), motion (1 = full), _
   post: vec4<f32>,   // glow, grain, scanline, vignette (the hi-fi post stack)
+  colA: vec4<f32>,   // palette (rgb in .xyz): base, wisp accent, smoke body
+  colB: vec4<f32>,
+  colC: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var smp: sampler;
@@ -155,7 +158,7 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   // Density scales how thick the smoke reads; temperature white-balances it
   // (warm → embery, cool → ashen blue), staying inside the Industrial palette.
   let tone = clamp(0.035 + smoke * 0.42 * intensity * dens, 0.0, 1.0);
-  var col = mix(vec3<f32>(0.055, 0.055, 0.055), vec3<f32>(0.956, 0.945, 0.918), tone);
+  var col = mix(u.colA.xyz, u.colC.xyz, tone);
   col = vec3<f32>(col.r * (1.0 + 0.10 * temp), col.g, col.b * (1.0 - 0.10 * temp));
 
   // Content condenses from smoke — and stays *made of* smoke: the sample point
@@ -202,7 +205,7 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     mix(col.g, ash.g, a * ink),
     mix(col.b, ash.b, a_b * ink)
   );
-  col = col + vec3<f32>(1.0, 0.302, 0.110) * band * 0.5;
+  col = col + u.colB.xyz * band * 0.5;
 
   // The lens rim: a thin ash ring with warm/cool fringes on either side —
   // reads as a loupe resting on the fog.

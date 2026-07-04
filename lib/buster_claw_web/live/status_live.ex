@@ -450,10 +450,12 @@ defmodule BusterClawWeb.StatusLive do
         </div>
         <div
           :if={@home_bg.mode != "image"}
-          id={"home-shader-#{@home_bg.mode}"}
+          id={"home-shader-#{@home_bg.mode}-#{:erlang.phash2({@home_bg.custom, @home_bg.colors})}"}
           phx-hook="SmokeBackground"
           phx-update="ignore"
           data-shader={@home_bg.mode}
+          data-custom={to_string(@home_bg.custom)}
+          data-colors={Enum.join(@home_bg.colors, ",")}
           class="ic-home-bg"
           aria-hidden="true"
         >

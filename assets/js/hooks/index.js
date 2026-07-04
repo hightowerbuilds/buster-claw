@@ -10,6 +10,7 @@ import {TabStrip} from "./tab_strip.js"
 import {SplitResizer} from "./split.js"
 import {TerminalView, TermThemePicker} from "./terminal.js"
 import {SmokeBackground} from "./smoke_background.js"
+import {ShaderPreview} from "./shader_preview.js"
 import {SvgViewerDock} from "./svg_viewer.js"
 
 export const Hooks = {
@@ -29,5 +30,6 @@ export const Hooks = {
   TerminalView,
   TermThemePicker,
   SmokeBackground,
+  ShaderPreview,
   SvgViewerDock,
 }

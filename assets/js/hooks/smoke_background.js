@@ -5,6 +5,19 @@
 // over it is unaffected.
 import {createSmoke, SmokeGpuError} from "../smoke/smoke.js"
 import {packUniforms, NEUTRAL_EXPRESSION} from "../smoke/params.js"
+import {SHADER_PALETTES, colorsForUniform} from "../smoke/palettes.js"
+
+// Resolve the palette for an element: custom colors (data-colors) when
+// data-custom="true", else the shader's built-in default. Falls back to the
+// default on any malformed input.
+export function resolvePalette(el) {
+  const shader = el.getAttribute("data-shader") || "smoke"
+  const fallback = SHADER_PALETTES[shader] || SHADER_PALETTES.smoke
+  if (el.getAttribute("data-custom") !== "true") return colorsForUniform(fallback)
+  const hexes = (el.getAttribute("data-colors") || "").split(",").map((s) => s.trim())
+  const ok = hexes.length === 3 && hexes.every(Boolean)
+  return colorsForUniform(ok ? hexes : fallback)
+}
 
 // A subtler post treatment than the old foreground look, so it reads as a
 // backdrop and never fights the text over it: no glow, faint grain/scanlines,
@@ -22,6 +35,8 @@ export const SmokeBackground = {
       !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
     this.post = {...BG_POST}
     if (this.reduceMotion) this.post.grain = 0
+    // Palette (custom or the shader's default); the div remounts on any change.
+    this.colors = resolvePalette(this.el)
     this.intensity = 0.85
     this.uniforms = packUniforms({width: 0, height: 0, timeSec: 0, intensity: this.intensity, reveal: 0})
 
@@ -91,6 +106,7 @@ export const SmokeBackground = {
         expression: this.expr,
         post: this.post,
         motion: this.reduceMotion ? 0.3 : 1,
+        colors: this.colors,
       },
       this.uniforms
     )

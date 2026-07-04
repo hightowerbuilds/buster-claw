@@ -13,6 +13,9 @@ struct U {
   mood: vec4<f32>,
   style: vec4<f32>,
   post: vec4<f32>,
+  colA: vec4<f32>,   // the 3-color palette (rgb in .xyz): base, mid/accent, highlight
+  colB: vec4<f32>,
+  colC: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var smp: sampler;
@@ -75,6 +78,14 @@ fn aces(x: vec3<f32>) -> vec3<f32> {
 // Keeps bindings 1+2 in the auto layout (backgrounds never sample content).
 fn touch() -> f32 {
   return textureSampleLevel(contentTex, smp, vec2<f32>(0.5, 0.5), 0.0).a * 0.0;
+}
+
+// 3-stop gradient: t=0 → a, 0.5 → b, 1 → c. The shaders map a scalar field
+// through the user's / design's palette (u.colA/B/C).
+fn grad3(t: f32, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec3<f32> {
+  let x = clamp(t, 0.0, 1.0);
+  let ab = mix(a, b, smoothstep(0.0, 0.5, x));
+  return mix(ab, c, smoothstep(0.5, 1.0, x));
 }
 
 // Shared background post: tonemap + edge vignette + scanlines + film grain.

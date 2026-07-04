@@ -21,11 +21,10 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let band = fbm(vec2<f32>(p.x * 3.0 + warp * 0.6, p.y * 1.5 - time * 0.08));
   let curtain = smoothstep(0.35, 0.85, band) * smoothstep(1.0, 0.15, uv.y);
 
-  let cool = vec3<f32>(0.10, 0.85, 0.55);
-  let warm = vec3<f32>(0.35, 0.30, 0.95);
-  let glow = mix(cool, warm, clamp(uv.y, 0.0, 1.0));
+  // Palette: colA = sky base, colB = low curtain, colC = high curtain.
+  let glow = mix(u.colB.xyz, u.colC.xyz, clamp(uv.y, 0.0, 1.0));
 
-  var col = vec3<f32>(0.02, 0.03, 0.05);
+  var col = u.colA.xyz;
   col = col + glow * curtain * intensity * 0.9;
 
   let star = step(0.997, hash(floor(uv * res / 2.5))) * smoothstep(0.3, 1.0, uv.y);

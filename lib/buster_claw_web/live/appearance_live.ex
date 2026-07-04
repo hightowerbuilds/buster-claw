@@ -134,6 +134,16 @@ defmodule BusterClawWeb.AppearanceLive do
     {:noreply, socket |> assign_home_bg() |> put_flash(:info, "Homepage image removed.")}
   end
 
+  def handle_event("toggle_home_custom", _params, socket) do
+    Appearance.set_home_background_custom(!socket.assigns.home_bg.custom)
+    {:noreply, assign_home_bg(socket)}
+  end
+
+  def handle_event("set_home_colors", %{"c1" => c1, "c2" => c2, "c3" => c3}, socket) do
+    Appearance.set_home_background_colors([c1, c2, c3])
+    {:noreply, assign_home_bg(socket)}
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -362,6 +372,56 @@ defmodule BusterClawWeb.AppearanceLive do
             >
               <.icon name="hero-photo" class="size-4" /> Image
             </button>
+          </div>
+
+          <%!-- Live preview + custom palette (applies to the selected shader). --%>
+          <div class="flex flex-wrap items-start gap-4">
+            <div
+              :if={@home_bg.mode != "image"}
+              id={"shader-preview-#{@home_bg.mode}-#{@home_bg.custom}"}
+              phx-hook="ShaderPreview"
+              phx-update="ignore"
+              data-shader={@home_bg.mode}
+              data-custom={to_string(@home_bg.custom)}
+              class="h-28 w-44 shrink-0 overflow-hidden rounded-lg border-2 border-base-content/20"
+              aria-label="Shader preview"
+            >
+              <canvas class="block h-full w-full"></canvas>
+            </div>
+
+            <div class="min-w-0 flex-1 space-y-3">
+              <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={@home_bg.custom}
+                  phx-click="toggle_home_custom"
+                  class="size-4 accent-primary"
+                /> Use custom colors
+              </label>
+
+              <form :if={@home_bg.custom} phx-change="set_home_colors" class="flex flex-wrap gap-4">
+                <label
+                  :for={{hex, i} <- Enum.with_index(@home_bg.colors)}
+                  class="flex items-center gap-2"
+                >
+                  <input
+                    type="color"
+                    id={"home-color-#{i + 1}"}
+                    name={"c#{i + 1}"}
+                    value={hex}
+                    phx-debounce="250"
+                    class="size-9 cursor-pointer rounded border-2 border-base-content/20 bg-transparent p-0.5"
+                  />
+                  <span class="text-xs text-base-content/60">
+                    {Enum.at(~w(Base Accent Highlight), i)}
+                  </span>
+                </label>
+              </form>
+
+              <p :if={!@home_bg.custom} class="text-sm text-base-content/50">
+                Using the design's built-in colors. Turn on custom colors to pick your own three.
+              </p>
+            </div>
           </div>
 
           <div

@@ -21,8 +21,9 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let lines = abs(fract(h * 6.0) - 0.5);   // 0 on a contour, 0.5 between
   let contour = smoothstep(0.06, 0.0, lines);
 
-  var col = vec3<f32>(0.03, 0.04, 0.06);
-  let ink = vec3<f32>(0.35, 0.60, 0.90);
+  // Palette: colA = base, colB→colC = the contour ink by height.
+  var col = u.colA.xyz;
+  let ink = mix(u.colB.xyz, u.colC.xyz, clamp(uv.y, 0.0, 1.0));
   col = col + ink * contour * intensity * 0.8;
 
   col = col + vec3<f32>(touch());

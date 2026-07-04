@@ -18,7 +18,15 @@ export const clampR = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
 //   [12] mood energy  [13] mood temp (-1 cool .. +1 warm)  [14] mood density  [15] pad
 //   [16] style pixelCell (1 = off)  [17] style paletteAmt (0 = off)  [18] motion (1 = full)  [19] pad
 //   [20] post glow  [21] post grain  [22] post scanline  [23] post vignette
-export const UNIFORM_FLOATS = 24
+//   [24..26] colorA rgb  [27] pad   [28..30] colorB rgb  [31] pad   [32..34] colorC rgb  [35] pad
+export const UNIFORM_FLOATS = 36
+
+// Fallback palette (rgb 0..1) if no colors are supplied — the smoke defaults.
+export const DEFAULT_COLORS = {
+  a: [0.055, 0.055, 0.055],
+  b: [1.0, 0.302, 0.11],
+  c: [0.956, 0.945, 0.918],
+}
 
 // The hi-fi post stack, on by default — this is the modern/hi-fi look (glow,
 // film grain, scanlines, edge vignette). Amounts are conservative starting
@@ -42,11 +50,12 @@ export const NEUTRAL_EXPRESSION = {
 }
 
 export function packUniforms(
-  {width, height, timeSec, intensity, reveal, freezeTime = 0, lens, expression, post, motion = 1},
+  {width, height, timeSec, intensity, reveal, freezeTime = 0, lens, expression, post, motion = 1, colors},
   out
 ) {
   const e = expression || NEUTRAL_EXPRESSION
   const pp = post || POST_DEFAULT
+  const c = colors || DEFAULT_COLORS
   const u = out || new Float32Array(UNIFORM_FLOATS)
   u[0] = width
   u[1] = height
@@ -72,6 +81,18 @@ export function packUniforms(
   u[21] = clamp01(pp.grain)
   u[22] = clamp01(pp.scanline)
   u[23] = clamp01(pp.vignette)
+  u[24] = c.a[0]
+  u[25] = c.a[1]
+  u[26] = c.a[2]
+  u[27] = 0
+  u[28] = c.b[0]
+  u[29] = c.b[1]
+  u[30] = c.b[2]
+  u[31] = 0
+  u[32] = c.c[0]
+  u[33] = c.c[1]
+  u[34] = c.c[2]
+  u[35] = 0
   return u
 }
 

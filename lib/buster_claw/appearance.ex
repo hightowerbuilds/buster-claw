@@ -37,6 +37,11 @@ defmodule BusterClaw.Appearance do
   @home_topic "appearance:home_background"
   @home_shaders ~w(smoke aurora waves lava)
   @home_default_mode "smoke"
+  # Custom 3-color palette (one shared set, applied to the selected shader when
+  # `custom` is on). Default seed = the smoke palette.
+  @home_custom_key "home_background_custom"
+  @home_colors_key "home_background_colors"
+  @home_default_colors ["#0e0e0e", "#ff4d1c", "#f4f1ea"]
 
   # Accepted upload extensions mapped to the content-type used when serving.
   @content_types %{
@@ -201,7 +206,50 @@ defmodule BusterClaw.Appearance do
     mode = home_background_mode()
     url = home_background_image_url()
     mode = if mode == "image" and is_nil(url), do: @home_default_mode, else: mode
-    %{mode: mode, image_url: url}
+
+    %{
+      mode: mode,
+      image_url: url,
+      custom: home_background_custom?(),
+      colors: home_background_colors()
+    }
+  end
+
+  @doc "Whether custom palette colors override the shader's built-in defaults."
+  def home_background_custom?, do: Settings.get(@home_custom_key, "false") == "true"
+
+  @doc "Toggle custom palette colors on/off."
+  def set_home_background_custom(on) when is_boolean(on) do
+    Settings.put(@home_custom_key, to_string(on))
+    broadcast_home()
+    :ok
+  end
+
+  @doc "The 3 custom palette colors as `[hex, hex, hex]` (defaults if unset)."
+  def home_background_colors do
+    case Settings.get(@home_colors_key) do
+      s when is_binary(s) ->
+        case String.split(s, ",", trim: true) do
+          [_, _, _] = cs -> cs
+          _ -> @home_default_colors
+        end
+
+      _ ->
+        @home_default_colors
+    end
+  end
+
+  @doc "Set the 3 custom palette colors (each a `#rrggbb` hex). Bad values fall to black."
+  def set_home_background_colors(colors) when is_list(colors) do
+    cleaned = colors |> Enum.map(&sanitize_hex/1) |> Enum.take(3)
+
+    if length(cleaned) == 3 do
+      Settings.put(@home_colors_key, Enum.join(cleaned, ","))
+      broadcast_home()
+      {:ok, cleaned}
+    else
+      {:error, :invalid}
+    end
   end
 
   @doc "The stored homepage background mode (shader name or `\"image\"`)."
@@ -318,6 +366,11 @@ defmodule BusterClaw.Appearance do
       @home_topic,
       {:home_background, home_background_state()}
     )
+  end
+
+  defp sanitize_hex(hex) do
+    h = hex |> to_string() |> String.trim()
+    if Regex.match?(~r/^#[0-9a-fA-F]{6}$/, h), do: String.downcase(h), else: "#000000"
   end
 
   defp home_image_present?, do: not is_nil(present(Settings.get(@home_image_path_key)))
