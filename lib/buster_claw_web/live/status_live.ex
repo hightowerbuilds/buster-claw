@@ -42,7 +42,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chat_running, Chat.running?(active))
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
-    |> assign(:zoomed_svg, nil)
+    |> assign(:zoomed_id, nil)
     |> load_chat_history(active)
   end
 
@@ -134,26 +134,40 @@ defmodule BusterClawWeb.StatusLive do
       |> assign(:chat_seq, 0)
       |> assign(:chat_svgs, [])
       |> assign(:svg_seq, 0)
-      |> assign(:zoomed_svg, nil)
+      |> assign(:zoomed_id, nil)
 
     {:noreply, socket}
   end
 
-  # Open a sketchpad SVG full-screen in a modal (and close it).
+  # Open / close / page the full-screen sketchpad modal. `@zoomed_id` is the id of
+  # the SVG currently shown (or nil).
   def handle_event("zoom_svg", %{"id" => id}, socket) do
-    svg =
-      with {n, ""} <- Integer.parse(id),
-           %{svg: svg} <- Enum.find(socket.assigns.chat_svgs, &(&1.id == n)) do
-        svg
-      else
+    zoomed =
+      case Integer.parse(id) do
+        {n, ""} -> if Enum.any?(socket.assigns.chat_svgs, &(&1.id == n)), do: n, else: nil
         _ -> nil
       end
 
-    {:noreply, assign(socket, :zoomed_svg, svg)}
+    {:noreply, assign(socket, :zoomed_id, zoomed)}
   end
 
   def handle_event("close_zoom", _params, socket),
-    do: {:noreply, assign(socket, :zoomed_svg, nil)}
+    do: {:noreply, assign(socket, :zoomed_id, nil)}
+
+  def handle_event("zoom_nav", %{"dir" => dir}, socket),
+    do: {:noreply, zoom_step(socket, dir)}
+
+  # Keyboard while the modal is open: Esc closes, arrows page through the sketchpad.
+  def handle_event("zoom_key", %{"key" => "Escape"}, socket),
+    do: {:noreply, assign(socket, :zoomed_id, nil)}
+
+  def handle_event("zoom_key", %{"key" => "ArrowLeft"}, socket),
+    do: {:noreply, zoom_step(socket, "prev")}
+
+  def handle_event("zoom_key", %{"key" => "ArrowRight"}, socket),
+    do: {:noreply, zoom_step(socket, "next")}
+
+  def handle_event("zoom_key", _params, socket), do: {:noreply, socket}
 
   def handle_event("close_chat", %{"id" => id}, socket) do
     Chat.stop(id)
@@ -289,7 +303,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chat_running, Chat.running?(id))
     |> assign(:chat_thinking, if(Chat.running?(id), do: :running, else: nil))
     |> assign(:chat_queue, Chat.queue(id))
-    |> assign(:zoomed_svg, nil)
+    |> assign(:zoomed_id, nil)
     |> update_tab(id, &%{&1 | unread: false})
     |> load_chat_history(id)
   end
@@ -342,34 +356,55 @@ defmodule BusterClawWeb.StatusLive do
     |> update(:chat_svgs, &(&1 ++ new))
   end
 
-  # Rebuild the transcript AND the sketchpad from history: assistant rows are
-  # stored with their ```svg blocks intact, so re-extract them so the bubbles
-  # show clean text and the sidebar re-fills on reload/tab-switch.
+  # Move the zoomed image one step through the sketchpad (clamped at the ends).
+  defp zoom_step(socket, dir) do
+    svgs = socket.assigns.chat_svgs
+
+    case Enum.find_index(svgs, &(&1.id == socket.assigns.zoomed_id)) do
+      nil ->
+        socket
+
+      idx ->
+        next =
+          case dir do
+            "prev" -> max(0, idx - 1)
+            "next" -> min(length(svgs) - 1, idx + 1)
+            _ -> idx
+          end
+
+        assign(socket, :zoomed_id, Enum.at(svgs, next).id)
+    end
+  end
+
+  # Restore the transcript from history. SVGs are ephemeral: we STRIP the ```svg
+  # blocks out of restored assistant bubbles (so no raw markup shows) but do NOT
+  # rebuild the sketchpad — a drawing lives only in the open session and vanishes
+  # on reload / tab-switch / chat deletion. Nothing is saved; to keep one, the
+  # user asks the agent to write it into the workspace.
   defp load_chat_history(socket, conv_id) do
-    {messages, svgs} =
+    messages =
       conv_id
       |> AgentTranscript.recent(limit: 50)
-      |> Enum.reduce({[], []}, fn row, {msgs, svgs} ->
+      |> Enum.map(fn row ->
         case history_role(row.role) do
           :assistant ->
-            {clean, block_svgs} = Sketchpad.extract(row.content)
-            svgs = svgs ++ Enum.map(block_svgs, &Sketchpad.sanitize/1)
-            msgs = if clean == "", do: msgs, else: msgs ++ [%{role: :assistant, text: clean}]
-            {msgs, svgs}
+            {clean, _svgs} = Sketchpad.extract(row.content)
+            %{role: :assistant, text: clean}
 
           role ->
-            {msgs ++ [%{role: role, text: row.content}], svgs}
+            %{role: role, text: row.content}
         end
       end)
-
-    messages = messages |> Enum.with_index(1) |> Enum.map(fn {m, i} -> Map.put(m, :id, i) end)
-    svgs = svgs |> Enum.with_index(1) |> Enum.map(fn {svg, i} -> %{id: i, svg: svg} end)
+      |> Enum.reject(&(&1.role == :assistant and &1.text == ""))
+      |> Enum.with_index(1)
+      |> Enum.map(fn {m, i} -> Map.put(m, :id, i) end)
 
     socket
     |> assign(:chat_messages, messages)
     |> assign(:chat_seq, length(messages))
-    |> assign(:chat_svgs, svgs)
-    |> assign(:svg_seq, length(svgs))
+    |> assign(:chat_svgs, [])
+    |> assign(:svg_seq, 0)
+    |> assign(:zoomed_id, nil)
   end
 
   @history_roles %{
@@ -450,7 +485,7 @@ defmodule BusterClawWeb.StatusLive do
               <BusterClawWeb.ChatPanel.sketchpad
                 :if={@chat_svgs != []}
                 svgs={@chat_svgs}
-                zoomed={@zoomed_svg}
+                zoomed={@zoomed_id}
               />
             </div>
           </div>

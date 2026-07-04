@@ -167,15 +167,19 @@ defmodule BusterClawWeb.ChatPanel do
   end
 
   @doc """
-  The sketchpad sidebar: every SVG Claude drew this conversation, shown as a real,
-  crisp SVG. `svgs` is a list of `%{id, svg}` (already sanitized upstream). Click
-  a card to open it full-screen (`zoomed` holds the SVG currently in the modal, or
-  nil). Rendered beside the chat only when non-empty.
+  The sketchpad sidebar: every SVG Claude drew this session, shown as a real,
+  crisp SVG. `svgs` is a list of `%{id, svg}` (sanitized upstream, session-live —
+  never persisted). Click a card to open it full-screen; `zoomed` is the id of the
+  SVG currently in the modal (or nil), and ← / → page through the set. Rendered
+  beside the chat only when non-empty.
   """
   attr :svgs, :list, required: true
   attr :zoomed, :any, required: true
 
   def sketchpad(assigns) do
+    assigns =
+      assign(assigns, :zoom_idx, Enum.find_index(assigns.svgs, &(&1.id == assigns.zoomed)))
+
     ~H"""
     <aside
       class="ic-panel flex w-80 min-h-0 shrink-0 flex-col overflow-hidden"
@@ -198,10 +202,10 @@ defmodule BusterClawWeb.ChatPanel do
         </button>
       </div>
 
-      <%!-- Full-screen modal. The backdrop button closes; the content sits above
-            it (pointer-events-auto) so clicking the image doesn't close. Esc
-            closes too. --%>
-      <div :if={@zoomed} class="fixed inset-0 z-50" phx-window-keydown="close_zoom" phx-key="Escape">
+      <%!-- Full-screen modal. The backdrop button closes; the image sits above it
+            (pointer-events-auto) so clicking it doesn't close. ← / → page through
+            the sketchpad, Esc closes. --%>
+      <div :if={@zoom_idx} class="fixed inset-0 z-50" phx-window-keydown="zoom_key">
         <button
           type="button"
           phx-click="close_zoom"
@@ -211,9 +215,10 @@ defmodule BusterClawWeb.ChatPanel do
         </button>
         <div class="pointer-events-none absolute inset-0 grid place-items-center p-8">
           <div class="ic-sketch-modal pointer-events-auto overflow-auto rounded-sm border-2 border-base-content/30 bg-base-100 p-4 shadow-2xl">
-            {Phoenix.HTML.raw(@zoomed)}
+            {Phoenix.HTML.raw(Enum.at(@svgs, @zoom_idx).svg)}
           </div>
         </div>
+
         <button
           type="button"
           phx-click="close_zoom"
@@ -222,6 +227,35 @@ defmodule BusterClawWeb.ChatPanel do
         >
           ×
         </button>
+
+        <button
+          :if={length(@svgs) > 1}
+          type="button"
+          phx-click="zoom_nav"
+          phx-value-dir="prev"
+          disabled={@zoom_idx == 0}
+          aria-label="Previous drawing"
+          class="pointer-events-auto absolute left-4 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full border-2 border-base-content/40 bg-base-100 text-2xl leading-none transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          ‹
+        </button>
+        <button
+          :if={length(@svgs) > 1}
+          type="button"
+          phx-click="zoom_nav"
+          phx-value-dir="next"
+          disabled={@zoom_idx == length(@svgs) - 1}
+          aria-label="Next drawing"
+          class="pointer-events-auto absolute right-4 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full border-2 border-base-content/40 bg-base-100 text-2xl leading-none transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          ›
+        </button>
+        <div
+          :if={length(@svgs) > 1}
+          class="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-sm border-2 border-base-content/20 bg-base-100 px-2 py-1 font-mono text-xs text-base-content/70"
+        >
+          {@zoom_idx + 1} / {length(@svgs)}
+        </div>
       </div>
     </aside>
     """
