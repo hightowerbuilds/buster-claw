@@ -1,17 +1,17 @@
-// Humo surface hooks (Phase 1). HumoSurface owns the DOM side of the smoke:
-// canvas backing size at real devicePixelRatio (the 0.1 spike suspiciously
-// reported dpr 1.0, so the status chip surfaces it), the rAF loop with a
-// visibility pause, and the conversation-state machine driven by the server —
-// HumoLive push_events `humo:phase` (thinking/settled/idle) and `humo:text`
-// (an assistant block to read out).
+// Humo surface hooks. HumoSurface owns the DOM side of the screen: canvas
+// backing size at real devicePixelRatio, the rAF loop with a visibility pause,
+// and the conversation-state machine driven by the server — HumoLive
+// push_events `humo:phase` (thinking/settled/idle) and `humo:text` (an assistant
+// block to read out).
 //
-// The smoke is the primary reading surface: replies READ OUT — words appear
-// at a cadence, fill the page, and when the next word wouldn't fit the page
+// The screen is the primary reading surface: replies READ OUT — words appear at
+// a cadence, fill the page, and when the next word wouldn't fit the page
 // dissolves back into smoke to make room for the next one. The final page
-// settles and holds. All GPU work lives in humo/renderer.js; all pure math
-// (wrap, page-fit, reveal clocks, uniform mapping) in humo/params.js +
+// settles and holds. All GPU work lives in humo/screen.js (one pipeline);
+// content is authored on Canvas2D by the presenters (humo/presenters/*); all
+// pure math (wrap, page-fit, reveal clocks, uniform mapping) in humo/params.js +
 // humo/text_layout.js, where it is bun-tested.
-import {createSmokeRenderer, HumoGpuError} from "../humo/renderer.js"
+import {createScreen, HumoGpuError} from "../humo/screen.js"
 import {
   packUniforms,
   pageReveal,
@@ -20,20 +20,10 @@ import {
   easeExpression,
   NEUTRAL_EXPRESSION,
 } from "../humo/params.js"
-import {layoutPage} from "../humo/text_layout.js"
-import {encodeShapes, MAX_SHAPES} from "../humo/draw.js"
+import {createChatPresenter} from "../humo/presenters/chat.js"
 
-const DRAW_CONDENSE_MS = 1200
-
-const TEXT_W = 1024
-const TEXT_H = 512
-const FONT = "600 14px ui-monospace, Menlo, monospace"
-const LINE_H = 20
-const PAD_X = 48
-const PAD_Y = 48
-const MAX_LINES = Math.floor((TEXT_H - PAD_Y * 2) / LINE_H)
 // Readout cadence: blocks arrive whole (stream-json is block-level), so this
-// is a presentation clock — how fast the smoke "speaks".
+// is a presentation clock — how fast the screen "speaks".
 const MS_PER_WORD = 90
 const CONDENSE_MS = 800
 const DISSOLVE_MS = 700
@@ -43,29 +33,18 @@ export const HumoSurface = {
     this.canvas = this.el.querySelector("[data-humo-canvas]")
     this.status = this.el.querySelector("[data-humo-status]")
     this.raf = null
-    this.renderer = null
+    this.screen = null
     this.destroyed_ = false
 
-    this.textCanvas = document.createElement("canvas")
-    this.textCanvas.width = TEXT_W
-    this.textCanvas.height = TEXT_H
-    this.tctx = this.textCanvas.getContext("2d")
-    this.textDirty = true
-    this.measure = (s) => {
-      this.tctx.font = FONT
-      return this.tctx.measureText(s).width
-    }
+    // The chat presenter authors the conversation onto its own Canvas2D, which
+    // feeds the screen's content texture.
+    this.content = createChatPresenter()
 
     // Conversation state, server-driven. `hasText` keeps the last page legible
-    // while idle — dissolving history is Phase 3's ageing, not yet.
+    // while idle.
     this.chat = {phase: "idle", hasText: false}
-    // Active readout: the words still being spoken into the smoke.
+    // Active readout: the words still being spoken into the screen.
     this.readout = null
-    // Content source for the smoke: "text" (the readout) or "draw" (an SDF
-    // scene rendered into the same content texture). A drawing condenses in and
-    // holds; the next text reply or new turn reverts to text.
-    this.contentMode = "text"
-    this.draw = null
 
     // Expression (mood + render mode), server-driven. Each reply's style eases
     // from neutral: a new turn resets the target so styling is per-reply, and a
@@ -76,33 +55,11 @@ export const HumoSurface = {
       this.exprTarget = styleFromSpec(spec)
     })
 
-    // A drawing: encode the agent's shapes → the SDF pass renders them into the
-    // content texture → the smoke condenses the composition like text.
-    this.handleEvent("humo:draw", ({shapes}) => {
-      if (!this.renderer) return
-      const encoded = encodeShapes(shapes)
-      // Fail-closed diagnostics: never let a truncation read as "drew it all".
-      const {dropped, capped} = encoded.report
-      if (dropped || capped) {
-        console.warn(
-          `Humo draw: ${encoded.count} shape(s) rendered, ${dropped} dropped (unknown kind), ${capped} over the ${MAX_SHAPES}-shape cap`
-        )
-      }
-      if (encoded.count === 0) return
-      this.renderer.renderDrawing(encoded)
-      this.contentMode = "draw"
-      this.draw = {startedAt: performance.now()}
-      this.textDirty = false // don't let a stale text upload clobber the scene
-      this.chat = {phase: "streaming", hasText: true}
-    })
-
-    // Cleared conversation: drop any readout/drawing, blank the content texture
-    // so nothing lingers under the fog, and settle to empty drifting smoke.
+    // Cleared conversation: drop any readout, blank the content texture so
+    // nothing lingers under the fog, and settle to empty drifting smoke.
     this.handleEvent("humo:reset", () => {
       this.readout = null
-      this.draw = null
-      this.contentMode = "text"
-      this.clearText()
+      this.content.clear()
       this.exprTarget = {...NEUTRAL_EXPRESSION}
       this.chat = {phase: "idle", hasText: false}
     })
@@ -112,7 +69,6 @@ export const HumoSurface = {
         // New turn: the old page dissolves under the churn (reveal → 0), and
         // the style eases back to neutral unless this reply sets one.
         this.readout = null
-        this.contentMode = "text"
         this.chat.phase = "thinking"
         this.exprTarget = {...NEUTRAL_EXPRESSION}
       } else if (this.readout) {
@@ -123,16 +79,16 @@ export const HumoSurface = {
         this.chat.phase = phase
       }
     })
+
     this.handleEvent("humo:text", ({text}) => {
       const words = text.split(/\s+/).filter(Boolean)
       if (words.length === 0) return
-      this.contentMode = "text" // a text reply reverts from any drawing
       if (this.readout) {
         // Another block in the same turn: queue its words onto the readout.
         this.readout.words.push(...words)
       } else {
         const now = performance.now()
-        this.clearText()
+        this.content.clear()
         this.readout = {
           words,
           idx: 0,
@@ -174,7 +130,7 @@ export const HumoSurface = {
     document.documentElement.addEventListener("pointerleave", this.onPointerLeave)
 
     this.onVisibility = () => {
-      if (!document.hidden && this.renderer && this.raf == null) {
+      if (!document.hidden && this.screen && this.raf == null) {
         this.raf = requestAnimationFrame(this.frame)
       }
     }
@@ -195,27 +151,27 @@ export const HumoSurface = {
     window.removeEventListener("pointermove", this.onPointerMove)
     document.documentElement.removeEventListener("pointerleave", this.onPointerLeave)
     this.observer?.disconnect()
-    this.renderer?.destroy()
+    this.screen?.destroy()
   },
 
   async boot() {
     try {
-      this.renderer = await createSmokeRenderer(this.canvas, {
-        textWidth: TEXT_W,
-        textHeight: TEXT_H,
+      this.screen = await createScreen(this.canvas, {
+        contentWidth: this.content.dims.width,
+        contentHeight: this.content.dims.height,
       })
     } catch (e) {
       // No GPU → say so plainly; the DOM transcript is the real fallback,
-      // so nothing is lost but the smoke.
+      // so nothing is lost but the screen.
       const reason = e instanceof HumoGpuError ? e.reason : e.message
       this.setStatus("humo · gpu unavailable — " + reason)
       return
     }
-    if (this.destroyed_) return this.renderer.destroy()
+    if (this.destroyed_) return this.screen.destroy()
 
-    this.renderer.lost.then((info) => {
+    this.screen.lost.then((info) => {
       if (this.destroyed_) return
-      this.renderer = null
+      this.screen = null
       if (this.raf != null) cancelAnimationFrame(this.raf)
       this.raf = null
       this.setStatus("humo · gpu lost — " + (info?.message || "device lost"))
@@ -228,18 +184,13 @@ export const HumoSurface = {
 
   frame(now) {
     this.raf = null
-    if (!this.renderer || this.destroyed_) return
+    if (!this.screen || this.destroyed_) return
 
     this.frames.push(now - this.lastFrameAt)
     if (this.frames.length > 120) this.frames.shift()
     this.lastFrameAt = now
 
-    const state =
-      this.contentMode === "draw"
-        ? this.tickDraw(now)
-        : this.readout
-          ? this.tickReadout(now)
-          : this.chat
+    const state = this.readout ? this.tickReadout(now) : this.chat
     const mapped = mapChatState(state)
     // Ease the lens in/out; while fully off it costs the shader nothing.
     this.lens.strength += (this.lens.target - this.lens.strength) * 0.14
@@ -259,12 +210,12 @@ export const HumoSurface = {
       },
       this.uniforms
     )
-    this.renderer.render({
+    this.screen.render({
       uniforms: this.uniforms,
-      textSource: this.textCanvas,
-      textDirty: this.textDirty,
+      contentSource: this.content.source,
+      contentDirty: this.content.dirty,
     })
-    this.textDirty = false
+    this.content.markClean()
 
     if (now - (this.statusAt || 0) > 500) {
       this.statusAt = now
@@ -289,15 +240,14 @@ export const HumoSurface = {
       r.pagePhase = "filling"
       r.phaseStartedAt = now
       r.nextWordAt = now
-      this.clearText()
+      this.content.clear()
     }
 
     if (r.pagePhase === "filling") {
       let drew = false
       while (r.idx < r.words.length && now >= r.nextWordAt) {
         const candidate = r.page.concat(r.words[r.idx])
-        const {fits} = layoutPage(this.measure, candidate, TEXT_W - PAD_X * 2, MAX_LINES)
-        if (!fits) {
+        if (!this.content.fits(candidate)) {
           // Page is full — let it dissolve to make room for the next words.
           r.pagePhase = "dissolving"
           r.phaseStartedAt = now
@@ -308,7 +258,7 @@ export const HumoSurface = {
         r.nextWordAt = now + MS_PER_WORD
         drew = true
       }
-      if (drew) this.drawText(r.page)
+      if (drew) this.content.draw(r.page)
 
       if (r.idx >= r.words.length && r.pagePhase === "filling") {
         // Fully spoken — the final page settles and holds.
@@ -327,29 +277,6 @@ export const HumoSurface = {
     return {phase: "streaming", streamProgress: reveal}
   },
 
-  // The drawing's condense clock: the SDF scene is already in the content
-  // texture; ramp reveal 0→1 so it materializes out of the smoke, then holds.
-  tickDraw(now) {
-    const reveal = Math.min(1, (now - this.draw.startedAt) / DRAW_CONDENSE_MS)
-    if (reveal >= 1) return {phase: "settled"}
-    return {phase: "streaming", streamProgress: reveal}
-  },
-
-  drawText(words) {
-    const ctx = this.tctx
-    ctx.clearRect(0, 0, TEXT_W, TEXT_H)
-    ctx.font = FONT
-    ctx.fillStyle = "#fff"
-    const {lines} = layoutPage(this.measure, words, TEXT_W - PAD_X * 2, MAX_LINES)
-    lines.forEach((line, i) => ctx.fillText(line, PAD_X, PAD_Y + 14 + i * LINE_H))
-    this.textDirty = true
-  },
-
-  clearText() {
-    this.tctx.clearRect(0, 0, TEXT_W, TEXT_H)
-    this.textDirty = true
-  },
-
   fitCanvas() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const rect = this.el.getBoundingClientRect()
@@ -358,7 +285,7 @@ export const HumoSurface = {
     if (w !== this.canvas.width || h !== this.canvas.height) {
       this.canvas.width = w
       this.canvas.height = h
-      this.renderer?.resize()
+      this.screen?.resize()
     }
   },
 

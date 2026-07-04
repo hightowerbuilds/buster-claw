@@ -1,23 +1,27 @@
-// Humo's smoke shader — WGSL source of truth (Phase 0.2, HUMO_ROADMAP.md).
+// The Humo screen shader — WGSL source of truth for the one pipeline that IS
+// the surface (HUMO screen rewrite; see .claude/plans/vivid-hopping-dahl.md).
 //
-// Ported near-verbatim from Luke's gemma-construct/shaders/smoke.wgsl (6-octave
-// fbm + curl-style domain warp + vignette + vertical lift), verified in the
-// shell's WKWebView by the Phase 0.1 spike (Path A: WebGPU). On top of the
-// field sits the Phase 2 mechanism: a text texture displaced by the curl warp
-// and revealed along a noise dissolve threshold — "text condenses from smoke".
-// Hazard-orange wisps (#FF4D1C) live in the transition band; body tones are
-// Industrial Claw ash-on-near-black.
+// This is the whole engine: a single fullscreen pass that draws an fbm smoke
+// atmosphere and composites the *content texture* (chat type / diagrams /
+// drawings, authored on Canvas2D) on top, revealed along a noise-dissolve
+// threshold so content condenses out of the fog. Deliberately ONE pipeline fed
+// by a uniform buffer + a texture — the pattern WKWebView's WebGPU is happy
+// with. The hi-fi post stack (glow, film grain, scanlines, tonemap) folds in
+// here in a later phase; for now this is the smoke atmosphere + content
+// composite + the still-lens, ported from the original smoke.wgsl.
 //
-// Uniform layout (three vec4s, 48 bytes — see packUniforms in params.js):
+// Uniform layout — must mirror `struct U` (five vec4<f32> = 20 floats = 80
+// bytes); see packUniforms in params.js:
 //   res.xy    = canvas resolution in device pixels
 //   params.x  = time (seconds)
 //   params.y  = intensity (smoke density energy; the mapping layer drives this)
-//   params.z  = reveal (0 = all smoke, 1 = text fully condensed)
+//   params.z  = reveal (0 = all smoke, 1 = content fully condensed)
 //   params.w  = freezeTime — the timestamp the lens holds the smoke at
 //   lens      = (x, y, radius, strength) — the hover "still lens": inside the
-//               circle time freezes and the rim fringes chromatically, like a
-//               magnifying glass that magnifies nothing.
-export const SMOKE_WGSL = /* wgsl */ `
+//               circle time freezes and the rim fringes chromatically.
+//   mood      = (energy, temp -1 cool..+1 warm, density, _)
+//   style     = (pixelCell 1=off, paletteAmt 0=off, _, _)
+export const SCREEN_WGSL = /* wgsl */ `
 struct U {
   res: vec4<f32>,
   params: vec4<f32>,
@@ -27,7 +31,7 @@ struct U {
 };
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var smp: sampler;
-@group(0) @binding(2) var textTex: texture_2d<f32>;
+@group(0) @binding(2) var contentTex: texture_2d<f32>;
 
 // The 4-shade Game Boy DMG palette, darkest → lightest.
 fn dmg(level: i32) -> vec3<f32> {
@@ -99,8 +103,8 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let dens = 0.6 + density * 0.8;     // 0.5 → 1.0×
 
   // Game Boy render mode: snap the sample point to a chunky pixel grid before
-  // anything else, so the whole field (and the text sampled from it) is blocky.
-  // pixelCell = 1 is a no-op at device resolution.
+  // anything else, so the whole field (and the content sampled from it) is
+  // blocky. pixelCell = 1 is a no-op at device resolution.
   let aspect = res.x / max(res.y, 1.0);
   let cell = max(u.style.x, 1.0);
   let uv = (floor(in.uv * res / cell) + vec2<f32>(0.5)) * cell / res;
@@ -114,11 +118,10 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let lens_amt = u.lens.w * smoothstep(u.lens.z, u.lens.z * 0.78, lens_r);
   let t = mix(time, freeze_time, lens_amt);
 
-  // Tuned 07-03 ("smaller + more smokey"): higher noise frequencies shrink the
-  // billows; a stronger curl warp plus a second, swapped-reuse warp pass (free —
-  // no extra fbm samples) pulls the field into stringier, wispier filaments.
-  // Energy scales the drift (how fast the smoke moves) and the curl warp
-  // (how turbulent). Calm answers drift slow and smooth; urgent ones churn.
+  // Higher noise frequencies shrink the billows; a stronger curl warp plus a
+  // second, swapped-reuse warp pass (free — no extra fbm samples) pulls the
+  // field into stringier, wispier filaments. Energy scales the drift (how fast
+  // the smoke moves) and the curl warp (how turbulent).
   let drift = t * 0.085 * e_drift;
   let curl_a = fbm(p * 3.1 + vec2<f32>(0.0, drift));
   let curl_b = fbm(p * 4.8 + vec2<f32>(drift * -0.7, 0.16));
@@ -140,17 +143,17 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   var col = mix(vec3<f32>(0.055, 0.055, 0.055), vec3<f32>(0.956, 0.945, 0.918), tone);
   col = vec3<f32>(col.r * (1.0 + 0.10 * temp), col.g, col.b * (1.0 - 0.10 * temp));
 
-  // Text condenses from smoke — and stays *made of* smoke: the sample point
-  // keeps a faint curl shimmer even when settled (letters never go flat), a
-  // second offset "ghost" sample smears each glyph like ink in air, and the
-  // fill density is modulated by fine noise so strokes read as smoke, not
-  // solid paint. Hazard wisps in the transition band.
+  // Content condenses from smoke — and stays *made of* smoke: the sample point
+  // keeps a faint curl shimmer even when settled, a second offset "ghost"
+  // sample smears each glyph like ink in air, and the fill density is modulated
+  // by fine noise so strokes read as smoke, not solid paint. Hazard wisps in
+  // the transition band.
   let tuv = vec2<f32>(in.uv.x, 1.0 - in.uv.y);
   let curl = vec2<f32>(curl_a - 0.5, curl_b - 0.5);
-  // Two animated displacement terms: the big curl carries the letters with the
-  // smoke, the fine-field flutter makes every stroke tremble locally. Under
-  // the lens (\`legible\`) both collapse to zero and the ghosts fade — the
-  // glass reads the smoke: no waviness, no smear, full ink, crisp edges.
+  // Two animated displacement terms: the big curl carries the content with the
+  // smoke, the fine-field flutter makes every stroke tremble locally. Under the
+  // lens (\`legible\`) both collapse to zero and the ghosts fade — the glass
+  // reads the smoke: no waviness, no smear, full ink, crisp edges.
   let legible = lens_amt;
   let flut = vec2<f32>(smoke_mid - 0.5, smoke_fine - 0.5);
   let disp = (curl * (0.028 + 0.06 * (1.0 - reveal)) + flut * 0.014) * (1.0 - legible);
@@ -159,17 +162,17 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let radial = lens_vec / max(lens_r, 0.0001);
   let tdir = vec2<f32>(radial.x / max(aspect, 0.0001), -radial.y);
   let ca = 0.0038 * lens_amt * smoothstep(0.0, u.lens.z, lens_r);
-  let ta_core = textureSample(textTex, smp, tuv + disp).a;
-  let ta_core_r = textureSample(textTex, smp, tuv + disp + tdir * ca).a;
-  let ta_core_b = textureSample(textTex, smp, tuv + disp - tdir * ca).a;
-  let ta_g1 = textureSample(textTex, smp, tuv + disp * 2.6 + vec2<f32>(0.006, -0.008)).a;
-  let ta_g2 = textureSample(textTex, smp, tuv + disp * 4.0 + vec2<f32>(-0.008, 0.005)).a;
+  let ta_core = textureSample(contentTex, smp, tuv + disp).a;
+  let ta_core_r = textureSample(contentTex, smp, tuv + disp + tdir * ca).a;
+  let ta_core_b = textureSample(contentTex, smp, tuv + disp - tdir * ca).a;
+  let ta_g1 = textureSample(contentTex, smp, tuv + disp * 2.6 + vec2<f32>(0.006, -0.008)).a;
+  let ta_g2 = textureSample(contentTex, smp, tuv + disp * 4.0 + vec2<f32>(-0.008, 0.005)).a;
   let ghosts = (ta_g1 * 0.28 + ta_g2 * 0.17) * (1.0 - legible);
   let core_w = mix(0.55, 1.0, legible);
   let ta = ta_core * core_w + ghosts;
   let ta_r = ta_core_r * core_w + ghosts;
   let ta_b = ta_core_b * core_w + ghosts;
-  // The lens also lifts reveal, so even mid-condense words read under it.
+  // The lens also lifts reveal, so even mid-condense content reads under it.
   let rl = max(reveal, legible);
   let n = smoke_fine;
   // Blend the noisy dissolve threshold toward a plain crisp edge under glass.
