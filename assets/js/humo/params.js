@@ -8,17 +8,32 @@
 
 export const clamp01 = (x) => Math.max(0, Math.min(1, x))
 
+export const clampR = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
+
 // Uniform buffer layout — must mirror `struct U` in smoke_wgsl.js:
-// three vec4<f32> = 12 floats = 48 bytes.
+// five vec4<f32> = 20 floats = 80 bytes.
 //   [0] res.x  [1] res.y  [2..3] pad
 //   [4] time   [5] intensity  [6] reveal  [7] freezeTime (lens hold timestamp)
 //   [8] lens.x [9] lens.y (uv, y-up)  [10] lens radius  [11] lens strength
-export const UNIFORM_FLOATS = 12
+//   [12] mood energy  [13] mood temp (-1 cool .. +1 warm)  [14] mood density  [15] pad
+//   [16] style pixelCell (1 = off)  [17] style paletteAmt (0 = off)  [18..19] pad
+export const UNIFORM_FLOATS = 20
+
+// The neutral expression: reproduces the base look exactly (energy/density 0.5,
+// temp 0, no pixelation). Every field eases toward this when nothing is set.
+export const NEUTRAL_EXPRESSION = {
+  energy: 0.5,
+  temp: 0,
+  density: 0.5,
+  pixelCell: 1,
+  paletteAmt: 0,
+}
 
 export function packUniforms(
-  {width, height, timeSec, intensity, reveal, freezeTime = 0, lens},
+  {width, height, timeSec, intensity, reveal, freezeTime = 0, lens, expression},
   out
 ) {
+  const e = expression || NEUTRAL_EXPRESSION
   const u = out || new Float32Array(UNIFORM_FLOATS)
   u[0] = width
   u[1] = height
@@ -32,7 +47,50 @@ export function packUniforms(
   u[9] = lens ? lens.y : 0
   u[10] = lens ? lens.radius : 0
   u[11] = lens ? clamp01(lens.strength) : 0
+  u[12] = clamp01(e.energy)
+  u[13] = clampR(e.temp, -1, 1)
+  u[14] = clamp01(e.density)
+  u[15] = 0
+  u[16] = Math.max(1, e.pixelCell)
+  u[17] = clamp01(e.paletteAmt)
+  u[18] = 0
+  u[19] = 0
   return u
+}
+
+// Normalize an agent-emitted `humo-style` spec into a clamped expression the
+// renderer can ease toward. Temperature accepts words or a number; a `mode`
+// selects a render style (gameboy → chunky pixels + DMG palette). Unknown keys
+// are ignored — the trust boundary is this normalizer, not the raw JSON.
+export function styleFromSpec(spec) {
+  const s = spec || {}
+  const out = {...NEUTRAL_EXPRESSION}
+  if (typeof s.energy === "number") out.energy = clamp01(s.energy)
+  if (typeof s.density === "number") out.density = clamp01(s.density)
+  if (s.temp != null) out.temp = tempToNumber(s.temp)
+  if (s.mode === "gameboy" || s.mode === "pixel") {
+    out.pixelCell = s.mode === "gameboy" ? 6 : 4
+    out.paletteAmt = s.mode === "gameboy" ? 1 : 0
+  }
+  return out
+}
+
+function tempToNumber(t) {
+  if (typeof t === "number") return clampR(t, -1, 1)
+  const word = {cold: -1, cool: -0.6, neutral: 0, warm: 0.6, hot: 1}[String(t).toLowerCase()]
+  return word == null ? 0 : word
+}
+
+// Ease `cur` toward `target` field by field (called per frame). Snaps when
+// close so an idle expression costs nothing and never jitters.
+export function easeExpression(cur, target, k = 0.08) {
+  const out = {}
+  for (const key of Object.keys(NEUTRAL_EXPRESSION)) {
+    const c = cur[key], t = target[key]
+    const next = c + (t - c) * k
+    out[key] = Math.abs(t - next) < 0.001 ? t : next
+  }
+  return out
 }
 
 // Reveal sweep for a streaming message: 0 → 1 across the expected stream

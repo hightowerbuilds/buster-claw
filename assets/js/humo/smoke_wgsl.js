@@ -22,10 +22,20 @@ struct U {
   res: vec4<f32>,
   params: vec4<f32>,
   lens: vec4<f32>,
+  mood: vec4<f32>,   // energy, temp (-1 cool .. +1 warm), density, _
+  style: vec4<f32>,  // pixelCell (1 = off), paletteAmt (0 = off), _, _
 };
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var smp: sampler;
 @group(0) @binding(2) var textTex: texture_2d<f32>;
+
+// The 4-shade Game Boy DMG palette, darkest → lightest.
+fn dmg(level: i32) -> vec3<f32> {
+  if (level <= 0) { return vec3<f32>(0.059, 0.220, 0.059); }
+  if (level == 1) { return vec3<f32>(0.188, 0.384, 0.188); }
+  if (level == 2) { return vec3<f32>(0.545, 0.675, 0.059); }
+  return vec3<f32>(0.608, 0.737, 0.059);
+}
 
 struct VOut {
   @builtin(position) pos: vec4<f32>,
@@ -80,8 +90,20 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let reveal = u.params.z;
   let freeze_time = u.params.w;
 
+  // Mood dressing (neutral = energy/density 0.5, temp 0 → base look unchanged).
+  let energy = u.mood.x;
+  let temp = u.mood.y;
+  let density = u.mood.z;
+  let e_drift = 0.4 + energy * 1.2;   // 0.5 → 1.0×
+  let e_warp = 0.8 + energy * 0.4;    // 0.5 → 1.0×
+  let dens = 0.6 + density * 0.8;     // 0.5 → 1.0×
+
+  // Game Boy render mode: snap the sample point to a chunky pixel grid before
+  // anything else, so the whole field (and the text sampled from it) is blocky.
+  // pixelCell = 1 is a no-op at device resolution.
   let aspect = res.x / max(res.y, 1.0);
-  let uv = in.uv;
+  let cell = max(u.style.x, 1.0);
+  let uv = (floor(in.uv * res / cell) + vec2<f32>(0.5)) * cell / res;
   var p = vec2<f32>((uv.x - 0.5) * aspect, uv.y - 0.5);
 
   // The still lens: inside the hover circle, time is held at freeze_time —
@@ -95,11 +117,13 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   // Tuned 07-03 ("smaller + more smokey"): higher noise frequencies shrink the
   // billows; a stronger curl warp plus a second, swapped-reuse warp pass (free —
   // no extra fbm samples) pulls the field into stringier, wispier filaments.
-  let drift = t * 0.085;
+  // Energy scales the drift (how fast the smoke moves) and the curl warp
+  // (how turbulent). Calm answers drift slow and smooth; urgent ones churn.
+  let drift = t * 0.085 * e_drift;
   let curl_a = fbm(p * 3.1 + vec2<f32>(0.0, drift));
   let curl_b = fbm(p * 4.8 + vec2<f32>(drift * -0.7, 0.16));
-  p = p + vec2<f32>(curl_a - 0.5, curl_b - 0.5) * 0.42;
-  p = p + vec2<f32>(curl_b - 0.5, curl_a - 0.5) * 0.16;
+  p = p + vec2<f32>(curl_a - 0.5, curl_b - 0.5) * 0.42 * e_warp;
+  p = p + vec2<f32>(curl_b - 0.5, curl_a - 0.5) * 0.16 * e_warp;
 
   let smoke_low = fbm(p * 3.4 + vec2<f32>(0.0, drift * 1.6));
   let smoke_mid = fbm(p * 8.2 - vec2<f32>(drift * 1.3, 0.0));
@@ -110,8 +134,11 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let vertical_lift = smoothstep(-0.55, 0.62, p.y + smoke_low * 0.18);
   smoke = smoothstep(0.33, 0.84, smoke * vignette * vertical_lift);
 
-  let tone = clamp(0.035 + smoke * 0.42 * intensity, 0.0, 1.0);
+  // Density scales how thick the smoke reads; temperature white-balances it
+  // (warm → embery, cool → ashen blue), staying inside the Industrial palette.
+  let tone = clamp(0.035 + smoke * 0.42 * intensity * dens, 0.0, 1.0);
   var col = mix(vec3<f32>(0.055, 0.055, 0.055), vec3<f32>(0.956, 0.945, 0.918), tone);
+  col = vec3<f32>(col.r * (1.0 + 0.10 * temp), col.g, col.b * (1.0 - 0.10 * temp));
 
   // Text condenses from smoke — and stays *made of* smoke: the sample point
   // keeps a faint curl shimmer even when settled (letters never go flat), a
@@ -168,6 +195,12 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   col = col + ash * ring * 0.14;
   col = col + vec3<f32>(1.0, 0.35, 0.15) * ring_warm * 0.10;
   col = col + vec3<f32>(0.35, 0.55, 1.0) * ring_cool * 0.10;
+
+  // Game Boy palette quantization: bucket luminance into the 4 DMG greens.
+  // paletteAmt eases the whole reply between full-color smoke and retro green.
+  let lum = clamp(dot(col, vec3<f32>(0.299, 0.587, 0.114)), 0.0, 0.999);
+  let gb = dmg(i32(lum * 4.0));
+  col = mix(col, gb, u.style.y);
   return vec4<f32>(col, 1.0);
 }
 `

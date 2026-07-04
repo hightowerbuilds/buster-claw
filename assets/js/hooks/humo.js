@@ -12,7 +12,14 @@
 // (wrap, page-fit, reveal clocks, uniform mapping) in humo/params.js +
 // humo/text_layout.js, where it is bun-tested.
 import {createSmokeRenderer, HumoGpuError} from "../humo/renderer.js"
-import {packUniforms, pageReveal, mapChatState} from "../humo/params.js"
+import {
+  packUniforms,
+  pageReveal,
+  mapChatState,
+  styleFromSpec,
+  easeExpression,
+  NEUTRAL_EXPRESSION,
+} from "../humo/params.js"
 import {layoutPage} from "../humo/text_layout.js"
 
 const TEXT_W = 1024
@@ -52,11 +59,22 @@ export const HumoSurface = {
     // Active readout: the words still being spoken into the smoke.
     this.readout = null
 
+    // Expression (mood + render mode), server-driven. Each reply's style eases
+    // from neutral: a new turn resets the target so styling is per-reply, and a
+    // `humo-style` block in that reply overrides it.
+    this.expr = {...NEUTRAL_EXPRESSION}
+    this.exprTarget = {...NEUTRAL_EXPRESSION}
+    this.handleEvent("humo:style", ({spec}) => {
+      this.exprTarget = styleFromSpec(spec)
+    })
+
     this.handleEvent("humo:phase", ({phase}) => {
       if (phase === "thinking") {
-        // New turn: the old page dissolves under the churn (reveal → 0).
+        // New turn: the old page dissolves under the churn (reveal → 0), and
+        // the style eases back to neutral unless this reply sets one.
         this.readout = null
         this.chat.phase = "thinking"
+        this.exprTarget = {...NEUTRAL_EXPRESSION}
       } else if (this.readout) {
         // A readout in progress finishes speaking before settling/idling.
       } else if (phase === "idle" && this.chat.hasText) {
@@ -180,6 +198,8 @@ export const HumoSurface = {
     // Ease the lens in/out; while fully off it costs the shader nothing.
     this.lens.strength += (this.lens.target - this.lens.strength) * 0.14
     if (this.lens.strength < 0.005 && this.lens.target === 0) this.lens.strength = 0
+    // Ease the expression (mood + render mode) toward its target.
+    this.expr = easeExpression(this.expr, this.exprTarget)
     packUniforms(
       {
         width: this.canvas.width,
@@ -189,6 +209,7 @@ export const HumoSurface = {
         reveal: mapped.reveal,
         freezeTime: this.freezeAt,
         lens: this.lens,
+        expression: this.expr,
       },
       this.uniforms
     )

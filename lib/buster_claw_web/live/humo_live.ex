@@ -22,6 +22,7 @@ defmodule BusterClawWeb.HumoLive do
   use BusterClawWeb, :live_view
 
   alias BusterClaw.Humo
+  alias BusterClaw.Humo.Expression
 
   @impl true
   def mount(_params, _session, socket) do
@@ -68,13 +69,33 @@ defmodule BusterClawWeb.HumoLive do
   def handle_event("toggle_text", _params, socket),
     do: {:noreply, update(socket, :show_text, &(!&1))}
 
+  # Assistant replies may carry `humo-*` expression blocks. Strip them out
+  # (they never show as raw JSON), drive the surface with each expression, and
+  # render/read out only the clean text. A reply that was *only* an expression
+  # adds no transcript bubble.
   @impl true
+  def handle_info({:agent_chat, _conv, {:message, %{role: :assistant, text: text}}}, socket) do
+    {clean, expressions} = Expression.extract(text)
+
+    socket = Enum.reduce(expressions, socket, &apply_expression/2)
+
+    socket =
+      if clean == "" do
+        socket
+      else
+        socket
+        |> update(:messages, &(&1 ++ [%{role: :assistant, text: clean}]))
+        |> push_event("humo:text", %{text: clean})
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_info({:agent_chat, _conv, {:message, msg}}, socket) do
     socket = update(socket, :messages, &(&1 ++ [msg]))
 
     socket =
       case msg.role do
-        :assistant -> push_event(socket, "humo:text", %{text: msg.text})
         :meta -> push_event(socket, "humo:phase", %{phase: "settled"})
         :error -> push_event(socket, "humo:phase", %{phase: "idle"})
         _ -> socket
@@ -106,6 +127,14 @@ defmodule BusterClawWeb.HumoLive do
     do: {:noreply, assign(socket, :queue_len, length(items))}
 
   def handle_info({:agent_chat, _conv, _payload}, socket), do: {:noreply, socket}
+
+  # Dispatch one parsed expression to the surface. `style` drives the smoke's
+  # mood/render-mode; future types (`graph`, `draw`) render to the content
+  # texture. The JS normalizer clamps the spec before it reaches the GPU.
+  defp apply_expression(%{type: "style", data: data}, socket),
+    do: push_event(socket, "humo:style", %{spec: data})
+
+  defp apply_expression(_unknown, socket), do: socket
 
   @impl true
   def render(assigns) do

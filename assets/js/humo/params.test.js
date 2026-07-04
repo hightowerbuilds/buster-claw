@@ -5,6 +5,9 @@ import {
   revealProgress,
   pageReveal,
   mapChatState,
+  styleFromSpec,
+  easeExpression,
+  NEUTRAL_EXPRESSION,
   UNIFORM_FLOATS,
 } from "./params.js"
 
@@ -76,6 +79,77 @@ describe("revealProgress", () => {
 
   test("zero-length message is immediately revealed", () => {
     expect(revealProgress({elapsedMs: 0, totalWords: 0, msPerWord: 85, tailMs: 0})).toBe(1)
+  })
+})
+
+describe("styleFromSpec (the expression normalizer / trust boundary)", () => {
+  test("neutral for an empty spec", () => {
+    expect(styleFromSpec({})).toEqual(NEUTRAL_EXPRESSION)
+    expect(styleFromSpec(undefined)).toEqual(NEUTRAL_EXPRESSION)
+  })
+
+  test("maps mood fields and clamps energy/density", () => {
+    const s = styleFromSpec({energy: 2, density: -1, temp: 0.3})
+    expect(s.energy).toBe(1)
+    expect(s.density).toBe(0)
+    expect(s.temp).toBeCloseTo(0.3)
+  })
+
+  test("temperature words resolve to numbers", () => {
+    expect(styleFromSpec({temp: "cool"}).temp).toBeCloseTo(-0.6)
+    expect(styleFromSpec({temp: "warm"}).temp).toBeCloseTo(0.6)
+    expect(styleFromSpec({temp: "neutral"}).temp).toBe(0)
+    expect(styleFromSpec({temp: "nonsense"}).temp).toBe(0)
+  })
+
+  test("gameboy mode sets pixel cell + palette; pixel mode is chunky only", () => {
+    const gb = styleFromSpec({mode: "gameboy"})
+    expect(gb.pixelCell).toBe(6)
+    expect(gb.paletteAmt).toBe(1)
+    const px = styleFromSpec({mode: "pixel"})
+    expect(px.pixelCell).toBe(4)
+    expect(px.paletteAmt).toBe(0)
+  })
+
+  test("unknown keys are ignored", () => {
+    expect(styleFromSpec({haxx: "rm -rf", energy: 0.5})).toEqual({
+      ...NEUTRAL_EXPRESSION,
+      energy: 0.5,
+    })
+  })
+})
+
+describe("easeExpression", () => {
+  test("moves toward the target and snaps when close", () => {
+    const mid = easeExpression(NEUTRAL_EXPRESSION, {...NEUTRAL_EXPRESSION, energy: 1}, 0.5)
+    expect(mid.energy).toBeCloseTo(0.75)
+    const snapped = easeExpression({...NEUTRAL_EXPRESSION, energy: 0.9995}, {
+      ...NEUTRAL_EXPRESSION,
+      energy: 1,
+    })
+    expect(snapped.energy).toBe(1)
+  })
+})
+
+describe("packUniforms expression fields", () => {
+  test("neutral expression writes base values; gameboy writes pixel + palette", () => {
+    const base = packUniforms({width: 1, height: 1, timeSec: 0, intensity: 1, reveal: 0})
+    expect(base.length).toBe(UNIFORM_FLOATS)
+    expect(base[12]).toBe(0.5) // energy
+    expect(base[16]).toBe(1) // pixelCell (off)
+    expect(base[17]).toBe(0) // paletteAmt (off)
+
+    const gb = packUniforms({
+      width: 1,
+      height: 1,
+      timeSec: 0,
+      intensity: 1,
+      reveal: 0,
+      expression: styleFromSpec({mode: "gameboy", temp: "warm"}),
+    })
+    expect(gb[13]).toBeCloseTo(0.6) // temp warm
+    expect(gb[16]).toBe(6) // pixelCell
+    expect(gb[17]).toBe(1) // paletteAmt
   })
 })
 

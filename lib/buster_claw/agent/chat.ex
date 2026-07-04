@@ -144,14 +144,16 @@ defmodule BusterClaw.Agent.Chat do
   Ensure a conversation's chat process is running (started lazily under the
   DynamicSupervisor), returning `{:ok, pid}`. Idempotent and race-safe.
   """
-  def ensure_started(conv_id) when is_binary(conv_id) do
+  def ensure_started(conv_id, start_opts \\ []) when is_binary(conv_id) do
     case whereis(conv_id) do
       pid when is_pid(pid) ->
         {:ok, pid}
 
       nil ->
         try do
-          case DynamicSupervisor.start_child(@supervisor, {__MODULE__, conv_id: conv_id}) do
+          child = {__MODULE__, Keyword.put(start_opts, :conv_id, conv_id)}
+
+          case DynamicSupervisor.start_child(@supervisor, child) do
             {:ok, pid} -> {:ok, pid}
             {:error, {:already_started, pid}} -> {:ok, pid}
             other -> other
@@ -208,6 +210,10 @@ defmodule BusterClaw.Agent.Chat do
       audit?: Keyword.get(opts, :audit, configured(:agent_chat_audit, true)),
       # Tracks the in-flight run for the Sentinel audit event on completion.
       run: nil,
+      # Optional per-conversation system-prompt addendum (e.g. Humo teaches its
+      # agent the expression vocabulary). Passed to `claude` as
+      # `--append-system-prompt` on every turn; nil = unchanged behaviour.
+      append_system_prompt: Keyword.get(opts, :append_system_prompt),
       # Injectable for tests: `spawner.(prompt, opts) :: {:ok, port} | {:error, reason}`.
       spawner: Keyword.get(opts, :spawner, &default_spawner/2)
     }
@@ -315,7 +321,10 @@ defmodule BusterClaw.Agent.Chat do
         cost: nil
       })
 
-    extra = ~w(--output-format stream-json --verbose) ++ resume_args(state.session_id)
+    extra =
+      ~w(--output-format stream-json --verbose) ++
+        resume_args(state.session_id) ++
+        append_system_prompt_args(state.append_system_prompt)
 
     case state.spawner.(text, extra_args: extra, login: true) do
       {:ok, port} ->
@@ -485,6 +494,10 @@ defmodule BusterClaw.Agent.Chat do
 
   defp resume_args(nil), do: []
   defp resume_args(session_id), do: ["--resume", session_id]
+
+  defp append_system_prompt_args(nil), do: []
+  defp append_system_prompt_args(""), do: []
+  defp append_system_prompt_args(prompt), do: ["--append-system-prompt", prompt]
 
   defp broadcast(state, payload),
     do: PubSub.broadcast(BusterClaw.PubSub, state.topic, {:agent_chat, state.conv_id, payload})
