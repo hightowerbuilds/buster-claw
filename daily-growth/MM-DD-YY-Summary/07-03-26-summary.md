@@ -138,3 +138,55 @@ Phase 4 stretch (WKContentRuleList content blocking, human private mode, tab
 suspension) + two small leftovers: the "agent is reading" chrome indicator
 and opt-in navigation events. The window.opener OAuth ceiling and the
 residual native-offset bug stay documented in the roadmap.
+
+## Evening — Humo: the shader-driven chat surface (new workstream, 0→lens in one sitting)
+
+**Humo** ("smoke"): a new tab where a second, independent headless Claude's
+replies are *written in a WebGPU smoke shader* — text condenses out of fog,
+reads out page by page, dissolves to make room. Roadmap written
+(`daily-growth/roadmaps/HUMO_ROADMAP.md`) with three operator decisions locked:
+text-condenses-from-smoke (not a backdrop), illegibility-is-expressive (guarded
+by an always-available DOM transcript), separate showcase surface.
+
+**Phase 0.1 — the load-bearing spike, VERDICT: WebGPU (Path A).** Key fact
+uncovered first: BusterClaw had no GPU shader surface (all "shaders" were CSS),
+but Luke's own WGSL library exists in another runtime — `foreshadow` (Rust/wgpu
+scenes) + `gemma-construct/shaders/smoke.wgsl`. The fork: WebGPU-in-WKWebView
+(run WGSL near-verbatim) vs a GLSL/WebGL2 port. A throwaway spike page in the
+real shell settled it: **adapter + device OK, `smoke.wgsl` ran near-verbatim**,
+50 fps, text-texture upload 4.4 ms enqueue, 0 context losses. One shader
+language across foreshadow and Humo; spike archived to
+`daily-growth/archive/humo-spike-0.1.html`.
+
+**Phase 0.2 — renderer library.** `assets/js/humo/`: `smoke_wgsl.js` (WGSL
+source of truth), `renderer.js` (bare WebGPU, one fullscreen tri, fail-soft
+`HumoGpuError` + `device.lost` → status line, never a dead canvas), `params.js`
+(**`mapChatState` — the uniform-mapping layer v0**, the "teach the shader"
+seam), `text_layout.js`; all pure math bun-tested.
+
+**Phase 1 — its own Claude.** Discovery that collapsed the design:
+`Agent.Chat` is *already* per-conversation (DynamicSupervisor + Registry), so
+`BusterClaw.Humo` is a **40-line facade** pinning reserved conv_id `"humo"` —
+queue, interrupt, thinking timer, persistence, Sentinel audit all inherited.
+No `Conversations` row (no FK on `Message.conv_id`) keeps it out of the
+homepage tabs. `HumoLive`: accessible DOM transcript + input + Stop +
+ThinkingTimer; smoke live-wired to real turns (`humo:phase`/`humo:text`
+push_events → `mapChatState`).
+
+**Field-driven UX round (operator eyeballing):** transcript now **closed by
+default** behind a "show text" disclosure (the smoke is the primary reading
+surface); replies **read out** — words at ~90 ms cadence fill a page
+(`layoutPage`), the page dissolves (`pageReveal` clock) to make room, final
+page settles; letters shrunk 30→14 px and made *of* smoke — persistent curl
+shimmer + fine-field flutter, triple-tap ghost smear, noise-modulated ink
+density; field tuned smaller/wispier (higher frequencies, second swapped-reuse
+curl warp).
+
+**The still lens (unplanned finale).** Hover holds a circle of the fog
+perfectly still — per-pixel clock blend toward a hover-start freeze timestamp
+(cheap: all motion flows through one `drift`) — with rim-weighted chromatic
+aberration on the letters and a warm/cool-fringed ring. A loupe that magnifies
+nothing.
+
+**Close:** mix 782/782, bun 37/37, esbuild clean. Humo phases 0.1, 0.2, 1.1–1.3
+shipped + chunks of 2/3/4 (readout paging, text toggle, lens) in one day.

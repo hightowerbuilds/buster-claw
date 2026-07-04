@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Humo — Phase 0.1 GPU spike</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #121212; color: #f4f1ea;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; top: 12px; left: 12px; max-width: 420px;
+    background: rgba(18,18,18,.82); border: 1px solid rgba(244,241,234,.18);
+    padding: 12px 14px; backdrop-filter: blur(4px); }
+  #hud h1 { margin: 0 0 8px; font-size: 12px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase; color: #ff4d1c; }
+  #hud table { border-collapse: collapse; }
+  #hud td { padding: 1px 10px 1px 0; vertical-align: top; }
+  #hud td:first-child { color: rgba(244,241,234,.55); }
+  #hud .big { font-size: 18px; font-weight: 700; }
+  #hud .ok { color: #7ddb84; } #hud .bad { color: #ff4d1c; }
+  #controls { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  button, a.btn { font: inherit; color: #f4f1ea; background: transparent;
+    border: 1px solid rgba(244,241,234,.35); padding: 4px 9px; cursor: pointer;
+    text-decoration: none; }
+  button:hover, a.btn:hover { border-color: #ff4d1c; color: #ff4d1c; }
+  label { display: inline-flex; align-items: center; gap: 5px; padding: 4px 0; }
+  #report { display: none; }
+  #err { position: fixed; bottom: 12px; left: 12px; right: 12px; color: #ff4d1c;
+    white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="hud">
+  <h1>Humo · Phase 0.1 spike</h1>
+  <table>
+    <tr><td>api</td><td class="big" id="m-api">probing…</td></tr>
+    <tr><td>webgpu probe</td><td id="m-probe">—</td></tr>
+    <tr><td>fps (avg / worst frame)</td><td id="m-fps">—</td></tr>
+    <tr><td>text upload (avg enqueue)</td><td id="m-upload">—</td></tr>
+    <tr><td>uploads / resolution</td><td id="m-meta">—</td></tr>
+    <tr><td>context loss</td><td id="m-loss">none</td></tr>
+  </table>
+  <div id="controls">
+    <a class="btn" href="?api=webgpu">webgpu</a>
+    <a class="btn" href="?api=webgl2">webgl2</a>
+    <label><input type="checkbox" id="stress" /> upload every frame</label>
+    <button id="lose" style="display:none">lose context</button>
+    <button id="copy">copy report</button>
+  </div>
+</div>
+<textarea id="report"></textarea>
+<div id="err"></div>
+
+<script>
+"use strict";
+// Humo Phase 0.1 spike — throwaway. Probes the shell's browser GPU path with
+// the smoke shader from gemma-construct/shaders/smoke.wgsl (Path A: WebGPU,
+// WGSL near-verbatim) and a GLSL 300 es twin (Path B: WebGL2). Also exercises
+// the Phase 2 mechanism for real: a streaming text canvas uploaded as a
+// texture, displaced by the fbm field, condensing in via a dissolve threshold.
+// Numbers land in the HUD + a copyable report. Not a product surface.
+
+// ---------- shared: text canvas simulating a streaming Claude reply ----------
+const TEXT_W = 1024, TEXT_H = 512;
+const textCanvas = document.createElement("canvas");
+textCanvas.width = TEXT_W; textCanvas.height = TEXT_H;
+const tctx = textCanvas.getContext("2d");
+
+const WORDS = ("El humo no es la ausencia del fuego sino su memoria. " +
+  "The words condense out of the fog, settle into legibility, and drift " +
+  "back into smoke as the conversation recedes. This spike proves the " +
+  "text-as-texture path: every token redraws a canvas that the fragment " +
+  "shader displaces through a curl-warped fbm field and reveals along a " +
+  "dissolve threshold — the same mechanism Phase 2 ships for real.").split(" ");
+
+let shown = 0, msgStartedAt = performance.now(), streamDone = false, textDirty = true;
+function streamTick(now) {
+  if (!streamDone && now - msgStartedAt > 200 + shown * 85) {
+    shown++;
+    if (shown >= WORDS.length) streamDone = true;
+    drawText();
+    textDirty = true;
+  }
+  if (streamDone && now - msgStartedAt > WORDS.length * 85 + 3500) {
+    shown = 0; streamDone = false; msgStartedAt = now; // next "message"
+  }
+}
+function drawText() {
+  tctx.clearRect(0, 0, TEXT_W, TEXT_H);
+  tctx.font = "600 30px ui-monospace, Menlo, monospace";
+  tctx.fillStyle = "#fff";
+  const words = WORDS.slice(0, shown);
+  let line = "", y = 60;
+  for (const w of words) {
+    const probe = line ? line + " " + w : w;
+    if (tctx.measureText(probe).width > TEXT_W - 120) {
+      tctx.fillText(line, 60, y); y += 44; line = w;
+    } else line = probe;
+  }
+  if (line) tctx.fillText(line, 60, y);
+}
+// reveal: sweeps 0→1 across the message lifetime (condense), holds, resets.
+function revealNow(now) {
+  const t = (now - msgStartedAt) / (WORDS.length * 85 + 900);
+  return Math.min(1, Math.max(0, t * 1.15));
+}
+
+// ---------- shared: metrics ----------
+const M = { frames: [], uploads: [], uploadCount: 0, lossEvents: 0, api: null, probe: "—" };
+function pushFrame(dt) { M.frames.push(dt); if (M.frames.length > 120) M.frames.shift(); }
+function pushUpload(ms) { M.uploads.push(ms); if (M.uploads.length > 60) M.uploads.shift(); M.uploadCount++; }
+function stats(arr) {
+  if (!arr.length) return null;
+  const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
+  return { avg, worst: Math.max(...arr) };
+}
+const $ = (id) => document.getElementById(id);
+setInterval(() => {
+  const f = stats(M.frames), u = stats(M.uploads);
+  if (f) $("m-fps").textContent = (1000 / f.avg).toFixed(1) + " fps / " + f.worst.toFixed(1) + " ms";
+  $("m-upload").textContent = u ? u.avg.toFixed(2) + " ms (worst " + u.worst.toFixed(2) + ")" : "—";
+  $("m-meta").textContent = M.uploadCount + " uploads · " +
+    canvas.width + "×" + canvas.height + " @ dpr " + dpr.toFixed(2);
+  $("m-loss").textContent = M.lossEvents ? (M.lossEvents + " events (recovered)") : "none";
+}, 500);
+$("copy").onclick = () => {
+  const f = stats(M.frames), u = stats(M.uploads);
+  const report = [
+    "HUMO PHASE 0.1 SPIKE REPORT",
+    "ua: " + navigator.userAgent,
+    "api: " + M.api,
+    "webgpu probe: " + M.probe,
+    "canvas: " + canvas.width + "x" + canvas.height + " dpr " + dpr.toFixed(2),
+    f ? "fps avg: " + (1000 / f.avg).toFixed(1) + ", worst frame: " + f.worst.toFixed(1) + "ms" : "fps: n/a",
+    u ? "text upload enqueue avg: " + u.avg.toFixed(2) + "ms, worst: " + u.worst.toFixed(2) + "ms over " + M.uploadCount : "uploads: n/a",
+    "context loss events: " + M.lossEvents,
+  ].join("\n");
+  navigator.clipboard.writeText(report).then(
+    () => { $("copy").textContent = "copied ✓"; setTimeout(() => $("copy").textContent = "copy report", 1200); },
+    () => { const r = $("report"); r.style.display = "block"; r.value = report; r.select(); }
+  );
+};
+
+// ---------- canvas / sizing ----------
+const canvas = $("gl");
+const dpr = Math.min(window.devicePixelRatio || 1, 2);
+function fitCanvas() {
+  canvas.width = Math.round(canvas.clientWidth * dpr);
+  canvas.height = Math.round(canvas.clientHeight * dpr);
+}
+
+// ---------- WGSL: smoke.wgsl, near-verbatim + text condense ----------
+const WGSL = `
+struct U {
+  res: vec4<f32>,     // xy = resolution
+  params: vec4<f32>,  // x = time, y = intensity, z = reveal
+};
+@group(0) @binding(0) var<uniform> u: U;
+@group(0) @binding(1) var smp: sampler;
+@group(0) @binding(2) var textTex: texture_2d<f32>;
+
+struct VOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> VOut {
+  var p = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -3.0), vec2<f32>(-1.0, 1.0), vec2<f32>(3.0, 1.0));
+  var o: VOut;
+  o.pos = vec4<f32>(p[vi], 0.0, 1.0);
+  o.uv = o.pos.xy * 0.5 + vec2<f32>(0.5);
+  return o;
+}
+
+fn hash(p: vec2<f32>) -> f32 {
+  let h = dot(p, vec2<f32>(127.1, 311.7));
+  return fract(sin(h) * 43758.5453123);
+}
+fn noise(p: vec2<f32>) -> f32 {
+  let i = floor(p);
+  let f = fract(p);
+  let uu = f * f * (3.0 - 2.0 * f);
+  let a = hash(i + vec2<f32>(0.0, 0.0));
+  let b = hash(i + vec2<f32>(1.0, 0.0));
+  let c = hash(i + vec2<f32>(0.0, 1.0));
+  let d = hash(i + vec2<f32>(1.0, 1.0));
+  return mix(mix(a, b, uu.x), mix(c, d, uu.x), uu.y);
+}
+fn fbm(p: vec2<f32>) -> f32 {
+  var value = 0.0;
+  var amplitude = 0.5;
+  var frequency = 1.0;
+  var q = p;
+  for (var octave = 0; octave < 6; octave = octave + 1) {
+    value = value + amplitude * noise(q * frequency);
+    frequency = frequency * 2.04;
+    amplitude = amplitude * 0.52;
+    q = mat2x2<f32>(0.80, -0.60, 0.60, 0.80) * q;
+  }
+  return value;
+}
+
+@fragment
+fn fs_main(in: VOut) -> @location(0) vec4<f32> {
+  let res = u.res.xy;
+  let time = u.params.x;
+  let intensity = u.params.y;
+  let reveal = u.params.z;
+
+  let aspect = res.x / max(res.y, 1.0);
+  let uv = in.uv;
+  var p = vec2<f32>((uv.x - 0.5) * aspect, uv.y - 0.5);
+
+  let drift = time * 0.055;
+  let curl_a = fbm(p * 2.2 + vec2<f32>(0.0, drift));
+  let curl_b = fbm(p * 3.4 + vec2<f32>(drift * -0.7, 0.16));
+  p = p + vec2<f32>(curl_a - 0.5, curl_b - 0.5) * 0.32;
+
+  let smoke_low = fbm(p * 2.0 + vec2<f32>(0.0, drift * 1.6));
+  let smoke_mid = fbm(p * 5.1 - vec2<f32>(drift * 1.3, 0.0));
+  let smoke_fine = fbm(p * 11.0 + vec2<f32>(drift * 0.35, drift * -0.42));
+  var smoke = smoke_low * 0.58 + smoke_mid * 0.30 + smoke_fine * 0.12;
+
+  let vignette = smoothstep(0.98, 0.18, length((uv - vec2<f32>(0.5)) * vec2<f32>(aspect, 1.0)));
+  let vertical_lift = smoothstep(-0.55, 0.62, p.y + smoke_low * 0.18);
+  smoke = smoothstep(0.28, 0.88, smoke * vignette * vertical_lift);
+
+  let tone = clamp(0.035 + smoke * 0.42 * intensity, 0.0, 1.0);
+  var col = mix(vec3<f32>(0.055, 0.055, 0.055), vec3<f32>(0.956, 0.945, 0.918), tone);
+
+  // Text condenses from smoke: displace the sample point while unrevealed,
+  // then reveal along a noise threshold. Hazard-orange wisps live in the band.
+  let tuv = vec2<f32>(in.uv.x, 1.0 - in.uv.y);
+  let disp = vec2<f32>(curl_a - 0.5, curl_b - 0.5) * 0.05 * (1.0 - reveal);
+  let ta = textureSample(textTex, smp, tuv + disp).a;
+  let n = smoke_fine;
+  let a = smoothstep(n - 0.25, n + 0.05, ta * reveal);
+  let band = smoothstep(n - 0.45, n - 0.25, ta * reveal) - a;
+  col = mix(col, vec3<f32>(0.956, 0.945, 0.918), a);
+  col = col + vec3<f32>(1.0, 0.302, 0.110) * band * 0.55;
+  return vec4<f32>(col, 1.0);
+}
+`;
+
+// ---------- GLSL 300 es twin ----------
+const GLSL_V = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p[3] = vec2[3](vec2(-1., -3.), vec2(-1., 1.), vec2(3., 1.));
+  gl_Position = vec4(p[gl_VertexID], 0., 1.);
+  vUv = gl_Position.xy * 0.5 + 0.5;
+}`;
+const GLSL_F = `#version 300 es
+precision highp float;
+uniform vec2 uRes;
+uniform float uTime;
+uniform float uIntensity;
+uniform float uReveal;
+uniform sampler2D uText;
+in vec2 vUv;
+out vec4 outColor;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  float a = hash(i), b = hash(i + vec2(1., 0.));
+  float c = hash(i + vec2(0., 1.)), d = hash(i + vec2(1., 1.));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+float fbm(vec2 p) {
+  float value = 0.0, amplitude = 0.5, frequency = 1.0;
+  vec2 q = p;
+  for (int o = 0; o < 6; o++) {
+    value += amplitude * noise(q * frequency);
+    frequency *= 2.04;
+    amplitude *= 0.52;
+    q = mat2(0.80, -0.60, 0.60, 0.80) * q;
+  }
+  return value;
+}
+void main() {
+  float aspect = uRes.x / max(uRes.y, 1.0);
+  vec2 uv = vUv;
+  vec2 p = vec2((uv.x - 0.5) * aspect, uv.y - 0.5);
+
+  float drift = uTime * 0.055;
+  float curl_a = fbm(p * 2.2 + vec2(0.0, drift));
+  float curl_b = fbm(p * 3.4 + vec2(drift * -0.7, 0.16));
+  p += vec2(curl_a - 0.5, curl_b - 0.5) * 0.32;
+
+  float smoke_low = fbm(p * 2.0 + vec2(0.0, drift * 1.6));
+  float smoke_mid = fbm(p * 5.1 - vec2(drift * 1.3, 0.0));
+  float smoke_fine = fbm(p * 11.0 + vec2(drift * 0.35, drift * -0.42));
+  float smoke = smoke_low * 0.58 + smoke_mid * 0.30 + smoke_fine * 0.12;
+
+  float vignette = smoothstep(0.98, 0.18, length((uv - 0.5) * vec2(aspect, 1.0)));
+  float vertical_lift = smoothstep(-0.55, 0.62, p.y + smoke_low * 0.18);
+  smoke = smoothstep(0.28, 0.88, smoke * vignette * vertical_lift);
+
+  float tone = clamp(0.035 + smoke * 0.42 * uIntensity, 0.0, 1.0);
+  vec3 col = mix(vec3(0.055), vec3(0.956, 0.945, 0.918), tone);
+
+  vec2 tuv = vec2(vUv.x, 1.0 - vUv.y);
+  vec2 disp = vec2(curl_a - 0.5, curl_b - 0.5) * 0.05 * (1.0 - uReveal);
+  float ta = texture(uText, tuv + disp).a;
+  float n = smoke_fine;
+  float a = smoothstep(n - 0.25, n + 0.05, ta * uReveal);
+  float band = smoothstep(n - 0.45, n - 0.25, ta * uReveal) - a;
+  col = mix(col, vec3(0.956, 0.945, 0.918), a);
+  col += vec3(1.0, 0.302, 0.110) * band * 0.55;
+  outColor = vec4(col, 1.0);
+}`;
+
+// ---------- WebGPU renderer (Path A) ----------
+async function startWebGPU() {
+  if (!navigator.gpu) { M.probe = "navigator.gpu absent"; return false; }
+  let adapter;
+  try { adapter = await navigator.gpu.requestAdapter(); }
+  catch (e) { M.probe = "requestAdapter threw: " + e.message; return false; }
+  if (!adapter) { M.probe = "adapter null"; return false; }
+  let device;
+  try { device = await adapter.requestDevice(); }
+  catch (e) { M.probe = "requestDevice threw: " + e.message; return false; }
+  M.probe = "adapter + device OK";
+
+  device.lost.then((info) => {
+    M.lossEvents++;
+    showErr("WebGPU device lost: " + info.message + " (reason: " + info.reason + ")");
+  });
+
+  const ctx = canvas.getContext("webgpu");
+  if (!ctx) { M.probe += "; canvas webgpu context null"; return false; }
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  fitCanvas();
+  ctx.configure({ device, format, alphaMode: "opaque" });
+
+  const module = device.createShaderModule({ code: WGSL });
+  const info = await module.getCompilationInfo();
+  const fatal = info.messages.filter((m) => m.type === "error");
+  if (fatal.length) {
+    M.probe += "; WGSL errors: " + fatal.map((m) => m.lineNum + ":" + m.message).join(" | ");
+    return false;
+  }
+
+  const pipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module, entryPoint: "vs_main" },
+    fragment: { module, entryPoint: "fs_main", targets: [{ format }] },
+    primitive: { topology: "triangle-list" },
+  });
+
+  const ubuf = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const textTex = device.createTexture({
+    size: [TEXT_W, TEXT_H],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+  const bind = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: ubuf } },
+      { binding: 1, resource: sampler },
+      { binding: 2, resource: textTex.createView() },
+    ],
+  });
+
+  const u = new Float32Array(8);
+  let last = performance.now();
+  function frame(now) {
+    pushFrame(now - last); last = now;
+    streamTick(now);
+    if (textDirty || $("stress").checked) {
+      const t0 = performance.now();
+      device.queue.copyExternalImageToTexture({ source: textCanvas }, { texture: textTex }, [TEXT_W, TEXT_H]);
+      pushUpload(performance.now() - t0);
+      textDirty = false;
+    }
+    u[0] = canvas.width; u[1] = canvas.height;
+    u[4] = now / 1000; u[5] = 1.0; u[6] = revealNow(now);
+    device.queue.writeBuffer(ubuf, 0, u);
+
+    const enc = device.createCommandEncoder();
+    const pass = enc.beginRenderPass({
+      colorAttachments: [{
+        view: ctx.getCurrentTexture().createView(),
+        loadOp: "clear", storeOp: "store", clearValue: { r: 0.07, g: 0.07, b: 0.07, a: 1 },
+      }],
+    });
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bind);
+    pass.draw(3);
+    pass.end();
+    device.queue.submit([enc.finish()]);
+    if (!document.hidden) requestAnimationFrame(frame);
+    else document.addEventListener("visibilitychange", () => requestAnimationFrame(frame), { once: true });
+  }
+  window.addEventListener("resize", () => { fitCanvas(); ctx.configure({ device, format, alphaMode: "opaque" }); });
+  requestAnimationFrame(frame);
+  return true;
+}
+
+// ---------- WebGL2 renderer (Path B) ----------
+function startWebGL2() {
+  const gl = canvas.getContext("webgl2", { antialias: false });
+  if (!gl) return false;
+  fitCanvas();
+  let prog, uLoc, tex, raf;
+
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      throw new Error(gl.getShaderInfoLog(s));
+    }
+    return s;
+  }
+  function build() {
+    prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, GLSL_V));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, GLSL_F));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(prog));
+    }
+    gl.useProgram(prog);
+    uLoc = {
+      res: gl.getUniformLocation(prog, "uRes"),
+      time: gl.getUniformLocation(prog, "uTime"),
+      intensity: gl.getUniformLocation(prog, "uIntensity"),
+      reveal: gl.getUniformLocation(prog, "uReveal"),
+      text: gl.getUniformLocation(prog, "uText"),
+    };
+    tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TEXT_W, TEXT_H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.uniform1i(uLoc.text, 0);
+    textDirty = true;
+  }
+  try { build(); } catch (e) { showErr("GLSL: " + e.message); return false; }
+
+  let last = performance.now();
+  function frame(now) {
+    if (gl.isContextLost()) return;
+    pushFrame(now - last); last = now;
+    streamTick(now);
+    if (textDirty || $("stress").checked) {
+      const t0 = performance.now();
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textCanvas);
+      pushUpload(performance.now() - t0);
+      textDirty = false;
+    }
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.uniform2f(uLoc.res, canvas.width, canvas.height);
+    gl.uniform1f(uLoc.time, now / 1000);
+    gl.uniform1f(uLoc.intensity, 1.0);
+    gl.uniform1f(uLoc.reveal, revealNow(now));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (!document.hidden) raf = requestAnimationFrame(frame);
+    else document.addEventListener("visibilitychange", () => { raf = requestAnimationFrame(frame); }, { once: true });
+  }
+  window.addEventListener("resize", fitCanvas);
+
+  // Context-loss drill: lose + auto-restore, rebuild everything, keep rendering.
+  const loseExt = gl.getExtension("WEBGL_lose_context");
+  if (loseExt) {
+    const btn = $("lose");
+    btn.style.display = "";
+    btn.onclick = () => { loseExt.loseContext(); setTimeout(() => loseExt.restoreContext(), 800); };
+  }
+  canvas.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    M.lossEvents++;
+    cancelAnimationFrame(raf);
+  });
+  canvas.addEventListener("webglcontextrestored", () => {
+    build();
+    last = performance.now();
+    raf = requestAnimationFrame(frame);
+  });
+
+  raf = requestAnimationFrame(frame);
+  return true;
+}
+
+// ---------- boot ----------
+function showErr(msg) { $("err").textContent += msg + "\n"; }
+(async () => {
+  drawText();
+  const want = new URLSearchParams(location.search).get("api");
+  let ok = false;
+  if (want !== "webgl2") {
+    try { ok = await startWebGPU(); } catch (e) { M.probe = "webgpu threw: " + e.message; }
+    if (ok) M.api = "webgpu";
+  }
+  if (!ok && want !== "webgpu") {
+    ok = startWebGL2();
+    if (ok) M.api = "webgl2";
+  }
+  if (!ok) {
+    M.api = "NONE";
+    showErr("No GPU path available. webgpu probe: " + M.probe);
+  }
+  $("m-api").textContent = M.api;
+  $("m-api").className = "big " + (M.api === "webgpu" ? "ok" : M.api === "webgl2" ? "" : "bad");
+  $("m-probe").textContent = M.probe;
+})();
+</script>
+</body>
+</html>

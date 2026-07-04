@@ -9,6 +9,7 @@ import {CalendarDrag, CalendarPopover} from "./calendar.js"
 import {TabStrip} from "./tab_strip.js"
 import {SplitResizer} from "./split.js"
 import {TerminalView, TermThemePicker} from "./terminal.js"
+import {HumoSurface, HumoTranscript} from "./humo.js"
 
 export const Hooks = {
   CornerWidget,
@@ -26,4 +27,6 @@ export const Hooks = {
   SplitResizer,
   TerminalView,
   TermThemePicker,
+  HumoSurface,
+  HumoTranscript,
 }
