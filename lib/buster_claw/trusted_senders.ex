@@ -42,9 +42,27 @@ defmodule BusterClaw.TrustedSenders do
   @doc "Whether `from` may drive follow-through work."
   def trusted?(from), do: match(from) != nil
 
-  @doc "Extract the bare lowercase address from a `Name <addr>` header."
+  @doc """
+  Extract the bare lowercase address from a `Name <addr>` header.
+
+  Per RFC 5322 the real sender is the `addr-spec` inside the angle brackets;
+  a display name is free text and may itself contain an address. We therefore
+  prefer the **last** angle-bracketed group and only fall back to scanning the
+  whole header when there are no brackets. This defeats display-name spoofing
+  like `From: "alice@trusted.com" <evil@attacker.com>` (and the quoted-bracket
+  variant `From: "<alice@trusted.com>" <evil@attacker.com>`), where a naive
+  first-match would trust `alice@trusted.com`.
+  """
   def extract_address(from) do
-    case Regex.run(@address, to_string(from)) do
+    str = to_string(from)
+
+    candidate =
+      case Regex.scan(~r/<([^<>]*)>/, str) do
+        [] -> str
+        groups -> groups |> List.last() |> List.last()
+      end
+
+    case Regex.run(@address, candidate) do
       [address | _] -> String.downcase(address)
       _ -> nil
     end

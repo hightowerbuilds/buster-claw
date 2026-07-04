@@ -56,5 +56,26 @@ defmodule BusterClaw.SvgViewerTest do
       ok = ~s(<svg viewBox="0 0 4 4"><path d="M0 0L4 4" stroke="white"/></svg>)
       assert SvgViewer.sanitize(ok) == ok
     end
+
+    test "closes the known regex bypasses" do
+      # solidus-separated handler, unclosed <script>, javascript:/data: hrefs
+      dirty =
+        ~s|<svg><rect/onload="x()"/><script>evil()<a href="javascript:alert(1)"/>| <>
+          ~s|<use href="data:image/svg+xml,<svg onload=x>"/><circle href=vbscript:x /></svg>|
+
+      clean = SvgViewer.sanitize(dirty)
+
+      refute clean =~ ~r/onload/i
+      refute clean =~ ~r/<script/i
+      refute clean =~ "javascript:"
+      refute clean =~ "data:image"
+      refute clean =~ "vbscript:"
+    end
+
+    test "keeps quoted and unquoted internal fragment refs" do
+      assert SvgViewer.sanitize(~s(<use href="#grad"/>)) =~ ~s(href="#grad")
+      assert SvgViewer.sanitize(~s(<use href='#grad'/>)) =~ ~s(href='#grad')
+      assert SvgViewer.sanitize(~s(<use href=#grad/>)) =~ "href=#grad"
+    end
   end
 end

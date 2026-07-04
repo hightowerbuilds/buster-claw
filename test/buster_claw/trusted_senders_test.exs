@@ -47,6 +47,23 @@ defmodule BusterClaw.TrustedSendersTest do
     refute TrustedSenders.trusted?("anyone@example.com")
   end
 
+  test "a spoofed display name cannot borrow a trusted address", %{root: root} do
+    write_policy(root, "- alice@example.com\n")
+
+    # The real sender is the angle-bracketed addr-spec; a trusted address planted
+    # in the display name (bare or quoted, incl. fake brackets) must not win.
+    refute TrustedSenders.trusted?(~s|"alice@example.com" <evil@attacker.com>|)
+    refute TrustedSenders.trusted?(~s|"<alice@example.com>" <evil@attacker.com>|)
+    refute TrustedSenders.trusted?("alice@example.com <evil@attacker.com>")
+
+    assert TrustedSenders.extract_address(~s|"alice@example.com" <evil@attacker.com>|) ==
+             "evil@attacker.com"
+
+    # The genuine bracketed sender is still trusted.
+    assert TrustedSenders.trusted?("Alice Example <alice@example.com>")
+    assert TrustedSenders.trusted?("alice@example.com")
+  end
+
   describe "managing entries" do
     test "list_entries returns addresses and domain wildcards, sorted", %{root: root} do
       write_policy(root, "# Trusted\n\n- bob@example.com\n- *@acme.com\n- alice@example.com\n")

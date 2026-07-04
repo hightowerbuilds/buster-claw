@@ -11,8 +11,15 @@ defmodule BusterClaw.SvgViewer do
   `sanitize/1` is the trust boundary. Unlike a rasterized canvas, the SVG here
   is injected **live into the DOM** (via `Phoenix.HTML.raw/1`), so scripts, event
   handlers, `<foreignObject>`, and external references are stripped before it is
-  ever stored or rendered. The app CSP (`script-src 'self' 'nonce-…'`) is the
-  real backstop; this is belt-and-suspenders.
+  ever stored or rendered.
+
+  The **real** backstop is the enforced app CSP (`script-src 'self' 'nonce-…'`,
+  enforced in prod — see `BusterClawWeb.ContentSecurityPolicy`): the browser
+  refuses to run inline scripts, `on*` handlers, and `javascript:` URLs that
+  reach the DOM regardless of what the regex misses. `sanitize/1` is hardened
+  defense-in-depth on top of that, not the sole line — the SVG is kept verbatim
+  (no reparse) to preserve drawing fidelity, so it uses targeted strips rather
+  than a lossy allowlist.
   """
 
   @fence ~r/```svg\s*(.*?)```/s
@@ -45,17 +52,32 @@ defmodule BusterClaw.SvgViewer do
 
   @doc """
   Strip anything unsafe from an SVG before it is rendered live in the DOM:
-  `<script>`/`<foreignObject>` elements, `on*` event-handler attributes, and
-  external `href`/`xlink:href` references (http/https/protocol-relative). Keeps
-  internal (`#id`) and `data:` references. Best-effort regex sanitization.
+  `<script>`/`<foreignObject>` elements (including unclosed/truncated openers),
+  `on*` event-handler attributes (whether space- or solidus-separated), and any
+  `href`/`xlink:href` that is not a bare internal `#fragment` reference. Only
+  same-document fragment refs survive — `javascript:`, `data:`, `http(s)`, and
+  protocol-relative URLs are all dropped (a `data:`/`<use>` ref can smuggle an
+  external document with script). Defense-in-depth behind the enforced CSP.
   """
   @spec sanitize(String.t()) :: String.t()
   def sanitize(svg) when is_binary(svg) do
     svg
+    # Whole <script>/<foreignObject> elements first...
     |> String.replace(~r/<script\b[\s\S]*?<\/script>/i, "")
     |> String.replace(~r/<foreignObject\b[\s\S]*?<\/foreignObject>/i, "")
-    |> String.replace(~r/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i, "")
-    |> String.replace(~r/\s(?:xlink:)?href\s*=\s*("|')\s*(?:https?:|\/\/)[^"']*\1/i, "")
+    # ...then any leftover opener/closer the browser would still parse live
+    # (an *unclosed* `<script>` has no `</script>` for the pass above to match).
+    |> String.replace(~r/<\/?(?:script|foreignObject)\b[^>]*>?/i, "")
+    # on* handlers — HTML allows a solidus as an attribute separator, so
+    # `<rect/onload=…>` is a real handler; match whitespace OR `/` before `on`.
+    |> String.replace(~r/[\s\/]on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i, "")
+    # href/xlink:href: keep only quoted-or-unquoted `#fragment` values; strip
+    # every other scheme. The unquoted branch guards against eating a quoted
+    # value by refusing to start on a quote char.
+    |> String.replace(
+      ~r/\s(?:xlink:)?href\s*=\s*(?:"(?!#)[^"]*"|'(?!#)[^']*'|(?!["'#])[^\s>]+)/i,
+      ""
+    )
   end
 
   @doc """

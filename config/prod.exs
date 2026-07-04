@@ -11,6 +11,14 @@ config :buster_claw, BusterClawWeb.Endpoint,
 # The packaged desktop app binds Phoenix to 127.0.0.1 over plain HTTP;
 # SSL is not used because the Tauri webview connects to loopback only.
 
+# Enforce the Content-Security-Policy header in the shipped app (dev stays
+# Report-Only so Phoenix LiveReload's inline script keeps working). This is the
+# real RCE backstop: a strict `script-src 'self' 'nonce-…'` blocks injected
+# inline scripts, event handlers, and `javascript:` URLs from reaching the Tauri
+# shell. Only the main LiveView scope runs through this plug; the /browser and
+# /ws raw-HTML scopes have no pipeline, so their inline scripts are unaffected.
+config :buster_claw, :csp_mode, :enforce
+
 # Do not print debug messages in production
 config :logger, level: :info
 

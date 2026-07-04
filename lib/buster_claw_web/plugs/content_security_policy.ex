@@ -22,14 +22,11 @@ defmodule BusterClawWeb.ContentSecurityPolicy do
 
   ## Report-Only vs enforce
 
-  Defaults to **Report-Only** (`:csp_mode` unset): the header is
-  `content-security-policy-report-only`, which never blocks anything — violations
-  only surface in the webview console. After smoke-testing the desktop app and
-  confirming the console is clean, flip to enforcing with:
-
-      config :buster_claw, :csp_mode, :enforce
-
-  No code change is needed to enforce. The per-request nonce is assigned to
+  Enforced in **prod** (`config/prod.exs` sets `config :buster_claw, :csp_mode,
+  :enforce`) so the shipped desktop app actually blocks injected scripts. Dev and
+  test default to **Report-Only** (`:csp_mode` unset) so Phoenix LiveReload's
+  injected inline `<script>` keeps working — in dev, violations only surface in
+  the webview console. The per-request nonce is assigned to
   `conn.assigns.csp_nonce` and consumed by the inline `<script>` in
   `root.html.heex`.
   """

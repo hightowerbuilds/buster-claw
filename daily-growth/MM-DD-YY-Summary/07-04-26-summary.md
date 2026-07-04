@@ -121,8 +121,49 @@ smoke via `home_background_state`'s stale-mode guard, so nothing breaks.
   budget than the Zigzag/Mandelbrot tier. Registered across `shaders.js`,
   `palettes.js`, the `@home_shaders` list, and the Appearance picker label map.
 
+## Late — all roadmaps retired + full-codebase quality review
+
+**Roadmaps cleared.** The four remaining active roadmaps (Browserbase, both Humo
+maps, Browser Review) were moved to `daily-growth/roadmaps/oldmaps/` — the
+active folder is now empty of live plans.
+
+**Whole-codebase QX review** (7 parallel domain reviewers over ~34k LOC Elixir /
+3k Rust / 4.7k JS). Mechanical baseline was clean: no compile warnings, no format
+drift, 786 tests green, Credo style-only. The architecture and security
+*primitives* graded strong (URLGuard SSRF coverage, Vault AES-256-GCM,
+PolicyEngine fail-closed, timing-safe token compare, the objc/WKWebView bridge's
+retain/release discipline, integer-cents money math). The real risks clustered
+where **untrusted email meets trusted authority** and where **a designed defense
+was left inert**. Top-tier chain fixed this session:
+
+- **[CRITICAL] Sender-spoofing auth bypass** (`trusted_senders.ex`). `extract_address/1`
+  took the *first* email-looking token in the raw `From` header, so
+  `From: "alice@trusted.com" <evil@attacker.com>` was trusted as alice and drove
+  the autonomous loop on attacker content. Now prefers the **last angle-bracketed
+  addr-spec** (RFC 5322), falling back to a whole-header scan only when there are
+  no brackets — defeats bare, quoted, and fake-bracket display-name spoofs.
+- **[HIGH] CSP was Report-Only everywhere** (`content_security_policy.ex`).
+  `:csp_mode` was never set to `:enforce`, so the header blocked nothing — the
+  webview→`window.__TAURI__`→shell RCE defense was inert. Now enforced in prod
+  (`config/prod.exs`); dev/test stay Report-Only so LiveReload's inline script
+  survives. Verified only the main LiveView scope runs the plug — the `/browser`
+  and `/ws` raw-HTML scopes have no pipeline, so their un-nonced inline scripts
+  are unaffected.
+- **[HIGH] Agent-SVG XSS** (`svg_viewer.ex`). The regex sanitizer had concrete
+  bypasses (`javascript:` href, `<rect/onload=…>`, unclosed `<script>`) and its
+  claimed CSP backstop was the inert one above. Hardened the strips (solidus-sep
+  handlers, truncated openers, href limited to bare `#fragment` refs — no
+  `javascript:`/`data:`/`<use>` smuggling) and made CSP the *real* enforced
+  backstop behind it. SVG kept verbatim to preserve drawing fidelity.
+
+Added security regression tests for the spoof and the sanitizer bypasses; 789
+tests green. The rest of the review (Medium/Low: Browserbase GenServer
+head-of-line blocking, streaming-download OOM ceiling, runtime orphan-reclaim
+gap, `encrypted.ex` fail-open on decrypt error, et al.) is logged for follow-up.
+
 ## Next
 
 Browser roadmap is done. Open workstreams remaining: Browserbase (agentic cloud
 web — Phase 3 live-view tab, then Phase 4 money-gating) and distribution
-(Google restricted-scope verification + Apple signing).
+(Google restricted-scope verification + Apple signing). Also queued: the
+Medium/Low findings from the QX review.
