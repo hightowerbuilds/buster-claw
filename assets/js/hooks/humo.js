@@ -96,6 +96,17 @@ export const HumoSurface = {
       this.chat = {phase: "streaming", hasText: true}
     })
 
+    // Cleared conversation: drop any readout/drawing, blank the content texture
+    // so nothing lingers under the fog, and settle to empty drifting smoke.
+    this.handleEvent("humo:reset", () => {
+      this.readout = null
+      this.draw = null
+      this.contentMode = "text"
+      this.clearText()
+      this.exprTarget = {...NEUTRAL_EXPRESSION}
+      this.chat = {phase: "idle", hasText: false}
+    })
+
     this.handleEvent("humo:phase", ({phase}) => {
       if (phase === "thinking") {
         // New turn: the old page dissolves under the churn (reveal → 0), and

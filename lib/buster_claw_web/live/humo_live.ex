@@ -66,6 +66,15 @@ defmodule BusterClawWeb.HumoLive do
     {:noreply, socket}
   end
 
+  # Wipe the conversation: reset Humo's Claude session and delete the transcript,
+  # then clear this view. We reset locally rather than waiting on the `{:reset}`
+  # broadcast because `Chat.reset/1` only broadcasts when a run process exists —
+  # clearing stale persisted history (no live session) must still empty the view.
+  def handle_event("clear_chat", _params, socket) do
+    Humo.clear()
+    {:noreply, reset_view(socket)}
+  end
+
   def handle_event("toggle_text", _params, socket),
     do: {:noreply, update(socket, :show_text, &(!&1))}
 
@@ -126,7 +135,21 @@ defmodule BusterClawWeb.HumoLive do
   def handle_info({:agent_chat, _conv, {:queue, items}}, socket),
     do: {:noreply, assign(socket, :queue_len, length(items))}
 
+  # The conversation was cleared from another connected client: mirror it here.
+  def handle_info({:agent_chat, _conv, {:reset}}, socket),
+    do: {:noreply, reset_view(socket)}
+
   def handle_info({:agent_chat, _conv, _payload}, socket), do: {:noreply, socket}
+
+  # Empty the transcript, settle the indicators, and blank the smoke surface.
+  defp reset_view(socket) do
+    socket
+    |> assign(:messages, [])
+    |> assign(:running, false)
+    |> assign(:thinking, nil)
+    |> assign(:queue_len, 0)
+    |> push_event("humo:reset", %{})
+  end
 
   # Dispatch one parsed expression to the surface. `style` drives the smoke's
   # mood/render-mode; future types (`graph`, `draw`) render to the content
@@ -190,6 +213,14 @@ defmodule BusterClawWeb.HumoLive do
                 Stop
               </button>
               <button
+                :if={@messages != []}
+                phx-click="clear_chat"
+                data-confirm="Clear this conversation? The transcript is deleted and Humo forgets its context."
+                class="border border-[#f4f1ea]/25 px-3 py-1 font-mono text-[11px] uppercase tracking-widest text-[#f4f1ea]/60 transition hover:border-[#ff4d1c] hover:text-[#ff4d1c]"
+              >
+                Clear
+              </button>
+              <button
                 phx-click="toggle_text"
                 aria-expanded={to_string(@show_text)}
                 aria-controls="humo-log"
@@ -247,7 +278,8 @@ defmodule BusterClawWeb.HumoLive do
   # Transcript entries double as the readable fallback when the shader is off
   # or unavailable, so every role gets an explicit, legible treatment.
   defp message_classes(:user),
-    do: "border-l-2 border-[#ff4d1c] bg-[#121212]/55 px-3 py-2 text-sm text-[#f4f1ea] backdrop-blur-sm"
+    do:
+      "border-l-2 border-[#ff4d1c] bg-[#121212]/55 px-3 py-2 text-sm text-[#f4f1ea] backdrop-blur-sm"
 
   defp message_classes(:assistant),
     do: "bg-[#121212]/55 px-3 py-2 text-sm text-[#f4f1ea]/90 backdrop-blur-sm"

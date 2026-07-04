@@ -24,4 +24,18 @@ defmodule BusterClaw.Agent.TranscriptTest do
     assert {:error, changeset} = Transcript.record("c", :bogus, "x")
     assert %{role: ["is invalid"]} = errors_on(changeset)
   end
+
+  test "clear deletes only the given conversation and reports the row count" do
+    {:ok, _} = Transcript.record("keep", :user, "stays")
+    {:ok, _} = Transcript.record("wipe", :user, "one")
+    {:ok, _} = Transcript.record("wipe", :assistant, "two")
+
+    assert Transcript.clear("wipe") == 2
+    assert Transcript.recent("wipe") == []
+    assert [%{content: "stays"}] = Transcript.recent("keep")
+  end
+
+  test "clear on an empty conversation is a no-op returning 0" do
+    assert Transcript.clear("never-existed") == 0
+  end
 end

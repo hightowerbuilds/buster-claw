@@ -47,6 +47,18 @@ defmodule BusterClaw.Humo do
   @doc "Interrupt Humo's in-flight turn (no-op when idle)."
   def interrupt, do: Chat.interrupt(@conv_id)
 
+  @doc """
+  Clear the Humo conversation: reset its Claude session (kill any in-flight run,
+  forget context so the next message starts fresh) and wipe its persisted
+  transcript. The surface clears via the `{:reset}` event `Chat.reset/1`
+  broadcasts. Idempotent.
+  """
+  def clear do
+    Chat.reset(@conv_id)
+    Transcript.clear(@conv_id)
+    :ok
+  end
+
   @doc "Humo's run status: `:idle` or `:running`."
   def status, do: Chat.status(@conv_id)
 

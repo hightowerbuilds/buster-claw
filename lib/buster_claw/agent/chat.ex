@@ -129,6 +129,21 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   @doc """
+  Clear a conversation's live state: kill any in-flight run, drop the queue, and
+  forget the session id so the next message starts a fresh Claude thread (no
+  `--resume`). Broadcasts `{:reset}` so subscribers can clear their view. Does
+  **not** touch the persisted transcript — that's the caller's concern
+  (`BusterClaw.Agent.Transcript.clear/1`). A no-op if the conversation has no
+  process.
+  """
+  def reset(conv_id) do
+    case whereis(conv_id) do
+      nil -> :ok
+      pid -> GenServer.call(pid, :reset)
+    end
+  end
+
+  @doc """
   Hard-drop a queued message: move it to the front and, if a run is in flight, cut
   that run so the barged message runs next (Tetris hard-drop). A no-op if `id` isn't
   queued.
@@ -263,6 +278,29 @@ defmodule BusterClaw.Agent.Chat do
     do: {:reply, :ok, interrupt_running(state)}
 
   def handle_call(:interrupt, _from, state), do: {:reply, :ok, state}
+
+  # Wipe live state to a clean idle conversation. The killed port's later
+  # exit/data messages carry the old (now-nil) port, so handle_info ignores them
+  # — same trick as interrupt/1. No transcript churn: unlike interrupt we don't
+  # emit an "interrupted" message, because a reset also drops the transcript.
+  def handle_call(:reset, _from, state) do
+    if is_port(state.port), do: AgentRunner.kill_port(state.port)
+    if state.timer, do: Process.cancel_timer(state.timer)
+
+    state = %{
+      state
+      | status: :idle,
+        port: nil,
+        buf: "",
+        timer: nil,
+        run: nil,
+        queue: [],
+        session_id: nil
+    }
+
+    broadcast(state, {:reset})
+    {:reply, :ok, state}
+  end
 
   def handle_call({:barge, id}, _from, state) do
     case Enum.find(state.queue, &(&1.id == id)) do

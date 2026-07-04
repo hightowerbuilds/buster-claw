@@ -48,4 +48,14 @@ defmodule BusterClaw.Agent.Transcript do
     |> Repo.all()
     |> Enum.reverse()
   end
+
+  @doc "Delete a conversation's entire transcript. Returns the number of rows removed."
+  def clear(conv_id) do
+    {count, _} =
+      Message
+      |> where([m], m.conv_id == ^conv_id)
+      |> Repo.delete_all()
+
+    count
+  end
 end

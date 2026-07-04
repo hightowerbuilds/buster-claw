@@ -70,12 +70,33 @@ defmodule BusterClawWeb.HumoLiveTest do
     assert render_async_until(view, "Condensed.")
   end
 
+  test "the clear button wipes persisted history even with no live session", %{conn: conn} do
+    {:ok, _} = Transcript.record("humo", :user, "olvidame")
+    {:ok, _} = Transcript.record("humo", :assistant, "hasta luego")
+
+    {:ok, view, _html} = live_isolated(conn, BusterClawWeb.HumoLive)
+    html = view |> element("button[phx-click=toggle_text]", "show text") |> render_click()
+    assert html =~ "hasta luego"
+
+    html = view |> element("button[phx-click=clear_chat]", "Clear") |> render_click()
+
+    # DB wiped and the view emptied — no run process was ever registered, so this
+    # exercises the local reset path (the {:reset} broadcast never fires here).
+    assert BusterClaw.Humo.recent() == []
+    refute html =~ "hasta luego"
+    refute html =~ ~s(phx-click="clear_chat")
+  end
+
   # The reply arrives over PubSub after the scripted run; poll the rendered
   # HTML briefly instead of racing it.
   defp render_async_until(view, text, attempts \\ 50) do
     cond do
-      render(view) =~ text -> true
-      attempts == 0 -> flunk("never rendered: #{text}")
+      render(view) =~ text ->
+        true
+
+      attempts == 0 ->
+        flunk("never rendered: #{text}")
+
       true ->
         Process.sleep(20)
         render_async_until(view, text, attempts - 1)

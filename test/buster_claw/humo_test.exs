@@ -61,4 +61,20 @@ defmodule BusterClaw.HumoTest do
 
     assert ["primero", "segundo"] = Enum.map(Humo.recent(), & &1.content)
   end
+
+  test "clear wipes the transcript and broadcasts {:reset} to the surface" do
+    {:ok, _} = Transcript.record("humo", :user, "hola")
+    {:ok, _} = Transcript.record("humo", :assistant, "respuesta")
+    refute Humo.recent() == []
+
+    # A live humo process so Chat.reset/1 has something to reset + broadcast.
+    hanging = fn _p, _o -> {:ok, make_ref()} end
+    {:ok, _pid} = Chat.start_link(conv_id: "humo", spawner: hanging, persist: false, audit: false)
+
+    Humo.subscribe()
+    assert :ok = Humo.clear()
+
+    assert_receive {:agent_chat, "humo", {:reset}}
+    assert Humo.recent() == []
+  end
 end

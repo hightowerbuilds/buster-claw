@@ -298,4 +298,51 @@ defmodule BusterClaw.Agent.ChatTest do
     assert :idle = Chat.status(a)
     assert :running = Chat.status(b)
   end
+
+  test "reset forgets the session so the next message starts a fresh thread" do
+    {:ok, scripts} =
+      Agent.start_link(fn ->
+        [
+          [
+            %{"type" => "system", "session_id" => "sess-1"},
+            text_event("hi"),
+            %{"type" => "result", "result" => "ok", "total_cost_usd" => 0.0, "num_turns" => 1}
+          ],
+          [
+            text_event("fresh"),
+            %{"type" => "result", "result" => "ok", "total_cost_usd" => 0.0, "num_turns" => 1}
+          ]
+        ]
+      end)
+
+    conv = start_chat(scripting_spawner(self(), scripts))
+
+    assert :ok = Chat.send_message(conv, "first")
+    assert_receive {:spawned, "first", opts1}
+    refute "--resume" in opts1[:extra_args]
+    assert_receive {:agent_chat, ^conv, {:status, :idle}}
+
+    # A normal second turn would resume sess-1; after reset it must not.
+    assert :ok = Chat.reset(conv)
+    assert_receive {:agent_chat, ^conv, {:reset}}
+
+    assert :ok = Chat.send_message(conv, "second")
+    assert_receive {:spawned, "second", opts2}
+    refute "--resume" in opts2[:extra_args]
+  end
+
+  test "reset kills an in-flight run and drops the queue" do
+    hanging = fn _p, _o -> {:ok, make_ref()} end
+    conv = start_chat(hanging)
+
+    assert :ok = Chat.send_message(conv, "one")
+    assert :running = Chat.status(conv)
+    assert :ok = Chat.send_message(conv, "two")
+    assert [%{text: "two"}] = Chat.queue(conv)
+
+    assert :ok = Chat.reset(conv)
+    assert_receive {:agent_chat, ^conv, {:reset}}
+    assert :idle = Chat.status(conv)
+    assert [] = Chat.queue(conv)
+  end
 end
