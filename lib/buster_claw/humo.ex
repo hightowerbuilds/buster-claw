@@ -98,6 +98,21 @@ defmodule BusterClaw.Humo do
     every edge is ["fromId","toId"]. Keep it under ~24 nodes. Use it when the
     structure — a flow, a dependency graph, a small architecture — reads clearer
     drawn than described.
+
+    And you can DRAW freely by composing shapes. Emit a block:
+    ```humo-draw {"shapes":[{"kind":"circle","x":0,"y":0,"r":0.6},{"kind":"circle","x":0,"y":0.1,"r":0.25,"op":"subtract"}]}```
+    — stripped from the text; the composition condenses onto the screen. Space is
+    centered, y up, about -1..1 tall (a circle r=0.5 ≈ half the height). Each
+    shape has a "kind" and an optional "op": union (draw on top, the default) |
+    subtract (cut away) | intersect (keep only the overlap). Kinds and fields:
+      circle   x y r
+      box      x y w h            (w,h are half-width/height)
+      roundbox x y w h radius
+      segment  x1 y1 x2 y2 th     (a line of thickness th)
+      triangle x1 y1 x2 y2 x3 y3
+      hexagon  x y r
+      star     x y r inner        (inner 0..1 = point sharpness)
+    Keep it under ~40 shapes. Draw when a picture says more than words.
     """
   end
 end

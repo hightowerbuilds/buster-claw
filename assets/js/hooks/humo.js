@@ -23,6 +23,7 @@ import {
 } from "../humo/params.js"
 import {createChatPresenter} from "../humo/presenters/chat.js"
 import {createDiagramPresenter} from "../humo/presenters/diagram.js"
+import {createDrawPresenter} from "../humo/presenters/draw.js"
 
 // Readout cadence: blocks arrive whole (stream-json is block-level), so this
 // is a presentation clock — how fast the screen "speaks".
@@ -46,6 +47,7 @@ export const HumoSurface = {
     // the screen's content-texture dimensions.
     this.chatContent = createChatPresenter()
     this.diagramContent = createDiagramPresenter()
+    this.drawContent = createDrawPresenter()
     this.activeContent = this.chatContent
     this.mode = "chat" // "chat" = readout-driven; "static" = an authored page
 
@@ -69,11 +71,13 @@ export const HumoSurface = {
     // holds until the next reply.
     this.handleEvent("humo:graph", ({graph}) => {
       this.diagramContent.draw(graph)
-      this.activeContent = this.diagramContent
-      this.mode = "static"
-      this.staticAt = performance.now()
-      this.readout = null
-      this.chat = {phase: "streaming", hasText: true}
+      this.enterStatic(this.diagramContent)
+    })
+
+    // A freeform drawing: compose shapes onto the draw canvas, same static scene.
+    this.handleEvent("humo:draw", ({shapes}) => {
+      this.drawContent.draw(shapes)
+      this.enterStatic(this.drawContent)
     })
 
     // Cleared conversation: drop any readout, revert to the chat scene, blank
@@ -318,8 +322,18 @@ export const HumoSurface = {
     return {phase: "streaming", streamProgress: reveal}
   },
 
-  // A static authored page (a diagram) is already in the content texture; ramp
-  // reveal 0 → 1 so it condenses out of the smoke, then holds settled.
+  // Switch to a static scene (a diagram or a drawing already authored onto
+  // `presenter`'s canvas): make it active and start its condense clock.
+  enterStatic(presenter) {
+    this.activeContent = presenter
+    this.mode = "static"
+    this.staticAt = performance.now()
+    this.readout = null
+    this.chat = {phase: "streaming", hasText: true}
+  },
+
+  // A static authored page (a diagram or drawing) is already in the content
+  // texture; ramp reveal 0 → 1 so it condenses out of the smoke, then holds.
   tickStatic(now) {
     const reveal = Math.min(1, (now - this.staticAt) / STATIC_CONDENSE_MS)
     if (reveal >= 1) return {phase: "settled"}
