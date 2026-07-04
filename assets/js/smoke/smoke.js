@@ -12,7 +12,7 @@
 //
 // If WebGPU is unavailable this throws SmokeGpuError with the probe reason and
 // the caller simply drops the canvas — the chat above it is unaffected.
-import {SMOKE_WGSL} from "./smoke.wgsl.js"
+import {SHADERS, DEFAULT_SHADER} from "./shaders.js"
 import {UNIFORM_FLOATS} from "./params.js"
 
 export class SmokeGpuError extends Error {
@@ -22,7 +22,10 @@ export class SmokeGpuError extends Error {
   }
 }
 
-export async function createSmoke(canvas, {contentWidth = 2, contentHeight = 2} = {}) {
+export async function createSmoke(
+  canvas,
+  {contentWidth = 2, contentHeight = 2, shader = DEFAULT_SHADER} = {}
+) {
   if (!navigator.gpu) throw new SmokeGpuError("navigator.gpu absent")
   let adapter
   try {
@@ -41,7 +44,8 @@ export async function createSmoke(canvas, {contentWidth = 2, contentHeight = 2} 
   const configure = () => ctx.configure({device, format, alphaMode: "opaque"})
   configure()
 
-  const module = device.createShaderModule({code: SMOKE_WGSL})
+  const code = SHADERS[shader] || SHADERS[DEFAULT_SHADER]
+  const module = device.createShaderModule({code})
   const info = await module.getCompilationInfo()
   const fatal = info.messages.filter((m) => m.type === "error")
   if (fatal.length) {

@@ -50,6 +50,7 @@ defmodule BusterClawWeb.Router do
   # as an image via CSS `url()`); loopback-only and non-sensitive.
   scope "/appearance", BusterClawWeb do
     get "/terminal-background/:slot", AppearanceController, :terminal_background
+    get "/home-background", AppearanceController, :home_background
   end
 
   # Renders a workspace file (Markdown → HTML, .html as-is) for the in-app browser.

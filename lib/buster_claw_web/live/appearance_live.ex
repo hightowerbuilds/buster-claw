@@ -30,8 +30,14 @@ defmodule BusterClawWeb.AppearanceLive do
      socket
      |> assign(:page_title, "Appearance")
      |> assign(:terminal_themes, @terminal_themes)
+     |> assign(:home_bg, Appearance.home_background_state())
      |> assign_slots()
      |> allow_upload(:terminal_background,
+       accept: Appearance.accepted_extensions(),
+       max_entries: 1,
+       max_file_size: 8_000_000
+     )
+     |> allow_upload(:home_background,
        accept: Appearance.accepted_extensions(),
        max_entries: 1,
        max_file_size: 8_000_000
@@ -85,6 +91,47 @@ defmodule BusterClawWeb.AppearanceLive do
   def handle_event("remove_background", %{"slot" => slot}, socket) do
     Appearance.clear_slot(String.to_integer(slot))
     {:noreply, socket |> assign_slots() |> put_flash(:info, "Background removed.")}
+  end
+
+  # --- homepage background ---
+
+  def handle_event("set_home_bg", %{"mode" => mode}, socket) do
+    case Appearance.set_home_background_mode(mode) do
+      {:ok, _mode} ->
+        {:noreply, socket |> assign_home_bg() |> put_flash(:info, "Homepage background updated.")}
+
+      {:error, :no_image} ->
+        {:noreply, put_flash(socket, :error, "Upload an image first.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Unknown background.")}
+    end
+  end
+
+  def handle_event("validate_home_bg", _params, socket), do: {:noreply, socket}
+
+  def handle_event("cancel_home_bg", %{"ref" => ref}, socket),
+    do: {:noreply, cancel_upload(socket, :home_background, ref)}
+
+  def handle_event("save_home_bg", _params, socket) do
+    consumed =
+      consume_uploaded_entries(socket, :home_background, fn %{path: path}, entry ->
+        {:ok, Appearance.put_home_background_image(path, entry.client_name)}
+      end)
+
+    socket =
+      case consumed do
+        [{:ok, _url}] -> socket |> assign_home_bg() |> put_flash(:info, "Homepage image applied.")
+        [{:error, _reason}] -> put_flash(socket, :error, "That image type isn't supported.")
+        [] -> put_flash(socket, :error, "Choose an image first.")
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("remove_home_bg", _params, socket) do
+    Appearance.clear_home_background_image()
+    {:noreply, socket |> assign_home_bg() |> put_flash(:info, "Homepage image removed.")}
   end
 
   @impl true
@@ -283,9 +330,140 @@ defmodule BusterClawWeb.AppearanceLive do
             </button>
           </form>
         </section>
+
+        <section class="ic-panel space-y-4 p-6">
+          <h2 class="ic-eyebrow">Homepage background</h2>
+          <p class="max-w-2xl text-sm leading-7 text-base-content/70">
+            Choose the animated shader that drifts behind the home chat, or use your
+            own image. Shaders need WebGPU (the desktop app); if it's unavailable the
+            background is simply blank.
+          </p>
+
+          <div class="flex flex-wrap gap-2">
+            <button
+              :for={design <- home_shader_options()}
+              type="button"
+              phx-click="set_home_bg"
+              phx-value-mode={design.key}
+              class={home_opt_btn(@home_bg.mode == design.key)}
+            >
+              <.icon name="hero-sparkles" class="size-4" /> {design.label}
+            </button>
+            <button
+              type="button"
+              phx-click="set_home_bg"
+              phx-value-mode="image"
+              disabled={is_nil(@home_bg.image_url)}
+              title={is_nil(@home_bg.image_url) && "Upload an image first"}
+              class={
+                home_opt_btn(@home_bg.mode == "image") ++
+                  ["disabled:cursor-not-allowed disabled:opacity-40"]
+              }
+            >
+              <.icon name="hero-photo" class="size-4" /> Image
+            </button>
+          </div>
+
+          <div
+            :if={@home_bg.image_url}
+            class="flex items-center gap-3 rounded-lg border-2 border-base-content/15 p-2.5"
+          >
+            <div
+              class="aspect-video w-32 shrink-0 rounded bg-cover bg-center"
+              style={"background-image:url('#{@home_bg.image_url}')"}
+            >
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-semibold">Your homepage image</div>
+              <div class="font-mono text-xs text-base-content/50">
+                {if @home_bg.mode == "image",
+                  do: "In use",
+                  else: "Uploaded — select \"Image\" to use it"}
+              </div>
+            </div>
+            <button
+              type="button"
+              phx-click="remove_home_bg"
+              class="rounded px-2 py-1 text-xs text-base-content/60 transition hover:text-error"
+            >
+              Remove
+            </button>
+          </div>
+
+          <form
+            id="home-background-form"
+            phx-change="validate_home_bg"
+            phx-submit="save_home_bg"
+            class="space-y-3"
+          >
+            <label
+              phx-drop-target={@uploads.home_background.ref}
+              class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-base-content/25 px-6 py-8 text-center transition hover:border-primary"
+            >
+              <.icon name="hero-photo" class="size-7 text-base-content/50" />
+              <span class="text-sm font-semibold">Drop an image here, or click to choose</span>
+              <span class="font-mono text-xs text-base-content/50">
+                PNG, JPG, WEBP, GIF · up to 8 MB · becomes your homepage background
+              </span>
+              <.live_file_input upload={@uploads.home_background} class="sr-only" />
+            </label>
+
+            <div
+              :for={entry <- @uploads.home_background.entries}
+              class="flex items-center gap-3 rounded-lg border-2 border-base-content/15 p-2.5"
+            >
+              <.live_img_preview entry={entry} class="h-12 w-20 shrink-0 rounded object-cover" />
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-semibold">{entry.client_name}</div>
+                <div class="font-mono text-xs text-base-content/50">{entry.progress}%</div>
+              </div>
+              <button
+                type="button"
+                phx-click="cancel_home_bg"
+                phx-value-ref={entry.ref}
+                aria-label="Cancel upload"
+                class="grid size-8 place-items-center rounded-sm text-base-content/60 transition hover:text-error"
+              >
+                <.icon name="hero-x-mark" class="size-4" />
+              </button>
+            </div>
+
+            <p :for={err <- upload_errors(@uploads.home_background)} class="text-sm text-error">
+              {upload_error_to_string(err)}
+            </p>
+
+            <button
+              type="submit"
+              disabled={@uploads.home_background.entries == []}
+              class="inline-flex items-center gap-2 rounded border-2 border-primary px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary hover:text-primary-content disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <.icon name="hero-arrow-up-tray" class="size-4" /> Use image
+            </button>
+          </form>
+        </section>
       </section>
     </Layouts.app>
     """
+  end
+
+  @home_shader_labels %{"smoke" => "Smoke", "aurora" => "Aurora", "waves" => "Waves"}
+  defp home_shader_options,
+    do:
+      Enum.map(
+        Appearance.home_shaders(),
+        &%{key: &1, label: Map.get(@home_shader_labels, &1, &1)}
+      )
+
+  defp assign_home_bg(socket), do: assign(socket, :home_bg, Appearance.home_background_state())
+
+  defp home_opt_btn(active?) do
+    [
+      "inline-flex items-center gap-2 rounded border-2 px-4 py-2 text-sm font-semibold transition",
+      if(active?,
+        do: "border-primary bg-primary text-primary-content",
+        else: "border-base-content/30 hover:border-primary hover:text-primary"
+      )
+    ]
   end
 
   defp assign_slots(socket), do: assign(socket, :slots, Appearance.slots())

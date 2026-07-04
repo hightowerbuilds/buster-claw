@@ -4,6 +4,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Agent.Chat
   alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
+  alias BusterClaw.Appearance
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.LocalTime
   alias BusterClaw.Runtime.Status
@@ -15,9 +16,13 @@ defmodule BusterClawWeb.StatusLive do
   def mount(_params, _session, socket) do
     today = LocalTime.today()
 
+    if connected?(socket),
+      do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
+
     {:ok,
      socket
      |> assign(:page_title, "Home")
+     |> assign(:home_bg, Appearance.home_background_state())
      |> assign(status: Status.snapshot())
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
@@ -229,6 +234,10 @@ defmodule BusterClawWeb.StatusLive do
   def handle_info({:agent_chat, conv_id, payload}, socket),
     do: {:noreply, apply_chat(socket, conv_id, payload)}
 
+  # The homepage background changed in settings — re-render it live.
+  def handle_info({:home_background, state}, socket),
+    do: {:noreply, assign(socket, :home_bg, state)}
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # --- chat transcript projection (from each conversation's PubSub broadcasts) ---
@@ -425,12 +434,23 @@ defmodule BusterClawWeb.StatusLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <section class="ic-home relative isolate flex flex-1 flex-col">
-        <%!-- Ambient smoke background — a hook-owned WebGPU canvas; LiveView
-              never patches inside it. --%>
+        <%!-- Homepage background (Appearance setting): an uploaded image, or a
+              hook-owned WebGPU shader canvas that LiveView never patches inside.
+              The shader div is keyed by design name, so changing it remounts the
+              hook with the new shader. --%>
         <div
-          id="smoke-bg"
+          :if={@home_bg.mode == "image"}
+          class="ic-home-bg"
+          style={"background-image:url('#{@home_bg.image_url}');background-size:cover;background-position:center;"}
+          aria-hidden="true"
+        >
+        </div>
+        <div
+          :if={@home_bg.mode != "image"}
+          id={"home-shader-#{@home_bg.mode}"}
           phx-hook="SmokeBackground"
           phx-update="ignore"
+          data-shader={@home_bg.mode}
           class="ic-home-bg"
           aria-hidden="true"
         >

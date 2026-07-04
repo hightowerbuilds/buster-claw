@@ -50,7 +50,9 @@ export const SmokeBackground = {
 
   async boot() {
     try {
-      this.smoke = await createSmoke(this.canvas)
+      this.smoke = await createSmoke(this.canvas, {
+        shader: this.el.getAttribute("data-shader") || "smoke",
+      })
     } catch (e) {
       const reason = e instanceof SmokeGpuError ? e.reason : e.message
       this.el.setAttribute("data-smoke", "unavailable:" + reason)

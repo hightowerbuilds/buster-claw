@@ -24,6 +24,20 @@ defmodule BusterClaw.Appearance do
   @basename "terminal-background"
   @topic "appearance:terminal_background"
 
+  # --- homepage background ---
+  # The homepage background is a single choice: a named shader design or one
+  # uploaded image. The mode is a plain Settings value; the (single) image reuses
+  # the same file-in-<workspace>/appearance + path/stamp-in-Settings pattern as
+  # the terminal slots, minus the slotting. A change broadcasts on @home_topic so
+  # the open homepage re-renders live.
+  @home_mode_key "home_background_mode"
+  @home_image_path_key "home_background_image_path"
+  @home_image_stamp_key "home_background_image_updated_at"
+  @home_basename "home-background"
+  @home_topic "appearance:home_background"
+  @home_shaders ~w(smoke aurora waves)
+  @home_default_mode "smoke"
+
   # Accepted upload extensions mapped to the content-type used when serving.
   @content_types %{
     ".png" => "image/png",
@@ -170,6 +184,96 @@ defmodule BusterClaw.Appearance do
 
   def clear_slot(_), do: :ok
 
+  # --- homepage background ---
+
+  @doc "PubSub topic broadcast when the homepage background changes."
+  def home_topic, do: @home_topic
+
+  @doc "The shader design names selectable for the homepage."
+  def home_shaders, do: @home_shaders
+
+  @doc """
+  Current homepage background as `%{mode: mode, image_url: url | nil}`. `mode` is
+  a shader name (`\"smoke\"` default) or `\"image\"`; falls back to the default if a
+  saved `\"image\"` mode has no image on disk.
+  """
+  def home_background_state do
+    mode = home_background_mode()
+    url = home_background_image_url()
+    mode = if mode == "image" and is_nil(url), do: @home_default_mode, else: mode
+    %{mode: mode, image_url: url}
+  end
+
+  @doc "The stored homepage background mode (shader name or `\"image\"`)."
+  def home_background_mode, do: Settings.get(@home_mode_key, @home_default_mode)
+
+  @doc """
+  Set the homepage background mode: a shader name from `home_shaders/0`, or
+  `\"image\"` (only honored when an image is present). Returns `{:ok, mode}` or
+  `{:error, :invalid_mode}` / `{:error, :no_image}`.
+  """
+  def set_home_background_mode("image") do
+    if home_background_image_url() do
+      Settings.put(@home_mode_key, "image")
+      broadcast_home()
+      {:ok, "image"}
+    else
+      {:error, :no_image}
+    end
+  end
+
+  def set_home_background_mode(mode) when mode in @home_shaders do
+    Settings.put(@home_mode_key, mode)
+    broadcast_home()
+    {:ok, mode}
+  end
+
+  def set_home_background_mode(_), do: {:error, :invalid_mode}
+
+  @doc "Served URL (cache-busted) of the homepage background image, or `nil`."
+  def home_background_image_url do
+    if home_image_present?() do
+      "/appearance/home-background?v=#{Settings.get(@home_image_stamp_key, "0")}"
+    end
+  end
+
+  @doc "Absolute path to the homepage background image if present (controller-facing)."
+  def home_background_image, do: home_image_abs_path()
+
+  @doc """
+  Save an uploaded homepage background image and switch the mode to `\"image\"`.
+  Returns `{:ok, url}` or `{:error, :unsupported_type}`.
+  """
+  def put_home_background_image(src_path, client_name) do
+    ext = client_name |> Path.extname() |> String.downcase()
+
+    if Map.has_key?(@content_types, ext) do
+      File.mkdir_p!(dir())
+      clear_home_image_files()
+      dest = Path.join(dir(), @home_basename <> ext)
+      File.cp!(src_path, dest)
+
+      Settings.put(@home_image_path_key, Path.relative_to(dest, Artifact.workspace_root()))
+      Settings.put(@home_image_stamp_key, stamp())
+      Settings.put(@home_mode_key, "image")
+
+      broadcast_home()
+      {:ok, home_background_image_url()}
+    else
+      {:error, :unsupported_type}
+    end
+  end
+
+  @doc "Remove the homepage background image; falls back to the default shader mode."
+  def clear_home_background_image do
+    clear_home_image_files()
+    Settings.delete(@home_image_path_key)
+    Settings.delete(@home_image_stamp_key)
+    if home_background_mode() == "image", do: Settings.put(@home_mode_key, @home_default_mode)
+    broadcast_home()
+    :ok
+  end
+
   # --- internals ---
 
   defp slot_basename(n), do: "#{@basename}-#{n}"
@@ -206,6 +310,32 @@ defmodule BusterClaw.Appearance do
       @topic,
       {:terminal_background, terminal_background_url()}
     )
+  end
+
+  defp broadcast_home do
+    Phoenix.PubSub.broadcast(
+      BusterClaw.PubSub,
+      @home_topic,
+      {:home_background, home_background_state()}
+    )
+  end
+
+  defp home_image_present?, do: not is_nil(present(Settings.get(@home_image_path_key)))
+
+  defp home_image_abs_path do
+    with rel when is_binary(rel) <- present(Settings.get(@home_image_path_key)),
+         abs = Artifact.workspace_path(rel),
+         true <- File.regular?(abs) do
+      abs
+    else
+      _ -> nil
+    end
+  end
+
+  defp clear_home_image_files do
+    Enum.each(accepted_extensions(), fn ext ->
+      File.rm(Path.join(dir(), @home_basename <> ext))
+    end)
   end
 
   defp stamp, do: Integer.to_string(System.system_time(:second))
