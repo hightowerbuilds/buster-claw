@@ -121,10 +121,12 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let tuv = vec2<f32>(in.uv.x, 1.0 - in.uv.y);
   let curl = vec2<f32>(curl_a - 0.5, curl_b - 0.5);
   // Two animated displacement terms: the big curl carries the letters with the
-  // smoke, the fine-field flutter makes every stroke tremble locally.
+  // smoke, the fine-field flutter makes every stroke tremble locally. Under
+  // the lens (\`legible\`) both collapse to zero and the ghosts fade — the
+  // glass reads the smoke: no waviness, no smear, full ink, crisp edges.
+  let legible = lens_amt;
   let flut = vec2<f32>(smoke_mid - 0.5, smoke_fine - 0.5);
-  let disp = curl * (0.028 + 0.06 * (1.0 - reveal)) + flut * 0.014;
-  // Three taps — core plus two spread ghosts — smear each glyph into the air.
+  let disp = (curl * (0.028 + 0.06 * (1.0 - reveal)) + flut * 0.014) * (1.0 - legible);
   // Chromatic aberration under the lens: red and blue core taps pull apart
   // radially, strongest toward the rim — glass fringing, no magnification.
   let radial = lens_vec / max(lens_r, 0.0001);
@@ -135,16 +137,20 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let ta_core_b = textureSample(textTex, smp, tuv + disp - tdir * ca).a;
   let ta_g1 = textureSample(textTex, smp, tuv + disp * 2.6 + vec2<f32>(0.006, -0.008)).a;
   let ta_g2 = textureSample(textTex, smp, tuv + disp * 4.0 + vec2<f32>(-0.008, 0.005)).a;
-  let ghosts = ta_g1 * 0.28 + ta_g2 * 0.17;
-  let ta = ta_core * 0.55 + ghosts;
-  let ta_r = ta_core_r * 0.55 + ghosts;
-  let ta_b = ta_core_b * 0.55 + ghosts;
+  let ghosts = (ta_g1 * 0.28 + ta_g2 * 0.17) * (1.0 - legible);
+  let core_w = mix(0.55, 1.0, legible);
+  let ta = ta_core * core_w + ghosts;
+  let ta_r = ta_core_r * core_w + ghosts;
+  let ta_b = ta_core_b * core_w + ghosts;
+  // The lens also lifts reveal, so even mid-condense words read under it.
+  let rl = max(reveal, legible);
   let n = smoke_fine;
-  let a = smoothstep(n - 0.36, n + 0.12, ta * reveal);
-  let a_r = smoothstep(n - 0.36, n + 0.12, ta_r * reveal);
-  let a_b = smoothstep(n - 0.36, n + 0.12, ta_b * reveal);
-  let band = smoothstep(n - 0.56, n - 0.36, ta * reveal) - a;
-  let ink = 0.62 + 0.38 * smoke_mid;
+  // Blend the noisy dissolve threshold toward a plain crisp edge under glass.
+  let a = mix(smoothstep(n - 0.36, n + 0.12, ta * rl), smoothstep(0.30, 0.62, ta * rl), legible);
+  let a_r = mix(smoothstep(n - 0.36, n + 0.12, ta_r * rl), smoothstep(0.30, 0.62, ta_r * rl), legible);
+  let a_b = mix(smoothstep(n - 0.36, n + 0.12, ta_b * rl), smoothstep(0.30, 0.62, ta_b * rl), legible);
+  let band = (smoothstep(n - 0.56, n - 0.36, ta * rl) - a) * (1.0 - legible);
+  let ink = mix(0.62 + 0.38 * smoke_mid, 1.0, legible);
   let ash = vec3<f32>(0.956, 0.945, 0.918);
   col = vec3<f32>(
     mix(col.r, ash.r, a_r * ink),

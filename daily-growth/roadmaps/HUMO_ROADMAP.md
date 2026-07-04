@@ -250,6 +250,13 @@ speakable in smoke instead of overflowing the texture.*
    the letters strongest at the rim and a warm/cool-fringed ash ring: a loupe
    that magnifies nothing. Known gap: the readout clock is CPU-side, so a page
    mid-condense keeps condensing under the glass.
+   **Refined 07-03: the lens is a true reading glass.** Under it the text
+   returns to its legible form — displacement (curl + flutter), ghost smear,
+   patchy ink, and the noisy dissolve edge all cross-fade out on the lens
+   amount, so the center resolves to crisp full-ink type while the rim stays
+   half-smoke (a gradient that reads like glass resolving fog). The lens also
+   lifts `reveal`, so hovering rescues words mid-dissolve or reads them before
+   they finish condensing. **This is Phase 4's "hold to read" by another name.**
 
 **Exit criteria:** thinking, streaming, settling, ageing, and idle each have a
 distinct, intentional look; the surface feels alive and is readable on demand.
@@ -264,7 +271,9 @@ distinct, intentional look; the surface feels alive and is readable on demand.
    *Partially shipped 07-03 (operator call): the DOM transcript is now **closed by
    default** — the smoke is the primary reading surface — with a "show text"
    disclosure (header button + the whole fog area is clickable) as the toggle.
-   Still open: `prefers-reduced-motion` defaulting to text, and hold-to-read.*
+   **Hold-to-read shipped as the still lens (Phase 3.5):** hovering resolves the
+   smoke to crisp legible type under the glass. Still open: `prefers-reduced-motion`
+   defaulting to text.*
 2. **Performance governor.** (M) FPS cap; **pause rendering when the tab is hidden
    or occluded** (heeding the browser roadmap's compositing lessons); on WebGL
    context loss, fall back to the plain transcript rather than a dead canvas.
