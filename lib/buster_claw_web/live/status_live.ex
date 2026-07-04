@@ -43,6 +43,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
     |> assign(:zoomed_id, nil)
+    |> assign(:sketchpad_open, true)
     |> load_chat_history(active)
   end
 
@@ -153,6 +154,9 @@ defmodule BusterClawWeb.StatusLive do
 
   def handle_event("close_zoom", _params, socket),
     do: {:noreply, assign(socket, :zoomed_id, nil)}
+
+  def handle_event("toggle_sketchpad", _params, socket),
+    do: {:noreply, update(socket, :sketchpad_open, &(!&1))}
 
   def handle_event("zoom_nav", %{"dir" => dir}, socket),
     do: {:noreply, zoom_step(socket, dir)}
@@ -476,16 +480,16 @@ defmodule BusterClawWeb.StatusLive do
           <div class="flex min-h-0 flex-1 flex-col gap-2">
             <BusterClawWeb.ChatPanel.chat_tabs chats={@chats} active={@active_chat} />
             <div class="flex min-h-0 flex-1 gap-4">
+              <BusterClawWeb.ChatPanel.sketchpad
+                svgs={@chat_svgs}
+                zoomed={@zoomed_id}
+                open={@sketchpad_open}
+              />
               <BusterClawWeb.ChatPanel.chat_panel
                 messages={@chat_messages}
                 running={@chat_running}
                 thinking={@chat_thinking}
                 queue={@chat_queue}
-              />
-              <BusterClawWeb.ChatPanel.sketchpad
-                :if={@chat_svgs != []}
-                svgs={@chat_svgs}
-                zoomed={@zoomed_id}
               />
             </div>
           </div>

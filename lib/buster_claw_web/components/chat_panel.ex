@@ -167,40 +167,70 @@ defmodule BusterClawWeb.ChatPanel do
   end
 
   @doc """
-  The sketchpad sidebar: every SVG Claude drew this session, shown as a real,
-  crisp SVG. `svgs` is a list of `%{id, svg}` (sanitized upstream, session-live —
-  never persisted). Click a card to open it full-screen; `zoomed` is the id of the
-  SVG currently in the modal (or nil), and ← / → page through the set. Rendered
-  beside the chat only when non-empty.
+  The sketchpad sidebar (left of the chat): every SVG Claude drew this session,
+  shown as a real, crisp SVG. `svgs` is a list of `%{id, svg}` (sanitized upstream,
+  session-live — never persisted). Always present via a tap-to-toggle bumper;
+  `open` shows/hides the panel. Click a card to open it full-screen; `zoomed` is
+  the id in the modal (or nil), and ← / → page through the set.
   """
   attr :svgs, :list, required: true
   attr :zoomed, :any, required: true
+  attr :open, :boolean, required: true
 
   def sketchpad(assigns) do
     assigns =
       assign(assigns, :zoom_idx, Enum.find_index(assigns.svgs, &(&1.id == assigns.zoomed)))
 
     ~H"""
-    <aside
-      class="ic-panel flex w-80 min-h-0 shrink-0 flex-col overflow-hidden"
-      aria-label="Sketchpad"
-    >
-      <header class="flex items-center justify-between border-b-2 border-base-content/20 px-4 py-3">
-        <p class="ic-eyebrow">Sketchpad</p>
-        <span class="font-mono text-[0.62rem] text-base-content/45">{length(@svgs)}</span>
-      </header>
-      <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
-        <button
-          :for={item <- @svgs}
-          type="button"
-          phx-click="zoom_svg"
-          phx-value-id={item.id}
-          title="Click to view full screen"
-          class="ic-sketch-card block w-full rounded-sm border-2 border-base-content/20 bg-base-100 p-2 transition hover:border-primary"
+    <div class="flex min-h-0 shrink-0 gap-1">
+      <aside
+        :if={@open}
+        class="ic-panel flex w-80 min-h-0 flex-col overflow-hidden"
+        aria-label="Sketchpad"
+      >
+        <header class="flex items-center justify-between border-b-2 border-base-content/20 px-4 py-3">
+          <p class="ic-eyebrow">Sketchpad</p>
+          <span class="font-mono text-[0.62rem] text-base-content/45">{length(@svgs)}</span>
+        </header>
+        <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
+          <div
+            :if={@svgs == []}
+            class="m-auto max-w-[12rem] text-center text-sm text-base-content/45"
+          >
+            No drawings yet. Ask Buster Claw to sketch or diagram something.
+          </div>
+          <button
+            :for={item <- @svgs}
+            type="button"
+            phx-click="zoom_svg"
+            phx-value-id={item.id}
+            title="Click to view full screen"
+            class="ic-sketch-card block w-full rounded-sm border-2 border-base-content/20 bg-base-100 p-2 transition hover:border-primary"
+          >
+            {Phoenix.HTML.raw(item.svg)}
+          </button>
+        </div>
+      </aside>
+
+      <%!-- The bumper: always visible; tap to open/close the panel. --%>
+      <button
+        type="button"
+        phx-click="toggle_sketchpad"
+        aria-expanded={to_string(@open)}
+        title={if @open, do: "Hide sketchpad", else: "Show sketchpad"}
+        class="ic-panel flex w-8 shrink-0 flex-col items-center gap-3 py-3 text-base-content/60 transition hover:border-primary hover:text-primary"
+      >
+        <.icon name={if @open, do: "hero-chevron-left", else: "hero-chevron-right"} class="size-4" />
+        <span class="font-mono text-[0.6rem] uppercase tracking-widest [writing-mode:vertical-rl]">
+          Sketchpad
+        </span>
+        <span
+          :if={@svgs != []}
+          class="mt-auto grid size-5 place-items-center rounded-full bg-primary text-[0.6rem] font-bold text-primary-content"
         >
-          {Phoenix.HTML.raw(item.svg)}
-        </button>
-      </div>
+          {length(@svgs)}
+        </span>
+      </button>
 
       <%!-- Full-screen modal. The backdrop button closes; the image sits above it
             (pointer-events-auto) so clicking it doesn't close. ← / → page through
@@ -257,7 +287,7 @@ defmodule BusterClawWeb.ChatPanel do
           {@zoom_idx + 1} / {length(@svgs)}
         </div>
       </div>
-    </aside>
+    </div>
     """
   end
 
