@@ -98,9 +98,13 @@ live — in-app pass pending: 🛡 lit → ad-heavy site → ads gone → toggle
 reload → ads back; open/close ~8 tabs → old ones reload on click; 🕳 opens a
 dashed private tab.
 
-## Late — two more homepage shaders (Mandelbrot, Weather)
+## Late — two more homepage shaders (Mandelbrot, Weather), Lava retired
 
-The Appearance shader roster grew from four to six.
+The Appearance shader roster settled at five (smoke / waves / zigzag / mandel /
+weather): Mandelbrot and Weather were added, and **Lava was retired** — file
+deleted and stripped from the shaders/palettes registries, `@home_shaders`, and
+the picker label map. A previously-saved `"lava"` mode falls back to the default
+smoke via `home_background_state`'s stale-mode guard, so nothing breaks.
 
 - **Mandelbrot.** A homepage background that slowly zooms/pans the Mandelbrot
   set, coloured through the `colA/B/C` palette. Per-pixel iteration loop, so it

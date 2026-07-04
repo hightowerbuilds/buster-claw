@@ -509,7 +509,6 @@ defmodule BusterClawWeb.AppearanceLive do
   @home_shader_labels %{
     "smoke" => "Smoke",
     "waves" => "Waves",
-    "lava" => "Lava",
     "zigzag" => "Zigzag",
     "mandel" => "Mandelbrot",
     "weather" => "Weather"
