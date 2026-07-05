@@ -21,6 +21,7 @@ defmodule BusterClawWeb.TerminalLive do
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, BusterClaw.Appearance.topic())
+      BusterClaw.TerminalCommands.subscribe()
     end
 
     {:ok,
@@ -283,6 +284,13 @@ defmodule BusterClawWeb.TerminalLive do
   end
 
   @impl true
+  def handle_info({:terminal_commands_updated, _roles}, socket) do
+    # Keep the cmd-list flyout current when the catalog is edited in Settings,
+    # even while this terminal stays open.
+    {:noreply,
+     assign(socket, :terminal_command_roles, BusterClaw.TerminalCommands.menu_roles())}
+  end
+
   def handle_info({:terminal_background, url}, socket) do
     embedded? = socket.assigns.embedded?
 

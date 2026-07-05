@@ -136,6 +136,11 @@ defmodule BusterClaw.Sentinel do
     if tier(meta) == "restricted", do: :warning, else: :notice
   end
 
+  # Settings edits are :notice by default; callers escalate to :warning via the
+  # severity override when the change alters what would actually execute
+  # (e.g. a terminal cmd-list command string).
+  def classify(:settings_change, _meta), do: :notice
+
   def classify(_other, _meta), do: :info
 
   defp tier(meta) when is_map(meta), do: to_string(meta[:tier] || meta["tier"] || "")
