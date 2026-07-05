@@ -58,6 +58,7 @@ defmodule BusterClaw.Jobs do
     seed_agent_settings()
     BusterClaw.Skills.ensure()
     BusterClaw.Shaders.ensure()
+    BusterClaw.TerminalCommands.ensure()
     :ok
   rescue
     error ->

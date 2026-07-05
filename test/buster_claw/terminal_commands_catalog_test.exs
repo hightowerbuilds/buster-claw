@@ -1,12 +1,35 @@
 defmodule BusterClaw.TerminalCommandsCatalogTest do
-  use BusterClaw.DataCase
+  # async: false — points the global :workspace_root at a tmp dir (the catalog
+  # is now a file in the workspace, not a Settings row).
+  use BusterClaw.DataCase, async: false
 
-  alias BusterClaw.Settings
   alias BusterClaw.TerminalCommands
   alias BusterClaw.TerminalCommands.Catalog
 
+  setup do
+    root = Path.join(System.tmp_dir!(), "bc_cmdlist_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    prev = Application.get_env(:buster_claw, :workspace_root)
+    Application.put_env(:buster_claw, :workspace_root, root)
+
+    on_exit(fn ->
+      Application.put_env(:buster_claw, :workspace_root, prev)
+      File.rm_rf(root)
+    end)
+
+    :ok
+  end
+
+  # The persisted catalog document read back from the workspace file, or nil.
+  defp read_doc do
+    case File.read(TerminalCommands.catalog_path()) do
+      {:ok, json} -> Jason.decode!(json)
+      _ -> nil
+    end
+  end
+
   describe "put_catalog/1 + load/0" do
-    test "a persisted catalog round-trips through Settings into the merged view" do
+    test "a persisted catalog round-trips through the workspace file into the merged view" do
       doc = %{
         "version" => 1,
         "roles" => [
@@ -39,7 +62,7 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
       }
 
       assert {:error, %Ecto.Changeset{}} = TerminalCommands.put_catalog(doc)
-      assert Settings.get(TerminalCommands.settings_key()) == nil
+      refute File.exists?(TerminalCommands.catalog_path())
     end
 
     test "refuses multiline shell commands, including via a forged prompt kind" do
@@ -63,13 +86,14 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
       refute changeset.valid?
     end
 
-    test "a corrupt persisted document degrades to built-ins" do
-      Settings.put(TerminalCommands.settings_key(), "{not json")
+    test "a corrupt catalog file degrades to built-ins" do
+      File.mkdir_p!(TerminalCommands.dir())
+      File.write!(TerminalCommands.catalog_path(), "{not json")
 
       assert TerminalCommands.roles() == TerminalCommands.load(nil)
     end
 
-    test "a protected role written directly to Settings is dropped at load" do
+    test "a protected role written directly to the catalog file is dropped at load" do
       doc = %{
         "version" => 1,
         "roles" => [
@@ -77,7 +101,8 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
         ]
       }
 
-      Settings.put(TerminalCommands.settings_key(), Jason.encode!(doc))
+      File.mkdir_p!(TerminalCommands.dir())
+      File.write!(TerminalCommands.catalog_path(), Jason.encode!(doc))
 
       mailman = TerminalCommands.roles() |> Enum.find(&(&1.key == "mailman"))
       refute Enum.any?(mailman.commands, &(&1.command == "evil"))
@@ -98,12 +123,13 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
 
       assert :ok = TerminalCommands.reset_catalog()
       assert_receive {:terminal_commands_updated, _roles}
-      assert Settings.get(TerminalCommands.settings_key()) == nil
+      # Reset restores the file to the full shipped defaults (non-protected).
+      assert read_doc()["roles"] |> Enum.map(& &1["key"]) == ["queue", "toolbox", "prompts"]
     end
   end
 
   describe "save_role_edit/2" do
-    test "persists only the diff and mints keys for new rows" do
+    test "persists the full role and mints keys for new rows" do
       base = TerminalCommands.role_edit("toolbox")
 
       params = %{
@@ -128,13 +154,15 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
 
       assert {:ok, %{commands_changed: true}} = TerminalCommands.save_role_edit(base, params)
 
-      doc = Settings.get(TerminalCommands.settings_key()) |> Jason.decode!()
-      [%{"key" => "toolbox", "commands" => persisted} = entry] = doc["roles"]
+      [%{"key" => "toolbox", "commands" => persisted} = entry] = read_doc()["roles"]
 
-      # Diff-only: the unedited built-ins are not persisted.
+      # Full role: every command is written (the workspace file shows the whole
+      # list), not a sparse diff — 3 built-ins + the new one.
       assert entry["default_key"] == "runtime-status"
-      assert length(persisted) == 2
+      assert length(persisted) == 4
       assert Enum.any?(persisted, &(&1["key"] == "commands-list"))
+      assert Enum.any?(persisted, &(&1["key"] == "runtime-status"))
+      assert Enum.any?(persisted, &(&1["key"] == "memory-search"))
 
       minted = Enum.find(persisted, &(&1["label"] == "Mine"))
       assert minted["key"] =~ ~r/^cmd-[0-9a-f]{8}$/
@@ -144,7 +172,7 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
       assert TerminalCommands.startup_command("toolbox") == "./buster-claw run runtime_status"
     end
 
-    test "an edit reverted back to the shipped values removes the role entry" do
+    test "an unedited save persists the full role, reporting no execution change" do
       base = TerminalCommands.role_edit("queue")
 
       params = %{
@@ -166,8 +194,8 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
 
       assert {:ok, %{commands_changed: false}} = TerminalCommands.save_role_edit(base, params)
 
-      doc = Settings.get(TerminalCommands.settings_key()) |> Jason.decode!()
-      assert doc["roles"] == []
+      [%{"key" => "queue", "commands" => persisted}] = read_doc()["roles"]
+      assert length(persisted) == length(base.commands)
     end
 
     test "refuses to drop a built-in command" do
@@ -291,7 +319,7 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
                  "command" => "./buster-claw off-duty"
                })
 
-      assert Settings.get(TerminalCommands.settings_key()) == nil
+      refute File.exists?(TerminalCommands.catalog_path())
     end
 
     test "an unknown command key with no command text is missing_command" do

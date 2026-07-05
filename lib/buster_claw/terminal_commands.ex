@@ -23,12 +23,23 @@ defmodule BusterClaw.TerminalCommands do
 
   require Logger
 
+  alias BusterClaw.Library.Artifact
   alias BusterClaw.Settings
   alias BusterClaw.TerminalCommands.Catalog
   alias BusterClaw.TerminalCommands.Command
   alias BusterClaw.TerminalCommands.RoleEdit
 
-  @settings_key "terminal_commands.catalog"
+  # File-first storage: the catalog the terminal cmd-list dropdown reads lives
+  # in the workspace as `<workspace>/cmd-list/catalog.json` (git-diffable,
+  # operator-editable, no recompile — like `skills/`, `shaders/`, and the
+  # `buster-claw` launcher). `ensure/0` seeds it with the full shipped defaults;
+  # protected roles are still enforced from code, never from the file.
+  @subdir "cmd-list"
+  @catalog_file "catalog.json"
+  @roster "README.md"
+  # Where the user catalog lived before it moved into the workspace; read once
+  # by `ensure/0` to migrate an existing edit, then deleted.
+  @legacy_settings_key "terminal_commands.catalog"
   @topic "terminal_commands"
   @protected_keys ["mailman", "agent-setup"]
 
@@ -288,10 +299,13 @@ defmodule BusterClaw.TerminalCommands do
     merged ++ user_only
   end
 
-  # ---- Persistence -----------------------------------------------------------
+  # ---- File-first workspace storage ------------------------------------------
 
-  @doc "The Settings key the user catalog persists under."
-  def settings_key, do: @settings_key
+  @doc "Absolute path to the cmd-list folder in the current workspace."
+  def dir, do: Artifact.workspace_path(@subdir)
+
+  @doc "Absolute path to the catalog file the terminal dropdown reads."
+  def catalog_path, do: Path.join(dir(), @catalog_file)
 
   @doc "The PubSub topic catalog updates broadcast on."
   def topic, do: @topic
@@ -300,22 +314,125 @@ defmodule BusterClaw.TerminalCommands do
   def subscribe, do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, @topic)
 
   @doc """
-  Validate and persist a full user-catalog document (string-keyed map), then
-  broadcast the merged catalog. Returns `:ok` or `{:error, changeset}`.
+  Seed the `cmd-list/` folder: a README plus `catalog.json` holding the full
+  shipped defaults (so the folder shows every editable command). Never
+  overwrites an existing catalog; migrates a pre-existing Settings-stored
+  catalog into the file once. Best-effort — never raises (used at boot).
+  """
+  def ensure do
+    File.mkdir_p!(dir())
+    maybe_write(roster_path(), default_roster())
+
+    unless File.exists?(catalog_path()) do
+      doc = migrate_legacy_catalog() || default_catalog_doc()
+      write_catalog(doc)
+    end
+
+    :ok
+  rescue
+    error ->
+      Logger.warning("TerminalCommands.ensure failed: #{Exception.message(error)}")
+      :error
+  end
+
+  @doc """
+  Validate and persist the full catalog document (string-keyed map) to the
+  workspace file, then broadcast the merged catalog. Returns `:ok` or
+  `{:error, changeset}`.
   """
   def put_catalog(doc) when is_map(doc) do
     with {:ok, normalized} <- Catalog.validate(doc),
-         {:ok, _setting} <- Settings.put(@settings_key, Jason.encode!(normalized)) do
+         :ok <- write_catalog(normalized) do
       broadcast_update()
       :ok
     end
   end
 
-  @doc "Delete the user catalog entirely — every consumer falls back to the built-ins."
+  @doc "Restore the catalog file to the shipped defaults (every role reset)."
   def reset_catalog do
-    Settings.delete(@settings_key)
+    write_catalog(default_catalog_doc())
     broadcast_update()
     :ok
+  end
+
+  defp roster_path, do: Path.join(dir(), @roster)
+
+  defp write_catalog(doc) do
+    File.mkdir_p!(dir())
+
+    case File.write(catalog_path(), Jason.encode!(doc, pretty: true)) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp maybe_write(path, content) do
+    unless File.exists?(path), do: File.write(path, content)
+  end
+
+  # Serialize the shipped non-protected roles to the full file shape so the
+  # seeded catalog.json lists every editable command (not a sparse diff).
+  # Protected roles are omitted — they are re-injected from code at load time.
+  defp default_catalog_doc do
+    roles =
+      @roles
+      |> Enum.reject(&(&1.key in @protected_keys))
+      |> Enum.map(&serialize_builtin_role/1)
+
+    %{"version" => Catalog.version(), "roles" => roles}
+  end
+
+  defp serialize_builtin_role(role) do
+    default_key = Enum.find_value(role.commands, fn c -> if Map.get(c, :default?), do: c.key end)
+
+    commands =
+      Enum.map(role.commands, fn c ->
+        %{"key" => c.key, "command" => c.command, "kind" => to_string(Map.get(c, :kind, :shell))}
+        |> put_present("label", Map.get(c, :label))
+        |> put_present("description", Map.get(c, :description))
+      end)
+
+    %{"key" => role.key, "commands" => commands}
+    |> put_present("default_key", default_key)
+  end
+
+  # One-time migration of a pre-file catalog from Settings. Returns a full doc
+  # (the old diff expanded over the shipped defaults) or nil when none exists.
+  defp migrate_legacy_catalog do
+    with json when is_binary(json) <- Settings.get(@legacy_settings_key),
+         {:ok, %{} = diff_doc} <- Jason.decode(json) do
+      full = full_doc_from_roles(load(diff_doc))
+      Settings.delete(@legacy_settings_key)
+      full
+    else
+      _ -> nil
+    end
+  rescue
+    # Settings unreachable (e.g. no Repo yet) → skip migration, seed defaults.
+    _error -> nil
+  end
+
+  # Serialize merged runtime roles back into the full file shape (non-protected
+  # only). Used to expand a migrated diff into a complete catalog file.
+  defp full_doc_from_roles(runtime_roles) do
+    roles =
+      runtime_roles
+      |> Enum.reject(&(&1.key in @protected_keys))
+      |> Enum.map(fn role ->
+        default_key = Enum.find_value(role.commands, fn c -> if c.default?, do: c.key end)
+
+        commands =
+          Enum.map(role.commands, fn c ->
+            %{"key" => c.key, "command" => c.command, "kind" => to_string(c.kind)}
+            |> put_present("label", c.label)
+            |> put_present("description", c.description)
+          end)
+
+        %{"key" => role.key, "commands" => commands}
+        |> put_present("default_key", default_key)
+      end)
+
+    %{"version" => Catalog.version(), "roles" => roles}
   end
 
   @doc "Remove one role's customizations, restoring its shipped commands."
@@ -524,16 +641,10 @@ defmodule BusterClaw.TerminalCommands do
     end
   end
 
-  # The persisted entry for one role: only rows that differ from the shipped
-  # catalog (or are user-added), plus the default choice when it deviates.
-  # Returns nil when nothing deviates — the role entry disappears entirely.
+  # The persisted entry for one role — the FULL role (every command with its
+  # fields), so the workspace `catalog.json` always shows the complete list
+  # rather than a sparse diff. New rows get server-minted keys.
   defp role_entry(role_key, %RoleEdit{} = edit) do
-    builtin_by_key =
-      case builtin_role(role_key) do
-        nil -> %{}
-        %{commands: commands} -> Map.new(commands, &{&1.key, normalize_builtin_command(&1)})
-      end
-
     taken = MapSet.new(Enum.map(edit.commands, & &1.key) |> Enum.reject(&is_nil/1))
 
     {commands, _taken} =
@@ -541,42 +652,15 @@ defmodule BusterClaw.TerminalCommands do
         key = c.key || mint_key(taken)
 
         entry =
-          case builtin_by_key[key] do
-            nil ->
-              %{"key" => key, "command" => c.command, "kind" => c.kind}
-              |> put_present("label", c.label)
-              |> put_present("description", c.description)
-
-            builtin ->
-              if c.label == builtin.label and c.description == builtin.description and
-                   c.command == builtin.command do
-                nil
-              else
-                %{"key" => key, "command" => c.command}
-                |> put_present("label", c.label)
-                |> put_present("description", c.description)
-              end
-          end
+          %{"key" => key, "command" => c.command, "kind" => c.kind}
+          |> put_present("label", c.label)
+          |> put_present("description", c.description)
 
         {entry, MapSet.put(taken, key)}
       end)
 
-    commands = Enum.reject(commands, &is_nil/1)
-
-    builtin_default =
-      builtin_by_key
-      |> Map.values()
-      |> Enum.find_value(fn c -> if c.default?, do: c.key end)
-
-    default_key =
-      if edit.default_key && edit.default_key != builtin_default, do: edit.default_key
-
-    if commands == [] and is_nil(default_key) do
-      nil
-    else
-      %{"key" => role_key, "commands" => commands}
-      |> put_present("default_key", default_key)
-    end
+    %{"key" => role_key, "commands" => commands}
+    |> put_present("default_key", edit.default_key)
   end
 
   # What the terminal would actually run for a role: command strings + the
@@ -596,25 +680,46 @@ defmodule BusterClaw.TerminalCommands do
   end
 
   defp user_doc do
-    case Settings.get(@settings_key) do
-      nil ->
-        nil
-
-      json ->
+    case File.read(catalog_path()) do
+      {:ok, json} ->
         case Jason.decode(json) do
           {:ok, %{} = doc} ->
             doc
 
           _other ->
-            Logger.warning("terminal_commands: persisted catalog is corrupt, using built-ins")
+            Logger.warning("terminal_commands: #{@catalog_file} is corrupt, using built-ins")
             nil
         end
+
+      # No file yet (fresh workspace before `ensure/0` runs) → built-ins.
+      {:error, _reason} ->
+        nil
     end
   rescue
-    # The catalog is a safety surface: if the settings store is unreachable
-    # (repo down, or a test without a sandbox owner), serve the built-ins
-    # rather than fail closed.
+    # The catalog is a safety surface: if the workspace is unreachable, serve
+    # the built-ins rather than fail closed.
     _error -> nil
+  end
+
+  defp default_roster do
+    """
+    # Terminal cmd-list
+
+    `catalog.json` is the command cheatsheet the in-app terminal shows in its
+    **cmd-list** dropdown, and the whitelist for `terminal open --role <key>`
+    startup profiles. It is read live — edit it (or use Settings → Cmd List) and
+    the dropdown updates with no recompile.
+
+    Shape: `{"version": 1, "roles": [{"key", "commands": [{"key", "label",
+    "description", "command", "kind"}], "default_key"}]}`. `kind` is `"shell"`
+    (single-line, typed into the PTY) or `"prompt"` (may be multiline). Edits are
+    validated before they take effect (slug keys, single-line shell commands).
+
+    The **On Duty** roles (`mailman`, `agent-setup`) are the shift-safety surface
+    and are enforced from code — they never appear here and can't be overridden
+    from this file. Delete `catalog.json` to restore the shipped defaults on the
+    next launch. Prompt entries are also generated from your `skills/` folder.
+    """
   end
 
   defp broadcast_update do

@@ -4,8 +4,21 @@ defmodule BusterClawWeb.CmdListLiveTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Sentinel
-  alias BusterClaw.Settings
   alias BusterClaw.TerminalCommands
+
+  setup do
+    root = Path.join(System.tmp_dir!(), "bc_cmdlist_live_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    prev = Application.get_env(:buster_claw, :workspace_root)
+    Application.put_env(:buster_claw, :workspace_root, root)
+
+    on_exit(fn ->
+      Application.put_env(:buster_claw, :workspace_root, prev)
+      File.rm_rf(root)
+    end)
+
+    :ok
+  end
 
   # Full editor params for a role, built the same way the rendered form posts
   # them (indexed map, no embed ids — the handler's base matches positionally).
@@ -99,7 +112,7 @@ defmodule BusterClawWeb.CmdListLiveTest do
 
     # The staged row renders but nothing persists yet.
     assert has_element?(view, "#cmd-list-prompts_commands_#{new_index}_command")
-    assert Settings.get(TerminalCommands.settings_key()) == nil
+    refute File.exists?(TerminalCommands.catalog_path())
 
     # Fill it in and save.
     filled =
@@ -134,7 +147,7 @@ defmodule BusterClawWeb.CmdListLiveTest do
     render_submit(view, "save_role", %{"role_key" => "toolbox", "role" => forged})
 
     assert render(view) =~ "built-in commands cannot be deleted"
-    assert Settings.get(TerminalCommands.settings_key()) == nil
+    refute File.exists?(TerminalCommands.catalog_path())
   end
 
   test "a forged submit against a protected role is refused and audited", %{conn: conn} do
@@ -146,7 +159,7 @@ defmodule BusterClawWeb.CmdListLiveTest do
     })
 
     assert render(view) =~ "protected and cannot be edited"
-    assert Settings.get(TerminalCommands.settings_key()) == nil
+    refute File.exists?(TerminalCommands.catalog_path())
     assert TerminalCommands.startup_command("mailman") == "./buster-claw on-duty"
 
     assert Enum.any?(
@@ -162,7 +175,7 @@ defmodule BusterClawWeb.CmdListLiveTest do
     render_submit(view, "save_role", %{"role_key" => "toolbox", "role" => params})
 
     assert render(view) =~ "can&#39;t be blank"
-    assert Settings.get(TerminalCommands.settings_key()) == nil
+    refute File.exists?(TerminalCommands.catalog_path())
   end
 
   test "multiline text in a shell command is rejected", %{conn: conn} do
@@ -172,7 +185,7 @@ defmodule BusterClawWeb.CmdListLiveTest do
     render_submit(view, "save_role", %{"role_key" => "toolbox", "role" => params})
 
     assert render(view) =~ "must be a single line"
-    assert Settings.get(TerminalCommands.settings_key()) == nil
+    refute File.exists?(TerminalCommands.catalog_path())
   end
 
   test "reset role restores the shipped commands", %{conn: conn} do
@@ -198,17 +211,22 @@ defmodule BusterClawWeb.CmdListLiveTest do
     assert render(view) =~ "protected and cannot be edited"
   end
 
-  test "reset all deletes the user catalog entirely", %{conn: conn} do
+  test "reset all restores the shipped defaults", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/cmd-list")
 
     params = put_command(role_params("toolbox"), "0", "command", "./custom")
     render_submit(view, "save_role", %{"role_key" => "toolbox", "role" => params})
-    assert Settings.get(TerminalCommands.settings_key())
+    assert File.exists?(TerminalCommands.catalog_path())
+    assert render(view) =~ "./custom"
 
     render_click(view, "reset_all", %{})
 
-    assert Settings.get(TerminalCommands.settings_key()) == nil
     assert render(view) =~ "restored to the shipped defaults"
+    refute render(view) =~ "./custom"
+
+    assert TerminalCommands.role("toolbox").commands
+           |> Enum.find(&(&1.key == "commands-list"))
+           |> Map.get(:command) == "./buster-claw commands"
   end
 
   test "an open terminal refreshes its flyout when another session edits", %{conn: conn} do
