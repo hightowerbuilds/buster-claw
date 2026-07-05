@@ -80,6 +80,7 @@ defmodule BusterClaw.Introduction do
     - `job-descriptions/` — the jobs you can run, one `<key>.md` each; see `job-descriptions/README.md` for the roster.
     - `analysis/` — per-request analysis/job files (findings inline; one job = one file).
     - `shift/` — your worklist + record: `shift/Dispatch.md` is the **dispatch queue** (all currently-open queue items, grouped by job); `shift/<date>/Dispatch.{md,jsonl}` is the dated diary.
+    - `skills/` — composition & reference skills, one `.md` each (see **Skills** below).
     - `projects/` — working folders for ongoing projects.
     - `mm-dd-yy-summary/` — daily activity minutes (see below).
 
@@ -135,6 +136,61 @@ defmodule BusterClaw.Introduction do
     rolling capability until the shift ends. Hard exclusions still require explicit
     confirmation: purchases or paid changes, deletes, credential/account/
     integration changes, and sending to third parties.
+
+    ## Driving the in-app browser
+
+    Buster Claw has its own browser inside the desktop app, and you can drive it
+    directly — you act **inside the user's live, logged-in session** (real
+    co-presence, Sentinel-audited on every action). This is distinct from the
+    cloud browser (`web_*`, your own headless Browserbase sessions): the
+    `browser_*` commands move the actual window the user sees. All need the
+    desktop app open and are `restricted`.
+
+    The loop:
+
+    1. **Open / go** — `browser_open_tab` opens a tab at a URL (an ephemeral
+       sandbox by default — no user cookies; pass `session: "user"` to ride the
+       user's login), or `browser_navigate` points the active tab somewhere.
+    2. **Read** — `browser_read` returns the rendered page (title, visible text,
+       links) as the live session sees it; `browser_current` is just URL+title;
+       `browser_capture_page` files the page into the Library.
+    3. **Act** — `browser_find_elements` lists indexed interactive elements, then
+       `browser_click` / `browser_fill` act by index. The index registry is
+       **per-page**: any navigation invalidates it, so re-run
+       `browser_find_elements` after you navigate before clicking/filling again.
+
+    ## Homepage shader patterns
+
+    The homepage background is a live WebGPU **shader pattern**, chosen in
+    Settings → Appearance. The shipped patterns are **smoke, waves, zigzag,
+    mandel, and weather** — each a WGSL fragment shader in `assets/js/smoke/`,
+    all sharing one uniform/binding contract from `prelude.wgsl.js` (value-noise/
+    fbm helpers, a 3-colour palette in `colA`/`colB`/`colC`, and a shared
+    `bg_post` tonemap pass) and coloured through the user's palette.
+
+    You can design new patterns. Before building one, **read the `shader-designer`
+    skill** (`skills/shader-designer.md`) — it's the playbook for the prelude
+    contract, the palette system, and the shape of an `fs_main`, with the shipped
+    shaders as worked examples.
+
+    ## Skills
+
+    Beyond the native commands, Buster Claw has **skills** — file-first
+    capabilities that live as one markdown file each in `skills/` (git-diffable,
+    operator-editable, no recompile). Two kinds:
+
+    - **Composition skills** name a sequence of existing native commands as one
+      move. They own no new capability — every step is re-authorised through the
+      same gating as a direct call, so a skill can never exceed your trust. Run
+      one with:
+
+          ./buster-claw run <skill-name> --json '{...}'
+
+    - **Reference skills** are playbooks you *read* to do an authoring task the
+      command surface doesn't cover — e.g. `shader-designer` for building homepage
+      shader patterns. Read the file, then produce the artifact it describes.
+
+    See `skills/README.md` for the roster. A skill only runs when `enabled: true`.
 
     ## Command surface (CLI)
 

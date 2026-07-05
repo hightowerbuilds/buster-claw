@@ -81,6 +81,48 @@ defmodule BusterClaw.SkillsTest do
     assert :error = Skills.fetch("scripty")
   end
 
+  test "a reference skill loads with no steps; its body is the payload", %{root: root} do
+    write_skill(root, "shader-designer", """
+    ---
+    name: shader-designer
+    description: How to build a shader pattern.
+    tier: safe
+    enabled: true
+    handler_kind: reference
+    ---
+
+    # shader-designer
+
+    Read the prelude contract, then write an fs_main.
+    """)
+
+    # Inspected via load/1 (reference skills are read, not fetched-to-run).
+    assert {:ok, skill} = Skills.load("shader-designer")
+    assert skill.handler_kind == :reference
+    assert skill.steps == []
+    assert skill.body =~ "prelude contract"
+
+    # Discoverable via list/0...
+    assert Enum.any?(Skills.list(), &(&1.name == "shader-designer"))
+    # ...but NOT runnable: not fetchable-to-run and excluded from the command
+    # catalog, so `run` / Commands.call can't reach it.
+    assert :error = Skills.fetch("shader-designer")
+    refute Enum.any?(Commands.list_skills(), &(&1.name == "shader-designer"))
+    assert {:error, :unknown_command} = Commands.call("shader-designer", %{}, caller: :trusted)
+  end
+
+  test "a reference skill with an empty body is rejected", %{root: root} do
+    write_skill(root, "hollow", """
+    ---
+    name: hollow
+    enabled: true
+    handler_kind: reference
+    ---
+    """)
+
+    assert {:error, :empty_reference} = Skills.load("hollow")
+  end
+
   test "a skill exceeding max_steps is rejected", %{root: root} do
     steps = List.duplicate(%{"command" => "document_list"}, 21) |> Jason.encode!()
 
