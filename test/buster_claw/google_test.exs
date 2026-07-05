@@ -131,6 +131,66 @@ defmodule BusterClaw.GoogleTest do
       assert params["scope"] =~ "https://www.googleapis.com/auth/tasks"
     end
 
+    test "authorization URL carries a PKCE S256 challenge when given one" do
+      assert {:ok, account} =
+               Google.create_account(%{
+                 "email" => "me@example.com",
+                 "client_id" => "client-id",
+                 "client_secret" => "client-secret"
+               })
+
+      verifier = OAuth.generate_code_verifier()
+      challenge = OAuth.code_challenge(verifier)
+
+      url =
+        OAuth.authorization_url(
+          account,
+          "http://127.0.0.1:4000/google/oauth/callback",
+          "state",
+          code_challenge: challenge
+        )
+
+      params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      assert params["code_challenge"] == challenge
+      assert params["code_challenge_method"] == "S256"
+      # Verifier shape: URL-safe, unpadded, 43 chars (32 random bytes).
+      assert String.length(verifier) == 43
+      refute verifier =~ ~r/[+\/=]/
+      assert challenge == :sha256 |> :crypto.hash(verifier) |> Base.url_encode64(padding: false)
+    end
+
+    test "exchange_code sends the PKCE verifier when given one" do
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+        assert body =~ "code_verifier=the-verifier"
+
+        Req.Test.json(conn, %{
+          "access_token" => "access-token",
+          "expires_in" => 3600,
+          "refresh_token" => "refresh-token",
+          "token_type" => "Bearer"
+        })
+      end)
+
+      assert {:ok, account} =
+               Google.create_account(%{
+                 "email" => "me@example.com",
+                 "client_id" => "client-id",
+                 "client_secret" => "client-secret"
+               })
+
+      assert {:ok, _updated} =
+               OAuth.exchange_code(
+                 account,
+                 "callback-code",
+                 "http://127.0.0.1:4000/google/oauth/callback",
+                 code_verifier: "the-verifier",
+                 req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+               )
+    end
+
     test "exchanges a callback code and stores encrypted tokens" do
       Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
         {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -138,6 +198,8 @@ defmodule BusterClaw.GoogleTest do
         assert body =~ "grant_type=authorization_code"
         assert body =~ "code=callback-code"
         assert body =~ "client_id=client-id"
+        # No :code_verifier opt given — the form must not carry one.
+        refute body =~ "code_verifier"
 
         Req.Test.json(conn, %{
           "access_token" => "access-token",

@@ -189,3 +189,19 @@ if config_env() == :prod do
     check_origin: ["//127.0.0.1", "//localhost"],
     secret_key_base: secret_key_base
 end
+
+# Bundled Google OAuth client (one-click "Connect Google"). Env vars override
+# the compiled config in any environment; the config URL enables rotating the
+# client remotely (buster.mom/oauth-config.json) without shipping a build. A
+# Desktop-app client secret is non-confidential per Google's installed-app
+# flow — see BusterClaw.Google.BundledClient.
+if bundled_client_id = System.get_env("BUSTER_CLAW_GOOGLE_CLIENT_ID") do
+  config :buster_claw, :google_bundled_client, %{
+    client_id: bundled_client_id,
+    client_secret: System.get_env("BUSTER_CLAW_GOOGLE_CLIENT_SECRET")
+  }
+end
+
+if bundled_client_url = System.get_env("BUSTER_CLAW_GOOGLE_CLIENT_CONFIG_URL") do
+  config :buster_claw, :google_bundled_client_url, bundled_client_url
+end

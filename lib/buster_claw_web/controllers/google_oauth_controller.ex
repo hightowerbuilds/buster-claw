@@ -12,10 +12,36 @@ defmodule BusterClawWeb.GoogleOAuthController do
   end
 
   def callback(conn, %{"code" => code, "state" => state}) do
-    with {:ok, %{account_id: account_id, redirect_uri: redirect_uri}} <-
-           WebGoogleOAuth.verify_state(state),
-         {:ok, account} <- fetch_account(account_id),
-         {:ok, account} <- OAuth.exchange_code(account, code, redirect_uri) do
+    case WebGoogleOAuth.verify_state(state) do
+      {:ok, %{bundled: true} = state_data} ->
+        bundled_callback(conn, code, state_data)
+
+      {:ok, %{account_id: _} = state_data} ->
+        account_callback(conn, code, state_data)
+
+      {:ok, _other} ->
+        oauth_response(conn, "Google Workspace connection failed.", "Unrecognized state.")
+
+      {:error, reason} ->
+        oauth_response(
+          conn,
+          "Google Workspace connection failed.",
+          ErrorFormatter.format(reason)
+        )
+    end
+  end
+
+  def callback(conn, _params) do
+    oauth_response(conn, "Google Workspace connection failed.", "Missing authorization code.")
+  end
+
+  # BYO / reconnect path: the state token names an existing account.
+  defp account_callback(conn, code, %{account_id: account_id, redirect_uri: redirect_uri} = state) do
+    with {:ok, account} <- fetch_account(account_id),
+         {:ok, account} <-
+           OAuth.exchange_code(account, code, redirect_uri,
+             code_verifier: Map.get(state, :code_verifier)
+           ) do
       oauth_response(
         conn,
         "Google Workspace is connected.",
@@ -34,8 +60,62 @@ defmodule BusterClawWeb.GoogleOAuthController do
     end
   end
 
-  def callback(conn, _params) do
-    oauth_response(conn, "Google Workspace connection failed.", "Missing authorization code.")
+  # One-click bundled path: no account row exists yet. Exchange the code with
+  # the bundled client, learn the address from the Gmail profile, then upsert —
+  # a brand-new address creates the account; a known one gets fresh tokens and
+  # is moved onto the bundled client (the tokens were just minted by it, so the
+  # stored client pair must match for refresh to work).
+  defp bundled_callback(conn, code, %{redirect_uri: redirect_uri} = state) do
+    with {:ok, client} <- fetch_bundled_client(),
+         {:ok, attrs} <-
+           OAuth.exchange_code_raw(client.client_id, client.client_secret, code, redirect_uri,
+             code_verifier: Map.get(state, :code_verifier)
+           ),
+         {:ok, email} <- OAuth.fetch_profile_email(attrs["access_token"]),
+         {:ok, account} <-
+           Google.upsert_account(
+             attrs
+             |> Map.merge(%{
+               "email" => email,
+               "client_id" => client.client_id,
+               "client_secret" => client.client_secret,
+               "enabled" => true
+             })
+             |> Map.put_new("scopes", OAuth.default_scope_string())
+             |> Map.put_new("default_query", "newer_than:7d")
+           ) do
+      # Same courtesy as the Setup wizard's BYO path: trust the user's own
+      # address so an email to yourself produces a real Dispatch item.
+      trust_own_address(account)
+
+      oauth_response(
+        conn,
+        "Google Workspace is connected.",
+        "#{account.email} is ready in Buster Claw."
+      )
+    else
+      {:error, reason} ->
+        oauth_response(
+          conn,
+          "Google Workspace connection failed.",
+          ErrorFormatter.format(reason)
+        )
+    end
+  end
+
+  defp trust_own_address(%{email: email}) when is_binary(email) and email != "" do
+    BusterClaw.TrustedSenders.add_entry(email)
+  rescue
+    _ -> :ok
+  end
+
+  defp trust_own_address(_account), do: :ok
+
+  defp fetch_bundled_client do
+    case BusterClaw.Google.BundledClient.get() do
+      nil -> {:error, :bundled_client_unavailable}
+      client -> {:ok, client}
+    end
   end
 
   defp fetch_account(id) do

@@ -41,6 +41,10 @@ defmodule BusterClawWeb.SetupLive do
     # show it ready without the user doing anything.
     WorkspaceCLI.ensure()
 
+    # One-click connect creates the account from the OAuth callback (a plain
+    # controller request) — subscribe so this page reflects it live.
+    if connected?(socket), do: Google.subscribe()
+
     {:ok,
      socket
      |> assign(:page_title, "Set up Buster Claw")
@@ -50,12 +54,25 @@ defmodule BusterClawWeb.SetupLive do
      |> assign(:google_auth_url, nil)
      |> assign(:google_note, nil)
      |> assign(:google_default_query, @google_default_query)
+     |> assign(:bundled_available, BusterClaw.Google.BundledClient.available?())
      |> assign_status()
      |> load_workspace()
      |> load_tools()
      |> load_google_accounts()
      |> assign_google_form()}
   end
+
+  @impl true
+  def handle_info({:google_account_changed, _event, _account}, socket) do
+    {:noreply,
+     socket
+     |> load_google_accounts()
+     |> assign_google_form()
+     |> assign_status()}
+  end
+
+  # Ignore any unexpected message on the subscribed topic rather than crashing.
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- Step navigation ----------------------------------------------------
 
@@ -130,6 +147,37 @@ defmodule BusterClawWeb.SetupLive do
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, :google_form, to_form(changeset, as: :google_account))}
+  end
+
+  # One-click connect (bundled OAuth client): open the browser immediately;
+  # the account row is created by the callback once Google tells us the
+  # address, and the google_account_changed broadcast refreshes this view.
+  def handle_event("bundled_connect_google", _params, socket) do
+    case GoogleOAuth.bundled_authorization_url() do
+      {:ok, url} ->
+        note =
+          case SystemBrowser.open(url) do
+            {:ok, :opened} ->
+              "Continue in Google — pick your account and approve. You'll do this once."
+
+            {:error, reason} ->
+              "Could not open the browser automatically (#{ErrorFormatter.format(reason)}) — use Open Google sign-in below."
+          end
+
+        {:noreply,
+         socket
+         |> assign(:google_auth_url, url)
+         |> assign(:google_note, note)}
+
+      {:error, :bundled_client_unavailable} ->
+        {:noreply,
+         socket
+         |> assign(:bundled_available, false)
+         |> assign(
+           :google_note,
+           "One-click connect isn't available in this build — use the Advanced form with your own OAuth client."
+         )}
+    end
   end
 
   def handle_event("connect_google", %{"google_account" => params}, socket) do
@@ -313,34 +361,59 @@ defmodule BusterClawWeb.SetupLive do
               agent full access. Once it's done, emails from you are trusted automatically.
             </p>
 
-            <.form
-              for={@google_form}
-              id="setup-google-form"
-              phx-change="validate_google"
-              phx-submit="connect_google"
-              class="space-y-3"
+            <%!-- One-click connect via the bundled OAuth client: nothing to
+            type — the address is learned from the connection itself. --%>
+            <div :if={@bundled_available} class="space-y-2">
+              <button
+                type="button"
+                id="setup-bundled-connect"
+                phx-click="bundled_connect_google"
+                class={button_primary()}
+              >
+                Connect Google
+              </button>
+              <p class="text-sm text-base-content/60">
+                One click — pick your account in the browser and approve.
+              </p>
+            </div>
+
+            <details
+              id="setup-google-advanced"
+              open={!@bundled_available}
+              class={@bundled_available && "border-t-2 border-base-content/15 pt-4"}
             >
-              <.input
-                field={@google_form[:email]}
-                type="email"
-                label="Google email"
-                autocomplete="off"
-              />
-              <.input field={@google_form[:client_id]} label="OAuth client ID" autocomplete="off" />
-              <.input
-                field={@google_form[:client_secret]}
-                type="password"
-                label="OAuth client secret"
-                autocomplete="off"
-              />
-              <input
-                type="hidden"
-                name="google_account[scopes]"
-                value={GoogleOAuthCore.default_scope_string()}
-              />
-              <input type="hidden" name="google_account[default_query]" value={@google_default_query} />
-              <button type="submit" class={button_outline()}>Save Google account</button>
-            </.form>
+              <summary class="cursor-pointer text-sm font-semibold text-base-content/70">
+                Advanced: use your own OAuth app
+              </summary>
+              <.form
+                for={@google_form}
+                id="setup-google-form"
+                phx-change="validate_google"
+                phx-submit="connect_google"
+                class="mt-3 space-y-3"
+              >
+                <.input
+                  field={@google_form[:email]}
+                  type="email"
+                  label="Google email"
+                  autocomplete="off"
+                />
+                <.input field={@google_form[:client_id]} label="OAuth client ID" autocomplete="off" />
+                <.input
+                  field={@google_form[:client_secret]}
+                  type="password"
+                  label="OAuth client secret"
+                  autocomplete="off"
+                />
+                <input
+                  type="hidden"
+                  name="google_account[scopes]"
+                  value={GoogleOAuthCore.default_scope_string()}
+                />
+                <input type="hidden" name="google_account[default_query]" value={@google_default_query} />
+                <button type="submit" class={button_outline()}>Save Google account</button>
+              </.form>
+            </details>
 
             <div :if={@google_auth_url} class="space-y-2 border-t-2 border-base-content/15 pt-4">
               <button type="button" phx-click="open_google_sign_in" class={button_primary()}>

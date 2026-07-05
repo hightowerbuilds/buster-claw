@@ -24,7 +24,21 @@ defmodule BusterClaw.Google.OAuth do
   def default_scopes, do: @default_scopes
   def default_scope_string, do: Enum.join(@default_scopes, " ")
 
-  def authorization_url(%Account{} = account, redirect_uri, state) do
+  @doc "A fresh PKCE code verifier (43-char URL-safe random string)."
+  def generate_code_verifier do
+    32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+  end
+
+  @doc "The S256 code challenge for a PKCE verifier."
+  def code_challenge(verifier) when is_binary(verifier) do
+    :sha256 |> :crypto.hash(verifier) |> Base.url_encode64(padding: false)
+  end
+
+  # PKCE (`opts[:code_challenge]`) rides on top of the client secret rather
+  # than replacing it: Google's Desktop-app clients require the (per Google,
+  # non-confidential) secret at token exchange even with PKCE, and sending the
+  # challenge is harmless for BYO web-type clients.
+  def authorization_url(%Account{} = account, redirect_uri, state, opts \\ []) do
     scope = authorization_scope(account.scopes)
 
     params = %{
@@ -37,6 +51,18 @@ defmodule BusterClaw.Google.OAuth do
       "scope" => scope,
       "state" => state
     }
+
+    params =
+      case Keyword.get(opts, :code_challenge) do
+        nil ->
+          params
+
+        challenge ->
+          Map.merge(params, %{
+            "code_challenge" => challenge,
+            "code_challenge_method" => "S256"
+          })
+      end
 
     @authorize_endpoint <> "?" <> URI.encode_query(params)
   end
@@ -61,13 +87,95 @@ defmodule BusterClaw.Google.OAuth do
                code: code,
                grant_type: "authorization_code",
                redirect_uri: redirect_uri
-             ],
+             ]
+             |> maybe_put_verifier(opts),
              opts
            ),
          {:ok, attrs} <- token_attrs(body) do
       Google.update_account(account, attrs)
     end
   end
+
+  defp maybe_put_verifier(form, opts) do
+    case Keyword.get(opts, :code_verifier) do
+      verifier when is_binary(verifier) and verifier != "" ->
+        Keyword.put(form, :code_verifier, verifier)
+
+      _ ->
+        form
+    end
+  end
+
+  @doc """
+  Exchange an authorization code without a persisted account — the bundled
+  one-click connect path, where the `Account` row is only created *after* the
+  address is discovered. Returns `{:ok, attrs}` (the same map `exchange_code/4`
+  persists: access/refresh tokens, expiry, scopes) or an error tuple.
+  """
+  def exchange_code_raw(client_id, client_secret, code, redirect_uri, opts \\ []) do
+    with {:ok, body} <-
+           request_token(
+             [
+               client_id: client_id,
+               client_secret: client_secret,
+               code: code,
+               grant_type: "authorization_code",
+               redirect_uri: redirect_uri
+             ]
+             |> maybe_put_verifier(opts),
+             opts
+           ) do
+      token_attrs(body)
+    end
+  end
+
+  @gmail_profile_endpoint "https://gmail.googleapis.com/gmail/v1/users/me/profile"
+
+  @doc """
+  Discover the connected address from a raw access token via the Gmail profile
+  endpoint — already covered by the `mail.google.com` scope, so one-click
+  connect needs no extra openid/userinfo scopes on the consent screen.
+  Returns `{:ok, email}` or an error tuple.
+  """
+  def fetch_profile_email(access_token, opts \\ []) do
+    req_options =
+      []
+      |> Keyword.merge(Application.get_env(:buster_claw, :google_req_options, []))
+      |> Keyword.merge(Keyword.get(opts, :req_options, []))
+
+    request_options =
+      [
+        url: @gmail_profile_endpoint,
+        auth: {:bearer, access_token},
+        headers: [{"accept", "application/json"}],
+        receive_timeout: 10_000,
+        retry: false
+      ]
+      |> Keyword.merge(req_options)
+
+    case Req.get(request_options) do
+      {:ok, %{status: status, body: body}} when status in 200..299 ->
+        case body |> decode_body() |> profile_email() do
+          nil -> {:error, {:bad_profile_response, decode_body(body)}}
+          email -> {:ok, email}
+        end
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, {:google_api_error, status, decode_body(body)}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp profile_email(%{} = body) do
+    case get_value(body, "emailAddress") do
+      email when is_binary(email) and email != "" -> email
+      _ -> nil
+    end
+  end
+
+  defp profile_email(_body), do: nil
 
   def refresh_access_token(%Account{} = account, opts \\ []) do
     with {:ok, client_secret} <- required_secret(account),

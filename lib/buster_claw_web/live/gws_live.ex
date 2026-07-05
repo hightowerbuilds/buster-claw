@@ -16,6 +16,7 @@ defmodule BusterClawWeb.GWSLive do
     {:ok,
      socket
      |> assign(:page_title, "GWS")
+     |> assign(:bundled_available, BusterClaw.Google.BundledClient.available?())
      |> assign(:auth_url, nil)
      |> assign(:result, nil)
      |> assign(:gmail_labels, [])
@@ -45,6 +46,34 @@ defmodule BusterClawWeb.GWSLive do
      socket
      |> assign(:auth_url, GoogleOAuth.authorization_url(account))
      |> assign(:result, "Continue in Google to reconnect #{account.email}.")}
+  end
+
+  # One-click connect via the bundled OAuth client: opens the system browser
+  # straight away (the whole point is a single click); the auth_url is still
+  # assigned so the manual-URL fallback renders if the browser didn't open.
+  def handle_event("bundled_connect", _params, socket) do
+    case GoogleOAuth.bundled_authorization_url() do
+      {:ok, url} ->
+        result =
+          case SystemBrowser.open(url) do
+            {:ok, :opened} ->
+              "Continue in Google — pick your account and approve."
+
+            {:error, reason} ->
+              "Could not open the browser automatically (#{ErrorFormatter.format(reason)}) — use the manual URL below."
+          end
+
+        {:noreply, socket |> assign(:auth_url, url) |> assign(:result, result)}
+
+      {:error, :bundled_client_unavailable} ->
+        {:noreply,
+         socket
+         |> assign(:bundled_available, false)
+         |> assign(
+           :result,
+           "One-click connect isn't available in this build — use Advanced setup to add an account with your own OAuth client."
+         )}
+    end
   end
 
   def handle_event("open_google_sign_in", _params, socket) do
@@ -181,12 +210,27 @@ defmodule BusterClawWeb.GWSLive do
       <section class="space-y-6">
         <BusterClawWeb.SettingsTabs.tabs active={:gws} />
 
-        <div>
-          <.link
-            navigate={~p"/"}
+        <div class="flex flex-wrap items-center gap-3">
+          <button
+            :if={@bundled_available}
+            type="button"
+            id="gws-bundled-connect"
+            phx-click="bundled_connect"
             class="inline-block rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85"
           >
-            Connect Account
+            Connect Google
+          </button>
+          <.link
+            navigate={~p"/setup"}
+            class={[
+              "inline-block rounded px-4 py-2 text-sm font-semibold transition",
+              if(@bundled_available,
+                do: "border border-base-300 text-base-content/70 hover:text-base-content",
+                else: "bg-base-content text-base-100 hover:opacity-85"
+              )
+            ]}
+          >
+            {if @bundled_available, do: "Advanced setup", else: "Connect Account"}
           </.link>
         </div>
 

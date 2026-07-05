@@ -102,3 +102,12 @@ config :buster_claw, :mcp_api_token, "dev-mcp-token-safe-tier-only"
 # by the Dispatcher to a headless run working untrusted-origin content (refused
 # the gated outbound/irreversible commands).
 config :buster_claw, :agent_api_token, "dev-agent-token-untrusted-provenance"
+
+# Bundled Google OAuth client placeholder — makes the one-click "Connect
+# Google" surfaces render in dev. Clicking through fails at Google's door
+# (invalid_client) until real Desktop-app credentials exist; set
+# BUSTER_CLAW_GOOGLE_CLIENT_ID/_SECRET (runtime.exs) to test end-to-end.
+config :buster_claw, :google_bundled_client, %{
+  client_id: "dev-placeholder.apps.googleusercontent.com",
+  client_secret: "dev-placeholder-not-a-real-secret"
+}
