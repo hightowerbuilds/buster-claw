@@ -89,18 +89,21 @@ defmodule BusterClawWeb.CmdListLiveTest do
   test "adding a command stages a row, saving persists it, deleting removes it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/cmd-list")
 
-    # Stage a new row via the sort param (the Add command checkbox).
+    # Stage a new row via the sort param (the Add command checkbox). The new
+    # row appends after the existing built-in prompts, so its index is the
+    # current command count.
     params = role_params("prompts")
+    new_index = to_string(map_size(params["commands"]))
     staged = Map.put(params, "commands_sort", Map.keys(params["commands"]) ++ ["new"])
     render_change(view, "validate", %{"role_key" => "prompts", "role" => staged})
 
     # The staged row renders but nothing persists yet.
-    assert has_element?(view, "#cmd-list-prompts_commands_2_command")
+    assert has_element?(view, "#cmd-list-prompts_commands_#{new_index}_command")
     assert Settings.get(TerminalCommands.settings_key()) == nil
 
     # Fill it in and save.
     filled =
-      put_in(params, ["commands", "2"], %{
+      put_in(params, ["commands", new_index], %{
         "key" => "",
         "label" => "Mine",
         "command" => "say hello",
@@ -116,7 +119,7 @@ defmodule BusterClawWeb.CmdListLiveTest do
 
     # Delete it again via the drop param, keyed to the merged row.
     params = role_params("prompts")
-    dropped = Map.put(params, "commands_drop", ["2"])
+    dropped = Map.put(params, "commands_drop", [new_index])
     render_submit(view, "save_role", %{"role_key" => "prompts", "role" => dropped})
 
     prompts = TerminalCommands.roles() |> Enum.find(&(&1.key == "prompts"))

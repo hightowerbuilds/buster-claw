@@ -152,21 +152,31 @@ defmodule BusterClaw.TerminalCommands do
           default?: true
         },
         %{
-          key: "skills-methodology",
-          label: "Skills — Full Walkthrough",
+          key: "skill-save-note",
+          label: "Skill — Save Note",
           description:
-            "Have the agent explain composition skills end to end: what they are, how to list/run/author them, the enable gate, the trust model, and the self-improving loop.",
+            "Run the save-note composition skill: capture a title + body into the Library as a document.",
           kind: :prompt,
           command:
-            "Walk me through the Buster Claw skills methodology in full. First read skills/README.md and the introduction, then explain: " <>
-              "(1) WHAT a composition skill is — one markdown file at skills/<name>.md whose `steps` are an ordered list of existing native commands, so it adds new *sequencing*, never new capability. " <>
-              "(2) DISCOVER — `./buster-claw commands` lists skills tagged [skill] alongside native commands; they are read live from disk, so a new one shows up with no restart. " <>
-              "(3) RUN — `./buster-claw run <name> --json '{...}'`, where `$arg` fills a skill input and `$prior` threads the previous step's result into the next. " <>
-              "(4) AUTHOR — drop a .md file with frontmatter (name = filename stem, description, tier: safe|restricted, enabled, handler_kind: composition, args, and steps as a JSON array of {\"command\",\"args\"}); it goes live the moment the file lands. " <>
-              "(5) ENABLE GATE — `enabled: false` by default, so a skill stays staged-but-inert until I explicitly set it true. " <>
-              "(6) TRUST MODEL — a skill can never exceed the trust of whoever invoked it, and every step is re-checked against the same tier/gating as a direct command call, all recorded on the Sentinel audit feed. " <>
-              "(7) SELF-IMPROVING LOOP — `skill_analyze` proposes a skill from repeated command sequences, `skill_suggestions` lists pending proposals, and `skill_suggestion_approve`/`skill_suggestion_reject` decide (never auto-enabled). " <>
-              "Finish by showing me the bundled `save-note` skill as a worked example and how I'd add one of my own."
+            "Use the save-note skill to capture a note into my Library. First read " <>
+              "skills/save-note.md to confirm its inputs and that it's enabled, then ask me for " <>
+              "the note's title and body if I haven't given them, and run it with " <>
+              "`./buster-claw run save-note --json '{\"title\":\"…\",\"body\":\"…\"}'`. " <>
+              "Confirm the saved document back to me."
+        },
+        %{
+          key: "skill-shader-designer",
+          label: "Skill — Shader Designer",
+          description:
+            "Read the shader-designer reference skill and author a new homepage WGSL shader pattern.",
+          kind: :prompt,
+          command:
+            "Read the shader-designer skill (skills/shader-designer.md) in full, then design and " <>
+              "author a new homepage WebGPU background pattern for me. Propose a concept first, " <>
+              "then write ONE shaders/<name>.wgsl file containing only your helper functions plus " <>
+              "an `fs_main` entry point that honors the shared prelude, the uniform contract, and " <>
+              "the colA/colB/colC palette. It becomes selectable in Settings → Appearance the " <>
+              "moment the file lands — tell me the name to pick."
         }
       ]
     }
