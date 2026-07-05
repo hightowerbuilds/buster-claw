@@ -1,5 +1,17 @@
 # Terminal cmd-list Editor Roadmap
 
+> **Status (2026-07-05): COMPLETE.** Phases 0, 1, and 1.5 all shipped in
+> `ff34aa4` (editable cmd-list Settings sub-tab). Phase 2 (user-authored role
+> groups) was never in the initial cut and stays deferred until someone asks —
+> the persisted shape already supports it. The "Outstanding" checklist below is
+> the pre-implementation snapshot from 07-04 and is now historical. All five
+> "Decisions needed from Luke" were resolved in the build: built-in
+> non-protected commands are editable-but-not-deletable; prompts use a textarea
+> + a shell/prompt kind selector; audit severity is `:notice`, escalating to
+> `:warning` when a command string changes; reset is per-role + a top-level
+> "Reset all"; `reset_role` drops the user's commands and restores defaults.
+> 47 targeted tests green.
+
 *2026-07-04. Governing principle: **the terminal's command cheatsheet is
 user-editable in the Settings tab, but the On Duty command strings are
 immutable — the shift/orchestrator safety surface is not a user preference.**
