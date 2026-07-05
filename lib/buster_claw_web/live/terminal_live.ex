@@ -193,7 +193,7 @@ defmodule BusterClawWeb.TerminalLive do
       phx-click-away="close_terminal_commands"
       phx-window-keydown="close_terminal_commands"
       phx-key="escape"
-      class="absolute right-3 top-14 z-50 w-[min(25rem,calc(100%-1.5rem))] overflow-hidden rounded-sm border-2 border-base-content/25 bg-base-100 text-base-content shadow-[6px_6px_0_0_color-mix(in_oklab,black_35%,transparent)]"
+      class="absolute right-3 top-14 z-50 w-[min(34rem,calc(100%-1.5rem))] overflow-hidden rounded-sm border-2 border-base-content/25 bg-base-100 text-base-content shadow-[6px_6px_0_0_color-mix(in_oklab,black_35%,transparent)]"
     >
       <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-4 py-3">
         <div>
