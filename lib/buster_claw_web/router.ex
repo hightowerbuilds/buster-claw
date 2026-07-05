@@ -60,6 +60,13 @@ defmodule BusterClawWeb.Router do
     get "/file", WorkspaceFileController, :show
   end
 
+  # Raw WGSL for a custom homepage shader, fetched by the SmokeBackground hook and
+  # compiled live in the webview. No pipeline; name guarded by Shaders.read/1;
+  # loopback-only.
+  scope "/shaders", BusterClawWeb do
+    get "/:name", ShaderController, :show
+  end
+
   # Native chrome (toolbar) for the embedded browser's `browser-chrome` webview.
   # Raw HTML; loopback-only; drives the sibling content webview via Tauri commands.
   scope "/browser", BusterClawWeb do

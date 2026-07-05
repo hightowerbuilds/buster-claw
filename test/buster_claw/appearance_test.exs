@@ -16,7 +16,7 @@ defmodule BusterClaw.AppearanceTest do
       File.rm_rf(root)
     end)
 
-    :ok
+    {:ok, root: root}
   end
 
   defp fake_image(ext \\ ".png") do
@@ -101,5 +101,54 @@ defmodule BusterClaw.AppearanceTest do
     # Point the slot at it via a `..` path; the containment guard must reject it.
     BusterClaw.Settings.put("terminal_background_1_path", "appearance/../outside.png")
     assert Appearance.slot_image(1) == nil
+  end
+
+  # --- custom (runtime-loaded) homepage shaders --------------------------
+
+  defp write_custom_shader(root, name) do
+    dir = Path.join(root, "shaders")
+    File.mkdir_p!(dir)
+
+    File.write!(
+      Path.join(dir, name <> ".wgsl"),
+      "@fragment\nfn fs_main(in: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0); }\n"
+    )
+  end
+
+  test "a custom workspace shader is selectable and reflected in the state", %{root: root} do
+    write_custom_shader(root, "aurora")
+
+    assert "aurora" in Appearance.custom_shaders()
+    assert {:ok, "aurora"} = Appearance.set_home_background_mode("aurora")
+
+    state = Appearance.home_background_state()
+    assert state.mode == "aurora"
+    assert state.custom_shader
+    assert state.source_url == "/shaders/aurora"
+  end
+
+  test "a built-in shader carries no custom_shader/source_url", %{root: _root} do
+    assert {:ok, "waves"} = Appearance.set_home_background_mode("waves")
+    state = Appearance.home_background_state()
+    assert state.mode == "waves"
+    refute state.custom_shader
+    assert state.source_url == nil
+  end
+
+  test "a deleted custom shader mode falls back to the default", %{root: root} do
+    write_custom_shader(root, "aurora")
+    assert {:ok, "aurora"} = Appearance.set_home_background_mode("aurora")
+
+    File.rm!(Path.join([root, "shaders", "aurora.wgsl"]))
+    assert Appearance.home_background_state().mode == "smoke"
+  end
+
+  test "set_home_background_mode refuses a non-existent shader name", %{root: _root} do
+    assert {:error, :invalid_mode} = Appearance.set_home_background_mode("does-not-exist")
+  end
+
+  test "a custom shader named like a built-in is shadowed by the built-in", %{root: root} do
+    write_custom_shader(root, "smoke")
+    refute "smoke" in Appearance.custom_shaders()
   end
 end

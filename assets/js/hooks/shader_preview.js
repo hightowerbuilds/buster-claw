@@ -2,7 +2,7 @@
 // The container is keyed by shader + custom (so switching either remounts it),
 // and while custom is on it reads the color <input> values every frame — so
 // dragging a picker updates the preview instantly, no server round-trip.
-import {createSmoke, SmokeGpuError} from "../smoke/smoke.js"
+import {createSmoke, SmokeGpuError, fetchShaderSource} from "../smoke/smoke.js"
 import {packUniforms, NEUTRAL_EXPRESSION} from "../smoke/params.js"
 import {SHADER_PALETTES, colorsForUniform} from "../smoke/palettes.js"
 
@@ -29,8 +29,19 @@ export const ShaderPreview = {
   },
 
   async boot() {
+    let source = null
+    const sourceUrl = this.el.getAttribute("data-shader-source")
+    if (sourceUrl) {
+      source = await fetchShaderSource(sourceUrl)
+      if (this.destroyed_) return
+      if (source == null) {
+        this.el.setAttribute("data-preview", "unavailable:shader-fetch-failed")
+        return
+      }
+    }
+
     try {
-      this.smoke = await createSmoke(this.canvas, {shader: this.shader})
+      this.smoke = await createSmoke(this.canvas, {shader: this.shader, source})
     } catch (e) {
       const reason = e instanceof SmokeGpuError ? e.reason : e.message
       this.el.setAttribute("data-preview", "unavailable:" + reason)

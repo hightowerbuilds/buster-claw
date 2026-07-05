@@ -13,6 +13,7 @@
 // If WebGPU is unavailable this throws SmokeGpuError with the probe reason and
 // the caller simply drops the canvas — the chat above it is unaffected.
 import {SHADERS, DEFAULT_SHADER} from "./shaders.js"
+import {WGSL_PRELUDE} from "./prelude.wgsl.js"
 import {UNIFORM_FLOATS} from "./params.js"
 
 export class SmokeGpuError extends Error {
@@ -22,9 +23,25 @@ export class SmokeGpuError extends Error {
   }
 }
 
+// Fetch a custom shader's raw WGSL body (served at /shaders/<name>). Returns the
+// text, or null on any network/HTTP failure so the caller can fall back cleanly.
+export async function fetchShaderSource(url) {
+  try {
+    const res = await fetch(url, {cache: "no-store"})
+    if (!res.ok) return null
+    return await res.text()
+  } catch (_e) {
+    return null
+  }
+}
+
+// `shader` selects a bundled built-in by name; `source` (optional) is a raw WGSL
+// fs_main body for a custom pattern — the bundled prelude is prepended and the
+// result compiled live, so a custom shader needs no rebuild. A bad `source`
+// throws SmokeGpuError from the compile check (same path as a built-in).
 export async function createSmoke(
   canvas,
-  {contentWidth = 2, contentHeight = 2, shader = DEFAULT_SHADER} = {}
+  {contentWidth = 2, contentHeight = 2, shader = DEFAULT_SHADER, source = null} = {}
 ) {
   if (!navigator.gpu) throw new SmokeGpuError("navigator.gpu absent")
   let adapter
@@ -44,7 +61,7 @@ export async function createSmoke(
   const configure = () => ctx.configure({device, format, alphaMode: "opaque"})
   configure()
 
-  const code = SHADERS[shader] || SHADERS[DEFAULT_SHADER]
+  const code = source ? WGSL_PRELUDE + source : SHADERS[shader] || SHADERS[DEFAULT_SHADER]
   const module = device.createShaderModule({code})
   const info = await module.getCompilationInfo()
   const fatal = info.messages.filter((m) => m.type === "error")

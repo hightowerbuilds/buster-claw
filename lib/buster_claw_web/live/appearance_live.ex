@@ -394,6 +394,7 @@ defmodule BusterClawWeb.AppearanceLive do
               phx-hook="ShaderPreview"
               phx-update="ignore"
               data-shader={@home_bg.mode}
+              data-shader-source={@home_bg.source_url}
               data-custom={to_string(@home_bg.custom)}
               class="h-28 w-44 shrink-0 overflow-hidden rounded-lg border-2 border-base-content/20"
               aria-label="Shader preview"
@@ -525,12 +526,26 @@ defmodule BusterClawWeb.AppearanceLive do
     "mandel" => "Mandelbrot",
     "weather" => "Weather"
   }
-  defp home_shader_options,
-    do:
+  # Built-in shaders (fixed labels) followed by any custom workspace shaders
+  # (`shaders/*.wgsl`), labelled from their file name.
+  defp home_shader_options do
+    builtin =
       Enum.map(
         Appearance.home_shaders(),
         &%{key: &1, label: Map.get(@home_shader_labels, &1, &1)}
       )
+
+    custom = Enum.map(Appearance.custom_shaders(), &%{key: &1, label: humanize_shader(&1)})
+
+    builtin ++ custom
+  end
+
+  defp humanize_shader(name) do
+    name
+    |> String.replace("-", " ")
+    |> String.split(" ", trim: true)
+    |> Enum.map_join(" ", &String.capitalize/1)
+  end
 
   defp assign_home_bg(socket), do: assign(socket, :home_bg, Appearance.home_background_state())
 

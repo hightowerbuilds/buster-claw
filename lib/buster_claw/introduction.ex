@@ -163,15 +163,17 @@ defmodule BusterClaw.Introduction do
 
     The homepage background is a live WebGPU **shader pattern**, chosen in
     Settings → Appearance. The shipped patterns are **smoke, waves, zigzag,
-    mandel, and weather** — each a WGSL fragment shader in `assets/js/smoke/`,
-    all sharing one uniform/binding contract from `prelude.wgsl.js` (value-noise/
+    mandel, and weather**, all sharing one uniform/binding contract (value-noise/
     fbm helpers, a 3-colour palette in `colA`/`colB`/`colC`, and a shared
     `bg_post` tonemap pass) and coloured through the user's palette.
 
-    You can design new patterns. Before building one, **read the `shader-designer`
+    **You can add new patterns at runtime.** Write one WGSL file at
+    `shaders/<name>.wgsl` in this workspace — just the fragment entry point
+    `fs_main` (the shared prelude is prepended automatically) — and it becomes
+    selectable in Settings → Appearance immediately, no rebuild. It renders only
+    when the user selects it. Before authoring one, **read the `shader-designer`
     skill** (`skills/shader-designer.md`) — it's the playbook for the prelude
-    contract, the palette system, and the shape of an `fs_main`, with the shipped
-    shaders as worked examples.
+    contract, the palette system, and the shape of an `fs_main`.
 
     ## Skills
 

@@ -17,6 +17,7 @@ defmodule BusterClaw.Appearance do
 
   alias BusterClaw.Library.Artifact
   alias BusterClaw.Settings
+  alias BusterClaw.Shaders
 
   @max_slots 5
   @active_key "terminal_background_active"
@@ -194,33 +195,52 @@ defmodule BusterClaw.Appearance do
   @doc "PubSub topic broadcast when the homepage background changes."
   def home_topic, do: @home_topic
 
-  @doc "The shader design names selectable for the homepage."
+  @doc "The built-in shader design names selectable for the homepage."
   def home_shaders, do: @home_shaders
 
   @doc """
-  Current homepage background as `%{mode: mode, image_url: url | nil}`. `mode` is
-  a shader name (`\"smoke\"` default) or `\"image\"`; falls back to the default if a
-  saved `\"image\"` mode has no image on disk.
+  Names of valid custom shader patterns (workspace `shaders/*.wgsl`), excluding
+  any that collide with a built-in name (the built-in wins).
+  """
+  def custom_shaders, do: Enum.reject(Shaders.list(), &(&1 in @home_shaders))
+
+  @doc """
+  Current homepage background as
+  `%{mode, image_url, custom, colors, custom_shader, source_url}`.
+
+  `mode` is a built-in shader name (`\"smoke\"` default), a **custom** shader name,
+  or `\"image\"`; it falls back to the default if the saved mode is stale (a
+  removed shader, or `\"image\"` with no image on disk). `custom_shader` is true
+  when `mode` is a workspace shader, and `source_url` (`/shaders/<name>`) tells
+  the hook where to fetch its WGSL — `nil` for built-ins/image.
   """
   def home_background_state do
     url = home_background_image_url()
 
-    # Resolve to a known shader, "image" (only with an image), else the default —
-    # so a removed/stale mode (e.g. a retired shader) falls back gracefully.
     mode =
-      case home_background_mode() do
-        "image" when not is_nil(url) -> "image"
-        m when m in @home_shaders -> m
-        _ -> @home_default_mode
+      cond do
+        home_background_mode() == "image" and not is_nil(url) -> "image"
+        home_background_mode() in @home_shaders -> home_background_mode()
+        custom_shader_mode?(home_background_mode()) -> home_background_mode()
+        true -> @home_default_mode
       end
 
     %{
       mode: mode,
       image_url: url,
       custom: home_background_custom?(),
-      colors: home_background_colors()
+      colors: home_background_colors(),
+      custom_shader: custom_shader_mode?(mode),
+      source_url: if(custom_shader_mode?(mode), do: "/shaders/#{mode}", else: nil)
     }
   end
+
+  # A mode is a custom shader when it's neither "image" nor a built-in and a valid
+  # workspace shader file of that name exists.
+  defp custom_shader_mode?("image"), do: false
+  defp custom_shader_mode?(mode) when mode in @home_shaders, do: false
+  defp custom_shader_mode?(mode) when is_binary(mode), do: Shaders.exists?(mode)
+  defp custom_shader_mode?(_mode), do: false
 
   @doc "Whether custom palette colors override the shader's built-in defaults."
   def home_background_custom?, do: Settings.get(@home_custom_key, "false") == "true"
@@ -281,6 +301,16 @@ defmodule BusterClaw.Appearance do
     Settings.put(@home_mode_key, mode)
     broadcast_home()
     {:ok, mode}
+  end
+
+  def set_home_background_mode(mode) when is_binary(mode) do
+    if Shaders.exists?(mode) do
+      Settings.put(@home_mode_key, mode)
+      broadcast_home()
+      {:ok, mode}
+    else
+      {:error, :invalid_mode}
+    end
   end
 
   def set_home_background_mode(_), do: {:error, :invalid_mode}

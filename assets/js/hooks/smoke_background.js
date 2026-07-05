@@ -3,7 +3,7 @@
 // old Humo surface loop, minus everything that made the smoke a reading
 // surface). If WebGPU is unavailable the canvas simply stays blank; the chat
 // over it is unaffected.
-import {createSmoke, SmokeGpuError} from "../smoke/smoke.js"
+import {createSmoke, SmokeGpuError, fetchShaderSource} from "../smoke/smoke.js"
 import {packUniforms, NEUTRAL_EXPRESSION} from "../smoke/params.js"
 import {SHADER_PALETTES, colorsForUniform} from "../smoke/palettes.js"
 
@@ -65,8 +65,21 @@ export const SmokeBackground = {
   },
 
   async boot() {
+    // Custom shader (data-shader-source): fetch its raw WGSL and let createSmoke
+    // prepend the prelude + compile it live. Built-ins have no source URL.
+    let source = null
+    const sourceUrl = this.el.getAttribute("data-shader-source")
+    if (sourceUrl) {
+      source = await fetchShaderSource(sourceUrl)
+      if (this.destroyed_) return
+      if (source == null) {
+        this.el.setAttribute("data-smoke", "unavailable:shader-fetch-failed")
+        return
+      }
+    }
+
     try {
-      this.smoke = await createSmoke(this.canvas, {shader: this.shader})
+      this.smoke = await createSmoke(this.canvas, {shader: this.shader, source})
     } catch (e) {
       const reason = e instanceof SmokeGpuError ? e.reason : e.message
       this.el.setAttribute("data-smoke", "unavailable:" + reason)

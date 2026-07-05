@@ -472,6 +472,7 @@ defmodule BusterClawWeb.StatusLive do
           phx-hook="SmokeBackground"
           phx-update="ignore"
           data-shader={@home_bg.mode}
+          data-shader-source={@home_bg.source_url}
           data-custom={to_string(@home_bg.custom)}
           data-colors={Enum.join(@home_bg.colors, ",")}
           class="ic-home-bg"

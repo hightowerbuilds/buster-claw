@@ -57,6 +57,7 @@ defmodule BusterClaw.Jobs do
     seed_trusted_senders()
     seed_agent_settings()
     BusterClaw.Skills.ensure()
+    BusterClaw.Shaders.ensure()
     :ok
   rescue
     error ->
