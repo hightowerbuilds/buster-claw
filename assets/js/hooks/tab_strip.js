@@ -72,7 +72,7 @@ export const TabStrip = {
       if (tabs.length < 2) return
       const i = tabs.findIndex((t) => t.path === this.currentKey())
       const n = action === "next_tab" ? (i + 1) % tabs.length : (i - 1 + tabs.length) % tabs.length
-      window.location.href = tabs[n].path
+      window.location.href = this.navTarget(tabs[n])
       return
     }
     const m = /^tab_([1-9])$/.exec(action)
@@ -107,11 +107,30 @@ export const TabStrip = {
       return !group || group === t.path
     })
     let changed = pruned.length !== tabs.length
-    if (!pruned.some((t) => t.path === key)) {
-      pruned.push({path: key, label: this.labelFor(key)})
+    // For a collapsed group (e.g. Settings), remember the actual sub-route so
+    // returning to the tab reopens where you left off — not the group's
+    // canonical default. The tab stays keyed by the group path (one tab, one
+    // highlight); `href` only steers navigation.
+    const subRoute =
+      canonicalGroupKey(window.location.pathname) &&
+      window.location.pathname + window.location.search
+    const existing = pruned.find((t) => t.path === key)
+    if (!existing) {
+      const tab = {path: key, label: this.labelFor(key)}
+      if (subRoute) tab.href = subRoute
+      pruned.push(tab)
+      changed = true
+    } else if (subRoute && existing.href !== subRoute) {
+      existing.href = subRoute
       changed = true
     }
     if (changed) this.save(pruned)
+  },
+  // Where a tab navigates when activated. Usually its own path; for a collapsed
+  // group tab it's the remembered last sub-route (`href`), so Settings reopens
+  // on the sub-tab you were last on rather than the canonical default.
+  navTarget(tab) {
+    return (tab && tab.href) || (tab && tab.path)
   },
   // A loaded page tells us its title/url; reflect both on the current tab so
   // it shows the page title (not "Browse") and can carry the url into a split.
@@ -169,8 +188,9 @@ export const TabStrip = {
         `autocomplete="off" spellcheck="false" ` +
         `class="w-32 max-w-[12rem] bg-transparent text-sm outline-none" /></span>`
     }
+    const href = escapeHtml(this.navTarget(tab))
     return `<span class="${wrap}" data-path="${path}" draggable="true">` +
-      `<a href="${path}" draggable="false" data-phx-link="redirect" data-phx-link-state="push" class="max-w-[12rem] truncate">${label}</a>` +
+      `<a href="${href}" draggable="false" data-phx-link="redirect" data-phx-link-state="push" class="max-w-[12rem] truncate">${label}</a>` +
       `<button type="button" data-close="${path}" aria-label="Close ${label}" ` +
       `class="grid size-4 shrink-0 place-items-center rounded text-base-content/40 hover:bg-base-300 hover:text-base-content">&times;</button>` +
       `</span>`
@@ -547,7 +567,7 @@ export const TabStrip = {
     this.save(tabs)
     if (path === this.currentKey()) {
       const next = tabs[idx] || tabs[idx - 1]
-      teardown.finally(() => (window.location.href = next ? next.path : "/"))
+      teardown.finally(() => (window.location.href = next ? this.navTarget(next) : "/"))
     } else {
       this.render()
     }
@@ -575,7 +595,7 @@ export const TabStrip = {
   activateTabAt(n) {
     const tabs = this.load()
     const tab = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1]
-    if (tab) window.location.href = tab.path
+    if (tab) window.location.href = this.navTarget(tab)
   },
   // ⌘W only ever closes the active tab. Closing the last remaining tab navigates
   // to "/" (which re-seeds the strip with a fresh home tab on the next page

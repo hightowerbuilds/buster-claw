@@ -2,14 +2,24 @@
 // helpers shared by the TabStrip, SplitResizer, and TerminalView hooks.
 
 // The Settings section presents several routes behind one in-page tab bar
-// (Appearance, GWS, Integrations, Configuration, Security). In the top
-// browser-style tab strip those routes collapse into a single "Settings" tab
-// keyed by the group's canonical path, so traversing the sub-tabs only moves the
-// in-page highlight — it never spawns new top-level tabs.
+// (Get Started, Appearance, Voice, Integrations, Configuration, cmd-list,
+// Security). In the top browser-style tab strip those routes collapse into a
+// single "Settings" tab keyed by the group's canonical path, so traversing the
+// sub-tabs only moves the in-page highlight — it never spawns new top-level
+// tabs. The strip remembers the last sub-route visited (see the TabStrip hook's
+// `sync`) so returning to the Settings tab reopens where you left off.
 const TAB_GROUPS = [
   {
     key: "/settings",
-    paths: new Set(["/settings", "/appearance", "/gws", "/integrations", "/security", "/get-started", "/voice"])
+    paths: new Set([
+      "/settings",
+      "/appearance",
+      "/voice",
+      "/integrations",
+      "/security",
+      "/get-started",
+      "/cmd-list"
+    ])
   }
 ]
 
