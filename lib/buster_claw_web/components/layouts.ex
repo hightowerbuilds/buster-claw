@@ -55,7 +55,6 @@ defmodule BusterClawWeb.Layouts do
                 %{
                   "/integrations" => "Integrations",
                   "/security" => "Security",
-                  "/gws" => "GWS",
                   "/settings" => "Settings",
                   "/appearance" => "Settings",
                   "/workspace" => "Workspace",

@@ -53,7 +53,8 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(phx-hook="AgentChat")
     assert response =~ "Talk to Buster Claw"
     refute response =~ ~s(id="home-shift-management")
-    # The Connect-GWS panel was removed from the home page; GWS lives at /gws + /setup.
+    # The Connect-GWS panel was removed from the home page; GWS lives on the
+    # Configuration tab (/settings) + /setup.
     refute response =~ ~s(id="home-google-workspace-login")
     refute response =~ ~s(id="home-recent-emails")
     # Advanced was retired; its surviving feature (Integrations) lives under Settings.

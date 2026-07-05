@@ -1,7 +1,8 @@
 defmodule BusterClawWeb.GwsPanels do
   @moduledoc """
-  Presentation components for the Google Workspace page (`GWSLive`): the connected
-  accounts list, the Gmail tools panel, and the Google Calendar tools panel.
+  Presentation components for the Google Workspace section of the Configuration
+  tab (`SettingsLive`): the connected accounts list, the Gmail tools panel, and
+  the Google Calendar tools panel.
 
   Stateless function components — every `phx-submit`/`phx-click` bubbles to the
   parent LiveView, which owns all account/Gmail/Calendar state and event handling.

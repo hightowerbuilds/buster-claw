@@ -190,7 +190,7 @@ defmodule BusterClawWeb.SplitLiveTest do
 
   test "every workspace tab embeds alongside the terminal without crashing", %{conn: conn} do
     for path <-
-          ~w(/ /browse /calendar /gws /workspace
+          ~w(/ /browse /calendar /workspace
              /integrations /security /settings
              /appearance /manual) do
       assert {:ok, _view, _html} = live(conn, "/split?left=/terminal&right=#{path}"),

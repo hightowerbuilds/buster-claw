@@ -1,4 +1,4 @@
-defmodule BusterClawWeb.GWSLiveTest do
+defmodule BusterClawWeb.ConfigurationGwsTest do
   use BusterClawWeb.ConnCase
 
   import Phoenix.LiveViewTest
@@ -45,9 +45,9 @@ defmodule BusterClawWeb.GWSLiveTest do
   end
 
   test "renders empty GWS state", %{conn: conn} do
-    {:ok, _view, html} = live(conn, ~p"/gws")
+    {:ok, _view, html} = live(conn, ~p"/settings")
 
-    assert html =~ "GWS"
+    assert html =~ "Google Workspace"
     assert html =~ ~s(id="gws-accounts")
     assert html =~ "No Google Workspace accounts connected yet"
   end
@@ -62,7 +62,7 @@ defmodule BusterClawWeb.GWSLiveTest do
         "scopes" => "https://www.googleapis.com/auth/gmail.readonly"
       })
 
-    {:ok, view, html} = live(conn, ~p"/gws")
+    {:ok, view, html} = live(conn, ~p"/settings")
     assert html =~ "me@example.com"
     assert html =~ "authorized"
 
@@ -123,7 +123,7 @@ defmodule BusterClawWeb.GWSLiveTest do
       end
     end)
 
-    {:ok, view, html} = live(conn, ~p"/gws")
+    {:ok, view, html} = live(conn, ~p"/settings")
     Req.Test.allow(BusterClaw.GoogleHTTP, self(), view.pid)
 
     assert html =~ ~s(id="gmail-tools")
@@ -193,7 +193,7 @@ defmodule BusterClawWeb.GWSLiveTest do
       })
     end)
 
-    {:ok, view, html} = live(conn, ~p"/gws")
+    {:ok, view, html} = live(conn, ~p"/settings")
     Req.Test.allow(BusterClaw.GoogleHTTP, self(), view.pid)
 
     assert html =~ ~s(id="google-calendar-tools")

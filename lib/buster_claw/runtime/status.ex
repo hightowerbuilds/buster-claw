@@ -11,7 +11,6 @@ defmodule BusterClaw.Runtime.Status do
     %{key: :workspace, label: "Workspace", path: "/workspace"},
     %{key: :browse, label: "Browser", path: "/browse"},
     %{key: :calendar, label: "Calendar", path: "/calendar"},
-    %{key: :gws, label: "GWS", path: "/gws"},
     %{key: :integrations, label: "Integrations", path: "/integrations"}
   ]
 

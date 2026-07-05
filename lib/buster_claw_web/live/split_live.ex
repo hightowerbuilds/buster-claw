@@ -16,7 +16,6 @@ defmodule BusterClawWeb.SplitLive do
     "/" => {BusterClawWeb.StatusLive, "Home"},
     "/browse" => {BusterClawWeb.BrowseLive, "Browser"},
     "/calendar" => {BusterClawWeb.CalendarLive, "Calendar"},
-    "/gws" => {BusterClawWeb.GWSLive, "GWS"},
     "/terminal" => {BusterClawWeb.TerminalLive, "Terminal"},
     "/workspace" => {BusterClawWeb.WorkspaceLive, "Workspace"},
     "/integrations" => {BusterClawWeb.IntegrationsLive, "Integrations"},

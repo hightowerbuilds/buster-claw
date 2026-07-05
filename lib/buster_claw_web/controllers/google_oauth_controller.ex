@@ -176,7 +176,7 @@ defmodule BusterClawWeb.GoogleOAuthController do
         <main>
           <h1>#{title}</h1>
           <p>#{message}</p>
-          <a href="/gws">Open GWS</a>
+          <a href="/settings">Open Buster Claw</a>
         </main>
       </body>
     </html>
