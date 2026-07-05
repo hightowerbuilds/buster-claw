@@ -7,7 +7,7 @@ defmodule BusterClawWeb.SettingsTabs do
     %{key: :voice, label: "Voice", path: "/voice"},
     %{key: :integrations, label: "Integrations", path: "/integrations"},
     %{key: :configuration, label: "Configuration", path: "/settings"},
-    %{key: :cmd_list, label: "cmd-list", path: "/cmd-list"},
+    %{key: :cmd_list, label: "Cmd List", path: "/cmd-list"},
     %{key: :security, label: "Security", path: "/security"}
   ]
 
