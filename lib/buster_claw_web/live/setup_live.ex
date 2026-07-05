@@ -358,7 +358,22 @@ defmodule BusterClawWeb.SetupLive do
               Buster Claw manages your Google Workspace on your behalf — Gmail, Calendar, Drive,
               Docs, Sheets, Slides, Contacts and Tasks. Connecting is a one-time Google step; the
               consent screen will list each of these permissions, so approve them all to give your
-              agent full access. Once it's done, emails from you are trusted automatically.
+              agent full access. Once it's done, emails from you are trusted automatically —
+              and every action taken with this access lands in the Sentinel audit feed
+              (Settings → Security), so you can always see exactly what your agent did.
+            </p>
+
+            <p
+              :if={@bundled_available and GoogleOAuth.beta_testing?()}
+              class="max-w-2xl rounded-sm border-2 border-base-content/15 bg-base-200/60 px-3 py-2 text-xs leading-5 text-base-content/70"
+            >
+              <span class="font-semibold">Beta note:</span>
+              Google limits this app to approved testers right now.
+              <a href={GoogleOAuth.beta_request_mailto()} class="underline hover:text-base-content">
+                Request access
+              </a>
+              with the Gmail address you'll connect (you'll get a confirmation within a day), and
+              expect Google to ask you to reconnect about once a week until verification completes.
             </p>
 
             <%!-- One-click connect via the bundled OAuth client: nothing to

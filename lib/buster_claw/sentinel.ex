@@ -141,6 +141,11 @@ defmodule BusterClaw.Sentinel do
   # (e.g. a terminal cmd-list command string).
   def classify(:settings_change, _meta), do: :notice
 
+  # Google session lifecycle (refresh token death → reconnect needed). Routine
+  # during the unverified-OAuth beta — Testing-status refresh tokens expire
+  # weekly — so :notice: visible in the feed without reading as an incident.
+  def classify(:google_auth, _meta), do: :notice
+
   def classify(_other, _meta), do: :info
 
   defp tier(meta) when is_map(meta), do: to_string(meta[:tier] || meta["tier"] || "")

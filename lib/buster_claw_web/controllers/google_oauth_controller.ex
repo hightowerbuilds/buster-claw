@@ -42,6 +42,8 @@ defmodule BusterClawWeb.GoogleOAuthController do
            OAuth.exchange_code(account, code, redirect_uri,
              code_verifier: Map.get(state, :code_verifier)
            ) do
+      run_self_test(account)
+
       oauth_response(
         conn,
         "Google Workspace is connected.",
@@ -87,6 +89,10 @@ defmodule BusterClawWeb.GoogleOAuthController do
       # Same courtesy as the Setup wizard's BYO path: trust the user's own
       # address so an email to yourself produces a real Dispatch item.
       trust_own_address(account)
+      # A fresh connect revives a dead session (the upsert path doesn't go
+      # through exchange_code/4, which clears this for BYO reconnects).
+      Google.clear_reconnect_needed(account)
+      run_self_test(account)
 
       oauth_response(
         conn,
@@ -110,6 +116,28 @@ defmodule BusterClawWeb.GoogleOAuthController do
   end
 
   defp trust_own_address(_account), do: :ok
+
+  # Post-connect self-test (Phase 3): answer "did it actually work?" with
+  # per-surface checks the GWS panel renders. Async so the callback page (the
+  # tab the user is staring at) never waits on three API calls; :sync exists
+  # for tests, :disabled for suites that don't care.
+  defp run_self_test(account) do
+    case Application.get_env(:buster_claw, :google_self_test, :async) do
+      :disabled ->
+        :ok
+
+      :sync ->
+        BusterClaw.Google.SelfTest.run(account)
+        :ok
+
+      _async ->
+        Task.Supervisor.start_child(BusterClaw.SwarmTaskSupervisor, fn ->
+          BusterClaw.Google.SelfTest.run(account)
+        end)
+
+        :ok
+    end
+  end
 
   defp fetch_bundled_client do
     case BusterClaw.Google.BundledClient.get() do

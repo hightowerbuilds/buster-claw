@@ -182,6 +182,51 @@ defmodule BusterClawWeb.GoogleOAuthControllerTest do
       assert {:ok, "fresh-access"} = Account.decrypt(updated, :access_token)
     end
 
+    test "callback runs the post-connect self-test (sync mode)", %{conn: conn} do
+      previous_mode = Application.get_env(:buster_claw, :google_self_test)
+      Application.put_env(:buster_claw, :google_self_test, :sync)
+
+      on_exit(fn ->
+        if previous_mode do
+          Application.put_env(:buster_claw, :google_self_test, previous_mode)
+        else
+          Application.delete_env(:buster_claw, :google_self_test)
+        end
+      end)
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        case {conn.host, conn.request_path} do
+          {"oauth2.googleapis.com", _} ->
+            Req.Test.json(conn, %{
+              "access_token" => "bundled-access",
+              "expires_in" => 3600,
+              "refresh_token" => "bundled-refresh",
+              "token_type" => "Bearer"
+            })
+
+          {_, "/gmail/v1/users/me/profile"} ->
+            Req.Test.json(conn, %{"emailAddress" => "tested@example.com"})
+
+          {_, "/calendar/v3/users/me/calendarList"} ->
+            Req.Test.json(conn, %{"items" => []})
+
+          {_, "/drive/v3/about"} ->
+            Req.Test.json(conn, %{"user" => %{}})
+        end
+      end)
+
+      assert {:ok, url} = GoogleOAuth.bundled_authorization_url()
+      %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      conn = get(conn, ~p"/google/oauth/callback", %{"code" => "the-code", "state" => state})
+      assert html_response(conn, 200) =~ "tested@example.com is ready"
+
+      account = Google.get_account_by_email("tested@example.com")
+      assert %{results: results} = BusterClaw.Google.SelfTest.last(account.id)
+      assert results == %{"mail" => "ok", "calendar" => "ok", "drive" => "ok"}
+      assert BusterClaw.Google.SelfTest.healthy?(account.id) == true
+    end
+
     test "callback fails cleanly when the profile fetch fails", %{conn: conn} do
       Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
         case conn.host do

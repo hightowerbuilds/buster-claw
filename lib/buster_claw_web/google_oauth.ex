@@ -66,6 +66,34 @@ defmodule BusterClawWeb.GoogleOAuth do
     Phoenix.Token.verify(BusterClawWeb.Endpoint, @state_salt, state, max_age: @max_age_seconds)
   end
 
+  @doc """
+  Whether the bundled OAuth app is still in Google's "Testing" status — i.e.
+  the unverified-beta era: only hand-added testers can connect, and refresh
+  tokens expire weekly. Drives the request-access + weekly-reconnect copy;
+  flip `:google_oauth_app_status` to `"verified"` when Google verification
+  clears and that copy disappears on its own.
+  """
+  def beta_testing? do
+    Application.get_env(:buster_claw, :google_oauth_app_status, "testing") == "testing"
+  end
+
+  @doc "Prefilled mailto for requesting a spot on the Google tester list."
+  def beta_request_mailto do
+    contact = Application.get_env(:buster_claw, :google_beta_contact, "lukehightower11@gmail.com")
+
+    subject = encode_mailto("BusterClaw beta access")
+
+    body =
+      encode_mailto(
+        "Please add this Google account to the BusterClaw tester list: <the Gmail address you'll connect>"
+      )
+
+    "mailto:#{contact}?subject=#{subject}&body=#{body}"
+  end
+
+  # mailto wants %20, not the + that encode_query produces.
+  defp encode_mailto(text), do: URI.encode(text, &URI.char_unreserved?/1)
+
   def callback_url do
     case Application.get_env(:buster_claw, :google_redirect_base_url) do
       base_url when is_binary(base_url) and base_url != "" ->

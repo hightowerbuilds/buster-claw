@@ -39,6 +39,12 @@ defmodule BusterClawWeb.GwsPanels do
               >
                 Reconnect required — new permissions available
               </span>
+              <span
+                :if={account.reconnect_needed}
+                class="rounded-sm border border-warning/50 bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning"
+              >
+                Reconnect needed — Google session expired
+              </span>
             </div>
 
             <dl class="mt-3 grid gap-2 text-xs text-base-content/60 sm:grid-cols-2">
@@ -58,6 +64,10 @@ defmodule BusterClawWeb.GwsPanels do
                 <dt class="font-semibold uppercase tracking-wide">Access Token</dt>
                 <dd>{token_expiry_label(account.access_token_expires_at)}</dd>
               </div>
+              <div class="sm:col-span-2">
+                <dt class="font-semibold uppercase tracking-wide">Health</dt>
+                <dd>{self_test_label(account.self_test)}</dd>
+              </div>
             </dl>
           </div>
 
@@ -68,6 +78,13 @@ defmodule BusterClawWeb.GwsPanels do
               phx-value-id={account.id}
             >
               Reconnect
+            </button>
+            <button
+              class="rounded border border-base-300 px-3 py-2 text-sm"
+              phx-click="self_test"
+              phx-value-id={account.id}
+            >
+              Self-test
             </button>
             <button
               class="rounded border border-base-300 px-3 py-2 text-sm"
@@ -400,6 +417,26 @@ defmodule BusterClawWeb.GwsPanels do
 
   defp token_expiry_label(nil), do: "not connected"
   defp token_expiry_label(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
+
+  # One line per account: "Mail ✓ · Calendar ✓ · Drive ✗ (HTTP 403: ...)".
+  # Green checks are the whole point of the post-connect self-test — the
+  # failing surface is *named* instead of surfacing later as a mystery.
+  defp self_test_label(nil), do: "not yet tested — run Self-test"
+
+  defp self_test_label(%{results: results, at: at}) do
+    line =
+      Enum.map_join(BusterClaw.Google.SelfTest.surfaces(), " · ", fn surface ->
+        name = surface |> Atom.to_string() |> String.capitalize()
+
+        case Map.get(results, Atom.to_string(surface)) do
+          "ok" -> "#{name} ✓"
+          nil -> "#{name} —"
+          error -> "#{name} ✗ (#{error})"
+        end
+      end)
+
+    if at, do: "#{line} · tested #{at}", else: line
+  end
 
   defp missing_scopes?(account) do
     granted =

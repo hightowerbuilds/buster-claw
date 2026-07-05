@@ -91,8 +91,10 @@ defmodule BusterClaw.Google.OAuth do
              |> maybe_put_verifier(opts),
              opts
            ),
-         {:ok, attrs} <- token_attrs(body) do
-      Google.update_account(account, attrs)
+         {:ok, attrs} <- token_attrs(body),
+         {:ok, updated} <- Google.update_account(account, attrs) do
+      Google.clear_reconnect_needed(updated)
+      {:ok, updated}
     end
   end
 
@@ -178,20 +180,38 @@ defmodule BusterClaw.Google.OAuth do
   defp profile_email(_body), do: nil
 
   def refresh_access_token(%Account{} = account, opts \\ []) do
-    with {:ok, client_secret} <- required_secret(account),
-         {:ok, refresh_token} <- required_refresh_token(account),
-         {:ok, body} <-
-           request_token(
-             [
-               client_id: account.client_id,
-               client_secret: client_secret,
-               grant_type: "refresh_token",
-               refresh_token: refresh_token
-             ],
-             opts
-           ),
-         {:ok, attrs} <- token_attrs(body, keep_refresh_token?: false) do
-      Google.update_account(account, attrs)
+    result =
+      with {:ok, client_secret} <- required_secret(account),
+           {:ok, refresh_token} <- required_refresh_token(account),
+           {:ok, body} <-
+             request_token(
+               [
+                 client_id: account.client_id,
+                 client_secret: client_secret,
+                 grant_type: "refresh_token",
+                 refresh_token: refresh_token
+               ],
+               opts
+             ),
+           {:ok, attrs} <- token_attrs(body, keep_refresh_token?: false) do
+        Google.update_account(account, attrs)
+      end
+
+    # Token-health hook (Phase 4): a refresh outcome is the single truth about
+    # whether the Google session is alive. invalid_grant = the refresh token
+    # itself is dead (revoked, or weekly Testing-status expiry during the
+    # beta) — only a manual reconnect revives it, so flag it loudly-but-once.
+    case result do
+      {:ok, updated} ->
+        Google.clear_reconnect_needed(updated)
+        {:ok, updated}
+
+      {:error, {:google_oauth_error, _status, %{"error" => "invalid_grant"}}} ->
+        Google.mark_reconnect_needed(account)
+        result
+
+      _ ->
+        result
     end
   end
 

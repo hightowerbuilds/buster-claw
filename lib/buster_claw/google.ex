@@ -5,6 +5,8 @@ defmodule BusterClaw.Google do
 
   alias BusterClaw.Google.Account
   alias BusterClaw.Repo
+  alias BusterClaw.Sentinel
+  alias BusterClaw.Settings
 
   @topic "google"
 
@@ -73,10 +75,69 @@ defmodule BusterClaw.Google do
   end
 
   def delete_account(%Account{} = account) do
+    # Drop the account's derived-state keys so a future account with a reused
+    # id can't inherit stale health/reconnect flags.
+    Settings.delete(reconnect_key(account.id))
+    BusterClaw.Google.SelfTest.clear(account.id)
+
     account
     |> Repo.delete()
     |> scrub_and_broadcast(:deleted)
   end
+
+  # --- token health (GWS seamless-connect Phase 4) ------------------------
+
+  @doc """
+  Flag that an account's refresh token is dead (`invalid_grant`) and only a
+  manual reconnect can revive it. Emits a Sentinel `google_auth` event —
+  during the unverified-OAuth beta this fires roughly weekly (Google expires
+  Testing-status refresh tokens after 7 days), so the message says what to do
+  rather than reading as a crash.
+  """
+  def mark_reconnect_needed(%Account{} = account) do
+    already? = reconnect_needed?(account.id)
+    Settings.put(reconnect_key(account.id), DateTime.utc_now() |> DateTime.to_iso8601())
+
+    unless already? do
+      Sentinel.observe(
+        :google_auth,
+        "Google session for #{account.email} expired — reconnect in Settings → GWS to resume mail/calendar work.",
+        %{account_id: account.id, email: account.email, reason: "invalid_grant"}
+      )
+
+      notify_account_updated(account)
+    end
+
+    :ok
+  end
+
+  @doc "Clear the reconnect flag (any successful token exchange/refresh)."
+  def clear_reconnect_needed(%Account{} = account) do
+    if reconnect_needed?(account.id) do
+      Settings.delete(reconnect_key(account.id))
+      notify_account_updated(account)
+    end
+
+    :ok
+  end
+
+  @doc "Whether the account's Google session needs a manual reconnect."
+  def reconnect_needed?(account_id), do: Settings.get(reconnect_key(account_id)) not in [nil, ""]
+
+  @doc """
+  Broadcast that an account's *derived* state (health, reconnect flag) changed
+  without a row write — open panels re-render off the same message they get
+  for real updates.
+  """
+  def notify_account_updated(%Account{} = account) do
+    Phoenix.PubSub.broadcast(
+      BusterClaw.PubSub,
+      @topic,
+      {:google_account_changed, :updated, Account.scrub(account)}
+    )
+  end
+
+  defp reconnect_key(account_id), do: "google.reconnect_needed.#{account_id}"
 
   def change_account(%Account{} = account \\ %Account{}, attrs \\ %{}) do
     Account.changeset(account, attrs)
@@ -97,7 +158,9 @@ defmodule BusterClaw.Google do
       has_client_secret: present?(account.client_secret_enc),
       has_refresh_token: present?(account.refresh_token_enc),
       has_access_token: present?(account.access_token_enc),
-      access_token_expires_at: account.access_token_expires_at
+      access_token_expires_at: account.access_token_expires_at,
+      reconnect_needed: reconnect_needed?(account.id),
+      self_test: BusterClaw.Google.SelfTest.last(account.id)
     }
   end
 

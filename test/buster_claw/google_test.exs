@@ -234,6 +234,72 @@ defmodule BusterClaw.GoogleTest do
       assert %DateTime{} = updated.access_token_expires_at
     end
 
+    test "invalid_grant on refresh flags reconnect-needed; a later success clears it" do
+      assert {:ok, account} =
+               Google.create_account(%{
+                 "email" => "me@example.com",
+                 "client_id" => "client-id",
+                 "client_secret" => "client-secret",
+                 "refresh_token" => "dead-refresh"
+               })
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        conn
+        |> Plug.Conn.put_status(400)
+        |> Req.Test.json(%{"error" => "invalid_grant", "error_description" => "Token expired"})
+      end)
+
+      refute Google.reconnect_needed?(account.id)
+
+      assert {:error, {:google_oauth_error, 400, _body}} =
+               OAuth.refresh_access_token(account,
+                 req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+               )
+
+      assert Google.reconnect_needed?(account.id)
+      assert Google.account_summary(Google.get_account!(account.id)).reconnect_needed
+
+      # The token death lands on the Sentinel feed as a google_auth notice.
+      assert Enum.any?(
+               BusterClaw.Sentinel.list_events(),
+               &(&1.category == "google_auth" and &1.severity == "notice")
+             )
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "fresh-access", "expires_in" => 3600})
+      end)
+
+      assert {:ok, _updated} =
+               OAuth.refresh_access_token(account,
+                 req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+               )
+
+      refute Google.reconnect_needed?(account.id)
+    end
+
+    test "a non-invalid_grant refresh failure does not flag reconnect-needed" do
+      assert {:ok, account} =
+               Google.create_account(%{
+                 "email" => "me@example.com",
+                 "client_id" => "client-id",
+                 "client_secret" => "client-secret",
+                 "refresh_token" => "refresh-token"
+               })
+
+      Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+        conn
+        |> Plug.Conn.put_status(500)
+        |> Req.Test.json(%{"error" => "internal_failure"})
+      end)
+
+      assert {:error, {:google_oauth_error, 500, _body}} =
+               OAuth.refresh_access_token(account,
+                 req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+               )
+
+      refute Google.reconnect_needed?(account.id)
+    end
+
     test "returns Google OAuth error details when token exchange fails" do
       Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
         conn

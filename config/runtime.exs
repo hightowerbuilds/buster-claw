@@ -205,3 +205,9 @@ end
 if bundled_client_url = System.get_env("BUSTER_CLAW_GOOGLE_CLIENT_CONFIG_URL") do
   config :buster_claw, :google_bundled_client_url, bundled_client_url
 end
+
+# "testing" (unverified beta) or "verified" — controls the tester-list /
+# weekly-reconnect copy on the connect surfaces.
+if oauth_status = System.get_env("BUSTER_CLAW_GOOGLE_OAUTH_STATUS") do
+  config :buster_claw, :google_oauth_app_status, oauth_status
+end

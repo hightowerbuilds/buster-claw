@@ -91,6 +91,29 @@ defmodule BusterClawWeb.GWSLive do
     end
   end
 
+  # On-demand health check. Runs off-process (three API calls at up to 10s
+  # each must not freeze the LiveView); the run broadcasts an account update
+  # when it lands, which re-renders the Health row. Honors the same
+  # :google_self_test mode switch as the OAuth callback (:disabled in tests).
+  def handle_event("self_test", %{"id" => id}, socket) do
+    account = Google.get_account!(id)
+
+    case Application.get_env(:buster_claw, :google_self_test, :async) do
+      :disabled ->
+        :ok
+
+      :sync ->
+        BusterClaw.Google.SelfTest.run(account)
+
+      _async ->
+        Task.Supervisor.start_child(BusterClaw.SwarmTaskSupervisor, fn ->
+          BusterClaw.Google.SelfTest.run(account)
+        end)
+    end
+
+    {:noreply, assign(socket, :result, "Self-test running for #{account.email}…")}
+  end
+
   def handle_event("toggle", %{"id" => id}, socket) do
     account = Google.get_account!(id)
     {:ok, _account} = Google.update_account(account, %{"enabled" => !account.enabled})
@@ -233,6 +256,18 @@ defmodule BusterClawWeb.GWSLive do
             {if @bundled_available, do: "Advanced setup", else: "Connect Account"}
           </.link>
         </div>
+
+        <p
+          :if={@bundled_available and GoogleOAuth.beta_testing?()}
+          class="max-w-2xl text-xs leading-5 text-base-content/60"
+        >
+          Beta: Google limits this app to approved testers right now.
+          <a href={GoogleOAuth.beta_request_mailto()} class="underline hover:text-base-content">
+            Request access
+          </a>
+          with the Gmail address you'll connect — and expect Google to ask you to
+          reconnect about once a week until verification completes.
+        </p>
 
         <BusterClawWeb.GwsPanels.accounts_panel accounts={@accounts} />
 

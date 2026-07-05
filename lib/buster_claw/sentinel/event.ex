@@ -9,7 +9,7 @@ defmodule BusterClaw.Sentinel.Event do
   import Ecto.Changeset
 
   @severities ~w(info notice warning critical)
-  @categories ~w(security_block command_invoke outbound_send untrusted_ingest settings_change)
+  @categories ~w(security_block command_invoke outbound_send untrusted_ingest settings_change google_auth)
 
   @derive {Jason.Encoder,
            only: [

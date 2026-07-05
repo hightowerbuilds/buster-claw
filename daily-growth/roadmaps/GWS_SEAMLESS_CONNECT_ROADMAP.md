@@ -10,6 +10,19 @@ F2 from the distribution roadmap, executed to the GTM roadmap's standard.*
 
 Effort tags: **S** = a sitting, **M** = a day-ish, **L** = multi-day / has unknowns.
 
+> **Status (2026-07-05): Phases 0–5 all SHIPPED.** Phases 0–2 in `c3c2176`
+> (BundledClient + PKCE + one-click connect), Phases 3–5 the following day
+> (self-test, token health, beta gate). Honest deltas from the plan:
+> email discovery uses the **Gmail profile endpoint** instead of adding
+> `openid email` scopes (fewer scopes, same result); the Phase 4 "warn as
+> expiry approaches" proactive countdown was **not** built (we don't record
+> refresh-token mint time — the reactive `invalid_grant` → chip + Sentinel
+> notice path covers the experience); on-duty mid-shift death is surfaced via
+> the `google_auth` Sentinel event from the refresh choke point, not a
+> shift-pause mechanism. **Remaining work is entirely the operator console
+> checklist below** — the app side is done and runs on a placeholder client
+> until real Desktop-app credentials exist.
+
 ---
 
 ## Where this sits

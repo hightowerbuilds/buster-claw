@@ -81,3 +81,8 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Post-connect Google self-test: disabled by default in tests (the async task
+# would race the Ecto sandbox and the Req.Test ownership); tests that exercise
+# it set :sync explicitly.
+config :buster_claw, :google_self_test, :disabled

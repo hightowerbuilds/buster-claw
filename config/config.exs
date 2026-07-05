@@ -12,6 +12,10 @@ config :buster_claw,
   generators: [timestamp_type: :utc_datetime],
   workspace_root: Path.expand("../..", __DIR__),
   library_root: Path.expand("../../Library", __DIR__),
+  # Bundled Google OAuth app verification status: "testing" (unverified beta —
+  # tester-list gate + weekly refresh-token expiry, and the UI says so) or
+  # "verified" (the beta copy disappears). Flip when Google verification clears.
+  google_oauth_app_status: "testing",
   dispatch_projector_enabled: true,
   orchestrator_enabled: true,
   dispatcher_enabled: true,
