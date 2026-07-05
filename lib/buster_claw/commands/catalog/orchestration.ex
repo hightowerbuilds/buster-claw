@@ -34,6 +34,38 @@ defmodule BusterClaw.Commands.Catalog.Orchestration do
         }
       },
 
+      # Terminal cmd-list catalog — read the editable roles, then edit a command.
+      Helpers.list_entry(
+        "terminal_command_list",
+        "List the editable (non-protected) terminal cmd-list roles — queue/toolbox/prompts and any user roles — with each command's key, label, text, kind, and default flag. Read this before terminal_command_set to get the role_key + command_key. Protected On Duty roles (mailman/agent-setup) are omitted."
+      ),
+      %{
+        name: "terminal_command_set",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Edit (or add) one command/prompt in a non-protected terminal cmd-list role — the same catalog Settings → cmd-list edits. Upserts by role_key + command_key: an existing key updates only the fields you pass; an unknown key with `command` adds a new command. The change shows in the terminal cmd-list flyout live. Protected On Duty roles (mailman/agent-setup) are refused; a shell command must stay single-line.",
+        args: %{
+          "role_key" => %{
+            type: :string,
+            required: true,
+            description: "The role to edit: queue, toolbox, prompts, or a user role key."
+          },
+          "command_key" => %{
+            type: :string,
+            required: true,
+            description: "The command's slug key (from terminal_command_list); a new slug adds a command."
+          },
+          "command" => %{
+            type: :string,
+            required: false,
+            description: "The command/prompt text. Required when adding a new command."
+          },
+          "label" => %{type: :string, required: false, description: "Display label."},
+          "description" => %{type: :string, required: false, description: "One-line description."}
+        }
+      },
+
       # Orchestration shift — agent-drivable so the on-shift model can start/stop it.
       Helpers.list_entry(
         "shift_status",

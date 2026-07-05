@@ -372,6 +372,126 @@ defmodule BusterClaw.TerminalCommands do
     end
   end
 
+  @doc """
+  Agent-facing single-command upsert for a non-protected role — the programmatic
+  equivalent of editing one row in Settings → cmd-list. `attrs` (string keys):
+  `"role_key"` + `"command_key"` are required; optional `"command"` (the
+  command/prompt text), `"label"`, `"description"`. Editing an existing command
+  overrides only the fields supplied; an unknown `command_key` carrying a
+  `"command"` adds a new user command (its `kind` is inferred — `prompt` for the
+  `prompts` role or multiline text, else `shell`).
+
+  Goes through the same diff → `Catalog` validation → persist → broadcast path as
+  the UI, so the terminal flyout refreshes live and On Duty (`mailman`/
+  `agent-setup`) roles are refused. Returns `{:ok, %{commands_changed: boolean}}`
+  (whether what the terminal would run changed), `{:error, :protected |
+  :not_found | :missing_command}`, or `{:error, %Ecto.Changeset{}}`.
+  """
+  def set_command(attrs) when is_map(attrs) do
+    role_key = string_arg(attrs, "role_key")
+    command_key = string_arg(attrs, "command_key")
+
+    cond do
+      is_nil(role_key) or is_nil(command_key) ->
+        {:error, :not_found}
+
+      protected?(role_key) ->
+        {:error, :protected}
+
+      true ->
+        case role_edit(role_key) do
+          nil ->
+            {:error, :not_found}
+
+          %RoleEdit{commands: commands} = base ->
+            case upsert_command(commands, role_key, command_key, command_fields(attrs)) do
+              {:ok, commands} -> persist_role_edit(role_key, %{base | commands: commands})
+              {:error, reason} -> {:error, reason}
+            end
+        end
+    end
+  end
+
+  def set_command(_attrs), do: {:error, :not_found}
+
+  defp upsert_command(commands, role_key, command_key, fields) do
+    case Enum.find_index(commands, &(&1.key == command_key)) do
+      nil ->
+        case Map.get(fields, :command) do
+          text when is_binary(text) and text != "" ->
+            new = %Command{
+              id: Ecto.UUID.generate(),
+              key: command_key,
+              label: Map.get(fields, :label),
+              description: Map.get(fields, :description),
+              command: text,
+              kind: infer_kind(role_key, text),
+              builtin: false
+            }
+
+            {:ok, commands ++ [new]}
+
+          _ ->
+            {:error, :missing_command}
+        end
+
+      index ->
+        updated =
+          commands
+          |> Enum.at(index)
+          |> apply_command_fields(fields)
+
+        {:ok, List.replace_at(commands, index, updated)}
+    end
+  end
+
+  defp apply_command_fields(%Command{} = command, fields) do
+    %Command{
+      command
+      | command: Map.get(fields, :command, command.command),
+        label: Map.get(fields, :label, command.label),
+        description: Map.get(fields, :description, command.description)
+    }
+  end
+
+  # Only the keys actually supplied end up in the field map, so an absent field
+  # keeps its current value; a supplied blank label/description clears it.
+  defp command_fields(attrs) do
+    %{}
+    |> put_field(attrs, "command", :command)
+    |> put_field(attrs, "label", :label)
+    |> put_field(attrs, "description", :description)
+  end
+
+  defp put_field(fields, attrs, str_key, atom_key) do
+    case Map.fetch(attrs, str_key) do
+      {:ok, value} when is_binary(value) -> Map.put(fields, atom_key, blank_to_nil(value))
+      _ -> fields
+    end
+  end
+
+  defp infer_kind("prompts", _text), do: "prompt"
+
+  defp infer_kind(_role_key, text) do
+    if String.contains?(text, "\n"), do: "prompt", else: "shell"
+  end
+
+  defp string_arg(attrs, key) do
+    case Map.get(attrs, key) do
+      value when is_binary(value) -> blank_to_nil(value)
+      _ -> nil
+    end
+  end
+
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(_value), do: nil
+
   # ---- Private: persistence helpers ------------------------------------------
 
   defp persist_role_edit(role_key, %RoleEdit{} = edit) do

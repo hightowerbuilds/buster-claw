@@ -153,6 +153,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       slides_get
       tasks_get
       tasks_list
+      terminal_command_list
       terminal_tab_open
       wallet_budget_summary
       wallet_feed_list

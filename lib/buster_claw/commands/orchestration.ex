@@ -2,7 +2,7 @@ defmodule BusterClaw.Commands.Orchestration do
   @moduledoc "Runtime status, activity report, terminal workspace, and orchestration-shift commands. Delegated to from `BusterClaw.Commands`."
 
   alias BusterClaw.Runtime.Status
-  alias BusterClaw.{Orchestration, TerminalWorkspace}
+  alias BusterClaw.{Orchestration, TerminalCommands, TerminalWorkspace}
 
   def runtime_status(_args \\ %{}), do: {:ok, Status.snapshot()}
 
@@ -21,6 +21,72 @@ defmodule BusterClaw.Commands.Orchestration do
   # -----------------------------------------------------------------------
 
   def terminal_tab_open(args \\ %{}), do: TerminalWorkspace.open(args)
+
+  # -----------------------------------------------------------------------
+  # Terminal cmd-list catalog (the editable command cheatsheet)
+  # -----------------------------------------------------------------------
+
+  @doc "List the editable (non-protected) cmd-list roles and their commands."
+  def terminal_command_list(_args \\ %{}) do
+    roles =
+      TerminalCommands.load()
+      |> Enum.reject(& &1.protected)
+      |> Enum.map(fn role ->
+        %{
+          role_key: role.key,
+          label: role.label,
+          commands:
+            Enum.map(role.commands, fn c ->
+              %{
+                key: c.key,
+                label: c.label,
+                description: c.description,
+                command: c.command,
+                kind: c.kind,
+                default: c.default?,
+                builtin: c.builtin
+              }
+            end)
+        }
+      end)
+
+    {:ok, %{roles: roles}}
+  end
+
+  @doc "Edit (or add) one command/prompt in a non-protected cmd-list role."
+  def terminal_command_set(args \\ %{}) do
+    case TerminalCommands.set_command(args) do
+      {:ok, %{commands_changed: changed}} ->
+        {:ok,
+         %{
+           role_key: Map.get(args, "role_key"),
+           command_key: Map.get(args, "command_key"),
+           commands_changed: changed
+         }}
+
+      {:error, :protected} ->
+        {:error, :protected_role}
+
+      {:error, :not_found} ->
+        {:error, :not_found}
+
+      {:error, :missing_command} ->
+        {:error, :missing_command}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error, {:invalid, changeset_errors(changeset)}}
+    end
+  end
+
+  # Flatten a validation changeset to a plain field => [messages] map for the
+  # agent (Ecto error tuples don't serialize cleanly to JSON).
+  defp changeset_errors(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+  end
 
   # --- Orchestration shift (agent-drivable: the on-shift Claude starts/stops it) ---
 

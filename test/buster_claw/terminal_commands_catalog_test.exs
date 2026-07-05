@@ -227,4 +227,150 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
     assert Catalog.migrate(%{"version" => 1, "roles" => []}) == %{"version" => 1, "roles" => []}
     assert Catalog.migrate(%{"roles" => []}) == %{"version" => 1, "roles" => []}
   end
+
+  describe "set_command/1 (agent-facing single-command upsert)" do
+    test "edits an existing command's text and refreshes the merged view" do
+      assert {:ok, %{commands_changed: true}} =
+               TerminalCommands.set_command(%{
+                 "role_key" => "toolbox",
+                 "command_key" => "commands-list",
+                 "command" => "./buster-claw commands --json"
+               })
+
+      edited =
+        TerminalCommands.role("toolbox").commands
+        |> Enum.find(&(&1.key == "commands-list"))
+
+      assert edited.command == "./buster-claw commands --json"
+    end
+
+    test "a label-only edit reports commands_changed: false" do
+      assert {:ok, %{commands_changed: false}} =
+               TerminalCommands.set_command(%{
+                 "role_key" => "toolbox",
+                 "command_key" => "commands-list",
+                 "label" => "Renamed"
+               })
+
+      assert TerminalCommands.role("toolbox").commands
+             |> Enum.find(&(&1.key == "commands-list"))
+             |> Map.get(:label) == "Renamed"
+    end
+
+    test "adds a new user command when the key is unknown" do
+      assert {:ok, %{commands_changed: true}} =
+               TerminalCommands.set_command(%{
+                 "role_key" => "toolbox",
+                 "command_key" => "my-cmd",
+                 "command" => "./buster-claw run runtime_status",
+                 "label" => "Mine"
+               })
+
+      added = TerminalCommands.role("toolbox").commands |> Enum.find(&(&1.key == "my-cmd"))
+      assert added.command == "./buster-claw run runtime_status"
+      assert added.builtin == false
+    end
+
+    test "infers the prompt kind for a multiline prompts-role addition" do
+      assert {:ok, _result} =
+               TerminalCommands.set_command(%{
+                 "role_key" => "prompts",
+                 "command_key" => "my-prompt",
+                 "command" => "Do the thing.\nThen the other thing."
+               })
+
+      added = TerminalCommands.role("prompts").commands |> Enum.find(&(&1.key == "my-prompt"))
+      assert added.kind == :prompt
+    end
+
+    test "refuses a protected role and persists nothing" do
+      assert {:error, :protected} =
+               TerminalCommands.set_command(%{
+                 "role_key" => "mailman",
+                 "command_key" => "on-duty",
+                 "command" => "./buster-claw off-duty"
+               })
+
+      assert Settings.get(TerminalCommands.settings_key()) == nil
+    end
+
+    test "an unknown command key with no command text is missing_command" do
+      assert {:error, :missing_command} =
+               TerminalCommands.set_command(%{
+                 "role_key" => "toolbox",
+                 "command_key" => "ghost",
+                 "label" => "no text"
+               })
+    end
+
+    test "rejects a multiline shell command with a changeset error" do
+      assert {:error, %Ecto.Changeset{}} =
+               TerminalCommands.set_command(%{
+                 "role_key" => "toolbox",
+                 "command_key" => "commands-list",
+                 "command" => "line one\nline two"
+               })
+    end
+
+    test "an unknown role is not found" do
+      assert {:error, :not_found} =
+               TerminalCommands.set_command(%{
+                 "role_key" => "nope",
+                 "command_key" => "x",
+                 "command" => "echo hi"
+               })
+    end
+  end
+
+  describe "terminal_command_set / terminal_command_list commands" do
+    alias BusterClaw.Commands
+
+    test "list omits protected roles; set edits via dispatch and refreshes live" do
+      {:ok, %{roles: roles}} =
+        Commands.call("terminal_command_list", %{}, caller: :trusted)
+
+      keys = Enum.map(roles, & &1.role_key)
+      assert "toolbox" in keys
+      refute "mailman" in keys
+
+      assert {:ok, %{commands_changed: true, role_key: "toolbox"}} =
+               Commands.call(
+                 "terminal_command_set",
+                 %{
+                   "role_key" => "toolbox",
+                   "command_key" => "commands-list",
+                   "command" => "./buster-claw commands --json"
+                 },
+                 caller: :trusted
+               )
+
+      assert TerminalCommands.role("toolbox").commands
+             |> Enum.find(&(&1.key == "commands-list"))
+             |> Map.get(:command) == "./buster-claw commands --json"
+    end
+
+    test "a protected-role edit surfaces as an error through dispatch" do
+      assert {:error, :protected_role} =
+               Commands.call(
+                 "terminal_command_set",
+                 %{"role_key" => "mailman", "command_key" => "on-duty", "command" => "x"},
+                 caller: :trusted
+               )
+    end
+
+    test "a validation failure returns flattened changeset errors" do
+      assert {:error, {:invalid, errors}} =
+               Commands.call(
+                 "terminal_command_set",
+                 %{
+                   "role_key" => "toolbox",
+                   "command_key" => "commands-list",
+                   "command" => "line one\nline two"
+                 },
+                 caller: :trusted
+               )
+
+      assert is_map(errors)
+    end
+  end
 end
