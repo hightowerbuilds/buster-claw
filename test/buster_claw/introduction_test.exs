@@ -54,6 +54,18 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "dispatch claim"
   end
 
+  test "documents editing the terminal Cmd List (roles, prompts, the two commands)" do
+    md = Introduction.markdown()
+
+    assert md =~ "Editing the terminal Cmd List"
+    assert md =~ "`terminal_command_list`"
+    assert md =~ "`terminal_command_set`"
+    # Names the editable prompts role and the protected safety surface.
+    assert md =~ "**prompts**"
+    assert md =~ "protected and refused"
+    assert md =~ "`mailman`"
+  end
+
   test "install! writes INTRODUCTION.md into the workspace root", %{root: root} do
     assert {:ok, path} = Introduction.install!()
     assert path == Path.join(root, "INTRODUCTION.md")
