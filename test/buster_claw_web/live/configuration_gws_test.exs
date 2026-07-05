@@ -123,10 +123,11 @@ defmodule BusterClawWeb.ConfigurationGwsTest do
       end
     end)
 
-    {:ok, view, html} = live(conn, ~p"/settings")
+    {:ok, view, _html} = live(conn, ~p"/settings")
     Req.Test.allow(BusterClaw.GoogleHTTP, self(), view.pid)
 
-    assert html =~ ~s(id="gmail-tools")
+    # Gmail tools live behind the console's left tabs now — select each before use.
+    view |> element("#gws-tab-labels") |> render_click()
 
     html =
       view
@@ -136,6 +137,8 @@ defmodule BusterClawWeb.ConfigurationGwsTest do
     assert html =~ ~s(id="gmail-labels")
     assert html =~ "INBOX"
     assert html =~ "Clients"
+
+    view |> element("#gws-tab-search") |> render_click()
 
     html =
       view
@@ -155,6 +158,8 @@ defmodule BusterClawWeb.ConfigurationGwsTest do
 
     assert html =~ ~s(id="gmail-selected-message")
     assert html =~ "Hello from Gmail."
+
+    view |> element("#gws-tab-sync_mail") |> render_click()
 
     html =
       view
@@ -193,10 +198,10 @@ defmodule BusterClawWeb.ConfigurationGwsTest do
       })
     end)
 
-    {:ok, view, html} = live(conn, ~p"/settings")
+    {:ok, view, _html} = live(conn, ~p"/settings")
     Req.Test.allow(BusterClaw.GoogleHTTP, self(), view.pid)
 
-    assert html =~ ~s(id="google-calendar-tools")
+    view |> element("#gws-tab-calendar") |> render_click()
 
     html =
       view

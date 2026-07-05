@@ -31,6 +31,7 @@ defmodule BusterClawWeb.SettingsLive do
      |> assign(:page_title, "Configuration")
      # --- Google Workspace ---
      |> assign(:bundled_available, BusterClaw.Google.BundledClient.available?())
+     |> assign(:gws_tab, :accounts)
      |> assign(:auth_url, nil)
      |> assign(:result, nil)
      |> assign(:gmail_labels, [])
@@ -63,6 +64,10 @@ defmodule BusterClawWeb.SettingsLive do
   # --- Google Workspace events -------------------------------------------
 
   @impl true
+  def handle_event("gws_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :gws_tab, gws_tab(tab))}
+  end
+
   def handle_event("reconnect", %{"id" => id}, socket) do
     account = Google.get_account!(id)
 
@@ -322,8 +327,6 @@ defmodule BusterClawWeb.SettingsLive do
             reconnect about once a week until verification completes.
           </p>
 
-          <BusterClawWeb.GwsPanels.accounts_panel accounts={@accounts} />
-
           <p
             :if={@result}
             id="gws-result"
@@ -369,7 +372,8 @@ defmodule BusterClawWeb.SettingsLive do
             />
           </div>
 
-          <BusterClawWeb.GwsPanels.gmail_panel
+          <BusterClawWeb.GwsPanels.workspace_console
+            active_tab={@gws_tab}
             accounts={@accounts}
             gmail_label_form={@gmail_label_form}
             gmail_search_form={@gmail_search_form}
@@ -379,10 +383,6 @@ defmodule BusterClawWeb.SettingsLive do
             gmail_search_account_id={@gmail_search_account_id}
             gmail_sync={@gmail_sync}
             gmail_message={@gmail_message}
-          />
-
-          <BusterClawWeb.GwsPanels.calendar_panel
-            accounts={@accounts}
             calendar_sync_form={@calendar_sync_form}
             calendar_sync={@calendar_sync}
           />
@@ -558,6 +558,14 @@ defmodule BusterClawWeb.SettingsLive do
 
   defp default_account_id([account | _accounts]), do: account.id
   defp default_account_id([]), do: ""
+
+  # Map the phx-value-tab string to a known console tab atom (any unknown value
+  # falls back to Accounts rather than minting an atom or crashing).
+  defp gws_tab("search"), do: :search
+  defp gws_tab("labels"), do: :labels
+  defp gws_tab("sync_mail"), do: :sync_mail
+  defp gws_tab("calendar"), do: :calendar
+  defp gws_tab(_), do: :accounts
 
   # --- shared ------------------------------------------------------------
 
