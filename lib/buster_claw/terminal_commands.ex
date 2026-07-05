@@ -155,39 +155,16 @@ defmodule BusterClaw.TerminalCommands do
       label: "Prompts",
       aliases: ["prompt"],
       startup_profile: "prompts",
+      # One static default prompt; a prompt per enabled skill is synthesized
+      # from the `skills/` folder at display time (see `skill_prompt_commands/0`
+      # and `with_skill_prompts/1`), so the Prompts flyout tracks the folder
+      # with no recompile and no restated rows here.
       commands: [
         %{
           key: "welcome-introduction",
           command: "Welcome to Buster Claw. Please read the introduction.",
           kind: :prompt,
           default?: true
-        },
-        %{
-          key: "skill-save-note",
-          label: "Skill — Save Note",
-          description:
-            "Run the save-note composition skill: capture a title + body into the Library as a document.",
-          kind: :prompt,
-          command:
-            "Use the save-note skill to capture a note into my Library. First read " <>
-              "skills/save-note.md to confirm its inputs and that it's enabled, then ask me for " <>
-              "the note's title and body if I haven't given them, and run it with " <>
-              "`./buster-claw run save-note --json '{\"title\":\"…\",\"body\":\"…\"}'`. " <>
-              "Confirm the saved document back to me."
-        },
-        %{
-          key: "skill-shader-designer",
-          label: "Skill — Shader Designer",
-          description:
-            "Read the shader-designer reference skill and author a new homepage WGSL shader pattern.",
-          kind: :prompt,
-          command:
-            "Read the shader-designer skill (skills/shader-designer.md) in full, then design and " <>
-              "author a new homepage WebGPU background pattern for me. Propose a concept first, " <>
-              "then write ONE shaders/<name>.wgsl file containing only your helper functions plus " <>
-              "an `fs_main` entry point that honors the shared prelude, the uniform contract, and " <>
-              "the colA/colB/colC palette. It becomes selectable in Settings → Appearance the " <>
-              "moment the file lands — tell me the name to pick."
         }
       ]
     }
@@ -209,14 +186,73 @@ defmodule BusterClaw.TerminalCommands do
 
   # ---- Merged catalog (what every consumer reads) --------------------------
 
-  @doc "Return every terminal role command group, including menu-hidden ones."
-  def roles, do: load()
+  @doc """
+  Return every terminal role command group, including menu-hidden ones. The
+  `prompts` role is augmented at read time with one generated prompt per enabled
+  skill (`with_skill_prompts/1`); those synthesized rows never touch the
+  persisted file.
+  """
+  def roles, do: load() |> with_skill_prompts()
 
   @doc """
   Roles to surface in the terminal command menu — everything except those flagged
   `hidden: true` (which stay resolvable for startup profiles but aren't listed).
   """
-  def menu_roles, do: Enum.reject(load(), &Map.get(&1, :hidden, false))
+  def menu_roles, do: Enum.reject(roles(), &Map.get(&1, :hidden, false))
+
+  @doc """
+  One synthesized `prompts` command per enabled skill (`Skills.list/0`),
+  generated at read time — never persisted, so it can't drift from `skills/*.md`.
+  Composition skills get a "run it" prompt; reference skills get a "read + do the
+  task" prompt. Each carries `generated: true`.
+  """
+  def skill_prompt_commands do
+    BusterClaw.Skills.list() |> Enum.map(&skill_prompt_command/1)
+  rescue
+    # Skills folder unreadable → no synthesized prompts (the static default stays).
+    _error -> []
+  end
+
+  # Append the synthesized skill prompts to the `prompts` role, skipping any key
+  # a persisted/built-in row already owns (so a user's own `skill-<name>` row
+  # shadows the generated one — a zero-UI override).
+  defp with_skill_prompts(roles) do
+    synthesized = skill_prompt_commands()
+
+    Enum.map(roles, fn role ->
+      if role.key == "prompts" do
+        owned = MapSet.new(role.commands, & &1.key)
+        extra = Enum.reject(synthesized, &MapSet.member?(owned, &1.key))
+        %{role | commands: role.commands ++ extra}
+      else
+        role
+      end
+    end)
+  end
+
+  defp skill_prompt_command(%{name: name, description: description, handler_kind: kind}) do
+    %{
+      key: "skill-#{name}",
+      label: "Skill — #{humanize_key(name)}",
+      description: description,
+      command: skill_prompt_text(kind, name),
+      kind: :prompt,
+      default?: false,
+      builtin: false,
+      generated: true
+    }
+  end
+
+  defp skill_prompt_text(:composition, name) do
+    "Run the #{name} skill. First read skills/#{name}.md to confirm it's enabled and see its " <>
+      "declared args, gather any inputs it needs from me, then run it with " <>
+      "`./buster-claw run #{name} --json '{…}'` and report the result back to me."
+  end
+
+  defp skill_prompt_text(_reference, name) do
+    "Read the #{name} skill (skills/#{name}.md) in full, then carry out the task it describes, " <>
+      "following its steps and producing the artifact it asks for."
+  end
 
   @doc "Find a role by key or alias."
   def role(key) when is_binary(key) do
@@ -795,7 +831,8 @@ defmodule BusterClaw.TerminalCommands do
       command: command.command,
       kind: Map.get(command, :kind, :shell),
       default?: Map.get(command, :default?, false),
-      builtin: true
+      builtin: true,
+      generated: false
     }
   end
 
@@ -841,7 +878,8 @@ defmodule BusterClaw.TerminalCommands do
         command: command,
         kind: parse_kind(cmd["kind"]),
         default?: false,
-        builtin: false
+        builtin: false,
+        generated: false
       }
     end
   end

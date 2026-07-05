@@ -208,6 +208,17 @@ defmodule BusterClawWeb.CmdListLive do
       </button>
     </div>
 
+    <p
+      :if={@role.key == "prompts"}
+      class="rounded-sm border-2 border-base-content/15 bg-base-200/60 px-3 py-2 text-xs leading-5 text-base-content/70"
+    >
+      One prompt per enabled skill is added to the terminal automatically from your
+      <code class="font-mono">skills/</code>
+      folder — those aren't listed here. To reword one, add a command with the key
+      <code class="font-mono">skill-&lt;name&gt;</code>
+      below; it shadows the generated prompt.
+    </p>
+
     <.form
       for={@form}
       id={"cmd-list-form-#{@role.key}"}

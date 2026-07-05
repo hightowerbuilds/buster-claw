@@ -28,6 +28,26 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
     end
   end
 
+  defp write_skill(name, handler_kind, extra \\ "") do
+    dir = BusterClaw.Library.Artifact.workspace_path("skills")
+    File.mkdir_p!(dir)
+
+    File.write!(Path.join(dir, "#{name}.md"), """
+    ---
+    name: #{name}
+    description: The #{name} skill.
+    tier: safe
+    enabled: true
+    handler_kind: #{handler_kind}
+    #{extra}
+    ---
+
+    # #{name}
+    """)
+  end
+
+  defp prompts_role, do: TerminalCommands.role("prompts")
+
   describe "put_catalog/1 + load/0" do
     test "a persisted catalog round-trips through the workspace file into the merged view" do
       doc = %{
@@ -247,6 +267,82 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
 
     test "refuses protected roles" do
       assert {:error, :protected} = TerminalCommands.reset_role("mailman")
+    end
+  end
+
+  describe "skill prompts (generated from the skills folder)" do
+    test "one generated prompt per enabled skill, composition vs reference text" do
+      write_skill("save-note", "composition",
+        ~s(args: {"title":{"type":"string"}}\nsteps: [{"command":"document_save","args":{"name":"$title","body":"$title"}}])
+      )
+
+      write_skill("shader-designer", "reference")
+
+      commands = prompts_role().commands
+      by_key = Map.new(commands, &{&1.key, &1})
+
+      # The static default stays; a generated prompt per skill is appended.
+      assert Map.has_key?(by_key, "welcome-introduction")
+
+      comp = by_key["skill-save-note"]
+      assert comp.kind == :prompt
+      assert comp.generated == true
+      assert comp.label == "Skill — Save Note"
+      assert comp.command =~ "./buster-claw run save-note"
+
+      ref = by_key["skill-shader-designer"]
+      assert ref.generated == true
+      assert ref.command =~ "Read the shader-designer skill"
+    end
+
+    test "generated prompts are never written to the catalog file" do
+      write_skill("save-note", "composition",
+        ~s(args: {}\nsteps: [{"command":"runtime_status","args":{}}])
+      )
+
+      # Editing another command persists the file; the generated prompt must not
+      # leak into it (it lives only in the read-time view).
+      assert :ok =
+               TerminalCommands.put_catalog(%{
+                 "version" => 1,
+                 "roles" => [
+                   %{"key" => "toolbox", "commands" => [%{"key" => "commands-list", "command" => "./x"}]}
+                 ]
+               })
+
+      refute read_doc()
+             |> Map.get("roles")
+             |> Enum.any?(fn r ->
+               r["key"] == "prompts" and
+                 Enum.any?(r["commands"] || [], &(&1["key"] == "skill-save-note"))
+             end)
+    end
+
+    test "a persisted skill-<name> row shadows the generated one" do
+      write_skill("save-note", "composition",
+        ~s(args: {}\nsteps: [{"command":"runtime_status","args":{}}])
+      )
+
+      assert :ok =
+               TerminalCommands.put_catalog(%{
+                 "version" => 1,
+                 "roles" => [
+                   %{
+                     "key" => "prompts",
+                     "commands" => [
+                       %{"key" => "welcome-introduction", "command" => "Welcome.", "kind" => "prompt"},
+                       %{"key" => "skill-save-note", "command" => "My own wording.", "kind" => "prompt"}
+                     ]
+                   }
+                 ]
+               })
+
+      rows = Enum.filter(prompts_role().commands, &(&1.key == "skill-save-note"))
+      assert [%{command: "My own wording.", generated: false}] = rows
+    end
+
+    test "no skills → only the static default prompt" do
+      assert Enum.map(prompts_role().commands, & &1.key) == ["welcome-introduction"]
     end
   end
 

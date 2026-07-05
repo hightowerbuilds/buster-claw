@@ -1,12 +1,15 @@
 # Skill Prompts (dynamic Prompts-role generation) Roadmap
 
-> **Status (2026-07-05): PROPOSED / not started.** An interim static cut is
-> live in `main`: the terminal `prompts` role now ships one hardcoded prompt per
-> current skill (`skill-save-note`, `skill-shader-designer`) and the old
-> "walk me through ALL the skills" prompt (`skills-methodology`) was removed.
-> That edit is a placeholder — this roadmap replaces the two hardcoded rows with
-> generation from the live skills folder so the Prompts flyout tracks
-> `skills/*.md` with no recompile. Phase 0 deletes the interim rows.
+> **Status (2026-07-05): SHIPPED (Phase 0 + a light editor note).** The terminal
+> `prompts` role is now generated from the skills folder: `welcome-introduction`
+> (static default) plus one prompt per enabled `skills/*.md`, synthesized at read
+> time in `roles/0` via `with_skill_prompts/1` / `skill_prompt_commands/0` and
+> never persisted (`generated: true`). The two interim hardcoded rows are gone.
+> Composition skills get a "run it" prompt; reference skills get a "read + do the
+> task" prompt; a user's own `skill-<name>` row in the catalog file shadows the
+> generated one. Settings → Cmd List shows a note explaining the auto-generation
+> (the full read-only row rendering in Phase 1 below was **not** built — deferred
+> as polish). This rides on the file-first cmd-list store (`cmd-list/catalog.json`).
 
 *2026-07-05. Governing principle: **skills are already a file-first, runtime
 layer — the Prompts flyout should mirror them, not restate them.** Adding or
