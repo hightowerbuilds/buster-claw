@@ -85,6 +85,79 @@ Suite: **893 tests, 0 failures.** One real flake found and fixed: a background
 config fetch hitting `Req.Test`'s ownership server from a non-owner process
 poisoned later tests.
 
+## GWS → Configuration, then a sidebar/main console
+
+`GWSLive` was its own Settings sub-tab; folded it entirely into the
+**Configuration** tab (`SettingsLive` at `/settings`) so one tab owns all
+account-level config, and removed the `/gws` route (repointed split panes,
+tab-strip labels, runtime nav, OAuth callback). Then restyled the GWS section
+into a **sidebar/main console**: a left tab rail (Accounts / Search / Labels /
+Sync Mail / Calendar) with the active tool's form + results in the middle;
+results persist across tab switches since they stay in assigns.
+
+## cmd-list: agent-editable, then fully file-first
+
+- **Agent edits from chat** — two native commands (`terminal_command_list`
+  read, `terminal_command_set` restricted) so BusterClaw can read + edit the
+  cmd-list catalog itself; protected On Duty roles refused, multiline-shell
+  rejected, same validate→persist→broadcast path as the UI.
+- **File-first storage** — the catalog moved out of the Settings KV store into
+  `<workspace>/cmd-list/catalog.json` (+ README), seeded on boot, read live —
+  like `skills/`, `shaders/`, the `buster-claw` launcher. The file holds the
+  full non-protected roles (not a diff); protected roles stay code-enforced.
+- **Prompts generated from skills** — the Prompts role is now `welcome` +
+  one prompt per enabled `skills/*.md`, synthesized at read time, never
+  persisted; Settings → Cmd List renders them read-only ("From your skills
+  folder"). A user's own `skill-<name>` row shadows the generated one.
+- Renamed the sub-tab label to **"Cmd List"** and widened the terminal
+  cmd-list flyout to 34rem.
+
+## Terminal fine-tuning
+
+- **Split (+) button greys out** once a tab is already split (2 terminals is
+  the limit) so a third can't push a pane out.
+- **Dock Terminal button opens a NEW shell every click** (a fresh session key
+  + tab, like Cmd-T). It had been navigating to bare `/terminal`, which falls
+  back to the shared `"main"` session — so it kept reopening the same shell.
+
+## Tab strip: Settings reopens where you left off
+
+The collapsed "Settings" top tab always navigated to Configuration; now it
+remembers the last sub-route visited (per-tab `href`) and returns there. Also
+refreshed the Settings group set (dropped `/gws`, added `/cmd-list`).
+
+## Housekeeping — docs + the archive lifecycle
+
+- Removed the completed `chat-roadmap.md`; **moved the in-app manual source
+  out of `daily-growth/` to a top-level `user-guide/`** (compile-time embed +
+  drift-check + moduledocs all updated).
+- Reviewed the **veteran review** and **07-04 code review**: verified their
+  P0/P1 fixes still hold in current code (SSRF, catalog invariants, no
+  `String.to_atom`, README drift), then archived both completed docs. Caught
+  and fixed a self-inflicted regression — recent archiving to
+  `roadmaps/oldmaps/` had reintroduced the exact "old nesting" the veteran
+  review's P2-2 banned; consolidated everything into one flat
+  `daily-growth/archive/` (`grep old` → 0) and restored the Shortlist live.
+
+## The weather-shader bundle break (worth remembering)
+
+The app suddenly looked broken — tab strip gone, WebGPU shaders dead, chat
+stretched/mis-laid-out, all at once. Root cause: an agent's redesign of the
+weather shader put **`reach` with backticks in a WGSL comment**, but
+`assets/js/smoke/weather.wgsl.js` is a **JS backtick template literal**, so the
+stray backtick terminated the string mid-file. esbuild failed that file, which
+**took the whole `app.js` bundle down** — and with no bundle, *every* LiveView
+hook died simultaneously (the tab strip renders itself client-side, the shaders
+are a hook, the chat layout is hook-driven). One-line fix (drop the backticks);
+build clean again.
+
+**Lesson:** the six baked-in shaders (`assets/js/smoke/*.wgsl.js`) are JS
+template literals — a backtick *anywhere* inside, even in a comment, breaks the
+entire bundle. The workspace `shaders/*.wgsl` files (shader-designer output) are
+served as raw text and compiled in-browser, so they're immune; this footgun is
+built-ins only. When the app goes fully dark, it's almost always a broken
+`app.js` — `mix assets.build` names the exact file:line.
+
 ## What's next
 
 The app side of seamless connect is **done, waiting on the operator
