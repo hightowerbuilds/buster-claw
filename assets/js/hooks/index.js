@@ -9,6 +9,7 @@ import {CalendarDrag, CalendarPopover} from "./calendar.js"
 import {TabStrip} from "./tab_strip.js"
 import {SplitResizer} from "./split.js"
 import {TerminalView, TermThemePicker} from "./terminal.js"
+import {DockNewTerminal} from "./dock_terminal.js"
 import {SmokeBackground} from "./smoke_background.js"
 import {ShaderPreview} from "./shader_preview.js"
 import {SvgViewerDock} from "./svg_viewer.js"
@@ -29,6 +30,7 @@ export const Hooks = {
   SplitResizer,
   TerminalView,
   TermThemePicker,
+  DockNewTerminal,
   SmokeBackground,
   ShaderPreview,
   SvgViewerDock,

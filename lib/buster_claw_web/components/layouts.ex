@@ -23,7 +23,10 @@ defmodule BusterClawWeb.Layouts do
       label: "Terminal",
       path: "/terminal",
       icon: "hero-command-line",
-      image: "/images/brand/terminal-icon.png"
+      image: "/images/brand/terminal-icon.png",
+      # Opens a NEW shell every click (fresh session key + tab), like Cmd-T —
+      # a plain /terminal navigation would reattach to the shared "main" shell.
+      new_terminal: true
     },
     %{
       label: "Calendar",
@@ -174,20 +177,30 @@ defmodule BusterClawWeb.Layouts do
         class="sticky bottom-0 z-30 flex items-center gap-2 overflow-x-auto border-t border-base-300 bg-base-100/95 px-3 py-2 backdrop-blur"
       >
         <nav class="flex items-center gap-1" aria-label="Open a tab">
-          <.link
-            :for={item <- @nav_items}
-            navigate={item.path}
-            title={item.label}
-            class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
-          >
-            <img
-              :if={item[:image]}
-              src={item[:image]}
-              alt={item.label}
-              class="h-6 w-auto shrink-0"
-            />
-            <span :if={!item[:image]} class="font-medium">{item.label}</span>
-          </.link>
+          <div :for={item <- @nav_items} class="contents">
+            <%!-- Terminal opens a fresh shell per click via JS (see the marker
+            on @navigation_items); everything else is a normal tab navigation. --%>
+            <button
+              :if={item[:new_terminal]}
+              type="button"
+              id="dock-new-terminal"
+              phx-hook="DockNewTerminal"
+              title={item.label}
+              class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
+            >
+              <img :if={item[:image]} src={item[:image]} alt={item.label} class="h-6 w-auto shrink-0" />
+              <span :if={!item[:image]} class="font-medium">{item.label}</span>
+            </button>
+            <.link
+              :if={!item[:new_terminal]}
+              navigate={item.path}
+              title={item.label}
+              class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
+            >
+              <img :if={item[:image]} src={item[:image]} alt={item.label} class="h-6 w-auto shrink-0" />
+              <span :if={!item[:image]} class="font-medium">{item.label}</span>
+            </.link>
+          </div>
         </nav>
 
         <div class="ml-auto shrink-0">
