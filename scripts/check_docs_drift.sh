@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DOCS=(README.md docs/*.md daily-growth/user-guide/*.md)
+DOCS=(README.md docs/*.md user-guide/*.md)
 
 # --- source of truth 1: catalog command names -------------------------------
 CATALOG=$(mix run --no-start -e \

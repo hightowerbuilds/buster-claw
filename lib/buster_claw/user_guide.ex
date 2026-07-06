@@ -1,13 +1,13 @@
 defmodule BusterClaw.UserGuide do
   @moduledoc """
   The in-app **User Guide** content, split into sub-tab sections. Each section is
-  a markdown file under `daily-growth/user-guide/`, embedded at compile time (so
-  it ships in releases and hot-reloads in dev when a file changes) and rendered to
+  a markdown file under `user-guide/` (repo root), embedded at compile time (so it
+  ships in releases and hot-reloads in dev when a file changes) and rendered to
   sanitized, blog-style HTML via `BusterClaw.Markdown`.
 
   Add a section by dropping a new file here and adding it to `@sections`.
   """
-  @dir Path.expand(Path.join([__DIR__, "..", "..", "daily-growth", "user-guide"]))
+  @dir Path.expand(Path.join([__DIR__, "..", "..", "user-guide"]))
 
   @sections [
     %{key: :introduction, label: "Introduction", file: "introduction.md"},

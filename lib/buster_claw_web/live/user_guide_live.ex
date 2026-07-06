@@ -1,7 +1,7 @@
 defmodule BusterClawWeb.UserGuideLive do
   @moduledoc """
-  The **Manual** tab — renders the guide (sourced from `daily-growth/user-guide/`,
-  via `BusterClaw.UserGuide`) with in-page sub-tabs (Introduction / Setup / Daily
+  The **Manual** tab — renders the guide (sourced from `user-guide/`, via
+  `BusterClaw.UserGuide`) with in-page sub-tabs (Introduction / Setup / Daily
   Loop). Opened from the footer dock.
 
   Sub-tabs switch via LiveView events (no URL change), so the whole guide stays
