@@ -1,15 +1,18 @@
 # Skill Prompts (dynamic Prompts-role generation) Roadmap
 
-> **Status (2026-07-05): SHIPPED (Phase 0 + a light editor note).** The terminal
-> `prompts` role is now generated from the skills folder: `welcome-introduction`
-> (static default) plus one prompt per enabled `skills/*.md`, synthesized at read
-> time in `roles/0` via `with_skill_prompts/1` / `skill_prompt_commands/0` and
-> never persisted (`generated: true`). The two interim hardcoded rows are gone.
-> Composition skills get a "run it" prompt; reference skills get a "read + do the
-> task" prompt; a user's own `skill-<name>` row in the catalog file shadows the
-> generated one. Settings → Cmd List shows a note explaining the auto-generation
-> (the full read-only row rendering in Phase 1 below was **not** built — deferred
-> as polish). This rides on the file-first cmd-list store (`cmd-list/catalog.json`).
+> **Status (2026-07-05): COMPLETE.** Phase 0 (synthesis) and Phase 1 (editor
+> read-only rendering) both shipped; Phase 1.5 (caching) stays deferred by design
+> — negligible at this scale. The terminal `prompts` role is generated from the
+> skills folder: `welcome-introduction` (static default) plus one prompt per
+> enabled `skills/*.md`, synthesized at read time in `roles/0` via
+> `with_skill_prompts/1` / `skill_prompt_commands/0`, never persisted
+> (`generated: true`). Composition skills get a "run it" prompt; reference skills
+> get a "read + do the task" prompt. Settings → Cmd List renders the generated
+> prompts as read-only rows ("From your skills folder", `skills/<name>.md` badge);
+> the editable form base comes from `role_edit/1` (`load/0`), which excludes them,
+> so a save can never persist a stale row — and a user's own `skill-<name>` row
+> shadows the generated one. Rides on the file-first cmd-list store
+> (`cmd-list/catalog.json`).
 
 *2026-07-05. Governing principle: **skills are already a file-first, runtime
 layer — the Prompts flyout should mirror them, not restate them.** Adding or
