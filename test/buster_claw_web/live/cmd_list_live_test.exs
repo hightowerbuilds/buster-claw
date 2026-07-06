@@ -45,6 +45,32 @@ defmodule BusterClawWeb.CmdListLiveTest do
   defp put_command(params, index, field, value),
     do: put_in(params, ["commands", index, field], value)
 
+  defp write_skill(name) do
+    dir = BusterClaw.Library.Artifact.workspace_path("skills")
+    File.mkdir_p!(dir)
+
+    File.write!(Path.join(dir, "#{name}.md"), """
+    ---
+    name: #{name}
+    description: The #{name} skill.
+    tier: safe
+    enabled: true
+    handler_kind: composition
+    args: {}
+    steps: [{"command":"runtime_status","args":{}}]
+    ---
+
+    # #{name}
+    """)
+  end
+
+  defp catalog_doc do
+    case File.read(TerminalCommands.catalog_path()) do
+      {:ok, json} -> Jason.decode!(json)
+      _ -> nil
+    end
+  end
+
   test "renders protected roles read-only and editable roles as forms", %{conn: conn} do
     {:ok, view, html} = live(conn, ~p"/cmd-list")
 
@@ -201,6 +227,63 @@ defmodule BusterClawWeb.CmdListLiveTest do
     toolbox = TerminalCommands.roles() |> Enum.find(&(&1.key == "toolbox"))
     assert Enum.find(toolbox.commands, &(&1.key == "commands-list")).command ==
              "./buster-claw commands"
+  end
+
+  test "skill-generated prompts render read-only and never persist on save", %{conn: conn} do
+    write_skill("save-note")
+
+    {:ok, view, _html} = live(conn, ~p"/cmd-list")
+
+    # The generated prompt shows as a read-only row (with a skills/… badge) and
+    # exposes no editable input.
+    assert has_element?(view, "#cmd-list-generated-prompts-skill-save-note")
+    assert render(view) =~ "skills/save-note.md"
+    assert render(view) =~ "From your skills folder"
+    refute has_element?(view, "#cmd-list-prompts_commands_0_command[value*='save-note']")
+
+    # Saving the prompts role (its editable base is just welcome-introduction)
+    # must not serialize the generated row into the catalog file.
+    render_submit(view, "save_role", %{
+      "role_key" => "prompts",
+      "role" => role_params("prompts")
+    })
+
+    prompts = Enum.find(catalog_doc()["roles"], &(&1["key"] == "prompts"))
+    refute Enum.any?(prompts["commands"] || [], &(&1["key"] == "skill-save-note"))
+
+    # ...yet it still appears in the live terminal flyout.
+    {:ok, terminal, _html} = live(conn, ~p"/terminal")
+    terminal |> element("button[data-terminal-commands-button]") |> render_click()
+    assert render(terminal) =~ "Skill — Save Note"
+  end
+
+  test "an override row shadows the generated skill prompt", %{conn: conn} do
+    write_skill("save-note")
+
+    {:ok, view, _html} = live(conn, ~p"/cmd-list")
+
+    # Add a same-key row with custom wording and save.
+    params = role_params("prompts")
+    new_index = to_string(map_size(params["commands"]))
+    staged = Map.put(params, "commands_sort", Map.keys(params["commands"]) ++ ["new"])
+    render_change(view, "validate", %{"role_key" => "prompts", "role" => staged})
+
+    filled =
+      put_in(params, ["commands", new_index], %{
+        "key" => "skill-save-note",
+        "label" => "My Save Note",
+        "command" => "My own wording.",
+        "kind" => "prompt"
+      })
+
+    render_submit(view, "save_role", %{"role_key" => "prompts", "role" => filled})
+
+    row =
+      TerminalCommands.role("prompts").commands
+      |> Enum.filter(&(&1.key == "skill-save-note"))
+
+    # Exactly one row for the key, and it's the user's (not generated).
+    assert [%{command: "My own wording.", generated: false}] = row
   end
 
   test "reset_role on a protected role is refused", %{conn: conn} do

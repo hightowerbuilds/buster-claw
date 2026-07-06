@@ -9,6 +9,12 @@ defmodule BusterClawWeb.CmdListLive do
   the server refuses any submit that targets them regardless of what the UI
   sends. Row add/delete is staged in the form (`commands_sort`/`commands_drop`
   params) and only persists on "Save role".
+
+  The `prompts` role also lists the skill-generated prompts (`generated: true`,
+  synthesized from `skills/*.md` at read time) as read-only rows. They never
+  enter the editable form base (`role_edit/1` reads `load/0`, which excludes
+  them), so a save can't persist a row that would immediately go stale; to
+  reword one, add a same-key row above and it shadows the generated prompt.
   """
   use BusterClawWeb, :live_view
 
@@ -208,16 +214,6 @@ defmodule BusterClawWeb.CmdListLive do
       </button>
     </div>
 
-    <p
-      :if={@role.key == "prompts"}
-      class="rounded-sm border-2 border-base-content/15 bg-base-200/60 px-3 py-2 text-xs leading-5 text-base-content/70"
-    >
-      One prompt per enabled skill is added to the terminal automatically from your
-      <code class="font-mono">skills/</code>
-      folder — those aren't listed here. To reword one, add a command with the key
-      <code class="font-mono">skill-&lt;name&gt;</code>
-      below; it shadows the generated prompt.
-    </p>
 
     <.form
       for={@form}
@@ -346,8 +342,51 @@ defmodule BusterClawWeb.CmdListLive do
         </button>
       </div>
     </.form>
+
+    <%!-- Prompts generated from the skills/ folder: shown read-only (they live
+    in skills/*.md, never in the catalog file). Add a same-key row above to
+    reword one — a persisted skill-<name> row shadows the generated prompt. --%>
+    <div
+      :if={generated_rows(@role) != []}
+      id={"cmd-list-generated-#{@role.key}"}
+      class="space-y-3 border-t-2 border-base-content/10 pt-4"
+    >
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <.icon name="hero-sparkles" class="size-4 text-base-content/50" />
+          <h3 class="ic-eyebrow">From your skills folder</h3>
+        </div>
+        <p class="text-xs text-base-content/60">
+          Added to the terminal automatically — one per enabled skill. Read-only here;
+          add a command with the same key above to reword one.
+        </p>
+      </div>
+
+      <article
+        :for={cmd <- generated_rows(@role)}
+        id={"cmd-list-generated-#{@role.key}-#{cmd.key}"}
+        class="space-y-2 rounded-sm border border-dashed border-base-300 bg-base-200/40 p-3"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <span class="text-sm font-semibold">{cmd.label}</span>
+          <span class="inline-flex shrink-0 rounded-sm bg-base-200 px-1.5 py-0.5 font-mono text-[0.65rem] font-semibold uppercase leading-none text-base-content/55">
+            auto · skills/{skill_name(cmd.key)}.md
+          </span>
+        </div>
+        <p :if={cmd.description} class="text-xs text-base-content/60">{cmd.description}</p>
+        <pre class="whitespace-pre-wrap rounded bg-base-100 p-2 font-mono text-xs text-base-content/80">{cmd.command}</pre>
+      </article>
+    </div>
     """
   end
+
+  # The read-time-generated skill prompts on a role (only the prompts role has
+  # any). These are display-only — the editable form base comes from
+  # `role_edit/1` (`load/0`), which never includes them, so they can't be saved.
+  defp generated_rows(role), do: Enum.filter(role.commands, &Map.get(&1, :generated, false))
+
+  defp skill_name("skill-" <> name), do: name
+  defp skill_name(key), do: key
 
   attr :form, Phoenix.HTML.Form, required: true
 
