@@ -102,12 +102,21 @@ defmodule BusterClawWeb.TerminalLive do
           </div>
 
           <div class="flex shrink-0 items-center gap-1">
+            <%!-- A tab holds at most two terminals (one split). Once this terminal
+            is already in a split, the split button greys out so a third can't be
+            opened and push a pane out. --%>
             <button
               id={"#{@dom_id}-split"}
               type="button"
               data-terminal-action="split"
               data-split-side="right"
-              title="Split terminal"
+              disabled={@embedded?}
+              title={
+                if(@embedded?,
+                  do: "Two terminals per tab is the limit — close one to split again",
+                  else: "Split terminal"
+                )
+              }
               aria-label="Split terminal"
               class={toolbar_button_class()}
             >
