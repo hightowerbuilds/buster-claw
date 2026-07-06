@@ -80,9 +80,6 @@ defmodule BusterClawWeb.ChatPanel do
       <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
         <div>
           <p class="ic-eyebrow">Chat</p>
-          <h2 class="font-display text-2xl font-black uppercase tracking-tight">
-            Talk to Buster Claw
-          </h2>
         </div>
         <div class="flex items-center gap-3">
           <button

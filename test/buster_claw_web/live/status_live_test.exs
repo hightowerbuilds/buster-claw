@@ -51,7 +51,6 @@ defmodule BusterClawWeb.StatusLiveTest do
     # Right column: agent chat panel.
     assert response =~ ~s(id="home-agent-chat")
     assert response =~ ~s(phx-hook="AgentChat")
-    assert response =~ "Talk to Buster Claw"
     refute response =~ ~s(id="home-shift-management")
     # The Connect-GWS panel was removed from the home page; GWS lives on the
     # Configuration tab (/settings) + /setup.
@@ -144,7 +143,6 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       assert response =~ ~s(id="home-agent-chat")
       assert response =~ ~s(phx-hook="AgentChat")
-      assert response =~ "Talk to Buster Claw"
 
       assert response =~ ~s(form[phx-submit="chat_send"]) or
                response =~ ~s(phx-submit="chat_send")
