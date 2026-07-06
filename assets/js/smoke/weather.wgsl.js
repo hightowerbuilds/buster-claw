@@ -58,8 +58,20 @@ fn snow_layer(uv: vec2<f32>, t: f32, cells: f32, speed: f32, sway: f32, sz: f32)
   let phase = hash(cell + vec2<f32>(3.0, 1.0)) * 6.2831853;
   let sx = sin(phase + t * 1.5) * sway;
   let fsz = sz * mix(0.45, 1.2, hash(cell + vec2<f32>(5.0, 2.0)));
-  let d = length(f - vec2<f32>(jx * 0.7 + sx, jy * 0.7));
-  return smoothstep(fsz, fsz * 0.2, d) * present;
+  // Local position relative to this flake's (swaying) center.
+  let p = f - vec2<f32>(jx * 0.7 + sx, jy * 0.7);
+  let r = length(p);
+  // Six-fold snowflake instead of a round orb: reach is the arm length as a
+  // function of angle — long on the six axes, short between them — plus a tiny
+  // solid hub so the center never drops out. Each flake spins on its own phase.
+  let a = atan2(p.y, p.x) + phase;
+  let c6 = cos(a * 6.0);
+  let mainArm = pow(max(c6, 0.0), 3.0);           // 6 long arms on the axes
+  let minorArm = pow(max(-c6, 0.0), 6.0);         // 6 short arms between them
+  let reach = fsz * (0.20 + 0.85 * mainArm + 0.28 * minorArm);
+  let star = smoothstep(reach, reach * 0.4, r);
+  let hub = smoothstep(fsz * 0.30, fsz * 0.12, r);
+  return max(star, hub) * present;
 }
 
 // A jagged vertical lightning segment between y_bot and y_top, with a bright
