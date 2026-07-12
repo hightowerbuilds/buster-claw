@@ -171,33 +171,6 @@ defmodule BusterClaw.Browser do
     end
   end
 
-  def status do
-    sidecar_status = Sidecar.status()
-    configured_url = Application.get_env(:buster_claw, :browser_sidecar_url)
-
-    cond do
-      is_binary(configured_url) ->
-        %{mode: "sidecar", sidecar: "configured", health: "available", url: configured_url}
-
-      sidecar_status.enabled ->
-        %{
-          mode: "sidecar",
-          sidecar: sidecar_status.health,
-          health: sidecar_status.health,
-          url: sidecar_status.url,
-          error: sidecar_status.error,
-          sandbox: sidecar_status.sandbox
-        }
-
-      true ->
-        %{
-          mode: "http-fallback",
-          sidecar: "not-started",
-          health: "available"
-        }
-    end
-  end
-
   defp fetch_with_sidecar(sidecar_url, url, opts) do
     timeout = Keyword.get(opts, :timeout, 15_000)
 
