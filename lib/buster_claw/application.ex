@@ -41,6 +41,7 @@ defmodule BusterClaw.Application do
         dispatcher_child(),
         wallet_poller_child(),
         analyzer_child(),
+        telephony_drain_child(),
         # Per-conversation chat: a Registry for {:via} lookup by conv_id and a
         # DynamicSupervisor that starts one Chat process per open conversation,
         # lazily on the first message. Always on (cheap; tests use them too).
@@ -162,6 +163,15 @@ defmodule BusterClaw.Application do
   defp analyzer_child do
     if Application.get_env(:buster_claw, :analyzer_enabled, true) do
       BusterClaw.Analyzer.Server
+    end
+  end
+
+  # The BusterPhone relay drain: pulls telephony events from the Supabase queue
+  # into local SQLite. Key-gated in runtime.exs (needs SUPABASE_URL + the
+  # service-role key); off in tests (the Drain suite drives drain/1 directly).
+  defp telephony_drain_child do
+    if Application.get_env(:buster_claw, :telephony_drain_enabled, false) do
+      BusterClaw.Telephony.Drain
     end
   end
 end

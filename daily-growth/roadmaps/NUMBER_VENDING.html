@@ -192,7 +192,8 @@ footer{margin-top:72px;border-top:2px solid var(--rule-hard);padding-top:18px;
   <div class="status">
     <span class="chip live">Money leg</span>
     <span class="chip">Voice only · no A2P needed</span>
-    <span class="chip">Blocked on: Mac-side drain</span>
+    <span class="chip">Drain: shipped 07-12</span>
+    <span class="chip">Blocked on: paid Twilio account</span>
   </div>
 </header>
 
@@ -250,28 +251,29 @@ footer{margin-top:72px;border-top:2px solid var(--rule-hard);padding-top:18px;
         <text x="667" y="98" class="svg-sub" text-anchor="middle">RLS: service-role only</text>
         <text x="667" y="111" class="svg-sub" text-anchor="middle">SHIPPED</text>
 
-        <!-- THE GAP -->
-        <path d="M742 75 H 812" class="flow-gap" marker-end="url(#arh)"/>
-        <text x="777" y="64" class="svg-sub" text-anchor="middle" fill="var(--hazard)">Realtime</text>
+        <!-- the former gap — drained by polling since 07-12 -->
+        <path d="M742 75 H 812" class="flow" marker-end="url(#ar)"/>
+        <text x="777" y="64" class="svg-sub" text-anchor="middle">poll 30s</text>
 
-        <rect x="812" y="34" width="168" height="82" class="node-gap"/>
-        <text x="896" y="60" class="svg-label" text-anchor="middle" fill="var(--hazard)">Mac-side drain</text>
-        <text x="896" y="78" class="svg-sub" text-anchor="middle" fill="var(--hazard)">DOES NOT EXIST</text>
-        <text x="896" y="94" class="svg-sub" text-anchor="middle">no websocket dep,</text>
-        <text x="896" y="107" class="svg-sub" text-anchor="middle">no drain process</text>
+        <rect x="812" y="34" width="168" height="82" class="node-ours"/>
+        <text x="896" y="56" class="svg-label" text-anchor="middle">Mac-side drain</text>
+        <text x="896" y="72" class="svg-sub" text-anchor="middle">Telephony.Drain</text>
+        <text x="896" y="85" class="svg-sub" text-anchor="middle">persist-then-ack</text>
+        <text x="896" y="98" class="svg-sub" text-anchor="middle">transcript grace window</text>
+        <text x="896" y="111" class="svg-sub" text-anchor="middle">SHIPPED 07-12</text>
 
         <!-- second row -->
-        <path d="M896 116 V 160" class="flow-gap"/>
-        <path d="M896 160 H 300" class="flow-gap"/>
-        <path d="M300 160 V 196" class="flow-gap" marker-end="url(#arh)"/>
+        <path d="M896 116 V 160" class="flow"/>
+        <path d="M896 160 H 300" class="flow"/>
+        <path d="M300 160 V 196" class="flow" marker-end="url(#ar)"/>
 
-        <rect x="176" y="196" width="248" height="66" class="node"/>
+        <rect x="176" y="196" width="248" height="66" class="node-ours"/>
         <text x="300" y="220" class="svg-label" text-anchor="middle">BusterClaw on the Mac</text>
-        <text x="300" y="236" class="svg-sub" text-anchor="middle">SQLite ledger → Library artifact</text>
-        <text x="300" y="250" class="svg-sub" text-anchor="middle">/phone tab · UI SHIPPED</text>
+        <text x="300" y="236" class="svg-sub" text-anchor="middle">SQLite ledger → /phone tab, live</text>
+        <text x="300" y="250" class="svg-sub" text-anchor="middle">audio in the Library · SHIPPED</text>
 
-        <text x="446" y="228" class="svg-sub">Everything downstream of the gap is built.</text>
-        <text x="446" y="244" class="svg-sub" fill="var(--hazard)">Nothing downstream of the gap can run.</text>
+        <text x="446" y="228" class="svg-sub">The wire is complete end-to-end.</text>
+        <text x="446" y="244" class="svg-sub">What remains is commercial: a real number, then vending.</text>
 
         <defs>
           <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
@@ -283,12 +285,12 @@ footer{margin-top:72px;border-top:2px solid var(--rule-hard);padding-top:18px;
         </defs>
       </svg>
     </div>
-    <figcaption>Solid = shipped. Dashed orange = the one missing link. The relay, the storage, the queue table and the entire /phone UI exist; the Mac never picks the messages up.</figcaption>
+    <figcaption>The whole path is solid as of 07-12. Design note: the drain <strong>polls</strong> (30s) rather than holding a Realtime websocket — a socket can't replay rows that arrived while the laptop slept, so the catch-up read has to exist anyway, and at answering-machine latency it <em>is</em> the drain. A Realtime waker can be layered on later without rework.</figcaption>
   </figure>
 
   <div class="danger">
-    <h3>This is the only thing standing between us and revenue</h3>
-    <p class="measure">Every decision on this page — pricing, provisioning, compliance, churn — is downstream of a websocket client that does not exist. There is no Realtime dependency in <code>mix.exs</code>, no drain process in the supervision tree, and no Twilio REST client anywhere in <code>lib/</code>. <strong>Build the drain before building anything else here.</strong></p>
+    <h3>The drain shipped — the blocker is now commercial, not technical</h3>
+    <p class="measure"><code>Telephony.Drain</code> is in the supervision tree, gated on <code>SUPABASE_URL</code> + <code>SUPABASE_SERVICE_ROLE_KEY</code>. Persist-then-ack (a crash re-drains and dedupes on the local <code>twilio_sid</code> index — retry, never a lost voicemail), a grace window for Twilio's trailing transcription callback, per-row failure isolation, and traversal-refused recording paths. What does <strong>not</strong> exist yet: a paid Twilio account, and any Twilio REST client in <code>lib/</code> — provisioning (Diagram 04) is still entirely unbuilt.</p>
   </div>
 </section>
 
@@ -598,7 +600,7 @@ footer{margin-top:72px;border-top:2px solid var(--rule-hard);padding-top:18px;
       <div class="phase-head"><h3>Phase 0 — Make one number work, for one person: you</h3><span class="phase-tag">blocking · no money required beyond the number</span></div>
       <ul>
         <li>Upgrade the Twilio trial to a paid account; buy <strong>one</strong> real number.</li>
-        <li><strong>Build the Mac-side drain</strong> — a Supabase Realtime websocket client in the supervision tree that pulls <code>telephony_events</code> down into SQLite. Everything else on this page is blocked on this.</li>
+        <li><strong>✓ Build the Mac-side drain — DONE 07-12.</strong> <code>Telephony.Drain</code> polls the relay, downloads audio into the Library, mirrors rows into SQLite, then acks. Set <code>SUPABASE_URL</code> + <code>SUPABASE_SERVICE_ROLE_KEY</code> and it runs.</li>
         <li>Dogfood it. Give the number to friends. Let it take real messages for a fortnight.</li>
       </ul>
     </div>

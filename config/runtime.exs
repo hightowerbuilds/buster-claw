@@ -92,6 +92,28 @@ if browser_sidecar_url = System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_URL") do
   config :buster_claw, :browser_sidecar_url, browser_sidecar_url
 end
 
+# BusterPhone relay drain (Supabase → local SQLite). Key-gated exactly like
+# Finnhub: with no URL + service-role key the Drain child never starts and the
+# /phone tab simply shows what's already local. The service-role key bypasses
+# RLS project-wide — never commit it, never ship it in a build. Guarded out of
+# :test entirely so a developer's shell env can't overwrite the test stubs
+# (runtime.exs runs AFTER config/test.exs and would clobber them with nil).
+if config_env() != :test do
+  telephony_relay_url = System.get_env("SUPABASE_URL")
+  telephony_relay_key = System.get_env("SUPABASE_SERVICE_ROLE_KEY")
+
+  telephony_drain_enabled =
+    case System.get_env("BUSTER_CLAW_TELEPHONY_DRAIN") do
+      nil -> is_binary(telephony_relay_url) and is_binary(telephony_relay_key)
+      value -> value in ["1", "true", "TRUE", "yes", "YES"]
+    end
+
+  config :buster_claw,
+    telephony_relay_url: telephony_relay_url,
+    telephony_relay_key: telephony_relay_key,
+    telephony_drain_enabled: telephony_drain_enabled
+end
+
 # Finnhub API key for the finance_quote / finance_news commands. Optional — when
 # unset, those commands return {:error, :not_configured} and the rest of the
 # finance surface (EDGAR filings/fundamentals) is unaffected. Set FINNHUB_API_KEY

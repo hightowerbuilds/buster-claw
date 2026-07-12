@@ -71,10 +71,27 @@ Caller/Texter → Twilio number → Supabase Edge Function (public HTTPS)
                                   · verifies X-Twilio-Signature
                                   · returns TwiML (greeting / <Record> / ack)
                                   · writes audio → Storage, event row → Postgres
-Mac (outbound-only) ← Realtime push ← telephony_events queue
-  BusterClaw.Telephony: drains queue, downloads audio, writes Library docs,
-  sends outbound SMS straight to Twilio's REST API (no ingress needed)
+Mac (outbound-only) ← polls queue ← telephony_events (synced=false)
+  BusterClaw.Telephony.Drain: drains queue, downloads audio into the
+  Library, mirrors rows into SQLite; outbound SMS will go straight to
+  Twilio's REST API (no ingress needed)
 ```
+
+> **✅ THE DRAIN SHIPPED 07-12** — `BusterClaw.Telephony.Drain` +
+> `Telephony.Relay`, gated on `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`.
+> **Design change from the sketch above: it polls PostgREST (30s tick), it is
+> not a Realtime websocket.** Reasons: a websocket can't replay rows that
+> arrived while the laptop slept, so the catch-up poll has to exist anyway;
+> polling is the house pattern (WalletPoller) with zero new deps; and 30s is
+> invisible for an answering machine. A Realtime waker can sit on top later by
+> just calling `Drain.tick_now/1` — no rework. Discipline: persist-then-ack
+> (a crash between the local insert and the remote `synced` flip re-drains and
+> dedupes on the local `twilio_sid` unique index — retry, never a lost
+> voicemail), a transcript grace window (young transcript-less voicemails wait
+> for Twilio's trailing transcription callback before the one-shot drain), and
+> per-row isolation (storage 404 drains without audio; transient failures
+> retry; a traversal `recording_path` from the cloud is refused before it can
+> land inside the Library root).
 
 This buys **always-on capture** — a call that lands while the Mac is asleep
 waits in Supabase and drains on next sync — and keeps the Mac purely

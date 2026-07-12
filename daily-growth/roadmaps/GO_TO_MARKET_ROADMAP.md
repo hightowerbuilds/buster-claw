@@ -242,7 +242,8 @@ after. See `BUSTERPHONE_ROADMAP.md` for the sequencing.
 - **COGS is small but real** — a US number is on the order of $1–2/mo plus usage
   (**confirm current Twilio pricing at build**). At $10–15/mo that's a healthy margin
   *and an honest one*, which is the entire point of Part V.
-- **It is unfinished.** No Mac-side Realtime drain, still a trial number. This is a
+- **It is unfinished.** ~~No Mac-side drain~~ (drain SHIPPED 07-12 — the inbound
+  path is now complete end-to-end), still a trial number. This is a
   build, not a flip.
 - **SMS will likely force the LLC early** (A2P brand registration wants an EIN),
   which cuts against Part I's "entity deferred." Voice-only may let us defer it —
@@ -274,7 +275,7 @@ eating anyway. Kept for the record.*
   construction**, no DRM needed, and Channel A cannot route around it without the
   user provisioning their own Twilio account, which is a genuine barrier rather
   than a twenty-minute one. It is the only remaining feature with true per-user
-  marginal cost. **Catch:** it is unfinished — no Mac-side Realtime drain, no
+  marginal cost. **Catch:** it is unfinished — ~~no Mac-side drain~~ (SHIPPED 07-12), no
   Twilio upgrade (see `BUSTERPHONE_ROADMAP.md`). A candidate, not a ready answer.
 - **Option B — Charge for the signed binary.** We are about to eat the Apple
   $99/yr, notarization, and two-runner arm64 CI *regardless* (see

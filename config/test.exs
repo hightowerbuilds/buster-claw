@@ -44,6 +44,11 @@ config :buster_claw, :wallet_poller_enabled, false
 # The self-improvement scanner is off in tests; the Analyzer suite drives scan/1
 # directly with seeded audit events.
 config :buster_claw, :analyzer_enabled, false
+# The BusterPhone relay drain is off in tests; the Drain suite starts its own
+# instance with Req.Test stubs and drives it via drain/1 directly.
+config :buster_claw, :telephony_drain_enabled, false
+config :buster_claw, :telephony_relay_url, "http://relay.test"
+config :buster_claw, :telephony_relay_key, "test-service-role-key"
 # Call-rate limiting is off in tests so command-heavy suites aren't throttled; the
 # RateLimiter suite flips it on with a low limit to exercise enforcement.
 config :buster_claw, :rate_limit_enabled, false
