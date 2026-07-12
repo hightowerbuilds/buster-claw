@@ -13,6 +13,51 @@ second, more immediate channel: your phone.
 
 ---
 
+## 💰 07-12: THIS IS THE MONEY LEG
+
+**BusterPhone is now the paid tier** (`GO_TO_MARKET_ROADMAP.md` Part V.1). It stopped
+being a fun feature and became the only thing funding the fixed costs — CASA, Apple,
+domain, MoR. Build it accordingly.
+
+**The model: we are the phone company.** We hold the Twilio account, we provision the
+number, **the user never learns Twilio exists.** One bill to us; we pay the wholesaler.
+
+> **The trap to never ship: BYO-Twilio as the paid tier.** If the buyer signs up for
+> Twilio, buys a number, and *then* pays us — they pay twice, and we have **zero
+> marginal cost, therefore nothing to enforce** in a public repo. That's the same trap
+> that killed on-duty as a paid feature. The paywall only works because **the number is
+> ours.**
+
+| Tier | What you get | Our cost |
+|---|---|---|
+| **Free / Channel A** | BYO Twilio + BYO Supabase, wire the webhook yourself (document this). | **$0** → free. Same principle as BYO Claude. |
+| **Paid** | We are your phone company: a number, the relay, zero setup. | **Real, recurring, per-user** → earns a recurring price honestly. |
+
+**Sequencing consequence — voice first, and it's a big one.** As shipped, BusterPhone
+is a pure **inbound answering machine**: `<Say>` → `<Record>` → transcribe
+(`supabase/functions/voice/index.ts:77-83`), with **no outbound Twilio call anywhere in
+the codebase**. Inbound voice **does not require A2P 10DLC** — that registration grind
+is an *SMS* gate. So:
+
+- **Phase 1 (voice/voicemail) is shippable as the paid tier with NO A2P registration.**
+  This is the fastest honest path to revenue. Do not let SMS block it.
+- **Phase 2 (SMS) is what triggers A2P 10DLC** — and A2P brand registration wants an
+  **EIN**, which likely forces the LLC earlier than `GO_TO_MARKET` Part I assumes
+  ("entity deferred"). **Confirm this before committing to an SMS date.**
+
+**New obligations that come with being the retailer** (none of these are in the phases
+below yet — they are net-new work):
+
+- **Number provisioning** per paying account (buy/release via Twilio API), tied to
+  subscription lifecycle: cancel → release the number, or we pay for it forever.
+- **Abuse controls.** An agent with a phone is an agent that can be socially engineered
+  into recording or calling something it shouldn't — and it's **our** Twilio account and
+  **our** carrier reputation on the line. Rate caps + a Sentinel-visible kill switch.
+- **Per-account isolation** (Twilio subaccounts) so one user's traffic can't poison
+  everyone's number reputation.
+
+---
+
 ## The one architectural fact everything follows from
 
 Buster Claw is loopback-only by design — every HTTP scope binds to
@@ -49,7 +94,7 @@ event.
 | Provider | **Twilio** | The plan's TwiML is written against it verbatim; Telnyx/SignalWire are near-drop-in (TeXML/LaML) if cost ever matters; Vonage's JSON model would force an Edge Function rewrite — skip. |
 | Ingress | **Supabase relay** | Always-on, zero open ports on the Mac. |
 | Transcription | **Twilio built-in now, local-Whisper hook later** | Zero effort to ship. NOTE: Whisper STT was deliberately demolished 06-28 — a future local path should be a fresh decision, not a rebuild reflex. |
-| Number type | **Local 10-digit** | Needs A2P 10DLC registration (start it early — Phase 2 gate). Toll-free is the fallback if 10DLC drags. |
+| Number type | **Local 10-digit** | A2P 10DLC is an **SMS-only** gate — **07-12: it does NOT block Phase 1 (voice), which is the paid tier's v1.** Don't start the 10DLC grind on the critical path; start it when SMS is actually next. Toll-free is the fallback if 10DLC drags. |
 | SMS trust model | **Separate trusted-numbers list** | Mirrors the `TrustedSenders` pattern but phone numbers ≠ email addresses; a stranger's text gets archived, never auto-actioned. |
 
 ## Phases
@@ -141,8 +186,22 @@ this is hardening, not new capability.
 Number ~$1–2/mo · inbound voice ~$0.0085/min · SMS ~$0.008 each + carrier
 fees · Twilio transcription ~$0.05/min · 10DLC one-time + ~$2/mo ·
 Supabase free tier covers this volume. **Order of $5/mo for personal use.**
-Fits the GTM paywall logic: like Browserbase and GWS, this is a
-costs-real-money feature — a natural paid-tier candidate.
+
+**07-12 — this is no longer "what it costs me," it is COGS.** Since BusterPhone is
+the paid tier (Part V.1), these numbers set the margin:
+
+- **Per paying user we carry:** the number (~$1–2/mo) + their usage (voice minutes,
+  transcription) + a share of Supabase once it outgrows the free tier.
+- **At $10–15/mo, gross margin is roughly 80–85%** — healthy, *and honest*: the price
+  is backed by a cost we genuinely incur, which is the entire premise of Part V.
+- **Verify every figure against current Twilio pricing before pricing anything.**
+  These are from the 07-06 research doc and telephony pricing moves.
+- **The real cost risk is usage, not the number.** A chatty (or abused) account
+  is unbounded voice minutes + transcription against a *flat* subscription. **Usage
+  caps are a pricing requirement, not a nice-to-have** — see the abuse controls above.
+- **Browserbase is gone** (deleted 07-12) and **GWS is being given away free**, so
+  this is now the *only* costs-real-money feature — and the only one funding CASA,
+  Apple, the domain, and the MoR cut.
 
 ## Risks & honest notes
 

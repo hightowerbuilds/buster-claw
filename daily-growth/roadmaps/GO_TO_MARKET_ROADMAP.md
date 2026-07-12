@@ -145,12 +145,13 @@ blank-canvas fallback already exists), Gatekeeper/quarantine behavior.
 
 ---
 
-## Part V — The paid tier (⚠️ REOPENED 07-12 — the money leg is missing)
+## Part V — The paid tier (reopened 07-12, **resolved same day: BusterPhone**)
 
-> **Read this before designing anything else in Part V.** The Browserbase cut
-> (07-12) did not just remove a feature. It removed the *only* thing the paywall
-> was ever standing on. What's left does not hold, and the fix is a decision, not
-> a build task.
+> **The short version.** The Browserbase cut didn't narrow the paywall — it took it
+> to zero (V.0: on-duty is unpaywallable by construction, and GWS alone is the wrong
+> thing to sell a developer). **V.1 resolves it: the paid tier is managed telephony —
+> we are the phone company.** V.0 is kept in full because the reasoning is what stops
+> the decision from drifting back.
 
 ### V.0 — The problem, stated exactly
 
@@ -189,10 +190,67 @@ GWS *does* work as a paid feature — for **prosumers**, for whom a GCP project 
 an annoyance but an impossibility. "We handle Google for you" is a real product for
 them. That is our *later* audience, not the one we are about to charge.
 
-### V.1 — The decision to make (do NOT let this quietly re-close)
+### V.1 — DECIDED 07-12: **BusterPhone is the money leg**
 
-**Which feature is the money leg?** Two candidates already exist in the codebase,
-and both restore the original "charge for what costs us money" logic:
+**The paid tier is managed telephony. We are the phone company.**
+
+We hold the Twilio account. We provision the number. **The user never learns Twilio
+exists.** They pay us one bill; we pay the wholesaler. This is the *only* shape that
+works, and the reasoning is worth keeping because the obvious alternative is a trap:
+
+> **The trap: "user brings their own Twilio."** If the buyer signs up for Twilio,
+> buys a number, and *then* pays us, we've built the worst of both worlds — they pay
+> twice, and **we have zero marginal cost, which means we have nothing to enforce.**
+> No Twilio bill of our own = no server of ours in the loop = the on-duty trap again
+> (V.0): public repo, no hook to withhold, nothing to sell. **Never ship BYO-Twilio
+> as the paid tier.**
+
+Note this is deliberately the *opposite* of BYO Claude, and that's correct. BYO Claude
+works because the expensive thing is Claude and the buyer **already has a
+subscription**. Nobody already has a spare Twilio number. There is nothing to bring.
+
+**The open-core split stays honest:**
+
+| Tier | What you get | Our marginal cost |
+|---|---|---|
+| **Free / Channel A** | Bring your own Twilio + your own Supabase; wire the webhook yourself. Documented in the repo. | **$0** — so it's free. Same principle as BYO Claude; the self-hoster stays served. |
+| **Paid** | We are your phone company. A number, the relay, zero setup. | **Real, recurring, per-user** — which is exactly what earns a recurring price. |
+
+**Why this also fixes the marketing problem** (the pitch has been the weak point all
+along): we currently sell *"a desktop runtime where an agent manages your web
+interactivity through one auditable command surface"* — a paragraph, aimed at people
+who already know they want it. The paid pitch becomes **"Buster Claw answers your
+phone."** Five words, no explanation needed. And a phone number is the one thing on
+earth nobody questions paying *monthly* for — telephony has been priced that way for
+a century, so we never have to teach the customer why it recurs. (Contrast: justifying
+a subscription for "we set up your Google Cloud project once.")
+
+**The compliance path is much shorter than this roadmap assumed.** As shipped,
+BusterPhone is a pure **inbound answering machine**: the voice function is
+`<Say>` greeting → `<Record>` → transcribe (`supabase/functions/voice/index.ts:77-83`),
+and there is **no outbound Twilio call anywhere in the codebase** (no `Messages.json`,
+no `Calls.json`). **Inbound voice does not require A2P 10DLC** — that's the SMS
+registration grind. So the paid tier can ship as "Buster answers your phone" **without
+touching a campaign registration**. SMS (the threads already built into `/phone`) comes
+after. See `BUSTERPHONE_ROADMAP.md` for the sequencing.
+
+**What we are signing up for — eyes open:**
+
+- **We become a telephony reseller.** Number provisioning, abuse controls (an agent
+  with a phone is an agent that can be socially engineered into calling or recording
+  something it shouldn't), carrier weirdness. Real ops, not a weekend.
+- **COGS is small but real** — a US number is on the order of $1–2/mo plus usage
+  (**confirm current Twilio pricing at build**). At $10–15/mo that's a healthy margin
+  *and an honest one*, which is the entire point of Part V.
+- **It is unfinished.** No Mac-side Realtime drain, still a trial number. This is a
+  build, not a flip.
+- **SMS will likely force the LLC early** (A2P brand registration wants an EIN),
+  which cuts against Part I's "entity deferred." Voice-only may let us defer it —
+  **confirm before committing to an SMS date.**
+
+*The two candidates below were the options considered. Option B (paid signed binary)
+is NOT dead — it's a viable second revenue line later, and it charges for a cost we're
+eating anyway. Kept for the record.*
 
 - **Option A — BusterPhone.** The natural paywall. A phone number costs real money
   every month, *per user*; minutes cost money; A2P 10DLC registration costs money.
@@ -211,10 +269,10 @@ and both restore the original "charge for what costs us money" logic:
   at all**. Weaker as recurring revenue — it's one-time — but an MoR handles
   one-time fine.
 
-**Recommendation on the table (not yet decided):** do **not** ship a GWS paywall to
-a dev audience. Keep the free beta; make GWS a free convenience that buys goodwill
-while CASA grinds; treat on-duty as free-core forever *and say so out loud*; then
-pick the money leg between A and B.
+**Resolved 07-12 → Option A (BusterPhone).** See V.1 above. The rest of the call
+stands: do **not** ship a GWS paywall to a dev audience — make GWS a free convenience
+that buys goodwill while CASA grinds, and treat on-duty as free-core forever *and say
+so out loud*.
 
 ### V.2 — The parts that still hold
 
@@ -259,14 +317,14 @@ pick the money leg between A and B.
   buyers. For an indie dev tool it's fine — but it's a one-way door once it's the
   bundle ID (`mom.buster.*`), printed in every keychain entry and OAuth consent
   screen. Say it out loud once before W0: *is this the name at 1.0?*
-- **R6 — CASA is a forever-cost, and as of 07-12 nothing pays for it.** Annual
-  assessment + $99 Apple + domain + MoR cut is the permanent bill for "free beta."
-  The paid tier exists to pay for exactly these — but Browserbase is cut and
-  on-duty is unpaywallable, so **there is currently no feature we can charge for**
-  (Part V.0). Worse, CASA is the recurring cost of GWS, the very leg we'd be
-  tempted to sell: absent a decision, we pay an annual security audit to give away
-  the thing it pays for. **This is now the #1 GTM risk, above R7.** It is not a
-  build problem — it's an unmade decision (V.1).
+- **R6 — CASA is a forever-cost, and telephony now has to pay for it.** Annual
+  assessment + $99 Apple + domain + MoR cut is the permanent bill for "free beta,"
+  and CASA is specifically the recurring cost of GWS — a leg we've decided to *give
+  away*. That bill is now underwritten entirely by BusterPhone subscriptions (V.1).
+  So the risk has changed shape rather than gone away: **it is no longer "nothing
+  pays for CASA," it is "one unfinished feature pays for CASA."** If BusterPhone
+  doesn't convert, the fixed costs have no other funder. Watch the telephony
+  build (`BUSTERPHONE_ROADMAP.md`) as a *business* dependency, not just a feature.
 - **R7 — Unknown macOS floor.** WebGPU-in-WKWebView and the Tauri stack set a
   minimum macOS we have never actually determined. Cheap to test, embarrassing to
   discover via refunds.
