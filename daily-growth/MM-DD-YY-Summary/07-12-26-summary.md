@@ -114,13 +114,40 @@ complexity 23 is real debt → Shortlist item 6; gmail's two lookup tables are
 `precommit` runs `format`, not `--check-formatted` — it rewrites files,
 which was the mystery churn in unrelated diffs.
 
+## Evening: the shader fence (`4ff472c` → `9106be3`)
+
+Faces and backgrounds share one workspace `shaders/` pool, and the
+Appearance tab's background picker was listing all of it — a contact's
+face was one dropdown away from being the homepage wallpaper. The rule
+the operator wanted is one-way: **a background may be picked as a contact
+face; a face is never offered (or honored) as a background.**
+
+Enforced at three points, not just filtered in the dropdown:
+`Shaders.face?/1` is the one classification; `Appearance.custom_shaders/0`
+hides faces from the picker; `set_home_background_mode/1` refuses them at
+the boundary (the click value comes from the client, so the dropdown
+filter alone was never a defense); and the resolver degrades a face
+already *stored* as the mode to the default instead of rendering it.
+Pinned at the rendered tab by a new `AppearanceLiveTest`, including a
+crafted `set_home_bg` event.
+
+Then reality corrected the convention (`9106be3`): the fence shipped as a
+`face-` *prefix* rule taken from the docs, and the live workspace's one
+actual shaderface is named **`viking-face`** — noun-first, suffix. It
+sailed straight past the fence and into the picker. Lesson worth keeping:
+**codify conventions from the directory, not the documentation.** The
+rule is now a dash-separated *word* test (`face`, `face-luke`,
+`viking-face` are faces; `faces`/`facade-lights` stay backgrounds),
+verified against the live workspace pool itself — seven backgrounds
+offered, `viking-face` hidden, still selectable as a face on /phone.
+
 ## Where things stand
 
-894 tests green, precommit green, everything pushed. The wire from a
-caller's voice to the /phone tab is complete but has only been proven
-against stubs — **the remaining Phase 0 is console clicks, waiting on a
-paycheck**: upgrade Twilio to paid, wire the number's Voice webhook, set
-`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, call +1 844-687-8016, and
-watch the voicemail land within 30 seconds. That first real call is the
-true verification of today's code — and the day the money leg starts
-existing in the world instead of in documents.
+900 tests green, precommit green, twelve commits, everything pushed. The
+wire from a caller's voice to the /phone tab is complete but has only
+been proven against stubs — **the remaining Phase 0 is console clicks,
+waiting on a paycheck**: upgrade Twilio to paid, wire the number's Voice
+webhook, set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, call
++1 844-687-8016, and watch the voicemail land within 30 seconds. That
+first real call is the true verification of today's code — and the day
+the money leg starts existing in the world instead of in documents.
