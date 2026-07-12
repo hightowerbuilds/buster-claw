@@ -92,24 +92,6 @@ if browser_sidecar_url = System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_URL") do
   config :buster_claw, :browser_sidecar_url, browser_sidecar_url
 end
 
-# Browserbase cloud browser (agentic web). Key-gated and off unless a key is
-# present: no key => every BusterClaw.Browserbase call returns :not_configured
-# and the browser falls back to the local sidecar. Project is inferred from the
-# key; PROJECT_ID is sent when set. Never commit the key.
-browserbase_api_key = System.get_env("BROWSERBASE_API_KEY")
-
-browserbase_enabled =
-  case System.get_env("BUSTER_CLAW_BROWSERBASE") do
-    nil -> is_binary(browserbase_api_key) and browserbase_api_key != ""
-    value -> value in ["1", "true", "TRUE", "yes", "YES"]
-  end
-
-config :buster_claw,
-  browserbase_api_key: browserbase_api_key,
-  browserbase_project_id:
-    System.get_env("BROWSERBASE_PROJECT_ID") || System.get_env("PROJECT_ID"),
-  browserbase_enabled: browserbase_enabled
-
 # Finnhub API key for the finance_quote / finance_news commands. Optional — when
 # unset, those commands return {:error, :not_configured} and the rest of the
 # finance surface (EDGAR filings/fundamentals) is unaffected. Set FINNHUB_API_KEY

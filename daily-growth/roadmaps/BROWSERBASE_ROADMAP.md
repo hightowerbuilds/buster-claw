@@ -1,5 +1,42 @@
 # Agentic Web (Browserbase) Build-Out Roadmap
 
+> ## ⛔️ RETIRED — 2026-07-12. The code is deleted; do not build from this.
+>
+> **What was removed:** `BusterClaw.Browserbase{,.Session,.SessionManager}`,
+> `BusterClaw.Browser.SessionClient`, the 12 `web_*` agentic commands
+> (`web_session_open/close/list/view`, `web_navigate`, `web_read`,
+> `web_find_elements`, `web_fill`, `web_select`, `web_click`, `web_screenshot`,
+> `web_extract`), the supervision child, the `BROWSERBASE_*` config, the CDP
+> session code in `priv/playwright_sidecar/server.js`, and four test files.
+>
+> **Why:** it could never run in the app we ship. A Browserbase session isn't
+> driven from Elixir — it's driven over CDP by the **local Playwright sidecar** —
+> and the prod build neither enables that sidecar (`config/runtime.exs` gated it
+> to `config_env() == :dev`) nor installs node/Playwright at all
+> (`scripts/build_desktop.sh` only runs `npm ci` in `assets/`). Shipping it meant
+> bundling a browser runtime inside the `.app`: hundreds of MB of Mach-Os, each
+> needing individual signing, stacked on top of the arm64 + notarization work that
+> already blocks release. Carrying an unshippable *paid* dependency toward a
+> paywall was the wrong trade.
+>
+> **What it cost us:** Browserbase was half the paywall
+> (`GO_TO_MARKET_ROADMAP.md`). The paid tier now rests on GWS + the on-duty loop
+> alone, and whether that's enough to charge for is **an open question, not a
+> settled one**.
+>
+> **If this is ever revived:** the blocker is packaging, not design. The prize
+> would be bundling the sidecar so a local headless browser works in prod — at
+> which point the agentic-web primitives below could run against a *local*
+> Chromium (`chromium.launch()`) with no cloud vendor and no per-minute bill.
+> That is a different, cheaper feature than the one this roadmap describes. The
+> live browser the user can already see (`browser_*` co-presence via the Tauri
+> webview + `Browser.Bridge`) covers most of the same ground today, in the user's
+> real logged-in session, and is what the product actually leans on.
+>
+> Everything below is preserved as the historical design record.
+
+---
+
 *2026-07-03. Governing principle: **the agent gets a real pair of hands on the
 web, and the user never loses sight of them.** Every capability ships with a
 Sentinel event and a live picture; anything that spends money or touches a

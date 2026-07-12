@@ -520,18 +520,6 @@ defmodule BusterClaw.Commands do
   defdelegate browser_tabs(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_navigate(args), to: BusterClaw.Commands.Web
   defdelegate browser_open_tab(args), to: BusterClaw.Commands.Web
-  defdelegate web_session_open(args \\ %{}), to: BusterClaw.Commands.Web
-  defdelegate web_session_close(args), to: BusterClaw.Commands.Web
-  defdelegate web_session_list(args \\ %{}), to: BusterClaw.Commands.Web
-  defdelegate web_session_view(args), to: BusterClaw.Commands.Web
-  defdelegate web_navigate(args), to: BusterClaw.Commands.Web
-  defdelegate web_read(args), to: BusterClaw.Commands.Web
-  defdelegate web_find_elements(args), to: BusterClaw.Commands.Web
-  defdelegate web_fill(args), to: BusterClaw.Commands.Web
-  defdelegate web_select(args), to: BusterClaw.Commands.Web
-  defdelegate web_click(args), to: BusterClaw.Commands.Web
-  defdelegate web_screenshot(args), to: BusterClaw.Commands.Web
-  defdelegate web_extract(args), to: BusterClaw.Commands.Web
   defdelegate bookmark_add(args), to: BusterClaw.Commands.Web
   defdelegate bookmark_list(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate bookmark_remove(args), to: BusterClaw.Commands.Web

@@ -141,10 +141,9 @@ defmodule BusterClaw.Introduction do
 
     Buster Claw has its own browser inside the desktop app, and you can drive it
     directly — you act **inside the user's live, logged-in session** (real
-    co-presence, Sentinel-audited on every action). This is distinct from the
-    cloud browser (`web_*`, your own headless Browserbase sessions): the
-    `browser_*` commands move the actual window the user sees. All need the
-    desktop app open and are `restricted`.
+    co-presence, Sentinel-audited on every action): the `browser_*` commands move
+    the actual window the user sees. All need the desktop app open and are
+    `restricted`.
 
     The loop:
 

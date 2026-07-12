@@ -16,7 +16,7 @@ which solved *free public download*. This adds the *business* layer on top.
 | Pricing model | **Free core + paid tier** — but not yet: **free beta first, charge later** |
 | Who pays for Claude | **BYO** — buyer brings their own Claude Code subscription/API key; we never resell tokens |
 | Target buyer | **Both, dev-first** — technical users now, prosumers later |
-| Future paywall line | **Browserbase cloud browser + GWS/on-duty loop** — the two features that cost *us* real money. Everything local-only stays free |
+| Future paywall line | **GWS + the on-duty loop** — the features that cost *us* real money. Everything local-only stays free. (Was "Browserbase + GWS"; **Browserbase was cut 07-12** — see below) |
 | Domain | **https://buster.mom** |
 | Source model | **Open core** — repo stays public, Channel A (clone-and-build) intact; paid tier enforced server-side |
 | Apple Developer | **Enroll as individual now** ($99/yr) — don't wait for an entity |
@@ -26,10 +26,26 @@ which solved *free public download*. This adds the *business* layer on top.
 | Beta measurement | **Opt-in telemetry** — anonymous, consent-gated; plus whatever qualitative channel emerges |
 
 Why this hangs together: BYO Claude means zero token liability and no AI backend.
-Open core is safe because the paid features are *services* — Browserbase needs our
-API keys and GWS needs our verified OAuth app's secrets, neither of which lives in
-the repo. A developer who builds from source and wires up their own Browserbase
-account and OAuth app was never a lost sale; that's Channel A working as designed.
+Open core is safe because the paid features are *services* — GWS needs our verified
+OAuth app's secrets, which don't live in the repo. A developer who builds from
+source and wires up their own OAuth app was never a lost sale; that's Channel A
+working as designed.
+
+**Browserbase was cut on 07-12.** It was half the paywall, so this is worth being
+precise about. The cloud browser was never driveable from the shipped app: a
+Browserbase session is driven over CDP by the *local* Playwright sidecar, and the
+prod build neither enables that sidecar (`config/runtime.exs` gates it to
+`config_env() == :dev`) nor bundles node/Playwright at all (`build_desktop.sh` only
+runs `npm ci` in `assets/`). Making it real meant shipping a browser runtime inside
+the `.app` — hundreds of MB of Mach-Os that would each need signing — landing on top
+of the arm64 and notarization work that already blocks shipping. We deleted the code
+rather than carry an unshippable paid dependency toward a paywall.
+
+**So the paid tier now rests on one leg (GWS + on-duty), not two.** That is a real
+narrowing of the money story and it is not yet re-answered. Before the paywall
+ships, decide: is "verified GWS + the unattended loop" enough to charge for on its
+own, or does the paid tier need a second feature that costs us money? Do not treat
+this as settled just because the Browserbase row is gone from the table.
 
 ---
 
@@ -132,9 +148,10 @@ blank-canvas fallback already exists), Gatekeeper/quarantine behavior.
 Not built during beta, but the beta should not paint us into a corner:
 
 - **Entitlement model:** a paid account = a BusterClaw account on our side holding
-  (a) Browserbase access through our keys with usage caps, and (b) GWS through the
-  verified OAuth app. Both are server-side by nature — **no license-key DRM in the
-  client, ever**. The open-core client just asks "what am I entitled to?"
+  GWS through the verified OAuth app. (The Browserbase leg — cloud browser access
+  through our keys, with usage caps — was cut 07-12.) This is server-side by nature
+  — **no license-key DRM in the client, ever**. The open-core client just asks
+  "what am I entitled to?"
 - **Payments:** Paddle or Lemon Squeezy checkout (≈5% + fees — the price of never
   thinking about EU VAT). Pick one when the paywall ships, not before.
 - **Pricing hypothesis to validate in beta:** free = the local app (terminal,
@@ -172,8 +189,9 @@ Not built during beta, but the beta should not paint us into a corner:
   bundle ID (`mom.buster.*`), printed in every keychain entry and OAuth consent
   screen. Say it out loud once before W0: *is this the name at 1.0?*
 - **R6 — CASA is a forever-cost.** Annual assessment + $99 Apple + domain + MoR
-  cut is the permanent bill for "free beta." That's the real meaning of "the paywall
-  sits on Browserbase + GWS": the paid tier exists to pay for exactly these.
+  cut is the permanent bill for "free beta." The paid tier exists to pay for exactly
+  these — and since the Browserbase cut (07-12) it has only GWS + on-duty to do it
+  with, which sharpens rather than removes the problem.
 - **R7 — Unknown macOS floor.** WebGPU-in-WKWebView and the Tauri stack set a
   minimum macOS we have never actually determined. Cheap to test, embarrassing to
   discover via refunds.
