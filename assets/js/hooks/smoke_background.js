@@ -131,13 +131,13 @@ export const SmokeBackground = {
     const rect = this.el.getBoundingClientRect()
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     // Per-pixel-heavy shaders render below full retina and capped, since they're
-    // ambient backgrounds behind a blurred panel. Zigzag (row march) and
-    // Mandelbrot (iteration loop) can go quite low; Weather needs more pixels so
-    // its fine rain/snow stay crisp, so it caps higher and closer to retina.
+    // ambient backgrounds behind a blurred panel. Mandelbrot (iteration loop)
+    // can go quite low; Weather needs more pixels so its fine rain/snow stay
+    // crisp, so it caps higher and closer to retina.
     const cfg =
       this.shader === "weather"
         ? {density: dpr * 0.85, maxDim: 1400}
-        : this.shader === "zigzag" || this.shader === "mandel"
+        : this.shader === "mandel"
           ? {density: 0.6, maxDim: 820}
           : {density: dpr, maxDim: Infinity}
     const {density, maxDim} = cfg

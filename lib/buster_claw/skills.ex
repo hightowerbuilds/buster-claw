@@ -407,15 +407,15 @@ defmodule BusterClaw.Skills do
 
     Hard constraints — a file that breaks one is ignored or fails to compile:
     - Name: lowercase `[a-z0-9-]` (e.g. `ember-drift.wgsl`). The names
-      `smoke`, `waves`, `zigzag`, `mandel`, `weather` belong to built-ins and
+      `smoke`, `waves`, `mandel`, `weather` belong to built-ins and
       are shadowed — pick something else.
     - At most 64 KB, and it must define `fn fs_main`.
     - Do NOT redeclare anything the prelude already provides (see below) — a
       duplicate declaration is a WGSL compile error.
 
-    The five built-ins are worked examples of the same contract: `smoke`
-    (domain-warped fbm), `waves`, `zigzag` (Joy Division ridgelines), `mandel`
-    (fractal zoom), and `weather` (a ~2-minute sky clock — the most complete).
+    The four built-ins are worked examples of the same contract: `smoke`
+    (domain-warped fbm), `waves`, `mandel` (fractal zoom), and `weather`
+    (a ~2-minute sky clock — the most complete).
     If you have the repo checkout, read them in `assets/js/smoke/*.wgsl.js`.
 
     ## The prelude contract (what you get for free)

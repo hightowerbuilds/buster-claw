@@ -107,7 +107,7 @@ defmodule BusterClaw.Shaders do
     Read the `shader-designer` skill (`skills/shader-designer.md`) for the full
     prelude contract and worked examples. A shader only renders when you select
     it — authoring a file never forces it onto the screen. Names are `[a-z0-9-]`;
-    a name matching a built-in (smoke/waves/zigzag/mandel/weather) is shadowed by
+    a name matching a built-in (smoke/waves/mandel/weather) is shadowed by
     the built-in.
     """
   end

@@ -162,8 +162,8 @@ defmodule BusterClaw.Introduction do
     ## Homepage shader patterns
 
     The homepage background is a live WebGPU **shader pattern**, chosen in
-    Settings → Appearance. The shipped patterns are **smoke, waves, zigzag,
-    mandel, and weather**, all sharing one uniform/binding contract (value-noise/
+    Settings → Appearance. The shipped patterns are **smoke, waves, mandel,
+    and weather**, all sharing one uniform/binding contract (value-noise/
     fbm helpers, a 3-colour palette in `colA`/`colB`/`colC`, and a shared
     `bg_post` tonemap pass) and coloured through the user's palette.
 
