@@ -141,9 +141,66 @@ rule is now a dash-separated *word* test (`face`, `face-luke`,
 verified against the live workspace pool itself — seven backgrounds
 offered, `viking-face` hidden, still selectable as a face on /phone.
 
+## Night shift: Time & Place (`c089469` → `9e012ce`)
+
+The homepage corner widget grew a third tab and it turned into a little
+diorama. First pass: separate Clock and Weather tabs — an analog SVG dial
+whose hands a client hook rotates off the machine's own clock (per-second
+updates never cross the LiveView socket), and real conditions from
+**Open-Meteo, which is keyless** and therefore keeps the no-API-keys
+posture the same way DuckDuckGo backs `web_search` (location set once,
+geocoded keylessly, cached 10 min, fetched via `start_async` so a slow
+weather API can never stall the homepage).
+
+Then the operator merged them into one tab — **Time & Place** — under a
+new `daycycle` WGSL shader that portrays the actual time of day: a sun
+arcing over a graded sky, dawn/dusk burning the horizon in the accent
+orange, fbm clouds on a wind that picks up during the day, a flock of
+five flapping v-glyph birds that only fly in daylight, then stars and a
+crescent moon at night. Wall-clock plumbing: the shader reads time of
+day from `u.lens.x` — a uniform channel backgrounds never used — and
+`SmokeBackground` feeds it each frame when the mount carries
+`data-daylight="true"`, so any future shader can be daylight-driven with
+one attribute. Clock and conditions sit inline, glass dropped so the sky
+reads through, scanlines on top. Both WKWebView landmines respected (no
+storage buffers, no backticks in the WGSL literal).
+
+## The DataZone ghost (`f383f1a`, `2f12282`)
+
+Background image uploads "weren't updating" and the homepage showed the
+wrong image entirely. Forensics on the actual settings DB + files told
+the story to the second: `home-background.jpg`'s **file** changed
+**Jul 7 21:03**, but this instance's cache-busting stamp was frozen at
+**Jul 4 08:06** — the operator's own diagnosis was the key: **past
+versions of the app share the DataZone file tree but each carries its
+own settings DB.** Another instance replaced the file and bumped *its*
+stamp; this one's URL never changed; the controller served
+`max-age=31536000, immutable`; the WKWebView pinned the July-4 bytes for
+a year. (Compare the healthy slot upload: stamp == mtime to the second.)
+
+Fix on one principle — **the file is the source of truth, because the
+files are shared and the settings are not**: `?v=` now derives from the
+file's mtime+size, and the controller trades immutable-for-a-year for
+`no-cache` + ETag with 304 revalidation (a conditional request on
+loopback costs ~nothing; a pinned stale image costs a debugging
+session). Strictness bonus: a settings row pointing at a missing file
+used to mint a URL that 404'd; now it means "no background."
+
+Confession for the record: the cache fix itself shipped with the gate
+red — a `;` where the close-out chain needed `&&`, so the push didn't
+wait for precommit. The repair commit fixed what the gate had caught (an
+orphaned helper, fixtures that relied on URL-without-a-file, selectors
+hardcoding the old stamp) and the lesson is mechanical: **the commit
+command gates with `&&`, always.**
+
+Also in the evening: shaderfaces classified by word not prefix
+(`viking-face` — codify conventions from the directory, not the
+documentation), and geocoding hiccuped once then behaved.
+
 ## Where things stand
 
-900 tests green, precommit green, twelve commits, everything pushed. The
+913 tests green, precommit green, seventeen commits, everything pushed.
+The
 wire from a caller's voice to the /phone tab is complete but has only
 been proven against stubs — **the remaining Phase 0 is console clicks,
 waiting on a paycheck**: upgrade Twilio to paid, wire the number's Voice
