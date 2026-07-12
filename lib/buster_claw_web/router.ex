@@ -37,6 +37,7 @@ defmodule BusterClawWeb.Router do
       live "/appearance", AppearanceLive, :index
       live "/get-started", GetStartedLive, :index
       live "/voice", VoiceLive, :index
+      live "/phone", PhoneLive, :index
       live "/workspace", WorkspaceLive, :index
       live "/manual", UserGuideLive, :index
       live "/setup", SetupLive, :index
@@ -51,6 +52,13 @@ defmodule BusterClawWeb.Router do
   scope "/appearance", BusterClawWeb do
     get "/terminal-background/:slot", AppearanceController, :terminal_background
     get "/home-background", AppearanceController, :home_background
+  end
+
+  # Voicemail audio for the Message Machine panel's <audio> player. No pipeline
+  # (media element requests, not HTML); path-guarded to the Library root and
+  # audio extensions only; loopback-only.
+  scope "/phone", BusterClawWeb do
+    get "/recording", TelephonyRecordingController, :show
   end
 
   # Renders a workspace file (Markdown → HTML, .html as-is) for the in-app browser.

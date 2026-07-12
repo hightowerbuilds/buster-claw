@@ -434,6 +434,23 @@ body { background-color: var(--color-base-100); }
   height: 100%;
 }
 
+/* Shader layer filling one panel (vs. .ic-home-bg's fixed full-viewport):
+   hook-owned canvas behind the panel's content. The host panel needs
+   position:relative + isolate + overflow-hidden; content sits above at z-10. */
+.ic-shader-fill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.ic-shader-fill canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* On the homepage, panels go translucent so the background photo reads
    through them (border + hard offset shadow are kept by .ic-panel). */
 .ic-home .ic-panel {

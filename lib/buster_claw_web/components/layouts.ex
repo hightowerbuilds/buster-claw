@@ -36,6 +36,11 @@ defmodule BusterClawWeb.Layouts do
     },
     # No brand PNG yet — the dock falls back to the text label (see render below).
     %{
+      label: "Phone",
+      path: "/phone",
+      icon: "hero-phone"
+    },
+    %{
       label: "Wallets",
       path: "/wallets",
       icon: "hero-wallet"
