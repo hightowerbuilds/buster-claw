@@ -185,13 +185,14 @@ defmodule BusterClawWeb.HomeWidget do
         <canvas data-smoke-canvas></canvas>
       </div>
 
-      <div class="relative z-10 flex h-full flex-col gap-2 p-3">
+      <%!-- Clock and conditions side by side, transparent so the sky reads through. --%>
+      <div class="relative z-10 flex h-full gap-2 p-3">
         <%!-- The clock: hook-owned motion, frozen markup. --%>
         <div
           id="home-clock"
           phx-hook="Clock"
           phx-update="ignore"
-          class="ic-glass flex min-h-0 flex-1 flex-col items-center justify-center gap-1 border-2 border-base-content/15 p-2"
+          class="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-1 p-1"
         >
           <svg
             viewBox="0 0 200 200"
@@ -272,7 +273,7 @@ defmodule BusterClawWeb.HomeWidget do
         </div>
 
         <%!-- The place: current conditions, or the location form. --%>
-        <div class="ic-glass shrink-0 border-2 border-base-content/15 p-2">
+        <div class="flex min-h-0 min-w-0 flex-1 flex-col justify-center p-1">
           <form :if={@form} phx-submit="set_weather_location" class="flex flex-col gap-1.5">
             <label class="font-mono text-[0.625rem] font-bold uppercase tracking-widest text-base-content/55">
               Where are you?
@@ -321,32 +322,26 @@ defmodule BusterClawWeb.HomeWidget do
             </button>
           </div>
 
-          <div :if={!@form and is_map(@weather)} class="flex flex-col gap-1">
-            <div class="flex items-baseline justify-between gap-2">
-              <span class="truncate font-display text-[0.625rem] font-bold uppercase tracking-widest text-base-content/60">
-                {@weather.location}
-              </span>
-              <button
-                type="button"
-                phx-click="edit_weather_location"
-                aria-label="Change location"
-                class="shrink-0 font-mono text-[0.625rem] uppercase tracking-wide text-base-content/45 transition hover:text-primary"
-              >
-                Change
-              </button>
+          <div :if={!@form and is_map(@weather)} class="flex flex-col items-center gap-1 text-center">
+            <span class="max-w-full truncate font-display text-[0.625rem] font-bold uppercase tracking-widest text-base-content/70">
+              {@weather.location}
+            </span>
+            <span class="font-display text-4xl font-black tabular-nums leading-none">
+              {@weather.temp_f}°
+            </span>
+            <span class="font-mono text-xs text-base-content/80">{@weather.label}</span>
+            <div class="font-mono text-[0.625rem] tabular-nums text-base-content/70">
+              <div>{@weather.high_f}° / {@weather.low_f}° · feels {@weather.feels_like_f}°</div>
+              <div>{@weather.wind_mph} mph · {@weather.humidity}%</div>
             </div>
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-baseline gap-2">
-                <span class="font-display text-3xl font-black tabular-nums leading-none">
-                  {@weather.temp_f}°
-                </span>
-                <span class="font-mono text-xs text-base-content/75">{@weather.label}</span>
-              </div>
-              <div class="text-right font-mono text-[0.625rem] tabular-nums text-base-content/60">
-                <div>{@weather.high_f}° / {@weather.low_f}°</div>
-                <div>{@weather.wind_mph} mph · {@weather.humidity}%</div>
-              </div>
-            </div>
+            <button
+              type="button"
+              phx-click="edit_weather_location"
+              aria-label="Change location"
+              class="font-mono text-[0.625rem] uppercase tracking-wide text-base-content/45 transition hover:text-primary"
+            >
+              Change
+            </button>
           </div>
         </div>
       </div>
