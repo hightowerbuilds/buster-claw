@@ -53,14 +53,15 @@ defmodule BusterClaw.Shaders do
   def exists?(_), do: false
 
   @doc """
-  True when `name` is a contact **shaderface** rather than a background pattern
-  — the `face` built-in or any `face-*` workspace file (the authoring convention
-  the /phone contact picker is built on). Faces and backgrounds share one
-  `shaders/` pool but flow one way: a background may be picked as a face, a
-  face is never offered (or honored) as the homepage background.
+  True when `name` is a contact **shaderface** rather than a background pattern:
+  `face` appears as a dash-separated word in the name — `face`, `face-luke`,
+  `viking-face`. (A word rule, not a prefix rule: real faces get named noun-first,
+  and `viking-face` must not land in the background picker.) Faces and
+  backgrounds share one `shaders/` pool but flow one way: a background may be
+  picked as a face, a face is never offered (or honored) as the homepage
+  background.
   """
-  def face?("face"), do: true
-  def face?("face-" <> _rest), do: true
+  def face?(name) when is_binary(name), do: "face" in String.split(name, "-")
   def face?(_name), do: false
 
   @doc """
@@ -117,8 +118,9 @@ defmodule BusterClaw.Shaders do
 
     **The name decides where a shader can appear:**
 
-    - `face-<name>.wgsl` is a contact **shaderface** — it shows up in the
-      /phone contact face picker, and never in the homepage background picker.
+    - A name with `face` as a dash-separated word (`viking-face.wgsl`,
+      `face-luke.wgsl`) is a contact **shaderface** — it shows up in the /phone
+      contact face picker, and never in the homepage background picker.
     - Anything else is a **background** — it shows up in Settings → Appearance,
       and is also selectable as a contact face (backgrounds may be faces;
       faces may not be backgrounds).

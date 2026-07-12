@@ -34,11 +34,13 @@ defmodule BusterClawWeb.AppearanceLiveTest do
        %{conn: conn, root: root} do
     write_custom_shader(root, "aurora")
     write_custom_shader(root, "face-luke")
+    write_custom_shader(root, "viking-face")
 
     {:ok, _view, html} = live(conn, "/appearance")
 
     assert html =~ "aurora"
     refute html =~ "face-luke"
+    refute html =~ "viking-face"
   end
 
   test "a crafted set_home_bg event with a shaderface leaves the mode unchanged",
