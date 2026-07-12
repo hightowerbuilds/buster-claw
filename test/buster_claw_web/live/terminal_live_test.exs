@@ -92,7 +92,7 @@ defmodule BusterClawWeb.TerminalLiveTest do
 
     assert has_element?(
              view,
-             "[id^='terminal-root'][data-terminal-embedded='false'][data-terminal-bg-active='true'][data-terminal-bg-source='host'][data-terminal-bg-image='/appearance/terminal-background/1?v=123']"
+             "[id^='terminal-root'][data-terminal-embedded='false'][data-terminal-bg-active='true'][data-terminal-bg-source='host'][data-terminal-bg-image='#{BusterClaw.Appearance.terminal_background_url()}']"
            )
   end
 
@@ -131,6 +131,19 @@ defmodule BusterClawWeb.TerminalLiveTest do
   end
 
   defp put_terminal_background do
+    # A real file in a tmp workspace: slot URLs are stamped from the file's
+    # mtime (and require it to exist) since the shared-DataZone cache fix.
+    root = Path.join(System.tmp_dir!(), "bc_termbg_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(Path.join(root, "appearance"))
+    File.write!(Path.join(root, "appearance/test.png"), "png-bytes")
+    prev = Application.get_env(:buster_claw, :workspace_root)
+    Application.put_env(:buster_claw, :workspace_root, root)
+
+    on_exit(fn ->
+      Application.put_env(:buster_claw, :workspace_root, prev)
+      File.rm_rf(root)
+    end)
+
     Settings.put("terminal_background_1_path", "appearance/test.png")
     Settings.put("terminal_background_1_updated_at", "123")
     Settings.put("terminal_background_active", "1")

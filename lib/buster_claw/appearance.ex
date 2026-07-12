@@ -434,8 +434,6 @@ defmodule BusterClaw.Appearance do
     if Regex.match?(~r/^#[0-9a-fA-F]{6}$/, h), do: String.downcase(h), else: "#000000"
   end
 
-  defp home_image_present?, do: not is_nil(present(Settings.get(@home_image_path_key)))
-
   defp home_image_abs_path do
     with rel when is_binary(rel) <- present(Settings.get(@home_image_path_key)),
          abs = Artifact.workspace_path(rel),

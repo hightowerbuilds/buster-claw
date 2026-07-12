@@ -47,6 +47,7 @@ defmodule BusterClawWeb.AppearanceControllerTest do
     File.touch!(abs, System.os_time(:second) + 100)
 
     conn3 = build_conn() |> put_req_header("if-none-match", etag)
+
     assert response(get(conn3, "/appearance/home-background"), 200) ==
              "replaced by another instance"
   end
