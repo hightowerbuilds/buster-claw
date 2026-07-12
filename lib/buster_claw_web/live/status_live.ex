@@ -35,7 +35,7 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
      |> assign(:trusted_contacts, TrustedSenders.list_entries())
-     # Header widget: which sub-tab is showing (Calendar / Contacts / Clock / Weather).
+     # Header widget: which sub-tab is showing (Calendar / Contacts / Time & Place).
      |> assign(:widget_tab, "calendar")
      |> assign(:weather, nil)
      |> assign(:weather_form, false)
@@ -82,12 +82,12 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
-      when tab in ["calendar", "contacts", "clock", "weather"] do
+      when tab in ["calendar", "contacts", "place"] do
     socket = assign(socket, :widget_tab, tab)
 
-    # Selecting Weather (re)loads conditions; Weather.current/0 is TTL-cached,
-    # so this is a real fetch at most once per TTL.
-    if tab == "weather" do
+    # Selecting Time & Place (re)loads conditions; Weather.current/0 is
+    # TTL-cached, so this is a real fetch at most once per TTL.
+    if tab == "place" do
       {:noreply, load_weather(socket)}
     else
       {:noreply, socket}

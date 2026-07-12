@@ -271,24 +271,25 @@ defmodule BusterClawWeb.StatusLiveTest do
     refute response =~ "UTC month event"
   end
 
-  describe "corner widget clock + weather tabs" do
+  describe "corner widget Time & Place tab" do
     import Phoenix.LiveViewTest
 
-    test "the widget offers all four tabs and the clock face", %{conn: conn} do
+    test "the widget offers the tab, the clock, and the daycycle shader", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/")
 
-      for label <- ["Calendar", "Contacts", "Clock", "Weather"] do
-        assert html =~ label
-      end
-
+      assert html =~ ~s(phx-value-tab="place")
+      assert html =~ "Time &amp; Place"
       assert html =~ "home-clock"
       assert html =~ "data-clock-digital"
+      # The sky behind it: the daycycle shader mount, fed the local clock.
+      assert html =~ ~s(data-shader="daycycle")
+      assert html =~ ~s(data-daylight="true")
     end
 
-    test "selecting Weather with no location shows the location form", %{conn: conn} do
+    test "selecting Time & Place with no location shows the location form", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      html = render_click(view, "select_widget_tab", %{"tab" => "weather"})
+      html = render_click(view, "select_widget_tab", %{"tab" => "place"})
 
       assert html =~ "Where are you?"
       assert html =~ "set_weather_location"

@@ -6,6 +6,7 @@ export const SHADER_PALETTES = {
   waves: ["#080a10", "#5a99e6", "#a8c8f2"],
   mandel: ["#04060d", "#3b6ea5", "#ffd089"],
   weather: ["#1a2838", "#6b7a89", "#eef4f8"],
+  daycycle: ["#0a0f1e", "#ff8c42", "#9fc3dc"],
 }
 
 export const DEFAULT_PALETTE = SHADER_PALETTES.smoke

@@ -38,6 +38,9 @@ export const SmokeBackground = {
     if (this.reduceMotion) this.post.grain = 0
     // Palette (custom or the shader's default); the div remounts on any change.
     this.colors = resolvePalette(this.el)
+    // data-daylight mounts feed the local time of day into u.lens.x
+    // (0 = midnight, 0.5 = noon) — the daycycle shader's sun clock.
+    this.daylight = this.el.getAttribute("data-daylight") === "true"
     this.intensity = 0.85
     this.uniforms = packUniforms({width: 0, height: 0, timeSec: 0, intensity: this.intensity, reveal: 0})
 
@@ -108,6 +111,13 @@ export const SmokeBackground = {
     const target = running ? 1.15 : 0.85
     this.intensity += (target - this.intensity) * 0.03
 
+    let lens = null
+    if (this.daylight) {
+      const d = new Date()
+      const frac = (d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()) / 86400
+      lens = {x: frac, y: 0, radius: 0, strength: 0}
+    }
+
     packUniforms(
       {
         width: this.canvas.width,
@@ -115,6 +125,7 @@ export const SmokeBackground = {
         timeSec: now / 1000,
         intensity: this.intensity,
         reveal: 0,
+        lens,
         expression: this.expr,
         post: this.post,
         motion: this.reduceMotion ? 0.3 : 1,
