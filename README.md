@@ -1,23 +1,35 @@
 # Buster Claw
 
-`buster-claw` is a desktop runtime where an AI agent manages your web interactivity — browsing, Google Workspace, and third-party integrations — through one auditable command surface. It's a Phoenix/LiveView application wrapped in a Tauri desktop shell; Phoenix lives at the repository root, the desktop shell in `desktop/tauri`.
+**A desktop runtime that gives an AI agent hands — and a full audit trail of what it did with them.**
 
-## How it's used
+You run **Claude Code or Codex in the built-in terminal**. The agent drives the app through one canonical command surface (~134 commands) covering your browser, Gmail, Calendar, Drive, GitHub, and a durable work queue. Every command, every outbound send, and every untrusted fetch lands on an auditable security feed, and restricted actions are refused outright for untrusted callers.
 
-The way to use Buster Claw is to run **Claude Code or Codex in the built-in terminal**. Work lands in a durable **Dispatch queue** that Buster Claw projects to the workspace markdown the agent already reads (`shift/Dispatch.md`); the agent pulls items, does the work, and writes results back through the `./buster-claw` CLI. The desktop UI gives you the command surface, the Sentinel audit feed, and the results. The intelligence is remote — the agent, not the app. Buster Claw has no built-in LLM and needs no API keys.
+**There is no LLM inside Buster Claw and it needs no API keys.** The intelligence is the agent you already pay for; the app is the body, the memory, and the receipts.
+
+It's an Elixir/Phoenix + LiveView application wrapped in a Tauri desktop shell — Phoenix at the repository root, the shell in `desktop/tauri`.
+
+---
+
+## How it actually works
+
+The agent doesn't call a chat API. It works a **queue**.
+
+Trusted inbound requests (a triaged email, a webhook, something you typed) land in a durable SQLite **Dispatch queue**. Buster Claw projects that queue into workspace markdown the agent already reads (`shift/Dispatch.md`). The agent pulls an item, does the work, and writes the result back through the `./buster-claw` CLI. The desktop UI gives you the command surface, the audit feed, and the results.
+
+That indirection is the whole design. It means work survives a crash, an agent can be replaced mid-shift, and nothing the agent does is invisible to you.
 
 ## Features
 
-- **Agentic command surface**: One canonical catalog (~70 commands) an AI agent drives across every frontend — CLI and HTTP API — with per-caller trust tiers and a full audit trail.
-- **Web & Workspace interactivity**:
-  - **Browsing & fetch**: Headless browser + HTTP fetchers (SSRF-guarded) to read and capture web pages and articles.
-  - **Google Workspace**: Sync and act on Gmail and Google Calendar.
-  - **Integrations**: Pull and react to GitHub, Sentry, and Umami activity (manual or webhook-triggered polls).
-- **Dispatch pull-queue**: Trusted inbound requests (e.g. from Gmail triage) land in a durable SQLite queue, projected to workspace markdown; a terminal agent pulls items and writes results back through the CLI.
-- **In-app terminal**: A real PTY where you run Claude Code, Codex, or any CLI; the primary surface for agents to drive Buster Claw.
-- **Orchestration**: An unattended, indefinite "shift" — a supervised Elixir janitor watches the kill switch (STOP file) and a crash-loop brake while a terminal agent pulls from the Dispatch queue. All work state is durable, so an OTP restart resumes mid-shift.
-- **Workspace library**: Documents and artifacts stored as markdown in the workspace, with a blog-style reading view.
-- **Sentinel security layer**: Every command, outbound send, and untrusted fetch is recorded on an auditable feed; restricted actions are refused for untrusted callers.
+- **One command surface.** ~134 commands across documents, browser, Google Workspace, integrations, finance, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and a full audit trail.
+- **A real browser the agent can drive.** Not a headless scraper: the agent reads and acts inside **the tab you're actually looking at**, logged-in session and all (`browser_read`, `browser_click`, `browser_fill`), plus SSRF-guarded fetch for everything else.
+- **Google Workspace.** One-click connect, then sync and act on Gmail, Calendar, Drive, Docs, and Contacts.
+- **Integrations.** GitHub, Sentry, and Umami — polled or webhook-triggered, with signature verification that fails closed.
+- **In-app terminal.** A real PTY where you run Claude Code, Codex, or anything else. Your shell survives tab switches.
+- **Unattended shifts.** Go `on-duty` and a supervised Elixir janitor works the queue without you — with a kill switch (a `STOP` file), a crash-loop brake, and a hard budget cap that stops the shift rather than burning tokens.
+- **BusterPhone** *(in progress)*. An answering machine for your agent — greets callers, records, transcribes, files the message. The Twilio→Supabase relay and the `/phone` UI are built; the Mac-side drain that pulls messages down is not yet wired, so it doesn't answer a real call end-to-end today. See `daily-growth/roadmaps/BUSTERPHONE_ROADMAP.md`.
+- **Sentinel.** The security spine. Every mutation is recorded and redacted (by key name *and* value shape — card numbers and API keys don't leak into the log). Untrusted callers can't run restricted commands, and refusals are queued for you, not silently dropped.
+- **A workspace you own.** Everything is markdown on your disk. No lock-in; `grep` works.
+- **WebGPU shaders.** The homepage runs a live WGSL background. Drop a `.wgsl` file into your workspace and it compiles at runtime — no rebuild.
 
 ## Quick Start
 
@@ -40,7 +52,7 @@ To build a distributable desktop app (`.app` + `.dmg`) from a clone, see **[BUIL
 ./scripts/build_desktop.sh
 ```
 
-Manual fallback — run Phoenix and the shell in separate terminals:
+Manual fallback — Phoenix and the shell in separate terminals:
 
 ```bash
 mix phx.server
@@ -51,86 +63,72 @@ cd desktop/tauri
 cargo tauri dev
 ```
 
-Phoenix is available directly at `http://127.0.0.1:4000/`; the Tauri shell opens the same app in a native desktop window.
+Phoenix serves at `http://127.0.0.1:4000/`; the Tauri shell opens the same app in a native window. Override the endpoint with `BUSTER_CLAW_PHOENIX_URL`.
 
-The desktop shell points at `http://127.0.0.1:4000` in dev mode. Override that endpoint when needed:
+> **macOS note:** the current build is **x86_64 only**. An Apple-Silicon-native build is in progress — see `daily-growth/roadmaps/DISTRIBUTION_ROADMAP.md`.
 
-```bash
-cd desktop/tauri
-BUSTER_CLAW_PHOENIX_URL=http://127.0.0.1:4001 cargo tauri dev
-```
-
-## Configuration
-
-State is managed by Phoenix/Ecto and the local workspace directory:
-
-- `buster_claw_dev.db`: development SQLite database.
-- `Library/`: workspace documents and artifacts (markdown).
-- Legacy data files such as `sources.json` and `Library/*.json` are migration inputs.
-
-## Driving Buster Claw (CLI, HTTP)
-
-Buster Claw exposes a single canonical command surface across documents, calendar events, Google Workspace (accounts/Gmail/Calendar), integrations, finance, search, browser, runtime, the Dispatch queue, and the orchestration shift. Two frontends consume it:
+## Driving Buster Claw
 
 ### Authentication
 
-A loopback API token lives at `~/Library/Application Support/BusterClaw/api_token` (auto-generated on first launch). Override via `BUSTER_CLAW_API_TOKEN`. The Phoenix endpoint binds to `127.0.0.1` only; the token defends against other local users on a shared machine.
+A loopback API token is generated on first launch at `~/Library/Application Support/BusterClaw/api_token`. The Phoenix endpoint binds to `127.0.0.1` only; the token defends against other local users on a shared machine. Override with `BUSTER_CLAW_API_TOKEN`.
 
-### CLI escript
+Three tokens exist, and **the trust tier is derived from which one you present** — not from the route:
+
+| Caller | May run |
+|---|---|
+| `trusted` (you, your CLI) | anything |
+| `agent_untrusted` (a run that has touched untrusted content) | anything *except* gated commands (sends, deletes, shares) |
+| `agent` / `mcp` | safe-tier reads only |
+
+### CLI
 
 ```bash
-# Build (once)
-mix escript.build
+mix escript.build                                   # build once
 
-# Run
-./buster-claw commands                          # list the catalog
-./buster-claw document list                      # noun-verb shorthand
+./buster-claw commands                              # list the catalog
+./buster-claw document list                         # noun-verb shorthand
 ./buster-claw run web_search --json '{"query": "phoenix liveview"}'
-./buster-claw run shift_status --json '{}'
-./buster-claw terminal open --role mailman --label "On Duty"
-./buster-claw on-duty --interval 60
+./buster-claw on-duty                               # go on duty; work the queue unattended
 ```
 
-Token comes from `BUSTER_CLAW_API_TOKEN` env, then the file path above, then `--token <token>` flag. Base URL is `BUSTER_CLAW_URL` env or `--url <url>` flag (default `http://127.0.0.1:4000`).
-
-### Dispatch pull-queue (for Claude Code, Codex, other terminal agents)
-
-The primary way an agent drives Buster Claw is the pull-queue. Trusted inbound requests land in the durable Dispatch queue, which Buster Claw projects to the workspace markdown the agent reads (`shift/Dispatch.md`, grouped by job). A terminal agent works the queue through the `./buster-claw dispatch` verbs:
+### The Dispatch queue (how a terminal agent works)
 
 ```bash
-./buster-claw on-duty --interval 60               # go on duty: watch Gmail, feed and work the queue
 ./buster-claw dispatch list                         # see open items
-./buster-claw dispatch claim --job mail-triage      # pull the next item for a job
+./buster-claw dispatch claim --job mail-triage      # pull the next item
 ./buster-claw dispatch reply <id> --body "…"        # write a result back
 ./buster-claw dispatch done <id>                    # close it out (or: block <id>)
 ```
 
-Trust tiers still apply: untrusted callers may only run safe-tier commands, while restricted commands (deletes, `document_save`, `gmail_send`, …) require a trusted caller.
-
-### HTTP API (for direct integration)
+### HTTP API
 
 ```bash
 TOKEN=$(cat ~/Library/Application\ Support/BusterClaw/api_token)
 
-# Catalog (no auth needed)
-curl http://127.0.0.1:4000/api/commands
+curl http://127.0.0.1:4000/api/commands             # catalog (no auth)
 
-# Invoke a command
 curl -X POST http://127.0.0.1:4000/api/run \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"command":"document_list","args":{}}'
 ```
 
-## Development Notes
+## Documentation
 
-- [Quality checks](docs/QUALITY.md) lists the Phoenix and Tauri commands to run before refactors.
-- [Architecture notes](docs/ARCHITECTURE.md) documents the current runtime shape, persisted files, and generated-code boundaries.
-- [UML / architecture diagrams](docs/UML.md) — Mermaid diagrams of the system layers, supervision tree, domain model, command surface, and HTTP routing.
-- [Local trust model](docs/LOCAL_TRUST.md) documents shell hooks, webhooks, stored secrets, fetched markdown, and MCP boundaries.
-- [Desktop packaging notes](docs/DESKTOP_PACKAGING.md) document the Phoenix/Tauri desktop path.
-- Historical quality plans are archived in `daily-growth/archive/`.
+- [Architecture](docs/ARCHITECTURE.md) — runtime shape, contexts, persisted files
+- [Command surface](docs/COMMAND_SURFACE.md) — the catalog and its trust tiers
+- [Local trust model](docs/LOCAL_TRUST.md) — shell hooks, webhooks, stored secrets, fetched markdown
+- [UML diagrams](docs/UML.md) — supervision tree, domain model, HTTP routing
+- [Build & packaging](BUILD.md) · [Desktop packaging notes](docs/DESKTOP_PACKAGING.md)
+- [Quality checks](docs/QUALITY.md) — run before refactors
+
+## Contributing
+
+`mix precommit` (compile with warnings-as-errors, format, `credo --strict`, and the full test suite) must pass. Contributions ship under the MIT license — no CLA, no copyright assignment.
 
 ## License
 
-MIT
+**[MIT](LICENSE)** — including the WGSL shaders and the CSS design system. Fork it, sell it, build on it.
+
+The **name, wordmark, and logo** are reserved; rename your fork. See **[TRADEMARK.md](TRADEMARK.md)** — it's short, and the only ask is that you don't ship under our badge.

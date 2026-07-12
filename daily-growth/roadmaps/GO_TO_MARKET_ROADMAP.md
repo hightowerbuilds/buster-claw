@@ -69,7 +69,7 @@ as settled just because the Browserbase row is gone from the table.
 - **Bundle ID** — still `com.hightowerbuilds.busterclaw`; the domain decision unblocks it → **`mom.buster.desktop`** (or similar). Must change **before** the first public build: changing it after users install orphans their app-data dir and breaks notarization continuity
 - **Telemetry** — the app ships zero today (a feature for privacy, a blindfold for "did the beta work"). Needs a consent gate, a tiny ingest endpoint (new infra — a Cloudflare Worker or a $5 VPS is enough), and a privacy-policy clause
 - **Website** — buster.mom needs, at minimum: product page, download link, **privacy policy** (Google hard-requires it at a public URL), and terms
-- **License** — the public repo currently has no license, which legally means "all rights reserved" — fine for now, ambiguous for contributors. Decide during beta (AGPL and BSL are the candidates that deter a hostile fork selling our own paid tier back to us)
+- ~~**License** — the public repo currently has no license…~~ ✅ **DONE 07-12: MIT** (`LICENSE`) + a trademark policy (`TRADEMARK.md`). Note the README had been *claiming* MIT for months while granting nothing — every outside PR was a legal question mark. **AGPL/BSL were rejected**, and the reasoning matters: they exist to stop a fork selling our paid tier back to us, but neither money leg is defended by copyright. The phone is defended by **owning the number** (a fork can't fork our Twilio account) and the feed by **making new things** (a fork can't fork work that doesn't exist yet). Copyleft would have bought us nothing and cost us the goodwill and the contributions. The shaders and CSS ship MIT too — they're the best advertising we have, and MIT forces every fork to carry our copyright notice, which is the attribution we actually wanted
 
 ---
 
@@ -247,6 +247,22 @@ after. See `BUSTERPHONE_ROADMAP.md` for the sequencing.
 - **SMS will likely force the LLC early** (A2P brand registration wants an EIN),
   which cuts against Part I's "entity deferred." Voice-only may let us defer it —
   **confirm before committing to an SMS date.**
+
+**The second half of the subscription: the Signature Feed.** BusterPhone *acquires*
+("Buster Claw answers your phone" — five words, no explanation needed). It does not,
+on its own, give anyone a reason to still be paying in month six. That's the job of
+an ongoing drop of new shaders, palettes, phone faces and greeting voices —
+**`SIGNATURE_FEED.md`**. One subscription, two reasons to keep paying: **the phone
+acquires, the feed retains.** The feed is also the only genuinely unforkable thing we
+have, because *you cannot fork work that doesn't exist yet* — and it costs us nothing
+to serve, so it carries no COGS against the margin above.
+
+**Licensing settled 07-12 (and it does not threaten any of this).** The repo is now
+**MIT** — including the shaders and the CSS design system — with the name, wordmark
+and logo reserved (`LICENSE`, `TRADEMARK.md`). Giving the code away is safe precisely
+because neither money leg is defended by copyright: the phone is defended by *owning
+the number*, and the feed by *making new things*. A fork gets the engine and none of
+the business.
 
 *The two candidates below were the options considered. Option B (paid signed binary)
 is NOT dead — it's a viable second revenue line later, and it charges for a cost we're
