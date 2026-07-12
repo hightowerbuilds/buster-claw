@@ -1,0 +1,158 @@
+# BusterPhone — the Message Machine
+
+**Give Buster Claw a real phone number.** It answers calls like a classic
+answering machine (greeting → beep → recorded message in the Library) and
+sends/receives SMS through the same command surface everything else uses.
+An agent that already reads your email and works your dispatch queue gets a
+second, more immediate channel: your phone.
+
+> Drafted 2026-07-11 from the telephony research plan
+> (`<workspace>/pages/telephony-plan.html`, 07-06). That doc holds the deep
+> reasoning (provider verticals, flow diagrams, cost tables); this roadmap is
+> the build plan against the source repo.
+
+---
+
+## The one architectural fact everything follows from
+
+Buster Claw is loopback-only by design — every HTTP scope binds to
+`127.0.0.1` and that's a security posture, not an accident. Twilio is a
+public-internet service that must POST to a URL the moment a call or text
+arrives. **We do not open the Mac.** A small Supabase project is the public
+front door:
+
+```
+Caller/Texter → Twilio number → Supabase Edge Function (public HTTPS)
+                                  · verifies X-Twilio-Signature
+                                  · returns TwiML (greeting / <Record> / ack)
+                                  · writes audio → Storage, event row → Postgres
+Mac (outbound-only) ← Realtime push ← telephony_events queue
+  BusterClaw.Telephony: drains queue, downloads audio, writes Library docs,
+  sends outbound SMS straight to Twilio's REST API (no ingress needed)
+```
+
+This buys **always-on capture** — a call that lands while the Mac is asleep
+waits in Supabase and drains on next sync — and keeps the Mac purely
+outbound. The lightweight alternative (bare Cloudflare Tunnel) only works
+while the Mac is up; rejected as the default for exactly that reason.
+
+Everything downstream is patterns the app already has: an `integrations` row
+for creds (`Encrypted` token fields), Library markdown docs + binary
+artifacts via `FileManager`, dispatch-queue items for agent follow-up, a
+`Commands.Catalog` entry for outbound, and Sentinel observation on every
+event.
+
+## Decisions (proposed defaults — confirm before Phase 0)
+
+| Decision | Default | Why |
+|---|---|---|
+| Provider | **Twilio** | The plan's TwiML is written against it verbatim; Telnyx/SignalWire are near-drop-in (TeXML/LaML) if cost ever matters; Vonage's JSON model would force an Edge Function rewrite — skip. |
+| Ingress | **Supabase relay** | Always-on, zero open ports on the Mac. |
+| Transcription | **Twilio built-in now, local-Whisper hook later** | Zero effort to ship. NOTE: Whisper STT was deliberately demolished 06-28 — a future local path should be a fresh decision, not a rebuild reflex. |
+| Number type | **Local 10-digit** | Needs A2P 10DLC registration (start it early — Phase 2 gate). Toll-free is the fallback if 10DLC drags. |
+| SMS trust model | **Separate trusted-numbers list** | Mirrors the `TrustedSenders` pattern but phone numbers ≠ email addresses; a stranger's text gets archived, never auto-actioned. |
+
+## Phases
+
+### Phase 0 — Provision & reach (no app code)
+
+Twilio account + number; Supabase project with a stub Edge Function returning
+a hand-written TwiML greeting; point the number's Voice webhook at it.
+**Exit test:** call the number from a phone, hear the greeting. This proves
+the only genuinely new thing — public reachability for a loopback-only app —
+before a line of Elixir exists.
+
+### Phase 1 — The answering machine (inbound voicemail)
+
+- **Edge Function, for real:** signature verification (fail closed),
+  `<Say>` + `<Record maxLength playBeep transcribe>` TwiML, recording
+  callback → pull audio into a Storage bucket + insert `telephony_events` row
+  (direction, from/to, kind, duration, recording path, transcript,
+  twilio_sid, synced flag).
+- **`BusterClaw.Telephony` context (Mac):** outbound websocket subscription
+  to Supabase Realtime; on new row, download the `.mp3` to
+  `library/raw/<date>/voicemail-<time>-<from>.mp3` and write the companion
+  Library log doc (caller, timestamp, duration, audio link, transcript).
+- **Creds:** widen `Integration.@service_types` to include `"twilio"` —
+  Account SID in `config`, Auth Token in the encrypted `token`, signing
+  secret in `webhook_secret`. No new secrets table. (Honest caveat: the Edge
+  Function holds a second copy in Supabase env vars.)
+- **Local mirror:** one Ecto migration for a small `telephony_events` table —
+  structured row + human-readable doc, same pairing as `integration_runs`.
+- **Sentinel:** every inbound event observed as `:untrusted_ingest`.
+
+**Exit test:** call the number, leave a message, watch the `.mp3` +
+transcript doc appear in the workspace without touching the app.
+
+### Phase 2 — Texting (inbound + outbound SMS)
+
+- **Edge Function `/sms`:** verify, write event row, return a static TwiML
+  ack (`Got it — on it.`) since the Mac is never in the synchronous path;
+  real answers follow as separate outbound sends.
+- **Inbound on the Mac:** running SMS-thread doc per sender number in the
+  Library; **trusted-numbers gate** before anything reaches the dispatch
+  queue — inbound text bodies are untrusted input and get fenced exactly like
+  email bodies.
+- **Outbound:** `sms_send` command in `Commands.Catalog.Integrations`
+  (tier **restricted**, args `to` + `body`), calling Twilio's Messages REST
+  API directly from the Mac. On the command surface = agent-drivable via
+  `./buster-claw` and `/api/run`, Sentinel `:outbound_send` on every send.
+- **Compliance gate (start day 1 of this phase):** A2P 10DLC brand +
+  campaign registration — paperwork + a few days' wait; unregistered traffic
+  gets carrier-filtered. Voice needs no registration (why voicemail ships a
+  phase earlier).
+
+**Exit test:** text the number → ack arrives, thread doc + dispatch item
+appear (trusted sender only); agent runs `sms_send` from the terminal and
+the text lands on a phone.
+
+### Phase 3 — Surfacing & polish
+
+- Dispatch-queue items for new voicemail ("New voicemail from +1…") so the
+  on-duty loop handles follow-up.
+- A **Message Machine panel** (Settings-adjacent or its own tab): call/text
+  log from the local mirror, tap-to-play recordings, thread view.
+- SMS as a selectable **delivery channel** for daily summaries and alerts —
+  the Financial Informant and wrap-up outputs can go by text.
+- Optional: local transcription hook (decision above), greeting
+  customization (operator-recorded or Polly voice/text in Settings).
+
+### Phase 4 — Resilience (cheap, optional)
+
+Interval poll of Supabase via the existing integration-scheduler pattern as a
+backstop to the Realtime websocket. Supabase already holds events durably, so
+this is hardening, not new capability.
+
+## What's new vs. reused
+
+| Piece | Status |
+|---|---|
+| Supabase project (Edge Fn + Storage + one table + Realtime) | **new** — mostly config; the Edge Function is the only new deployed code (Deno/TS) |
+| `BusterClaw.Telephony` context + Realtime client | **new** — outbound-only |
+| Local `telephony_events` migration | **new** — one table |
+| Trusted-numbers list | **new** — modeled on `TrustedSenders` |
+| `twilio` integration record / encrypted creds | reuse |
+| Library docs + binary artifacts (`FileManager`) | reuse |
+| `sms_send` catalog entry, tier gate, `/api/run` | reuse |
+| Dispatch queue + Sentinel feed | reuse |
+
+## Cost of running it (ballpark, confirm at build)
+
+Number ~$1–2/mo · inbound voice ~$0.0085/min · SMS ~$0.008 each + carrier
+fees · Twilio transcription ~$0.05/min · 10DLC one-time + ~$2/mo ·
+Supabase free tier covers this volume. **Order of $5/mo for personal use.**
+Fits the GTM paywall logic: like Browserbase and GWS, this is a
+costs-real-money feature — a natural paid-tier candidate.
+
+## Risks & honest notes
+
+- **Secrets in two places** — Twilio creds live encrypted in the app *and*
+  in Supabase env vars. Document it; Sentinel can't see the Edge Function.
+- **10DLC is the schedule risk** for SMS, not code. Voicemail has no such
+  gate — hence the phase order.
+- **The Edge Function is app code living outside the repo's test suite.**
+  Keep it tiny and boring; version it in the repo (`supabase/functions/…`)
+  even though it deploys elsewhere.
+- **Spam calls exist.** The answering machine records strangers by design —
+  fine for the Library, but transcripts of unknown callers are untrusted
+  input, same fencing as SMS bodies.
