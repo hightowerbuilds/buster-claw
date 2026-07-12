@@ -2,6 +2,7 @@ defmodule BusterClaw.BrowserTest do
   use BusterClaw.DataCase
 
   alias BusterClaw.Browser
+  alias BusterClaw.Browser.Sidecar
 
   setup do
     Req.Test.verify_on_exit!()
@@ -49,10 +50,10 @@ defmodule BusterClaw.BrowserTest do
   end
 
   test "sidecar supervisor stays alive when the node executable is unavailable" do
-    start_supervised!({BusterClaw.Browser.Sidecar, executable: "missing-browser-sidecar-node"})
+    start_supervised!({Sidecar, executable: "missing-browser-sidecar-node"})
 
-    assert %{enabled: true, health: "unavailable"} = BusterClaw.Browser.Sidecar.status()
-    assert :unavailable = BusterClaw.Browser.Sidecar.url()
+    assert %{enabled: true, health: "unavailable"} = Sidecar.status()
+    assert :unavailable = Sidecar.url()
   end
 
   describe "sidecar sandbox launch_spec/2" do
@@ -63,7 +64,7 @@ defmodule BusterClaw.BrowserTest do
         node = System.find_executable("node") || "/usr/bin/true"
 
         assert {"/usr/bin/sandbox-exec", args, true} =
-                 BusterClaw.Browser.Sidecar.launch_spec(node, @script)
+                 Sidecar.launch_spec(node, @script)
 
         assert ["-f", profile | rest] = args
         assert String.ends_with?(profile, "playwright_sidecar/sandbox.sb")
@@ -100,7 +101,7 @@ defmodule BusterClaw.BrowserTest do
       end)
 
       assert {"/usr/bin/node", [@script], false} =
-               BusterClaw.Browser.Sidecar.launch_spec("/usr/bin/node", @script)
+               Sidecar.launch_spec("/usr/bin/node", @script)
     end
   end
 

@@ -7,8 +7,8 @@ defmodule BusterClaw.Agent.Conversations do
   """
   import Ecto.Query
 
-  alias BusterClaw.Repo
   alias BusterClaw.Agent.Conversation
+  alias BusterClaw.Repo
 
   @default_id "default"
   @default_title "New chat"

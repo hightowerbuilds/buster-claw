@@ -26,8 +26,16 @@ defmodule BusterClaw.Google.BundledClientTest do
   defp put_compiled(value), do: Application.put_env(:buster_claw, :google_bundled_client, value)
 
   defp stub_remote(fun) do
-    Application.put_env(:buster_claw, :google_bundled_client_url, "https://example.test/oauth.json")
-    Application.put_env(:buster_claw, :google_req_options, plug: {Req.Test, BusterClaw.GoogleHTTP})
+    Application.put_env(
+      :buster_claw,
+      :google_bundled_client_url,
+      "https://example.test/oauth.json"
+    )
+
+    Application.put_env(:buster_claw, :google_req_options,
+      plug: {Req.Test, BusterClaw.GoogleHTTP}
+    )
+
     Req.Test.stub(BusterClaw.GoogleHTTP, fun)
   end
 
@@ -96,7 +104,11 @@ defmodule BusterClaw.Google.BundledClientTest do
     # A plain function plug, NOT Req.Test: the fetch runs in a background task
     # with no ownership link to this test, and a non-owner hitting Req.Test
     # crashes its ownership server for every later test in the run.
-    Application.put_env(:buster_claw, :google_bundled_client_url, "https://example.test/oauth.json")
+    Application.put_env(
+      :buster_claw,
+      :google_bundled_client_url,
+      "https://example.test/oauth.json"
+    )
 
     Application.put_env(:buster_claw, :google_req_options,
       plug: fn conn ->

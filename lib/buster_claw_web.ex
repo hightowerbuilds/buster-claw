@@ -95,8 +95,8 @@ defmodule BusterClawWeb do
       import BusterClawWeb.CoreComponents
 
       # Common modules used in templates
-      alias Phoenix.LiveView.JS
       alias BusterClawWeb.Layouts
+      alias Phoenix.LiveView.JS
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())

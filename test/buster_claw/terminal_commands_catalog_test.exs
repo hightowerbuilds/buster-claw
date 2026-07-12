@@ -165,11 +165,19 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
                "label" => c.label || "",
                "description" => c.description || "",
                "command" =>
-                 if(c.key == "commands-list", do: "./buster-claw commands --json", else: c.command),
+                 if(c.key == "commands-list",
+                   do: "./buster-claw commands --json",
+                   else: c.command
+                 ),
                "kind" => c.kind
              }}
           end)
-          |> Map.put("3", %{"key" => "", "label" => "Mine", "command" => "echo mine", "kind" => "shell"})
+          |> Map.put("3", %{
+            "key" => "",
+            "label" => "Mine",
+            "command" => "echo mine",
+            "kind" => "shell"
+          })
       }
 
       assert {:ok, %{commands_changed: true}} = TerminalCommands.save_role_edit(base, params)
@@ -272,7 +280,9 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
 
   describe "skill prompts (generated from the skills folder)" do
     test "one generated prompt per enabled skill, composition vs reference text" do
-      write_skill("save-note", "composition",
+      write_skill(
+        "save-note",
+        "composition",
         ~s(args: {"title":{"type":"string"}}\nsteps: [{"command":"document_save","args":{"name":"$title","body":"$title"}}])
       )
 
@@ -296,7 +306,9 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
     end
 
     test "generated prompts are never written to the catalog file" do
-      write_skill("save-note", "composition",
+      write_skill(
+        "save-note",
+        "composition",
         ~s(args: {}\nsteps: [{"command":"runtime_status","args":{}}])
       )
 
@@ -306,7 +318,10 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
                TerminalCommands.put_catalog(%{
                  "version" => 1,
                  "roles" => [
-                   %{"key" => "toolbox", "commands" => [%{"key" => "commands-list", "command" => "./x"}]}
+                   %{
+                     "key" => "toolbox",
+                     "commands" => [%{"key" => "commands-list", "command" => "./x"}]
+                   }
                  ]
                })
 
@@ -319,7 +334,9 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
     end
 
     test "a persisted skill-<name> row shadows the generated one" do
-      write_skill("save-note", "composition",
+      write_skill(
+        "save-note",
+        "composition",
         ~s(args: {}\nsteps: [{"command":"runtime_status","args":{}}])
       )
 
@@ -330,8 +347,16 @@ defmodule BusterClaw.TerminalCommandsCatalogTest do
                    %{
                      "key" => "prompts",
                      "commands" => [
-                       %{"key" => "welcome-introduction", "command" => "Welcome.", "kind" => "prompt"},
-                       %{"key" => "skill-save-note", "command" => "My own wording.", "kind" => "prompt"}
+                       %{
+                         "key" => "welcome-introduction",
+                         "command" => "Welcome.",
+                         "kind" => "prompt"
+                       },
+                       %{
+                         "key" => "skill-save-note",
+                         "command" => "My own wording.",
+                         "kind" => "prompt"
+                       }
                      ]
                    }
                  ]

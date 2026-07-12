@@ -315,6 +315,34 @@ full-width (item 12), which merged in the same batch.
   - All three are **`:restricted`** → as an untrusted/agent caller they require
     confirmation and land on the **Sentinel audit feed**.
 
-**Repo-health note (separate from these PRs):** `mix precommit` halts at
+**Repo-health note (separate from these PRs):** ~~`mix precommit` halts at
 `credo --strict` on ~50 pre-existing findings in unrelated files (fails on `main`
-too), so workers verified via `mix test` directly. Worth a dedicated cleanup pass.
+too), so workers verified via `mix test` directly. Worth a dedicated cleanup pass.~~
+✅ **DONE 07-12** — `mix precommit` now exits 0 (compile --warnings-as-errors,
+format, credo --strict, 886 tests). 102 findings → 0: 33 were really fixed, two
+thresholds were calibrated with rationale in `.credo.exs`, and the six genuine
+outliers carry an annotated `credo:disable-for-next-line` rather than a silent
+exemption. Note `mix precommit` runs `format` (not `--check-formatted`), so it
+**rewrites** files — nine files that were committed unformatted are now formatted.
+
+---
+
+### 6. `BusterClaw.CLI.main/1` is a cyclomatic-23 dispatcher
+
+**Problem:** `lib/buster_claw/cli.ex:27` hand-rolls arg parsing and command
+dispatch in one function. Credo's bar is 15 (raised from the default 9 on 07-12
+because dispatch-heavy functions blow through 9 by *shape*); `main/1` is at **23**
+and is the only site in the codebase that's real debt rather than a lookup table.
+It carries an explicit `credo:disable-for-next-line` naming this item, so the
+exemption stays visible instead of quietly passing.
+
+**Desired:** decompose into per-command clauses / a dispatch map so each command's
+arg handling is testable on its own, and delete the disable comment.
+
+**Not urgent:** it works, it's covered by tests, and it is the CLI's outermost
+layer — the blast radius of a bad refactor is every command. Do it deliberately,
+not as a drive-by.
+
+*(For contrast, `google/gmail.ex`'s two >15 functions are NOT debt — they're flat
+extension→MIME and key→attribute lookup tables where cyclomatic complexity is
+measuring the wrong thing. Their disable comments say so. Don't "fix" them.)*

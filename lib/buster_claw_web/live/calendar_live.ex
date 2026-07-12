@@ -201,12 +201,10 @@ defmodule BusterClawWeb.CalendarLive do
   end
 
   defp safe_get_event(id) do
-    try do
-      Calendar.get_event!(id)
-    rescue
-      Ecto.NoResultsError -> nil
-      Ecto.Query.CastError -> nil
-    end
+    Calendar.get_event!(id)
+  rescue
+    Ecto.NoResultsError -> nil
+    Ecto.Query.CastError -> nil
   end
 
   @impl true

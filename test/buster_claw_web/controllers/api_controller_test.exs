@@ -16,7 +16,7 @@ defmodule BusterClawWeb.ApiControllerTest do
       conn = get(conn, ~p"/api/commands")
       assert %{"ok" => true, "commands" => commands} = json_response(conn, 200)
       assert is_list(commands)
-      assert length(commands) > 0
+      assert commands != []
 
       names = Enum.map(commands, & &1["name"])
 

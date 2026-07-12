@@ -1,11 +1,11 @@
 defmodule BusterClaw.CommandsTest do
   use BusterClaw.DataCase
 
+  alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Commands
   alias BusterClaw.Commands.Result
   alias BusterClaw.Dispatch
   alias BusterClaw.Google
-  alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Library
   alias BusterClaw.TerminalWorkspace
 

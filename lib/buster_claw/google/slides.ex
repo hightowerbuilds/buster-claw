@@ -33,9 +33,7 @@ defmodule BusterClaw.Google.Slides do
     opts = Keyword.put(opts, :base_url, @slides_base_url)
     path = "presentations/#{enc(presentation_id)}:batchUpdate"
 
-    with {:ok, body} <- Client.post_json(account, path, %{"requests" => requests}, opts) do
-      {:ok, body}
-    end
+    Client.post_json(account, path, %{"requests" => requests}, opts)
   end
 
   defp summary(body) do

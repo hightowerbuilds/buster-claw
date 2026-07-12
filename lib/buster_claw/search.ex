@@ -13,21 +13,19 @@ defmodule BusterClaw.Search do
   def search(query, opts \\ []) do
     query = String.trim(to_string(query))
 
-    cond do
-      query == "" ->
-        {:error, :empty_query}
+    if query == "" do
+      {:error, :empty_query}
+    else
+      limit = Keyword.get(opts, :limit, 5)
 
-      true ->
-        limit = Keyword.get(opts, :limit, 5)
+      with {:ok, body} <- fetch(query, opts) do
+        results =
+          body
+          |> parse_results()
+          |> Enum.take(limit)
 
-        with {:ok, body} <- fetch(query, opts) do
-          results =
-            body
-            |> parse_results()
-            |> Enum.take(limit)
-
-          {:ok, results}
-        end
+        {:ok, results}
+      end
     end
   end
 

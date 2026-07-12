@@ -93,6 +93,7 @@ defmodule BusterClaw.Finance.Edgar do
         results =
           map
           |> Enum.reduce([], fn {ticker, %{title: title}}, acc ->
+            # credo:disable-for-next-line Credo.Check.Refactor.Nesting
             case match_score(String.downcase(ticker), String.downcase(to_string(title)), q) do
               nil -> acc
               score -> [{score, ticker, title} | acc]

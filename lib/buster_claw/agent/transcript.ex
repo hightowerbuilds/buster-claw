@@ -12,8 +12,8 @@ defmodule BusterClaw.Agent.Transcript do
 
   require Logger
 
-  alias BusterClaw.Repo
   alias BusterClaw.Agent.Message
+  alias BusterClaw.Repo
 
   @doc """
   Persist one transcript message. `opts` may carry `:session_id`, `:cost_usd`,

@@ -149,6 +149,7 @@ defmodule BusterClaw.Dispatcher do
             # realized cost overshoot the cap. Reserve the worst case against the cap
             # BEFORE starting; if it wouldn't fit, stop the shift cleanly rather than
             # overshoot (the safe direction — see `within_swarm_budget?/2`).
+            # credo:disable-for-next-line Credo.Check.Refactor.Nesting
             if within_swarm_budget?(shift, state) do
               start_swarm_run(state, shift, item)
             else

@@ -10,8 +10,8 @@ defmodule BusterClaw.Commands.Dispatch do
 
   import BusterClaw.Commands.Helpers
 
-  alias BusterClaw.Dispatch
   alias BusterClaw.Commands.Google
+  alias BusterClaw.Dispatch
   alias BusterClaw.Google.Gmail
 
   def dispatch_list(args \\ %{}) do

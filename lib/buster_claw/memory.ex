@@ -76,7 +76,7 @@ defmodule BusterClaw.Memory do
 
     case terms do
       [] -> :empty
-      ts -> ts |> Enum.map(&~s("#{&1}")) |> Enum.join(" OR ")
+      ts -> Enum.map_join(ts, " OR ", &~s("#{&1}"))
     end
   end
 

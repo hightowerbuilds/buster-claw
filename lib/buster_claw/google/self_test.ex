@@ -103,9 +103,14 @@ defmodule BusterClaw.Google.SelfTest do
   # and the shape of the failure, not dumping a response body.
   defp describe({:google_api_error, status, body}) do
     case body do
-      %{"error" => %{"message" => message}} when is_binary(message) -> "HTTP #{status}: #{message}"
-      %{"error_description" => message} when is_binary(message) -> "HTTP #{status}: #{message}"
-      _ -> "HTTP #{status}"
+      %{"error" => %{"message" => message}} when is_binary(message) ->
+        "HTTP #{status}: #{message}"
+
+      %{"error_description" => message} when is_binary(message) ->
+        "HTTP #{status}: #{message}"
+
+      _ ->
+        "HTTP #{status}"
     end
   end
 

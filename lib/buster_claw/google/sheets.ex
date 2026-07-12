@@ -46,10 +46,7 @@ defmodule BusterClaw.Google.Sheets do
 
     path = "spreadsheets/#{enc(spreadsheet_id)}/values/#{enc(range)}"
 
-    with {:ok, body} <-
-           Client.put_json(account, path, %{"range" => range, "values" => values}, opts) do
-      {:ok, body}
-    end
+    Client.put_json(account, path, %{"range" => range, "values" => values}, opts)
   end
 
   @doc "Append `values` after a range/table (`values.append`)."
@@ -62,9 +59,7 @@ defmodule BusterClaw.Google.Sheets do
 
     path = "spreadsheets/#{enc(spreadsheet_id)}/values/#{enc(range)}:append"
 
-    with {:ok, body} <- Client.post_json(account, path, %{"values" => values}, opts) do
-      {:ok, body}
-    end
+    Client.post_json(account, path, %{"values" => values}, opts)
   end
 
   @doc "Clear a range's values (`values.clear`)."
@@ -72,9 +67,7 @@ defmodule BusterClaw.Google.Sheets do
     opts = Keyword.put(opts, :base_url, @sheets_base_url)
     path = "spreadsheets/#{enc(spreadsheet_id)}/values/#{enc(range)}:clear"
 
-    with {:ok, body} <- Client.post_json(account, path, %{}, opts) do
-      {:ok, body}
-    end
+    Client.post_json(account, path, %{}, opts)
   end
 
   @doc """
@@ -86,9 +79,7 @@ defmodule BusterClaw.Google.Sheets do
     opts = Keyword.put(opts, :base_url, @sheets_base_url)
     path = "spreadsheets/#{enc(spreadsheet_id)}:batchUpdate"
 
-    with {:ok, body} <- Client.post_json(account, path, %{"requests" => requests}, opts) do
-      {:ok, body}
-    end
+    Client.post_json(account, path, %{"requests" => requests}, opts)
   end
 
   defp value_input(opts), do: Keyword.get(opts, :value_input_option, @default_value_input)

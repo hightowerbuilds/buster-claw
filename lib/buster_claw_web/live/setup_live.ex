@@ -425,7 +425,11 @@ defmodule BusterClawWeb.SetupLive do
                   name="google_account[scopes]"
                   value={GoogleOAuthCore.default_scope_string()}
                 />
-                <input type="hidden" name="google_account[default_query]" value={@google_default_query} />
+                <input
+                  type="hidden"
+                  name="google_account[default_query]"
+                  value={@google_default_query}
+                />
                 <button type="submit" class={button_outline()}>Save Google account</button>
               </.form>
             </details>

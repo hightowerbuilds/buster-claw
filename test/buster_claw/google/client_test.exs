@@ -117,21 +117,19 @@ defmodule BusterClaw.Google.ClientTest do
     {:ok, counter} = Agent.start_link(fn -> 0 end)
 
     Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
-      cond do
-        conn.request_path == "/token" ->
-          # Token refresh exchange.
-          Req.Test.json(conn, %{"access_token" => "fresh-token", "expires_in" => 3600})
+      if conn.request_path == "/token" do
+        # Token refresh exchange.
+        Req.Test.json(conn, %{"access_token" => "fresh-token", "expires_in" => 3600})
+      else
+        n = Agent.get_and_update(counter, fn n -> {n, n + 1} end)
 
-        true ->
-          n = Agent.get_and_update(counter, fn n -> {n, n + 1} end)
-
-          if n == 0 do
-            Plug.Conn.send_resp(conn, 401, ~s({"error":"unauthorized"}))
-          else
-            [auth] = Plug.Conn.get_req_header(conn, "authorization")
-            assert auth == "Bearer fresh-token"
-            Req.Test.json(conn, %{"id" => "file-1"})
-          end
+        if n == 0 do
+          Plug.Conn.send_resp(conn, 401, ~s({"error":"unauthorized"}))
+        else
+          [auth] = Plug.Conn.get_req_header(conn, "authorization")
+          assert auth == "Bearer fresh-token"
+          Req.Test.json(conn, %{"id" => "file-1"})
+        end
       end
     end)
 

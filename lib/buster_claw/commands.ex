@@ -214,15 +214,13 @@ defmodule BusterClaw.Commands do
       command = step["command"]
       step_args = resolve_args(Map.get(step, "args", %{}), args, prior)
 
-      cond do
-        not has_command?(command) ->
-          {:halt, {:error, {:step_failed, command, :unknown_command}}}
-
-        true ->
-          case call(command, step_args, caller: caller) do
-            {:ok, value} -> {:cont, {[%{command: command, result: value} | acc], value}}
-            {:error, reason} -> {:halt, {:error, {:step_failed, command, reason}}}
-          end
+      if has_command?(command) do
+        case call(command, step_args, caller: caller) do
+          {:ok, value} -> {:cont, {[%{command: command, result: value} | acc], value}}
+          {:error, reason} -> {:halt, {:error, {:step_failed, command, reason}}}
+        end
+      else
+        {:halt, {:error, {:step_failed, command, :unknown_command}}}
       end
     end)
     |> case do

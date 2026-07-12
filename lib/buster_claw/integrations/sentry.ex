@@ -181,8 +181,7 @@ defmodule BusterClaw.Integrations.Sentry do
       |> Enum.map(&field(&1, ["level"]))
       |> Enum.reject(&is_nil/1)
       |> Enum.frequencies()
-      |> Enum.map(fn {level, count} -> "#{level}: #{count}" end)
-      |> Enum.join(", ")
+      |> Enum.map_join(", ", fn {level, count} -> "#{level}: #{count}" end)
 
     total_events =
       issues

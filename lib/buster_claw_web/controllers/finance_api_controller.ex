@@ -35,26 +35,24 @@ defmodule BusterClawWeb.FinanceApiController do
   def lookup(conn, params) do
     query = params |> Map.get("q", "") |> to_string() |> String.trim()
 
-    cond do
-      query == "" ->
-        json(conn, %{ok: false, error: "Enter a ticker or company name."})
+    if query == "" do
+      json(conn, %{ok: false, error: "Enter a ticker or company name."})
+    else
+      case Finance.resolve(query) do
+        {:ok, symbol} ->
+          json(conn, %{
+            ok: true,
+            symbol: symbol,
+            name: company_name(symbol),
+            quote: section(Finance.quote(symbol)),
+            fundamentals: section(Finance.fundamentals(symbol)),
+            filings: section(Finance.filings(symbol)),
+            news: section(Finance.news(symbol))
+          })
 
-      true ->
-        case Finance.resolve(query) do
-          {:ok, symbol} ->
-            json(conn, %{
-              ok: true,
-              symbol: symbol,
-              name: company_name(symbol),
-              quote: section(Finance.quote(symbol)),
-              fundamentals: section(Finance.fundamentals(symbol)),
-              filings: section(Finance.filings(symbol)),
-              news: section(Finance.news(symbol))
-            })
-
-          {:error, _reason} ->
-            json(conn, %{ok: false, error: "No company found for “#{query}”."})
-        end
+        {:error, _reason} ->
+          json(conn, %{ok: false, error: "No company found for “#{query}”."})
+      end
     end
   end
 

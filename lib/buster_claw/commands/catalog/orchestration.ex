@@ -54,7 +54,8 @@ defmodule BusterClaw.Commands.Catalog.Orchestration do
           "command_key" => %{
             type: :string,
             required: true,
-            description: "The command's slug key (from terminal_command_list); a new slug adds a command."
+            description:
+              "The command's slug key (from terminal_command_list); a new slug adds a command."
           },
           "command" => %{
             type: :string,

@@ -1,8 +1,8 @@
 defmodule BusterClaw.Browser do
   @moduledoc "Browser-rendered fetch boundary with an optional supervised Playwright sidecar."
 
-  alias BusterClaw.Ingest.Content
   alias BusterClaw.Browser.Sidecar
+  alias BusterClaw.Ingest.Content
   alias BusterClaw.URLGuard
 
   @user_agent "BusterClaw/2.0 BrowserSidecarFallback"

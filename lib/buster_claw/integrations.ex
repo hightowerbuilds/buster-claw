@@ -3,9 +3,9 @@ defmodule BusterClaw.Integrations do
 
   import Ecto.Query
 
-  alias BusterClaw.LocalTime
   alias BusterClaw.Integrations.{GitHub, Integration, IntegrationRun, Sentry, Umami}
   alias BusterClaw.Library
+  alias BusterClaw.LocalTime
   alias BusterClaw.Repo
 
   @topic "integrations"
@@ -287,15 +287,13 @@ defmodule BusterClaw.Integrations do
   defp dedupe_window_days(value) when is_binary(value) do
     value = String.trim(value)
 
-    cond do
-      String.downcase(value) in ["all", "none", "unlimited"] ->
-        nil
-
-      true ->
-        case Integer.parse(value) do
-          {days, ""} when days > 0 -> days
-          _other -> 30
-        end
+    if String.downcase(value) in ["all", "none", "unlimited"] do
+      nil
+    else
+      case Integer.parse(value) do
+        {days, ""} when days > 0 -> days
+        _other -> 30
+      end
     end
   end
 

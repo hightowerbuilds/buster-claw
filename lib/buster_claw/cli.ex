@@ -24,6 +24,10 @@ defmodule BusterClaw.CLI do
   @mailman_receive_timeout_ms 300_000
 
   @doc false
+  # Real debt, not a metric artifact: this is a hand-rolled arg dispatcher at
+  # complexity 23 (bar is 15). Decomposing it is a Shortlist item — see
+  # daily-growth/roadmaps/Shortlist.md. Left visible on purpose.
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   def main(argv) do
     ensure_apps()
     {opts, args, _} = OptionParser.parse(argv, strict: switches(), aliases: aliases())

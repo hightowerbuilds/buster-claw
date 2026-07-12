@@ -33,9 +33,7 @@ defmodule BusterClaw.Google.Docs do
     opts = Keyword.put(opts, :base_url, @docs_base_url)
     path = "documents/#{enc(document_id)}:batchUpdate"
 
-    with {:ok, body} <- Client.post_json(account, path, %{"requests" => requests}, opts) do
-      {:ok, body}
-    end
+    Client.post_json(account, path, %{"requests" => requests}, opts)
   end
 
   defp summary(body) do

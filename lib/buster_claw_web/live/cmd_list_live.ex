@@ -214,7 +214,6 @@ defmodule BusterClawWeb.CmdListLive do
       </button>
     </div>
 
-
     <.form
       for={@form}
       id={"cmd-list-form-#{@role.key}"}
@@ -244,8 +243,7 @@ defmodule BusterClawWeb.CmdListLive do
                 value={cf[:key].value}
                 checked={to_string(@form[:default_key].value) == to_string(cf[:key].value)}
                 class="size-3.5 accent-primary"
-              />
-              Startup default
+              /> Startup default
             </label>
             <span
               :if={is_nil(cf[:key].value)}
@@ -298,7 +296,10 @@ defmodule BusterClawWeb.CmdListLive do
             field={cf[:kind]}
             type="select"
             label="Kind"
-            options={[{"Shell command (single line)", "shell"}, {"Prompt (may be multiline)", "prompt"}]}
+            options={[
+              {"Shell command (single line)", "shell"},
+              {"Prompt (may be multiline)", "prompt"}
+            ]}
           />
 
           <.input

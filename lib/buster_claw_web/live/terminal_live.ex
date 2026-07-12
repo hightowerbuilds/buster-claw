@@ -296,8 +296,7 @@ defmodule BusterClawWeb.TerminalLive do
   def handle_info({:terminal_commands_updated, _roles}, socket) do
     # Keep the cmd-list flyout current when the catalog is edited in Settings,
     # even while this terminal stays open.
-    {:noreply,
-     assign(socket, :terminal_command_roles, BusterClaw.TerminalCommands.menu_roles())}
+    {:noreply, assign(socket, :terminal_command_roles, BusterClaw.TerminalCommands.menu_roles())}
   end
 
   def handle_info({:terminal_background, url}, socket) do

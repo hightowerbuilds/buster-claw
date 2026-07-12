@@ -25,17 +25,19 @@ defmodule BusterClaw.TrustedSenders do
 
   @doc "The matched allow-entry for `from`, or nil when the sender is untrusted."
   def match(from) do
-    with address when is_binary(address) <- extract_address(from) do
-      %{addresses: addresses, domains: domains} = cached_policy()
-      domain = "@" <> (address |> String.split("@") |> List.last())
+    case extract_address(from) do
+      address when is_binary(address) ->
+        %{addresses: addresses, domains: domains} = cached_policy()
+        domain = "@" <> (address |> String.split("@") |> List.last())
 
-      cond do
-        address in addresses -> address
-        domain in domains -> domain
-        true -> nil
-      end
-    else
-      _ -> nil
+        cond do
+          address in addresses -> address
+          domain in domains -> domain
+          true -> nil
+        end
+
+      _ ->
+        nil
     end
   end
 

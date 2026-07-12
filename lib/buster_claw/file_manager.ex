@@ -16,24 +16,22 @@ defmodule BusterClaw.FileManager do
   @doc "Immediate children of `dir`, dirs first then case-insensitive alpha."
   def list(dir, base) do
     with {:ok, abs} <- ensure_within(dir, base) do
-      cond do
-        not File.dir?(abs) ->
-          {:error, :not_a_directory}
+      if File.dir?(abs) do
+        case File.ls(abs) do
+          {:ok, names} ->
+            entries =
+              names
+              |> Enum.map(&entry(Path.join(abs, &1)))
+              |> Enum.reject(&is_nil/1)
+              |> Enum.sort_by(&{sort_rank(&1.type), String.downcase(&1.name)})
 
-        true ->
-          case File.ls(abs) do
-            {:ok, names} ->
-              entries =
-                names
-                |> Enum.map(&entry(Path.join(abs, &1)))
-                |> Enum.reject(&is_nil/1)
-                |> Enum.sort_by(&{sort_rank(&1.type), String.downcase(&1.name)})
+            {:ok, entries}
 
-              {:ok, entries}
-
-            {:error, reason} ->
-              {:error, reason}
-          end
+          {:error, reason} ->
+            {:error, reason}
+        end
+      else
+        {:error, :not_a_directory}
       end
     end
   end
@@ -48,6 +46,7 @@ defmodule BusterClaw.FileManager do
         {:ok, %File.Stat{type: :regular}} ->
           case File.read(abs) do
             {:ok, content} ->
+              # credo:disable-for-next-line Credo.Check.Refactor.Nesting
               if String.valid?(content), do: {:ok, content}, else: {:error, :binary}
 
             {:error, reason} ->

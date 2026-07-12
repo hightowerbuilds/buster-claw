@@ -2,7 +2,7 @@ defmodule BusterClaw.OrchestratorTest do
   # async: false — these drive a GenServer that talks to the shared sandbox.
   use BusterClaw.DataCase, async: false
 
-  alias BusterClaw.{Orchestrator, Orchestration}
+  alias BusterClaw.{Orchestration, Orchestrator}
 
   # `async: false` → DataCase runs the sandbox in shared mode, so the Orchestrator
   # GenServer (a separate process) uses this test's connection.

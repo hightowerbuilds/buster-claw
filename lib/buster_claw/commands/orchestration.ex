@@ -1,8 +1,8 @@
 defmodule BusterClaw.Commands.Orchestration do
   @moduledoc "Runtime status, activity report, terminal workspace, and orchestration-shift commands. Delegated to from `BusterClaw.Commands`."
 
-  alias BusterClaw.Runtime.Status
   alias BusterClaw.{Orchestration, TerminalCommands, TerminalWorkspace}
+  alias BusterClaw.Runtime.Status
 
   def runtime_status(_args \\ %{}), do: {:ok, Status.snapshot()}
 

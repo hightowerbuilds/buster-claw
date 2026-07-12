@@ -804,9 +804,10 @@ defmodule BusterClaw.TerminalCommands do
       end)
 
     added =
-      user_cmds
-      |> Enum.reject(&MapSet.member?(builtin_keys, &1.key))
-      |> Enum.reject(&multiline_shell?/1)
+      Enum.reject(
+        user_cmds,
+        &(MapSet.member?(builtin_keys, &1.key) or multiline_shell?(&1))
+      )
 
     %{base | commands: apply_default(merged ++ added, user["default_key"])}
   end

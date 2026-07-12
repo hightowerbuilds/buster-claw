@@ -499,6 +499,11 @@ defmodule BusterClaw.Google.Gmail do
     end
   end
 
+  # A flat extension→MIME lookup table. Cyclomatic complexity counts each branch
+  # as a decision, but there is no decision here — adding a file type is not
+  # added complexity. The metric is measuring the wrong thing; don't "fix" this
+  # by splitting the table.
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp guess_content_type(filename) do
     case filename |> Path.extname() |> String.downcase() do
       ".pdf" -> "application/pdf"
@@ -545,6 +550,9 @@ defmodule BusterClaw.Google.Gmail do
     end
   end
 
+  # Same shape as guess_content_type/1: a flat key→attribute lookup, not branching
+  # logic. Left as one readable table on purpose.
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp get_attr(attrs, key) when is_binary(key) do
     case key do
       "to" ->

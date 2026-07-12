@@ -33,9 +33,9 @@ defmodule BusterClaw.Agent.Chat do
 
   require Logger
 
-  alias BusterClaw.AgentRunner
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.Agent.Transcript
+  alias BusterClaw.AgentRunner
   alias BusterClaw.Sentinel
   alias Phoenix.PubSub
 

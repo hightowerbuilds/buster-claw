@@ -1,4 +1,9 @@
 defmodule BusterClawWeb.SettingsTabs do
+  @moduledoc """
+  The Settings section's shared header: the wordmark and the nav bar of links to
+  each settings sub-tab (Get Started, Appearance, Voice, Integrations,
+  Configuration, Cmd List, Security), with the active one highlighted.
+  """
   use BusterClawWeb, :html
 
   @tabs [

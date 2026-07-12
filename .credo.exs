@@ -82,8 +82,12 @@
           # You can customize the priority of any check
           # Priority values are: `low, normal, high, higher`
           #
+          # `if_called_more_often_than: 0` (the generated default) flags a nested
+          # module referenced even ONCE — which in practice means every Req.Test
+          # stub name and every one-off `BusterClaw.X.Y` call site. An alias earns
+          # its keep when the module is used repeatedly, so require 2+ uses.
           {Credo.Check.Design.AliasUsage,
-           [priority: :low, if_nested_deeper_than: 2, if_called_more_often_than: 0]},
+           [priority: :low, if_nested_deeper_than: 2, if_called_more_often_than: 2]},
           {Credo.Check.Design.TagFIXME, []},
           # You can also customize the exit_status of each check.
           # If you don't want TODO comments to cause `mix credo` to fail, just
@@ -121,7 +125,12 @@
           #
           {Credo.Check.Refactor.Apply, []},
           {Credo.Check.Refactor.CondStatements, []},
-          {Credo.Check.Refactor.CyclomaticComplexity, []},
+          # Default is 9, which this codebase's dispatch-heavy functions (command
+          # routing, API-response mapping) blow through as a matter of shape, not
+          # sloppiness. 15 is a real bar we hold: the three functions still above
+          # it carry an explicit `credo:disable-for-next-line` naming the debt, so
+          # they stay visible instead of being tuned into silence.
+          {Credo.Check.Refactor.CyclomaticComplexity, [max_complexity: 15]},
           {Credo.Check.Refactor.FilterCount, []},
           {Credo.Check.Refactor.FilterFilter, []},
           {Credo.Check.Refactor.FunctionArity, []},
@@ -130,7 +139,11 @@
           {Credo.Check.Refactor.MatchInCondition, []},
           {Credo.Check.Refactor.NegatedConditionsInUnless, []},
           {Credo.Check.Refactor.NegatedConditionsWithElse, []},
-          {Credo.Check.Refactor.Nesting, []},
+          # Default max_nesting is 2, which flags ordinary `case`-inside-`with`
+          # error handling. 3 is the honest working depth here; the handful of
+          # depth-4 bodies carry an explicit disable comment rather than a
+          # blanket exemption.
+          {Credo.Check.Refactor.Nesting, [max_nesting: 3]},
           {Credo.Check.Refactor.RedundantWithClauseResult, []},
           {Credo.Check.Refactor.RejectReject, []},
           {Credo.Check.Refactor.UnlessWithElse, []},

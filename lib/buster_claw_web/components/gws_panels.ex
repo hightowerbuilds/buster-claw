@@ -194,7 +194,12 @@ defmodule BusterClawWeb.GwsPanels do
                 label="Account"
                 options={account_options(@accounts)}
               />
-              <.input field={@gmail_search_form[:query]} id="gmail-search-query" type="text" label="Query" />
+              <.input
+                field={@gmail_search_form[:query]}
+                id="gmail-search-query"
+                type="text"
+                label="Query"
+              />
               <.input
                 field={@gmail_search_form[:limit]}
                 id="gmail-search-limit"
@@ -313,7 +318,12 @@ defmodule BusterClawWeb.GwsPanels do
                 label="Account"
                 options={account_options(@accounts)}
               />
-              <.input field={@gmail_sync_form[:query]} id="gmail-sync-query" type="text" label="Sync Query" />
+              <.input
+                field={@gmail_sync_form[:query]}
+                id="gmail-sync-query"
+                type="text"
+                label="Sync Query"
+              />
               <.input
                 field={@gmail_sync_form[:limit]}
                 id="gmail-sync-limit"

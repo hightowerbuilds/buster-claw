@@ -225,6 +225,7 @@ defmodule BusterClawWeb.CmdListLiveTest do
 
     assert render(view) =~ "restored to the shipped commands"
     toolbox = TerminalCommands.roles() |> Enum.find(&(&1.key == "toolbox"))
+
     assert Enum.find(toolbox.commands, &(&1.key == "commands-list")).command ==
              "./buster-claw commands"
   end

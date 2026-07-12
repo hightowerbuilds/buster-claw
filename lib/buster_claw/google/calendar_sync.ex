@@ -211,31 +211,33 @@ defmodule BusterClaw.Google.CalendarSync do
   end
 
   defp event_attrs(%Account{} = account, calendar_id, google_event) do
-    with id when is_binary(id) <- google_event_id(google_event) do
-      start = google_event.start || %{date: nil, time: nil, all_day?: true}
-      finish = google_event.end || %{time: nil}
-      title = google_event.summary || "(no title)"
-      notes = notes(account, calendar_id, google_event)
+    case google_event_id(google_event) do
+      id when is_binary(id) ->
+        start = google_event.start || %{date: nil, time: nil, all_day?: true}
+        finish = google_event.end || %{time: nil}
+        title = google_event.summary || "(no title)"
+        notes = notes(account, calendar_id, google_event)
 
-      if start.date do
-        [
-          %{
-            event_id: event_prefix(account, calendar_id) <> event_key(id),
-            date: start.date,
-            start_time: start.time,
-            end_time: finish.time,
-            title: title,
-            notes: notes,
-            color: "work",
-            frequency: nil,
-            recur_until: nil
-          }
-        ]
-      else
+        if start.date do
+          [
+            %{
+              event_id: event_prefix(account, calendar_id) <> event_key(id),
+              date: start.date,
+              start_time: start.time,
+              end_time: finish.time,
+              title: title,
+              notes: notes,
+              color: "work",
+              frequency: nil,
+              recur_until: nil
+            }
+          ]
+        else
+          []
+        end
+
+      _other ->
         []
-      end
-    else
-      _other -> []
     end
   end
 

@@ -101,9 +101,8 @@ defmodule BusterClaw.Library do
   def delete_raw_document(%Document{} = document) do
     abs_path = absolute_artifact_path(document.artifact_path)
 
-    with :ok <- Artifact.delete_raw_document(abs_path),
-         {:ok, document} <- update_document(document, %{status: "deleted"}) do
-      {:ok, document}
+    with :ok <- Artifact.delete_raw_document(abs_path) do
+      update_document(document, %{status: "deleted"})
     end
   end
 
