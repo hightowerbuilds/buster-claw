@@ -15,6 +15,8 @@ defmodule BusterClawWeb.HomeWidget do
   attr :entries, :list, required: true
   attr :today, Date, required: true
   attr :days, :list, required: true
+  attr :weather, :any, required: true
+  attr :weather_form, :boolean, required: true
 
   # Calendar + Contacts as a rectangle filling the header gap to the right of the
   # banner. The card is absolutely positioned to fill the widget box, so its
@@ -49,7 +51,9 @@ defmodule BusterClawWeb.HomeWidget do
         >
           <%= for {key, text} <- [
             {"calendar", "Calendar"},
-            {"contacts", "Contacts"}
+            {"contacts", "Contacts"},
+            {"clock", "Clock"},
+            {"weather", "Weather"}
           ] do %>
             <button
               type="button"
@@ -76,6 +80,12 @@ defmodule BusterClawWeb.HomeWidget do
           </div>
           <div class={["h-full", @tab != "contacts" && "hidden"]}>
             <BusterClawWeb.TrustedContactsPanel.panel entries={@entries} />
+          </div>
+          <div class={["h-full", @tab != "clock" && "hidden"]}>
+            <.clock_panel />
+          </div>
+          <div class={["h-full", @tab != "weather" && "hidden"]}>
+            <.weather_panel weather={@weather} form={@weather_form} />
           </div>
         </div>
       </div>
@@ -156,4 +166,203 @@ defmodule BusterClawWeb.HomeWidget do
 
   defp event_time_label(%{start_time: %Time{} = time}),
     do: Elixir.Calendar.strftime(time, "%H:%M")
+
+  # An analog dial the Clock hook drives client-side (per-second updates never
+  # cross the LiveView socket). The SVG face is server-rendered once and frozen
+  # with phx-update="ignore"; the hook rotates the hand groups and fills the
+  # digital readout from the machine's own clock.
+  defp clock_panel(assigns) do
+    ~H"""
+    <section
+      id="home-clock"
+      phx-hook="Clock"
+      phx-update="ignore"
+      class="flex h-full flex-col items-center justify-center gap-3 p-4"
+    >
+      <svg
+        viewBox="0 0 200 200"
+        class="max-h-full w-full max-w-56 min-h-0 flex-1"
+        role="img"
+        aria-label="Analog clock"
+      >
+        <circle
+          cx="100"
+          cy="100"
+          r="96"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          class="text-base-content/25"
+        />
+        <%= for tick <- 0..59 do %>
+          <line
+            x1="100"
+            y1={if rem(tick, 5) == 0, do: "12", else: "8"}
+            x2="100"
+            y2={if rem(tick, 5) == 0, do: "22", else: "14"}
+            stroke="currentColor"
+            stroke-width={if rem(tick, 5) == 0, do: "3", else: "1"}
+            class={if rem(tick, 5) == 0, do: "text-base-content/70", else: "text-base-content/30"}
+            transform={"rotate(#{tick * 6} 100 100)"}
+          />
+        <% end %>
+        <g data-hand="hour">
+          <line
+            x1="100"
+            y1="100"
+            x2="100"
+            y2="52"
+            stroke="currentColor"
+            stroke-width="5"
+            stroke-linecap="round"
+            class="text-base-content"
+          />
+        </g>
+        <g data-hand="minute">
+          <line
+            x1="100"
+            y1="100"
+            x2="100"
+            y2="32"
+            stroke="currentColor"
+            stroke-width="3"
+            stroke-linecap="round"
+            class="text-base-content/80"
+          />
+        </g>
+        <g data-hand="second">
+          <line
+            x1="100"
+            y1="112"
+            x2="100"
+            y2="26"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            class="text-primary"
+          />
+        </g>
+        <circle cx="100" cy="100" r="4" class="fill-primary" />
+      </svg>
+
+      <div class="shrink-0 text-center">
+        <div data-clock-digital class="font-mono text-2xl font-bold tabular-nums tracking-wide">
+          --:--:--
+        </div>
+        <div data-clock-date class="font-mono text-xs uppercase tracking-widest text-base-content/55">
+          &nbsp;
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  attr :weather, :any, required: true
+  attr :form, :boolean, required: true
+
+  # Current conditions from BusterClaw.Weather (Open-Meteo, keyless). The parent
+  # owns the events: `set_weather_location` (form submit) and
+  # `edit_weather_location` (the change affordance).
+  defp weather_panel(assigns) do
+    ~H"""
+    <section class="flex h-full flex-col p-4">
+      <form
+        :if={@form}
+        phx-submit="set_weather_location"
+        class="m-auto flex w-full max-w-64 flex-col gap-2"
+      >
+        <label class="font-mono text-[0.625rem] font-bold uppercase tracking-widest text-base-content/55">
+          Where are you?
+        </label>
+        <input
+          type="text"
+          name="query"
+          required
+          placeholder="City, e.g. Portland"
+          autocomplete="off"
+          class="border-2 border-base-content/25 bg-base-100 px-2 py-1.5 font-mono text-sm"
+        />
+        <button
+          type="submit"
+          class="border-2 border-primary px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide text-primary transition hover:bg-primary hover:text-primary-content"
+        >
+          Set location
+        </button>
+        <p :if={@weather == {:error, :not_found}} class="font-mono text-xs text-primary">
+          No place by that name — try adding a state or country.
+        </p>
+      </form>
+
+      <div
+        :if={!@form and @weather == :loading}
+        class="m-auto font-mono text-xs uppercase tracking-widest text-base-content/50"
+      >
+        Checking the sky…
+      </div>
+
+      <div
+        :if={!@form and match?({:error, _}, @weather)}
+        class="m-auto flex flex-col items-center gap-2"
+      >
+        <p class="font-mono text-xs uppercase tracking-widest text-base-content/55">
+          Weather unavailable
+        </p>
+        <button
+          type="button"
+          phx-click="edit_weather_location"
+          class="font-mono text-xs uppercase tracking-wide text-primary underline underline-offset-4"
+        >
+          Set location
+        </button>
+      </div>
+
+      <div :if={!@form and is_map(@weather)} class="flex h-full flex-col">
+        <div class="flex items-baseline justify-between gap-2">
+          <span class="truncate font-display text-xs font-bold uppercase tracking-widest text-base-content/60">
+            {@weather.location}
+          </span>
+          <button
+            type="button"
+            phx-click="edit_weather_location"
+            aria-label="Change location"
+            class="shrink-0 font-mono text-[0.625rem] uppercase tracking-wide text-base-content/45 transition hover:text-primary"
+          >
+            Change
+          </button>
+        </div>
+
+        <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-1">
+          <div class="font-display text-6xl font-black tabular-nums leading-none">
+            {@weather.temp_f}°
+          </div>
+          <div class="font-mono text-sm text-base-content/75">{@weather.label}</div>
+          <div class="font-mono text-xs text-base-content/55">
+            feels like {@weather.feels_like_f}°
+          </div>
+        </div>
+
+        <div class="grid shrink-0 grid-cols-3 gap-1 border-t border-base-content/15 pt-2 text-center">
+          <div>
+            <div class="font-mono text-[0.625rem] uppercase tracking-widest text-base-content/45">
+              Hi/Lo
+            </div>
+            <div class="font-mono text-sm tabular-nums">{@weather.high_f}°/{@weather.low_f}°</div>
+          </div>
+          <div>
+            <div class="font-mono text-[0.625rem] uppercase tracking-widest text-base-content/45">
+              Wind
+            </div>
+            <div class="font-mono text-sm tabular-nums">{@weather.wind_mph} mph</div>
+          </div>
+          <div>
+            <div class="font-mono text-[0.625rem] uppercase tracking-widest text-base-content/45">
+              Humidity
+            </div>
+            <div class="font-mono text-sm tabular-nums">{@weather.humidity}%</div>
+          </div>
+        </div>
+      </div>
+    </section>
+    """
+  end
 end

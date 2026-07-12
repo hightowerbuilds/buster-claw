@@ -1,6 +1,7 @@
 // Aggregates every LiveView hook into one object for the LiveSocket. Each hook
 // lives in its own domain module; add new ones here.
 import {CornerWidget} from "./corner_widget.js"
+import {Clock} from "./clock.js"
 import {ScreenshotBridge, EmbeddedBrowser} from "./browser.js"
 import {VoiceBridge, VoiceToggle} from "./voice.js"
 import {AgentChat, ThinkingTimer, QueueRail} from "./chat.js"
@@ -19,6 +20,7 @@ import {SvgViewerDock} from "./svg_viewer.js"
 
 export const Hooks = {
   CornerWidget,
+  Clock,
   ScreenshotBridge,
   VoiceBridge,
   VoiceToggle,

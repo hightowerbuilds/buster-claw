@@ -11,6 +11,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Setup
   alias BusterClaw.SvgViewer
   alias BusterClaw.TrustedSenders
+  alias BusterClaw.Weather
 
   # Cap the retained in-memory transcript / SVG bank on the always-open home tab
   # so a long-lived session can't grow its assigns unbounded (oldest drop off the
@@ -34,8 +35,10 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
      |> assign(:trusted_contacts, TrustedSenders.list_entries())
-     # Header widget: which sub-tab is showing (Calendar / Contacts).
+     # Header widget: which sub-tab is showing (Calendar / Contacts / Clock / Weather).
      |> assign(:widget_tab, "calendar")
+     |> assign(:weather, nil)
+     |> assign(:weather_form, false)
      |> init_chats()
      |> load_calendar_month()}
   end
@@ -79,8 +82,32 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
-      when tab in ["calendar", "contacts"],
-      do: {:noreply, assign(socket, :widget_tab, tab)}
+      when tab in ["calendar", "contacts", "clock", "weather"] do
+    socket = assign(socket, :widget_tab, tab)
+
+    # Selecting Weather (re)loads conditions; Weather.current/0 is TTL-cached,
+    # so this is a real fetch at most once per TTL.
+    if tab == "weather" do
+      {:noreply, load_weather(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("set_weather_location", %{"query" => query}, socket) do
+    socket = assign(socket, :weather, :loading)
+
+    {:noreply,
+     start_async(socket, :weather, fn ->
+       with {:ok, _location} <- Weather.set_location(query) do
+         Weather.current()
+       end
+     end)}
+  end
+
+  def handle_event("edit_weather_location", _params, socket) do
+    {:noreply, assign(socket, :weather_form, true)}
+  end
 
   def handle_event("chat_send", %{"message" => text}, socket) do
     # Sending barges in on any reply still being spoken.
@@ -251,6 +278,44 @@ defmodule BusterClawWeb.StatusLive do
     do: {:noreply, assign(socket, :home_bg, state)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_async(:weather, {:ok, result}, socket) do
+    case result do
+      {:ok, conditions} ->
+        {:noreply, socket |> assign(:weather, conditions) |> assign(:weather_form, false)}
+
+      {:error, :not_found} ->
+        # Geocode miss: keep the form up with its inline hint.
+        {:noreply,
+         socket |> assign(:weather, {:error, :not_found}) |> assign(:weather_form, true)}
+
+      {:error, reason} ->
+        {:noreply, socket |> assign(:weather, {:error, reason}) |> assign(:weather_form, false)}
+    end
+  end
+
+  def handle_async(:weather, {:exit, reason}, socket) do
+    {:noreply, assign(socket, :weather, {:error, {:exit, reason}})}
+  end
+
+  # Fetch off the LiveView process; a slow weather API must never stall the
+  # homepage. No location yet → show the form instead of spawning a fetch; a
+  # loaded map is kept (Weather.current/0 handles staleness via its own TTL).
+  defp load_weather(socket) do
+    cond do
+      is_nil(Weather.location()) ->
+        assign(socket, :weather_form, true)
+
+      is_map(socket.assigns.weather) ->
+        socket
+
+      true ->
+        socket
+        |> assign(:weather, :loading)
+        |> start_async(:weather, fn -> Weather.current() end)
+    end
+  end
 
   # --- chat transcript projection (from each conversation's PubSub broadcasts) ---
   #
@@ -518,6 +583,8 @@ defmodule BusterClawWeb.StatusLive do
               today={@today}
               days={@calendar_days}
               entries={@trusted_contacts}
+              weather={@weather}
+              weather_form={@weather_form}
             />
           </div>
 
