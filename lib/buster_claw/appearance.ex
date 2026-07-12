@@ -86,8 +86,8 @@ defmodule BusterClaw.Appearance do
 
   @doc "Served URL (with cache-busting stamp) for slot `n`, or `nil` when empty."
   def slot_url(n) when n in 1..@max_slots do
-    if slot_present?(n) do
-      "/appearance/terminal-background/#{n}?v=#{Settings.get(stamp_key(n), "0")}"
+    if abs = slot_abs_path(n) do
+      "/appearance/terminal-background/#{n}?v=#{file_stamp(abs, stamp_key(n))}"
     end
   end
 
@@ -330,8 +330,8 @@ defmodule BusterClaw.Appearance do
 
   @doc "Served URL (cache-busted) of the homepage background image, or `nil`."
   def home_background_image_url do
-    if home_image_present?() do
-      "/appearance/home-background?v=#{Settings.get(@home_image_stamp_key, "0")}"
+    if abs = home_image_abs_path() do
+      "/appearance/home-background?v=#{file_stamp(abs, @home_image_stamp_key)}"
     end
   end
 
@@ -454,6 +454,19 @@ defmodule BusterClaw.Appearance do
   end
 
   defp stamp, do: Integer.to_string(System.system_time(:second))
+
+  # Cache-bust from the FILE's mtime, not the Settings stamp. The workspace is
+  # shared by every instance/version of the app (and by the agent), but each
+  # instance has its own settings DB — a file replaced by anyone else would
+  # keep the old ?v= forever and the webview's cache would pin the stale bytes
+  # (exactly the July-2026 home-background incident). The Settings stamp is
+  # only the fallback when stat fails.
+  defp file_stamp(abs, settings_key) do
+    case File.stat(abs, time: :posix) do
+      {:ok, %{mtime: mtime, size: size}} -> "#{mtime}-#{size}"
+      _ -> Settings.get(settings_key, "0")
+    end
+  end
 
   defp present(nil), do: nil
   defp present(""), do: nil

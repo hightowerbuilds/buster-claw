@@ -103,6 +103,33 @@ defmodule BusterClaw.AppearanceTest do
     assert Appearance.slot_image(1) == nil
   end
 
+  # --- background images: the URL must track the FILE, not our settings ---
+  # The workspace is shared by other app instances/versions and by the agent;
+  # a file replaced behind this instance's back must still bust the cache.
+
+  test "a home image replaced behind the app's back changes the served URL", %{root: root} do
+    assert {:ok, url} = Appearance.put_home_background_image(fake_image(".jpg"), "sky.jpg")
+    assert url == Appearance.home_background_image_url()
+
+    # Another instance (own settings DB, same files) rewrites the image: no
+    # Settings change here, only the file.
+    abs = Path.join([root, "appearance", "home-background.jpg"])
+    File.write!(abs, "entirely different bytes")
+    File.touch!(abs, System.os_time(:second) + 100)
+
+    assert Appearance.home_background_image_url() != url
+  end
+
+  test "a slot image replaced behind the app's back changes the served URL", %{root: root} do
+    assert {:ok, url} = Appearance.put_terminal_background(1, fake_image(".png"), "wall.png")
+
+    abs = Path.join([root, "appearance", "terminal-background-1.png"])
+    File.write!(abs, "new bytes, other writer")
+    File.touch!(abs, System.os_time(:second) + 100)
+
+    assert Appearance.slot_url(1) != url
+  end
+
   # --- custom (runtime-loaded) homepage shaders --------------------------
 
   defp write_custom_shader(root, name) do
