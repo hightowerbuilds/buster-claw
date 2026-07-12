@@ -200,9 +200,14 @@ defmodule BusterClaw.Appearance do
 
   @doc """
   Names of valid custom shader patterns (workspace `shaders/*.wgsl`), excluding
-  any that collide with a built-in name (the built-in wins).
+  any that collide with a built-in name (the built-in wins) and excluding
+  contact shaderfaces (`face` / `face-*`) — a contact's face is never offered
+  as the homepage background, though the reverse (a background as a face) is
+  fine.
   """
-  def custom_shaders, do: Enum.reject(Shaders.list(), &(&1 in @home_shaders))
+  def custom_shaders do
+    Enum.reject(Shaders.list(), &(&1 in @home_shaders or Shaders.face?(&1)))
+  end
 
   @doc """
   Current homepage background as
@@ -235,11 +240,17 @@ defmodule BusterClaw.Appearance do
     }
   end
 
-  # A mode is a custom shader when it's neither "image" nor a built-in and a valid
+  # A mode is a custom shader when it's neither "image" nor a built-in, isn't a
+  # contact shaderface (a face stored as the mode — e.g. set before faces were
+  # fenced off — degrades to the default rather than rendering), and a valid
   # workspace shader file of that name exists.
   defp custom_shader_mode?("image"), do: false
   defp custom_shader_mode?(mode) when mode in @home_shaders, do: false
-  defp custom_shader_mode?(mode) when is_binary(mode), do: Shaders.exists?(mode)
+
+  defp custom_shader_mode?(mode) when is_binary(mode) do
+    not Shaders.face?(mode) and Shaders.exists?(mode)
+  end
+
   defp custom_shader_mode?(_mode), do: false
 
   @doc "Whether custom palette colors override the shader's built-in defaults."
@@ -304,7 +315,9 @@ defmodule BusterClaw.Appearance do
   end
 
   def set_home_background_mode(mode) when is_binary(mode) do
-    if Shaders.exists?(mode) do
+    # Shaderfaces are refused here — at the boundary, not just in the picker —
+    # so no caller (UI, command, or API) can put a contact's face on the wall.
+    if Shaders.exists?(mode) and not Shaders.face?(mode) do
       Settings.put(@home_mode_key, mode)
       broadcast_home()
       {:ok, mode}

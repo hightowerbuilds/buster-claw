@@ -147,6 +147,36 @@ defmodule BusterClaw.AppearanceTest do
     assert {:error, :invalid_mode} = Appearance.set_home_background_mode("does-not-exist")
   end
 
+  # Faces flow one way: a background may be picked as a contact face, but a
+  # contact's face is never offered — or honored — as the homepage background.
+
+  test "a contact shaderface is not offered as a background", %{root: root} do
+    write_custom_shader(root, "face-luke")
+    write_custom_shader(root, "aurora")
+
+    assert "aurora" in Appearance.custom_shaders()
+    refute "face-luke" in Appearance.custom_shaders()
+  end
+
+  test "set_home_background_mode refuses a shaderface even though the file exists",
+       %{root: root} do
+    write_custom_shader(root, "face-luke")
+
+    assert BusterClaw.Shaders.exists?("face-luke")
+    assert {:error, :invalid_mode} = Appearance.set_home_background_mode("face-luke")
+  end
+
+  test "a shaderface already stored as the mode degrades to the default", %{root: root} do
+    write_custom_shader(root, "face-luke")
+
+    # Bypass the setter, as a value written before faces were fenced off would be.
+    BusterClaw.Settings.put("home_background_mode", "face-luke")
+
+    state = Appearance.home_background_state()
+    assert state.mode == "smoke"
+    refute state.custom_shader
+  end
+
   test "a custom shader named like a built-in is shadowed by the built-in", %{root: root} do
     write_custom_shader(root, "smoke")
     refute "smoke" in Appearance.custom_shaders()

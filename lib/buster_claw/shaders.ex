@@ -53,6 +53,17 @@ defmodule BusterClaw.Shaders do
   def exists?(_), do: false
 
   @doc """
+  True when `name` is a contact **shaderface** rather than a background pattern
+  — the `face` built-in or any `face-*` workspace file (the authoring convention
+  the /phone contact picker is built on). Faces and backgrounds share one
+  `shaders/` pool but flow one way: a background may be picked as a face, a
+  face is never offered (or honored) as the homepage background.
+  """
+  def face?("face"), do: true
+  def face?("face-" <> _rest), do: true
+  def face?(_name), do: false
+
+  @doc """
   Read + validate a custom shader's WGSL body. Returns `{:ok, wgsl}` or
   `{:error, :invalid_name | :not_found | :too_large | :missing_fs_main}`. The name
   guard (and the single `:name` path segment) prevent traversal.
@@ -97,17 +108,25 @@ defmodule BusterClaw.Shaders do
     """
     # Custom shader patterns
 
-    Each `<name>.wgsl` here is a homepage background pattern you can select in
-    Settings → Appearance — no recompile. The file holds **only** the WGSL
-    fragment entry point (`fn fs_main(...) -> @location(0) vec4<f32>`); the shared
-    prelude (uniforms + `hash`/`fbm`/`grad3`/`bg_post` helpers, and the `colA`/
-    `colB`/`colC` palette) is prepended automatically and the shader is compiled
-    live in the browser via WebGPU.
+    Each `<name>.wgsl` here is a shader you can select in the app — no
+    recompile. The file holds **only** the WGSL fragment entry point
+    (`fn fs_main(...) -> @location(0) vec4<f32>`); the shared prelude (uniforms +
+    `hash`/`fbm`/`grad3`/`bg_post` helpers, and the `colA`/`colB`/`colC`
+    palette) is prepended automatically and the shader is compiled live in the
+    browser via WebGPU.
+
+    **The name decides where a shader can appear:**
+
+    - `face-<name>.wgsl` is a contact **shaderface** — it shows up in the
+      /phone contact face picker, and never in the homepage background picker.
+    - Anything else is a **background** — it shows up in Settings → Appearance,
+      and is also selectable as a contact face (backgrounds may be faces;
+      faces may not be backgrounds).
 
     Read the `shader-designer` skill (`skills/shader-designer.md`) for the full
     prelude contract and worked examples. A shader only renders when you select
     it — authoring a file never forces it onto the screen. Names are `[a-z0-9-]`;
-    a name matching a built-in (smoke/waves/mandel/weather) is shadowed by
+    a name matching a built-in (smoke/waves/mandel/weather/face) is shadowed by
     the built-in.
     """
   end

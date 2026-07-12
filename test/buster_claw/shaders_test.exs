@@ -59,6 +59,15 @@ defmodule BusterClaw.ShadersTest do
     assert {:error, :not_found} = Shaders.read("nope")
   end
 
+  test "face?/1 classifies by the face- naming convention" do
+    assert Shaders.face?("face")
+    assert Shaders.face?("face-luke")
+    refute Shaders.face?("aurora")
+    # No prefix without the dash: "faces" is a background named faces.
+    refute Shaders.face?("faces")
+    refute Shaders.face?(nil)
+  end
+
   test "ensure seeds a README without clobbering an operator file", %{root: root} do
     assert :ok = Shaders.ensure()
     readme = Path.join([root, "shaders", "README.md"])
