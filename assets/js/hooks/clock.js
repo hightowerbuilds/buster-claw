@@ -30,7 +30,9 @@ export const Clock = {
 
     if (this.digital) {
       const pad = n => String(n).padStart(2, "0")
-      this.digital.textContent = `${pad(h)}:${pad(m)}:${pad(s)}`
+      const h12 = h % 12 || 12
+      const ampm = h < 12 ? "AM" : "PM"
+      this.digital.textContent = `${h12}:${pad(m)}:${pad(s)} ${ampm}`
     }
 
     if (this.date) {
