@@ -3,6 +3,7 @@ defmodule BusterClawWeb.PhoneLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias BusterClaw.Contacts
   alias BusterClaw.Telephony
 
   defp record!(attrs) do
@@ -113,7 +114,7 @@ defmodule BusterClawWeb.PhoneLiveTest do
     card =
       view
       |> element("form[phx-submit=add_contact]")
-      |> render_submit(%{"name" => "Dana", "number" => "(503) 555-0142"})
+      |> render_submit(%{"name" => "Dana", "phone" => "(503) 555-0142", "email" => ""})
 
     # Saving lands on the face card: ShaderFace mount + normalized number +
     # generative face selected by default.
@@ -124,7 +125,7 @@ defmodule BusterClawWeb.PhoneLiveTest do
   end
 
   test "contact names replace raw numbers in the log", %{conn: conn} do
-    {:ok, _} = Telephony.create_contact(%{name: "Dana Printshop", number: "+15035550142"})
+    {:ok, _} = Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
 
     record!(%{
       transcript: "Poster order is ready.",

@@ -24,7 +24,7 @@ defmodule BusterClaw.Telephony do
   import Ecto.Query
 
   alias BusterClaw.Repo
-  alias BusterClaw.Telephony.Contact
+
   alias BusterClaw.Telephony.Event
 
   @topic "telephony"
@@ -161,47 +161,13 @@ defmodule BusterClaw.Telephony do
 
   def mark_heard(%Event{} = event), do: {:ok, event}
 
-  ## Contacts — names + shaderfaces for numbers; also the future SMS trust gate.
-
-  def list_contacts do
-    Contact
-    |> order_by([c], asc: c.name)
-    |> Repo.all()
-  end
-
-  def get_contact!(id), do: Repo.get!(Contact, id)
-
-  def create_contact(attrs) do
-    %Contact{}
-    |> Contact.changeset(attrs)
-    |> Repo.insert()
-    |> tap_broadcast_contacts()
-  end
-
-  def update_contact(%Contact{} = contact, attrs) do
-    contact
-    |> Contact.changeset(attrs)
-    |> Repo.update()
-    |> tap_broadcast_contacts()
-  end
-
-  def delete_contact(%Contact{} = contact) do
-    contact
-    |> Repo.delete()
-    |> tap_broadcast_contacts()
-  end
-
-  @doc "Name lookup map for the log: %{\"+1503...\" => %Contact{}}."
-  def contacts_by_number do
-    Map.new(list_contacts(), &{&1.number, &1})
-  end
-
-  defp tap_broadcast_contacts({:ok, _} = result) do
-    broadcast(:telephony_contacts_changed)
-    result
-  end
-
-  defp tap_broadcast_contacts(result), do: result
+  ## Contacts live in `BusterClaw.Contacts`.
+  #
+  # They used to live here, phone-only, alongside a `trusted` column that nothing
+  # read. A contact spans both channels now — the person who emails you is the
+  # person who calls you — so the list is not telephony's to own, and trust is
+  # derived from the markdown policy files rather than stored. `Contacts.by_phone/0`
+  # is what the Message Machine log names its rows from.
 
   defp broadcast(message) do
     Phoenix.PubSub.broadcast(BusterClaw.PubSub, @topic, message)

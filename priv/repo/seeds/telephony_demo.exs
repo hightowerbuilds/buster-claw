@@ -10,7 +10,8 @@ alias BusterClaw.Library.Artifact
 alias BusterClaw.LocalTime
 alias BusterClaw.Repo
 alias BusterClaw.Telephony
-alias BusterClaw.Telephony.Contact
+alias BusterClaw.Contacts
+alias BusterClaw.Contacts.Contact
 alias BusterClaw.Telephony.Event
 
 defmodule TelephonyDemo do
@@ -170,8 +171,17 @@ end
 if Repo.exists?(from c in Contact, limit: 1) do
   IO.puts("Telephony contacts already present — nothing to do.")
 else
-  {:ok, _} = Telephony.create_contact(%{name: "Dana (Print Shop)", number: "+15035550142"})
-  {:ok, _} = Telephony.create_contact(%{name: "Marcus", number: "+15035550177"})
-  {:ok, _} = Telephony.create_contact(%{name: "Porch Pirate Watch", number: "+19715550163"})
+  # Contacts only — never trust. Seeding a trusted contact would write a live
+  # entry into the markdown policy file that gates the agent's work queue, and a
+  # demo fixture has no business touching the security policy.
+  {:ok, _} =
+    Contacts.create_contact(%{
+      name: "Dana (Print Shop)",
+      phone: "+15035550142",
+      email: "dana@printshop.example"
+    })
+
+  {:ok, _} = Contacts.create_contact(%{name: "Marcus", phone: "+15035550177"})
+  {:ok, _} = Contacts.create_contact(%{name: "Porch Pirate Watch", phone: "+19715550163"})
   IO.puts("Seeded 3 demo contacts.")
 end

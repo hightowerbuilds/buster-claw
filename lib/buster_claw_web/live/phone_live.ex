@@ -11,6 +11,7 @@ defmodule BusterClawWeb.PhoneLive do
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.Contacts
   alias BusterClaw.Telephony
   alias BusterClaw.Telephony.Event
 
@@ -67,7 +68,10 @@ defmodule BusterClawWeb.PhoneLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Telephony.subscribe()
+    if connected?(socket) do
+      Telephony.subscribe()
+      Contacts.subscribe()
+    end
 
     {:ok,
      socket
@@ -80,6 +84,8 @@ defmodule BusterClawWeb.PhoneLive do
      |> assign(:selected_contact, nil)
      |> assign(:adding_contact, false)
      |> assign(:contact_error, nil)
+     |> assign(:contact_trusted, false)
+     |> assign(:contact_history, [])
      |> assign(:face_shaders, BusterClaw.Shaders.list())
      |> load_contacts()
      |> load_data()}
@@ -138,27 +144,59 @@ defmodule BusterClawWeb.PhoneLive do
   end
 
   def handle_event("select_contact", %{"id" => id}, socket) do
-    {:noreply, assign(socket, :selected_contact, Telephony.get_contact!(id))}
+    {:noreply, select_contact(socket, Contacts.get_contact!(id))}
   end
 
   def handle_event("close_contact", _params, socket) do
-    {:noreply, assign(socket, selected_contact: nil, contact_error: nil)}
+    {:noreply,
+     assign(socket,
+       selected_contact: nil,
+       contact_error: nil,
+       contact_trusted: false,
+       contact_history: []
+     )}
   end
 
   def handle_event("toggle_add_contact", _params, socket) do
     {:noreply, assign(socket, adding_contact: !socket.assigns.adding_contact, contact_error: nil)}
   end
 
-  def handle_event("add_contact", %{"name" => name, "number" => number}, socket) do
-    case Telephony.create_contact(%{name: name, number: number}) do
+  def handle_event("add_contact", params, socket) do
+    attrs = Map.take(params, ["name", "phone", "email"])
+
+    case Contacts.create_contact(attrs) do
       {:ok, contact} ->
         {:noreply,
          socket
-         |> assign(adding_contact: false, contact_error: nil, selected_contact: contact)
+         |> assign(adding_contact: false, contact_error: nil)
+         |> select_contact(contact)
          |> load_contacts()}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :contact_error, first_error(changeset))}
+    end
+  end
+
+  # The trust switch. It does not write to this contact's row — there is no trust
+  # column to write to. It edits the markdown policy file that `Telephony.Drain`
+  # and `GmailSync` actually consult, which is the only reason the toggle means
+  # anything. See `BusterClaw.Contacts` for why trust is derived, not stored.
+  def handle_event("toggle_trust", _params, socket) do
+    case socket.assigns.selected_contact do
+      nil ->
+        {:noreply, socket}
+
+      contact ->
+        case Contacts.set_trusted(contact, !socket.assigns.contact_trusted) do
+          {:ok, _} ->
+            {:noreply, socket |> select_contact(contact) |> load_contacts()}
+
+          {:error, reason} ->
+            {:noreply,
+             socket
+             |> assign(:contact_error, "could not update trust: #{inspect(reason)}")
+             |> select_contact(contact)}
+        end
     end
   end
 
@@ -169,11 +207,11 @@ defmodule BusterClawWeb.PhoneLive do
 
       contact ->
         face = if shader == "", do: nil, else: shader
-        {:ok, updated} = Telephony.update_contact(contact, %{face_shader: face})
+        {:ok, updated} = Contacts.update_contact(contact, %{face_shader: face})
 
         {:noreply,
          socket
-         |> assign(:selected_contact, updated)
+         |> select_contact(updated)
          |> assign(:face_shaders, BusterClaw.Shaders.list())
          |> load_contacts()}
     end
@@ -185,8 +223,12 @@ defmodule BusterClawWeb.PhoneLive do
         {:noreply, socket}
 
       contact ->
-        {:ok, _} = Telephony.delete_contact(contact)
-        {:noreply, socket |> assign(:selected_contact, nil) |> load_contacts()}
+        {:ok, _} = Contacts.delete_contact(contact)
+
+        {:noreply,
+         socket
+         |> assign(selected_contact: nil, contact_trusted: false, contact_history: [])
+         |> load_contacts()}
     end
   end
 
@@ -207,14 +249,40 @@ defmodule BusterClawWeb.PhoneLive do
     {:noreply, load_contacts(socket)}
   end
 
+  def handle_info(:contacts_changed, socket) do
+    {:noreply, load_contacts(socket)}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp load_contacts(socket) do
-    contacts = Telephony.list_contacts()
+    contacts = Contacts.list_contacts()
 
     socket
     |> assign(:contacts, contacts)
-    |> assign(:contacts_by_number, Map.new(contacts, &{&1.number, &1}))
+    |> assign(:contacts_by_number, Contacts.by_phone())
+    |> assign(:orphan_numbers, Contacts.orphan_entries().numbers)
+    |> refresh_selected_contact(contacts)
+  end
+
+  # Re-read the selected contact's derived state whenever the list moves, so the
+  # detail pane can never show a stale trust badge (the policy file is edited by
+  # the CLI and the agent too, not just by this tab).
+  defp refresh_selected_contact(socket, contacts) do
+    case socket.assigns[:selected_contact] do
+      nil -> socket
+      selected -> select_contact(socket, Enum.find(contacts, selected, &(&1.id == selected.id)))
+    end
+  end
+
+  # Trust and history are *derived*, so they are recomputed on selection rather
+  # than carried on the struct.
+  defp select_contact(socket, contact) do
+    assign(socket,
+      selected_contact: contact,
+      contact_trusted: Contacts.trusted?(contact),
+      contact_history: Contacts.history(contact, 20)
+    )
   end
 
   defp first_error(changeset) do
@@ -844,12 +912,21 @@ defmodule BusterClawWeb.PhoneLive do
                   />
                   <input
                     type="tel"
-                    name="number"
+                    name="phone"
                     placeholder="(503) 555-0142"
-                    required
                     autocomplete="off"
                     class="border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-sm"
                   />
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="name@example.com"
+                    autocomplete="off"
+                    class="border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-sm"
+                  />
+                  <p class="font-mono text-[10px] leading-relaxed text-base-content/40">
+                    One of the two is enough — the same contact answers both channels.
+                  </p>
                   <p :if={@contact_error} class="font-mono text-[10px] uppercase text-error">
                     {@contact_error}
                   </p>
@@ -874,11 +951,45 @@ defmodule BusterClawWeb.PhoneLive do
                   phx-value-id={contact.id}
                   class="flex w-full shrink-0 items-center justify-between gap-2 border-2 border-base-content/20 px-3 py-2 text-left transition hover:border-base-content/60"
                 >
-                  <span class="truncate font-mono text-sm font-bold">{contact.name}</span>
+                  <span class="flex min-w-0 items-center gap-2">
+                    <span
+                      class={[
+                        "size-1.5 shrink-0 rounded-full",
+                        if(Contacts.trusted?(contact),
+                          do: "bg-[#FF4D1C]",
+                          else: "bg-base-content/20"
+                        )
+                      ]}
+                      title={
+                        if Contacts.trusted?(contact),
+                          do: "Trusted — their messages reach the agent",
+                          else: "Filed only — never reaches the agent"
+                      }
+                    />
+                    <span class="truncate font-mono text-sm font-bold">{contact.name}</span>
+                  </span>
                   <span class="shrink-0 font-mono text-xs text-base-content/55">
-                    {format_phone(contact.number)}
+                    {contact.phone && format_phone(contact.phone)}
                   </span>
                 </button>
+
+                <%!-- Live gate entries that no contact owns: a domain wildcard, or a
+                      number the agent trusted over the CLI. Showing the contact list
+                      alone would understate the real trust surface. --%>
+                <div
+                  :if={@orphan_numbers != [] and !@adding_contact}
+                  class="shrink-0 border-t-2 border-base-content/15 pt-2"
+                >
+                  <p class="px-1 pb-1 font-mono text-[10px] uppercase tracking-wider text-base-content/40">
+                    Trusted, no contact
+                  </p>
+                  <span
+                    :for={number <- @orphan_numbers}
+                    class="mr-1 inline-block border-2 border-[#FF4D1C]/50 px-1.5 py-0.5 font-mono text-[11px]"
+                  >
+                    {format_phone(number)}
+                  </span>
+                </div>
               </div>
 
               <%!-- Face card --%>
@@ -896,11 +1007,75 @@ defmodule BusterClawWeb.PhoneLive do
                   </div>
                   <div class="ic-glass absolute inset-x-2 bottom-2 border-2 border-base-content/20 px-3 py-1.5">
                     <div class="truncate font-mono text-sm font-bold">{@selected_contact.name}</div>
-                    <div class="font-mono text-xs text-base-content/60">
-                      {format_phone(@selected_contact.number)}
+                    <div :if={@selected_contact.phone} class="font-mono text-xs text-base-content/60">
+                      {format_phone(@selected_contact.phone)}
+                    </div>
+                    <div
+                      :if={@selected_contact.email}
+                      class="truncate font-mono text-xs text-base-content/60"
+                    >
+                      {@selected_contact.email}
                     </div>
                   </div>
                 </div>
+
+                <%!-- The trust switch. It writes the markdown policy file, not this
+                      contact's row — that is the only reason it means anything. --%>
+                <div class="shrink-0 border-t-2 border-base-content/20 p-2">
+                  <button
+                    phx-click="toggle_trust"
+                    data-confirm={
+                      if !@contact_trusted,
+                        do:
+                          "Trust #{@selected_contact.name}? Their voicemail and mail will become work the on-duty agent picks up and acts on.",
+                        else: nil
+                    }
+                    class={[
+                      "flex w-full items-center justify-between border-2 px-3 py-2 text-left transition",
+                      if(@contact_trusted,
+                        do: "border-[#FF4D1C] bg-[#FF4D1C]/10 hover:bg-[#FF4D1C]/20",
+                        else: "border-base-content/25 hover:border-base-content/60"
+                      )
+                    ]}
+                  >
+                    <span class="flex flex-col">
+                      <span class="font-mono text-xs font-bold uppercase tracking-wider">
+                        {if @contact_trusted, do: "Trusted", else: "Filed only"}
+                      </span>
+                      <span class="font-mono text-[10px] leading-tight text-base-content/50">
+                        {if @contact_trusted,
+                          do: "Reaches the agent's queue",
+                          else: "Recorded, never queued"}
+                      </span>
+                    </span>
+                    <span class={[
+                      "size-3 shrink-0 rounded-full",
+                      if(@contact_trusted, do: "bg-[#FF4D1C]", else: "bg-base-content/20")
+                    ]} />
+                  </button>
+                </div>
+
+                <%!-- History: this contact's calls and voicemails. --%>
+                <div
+                  :if={@contact_history != []}
+                  class="max-h-32 shrink-0 overflow-y-auto border-t-2 border-base-content/20 p-2"
+                >
+                  <p class="pb-1 font-mono text-[10px] uppercase tracking-wider text-base-content/40">
+                    History
+                  </p>
+                  <div
+                    :for={event <- @contact_history}
+                    class="flex items-baseline justify-between gap-2 py-0.5"
+                  >
+                    <span class="font-mono text-[11px] text-base-content/70">
+                      {event_label(event)}
+                    </span>
+                    <span class="shrink-0 font-mono text-[10px] text-base-content/40">
+                      {format_dt(event.occurred_at)}
+                    </span>
+                  </div>
+                </div>
+
                 <div class="shrink-0 space-y-1 border-t-2 border-base-content/20 p-2">
                   <form phx-change="set_face" class="flex items-center gap-2">
                     <label class="font-mono text-[10px] uppercase tracking-wider text-base-content/50">

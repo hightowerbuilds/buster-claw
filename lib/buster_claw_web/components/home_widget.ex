@@ -12,6 +12,7 @@ defmodule BusterClawWeb.HomeWidget do
   alias BusterClawWeb.CalendarColors
 
   attr :tab, :string, required: true
+  attr :contacts, :list, required: true
   attr :entries, :list, required: true
   attr :today, Date, required: true
   attr :days, :list, required: true
@@ -78,7 +79,7 @@ defmodule BusterClawWeb.HomeWidget do
             <.month_calendar today={@today} days={@days} />
           </div>
           <div class={["h-full", @tab != "contacts" && "hidden"]}>
-            <BusterClawWeb.TrustedContactsPanel.panel entries={@entries} />
+            <BusterClawWeb.TrustedContactsPanel.panel contacts={@contacts} entries={@entries} />
           </div>
           <div class={["h-full", @tab != "place" && "hidden"]}>
             <.place_panel weather={@weather} form={@weather_form} />

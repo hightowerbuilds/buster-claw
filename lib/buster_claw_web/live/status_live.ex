@@ -6,6 +6,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
   alias BusterClaw.Appearance
   alias BusterClaw.Calendar, as: AppCalendar
+  alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
@@ -20,12 +21,18 @@ defmodule BusterClawWeb.StatusLive do
   @max_chat_messages 200
   @max_chat_svgs 200
 
+  # How often the homepage sky (weather-shader background) re-checks real
+  # conditions. Matches Weather's cache TTL, so each tick is at most one fetch.
+  @sky_refresh_ms :timer.minutes(10)
+
   @impl true
   def mount(_params, _session, socket) do
     today = LocalTime.today()
 
-    if connected?(socket),
-      do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
+      Process.send_after(self(), :sky_refresh, @sky_refresh_ms)
+    end
 
     {:ok,
      socket
@@ -34,13 +41,14 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(status: Status.snapshot())
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
-     |> assign(:trusted_contacts, TrustedSenders.list_entries())
+     |> load_trust()
      # Header widget: which sub-tab is showing (Calendar / Contacts / Time & Place).
      |> assign(:widget_tab, "calendar")
      |> assign(:weather, nil)
      |> assign(:weather_form, false)
      |> init_chats()
-     |> load_calendar_month()}
+     |> load_calendar_month()
+     |> then(fn s -> if connected?(s), do: maybe_fetch_sky(s), else: s end)}
   end
 
   # Load the open conversations (tabs), subscribe to each so background runs update
@@ -64,11 +72,27 @@ defmodule BusterClawWeb.StatusLive do
 
   defp to_chat_tab(conv), do: %{id: conv.id, title: conv.title, running: false, unread: false}
 
+  # The gate, split into the part with a person behind it and the part without.
+  # Both halves are rendered — see `TrustedContactsPanel` for why omitting the
+  # orphans would understate the trust surface.
+  #
+  # Trust is read from the policy files on every load rather than cached in the
+  # socket, because this tab is not the only writer: the `/phone` view, the
+  # `phone_trusted_*` commands, and the agent editing the markdown directly all
+  # move the same gate.
+  defp load_trust(socket) do
+    people = Enum.filter(Contacts.list_contacts(), &Contacts.email_trusted?/1)
+
+    socket
+    |> assign(:trusted_people, people)
+    |> assign(:trusted_entries, Contacts.orphan_entries().emails)
+  end
+
   @impl true
   def handle_event("add_contact", %{"entry" => entry}, socket) do
     case TrustedSenders.add_entry(entry) do
       {:ok, _value} ->
-        {:noreply, assign(socket, :trusted_contacts, TrustedSenders.list_entries())}
+        {:noreply, load_trust(socket)}
 
       {:error, :invalid_entry} ->
         {:noreply,
@@ -76,9 +100,30 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
+  # Removing an *orphan* entry — an address or wildcard with no contact behind it.
+  # There is nothing else to clean up, so the policy line is simply dropped.
   def handle_event("remove_contact", %{"entry" => entry}, socket) do
     TrustedSenders.remove_entry(entry)
-    {:noreply, assign(socket, :trusted_contacts, TrustedSenders.list_entries())}
+    {:noreply, load_trust(socket)}
+  end
+
+  # Untrusting a *contact* is not the same act as deleting them. This revokes the
+  # policy entry and leaves the person in your contacts — their mail stops being
+  # queued, their name and face stay. Conflating the two would let a UI tidy-up
+  # quietly rewrite the security policy.
+  def handle_event("untrust_contact", %{"id" => id}, socket) do
+    contact = Contacts.get_contact!(id)
+
+    case Contacts.set_trusted(contact, false) do
+      {:ok, _} ->
+        {:noreply, load_trust(socket)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Could not update the trust policy: #{inspect(reason)}")
+         |> load_trust()}
+    end
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
@@ -273,9 +318,28 @@ defmodule BusterClawWeb.StatusLive do
   def handle_info({:agent_chat, conv_id, payload}, socket),
     do: {:noreply, apply_chat(socket, conv_id, payload)}
 
-  # The homepage background changed in settings — re-render it live.
-  def handle_info({:home_background, state}, socket),
-    do: {:noreply, assign(socket, :home_bg, state)}
+  # The homepage background changed in settings — re-render it live. Switching
+  # onto the weather shader also feeds it the real sky right away (from the
+  # already-loaded conditions, or a fresh fetch).
+  def handle_info({:home_background, state}, socket) do
+    socket = assign(socket, :home_bg, state)
+
+    socket =
+      cond do
+        state.mode != "weather" -> socket
+        is_map(socket.assigns.weather) -> push_sky(socket)
+        true -> maybe_fetch_sky(socket)
+      end
+
+    {:noreply, socket}
+  end
+
+  # Periodic sky tick: keep the weather-shader background tracking real
+  # conditions while the homepage sits open. Cheap no-op in any other mode.
+  def handle_info(:sky_refresh, socket) do
+    Process.send_after(self(), :sky_refresh, @sky_refresh_ms)
+    {:noreply, maybe_fetch_sky(socket)}
+  end
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -283,7 +347,8 @@ defmodule BusterClawWeb.StatusLive do
   def handle_async(:weather, {:ok, result}, socket) do
     case result do
       {:ok, conditions} ->
-        {:noreply, socket |> assign(:weather, conditions) |> assign(:weather_form, false)}
+        {:noreply,
+         socket |> assign(:weather, conditions) |> assign(:weather_form, false) |> push_sky()}
 
       {:error, :not_found} ->
         # Geocode miss: keep the form up with its inline hint.
@@ -314,6 +379,44 @@ defmodule BusterClawWeb.StatusLive do
         socket
         |> assign(:weather, :loading)
         |> start_async(:weather, fn -> Weather.current() end)
+    end
+  end
+
+  # The weather-shader background needs real conditions whether or not the
+  # widget's Time & Place tab is open: when the homepage background is in
+  # weather mode and a location is set, (re)fetch. Unlike load_weather/1 this
+  # refetches even when conditions are already loaded (the :sky_refresh tick),
+  # but keeps the loaded map on screen instead of flashing :loading.
+  defp maybe_fetch_sky(socket) do
+    if socket.assigns.home_bg.mode == "weather" and not is_nil(Weather.location()) do
+      socket
+      |> then(fn s ->
+        if is_map(s.assigns.weather), do: s, else: assign(s, :weather, :loading)
+      end)
+      |> start_async(:weather, fn -> Weather.current() end)
+    else
+      socket
+    end
+  end
+
+  # Hand the SmokeBackground hook the real sky: condition code plus wind/cloud,
+  # sunrise/sunset as day-fractions, and the location's UTC offset (the hook
+  # derives the place's live time-of-day from it each frame). Skipped when the
+  # conditions predate the sunrise/sunset fields.
+  defp push_sky(socket) do
+    case socket.assigns.weather do
+      %{sunrise_frac: sr, sunset_frac: ss} = w when is_number(sr) and is_number(ss) ->
+        push_event(socket, "bc:sky", %{
+          code: w.code,
+          wind_mph: w.wind_mph,
+          cloud_pct: w.cloud_pct,
+          sunrise_frac: sr,
+          sunset_frac: ss,
+          utc_offset: w.utc_offset
+        })
+
+      _incomplete ->
+        socket
     end
   end
 
@@ -582,7 +685,8 @@ defmodule BusterClawWeb.StatusLive do
               tab={@widget_tab}
               today={@today}
               days={@calendar_days}
-              entries={@trusted_contacts}
+              contacts={@trusted_people}
+              entries={@trusted_entries}
               weather={@weather}
               weather_form={@weather_form}
             />
