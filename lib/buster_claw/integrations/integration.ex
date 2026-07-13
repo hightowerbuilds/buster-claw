@@ -1,4 +1,14 @@
 defmodule BusterClaw.Integrations.Integration do
+  @moduledoc """
+  A configured GitHub / Sentry / Umami integration. `token` and `webhook_secret`
+  are encrypted at rest (`BusterClaw.Encrypted`).
+
+  Note `polling_interval_minutes`: it is persisted and validated, but **inert** —
+  no scheduler reads it, because there is no integration poller. Polls happen only
+  when a human clicks Poll or an agent runs `integration_poll`. See
+  `BusterClaw.Integrations`.
+  """
+
   use Ecto.Schema
 
   import Ecto.Changeset

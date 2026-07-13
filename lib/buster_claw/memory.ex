@@ -81,7 +81,7 @@ defmodule BusterClaw.Memory do
   end
 
   # Stringify the string-typed fields so callers can pass atoms — `agent` is
-  # `:claude`/`:codex`/`:stub`, `provenance` is `:trusted`/`:untrusted`, etc.
+  # `:claude`/`:codex`, `provenance` is `:trusted`/`:untrusted`, etc.
   defp normalize(attrs) do
     attrs
     |> Map.new(fn {k, v} -> {to_string(k), v} end)

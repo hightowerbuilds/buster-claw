@@ -14,7 +14,9 @@ It's an Elixir/Phoenix + LiveView application wrapped in a Tauri desktop shell �
 
 The agent doesn't call a chat API. It works a **queue**.
 
-Trusted inbound requests (a triaged email, a webhook, something you typed) land in a durable SQLite **Dispatch queue**. Buster Claw projects that queue into workspace markdown the agent already reads (`shift/Dispatch.md`). The agent pulls an item, does the work, and writes the result back through the `./buster-claw` CLI. The desktop UI gives you the command surface, the audit feed, and the results.
+Trusted inbound requests land in a durable SQLite **Dispatch queue** — today that means mail from a sender on your trusted-senders list, or anything you (or an agent) enqueue by hand. Buster Claw projects that queue into workspace markdown the agent already reads (`shift/Dispatch.md`). The agent pulls an item, does the work, and writes the result back through the `./buster-claw` CLI. The desktop UI gives you the command surface, the audit feed, and the results.
+
+(Integration webhooks do *not* enqueue work — a verified GitHub or Sentry event becomes a Library snapshot, not an agent task.)
 
 That indirection is the whole design. It means work survives a crash, an agent can be replaced mid-shift, and nothing the agent does is invisible to you.
 
@@ -23,10 +25,10 @@ That indirection is the whole design. It means work survives a crash, an agent c
 - **One command surface.** ~134 commands across documents, browser, Google Workspace, integrations, finance, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and a full audit trail.
 - **A real browser the agent can drive.** Not a headless scraper: the agent reads and acts inside **the tab you're actually looking at**, logged-in session and all (`browser_read`, `browser_click`, `browser_fill`), plus SSRF-guarded fetch for everything else.
 - **Google Workspace.** One-click connect, then sync and act on Gmail, Calendar, Drive, Docs, and Contacts.
-- **Integrations.** GitHub, Sentry, and Umami — polled or webhook-triggered, with signature verification that fails closed.
+- **Integrations.** GitHub, Sentry, and Umami — polled on demand (by you or the agent; there is no background poller) or webhook-triggered, with signature verification that fails closed.
 - **In-app terminal.** A real PTY where you run Claude Code, Codex, or anything else. Your shell survives tab switches.
 - **Unattended shifts.** Go `on-duty` and a supervised Elixir janitor works the queue without you — with a kill switch (a `STOP` file), a crash-loop brake, and a hard budget cap that stops the shift rather than burning tokens.
-- **BusterPhone** *(in progress)*. An answering machine for your agent — greets callers, records, transcribes, files the message. The full inbound path is built: Twilio → Supabase relay → the Mac-side drain (`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` enable it) → the `/phone` tab. Still on a trial Twilio number, and outbound SMS is unbuilt. See `daily-growth/roadmaps/BUSTERPHONE_ROADMAP.md`.
+- **BusterPhone** *(inbound voicemail only)*. An answering machine for your agent — greets callers, records, transcribes, files the message. That inbound voicemail path is built end to end: Twilio → Supabase relay → the Mac-side drain (`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` enable it) → the `/phone` tab. Everything else is **not built**: no outbound calls or texts (there is no Twilio REST client in the app — the dialpad is decorative), and no inbound SMS (A2P 10DLC is the gate). Still on a trial Twilio number. See `daily-growth/roadmaps/BUSTERPHONE_ROADMAP.md`.
 - **Sentinel.** The security spine. Every mutation is recorded and redacted (by key name *and* value shape — card numbers and API keys don't leak into the log). Untrusted callers can't run restricted commands, and refusals are queued for you, not silently dropped.
 - **A workspace you own.** Everything is markdown on your disk. No lock-in; `grep` works.
 - **WebGPU shaders.** The homepage runs a live WGSL background. Drop a `.wgsl` file into your workspace and it compiles at runtime — no rebuild.

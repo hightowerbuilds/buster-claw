@@ -79,16 +79,26 @@ The Mac half of the Phase 1 exit test (`.mp3` + Library doc appearing in the
 workspace) needs `BusterClaw.Telephony` — next build step after this
 checklist passes.
 
-## Notes for the Mac side (recorded here so they're not re-derived)
+## How the Mac side actually works (built — this supersedes the old plan)
 
-- Supabase **Realtime speaks the Phoenix Channels protocol** — the Elixir
-  client plan is Slipstream (one new dep) subscribed to
-  `postgres_changes` INSERTs on `telephony_events`, using the project's
-  **service role key** (RLS is deny-all otherwise). Store URL + service key
-  on the `twilio`… actually on a `supabase`-flavored integration row or the
-  same row's `config` — decide at build.
-- Transcript arrives as an **UPDATE** after the INSERT; the drain should
-  tolerate a null transcript and backfill the Library doc, or just wait for
-  rows where `transcript is not null` OR age > 2 min.
+- **The drain polls PostgREST. It does not use Realtime, and Slipstream was
+  never added.** The original plan was a websocket subscription to
+  `postgres_changes`; it was rejected at build. Reason: Realtime cannot replay
+  rows that arrived while the laptop was asleep, so a catch-up read has to exist
+  regardless — and at answering-machine latency that catch-up read *is* the whole
+  drain. A websocket would have been a second code path earning nothing.
+  See the `BusterClaw.Telephony.Relay` moduledoc.
+  - Consequence: the `alter publication supabase_realtime add table …` line in
+    the migration is **vestigial**. Nothing subscribes. It is harmless and left
+    in place because the migration has already been applied remotely.
+- `BusterClaw.Telephony.Drain` ticks every 30s: read `synced = false` rows
+  (oldest first, limit 50) → download audio → insert locally → *then* mark
+  synced. Persist-then-ack, so a crash re-drains rather than losing a voicemail;
+  the local unique index on `twilio_sid` dedupes the retry.
+- Transcript arrives as an **UPDATE** after the INSERT, and a drained row is
+  never re-read — so voicemails with a null transcript are left queued until they
+  are older than the 180s grace window.
+- Credentials come from `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` in the app's
+  env (not an integration row). The drain child only starts when both are set.
 - Secrets live in two places by design (app + Supabase env). Documented risk;
   Sentinel can't see the Edge Function.

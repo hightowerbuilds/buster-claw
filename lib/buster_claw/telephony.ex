@@ -1,9 +1,24 @@
 defmodule BusterClaw.Telephony do
   @moduledoc """
   BusterPhone's local ledger: voicemails, SMS threads, and calls mirrored into
-  SQLite. Inbound events arrive via the Supabase relay drain (Phase 1 plumbing);
-  outbound sends record themselves here after hitting Twilio's REST API. The
-  Message Machine panel (`PhoneLive`) reads everything through this context.
+  SQLite. The Message Machine panel (`PhoneLive`) reads everything through this
+  context.
+
+  ## What is actually wired
+
+  **Inbound voicemail only.** Events arrive one way — Twilio → the Supabase edge
+  function → the relay table → `Telephony.Drain` → `record_event/2`. That path is
+  complete.
+
+  **There is no outbound path.** No Twilio REST client exists anywhere in the
+  app, and nothing calls `record_event/2` with `direction: "outbound"`. The
+  schema permits `outbound`, and `sms_threads/0` will render an outbound row if
+  one ever appears, but no code produces one. Inbound SMS is likewise unbuilt:
+  the `sms` kind is accepted end-to-end, but only the `voice` edge function
+  exists, so nothing writes an SMS row either (A2P 10DLC registration is the
+  gate — see `daily-growth/roadmaps/BUSTERPHONE_ROADMAP.md`).
+
+  Treat the outbound/SMS surfaces here as schema-ready, not working.
   """
 
   import Ecto.Query

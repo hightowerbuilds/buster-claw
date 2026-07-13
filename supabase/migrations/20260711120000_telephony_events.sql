@@ -26,7 +26,10 @@ create index if not exists telephony_events_unsynced_idx
 -- Only the service role (Edge Function + the Mac's drain client) bypasses.
 alter table public.telephony_events enable row level security;
 
--- Realtime push to the Mac's outbound websocket subscription.
+-- VESTIGIAL: nothing subscribes to this. The Mac-side drain polls PostgREST
+-- instead (Realtime can't replay rows that arrived while the laptop slept, so a
+-- catch-up read had to exist anyway — see BusterClaw.Telephony.Relay). Left in
+-- place because this migration has already been applied remotely; harmless.
 alter publication supabase_realtime add table public.telephony_events;
 
 -- Private bucket for voicemail audio; the Mac downloads via service role.

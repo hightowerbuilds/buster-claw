@@ -1,5 +1,25 @@
 defmodule BusterClaw.Integrations do
-  @moduledoc "Service integrations that turn operational data into Library documents."
+  @moduledoc """
+  Service integrations (GitHub / Sentry / Umami) that turn operational data into
+  Library documents. Both the poll path and the webhook path converge on the same
+  output: a Library markdown snapshot plus an `IntegrationRun` row.
+
+  ## Two things this does NOT do
+
+  **Nothing here is scheduled.** There is no integration poller. `poll_integration/2`
+  and `poll_all/1` run only when something calls them — the two buttons in
+  `IntegrationsLive`, or the `integration_poll` / `integration_poll_all` agent
+  commands. `Integration.polling_interval_minutes` is stored, validated, and shown
+  in the settings form, but **no scheduler reads it** (only `Wallets` honours a
+  polling interval, on its own feeds). Don't infer a background cadence from that
+  field.
+
+  **Integrations never enqueue Dispatch work.** A poll or a verified webhook writes
+  documents and broadcasts `{:integration_run, run}` on the `"integrations"` topic;
+  the only subscriber is `WalletPoller`, which stamps a record count onto any wallet
+  feed bound to the integration. The Dispatch queue is fed by Gmail trusted-senders
+  only (`Google.GmailSync`). A GitHub push does not become agent work.
+  """
 
   import Ecto.Query
 

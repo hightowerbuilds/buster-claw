@@ -1,10 +1,17 @@
 defmodule BusterClaw.Telephony.Event do
   @moduledoc """
-  One phone event — a voicemail, an SMS, or a bare call. Inbound events are
-  mirrored from the Supabase relay by the drain; outbound events are recorded
-  when the Mac sends them. `recording_path` is relative to the Library root
-  (served to the panel by `TelephonyRecordingController`); `heard_at` is the
-  answering machine's blinking light.
+  One phone event — a voicemail, an SMS, or a bare call. Inbound voicemails are
+  mirrored from the Supabase relay by the drain; that is the only producer of
+  rows in this table today.
+
+  `direction` accepts `outbound` and `kind` accepts `sms`, but **nothing writes
+  either** — no Twilio REST client exists and there is no `sms` edge function.
+  The values are here so the schema doesn't have to change when those land; see
+  `BusterClaw.Telephony` for the full built-vs-unbuilt picture.
+
+  `recording_path` is relative to the Library root (served to the panel by
+  `TelephonyRecordingController`); `heard_at` is the answering machine's
+  blinking light.
   """
 
   use Ecto.Schema

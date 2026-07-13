@@ -34,20 +34,9 @@ config :buster_claw,
   # "runs" metric). Chat spawns headless Claude, so the run belongs on the trail.
   agent_chat_audit: true,
   orchestrator_tick_ms: 30_000,
-  orchestrator_max_concurrent: 3,
-  # Crash-loop / rate brakes for the unattended shift.
+  # Crash-loop brake for the unattended shift: this many consecutive raising
+  # ticks stops the shift outright.
   orchestrator_max_consecutive_failures: 5,
-  orchestrator_max_runs_per_hour: 120,
-  orchestrator_alerts_enabled: true,
-  orchestrator_morning_report: true,
-  # :stub runs dispatched agents as a safe simulation (no API calls); set :real
-  # to invoke the actual claude/codex CLIs during a live shift.
-  agent_runner_mode: :stub,
-  agent_runner_claude: ["claude", "-p"],
-  agent_runner_codex: ["codex", "exec"],
-  agent_run_timeout_ms: 600_000,
-  agent_heartbeat_interval_ms: 30_000,
-  agent_heartbeat_stale_ms: 120_000,
   # SEC EDGAR requires a descriptive User-Agent with a contact email. Set this to
   # a real contact before relying on the finance_* commands in production.
   finance_user_agent: "BusterClaw/0.1 (financial research; contact: set finance_user_agent)"
