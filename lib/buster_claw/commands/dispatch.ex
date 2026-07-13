@@ -13,6 +13,7 @@ defmodule BusterClaw.Commands.Dispatch do
   alias BusterClaw.Commands.Google
   alias BusterClaw.Dispatch
   alias BusterClaw.Google.Gmail
+  alias BusterClaw.TrustedSenders
 
   def dispatch_list(args \\ %{}) do
     items =
@@ -98,9 +99,21 @@ defmodule BusterClaw.Commands.Dispatch do
   def dispatch_reply(%{"id" => id} = args) do
     with_resource(Dispatch, :get_item!, id, fn item ->
       cond do
-        is_nil(blank_to_nil(Map.get(args, "body"))) -> {:error, :missing_body}
-        is_nil(blank_to_nil(item.sender)) -> {:error, :no_reply_recipient}
-        true -> send_dispatch_reply(item, blank_to_nil(Map.get(args, "body")), args)
+        is_nil(blank_to_nil(Map.get(args, "body"))) ->
+          {:error, :missing_body}
+
+        is_nil(blank_to_nil(item.sender)) ->
+          {:error, :no_reply_recipient}
+
+        # `dispatch reply` is a *Gmail* send. A voicemail item's sender is a phone
+        # number, and BusterPhone has no outbound channel — so without this guard an
+        # agent carrying over its mail-triage habit would hand Gmail "+1555..." as a
+        # To: address. Refuse loudly instead: there is nowhere to send this.
+        is_nil(TrustedSenders.extract_address(item.sender)) ->
+          {:error, :no_reply_channel}
+
+        true ->
+          send_dispatch_reply(item, blank_to_nil(Map.get(args, "body")), args)
       end
     end)
   end

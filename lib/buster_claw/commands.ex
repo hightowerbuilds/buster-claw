@@ -530,6 +530,14 @@ defmodule BusterClaw.Commands do
   defdelegate finance_fundamentals(args), to: BusterClaw.Commands.Finance
   defdelegate finance_quote(args), to: BusterClaw.Commands.Finance
   defdelegate finance_news(args), to: BusterClaw.Commands.Finance
+  # BusterPhone (the Message Machine)
+  defdelegate phone_list(args \\ %{}), to: BusterClaw.Commands.Telephony
+  defdelegate phone_get(args), to: BusterClaw.Commands.Telephony
+  defdelegate phone_stats(args \\ %{}), to: BusterClaw.Commands.Telephony
+  defdelegate phone_mark_heard(args), to: BusterClaw.Commands.Telephony
+  defdelegate phone_trusted_list(args \\ %{}), to: BusterClaw.Commands.Telephony
+  defdelegate phone_trusted_add(args), to: BusterClaw.Commands.Telephony
+  defdelegate phone_trusted_remove(args), to: BusterClaw.Commands.Telephony
   # Memory
   defdelegate memory_search(args), to: BusterClaw.Commands.Memory
   # Skills

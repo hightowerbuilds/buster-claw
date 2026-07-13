@@ -67,7 +67,9 @@ defmodule BusterClaw.JobsTest do
   test "list returns defined jobs without bodies; get returns the body", %{root: _root} do
     Jobs.ensure()
 
-    assert [%{key: "mail-triage", name: "Mail Triage"} = entry] = Jobs.list()
+    assert [%{key: "mail-triage", name: "Mail Triage"} = entry, %{key: "voicemail-triage"}] =
+             Jobs.list()
+
     refute Map.has_key?(entry, :body)
 
     job = Jobs.get("mail-triage")
@@ -76,6 +78,25 @@ defmodule BusterClaw.JobsTest do
     assert job.body =~ "# Mail Triage"
     assert job.body =~ "dispatch claim --job mail-triage"
     assert job.body =~ "dispatch reply <id>"
+  end
+
+  test "the seeded voicemail-triage job tells the agent it cannot call back", %{root: _root} do
+    Jobs.ensure()
+
+    job = Jobs.get("voicemail-triage")
+    assert job.name == "Voicemail Triage"
+    assert job.body =~ "dispatch claim --job voicemail-triage"
+    assert job.body =~ "phone_get"
+
+    # The load-bearing instruction: BusterPhone is inbound-only, and `dispatch reply`
+    # is a Gmail send that refuses a voicemail item. An agent carrying over its
+    # mail-triage habit would otherwise try to email a phone number.
+    assert job.body =~ "cannot call or text anyone back"
+    assert job.body =~ "no_reply_channel"
+
+    # Transcripts are machine-made and are a stranger's words — both warnings matter.
+    assert job.body =~ "often wrong"
+    assert job.body =~ "untrusted input"
   end
 
   test "get derives name/summary from frontmatter or falls back to the key/body", %{root: root} do

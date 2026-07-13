@@ -21,6 +21,7 @@ defmodule BusterClaw.Commands.Catalog do
     Integrations,
     Library,
     Orchestration,
+    Telephony,
     Wallets,
     Web
   }
@@ -36,5 +37,6 @@ defmodule BusterClaw.Commands.Catalog do
         GoogleContacts.entries() ++
         Web.entries() ++
         Finance.entries() ++
+        Telephony.entries() ++
         Orchestration.entries()
 end

@@ -31,9 +31,12 @@ defmodule BusterClaw.Telephony.Drain do
 
   require Logger
 
+  alias BusterClaw.Dispatch
   alias BusterClaw.Library.Artifact
   alias BusterClaw.Telephony
+  alias BusterClaw.Telephony.Event
   alias BusterClaw.Telephony.Relay
+  alias BusterClaw.TrustedNumbers
 
   @default_interval_ms 30_000
   @default_transcript_grace_ms 180_000
@@ -176,10 +179,52 @@ defmodule BusterClaw.Telephony.Drain do
 
   defp persist(attrs) do
     case Telephony.record_event(attrs) do
-      {:ok, _event} -> :ok
-      {:error, changeset} -> if duplicate?(changeset), do: :ok, else: {:error, changeset}
+      {:ok, event} ->
+        maybe_enqueue_dispatch(event)
+        :ok
+
+      {:error, changeset} ->
+        if duplicate?(changeset), do: :ok, else: {:error, changeset}
     end
   end
+
+  # A trusted caller's voicemail also lands on the Dispatch queue so the on-duty
+  # agent picks it up. A stranger's voicemail is recorded and playable in the
+  # Message Machine but never enqueued — see `BusterClaw.TrustedNumbers` for why
+  # (short version: an answering machine records strangers by design, and the
+  # provenance gate is per-run, so one robocall in the open pool would downgrade
+  # the whole shift's token).
+  #
+  # Best-effort, exactly like the Gmail path: a dedupe conflict on re-drain, or
+  # any error, is swallowed so it can never fail the drain and strand a voicemail.
+  defp maybe_enqueue_dispatch(%Event{direction: "inbound", kind: "voicemail"} = event) do
+    case TrustedNumbers.match(event.from_number) do
+      nil ->
+        :skip
+
+      number ->
+        _ =
+          Dispatch.enqueue_voicemail(event, %{
+            trusted: true,
+            trusted_sender: number,
+            recommended_role_key: "voicemail-triage",
+            request_summary: request_summary(event),
+            metadata: %{
+              "telephony_event_id" => event.id,
+              "recording_path" => event.recording_path
+            }
+          })
+
+        :ok
+    end
+  end
+
+  defp maybe_enqueue_dispatch(_event), do: :skip
+
+  defp request_summary(%Event{transcript: nil} = event),
+    do: "Voicemail from #{event.from_number} (no transcript)"
+
+  defp request_summary(%Event{} = event), do: "Voicemail from #{event.from_number}"
 
   # A re-drained row (crash between persist and ack) trips the local unique
   # index on twilio_sid — that means we already have it, so just ack.

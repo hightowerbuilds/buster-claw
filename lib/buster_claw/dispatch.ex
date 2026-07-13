@@ -152,6 +152,32 @@ defmodule BusterClaw.Dispatch do
     enqueue(attrs)
   end
 
+  @doc """
+  Enqueue a voicemail as follow-through work.
+
+  Only ever called for a **trusted caller** (see `BusterClaw.TrustedNumbers`) —
+  a stranger's voicemail is recorded and playable but never reaches the queue.
+  The dedupe key is the Twilio SID, which is the voicemail's natural identity, so
+  a re-drained row (crash between the local insert and the remote ack) collapses
+  onto the existing item instead of queueing the same message twice.
+  """
+  def enqueue_voicemail(event, attrs \\ %{}) do
+    from = value(event, :from_number)
+
+    attrs =
+      attrs
+      |> normalize_attrs()
+      |> Map.merge(%{
+        source: "voicemail",
+        sender: from,
+        subject: "Voicemail from #{from || "unknown"}",
+        request_body_excerpt: excerpt(value(event, :transcript))
+      })
+      |> put_new(:dedupe_key, voicemail_dedupe_key(value(event, :twilio_sid)))
+
+    enqueue(attrs)
+  end
+
   def update_item(%Item{} = item, attrs) do
     item
     |> Item.changeset(normalize_attrs(attrs))
@@ -278,6 +304,9 @@ defmodule BusterClaw.Dispatch do
 
   defp gmail_dedupe_key(nil), do: nil
   defp gmail_dedupe_key(message_id), do: "gmail:#{message_id}"
+
+  defp voicemail_dedupe_key(nil), do: nil
+  defp voicemail_dedupe_key(twilio_sid), do: "voicemail:#{twilio_sid}"
 
   defp normalize_attrs(attrs) when is_map(attrs) do
     Enum.reduce(attrs, %{}, fn

@@ -1,6 +1,7 @@
 defmodule BusterClaw.Telephony.DrainTest do
   use BusterClaw.DataCase
 
+  alias BusterClaw.Dispatch
   alias BusterClaw.Telephony
   alias BusterClaw.Telephony.Drain
 
@@ -163,5 +164,76 @@ defmodule BusterClaw.Telephony.DrainTest do
 
     assert :ok = Drain.drain(state())
     assert Telephony.list_events() == []
+  end
+
+  describe "voicemail → Dispatch (the trusted-caller gate)" do
+    setup %{tmp_dir: tmp_dir} do
+      # TrustedNumbers reads <workspace>/memory/trusted-phone-numbers.md.
+      prev_ws = Application.get_env(:buster_claw, :workspace_root)
+      Application.put_env(:buster_claw, :workspace_root, tmp_dir)
+      File.mkdir_p!(Path.join(tmp_dir, "memory"))
+
+      on_exit(fn ->
+        Application.put_env(:buster_claw, :workspace_root, prev_ws)
+      end)
+
+      :ok
+    end
+
+    defp trust(tmp_dir, numbers) do
+      path = Path.join(tmp_dir, "memory/trusted-phone-numbers.md")
+      File.write!(path, "# Trusted\n\n" <> Enum.map_join(numbers, "\n", &"- #{&1}") <> "\n")
+      :persistent_term.erase({BusterClaw.TrustedNumbers, :policy, path})
+    end
+
+    test "a trusted caller's voicemail becomes a queue item", %{tmp_dir: tmp_dir} do
+      trust(tmp_dir, ["+15035551234"])
+      stub_relay([relay_row()])
+
+      assert :ok = Drain.drain(state())
+
+      assert [item] = Dispatch.list_open()
+      assert item.source == "voicemail"
+      assert item.sender == "+15035551234"
+      assert item.trusted
+      assert item.recommended_role_key == "voicemail-triage"
+      assert item.request_body_excerpt =~ "call me back"
+      # The Twilio SID is the voicemail's natural identity — that's the dedupe key.
+      assert item.dedupe_key == "voicemail:RE123"
+    end
+
+    test "a stranger's voicemail is recorded but NEVER queued", %{tmp_dir: tmp_dir} do
+      trust(tmp_dir, ["+15559999999"])
+      stub_relay([relay_row(%{"from_number" => "+15035551234"})])
+
+      assert :ok = Drain.drain(state())
+
+      # Recorded and playable...
+      assert [event] = Telephony.list_events()
+      assert event.from_number == "+15035551234"
+      # ...but it never reaches the agent's plate.
+      assert Dispatch.list_open() == []
+    end
+
+    test "an empty trusted list queues nothing (safe default)", %{tmp_dir: tmp_dir} do
+      trust(tmp_dir, [])
+      stub_relay([relay_row()])
+
+      assert :ok = Drain.drain(state())
+
+      assert [_event] = Telephony.list_events()
+      assert Dispatch.list_open() == []
+    end
+
+    test "a re-drained voicemail does not queue the same message twice", %{tmp_dir: tmp_dir} do
+      trust(tmp_dir, ["+15035551234"])
+      stub_relay([relay_row()])
+
+      assert :ok = Drain.drain(state())
+      # Same relay row comes back (crash between local insert and remote ack).
+      assert :ok = Drain.drain(state())
+
+      assert [_only_one] = Dispatch.list_open()
+    end
   end
 end

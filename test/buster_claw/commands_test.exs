@@ -785,6 +785,26 @@ defmodule BusterClaw.CommandsTest do
       assert {:error, :missing_body} = Commands.dispatch_reply(%{"id" => item.id, "body" => "  "})
       assert Dispatch.get_item!(item.id).status == "queued"
     end
+
+    test "refuses a voicemail item — there is nowhere to send a reply" do
+      # `dispatch reply` is a Gmail send. A voicemail item's sender is a phone
+      # number and BusterPhone has no outbound channel, so an agent carrying over
+      # its mail-triage habit would otherwise hand Gmail "+1503..." as a To:
+      # address. Fail loudly instead; the item stays open for a real close-out.
+      {:ok, item} =
+        Dispatch.enqueue(%{
+          source: "voicemail",
+          sender: "+15035551234",
+          subject: "Voicemail from +15035551234",
+          recommended_role_key: "voicemail-triage",
+          trusted: true
+        })
+
+      assert {:error, :no_reply_channel} =
+               Commands.dispatch_reply(%{"id" => item.id, "body" => "calling you back"})
+
+      assert Dispatch.get_item!(item.id).status == "queued"
+    end
   end
 
   describe "google calendar commands" do

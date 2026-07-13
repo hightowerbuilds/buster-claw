@@ -61,9 +61,19 @@ defmodule BusterClaw.Telephony do
 
   def get_event!(id), do: Repo.get!(Event, id) |> Repo.preload(:document)
 
+  @doc "Fetch one event, or nil. The command surface uses this — a bad id is a
+  `not_found` result, not a crash."
+  def get_event(id) do
+    case Repo.get(Event, id) do
+      nil -> nil
+      event -> Repo.preload(event, :document)
+    end
+  end
+
   def list_events(opts \\ []) do
     Event
     |> scope_kind(opts[:kind])
+    |> scope_unheard(opts[:unheard_only])
     |> order_by([e], desc: e.occurred_at, desc: e.id)
     |> maybe_limit(opts[:limit])
     |> Repo.all()
@@ -71,6 +81,13 @@ defmodule BusterClaw.Telephony do
 
   defp scope_kind(query, nil), do: query
   defp scope_kind(query, kind), do: where(query, [e], e.kind == ^kind)
+
+  # "Unheard" is a voicemail concept — the blinking light. A call or a text has
+  # nothing to hear, so restricting to unheard also restricts to voicemail.
+  defp scope_unheard(query, true),
+    do: where(query, [e], e.kind == "voicemail" and is_nil(e.heard_at))
+
+  defp scope_unheard(query, _), do: query
 
   defp maybe_limit(query, nil), do: query
   defp maybe_limit(query, n), do: limit(query, ^n)
