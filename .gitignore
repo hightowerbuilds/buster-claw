@@ -57,3 +57,6 @@ priv/plts/*.plt.hash
 
 # Claude Code local session data (agent worktrees, settings)
 /.claude/
+
+# Supabase CLI version-check cache — pure noise, changes on every CLI release.
+supabase/.temp/cli-latest

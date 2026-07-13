@@ -8,6 +8,14 @@ repo even though it runs on Supabase.
 
 ## 1. Supabase project
 
+> **Use a project dedicated to telephony. Nothing else.** The Mac drain holds
+> this project's `service_role` key, which bypasses RLS for the *entire*
+> project. Deploy the relay alongside another product and that key — sitting in
+> a `.env` on a laptop — is also a skeleton key to that product's tables, storage
+> and users. Learned the hard way 07-12: the relay was first deployed into a
+> project that also held Stripe keys and customer data, and had to be moved.
+> Live project: `tzptdzmwypdmmnmbruke` (telephony only).
+
 1. Create a project at https://supabase.com/dashboard (free tier is fine).
    Save the **database password** somewhere real; you'll need it for `link`.
 2. Install the CLI if needed: `brew install supabase/tap/supabase`.
@@ -19,12 +27,30 @@ repo even though it runs on Supabase.
    supabase db push                            # applies migrations/ (table, RLS, bucket, realtime)
    ```
 
+   **Do not run `supabase init`.** The dashboard's first-run copy suggests it;
+   it scaffolds a fresh `supabase/` directory and will stomp the `config.toml`,
+   `migrations/` and `functions/voice/` already in this repo.
+
+   **`db push` on a brand-new project fails the first few minutes** with
+   `relation "storage.buckets" does not exist` — Postgres comes up before the
+   storage service does, and the migration creates the `recordings` bucket. It
+   rolls back cleanly (nothing partially applies). Wait and re-run.
+
 4. Set the function secrets (Twilio creds come from step 2 below — circle
    back if you do Supabase first):
 
    ```sh
    supabase secrets set TWILIO_ACCOUNT_SID=ACxxxxxxxx TWILIO_AUTH_TOKEN=xxxxxxxx
+   supabase secrets set PUBLIC_URL_BASE=https://<PROJECT_REF>.supabase.co/functions/v1/voice
    ```
+
+   **`PUBLIC_URL_BASE` is required, not optional.** Twilio signs the exact URL
+   it was configured to call; on Supabase's edge runtime `req.url` is an
+   internally-rewritten URL, so the signature never matches, the function 403s,
+   and Twilio answers the call and immediately hangs up with no greeting. This
+   is the single most confusing failure mode in the whole path — the phone
+   *rings*, so it looks like a TwiML bug rather than an auth one. Secrets are
+   read per-request, so setting it needs no redeploy.
 
 5. Deploy the function. `--no-verify-jwt` is required — Twilio can't send a
    Supabase JWT; the function does its own auth (X-Twilio-Signature,
@@ -37,6 +63,13 @@ repo even though it runs on Supabase.
    The public URL is:
    `https://<PROJECT_REF>.supabase.co/functions/v1/voice`
 
+   Smoke-test it without a phone — an unsigned POST must be refused:
+
+   ```sh
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+     https://<PROJECT_REF>.supabase.co/functions/v1/voice   # expect 403
+   ```
+
 ## 2. Twilio account + number
 
 1. Sign up at https://www.twilio.com (upgrade out of trial — trial numbers
@@ -46,26 +79,48 @@ repo even though it runs on Supabase.
 3. Copy **Account SID** and **Auth Token** from the console home into the
    `supabase secrets set` command above (redeploy is not needed after a
    secrets change; secrets are read per-request).
-4. On the number's configuration page, under **Voice & Fax**:
-   - A call comes in → **Webhook** →
-     `https://<PROJECT_REF>.supabase.co/functions/v1/voice` → **HTTP POST**
-5. Leave Messaging unconfigured for now (Phase 2), **but** if you want SMS on
+4. On the number's configuration page, under **Voice Configuration**, the
+   **"A call comes in"** row (the first one — *not* "Primary handler fails",
+   which is the fallback):
+   - dropdown → **Webhook**
+   - URL → `https://<PROJECT_REF>.supabase.co/functions/v1/voice`
+   - method → **HTTP POST**
+5. Add an **emergency address** to the number. Twilio warns about a $75 charge
+   per emergency call without one. The app has no outbound calling at all, so
+   nothing can dial 911 today — but it's free to add and becomes a real
+   liability the moment outbound lands.
+6. Leave Messaging unconfigured for now (Phase 2), **but** if you want SMS on
    schedule, start **A2P 10DLC brand + campaign registration** today —
    it's paperwork plus a multi-day wait and it's the Phase 2 gate.
-   Voice needs no registration.
+   Voice needs no registration, so 10DLC is **not** on the Phase 1 critical
+   path; don't let the banner on the number page bait you into it.
 
 ## 3. Exit tests
+
+> **Passed 2026-07-12** on project `tzptdzmwypdmmnmbruke`: greeting + beep, a
+> 147 KB `.mp3` in Storage, a `telephony_events` row, and the transcript landing
+> on the follow-up callback ~40 s later. The relay half is proven.
 
 **Phase 0 — reachability.** Call the number from your phone. You should hear
 the greeting and a beep. This proves the whole point: a loopback-only app is
 reachable from the phone network with zero open ports on the Mac.
 
-- Greeting wrong/missing → check the webhook URL and that the deploy used
-  `--no-verify-jwt`.
-- 403 in the Supabase function logs → signature verification failed; confirm
-  `TWILIO_AUTH_TOKEN` matches the console. If it still fails, set
-  `PUBLIC_URL_BASE=https://<PROJECT_REF>.supabase.co/functions/v1/voice`
-  as a secret (proxy URL rewrite; see `functions/voice/index.ts`).
+- **It answers and immediately hangs up, no greeting** → this is the
+  `PUBLIC_URL_BASE` failure and it will burn an hour if you don't know it.
+  Twilio got a 403 from the function (signature computed against the wrong URL)
+  and played its error handler. Set the secret per step 1.4 and call again. It
+  presents as a TwiML/audio problem; it is an auth problem.
+- Greeting wrong/missing otherwise → check the webhook URL is on the
+  **"A call comes in"** row and that the deploy used `--no-verify-jwt`.
+- Still 403 with `PUBLIC_URL_BASE` set → confirm `TWILIO_AUTH_TOKEN` matches
+  the console, and that the secret's URL is byte-identical to the one in the
+  Twilio webhook field.
+
+Note the Supabase **function logs are not reliable here** — `function_edge_logs`
+returned zero rows for requests we could prove had happened (including a manual
+`curl` that came back 403). Don't use log silence as evidence the function was
+never called. Twilio's **Monitor → Logs → Errors** is the trustworthy source: it
+records the HTTP status Twilio actually received.
 
 **Phase 1 (relay half) — capture.** Leave a message after the beep, hang up,
 then check the Supabase dashboard:
@@ -75,9 +130,12 @@ then check the Supabase dashboard:
   number in `from_number`, `synced = false`; `transcript` fills in ~30–60 s
   after the recording row appears (separate Twilio callback).
 
-The Mac half of the Phase 1 exit test (`.mp3` + Library doc appearing in the
-workspace) needs `BusterClaw.Telephony` — next build step after this
-checklist passes.
+**Phase 1 (Mac half).** With `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` in
+`.env` (exactly those names — `config/runtime.exs:102-103`; the drain child is
+simply absent from the supervision tree if either is missing), start the app
+with `./scripts/dev.sh`. Within ~30 s `BusterClaw.Telephony.Drain` ticks, pulls
+the `.mp3` into the Library, inserts into local SQLite, and the row flips to
+`synced = true`. It shows up on the `/phone` tab.
 
 ## How the Mac side actually works (built — this supersedes the old plan)
 

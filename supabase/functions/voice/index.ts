@@ -12,9 +12,13 @@
 // Env (set via `supabase secrets set`):
 //   TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN — verify signatures + fetch media
 //   GREETING_TEXT   (optional) override the default greeting
-//   PUBLIC_URL_BASE (optional) exact public URL of this function, only needed
-//                   if signature verification fails because req.url differs
-//                   from the URL Twilio signed (proxy rewrite)
+//   PUBLIC_URL_BASE (REQUIRED) exact public URL of this function. Twilio signs
+//                   the URL it was configured to call; on Supabase's edge
+//                   runtime `req.url` is the internally-rewritten URL, so the
+//                   signature never matches and every call 403s (Twilio then
+//                   plays an error and hangs up). Verified 07-12: without this
+//                   the phone answers and drops. It was documented as optional;
+//                   it is not.
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 
 import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
