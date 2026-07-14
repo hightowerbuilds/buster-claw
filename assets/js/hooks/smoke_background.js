@@ -6,6 +6,7 @@
 import {createSmoke, SmokeGpuError, fetchShaderSource} from "../smoke/smoke.js"
 import {packUniforms, NEUTRAL_EXPRESSION} from "../smoke/params.js"
 import {SHADER_PALETTES, colorsForUniform} from "../smoke/palettes.js"
+import {skyAmounts, localDayFrac} from "../smoke/sky.js"
 
 // Resolve the palette for an element: custom colors (data-colors) when
 // data-custom="true", else the shader's built-in default. Falls back to the
@@ -41,6 +42,18 @@ export const SmokeBackground = {
     // data-daylight mounts feed the local time of day into u.lens.x
     // (0 = midnight, 0.5 = noon) — the daycycle shader's sun clock.
     this.daylight = this.el.getAttribute("data-daylight") === "true"
+    // Real sky (weather shader only): the LiveView pushes bc:sky with the
+    // user's location's conditions + sunrise/sunset + UTC offset. The shader's
+    // live mode eases in (this.live 0→1) and the condition amounts ease toward
+    // their targets, so demo→live and condition changes drift like weather.
+    this.sky = null
+    this.live = 0
+    this.skyAmts = {rain: 0, snow: 0, bolt: 0, cloud: 0, wind: 0}
+    if (this.shader === "weather") {
+      this.handleEvent("bc:sky", (payload) => {
+        this.sky = payload
+      })
+    }
     this.intensity = 0.85
     this.uniforms = packUniforms({width: 0, height: 0, timeSec: 0, intensity: this.intensity, reveal: 0})
 
@@ -118,6 +131,34 @@ export const SmokeBackground = {
       lens = {x: frac, y: 0, radius: 0, strength: 0}
     }
 
+    // Real sky for the weather shader, packed into otherwise-unused background
+    // slots (the WGSL side documents the same map): freezeTime = live blend,
+    // lens = (local day frac, sunrise frac, sunset frac, cloud), mood/energy =
+    // rain, mood/temp = thunder, mood/density = snow, style/paletteAmt = wind.
+    let freezeTime = 0
+    let expression = this.expr
+    if (this.shader === "weather" && this.sky) {
+      const targets = skyAmounts(this.sky)
+      for (const key of Object.keys(this.skyAmts)) {
+        this.skyAmts[key] += (targets[key] - this.skyAmts[key]) * 0.02
+      }
+      this.live += (1 - this.live) * 0.01
+      freezeTime = this.live
+      lens = {
+        x: localDayFrac(Date.now() / 1000, this.sky.utc_offset),
+        y: this.sky.sunrise_frac,
+        radius: this.sky.sunset_frac,
+        strength: this.skyAmts.cloud,
+      }
+      expression = {
+        ...this.expr,
+        energy: this.skyAmts.rain,
+        temp: this.skyAmts.bolt,
+        density: this.skyAmts.snow,
+        paletteAmt: this.skyAmts.wind,
+      }
+    }
+
     packUniforms(
       {
         width: this.canvas.width,
@@ -125,8 +166,9 @@ export const SmokeBackground = {
         timeSec: now / 1000,
         intensity: this.intensity,
         reveal: 0,
+        freezeTime,
         lens,
-        expression: this.expr,
+        expression,
         post: this.post,
         motion: this.reduceMotion ? 0.3 : 1,
         colors: this.colors,

@@ -21,16 +21,20 @@ defmodule BusterClaw.WeatherTest do
 
   defp forecast_body do
     %{
+      "utc_offset_seconds" => -25_200,
       "current" => %{
         "temperature_2m" => 71.6,
         "apparent_temperature" => 69.8,
         "relative_humidity_2m" => 54,
         "weather_code" => 2,
-        "wind_speed_10m" => 7.3
+        "wind_speed_10m" => 7.3,
+        "cloud_cover" => 38
       },
       "daily" => %{
         "temperature_2m_max" => [78.1],
-        "temperature_2m_min" => [55.9]
+        "temperature_2m_min" => [55.9],
+        "sunrise" => ["2026-07-12T05:31"],
+        "sunset" => ["2026-07-12T20:58"]
       }
     }
   end
@@ -76,6 +80,36 @@ defmodule BusterClaw.WeatherTest do
     assert conditions.low_f == 56
     assert conditions.wind_mph == 7
     assert conditions.humidity == 54
+  end
+
+  test "current carries the sky fields for the homepage weather background" do
+    put_location()
+    Req.Test.stub(__MODULE__, fn conn -> Req.Test.json(conn, forecast_body()) end)
+
+    assert {:ok, conditions} = Weather.current(opts())
+    assert conditions.cloud_pct == 38
+    assert conditions.utc_offset == -25_200
+    # 05:31 → (5h31m)/24h, 20:58 → (20h58m)/24h, rounded to 4 places.
+    assert conditions.sunrise_frac == Float.round((5 * 3600 + 31 * 60) / 86_400, 4)
+    assert conditions.sunset_frac == Float.round((20 * 3600 + 58 * 60) / 86_400, 4)
+  end
+
+  test "sky fields degrade to nil/0 when the response omits them" do
+    put_location()
+
+    body =
+      forecast_body()
+      |> Map.delete("utc_offset_seconds")
+      |> update_in(["daily"], &Map.drop(&1, ["sunrise", "sunset"]))
+      |> update_in(["current"], &Map.delete(&1, "cloud_cover"))
+
+    Req.Test.stub(__MODULE__, fn conn -> Req.Test.json(conn, body) end)
+
+    assert {:ok, conditions} = Weather.current(opts())
+    assert conditions.sunrise_frac == nil
+    assert conditions.sunset_frac == nil
+    assert conditions.cloud_pct == nil
+    assert conditions.utc_offset == 0
   end
 
   test "current is served from cache within the TTL" do

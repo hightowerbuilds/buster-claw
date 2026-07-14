@@ -1,13 +1,28 @@
 // Weather — an evolving homepage background that simulates a slowly changing
-// sky. A ~2-minute clock drifts through conditions that overlap and blend:
-// sunny → windy → rain + lightning → snow, looping back to sunny. Each is a smooth
-// periodic "bump" over the clock, so transitions are gradual rather than
-// switched. Shares the prelude's uniform/binding contract (fbm/hash/grad3 come
-// from it). Heavy — domain-warped clouds + depth-layered precipitation per
-// pixel — so it renders low-res as an ambient background (see
-// smoke_background.js). Rain/snow/lightning blocks are gated behind uniform
-// `if`s (their amounts depend only on time, so the branch is coherent) to keep
-// clear stretches cheap.
+// sky. Two modes, blended by u.params.w (the hook eases it 0→1 when real
+// conditions arrive over bc:sky):
+//
+//   Demo (params.w = 0, no location set): a ~2-minute clock drifts through
+//   conditions that overlap and blend — sunny → windy → rain + lightning →
+//   snow, looping back — under a fixed clear-afternoon light.
+//
+//   Live (params.w → 1): the sky is the user's place, right now. Slot map
+//   (mirrored in smoke_background.js):
+//     u.lens.x = local day fraction there (0 midnight, 0.5 noon)
+//     u.lens.y / u.lens.z = sunrise / sunset as day fractions
+//     u.lens.w = cloud cover 0..1
+//     u.mood.x = rain, u.mood.y = thunder, u.mood.z = snow (0..1)
+//     u.style.y = wind 0..1
+//   Daylight follows the real sunrise/sunset (with a twilight shoulder); the
+//   sun arcs between them, the moon takes the night leg, stars come out, and
+//   dawn/dusk warm the horizon.
+//
+// Shares the prelude's uniform/binding contract (fbm/hash/grad3 come from it).
+// Heavy — domain-warped clouds + depth-layered precipitation per pixel — so it
+// renders low-res as an ambient background (see smoke_background.js).
+// Rain/snow/lightning blocks are gated behind uniform `if`s (their amounts
+// depend only on uniforms/time, so the branch is coherent) to keep clear
+// stretches cheap.
 //
 // Palette: colA = sky, colB = cloud/rain, colC = highlight (snow, lightning).
 import {WGSL_PRELUDE} from "./prelude.wgsl.js"
@@ -104,29 +119,77 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let res = u.res.xy;
   let time = u.params.x * u.style.z;
   let intensity = u.params.y;
+  let live = clamp(u.params.w, 0.0, 1.0);
   let aspect = res.x / max(res.y, 1.0);
   let uv = in.uv;
   let sUv = uv * vec2<f32>(aspect, 1.0);   // aspect-corrected for round flakes
 
-  // Slow weather clock — one full cycle ≈ 2 minutes. Conditions overlap so the
-  // sky is usually transitioning between two of them.
+  // Demo clock — one full cycle of pretend conditions ≈ 2 minutes.
   let ph = fract(time * 0.008);
   let gust = fbm(vec2<f32>(time * 0.09, 3.0));               // irregular 0→1 wind
-  let sunAmt = wbump(ph, 0.10, 0.16);                        // bright clear spell
-  let windAmt = clamp(wbump(ph, 0.16, 0.24) + 0.12 + gust * 0.15, 0.0, 1.0);
-  let rainAmt = wbump(ph, 0.44, 0.16);
-  let boltAmt = wbump(ph, 0.50, 0.12);
-  let snowAmt = wbump(ph, 0.80, 0.15);
-  let storminess = clamp(max(rainAmt, boltAmt), 0.0, 1.0);
 
-  // Sky: a vertical gradient that darkens and flattens under storm.
+  // Condition amounts: the demo clock's overlapping bumps, crossfaded toward
+  // the real amounts (already eased by the hook) as live rises.
+  let sunBump = wbump(ph, 0.10, 0.16);                       // demo clear spell
+  let dWind = clamp(wbump(ph, 0.16, 0.24) + 0.12 + gust * 0.15, 0.0, 1.0);
+  let rainAmt = mix(wbump(ph, 0.44, 0.16), clamp(u.mood.x, 0.0, 1.0), live);
+  let boltAmt = mix(wbump(ph, 0.50, 0.12), clamp(u.mood.y, 0.0, 1.0), live);
+  let snowAmt = mix(wbump(ph, 0.80, 0.15), clamp(u.mood.z, 0.0, 1.0), live);
+  let windAmt = clamp(mix(dWind, u.style.y + gust * 0.15, live), 0.0, 1.0);
+  let storminess = clamp(max(rainAmt, boltAmt), 0.0, 1.0);
+  let coverAmt = mix(0.2 + 0.8 * storminess, clamp(u.lens.w, 0.0, 1.0), live);
+
+  // Time & light. Demo pretends a fixed clear afternoon (noon, sun 6→6), so
+  // everything below is a no-op until live rises; live tracks the place's real
+  // clock and sun window. tw is the twilight shoulder (~45 min).
+  let day = fract(mix(0.5, u.lens.x, live));
+  let sr = mix(0.25, u.lens.y, live);
+  let ss = mix(0.75, u.lens.z, live);
+  let tw = 0.03;
+  let dayl = smoothstep(sr - tw, sr + tw, day) * (1.0 - smoothstep(ss - tw, ss + tw, day));
+  let dusk = wbump(day, sr, 0.05) + wbump(day, ss, 0.05);
+  // How lit the world is: clouds/precipitation dim toward, not to, black.
+  let lightLvl = mix(1.0, mix(0.28, 1.0, dayl), live);
+
+  // Sun visibility: the demo's periodic clear spell, or real daylight thinned
+  // by real cloud cover.
+  let sunAmt = mix(sunBump, dayl * (1.0 - coverAmt * 0.85), live);
+
+  // Sky: a vertical gradient that darkens and flattens under storm, sinks to
+  // near-black at night, and warms at the horizon through dawn/dusk.
   let sky_horizon = mix(u.colA.xyz, u.colB.xyz, 0.35);
   let sky_zenith = u.colA.xyz;
   var sky = mix(sky_horizon, sky_zenith, smoothstep(0.0, 1.0, uv.y));
   sky = sky * mix(1.0, 0.4, storminess);
+  sky = sky * mix(1.0, mix(0.10, 1.0, dayl), live);
   // Sunny spell warms and brightens the whole sky toward the highlight tone.
   sky = mix(sky, mix(sky, u.colC.xyz, 0.12) * 1.12, sunAmt);
+  let horizonW = (1.0 - uv.y) * (1.0 - uv.y);
+  let duskCol = mix(u.colB.xyz, u.colC.xyz, 0.4);
+  sky = sky + duskCol * dusk * horizonW * 0.7 * live * (1.0 - coverAmt * 0.6);
   var col = sky;
+
+  // Stars: quantized hash sparkle, twinkling, live nights only. Drawn under
+  // the clouds so heavy cover swallows them naturally.
+  let starAmt = (1.0 - dayl) * live;
+  if (starAmt > 0.001) {
+    let cellS = floor((sUv + vec2<f32>(50.0)) * 60.0);
+    let sSeed = hash(cellS);
+    let twinkle = 0.75 + 0.25 * sin(time * 2.0 + sSeed * 40.0);
+    col = col + u.colC.xyz * pow(sSeed, 60.0) * twinkle * starAmt * 1.5;
+  }
+
+  // Moon: crosses the night leg (sunset → next sunrise) on the sun's arc, a
+  // crescent via an offset bite. Under the clouds, like the stars.
+  if (starAmt > 0.001) {
+    let nSpan = max(fract(sr - ss), 0.05);
+    let nt = clamp(fract(day - ss) / nSpan, 0.0, 1.0);
+    let moonPos = vec2<f32>(mix(0.12, 0.88, nt) * aspect, 0.18 + 0.68 * sin(nt * 3.14159265));
+    let mD = length(sUv - moonPos);
+    let biteD = length(sUv - moonPos - vec2<f32>(0.02, 0.01));
+    let moon = smoothstep(0.045, 0.036, mD) * smoothstep(0.033, 0.045, biteD);
+    col = mix(col, u.colC.xyz * 0.9, moon * starAmt);
+  }
 
   // Clouds: domain-warped fbm for a volumetric shape, with an internal detail
   // pass for fake lighting. Faster + heavier with wind/storm; pool toward top.
@@ -135,19 +198,22 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
   let warp = fbm(cUv + vec2<f32>(time * 0.03, 0.0));
   let cloud = fbm(cUv + warp * 0.6);
   let detail = fbm(cUv * 2.3 + 4.0);
-  let cover = smoothstep(0.42, 0.9, cloud) * (0.2 + 0.8 * storminess) * (0.3 + 0.7 * uv.y);
+  let cover = smoothstep(0.42, 0.9, cloud) * coverAmt * (0.3 + 0.7 * uv.y);
   let lit = mix(u.colB.xyz, u.colA.xyz, 0.25);
-  let cloudCol = mix(lit * 0.55, lit, detail) * mix(1.0, 0.55, storminess);
+  let cloudCol = mix(lit * 0.55, lit, detail) * mix(1.0, 0.55, storminess) * lightLvl;
   col = mix(col, cloudCol, clamp(cover, 0.0, 1.0));
 
   // Wispy streaks — the tell of a windy but otherwise clear day.
   let wisp = fbm(vec2<f32>(uv.x * 2.0 + time * (windSpeed * 2.0 + 0.3), uv.y * 7.0));
   col = mix(col, cloudCol, smoothstep(0.62, 0.92, wisp) * windAmt * 0.22);
 
-  // Sun: a warm glowing disk high in the sky during the clear spell. Drawn after
-  // the clouds and occluded by their cover, so it dims when clouds drift across.
+  // Sun: a warm glowing disk — fixed high in the demo sky, arcing from real
+  // sunrise to real sunset when live. Drawn after the clouds and occluded by
+  // their cover, so it dims when clouds drift across.
   if (sunAmt > 0.001) {
-    let sunPos = vec2<f32>(0.72 * aspect, 0.82);
+    let arc = clamp((day - sr) / max(ss - sr, 0.02), 0.0, 1.0);
+    let livePos = vec2<f32>(mix(0.12, 0.88, arc) * aspect, 0.18 + 0.68 * sin(arc * 3.14159265));
+    let sunPos = mix(vec2<f32>(0.72 * aspect, 0.82), livePos, live);
     let glow = sun_at(sUv, sunPos, time) * sunAmt;
     let occl = 1.0 - clamp(cover, 0.0, 1.0);
     let sunCol = mix(u.colC.xyz, u.colB.xyz, 0.18);
@@ -156,7 +222,7 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 
   // Rain: three slanted depth layers falling fast. Rain is near-vertical when
   // calm; slant grows with wind/gusts. Near layer is bright + sparse, far
-  // layers are fainter + denser for a receding veil.
+  // layers are fainter + denser for a receding veil. Dimmer at night.
   if (rainAmt > 0.001) {
     let slant = 0.05 + windAmt * 0.32 + gust * 0.12;
     let rainCol = mix(u.colB.xyz, u.colC.xyz, 0.45);
@@ -164,16 +230,17 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let r1 = rain_layer(uv * 1.5 + vec2<f32>(0.3, 0.0), time, 220.0, slant, 2.1, 0.06);
     let r2 = rain_layer(uv * 2.3 + vec2<f32>(0.7, 0.0), time, 360.0, slant, 1.7, 0.04);
     let rain = (r0 * 0.55 + r1 * 0.4 + r2 * 0.28) * rainAmt * intensity;
-    col = col + rainCol * rain;
+    col = col + rainCol * rain * mix(0.45, 1.0, lightLvl);
   }
 
   // Snow: three drifting depth layers — near flakes big/soft, far ones tiny.
+  // Night snow shows as a dimmer gray rather than full-bright highlight.
   if (snowAmt > 0.001) {
     let s0 = snow_layer(sUv, time, 18.0, 1.2, 0.28, 0.20);
     let s1 = snow_layer(sUv + vec2<f32>(5.0, 0.0), time, 30.0, 0.85, 0.2, 0.13);
     let s2 = snow_layer(sUv + vec2<f32>(11.0, 0.0), time, 48.0, 0.6, 0.14, 0.08);
     let snow = (s0 + s1 * 0.7 + s2 * 0.5) * snowAmt * intensity;
-    col = mix(col, u.colC.xyz, clamp(snow, 0.0, 1.0));
+    col = mix(col, u.colC.xyz * mix(0.5, 1.0, lightLvl), clamp(snow, 0.0, 1.0));
   }
 
   // Lightning: a per-window coin flip gated by boltAmt. On a strike, a double

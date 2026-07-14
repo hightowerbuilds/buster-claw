@@ -1,6 +1,9 @@
 defmodule BusterClaw.Weather do
   @moduledoc """
-  Current conditions for the home corner widget's Weather tab.
+  Current conditions for the home corner widget's Weather tab, and the real
+  sky behind the homepage weather-shader background (sunrise/sunset as
+  day-fractions, cloud cover, and the location's UTC offset ride along in the
+  conditions map so the shader can track the place's actual time and weather).
 
   Backed by Open-Meteo (https://open-meteo.com) — keyless and free, so it fits
   the app's no-API-keys posture the same way DuckDuckGo backs `web_search`. The
@@ -131,8 +134,8 @@ defmodule BusterClaw.Weather do
       latitude: loc["lat"],
       longitude: loc["lon"],
       current:
-        "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m",
-      daily: "temperature_2m_max,temperature_2m_min",
+        "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,cloud_cover",
+      daily: "temperature_2m_max,temperature_2m_min,sunrise,sunset",
       temperature_unit: "fahrenheit",
       wind_speed_unit: "mph",
       forecast_days: 1,
@@ -155,6 +158,10 @@ defmodule BusterClaw.Weather do
          label: Map.get(@code_labels, code, "—"),
          high_f: round_num(first(daily["temperature_2m_max"])),
          low_f: round_num(first(daily["temperature_2m_min"])),
+         cloud_pct: round_num(current["cloud_cover"]),
+         utc_offset: body["utc_offset_seconds"] || 0,
+         sunrise_frac: day_frac(first(daily["sunrise"])),
+         sunset_frac: day_frac(first(daily["sunset"])),
          fetched_at: DateTime.utc_now(:second)
        }}
     end
@@ -182,6 +189,22 @@ defmodule BusterClaw.Weather do
 
   defp first([head | _rest]), do: head
   defp first(_other), do: nil
+
+  # Open-Meteo returns sunrise/sunset as ISO-local strings ("2026-07-12T05:34",
+  # local to the location via timezone=auto). The shader wants them as a
+  # fraction of the day (0 = midnight, 0.5 = noon).
+  defp day_frac(
+         <<_date::binary-size(10), "T", h::binary-size(2), ":", m::binary-size(2), _::binary>>
+       ) do
+    with {hh, ""} when hh in 0..23 <- Integer.parse(h),
+         {mm, ""} when mm in 0..59 <- Integer.parse(m) do
+      Float.round((hh * 3600 + mm * 60) / 86_400, 4)
+    else
+      _ -> nil
+    end
+  end
+
+  defp day_frac(_other), do: nil
 
   defp round_num(value) when is_number(value), do: round(value)
   defp round_num(_value), do: nil
