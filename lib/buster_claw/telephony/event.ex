@@ -32,6 +32,9 @@ defmodule BusterClaw.Telephony.Event do
     field :twilio_sid, :string
     field :occurred_at, :utc_datetime
     field :heard_at, :utc_datetime
+    # The caller-PIN verdict, carried from the relay row. Only a PIN-verified call
+    # is trusted work; caller ID alone is a claim. See `BusterClaw.Telephony.Drain`.
+    field :verified, :boolean, default: false
     field :metadata, :map, default: %{}
 
     belongs_to :document, BusterClaw.Library.Document
@@ -56,6 +59,7 @@ defmodule BusterClaw.Telephony.Event do
       :twilio_sid,
       :occurred_at,
       :heard_at,
+      :verified,
       :metadata,
       :document_id
     ])

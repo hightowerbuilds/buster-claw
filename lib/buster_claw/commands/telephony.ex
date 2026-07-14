@@ -15,6 +15,7 @@ defmodule BusterClaw.Commands.Telephony do
   """
 
   alias BusterClaw.Telephony
+  alias BusterClaw.Telephony.Pins
   alias BusterClaw.TrustedNumbers
 
   @kinds ~w(voicemail sms call)
@@ -70,6 +71,25 @@ defmodule BusterClaw.Commands.Telephony do
   end
 
   def phone_trusted_remove(_args), do: {:error, :missing_number}
+
+  # Caller PINs: the second factor behind the trusted-numbers list. The plaintext
+  # `pin` is handed straight to `Pins`, which hashes it and never logs or persists
+  # it in the clear — do not touch it here.
+  def phone_pin_set(%{"number" => number, "pin" => pin})
+      when is_binary(number) and is_binary(pin) do
+    with {:ok, e164} <- Pins.set_pin(number, pin), do: {:ok, %{number: e164}}
+  end
+
+  def phone_pin_set(%{"number" => number}) when is_binary(number), do: {:error, :missing_pin}
+  def phone_pin_set(_args), do: {:error, :missing_number}
+
+  def phone_pin_remove(%{"number" => number}) when is_binary(number) do
+    with :ok <- Pins.remove_pin(number), do: {:ok, :removed}
+  end
+
+  def phone_pin_remove(_args), do: {:error, :missing_number}
+
+  def phone_pin_list(_args \\ %{}), do: Pins.list_pins()
 
   defp parse_kind(nil), do: {:ok, nil}
   defp parse_kind(kind) when kind in @kinds, do: {:ok, kind}

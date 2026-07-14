@@ -538,6 +538,9 @@ defmodule BusterClaw.Commands do
   defdelegate phone_trusted_list(args \\ %{}), to: BusterClaw.Commands.Telephony
   defdelegate phone_trusted_add(args), to: BusterClaw.Commands.Telephony
   defdelegate phone_trusted_remove(args), to: BusterClaw.Commands.Telephony
+  defdelegate phone_pin_set(args), to: BusterClaw.Commands.Telephony
+  defdelegate phone_pin_remove(args), to: BusterClaw.Commands.Telephony
+  defdelegate phone_pin_list(args \\ %{}), to: BusterClaw.Commands.Telephony
   # Memory
   defdelegate memory_search(args), to: BusterClaw.Commands.Memory
   # Skills

@@ -29,6 +29,7 @@ import {
   twimlResponse,
   verifyTwilioSignature,
 } from "../_shared/twilio.ts";
+import { hashPin, pinHashEquals } from "../_shared/pin.ts";
 
 const TWILIO_API = "https://api.twilio.com";
 
@@ -55,8 +56,10 @@ Deno.serve(async (req) => {
   }
 
   switch (new URL(req.url).searchParams.get("event")) {
+    case "pin":
+      return await handlePin(params, url);
     case "recording":
-      return await handleRecording(params, accountSid, authToken);
+      return await handleRecording(params, accountSid, authToken, url);
     case "transcription":
       return await handleTranscription(params);
     default:
@@ -74,28 +77,112 @@ function publicUrl(req: Request): string {
 }
 
 function answerCall(selfUrl: string): Response {
-  const greeting = Deno.env.get("GREETING_TEXT") ??
-    "You've reached Buster Claw. Leave a message after the beep.";
   const self = selfUrl.split("?")[0];
-  // maxLength 120: Twilio only transcribes recordings up to two minutes.
+  const greeting = Deno.env.get("GREETING_TEXT") ??
+    "You've reached Buster Claw.";
+  // Everyone is prompted, uniformly — we do not reveal whether a given number
+  // has a PIN configured. A caller with the code punches it; a caller without
+  // one waits out the timeout and falls through to <Record> as a stranger
+  // (recorded, playable, but never verified and so never enqueued as work).
+  //
+  // <Gather> requests `action` only when digits are entered; on timeout it
+  // proceeds to the verbs *after* </Gather>. So the fall-through below IS the
+  // no-PIN path. finishOnKey="#" lets PIN length vary; timeout gives a caller
+  // who is just leaving a message a few seconds to start talking.
   return twimlResponse(`<Response>
-  <Say voice="Polly.Matthew">${escapeXml(greeting)}</Say>
+  <Gather input="dtmf" finishOnKey="#" timeout="6" numDigits="10"
+    action="${self}?event=pin" method="POST">
+    <Say voice="Polly.Matthew">${escapeXml(greeting)} If you have an access code, enter it now, then press pound. Otherwise, stay on the line to leave a message.</Say>
+  </Gather>
+  ${recordVerb(self, false)}
+</Response>`);
+}
+
+// The <Record> verb, shared by the fall-through (unverified) and PIN-pass
+// (verified) paths. The verified flag rides on the recording callback URL, which
+// Twilio signs — so the Mac drain can trust it without a lookup, and a caller
+// cannot forge it. maxLength 120: Twilio only transcribes up to two minutes.
+function recordVerb(self: string, verified: boolean): string {
+  // `&amp;`, NOT `&`. This string is interpolated into an XML attribute value,
+  // where a raw ampersand is a parse error — Twilio rejects the whole document
+  // ("an application error has occurred") and never records. Twilio XML-decodes
+  // the attribute before calling the URL, so the actual request is still
+  // `?event=recording&verified=1`. This only bites the verified path (the empty
+  // flag has no `&`), which is why the PIN-less function never hit it. Do not
+  // "simplify" this back to a bare `&`.
+  const flag = verified ? "&amp;verified=1" : "";
+  return `<Say voice="Polly.Matthew">Leave a message after the beep.</Say>
   <Record maxLength="120" playBeep="true" transcribe="true"
     transcribeCallback="${self}?event=transcription"
-    recordingStatusCallback="${self}?event=recording"
+    recordingStatusCallback="${self}?event=recording${flag}"
     recordingStatusCallbackEvent="completed"/>
-  <Say voice="Polly.Matthew">No message received. Goodbye.</Say>
+  <Say voice="Polly.Matthew">No message received. Goodbye.</Say>`;
+}
+
+// The PIN gate. Digits were entered; decide whether this call is verified, then
+// record either way (a wrong code still gets to leave a message — as a stranger).
+async function handlePin(
+  params: Record<string, string>,
+  selfUrl: string,
+): Promise<Response> {
+  const self = selfUrl.split("?")[0];
+  const from = params.From ?? "";
+  const digits = params.Digits ?? "";
+
+  const verified = await verifyPin(from, digits);
+  return twimlResponse(`<Response>
+  ${recordVerb(self, verified)}
 </Response>`);
+}
+
+// Look up the PIN configured for the *claimed* calling number and compare. A
+// match clears the failed-attempt counter; a miss bumps it (brute-force
+// telemetry — a spike is visible in the table without trawling logs). Any error
+// fails closed to unverified: the gate must never grant trust on a hiccup.
+async function verifyPin(from: string, digits: string): Promise<boolean> {
+  if (!from || !digits) return false;
+
+  try {
+    const supabase = serviceClient();
+    const { data, error } = await supabase
+      .from("phone_pins")
+      .select("pin_hash, salt, failed_attempts")
+      .eq("number", from)
+      .maybeSingle();
+
+    if (error || !data) return false;
+
+    const candidate = await hashPin(data.salt, digits);
+    const ok = pinHashEquals(candidate, data.pin_hash);
+
+    await supabase
+      .from("phone_pins")
+      .update(
+        ok
+          ? { failed_attempts: 0, last_verified_at: new Date().toISOString() }
+          : { failed_attempts: (data.failed_attempts ?? 0) + 1, last_attempt_at: new Date().toISOString() },
+      )
+      .eq("number", from);
+
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 async function handleRecording(
   params: Record<string, string>,
   accountSid: string,
   authToken: string,
+  selfUrl: string,
 ): Promise<Response> {
   if (params.RecordingStatus && params.RecordingStatus !== "completed") {
     return emptyTwiml();
   }
+  // The PIN verdict, carried on the (Twilio-signed) callback URL. Signature
+  // verification already passed for this request, so the query string is
+  // authentic — a caller cannot append &verified=1 themselves.
+  const verified = new URL(selfUrl).searchParams.get("verified") === "1";
   const auth = twilioBasicAuth(accountSid, authToken);
 
   // Recording callbacks don't carry From/To — fetch the parent call.
@@ -139,6 +226,7 @@ async function handleRecording(
       duration_seconds: parseInt(params.RecordingDuration ?? "0", 10),
       recording_path: path,
       twilio_sid: params.RecordingSid,
+      verified,
     }, { onConflict: "twilio_sid" });
   if (insertError) {
     return new Response(`insert failed: ${insertError.message}`, { status: 502 });

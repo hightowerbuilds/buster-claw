@@ -35,7 +35,14 @@ defmodule BusterClaw.Sentinel do
   alias Phoenix.PubSub
 
   @topic "security_alerts"
-  @sensitive_fragments ~w(token secret password api_key apikey authorization auth credential private_key client_secret refresh_token access_token cookie)
+  # `pin` is here because `phone_pin_set` is a :mutate command, so its args
+  # (including the plaintext caller PIN) are auto-captured by the command-invoke
+  # audit. The whole point of BusterPhone PINs is that the plaintext never
+  # persists; without this fragment it would land in the security_events table in
+  # the clear. Substring-matched like the rest — in this codebase nothing else
+  # keys on "pin", and over-redacting a hypothetical future "shipping"-type key is
+  # harmless, whereas missing the PIN is not.
+  @sensitive_fragments ~w(token secret password api_key apikey authorization auth credential private_key client_secret refresh_token access_token cookie pin)
 
   # Value-shape redaction (in addition to key-name redaction): a secret carried
   # under a benign key (an OAuth `code`, a token in a `url` query string, a card

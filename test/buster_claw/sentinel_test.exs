@@ -24,6 +24,22 @@ defmodule BusterClaw.SentinelTest do
       assert id == event.id
     end
 
+    test "redacts a caller PIN — phone_pin_set args must never persist in the clear" do
+      # phone_pin_set is a :mutate command, so the command-invoke audit captures
+      # its args. The PIN's whole security model is that the plaintext never
+      # persists; if this regresses, the audit log becomes the leak.
+      assert {:ok, event} =
+               Sentinel.observe(
+                 :command_invoke,
+                 "phone_pin_set (ok)",
+                 %{command: "phone_pin_set", args: %{"number" => "+15033412655", "pin" => "4815"}}
+               )
+
+      assert event.metadata["args"]["pin"] == "[redacted]"
+      # The number is not a secret and should survive for auditability.
+      assert event.metadata["args"]["number"] == "+15033412655"
+    end
+
     test "classifies command_invoke by tier" do
       assert {:ok, %{severity: "warning"}} =
                Sentinel.observe(:command_invoke, "x", %{tier: :restricted})

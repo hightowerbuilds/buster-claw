@@ -23,6 +23,10 @@ defmodule BusterClaw.Telephony.Drain do
     the batch still drains. A recording that is genuinely gone (storage 404)
     drains without audio rather than blocking forever; transient storage
     failures leave the row queued for retry.
+  - **Two-factor enqueue.** A drained voicemail only becomes agent work when the
+    caller's number is trusted AND the call was PIN-verified (`verified` on the
+    relay row). Either factor alone is a claim, not a caller — so both are
+    required; a trusted number that skipped the PIN is recorded but never queued.
 
   Modeled on `BusterClaw.WalletPoller`: self-rescheduling tick, crash-safe tick
   body, `tick_now/1`, and injected `req_options` for tests.
@@ -167,6 +171,10 @@ defmodule BusterClaw.Telephony.Drain do
            duration_seconds: row["duration_seconds"],
            transcript: row["transcript"],
            twilio_sid: row["twilio_sid"],
+           # The caller-PIN verdict from the edge function. Absent/nil means the
+           # gate never ran (older function build, or a path that skipped it) —
+           # default false, NEVER true, so an ungated row is untrusted work.
+           verified: row["verified"] == true,
            recording_path: recording_path,
            occurred_at: occurred_at,
            metadata: Map.merge(%{"relay_id" => row["id"]}, flags)
@@ -188,12 +196,20 @@ defmodule BusterClaw.Telephony.Drain do
     end
   end
 
-  # A trusted caller's voicemail also lands on the Dispatch queue so the on-duty
-  # agent picks it up. A stranger's voicemail is recorded and playable in the
-  # Message Machine but never enqueued — see `BusterClaw.TrustedNumbers` for why
-  # (short version: an answering machine records strangers by design, and the
-  # provenance gate is per-run, so one robocall in the open pool would downgrade
-  # the whole shift's token).
+  # A voicemail becomes agent work only when BOTH gates open: the caller's number
+  # is trusted AND the call was PIN-verified. Two independent factors, because
+  # each alone is a claim, not a caller — caller ID is trivially spoofable, and a
+  # PIN proves knowledge but not that this is a number we've chosen to trust. A
+  # stranger's voicemail, or a trusted number that never punched the PIN, is
+  # recorded and playable in the Message Machine but never enqueued — see
+  # `BusterClaw.TrustedNumbers` for why an untrusted item on the queue is
+  # dangerous (short version: an answering machine records strangers by design,
+  # and the provenance gate is per-run, so one robocall in the open pool would
+  # downgrade the whole shift's token).
+  #
+  # A trusted number that called WITHOUT verifying is logged: it's the operator
+  # (or a spoofer of the operator) who didn't punch their PIN, and either way the
+  # near-miss is worth seeing rather than swallowing silently.
   #
   # Best-effort, exactly like the Gmail path: a dedupe conflict on re-drain, or
   # any error, is swallowed so it can never fail the drain and strand a voicemail.
@@ -203,19 +219,28 @@ defmodule BusterClaw.Telephony.Drain do
         :skip
 
       number ->
-        _ =
-          Dispatch.enqueue_voicemail(event, %{
-            trusted: true,
-            trusted_sender: number,
-            recommended_role_key: "voicemail-triage",
-            request_summary: request_summary(event),
-            metadata: %{
-              "telephony_event_id" => event.id,
-              "recording_path" => event.recording_path
-            }
-          })
+        if event.verified do
+          _ =
+            Dispatch.enqueue_voicemail(event, %{
+              trusted: true,
+              trusted_sender: number,
+              recommended_role_key: "voicemail-triage",
+              request_summary: request_summary(event),
+              metadata: %{
+                "telephony_event_id" => event.id,
+                "recording_path" => event.recording_path
+              }
+            })
 
-        :ok
+          :ok
+        else
+          Logger.warning(
+            "Telephony drain: trusted number #{number} called without PIN verification — " <>
+              "recorded but NOT enqueued (voicemail #{event.twilio_sid})"
+          )
+
+          :skip
+        end
     end
   end
 

@@ -95,6 +95,38 @@ repo even though it runs on Supabase.
    Voice needs no registration, so 10DLC is **not** on the Phase 1 critical
    path; don't let the banner on the number page bait you into it.
 
+## 2b. Caller PINs (the credential caller ID is not)
+
+Caller ID is spoofable — anyone can present your number and leave a voicemail
+that would otherwise be auto-enqueued as *your* trusted instruction. So trust is
+two-factor: a voicemail becomes agent work only when the caller's number is on
+`memory/trusted-phone-numbers.md` **and** the caller punched the correct PIN for
+that number on the keypad before the beep.
+
+**This is a hard cutover, not an add-on.** The moment the PIN-gated `voice`
+function is deployed, a trusted number with **no PIN set stops being enqueued** —
+its voicemail is still recorded and playable, just never queued. So setting a PIN
+for your own number is a required go-live step, not optional. (The drain logs a
+`warning` when a trusted number calls unverified, so a silent "why isn't my
+voicemail becoming work" has a breadcrumb.)
+
+Set one from the in-app terminal (or any `./buster-claw` shell):
+
+```sh
+./buster-claw run phone_pin_set --json '{"number":"+15551234567","pin":"481500"}'
+./buster-claw run phone_pin_list          # numbers + failed-attempt counts; never the PINs
+./buster-claw run phone_pin_remove --json '{"number":"+15551234567"}'
+```
+
+- PIN is **4–10 digits**. Use 6+ — a 4-digit PIN is 10,000 combinations, and
+  while each guess costs a phone call (~30 s), don't make it cheap.
+- The plaintext PIN is hashed on this machine before it leaves; only
+  `sha256(salt‖pin)` + salt reach Supabase. It is never logged and is redacted
+  out of the Sentinel audit. It exists on your Mac for the length of one command
+  and on the caller's keypad — nowhere else.
+- The PIN and the trusted-numbers list are **independent kill switches**: remove
+  either and the caller stops driving the queue.
+
 ## 3. Exit tests
 
 > **Passed 2026-07-12** on project `tzptdzmwypdmmnmbruke`: greeting + beep, a

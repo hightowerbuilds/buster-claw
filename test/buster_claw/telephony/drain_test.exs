@@ -39,6 +39,9 @@ defmodule BusterClaw.Telephony.DrainTest do
         "transcript" => "Hey, call me back.",
         "twilio_sid" => "RE123",
         "synced" => false,
+        # Default the fixture to a fully-authorized call (PIN-verified); the gate
+        # tests below override `verified` to exercise the unverified path.
+        "verified" => true,
         "created_at" => "2026-07-12T10:00:00+00:00"
       },
       overrides
@@ -234,6 +237,47 @@ defmodule BusterClaw.Telephony.DrainTest do
       assert :ok = Drain.drain(state())
 
       assert [_only_one] = Dispatch.list_open()
+    end
+
+    test "a trusted caller who did NOT PIN-verify is recorded but NOT queued",
+         %{tmp_dir: tmp_dir} do
+      trust(tmp_dir, ["+15035551234"])
+      stub_relay([relay_row(%{"verified" => false})])
+
+      assert :ok = Drain.drain(state())
+
+      # Recorded and playable...
+      assert [event] = Telephony.list_events()
+      assert event.from_number == "+15035551234"
+      refute event.verified
+      # ...but caller ID alone is a claim: without the PIN it never reaches the queue.
+      assert Dispatch.list_open() == []
+    end
+
+    test "a trusted caller who PIN-verified IS queued", %{tmp_dir: tmp_dir} do
+      trust(tmp_dir, ["+15035551234"])
+      stub_relay([relay_row(%{"verified" => true})])
+
+      assert :ok = Drain.drain(state())
+
+      assert [item] = Dispatch.list_open()
+      assert item.sender == "+15035551234"
+      assert item.trusted
+    end
+
+    test "an untrusted caller is NOT queued even when PIN-verified", %{tmp_dir: tmp_dir} do
+      # Both factors are required: a valid PIN for a number we never chose to trust
+      # still buys nothing. (A verified stranger shouldn't happen — the edge
+      # function only verifies against a set PIN — but the gate is belt-and-braces.)
+      trust(tmp_dir, ["+15559999999"])
+      stub_relay([relay_row(%{"from_number" => "+15035551234", "verified" => true})])
+
+      assert :ok = Drain.drain(state())
+
+      assert [event] = Telephony.list_events()
+      assert event.from_number == "+15035551234"
+      assert event.verified
+      assert Dispatch.list_open() == []
     end
   end
 end

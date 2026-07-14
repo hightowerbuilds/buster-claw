@@ -79,6 +79,44 @@ defmodule BusterClaw.Commands.Catalog.Telephony do
         description:
           "Stop trusting a caller. Their voicemail is still recorded, but never queued.",
         args: %{"number" => %{type: :string, required: true}}
+      },
+      # Caller-PIN management is the second factor behind the trusted-numbers list:
+      # a voicemail is only agent work when the number is trusted AND the call was
+      # PIN-verified. Setting a PIN decides who can satisfy that gate, so it is
+      # exactly as consequential as trusting a number — :restricted and gated, so
+      # an untrusted-provenance run can never mint itself a credential.
+      %{
+        name: "phone_pin_set",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Set a caller's PIN (4–10 digits). With a PIN, a trusted caller who punches it becomes agent work. Gated — this mints a credential.",
+        args: %{
+          "number" => %{type: :string, required: true},
+          "pin" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "phone_pin_remove",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Remove a caller's PIN. Their calls can no longer PIN-verify, so their voicemail stops reaching the queue.",
+        args: %{"number" => %{type: :string, required: true}}
+      },
+      # :restricted, not :safe — like phone_trusted_list, this is policy data. It
+      # never returns pin_hash or salt, but the set of numbers that HAVE a PIN, and
+      # their failed-attempt counts, is exactly the recon an attacker wants; a
+      # voicemail-triage run has no need for it.
+      %{
+        name: "phone_pin_list",
+        type: :read,
+        tier: :restricted,
+        description:
+          "Configured caller PINs as policy telemetry: number, failed attempts, last verified. Never returns the hash.",
+        args: %{}
       }
     ]
 end
