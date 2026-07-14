@@ -1,8 +1,9 @@
 defmodule BusterClawWeb.FinanceApiController do
   @moduledoc """
-  Loopback JSON surface for the `pages/financial-informant.html` page (served in
+  Loopback JSON surface for finance pages in `<workspace>/pages/` (served in
   the in-app browser's sandboxed content webview, which can't hold the API
-  token). Read-only, safe-tier finance data only (SEC EDGAR + Finnhub via
+  token). Originally built for the retired bundled financial-informant.html;
+  kept for agent-built pages. Read-only, safe-tier finance data only (SEC EDGAR + Finnhub via
   `BusterClaw.Finance`); no auth, loopback-only — the same trust posture as the
   `/browser/*` and `/ws/*` raw scopes.
 

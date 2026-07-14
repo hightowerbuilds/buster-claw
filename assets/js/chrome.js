@@ -758,6 +758,7 @@ function bookmark() {
 
 document.getElementById("form").addEventListener("submit", function (e) { e.preventDefault(); go() })
 document.getElementById("home").addEventListener("click", function () { inv("browser_navigate", {tabId: activeId, url: homeUrl}) })
+document.getElementById("pages").addEventListener("click", function () { inv("browser_navigate", {tabId: activeId, url: origin + "/browser/pages"}) })
 document.getElementById("back").addEventListener("click", function () { inv("browser_back", {tabId: activeId}) })
 document.getElementById("fwd").addEventListener("click", function () { inv("browser_forward", {tabId: activeId}) })
 document.getElementById("reload").addEventListener("click", function () { inv("browser_reload", {tabId: activeId}) })

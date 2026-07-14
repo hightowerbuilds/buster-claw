@@ -233,6 +233,7 @@ defmodule BusterClawWeb.BrowserChromeController do
       </div>
       <div id="toolbar">
         <button class="nav" id="home" title="Home" aria-label="Home">&#8962;</button>
+        <button class="bm" id="pages" title="Pages — HTML the agent built for you">Pages</button>
         <button class="nav" id="back" title="Back" aria-label="Back">&#9664;</button>
         <button class="nav" id="fwd" title="Forward" aria-label="Forward">&#9654;</button>
         <button class="nav" id="reload" title="Reload" aria-label="Reload">&#8635;</button>

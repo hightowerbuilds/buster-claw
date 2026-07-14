@@ -80,6 +80,7 @@ defmodule BusterClawWeb.Router do
   scope "/browser", BusterClawWeb do
     get "/chrome", BrowserChromeController, :show
     get "/home", BrowserHomeController, :show
+    get "/pages", BrowserPagesController, :show
     get "/workspace", BrowserWorkspaceController, :show
     get "/history", BrowserHistoryPageController, :show
     post "/history", BrowserHistoryController, :create
@@ -96,8 +97,8 @@ defmodule BusterClawWeb.Router do
     post "/command", BrowserCommandController, :create
   end
 
-  # Loopback JSON for the in-app browser's financial-informant.html page (its
-  # sandboxed content webview can't carry the API token). Read-only, safe-tier
+  # Loopback JSON for finance pages in the in-app browser (its sandboxed
+  # content webview can't carry the API token). Read-only, safe-tier
   # finance reads only; no auth — same posture as the /browser and /ws scopes.
   scope "/finance/api", BusterClawWeb do
     pipe_through :api
