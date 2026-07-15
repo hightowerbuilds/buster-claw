@@ -350,21 +350,16 @@ exemption. Note `mix precommit` runs `format` (not `--check-formatted`), so it
 
 ---
 
-### 6. `BusterClaw.CLI.main/1` is a cyclomatic-23 dispatcher
+### 6. `BusterClaw.CLI.main/1` is a cyclomatic-23 dispatcher  ✅ DONE 07-14
 
-**Problem:** `lib/buster_claw/cli.ex:27` hand-rolls arg parsing and command
-dispatch in one function. Credo's bar is 15 (raised from the default 9 on 07-12
-because dispatch-heavy functions blow through 9 by *shape*); `main/1` is at **23**
-and is the only site in the codebase that's real debt rather than a lookup table.
-It carries an explicit `credo:disable-for-next-line` naming this item, so the
-exemption stays visible instead of quietly passing.
+**Was:** `lib/buster_claw/cli.ex` hand-rolled arg parsing and command dispatch
+in one complexity-23 function carrying an explicit `credo:disable-for-next-line`.
 
-**Desired:** decompose into per-command clauses / a dispatch map so each command's
-arg handling is testable on its own, and delete the disable comment.
-
-**Not urgent:** it works, it's covered by tests, and it is the CLI's outermost
-layer — the blast radius of a bad refactor is every command. Do it deliberately,
-not as a drive-by.
+**Shipped:** the 23-branch `case` is now a multi-clause `route/2` — one head
+per command shape, matched top-down in the same order, so behavior is
+bit-identical and each clause carries its own (trivial) complexity budget. The
+disable comment is deleted; credo --strict passes with no exemption. Named
+`route` rather than `dispatch` to stay out of the Dispatch-queue namespace.
 
 *(For contrast, `google/gmail.ex`'s two >15 functions are NOT debt — they're flat
 extension→MIME and key→attribute lookup tables where cyclomatic complexity is

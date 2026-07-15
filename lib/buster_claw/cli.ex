@@ -24,39 +24,44 @@ defmodule BusterClaw.CLI do
   @mailman_receive_timeout_ms 300_000
 
   @doc false
-  # Real debt, not a metric artifact: this is a hand-rolled arg dispatcher at
-  # complexity 23 (bar is 15). Decomposing it is a Shortlist item — see
-  # daily-growth/roadmaps/Shortlist.md. Left visible on purpose.
-  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   def main(argv) do
     ensure_apps()
     {opts, args, _} = OptionParser.parse(argv, strict: switches(), aliases: aliases())
-
-    case args do
-      ["commands"] -> commands(opts)
-      ["help"] -> usage()
-      ["--help"] -> usage()
-      ["terminal", "open"] -> terminal_open(opts)
-      ["terminal", "open", role] -> terminal_open(opts, role)
-      ["on-duty"] -> on_duty(opts)
-      ["off-duty"] -> off_duty(opts)
-      ["dispatch", "add" | rest] -> dispatch_add_cmd(rest, opts)
-      ["dispatch", "list"] -> dispatch_list_cmd(opts)
-      ["dispatch", "show", id] -> dispatch_show_cmd(id, opts)
-      ["dispatch", "claim"] -> dispatch_claim_cmd(opts)
-      ["dispatch", "done", id] -> dispatch_finish_cmd("dispatch_done", id, opts)
-      ["dispatch", "block", id] -> dispatch_finish_cmd("dispatch_block", id, opts)
-      ["dispatch", "reply", id] -> dispatch_reply_cmd(id, opts)
-      ["dispatch", "strategy", id, strategy] -> dispatch_strategy_cmd(id, strategy, opts)
-      ["jobs", "list"] -> dispatch_request("job_list", %{}, opts, &format_job_list/1)
-      ["jobs", "show", key] -> dispatch_request("job_show", %{"key" => key}, opts, &format_job/1)
-      ["run", name] -> run(name, opts)
-      [noun, verb] -> run("#{noun}_#{verb}", opts)
-      [name] -> run(name, opts)
-      [] -> usage()
-      _ -> die("too many positional arguments — use `./buster-claw help`", 2)
-    end
+    route(args, opts)
   end
+
+  # One clause per command shape, matched top-down: specific verbs first, the
+  # `<noun> <verb>` / `<name>` shorthands as the catch-alls. Named `route` (not
+  # `dispatch`) to stay out of the Dispatch-queue domain's namespace below.
+  defp route(["commands"], opts), do: commands(opts)
+  defp route(["help"], _opts), do: usage()
+  defp route(["--help"], _opts), do: usage()
+  defp route(["terminal", "open"], opts), do: terminal_open(opts)
+  defp route(["terminal", "open", role], opts), do: terminal_open(opts, role)
+  defp route(["on-duty"], opts), do: on_duty(opts)
+  defp route(["off-duty"], opts), do: off_duty(opts)
+  defp route(["dispatch", "add" | rest], opts), do: dispatch_add_cmd(rest, opts)
+  defp route(["dispatch", "list"], opts), do: dispatch_list_cmd(opts)
+  defp route(["dispatch", "show", id], opts), do: dispatch_show_cmd(id, opts)
+  defp route(["dispatch", "claim"], opts), do: dispatch_claim_cmd(opts)
+  defp route(["dispatch", "done", id], opts), do: dispatch_finish_cmd("dispatch_done", id, opts)
+  defp route(["dispatch", "block", id], opts), do: dispatch_finish_cmd("dispatch_block", id, opts)
+  defp route(["dispatch", "reply", id], opts), do: dispatch_reply_cmd(id, opts)
+
+  defp route(["dispatch", "strategy", id, strategy], opts),
+    do: dispatch_strategy_cmd(id, strategy, opts)
+
+  defp route(["jobs", "list"], opts),
+    do: dispatch_request("job_list", %{}, opts, &format_job_list/1)
+
+  defp route(["jobs", "show", key], opts),
+    do: dispatch_request("job_show", %{"key" => key}, opts, &format_job/1)
+
+  defp route(["run", name], opts), do: run(name, opts)
+  defp route([noun, verb], opts), do: run("#{noun}_#{verb}", opts)
+  defp route([name], opts), do: run(name, opts)
+  defp route([], _opts), do: usage()
+  defp route(_args, _opts), do: die("too many positional arguments — use `./buster-claw help`", 2)
 
   defp switches do
     [
