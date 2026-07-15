@@ -112,6 +112,46 @@ work, which is a real roadmap item and not a leftover.
 
 ---
 
+### Walk the merged browser/tab features in the desktop app, once
+
+**What.** The ten browser/tab features merged 07-02 (Shortlist PRs #1–#9, items
+10–12) were verified with **compile + tests only** — nobody has clicked through
+them in the running desktop app. The checklist, moved here when the Shortlist
+was retired (07-14):
+
+- **Tab UX:** with a single tab open, Cmd-W closes the tab but the app stays
+  open on a fresh home tab (does NOT quit); Cmd-Q still quits. Right-click a
+  joined tab → Rename → edit inline → label survives a reload.
+- **History → SQLite:** browse, revisit a site; homepage "Recent" dedupes for
+  display, visit counts reflect revisits, search returns matches.
+- **Chrome polish:** loading indicator (orange spinner + progress bar) appears
+  during navigation and clears on finish (and within ~20s on a stuck load);
+  tabs show real page titles and favicons.
+- **Bookmark folders:** add into a folder → grouped render on the homepage;
+  export → import round-trips with no duplicates; an old flat bookmark file
+  still loads at root.
+- **Agent co-presence:** `browser_current` returns the active tab's URL+title;
+  `browser_navigate` drives the live tab; `browser_open_tab` opens one (strip
+  stays in sync); all three are `:restricted` and land on the Sentinel feed.
+- **Cmd-1…9** switches tabs by position (Cmd-9 = last tab).
+- **Busy-terminal close confirm:** closing a terminal tab with a running
+  foreground process prompts; an idle shell closes silently.
+- **/browse full width:** the solo browser page fills the window like /split.
+
+**Why it matters.** These are shipped features on main. Until walked, "shipped"
+means "compiles."
+
+**Why deferred.** It needs operator hands on the actual app — the native
+WKWebViews, PTYs, and macOS keyboard shortcuts can't be driven by the test
+suite or an agent.
+
+**What makes it expensive later.** The walk is ~15 minutes today with warm
+context and a known fix-forward pattern (same as Cmd-W #1→#8). Skipped, the
+first discovery of a break becomes a beta user's bug report months after the
+merge, with cold context and the distribution clock running.
+
+---
+
 ## Rules of engagement
 
 - An item leaves this file by being **done** or by being **promoted** to a real

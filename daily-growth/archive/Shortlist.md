@@ -1,5 +1,15 @@
 # Shortlist
 
+> ## ✅ RETIRED — 2026-07-14. Every item is closed; the list is done.
+>
+> Final tally: items 1–7 and 10–12 merged 07-02; #9 (swarm smoke test) cut by
+> operator decision; #8 (tab LRU) turned out to have shipped 07-04 (`acac24f`)
+> with the entry never checked off; #13 (SSRF DNS-rebinding pin) and #6
+> (`CLI.main/1` refactor) done 07-14. The one open thread — the manual desktop
+> walk of the 07-02 merges — moved to `LEFTOVERS.md`, which is where deferred
+> concrete work lives now. New small items go straight to LEFTOVERS.md; don't
+> resurrect this file.
+
 A running list of small, high-priority fixes and features to pick up.
 
 ## Items
