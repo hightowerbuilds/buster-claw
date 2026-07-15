@@ -467,12 +467,15 @@ body { background-color: var(--color-base-100); }
   height: auto;
   max-height: 220px;
 }
+/* Fill the modal: explicit box + the SVG's own preserveAspectRatio (meet)
+   letterboxes the drawing inside it — always whole, as large as fits. width/
+   height:auto sized viewBox-only SVGs at the 300×150 replaced-element default
+   (tiny), and cropped ones that had w/h attrs but no viewBox (see
+   SvgViewer.normalize/1, which now injects the missing viewBox). */
 .ic-svg-modal svg {
   display: block;
-  width: auto;
-  height: auto;
-  max-width: 90vw;
-  max-height: 85vh;
+  width: min(86vw, 72rem);
+  height: 80vh;
 }
 
 /* Solid bordered panel with a hard offset shadow — the core surface. */

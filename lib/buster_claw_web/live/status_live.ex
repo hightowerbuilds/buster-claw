@@ -548,7 +548,9 @@ defmodule BusterClawWeb.StatusLive do
     new =
       svgs
       |> Enum.with_index(base + 1)
-      |> Enum.map(fn {svg, i} -> %{id: i, svg: SvgViewer.sanitize(svg)} end)
+      |> Enum.map(fn {svg, i} ->
+        %{id: i, svg: svg |> SvgViewer.sanitize() |> SvgViewer.normalize()}
+      end)
 
     socket
     |> assign(:svg_seq, base + length(svgs))
@@ -589,7 +591,10 @@ defmodule BusterClawWeb.StatusLive do
         case history_role(row.role) do
           :assistant ->
             {clean, block_svgs} = SvgViewer.extract(row.content)
-            svgs = svgs ++ Enum.map(block_svgs, &SvgViewer.sanitize/1)
+
+            svgs =
+              svgs ++ Enum.map(block_svgs, &(&1 |> SvgViewer.sanitize() |> SvgViewer.normalize()))
+
             msgs = if clean == "", do: msgs, else: msgs ++ [%{role: :assistant, text: clean}]
             {msgs, svgs}
 

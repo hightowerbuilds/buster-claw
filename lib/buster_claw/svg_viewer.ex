@@ -81,6 +81,55 @@ defmodule BusterClaw.SvgViewer do
   end
 
   @doc """
+  Make an SVG scalable before it is rendered: if the root `<svg>` tag has no
+  `viewBox` but carries numeric `width`/`height` attributes, inject
+  `viewBox="0 0 W H"`.
+
+  Without a viewBox there is no user-space→viewport mapping, so the CSS size
+  caps on the viewer card and the full-screen modal don't *scale* the drawing —
+  they **crop** it to the top-left corner ("doesn't show the full image"). The
+  guide below asks the agent for a viewBox, but a drawing that arrives without
+  one should still display whole. SVGs with a viewBox, or without inferable
+  numeric dimensions (`%`, `em`, none), pass through untouched.
+  """
+  @spec normalize(String.t()) :: String.t()
+  def normalize(svg) when is_binary(svg) do
+    # Only the first (root) <svg …> tag — nested <svg> elements are content.
+    Regex.replace(~r/<svg\b[^>]*>/i, svg, &normalize_root_tag/1, global: false)
+  end
+
+  defp normalize_root_tag(tag) do
+    with false <- Regex.match?(~r/\bviewBox\s*=/i, tag),
+         {:ok, w} <- dimension(tag, "width"),
+         {:ok, h} <- dimension(tag, "height") do
+      Regex.replace(~r/^<svg\b/i, tag, ~s(\\0 viewBox="0 0 #{w} #{h}"), global: false)
+    else
+      _ -> tag
+    end
+  end
+
+  # A positive, unitless-or-px numeric attribute value. Percentages and other
+  # units deliberately fail the match — a viewBox can't be inferred from them.
+  # The lookbehind keeps `width` from matching inside `stroke-width`.
+  defp dimension(tag, name) do
+    case Regex.run(
+           ~r/(?<![-\w])#{name}\s*=\s*(?:"\s*([0-9.]+)(?:px)?\s*"|'\s*([0-9.]+)(?:px)?\s*'|([0-9.]+)(?:px)?(?=[\s>\/]))/i,
+           tag
+         ) do
+      nil ->
+        :error
+
+      captures ->
+        raw = captures |> Enum.drop(1) |> Enum.find(&(&1 not in [nil, ""]))
+
+        case Float.parse(raw) do
+          {value, ""} when value > 0 -> {:ok, raw}
+          _ -> :error
+        end
+    end
+  end
+
+  @doc """
   The system-prompt addendum teaching the agent to draw via ```` ```svg ```` blocks
   (appended to the homepage chat's Claude — see `Agent.Chat` `:append_system_prompt`).
   """

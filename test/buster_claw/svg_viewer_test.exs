@@ -78,4 +78,52 @@ defmodule BusterClaw.SvgViewerTest do
       assert SvgViewer.sanitize(~s(<use href=#grad/>)) =~ "href=#grad"
     end
   end
+
+  describe "normalize/1" do
+    test "injects a viewBox from numeric width/height (the crop fix)" do
+      assert SvgViewer.normalize(~s(<svg width="800" height="600"><rect/></svg>)) =~
+               ~s(viewBox="0 0 800 600")
+    end
+
+    test "handles px units, single quotes, unquoted values, and decimals" do
+      assert SvgViewer.normalize(~s(<svg width="800px" height="600px"/>)) =~
+               ~s(viewBox="0 0 800 600")
+
+      assert SvgViewer.normalize(~s(<svg width='320' height='240'/>)) =~
+               ~s(viewBox="0 0 320 240")
+
+      assert SvgViewer.normalize(~s(<svg width=640 height=480></svg>)) =~
+               ~s(viewBox="0 0 640 480")
+
+      assert SvgViewer.normalize(~s(<svg width="12.5" height="7.5"/>)) =~
+               ~s(viewBox="0 0 12.5 7.5")
+    end
+
+    test "an existing viewBox is left alone" do
+      svg = ~s(<svg viewBox="0 0 100 50" width="800" height="600"><rect/></svg>)
+      assert SvgViewer.normalize(svg) == svg
+    end
+
+    test "non-numeric or missing dimensions pass through untouched" do
+      for svg <- [
+            ~s(<svg width="100%" height="100%"/>),
+            ~s(<svg width="10em" height="4em"/>),
+            ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>),
+            ~s(<svg width="800"/>),
+            ~s(<svg width="0" height="600"/>)
+          ] do
+        assert SvgViewer.normalize(svg) == svg
+      end
+    end
+
+    test "stroke-width does not masquerade as width" do
+      svg = ~s(<svg stroke-width="2" height="600"><rect/></svg>)
+      assert SvgViewer.normalize(svg) == svg
+    end
+
+    test "only the root tag is touched, not nested <svg> elements" do
+      svg = ~s(<svg viewBox="0 0 10 10"><svg width="5" height="5"/></svg>)
+      assert SvgViewer.normalize(svg) == svg
+    end
+  end
 end
