@@ -14,6 +14,10 @@ import topbar from "../vendor/topbar"
 import {Hooks} from "./hooks/index.js"
 // Page-level glue not tied to any single hook (documents sidebar, copy buttons).
 import "./lib/globals.js"
+// Home/End caret handling — WKWebView would otherwise insert a tofu glyph.
+import {installCaretKeys} from "./lib/caret_keys.js"
+
+installCaretKeys()
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

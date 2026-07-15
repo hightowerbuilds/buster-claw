@@ -9,6 +9,11 @@
 // browser surface this chrome drives so side-by-side browsers stay independent.
 
 import {resolve as resolveUrl, display as displayUrl, deriveLabel, faviconFor} from "./lib/browser_url.js"
+// Home/End caret handling for the URL bar and find input — WKWebView would
+// otherwise insert a tofu glyph instead of moving the caret.
+import {installCaretKeys} from "./lib/caret_keys.js"
+
+installCaretKeys()
 
 const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke
 const origin = window.location.origin
