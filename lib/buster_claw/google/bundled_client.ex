@@ -10,7 +10,7 @@ defmodule BusterClaw.Google.BundledClient do
      lazily, cached in `:persistent_term`, and refreshed in the background once
      the TTL passes. `get/0` never blocks on the network: until a fetch lands
      (or whenever one fails) it falls through to the compiled config, so a dead
-     buster.mom can never break connecting.
+     busterclaw.lol can never break connecting.
   2. **Compiled config** — the `:google_bundled_client` app env (map with
      `client_id`/`client_secret`).
   3. `nil` — bundled connect unavailable; the UI then offers only the

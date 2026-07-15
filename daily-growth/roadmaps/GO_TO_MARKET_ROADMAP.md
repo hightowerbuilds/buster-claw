@@ -17,7 +17,7 @@ which solved *free public download*. This adds the *business* layer on top.
 | Who pays for Claude | **BYO** — buyer brings their own Claude Code subscription/API key; we never resell tokens |
 | Target buyer | **Both, dev-first** — technical users now, prosumers later |
 | Future paywall line | ⚠️ **UNRESOLVED — this decision has come undone.** Was "Browserbase + GWS/on-duty". Browserbase was **cut 07-12**, and on-duty turns out to be **unpaywallable by construction** (it touches none of our infrastructure). That leaves GWS alone, which is the wrong thing to sell a dev-first buyer. **See Part V.0/V.1 — pick the money leg before pricing anything.** Everything local-only stays free, and on-duty is now permanently in that bucket |
-| Domain | **https://buster.mom** |
+| Domain | **https://busterclaw.lol** (changed 07-14; was busterclaw.lol) |
 | Source model | **Open core** — repo stays public, Channel A (clone-and-build) intact; paid tier enforced server-side |
 | Apple Developer | **Enroll as individual now** ($99/yr) — don't wait for an entity |
 | Payments (when they arrive) | **Merchant of record** (Paddle or Lemon Squeezy) — they are the seller, handle global sales tax, pay us out |
@@ -64,11 +64,11 @@ as settled just because the Browserbase row is gone from the table.
 ### Not done (and required before anyone else runs this app)
 - **B1: Signing + notarization** — nothing is signed today. Blocked only on Apple enrollment
 - **F2: Bundled Google OAuth app** — GWS currently assumes the developer's own OAuth credentials
-- **B2/B3: Release publishing + download page** — GitHub Releases wiring and a page on buster.mom
+- **B2/B3: Release publishing + download page** — GitHub Releases wiring and a page on busterclaw.lol
 - **Full `.dmg` end-to-end build** — component steps verified, but the complete `build_desktop.sh` → installable `.dmg` run has *never* been executed
-- **Bundle ID** — still `com.hightowerbuilds.busterclaw`; the domain decision unblocks it → **`mom.buster.desktop`** (or similar). Must change **before** the first public build: changing it after users install orphans their app-data dir and breaks notarization continuity
+- **Bundle ID** — still `com.hightowerbuilds.busterclaw`; the domain decision unblocks it → **`lol.busterclaw.desktop`** (or similar). Must change **before** the first public build: changing it after users install orphans their app-data dir and breaks notarization continuity
 - **Telemetry** — the app ships zero today (a feature for privacy, a blindfold for "did the beta work"). Needs a consent gate, a tiny ingest endpoint (new infra — a Cloudflare Worker or a $5 VPS is enough), and a privacy-policy clause
-- **Website** — buster.mom needs, at minimum: product page, download link, **privacy policy** (Google hard-requires it at a public URL), and terms
+- **Website** — busterclaw.lol needs, at minimum: product page, download link, **privacy policy** (Google hard-requires it at a public URL), and terms
 - ~~**License** — the public repo currently has no license…~~ ✅ **DONE 07-12: MIT** (`LICENSE`) + a trademark policy (`TRADEMARK.md`). Note the README had been *claiming* MIT for months while granting nothing — every outside PR was a legal question mark. **AGPL/BSL were rejected**, and the reasoning matters: they exist to stop a fork selling our paid tier back to us, but neither money leg is defended by copyright. The phone is defended by **owning the number** (a fork can't fork our Twilio account) and the feed by **making new things** (a fork can't fork work that doesn't exist yet). Copyleft would have bought us nothing and cost us the goodwill and the contributions. The shaders and CSS ship MIT too — they're the best advertising we have, and MIT forces every fork to carry our copyright notice, which is the attribution we actually wanted
 
 ---
@@ -85,7 +85,7 @@ is engineering that can proceed in parallel.
 
 ### Clock 2: Google restricted-scope verification + CASA
 The app reads and sends Gmail. Those are **restricted scopes**, which means:
-1. **OAuth brand verification** (homepage + privacy policy at a matching domain — hence buster.mom must be live first)
+1. **OAuth brand verification** (homepage + privacy policy at a matching domain — hence busterclaw.lol must be live first)
 2. **Restricted-scope review** by Google
 3. **CASA security assessment** — an independent lab assessment, **annual**, typically mid-hundreds to a few thousand dollars per year depending on lab and tier. Recurring forever, for as long as we touch Gmail scopes.
 
@@ -112,7 +112,7 @@ as a whole.
 
 In rough dependency order. None of these are research; all are known work.
 
-**W0 — Identity switch.** Bundle ID → `mom.buster.desktop`; buster.mom DNS +
+**W0 — Identity switch.** Bundle ID → `lol.busterclaw.desktop`; busterclaw.lol DNS +
 static site (GitHub Pages is fine to start); privacy policy + terms drafted and
 published. *Do this first — Clock 2 cannot even start without the site.*
 
@@ -126,7 +126,7 @@ machine. This has never been done and *will* surface surprises; schedule real ti
 for it, not an afternoon.
 
 **W3 — Publish (B2/B3).** GitHub Release with the signed `.dmg`, download page on
-buster.mom, `VERSION`-driven. Updates are manual re-download in v1 (locked
+busterclaw.lol, `VERSION`-driven. Updates are manual re-download in v1 (locked
 decision) — see risk R4.
 
 **W4 — Bundled Google OAuth (F2).** PKCE one-click connect against *our* OAuth
@@ -172,7 +172,7 @@ construction. Stop counting it as half a paid tier — it is zero.**
 
 **That leaves GWS alone.** GWS *is* genuinely enforceable, and cleanly: the bundled
 OAuth credentials are fetched from a URL we control
-(`lib/buster_claw/google/bundled_client.ex:8-13`, `buster.mom`). Don't pay, don't
+(`lib/buster_claw/google/bundled_client.ex:8-13`, `busterclaw.lol`). Don't pay, don't
 get served the config. No DRM required. But look at what we'd actually be selling:
 **"pay us so you don't have to create your own Google Cloud project."** Three things
 go wrong at once:
@@ -249,21 +249,21 @@ after. See `BUSTERPHONE_ROADMAP.md` for the sequencing.
   which cuts against Part I's "entity deferred." Voice-only may let us defer it —
   **confirm before committing to an SMS date.**
 
-**The second half of the subscription: the Signature Feed.** BusterPhone *acquires*
-("Buster Claw answers your phone" — five words, no explanation needed). It does not,
-on its own, give anyone a reason to still be paying in month six. That's the job of
-an ongoing drop of new shaders, palettes, phone faces and greeting voices —
-**`SIGNATURE_FEED.md`**. One subscription, two reasons to keep paying: **the phone
-acquires, the feed retains.** The feed is also the only genuinely unforkable thing we
-have, because *you cannot fork work that doesn't exist yet* — and it costs us nothing
-to serve, so it carries no COGS against the margin above.
+**~~The second half of the subscription: the Signature Feed.~~ CUT 07-14 (operator
+decision — not the direction; nothing was ever built).** The design record moved to
+`../archive/SIGNATURE_FEED.md`. The subscription now stands on **BusterPhone alone**,
+which reopens the question the feed existed to answer: *why is someone still paying in
+month six?* The honest answer today is "because the phone keeps answering" — retention
+has to come from the phone being genuinely good, not from an asset drip. If month-six
+churn says that's not enough, that's a new problem to solve then, not a reason to
+resurrect the feed.
 
 **Licensing settled 07-12 (and it does not threaten any of this).** The repo is now
 **MIT** — including the shaders and the CSS design system — with the name, wordmark
 and logo reserved (`LICENSE`, `TRADEMARK.md`). Giving the code away is safe precisely
-because neither money leg is defended by copyright: the phone is defended by *owning
-the number*, and the feed by *making new things*. A fork gets the engine and none of
-the business.
+because the money leg isn't defended by copyright: the phone is defended by *owning
+the number*. A fork gets the engine and none of the business. (The feed — which was
+defended by *making new things* — was cut 07-14; the reasoning stands for the phone.)
 
 *The two candidates below were the options considered. Option B (paid signed binary)
 is NOT dead — it's a viable second revenue line later, and it charges for a cost we're
@@ -329,10 +329,10 @@ so out loud*.
   agentic app that can act on email *will* someday need a fix shipped fast, and
   "please re-download" is slow. Honest position: acceptable for a 100-user beta,
   not acceptable at 1.0 — revisit before charging (Tauri's updater or Sparkle).
-- **R5 — buster.mom.** Memorable, funny, on-brand. Also: exotic TLDs get worse
+- **R5 — busterclaw.lol.** Memorable, funny, on-brand. Also: exotic TLDs get worse
   treatment from some corporate mail filters and look unserious to a slice of
   buyers. For an indie dev tool it's fine — but it's a one-way door once it's the
-  bundle ID (`mom.buster.*`), printed in every keychain entry and OAuth consent
+  bundle ID (`lol.busterclaw.*`), printed in every keychain entry and OAuth consent
   screen. Say it out loud once before W0: *is this the name at 1.0?*
 - **R6 — CASA is a forever-cost, and telephony now has to pay for it.** Annual
   assessment + $99 Apple + domain + MoR cut is the permanent bill for "free beta,"
@@ -354,7 +354,7 @@ so out loud*.
 |---|---|---|
 | Apple Developer (individual) | $99 | /yr |
 | CASA assessment | ~mid-$100s–$3k+ (lab/tier dependent — get quotes) | /yr |
-| buster.mom domain | ~$10–30 | /yr |
+| busterclaw.lol domain | ~$10–30 | /yr |
 | Static site (GitHub Pages) | $0 | — |
 | Telemetry endpoint | ~$0–5/mo | /mo |
 | Merchant of record | ≈5% + ~$0.50 per sale | per sale (later) |
@@ -364,7 +364,7 @@ so out loud*.
 
 ## Part VIII — Order of operations
 
-1. **This week:** Apple enrollment · buster.mom live with privacy policy · decide R5 (name check) · start Google verification paperwork
+1. **This week:** Apple enrollment · busterclaw.lol live with privacy policy · decide R5 (name check) · start Google verification paperwork
 2. **Next:** W0 bundle ID → W1 sign/notarize → W2 full e2e build
 3. **Then:** W3 publish + W4 bundled OAuth + W5 telemetry (parallelizable)
 4. **Then:** W6 hardening → invite trusted users under the 100-cap (weekly-reconnect caveat stated up front)

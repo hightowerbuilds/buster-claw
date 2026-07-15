@@ -31,7 +31,7 @@ The **identity**, not the implementation:
 
 - the name **"Buster Claw"** and **"BusterClaw"**
 - the **wordmark** and the **logo**
-- the domain **buster.mom** and the visual identity used to present the official
+- the domain **busterclaw.lol** and the visual identity used to present the official
   builds
 
 These are not licensed to you. This is the same boundary Chromium draws against

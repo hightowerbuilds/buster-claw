@@ -1,5 +1,16 @@
 # The Signature Feed — the asset seam as a product
 
+> ## ⛔️ RETIRED — 2026-07-14, operator decision. Not the direction.
+>
+> Nothing was ever built (this was a pure design doc — Phases 0–3 all
+> unstarted). The consequence that matters: the paid tier now rests on
+> **BusterPhone alone** — "the phone acquires, the feed retains" loses its
+> second half, so retention has to come from the phone being genuinely good.
+> The shaders and Industrial Claw CSS stay MIT and bundled exactly as they
+> are today; the only thing cut is the subscription-feed idea on top.
+>
+> Preserved below as the historical design record.
+
 *2026-07-12. Governing idea: **the only thing a fork can never copy is work that
 doesn't exist yet.** Code is forkable. Taste, delivered continuously, is not.*
 

@@ -49,7 +49,7 @@ Before asking what Apple allows, it's worth stating plainly what we'd be asking 
 | Door | What it is | Verdict |
 |---|---|---|
 | **Mac App Store** | Sandboxed. Human review against the App Store Review Guidelines. Apple takes 15–30%. Requires `com.apple.security.app-sandbox`. | **Closed to us** |
-| **Developer ID + Notarization** | Direct `.dmg` download from buster.mom. **No sandbox.** No human review — an automated malware scan. No revenue cut. Hardened Runtime required. To the user, it looks and feels exactly as legitimate as an App Store app. | **The answer** |
+| **Developer ID + Notarization** | Direct `.dmg` download from busterclaw.lol. **No sandbox.** No human review — an automated malware scan. No revenue cut. Hardened Runtime required. To the user, it looks and feels exactly as legitimate as an App Store app. | **The answer** |
 | **Unsigned (today)** | What ships now. Since macOS Sequoia, this is materially worse than it used to be — see below. | **Untenable** |
 
 **One $99/year membership covers all three** — Mac App Store, iOS App Store, *and* Developer ID notarization. There is no separate purchase or program. Individual enrollment needs no D-U-N-S number and typically clears in a day or two (Apple publishes no SLA). The only real cost of enrolling as an individual: your legal name, "Luke Hightower," becomes the public seller name. For a developer tool distributed outside the App Store, nobody will care.
@@ -414,7 +414,7 @@ The code/content line is cleaner than expected. Apple's own guideline 1.2.1 uses
    Add a `codesign` step to `mix release` that signs all 25 Mach-Os individually — `--options runtime --timestamp --entitlements`, **entitlements on every binary, including `beam.smp`** — *before* Tauri bundles. Then set the `APPLE_*` env vars and let Tauri sign, notarize, and staple on its own. **Exit test:** an Apple Silicon Mac that has never seen this repo downloads the DMG and it opens clean, first try, no dialogs — and the terminal actually works, which is what proves the BEAM got its entitlements.
 
 7. **Lock the bundle ID before a single user installs** — *one-way door*
-   Still `com.hightowerbuilds.busterclaw`. Changing it after people install orphans their app data and breaks notarization continuity. The roadmap flags `mom.buster.desktop` — decide now, not later.
+   Still `com.hightowerbuilds.busterclaw`. Changing it after people install orphans their app data and breaks notarization continuity. The roadmap flags `lol.busterclaw.desktop` (domain is busterclaw.lol as of 07-14) — decide now, not later.
 
 8. **Add the updater — in the same breath as signing** — *don't defer this*
    `tauri-plugin-updater`, minisign keypair (**back it up**), `createUpdaterArtifacts: true`, static `latest.json` on GitHub Releases. Copy Livebook's config. **Diverge from them in exactly one place:** use `download()` → stop the BEAM and wait for it to exit → `install()` → `restart()`, never `download_and_install()`. Do this *with* the first signed release, not after — the first version you ship to strangers is the first version you'll need to patch.

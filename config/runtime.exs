@@ -196,7 +196,7 @@ end
 
 # Bundled Google OAuth client (one-click "Connect Google"). Env vars override
 # the compiled config in any environment; the config URL enables rotating the
-# client remotely (buster.mom/oauth-config.json) without shipping a build. A
+# client remotely (busterclaw.lol/oauth-config.json) without shipping a build. A
 # Desktop-app client secret is non-confidential per Google's installed-app
 # flow — see BusterClaw.Google.BundledClient.
 if bundled_client_id = System.get_env("BUSTER_CLAW_GOOGLE_CLIENT_ID") do
