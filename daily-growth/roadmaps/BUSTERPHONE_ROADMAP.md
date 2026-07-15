@@ -148,25 +148,124 @@ transcript doc appear in the workspace without touching the app.
 
 ### Phase 2 — Texting (inbound + outbound SMS)
 
-- **Edge Function `/sms`:** verify, write event row, return a static TwiML
-  ack (`Got it — on it.`) since the Mac is never in the synchronous path;
-  real answers follow as separate outbound sends.
-- **Inbound on the Mac:** running SMS-thread doc per sender number in the
-  Library; **trusted-numbers gate** before anything reaches the dispatch
-  queue — inbound text bodies are untrusted input and get fenced exactly like
-  email bodies.
-- **Outbound:** `sms_send` command in `Commands.Catalog.Integrations`
-  (tier **restricted**, args `to` + `body`), calling Twilio's Messages REST
-  API directly from the Mac. On the command surface = agent-drivable via
-  `./buster-claw` and `/api/run`, Sentinel `:outbound_send` on every send.
-- **Compliance gate (start day 1 of this phase):** A2P 10DLC brand +
-  campaign registration — paperwork + a few days' wait; unregistered traffic
-  gets carrier-filtered. Voice needs no registration (why voicemail ships a
-  phase earlier).
+> **Drafted in detail 2026-07-15.** SMS is already half-built by construction:
+> the `telephony_events` schema + migration accept `kind: "sms"` and
+> `direction: "outbound"`, the `/phone` Message Machine already renders a
+> **Texts** tab with per-number threads and sent/received styling, and the
+> trusted-numbers gate exists from the voicemail path. Every one of those
+> moduledocs says the same thing — *"schema-ready, not working; nothing writes
+> an SMS row."* This phase makes something write the rows. The honest gaps
+> confirmed in the tree on 07-15: **there is no Twilio REST client anywhere in
+> the app** (the rotary dial in `/phone` genuinely just accumulates digits — it
+> is decorative), there is **no `sms` edge function** (only `voice`), and
+> `Telephony.Drain` special-cases `kind: "voicemail"` only.
 
-**Exit test:** text the number → ack arrives, thread doc + dispatch item
-appear (trusted sender only); agent runs `sms_send` from the terminal and
-the text lands on a phone.
+**The one fact that shapes the whole phase: A2P 10DLC is the long pole, and it
+is paperwork, not code.** US carriers filter application-to-person SMS from
+unregistered senders. So the compliance track starts *first* and runs in the
+background while the code track is built and tested against your own verified
+number. Nothing below delivers to a stranger's phone until registration
+clears — but everything below can be *built and proven* before it does.
+
+#### The Twilio / registration track (operator — do this first, it waits on carriers)
+
+> **Confirm the tier before anything else.** The Campaign Registry has a **Sole
+> Proprietor** brand path for individuals with **no EIN** — lower throughput
+> (a small MPS cap, one campaign, ~limited daily volume) but no company
+> required. If that path still stands (verify current Twilio + TCR terms — these
+> programs move), **SMS does not have to wait on forming the LLC**, which
+> reverses this roadmap's original "SMS forces the entity early" assumption.
+> Decide Sole Proprietor vs. Standard before registering; re-tiering later is a
+> re-registration, not a toggle.
+
+Steps in the Twilio Console (and TCR, which Twilio walks you through):
+
+1. **Upgrade the account** off trial if not already, and make sure the paid
+   **local 10-digit number** (bought 07-13) is the one you'll text from.
+   Toll-free is the fallback if 10DLC drags — it has its own (lighter,
+   verification-based) path, no TCR campaign.
+2. **Register the A2P Brand** — *Messaging → Regulatory Compliance → A2P 10DLC
+   → Brand*. Sole Proprietor: your legal name, address, mobile number for the
+   OTP verification, email. Standard: legal business name + **EIN** + website.
+   A one-time vetting fee applies (~$4 SP / ~$44 Standard, confirm current).
+3. **Create a Campaign** under the brand — use case is **"Low-Volume Mixed"**
+   or **"Account Notification"** (an agent replying to the number's owner is
+   conversational/notification, not marketing). You must supply: a campaign
+   description, **2–3 sample messages** the agent would actually send, opt-in
+   language, and the **STOP/HELP** handling statement. ~$10 one-time + ~$2/mo.
+4. **Create a Messaging Service** — *Messaging → Services* — attach the number
+   to it as the sender pool, and attach the approved campaign to the service.
+   (Outbound sends go *through the Messaging Service SID*, not the raw number,
+   so the campaign registration is applied.)
+5. **Point the number's Messaging webhook** at the new `sms` edge function URL
+   (*Phone Numbers → your number → Messaging → "A message comes in" → Webhook,
+   POST*), exactly as you did for Voice. This can be wired before the campaign
+   clears — inbound receipt works during review; it's *outbound* that carriers
+   gate.
+6. **STOP/HELP compliance is automatic but yours to honor** — Twilio
+   auto-responds to STOP/HELP by default; keep that on. Note it in the greeting
+   copy and don't send to a number that has replied STOP.
+7. **Record the IDs** the code needs: **Messaging Service SID** (`MG…`), the
+   Account SID (`AC…`) and Auth Token you already have, and the number in E.164.
+   These go in the encrypted `twilio` integration record (app side) and the
+   edge function's Supabase env vars (inbound signature verification).
+
+**Registration exit test:** the campaign shows **Approved** in the console, and
+a test send through the Messaging Service to your own phone arrives (Twilio
+lets you send to verified numbers during review).
+
+#### 2A — Inbound (buildable and testable now, before the campaign clears)
+
+- **Edge Function `supabase/functions/sms/`** — mirror `voice/`: verify the
+  `X-Twilio-Signature` (fail closed; `_shared/twilio.ts` already declares itself
+  "shared by voice and sms"), insert one `telephony_events` row
+  (`kind:"sms"`, `direction:"inbound"`, from/to/body/twilio_sid), return a
+  minimal static TwiML `<Response>` (empty, or a one-line ack) — **the Mac is
+  never in the synchronous path**; real answers follow as separate outbound
+  sends.
+- **`Telephony.Drain` SMS branch** — the drain currently special-cases
+  `kind:"voicemail"` (audio download, transcript grace window). SMS rows carry
+  no audio, so add a simpler branch: `record_event/2` (already handles the
+  `sms` kind end-to-end) → mark synced. Persist-then-ack + the `twilio_sid`
+  unique index give the same never-lost / dedupe guarantees for free.
+- **Trusted-numbers gate before dispatch** — a text from a `TrustedNumbers`
+  number (and, if we keep the PIN model for SMS, verified) becomes a Dispatch
+  item; a stranger's text lands in the Library thread and the `/phone` Texts
+  tab but **never auto-actions**. Inbound bodies are untrusted input, fenced
+  exactly like email — `Sentinel.observe(:untrusted_ingest, …)` on every one.
+
+**2A exit test:** text the number from your phone → the row drains → it shows in
+the `/phone` **Texts** thread, and (trusted sender) a Dispatch item appears — all
+without touching the app. Works during campaign review; only cross-carrier
+*delivery of replies* is gated.
+
+#### 2B — Outbound (the genuinely new capability)
+
+- **`BusterClaw.Telephony.Twilio` REST client** — the first outbound client in
+  the app. A small module that POSTs to
+  `https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json` with
+  basic auth (Account SID + Auth Token from the encrypted `twilio` integration
+  record), sending **via the Messaging Service SID** (`MessagingServiceSid`
+  param, not `From`) so the campaign registration applies. Injectable HTTP for
+  tests, like `Telephony.Relay`.
+- **`sms_send` command** in `Commands.Catalog.Integrations` — tier
+  **`:restricted`** (args `to` + `body`), so an `agent_untrusted` caller is
+  refused-and-queued, not silently sent. Agent-drivable via `./buster-claw
+  sms_send` and `/api/run`; **`Sentinel.observe(:outbound_send, …)` on every
+  send.** This is the first thing in the app that can spend money and reach a
+  stranger unprompted — the trust tier is load-bearing, not decoration.
+- **Compose/reply box in `/phone`** — the thread view is read-only today; add a
+  send box that calls `sms_send`. Optional now, since the agent path works
+  headless, but it's what makes the Texts tab feel like a phone.
+- **Usage caps + kill switch** — a per-day/per-number send cap and a
+  Sentinel-visible stop, because unattended outbound on *our* Twilio account is
+  the abuse surface the paid-tier section calls "a pricing requirement, not a
+  nice-to-have." Ship this *with* outbound, not after.
+
+**2B exit test:** the agent runs `sms_send` from the terminal (or the operator
+uses the compose box) and the text lands on a real phone; the send appears on
+the Sentinel feed as `:outbound_send` and as an `outbound` row in the `/phone`
+thread; a send over the daily cap is refused.
 
 ### Phase 3 — Surfacing & polish
 
@@ -195,8 +294,13 @@ this is hardening, not new capability.
 | Trusted-numbers list | **new** — modeled on `TrustedSenders` |
 | `twilio` integration record / encrypted creds | reuse |
 | Library docs + binary artifacts (`FileManager`) | reuse |
-| `sms_send` catalog entry, tier gate, `/api/run` | reuse |
 | Dispatch queue + Sentinel feed | reuse |
+| **SMS (Phase 2):** `sms` edge function | **new** — Deno/TS, mirrors `voice/` |
+| `Telephony.Twilio` REST client (outbound) | **new** — first outbound client in the app |
+| `sms_send` catalog entry + `:restricted` tier gate | **new** — the catalog/tier/`/api/run` plumbing is reused; the command is not |
+| `Telephony.Drain` SMS branch | **new** — small; the drain loop is reused |
+| SMS thread reads + `/phone` Texts tab + trusted-numbers gate | reuse — already built, schema-ready |
+| Usage caps + send kill switch | **new** — required before unattended outbound |
 
 ## Cost of running it (ballpark, confirm at build)
 
@@ -225,7 +329,15 @@ the paid tier (Part V.1), these numbers set the margin:
 - **Secrets in two places** — Twilio creds live encrypted in the app *and*
   in Supabase env vars. Document it; Sentinel can't see the Edge Function.
 - **10DLC is the schedule risk** for SMS, not code. Voicemail has no such
-  gate — hence the phase order.
+  gate — hence the phase order. **Register first, build while it grinds** (Phase
+  2A is fully testable against your own verified number during review). Confirm
+  the **Sole Proprietor** brand tier — if it holds, SMS ships without the LLC,
+  reversing the old "SMS forces the entity" assumption.
+- **Outbound is the first thing in the app that spends money and reaches a
+  stranger unprompted.** The `:restricted` tier on `sms_send` and the usage cap
+  are the guardrails; a prompt-injected agent must not be able to fire texts.
+  This is a genuinely different risk class from every read-only capability
+  shipped so far.
 - **The Edge Function is app code living outside the repo's test suite.**
   Keep it tiny and boring; version it in the repo (`supabase/functions/…`)
   even though it deploys elsewhere.
