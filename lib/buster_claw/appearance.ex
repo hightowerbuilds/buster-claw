@@ -3,16 +3,19 @@ defmodule BusterClaw.Appearance do
   Global appearance preferences richer than a plain `Settings` value — the
   user-uploaded terminal background images.
 
-  Up to `max_slots/0` images live under `<workspace>/appearance/` (writable in
-  both dev and the packaged release, unlike the read-only `priv/static` bundle).
-  One slot is "active" and painted behind the in-app terminal. `Settings` holds
+  The terminal background is a single active choice — `terminal_background/0`
+  resolves it to `off`, a **shader** (a WebGPU design, same set as the homepage,
+  including custom workspace `shaders/*.wgsl`), or an **image**. Up to
+  `max_slots/0` images live under `<workspace>/appearance/` (writable in both dev
+  and the packaged release, unlike the read-only `priv/static` bundle) as a saved
+  library; one is "active" and painted when the mode is `image`. `Settings` holds
   each slot's relative path plus an `updated_at` stamp (used to cache-bust the
-  served URL) and the active slot number. `BusterClawWeb.AppearanceController`
-  streams a slot's bytes back to the webview.
+  served URL), the active slot number, and the mode.
+  `BusterClawWeb.AppearanceController` streams a slot's bytes back to the webview.
 
-  A single *active* image is intentional: in a split pane both terminals share one
+  A single active choice is intentional: in a split pane both terminals share one
   continuous background painted on the split container (see `SplitLive`), so only
-  the active slot is ever rendered behind the terminal.
+  the one active image (or one shader) is ever rendered behind the terminal.
   """
 
   alias BusterClaw.Library.Artifact
@@ -21,6 +24,15 @@ defmodule BusterClaw.Appearance do
 
   @max_slots 5
   @active_key "terminal_background_active"
+  # The terminal background is a single active choice: `"off"`, a shader name
+  # (built-in or a workspace `shaders/*.wgsl`), or `"image"` (paints the active
+  # slot below). The image slots stay a saved library either way. Unset is
+  # inferred for back-compat: `"image"` when a slot is active, else `"off"`.
+  @term_mode_key "terminal_background_mode"
+  # Optional custom 3-color palette applied to the terminal shader (mirrors the
+  # homepage's), independent of the homepage's own palette.
+  @term_custom_key "terminal_background_custom"
+  @term_colors_key "terminal_background_colors"
   @subdir "appearance"
   @basename "terminal-background"
   @topic "appearance:terminal_background"
@@ -108,12 +120,127 @@ defmodule BusterClaw.Appearance do
   @doc "The lowest empty slot number, or `nil` when every slot is filled."
   def next_empty_slot, do: Enum.find(1..@max_slots, &(not slot_present?(&1)))
 
-  @doc "Served URL of the *active* background (terminal/split), or `nil`."
+  @doc "Served URL of the *active* image slot (terminal/split), or `nil`."
   def terminal_background_url do
     case active_slot() do
       nil -> nil
       n -> slot_url(n)
     end
+  end
+
+  @doc "Built-in shader names selectable behind the terminal (same set as the homepage)."
+  def terminal_shaders, do: @home_shaders
+
+  @doc """
+  The stored terminal background mode: `\"off\"`, a shader name, or `\"image\"`.
+  Unset falls back to `\"image\"` when a slot is active (preserving the pre-shader
+  behavior), else `\"off\"`. A saved-but-now-invalid mode (a removed custom
+  shader, or `\"image\"` with no active slot) degrades the same way.
+  """
+  def terminal_background_mode do
+    case present(Settings.get(@term_mode_key)) do
+      nil -> inferred_term_mode()
+      "off" -> "off"
+      "image" -> if active_slot(), do: "image", else: "off"
+      mode -> if terminal_shader_mode?(mode), do: mode, else: inferred_term_mode()
+    end
+  end
+
+  defp inferred_term_mode, do: if(active_slot(), do: "image", else: "off")
+
+  # A terminal mode names a renderable shader: a built-in, or a workspace shader
+  # file that isn't a contact face. `"off"`/`"image"` are not shader files, so
+  # they fall through to false.
+  defp terminal_shader_mode?(mode) when mode in @home_shaders, do: true
+
+  defp terminal_shader_mode?(mode) when is_binary(mode),
+    do: not Shaders.face?(mode) and Shaders.exists?(mode)
+
+  defp terminal_shader_mode?(_mode), do: false
+
+  @doc "Whether a custom palette overrides the terminal shader's built-in colors."
+  def terminal_background_custom?, do: Settings.get(@term_custom_key, "false") == "true"
+
+  @doc "Toggle the terminal shader's custom palette on/off."
+  def set_terminal_background_custom(on) when is_boolean(on) do
+    Settings.put(@term_custom_key, to_string(on))
+    broadcast()
+    :ok
+  end
+
+  @doc "The terminal shader's 3 custom palette colors as `[hex, hex, hex]`."
+  def terminal_background_colors, do: read_colors(@term_colors_key)
+
+  @doc "Set the terminal shader's 3 custom palette colors (each `#rrggbb`)."
+  def set_terminal_background_colors(colors) when is_list(colors) do
+    with {:ok, cleaned} <- put_colors(@term_colors_key, colors) do
+      broadcast()
+      {:ok, cleaned}
+    end
+  end
+
+  @doc """
+  The resolved terminal background as
+  `%{kind: :none | :shader | :image, shader, source_url, image_url, custom, colors}`.
+
+  `source_url` (`/shaders/<name>`) is set only for a custom (workspace) shader —
+  built-ins are bundled and need no fetch. `custom`/`colors` carry the optional
+  palette and are meaningful only for `:shader`. This is the single source of
+  truth the terminal/split views render from, and the payload broadcast on
+  `topic/0`.
+  """
+  def terminal_background do
+    mode = terminal_background_mode()
+    palette = %{custom: terminal_background_custom?(), colors: terminal_background_colors()}
+
+    base =
+      cond do
+        terminal_shader_mode?(mode) ->
+          %{
+            kind: :shader,
+            shader: mode,
+            source_url: if(mode in @home_shaders, do: nil, else: "/shaders/#{mode}"),
+            image_url: nil
+          }
+
+        mode == "image" and not is_nil(terminal_background_url()) ->
+          %{kind: :image, shader: nil, source_url: nil, image_url: terminal_background_url()}
+
+        true ->
+          %{kind: :none, shader: nil, source_url: nil, image_url: nil}
+      end
+
+    Map.merge(base, palette)
+  end
+
+  @doc """
+  Set the terminal background: `\"off\"`, a shader name (`terminal_shaders/0` or a
+  workspace shader), or `\"image\"` (needs an active slot). Returns `{:ok, mode}`,
+  `{:error, :no_image}`, or `{:error, :invalid_mode}`.
+  """
+  def set_terminal_background_mode("off"), do: put_term_mode("off")
+
+  def set_terminal_background_mode("image") do
+    if active_slot(), do: put_term_mode("image"), else: {:error, :no_image}
+  end
+
+  def set_terminal_background_mode(mode) when mode in @home_shaders, do: put_term_mode(mode)
+
+  def set_terminal_background_mode(mode) when is_binary(mode) do
+    # Refuse shaderfaces at the boundary — a contact's face is never wall art.
+    if Shaders.exists?(mode) and not Shaders.face?(mode) do
+      put_term_mode(mode)
+    else
+      {:error, :invalid_mode}
+    end
+  end
+
+  def set_terminal_background_mode(_mode), do: {:error, :invalid_mode}
+
+  defp put_term_mode(mode) do
+    Settings.put(@term_mode_key, mode)
+    broadcast()
+    {:ok, mode}
   end
 
   @doc """
@@ -160,6 +287,9 @@ defmodule BusterClaw.Appearance do
 
       _abs ->
         Settings.put(@active_key, Integer.to_string(slot))
+        # Choosing an image is choosing the image background — switch the mode
+        # away from any shader so the pick actually shows.
+        Settings.put(@term_mode_key, "image")
         broadcast()
         {:ok, slot_url(slot)}
     end
@@ -179,8 +309,14 @@ defmodule BusterClaw.Appearance do
 
     if was_active do
       case next_filled_slot() do
-        nil -> Settings.delete(@active_key)
-        n -> Settings.put(@active_key, Integer.to_string(n))
+        nil ->
+          Settings.delete(@active_key)
+          # No image left to fall back to; if the mode was image, turn it off
+          # rather than leaving a dangling "image" that resolves to nothing.
+          if terminal_background_mode() == "image", do: Settings.put(@term_mode_key, "off")
+
+        n ->
+          Settings.put(@active_key, Integer.to_string(n))
       end
     end
 
@@ -264,26 +400,33 @@ defmodule BusterClaw.Appearance do
   end
 
   @doc "The 3 custom palette colors as `[hex, hex, hex]` (defaults if unset)."
-  def home_background_colors do
-    case Settings.get(@home_colors_key) do
-      s when is_binary(s) ->
-        case String.split(s, ",", trim: true) do
-          [_, _, _] = cs -> cs
-          _ -> @home_default_colors
-        end
-
-      _ ->
-        @home_default_colors
-    end
-  end
+  def home_background_colors, do: read_colors(@home_colors_key)
 
   @doc "Set the 3 custom palette colors (each a `#rrggbb` hex). Bad values fall to black."
   def set_home_background_colors(colors) when is_list(colors) do
+    with {:ok, cleaned} <- put_colors(@home_colors_key, colors) do
+      broadcast_home()
+      {:ok, cleaned}
+    end
+  end
+
+  # Shared 3-color palette storage (homepage + terminal), stored as a
+  # comma-joined `#rrggbb` triple. A malformed/short stored value falls back to
+  # the default palette; a bad value on write falls to black.
+  defp read_colors(key) do
+    with s when is_binary(s) <- Settings.get(key),
+         [_, _, _] = cs <- String.split(s, ",", trim: true) do
+      cs
+    else
+      _ -> @home_default_colors
+    end
+  end
+
+  defp put_colors(key, colors) do
     cleaned = colors |> Enum.map(&sanitize_hex/1) |> Enum.take(3)
 
     if length(cleaned) == 3 do
-      Settings.put(@home_colors_key, Enum.join(cleaned, ","))
-      broadcast_home()
+      Settings.put(key, Enum.join(cleaned, ","))
       {:ok, cleaned}
     else
       {:error, :invalid}
@@ -417,7 +560,7 @@ defmodule BusterClaw.Appearance do
     Phoenix.PubSub.broadcast(
       BusterClaw.PubSub,
       @topic,
-      {:terminal_background, terminal_background_url()}
+      {:terminal_background, terminal_background()}
     )
   end
 

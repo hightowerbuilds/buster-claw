@@ -34,12 +34,12 @@ defmodule BusterClawWeb.SplitLive do
     {:ok,
      socket
      |> assign(:page_title, "Split")
-     |> assign(:terminal_background_url, BusterClaw.Appearance.terminal_background_url())}
+     |> assign(:terminal_bg, BusterClaw.Appearance.terminal_background())}
   end
 
   @impl true
-  def handle_info({:terminal_background, url}, socket) do
-    {:noreply, assign(socket, :terminal_background_url, url)}
+  def handle_info({:terminal_background, bg}, socket) do
+    {:noreply, assign(socket, :terminal_bg, bg)}
   end
 
   @impl true
@@ -127,36 +127,46 @@ defmodule BusterClawWeb.SplitLive do
   @impl true
   def render(assigns) do
     assigns =
-      assigns
-      |> assign(
-        :split_terminal_background_url,
-        split_terminal_background_url(
-          assigns.left,
-          assigns.right,
-          assigns.terminal_background_url
-        )
-      )
+      assign(assigns, :split_bg, split_bg(assigns.left, assigns.right, assigns.terminal_bg))
 
     ~H"""
     <Layouts.app flash={@flash} full_bleed>
       <div
         id="split-root"
         phx-hook="SplitResizer"
-        data-split-terminal-bg-active={to_string(@split_terminal_background_url != nil)}
-        data-terminal-bg-active={to_string(@split_terminal_background_url != nil)}
+        data-split-terminal-bg-active={to_string(@split_bg.kind != :none)}
+        data-terminal-bg-active={to_string(@split_bg.kind != :none)}
         class={[
-          "flex min-h-0 flex-1 flex-col lg:flex-row",
-          if(@split_terminal_background_url, do: "bg-cover bg-center", else: nil),
-          @split_terminal_background_url && "bc-split-terminal-bg-active"
+          "relative isolate flex min-h-0 flex-1 flex-col lg:flex-row",
+          if(@split_bg.kind == :image, do: "bg-cover bg-center", else: nil),
+          @split_bg.kind != :none && "bc-split-terminal-bg-active"
         ]}
-        style={split_background_style(@split_terminal_background_url)}
+        style={split_background_style(@split_bg)}
       >
+        <%!-- One shader across the whole split when the active terminal background
+              is a shader and at least one pane is a terminal — the panes go
+              transparent (below) and reveal this shared canvas, so a terminal/
+              terminal split reads as one continuous field. --%>
+        <div
+          :if={@split_bg.kind == :shader}
+          id={"split-shader-#{@split_bg.shader}-#{:erlang.phash2({@split_bg.custom, @split_bg.colors})}"}
+          phx-hook="SmokeBackground"
+          phx-update="ignore"
+          data-shader={@split_bg.shader}
+          data-shader-source={@split_bg.source_url}
+          data-custom={to_string(@split_bg.custom)}
+          data-colors={Enum.join(@split_bg.colors, ",")}
+          class="ic-shader-fill"
+          aria-hidden="true"
+        >
+          <canvas data-smoke-canvas></canvas>
+        </div>
         <.pane
           side="left"
           class="bc-split-left"
           pane={@left}
           socket={@socket}
-          bg_active={terminal_background_active?(@left, @split_terminal_background_url)}
+          bg_active={@split_bg.kind != :none and terminal_pane?(@left)}
         />
         <.split_divider />
         <.pane
@@ -164,30 +174,28 @@ defmodule BusterClawWeb.SplitLive do
           class="bc-split-right"
           pane={@right}
           socket={@socket}
-          bg_active={terminal_background_active?(@right, @split_terminal_background_url)}
+          bg_active={@split_bg.kind != :none and terminal_pane?(@right)}
         />
       </div>
     </Layouts.app>
     """
   end
 
-  # When a terminal background is set, the single image is painted on the shared
-  # grid above only if at least one pane is terminal-backed. Terminal panes then
-  # go transparent so terminal/terminal splits read as one continuous image,
-  # while non-terminal panes retain their normal application surface.
-  defp split_terminal_background_url(_left, _right, nil), do: nil
-
-  defp split_terminal_background_url(left, right, url) do
-    if terminal_pane?(left) or terminal_pane?(right), do: url
+  # The active terminal background is only painted on the split when at least one
+  # pane is a terminal; otherwise it collapses to `:none`. Terminal panes then go
+  # transparent so a terminal/terminal split reads as one continuous background
+  # (image or shader), while non-terminal panes keep their normal surface.
+  defp split_bg(left, right, bg) do
+    if terminal_pane?(left) or terminal_pane?(right), do: bg, else: %{kind: :none}
   end
 
-  defp split_background_style(nil), do: nil
-  defp split_background_style(url), do: "background-image:url('#{url}')"
+  defp split_background_style(%{kind: :image, image_url: url}),
+    do: "background-image:url('#{url}')"
+
+  defp split_background_style(_bg), do: nil
 
   defp terminal_pane?(%{module: BusterClawWeb.TerminalLive}), do: true
   defp terminal_pane?(_pane), do: false
-
-  defp terminal_background_active?(pane, url), do: terminal_pane?(pane) and not is_nil(url)
 
   # The draggable partition between the two joined panes. Dragging it resizes the
   # split (SplitResizer hook); the centered button swaps the two sides. Only shown
@@ -225,14 +233,17 @@ defmodule BusterClawWeb.SplitLive do
       data-split-pane={@side}
       data-split-pane-terminal={to_string(terminal_pane?(@pane))}
       data-terminal-bg-active={to_string(@bg_active)}
-      class={[
-        "relative flex min-h-0 min-w-0 flex-col overflow-hidden",
-        @class,
-        if(@bg_active,
-          do: "bg-transparent",
-          else: "rounded-lg border border-base-300 bg-base-100 shadow-sm"
-        )
-      ]}
+      class={
+        [
+          # z-10 keeps the pane above the split's shared shader canvas (z-0).
+          "relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden",
+          @class,
+          if(@bg_active,
+            do: "bg-transparent",
+            else: "rounded-lg border border-base-300 bg-base-100 shadow-sm"
+          )
+        ]
+      }
     >
       <%!-- Close this pane and keep the other side as a solo tab. --%>
       <button

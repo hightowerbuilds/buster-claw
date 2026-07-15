@@ -27,7 +27,7 @@ defmodule BusterClawWeb.TerminalLive do
     {:ok,
      socket
      |> assign(:page_title, terminal_label)
-     |> assign(:terminal_background_url, BusterClaw.Appearance.terminal_background_url())
+     |> assign(:terminal_bg, BusterClaw.Appearance.terminal_background())
      |> assign(:terminal_session_key, terminal_session_key)
      |> assign(:terminal_label, terminal_label)
      |> assign(:startup_profile, startup_profile)
@@ -57,13 +57,32 @@ defmodule BusterClawWeb.TerminalLive do
         id={"#{@dom_id}-session"}
         data-terminal-session-shell
         data-terminal-embedded={to_string(@embedded?)}
-        data-terminal-bg-active={to_string(@terminal_background_url != nil)}
+        data-terminal-bg-active={to_string(bg_active?(@terminal_bg))}
         class={[
-          "relative flex min-h-0 flex-col overflow-hidden",
-          if(@embedded? and @terminal_background_url, do: "bg-transparent", else: "bg-base-100"),
+          "relative isolate flex min-h-0 flex-col overflow-hidden",
+          if(@embedded? and bg_active?(@terminal_bg), do: "bg-transparent", else: "bg-base-100"),
           if(@embedded?, do: "h-full", else: "ic-panel -mt-6 h-[calc(100dvh-8rem)]")
         ]}
       >
+        <%!-- Shader background (Appearance → Terminal): a hook-owned WebGPU canvas
+              behind the transparent terminal. Standalone only — a split renders
+              one shader across the shared container (see SplitLive), so an embedded
+              pane stays transparent and lets that show through. Keyed by shader
+              name so switching designs remounts the hook. --%>
+        <div
+          :if={@terminal_bg.kind == :shader and not @embedded?}
+          id={"terminal-shader-#{@terminal_bg.shader}-#{:erlang.phash2({@terminal_bg.custom, @terminal_bg.colors})}"}
+          phx-hook="SmokeBackground"
+          phx-update="ignore"
+          data-shader={@terminal_bg.shader}
+          data-shader-source={@terminal_bg.source_url}
+          data-custom={to_string(@terminal_bg.custom)}
+          data-colors={Enum.join(@terminal_bg.colors, ",")}
+          class="ic-shader-fill"
+          aria-hidden="true"
+        >
+          <canvas data-smoke-canvas></canvas>
+        </div>
         <div
           id={@toolbar_id}
           data-terminal-toolbar
@@ -73,7 +92,7 @@ defmodule BusterClawWeb.TerminalLive do
           data-startup-profile={@startup_profile}
           class={
             [
-              "flex min-h-11 items-center gap-3 border-b border-base-300 py-2 pl-3",
+              "relative z-10 flex min-h-11 items-center gap-3 border-b border-base-300 py-2 pl-3",
               # Embedded in a split, leave room at the right for the pane-close button.
               if(@embedded?, do: "pr-12", else: "pr-3")
             ]
@@ -164,12 +183,12 @@ defmodule BusterClawWeb.TerminalLive do
           data-toolbar-id={@toolbar_id}
           data-status-id={@status_id}
           data-terminal-embedded={to_string(@embedded?)}
-          data-terminal-bg-active={to_string(@terminal_background_url != nil)}
-          data-terminal-bg-source={terminal_background_source(@terminal_background_url, @embedded?)}
-          data-terminal-bg-image={terminal_host_background(@terminal_background_url, @embedded?)}
+          data-terminal-bg-active={to_string(bg_active?(@terminal_bg))}
+          data-terminal-bg-source={terminal_background_source(@terminal_bg, @embedded?)}
+          data-terminal-bg-image={terminal_host_background(@terminal_bg, @embedded?)}
           class={[
-            "min-h-0 flex-1 overflow-hidden p-3",
-            if(@terminal_background_url, do: "bg-transparent", else: "bg-base-100"),
+            "relative z-10 min-h-0 flex-1 overflow-hidden p-3",
+            if(bg_active?(@terminal_bg), do: "bg-transparent", else: "bg-base-100"),
             if(@embedded?, do: "h-full", else: "")
           ]}
         >
@@ -299,28 +318,38 @@ defmodule BusterClawWeb.TerminalLive do
     {:noreply, assign(socket, :terminal_command_roles, BusterClaw.TerminalCommands.menu_roles())}
   end
 
-  def handle_info({:terminal_background, url}, socket) do
+  def handle_info({:terminal_background, bg}, socket) do
     embedded? = socket.assigns.embedded?
 
     {:noreply,
      socket
-     |> assign(:terminal_background_url, url)
+     |> assign(:terminal_bg, bg)
      |> push_event("terminal-background", %{
-       active: url != nil,
-       source: terminal_background_source(url, embedded?),
-       image: terminal_host_background(url, embedded?)
+       active: bg_active?(bg),
+       source: terminal_background_source(bg, embedded?),
+       image: terminal_host_background(bg, embedded?)
      })}
   end
 
-  # Every terminal paints the background on its own host (the xterm canvas only
-  # reveals its host's background, not ancestors). The JS anchors the image to
-  # the viewport (`background-attachment: fixed`), so two joined terminals reveal
-  # adjacent slices of the same picture — one continuous image across the split.
-  defp terminal_host_background(url, _embedded?) when is_binary(url), do: url
-  defp terminal_host_background(_url, _embedded?), do: ""
+  defp bg_active?(%{kind: :none}), do: false
+  defp bg_active?(_bg), do: true
 
-  defp terminal_background_source(nil, _embedded?), do: "none"
-  defp terminal_background_source(_url, _embedded?), do: "host"
+  # Only an image is painted on the terminal host (the xterm canvas reveals its
+  # host's background, not ancestors). The JS anchors it to the viewport
+  # (`background-attachment: fixed`), so two joined terminals reveal adjacent
+  # slices of the same picture — one continuous image across the split. A shader
+  # is a separate hook-owned canvas layer, so the host paints nothing.
+  defp terminal_host_background(%{kind: :image, image_url: url}, _embedded?) when is_binary(url),
+    do: url
+
+  defp terminal_host_background(_bg, _embedded?), do: ""
+
+  # The xterm transparency source: "host" paints its own image, "shader" is the
+  # canvas layer behind it, "none" is opaque. A live-switch push updates it so an
+  # image→shader change flips the host from painting to transparent.
+  defp terminal_background_source(%{kind: :image}, _embedded?), do: "host"
+  defp terminal_background_source(%{kind: :shader}, _embedded?), do: "shader"
+  defp terminal_background_source(_bg, _embedded?), do: "none"
 
   defp terminal_session_key(params, session) do
     params

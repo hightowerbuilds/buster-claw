@@ -13,6 +13,9 @@ export const ShaderPreview = {
     this.canvas = this.el.querySelector("canvas")
     this.shader = this.el.getAttribute("data-shader") || "smoke"
     this.custom = this.el.getAttribute("data-custom") === "true"
+    // Which color <input>s to read live while custom is on. The homepage and the
+    // terminal sections each have their own trio, keyed by this id prefix.
+    this.colorPrefix = this.el.getAttribute("data-color-prefix") || "home-color-"
     this.destroyed_ = false
     this.raf = null
     this.expr = {...NEUTRAL_EXPRESSION}
@@ -59,7 +62,7 @@ export const ShaderPreview = {
   readColors() {
     const fallback = SHADER_PALETTES[this.shader] || SHADER_PALETTES.smoke
     if (!this.custom) return colorsForUniform(fallback)
-    const hexes = [1, 2, 3].map((i) => document.getElementById("home-color-" + i)?.value)
+    const hexes = [1, 2, 3].map((i) => document.getElementById(this.colorPrefix + i)?.value)
     return colorsForUniform(hexes.every(Boolean) ? hexes : fallback)
   },
 

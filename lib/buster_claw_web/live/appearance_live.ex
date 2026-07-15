@@ -78,6 +78,29 @@ defmodule BusterClawWeb.AppearanceLive do
     end
   end
 
+  def handle_event("set_terminal_bg", %{"mode" => mode}, socket) do
+    case Appearance.set_terminal_background_mode(mode) do
+      {:ok, _mode} ->
+        {:noreply, socket |> assign_slots() |> put_flash(:info, "Terminal background updated.")}
+
+      {:error, :no_image} ->
+        {:noreply, put_flash(socket, :error, "Add an image to a slot first.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Unknown background.")}
+    end
+  end
+
+  def handle_event("toggle_terminal_custom", _params, socket) do
+    Appearance.set_terminal_background_custom(!socket.assigns.terminal_bg.custom)
+    {:noreply, assign_slots(socket)}
+  end
+
+  def handle_event("set_terminal_colors", %{"c1" => c1, "c2" => c2, "c3" => c3}, socket) do
+    Appearance.set_terminal_background_colors([c1, c2, c3])
+    {:noreply, assign_slots(socket)}
+  end
+
   def handle_event("set_active", %{"slot" => slot}, socket) do
     case parse_slot(slot) do
       nil ->
@@ -236,9 +259,94 @@ defmodule BusterClawWeb.AppearanceLive do
         <section class="ic-panel space-y-4 p-6">
           <h2 class="ic-eyebrow">Terminal background</h2>
           <p class="max-w-2xl text-sm leading-7 text-base-content/70">
-            Save up to {Appearance.max_slots()} images and switch the one painted
-            behind the in-app terminal. In a split, the active image spans both
-            panes as one continuous background.
+            Choose what sits behind the in-app terminal: nothing, an animated
+            shader, or one of your saved images. In a split, the active choice
+            spans both panes as one continuous background. Shaders need WebGPU
+            (the desktop app); where it's unavailable the terminal just stays
+            solid.
+          </p>
+
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              phx-click="set_terminal_bg"
+              phx-value-mode="off"
+              class={home_opt_btn(@terminal_bg.kind == :none)}
+            >
+              <.icon name="hero-no-symbol" class="size-4" /> Off
+            </button>
+            <button
+              :for={design <- shader_options()}
+              type="button"
+              phx-click="set_terminal_bg"
+              phx-value-mode={design.key}
+              class={home_opt_btn(@terminal_bg.kind == :shader and @terminal_bg.shader == design.key)}
+            >
+              <.icon name="hero-sparkles" class="size-4" /> {design.label}
+            </button>
+          </div>
+
+          <div :if={@terminal_bg.kind == :shader} class="flex flex-wrap items-start gap-4">
+            <div
+              id={"terminal-shader-preview-#{@terminal_bg.shader}-#{@terminal_bg.custom}"}
+              phx-hook="ShaderPreview"
+              phx-update="ignore"
+              data-shader={@terminal_bg.shader}
+              data-shader-source={@terminal_bg.source_url}
+              data-custom={to_string(@terminal_bg.custom)}
+              data-color-prefix="terminal-color-"
+              class="h-28 w-44 shrink-0 overflow-hidden rounded-lg border-2 border-base-content/20"
+              aria-label="Terminal shader preview"
+            >
+              <canvas class="block h-full w-full"></canvas>
+            </div>
+
+            <div class="min-w-0 flex-1 space-y-3">
+              <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={@terminal_bg.custom}
+                  phx-click="toggle_terminal_custom"
+                  class="size-4 accent-primary"
+                /> Use custom colors
+              </label>
+
+              <form
+                :if={@terminal_bg.custom}
+                phx-change="set_terminal_colors"
+                class="flex flex-wrap gap-4"
+              >
+                <label
+                  :for={{hex, i} <- Enum.with_index(@terminal_bg.colors)}
+                  class="flex items-center gap-2"
+                >
+                  <input
+                    type="color"
+                    id={"terminal-color-#{i + 1}"}
+                    name={"c#{i + 1}"}
+                    value={hex}
+                    phx-debounce="250"
+                    class="size-9 cursor-pointer rounded border-2 border-base-content/20 bg-transparent p-0.5"
+                  />
+                  <span class="text-xs text-base-content/60">
+                    {Enum.at(~w(Base Accent Highlight), i)}
+                  </span>
+                </label>
+              </form>
+
+              <p :if={!@terminal_bg.custom} class="text-sm text-base-content/50">
+                Using the shader's built-in colors. Turn on custom colors to pick your own three.
+              </p>
+            </div>
+          </div>
+
+          <p class="pt-1 text-sm font-semibold text-base-content/60">
+            Your images
+            <span class="font-normal text-base-content/45">
+              — {if @terminal_bg.kind == :image,
+                do: "one is behind the terminal now",
+                else: "pick one to use it as the background"}
+            </span>
           </p>
 
           <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -246,7 +354,10 @@ defmodule BusterClawWeb.AppearanceLive do
               :for={slot <- @slots}
               class={[
                 "flex aspect-video flex-col overflow-hidden rounded-lg border-2",
-                if(slot.active, do: "border-primary", else: "border-base-content/20")
+                if(slot.active and @terminal_bg.kind == :image,
+                  do: "border-primary",
+                  else: "border-base-content/20"
+                )
               ]}
             >
               <div :if={slot.filled} class="flex min-h-0 flex-1 flex-col">
@@ -255,7 +366,7 @@ defmodule BusterClawWeb.AppearanceLive do
                   style={"background-image:url('#{slot.url}')"}
                 >
                   <span
-                    :if={slot.active}
+                    :if={slot.active and @terminal_bg.kind == :image}
                     class="absolute left-1.5 top-1.5 rounded bg-primary px-1.5 py-0.5 text-xs font-bold text-primary-content"
                   >
                     Active
@@ -263,7 +374,7 @@ defmodule BusterClawWeb.AppearanceLive do
                 </div>
                 <div class="flex items-center justify-between border-t border-base-content/15 bg-base-100 px-2 py-1.5">
                   <button
-                    :if={!slot.active}
+                    :if={not (slot.active and @terminal_bg.kind == :image)}
                     type="button"
                     phx-click="set_active"
                     phx-value-slot={slot.slot}
@@ -271,7 +382,12 @@ defmodule BusterClawWeb.AppearanceLive do
                   >
                     Use
                   </button>
-                  <span :if={slot.active} class="px-2 py-1 text-xs text-base-content/50">In use</span>
+                  <span
+                    :if={slot.active and @terminal_bg.kind == :image}
+                    class="px-2 py-1 text-xs text-base-content/50"
+                  >
+                    In use
+                  </span>
                   <button
                     type="button"
                     phx-click="remove_background"
@@ -363,7 +479,7 @@ defmodule BusterClawWeb.AppearanceLive do
 
           <div class="flex flex-wrap gap-2">
             <button
-              :for={design <- home_shader_options()}
+              :for={design <- shader_options()}
               type="button"
               phx-click="set_home_bg"
               phx-value-mode={design.key}
@@ -526,8 +642,9 @@ defmodule BusterClawWeb.AppearanceLive do
     "weather" => "Weather"
   }
   # Built-in shaders (fixed labels) followed by any custom workspace shaders
-  # (`shaders/*.wgsl`), labelled from their file name.
-  defp home_shader_options do
+  # (`shaders/*.wgsl`), labelled from their file name. The same catalog backs
+  # both the homepage and terminal background pickers.
+  defp shader_options do
     builtin =
       Enum.map(
         Appearance.home_shaders(),
@@ -569,7 +686,11 @@ defmodule BusterClawWeb.AppearanceLive do
     ]
   end
 
-  defp assign_slots(socket), do: assign(socket, :slots, Appearance.slots())
+  defp assign_slots(socket) do
+    socket
+    |> assign(:slots, Appearance.slots())
+    |> assign(:terminal_bg, Appearance.terminal_background())
+  end
 
   defp upload_error_to_string(:too_large), do: "That image is larger than 8 MB."
   defp upload_error_to_string(:too_many_files), do: "Choose a single image."
