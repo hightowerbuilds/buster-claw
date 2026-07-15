@@ -1,11 +1,12 @@
 # 07-14-2026 Summary
 
-A housecleaning day that turned up a live security hole. The roadmap shelf
-got pruned to the four docs that matter, the domain settled as
-**busterclaw.lol**, and closing the Shortlist's last two code items surfaced
-the day's real find: **the SSRF guard never actually checked redirects** —
-the fix for the theoretical DNS-rebinding gap closed a practical one nobody
-knew was there.
+A housecleaning day that turned up a live security hole, then closed on two
+operator-reported UI bugs. The roadmap shelf got pruned to the four docs that
+matter, the domain settled as **busterclaw.lol**, and closing the Shortlist's
+last two code items surfaced the day's real find: **the SSRF guard never
+actually checked redirects** — the fix for the theoretical DNS-rebinding gap
+closed a practical one nobody knew was there. Then the End key and the SVG
+viewer, both WKWebView rendering quirks rather than app logic.
 
 ## busterclaw.lol, and the Signature Feed is cut (`07397f8`)
 
@@ -76,8 +77,38 @@ The roadmap shelf, after pruning: `BUSTERPHONE_ROADMAP.md`,
 `DISTRIBUTION_ROADMAP.md`, `GO_TO_MARKET_ROADMAP.md`, `LEFTOVERS.md` (five
 open items), and the `NUMBER_VENDING.html` reference.
 
+## Then two operator-reported UI bugs
+
+Change of gears from cleanup to bug reports — both turned out to be
+WKWebView/rendering quirks, not app logic.
+
+**End key inserted a tofu box instead of moving the caret (`7394645`).** The
+homepage chat: pressing End dropped a box-with-x into the textarea. macOS
+WKWebView maps Home/End/PageUp/PageDown to Apple function-key codepoints in
+the Private Use Area (End = U+F72B) and, instead of moving the caret, inserts
+the character — which has no glyph, hence the tofu. The same leak applied to
+every input in the app and the browser chrome's URL bar. New
+`lib/caret_keys.js` takes the keys over on capture (End/Home to line
+end/start, Cmd/Ctrl for whole-value jumps, Shift extends the selection,
+PageUp/PageDown swallowed in fields) and `preventDefault`s so the webview
+never inserts. Installed in both bundles; pure caret math with bun tests.
+Bonus: Home/End now work app-wide, not just where the bug was noticed.
+
+**The SVG viewer cropped drawings instead of showing them whole (`c5b1491`).**
+Clicking a drawing in the viewer sidebar showed only its top-left corner. Root
+cause was a *missing viewBox*, not the viewer: an SVG with `width`/`height`
+but no `viewBox` has no user-space→viewport mapping, so the CSS size caps
+(220px cards, 85vh modal) cropped rather than scaled. The drawing guide asks
+Claude for a viewBox; nothing enforced it. New `SvgViewer.normalize/1` injects
+`viewBox="0 0 W H"` from numeric root dimensions (px/quotes/unquoted/decimals
+handled; `%`/`em`/existing-viewBox pass through; `stroke-width` can't
+masquerade as `width`; root tag only), wired at both entry points — live
+stream and transcript re-extract. The modal's `svg` also got an explicit box,
+fixing the opposite failure it was hiding: viewBox-only drawings had been
+rendering whole but tiny at the 300×150 replaced-element default.
+
 ## State of the tree
 
-`mix precommit` green throughout — 988 tests, 0 failures, warnings-as-errors,
-credo --strict with zero disables that matter. All four commits pushed to
-main.
+`mix precommit` green throughout — the count grew 988 → 994 across the day's
+work (0 failures, warnings-as-errors, credo --strict with zero disables that
+matter), plus the front-end bun suites. All six commits pushed to main.
