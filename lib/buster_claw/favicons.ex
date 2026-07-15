@@ -106,6 +106,7 @@ defmodule BusterClaw.Favicons do
 
   defp request(url, opts) do
     [
+      url: url,
       headers: [{"user-agent", "BusterClaw/2.0 FaviconFetch"}, {"accept", "image/*"}],
       receive_timeout: @timeout,
       retry: false,
@@ -113,7 +114,11 @@ defmodule BusterClaw.Favicons do
       decode_body: false
     ]
     |> Keyword.merge(Keyword.get(opts, :req_options, []))
-    |> then(&Req.get(url, &1))
+    |> Req.new()
+    # Re-validate and pin every hop: the up-front validate/1 covers only the
+    # first URL, and a favicon fetch follows up to 3 redirects.
+    |> URLGuard.attach()
+    |> Req.request()
   end
 
   # Favicons come back as image/* (or octet-stream from lazy servers). Anything

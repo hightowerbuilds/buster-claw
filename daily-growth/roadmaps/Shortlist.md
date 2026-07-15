@@ -138,13 +138,17 @@ still a **flat** list.
 
 **Desired behavior:** folders/hierarchy and import/export.
 
-### 8. Browser — tab LRU eviction *(later, not urgent)*
+### 8. Browser — tab LRU eviction  ✅ ALREADY SHIPPED (commit `acac24f`, 07-04) — this entry was stale
 
-**Problem:** Tabs are **unbounded** — every open tab is a live WKWebView held in
-memory with no eviction. Fine for normal use.
+**Was:** Tabs are **unbounded** — every open tab is a live WKWebView held in
+memory with no eviction.
 
-**Desired behavior:** if many tabs become common, add an LRU that destroys cold
-tabs and lazily reloads them.
+**Turns out it shipped 07-04** as "background-tab suspension" and this entry
+was never checked off: `MAX_LIVE_TABS = 6` per surface, MRU tracking in
+`BrowserState.mru`, `enforce_tab_budget` runs on every activation
+(open/new-tab/switch), never evicts the active or ephemeral (agent-sandbox)
+tabs, evicted tabs keep their chip (dimmed via `__onTabSuspended`) and lazily
+reload on switch-back. Verified against `browser.rs` + `chrome.js` on 07-14.
 
 ### 9. Swarm — one live end-to-end smoke test  ❌ CUT (07-02, operator decision)
 
@@ -246,9 +250,28 @@ like the rest of the app's full-surface views).
 - `/split` (browser+browser) is already full-bleed, so this only affects solo
   `/browse`.
 
-### 13. SSRF guard — pin connections to the vetted IP (DNS-rebinding fix)
+### 13. SSRF guard — pin connections to the vetted IP (DNS-rebinding fix)  ✅ DONE 07-14
 
-**Problem:** `BusterClaw.URLGuard` resolves a hostname at *check* time, but Req/
+**Shipped:** `URLGuard.attach/2` — resolve once, vet every address, then pin
+the connection to the vetted IP: the hop's URL host is rewritten to the IP and
+the original hostname goes to Mint via `connect_options: [hostname: ...]`,
+which drives the Host header, TLS SNI, and certificate verification (so TLS
+still verifies against the original name — the "tricky part" below turned out
+to be built into Mint). Redirect hops are re-validated **and re-pinned** from
+a fresh resolution; a response step restores the original URL before Location
+resolution and re-arms the guard.
+
+**Bonus find (worse than the rebinding gap):** Req 0.5 does not re-run request
+steps on redirect hops — `redirect/1` re-enters `run_request/1` with the step
+cursor already consumed — so the old `req_step` never actually re-validated
+redirects despite its docs: **a public server could 302 to
+`http://169.254.169.254/` and be followed.** Closed by the same re-arm
+mechanism; regression tests cover both (redirect re-pin + redirect-to-blocked
+refused). `Favicons` also now re-validates its up-to-3 redirect hops (it
+previously validated only the first URL). `docs/LOCAL_TRUST.md` accepted-risks
+entry updated.
+
+**Was:** `BusterClaw.URLGuard` resolves a hostname at *check* time, but Req/
 Finch resolves it again at *connect* time — a rebinding DNS server can pass the
 check with a public answer and then serve an internal address for the connect.
 The 07-02 hardening (dual-family resolution + fail-closed on unresolvable) closed

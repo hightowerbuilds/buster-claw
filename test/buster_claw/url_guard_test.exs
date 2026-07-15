@@ -146,7 +146,7 @@ defmodule BusterClaw.URLGuardTest do
   end
 
   describe "req_step/1" do
-    test "passes a safe request through unchanged" do
+    test "passes a safe request through unchanged (resolution disabled: nothing to pin)" do
       request = Req.new(url: "https://example.com")
       assert URLGuard.req_step(request) == request
     end
@@ -156,6 +156,139 @@ defmodule BusterClaw.URLGuardTest do
       halted = URLGuard.req_step(request)
       assert {_req, %Req.Response{status: 403, body: body}} = halted
       assert body =~ "SSRF"
+    end
+  end
+
+  describe "req_step/2 pins the connection to the vetted address" do
+    # Builds a resolver fun from a per-family answer map; unlisted families NXDOMAIN.
+    defp pin_opts(answers) do
+      [
+        resolve_dns: true,
+        resolver: fn _host, family -> Map.get(answers, family, {:error, :nxdomain}) end
+      ]
+    end
+
+    test "rewrites the URL host to the vetted IP and keeps TLS on the original name" do
+      request = Req.new(url: "https://example.com:8443/path?q=1")
+
+      pinned =
+        URLGuard.req_step(request, pin_opts(%{inet: {:ok, [{93, 184, 216, 34}]}}))
+
+      # The socket can only go where the check looked...
+      assert pinned.url.host == "93.184.216.34"
+      # ...while port/path survive and Mint gets the original name for the
+      # Host header, SNI, and certificate verification.
+      assert pinned.url.port == 8443
+      assert pinned.url.path == "/path"
+      assert pinned.options.connect_options[:hostname] == "example.com"
+    end
+
+    test "prefers IPv4 when the host is dual-stack" do
+      answers = %{
+        inet: {:ok, [{93, 184, 216, 34}]},
+        inet6: {:ok, [{0x2606, 0x2800, 0x220, 1, 0x248, 0x1893, 0x25C8, 0x1946}]}
+      }
+
+      pinned = URLGuard.req_step(Req.new(url: "https://example.com/"), pin_opts(answers))
+      assert pinned.url.host == "93.184.216.34"
+      refute Keyword.has_key?(pinned.options.connect_options[:transport_opts] || [], :inet6)
+    end
+
+    test "pins an IPv6-only host and flips the transport to inet6" do
+      answers = %{inet6: {:ok, [{0x2606, 0x2800, 0x220, 1, 0x248, 0x1893, 0x25C8, 0x1946}]}}
+
+      pinned = URLGuard.req_step(Req.new(url: "https://v6only.example/"), pin_opts(answers))
+      assert pinned.url.host == "2606:2800:220:1:248:1893:25c8:1946"
+      assert pinned.options.connect_options[:hostname] == "v6only.example"
+      assert pinned.options.connect_options[:transport_opts][:inet6] == true
+    end
+
+    test "IP-literal URLs are not rewritten (no second resolution exists to diverge)" do
+      exploding = [
+        resolve_dns: true,
+        resolver: fn _h, _f -> raise "must not resolve literals" end
+      ]
+
+      request = Req.new(url: "https://8.8.8.8/")
+      assert URLGuard.req_step(request, exploding) == request
+    end
+
+    test "preserves caller connect_options under the pin" do
+      request = Req.new(url: "https://example.com/", connect_options: [timeout: 5_000])
+      pinned = URLGuard.req_step(request, pin_opts(%{inet: {:ok, [{93, 184, 216, 34}]}}))
+      assert pinned.options.connect_options[:timeout] == 5_000
+      assert pinned.options.connect_options[:hostname] == "example.com"
+    end
+  end
+
+  describe "attach/2 across redirects" do
+    @describetag capture_log: true
+
+    test "every hop is re-resolved, re-vetted, and re-pinned against its own hostname" do
+      # Count resolutions per host to prove the redirect hop got its own lookup
+      # (i.e. the unpin step restored the original URL before Location was
+      # resolved — otherwise hop 2's host would be the hop-1 IP literal and the
+      # resolver would never be called again).
+      test_pid = self()
+
+      resolver = fn host, family ->
+        send(test_pid, {:resolved, List.to_string(host), family})
+        if family == :inet, do: {:ok, [{93, 184, 216, 34}]}, else: {:error, :nxdomain}
+      end
+
+      plug = fn conn ->
+        send(test_pid, {:hop, conn.host, conn.request_path})
+
+        case conn.request_path do
+          "/start" ->
+            conn
+            |> Plug.Conn.put_resp_header("location", "/next")
+            |> Plug.Conn.send_resp(302, "")
+
+          "/next" ->
+            Plug.Conn.send_resp(conn, 200, "ok")
+        end
+      end
+
+      req =
+        Req.new(url: "http://example.com/start", plug: plug, retry: false)
+        |> URLGuard.attach(resolve_dns: true, resolver: resolver)
+
+      assert {:ok, %Req.Response{status: 200, body: "ok"}} = Req.request(req)
+
+      # Both hops connected to the pinned IP, not the name.
+      assert_received {:hop, "93.184.216.34", "/start"}
+      assert_received {:hop, "93.184.216.34", "/next"}
+      # And the second hop came from a fresh resolution of the original name.
+      assert_received {:resolved, "example.com", :inet}
+      assert_received {:resolved, "example.com", :inet}
+    end
+
+    test "a redirect to a blocked host is refused without being contacted" do
+      test_pid = self()
+
+      plug = fn conn ->
+        send(test_pid, {:hop, conn.host})
+
+        conn
+        |> Plug.Conn.put_resp_header("location", "http://169.254.169.254/latest/meta-data")
+        |> Plug.Conn.send_resp(302, "")
+      end
+
+      req =
+        Req.new(url: "http://example.com/start", plug: plug, retry: false)
+        |> URLGuard.attach(
+          resolve_dns: true,
+          resolver: fn _h, family ->
+            if family == :inet, do: {:ok, [{93, 184, 216, 34}]}, else: {:error, :nxdomain}
+          end
+        )
+
+      assert {:ok, %Req.Response{status: 403, body: body}} = Req.request(req)
+      assert body =~ "SSRF"
+      # Only the first (legitimate) hop ever reached a server.
+      assert_received {:hop, "93.184.216.34"}
+      refute_received {:hop, _}
     end
   end
 end

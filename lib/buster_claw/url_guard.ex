@@ -13,13 +13,19 @@ defmodule BusterClaw.URLGuard do
   default true; disabled in test) — resolves the host over **both** IPv4 and
   IPv6 and rejects it if *any* resolved address is in a blocked range. A host
   that resolves to nothing is refused (fail closed): a name we can't vet is a
-  name we don't fetch. `req_step/1` applies the same check to every request
-  hop, so redirects are re-validated.
+  name we don't fetch.
 
-  Residual gap: DNS-rebinding (TOCTOU between resolution and connect) is not
-  addressed here — see docs/LOCAL_TRUST.md "Known accepted risks". Note that
-  `req_step/1` re-validates per hop, so the practical rebinding window is a
-  single request.
+  `attach/2` wires the guard into a `Req.Request`: every hop (including each
+  redirect) is re-validated, and the connection is **pinned to the exact
+  address that passed vetting**, closing the DNS-rebinding TOCTOU window — a
+  rebinding nameserver can no longer answer public at check time and internal
+  at connect time, because there is no second resolution. Pinning rewrites the
+  hop's URL host to the vetted IP and hands the original hostname to the
+  transport (`connect_options: [hostname: ...]`), which Mint uses for the Host
+  header, TLS SNI, and certificate verification — on the wire the request is
+  indistinguishable from an unpinned one; only the socket's destination is
+  fixed. Residual gap: when resolution is disabled, or for the rare host with
+  no vetted IPv4/IPv6 answer path, behavior falls back to validate-only.
   """
 
   require Logger
@@ -35,28 +41,39 @@ defmodule BusterClaw.URLGuard do
   - `:resolver` — a `(charlist, :inet | :inet6) -> {:ok, [addr]} | {:error, term}`
     fun standing in for `:inet.getaddrs/2`
   """
-  def validate(url, opts \\ [])
-
-  def validate(url, opts) when is_binary(url) do
-    uri = URI.parse(url)
-
-    with :ok <- check_scheme(uri),
-         {:ok, host} <- fetch_host(uri),
-         :ok <- check_hostname(host) do
-      check_resolved(host, opts)
+  def validate(url, opts \\ []) do
+    case vet(url, opts) do
+      {:ok, _host, _addrs} -> :ok
+      {:error, _reason} = error -> error
     end
   end
 
-  def validate(_url, _opts), do: {:error, :invalid_url}
+  @doc """
+  Attaches the SSRF guard to a `Req.Request`: appends the per-hop
+  validate-and-pin request step and prepends the response step that restores
+  the original URL before Req resolves a redirect `Location` against it.
+  Options are the same as `validate/2`.
+  """
+  def attach(%Req.Request{} = request, opts \\ []) do
+    request
+    |> Req.Request.append_request_steps(ssrf_guard: &req_step(&1, opts))
+    |> Req.Request.prepend_response_steps(ssrf_unpin: &unpin_step/1)
+  end
 
   @doc """
-  Req request step that re-validates the URL of every hop (including redirects).
-  On a blocked URL it short-circuits with a synthetic 403 so callers see a
-  normal bad-status error rather than reaching the host.
+  Req request step that validates the request URL and pins the connection to
+  the vetted address. On a blocked URL it short-circuits with a synthetic 403
+  so callers see a normal bad-status error rather than reaching the host.
+
+  On its own this guards a single hop — use `attach/2`, whose response step
+  re-arms this one so every redirect hop is re-validated and re-pinned.
   """
-  def req_step(request) do
-    case validate(URI.to_string(request.url)) do
-      :ok ->
+  def req_step(request, opts \\ []) do
+    case vet(URI.to_string(request.url), opts) do
+      {:ok, host, [_ | _] = addrs} ->
+        pin(request, host, pick_address(addrs))
+
+      {:ok, _host, _no_pin} ->
         request
 
       {:error, reason} ->
@@ -65,6 +82,99 @@ defmodule BusterClaw.URLGuard do
         {request, %Req.Response{status: 403, body: "blocked by SSRF guard: #{inspect(reason)}"}}
     end
   end
+
+  # Runs on every hop's response, before Req's :redirect step. Two jobs:
+  #
+  # 1. Restore the pre-pin URL (and connect options), so a relative Location
+  #    is resolved against the original hostname, not the pinned IP.
+  # 2. Re-arm the guard. Req consumes `current_request_steps` as the pipeline
+  #    runs, and the :redirect/:retry steps re-enter `run_request/1` WITHOUT
+  #    resetting it — request steps do NOT re-run on subsequent hops on their
+  #    own. Without this re-arm a redirect hop would be neither validated nor
+  #    pinned (a public server could 302 straight to the metadata address).
+  defp unpin_step({request, response}) do
+    {request |> restore_pin() |> rearm_guard(), response}
+  end
+
+  defp restore_pin(request) do
+    case Req.Request.get_private(request, :ssrf_pin) do
+      %{url: url, connect_options: original} ->
+        %{request | url: url}
+        |> restore_connect_options(original)
+        |> Req.Request.put_private(:ssrf_pin, nil)
+
+      _ ->
+        request
+    end
+  end
+
+  defp rearm_guard(%{current_request_steps: steps} = request) do
+    if :ssrf_guard in steps do
+      request
+    else
+      %{request | current_request_steps: steps ++ [:ssrf_guard]}
+    end
+  end
+
+  # Vets a URL and returns `{:ok, host, addrs}` where addrs is the vetted
+  # address list (pinnable), or `[]` when there is nothing to pin (resolution
+  # disabled, or the host is already an IP literal — the connection can only
+  # go where the check looked).
+  defp vet(url, opts) when is_binary(url) do
+    uri = URI.parse(url)
+
+    with :ok <- check_scheme(uri),
+         {:ok, host} <- fetch_host(uri),
+         :ok <- check_hostname(host) do
+      cond do
+        not resolve_dns?(opts) -> {:ok, host, []}
+        match?({:ok, _}, parse_ip(host)) -> {:ok, host, []}
+        true -> resolve_and_check(host, opts)
+      end
+    end
+  end
+
+  defp vet(_url, _opts), do: {:error, :invalid_url}
+
+  # Prefer IPv4: pinning an IPv6 address additionally requires flipping the
+  # transport to inet6, so only do that when the host is IPv6-only.
+  defp pick_address(addrs) do
+    Enum.find(addrs, &(tuple_size(&1) == 4)) || hd(addrs)
+  end
+
+  defp pin(request, host, addr) do
+    saved = %{url: request.url, connect_options: request.options[:connect_options]}
+    ip = addr |> :inet.ntoa() |> List.to_string()
+
+    connect_options =
+      (request.options[:connect_options] || [])
+      |> Keyword.put(:hostname, host)
+      |> maybe_inet6(addr)
+
+    %{request | url: %{request.url | host: ip}}
+    |> put_option(:connect_options, connect_options)
+    |> Req.Request.put_private(:ssrf_pin, saved)
+  end
+
+  defp maybe_inet6(connect_options, addr) when tuple_size(addr) == 8 do
+    Keyword.update(
+      connect_options,
+      :transport_opts,
+      [inet6: true],
+      &Keyword.put(&1, :inet6, true)
+    )
+  end
+
+  defp maybe_inet6(connect_options, _addr), do: connect_options
+
+  defp restore_connect_options(request, nil),
+    do: %{request | options: Map.delete(request.options, :connect_options)}
+
+  defp restore_connect_options(request, original),
+    do: put_option(request, :connect_options, original)
+
+  defp put_option(request, key, value),
+    do: %{request | options: Map.put(request.options, key, value)}
 
   defp check_scheme(%URI{scheme: scheme}) when scheme in ["http", "https"], do: :ok
   defp check_scheme(_uri), do: {:error, :blocked_scheme}
@@ -87,14 +197,6 @@ defmodule BusterClaw.URLGuard do
     case parse_ip(host) do
       {:ok, addr} -> if blocked_ip?(addr), do: {:error, :blocked_host}, else: :ok
       :not_ip -> :ok
-    end
-  end
-
-  defp check_resolved(host, opts) do
-    cond do
-      not resolve_dns?(opts) -> :ok
-      match?({:ok, _}, parse_ip(host)) -> :ok
-      true -> resolve_and_check(host, opts)
     end
   end
 
@@ -125,7 +227,7 @@ defmodule BusterClaw.URLGuard do
         {:error, :blocked_host}
 
       true ->
-        :ok
+        {:ok, host, addrs}
     end
   end
 

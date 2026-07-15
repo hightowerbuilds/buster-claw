@@ -73,7 +73,7 @@ defmodule BusterClaw.Browser do
       [url: url]
       |> Keyword.merge(request_options)
       |> Req.new()
-      |> Req.Request.append_request_steps(ssrf_guard: &URLGuard.req_step/1)
+      |> URLGuard.attach()
 
     case Req.request(req) do
       {:ok, %{status: status} = resp} when status in 200..299 ->
@@ -217,7 +217,7 @@ defmodule BusterClaw.Browser do
       [url: url]
       |> Keyword.merge(request_options)
       |> Req.new()
-      |> Req.Request.append_request_steps(ssrf_guard: &URLGuard.req_step/1)
+      |> URLGuard.attach()
 
     case Req.request(req) do
       {:ok, %{status: status, body: body}} when status in 200..299 ->
