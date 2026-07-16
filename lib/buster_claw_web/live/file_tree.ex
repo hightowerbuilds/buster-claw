@@ -19,6 +19,11 @@ defmodule BusterClawWeb.FileTree do
   def update(assigns, socket) do
     root = Path.expand(assigns.root)
     root_changed? = Map.get(socket.assigns, :root) != assigns.root
+    # Parent bumps `version` after an external change (e.g. a dropped-in file) to
+    # nudge a re-list of the root without touching expansion/selection state.
+    version_changed? =
+      Map.has_key?(assigns, :version) and
+        Map.get(socket.assigns, :version) != assigns.version
 
     socket =
       socket
@@ -42,6 +47,8 @@ defmodule BusterClawWeb.FileTree do
         |> assign_new(:action, fn -> nil end)
         |> assign_new(:fm_error, fn -> nil end)
       end
+
+    socket = if version_changed? and not root_changed?, do: reload(socket, root), else: socket
 
     {:ok, ensure_loaded(socket, root)}
   end
@@ -150,6 +157,26 @@ defmodule BusterClawWeb.FileTree do
     {:noreply, assign(socket, :action, nil)}
   end
 
+  # Drag-to-move (FileTreeDnd hook): a row dropped onto a folder row. The client
+  # already rejects no-ops and self/descendant drops; the server re-validates
+  # through FileManager.move regardless.
+  def handle_event("drop_move", %{"src" => src, "dest" => dest}, socket) do
+    case FileManager.move(src, dest, base(socket)) do
+      {:ok, _new} ->
+        selected = if socket.assigns.selected == src, do: nil, else: socket.assigns.selected
+
+        {:noreply,
+         socket
+         |> assign(selected: selected, fm_error: nil)
+         |> reload(Path.dirname(src))
+         |> assign(:expanded, MapSet.put(socket.assigns.expanded, dest))
+         |> reload(dest)}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :fm_error, "Move failed: #{humanize_error(reason)}")}
+    end
+  end
+
   # --- render -------------------------------------------------------------
 
   @impl true
@@ -173,7 +200,7 @@ defmodule BusterClawWeb.FileTree do
       })
 
     ~H"""
-    <div class="flex h-full min-h-0 flex-col">
+    <div id={@id} phx-hook="FileTreeDnd" class="flex h-full min-h-0 flex-col">
       <div
         :if={@mode == :manage}
         class="flex flex-wrap items-center gap-2 border-b-2 border-base-content/15 pb-2"
@@ -245,6 +272,9 @@ defmodule BusterClawWeb.FileTree do
             @tree.selected == e.path && "bg-base-200"
           ]}
           style={"padding-left: #{@depth * 0.85 + 0.25}rem"}
+          draggable={to_string(@tree.mode == :manage)}
+          data-ft-path={e.path}
+          data-ft-dir={to_string(e.type == :dir)}
         >
           <button
             :if={e.type == :dir}

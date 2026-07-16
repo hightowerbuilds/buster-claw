@@ -25,7 +25,44 @@ defmodule BusterClawWeb.WorkspaceLive do
      |> assign(:preview, nil)
      |> assign(:sidebar_open, true)
      |> assign(:note, nil)
+     |> assign(:tree_version, 0)
+     |> allow_upload(:import,
+       accept: :any,
+       max_entries: 25,
+       max_file_size: 200_000_000,
+       auto_upload: true,
+       progress: &handle_import_progress/3
+     )
      |> assign_path_view()}
+  end
+
+  # Files dropped from the OS (Finder) land here via phx-drop-target + auto_upload.
+  # Each finished entry is copied into the folder currently in view (tree_root)
+  # through FileManager (name-deduped), then the tree is nudged to re-list.
+  defp handle_import_progress(:import, entry, socket) do
+    if entry.done? do
+      dest = socket.assigns.tree_root
+
+      result =
+        consume_uploaded_entry(socket, entry, fn %{path: tmp} ->
+          {:ok, FileManager.import_file(tmp, dest, entry.client_name, dest)}
+        end)
+
+      socket =
+        case result do
+          {:ok, _target} ->
+            socket
+            |> update(:tree_version, &(&1 + 1))
+            |> assign(:note, "Added #{entry.client_name}.")
+
+          {:error, reason} ->
+            assign(socket, :note, "Couldn't add #{entry.client_name}: #{inspect(reason)}")
+        end
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -174,7 +211,30 @@ defmodule BusterClawWeb.WorkspaceLive do
           {@note}
         </p>
 
-        <div class="flex min-h-0 flex-1 gap-4">
+        <div
+          id="workspace-dropzone"
+          phx-hook="WorkspaceDropzone"
+          phx-drop-target={@uploads.import.ref}
+          class="relative flex min-h-0 flex-1 gap-4"
+        >
+          <%!-- Drop overlay: the WorkspaceDropzone hook adds bc-dropzone-active to
+                the container while OS files are dragged over; CSS reveals this.
+                Files land in the folder currently in view. --%>
+          <div class="bc-drop-overlay pointer-events-none absolute inset-0 z-20 place-items-center rounded-lg border-2 border-dashed border-primary bg-base-100/85">
+            <div class="text-center">
+              <.icon name="hero-arrow-down-tray" class="mx-auto size-8 text-primary" />
+              <p class="mt-2 text-sm font-semibold">Drop to add to this folder</p>
+              <p class="font-mono text-xs text-base-content/60">{@tree_root}</p>
+            </div>
+          </div>
+          <.live_file_input upload={@uploads.import} class="sr-only" />
+          <p
+            :for={err <- upload_errors(@uploads.import)}
+            class="absolute left-3 top-3 z-20 rounded-sm border-2 border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning"
+          >
+            {upload_error_to_string(err)}
+          </p>
+
           <div class="flex min-h-0 shrink-0">
             <section class={[
               "ic-panel min-h-0 w-[20rem] overflow-hidden p-3",
@@ -186,6 +246,7 @@ defmodule BusterClawWeb.WorkspaceLive do
                 root={@tree_root}
                 base={@tree_base}
                 mode={:manage}
+                version={@tree_version}
               />
             </section>
 
@@ -229,12 +290,21 @@ defmodule BusterClawWeb.WorkspaceLive do
         <p class="ic-eyebrow">Preview</p>
         <p class="mt-1 break-all font-mono text-xs text-base-content/70">{@preview.path}</p>
       </div>
-      <div class="min-h-0 flex-1 overflow-auto p-6">
+      <div class={[
+        "min-h-0 flex-1 overflow-auto p-6",
+        @preview.kind == :image && "grid place-items-center bg-base-200/40"
+      ]}>
         <div :if={@preview.kind == :markdown} class="md-prose">{raw(@preview.html)}</div>
         <pre
           :if={@preview.kind == :text}
           class="whitespace-pre-wrap break-words font-mono text-xs leading-6"
         >{@preview.content}</pre>
+        <img
+          :if={@preview.kind == :image}
+          src={@preview.url}
+          alt={Path.basename(@preview.path)}
+          class="max-h-full max-w-full object-contain"
+        />
         <p :if={@preview.kind == :error} class="font-mono text-xs text-warning">{@preview.message}</p>
       </div>
     </div>
@@ -243,9 +313,41 @@ defmodule BusterClawWeb.WorkspaceLive do
 
   # --- internals ----------------------------------------------------------
 
+  defp upload_error_to_string(:too_large), do: "That file is larger than 200 MB."
+  defp upload_error_to_string(:too_many_files), do: "Too many files at once (max 25)."
+  defp upload_error_to_string(:not_accepted), do: "That file type isn't accepted."
+  defp upload_error_to_string(_), do: "That file couldn't be added."
+
   @markdown_exts ~w(.md .markdown)
 
   defp preview_for(path, base) do
+    if FileManager.image?(path) do
+      image_preview(path, base)
+    else
+      text_preview(path, base)
+    end
+  end
+
+  # Images are served as bytes (never read as text — that's what wrongly hit the
+  # "too large" / "binary" paths). The `?v=` mtime stamp busts the webview cache
+  # when a file is replaced under the same path.
+  defp image_preview(path, base) do
+    case FileManager.servable_file(path, base) do
+      {:ok, abs} ->
+        v =
+          case File.stat(abs, time: :posix) do
+            {:ok, %{mtime: mtime}} -> mtime
+            _ -> 0
+          end
+
+        %{path: path, kind: :image, url: ~p"/ws/image?#{[path: path, v: v]}"}
+
+      {:error, _reason} ->
+        %{path: path, kind: :error, message: "Couldn't read image."}
+    end
+  end
+
+  defp text_preview(path, base) do
     case FileManager.read_file(path, base) do
       {:ok, content} ->
         if String.downcase(Path.extname(path)) in @markdown_exts do

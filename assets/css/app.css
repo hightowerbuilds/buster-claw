@@ -451,6 +451,11 @@ body { background-color: var(--color-base-100); }
   height: 100%;
 }
 
+/* Workspace OS-file drop overlay: hidden until the WorkspaceDropzone hook marks
+   the container active (real files dragged over from Finder). */
+.bc-drop-overlay { display: none; }
+.bc-dropzone-active .bc-drop-overlay { display: grid; }
+
 /* On the homepage, panels go translucent so the background photo reads
    through them (border + hard offset shadow are kept by .ic-panel). */
 .ic-home .ic-panel {

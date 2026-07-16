@@ -51,6 +51,61 @@ defmodule BusterClawWeb.WorkspaceFileController do
 
   def show(conn, _params), do: send_resp(conn, 400, "Missing ?path=")
 
+  @doc """
+  Serve an image file's raw bytes for the workspace preview pane. The workspace
+  tab can navigate anywhere under the user's home, so a served path must resolve
+  inside `home` **or** the active workspace root (which may be relocated outside
+  home). Revalidation-based caching, mirroring `AppearanceController`.
+  """
+  def image(conn, %{"path" => path}) when is_binary(path) and path != "" do
+    abs = Path.expand(path)
+
+    with true <- FileManager.image?(abs),
+         true <- servable?(abs),
+         {:ok, abs} <- FileManager.servable_file(abs, serve_base(abs)) do
+      serve_image(conn, abs)
+    else
+      _ -> send_resp(conn, 404, "")
+    end
+  end
+
+  def image(conn, _params), do: send_resp(conn, 400, "Missing ?path=")
+
+  # Allowed only under the user's home or the active workspace root.
+  defp servable?(abs) do
+    FileManager.within?(abs, FileManager.home()) or
+      FileManager.within?(abs, Artifact.workspace_root())
+  end
+
+  defp serve_base(abs) do
+    if FileManager.within?(abs, FileManager.home()),
+      do: FileManager.home(),
+      else: Artifact.workspace_root()
+  end
+
+  defp serve_image(conn, abs) do
+    case File.stat(abs, time: :posix) do
+      {:ok, %{mtime: mtime, size: size}} ->
+        etag = ~s("#{mtime}-#{size}")
+
+        if etag in get_req_header(conn, "if-none-match") do
+          conn
+          |> put_resp_header("etag", etag)
+          |> put_resp_header("cache-control", "private, no-cache")
+          |> send_resp(304, "")
+        else
+          conn
+          |> put_resp_header("content-type", FileManager.image_content_type(abs))
+          |> put_resp_header("etag", etag)
+          |> put_resp_header("cache-control", "private, no-cache")
+          |> send_file(200, abs)
+        end
+
+      _ ->
+        send_resp(conn, 404, "")
+    end
+  end
+
   # Accept either an absolute path already inside the workspace, or a
   # workspace-relative path (leading `/` = workspace root), as the browser uses.
   defp resolve(path, workspace) do

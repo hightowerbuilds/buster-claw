@@ -20,7 +20,8 @@
         "resizable": true,
         "fullscreen": false,
         "visible": false,
-        "url": "index.html"
+        "url": "index.html",
+        "dragDropEnabled": false
       }
     ],
     "security": {

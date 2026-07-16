@@ -66,6 +66,7 @@ defmodule BusterClawWeb.Router do
   # the workspace by FileManager; loopback-only.
   scope "/ws", BusterClawWeb do
     get "/file", WorkspaceFileController, :show
+    get "/image", WorkspaceFileController, :image
   end
 
   # Raw WGSL for a custom homepage shader, fetched by the SmokeBackground hook and

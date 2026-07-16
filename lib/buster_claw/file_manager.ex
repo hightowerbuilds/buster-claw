@@ -135,6 +135,68 @@ defmodule BusterClaw.FileManager do
     end
   end
 
+  # Image types the preview pane renders directly (served as bytes, not read as
+  # text). SVG is served as image/svg+xml — safe inside an <img> tag, which does
+  # not execute scripts in the referenced SVG.
+  @image_types %{
+    ".png" => "image/png",
+    ".jpg" => "image/jpeg",
+    ".jpeg" => "image/jpeg",
+    ".gif" => "image/gif",
+    ".webp" => "image/webp",
+    ".avif" => "image/avif",
+    ".apng" => "image/apng",
+    ".bmp" => "image/bmp",
+    ".ico" => "image/x-icon",
+    ".svg" => "image/svg+xml"
+  }
+
+  @doc "Whether `path` has an image extension the preview pane can render."
+  def image?(path), do: String.downcase(Path.extname(to_string(path))) in Map.keys(@image_types)
+
+  @doc "Content-type for an image path (by extension), or octet-stream."
+  def image_content_type(path) do
+    ext = path |> to_string() |> Path.extname() |> String.downcase()
+    Map.get(@image_types, ext, "application/octet-stream")
+  end
+
+  @doc """
+  Resolve `path` to an absolute regular-file path inside `base`, for serving its
+  bytes. `{:ok, abs}` | `{:error, :outside_base | :not_a_file | reason}`.
+  """
+  def servable_file(path, base) do
+    with {:ok, abs} <- ensure_within(path, base) do
+      case File.stat(abs) do
+        {:ok, %File.Stat{type: :regular}} -> {:ok, abs}
+        {:ok, _stat} -> {:error, :not_a_file}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  Import an external file (`src_path`, e.g. a dropped file's temp path) into the
+  directory `dest_dir` under `filename`. A name collision is resolved by
+  suffixing ` (n)` rather than failing — drag-drop re-drops are common. Returns
+  `{:ok, target}` or `{:error, reason}`.
+  """
+  def import_file(src_path, dest_dir, filename, base) do
+    with :ok <- validate_name(filename),
+         {:ok, dest_abs} <- ensure_within(dest_dir, base),
+         {:ok, _first} <- ensure_within(Path.join(dest_abs, filename), base) do
+      if File.dir?(dest_abs) do
+        target = dedupe_target(dest_abs, filename)
+
+        case File.cp(src_path, target) do
+          :ok -> {:ok, target}
+          {:error, reason} -> {:error, reason}
+        end
+      else
+        {:error, :not_a_directory}
+      end
+    end
+  end
+
   @doc "The current user's home directory — the broad base used to relocate the workspace."
   def home, do: System.user_home() || "/"
 
@@ -165,6 +227,25 @@ defmodule BusterClaw.FileManager do
   end
 
   # --- internals ----------------------------------------------------------
+
+  # Find a non-colliding path in `dir` for `filename`: the name as-is if free,
+  # else `stem (1).ext`, `stem (2).ext`, … (capped so a pathological dir can't
+  # loop forever).
+  defp dedupe_target(dir, filename) do
+    first = Path.join(dir, filename)
+
+    if File.exists?(first) do
+      ext = Path.extname(filename)
+      stem = Path.basename(filename, ext)
+
+      Enum.find_value(1..9999, first, fn n ->
+        candidate = Path.join(dir, "#{stem} (#{n})#{ext}")
+        if File.exists?(candidate), do: false, else: candidate
+      end)
+    else
+      first
+    end
+  end
 
   defp do_rename(from, to) do
     case File.rename(from, to) do
