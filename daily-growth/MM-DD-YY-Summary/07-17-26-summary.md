@@ -112,10 +112,41 @@ the terminal-close case already rolls its own), so a global interceptor + a
 `data-*` rename at each site beats adding `id`+`phx-hook` to eleven buttons. An
 ExUnit source guard fails if any template reintroduces `data-confirm=`.
 
+## Notify — a widget the model can ring from anywhere (Phases 0–3)
+
+A new homepage widget: BusterClaw can set timers, alarms, and reminders, and when
+the moment comes it rings a modal. Built in four phases, each committed and green.
+
+**The design insight that made "from any point of entry" cheap:** chat, terminal,
+and dispatched email/voicemail already converge on one surface — the command
+catalog. So the whole cross-channel story is a single `notify_*` command domain;
+no per-channel wiring. `notify_create` (`:restricted`, so untrusted-origin content
+can't plant an alarm) is reachable from every trusted caller.
+
+- **Phase 0 — spine (`e215d06`).** `notifications` table + context (absolute
+  `fire_at`, so a timer is now+duration at create time and alarms survive a
+  restart); a supervised `Scheduler` that arms a single timer to the earliest
+  `fire_at` (capped so drift self-heals), re-arms on changes, and broadcasts
+  `{:notification_fired, _}`; the `notify_*` command surface.
+- **Phase 1 — the widget tab (`da6c10b`).** A fourth corner-widget tab: quick-add
+  (label + minutes → timer), a live list of everything armed, snooze/dismiss,
+  refreshing off the `"notifications"` topic.
+- **Phase 2 — the shader digits (`24ab5bd`).** `sevenseg.wgsl.js` draws `DD:DD`
+  from remaining seconds on the prelude's free lens channel; the `ShaderTimer`
+  hook owns the tick locally (smooth, no round-trips) and falls back to a text
+  `MM:SS` node when WebGPU is missing. The soonest notification shows as a big
+  segment countdown atop the tab.
+- **Phase 3 — the modal (`ab910dd`).** The fired broadcast pops a homepage modal —
+  label over a `00:00` segment display, Snooze 5m / Dismiss — reusing the shader.
+
+**Not yet done:** the modal is homepage-only (Phase 4 = app-wide + a native OS
+notification), and the WGSL has only run in CI's absence — worth an eyeball in the
+real webview (the text fallback keeps a misrender from breaking anything).
+
 ## State of the tree
 
-`mix test` green — **1039 tests**, 0 failures. Two more commits land on main today
-(the BusterClaw wallet template, and the webview confirm fix), on top of the
-morning's four. `.env` holds the Twilio creds and stays untracked. Follow-up worth
-doing: fold `tab_strip.js`'s hand-rolled busy-terminal modal onto the shared
-`clawConfirm` helper.
+`mix precommit` green — **1058 tests**, 0 failures. Six commits on main today: the
+BusterClaw wallet template, the webview confirm fix, and the four Notify phases —
+on top of the morning's four. `.env` holds the Twilio creds and stays untracked.
+Follow-ups worth doing: fold `tab_strip.js`'s busy-terminal modal onto the shared
+`clawConfirm` helper, and Notify Phase 4 (app-wide modal, native OS notification).
