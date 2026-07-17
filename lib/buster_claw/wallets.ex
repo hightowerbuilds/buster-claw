@@ -15,7 +15,7 @@ defmodule BusterClaw.Wallets do
 
   require Logger
 
-  alias BusterClaw.{Browser, Finance, Library, Repo}
+  alias BusterClaw.{Browser, Finance, Library, Repo, Telephony}
   alias BusterClaw.Wallets.{Budget, Feed, Transaction, Wallet}
 
   @topic "wallets"
@@ -63,6 +63,70 @@ defmodule BusterClaw.Wallets do
   def change_wallet(%Wallet{} = wallet \\ %Wallet{}, attrs \\ %{}) do
     Wallet.changeset(wallet, attrs)
   end
+
+  # ---------------------------------------------------------------------------
+  # BusterClaw template (running-cost wallet)
+  # ---------------------------------------------------------------------------
+
+  @doc "True when this wallet uses the BusterClaw running-cost template."
+  def busterclaw?(%Wallet{template: "busterclaw"}), do: true
+  def busterclaw?(%Wallet{}), do: false
+
+  @doc """
+  Set the monthly model/subscription costs for a wallet — a `%{provider => cents}`
+  map (integer cents, e.g. `%{"anthropic" => 2000}`). Written directly rather than
+  through the cast changeset, so `update_wallet/2` can never overwrite it by
+  accident (same guard as the cached `balance_cents`).
+  """
+  def set_model_costs(%Wallet{} = wallet, costs) when is_map(costs) do
+    wallet
+    |> Ecto.Changeset.change(model_costs: costs)
+    |> Repo.update()
+    |> broadcast_change(:updated)
+  end
+
+  @doc """
+  Cost summary for a BusterClaw-template wallet: the BusterPhone number and its
+  running (lifetime) telephony spend, plus the configured monthly model
+  subscription costs and their sum. All money is integer cents.
+  """
+  def busterclaw_summary(%Wallet{} = wallet) do
+    stats = Telephony.stats()
+    costs = normalize_model_costs(wallet.model_costs)
+
+    %{
+      phone_number: Telephony.our_number(),
+      phone_spent_cents: micros_to_cents(stats.spent_micros),
+      phone_pending?: stats.pending_cost > 0,
+      voicemails: stats.voicemails,
+      model_costs_cents: costs,
+      model_total_cents: costs |> Map.values() |> Enum.sum()
+    }
+  end
+
+  defp normalize_model_costs(costs) when is_map(costs) do
+    costs
+    |> Enum.map(fn {provider, value} -> {to_string(provider), to_cents(value)} end)
+    |> Enum.reject(fn {_provider, cents} -> cents <= 0 end)
+    |> Map.new()
+  end
+
+  defp normalize_model_costs(_costs), do: %{}
+
+  # Twilio prices are micro-USD ($0.25 = 250_000); wallets speak integer cents.
+  defp micros_to_cents(micros) when is_integer(micros), do: div(micros, 10_000)
+  defp micros_to_cents(_micros), do: 0
+
+  defp to_cents(value) when is_integer(value), do: value
+
+  defp to_cents(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {cents, _rest} -> cents
+      :error -> 0
+    end
+  end
+
+  defp to_cents(_value), do: 0
 
   # ---------------------------------------------------------------------------
   # Transactions

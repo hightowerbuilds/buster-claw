@@ -221,4 +221,63 @@ defmodule BusterClaw.WalletsTest do
     assert_receive {:wallet_transaction, :created, _}
     assert_receive {:wallet_changed, :updated, _}
   end
+
+  describe "BusterClaw template" do
+    alias BusterClaw.Telephony
+
+    test "template defaults to none and validates its value" do
+      assert {:ok, wallet} = Wallets.create_wallet(%{name: "Ledger", type: "business"})
+      assert wallet.template == "none"
+      refute Wallets.busterclaw?(wallet)
+
+      assert {:ok, buster} =
+               Wallets.create_wallet(%{name: "Costs", type: "business", template: "busterclaw"})
+
+      assert buster.template == "busterclaw"
+      assert Wallets.busterclaw?(buster)
+
+      assert {:error, changeset} =
+               Wallets.create_wallet(%{name: "Bad", type: "business", template: "wat"})
+
+      assert %{template: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "set_model_costs stores a provider => cents map, dropping zero/blank" do
+      wallet = wallet!(%{template: "busterclaw"})
+
+      assert {:ok, updated} =
+               Wallets.set_model_costs(wallet, %{"anthropic" => 2000, "openai" => 0})
+
+      assert updated.model_costs == %{"anthropic" => 2000, "openai" => 0}
+
+      summary = Wallets.busterclaw_summary(updated)
+      assert summary.model_costs_cents == %{"anthropic" => 2000}
+      assert summary.model_total_cents == 2000
+    end
+
+    test "busterclaw_summary surfaces the phone number and running spend" do
+      {:ok, _event} =
+        Telephony.record_event(
+          %{
+            direction: "inbound",
+            kind: "voicemail",
+            from_number: "+15033412655",
+            to_number: "+13603646763",
+            twilio_sid: "RE#{System.unique_integer([:positive])}",
+            occurred_at: DateTime.utc_now() |> DateTime.truncate(:second),
+            cost_micros: 250_000,
+            cost_synced_at: DateTime.utc_now() |> DateTime.truncate(:second)
+          },
+          observe: false
+        )
+
+      wallet = wallet!(%{template: "busterclaw"})
+      summary = Wallets.busterclaw_summary(wallet)
+
+      assert summary.phone_number == "+13603646763"
+      # 250_000 micro-USD == $0.25 == 25 cents.
+      assert summary.phone_spent_cents == 25
+      assert summary.voicemails == 1
+    end
+  end
 end

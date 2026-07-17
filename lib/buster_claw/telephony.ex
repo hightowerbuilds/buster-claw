@@ -171,6 +171,20 @@ defmodule BusterClaw.Telephony do
   defp maybe_limit(query, nil), do: query
   defp maybe_limit(query, n), do: limit(query, ^n)
 
+  @doc """
+  The BusterPhone number — the number inbound callers dialed, read from the most
+  recent inbound event's `to_number`. It is not configured anywhere; it's learned
+  from traffic, so this is `nil` until the first call/voicemail lands.
+  """
+  def our_number do
+    Event
+    |> where([e], e.direction == "inbound" and not is_nil(e.to_number))
+    |> order_by([e], desc: e.occurred_at, desc: e.id)
+    |> limit(1)
+    |> select([e], e.to_number)
+    |> Repo.one()
+  end
+
   @doc "Voicemails with no `heard_at` — the blinking light."
   def unheard_count do
     Event

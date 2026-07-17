@@ -6,6 +6,8 @@ defmodule BusterClawWeb.WalletsLive do
   alias BusterClaw.Wallets.Wallet
 
   @type_options [{"Business", "business"}, {"Personal", "personal"}]
+  @template_options [{"None", "none"}, {"BusterClaw", "busterclaw"}]
+  @model_providers [{"Anthropic", "anthropic"}, {"OpenAI", "openai"}, {"OpenCode", "opencode"}]
   @kind_options [{"Expense", "expense"}, {"Income", "income"}]
   @feed_kind_options [
     {"Market price (ticker)", "market"},
@@ -16,7 +18,11 @@ defmodule BusterClawWeb.WalletsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Wallets.subscribe()
+    if connected?(socket) do
+      Wallets.subscribe()
+      # Phone spend feeds the BusterClaw template panel, so keep it live.
+      BusterClaw.Telephony.subscribe()
+    end
 
     month = month_key(LocalTime.today())
 
@@ -24,6 +30,7 @@ defmodule BusterClawWeb.WalletsLive do
      socket
      |> assign(:page_title, "Wallets")
      |> assign(:type_options, @type_options)
+     |> assign(:template_options, @template_options)
      |> assign(:kind_options, @kind_options)
      |> assign(:feed_kind_options, @feed_kind_options)
      |> assign(:current_month, month)
@@ -31,6 +38,8 @@ defmodule BusterClawWeb.WalletsLive do
      |> assign(:transactions, [])
      |> assign(:feeds, [])
      |> assign(:budget_summary, nil)
+     |> assign(:busterclaw, nil)
+     |> assign(:model_cost_form, nil)
      |> assign(:result, nil)
      |> assign(:txn_form, new_txn_form())
      |> assign(:feed_form, new_feed_form())
@@ -72,6 +81,18 @@ defmodule BusterClawWeb.WalletsLive do
     end
   end
 
+  # Live phone spend for the BusterClaw panel — only recompute when the open
+  # wallet actually uses the template.
+  def handle_info({:telephony_event, _event}, socket) do
+    case socket.assigns.selected do
+      %Wallet{template: "busterclaw"} = wallet ->
+        {:noreply, assign(socket, :busterclaw, Wallets.busterclaw_summary(wallet))}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
   # Ignore any unexpected message shape on the subscribed topic rather than
   # crashing the LiveView with a FunctionClauseError.
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -109,7 +130,15 @@ defmodule BusterClawWeb.WalletsLive do
   end
 
   def handle_event("close", _params, socket) do
-    {:noreply, assign(socket, selected: nil, transactions: [], feeds: [], budget_summary: nil)}
+    {:noreply,
+     assign(socket,
+       selected: nil,
+       transactions: [],
+       feeds: [],
+       budget_summary: nil,
+       busterclaw: nil,
+       model_cost_form: nil
+     )}
   end
 
   def handle_event("delete_wallet", %{"id" => id}, socket) do
@@ -122,7 +151,15 @@ defmodule BusterClawWeb.WalletsLive do
 
         socket =
           if selected?(socket, wallet.id),
-            do: assign(socket, selected: nil, transactions: [], feeds: [], budget_summary: nil),
+            do:
+              assign(socket,
+                selected: nil,
+                transactions: [],
+                feeds: [],
+                budget_summary: nil,
+                busterclaw: nil,
+                model_cost_form: nil
+              ),
             else: socket
 
         {:noreply, socket |> assign(:result, "Wallet deleted.") |> load_wallets()}
@@ -226,6 +263,38 @@ defmodule BusterClawWeb.WalletsLive do
     end
   end
 
+  # --- BusterClaw template (model costs) -------------------------------------
+
+  def handle_event("save_model_costs", %{"model_costs" => params}, socket) do
+    case socket.assigns.selected do
+      %Wallet{} = wallet ->
+        costs =
+          for {_label, provider} <- @model_providers, reduce: %{} do
+            acc ->
+              case to_cents_or_zero(Map.get(params, provider)) do
+                cents when cents > 0 -> Map.put(acc, provider, cents)
+                _ -> acc
+              end
+          end
+
+        case Wallets.set_model_costs(wallet, costs) do
+          {:ok, updated} ->
+            {:noreply,
+             socket
+             |> assign(:selected, updated)
+             |> assign(:busterclaw, Wallets.busterclaw_summary(updated))
+             |> assign(:model_cost_form, new_model_cost_form(updated.model_costs))
+             |> assign(:result, "Model costs saved.")}
+
+          {:error, _changeset} ->
+            {:noreply, assign(socket, :result, "Could not save model costs.")}
+        end
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
   # --- render ----------------------------------------------------------------
 
   @impl true
@@ -262,6 +331,12 @@ defmodule BusterClawWeb.WalletsLive do
               <h2 class="text-lg font-semibold">New Wallet</h2>
               <.input field={@wallet_form[:name]} label="Name" />
               <.input field={@wallet_form[:type]} label="Type" type="select" options={@type_options} />
+              <.input
+                field={@wallet_form[:template]}
+                label="Template"
+                type="select"
+                options={@template_options}
+              />
               <.input field={@wallet_form[:currency]} label="Currency" />
               <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85">
                 Create Wallet
@@ -341,13 +416,15 @@ defmodule BusterClawWeb.WalletsLive do
           type="button"
           phx-click="delete_wallet"
           phx-value-id={@selected.id}
-          data-confirm="Delete this wallet and all its transactions?"
+          data-claw-confirm="Delete this wallet and all its transactions?"
           class="rounded border border-error/40 px-3 py-1.5 text-sm text-error"
         >
           Delete Wallet
         </button>
       </div>
     </section>
+
+    {if @selected.template == "busterclaw" and @busterclaw, do: render_busterclaw(assigns)}
 
     <section
       :if={@selected.type == "personal"}
@@ -436,7 +513,7 @@ defmodule BusterClawWeb.WalletsLive do
               type="button"
               phx-click="delete_transaction"
               phx-value-id={txn.id}
-              data-confirm="Delete this transaction?"
+              data-claw-confirm="Delete this transaction?"
               class="rounded border border-error/40 px-2 py-1 text-xs text-error"
             >
               ✕
@@ -502,7 +579,7 @@ defmodule BusterClawWeb.WalletsLive do
             type="button"
             phx-click="delete_feed"
             phx-value-id={feed.id}
-            data-confirm="Delete this feed?"
+            data-claw-confirm="Delete this feed?"
             class="rounded border border-error/40 px-2 py-1 text-xs text-error"
           >
             ✕
@@ -528,7 +605,66 @@ defmodule BusterClawWeb.WalletsLive do
     """
   end
 
+  defp render_busterclaw(assigns) do
+    ~H"""
+    <section class="rounded-lg border border-base-300 bg-base-100 p-5">
+      <h3 class="text-lg font-semibold">BusterClaw running costs</h3>
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+        <div class="rounded border border-base-300 p-3">
+          <div class="text-xs uppercase tracking-wide text-base-content/60">BusterPhone</div>
+          <div class="mt-1 font-mono text-sm">{@busterclaw.phone_number || "no calls yet"}</div>
+          <div class="mt-2 text-xs text-base-content/60">Running phone total</div>
+          <div class="font-mono text-lg">
+            {format_money(@busterclaw.phone_spent_cents, @selected.currency)}{if @busterclaw.phone_pending?,
+              do: "+"}
+          </div>
+          <div class="text-xs text-base-content/60">{@busterclaw.voicemails} voicemails</div>
+        </div>
+        <div class="rounded border border-base-300 p-3">
+          <div class="text-xs uppercase tracking-wide text-base-content/60">
+            Model subscriptions / mo
+          </div>
+          <div class="mt-1 font-mono text-lg">
+            {format_money(@busterclaw.model_total_cents, @selected.currency)}
+          </div>
+          <ul class="mt-2 space-y-1 text-xs text-base-content/60">
+            <li
+              :for={{label, provider} <- model_providers()}
+              :if={Map.get(@busterclaw.model_costs_cents, provider, 0) > 0}
+            >
+              {label}: {format_money(
+                Map.get(@busterclaw.model_costs_cents, provider, 0),
+                @selected.currency
+              )}
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <.form
+        for={@model_cost_form}
+        id="model-costs-form"
+        phx-submit="save_model_costs"
+        class="mt-5 grid gap-3 sm:grid-cols-4"
+      >
+        <.input
+          :for={{label, provider} <- model_providers()}
+          field={@model_cost_form[provider]}
+          label={"#{label} ($/mo)"}
+        />
+        <div class="flex items-end">
+          <button class="w-full rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85">
+            Save Costs
+          </button>
+        </div>
+      </.form>
+    </section>
+    """
+  end
+
   # --- helpers ---------------------------------------------------------------
+
+  defp model_providers, do: @model_providers
 
   defp select_wallet(socket, %Wallet{} = wallet) do
     socket
@@ -536,14 +672,34 @@ defmodule BusterClawWeb.WalletsLive do
     |> assign(:transactions, Wallets.list_transactions(wallet))
     |> assign(:feeds, Wallets.list_feeds(wallet))
     |> assign(:budget_summary, Wallets.budget_summary(wallet, socket.assigns.current_month))
+    |> assign_busterclaw(wallet)
   end
+
+  defp assign_busterclaw(socket, %Wallet{template: "busterclaw"} = wallet) do
+    socket
+    |> assign(:busterclaw, Wallets.busterclaw_summary(wallet))
+    |> assign(:model_cost_form, new_model_cost_form(wallet.model_costs))
+  end
+
+  defp assign_busterclaw(socket, %Wallet{}),
+    do: assign(socket, busterclaw: nil, model_cost_form: nil)
 
   defp refresh_selected(%{assigns: %{selected: nil}} = socket), do: socket
 
   defp refresh_selected(%{assigns: %{selected: selected}} = socket) do
     case Wallets.get_wallet(selected.id) do
-      nil -> assign(socket, selected: nil, transactions: [], feeds: [], budget_summary: nil)
-      wallet -> select_wallet(socket, wallet)
+      nil ->
+        assign(socket,
+          selected: nil,
+          transactions: [],
+          feeds: [],
+          budget_summary: nil,
+          busterclaw: nil,
+          model_cost_form: nil
+        )
+
+      wallet ->
+        select_wallet(socket, wallet)
     end
   end
 
@@ -585,6 +741,28 @@ defmodule BusterClawWeb.WalletsLive do
       to_form(%{"kind" => "market", "target" => "", "polling_interval_minutes" => "60"},
         as: :feed
       )
+
+  defp new_model_cost_form(costs) do
+    costs = costs || %{}
+
+    @model_providers
+    |> Map.new(fn {_label, provider} ->
+      {provider, cents_to_dollar_input(Map.get(costs, provider))}
+    end)
+    |> to_form(as: :model_costs)
+  end
+
+  defp cents_to_dollar_input(cents) when is_integer(cents) and cents > 0,
+    do: :erlang.float_to_binary(cents / 100, decimals: 2)
+
+  defp cents_to_dollar_input(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {cents, _rest} when cents > 0 -> cents_to_dollar_input(cents)
+      _ -> ""
+    end
+  end
+
+  defp cents_to_dollar_input(_cents), do: ""
 
   defp build_feed_attrs(params) do
     kind = Map.get(params, "kind", "market")

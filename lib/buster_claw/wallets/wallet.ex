@@ -6,13 +6,19 @@ defmodule BusterClaw.Wallets.Wallet do
   alias BusterClaw.Wallets.{Budget, Transaction}
 
   @types ~w(business personal)
+  @templates ~w(none busterclaw)
 
   schema "wallets" do
     field :name, :string
     field :type, :string, default: "business"
+    field :template, :string, default: "none"
     field :currency, :string, default: "USD"
     field :balance_cents, :integer, default: 0
     field :archived, :boolean, default: false
+    # Monthly model/subscription costs as `%{"provider" => cents}` (e.g.
+    # %{"anthropic" => 2000}). Set only via `Wallets.set_model_costs/2`, not the
+    # generic changeset, so a bare `update_wallet/2` can't scribble over it.
+    field :model_costs, :map, default: %{}
 
     has_many :transactions, Transaction
     has_many :budgets, Budget
@@ -21,6 +27,7 @@ defmodule BusterClaw.Wallets.Wallet do
   end
 
   def types, do: @types
+  def templates, do: @templates
 
   # NOTE: `:balance_cents` is intentionally NOT cast here. It is a cache of the
   # transaction ledger and must only ever be written by `Wallets.recompute_balance!/1`
@@ -28,9 +35,10 @@ defmodule BusterClaw.Wallets.Wallet do
   # `update_wallet/2` overwrite the ledger-derived balance with an arbitrary value.
   def changeset(wallet, attrs) do
     wallet
-    |> cast(attrs, [:name, :type, :currency, :archived])
-    |> validate_required([:name, :type, :currency])
+    |> cast(attrs, [:name, :type, :template, :currency, :archived])
+    |> validate_required([:name, :type, :template, :currency])
     |> validate_inclusion(:type, @types)
+    |> validate_inclusion(:template, @templates)
     |> validate_length(:currency, is: 3)
   end
 end

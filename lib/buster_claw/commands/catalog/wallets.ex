@@ -17,6 +17,7 @@ defmodule BusterClaw.Commands.Catalog.Wallets do
         args: %{
           "name" => %{type: :string, required: true},
           "type" => %{type: :string, required: false, enum: ["business", "personal"]},
+          "template" => %{type: :string, required: false, enum: ["none", "busterclaw"]},
           "currency" => %{type: :string, required: false, default: "USD"}
         }
       },
@@ -29,6 +30,7 @@ defmodule BusterClaw.Commands.Catalog.Wallets do
           "id" => %{type: :integer, required: true},
           "name" => %{type: :string, required: false},
           "type" => %{type: :string, required: false, enum: ["business", "personal"]},
+          "template" => %{type: :string, required: false, enum: ["none", "busterclaw"]},
           "currency" => %{type: :string, required: false},
           "archived" => %{type: :boolean, required: false}
         }
