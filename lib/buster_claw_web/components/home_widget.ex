@@ -181,86 +181,82 @@ defmodule BusterClawWeb.HomeWidget do
 
   defp notify_panel(assigns) do
     ~H"""
-    <section class="ic-panel flex h-full flex-col">
-      {if @notifications != [], do: notify_hero(%{soonest: hd(@notifications)})}
-
-      <.form
-        for={@form}
-        id="notify-form"
-        phx-submit="notify_create"
-        class="flex shrink-0 flex-col gap-1.5 border-b border-base-content/15 px-3 py-3"
-      >
-        <label class="font-mono text-[0.625rem] font-bold uppercase tracking-widest text-base-content/55">
-          New timer
-        </label>
-        <input
-          type="text"
-          name="notify[label]"
-          value={@form[:label].value}
-          required
-          placeholder="Label, e.g. Tea"
-          autocomplete="off"
-          class="min-w-0 border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-xs"
-        />
-        <div class="flex gap-1.5">
+    <section class="ic-panel grid h-full grid-cols-3">
+      <%!-- Left 2/3: notifier creation. --%>
+      <div class="col-span-2 flex min-h-0 flex-col border-r border-base-content/15 px-3 py-3">
+        <.form for={@form} id="notify-form" phx-submit="notify_create" class="flex flex-col gap-1.5">
+          <label class="font-mono text-[0.625rem] font-bold uppercase tracking-widest text-base-content/55">
+            New timer
+          </label>
           <input
-            type="number"
-            name="notify[minutes]"
-            value={@form[:minutes].value}
-            min="1"
+            type="text"
+            name="notify[label]"
+            value={@form[:label].value}
             required
-            placeholder="min"
-            class="min-w-0 flex-1 border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-xs"
+            placeholder="Label, e.g. Tea"
+            autocomplete="off"
+            class="min-w-0 border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-xs"
           />
-          <button
-            type="submit"
-            class="shrink-0 border-2 border-primary px-2 py-1 font-display text-[0.625rem] font-bold uppercase tracking-wide text-primary transition hover:bg-primary hover:text-primary-content"
-          >
-            Set
-          </button>
-        </div>
-        <p :if={@form.errors != []} class="font-mono text-[0.625rem] text-primary">
-          {form_error_text(@form)}
-        </p>
-      </.form>
+          <div class="flex gap-1.5">
+            <input
+              type="number"
+              name="notify[minutes]"
+              value={@form[:minutes].value}
+              min="1"
+              required
+              placeholder="min"
+              class="min-w-0 flex-1 border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-xs"
+            />
+            <button
+              type="submit"
+              class="shrink-0 border-2 border-primary px-2 py-1 font-display text-[0.625rem] font-bold uppercase tracking-wide text-primary transition hover:bg-primary hover:text-primary-content"
+            >
+              Set
+            </button>
+          </div>
+          <p :if={@form.errors != []} class="font-mono text-[0.625rem] text-primary">
+            {form_error_text(@form)}
+          </p>
+        </.form>
+      </div>
 
-      <ul class="min-h-0 flex-1 divide-y divide-base-content/10 overflow-auto">
-        <li
-          :for={notification <- @notifications}
-          class="flex items-center justify-between gap-2 px-3 py-2"
-        >
-          <div class="min-w-0">
+      <%!-- Right 1/3: the timers themselves — soonest as a shader countdown, then the list. --%>
+      <div class="col-span-1 flex min-h-0 flex-col">
+        {if @notifications != [], do: notify_hero(%{soonest: hd(@notifications)})}
+
+        <ul class="min-h-0 flex-1 divide-y divide-base-content/10 overflow-auto">
+          <li :for={notification <- @notifications} class="px-2 py-2">
             <div class="truncate font-mono text-xs text-base-content">{notification.label}</div>
             <div class="font-mono text-[0.625rem] uppercase tracking-wide text-base-content/55">
               {kind_label(notification.kind)} · {fires_in_label(notification.fire_at)}
             </div>
-          </div>
-          <div class="flex shrink-0 gap-1">
-            <button
-              type="button"
-              phx-click="notify_snooze"
-              phx-value-id={notification.id}
-              class="border border-base-content/25 px-1.5 py-0.5 font-mono text-[0.625rem] uppercase text-base-content/70 transition hover:border-base-content"
-            >
-              Snooze
-            </button>
-            <button
-              type="button"
-              phx-click="notify_dismiss"
-              phx-value-id={notification.id}
-              class="border border-error/40 px-1.5 py-0.5 font-mono text-[0.625rem] uppercase text-error transition hover:border-error"
-            >
-              Dismiss
-            </button>
-          </div>
-        </li>
-        <li
-          :if={@notifications == []}
-          class="px-3 py-8 text-center font-mono text-[0.625rem] uppercase tracking-widest text-base-content/45"
-        >
-          No timers or alarms set
-        </li>
-      </ul>
+            <div class="mt-1 flex gap-1">
+              <button
+                type="button"
+                phx-click="notify_snooze"
+                phx-value-id={notification.id}
+                class="border border-base-content/25 px-1.5 py-0.5 font-mono text-[0.625rem] uppercase text-base-content/70 transition hover:border-base-content"
+              >
+                Snooze
+              </button>
+              <button
+                type="button"
+                phx-click="notify_dismiss"
+                phx-value-id={notification.id}
+                class="border border-error/40 px-1.5 py-0.5 font-mono text-[0.625rem] uppercase text-error transition hover:border-error"
+              >
+                Dismiss
+              </button>
+            </div>
+          </li>
+          <li
+            :if={@notifications == []}
+            class="px-2 py-8 text-center font-mono text-[0.625rem] uppercase tracking-widest text-base-content/45"
+          >
+            None set
+          </li>
+        </ul>
+      </div>
     </section>
     """
   end

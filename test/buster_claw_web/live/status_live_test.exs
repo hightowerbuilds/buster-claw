@@ -306,7 +306,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
       html = render_click(view, "select_widget_tab", %{"tab" => "notify"})
       assert html =~ "New timer"
-      assert html =~ "No timers or alarms set"
+      assert html =~ "None set"
     end
 
     test "creating a timer from the form lists it and clears the form", %{conn: conn} do
