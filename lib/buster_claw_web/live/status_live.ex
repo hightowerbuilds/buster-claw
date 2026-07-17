@@ -8,6 +8,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
+  alias BusterClaw.Notifications
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
   alias BusterClaw.SvgViewer
@@ -31,6 +32,7 @@ defmodule BusterClawWeb.StatusLive do
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
+      Notifications.subscribe()
       Process.send_after(self(), :sky_refresh, @sky_refresh_ms)
     end
 
@@ -46,6 +48,8 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:widget_tab, "calendar")
      |> assign(:weather, nil)
      |> assign(:weather_form, false)
+     |> assign(:notify_form, notify_form())
+     |> load_notifications()
      |> init_chats()
      |> load_calendar_month()
      |> then(fn s -> if connected?(s), do: maybe_fetch_sky(s), else: s end)}
@@ -88,6 +92,25 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:trusted_entries, Contacts.orphan_entries().emails)
   end
 
+  # --- Notify widget ---------------------------------------------------------
+
+  defp load_notifications(socket), do: assign(socket, :notifications, Notifications.upcoming())
+
+  defp notify_form, do: to_form(%{"label" => "", "minutes" => ""}, as: :notify)
+
+  defp assign_notify_error(socket, params, field, message) do
+    assign(socket, :notify_form, to_form(params, as: :notify, errors: [{field, {message, []}}]))
+  end
+
+  defp parse_minutes(value) do
+    case value |> to_string() |> String.trim() |> Integer.parse() do
+      {minutes, _rest} when minutes > 0 -> minutes
+      _ -> :error
+    end
+  end
+
+  defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
+
   @impl true
   def handle_event("add_contact", %{"entry" => entry}, socket) do
     case TrustedSenders.add_entry(entry) do
@@ -127,16 +150,59 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
-      when tab in ["calendar", "contacts", "place"] do
+      when tab in ["calendar", "contacts", "place", "notify"] do
     socket = assign(socket, :widget_tab, tab)
 
-    # Selecting Time & Place (re)loads conditions; Weather.current/0 is
-    # TTL-cached, so this is a real fetch at most once per TTL.
-    if tab == "place" do
-      {:noreply, load_weather(socket)}
-    else
-      {:noreply, socket}
+    # Selecting Time & Place (re)loads conditions (TTL-cached, so a real fetch at
+    # most once per TTL); Notify re-reads its list so it's fresh on open.
+    case tab do
+      "place" -> {:noreply, load_weather(socket)}
+      "notify" -> {:noreply, load_notifications(socket)}
+      _ -> {:noreply, socket}
     end
+  end
+
+  def handle_event("notify_create", %{"notify" => params}, socket) do
+    label = params |> Map.get("label", "") |> String.trim()
+    minutes = params |> Map.get("minutes", "") |> parse_minutes()
+
+    cond do
+      label == "" ->
+        {:noreply, assign_notify_error(socket, params, :label, "add a label")}
+
+      minutes == :error ->
+        {:noreply,
+         assign_notify_error(socket, params, :minutes, "minutes must be a positive number")}
+
+      true ->
+        attrs = %{
+          "kind" => "timer",
+          "label" => label,
+          "fire_at" => DateTime.add(now(), minutes * 60, :second),
+          "status" => "pending",
+          "source" => "manual"
+        }
+
+        case Notifications.create_notification(attrs) do
+          {:ok, _notification} ->
+            {:noreply, socket |> assign(:notify_form, notify_form()) |> load_notifications()}
+
+          {:error, _changeset} ->
+            {:noreply, assign_notify_error(socket, params, :label, "could not create timer")}
+        end
+    end
+  end
+
+  def handle_event("notify_dismiss", %{"id" => id}, socket) do
+    notification = Enum.find(socket.assigns.notifications, &(to_string(&1.id) == id))
+    if notification, do: Notifications.dismiss(notification)
+    {:noreply, load_notifications(socket)}
+  end
+
+  def handle_event("notify_snooze", %{"id" => id}, socket) do
+    notification = Enum.find(socket.assigns.notifications, &(to_string(&1.id) == id))
+    if notification, do: Notifications.snooze(notification, 300)
+    {:noreply, load_notifications(socket)}
   end
 
   def handle_event("set_weather_location", %{"query" => query}, socket) do
@@ -340,6 +406,15 @@ defmodule BusterClawWeb.StatusLive do
     Process.send_after(self(), :sky_refresh, @sky_refresh_ms)
     {:noreply, maybe_fetch_sky(socket)}
   end
+
+  # A notification was created / snoozed / dismissed / fired somewhere (this view,
+  # another session, or the agent). Re-read the widget list so it stays current.
+  # (Phase 3 will also pop a modal on {:notification_fired, _}.)
+  def handle_info({:notifications, :changed, _notification}, socket),
+    do: {:noreply, load_notifications(socket)}
+
+  def handle_info({:notification_fired, _notification}, socket),
+    do: {:noreply, load_notifications(socket)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -694,6 +769,8 @@ defmodule BusterClawWeb.StatusLive do
               entries={@trusted_entries}
               weather={@weather}
               weather_form={@weather_form}
+              notifications={@notifications}
+              notify_form={@notify_form}
             />
           </div>
 

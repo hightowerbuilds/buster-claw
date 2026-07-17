@@ -18,6 +18,8 @@ defmodule BusterClawWeb.HomeWidget do
   attr :days, :list, required: true
   attr :weather, :any, required: true
   attr :weather_form, :boolean, required: true
+  attr :notifications, :list, required: true
+  attr :notify_form, :any, required: true
 
   # Calendar + Contacts as a rectangle filling the header gap to the right of the
   # banner. The card is absolutely positioned to fill the widget box, so its
@@ -53,7 +55,8 @@ defmodule BusterClawWeb.HomeWidget do
           <%= for {key, text} <- [
             {"calendar", "Calendar"},
             {"contacts", "Contacts"},
-            {"place", "Time & Place"}
+            {"place", "Time & Place"},
+            {"notify", "Notify"}
           ] do %>
             <button
               type="button"
@@ -83,6 +86,9 @@ defmodule BusterClawWeb.HomeWidget do
           </div>
           <div class={["h-full", @tab != "place" && "hidden"]}>
             <.place_panel weather={@weather} form={@weather_form} />
+          </div>
+          <div class={["h-full", @tab != "notify" && "hidden"]}>
+            <.notify_panel notifications={@notifications} form={@notify_form} />
           </div>
         </div>
       </div>
@@ -163,6 +169,122 @@ defmodule BusterClawWeb.HomeWidget do
 
   defp event_time_label(%{start_time: %Time{} = time}),
     do: Elixir.Calendar.strftime(time, "%H:%M")
+
+  # Notify: a quick timer form over the list of upcoming notifications. The list
+  # shows every armed kind (timers, alarms, reminders — however they were set);
+  # the form makes the common case (a countdown timer) a two-field action.
+  # `select_widget_tab`, `notify_create`, `notify_snooze`, and `notify_dismiss`
+  # are handled by StatusLive. The relative "fires in" label re-renders on every
+  # change; the live per-second countdown arrives with the digit shader (Phase 2).
+  attr :notifications, :list, required: true
+  attr :form, :any, required: true
+
+  defp notify_panel(assigns) do
+    ~H"""
+    <section class="ic-panel flex h-full flex-col">
+      <.form
+        for={@form}
+        id="notify-form"
+        phx-submit="notify_create"
+        class="flex shrink-0 flex-col gap-1.5 border-b border-base-content/15 px-3 py-3"
+      >
+        <label class="font-mono text-[0.625rem] font-bold uppercase tracking-widest text-base-content/55">
+          New timer
+        </label>
+        <input
+          type="text"
+          name="notify[label]"
+          value={@form[:label].value}
+          required
+          placeholder="Label, e.g. Tea"
+          autocomplete="off"
+          class="min-w-0 border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-xs"
+        />
+        <div class="flex gap-1.5">
+          <input
+            type="number"
+            name="notify[minutes]"
+            value={@form[:minutes].value}
+            min="1"
+            required
+            placeholder="min"
+            class="min-w-0 flex-1 border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-xs"
+          />
+          <button
+            type="submit"
+            class="shrink-0 border-2 border-primary px-2 py-1 font-display text-[0.625rem] font-bold uppercase tracking-wide text-primary transition hover:bg-primary hover:text-primary-content"
+          >
+            Set
+          </button>
+        </div>
+        <p :if={@form.errors != []} class="font-mono text-[0.625rem] text-primary">
+          {form_error_text(@form)}
+        </p>
+      </.form>
+
+      <ul class="min-h-0 flex-1 divide-y divide-base-content/10 overflow-auto">
+        <li
+          :for={notification <- @notifications}
+          class="flex items-center justify-between gap-2 px-3 py-2"
+        >
+          <div class="min-w-0">
+            <div class="truncate font-mono text-xs text-base-content">{notification.label}</div>
+            <div class="font-mono text-[0.625rem] uppercase tracking-wide text-base-content/55">
+              {kind_label(notification.kind)} · {fires_in_label(notification.fire_at)}
+            </div>
+          </div>
+          <div class="flex shrink-0 gap-1">
+            <button
+              type="button"
+              phx-click="notify_snooze"
+              phx-value-id={notification.id}
+              class="border border-base-content/25 px-1.5 py-0.5 font-mono text-[0.625rem] uppercase text-base-content/70 transition hover:border-base-content"
+            >
+              Snooze
+            </button>
+            <button
+              type="button"
+              phx-click="notify_dismiss"
+              phx-value-id={notification.id}
+              class="border border-error/40 px-1.5 py-0.5 font-mono text-[0.625rem] uppercase text-error transition hover:border-error"
+            >
+              Dismiss
+            </button>
+          </div>
+        </li>
+        <li
+          :if={@notifications == []}
+          class="px-3 py-8 text-center font-mono text-[0.625rem] uppercase tracking-widest text-base-content/45"
+        >
+          No timers or alarms set
+        </li>
+      </ul>
+    </section>
+    """
+  end
+
+  defp kind_label("timer"), do: "Timer"
+  defp kind_label("alarm"), do: "Alarm"
+  defp kind_label("reminder"), do: "Reminder"
+  defp kind_label(other), do: other
+
+  # A coarse, timezone-free "fires in" label. Placeholder for the live shader
+  # countdown; re-computed each render, so it tracks reloads/changes, not seconds.
+  defp fires_in_label(fire_at) do
+    seconds = DateTime.diff(fire_at, DateTime.utc_now())
+
+    cond do
+      seconds <= 0 -> "now"
+      seconds < 60 -> "in #{seconds}s"
+      seconds < 3600 -> "in #{div(seconds, 60)}m"
+      seconds < 86_400 -> "in #{div(seconds, 3600)}h #{rem(div(seconds, 60), 60)}m"
+      true -> "in #{div(seconds, 86_400)}d"
+    end
+  end
+
+  defp form_error_text(form) do
+    Enum.map_join(form.errors, "; ", fn {_field, {message, _opts}} -> message end)
+  end
 
   # Time & Place: the daycycle shader (sun/moon arc, clouds, wind, birds by
   # day, stars by night — driven by the machine's local clock via u.lens.x)

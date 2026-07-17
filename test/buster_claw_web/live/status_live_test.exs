@@ -295,4 +295,85 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "set_weather_location"
     end
   end
+
+  describe "Notify widget" do
+    alias BusterClaw.Notifications
+
+    test "the corner widget has a Notify tab", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/")
+      assert html =~ "Notify"
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      html = render_click(view, "select_widget_tab", %{"tab" => "notify"})
+      assert html =~ "New timer"
+      assert html =~ "No timers or alarms set"
+    end
+
+    test "creating a timer from the form lists it and clears the form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_widget_tab", %{"tab" => "notify"})
+
+      html =
+        view
+        |> form("#notify-form", %{notify: %{label: "Tea", minutes: "5"}})
+        |> render_submit()
+
+      assert html =~ "Tea"
+      assert [%{kind: "timer", label: "Tea", status: "pending"}] = Notifications.upcoming()
+    end
+
+    test "a blank label is rejected with an inline error", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_widget_tab", %{"tab" => "notify"})
+
+      html =
+        view
+        |> form("#notify-form", %{notify: %{label: "   ", minutes: "5"}})
+        |> render_submit()
+
+      assert html =~ "add a label"
+      assert Notifications.upcoming() == []
+    end
+
+    test "dismiss removes a notification from the widget list", %{conn: conn} do
+      {:ok, notification} =
+        Notifications.create_notification(%{
+          "kind" => "timer",
+          "label" => "Standup",
+          "fire_at" => DateTime.add(DateTime.utc_now(), 600, :second),
+          "status" => "pending"
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_widget_tab", %{"tab" => "notify"})
+      assert render(view) =~ "Standup"
+
+      render_click(view, "notify_dismiss", %{"id" => to_string(notification.id)})
+
+      refute render(view) =~ "Standup"
+      assert Notifications.get_notification(notification.id).status == "dismissed"
+    end
+
+    test "a fired notification broadcast refreshes the list", %{conn: conn} do
+      {:ok, past} =
+        Notifications.create_notification(%{
+          "kind" => "alarm",
+          "label" => "Ring",
+          "fire_at" => DateTime.add(DateTime.utc_now(), -5, :second),
+          "status" => "pending"
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_widget_tab", %{"tab" => "notify"})
+      assert render(view) =~ "Ring"
+
+      # The scheduler is off in tests; drive the fire directly. Its broadcast
+      # reaches the mounted view, which drops the now-fired item from "upcoming".
+      Notifications.fire_due()
+      assert Notifications.get_notification(past.id).status == "fired"
+
+      _ = :sys.get_state(view.pid)
+      refute render(view) =~ "Ring"
+    end
+  end
 end
