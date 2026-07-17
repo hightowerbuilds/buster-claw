@@ -136,17 +136,24 @@ can't plant an alarm) is reachable from every trusted caller.
   hook owns the tick locally (smooth, no round-trips) and falls back to a text
   `MM:SS` node when WebGPU is missing. The soonest notification shows as a big
   segment countdown atop the tab.
-- **Phase 3 — the modal (`ab910dd`).** The fired broadcast pops a homepage modal —
-  label over a `00:00` segment display, Snooze 5m / Dismiss — reusing the shader.
+- **Phase 3 — the modal (`ab910dd`).** The fired broadcast pops a modal — label
+  over a `00:00` segment display, Snooze 5m / Dismiss — reusing the shader.
+- **Phase 4 — app-wide (`3e3b432`).** The modal now surfaces on any page, not just
+  the homepage, via a tiny `NotifyLive` mounted `sticky: true` in the root layout
+  (its own process, its own subscription). A separate process rather than an
+  `on_mount` hook because 10 of the page LiveViews have no catch-all
+  `handle_info`, so letting `{:notification_fired, _}` propagate would crash them.
 
-**Not yet done:** the modal is homepage-only (Phase 4 = app-wide + a native OS
-notification), and the WGSL has only run in CI's absence — worth an eyeball in the
-real webview (the text fallback keeps a misrender from breaking anything).
+**Not yet verified / done:** the WGSL has only run in CI's absence — worth an
+eyeball in the real webview (the text fallback keeps a misrender from breaking
+anything), as is confirming the sticky modal actually pops while on a non-homepage
+tab. A **native OS notification** (fires while the app is unfocused) is the
+remaining Phase 4 piece.
 
 ## State of the tree
 
-`mix precommit` green — **1058 tests**, 0 failures. Six commits on main today: the
-BusterClaw wallet template, the webview confirm fix, and the four Notify phases —
-on top of the morning's four. `.env` holds the Twilio creds and stays untracked.
-Follow-ups worth doing: fold `tab_strip.js`'s busy-terminal modal onto the shared
-`clawConfirm` helper, and Notify Phase 4 (app-wide modal, native OS notification).
+`mix precommit` green — **1059 tests**, 0 failures. Seven commits on main today: the
+BusterClaw wallet template, the webview confirm fix, and the five Notify phases
+(0–4) — on top of the morning's four. `.env` holds the Twilio creds and stays
+untracked. Follow-ups worth doing: fold `tab_strip.js`'s busy-terminal modal onto
+the shared `clawConfirm` helper, and Notify's native OS notification.
