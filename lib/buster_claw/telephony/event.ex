@@ -36,6 +36,11 @@ defmodule BusterClaw.Telephony.Event do
     # is trusted work; caller ID alone is a claim. See `BusterClaw.Telephony.Drain`.
     field :verified, :boolean, default: false
     field :metadata, :map, default: %{}
+    # Per-message Twilio cost, back-filled from the REST resources (prices lag,
+    # so nil = not priced yet). See VOICEMAIL_COST_ROADMAP.md.
+    field :cost_micros, :integer
+    field :cost_currency, :string
+    field :cost_synced_at, :utc_datetime
 
     belongs_to :document, BusterClaw.Library.Document
 
@@ -61,6 +66,9 @@ defmodule BusterClaw.Telephony.Event do
       :heard_at,
       :verified,
       :metadata,
+      :cost_micros,
+      :cost_currency,
+      :cost_synced_at,
       :document_id
     ])
     |> validate_required([:direction, :kind, :from_number, :to_number, :occurred_at])

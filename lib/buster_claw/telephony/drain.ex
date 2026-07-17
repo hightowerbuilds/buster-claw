@@ -78,6 +78,11 @@ defmodule BusterClaw.Telephony.Drain do
   @impl true
   def handle_info(:tick, state) do
     safe_tick(fn -> drain(state) end)
+    # Back-fill Twilio cost for any voicemail not yet finally priced. Cheap and
+    # best-effort: only unpriced rows, no-op when Twilio isn't configured, and
+    # isolated so a pricing hiccup never disturbs the drain. Prices lag, so this
+    # naturally retries each tick until every component settles.
+    safe_tick(fn -> Telephony.refresh_unpriced_costs() end)
     Process.send_after(self(), :tick, state.interval_ms)
     {:noreply, state}
   end

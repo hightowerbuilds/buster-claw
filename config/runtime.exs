@@ -112,6 +112,17 @@ if config_env() != :test do
     telephony_relay_url: telephony_relay_url,
     telephony_relay_key: telephony_relay_key,
     telephony_drain_enabled: telephony_drain_enabled
+
+  # Twilio REST creds on the Mac — read-only usage here (pricing back-fill), but
+  # the same creds SMS Phase 2B will send with. Set TWILIO_ACCOUNT_SID /
+  # TWILIO_AUTH_TOKEN in the environment; never commit them. Absent → the Twilio
+  # client reports not-configured and cost back-fill simply doesn't run.
+  if System.get_env("TWILIO_ACCOUNT_SID") do
+    config :buster_claw, :twilio, %{
+      account_sid: System.get_env("TWILIO_ACCOUNT_SID"),
+      auth_token: System.get_env("TWILIO_AUTH_TOKEN")
+    }
+  end
 end
 
 # Finnhub API key for the finance_quote / finance_news commands. Optional — when

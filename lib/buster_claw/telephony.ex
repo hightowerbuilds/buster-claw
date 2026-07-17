@@ -26,6 +26,7 @@ defmodule BusterClaw.Telephony do
   alias BusterClaw.Repo
 
   alias BusterClaw.Telephony.Event
+  alias BusterClaw.Telephony.Twilio
 
   @topic "telephony"
 
@@ -56,6 +57,84 @@ defmodule BusterClaw.Telephony do
 
       broadcast({:telephony_event, event})
       {:ok, event}
+    end
+  end
+
+  # --- cost back-fill (VOICEMAIL_COST_ROADMAP.md) ---
+  # Twilio prices lag, so cost is a retryable pass: fetch what's settled now, keep
+  # the row unfinalized (cost_synced_at nil) until every component prices, and
+  # re-run. Only voicemails carrying a CallSid can be priced.
+
+  @doc """
+  Voicemails not yet finally priced (`cost_synced_at` nil), oldest first — the
+  back-fill work list. Every drained voicemail has a `twilio_sid` (RecordingSid),
+  which is all `refresh_cost/2` needs.
+  """
+  def unpriced_voicemails(limit \\ 25) do
+    from(e in Event,
+      where: e.kind == "voicemail" and is_nil(e.cost_synced_at),
+      order_by: [asc: e.occurred_at],
+      limit: ^limit
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Fetch and store one event's Twilio cost. Sets `cost_micros` to the settled
+  total (provisional until final) and `cost_synced_at` only once every component
+  has priced, so an unfinal row keeps getting retried. `{:ok, event}` |
+  `{:error, :no_sids | reason}`.
+  """
+  def refresh_cost(%Event{} = event, opts \\ []) do
+    with %{} = sids <- cost_sids(event),
+         {:ok, cost} <- Twilio.cost_for(sids, opts) do
+      apply_cost(event, cost)
+    else
+      :no_sids -> {:error, :no_sids}
+      {:error, _} = error -> error
+    end
+  end
+
+  @doc """
+  Back-fill every unpriced voicemail (no-op when Twilio isn't configured). Cheap:
+  touches only rows still missing a final price. Called from the drain tick.
+  """
+  def refresh_unpriced_costs(opts \\ []) do
+    if Twilio.configured?() do
+      unpriced_voicemails() |> Enum.each(&refresh_cost(&1, opts))
+    end
+
+    :ok
+  end
+
+  defp cost_sids(%Event{twilio_sid: rec}) when is_binary(rec), do: %{recording_sid: rec}
+  defp cost_sids(_event), do: :no_sids
+
+  defp apply_cost(event, cost) do
+    synced_at = if cost.final?, do: DateTime.utc_now() |> DateTime.truncate(:second)
+
+    breakdown =
+      Map.new(cost.breakdown, fn {part, micros} ->
+        {to_string(part), if(micros == :pending, do: nil, else: micros)}
+      end)
+
+    metadata = Map.put(event.metadata || %{}, "cost_breakdown", breakdown)
+
+    event
+    |> Event.changeset(%{
+      cost_micros: cost.total_micros,
+      cost_currency: cost.currency,
+      cost_synced_at: synced_at,
+      metadata: metadata
+    })
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        broadcast({:telephony_event, updated})
+        {:ok, updated}
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -107,11 +186,25 @@ defmodule BusterClaw.Telephony do
       |> Repo.all()
       |> Map.new()
 
+    # Voicemail spend: the total (provisional + final) in micro-USD, and how many
+    # voicemails are still awaiting a final price.
+    {spent, pending} =
+      Event
+      |> where([e], e.kind == "voicemail")
+      |> select(
+        [e],
+        {coalesce(sum(e.cost_micros), 0),
+         fragment("SUM(CASE WHEN ? IS NULL THEN 1 ELSE 0 END)", e.cost_synced_at)}
+      )
+      |> Repo.one() || {0, 0}
+
     %{
       voicemails: Map.get(counts, "voicemail", 0),
       unheard: unheard_count(),
       texts: Map.get(counts, "sms", 0),
-      calls: Map.get(counts, "call", 0)
+      calls: Map.get(counts, "call", 0),
+      spent_micros: spent || 0,
+      pending_cost: pending || 0
     }
   end
 
