@@ -265,6 +265,66 @@ defmodule BusterClawWeb.HomeWidget do
     """
   end
 
+  @doc """
+  The fired-notification modal: a big seven-segment `00:00` (the ShaderTimer,
+  fed a past `fire_at`, clamps to zero) over the label, with Snooze / Dismiss.
+  Rendered by StatusLive from the head of its fired queue; the events
+  (`notify_ack`, `notify_ack_snooze`) are handled there.
+  """
+  attr :notification, :map, required: true
+
+  def notify_modal(assigns) do
+    ~H"""
+    <div
+      class="fixed inset-0 z-[120] grid place-items-center bg-black/60 p-4"
+      role="alertdialog"
+      aria-modal="true"
+    >
+      <div class="ic-panel w-full max-w-sm border-2 border-base-content bg-base-100 p-5 text-base-content shadow-lg">
+        <div class="font-display text-xs font-bold uppercase tracking-widest text-primary">
+          {kind_label(@notification.kind)} · time's up
+        </div>
+        <div class="relative mt-3 h-20 w-full overflow-hidden border border-base-content/20 bg-base-100">
+          <div
+            id={"notify-modal-#{@notification.id}"}
+            phx-hook="ShaderTimer"
+            phx-update="ignore"
+            data-fire-at={DateTime.to_unix(@notification.fire_at)}
+            class="absolute inset-0"
+          >
+            <canvas data-timer-canvas class="absolute inset-0 h-full w-full"></canvas>
+            <div
+              data-timer-text
+              class="pointer-events-none absolute inset-0 grid place-items-center font-mono text-4xl font-bold tabular-nums tracking-widest text-base-content"
+            >
+              00:00
+            </div>
+          </div>
+        </div>
+        <p class="mt-3 truncate text-center font-mono text-sm">{@notification.label}</p>
+        <div class="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            phx-click="notify_ack_snooze"
+            phx-value-id={@notification.id}
+            class="border-2 border-base-content px-3 py-1 font-display text-xs font-bold uppercase tracking-wide transition hover:bg-base-200"
+          >
+            Snooze 5m
+          </button>
+          <button
+            type="button"
+            phx-click="notify_ack"
+            phx-value-id={@notification.id}
+            class="border-2 border-primary bg-primary px-3 py-1 font-display text-xs font-bold uppercase tracking-wide text-primary-content transition hover:opacity-90"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   # The soonest upcoming notification as a big seven-segment countdown. The shader
   # (ShaderTimer hook) owns the live tick from `data-fire-at`; the text node is the
   # placeholder before boot and the fallback when WebGPU is unavailable. The id

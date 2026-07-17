@@ -49,6 +49,7 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:weather, nil)
      |> assign(:weather_form, false)
      |> assign(:notify_form, notify_form())
+     |> assign(:fired_queue, [])
      |> load_notifications()
      |> init_chats()
      |> load_calendar_month()
@@ -108,6 +109,9 @@ defmodule BusterClawWeb.StatusLive do
       _ -> :error
     end
   end
+
+  defp drop_fired(socket, id),
+    do: Enum.reject(socket.assigns.fired_queue, &(to_string(&1.id) == id))
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -203,6 +207,19 @@ defmodule BusterClawWeb.StatusLive do
     notification = Enum.find(socket.assigns.notifications, &(to_string(&1.id) == id))
     if notification, do: Notifications.snooze(notification, 300)
     {:noreply, load_notifications(socket)}
+  end
+
+  # Acknowledge a fired notification (the modal) — it stays "fired" as a record,
+  # we just clear it from the queue so the next one (if any) surfaces.
+  def handle_event("notify_ack", %{"id" => id}, socket) do
+    {:noreply, assign(socket, :fired_queue, drop_fired(socket, id))}
+  end
+
+  # Snooze a fired notification straight from the modal: re-arm it and dequeue.
+  def handle_event("notify_ack_snooze", %{"id" => id}, socket) do
+    notification = Enum.find(socket.assigns.fired_queue, &(to_string(&1.id) == id))
+    if notification, do: Notifications.snooze(notification, 300)
+    {:noreply, socket |> assign(:fired_queue, drop_fired(socket, id)) |> load_notifications()}
   end
 
   def handle_event("set_weather_location", %{"query" => query}, socket) do
@@ -409,12 +426,21 @@ defmodule BusterClawWeb.StatusLive do
 
   # A notification was created / snoozed / dismissed / fired somewhere (this view,
   # another session, or the agent). Re-read the widget list so it stays current.
-  # (Phase 3 will also pop a modal on {:notification_fired, _}.)
   def handle_info({:notifications, :changed, _notification}, socket),
     do: {:noreply, load_notifications(socket)}
 
-  def handle_info({:notification_fired, _notification}, socket),
-    do: {:noreply, load_notifications(socket)}
+  # A notification's moment arrived — queue it for the modal (one at a time,
+  # newest behind) and refresh the list so it leaves "upcoming".
+  def handle_info({:notification_fired, notification}, socket) do
+    queue = socket.assigns.fired_queue
+
+    queue =
+      if Enum.any?(queue, &(&1.id == notification.id)),
+        do: queue,
+        else: queue ++ [notification]
+
+    {:noreply, socket |> assign(:fired_queue, queue) |> load_notifications()}
+  end
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -792,6 +818,9 @@ defmodule BusterClawWeb.StatusLive do
           </div>
         </div>
       </section>
+
+      {if @fired_queue != [],
+        do: BusterClawWeb.HomeWidget.notify_modal(%{notification: hd(@fired_queue)})}
     </Layouts.app>
     """
   end
