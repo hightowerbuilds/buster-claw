@@ -51,5 +51,7 @@
   </head>
   <body>
     {@inner_content}
+    <%!-- App-wide fired-notification modal, sticky so it persists across page nav. --%>
+    {live_render(@conn, BusterClawWeb.NotifyLive, sticky: true, id: "notify-global")}
   </body>
 </html>

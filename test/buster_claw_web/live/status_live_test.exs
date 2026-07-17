@@ -386,55 +386,8 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert Notifications.get_notification(notification.id).status == "dismissed"
     end
 
-    test "a fired notification pops the modal; Dismiss acknowledges it", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      {:ok, past} =
-        Notifications.create_notification(%{
-          "kind" => "timer",
-          "label" => "Bread",
-          "fire_at" => DateTime.add(DateTime.utc_now(), -5, :second),
-          "status" => "pending"
-        })
-
-      # Scheduler is off in tests — drive the fire; its broadcast reaches the view.
-      Notifications.fire_due()
-      _ = :sys.get_state(view.pid)
-
-      html = render(view)
-      assert html =~ "time&#39;s up"
-      assert html =~ "Bread"
-      assert html =~ ~s(id="notify-modal-#{past.id}")
-      assert html =~ ~s(phx-hook="ShaderTimer")
-
-      render_click(view, "notify_ack", %{"id" => to_string(past.id)})
-      refute render(view) =~ "time&#39;s up"
-    end
-
-    test "Snooze from the modal re-arms the fired notification", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      {:ok, past} =
-        Notifications.create_notification(%{
-          "kind" => "alarm",
-          "label" => "Meds",
-          "fire_at" => DateTime.add(DateTime.utc_now(), -5, :second),
-          "status" => "pending"
-        })
-
-      Notifications.fire_due()
-      _ = :sys.get_state(view.pid)
-      assert render(view) =~ "time&#39;s up"
-
-      render_click(view, "notify_ack_snooze", %{"id" => to_string(past.id)})
-      refute render(view) =~ "time&#39;s up"
-
-      updated = Notifications.get_notification(past.id)
-      assert updated.status == "snoozed"
-      assert DateTime.compare(updated.fire_at, DateTime.utc_now()) == :gt
-    end
-
-    test "a fired notification broadcast refreshes the list", %{conn: conn} do
+    test "a fired notification leaves the widget list (modal is NotifyLive's job)",
+         %{conn: conn} do
       {:ok, past} =
         Notifications.create_notification(%{
           "kind" => "alarm",
@@ -447,17 +400,16 @@ defmodule BusterClawWeb.StatusLiveTest do
       render_click(view, "select_widget_tab", %{"tab" => "notify"})
       assert render(view) =~ "Ring"
 
-      # The scheduler is off in tests; drive the fire directly. Its broadcast
-      # reaches the mounted view: the item pops the modal and leaves "upcoming".
+      # Scheduler is off in tests; drive the fire directly. Its broadcast reaches
+      # the view, which drops the now-fired item from "upcoming". The modal is
+      # rendered by the separate NotifyLive process, not here.
       Notifications.fire_due()
       assert Notifications.get_notification(past.id).status == "fired"
 
       _ = :sys.get_state(view.pid)
-      assert render(view) =~ "time&#39;s up"
-
-      # Acknowledge the modal — now it's gone from the view entirely.
-      render_click(view, "notify_ack", %{"id" => to_string(past.id)})
-      refute render(view) =~ "Ring"
+      html = render(view)
+      refute html =~ "Ring"
+      refute html =~ "time&#39;s up"
     end
   end
 end
