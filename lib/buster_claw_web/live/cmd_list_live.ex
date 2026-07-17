@@ -129,7 +129,7 @@ defmodule BusterClawWeb.CmdListLive do
               id="cmd-list-reset-all"
               type="button"
               phx-click="reset_all"
-              data-confirm="This will remove all your custom commands and restore the default catalog. Continue?"
+              data-claw-confirm="This will remove all your custom commands and restore the default catalog. Continue?"
               class={button_outline()}
             >
               Reset all to defaults
@@ -206,7 +206,7 @@ defmodule BusterClawWeb.CmdListLive do
         type="button"
         phx-click="reset_role"
         phx-value-role_key={@role.key}
-        data-confirm="This will remove all your custom commands from this role and restore the shipped defaults. Continue?"
+        data-claw-confirm="This will remove all your custom commands from this role and restore the shipped defaults. Continue?"
         aria-label={"Reset #{@role.label} to defaults"}
         class={button_outline()}
       >

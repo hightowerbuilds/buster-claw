@@ -719,7 +719,7 @@ defmodule BusterClawWeb.PhoneLive do
                 <button
                   :if={@selected_contact}
                   phx-click="delete_contact"
-                  data-confirm="Remove this contact?"
+                  data-claw-confirm="Remove this contact?"
                   class="font-mono text-[10px] uppercase tracking-wider text-base-content/40 transition hover:text-error"
                 >
                   Remove
@@ -858,7 +858,7 @@ defmodule BusterClawWeb.PhoneLive do
                 <div class="shrink-0 border-t-2 border-base-content/20 p-2">
                   <button
                     phx-click="toggle_trust"
-                    data-confirm={
+                    data-claw-confirm={
                       if !@contact_trusted,
                         do:
                           "Trust #{@selected_contact.name}? Their voicemail and mail will become work the on-duty agent picks up and acts on.",

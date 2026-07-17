@@ -16,8 +16,12 @@ import {Hooks} from "./hooks/index.js"
 import "./lib/globals.js"
 // Home/End caret handling — WKWebView would otherwise insert a tofu glyph.
 import {installCaretKeys} from "./lib/caret_keys.js"
+// App-owned confirm dialog — native window.confirm() is a no-op in the webview,
+// so `data-claw-confirm` replaces LiveView's `data-confirm`.
+import {installClawConfirm} from "./lib/claw_confirm.js"
 
 installCaretKeys()
+installClawConfirm()
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

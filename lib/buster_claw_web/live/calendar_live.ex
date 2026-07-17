@@ -330,7 +330,7 @@ defmodule BusterClawWeb.CalendarLive do
                 class="rounded-xs border-2 border-error/40 px-3 py-1.5 font-mono text-sm text-error transition hover:border-error"
                 phx-click="delete"
                 phx-value-id={@viewing_event.id}
-                data-confirm={"Delete \"#{@viewing_event.title}\"?"}
+                data-claw-confirm={"Delete \"#{@viewing_event.title}\"?"}
               >
                 Delete
               </button>
@@ -375,7 +375,7 @@ defmodule BusterClawWeb.CalendarLive do
               class="rounded-xs border-2 border-error/40 px-4 py-2 font-mono text-sm text-error transition hover:border-error"
               phx-click="delete"
               phx-value-id={@editing_event.id}
-              data-confirm={"Delete \"#{@editing_event.title}\"?"}
+              data-claw-confirm={"Delete \"#{@editing_event.title}\"?"}
             >
               Delete
             </button>

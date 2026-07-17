@@ -76,7 +76,7 @@ defmodule BusterClawWeb.TrustedContactsPanel do
             type="button"
             phx-click="untrust_contact"
             phx-value-id={contact.id}
-            data-confirm={"Stop trusting #{contact.name}? They stay in your contacts; their mail just stops reaching the agent."}
+            data-claw-confirm={"Stop trusting #{contact.name}? They stay in your contacts; their mail just stops reaching the agent."}
             aria-label={"Stop trusting #{contact.name}"}
             class="shrink-0 font-mono text-sm leading-none text-base-content/45 transition hover:text-error"
           >
@@ -98,7 +98,7 @@ defmodule BusterClawWeb.TrustedContactsPanel do
             type="button"
             phx-click="remove_contact"
             phx-value-entry={entry.value}
-            data-confirm={"Stop trusting #{entry.value}?"}
+            data-claw-confirm={"Stop trusting #{entry.value}?"}
             aria-label={"Remove #{entry.value}"}
             class="shrink-0 font-mono text-sm leading-none text-base-content/45 transition hover:text-error"
           >

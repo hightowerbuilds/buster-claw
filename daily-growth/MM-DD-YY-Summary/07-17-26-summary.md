@@ -67,8 +67,55 @@ was high by ~5×; the real per-message resource cost is a nickel, and
 also caught a bug: it would have pinned trial rows "pricing…" forever and re-hit
 Twilio every tick — so `final?` now gates on recording + transcription only.
 
+## Wallets: the BusterClaw template
+
+A wallet can now carry a **template** — a new select in the New Wallet form with
+two options, `none` (an ordinary ledger) and `busterclaw` (a running-cost
+tracker). The field is real end-to-end: a migration adds `template` (default
+`none`) and a `model_costs` JSON map to `wallets`, the schema validates the
+template value, and the command catalog exposes it on `wallet_create`/`_update`
+so the agent can set it too.
+
+A `busterclaw` wallet grows a **running-costs panel** with the two things it's
+meant to surface:
+
+- **BusterPhone** — the number and the running (lifetime) phone spend. The number
+  isn't stored anywhere, so `Telephony.our_number/0` learns it from traffic (the
+  `to_number` callers dialed on the most recent inbound event); the total comes
+  from `Telephony.stats` in micro-USD, converted to cents. Both update live off
+  the telephony PubSub topic.
+- **Model subscriptions** — an inline editor for the monthly Anthropic / OpenAI /
+  OpenCode bill, stored as a `%{provider => cents}` map on the wallet via
+  `Wallets.set_model_costs/2` (written directly, never through the cast changeset,
+  the same guard the cached `balance_cents` uses). Phone (lifetime) and model
+  (monthly) figures are shown separately rather than summed — different periods.
+
+## `data-confirm` never worked in the webview — now it does
+
+Chasing "delete wallet doesn't work" turned up a class bug, not a wallet bug. The
+backend deletes cleanly (FK cascade on, orphans zero); the failure was entirely
+client-side. LiveView's `data-confirm` gates the event behind a **synchronous
+`window.confirm()`**, and in the Tauri/WKWebView shell — no WKUIDelegate for
+native JS dialogs — `confirm()` is a no-op that returns `false`, so LiveView
+aborted every gated action. All **11** `data-confirm` sites were dead: delete
+wallet/transaction/feed, delete/untrust contact, delete calendar event, the two
+reset-commands buttons. Tests stayed green because `render_click` bypasses
+`data-confirm` — the real app was broken while CI was clean.
+
+The fix owns the dialog. `assets/js/lib/claw_confirm.js` installs a capture-phase
+click interceptor (once, from `app.js`, like `installCaretKeys`): a control
+carrying `data-claw-confirm="…"` gets its `phx-click` blocked, an Industrial Claw
+modal shown, and — only on confirm — the click **re-dispatched** so LiveView
+fires the event normally with all its `phx-value-*`/`phx-target` intact. A custom
+modal is async and can't back LiveView's synchronous `data-confirm` (exactly why
+the terminal-close case already rolls its own), so a global interceptor + a
+`data-*` rename at each site beats adding `id`+`phx-hook` to eleven buttons. An
+ExUnit source guard fails if any template reintroduces `data-confirm=`.
+
 ## State of the tree
 
-`mix precommit` green — **1031 tests**, 0 failures — plus 78 bun tests. The day's
-four commits (OS-drop fix, cost engine, phone-tab UI, this summary) are on main.
-`.env` holds the Twilio creds and stays untracked.
+`mix test` green — **1039 tests**, 0 failures. Two more commits land on main today
+(the BusterClaw wallet template, and the webview confirm fix), on top of the
+morning's four. `.env` holds the Twilio creds and stays untracked. Follow-up worth
+doing: fold `tab_strip.js`'s hand-rolled busy-terminal modal onto the shared
+`clawConfirm` helper.
