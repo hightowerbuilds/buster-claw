@@ -15,6 +15,7 @@ import {SmokeBackground} from "./smoke_background.js"
 import {AudioClip} from "./audio_clip.js"
 import {ShaderFace} from "./shader_face.js"
 import {ShaderPreview} from "./shader_preview.js"
+import {ShaderTimer} from "./shader_timer.js"
 import {SvgViewerDock} from "./svg_viewer.js"
 import {FileTreeDnd} from "./file_tree_dnd.js"
 import {WorkspaceDropzone} from "./workspace_dropzone.js"
@@ -41,6 +42,7 @@ export const Hooks = {
   AudioClip,
   ShaderFace,
   ShaderPreview,
+  ShaderTimer,
   SvgViewerDock,
   FileTreeDnd,
   WorkspaceDropzone,

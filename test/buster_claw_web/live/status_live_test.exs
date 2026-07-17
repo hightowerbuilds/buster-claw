@@ -335,6 +335,38 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert Notifications.upcoming() == []
     end
 
+    test "the soonest notification renders a shader countdown; none when empty", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      empty = render_click(view, "select_widget_tab", %{"tab" => "notify"})
+      refute empty =~ "ShaderTimer"
+
+      {:ok, soonest} =
+        Notifications.create_notification(%{
+          "kind" => "timer",
+          "label" => "Tea",
+          "fire_at" => DateTime.add(DateTime.utc_now(), 120, :second),
+          "status" => "pending"
+        })
+
+      {:ok, _later} =
+        Notifications.create_notification(%{
+          "kind" => "alarm",
+          "label" => "Later",
+          "fire_at" => DateTime.add(DateTime.utc_now(), 3600, :second),
+          "status" => "pending"
+        })
+
+      html = render(view)
+      unix = DateTime.to_unix(soonest.fire_at)
+
+      # The hero canvas is keyed by the soonest notification + its fire-at, driven
+      # by the ShaderTimer hook off data-fire-at.
+      assert html =~ ~s(phx-hook="ShaderTimer")
+      assert html =~ ~s(id="notify-countdown-#{soonest.id}-#{unix}")
+      assert html =~ ~s(data-fire-at="#{unix}")
+      assert html =~ "data-timer-canvas"
+    end
+
     test "dismiss removes a notification from the widget list", %{conn: conn} do
       {:ok, notification} =
         Notifications.create_notification(%{

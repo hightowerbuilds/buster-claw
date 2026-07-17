@@ -182,6 +182,8 @@ defmodule BusterClawWeb.HomeWidget do
   defp notify_panel(assigns) do
     ~H"""
     <section class="ic-panel flex h-full flex-col">
+      {if @notifications != [], do: notify_hero(%{soonest: hd(@notifications)})}
+
       <.form
         for={@form}
         id="notify-form"
@@ -260,6 +262,38 @@ defmodule BusterClawWeb.HomeWidget do
         </li>
       </ul>
     </section>
+    """
+  end
+
+  # The soonest upcoming notification as a big seven-segment countdown. The shader
+  # (ShaderTimer hook) owns the live tick from `data-fire-at`; the text node is the
+  # placeholder before boot and the fallback when WebGPU is unavailable. The id
+  # carries fire-at, so when the soonest changes the element is replaced and the
+  # hook remounts on the new target.
+  attr :soonest, :map, required: true
+
+  defp notify_hero(assigns) do
+    ~H"""
+    <div class="shrink-0 border-b border-base-content/15 px-3 py-3">
+      <div
+        id={"notify-countdown-#{@soonest.id}-#{DateTime.to_unix(@soonest.fire_at)}"}
+        phx-hook="ShaderTimer"
+        phx-update="ignore"
+        data-fire-at={DateTime.to_unix(@soonest.fire_at)}
+        class="relative h-16 w-full overflow-hidden border border-base-content/20 bg-base-100"
+      >
+        <canvas data-timer-canvas class="absolute inset-0 h-full w-full"></canvas>
+        <div
+          data-timer-text
+          class="pointer-events-none absolute inset-0 grid place-items-center font-mono text-3xl font-bold tabular-nums tracking-widest text-base-content"
+        >
+          --:--
+        </div>
+      </div>
+      <div class="mt-1 truncate text-center font-mono text-[0.625rem] uppercase tracking-widest text-base-content/60">
+        {kind_label(@soonest.kind)} · {@soonest.label}
+      </div>
+    </div>
     """
   end
 

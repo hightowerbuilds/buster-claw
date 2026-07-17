@@ -7,6 +7,7 @@ import {MANDEL_WGSL} from "./mandel.wgsl.js"
 import {WEATHER_WGSL} from "./weather.wgsl.js"
 import {FACE_WGSL} from "./face.wgsl.js"
 import {DAYCYCLE_WGSL} from "./daycycle.wgsl.js"
+import {SEVENSEG_WGSL} from "./sevenseg.wgsl.js"
 
 export const SHADERS = {
   smoke: SMOKE_WGSL,
@@ -15,6 +16,7 @@ export const SHADERS = {
   weather: WEATHER_WGSL,
   face: FACE_WGSL,
   daycycle: DAYCYCLE_WGSL,
+  sevenseg: SEVENSEG_WGSL,
 }
 
 export const DEFAULT_SHADER = "smoke"
