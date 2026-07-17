@@ -17,6 +17,7 @@ config :buster_claw,
   # "verified" (the beta copy disappears). Flip when Google verification clears.
   google_oauth_app_status: "testing",
   dispatch_projector_enabled: true,
+  notifications_scheduler_enabled: true,
   orchestrator_enabled: true,
   dispatcher_enabled: true,
   dispatcher_tick_ms: 15_000,

@@ -140,6 +140,8 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       job_list
       job_show
       memory_search
+      notify_get
+      notify_list
       phone_get
       phone_list
       phone_stats

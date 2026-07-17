@@ -42,6 +42,7 @@ defmodule BusterClaw.Application do
         wallet_poller_child(),
         analyzer_child(),
         telephony_drain_child(),
+        notifications_scheduler_child(),
         # Per-conversation chat: a Registry for {:via} lookup by conv_id and a
         # DynamicSupervisor that starts one Chat process per open conversation,
         # lazily on the first message. Always on (cheap; tests use them too).
@@ -172,6 +173,15 @@ defmodule BusterClaw.Application do
   defp telephony_drain_child do
     if Application.get_env(:buster_claw, :telephony_drain_enabled, false) do
       BusterClaw.Telephony.Drain
+    end
+  end
+
+  # The Notify scheduler: fires timers/alarms when their moment arrives and
+  # broadcasts them for the homepage modal. Off in tests (the suite drives
+  # Notifications.fire_due/1 and the scheduler's tick_now/1 directly).
+  defp notifications_scheduler_child do
+    if Application.get_env(:buster_claw, :notifications_scheduler_enabled, true) do
+      BusterClaw.Notifications.Scheduler
     end
   end
 end

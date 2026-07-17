@@ -20,6 +20,7 @@ defmodule BusterClaw.Commands.Catalog do
     GoogleFiles,
     Integrations,
     Library,
+    Notify,
     Orchestration,
     Telephony,
     Wallets,
@@ -38,5 +39,6 @@ defmodule BusterClaw.Commands.Catalog do
         Web.entries() ++
         Finance.entries() ++
         Telephony.entries() ++
+        Notify.entries() ++
         Orchestration.entries()
 end

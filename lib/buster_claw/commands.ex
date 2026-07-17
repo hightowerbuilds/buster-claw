@@ -451,6 +451,13 @@ defmodule BusterClaw.Commands do
   defdelegate wallet_feed_update(args), to: BusterClaw.Commands.Wallets
   defdelegate wallet_feed_delete(args), to: BusterClaw.Commands.Wallets
   defdelegate wallet_poll(args), to: BusterClaw.Commands.Wallets
+  # Notify (timers, alarms, reminders)
+  defdelegate notify_list(args \\ %{}), to: BusterClaw.Commands.Notify
+  defdelegate notify_get(args), to: BusterClaw.Commands.Notify
+  defdelegate notify_create(args), to: BusterClaw.Commands.Notify
+  defdelegate notify_snooze(args), to: BusterClaw.Commands.Notify
+  defdelegate notify_dismiss(args), to: BusterClaw.Commands.Notify
+  defdelegate notify_delete(args), to: BusterClaw.Commands.Notify
   # Google Workspace
   defdelegate google_account_list(args \\ %{}), to: BusterClaw.Commands.Google
   defdelegate google_account_get(args), to: BusterClaw.Commands.Google
