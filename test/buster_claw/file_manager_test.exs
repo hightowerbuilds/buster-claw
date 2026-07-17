@@ -119,6 +119,39 @@ defmodule BusterClaw.FileManagerTest do
     assert File.exists?(first) and File.exists?(second)
   end
 
+  test "import_file copies a whole dropped folder (cp_r)", %{base: base} do
+    src = Path.join(System.tmp_dir!(), "fm-srcdir-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(Path.join(src, "nested"))
+    File.write!(Path.join(src, "a.txt"), "a")
+    File.write!(Path.join([src, "nested", "b.txt"]), "b")
+    on_exit(fn -> File.rm_rf(src) end)
+
+    assert {:ok, target} = FileManager.import_file(src, base, "folder", base)
+    assert File.dir?(target)
+    assert File.read!(Path.join(target, "a.txt")) == "a"
+    assert File.read!(Path.join([target, "nested", "b.txt"])) == "b"
+  end
+
+  test "import_file works when the destination base is a symlink to another dir", %{base: base} do
+    # The workspace root is a symlink to a Desktop folder in the operator's setup.
+    real = Path.join(System.tmp_dir!(), "fm-real-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(real)
+    on_exit(fn -> File.rm_rf(real) end)
+
+    link = Path.join(base, "ws-link")
+    :ok = File.ln_s(real, link)
+
+    src = Path.join(System.tmp_dir!(), "fm-src-#{System.unique_integer([:positive])}.png")
+    File.write!(src, "img")
+    on_exit(fn -> File.rm_rf(src) end)
+
+    # Import into the symlinked dir (base == the link) — the file must land in the
+    # real target and the containment check must still pass.
+    assert {:ok, target} = FileManager.import_file(src, link, "photo.png", link)
+    assert File.read!(target) == "img"
+    assert File.exists?(Path.join(real, "photo.png"))
+  end
+
   test "import_file rejects a destination outside the base and a non-directory dest",
        %{base: base} do
     src = Path.join(System.tmp_dir!(), "fm-src-#{System.unique_integer([:positive])}.txt")

@@ -184,16 +184,24 @@ defmodule BusterClaw.FileManager do
     with :ok <- validate_name(filename),
          {:ok, dest_abs} <- ensure_within(dest_dir, base),
          {:ok, _first} <- ensure_within(Path.join(dest_abs, filename), base) do
-      if File.dir?(dest_abs) do
-        target = dedupe_target(dest_abs, filename)
-
-        case File.cp(src_path, target) do
-          :ok -> {:ok, target}
-          {:error, reason} -> {:error, reason}
-        end
-      else
-        {:error, :not_a_directory}
+      cond do
+        not File.dir?(dest_abs) -> {:error, :not_a_directory}
+        not File.exists?(src_path) -> {:error, :enoent}
+        true -> copy_in(src_path, dedupe_target(dest_abs, filename))
       end
+    end
+  end
+
+  # A dropped entry can be a file or a whole folder — copy accordingly. cp_r
+  # returns {:ok, _} | {:error, reason, file}; cp returns :ok | {:error, reason}.
+  defp copy_in(src, target) do
+    result = if File.dir?(src), do: File.cp_r(src, target), else: File.cp(src, target)
+
+    case result do
+      :ok -> {:ok, target}
+      {:ok, _copied} -> {:ok, target}
+      {:error, reason} -> {:error, reason}
+      {:error, reason, _file} -> {:error, reason}
     end
   end
 

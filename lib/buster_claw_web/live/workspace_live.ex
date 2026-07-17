@@ -103,6 +103,33 @@ defmodule BusterClawWeb.WorkspaceLive do
     end
   end
 
+  # Native OS-file drop (Tauri): the WorkspaceDropzone hook delivers real source
+  # paths; copy each into the folder in view. Copying by path works even though
+  # the workspace root may be a symlink — the OS follows it, and FileManager's
+  # containment check canonicalizes symlinks.
+  def handle_event("import_paths", %{"paths" => paths}, socket) when is_list(paths) do
+    dest = socket.assigns.tree_root
+
+    {added, failed} =
+      Enum.reduce(paths, {0, 0}, fn src, {added, failed} ->
+        src = to_string(src)
+
+        case FileManager.import_file(src, dest, Path.basename(src), dest) do
+          {:ok, _target} -> {added + 1, failed}
+          {:error, _reason} -> {added, failed + 1}
+        end
+      end)
+
+    note =
+      cond do
+        added > 0 and failed == 0 -> "Added #{added} #{plural(added, "item")}."
+        added > 0 -> "Added #{added}; #{failed} couldn't be added."
+        true -> "Couldn't add #{failed} #{plural(failed, "item")}."
+      end
+
+    {:noreply, socket |> update(:tree_version, &(&1 + 1)) |> assign(:note, note)}
+  end
+
   @impl true
   def handle_info({:file_selected, path}, socket) do
     {:noreply, assign(socket, :preview, preview_for(path, socket.assigns.tree_base))}
@@ -312,6 +339,9 @@ defmodule BusterClawWeb.WorkspaceLive do
   end
 
   # --- internals ----------------------------------------------------------
+
+  defp plural(1, word), do: word
+  defp plural(_n, word), do: word <> "s"
 
   defp upload_error_to_string(:too_large), do: "That file is larger than 200 MB."
   defp upload_error_to_string(:too_many_files), do: "Too many files at once (max 25)."
