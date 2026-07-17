@@ -84,24 +84,55 @@ defmodule BusterClawWeb.PhoneLiveTest do
     assert thread =~ "Buster"
   end
 
-  test "rotary dial registers digits and hangs up", %{conn: conn} do
+  test "shows a voicemail's cost in the log, the total, and the breakdown", %{conn: conn} do
+    # $0.24 total (call 0.0085 + rec 0.0025 + txt 0.23), fully priced.
+    event =
+      record!(%{
+        recording_path: "raw/2026-07-11/vm.m4a",
+        duration_seconds: 30,
+        cost_micros: 240_000,
+        cost_currency: "USD",
+        cost_synced_at: DateTime.utc_now(:second),
+        metadata: %{
+          "cost_breakdown" => %{"call" => 8500, "recording" => 2500, "transcription" => 229_000}
+        }
+      })
+
     {:ok, view, html} = live(conn, "/phone")
 
-    # The dial is the Playback panel's resting state.
-    assert html =~ "rotary-dial"
-    assert html =~ "data-rotor"
+    # The per-message chip and the header total both render the formatted cost.
+    assert html =~ "$0.24"
 
-    for digit <- ~w(5 0 3) do
+    # The detail breakdown keeps sub-cent precision ($0.0085), not a rounded $0.01.
+    detail =
       view
-      |> element("#rotary-dial")
-      |> render_hook("dial_digit", %{"digit" => digit})
-    end
+      |> element("button[phx-value-id='#{event.id}']")
+      |> render_click()
 
-    assert render(view) =~ "503"
+    assert detail =~ "$0.0085"
+    assert detail =~ "call $0.0085"
+  end
 
-    refute view
-           |> element("button[phx-click=dial_clear]")
-           |> render_click() =~ "503"
+  test "an unpriced voicemail reads 'pricing…' in the detail, no total chip", %{conn: conn} do
+    event = record!(%{recording_path: "raw/2026-07-11/vm2.m4a", duration_seconds: 12})
+
+    {:ok, view, _html} = live(conn, "/phone")
+
+    detail =
+      view
+      |> element("button[phx-value-id='#{event.id}']")
+      |> render_click()
+
+    assert detail =~ "pricing…"
+  end
+
+  test "playback panel rests on a placeholder with nothing selected", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/phone")
+
+    # The retired rotary dial is gone; the resting state prompts a selection.
+    assert html =~ "Select a message to play it here"
+    refute html =~ "rotary-dial"
+    refute html =~ "data-rotor"
   end
 
   test "contacts: add via form, select shows the shaderface card", %{conn: conn} do

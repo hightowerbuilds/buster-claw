@@ -12,7 +12,6 @@ import {SplitResizer} from "./split.js"
 import {TerminalView, TermThemePicker} from "./terminal.js"
 import {DockNewTerminal} from "./dock_terminal.js"
 import {SmokeBackground} from "./smoke_background.js"
-import {RotaryDial} from "./rotary_dial.js"
 import {AudioClip} from "./audio_clip.js"
 import {ShaderFace} from "./shader_face.js"
 import {ShaderPreview} from "./shader_preview.js"
@@ -39,7 +38,6 @@ export const Hooks = {
   TermThemePicker,
   DockNewTerminal,
   SmokeBackground,
-  RotaryDial,
   AudioClip,
   ShaderFace,
   ShaderPreview,

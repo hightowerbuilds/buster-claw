@@ -1,13 +1,13 @@
 defmodule BusterClawWeb.PhoneLive do
   @moduledoc """
-  The Message Machine: BusterPhone's call/text log as a three-panel shader
-  window — the log fills the left column; the right column divides into
-  Playback (top) and Machine status (bottom). Every panel runs the built-in
-  `waves` WGSL shader through its own `SmokeBackground` mount, with content
-  glassed above it. Voicemails play inline from the Library
-  (`/phone/recording`), SMS reads as per-number threads, and unheard voicemails
-  are the blinking light — selecting one marks it heard. Live-updates from
-  `BusterClaw.Telephony` broadcasts as the relay drain lands new events.
+  The Message Machine: BusterPhone's call/text log as a shader window — the log
+  fills the left column; the right column divides into Playback (top, over the
+  `mandel` WGSL shader) and Contacts (bottom). Voicemails play inline from the
+  Library (`/phone/recording`) and show their Twilio cost (back-filled — see
+  `VOICEMAIL_COST_ROADMAP.md`), SMS reads as per-number threads, and unheard
+  voicemails are the blinking light — selecting one marks it heard. Live-updates
+  from `BusterClaw.Telephony` broadcasts as the relay drain lands new events and
+  cost back-fills settle.
   """
   use BusterClawWeb, :live_view
 
@@ -22,49 +22,11 @@ defmodule BusterClawWeb.PhoneLive do
     %{key: "call", label: "Calls"}
   ]
 
-  # Per-panel wave palettes (colA background / colB mid / colC crest), fed to
-  # the shader as custom colors: bone greyscale behind the log so rows stay
-  # readable, hazard orange for Playback (the star panel), signal blue for the
-  # Machine readout.
+  # Shader palette for the Playback panel (base / accent / highlight), fed as
+  # custom colors — hazard orange over near-black behind the mandelbrot.
   @wave_colors %{
     playback: "#160d09,#ff4d1c,#ffc9b3"
   }
-
-  # Rotary dial geometry — real Western Electric layout. The finger stop sits at
-  # 65° (4:30 on the clock face); hole `1` is nearest the stop (one pulse, the
-  # shortest wind) and the digits run counter-clockwise up and around so `0`
-  # lands at the bottom with the longest travel. SVG angles are y-down, so
-  # positive = clockwise and hole angle = 35° − 30°·n; the clockwise wind needed
-  # to reach the stop is 30° + 30°·n. Exchange letters ride under the digits
-  # (no Q, no Z — just like the plate they're copied from).
-  @dial_center 200
-  @dial_hole_ring 122
-  @dial_letters %{
-    "2" => "ABC",
-    "3" => "DEF",
-    "4" => "GHI",
-    "5" => "JKL",
-    "6" => "MNO",
-    "7" => "PRS",
-    "8" => "TUV",
-    "9" => "WXY",
-    "0" => "OPER"
-  }
-
-  @dial_holes (for n <- 1..10 do
-                 digit = if n == 10, do: "0", else: Integer.to_string(n)
-                 radians = (35 - 30 * n) * :math.pi() / 180
-
-                 %{
-                   digit: digit,
-                   travel: 30 + 30 * n,
-                   x: Float.round(@dial_center + @dial_hole_ring * :math.cos(radians), 2),
-                   y: Float.round(@dial_center + @dial_hole_ring * :math.sin(radians), 2),
-                   letters: @dial_letters[digit]
-                 }
-               end)
-
-  @max_dialed 15
 
   @impl true
   def mount(_params, _session, socket) do
@@ -80,7 +42,6 @@ defmodule BusterClawWeb.PhoneLive do
      |> assign(:selected_event, nil)
      |> assign(:selected_thread, nil)
      |> assign(:thread_messages, [])
-     |> assign(:dialed, "")
      |> assign(:selected_contact, nil)
      |> assign(:adding_contact, false)
      |> assign(:contact_error, nil)
@@ -133,14 +94,22 @@ defmodule BusterClawWeb.PhoneLive do
      |> assign(:selected_thread, nil)}
   end
 
-  def handle_event("dial_digit", %{"digit" => digit}, socket)
-      when digit in ~w(0 1 2 3 4 5 6 7 8 9) do
-    {:noreply,
-     assign(socket, :dialed, String.slice(socket.assigns.dialed <> digit, 0, @max_dialed))}
-  end
+  # Manual "refresh costs" — back-fill Twilio prices now rather than waiting for
+  # the drain tick. No-op (with a hint) when Twilio isn't configured.
+  def handle_event("refresh_costs", _params, socket) do
+    socket =
+      if BusterClaw.Telephony.Twilio.configured?() do
+        Telephony.refresh_unpriced_costs()
+        load_data(socket)
+      else
+        put_flash(
+          socket,
+          :error,
+          "Twilio isn't configured — set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN."
+        )
+      end
 
-  def handle_event("dial_clear", _params, socket) do
-    {:noreply, assign(socket, :dialed, "")}
+    {:noreply, socket}
   end
 
   def handle_event("select_contact", %{"id" => id}, socket) do
@@ -308,14 +277,25 @@ defmodule BusterClawWeb.PhoneLive do
       )
     )
     |> assign(:threads, if(socket.assigns.filter == "sms", do: Telephony.sms_threads(), else: []))
+    |> refresh_selected_event()
   end
 
-  # One wave-shader layer behind a panel. Hook-owned: LiveView never patches
-  # inside (phx-update="ignore"); the SmokeBackground hook compiles the built-in
-  # `waves` WGSL and drives the canvas itself. WebGPU missing → canvas stays
-  # blank and the panel is just a panel.
+  # Re-fetch the open voicemail so its detail (cost especially) tracks back-fill
+  # updates that arrive while it's selected.
+  defp refresh_selected_event(socket) do
+    case socket.assigns[:selected_event] do
+      %Event{id: id} -> assign(socket, :selected_event, Telephony.get_event(id) || nil)
+      _ -> socket
+    end
+  end
+
+  # One shader layer behind a panel. Hook-owned: LiveView never patches inside
+  # (phx-update="ignore"); the SmokeBackground hook compiles the named built-in
+  # WGSL and drives the canvas itself. WebGPU missing → canvas stays blank and
+  # the panel is just a panel.
   attr :id, :string, required: true
   attr :colors, :string, required: true
+  attr :shader, :string, default: "waves"
 
   defp shader_bg(assigns) do
     ~H"""
@@ -323,7 +303,7 @@ defmodule BusterClawWeb.PhoneLive do
       id={@id}
       phx-hook="SmokeBackground"
       phx-update="ignore"
-      data-shader="waves"
+      data-shader={@shader}
       data-custom="true"
       data-colors={@colors}
       class="ic-shader-fill"
@@ -334,227 +314,38 @@ defmodule BusterClawWeb.PhoneLive do
     """
   end
 
-  # The antique instrument: a fine-grain SVG rotary dial living in the Playback
-  # panel's resting state. The fingerwheel (`data-rotor`) is spun by the
-  # RotaryDial hook; its ten finger holes and centre opening are true mask
-  # cutouts, so the panel's wave shader blazes through the holes while the
-  # wheel winds and returns. Digits + exchange letters print on the fixed
-  # plate beneath, exactly like the real hardware.
-  attr :holes, :list, required: true
+  # The three components of a voicemail's cost (call leg / recording /
+  # transcription), from the back-filled `metadata["cost_breakdown"]`. Shown small
+  # under the total so the operator can see *where* the money goes — the point of
+  # the whole feature (transcription is usually the driver).
+  attr :event, :map, required: true
 
-  defp rotary_dial(assigns) do
+  defp cost_breakdown(assigns) do
+    parts =
+      case assigns.event.metadata do
+        %{"cost_breakdown" => %{} = b} ->
+          [{"call", b["call"]}, {"rec", b["recording"]}, {"txt", b["transcription"]}]
+          |> Enum.filter(fn {_label, micros} -> is_integer(micros) end)
+
+        _ ->
+          []
+      end
+
+    assigns = assign(assigns, :parts, parts)
+
     ~H"""
-    <div
-      id="rotary-dial"
-      phx-hook="RotaryDial"
-      phx-update="ignore"
-      class="min-h-0 w-full max-w-[340px] flex-1 touch-none select-none"
+    <span
+      :if={@parts != []}
+      class="font-mono text-[10px] text-base-content/45"
     >
-      <svg viewBox="0 0 400 400" class="mx-auto h-full w-full" role="img" aria-label="Rotary dialer">
-        <defs>
-          <linearGradient id="rd-bezel" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#52504c" />
-            <stop offset="0.35" stop-color="#22211f" />
-            <stop offset="0.7" stop-color="#3a3936" />
-            <stop offset="1" stop-color="#161514" />
-          </linearGradient>
-          <linearGradient id="rd-chrome" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#e8e6df" />
-            <stop offset="0.5" stop-color="#8d8b84" />
-            <stop offset="1" stop-color="#d5d3cc" />
-          </linearGradient>
-          <radialGradient id="rd-wheel" cx="0.38" cy="0.32" r="0.9">
-            <stop offset="0" stop-color="#2a2926" />
-            <stop offset="0.65" stop-color="#191817" />
-            <stop offset="1" stop-color="#0d0d0c" />
-          </radialGradient>
-          <radialGradient id="rd-card" cx="0.4" cy="0.35" r="0.9">
-            <stop offset="0" stop-color="#f7f4ec" />
-            <stop offset="1" stop-color="#dcd7c9" />
-          </radialGradient>
-          <filter id="rd-shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#000" flood-opacity="0.55" />
-          </filter>
-          <mask id="rd-wheel-mask">
-            <rect x="0" y="0" width="400" height="400" fill="white" />
-            <circle :for={hole <- @holes} cx={hole.x} cy={hole.y} r="21" fill="black" />
-            <circle cx="200" cy="200" r="66" fill="black" />
-          </mask>
-        </defs>
-
-        <%!-- Bezel + fixed number plate. The plate is translucent so the wave
-              shader glows through it; digits print on the plate and stay put
-              while the fingerwheel spins over them. --%>
-        <circle cx="200" cy="200" r="188" fill="url(#rd-bezel)" />
-        <circle
-          cx="200"
-          cy="200"
-          r="188"
-          fill="none"
-          stroke="#000"
-          stroke-opacity="0.6"
-          stroke-width="1.5"
-        />
-        <circle
-          cx="200"
-          cy="200"
-          r="172"
-          fill="#0c0c0c"
-          fill-opacity="0.62"
-          stroke="#000"
-          stroke-opacity="0.5"
-        />
-
-        <g :for={hole <- @holes}>
-          <text
-            x={hole.x}
-            y={hole.y + 7}
-            text-anchor="middle"
-            font-family="ui-monospace, monospace"
-            font-size="21"
-            font-weight="700"
-            fill="#f4f1ea"
-          >
-            {hole.digit}
-          </text>
-          <text
-            :if={hole.letters}
-            x={hole.x}
-            y={hole.y + 16}
-            text-anchor="middle"
-            font-family="ui-monospace, monospace"
-            font-size="6"
-            letter-spacing="1"
-            fill="#f4f1ea"
-            fill-opacity="0.6"
-          >
-            {hole.letters}
-          </text>
-        </g>
-
-        <%!-- Fingerwheel: the rotor the hook spins. Finger holes + centre
-              opening are cutouts — the shader shines straight through. --%>
-        <g data-rotor data-cx="200" data-cy="200">
-          <g filter="url(#rd-shadow)">
-            <circle
-              cx="200"
-              cy="200"
-              r="158"
-              fill="url(#rd-wheel)"
-              fill-opacity="0.94"
-              mask="url(#rd-wheel-mask)"
-            />
-          </g>
-          <g mask="url(#rd-wheel-mask)">
-            <ellipse cx="150" cy="120" rx="120" ry="70" fill="#ffffff" fill-opacity="0.05" />
-            <circle cx="200" cy="200" r="146" fill="none" stroke="#ffffff" stroke-opacity="0.05" />
-            <circle cx="200" cy="200" r="98" fill="none" stroke="#ffffff" stroke-opacity="0.04" />
-          </g>
-          <circle
-            cx="200"
-            cy="200"
-            r="158"
-            fill="none"
-            stroke="#000"
-            stroke-opacity="0.55"
-            stroke-width="1.5"
-          />
-          <g :for={hole <- @holes}>
-            <circle
-              cx={hole.x}
-              cy={hole.y}
-              r="21"
-              fill="none"
-              stroke="url(#rd-chrome)"
-              stroke-width="2.5"
-            />
-            <circle
-              cx={hole.x}
-              cy={hole.y}
-              r="22.5"
-              fill="none"
-              stroke="#000"
-              stroke-opacity="0.5"
-              stroke-width="1"
-            />
-            <circle
-              cx={hole.x}
-              cy={hole.y}
-              r="27"
-              fill="#fff"
-              fill-opacity="0"
-              data-digit={hole.digit}
-              data-travel={hole.travel}
-              class="cursor-grab"
-              style="pointer-events: all;"
-            />
-          </g>
-        </g>
-
-        <%!-- Centre cap: fixed, wearing the subscriber card every desk set
-              carried. --%>
-        <circle cx="200" cy="200" r="64" fill="url(#rd-bezel)" filter="url(#rd-shadow)" />
-        <circle cx="200" cy="200" r="56" fill="url(#rd-card)" />
-        <circle cx="200" cy="200" r="56" fill="none" stroke="#8d8b84" stroke-width="1.5" />
-        <text
-          x="200"
-          y="186"
-          text-anchor="middle"
-          font-family="ui-monospace, monospace"
-          font-size="10"
-          font-weight="700"
-          letter-spacing="2"
-          fill="#1a1a1a"
-        >
-          BUSTER
-        </text>
-        <text
-          x="200"
-          y="198"
-          text-anchor="middle"
-          font-family="ui-monospace, monospace"
-          font-size="10"
-          font-weight="700"
-          letter-spacing="2"
-          fill="#1a1a1a"
-        >
-          CLAW
-        </text>
-        <line x1="172" y1="205" x2="228" y2="205" stroke="#1a1a1a" stroke-opacity="0.25" />
-        <text
-          x="200"
-          y="218"
-          text-anchor="middle"
-          font-family="ui-monospace, monospace"
-          font-size="10"
-          fill="#3a3a3a"
-        >
-          844·687·8016
-        </text>
-
-        <%!-- Finger stop, hooked over the rim at 65°. --%>
-        <g transform="rotate(65 200 200)" filter="url(#rd-shadow)">
-          <rect
-            x="296"
-            y="192"
-            width="62"
-            height="16"
-            rx="8"
-            fill="url(#rd-chrome)"
-            stroke="#4a4a46"
-            stroke-width="1"
-          />
-          <circle cx="350" cy="200" r="4" fill="#6b6963" />
-        </g>
-      </svg>
-    </div>
+      ({Enum.map_join(@parts, " + ", fn {label, micros} -> "#{label} #{format_cost(micros)}" end)})
+    </span>
     """
   end
 
   @impl true
   def render(assigns) do
-    assigns =
-      assign(assigns, filters: @filters, wave_colors: @wave_colors, dial_holes: @dial_holes)
+    assigns = assign(assigns, filters: @filters, wave_colors: @wave_colors)
 
     ~H"""
     <Layouts.app flash={@flash} full_bleed>
@@ -568,6 +359,21 @@ defmodule BusterClawWeb.PhoneLive do
               <span class="flex items-center gap-2">
                 <span class="ic-eyebrow !mb-0">Message machine</span>
                 <span :if={@stats.unheard > 0} class="ic-dot"></span>
+                <span
+                  :if={@stats.spent_micros > 0}
+                  class="font-mono text-[10px] text-base-content/55"
+                  title="Total Twilio spend on voicemails"
+                >
+                  {format_cost(@stats.spent_micros)}{if @stats.pending_cost > 0, do: "+"}
+                </span>
+                <button
+                  phx-click="refresh_costs"
+                  title="Refresh Twilio costs"
+                  aria-label="Refresh Twilio costs"
+                  class="text-base-content/40 transition hover:text-accent"
+                >
+                  <.icon name="hero-arrow-path" class="size-3" />
+                </button>
               </span>
               <div class="flex items-center gap-1">
                 <button
@@ -628,8 +434,16 @@ defmodule BusterClawWeb.PhoneLive do
                         )}
                       </span>
                     </span>
-                    <span class="shrink-0 font-mono text-[10px] text-base-content/60">
-                      {format_duration(event.duration_seconds || 0)} · {format_dt(event.occurred_at)}
+                    <span class="flex shrink-0 items-center gap-1.5 font-mono text-[10px]">
+                      <span
+                        :if={format_cost(event.cost_micros)}
+                        class="rounded-sm bg-accent/20 px-1.5 py-0.5 font-bold text-accent"
+                      >
+                        {format_cost(event.cost_micros)}
+                      </span>
+                      <span class="text-base-content/60">
+                        {format_duration(event.duration_seconds || 0)} · {format_dt(event.occurred_at)}
+                      </span>
                     </span>
                   </div>
                   <div
@@ -741,14 +555,14 @@ defmodule BusterClawWeb.PhoneLive do
         <%!-- RIGHT: divided column — Playback over Machine --%>
         <div class="flex min-h-0 flex-1 flex-col gap-3 lg:col-span-2">
           <section class="ic-panel relative isolate flex min-h-0 flex-1 flex-col overflow-hidden">
-            <.shader_bg id="phone-waves-playback" colors={@wave_colors.playback} />
+            <.shader_bg id="phone-mandel-playback" shader="mandel" colors={@wave_colors.playback} />
             <div class="relative z-10 flex min-h-0 flex-1 flex-col">
               <div class="ic-panel-h ic-glass shrink-0">
                 <span>
                   {cond do
                     @selected_event -> event_label(@selected_event)
                     @selected_thread -> display_name(@contacts_by_number, @selected_thread)
-                    true -> "Dial"
+                    true -> "Playback"
                   end}
                 </span>
                 <button
@@ -764,22 +578,17 @@ defmodule BusterClawWeb.PhoneLive do
               <div class="min-h-0 flex-1 overflow-y-auto p-3">
                 <div
                   :if={!@selected_event and !@selected_thread}
-                  class="flex h-full min-h-0 flex-col items-center gap-3"
+                  class="grid h-full min-h-0 place-items-center p-6 text-center"
                 >
-                  <div class="ic-glass flex w-full shrink-0 items-center justify-between border-2 border-base-content/20 px-4 py-2">
-                    <span class="font-mono text-lg font-bold tracking-[0.3em] tabular-nums">
-                      {format_dialed(@dialed)}
-                    </span>
-                    <button
-                      :if={@dialed != ""}
-                      phx-click="dial_clear"
-                      title="Hang up"
-                      class="font-mono text-[10px] uppercase tracking-wider text-base-content/50 transition hover:text-accent"
-                    >
-                      Hang up
-                    </button>
+                  <div class="ic-glass border-2 border-base-content/20 px-6 py-8">
+                    <.icon name="hero-play-circle" class="mx-auto size-9 text-base-content/40" />
+                    <p class="mt-3 font-mono text-sm uppercase tracking-wide text-base-content/60">
+                      Select a message to play it here
+                    </p>
+                    <p class="mt-1 text-xs text-base-content/45">
+                      Voicemails play inline; texts open as a thread.
+                    </p>
                   </div>
-                  <.rotary_dial holes={@dial_holes} />
                 </div>
 
                 <div
@@ -795,6 +604,31 @@ defmodule BusterClawWeb.PhoneLive do
                       <span :if={@selected_event.duration_seconds}>
                         · {format_duration(@selected_event.duration_seconds)}
                       </span>
+                    </div>
+                    <div
+                      :if={@selected_event.kind == "voicemail"}
+                      class="mt-2 flex items-center gap-2"
+                    >
+                      <span class="ic-eyebrow !mb-0">Cost</span>
+                      <span
+                        :if={format_cost(@selected_event.cost_micros)}
+                        class="font-mono text-sm font-bold text-accent"
+                      >
+                        {format_cost(@selected_event.cost_micros)}
+                        <span
+                          :if={is_nil(@selected_event.cost_synced_at)}
+                          class="text-[10px] font-normal uppercase text-base-content/45"
+                        >
+                          (pricing…)
+                        </span>
+                      </span>
+                      <span
+                        :if={is_nil(@selected_event.cost_micros)}
+                        class="font-mono text-xs text-base-content/45"
+                      >
+                        pricing…
+                      </span>
+                      <.cost_breakdown event={@selected_event} />
                     </div>
                   </div>
 
@@ -1153,15 +987,6 @@ defmodule BusterClawWeb.PhoneLive do
   defp preview(%Event{kind: "sms", body: body}), do: body
   defp preview(_event), do: nil
 
-  defp format_dialed(""), do: "—"
-
-  defp format_dialed(digits) do
-    digits
-    |> String.graphemes()
-    |> Enum.chunk_every(3)
-    |> Enum.map_join(" ", &Enum.join/1)
-  end
-
   # NANP pretty-print; anything else (short codes, international) stays raw.
   defp format_phone("+1" <> <<a::binary-size(3), b::binary-size(3), c::binary-size(4)>>),
     do: "(#{a}) #{b}-#{c}"
@@ -1170,6 +995,22 @@ defmodule BusterClawWeb.PhoneLive do
 
   defp format_duration(seconds) when is_integer(seconds) do
     "#{div(seconds, 60)}:#{seconds |> rem(60) |> Integer.to_string() |> String.pad_leading(2, "0")}"
+  end
+
+  # Micro-USD → a dollar string, up to 4 decimals with trailing zeros trimmed but
+  # at least cents (2 places). So a 24¢ total reads "$0.24" while a sub-cent
+  # component like the call leg still reads "$0.0085" instead of rounding to
+  # "$0.01". `nil` (not priced yet) → nil; the caller renders "pricing…".
+  defp format_cost(micros) when is_integer(micros) do
+    "$" <> ((micros / 1_000_000) |> :erlang.float_to_binary(decimals: 4) |> trim_cost_zeros())
+  end
+
+  defp format_cost(_nil), do: nil
+
+  defp trim_cost_zeros(str) do
+    [whole, frac] = String.split(str, ".")
+    frac = String.trim_trailing(frac, "0") |> String.pad_trailing(2, "0")
+    "#{whole}.#{frac}"
   end
 
   defp format_dt(%DateTime{} = dt), do: Elixir.Calendar.strftime(to_local(dt), "%b %d %H:%M")
