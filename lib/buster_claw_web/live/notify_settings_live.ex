@@ -30,7 +30,13 @@ defmodule BusterClawWeb.NotifySettingsLive do
     %{key: "chat", label: "Chat", group: :source, kind: "reminder", source: "chat"},
     %{key: "terminal", label: "Terminal", group: :source, kind: "reminder", source: "terminal"},
     %{key: "email", label: "Email", group: :source, kind: "reminder", source: "email"},
-    %{key: "voicemail", label: "Voicemail", group: :source, kind: "reminder", source: "voicemail"},
+    %{
+      key: "voicemail",
+      label: "Voicemail",
+      group: :source,
+      kind: "reminder",
+      source: "voicemail"
+    },
     %{key: "manual", label: "Manual", group: :source, kind: "reminder", source: "manual"}
   ]
 
@@ -115,8 +121,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
         {:noreply, put_flash(socket, :error, "Choose an audio file first.")}
 
       [:rejected_extension | _] ->
-        {:noreply,
-         put_flash(socket, :error, "Audio files only (MP3, WAV, OGG, M4A, AAC).")}
+        {:noreply, put_flash(socket, :error, "Audio files only (MP3, WAV, OGG, M4A, AAC).")}
 
       [name | _] ->
         {:noreply, socket |> refresh() |> put_flash(:info, "Added #{name}.")}
@@ -170,9 +175,11 @@ defmodule BusterClawWeb.NotifySettingsLive do
                 Sound board
               </h2>
               <p class="mt-1 text-sm text-base-content/65">
-                Pick which sound each kind of notification plays. A
-                <strong>source</strong> match wins over a <strong>kind</strong> match,
-                which wins over the default. <strong>Test</strong> fires a real
+                Pick which sound each kind of notification plays. A <strong>source</strong>
+                match wins over a <strong>kind</strong>
+                match,
+                which wins over the default. <strong>Test</strong>
+                fires a real
                 notification through the full pipeline — modal and all.
               </p>
             </header>

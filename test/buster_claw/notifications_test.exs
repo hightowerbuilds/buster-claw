@@ -88,7 +88,9 @@ defmodule BusterClaw.NotificationsTest do
       assert {:ok, notification} =
                Commands.call(
                  "notify_create",
-                 %{"kind" => "timer", "label" => "tea", "in_seconds" => 600}, caller: :trusted)
+                 %{"kind" => "timer", "label" => "tea", "in_seconds" => 600},
+                 caller: :trusted
+               )
 
       assert notification.kind == "timer"
       assert DateTime.diff(notification.fire_at, DateTime.utc_now()) in 590..600
@@ -100,7 +102,9 @@ defmodule BusterClaw.NotificationsTest do
       assert {:ok, notification} =
                Commands.call(
                  "notify_create",
-                 %{"kind" => "alarm", "label" => "meeting", "at" => at}, caller: :trusted)
+                 %{"kind" => "alarm", "label" => "meeting", "at" => at},
+                 caller: :trusted
+               )
 
       assert notification.kind == "alarm"
     end
@@ -131,7 +135,9 @@ defmodule BusterClaw.NotificationsTest do
       assert {:ok, created} =
                Commands.call(
                  "notify_create",
-                 %{"kind" => "timer", "label" => "z", "in_seconds" => 60}, caller: :trusted)
+                 %{"kind" => "timer", "label" => "z", "in_seconds" => 60},
+                 caller: :trusted
+               )
 
       # :safe tier — an agent caller may read it.
       assert {:ok, [listed]} = Commands.call("notify_list", %{}, caller: :agent)
