@@ -30,6 +30,8 @@
     "allow-browser-find-elements-active",
     "allow-browser-click-active",
     "allow-browser-fill-active",
+    "allow-browser-wait-active",
+    "allow-browser-extract-active",
     "allow-browser-render-page",
     "allow-speak",
     "allow-stop-speaking"

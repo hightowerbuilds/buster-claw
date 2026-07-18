@@ -2,7 +2,7 @@
 
 **A desktop runtime that gives an AI agent hands — and a full audit trail of what it did with them.**
 
-You run **Claude Code or Codex in the built-in terminal**. The agent drives the app through one canonical command surface (~134 commands) covering your browser, Gmail, Calendar, Drive, GitHub, and a durable work queue. Every command, every outbound send, and every untrusted fetch lands on an auditable security feed, and restricted actions are refused outright for untrusted callers.
+You run **Claude Code or Codex in the built-in terminal**. The agent drives the app through one canonical command surface (~153 commands) covering your browser, Gmail, Calendar, Drive, GitHub, and a durable work queue. Every command, every outbound send, and every untrusted fetch lands on an auditable security feed, and restricted actions are refused outright for untrusted callers.
 
 **There is no LLM inside Buster Claw and it needs no API keys.** The intelligence is the agent you already pay for; the app is the body, the memory, and the receipts.
 
@@ -22,7 +22,7 @@ That indirection is the whole design. It means work survives a crash, an agent c
 
 ## Features
 
-- **One command surface.** ~134 commands across documents, browser, Google Workspace, integrations, finance, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and a full audit trail.
+- **One command surface.** ~153 commands across documents, browser, Google Workspace, integrations, finance, memory, skills, and orchestration — reachable from the CLI and an HTTP API, with per-caller trust tiers and a full audit trail.
 - **A real browser the agent can drive.** Not a headless scraper: the agent reads and acts inside **the tab you're actually looking at**, logged-in session and all (`browser_read`, `browser_click`, `browser_fill`), plus SSRF-guarded fetch for everything else.
 - **Google Workspace.** One-click connect, then sync and act on Gmail, Calendar, Drive, Docs, and Contacts.
 - **Integrations.** GitHub, Sentry, and Umami — polled on demand (by you or the agent; there is no background poller) or webhook-triggered, with signature verification that fails closed.

@@ -448,6 +448,8 @@ fn main() {
             browser::browser_find_elements_active,
             browser::browser_click_active,
             browser::browser_fill_active,
+            browser::browser_wait_active,
+            browser::browser_extract_active,
             browser::browser_render_page,
             browser::browser_app_navigate,
             browser::browser_reveal_download,

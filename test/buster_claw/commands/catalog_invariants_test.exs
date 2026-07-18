@@ -101,6 +101,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       bookmark_export
       bookmark_list
       browser_fetch
+      browser_wait
       contacts_get
       contacts_list
       contacts_search

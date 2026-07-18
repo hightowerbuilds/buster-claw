@@ -213,6 +213,12 @@
           "markdownDescription": "Enables the browser_current command without any pre-configured scope."
         },
         {
+          "description": "Enables the browser_extract_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-extract-active",
+          "markdownDescription": "Enables the browser_extract_active command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_fill_active command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-fill-active",
@@ -333,6 +339,12 @@
           "markdownDescription": "Enables the browser_switch_tab command without any pre-configured scope."
         },
         {
+          "description": "Enables the browser_wait_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-wait-active",
+          "markdownDescription": "Enables the browser_wait_active command without any pre-configured scope."
+        },
+        {
           "description": "Enables the speak command without any pre-configured scope.",
           "type": "string",
           "const": "allow-speak",
@@ -415,6 +427,12 @@
           "type": "string",
           "const": "deny-browser-current",
           "markdownDescription": "Denies the browser_current command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_extract_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-extract-active",
+          "markdownDescription": "Denies the browser_extract_active command without any pre-configured scope."
         },
         {
           "description": "Denies the browser_fill_active command without any pre-configured scope.",
@@ -535,6 +553,12 @@
           "type": "string",
           "const": "deny-browser-switch-tab",
           "markdownDescription": "Denies the browser_switch_tab command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_wait_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-wait-active",
+          "markdownDescription": "Denies the browser_wait_active command without any pre-configured scope."
         },
         {
           "description": "Denies the speak command without any pre-configured scope.",

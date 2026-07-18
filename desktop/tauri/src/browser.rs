@@ -878,27 +878,98 @@ fn el_lookup_js(index: usize) -> String {
     )
 }
 
-fn click_js(index: usize) -> String {
+/// How `browser_click_active` / `browser_fill_active` resolve the element to
+/// act on, in priority order when several are given: an explicit CSS
+/// selector, then visible-text matching, then the legacy `window.__bcEls`
+/// index from `browser_find_elements_active`. Resolution happens at act time
+/// inside the page script, which tags its result with `matched_by` so the
+/// agent knows which strategy fired.
+pub(crate) enum ActTarget {
+    Selector(String),
+    Text(String),
+    Index(usize),
+}
+
+impl ActTarget {
+    fn from_params(
+        index: Option<usize>,
+        selector: Option<String>,
+        text: Option<String>,
+    ) -> Option<Self> {
+        if let Some(selector) = selector {
+            Some(Self::Selector(selector))
+        } else if let Some(text) = text {
+            Some(Self::Text(text))
+        } else {
+            index.map(Self::Index)
+        }
+    }
+
+    // The resolution prelude: binds `el` + `matchedBy`, or returns the
+    // `{ok: false}` object the Elixir side surfaces as an element_action
+    // failure. Selector/text matches may sit below the fold, so those paths
+    // scroll into view before acting; the index path keeps the original
+    // find_elements semantics untouched — no scroll, same stale-index error.
+    fn resolve_js(&self) -> String {
+        match self {
+            Self::Selector(selector) => format!(
+                r#"var el;
+  try {{ el = document.querySelector({selector}); }}
+  catch (e) {{ return {{ok: false, error: "invalid selector"}}; }}
+  if (!el) return {{ok: false, error: "no element matches selector"}};
+  var matchedBy = "selector";
+  el.scrollIntoView({{block: "center"}});"#,
+                selector = js_str(selector)
+            ),
+            Self::Text(text) => format!(
+                r#"var t = {text};
+  var tl = t.toLowerCase();
+  var sel = 'a[href], button, input, select, textarea, [role="button"], [onclick]';
+  var nodes = document.querySelectorAll(sel);
+  var el = null;
+  var sub = null;
+  for (var i = 0; i < nodes.length; i++) {{
+    var n = nodes[i];
+    if (n.offsetParent === null && n.getClientRects().length === 0) continue;
+    var label = (n.innerText || n.placeholder || n.getAttribute("aria-label") ||
+      n.getAttribute("name") || "").replace(/\s+/g, " ").trim();
+    if (label === t) {{ el = n; break; }}
+    if (!sub && label.toLowerCase().indexOf(tl) !== -1) sub = n;
+  }}
+  if (!el) el = sub;
+  if (!el) return {{ok: false, error: "no element matches text"}};
+  var matchedBy = "text";
+  el.scrollIntoView({{block: "center"}});"#,
+                text = js_str(text)
+            ),
+            Self::Index(index) => {
+                format!("{}\n  var matchedBy = \"index\";", el_lookup_js(*index))
+            }
+        }
+    }
+}
+
+fn click_js(target: &ActTarget) -> String {
     format!(
         r#"
 JSON.stringify((function () {{
-  {lookup}
+  {resolve}
   var label = {label};
   if (el.focus) el.focus();
   el.click();
-  return {{ok: true, label: label}};
+  return {{ok: true, label: label, matched_by: matchedBy}};
 }})())
 "#,
-        lookup = el_lookup_js(index),
+        resolve = target.resolve_js(),
         label = EL_LABEL_JS
     )
 }
 
-fn fill_js(index: usize, value: &str) -> String {
+fn fill_js(target: &ActTarget, value: &str) -> String {
     format!(
         r#"
 JSON.stringify((function () {{
-  {lookup}
+  {resolve}
   var tag = el.tagName.toLowerCase();
   if (tag !== "input" && tag !== "textarea" && tag !== "select")
     return {{ok: false, error: "not fillable (" + tag + ")"}};
@@ -906,14 +977,23 @@ JSON.stringify((function () {{
   el.value = {value};
   el.dispatchEvent(new Event("input", {{bubbles: true}}));
   el.dispatchEvent(new Event("change", {{bubbles: true}}));
-  return {{ok: true, label: {label}}};
+  return {{ok: true, label: {label}, matched_by: matchedBy}};
 }})())
 "#,
-        lookup = el_lookup_js(index),
+        resolve = target.resolve_js(),
         value = js_str(value),
         label = EL_LABEL_JS
     )
 }
+
+// The `{ok: false}` data payload the Elixir side decodes as a command-level
+// failure — distinct from a transport-level Err. js_str's output is also a
+// valid JSON string literal, so it does the quoting.
+fn error_data(msg: &str) -> String {
+    format!(r#"{{"ok":false,"error":{}}}"#, js_str(msg))
+}
+
+const NO_TARGET_DATA: &str = r#"{"ok":false,"error":"no target"}"#;
 
 /// A JSON string result from an interaction script run in the active tab.
 #[derive(serde::Serialize)]
@@ -939,37 +1019,244 @@ pub async fn browser_find_elements_active(
     Ok(EvalData { data })
 }
 
-/// Click element `index` from the tab's `window.__bcEls` registry (agent
-/// co-presence — acts inside the user's live session). Returns `{data}`: a
-/// JSON string of `{ok, label}` or `{ok: false, error}`.
+/// Click an element in the active tab (agent co-presence — acts inside the
+/// user's live session). Target: `selector` (querySelector), else `text`
+/// (exact-then-substring match on visible actionable elements), else the
+/// legacy `index` into the tab's `window.__bcEls` registry. Returns `{data}`:
+/// a JSON string of `{ok, label, matched_by}` or `{ok: false, error}`.
 #[tauri::command]
 pub async fn browser_click_active(
     app: AppHandle,
     state: State<'_, BrowserState>,
     surface_id: Option<String>,
-    index: usize,
+    index: Option<usize>,
+    selector: Option<String>,
+    text: Option<String>,
 ) -> Result<EvalData, String> {
     ping_agent_activity(&app, &state, surface_id.clone(), "clicking");
+    let Some(target) = ActTarget::from_params(index, selector, text) else {
+        return Ok(EvalData {
+            data: NO_TARGET_DATA.to_string(),
+        });
+    };
     let webview = active_content(&app, &state, surface_id)?;
-    let data = eval_with_result(&webview, &click_js(index))?;
+    let data = eval_with_result(&webview, &click_js(&target))?;
     Ok(EvalData { data })
 }
 
-/// Fill element `index` from the tab's `window.__bcEls` registry with `value`,
-/// dispatching bubbling `input` + `change` events so framework listeners
-/// notice (agent co-presence — acts inside the user's live session). Returns
-/// `{data}`: a JSON string of `{ok, label}` or `{ok: false, error}`.
+/// Fill an element in the active tab with `value`, dispatching bubbling
+/// `input` + `change` events so framework listeners notice (agent co-presence
+/// — acts inside the user's live session). Target resolution as in
+/// `browser_click_active`. Returns `{data}`: a JSON string of
+/// `{ok, label, matched_by}` or `{ok: false, error}`.
 #[tauri::command]
 pub async fn browser_fill_active(
     app: AppHandle,
     state: State<'_, BrowserState>,
     surface_id: Option<String>,
-    index: usize,
+    index: Option<usize>,
+    selector: Option<String>,
+    text: Option<String>,
     value: String,
 ) -> Result<EvalData, String> {
     ping_agent_activity(&app, &state, surface_id.clone(), "typing");
+    let Some(target) = ActTarget::from_params(index, selector, text) else {
+        return Ok(EvalData {
+            data: NO_TARGET_DATA.to_string(),
+        });
+    };
     let webview = active_content(&app, &state, surface_id)?;
-    let data = eval_with_result(&webview, &fill_js(index, &value))?;
+    let data = eval_with_result(&webview, &fill_js(&target, &value))?;
+    Ok(EvalData { data })
+}
+
+// Build the wait probe: a tiny script evaluating to "1" (condition holds),
+// "0" (not yet), or "e" (the selector itself is invalid — surfaced
+// immediately instead of burning the whole budget). Err = unusable
+// condition/value combo, reported as `{ok: false}` data, never a transport
+// error.
+fn wait_probe_js(condition: &str, value: Option<&str>) -> Result<String, String> {
+    match condition {
+        "navigation" => Ok(r#"document.readyState === "complete" ? "1" : "0""#.to_string()),
+        "selector" => {
+            let sel = value.ok_or("wait condition \"selector\" needs a value (a CSS selector)")?;
+            Ok(format!(
+                r#"(function () {{
+  try {{ return document.querySelector({sel}) ? "1" : "0"; }}
+  catch (e) {{ return "e"; }}
+}})()"#,
+                sel = js_str(sel)
+            ))
+        }
+        "visible" => {
+            let sel = value.ok_or("wait condition \"visible\" needs a value (a CSS selector)")?;
+            Ok(format!(
+                r#"(function () {{
+  try {{
+    var el = document.querySelector({sel});
+    if (!el) return "0";
+    var r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return "0";
+    var cs = window.getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden") return "0";
+    return "1";
+  }} catch (e) {{ return "e"; }}
+}})()"#,
+                sel = js_str(sel)
+            ))
+        }
+        "text" => {
+            let text = value.ok_or("wait condition \"text\" needs a value (the text to wait for)")?;
+            Ok(format!(
+                r#"(function () {{
+  var body = (document.body && document.body.innerText) || "";
+  return body.indexOf({text}) === -1 ? "0" : "1";
+}})()"#,
+                text = js_str(text)
+            ))
+        }
+        other => Err(format!("unknown wait condition: {other}")),
+    }
+}
+
+/// Wait until the active content tab satisfies `condition`, polling a tiny
+/// probe script inside Rust every 250ms (the `render_settle_and_read`
+/// precedent) up to `timeout_ms` (clamped 250..30_000, default 10_000).
+/// Conditions: "navigation" (readyState complete, re-confirmed 400ms later),
+/// "selector" (`value` matches), "visible" (`value` matches something with a
+/// non-zero, non-hidden rect), "text" (`value` appears in the page's
+/// innerText). Returns `{data}`: a JSON string of
+/// `{ok, matched, waited_ms, condition}` — an exhausted budget is
+/// `matched: false`, not an error; a bad condition/missing value is
+/// `{ok: false, error}`.
+#[tauri::command]
+pub async fn browser_wait_active(
+    app: AppHandle,
+    state: State<'_, BrowserState>,
+    surface_id: Option<String>,
+    condition: String,
+    value: Option<String>,
+    timeout_ms: Option<u64>,
+) -> Result<EvalData, String> {
+    use std::time::{Duration, Instant};
+
+    ping_agent_activity(&app, &state, surface_id.clone(), "waiting");
+    let webview = active_content(&app, &state, surface_id)?;
+    let probe = match wait_probe_js(&condition, value.as_deref()) {
+        Ok(probe) => probe,
+        Err(msg) => {
+            return Ok(EvalData {
+                data: error_data(&msg),
+            })
+        }
+    };
+
+    let started = Instant::now();
+    let deadline =
+        started + Duration::from_millis(timeout_ms.unwrap_or(10_000).clamp(250, 30_000));
+    let mut matched = false;
+    loop {
+        match eval_with_result(&webview, &probe) {
+            Ok(r) if r == "1" => {
+                // "navigation" re-confirms once 400ms later: readyState can
+                // read "complete" on the OLD page just before a click-driven
+                // navigation starts.
+                if condition != "navigation" {
+                    matched = true;
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(400));
+                if matches!(eval_with_result(&webview, &probe).as_deref(), Ok("1")) {
+                    matched = true;
+                    break;
+                }
+            }
+            Ok(r) if r == "e" => {
+                return Ok(EvalData {
+                    data: error_data("invalid selector"),
+                })
+            }
+            // Not there yet — or the eval failed mid-navigation; keep polling.
+            _ => {}
+        }
+        if Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let waited_ms = started.elapsed().as_millis();
+    Ok(EvalData {
+        data: format!(
+            r#"{{"ok":true,"matched":{matched},"waited_ms":{waited_ms},"condition":{condition}}}"#,
+            condition = js_str(&condition)
+        ),
+    })
+}
+
+/// Whole-page extraction script for `browser_extract_active` without a
+/// selector: url + title + visible text — the READ_PAGE_JS shape minus links,
+/// wrapped in the `{ok: true}` envelope.
+const EXTRACT_PAGE_JS: &str = r#"
+JSON.stringify((function () {
+  var text = ((document.body && document.body.innerText) || "").slice(0, 200000);
+  return {ok: true, url: location.href, title: document.title || "", text: text};
+})())
+"#;
+
+// Selector extraction: up to 50 matches as `{text, href?, value?, attr?}`.
+// `attr` is an optional attribute name to read per match. Both strings are
+// agent-supplied, so they ride through js_str.
+fn extract_matches_js(selector: &str, attr: Option<&str>) -> String {
+    let attr_line = match attr {
+        Some(attr) => format!(
+            r#"var av = el.getAttribute({attr});
+    if (av !== null) m.attr = String(av).slice(0, 2000);"#,
+            attr = js_str(attr)
+        ),
+        None => String::new(),
+    };
+    format!(
+        r#"
+JSON.stringify((function () {{
+  var nodes;
+  try {{ nodes = document.querySelectorAll({selector}); }}
+  catch (e) {{ return {{ok: false, error: "invalid selector"}}; }}
+  var out = [];
+  for (var i = 0; i < nodes.length && out.length < 50; i++) {{
+    var el = nodes[i];
+    var m = {{text: (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 2000)}};
+    if (typeof el.href === "string" && el.href) m.href = el.href;
+    if (typeof el.value === "string" && el.value) m.value = el.value.slice(0, 2000);
+    {attr_line}
+    out.push(m);
+  }}
+  return {{ok: true, count: out.length, matches: out}};
+}})())
+"#,
+        selector = js_str(selector)
+    )
+}
+
+/// Structured extraction from the active content tab (agent co-presence).
+/// Without a `selector`: the whole page as `{ok, url, title, text}`. With
+/// one: up to 50 matches as `{ok, count, matches: [{text, href?, value?,
+/// attr?}]}` — `attr` names an attribute to read per match. Returns `{data}`:
+/// a JSON string in either shape.
+#[tauri::command]
+pub async fn browser_extract_active(
+    app: AppHandle,
+    state: State<'_, BrowserState>,
+    surface_id: Option<String>,
+    selector: Option<String>,
+    attr: Option<String>,
+) -> Result<EvalData, String> {
+    ping_agent_activity(&app, &state, surface_id.clone(), "reading");
+    let webview = active_content(&app, &state, surface_id)?;
+    let js = match selector.as_deref() {
+        Some(sel) => extract_matches_js(sel, attr.as_deref()),
+        None => EXTRACT_PAGE_JS.to_string(),
+    };
+    let data = eval_with_result(&webview, &js)?;
     Ok(EvalData { data })
 }
 
@@ -1952,7 +2239,7 @@ mod tests {
     // break out of the eval'd literal.
     #[test]
     fn interaction_scripts_escape_agent_supplied_strings() {
-        let fill = fill_js(3, "a\"; alert(1); //\u{2028}");
+        let fill = fill_js(&ActTarget::Index(3), "a\"; alert(1); //\u{2028}");
         assert!(fill.contains(r#"el.value = "a\"; alert(1); //\u2028""#));
         assert!(fill.contains("window.__bcEls"));
         assert!(fill.contains("els[3]"));
@@ -1960,9 +2247,89 @@ mod tests {
         let find = find_elements_js("Sign\" out");
         assert!(find.contains(r#"var q = "Sign\" out".toLowerCase()"#));
 
-        let click = click_js(7);
+        let click = click_js(&ActTarget::Index(7));
         assert!(click.contains("els[7]"));
         assert!(click.contains("el.click()"));
+    }
+
+    // Selector/text resolution interpolates agent-supplied strings \u2014 through
+    // js_str only \u2014 and tags results with the strategy that matched. The
+    // legacy index path keeps the find_elements semantics untouched.
+    #[test]
+    fn target_resolution_escapes_and_tags_matched_by() {
+        let click = click_js(&ActTarget::Selector("a[href=\"x\"]".into()));
+        assert!(click.contains(r##"document.querySelector("a[href=\"x\"]")"##));
+        assert!(click.contains(r#"var matchedBy = "selector""#));
+        assert!(click.contains(r#"scrollIntoView({block: "center"})"#));
+        assert!(click.contains("matched_by: matchedBy"));
+
+        let fill = fill_js(&ActTarget::Text("Sign\" in".into()), "v");
+        assert!(fill.contains(r#"var t = "Sign\" in""#));
+        assert!(fill.contains(r#"var matchedBy = "text""#));
+        assert!(fill.contains("matched_by: matchedBy"));
+
+        let legacy = click_js(&ActTarget::Index(2));
+        assert!(legacy.contains(r#"var matchedBy = "index""#));
+        assert!(!legacy.contains("scrollIntoView"));
+        assert!(legacy.contains("stale index"));
+    }
+
+    #[test]
+    fn act_target_priority_is_selector_then_text_then_index() {
+        let t = ActTarget::from_params(Some(1), Some("s".into()), Some("t".into()));
+        assert!(matches!(t, Some(ActTarget::Selector(ref s)) if s == "s"));
+        let t = ActTarget::from_params(Some(1), None, Some("t".into()));
+        assert!(matches!(t, Some(ActTarget::Text(ref s)) if s == "t"));
+        let t = ActTarget::from_params(Some(1), None, None);
+        assert!(matches!(t, Some(ActTarget::Index(1))));
+        assert!(ActTarget::from_params(None, None, None).is_none());
+    }
+
+    // Wait probes interpolate agent-supplied selectors/text; bad combos are
+    // rejected before any eval.
+    #[test]
+    fn wait_probes_escape_values_and_validate_conditions() {
+        let nav = wait_probe_js("navigation", None).unwrap();
+        assert!(nav.contains("document.readyState"));
+
+        let sel = wait_probe_js("selector", Some("#a\"b")).unwrap();
+        assert!(sel.contains(r##"document.querySelector("#a\"b")"##));
+
+        let vis = wait_probe_js("visible", Some(".x")).unwrap();
+        assert!(vis.contains("getBoundingClientRect"));
+        assert!(vis.contains("getComputedStyle"));
+
+        let text = wait_probe_js("text", Some("Done\u{2028}!")).unwrap();
+        assert!(text.contains(r#"body.indexOf("Done\u2028!")"#));
+
+        assert!(wait_probe_js("selector", None).is_err());
+        assert!(wait_probe_js("visible", None).is_err());
+        assert!(wait_probe_js("text", None).is_err());
+        assert!(wait_probe_js("nope", None).is_err());
+    }
+
+    #[test]
+    fn extract_js_escapes_selector_and_attr() {
+        let js = extract_matches_js("a[data-x=\"1\"]", Some("data-\"attr"));
+        assert!(js.contains(r#"document.querySelectorAll("a[data-x=\"1\"]")"#));
+        assert!(js.contains(r#"el.getAttribute("data-\"attr")"#));
+        assert!(js.contains("out.length < 50"));
+
+        let plain = extract_matches_js(".row", None);
+        assert!(!plain.contains("getAttribute"));
+
+        assert!(EXTRACT_PAGE_JS.contains("innerText"));
+    }
+
+    // error_data rides js_str, whose escapes are all valid JSON \u2014 a hostile
+    // message can't corrupt the data payload the Elixir side decodes.
+    #[test]
+    fn error_data_is_valid_json_with_escaped_message() {
+        assert_eq!(
+            error_data("bad \"thing\""),
+            r#"{"ok":false,"error":"bad \"thing\""}"#
+        );
+        assert_eq!(NO_TARGET_DATA, error_data("no target"));
     }
 
     #[test]

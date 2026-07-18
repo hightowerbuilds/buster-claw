@@ -215,52 +215,147 @@ defmodule BusterClaw.Commands.Web do
   end
 
   @doc """
-  Click element `index` from the latest `browser_find_elements` registry,
-  acting **inside the user's live, logged-in session**. Indices are per-page
-  and go stale on navigation — re-find first. Every click records an explicit
-  Sentinel event with its provenance (index + element label).
+  Click an element in the active tab, acting **inside the user's live,
+  logged-in session**. Targets, resolved desktop-side at click time in this
+  order: `selector` (CSS), `text` (exact then substring match on visible
+  actionable elements), or `index` from the latest `browser_find_elements`
+  registry. Indices are per-page and go stale on navigation — re-find first;
+  selector/text targets don't. Every click records an explicit Sentinel event
+  with its provenance (target + element label + how it matched).
   """
+  def browser_click(%{"selector" => selector}) when is_binary(selector) and selector != "" do
+    with {:ok, result} <- element_action(:click, %{"selector" => selector}) do
+      label = element_label(result)
+      matched_by = matched_by(result, "selector")
+
+      BusterClaw.Sentinel.observe(
+        :outbound_send,
+        ~s|Clicked element matching "#{selector}" (#{label}) in the user's live tab|,
+        %{via: "browser_click", selector: selector, label: label, matched_by: matched_by}
+      )
+
+      {:ok, %{clicked: selector, label: label, matched_by: matched_by}}
+    end
+  end
+
+  def browser_click(%{"text" => text}) when is_binary(text) and text != "" do
+    with {:ok, result} <- element_action(:click, %{"text" => text}) do
+      label = element_label(result)
+      matched_by = matched_by(result, "text")
+
+      BusterClaw.Sentinel.observe(
+        :outbound_send,
+        ~s|Clicked element with text "#{text}" (#{label}) in the user's live tab|,
+        %{via: "browser_click", text: text, label: label, matched_by: matched_by}
+      )
+
+      {:ok, %{clicked: text, label: label, matched_by: matched_by}}
+    end
+  end
+
   def browser_click(%{"index" => index}) when is_integer(index) and index >= 0 do
     with {:ok, result} <- element_action(:click, %{"index" => index}) do
       label = element_label(result)
+      matched_by = matched_by(result, "index")
 
       BusterClaw.Sentinel.observe(
         :outbound_send,
         "Clicked element ##{index} (#{label}) in the user's live tab",
-        %{via: "browser_click", index: index, label: label}
+        %{via: "browser_click", index: index, label: label, matched_by: matched_by}
       )
 
-      {:ok, %{clicked: index, label: label}}
+      {:ok, %{clicked: index, label: label, matched_by: matched_by}}
     end
   end
 
-  def browser_click(_args), do: {:error, :missing_index}
+  def browser_click(_args), do: {:error, :missing_target}
 
   @doc """
-  Fill element `index` (input/textarea/select) from the latest
-  `browser_find_elements` registry with `value`, dispatching bubbling
-  `input`/`change` events so framework listeners notice — acting **inside the
-  user's live, logged-in session**. Indices are per-page and go stale on
-  navigation — re-find first. Every fill records an explicit Sentinel event
-  with its provenance (index, element label, and the value's *length* — never
-  the raw value).
+  Fill a fillable element (input/textarea/select) in the active tab with
+  `value`, dispatching bubbling `input`/`change` events so framework listeners
+  notice — acting **inside the user's live, logged-in session**. Targets,
+  resolved desktop-side at fill time in this order: `selector` (CSS), `text`
+  (exact then substring match on visible actionable elements), or `index` from
+  the latest `browser_find_elements` registry. Indices are per-page and go
+  stale on navigation — re-find first; selector/text targets don't. Every fill
+  records an explicit Sentinel event with its provenance (target, element
+  label, how it matched, and the value's *length* — never the raw value).
   """
+  def browser_fill(%{"selector" => selector, "value" => value})
+      when is_binary(selector) and selector != "" and is_binary(value) do
+    with {:ok, result} <- element_action(:fill, %{"selector" => selector, "value" => value}) do
+      label = element_label(result)
+      matched_by = matched_by(result, "selector")
+
+      BusterClaw.Sentinel.observe(
+        :outbound_send,
+        ~s|Filled element matching "#{selector}" (#{label}) in the user's live tab|,
+        %{
+          via: "browser_fill",
+          selector: selector,
+          label: label,
+          matched_by: matched_by,
+          value_length: String.length(value)
+        }
+      )
+
+      {:ok,
+       %{
+         filled: selector,
+         label: label,
+         matched_by: matched_by,
+         value_length: String.length(value)
+       }}
+    end
+  end
+
+  def browser_fill(%{"text" => text, "value" => value})
+      when is_binary(text) and text != "" and is_binary(value) do
+    with {:ok, result} <- element_action(:fill, %{"text" => text, "value" => value}) do
+      label = element_label(result)
+      matched_by = matched_by(result, "text")
+
+      BusterClaw.Sentinel.observe(
+        :outbound_send,
+        ~s|Filled element with text "#{text}" (#{label}) in the user's live tab|,
+        %{
+          via: "browser_fill",
+          text: text,
+          label: label,
+          matched_by: matched_by,
+          value_length: String.length(value)
+        }
+      )
+
+      {:ok,
+       %{filled: text, label: label, matched_by: matched_by, value_length: String.length(value)}}
+    end
+  end
+
   def browser_fill(%{"index" => index, "value" => value})
       when is_integer(index) and index >= 0 and is_binary(value) do
     with {:ok, result} <- element_action(:fill, %{"index" => index, "value" => value}) do
       label = element_label(result)
+      matched_by = matched_by(result, "index")
 
       BusterClaw.Sentinel.observe(
         :outbound_send,
         "Filled element ##{index} (#{label}) in the user's live tab",
-        %{via: "browser_fill", index: index, label: label, value_length: String.length(value)}
+        %{
+          via: "browser_fill",
+          index: index,
+          label: label,
+          matched_by: matched_by,
+          value_length: String.length(value)
+        }
       )
 
-      {:ok, %{filled: index, label: label, value_length: String.length(value)}}
+      {:ok,
+       %{filled: index, label: label, matched_by: matched_by, value_length: String.length(value)}}
     end
   end
 
-  def browser_fill(_args), do: {:error, :missing_index_or_value}
+  def browser_fill(_args), do: {:error, :missing_target_or_value}
 
   # Run a click/fill through the bridge and decode the page script's small JSON
   # result, so failures ("stale index — call browser_find_elements again",
@@ -287,6 +382,163 @@ defmodule BusterClaw.Commands.Web do
   end
 
   defp element_label(result), do: result |> Map.get("label", "") |> to_string()
+
+  # How the desktop resolved the click/fill target ("selector"|"text"|"index");
+  # falls back to the target kind we sent for older desktop builds.
+  defp matched_by(result, fallback), do: result |> Map.get("matched_by", fallback) |> to_string()
+
+  @wait_conditions ~w(navigation selector visible text)
+  @wait_default_ms 10_000
+  @wait_cap_ms 30_000
+
+  @doc """
+  Wait for the active tab to settle or match a condition. The polling happens
+  **inside the desktop shell** (every 250ms) — no page content is ingested, so
+  no Sentinel event is recorded. `until`: "navigation" (default; document
+  fully loaded, re-confirmed 400ms later), "selector" (CSS selector present),
+  "visible" (selector present with a real on-screen box), or "text" (string
+  appears in the page body). An exhausted budget is a normal
+  `{:ok, %{matched: false}}` — the wait ran; the condition just never held.
+  """
+  def browser_wait(args \\ %{}) do
+    until = Map.get(args, "until", "navigation")
+    value = Map.get(args, "value")
+
+    cond do
+      until not in @wait_conditions ->
+        {:error, :bad_wait_condition}
+
+      until != "navigation" and not (is_binary(value) and value != "") ->
+        {:error, :missing_value}
+
+      true ->
+        request_wait(until, value, wait_budget(Map.get(args, "timeout_ms")))
+    end
+  end
+
+  defp wait_budget(ms) when is_integer(ms) and ms > 0, do: min(ms, @wait_cap_ms)
+  defp wait_budget(_ms), do: @wait_default_ms
+
+  # The desktop polls the condition for up to `budget_ms`; the bridge expiry
+  # rides above it so the round-trip can't time out before the wait resolves.
+  defp request_wait(condition, value, budget_ms) do
+    payload = %{"condition" => condition, "value" => value, "timeout_ms" => budget_ms}
+
+    case Bridge.request(:wait, payload, timeout_ms: budget_ms + 3_000) do
+      {:ok, %{data: raw}} when is_binary(raw) -> decode_wait(raw, condition)
+      {:ok, _other} -> {:error, :bad_wait_payload}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp decode_wait(raw, condition) do
+    case Jason.decode(raw) do
+      {:ok, %{"ok" => true, "matched" => matched, "waited_ms" => waited}}
+      when is_boolean(matched) ->
+        {:ok, %{matched: matched, waited_ms: waited, until: condition}}
+
+      {:ok, %{"ok" => false, "error" => error}} when is_binary(error) ->
+        {:error, {:wait_failed, error}}
+
+      _ ->
+        {:error, :bad_wait_payload}
+    end
+  end
+
+  @doc """
+  Extract content from the active tab — the user's live, logged-in session.
+  Without `selector`: the whole page as `{url, title, text}`. With `selector`:
+  up to 50 matches as `{text, href/value, attr}` maps (`attr` names an
+  attribute to read per match). Like `browser_read`, this pulls untrusted page
+  content into the agent's context, so every extract lands on the Sentinel
+  feed.
+  """
+  def browser_extract(args \\ %{}) do
+    selector = string_or_nil(Map.get(args, "selector"))
+    attr = string_or_nil(Map.get(args, "attr"))
+
+    payload =
+      %{"selector" => selector, "attr" => attr}
+      |> Map.reject(fn {_key, value} -> is_nil(value) end)
+
+    case Bridge.request(:extract, payload) do
+      {:ok, %{data: raw}} when is_binary(raw) -> decode_extract(raw, selector)
+      {:ok, _other} -> {:error, :bad_extract_payload}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp string_or_nil(value) when is_binary(value) and value != "", do: value
+  defp string_or_nil(_value), do: nil
+
+  defp decode_extract(raw, selector) do
+    case Jason.decode(raw) do
+      {:ok, %{"ok" => true, "matches" => matches} = result} when is_list(matches) ->
+        count = Map.get(result, "count", length(matches))
+
+        BusterClaw.Sentinel.observe(
+          :untrusted_ingest,
+          ~s|Extracted #{count} matches for "#{selector}" from the live tab|,
+          %{selector: selector, count: count, trust: "fetched", via: "browser_extract"}
+        )
+
+        {:ok, %{count: count, matches: matches}}
+
+      {:ok, %{"ok" => true, "url" => url} = page} ->
+        BusterClaw.Sentinel.observe(
+          :untrusted_ingest,
+          "Extracted live tab #{url}",
+          %{url: url, title: page["title"], trust: "fetched", via: "browser_extract"}
+        )
+
+        {:ok, %{url: url, title: page["title"], text: page["text"]}}
+
+      {:ok, %{"ok" => false, "error" => error}} when is_binary(error) ->
+        {:error, {:extract_failed, error}}
+
+      _ ->
+        {:error, :bad_extract_payload}
+    end
+  end
+
+  @assert_kinds ~w(url_contains title_contains selector text)
+
+  @doc """
+  Check a condition against the active tab without acting on it. A failed
+  assertion is a normal `{:ok, %{passed: false}}` — only transport/desktop
+  problems are errors. `"url_contains"`/`"title_contains"` read the current
+  tab; `"selector"`/`"text"` run a one-shot 250ms wait probe (present right
+  now, not eventually).
+  """
+  def browser_assert(%{"kind" => kind, "value" => value})
+      when kind in @assert_kinds and is_binary(value) and value != "" do
+    case kind do
+      "url_contains" -> assert_current(:url, kind, value)
+      "title_contains" -> assert_current(:title, kind, value)
+      "selector" -> assert_probe("selector", kind, value)
+      "text" -> assert_probe("text", kind, value)
+    end
+  end
+
+  def browser_assert(_args), do: {:error, :missing_kind_or_value}
+
+  defp assert_current(field, kind, value) do
+    case Bridge.request(:current) do
+      {:ok, current} ->
+        actual = current |> Map.get(field) |> to_string()
+        {:ok, %{passed: String.contains?(actual, value), kind: kind, detail: actual}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp assert_probe(condition, kind, value) do
+    with {:ok, %{matched: matched, waited_ms: waited}} <- request_wait(condition, value, 250) do
+      detail = if matched, do: "matched after #{waited}ms", else: "no match within 250ms"
+      {:ok, %{passed: matched, kind: kind, detail: detail}}
+    end
+  end
 
   @doc """
   The browser's current tab strip, read from the durable per-surface tab state

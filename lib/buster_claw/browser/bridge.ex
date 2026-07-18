@@ -4,10 +4,10 @@ defmodule BusterClaw.Browser.Bridge do
 
   Mirrors `BusterClaw.Browser.Capture`, but instead of a single screenshot action
   it carries a small set of co-presence commands (`:current`, `:read`,
-  `:find_elements`, `:click`, `:fill`, `:navigate`, `:open_tab`, `:render`) the
-  agent can issue to read and drive the tab the user is viewing — or, for
-  `:render`, to load a URL in a hidden ephemeral webview when the plain-HTTP
-  fetch pipeline can't produce readable content.
+  `:find_elements`, `:click`, `:fill`, `:navigate`, `:open_tab`, `:render`,
+  `:wait`, `:extract`) the agent can issue to read and drive the tab the user
+  is viewing — or, for `:render`, to load a URL in a hidden ephemeral webview
+  when the plain-HTTP fetch pipeline can't produce readable content.
 
   The agent drives the Phoenix command surface, but the webviews live in the
   separate Tauri process. `request/3` issues a command: it broadcasts it (tagged
@@ -23,7 +23,7 @@ defmodule BusterClaw.Browser.Bridge do
 
   @topic "browser_bridge"
   @default_timeout_ms 8_000
-  @actions ~w(current read find_elements click fill navigate open_tab render)a
+  @actions ~w(current read find_elements click fill navigate open_tab render wait extract)a
 
   # The internal expiry; overridable in tests via :browser_bridge_timeout_ms.
   defp timeout_ms,
@@ -64,13 +64,14 @@ defmodule BusterClaw.Browser.Bridge do
   @doc """
   Issue a co-presence command and block until the desktop side fulfils it.
 
-  Returns `{:ok, result}` (for `:current`, `%{url:, title:}`; for `:read` and
-  `:render`, `%{data: json}`; for the trigger actions, an empty map confirming
-  success) or `{:error, reason}` (`:browser_unavailable`, `:browser_timeout`,
-  or a desktop-reported reason).
+  Returns `{:ok, result}` (for `:current`, `%{url:, title:}`; for `:read`,
+  `:render`, `:wait`, and `:extract`, `%{data: json}`; for the trigger actions,
+  an empty map confirming success) or `{:error, reason}` (`:browser_unavailable`,
+  `:browser_timeout`, or a desktop-reported reason).
 
-  Options: `:timeout_ms` overrides the per-request expiry — `:render` waits on
-  a real page load, so its callers pass a budget above the 8s default.
+  Options: `:timeout_ms` overrides the per-request expiry — `:render` and
+  `:wait` block on real page activity, so their callers pass a budget above
+  the 8s default.
   """
   def request(action, payload \\ %{}, opts \\ [])
       when action in @actions and is_map(payload) and is_list(opts) do

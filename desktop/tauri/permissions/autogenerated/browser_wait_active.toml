@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-wait-active"
+description = "Enables the browser_wait_active command without any pre-configured scope."
+commands.allow = ["browser_wait_active"]
+
+[[permission]]
+identifier = "deny-browser-wait-active"
+description = "Denies the browser_wait_active command without any pre-configured scope."
+commands.deny = ["browser_wait_active"]

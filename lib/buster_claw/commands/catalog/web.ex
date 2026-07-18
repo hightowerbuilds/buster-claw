@@ -104,11 +104,21 @@ defmodule BusterClaw.Commands.Catalog.Web do
         type: :mutate,
         tier: :restricted,
         description:
-          "Click element #index from the latest browser_find_elements — this acts inside the user's live, logged-in session (Sentinel-audited with index + label). Indices go stale on navigation: call browser_find_elements again first. Requires the desktop app to be open.",
+          "Click an element in the active tab — this acts inside the user's live, logged-in session (Sentinel-audited with target, label, and how it matched). Target exactly one of: selector (CSS), text (exact-then-substring match on visible actionable elements), or index from the latest browser_find_elements. Selector/text resolve at click time; indices go stale on navigation (call browser_find_elements again first). Requires the desktop app to be open.",
         args: %{
+          "selector" => %{
+            type: :string,
+            required: false,
+            description: "CSS selector of the element to click."
+          },
+          "text" => %{
+            type: :string,
+            required: false,
+            description: "Visible text of the element to click (exact match, then substring)."
+          },
           "index" => %{
             type: :integer,
-            required: true,
+            required: false,
             description: "Element index from the latest browser_find_elements."
           }
         }
@@ -118,11 +128,21 @@ defmodule BusterClaw.Commands.Catalog.Web do
         type: :mutate,
         tier: :restricted,
         description:
-          "Fill element #index (input/textarea/select) from the latest browser_find_elements with a value, dispatching input+change events — this types into the user's live, logged-in session (Sentinel-audited with index, label, and value length). Indices go stale on navigation: call browser_find_elements again first. Requires the desktop app to be open.",
+          "Fill a fillable element (input/textarea/select) in the active tab with a value, dispatching input+change events — this types into the user's live, logged-in session (Sentinel-audited with target, label, how it matched, and value length). Target exactly one of: selector (CSS), text (exact-then-substring match on visible actionable elements), or index from the latest browser_find_elements. Selector/text resolve at fill time; indices go stale on navigation (call browser_find_elements again first). Requires the desktop app to be open.",
         args: %{
+          "selector" => %{
+            type: :string,
+            required: false,
+            description: "CSS selector of the element to fill."
+          },
+          "text" => %{
+            type: :string,
+            required: false,
+            description: "Visible text of the element to fill (exact match, then substring)."
+          },
           "index" => %{
             type: :integer,
-            required: true,
+            required: false,
             description: "Element index from the latest browser_find_elements."
           },
           "value" => %{
@@ -167,6 +187,69 @@ defmodule BusterClaw.Commands.Catalog.Web do
             required: false,
             description:
               ~s|"ephemeral" (default: sandboxed, no user cookies) or "user" (the user's live session).|
+          }
+        }
+      },
+      %{
+        name: "browser_wait",
+        type: :read,
+        tier: :safe,
+        description:
+          "Wait for the active browser tab to settle or match a condition — navigation complete, a CSS selector present/visible, or text on the page. Read-only polling inside the desktop shell; never acts on the page and ingests nothing. An exhausted budget returns matched: false, not an error. Requires the desktop app to be open.",
+        args: %{
+          "until" => %{
+            type: :string,
+            required: false,
+            description: ~s|Condition: "navigation" (default), "selector", "visible", or "text".|
+          },
+          "value" => %{
+            type: :string,
+            required: false,
+            description:
+              ~s|CSS selector or text to wait for (required unless until: "navigation").|
+          },
+          "timeout_ms" => %{
+            type: :integer,
+            required: false,
+            description: "Max wait in milliseconds (default 10000, cap 30000)."
+          }
+        }
+      },
+      %{
+        name: "browser_extract",
+        type: :read,
+        tier: :restricted,
+        description:
+          "Extract content from the active browser tab as the user's live session sees it (Sentinel-audited): the whole page (url, title, text) by default, or up to 50 CSS-selector matches as {text, href/value, attr} entries. Requires the desktop app to be open.",
+        args: %{
+          "selector" => %{
+            type: :string,
+            required: false,
+            description: "CSS selector to match; omit to read the whole page (url, title, text)."
+          },
+          "attr" => %{
+            type: :string,
+            required: false,
+            description: "Attribute name to read from each selector match."
+          }
+        }
+      },
+      %{
+        name: "browser_assert",
+        type: :read,
+        tier: :restricted,
+        description:
+          "Check a condition against the active browser tab: url_contains / title_contains (current tab), or selector / text (a one-shot 250ms probe). Returns passed: true|false — a failed assertion is a result, not an error. Requires the desktop app to be open.",
+        args: %{
+          "kind" => %{
+            type: :string,
+            required: true,
+            description: ~s|"url_contains", "title_contains", "selector", or "text".|
+          },
+          "value" => %{
+            type: :string,
+            required: true,
+            description: "URL/title substring, CSS selector, or page text to check for."
           }
         }
       },

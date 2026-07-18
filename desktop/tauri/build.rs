@@ -30,6 +30,8 @@ fn main() {
                 "browser_find_elements_active",
                 "browser_click_active",
                 "browser_fill_active",
+                "browser_wait_active",
+                "browser_extract_active",
                 "browser_render_page",
                 "browser_app_navigate",
                 "browser_reveal_download",

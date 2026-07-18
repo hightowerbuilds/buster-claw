@@ -44,10 +44,40 @@ export const ScreenshotBridge = {
           const found = await invoke("browser_find_elements_active", {query: payload.query || null})
           data = {ok: true, data: found.data}
         } else if (action === "click") {
-          const res = await invoke("browser_click_active", {index: payload.index})
+          // Target resolution happens desktop-side: selector -> text -> index.
+          // payload.index may legitimately be 0, so `??` (not `||`).
+          const res = await invoke("browser_click_active", {
+            index: payload.index ?? null,
+            selector: payload.selector || null,
+            text: payload.text || null,
+          })
           data = {ok: true, data: res.data}
         } else if (action === "fill") {
-          const res = await invoke("browser_fill_active", {index: payload.index, value: payload.value})
+          const res = await invoke("browser_fill_active", {
+            index: payload.index ?? null,
+            selector: payload.selector || null,
+            text: payload.text || null,
+            value: payload.value,
+          })
+          data = {ok: true, data: res.data}
+        } else if (action === "wait") {
+          // Desktop-side condition poll (readyState/selector/visible/text);
+          // `data` is the small JSON verdict {ok, matched, waited_ms, condition},
+          // decoded server-side by the browser_wait command.
+          const res = await invoke("browser_wait_active", {
+            condition: payload.condition,
+            value: payload.value || null,
+            timeoutMs: payload.timeout_ms || null,
+          })
+          data = {ok: true, data: res.data}
+        } else if (action === "extract") {
+          // Whole-page or selector-scoped extraction of the active tab;
+          // `data` is the script's JSON string, decoded server-side by the
+          // browser_extract command.
+          const res = await invoke("browser_extract_active", {
+            selector: payload.selector || null,
+            attr: payload.attr || null,
+          })
           data = {ok: true, data: res.data}
         } else if (action === "navigate") {
           await invoke("browser_navigate_active", {url: payload.url})
