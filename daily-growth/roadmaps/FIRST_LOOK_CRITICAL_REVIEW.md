@@ -288,7 +288,7 @@ Ranked by "how many new customers does this lose, and how early." Fixing the top
 2. **Make Claude-Code-login failures visible in chat.** Fix the exit-code/stderr/error-result trilogy so a not-logged-in user sees "Install & log into Claude Code" instead of silence. Gate the composer on `AgentRunner.detect/0`. (§2.1) **→ RESOLVED 07-18 (`937d4a9`), composer gate included — banner with the npm install command + `claude login`, input disabled until a CLI is detected.**
 3. **Move Google's OAuth app out of "Testing."** Complete verification (or at minimum a self-serve tester path) — the founder-email gate and weekly token death are disqualifying for a downloaded product. (§3.1)
 4. **Decide what BusterPhone *is* on day one.** Either give it an in-app config path + a real "get a number"/pay flow, or gate the dock tab behind a clear "coming soon / join waitlist" state so it doesn't read as broken. Today it's a visible, empty, unconfigurable, unpurchasable tab. (§4.1)
-5. **Add a single-instance guard** before two launches corrupt the DB. (§1.2)
+5. **Add a single-instance guard** before two launches corrupt the DB. (§1.2) **→ RESOLVED 07-18: `tauri-plugin-single-instance` registered first in the builder; a second launch exits and focuses the running window. (The finding was observed live the same day — two packaged instances from June 14/18 had been sharing one SQLite for a month.)**
 
 ### Tier 1 — First-hour credibility
 

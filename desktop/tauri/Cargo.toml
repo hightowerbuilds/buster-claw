@@ -18,6 +18,7 @@ portable-pty = "0.8"
 keyring = "2"
 serde = { version = "1", features = ["derive"] }
 base64 = "0.22"
+tauri-plugin-single-instance = "2"
 
 # macOS-only: reach the underlying WKWebView (via tauri's PlatformWebview::inner())
 # to call -takeSnapshotWithConfiguration:completionHandler: for browser_screenshot.

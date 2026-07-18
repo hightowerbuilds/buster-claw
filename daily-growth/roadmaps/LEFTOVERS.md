@@ -23,7 +23,10 @@ but the five primitive-specific checks were never individually run:
 ceiling; (2) `browser_click text:"…"` acts with scroll-into-view; (3)
 `browser_extract` with a selector returns structured matches; (4) a 3-step
 `browser_flow` with a wrong selector fails at step 3 *with a screenshot*;
-(5) `browser_check_save` → `run` → the `## Runs` line appears.
+(5) `browser_check_save` → `run` → the `## Runs` line appears;
+(6) with the app running, launch it a second time — the second launch must
+exit immediately and focus the first window (single-instance guard; only
+works between two post-07-18 binaries, so both launches must be fresh builds).
 
 **Why deferred.** Needs operator hands on the real WKWebView; the operator
 moved on after confirming the browser itself works (07-18).

@@ -418,6 +418,16 @@ fn main() {
     let shutting_down_for_run = Arc::clone(&shutting_down);
 
     let app = tauri::Builder::default()
+        // MUST be the first plugin registered (its docs' contract): a second
+        // launch exits immediately and focuses the running instance instead of
+        // booting a second BEAM against the same SQLite — two instances ran
+        // undetected for a month (June 14 + 18) sharing one database.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+        }))
         .menu(build_app_menu)
         .on_menu_event(|app, event| browser::handle_menu_shortcut(app, event.id().as_ref()))
         .manage(terminal::TerminalState::default())
