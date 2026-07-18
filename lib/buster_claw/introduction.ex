@@ -9,6 +9,8 @@ defmodule BusterClaw.Introduction do
   orientation and the full command list.
   """
 
+  require Logger
+
   alias BusterClaw.Commands
   alias BusterClaw.Library.Artifact
 
@@ -42,9 +44,13 @@ defmodule BusterClaw.Introduction do
   def ensure do
     install!()
   rescue
-    _ -> :error
+    error ->
+      Logger.warning("Introduction install failed: #{Exception.message(error)}")
+      :error
   catch
-    _, _ -> :error
+    kind, reason ->
+      Logger.warning("Introduction install failed: #{inspect({kind, reason})}")
+      :error
   end
 
   @doc "The installed file's content, falling back to a freshly generated copy."

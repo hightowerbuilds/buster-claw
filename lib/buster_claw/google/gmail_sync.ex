@@ -1,6 +1,8 @@
 defmodule BusterClaw.Google.GmailSync do
   @moduledoc "Sync Gmail messages into the local Library as raw markdown documents."
 
+  require Logger
+
   alias BusterClaw.Dispatch
   alias BusterClaw.Google
   alias BusterClaw.Google.Account
@@ -177,8 +179,10 @@ defmodule BusterClaw.Google.GmailSync do
 
   # Trusted-sender mail also lands on the Dispatch queue so the agent can act on
   # it. Untrusted mail is archived to the Library only (above) — never enqueued.
-  # Best-effort: a dedupe conflict (re-sync) or any error is ignored so it can't
-  # fail the sync. The item links back to the saved Library doc via metadata.
+  # Best-effort: a dedupe conflict (re-sync) stays quiet and no error can fail
+  # the sync, but an unexpected enqueue failure is logged — it means a trusted
+  # sender's mail silently never became agent work. The item links back to the
+  # saved Library doc via metadata.
   defp maybe_enqueue_dispatch(%Account{} = account, message, document, opts) do
     if Keyword.get(opts, :enqueue, true) do
       case TrustedSenders.match(message.from) do
@@ -186,18 +190,34 @@ defmodule BusterClaw.Google.GmailSync do
           :skip
 
         entry ->
-          _ =
-            Dispatch.enqueue_gmail(account, message, %{
-              trusted: true,
-              trusted_sender: entry,
-              recommended_role_key: Keyword.get(opts, :dispatch_role, "mail-triage"),
-              request_summary: message.subject,
-              metadata: %{"artifact_path" => document.artifact_path}
-            })
-
-          :ok
+          account
+          |> Dispatch.enqueue_gmail(message, %{
+            trusted: true,
+            trusted_sender: entry,
+            recommended_role_key: Keyword.get(opts, :dispatch_role, "mail-triage"),
+            request_summary: message.subject,
+            metadata: %{"artifact_path" => document.artifact_path}
+          })
+          |> log_enqueue_failure(message)
       end
     end
+  end
+
+  # Dedupe conflicts (re-sync of an already-queued message) are expected and
+  # stay quiet; anything else is trusted mail that never reached the queue.
+  defp log_enqueue_failure({:ok, _item}, _message), do: :ok
+
+  defp log_enqueue_failure({:error, %Ecto.Changeset{errors: errors}}, message) do
+    unless Keyword.has_key?(errors, :dedupe_key) do
+      Logger.error("Gmail sync: message #{message.id} failed to enqueue: #{inspect(errors)}")
+    end
+
+    :ok
+  end
+
+  defp log_enqueue_failure({:error, reason}, message) do
+    Logger.error("Gmail sync: message #{message.id} failed to enqueue: #{inspect(reason)}")
+    :ok
   end
 
   defp save_message(%Account{} = account, message) do

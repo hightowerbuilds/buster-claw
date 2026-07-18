@@ -1063,11 +1063,14 @@ fn report_download(app: &AppHandle, chrome_label: &str, url: &str, file: &PathBu
         ("success".to_string(), success.to_string()),
     ];
     tauri::async_runtime::spawn(async move {
-        let _ = reqwest::Client::new()
-            .post(endpoint)
+        if let Err(e) = reqwest::Client::new()
+            .post(&endpoint)
             .query(&query)
             .send()
-            .await;
+            .await
+        {
+            eprintln!("[buster-claw] download report to {endpoint} failed: {e}");
+        }
     });
 }
 
@@ -1715,11 +1718,14 @@ fn record_history(app: &AppHandle, chrome_label: &str, url: &str, title: &str) {
         query.push(("label".to_string(), label.to_string()));
     }
     tauri::async_runtime::spawn(async move {
-        let _ = reqwest::Client::new()
-            .post(endpoint)
+        if let Err(e) = reqwest::Client::new()
+            .post(&endpoint)
             .query(&query)
             .send()
-            .await;
+            .await
+        {
+            eprintln!("[buster-claw] history report to {endpoint} failed: {e}");
+        }
     });
 }
 

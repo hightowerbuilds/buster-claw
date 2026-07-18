@@ -216,8 +216,10 @@ defmodule BusterClaw.Telephony.Drain do
   # (or a spoofer of the operator) who didn't punch their PIN, and either way the
   # near-miss is worth seeing rather than swallowing silently.
   #
-  # Best-effort, exactly like the Gmail path: a dedupe conflict on re-drain, or
-  # any error, is swallowed so it can never fail the drain and strand a voicemail.
+  # Best-effort, exactly like the Gmail path: a dedupe conflict on re-drain is
+  # expected and stays quiet, and no error can fail the drain and strand a
+  # voicemail — but an *unexpected* enqueue failure is logged, because it means
+  # a trusted caller's voicemail silently never became agent work.
   defp maybe_enqueue_dispatch(%Event{direction: "inbound", kind: "voicemail"} = event) do
     case TrustedNumbers.match(event.from_number) do
       nil ->
@@ -225,19 +227,18 @@ defmodule BusterClaw.Telephony.Drain do
 
       number ->
         if event.verified do
-          _ =
-            Dispatch.enqueue_voicemail(event, %{
-              trusted: true,
-              trusted_sender: number,
-              recommended_role_key: "voicemail-triage",
-              request_summary: request_summary(event),
-              metadata: %{
-                "telephony_event_id" => event.id,
-                "recording_path" => event.recording_path
-              }
-            })
-
-          :ok
+          event
+          |> Dispatch.enqueue_voicemail(%{
+            trusted: true,
+            trusted_sender: number,
+            recommended_role_key: "voicemail-triage",
+            request_summary: request_summary(event),
+            metadata: %{
+              "telephony_event_id" => event.id,
+              "recording_path" => event.recording_path
+            }
+          })
+          |> log_enqueue_failure("voicemail #{event.twilio_sid}")
         else
           Logger.warning(
             "Telephony drain: trusted number #{number} called without PIN verification — " <>
@@ -250,6 +251,24 @@ defmodule BusterClaw.Telephony.Drain do
   end
 
   defp maybe_enqueue_dispatch(_event), do: :skip
+
+  # Dedupe conflicts (re-drain of an already-queued voicemail) are expected and
+  # stay quiet; anything else is a trusted voicemail that never reached the
+  # queue, which must not vanish without a trace.
+  defp log_enqueue_failure({:ok, _item}, _what), do: :ok
+
+  defp log_enqueue_failure({:error, %Ecto.Changeset{errors: errors}}, what) do
+    unless Keyword.has_key?(errors, :dedupe_key) do
+      Logger.error("Telephony drain: #{what} failed to enqueue: #{inspect(errors)}")
+    end
+
+    :ok
+  end
+
+  defp log_enqueue_failure({:error, reason}, what) do
+    Logger.error("Telephony drain: #{what} failed to enqueue: #{inspect(reason)}")
+    :ok
+  end
 
   defp request_summary(%Event{transcript: nil} = event),
     do: "Voicemail from #{event.from_number} (no transcript)"

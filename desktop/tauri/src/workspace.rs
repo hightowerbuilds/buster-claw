@@ -38,7 +38,12 @@ pub fn resolve_workspace_root(data_dir: &Path) -> Result<PathBuf, String> {
     }
 
     let default = default_workspace_root()?;
-    let _ = fs::write(&path, default.to_string_lossy().as_bytes());
+    if let Err(e) = fs::write(&path, default.to_string_lossy().as_bytes()) {
+        eprintln!(
+            "[buster-claw] failed to persist workspace config {}: {e}",
+            path.display()
+        );
+    }
     Ok(default)
 }
 

@@ -70,14 +70,14 @@ export const ScreenshotBridge = {
       method: "POST",
       headers: {"content-type": "application/json"},
       body: JSON.stringify({ref, ...payload}),
-    }).catch(() => {})
+    }).catch((e) => console.warn("screenshot report failed:", e))
   },
   reportCommand(ref, payload) {
     fetch("/browser/command", {
       method: "POST",
       headers: {"content-type": "application/json"},
       body: JSON.stringify({ref, ...payload}),
-    }).catch(() => {})
+    }).catch((e) => console.warn("browser command report failed:", e))
   },
 }
 
