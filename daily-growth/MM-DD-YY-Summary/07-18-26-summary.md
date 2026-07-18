@@ -83,10 +83,40 @@ clean; browser confirmed working by operator.
 `_build/*/lib/<name>` too — and any "it broke after my change" report deserves
 a `ps -eo lstart` before a `git diff`.
 
+## 8. The broke-but-building distribution sprint (evening)
+
+Operator constraint: no $99 until payday. Turned out the fee gates exactly two
+steps (enrollment, sign+notarize); everything else was free engineering:
+
+- **Automation roadmap archived** the same day it shipped (`7f6020e`) — a
+  first for that folder; its three open operator calls ported to LEFTOVERS.
+- **Bundle trim at the root cause** (`471c467`): Dialyzer PLT caches moved
+  out of `priv/` (everything in priv/ ships), gitignore/CI cache paths
+  updated. With yesterday's sidecar deletion, the bundle dropped from the
+  88MB era to a **26MB DMG / 64MB app**.
+- **`build_desktop.sh` run end-to-end for the first time ever** — the
+  roadmap predicted surprises; there were none. Ran clean twice.
+- **The bundle-ID one-way door closed** (`471c467`): operator ratified
+  `lol.busterclaw.desktop` (and with it R5 — busterclaw.lol is the name).
+  Keychain + Application Support use literal names, so nothing was orphaned;
+  only stale webview caches remain under the old id. Verified in the built
+  Info.plist.
+- **Two-arch CI shipped** (`97eff60`): `release-desktop.yml` — the Livebook
+  pattern verbatim (macos-15 aarch64 + macos-15-intel x86_64, native ERTS
+  per runner, no lipo ever), unsigned DMG artifacts, the entire payday
+  signing path documented at a `TODO(payday)` marker gated on the cert
+  secret. Free minutes (public repo). Also fixed ci.yml's dialyzer cache
+  for the `_plts` move.
+- **The first arm64 build of Buster Claw ever attempted** was in flight at
+  write time (run 29661337583, both arches) — result recorded below when it
+  lands.
+
 ## State at close
 - Tests: 1,133, zero failures; cargo 8/8; catalog 157 commands.
-- LEFTOVERS: empty. Open operator calls live in
-  `AGENT_WEB_AUTOMATION_ROADMAP.md` (token revoke, smoke-test checklist,
-  wait-tier + flow-audit decisions, atom rename, kill-transcription).
-- Next: operator decisions above, then the distribution fire (arm64 +
-  signing) remains the shipping gate.
+- LEFTOVERS: three items, all operator-only (primitive walk, wait-tier +
+  flow-audit ratifications, password-manager bookkeeping).
+- Distribution: steps 2–5 + 7 of the roadmap done for $0; blocked list is
+  exactly {enrollment, sign+notarize} = payday.
+- Next: payday → cert into CI secrets; meanwhile the free GTM queue
+  (busterclaw.lol site + privacy policy, Google verification paperwork) is
+  the remaining no-cost critical path.
