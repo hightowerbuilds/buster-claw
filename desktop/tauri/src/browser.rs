@@ -552,9 +552,9 @@ pub fn browser_find(
 /// excludes hidden text), but cheap and honest enough for a count label —
 /// positional "3 of 17" tracking would need the native WKWebView find API.
 #[tauri::command]
-pub fn browser_find_count(
+pub async fn browser_find_count(
     app: AppHandle,
-    state: State<BrowserState>,
+    state: State<'_, BrowserState>,
     surface_id: String,
     tab_id: String,
     query: String,
@@ -667,9 +667,9 @@ pub fn browser_close(
 /// WKWebView's in-process `-takeSnapshot…` — no Screen-Recording permission
 /// prompt. Errors if no browser tab is open.
 #[tauri::command]
-pub fn browser_screenshot(
+pub async fn browser_screenshot(
     app: AppHandle,
-    state: State<BrowserState>,
+    state: State<'_, BrowserState>,
     surface_id: Option<String>,
 ) -> Result<Screenshot, String> {
     let webview = active_content(&app, &state, surface_id)?;
@@ -743,9 +743,9 @@ JSON.stringify((function () {
 /// included; the Phoenix command layer records the Sentinel event for that.
 /// Returns `{data}`: a JSON string of `{url, title, text, links}`.
 #[tauri::command]
-pub fn browser_read_active(
+pub async fn browser_read_active(
     app: AppHandle,
-    state: State<BrowserState>,
+    state: State<'_, BrowserState>,
     surface_id: Option<String>,
 ) -> Result<ReadPage, String> {
     ping_agent_activity(&app, &state, surface_id.clone(), "reading");
@@ -772,7 +772,7 @@ static RENDER_SEQ: AtomicU64 = AtomicU64::new(0);
 /// `Browser` module decides *when* a render is worth it; this command just
 /// renders. Returns `{data}` in the `browser_read_active` shape.
 #[tauri::command]
-pub fn browser_render_page(
+pub async fn browser_render_page(
     app: AppHandle,
     url: String,
     wait_ms: Option<u64>,
@@ -926,9 +926,9 @@ pub struct EvalData {
 /// `browser_click_active` / `browser_fill_active`. Returns `{data}`: a JSON
 /// string of `[{i, tag, type, label, value, href}]`.
 #[tauri::command]
-pub fn browser_find_elements_active(
+pub async fn browser_find_elements_active(
     app: AppHandle,
-    state: State<BrowserState>,
+    state: State<'_, BrowserState>,
     surface_id: Option<String>,
     query: Option<String>,
 ) -> Result<EvalData, String> {
@@ -943,9 +943,9 @@ pub fn browser_find_elements_active(
 /// co-presence — acts inside the user's live session). Returns `{data}`: a
 /// JSON string of `{ok, label}` or `{ok: false, error}`.
 #[tauri::command]
-pub fn browser_click_active(
+pub async fn browser_click_active(
     app: AppHandle,
-    state: State<BrowserState>,
+    state: State<'_, BrowserState>,
     surface_id: Option<String>,
     index: usize,
 ) -> Result<EvalData, String> {
@@ -960,9 +960,9 @@ pub fn browser_click_active(
 /// notice (agent co-presence — acts inside the user's live session). Returns
 /// `{data}`: a JSON string of `{ok, label}` or `{ok: false, error}`.
 #[tauri::command]
-pub fn browser_fill_active(
+pub async fn browser_fill_active(
     app: AppHandle,
-    state: State<BrowserState>,
+    state: State<'_, BrowserState>,
     surface_id: Option<String>,
     index: usize,
     value: String,
@@ -975,8 +975,13 @@ pub fn browser_fill_active(
 
 // Run JS in a webview and return its (string) result — the completion-handler
 // variant of `eval`. Same objc bridge pattern as the screenshot/title paths:
-// `with_webview` runs on the main thread, which is free to fire the completion
-// while this (worker-thread) command blocks on the channel.
+// THREADING CONTRACT: callers must be `async` commands (tokio worker), never
+// sync ones. In Tauri 2 sync commands run ON the main thread; from there
+// `with_webview` executes inline and `evaluateJavaScript` gets called, but its
+// completion is delivered by the main run loop — which this recv is blocking.
+// The completion can then never arrive and every call times out (observed live
+// via `sample`: recv_timeout parked on DispatchQueue_1). From a worker thread
+// the closure is dispatched to a free main loop and the round-trip completes.
 #[cfg(target_os = "macos")]
 fn eval_with_result(webview: &tauri::Webview, js: &str) -> Result<String, String> {
     use block::ConcreteBlock;
@@ -1351,6 +1356,9 @@ fn webview_title(_webview: &tauri::Webview) -> Option<String> {
 // (worker-thread) command over a channel. `with_webview` runs the closure on the
 // main thread, which is free to fire the completion while we block on `recv`.
 #[cfg(target_os = "macos")]
+// Same threading contract as `eval_with_result`: the caller must be an async
+// command — a sync (main-thread) caller blocks the run loop that must deliver
+// the snapshot completion, and every capture times out.
 fn capture_webview(webview: &tauri::Webview) -> Result<Vec<u8>, String> {
     use block::ConcreteBlock;
     use objc::runtime::Object;
