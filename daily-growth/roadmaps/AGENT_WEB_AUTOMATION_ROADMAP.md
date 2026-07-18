@@ -74,7 +74,7 @@ Sidecar module + priv tree + config gates + supervision child + tests + doc
 references deleted; `fetch/2` is HTTP + live-render upgrade only. The DMG gets
 ~17MB (≈19%) smaller and the future signing pass has one less Mach-O forest.
 
-### Phase 1 — The wait primitive
+### Phase 1 — The wait primitive ✅ DONE 07-18 (`46ba418`)
 `browser_wait` (safe tier, read-only): wait for selector-exists /
 selector-visible / text-present / navigation-settled (readyState + a quiet-DOM
 window), bounded by an explicit timeout budget. Built on polled `eval` in the
@@ -82,21 +82,21 @@ target webview — no new machinery, just discipline.
 **Exit test:** the agent navigates an SPA login redirect and waits it out
 without a single guessed sleep.
 
-### Phase 2 — Selector-first acting
+### Phase 2 — Selector-first acting ✅ DONE 07-18 (`46ba418`)
 Targets re-resolve **at act time**: CSS selector, visible-text, or label match —
 index mode stays as a fallback. Click/fill return the post-action element state
 so the agent sees what happened.
 **Exit test:** fill + click on a page that re-rendered between find and act, no
 stale-index misfire.
 
-### Phase 3 — Flows
+### Phase 3 — Flows ✅ DONE 07-18
 `browser_flow` (`:restricted`): a declarative JSON step list — navigate → wait →
 fill → click → extract → assert — executed atomically with one Sentinel event
 per step and one result document at the end. Sandbox surface by default.
 **Exit test:** a five-step login → navigate → extract flow runs headless and
 files its result in the Library.
 
-### Phase 4 — Assert + extract
+### Phase 4 — Assert + extract ✅ DONE 07-18 (`46ba418` + flow failure reports)
 `browser_assert` (selector/text/url predicates) and schema'd extraction
 (page → validated JSON). A failing flow reports the failing step + a screenshot
 — honest failure, not garbage output.
@@ -125,3 +125,49 @@ re-explaining anything.
 - **The live-session mode is the sharpest tool in the app** — acting inside the
   user's logged-in session, scripted. The tier gate and per-step Sentinel events
   are load-bearing; ship no flow capability without them.
+
+---
+
+## Operator calls (07-18) — decisions & actions only you can take
+
+An item leaves by being decided/done; record the call inline so the reasoning
+survives.
+
+### Actions
+
+- **Revoke the Supabase personal access token** used for the 07-18
+  teardown/rotation (pasted in a chat transcript; short-expiry but revoke
+  anyway): <https://supabase.com/dashboard/account/tokens>. Confirm the rotated
+  BusterClaw DB password made it into your password manager — it exists nowhere
+  else.
+- **Real-desktop smoke test of this build (~5 min).** Coverage here is
+  fake-desktop protocol + Rust injection tests; nobody has driven a real
+  WKWebView. In the dev app: (1) navigate to a slow SPA then `browser_wait`
+  `until: "selector"` — confirm it resolves rather than dying at the old 8s
+  bridge default; (2) `browser_click` by `text:` — confirm act-time resolution
+  + scroll-into-view; (3) `browser_extract` with a selector; (4) a 3-step
+  `browser_flow` with a wrong selector in step 3 — confirm the report names
+  step 3 and attaches a screenshot.
+
+### Decisions
+
+- **`browser_wait` tier — `:safe` (current) or `:restricted`?** Current
+  reasoning: only `matched: true/false` comes back, and frictionless polling is
+  the point. Counterargument: it's a yes/no oracle about the live tab, and
+  every other co-presence command is `:restricted`. Flip = two lines + the
+  tier snapshot.
+- **`browser_flow` audit posture — full steps on the feed (current) or
+  redacted?** The choke point auto-records a flow's full step args — including
+  fill values — to `security_events` (audit-trail-is-the-product; the catalog
+  says so out loud). The flow-level Sentinel event separately reduces fill
+  values to lengths. Risk: a password in a fill step persists plaintext in the
+  local audit DB.
+- **Error-atom rename fallout (out-of-repo only):** click/fill fallbacks are
+  now `:missing_target` / `:missing_target_or_value`. Refresh any saved
+  prompts/skill docs that named `:missing_index`.
+
+### Informational
+
+- `browser_wait` occupies a tokio worker for up to 30s per wait (the
+  render_settle_and_read polling precedent). Fine at one-agent scale; revisit
+  only if flows ever run concurrently in numbers.

@@ -253,6 +253,21 @@ defmodule BusterClaw.Commands.Catalog.Web do
           }
         }
       },
+      %{
+        name: "browser_flow",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Run an ordered browser flow in the user's live tab: steps of navigate/wait/click/fill/extract/assert/find_elements, halting at the first failure with a per-step report and a best-effort failure screenshot. Step arguments are recorded on the security audit feed. Max 25 steps. Requires the desktop app to be open.",
+        args: %{
+          "steps" => %{
+            type: :array,
+            required: true,
+            description:
+              "Ordered step maps: {\"action\": \"navigate\" | \"wait\" | \"click\" | \"fill\" | \"extract\" | \"assert\" | \"find_elements\", ...that command's args}."
+          }
+        }
+      },
 
       # Bookmarks
       %{

@@ -573,4 +573,101 @@ defmodule BusterClaw.Commands.WebCopresenceTest do
     assert {:error, {:element_action_failed, "no element matched"}} = Task.await(task)
     assert length(BusterClaw.Sentinel.list_events()) == before
   end
+
+  describe "browser_flow" do
+    test "runs steps through the desktop and audits with fill values redacted" do
+      Bridge.subscribe()
+      secret = "flow-secret-9911"
+
+      steps = [
+        %{"action" => "navigate", "url" => "https://example.com/login"},
+        %{"action" => "fill", "selector" => "#email", "value" => secret},
+        %{"action" => "wait", "until" => "navigation", "timeout_ms" => 1_000}
+      ]
+
+      task = Task.async(fn -> Commands.browser_flow(%{"steps" => steps}) end)
+
+      assert_receive {:browser_command, ref1, :navigate, %{"url" => "https://example.com/login"}},
+                     1_000
+
+      Bridge.fulfill(ref1, {:ok, %{}})
+
+      assert_receive {:browser_command, ref2, :fill,
+                      %{"selector" => "#email", "value" => ^secret}},
+                     1_000
+
+      fill_result = %{"ok" => true, "label" => "Email", "matched_by" => "selector"}
+      Bridge.fulfill(ref2, {:ok, %{data: Jason.encode!(fill_result)}})
+
+      assert_receive {:browser_command, ref3, :wait, %{"condition" => "navigation"}}, 1_000
+      wait_result = %{"ok" => true, "matched" => true, "waited_ms" => 40}
+      Bridge.fulfill(ref3, {:ok, %{data: Jason.encode!(wait_result)}})
+
+      assert {:ok, report} = Task.await(task)
+      assert %{status: "passed", failed_step: nil} = report
+      assert [%{action: "navigate"}, %{action: "fill"}, %{action: "wait"}] = report.steps
+      refute Map.has_key?(report, :screenshot)
+
+      flow_event =
+        BusterClaw.Sentinel.list_events(limit: 5)
+        |> Enum.find(&(&1.metadata["via"] == "browser_flow"))
+
+      assert flow_event.category == "outbound_send"
+      assert flow_event.metadata["status"] == "passed"
+      [_nav, fill_step, _wait] = flow_event.metadata["steps"]
+      assert fill_step["value_length"] == String.length(secret)
+      refute Map.has_key?(fill_step, "value")
+      refute inspect(flow_event.metadata) =~ secret
+    end
+
+    test "a failing step halts the flow with a per-step report" do
+      # Shorten the failure-screenshot capture so this test doesn't ride out
+      # the 10s default (Bridge.available? is true — we're subscribed).
+      previous = Application.get_env(:buster_claw, :browser_capture_timeout_ms)
+      Application.put_env(:buster_claw, :browser_capture_timeout_ms, 50)
+
+      on_exit(fn ->
+        if is_nil(previous) do
+          Application.delete_env(:buster_claw, :browser_capture_timeout_ms)
+        else
+          Application.put_env(:buster_claw, :browser_capture_timeout_ms, previous)
+        end
+      end)
+
+      Bridge.subscribe()
+
+      steps = [
+        %{"action" => "click", "selector" => "#gone"},
+        %{"action" => "extract"}
+      ]
+
+      task = Task.async(fn -> Commands.browser_flow(%{"steps" => steps}) end)
+
+      assert_receive {:browser_command, ref, :click, %{"selector" => "#gone"}}, 1_000
+
+      Bridge.fulfill(
+        ref,
+        {:ok, %{data: Jason.encode!(%{"ok" => false, "error" => "no element matched"})}}
+      )
+
+      assert {:ok, report} = Task.await(task)
+      assert %{status: "failed", failed_step: 1, screenshot: nil} = report
+      assert [%{status: "failed", detail: %{error: error}}] = report.steps
+      assert error =~ "no element matched"
+      refute_received {:browser_command, _ref, :extract, _payload}
+    end
+
+    test "invalid flows are typed errors and never reach the desktop or the feed" do
+      Bridge.subscribe()
+      before = length(BusterClaw.Sentinel.list_events())
+
+      assert {:error, :missing_steps} = Commands.browser_flow(%{})
+
+      assert {:error, {:bad_step, 1, {:unknown_action, "teleport"}}} =
+               Commands.browser_flow(%{"steps" => [%{"action" => "teleport"}]})
+
+      refute_received {:browser_command, _ref, _action, _payload}
+      assert length(BusterClaw.Sentinel.list_events()) == before
+    end
+  end
 end

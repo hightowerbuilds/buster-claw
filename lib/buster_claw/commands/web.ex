@@ -4,7 +4,7 @@ defmodule BusterClaw.Commands.Web do
   import BusterClaw.Commands.Helpers
 
   alias BusterClaw.{Browser, BrowserHistory, Search}
-  alias BusterClaw.Browser.{Bridge, Capture}
+  alias BusterClaw.Browser.{Bridge, Capture, FlowRunner}
 
   def web_search(%{"query" => query} = args) do
     limit = Map.get(args, "limit", 10)
@@ -538,6 +538,52 @@ defmodule BusterClaw.Commands.Web do
       detail = if matched, do: "matched after #{waited}ms", else: "no match within 250ms"
       {:ok, %{passed: matched, kind: kind, detail: detail}}
     end
+  end
+
+  @doc """
+  Run an ordered browser flow — the multi-step composition of
+  navigate/wait/click/fill/extract/assert/find_elements, halting at the first
+  failing step with a per-step report (`BusterClaw.Browser.FlowRunner`). The
+  flow-level Sentinel event reduces fill values to lengths; the individual
+  steps still fire their own events as they run.
+  """
+  def browser_flow(%{"steps" => steps}) when is_list(steps) do
+    case FlowRunner.run(steps) do
+      {:ok, report} ->
+        BusterClaw.Sentinel.observe(
+          :outbound_send,
+          "Ran a #{length(steps)}-step browser flow (#{report.status})",
+          %{
+            via: "browser_flow",
+            status: report.status,
+            failed_step: report.failed_step,
+            steps: audit_steps(steps)
+          }
+        )
+
+        {:ok, report}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  def browser_flow(_args), do: {:error, :missing_steps}
+
+  # Fill values never ride the flow event raw — length only, the browser_fill
+  # precedent.
+  defp audit_steps(steps) do
+    Enum.map(steps, fn
+      %{"action" => "fill"} = step ->
+        value = step |> Map.get("value", "") |> to_string()
+
+        step
+        |> Map.delete("value")
+        |> Map.put("value_length", String.length(value))
+
+      step ->
+        step
+    end)
   end
 
   @doc """
