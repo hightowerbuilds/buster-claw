@@ -27,7 +27,6 @@ defmodule BusterClaw.Application do
         BusterClaw.Repo,
         {Ecto.Migrator,
          repos: Application.fetch_env!(:buster_claw, :ecto_repos), skip: skip_migrations?()},
-        {DNSCluster, query: Application.get_env(:buster_claw, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: BusterClaw.PubSub},
         dispatch_projector_child(),
         BusterClaw.TerminalWorkspace,

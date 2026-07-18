@@ -196,8 +196,6 @@ if config_env() == :prod do
 
   port = String.to_integer(System.get_env("PORT") || "4000")
 
-  config :buster_claw, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
-
   config :buster_claw, BusterClawWeb.Endpoint,
     url: [host: "127.0.0.1", port: port, scheme: "http"],
     http: [ip: {127, 0, 0, 1}, port: port],
