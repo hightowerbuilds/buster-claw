@@ -64,7 +64,8 @@ defmodule BusterClawWeb.ChatPanel do
     """
   end
 
-  attr :messages, :list, required: true
+  attr :messages, :any, required: true, doc: "the parent LiveView's chat_messages stream"
+  attr :seq, :integer, required: true, doc: "message counter — see data-seq below"
   attr :running, :boolean, required: true
   attr :thinking, :any, required: true
   attr :queue, :list, required: true
@@ -75,6 +76,7 @@ defmodule BusterClawWeb.ChatPanel do
       id="home-agent-chat"
       phx-hook="AgentChat"
       data-running={to_string(@running)}
+      data-seq={@seq}
       class="ic-panel flex min-h-0 w-full flex-1 flex-col overflow-hidden"
     >
       <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
@@ -111,17 +113,23 @@ defmodule BusterClawWeb.ChatPanel do
       <div
         id="agent-chat-log"
         data-chat-log
+        phx-update="stream"
         class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-5"
       >
+        <%!-- Stream-managed container: the empty state is a static child shown
+              via CSS only when it's the sole child (the stream idiom — the
+              server no longer knows the collection size). data-seq on the
+              section bumps per message so the AgentChat hook's updated()
+              (scroll-to-bottom) is guaranteed to fire on stream inserts. --%>
         <div
-          :if={@messages == []}
-          class="m-auto max-w-xs text-center text-[17px] text-base-content/55"
+          id="agent-chat-empty"
+          class="m-auto hidden max-w-xs text-center text-[17px] text-base-content/55 only:block"
         >
           Ask Buster Claw to check your mail, work the queue, or look something up.
           It runs headless Claude — no terminal needed.
         </div>
 
-        <.chat_bubble :for={msg <- @messages} msg={msg} />
+        <.chat_bubble :for={{dom_id, msg} <- @messages} id={dom_id} msg={msg} />
       </div>
 
       <.queue_strip queue={@queue} />
@@ -370,11 +378,12 @@ defmodule BusterClawWeb.ChatPanel do
     """
   end
 
+  attr :id, :string, required: true
   attr :msg, :map, required: true
 
   defp chat_bubble(%{msg: %{role: :user}} = assigns) do
     ~H"""
-    <div id={"chat-msg-#{@msg.id}"} class="flex justify-end">
+    <div id={@id} class="flex justify-end">
       <div class="ic-drop-in max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content">
         {@msg.text}
       </div>
@@ -384,7 +393,7 @@ defmodule BusterClawWeb.ChatPanel do
 
   defp chat_bubble(%{msg: %{role: :assistant}} = assigns) do
     ~H"""
-    <div id={"chat-msg-#{@msg.id}"} class="flex justify-start">
+    <div id={@id} class="flex justify-start">
       <div class="max-w-[85%] whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-100 px-3 py-2 text-[17px]">
         {@msg.text}
       </div>
@@ -395,7 +404,7 @@ defmodule BusterClawWeb.ChatPanel do
   defp chat_bubble(%{msg: %{role: :tool}} = assigns) do
     ~H"""
     <div
-      id={"chat-msg-#{@msg.id}"}
+      id={@id}
       class="flex items-center gap-2 font-mono text-xs text-base-content/55"
     >
       <.icon name="hero-command-line" class="size-3.5 shrink-0" />
@@ -407,7 +416,7 @@ defmodule BusterClawWeb.ChatPanel do
   defp chat_bubble(%{msg: %{role: :meta}} = assigns) do
     ~H"""
     <div
-      id={"chat-msg-#{@msg.id}"}
+      id={@id}
       class="text-center font-mono text-[0.62rem] uppercase tracking-wide text-base-content/45"
     >
       {@msg.text}
@@ -417,7 +426,7 @@ defmodule BusterClawWeb.ChatPanel do
 
   defp chat_bubble(%{msg: %{role: :error}} = assigns) do
     ~H"""
-    <div id={"chat-msg-#{@msg.id}"} class="flex justify-start">
+    <div id={@id} class="flex justify-start">
       <div class="max-w-[85%] rounded-sm border-2 border-error/50 bg-error/10 px-3 py-2 text-[17px] text-error">
         {@msg.text}
       </div>

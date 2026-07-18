@@ -71,6 +71,10 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chat_queue, Chat.queue(active))
     |> assign(:zoomed_id, nil)
     |> assign(:svg_viewer_open, false)
+    # The transcript is a stream: appends send one bubble, not the whole list,
+    # and the server doesn't hold 200 messages per socket. dom_id matches the
+    # ids chat_bubble always rendered.
+    |> stream_configure(:chat_messages, dom_id: &"chat-msg-#{&1.id}")
     |> load_chat_history(active)
   end
 
@@ -281,7 +285,7 @@ defmodule BusterClawWeb.StatusLive do
       |> assign(:chat_running, false)
       |> assign(:chat_thinking, nil)
       |> assign(:chat_queue, [])
-      |> assign(:chat_messages, [])
+      |> stream(:chat_messages, [], reset: true)
       |> assign(:chat_seq, 0)
       |> assign(:chat_svgs, [])
       |> assign(:svg_seq, 0)
@@ -605,7 +609,7 @@ defmodule BusterClawWeb.StatusLive do
 
     socket
     |> assign(:chat_seq, seq)
-    |> update(:chat_messages, &cap_list(&1 ++ [msg], @max_chat_messages))
+    |> stream_insert(:chat_messages, msg, limit: -@max_chat_messages)
   end
 
   # Keep an appended list to a bound by dropping the oldest entries off the front.
@@ -683,7 +687,7 @@ defmodule BusterClawWeb.StatusLive do
     svgs = svgs |> Enum.with_index(1) |> Enum.map(fn {svg, i} -> %{id: i, svg: svg} end)
 
     socket
-    |> assign(:chat_messages, messages)
+    |> stream(:chat_messages, messages, reset: true)
     |> assign(:chat_seq, length(messages))
     |> assign(:chat_svgs, svgs)
     |> assign(:svg_seq, length(svgs))
@@ -784,7 +788,8 @@ defmodule BusterClawWeb.StatusLive do
                 open={@svg_viewer_open}
               />
               <BusterClawWeb.ChatPanel.chat_panel
-                messages={@chat_messages}
+                messages={@streams.chat_messages}
+                seq={@chat_seq}
                 running={@chat_running}
                 thinking={@chat_thinking}
                 queue={@chat_queue}

@@ -72,6 +72,12 @@ Only `security_live` uses streams today. The phone log (`phone_live.ex:276`, 200
   - Existing LiveView tests must pass unmodified (or with only stream-id selector updates).
 - If any surface fights the conversion (e.g. the chat transcript's in-place token streaming), **skip it and record why here** rather than bending the UI to fit streams.
 
+**RESOLVED 07-17:**
+- **Chat transcript: CONVERTED.** Clean fit — append-only, id'd, capped. `stream_configure` keeps the exact `chat-msg-#{"{id}"}` DOM ids; appends now send one bubble instead of re-rendering the list, and the server no longer holds 200 messages per socket. Empty state moved to the documented CSS `only:` idiom; `data-seq` on the panel guarantees the scroll-to-bottom hook still fires per insert. Covered by a new stream-insert test.
+- **Phone log: SKIPPED.** Row styling depends on `@selected_event` (accent border) and heard-state, and every update path is a full re-query — a stream would be `reset: true` each time (identical wire traffic) plus re-insert bookkeeping for selection changes. Phase 1a's debounce already removed the reload storm; a conversion here adds complexity and UI risk for ~no win.
+- **Wallet ledger: SKIPPED.** Same shape — `refresh_selected` re-queries wholesale on every wallet event, and `Enum.find` reads the transactions list server-side (edit flow). Reset-only streams buy nothing.
+- **Chat SVG rail: SKIPPED.** Zoom prev/next navigation (`zoom_step`) needs the ordered collection server-side; a stream would force a parallel id index, defeating the memory win.
+
 ## Phase 4 — Backend poll-tick refactors
 
 All invisible; do opportunistically.

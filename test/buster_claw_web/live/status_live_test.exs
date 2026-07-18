@@ -212,6 +212,17 @@ defmodule BusterClawWeb.StatusLiveTest do
       html = view |> element(~s([phx-click="new_chat"])) |> render_click()
       assert html =~ "New chat"
     end
+
+    test "an active conversation's message lands in the transcript", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      send(
+        view.pid,
+        {:agent_chat, active_chat(view), {:message, %{role: :assistant, text: "streamed reply"}}}
+      )
+
+      assert render(view) =~ "streamed reply"
+    end
   end
 
   # The active conversation id is the first seeded conversation ("default").
