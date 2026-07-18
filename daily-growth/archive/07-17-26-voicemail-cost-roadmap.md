@@ -1,5 +1,7 @@
 # Voicemail Cost — showing what each message actually costs
 
+> **ARCHIVED 2026-07-18 — instrument built & verified 07-17.** The one open remainder, Phase 4 (the kill-transcription decision — transcription is $0.05 of each $0.0525 voicemail), moved to `../roadmaps/phone-maps/BUSTERPHONE_ROADMAP.md` (Cost section).
+
 *Drafted 2026-07-17. Goal: show the Twilio cost of each voicemail in `/phone`,
 plus a running total, so the operator can see the spend per message and where it
 goes. Motivating observation: messages seem to run **20–30¢ each**, which is

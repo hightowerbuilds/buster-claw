@@ -308,6 +308,19 @@ Number ~$1–2/mo · inbound voice ~$0.0085/min · SMS ~$0.008 each + carrier
 fees · Twilio transcription ~$0.05/min · 10DLC one-time + ~$2/mo ·
 Supabase free tier covers this volume. **Order of $5/mo for personal use.**
 
+**07-17 — measured, not ballpark** (cost instrument built & verified; full record
+in `../../archive/07-17-26-voicemail-cost-roadmap.md`): every voicemail on record
+costs **$0.0525**, of which **transcription is $0.0500 — 95% of the total**
+(recording $0.0025; the inbound call leg never prices on trial-credit calls).
+
+> **OPEN DECISION — the actual savings lever (inherited from the cost roadmap's
+> Phase 4):** turn `<Record transcribe="true">` off in the `voice` edge function
+> (~one line; drops a voicemail to ~$0.0025) or keep Twilio transcription as
+> COGS at ~5¢/message. A local-STT replacement would be a *fresh* decision —
+> Whisper was deliberately demolished 06-28; don't reflex-rebuild. This shapes
+> paid-tier margin directly, so decide it before pricing, and don't let the
+> display instrument stand in for the decision.
+
 **07-12 — this is no longer "what it costs me," it is COGS.** Since BusterPhone is
 the paid tier (Part V.1), these numbers set the margin:
 

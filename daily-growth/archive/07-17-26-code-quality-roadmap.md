@@ -1,5 +1,7 @@
 # Code Quality Roadmap — Dead Code, Suppressions, Performance
 
+> **ARCHIVED 2026-07-18 — fully executed.** Every phase landed on 07-17 (commits `ff3a564`, `e376a0a`, `27fe9aa`, `4eea94d`, `cb11844`, `c97351a`, `3c1ec1a`) or was skipped with its reason recorded inline below. The one parked item — the Playwright sidecar prune — moved to `../roadmaps/LEFTOVERS.md`.
+
 **Whole-codebase quality review · 2026-07-17**
 
 Post-build-streak sweep of the entire repo (lib/, assets/js/, desktop/tauri src, config/, priv/) for dead, orphaned, and suppressed code, plus performance-first refactor targets. Four parallel audits + a clean forced recompile (227 files, zero warnings).

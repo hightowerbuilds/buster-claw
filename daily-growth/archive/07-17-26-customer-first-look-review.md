@@ -1,5 +1,7 @@
 # Buster Claw — Customer First-Look & QA Critical Review
 
+> **ARCHIVED 2026-07-18 — redundant.** Same-day subset of `../roadmaps/FIRST_LOOK_CRITICAL_REVIEW.md`, which carries the `file:line` anchors and the tiered punch list. Findings are tracked there; nothing unique to this doc was dropped.
+
 **Date:** July 17, 2026  
 **Product Version:** 0.1.0  
 **Target Persona:** A QA Engineer or new customer who has downloaded the release DMG. They are familiar with competitor "claw" runtimes (e.g., Open Claw, Zero Claw, Hermes) and expect a polished, security-hardened, and functional out-of-the-box experience.
