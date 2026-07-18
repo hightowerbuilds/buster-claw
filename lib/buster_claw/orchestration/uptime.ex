@@ -26,7 +26,7 @@ defmodule BusterClaw.Orchestration.Uptime do
 
   alias BusterClaw.Orchestration
 
-  @launchd_label "com.hightowerbuilds.busterclaw"
+  @launchd_label "lol.busterclaw.desktop"
   @caffeinate_args ["-dimsu"]
 
   # ---------------------------------------------------------------------------

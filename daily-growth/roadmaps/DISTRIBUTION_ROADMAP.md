@@ -413,8 +413,7 @@ The code/content line is cleaner than expected. Apple's own guideline 1.2.1 uses
 6. **Sign + notarize** — *the real work*
    Add a `codesign` step to `mix release` that signs all 25 Mach-Os individually — `--options runtime --timestamp --entitlements`, **entitlements on every binary, including `beam.smp`** — *before* Tauri bundles. Then set the `APPLE_*` env vars and let Tauri sign, notarize, and staple on its own. **Exit test:** an Apple Silicon Mac that has never seen this repo downloads the DMG and it opens clean, first try, no dialogs — and the terminal actually works, which is what proves the BEAM got its entitlements.
 
-7. **Lock the bundle ID before a single user installs** — *one-way door*
-   Still `com.hightowerbuilds.busterclaw`. Changing it after people install orphans their app data and breaks notarization continuity. The roadmap flags `lol.busterclaw.desktop` (domain is busterclaw.lol as of 07-14) — decide now, not later.
+7. **Lock the bundle ID before a single user installs** — *one-way door* ✅ **DECIDED & SHIPPED 07-18: `lol.busterclaw.desktop`** (operator ratified; identifier, launchd plist/label, install script, and BUILD.md all switched; keychain + Application Support use literal names so nothing was orphaned — only stale webview caches under the old id).
 
 8. **Add the updater — in the same breath as signing** — *don't defer this*
    `tauri-plugin-updater`, minisign keypair (**back it up**), `createUpdaterArtifacts: true`, static `latest.json` on GitHub Releases. Copy Livebook's config. **Diverge from them in exactly one place:** use `download()` → stop the BEAM and wait for it to exit → `install()` → `restart()`, never `download_and_install()`. Do this *with* the first signed release, not after — the first version you ship to strangers is the first version you'll need to patch.

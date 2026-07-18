@@ -21,7 +21,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.hightowerbuilds.busterclaw</string>
+    <string>lol.busterclaw.desktop</string>
 
     <key>ProgramArguments</key>
     <array>
@@ -44,8 +44,8 @@
     <string>Interactive</string>
 
     <key>StandardOutPath</key>
-    <string>/tmp/com.hightowerbuilds.busterclaw.out.log</string>
+    <string>/tmp/lol.busterclaw.desktop.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/com.hightowerbuilds.busterclaw.err.log</string>
+    <string>/tmp/lol.busterclaw.desktop.err.log</string>
 </dict>
 </plist>

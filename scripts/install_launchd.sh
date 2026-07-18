@@ -2,7 +2,7 @@
 #
 # install_launchd.sh — install the Buster Claw KeepAlive LaunchAgent (macOS).
 #
-# Renders desktop/tauri/launchd/com.hightowerbuilds.busterclaw.plist (substituting
+# Renders desktop/tauri/launchd/lol.busterclaw.desktop.plist (substituting
 # the __APP_PATH__ placeholder), drops it in ~/Library/LaunchAgents, and loads it
 # so launchd keeps the packaged `.app` running (RunAtLoad + KeepAlive) across
 # crashes, force-quits, and reboots — the outermost watchdog for an unattended
@@ -13,12 +13,12 @@
 #   BUSTER_CLAW_APP="/path/to/Buster Claw.app" scripts/install_launchd.sh
 #
 # Uninstall (run manually):
-#   launchctl unload "$HOME/Library/LaunchAgents/com.hightowerbuilds.busterclaw.plist"
-#   rm "$HOME/Library/LaunchAgents/com.hightowerbuilds.busterclaw.plist"
+#   launchctl unload "$HOME/Library/LaunchAgents/lol.busterclaw.desktop.plist"
+#   rm "$HOME/Library/LaunchAgents/lol.busterclaw.desktop.plist"
 #
 set -euo pipefail
 
-LABEL="com.hightowerbuilds.busterclaw"
+LABEL="lol.busterclaw.desktop"
 
 # Repo-relative locations (resolve regardless of where the script is invoked from).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

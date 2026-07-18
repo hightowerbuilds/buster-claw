@@ -25,8 +25,10 @@ defmodule BusterClaw.MixProject do
 
   defp dialyzer do
     [
-      plt_local_path: "priv/plts",
-      plt_core_path: "priv/plts",
+      # Outside priv/ on purpose: everything in priv/ ships inside the release,
+      # and these are build-time caches (they were ~10% of the DMG).
+      plt_local_path: "_plts",
+      plt_core_path: "_plts",
       plt_add_apps: [:mix, :ex_unit],
       flags: [:error_handling, :unmatched_returns, :unknown]
     ]

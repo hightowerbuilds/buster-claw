@@ -112,7 +112,8 @@ as a whole.
 
 In rough dependency order. None of these are research; all are known work.
 
-**W0 — Identity switch.** Bundle ID → `lol.busterclaw.desktop`; busterclaw.lol DNS +
+**W0 — Identity switch.** ~~Bundle ID → `lol.busterclaw.desktop`~~ ✅ bundle ID
+SHIPPED 07-18 (R5 name ratified by the same call); busterclaw.lol DNS +
 static site (GitHub Pages is fine to start); privacy policy + terms drafted and
 published. *Do this first — Clock 2 cannot even start without the site.*
 
