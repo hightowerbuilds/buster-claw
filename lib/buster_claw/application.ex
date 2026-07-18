@@ -34,7 +34,6 @@ defmodule BusterClaw.Application do
         BusterClaw.Browser.Bridge,
         BusterClaw.Sentinel.Pending,
         BusterClaw.RateLimiter,
-        browser_sidecar_child(),
         orchestrator_child(),
         uptime_child(),
         dispatcher_child(),
@@ -124,12 +123,6 @@ defmodule BusterClaw.Application do
   defp dispatch_projector_child do
     if Application.get_env(:buster_claw, :dispatch_projector_enabled, true) do
       BusterClaw.DispatchProjector
-    end
-  end
-
-  defp browser_sidecar_child do
-    if Application.get_env(:buster_claw, :browser_sidecar_enabled, false) do
-      BusterClaw.Browser.Sidecar
     end
   end
 

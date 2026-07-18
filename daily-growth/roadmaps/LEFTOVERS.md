@@ -13,25 +13,8 @@ roadmap, not here.
 
 ## Open
 
-### Decide the Playwright sidecar's fate (prune or keep)
-
-**What.** `priv/playwright_sidecar/` (17MB of `node_modules`) plus
-`BusterClaw.Browser.Sidecar` (~300 LOC) ship in the tree but are default-off and
-never active in a packaged build (`browser_sidecar_enabled` gates to dev). The
-sole survivor of the 07-17 code-quality roadmap (now archived).
-
-**Why it matters.** It is ~19% of the shipped bundle
-(`DISTRIBUTION_ROADMAP.md` §8) and pure dead weight in prod. Note 07-17: the
-live-render fallback (`f963963`/`dd97932`) now covers the "agent can't read
-SPAs" gap using the native webview, which weakens the remaining case for
-keeping node/Playwright at all.
-
-**Why deferred.** Operator call — prune only if browser-rendered fetch via
-node/Playwright is declared dead as a product. Don't act unilaterally.
-
-**What makes it expensive later.** Every future release ships (and every signed
-build processes) 17MB of waste, and the distribution bundle-trim work will trip
-over it; deciding now is free, deciding during the signing crunch is not.
+*(Nothing open — the list emptied on 07-18. New items land here as they're
+found; the rules below still apply.)*
 
 ---
 

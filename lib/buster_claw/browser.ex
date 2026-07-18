@@ -2,21 +2,19 @@ defmodule BusterClaw.Browser do
   @moduledoc """
   Browser-rendered fetch boundary.
 
-  Three engines, in falling order of fidelity: the Playwright sidecar (dev
-  only), the desktop shell's hidden-webview **live render** (via
-  `BusterClaw.Browser.Bridge` — the packaged app's only real-JS path), and
-  plain HTTP. `fetch/2` runs the classic sidecar/HTTP pipeline first and
-  upgrades to a live render only when the result comes back JS-thin (an SPA
-  shell with no readable text) or failed outright (bot-walled) — and only when
-  the desktop app is actually attached. `render: :live` forces the live path,
-  `render: :off` forbids it.
+  Two engines, in falling order of fidelity: the desktop shell's hidden-webview
+  **live render** (via `BusterClaw.Browser.Bridge` — the only real-JS path) and
+  plain HTTP. `fetch/2` runs the HTTP fetch first and upgrades to a live render
+  only when the result comes back JS-thin (an SPA shell with no readable text)
+  or failed outright (bot-walled) — and only when the desktop app is actually
+  attached. `render: :live` forces the live path, `render: :off` forbids it.
   """
 
-  alias BusterClaw.Browser.{Bridge, Sidecar}
+  alias BusterClaw.Browser.Bridge
   alias BusterClaw.Ingest.Content
   alias BusterClaw.URLGuard
 
-  @user_agent "BusterClaw/2.0 BrowserSidecarFallback"
+  @user_agent "BusterClaw/2.0"
   @max_download_bytes 100_000_000
 
   def fetch(url, opts \\ []) do
@@ -28,9 +26,8 @@ defmodule BusterClaw.Browser do
 
   @doc """
   Download a URL's raw bytes (SSRF-guarded), without the markdown conversion
-  `fetch/2` does — for capturing binary files (PDF, images, archives, …). Never
-  uses the Playwright sidecar (that renders pages). Returns
-  `{:ok, %{url, body, content_type, filename}}`.
+  `fetch/2` does — for capturing binary files (PDF, images, archives, …).
+  Returns `{:ok, %{url, body, content_type, filename}}`.
   """
   def download(url, opts \\ []) do
     case URLGuard.validate(url) do
@@ -179,36 +176,18 @@ defmodule BusterClaw.Browser do
         # degrades to the classic pipeline rather than returning nothing.
         case fetch_with_live_render(url, opts) do
           {:ok, page} -> {:ok, page}
-          {:error, _reason} -> classic_fetch(url, opts)
+          {:error, _reason} -> fetch_with_http(url, opts)
         end
 
       :off ->
-        classic_fetch(url, opts)
+        fetch_with_http(url, opts)
 
       :auto ->
-        url |> classic_fetch(opts) |> maybe_live_upgrade(url, opts)
+        url |> fetch_with_http(opts) |> maybe_live_upgrade(url, opts)
     end
   end
 
-  defp classic_fetch(url, opts) do
-    if sidecar_url = sidecar_url(opts) do
-      case fetch_with_sidecar(sidecar_url, url, opts) do
-        {:ok, page} ->
-          {:ok, page}
-
-        {:error, _reason} = error ->
-          if Keyword.get(opts, :fallback, true) do
-            fetch_with_http(url, opts)
-          else
-            error
-          end
-      end
-    else
-      fetch_with_http(url, opts)
-    end
-  end
-
-  # The classic pipeline succeeded but extracted almost no readable text — the
+  # The plain-HTTP fetch succeeded but extracted almost no readable text — the
   # SPA-shell case (`<div id="root"></div>` plus scripts). A real WebKit render
   # usually recovers the page the visible tab would show.
   defp maybe_live_upgrade({:ok, page} = ok, url, opts) do
@@ -341,36 +320,6 @@ defmodule BusterClaw.Browser do
     Application.get_env(:buster_claw, :browser_live_render_thin_chars, 280)
   end
 
-  defp fetch_with_sidecar(sidecar_url, url, opts) do
-    timeout = Keyword.get(opts, :timeout, 15_000)
-
-    request_options =
-      [
-        json: %{
-          url: url,
-          timeout_ms: timeout,
-          browser: Keyword.get(opts, :browser_engine) || Keyword.get(opts, :engine),
-          cookies: Keyword.get(opts, :cookies),
-          wait_until: Keyword.get(opts, :wait_until, "domcontentloaded")
-        },
-        receive_timeout: timeout + 1_000,
-        retry: false
-      ]
-      |> Keyword.merge(Application.get_env(:buster_claw, :browser_sidecar_req_options, []))
-      |> Keyword.merge(Keyword.get(opts, :sidecar_req_options, []))
-
-    case Req.post(fetch_url(sidecar_url), request_options) do
-      {:ok, %{status: status, body: body}} when status in 200..299 ->
-        normalize_sidecar_page(body, url)
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {:sidecar_bad_status, status, body}}
-
-      {:error, reason} ->
-        {:error, {:sidecar_request_failed, reason}}
-    end
-  end
-
   defp fetch_with_http(url, opts) do
     timeout = Keyword.get(opts, :timeout, 15_000)
 
@@ -407,48 +356,5 @@ defmodule BusterClaw.Browser do
       {:error, reason} ->
         {:error, reason}
     end
-  end
-
-  defp normalize_sidecar_page(%{} = body, fallback_url) do
-    html = value(body, ["html", :html]) || ""
-    url = value(body, ["url", :url]) || fallback_url
-
-    title =
-      value(body, ["title", :title]) || Content.html_title(html) || URI.parse(url).host || url
-
-    markdown = value(body, ["markdown", :markdown]) || Content.html_to_markdown(html, title)
-
-    {:ok, %{url: url, title: title, html: html, markdown: markdown}}
-  end
-
-  defp normalize_sidecar_page(body, _fallback_url), do: {:error, {:bad_sidecar_body, body}}
-
-  defp sidecar_url(opts) do
-    cond do
-      Keyword.get(opts, :use_sidecar, true) == false ->
-        nil
-
-      url = Keyword.get(opts, :sidecar_url) ->
-        url
-
-      url = Application.get_env(:buster_claw, :browser_sidecar_url) ->
-        url
-
-      true ->
-        case Sidecar.url() do
-          {:ok, url} -> url
-          :unavailable -> nil
-        end
-    end
-  end
-
-  defp fetch_url(sidecar_url) do
-    sidecar_url
-    |> String.trim_trailing("/")
-    |> Kernel.<>("/fetch")
-  end
-
-  defp value(map, keys) do
-    Enum.find_value(keys, &Map.get(map, &1))
   end
 end

@@ -17,7 +17,7 @@ Buster Claw has no built-in LLM and needs no API keys: the intelligence is a ter
 
 - `BusterClaw.Commands`: the single canonical command surface dispatched by every frontend (HTTP API, CLI escript), with per-caller trust tiers.
 - `BusterClaw.Library`: workspace documents and artifact metadata (markdown files under the Library root).
-- `BusterClaw.Browser` (+ `BusterClaw.Ingest.Content`): SSRF-guarded fetch and HTML→markdown rendering; optional Playwright sidecar.
+- `BusterClaw.Browser` (+ `BusterClaw.Ingest.Content`): SSRF-guarded fetch and HTML→markdown rendering, with a native-webview live-render upgrade for JS-thin pages.
 - `BusterClaw.Search`: web search.
 - `BusterClaw.Google`: Google OAuth, Gmail, and Calendar sync (tokens in `BusterClaw.Google.Vault`).
 - `BusterClaw.Calendar`: durable calendar events.

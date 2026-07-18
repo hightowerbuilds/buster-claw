@@ -46,7 +46,6 @@ flowchart TB
     subgraph External["External services"]
         TermAgent["Terminal agent<br/>(Claude Code / Codex in the PTY)"]
         GoogleAPI["Google Workspace<br/>(Gmail / Calendar)"]
-        BrowserBin["Browser sidecar<br/>(Playwright, optional)"]
         Integr["GitHub / Sentry / Umami"]
         FinanceAPI["SEC EDGAR / Finnhub"]
     end
@@ -66,7 +65,6 @@ flowchart TB
     Contexts --> PubSub
     Google --> Vault
     Google --> GoogleAPI
-    Browser --> BrowserBin
     Integrations --> Integr
     Finance --> FinanceAPI
 
@@ -91,7 +89,6 @@ flowchart TD
     Sup --> Projector["DispatchProjector *<br/>(dispatch_projector_enabled)"]
     Sup --> TermWS["TerminalWorkspace"]
     Sup --> SentinelPending["Sentinel.Pending"]
-    Sup --> Sidecar["Browser.Sidecar *<br/>(browser_sidecar_enabled)"]
     Sup --> Orchestrator["Orchestrator *<br/>(orchestrator_enabled)"]
     Sup --> Uptime["Orchestration.Uptime *<br/>(orchestrator_enabled)"]
     Sup --> Endpoint["BusterClawWeb.Endpoint"]

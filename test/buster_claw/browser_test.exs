@@ -2,7 +2,7 @@ defmodule BusterClaw.BrowserTest do
   use BusterClaw.DataCase
 
   alias BusterClaw.Browser
-  alias BusterClaw.Browser.{Bridge, Sidecar}
+  alias BusterClaw.Browser.Bridge
 
   setup do
     Req.Test.verify_on_exit!()
@@ -24,29 +24,6 @@ defmodule BusterClaw.BrowserTest do
 
     assert page.title == "Rendered"
     assert page.markdown =~ "Hello"
-  end
-
-  test "fetches rendered HTML through a sidecar endpoint" do
-    Req.Test.stub(BusterClaw.BrowserSidecarHTTP, fn conn ->
-      assert conn.method == "POST"
-      assert conn.request_path == "/fetch"
-
-      Req.Test.json(conn, %{
-        url: "https://example.com/rendered",
-        title: "Sidecar Rendered",
-        html: "<html><body><main>Client rendered body</main></body></html>"
-      })
-    end)
-
-    assert {:ok, page} =
-             Browser.fetch("https://example.com",
-               sidecar_url: "http://sidecar.test",
-               sidecar_req_options: [plug: {Req.Test, BusterClaw.BrowserSidecarHTTP}]
-             )
-
-    assert page.url == "https://example.com/rendered"
-    assert page.title == "Sidecar Rendered"
-    assert page.markdown =~ "Client rendered body"
   end
 
   describe "live-render fallback" do
@@ -188,62 +165,6 @@ defmodule BusterClaw.BrowserTest do
                )
 
       refute Map.has_key?(page, :rendered)
-    end
-  end
-
-  test "sidecar supervisor stays alive when the node executable is unavailable" do
-    start_supervised!({Sidecar, executable: "missing-browser-sidecar-node"})
-
-    assert %{enabled: true, health: "unavailable"} = Sidecar.status()
-    assert :unavailable = Sidecar.url()
-  end
-
-  describe "sidecar sandbox launch_spec/2" do
-    @script Path.join([:code.priv_dir(:buster_claw), "playwright_sidecar", "server.js"])
-
-    test "wraps the launch in sandbox-exec with the profile and params on macOS" do
-      if :os.type() == {:unix, :darwin} do
-        node = System.find_executable("node") || "/usr/bin/true"
-
-        assert {"/usr/bin/sandbox-exec", args, true} =
-                 Sidecar.launch_spec(node, @script)
-
-        assert ["-f", profile | rest] = args
-        assert String.ends_with?(profile, "playwright_sidecar/sandbox.sb")
-        assert List.last(rest) == @script
-
-        params =
-          rest
-          |> Enum.chunk_every(2)
-          |> Enum.filter(&match?(["-D", _], &1))
-          |> Enum.map(fn ["-D", kv] -> kv |> String.split("=", parts: 2) |> hd() end)
-
-        assert Enum.sort(params) ==
-                 ~w(NODE_BIN NODE_ROOT PW_BROWSERS SIDECAR_DIR USER_CACHE USER_TEMP)
-
-        # every param value must be an absolute path with no trailing slash
-        for ["-D", kv] <- Enum.chunk_every(rest, 2), String.contains?(kv, "=") do
-          [_name, value] = String.split(kv, "=", parts: 2)
-          assert String.starts_with?(value, "/")
-          refute String.ends_with?(value, "/")
-        end
-      end
-    end
-
-    test "runs unsandboxed when the sandbox is disabled by config" do
-      previous = Application.get_env(:buster_claw, :browser_sidecar_sandbox)
-      Application.put_env(:buster_claw, :browser_sidecar_sandbox, false)
-
-      on_exit(fn ->
-        if is_nil(previous) do
-          Application.delete_env(:buster_claw, :browser_sidecar_sandbox)
-        else
-          Application.put_env(:buster_claw, :browser_sidecar_sandbox, previous)
-        end
-      end)
-
-      assert {"/usr/bin/node", [@script], false} =
-               Sidecar.launch_spec("/usr/bin/node", @script)
     end
   end
 

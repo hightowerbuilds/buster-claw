@@ -5,8 +5,8 @@ defmodule BusterClaw.URLGuard do
   Agent-supplied URLs (via `browser_fetch`, `source_ingest`, etc.) must not be
   able to reach the loopback interface, link-local/cloud-metadata addresses
   (169.254.0.0/16, incl. 169.254.169.254), or private RFC1918 ranges — otherwise
-  a prompt-injected document could pivot to the app's own endpoints, the
-  Playwright sidecar, or internal services.
+  a prompt-injected document could pivot to the app's own endpoints or
+  internal services.
 
   `validate/1` checks the scheme, blocks obvious internal hostnames and IP
   literals, and — when DNS resolution is enabled (config `:ssrf_resolve_dns`,

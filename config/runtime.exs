@@ -70,28 +70,6 @@ config :buster_claw,
       if(workspace_root_env, do: Path.join(workspace_root_env, "library")) ||
       Application.get_env(:buster_claw, :library_root)
 
-browser_sidecar_enabled =
-  case System.get_env("BUSTER_CLAW_BROWSER_SIDECAR") do
-    nil -> config_env() == :dev
-    value -> value in ["1", "true", "TRUE", "yes", "YES"]
-  end
-
-# Seatbelt sandbox around the sidecar (macOS): on unless explicitly disabled.
-browser_sidecar_sandbox =
-  case System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_SANDBOX") do
-    nil -> true
-    value -> value in ["1", "true", "TRUE", "yes", "YES"]
-  end
-
-config :buster_claw,
-  browser_sidecar_enabled: browser_sidecar_enabled,
-  browser_sidecar_command: System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_COMMAND", "node"),
-  browser_sidecar_sandbox: browser_sidecar_sandbox
-
-if browser_sidecar_url = System.get_env("BUSTER_CLAW_BROWSER_SIDECAR_URL") do
-  config :buster_claw, :browser_sidecar_url, browser_sidecar_url
-end
-
 # BusterPhone relay drain (Supabase → local SQLite). Key-gated exactly like
 # Finnhub: with no URL + service-role key the Drain child never starts and the
 # /phone tab simply shows what's already local. The service-role key bypasses
