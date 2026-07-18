@@ -214,7 +214,7 @@ defmodule BusterClaw.Browser do
   defp maybe_live_upgrade({:ok, page} = ok, url, opts) do
     if thin_page?(page) do
       case fetch_with_live_render(url, opts) do
-        {:ok, live} -> {:ok, live}
+        {:ok, live} -> {:ok, pick_thicker(live, page)}
         {:error, _reason} -> ok
       end
     else
@@ -235,10 +235,19 @@ defmodule BusterClaw.Browser do
   # plain text) are never "thin" — a webview wouldn't render them better.
   defp thin_page?(%{html: html, markdown: markdown}) do
     is_binary(html) and String.contains?(html, "<") and
-      markdown |> to_string() |> String.trim() |> String.length() < live_render_thin_chars()
+      text_length(markdown) < live_render_thin_chars()
   end
 
   defp thin_page?(_page), do: false
+
+  # A live render that produced *less* readable text than the thin HTTP result
+  # (a heavy SPA still on its loading screen when the budget ran out — seen
+  # live with app.element.io) shouldn't win just because it rendered.
+  defp pick_thicker(live, classic) do
+    if text_length(live.markdown) >= text_length(classic.markdown), do: live, else: classic
+  end
+
+  defp text_length(markdown), do: markdown |> to_string() |> String.trim() |> String.length()
 
   defp fetch_with_live_render(url, opts) do
     cond do
