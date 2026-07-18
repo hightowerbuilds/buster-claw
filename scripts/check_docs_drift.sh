@@ -17,11 +17,18 @@ CATALOG=$(mix run --no-start -e \
   'BusterClaw.Commands.Catalog.entries() |> Enum.each(&IO.puts(&1.name))')
 
 # --- source of truth 2: CLI dispatch verbs ----------------------------------
-# Lines like `["dispatch", "claim"] ->` / `["on-duty"] ->` become
-# "dispatch claim" / "on-duty".
-VERBS=$(sed -n '/case args do/,/^    end$/p' lib/buster_claw/cli.ex |
-  grep -oE '\["[a-z-]+"(, "[a-z-]+")?' |
-  sed 's/\["//; s/", "/ /; s/"//g')
+# Route heads like `defp route(["dispatch", "claim" | rest], opts)` /
+# `defp route(["on-duty"], opts)` become "dispatch claim" / "on-duty".
+VERBS=$(grep -oE 'defp route\(\["[a-z-]+"(, "[a-z-]+")?' lib/buster_claw/cli.ex |
+  sed 's/.*\["//; s/", "/ /; s/"//g')
+
+# A broken extraction must fail loudly: an empty verb list once aborted this
+# script silently (via set -e) after the dispatch table was refactored, and the
+# whole gate rotted unnoticed.
+if [[ -z $VERBS ]]; then
+  echo "check_docs_drift: extracted zero CLI verbs from lib/buster_claw/cli.ex — dispatch table moved?" >&2
+  exit 1
+fi
 
 known_verb() { grep -qxF "$1" <<<"$VERBS"; }
 known_family() { grep -qE "^$1( |\$)" <<<"$VERBS"; }
