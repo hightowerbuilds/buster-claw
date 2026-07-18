@@ -1,6 +1,11 @@
 # Agent Web Automation — our own driver, no Playwright
 
-**Date:** 2026-07-18 · **Status:** SHIPPED same day — all five phases landed (`46ba418`, `fd7abd1`, `777bcaa`) plus an inline review pass; the operator-calls section below is what remains open.
+> **ARCHIVED 2026-07-18 — shipped complete the same day it was written.** All
+> five phases landed (`46ba418`, `fd7abd1`, `777bcaa`) plus an inline review
+> pass. The operator-calls section at the bottom was ported to
+> `../roadmaps/LEFTOVERS.md` on archive; the copy here is a snapshot.
+
+**Date:** 2026-07-18 · **Status:** SHIPPED same day.
 
 Two operator calls on 07-18, made together:
 
