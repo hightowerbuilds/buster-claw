@@ -72,6 +72,11 @@ repo even though it runs on Supabase.
 
 ## 2. Twilio account + number
 
+> **This install's live number (bought 07-13, recorded 07-18): +1 (360) 364-6763**
+> (`+13603646763`). The old trial number +1 844-687-8016 is retired; its relay on
+> the shared Supabase project was torn down 07-18 — only the dedicated project
+> answers now.
+
 1. Sign up at https://www.twilio.com (upgrade out of trial — trial numbers
    inject a preamble message and can only call verified numbers).
 2. Buy a **local 10-digit number** with Voice + SMS capability

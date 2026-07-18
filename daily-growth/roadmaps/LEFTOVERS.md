@@ -13,22 +13,6 @@ roadmap, not here.
 
 ## Open
 
-### Record the new Twilio number
-
-**What.** The roadmap (`BUSTERPHONE_ROADMAP.md`) and the agent memory still name
-the retired **trial** number, +1 844-687-8016. The live paid local number bought
-on 07-13 is not written down anywhere.
-
-**Why it matters.** The trial number appears in docs as if it were the product's
-number. Anyone following the docs tests the wrong line.
-
-**Why deferred.** Nobody wrote it down in the moment.
-
-**How.** Get it from the Twilio console, then update `BUSTERPHONE_ROADMAP.md`,
-`supabase/SETUP.md`, and the `busterphone_roadmap` memory.
-
----
-
 ### `auth_status` on `dispatch_items` is (probably) dead
 
 **What.** Every row in `dispatch_items` — all 120 gmail items and all 3 voicemail

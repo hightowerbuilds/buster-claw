@@ -130,7 +130,7 @@ A user who opens the in-app **Manual** (`/manual`) or the **Get Started** tab is
 
 28. **The README never mentions the home chat or the wallets tab.** The README's Features list leads with the terminal, the command surface, the browser, Google Workspace, and unattended shifts. It does not mention that the default tab is a chat box, or that there's a 900-line wallets surface in the dock. A user who reads the README front-to-back and then opens the app will not recognize the home screen.
 
-29. **The retired trial number is still in the docs; the live number is nowhere.** `LEFTOVERS.md`: the trial number `+1 844-687-8016` still appears in roadmaps and agent memory as if it were the product's number, the live paid local number bought 07-13 isn't written down, and the old Supabase telephony function is still deployed and can still answer the trial number. A QA tester following the docs calls the wrong line.
+29. **The retired trial number is still in the docs; the live number is nowhere.** `LEFTOVERS.md`: the trial number `+1 844-687-8016` still appears in roadmaps and agent memory as if it were the product's number, the live paid local number bought 07-13 isn't written down, and the old Supabase telephony function is still deployed and can still answer the trial number. A QA tester following the docs calls the wrong line. **→ RESOLVED 07-18: the paid number (+1 360-364-6763) is recorded in `phone-maps/BUSTERPHONE_ROADMAP.md` and `supabase/SETUP.md`, the old relay is torn down, and the stale "trial" claims in README/GTM are fixed.**
 
 ---
 
@@ -192,9 +192,9 @@ These are in the existing roadmaps as "leftovers," but from a *QA* POV they are 
 
 49. **The webview cache is shared across builds.** `BUILD.md`: all builds share bundle id `com.hightowerbuilds.busterclaw`, so they share one webview cache. A beta user updating to a new build sees a **stale UI** unless they manually clear `~/Library/WebKit/...`. They will report bugs that don't exist. This is a distribution-level QA trap, not an app bug.
 
-50. **Two Supabase functions can answer the trial number.** `LEFTOVERS.md`: the old project's `voice` edge function is still deployed with Twilio creds. A QA tester calling the number in the docs hits the *old* project, not the new one. The phone feature under test is not the phone feature in production.
+50. **Two Supabase functions can answer the trial number.** `LEFTOVERS.md`: the old project's `voice` edge function is still deployed with Twilio creds. A QA tester calling the number in the docs hits the *old* project, not the new one. The phone feature under test is not the phone feature in production. **→ RESOLVED 07-18: the old project's `voice` function is deleted and its Twilio secrets unset; only the dedicated project answers.**
 
-51. **The docs' trial number is retired; the real number is unrecorded.** Same source. Following the docs tests the wrong line. This is a QA blocker, not a nit.
+51. **The docs' trial number is retired; the real number is unrecorded.** Same source. Following the docs tests the wrong line. This is a QA blocker, not a nit. **→ RESOLVED 07-18 (see #29).**
 
 52. **`on-duty` runs `claude --permission-mode bypassPermissions` with no UI warning.** A QA tester going on-duty for the first time is granting headless bypass-permissioned Claude access to their Gmail with no on-screen disclosure. The disclosure is in `agent_runner.ex` comments. QA will (correctly) flag this as a consent gap.
 

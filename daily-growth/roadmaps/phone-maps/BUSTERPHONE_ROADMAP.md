@@ -22,6 +22,10 @@ domain, MoR. Build it accordingly.
 **The model: we are the phone company.** We hold the Twilio account, we provision the
 number, **the user never learns Twilio exists.** One bill to us; we pay the wholesaler.
 
+> **The live number (recorded 07-18): +1 (360) 364-6763** (`+13603646763`) — the paid
+> local number bought 07-13. The trial +1 844-687-8016 is retired; its old relay on
+> the shared Supabase project was torn down 07-18.
+
 > **The trap to never ship: BYO-Twilio as the paid tier.** If the buyer signs up for
 > Twilio, buys a number, and *then* pays us — they pay twice, and we have **zero
 > marginal cost, therefore nothing to enforce** in a public repo. That's the same trap
@@ -181,7 +185,8 @@ clears — but everything below can be *built and proven* before it does.
 Steps in the Twilio Console (and TCR, which Twilio walks you through):
 
 1. **Upgrade the account** off trial if not already, and make sure the paid
-   **local 10-digit number** (bought 07-13) is the one you'll text from.
+   **local 10-digit number** (bought 07-13 — **+1 (360) 364-6763**) is the one
+   you'll text from.
    Toll-free is the fallback if 10DLC drags — it has its own (lighter,
    verification-based) path, no TCR campaign.
 2. **Register the A2P Brand** — *Messaging → Regulatory Compliance → A2P 10DLC

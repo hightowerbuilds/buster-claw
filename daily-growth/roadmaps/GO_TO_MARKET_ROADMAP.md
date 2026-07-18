@@ -243,8 +243,8 @@ after. See `BUSTERPHONE_ROADMAP.md` for the sequencing.
   (**confirm current Twilio pricing at build**). At $10–15/mo that's a healthy margin
   *and an honest one*, which is the entire point of Part V.
 - **It is unfinished.** ~~No Mac-side drain~~ (drain SHIPPED 07-12 — the inbound
-  path is now complete end-to-end), still a trial number. This is a
-  build, not a flip.
+  path is now complete end-to-end), ~~still a trial number~~ (paid local number
+  live since 07-13). This is a build, not a flip.
 - **SMS will likely force the LLC early** (A2P brand registration wants an EIN),
   which cuts against Part I's "entity deferred." Voice-only may let us defer it —
   **confirm before committing to an SMS date.**
