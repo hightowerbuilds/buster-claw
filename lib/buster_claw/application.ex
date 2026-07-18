@@ -70,6 +70,9 @@ defmodule BusterClaw.Application do
         BusterClaw.WorkspaceCLI.ensure()
         # Seed job descriptions + the trusted-sender policy template (best-effort).
         BusterClaw.Jobs.ensure()
+        # Create <workspace>/sounds/ + README so the notification chime is
+        # discoverable (operator drops an audio file in; best-effort).
+        BusterClaw.Notifications.Sound.ensure()
         ok
 
       other ->

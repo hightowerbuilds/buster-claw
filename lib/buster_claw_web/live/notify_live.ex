@@ -25,14 +25,15 @@ defmodule BusterClawWeb.NotifyLive do
 
   @impl true
   def handle_info({:notification_fired, notification}, socket) do
-    queue = socket.assigns.fired_queue
-
-    queue =
-      if Enum.any?(queue, &(&1.id == notification.id)),
-        do: queue,
-        else: queue ++ [notification]
-
-    {:noreply, assign(socket, :fired_queue, queue)}
+    if Enum.any?(socket.assigns.fired_queue, &(&1.id == notification.id)) do
+      # Already showing (a duplicate broadcast) — don't re-ring.
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(:fired_queue, socket.assigns.fired_queue ++ [notification])
+       |> push_event("notify:play-sound", %{})}
+    end
   end
 
   # Everything else on the topic (`{:notifications, :changed, _}`) is the widget's
@@ -56,7 +57,7 @@ defmodule BusterClawWeb.NotifyLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div>
+    <div id="notify-root" phx-hook="NotifySound">
       {if @fired_queue != [],
         do: BusterClawWeb.HomeWidget.notify_modal(%{notification: hd(@fired_queue)})}
     </div>

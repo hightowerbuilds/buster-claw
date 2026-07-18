@@ -61,6 +61,12 @@ defmodule BusterClawWeb.Router do
     get "/recording", TelephonyRecordingController, :show
   end
 
+  # The workspace notification chime, played by the NotifySound hook when a
+  # notification fires. Fixed path (Notifications.Sound), so no traversal surface.
+  scope "/notify", BusterClawWeb do
+    get "/sound", NotifySoundController, :show
+  end
+
   # Renders a workspace file (Markdown → HTML, .html as-is) for the in-app browser.
   # No pipeline: returns a raw HTML document, not a LiveView page. Path-guarded to
   # the workspace by FileManager; loopback-only.

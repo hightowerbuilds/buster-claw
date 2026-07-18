@@ -17,6 +17,8 @@ defmodule BusterClaw.Notifications do
 
   import Ecto.Query
 
+  require Logger
+
   alias BusterClaw.Notifications.Notification
   alias BusterClaw.Repo
 
@@ -109,18 +111,32 @@ defmodule BusterClaw.Notifications do
   def fire_due(now \\ now()) do
     now
     |> due()
-    |> Enum.map(&fire!/1)
+    |> Enum.flat_map(&fire/1)
   end
 
-  defp fire!(%Notification{} = notification) do
-    {:ok, fired} =
-      notification
-      |> Notification.changeset(%{status: "fired", fired_at: now()})
-      |> Repo.update()
+  # Atomically transition one row from armed -> fired. The `status in @armed`
+  # guard in the UPDATE is the exactly-once guarantee: only the call that actually
+  # flips the row returns it (and broadcasts), so a stale read, a double tick, or
+  # a second scheduler can never re-fire — and re-ring — a row that already fired.
+  # Using `update_all` (not a changeset) also means a quirk in some unrelated
+  # field can't fail validation and leave the row stuck armed, re-firing forever.
+  defp fire(%Notification{id: id}) do
+    fired_at = now()
 
-    broadcast({:notification_fired, fired})
-    broadcast({:notifications, :changed, fired})
-    fired
+    {count, _} =
+      Notification
+      |> where([n], n.id == ^id and n.status in @armed)
+      |> Repo.update_all(set: [status: "fired", fired_at: fired_at, updated_at: fired_at])
+
+    if count == 1 do
+      fired = Repo.get!(Notification, id)
+      Logger.info("Notifications: fired ##{id} (#{fired.kind}) #{inspect(fired.label)}")
+      broadcast({:notification_fired, fired})
+      broadcast({:notifications, :changed, fired})
+      [fired]
+    else
+      []
+    end
   end
 
   @doc "Re-arm a notification `seconds` from now."

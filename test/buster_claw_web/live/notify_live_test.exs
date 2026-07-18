@@ -40,6 +40,22 @@ defmodule BusterClawWeb.NotifyLiveTest do
     assert Notifications.get_notification(past.id).status == "fired"
   end
 
+  test "a fire pushes the play-sound event to the client", %{conn: conn} do
+    {:ok, view, _html} = live_isolated(conn, BusterClawWeb.NotifyLive)
+
+    {:ok, _past} =
+      Notifications.create_notification(%{
+        "kind" => "timer",
+        "label" => "Chime",
+        "fire_at" => fire_at(-5),
+        "status" => "pending"
+      })
+
+    Notifications.fire_due()
+
+    assert_push_event(view, "notify:play-sound", %{})
+  end
+
   test "Snooze from the modal re-arms the notification", %{conn: conn} do
     {:ok, view, _html} = live_isolated(conn, BusterClawWeb.NotifyLive)
 
