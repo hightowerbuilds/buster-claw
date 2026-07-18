@@ -69,6 +69,7 @@ defmodule BusterClawWeb.ChatPanel do
   attr :running, :boolean, required: true
   attr :thinking, :any, required: true
   attr :queue, :list, required: true
+  attr :agent_cli_missing, :boolean, default: false
 
   def chat_panel(assigns) do
     ~H"""
@@ -134,6 +135,18 @@ defmodule BusterClawWeb.ChatPanel do
 
       <.queue_strip queue={@queue} />
 
+      <div
+        :if={@agent_cli_missing}
+        id="agent-cli-missing"
+        class="border-t-2 border-warning/60 bg-warning/10 px-3 py-2 text-[15px]"
+      >
+        <span class="font-semibold">No agent CLI found.</span>
+        Chat runs your own Claude Code headlessly — install it
+        (<code phx-no-curly-interpolation class="font-mono text-[13px]">npm install -g @anthropic-ai/claude-code</code>),
+        run <code class="font-mono text-[13px]">claude login</code>
+        in a terminal, then reload this page.
+      </div>
+
       <form
         phx-submit="chat_send"
         data-chat-form
@@ -144,14 +157,20 @@ defmodule BusterClawWeb.ChatPanel do
             name="message"
             data-chat-input
             rows="2"
-            placeholder="Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
-            class="min-h-0 w-full resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-[17px] focus:border-primary focus:outline-none"
+            disabled={@agent_cli_missing}
+            placeholder={
+              if @agent_cli_missing,
+                do: "Install Claude Code to chat",
+                else: "Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
+            }
+            class="min-h-0 w-full resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-[17px] focus:border-primary focus:outline-none disabled:opacity-50"
           ></textarea>
         </div>
 
         <button
           type="submit"
-          class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-semibold text-primary-content transition hover:opacity-85"
+          disabled={@agent_cli_missing}
+          class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-semibold text-primary-content transition hover:opacity-85 disabled:opacity-40 disabled:hover:opacity-40"
         >
           <.icon name="hero-paper-airplane" class="size-4" /> Send
         </button>

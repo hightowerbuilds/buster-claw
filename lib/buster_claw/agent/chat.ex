@@ -216,6 +216,11 @@ defmodule BusterClaw.Agent.Chat do
       status: :idle,
       port: nil,
       buf: "",
+      # Bounded tail of NON-stream-json lines from the current run. Claude's
+      # real-world failures (not logged in, quota, bad config) print as plain
+      # text, which the NDJSON parser used to drop silently — this is what lets
+      # a non-zero exit show the user what the CLI actually said.
+      raw_tail: [],
       # Messages typed while a run is in flight, dispatched one-per-turn in order.
       queue: [],
       timer: nil,
@@ -292,6 +297,7 @@ defmodule BusterClaw.Agent.Chat do
       | status: :idle,
         port: nil,
         buf: "",
+        raw_tail: [],
         timer: nil,
         run: nil,
         queue: [],
@@ -327,8 +333,21 @@ defmodule BusterClaw.Agent.Chat do
     {:noreply, Enum.reduce(lines, %{state | buf: buf}, &apply_line/2)}
   end
 
-  def handle_info({port, {:exit_status, _code}}, %{port: port} = state),
+  def handle_info({port, {:exit_status, 0}}, %{port: port} = state),
     do: {:noreply, state |> audit_run(:completed) |> finish_run()}
+
+  # A non-zero exit is a FAILED run. This used to be audited as :completed with
+  # nothing on screen — the classic first-run shape (Claude installed but not
+  # logged in) looked like the app was broken. Surface what the CLI printed and
+  # the likely remedy.
+  def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
+    state =
+      state
+      |> emit_message(:error, exit_error_text(code, state.raw_tail))
+      |> audit_run({:failed, {:exit_status, code}})
+
+    {:noreply, finish_run(state)}
+  end
 
   def handle_info({:run_timeout, token}, %{status: :running, run: %{token: run_token}} = state)
       when token == run_token do
@@ -379,7 +398,7 @@ defmodule BusterClaw.Agent.Chat do
       {:ok, port} ->
         broadcast(state, {:status, :running})
         timer = Process.send_after(self(), {:run_timeout, token}, state.timeout_ms)
-        {:ok, %{state | status: :running, port: port, buf: "", timer: timer}}
+        {:ok, %{state | status: :running, port: port, buf: "", raw_tail: [], timer: timer}}
 
       {:error, reason} ->
         state = state |> emit_message(:error, error_text(reason)) |> audit_run({:failed, reason})
@@ -419,7 +438,22 @@ defmodule BusterClaw.Agent.Chat do
   defp apply_line(line, state) do
     case StreamEvent.parse(line) do
       {:ok, event} -> state |> capture_session(event) |> project_event(event)
-      :error -> state
+      :error -> remember_raw_line(state, line)
+    end
+  end
+
+  # Newest-first, bounded; rendered (reversed) only when a run fails.
+  @raw_tail_lines 12
+  defp remember_raw_line(state, line) do
+    case String.trim(line) do
+      "" ->
+        state
+
+      line ->
+        %{
+          state
+          | raw_tail: Enum.take([String.slice(line, 0, 300) | state.raw_tail], @raw_tail_lines)
+        }
     end
   end
 
@@ -438,6 +472,7 @@ defmodule BusterClaw.Agent.Chat do
 
   defp project_event(state, %StreamEvent{kind: :result} = event) do
     state = %{state | run: stash_result(state.run, event)}
+    state = surface_result_error(state, event)
 
     case result_meta_line(state.run, event) do
       nil ->
@@ -536,6 +571,46 @@ defmodule BusterClaw.Agent.Chat do
   defp thinking_label(_run), do: nil
 
   defp format_secs(ms), do: :erlang.float_to_binary(max(ms, 0) / 1000, decimals: 1) <> "s"
+
+  # A well-formed error result (is_error / non-"success" subtype) used to be
+  # reduced to its cost meta line — the body that says WHY was discarded. Show it.
+  defp surface_result_error(state, %StreamEvent{raw: raw, text: text}) do
+    subtype = raw["subtype"]
+
+    if raw["is_error"] == true or (is_binary(subtype) and subtype != "success") do
+      emit_message(
+        state,
+        :error,
+        text || "The run ended with an error (#{subtype || "unknown"})."
+      )
+    else
+      state
+    end
+  end
+
+  defp exit_error_text(code, raw_tail) do
+    detail = raw_tail |> Enum.reverse() |> Enum.join("\n") |> String.trim()
+
+    hint =
+      cond do
+        detail =~ ~r/log ?in|logged out|authenticat|unauthorized|api key|credential/i ->
+          "It looks like Claude Code isn't logged in — run `claude login` in a terminal, then try again."
+
+        detail =~ ~r/rate.?limit|quota|overloaded|429/i ->
+          "It looks like a rate limit — wait a moment and try again."
+
+        true ->
+          nil
+      end
+
+    [
+      "The agent CLI exited with status #{code} before finishing.",
+      hint,
+      if(detail != "", do: detail)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n\n")
+  end
 
   defp error_text(:timeout), do: "The run timed out and was stopped."
   defp error_text(:no_agent_cli), do: "No agent CLI found. Install Claude Code to chat."

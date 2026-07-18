@@ -364,4 +364,87 @@ defmodule BusterClaw.Agent.ChatTest do
     assert :idle = Chat.status(conv)
     assert [] = Chat.queue(conv)
   end
+
+  # --- the silent-failure trilogy (first-look review Tier 0) ---
+
+  # A spawner that emits RAW (non-stream-json) lines — the shape of Claude's
+  # real-world auth/config failures — then exits with `code`.
+  defp raw_failing_spawner(parent, raw_lines, code) do
+    fn prompt, opts ->
+      send(parent, {:spawned, prompt, opts})
+      chat = self()
+      port = make_ref()
+
+      spawn(fn ->
+        Enum.each(raw_lines, fn line -> send(chat, {port, {:data, line <> "\n"}}) end)
+        send(chat, {port, {:exit_status, code}})
+      end)
+
+      {:ok, port}
+    end
+  end
+
+  test "a non-zero exit surfaces the CLI's raw output as an error, not silence" do
+    spawner =
+      raw_failing_spawner(
+        self(),
+        ["Error: not logged in.", "Run `claude login` to authenticate."],
+        1
+      )
+
+    conv = start_chat(spawner)
+    assert :ok = Chat.send_message(conv, "hello")
+
+    assert_receive {:agent_chat, ^conv, {:message, %{role: :error, text: text}}}
+    assert text =~ "exited with status 1"
+    assert text =~ "isn't logged in"
+    assert text =~ "not logged in."
+    assert_receive {:agent_chat, ^conv, {:status, :idle}}
+  end
+
+  test "a clean exit after garbage output stays quiet (no error bubble)" do
+    spawner = raw_failing_spawner(self(), ["some harmless notice"], 0)
+    conv = start_chat(spawner)
+
+    assert :ok = Chat.send_message(conv, "hello")
+    assert_receive {:agent_chat, ^conv, {:status, :idle}}
+    refute_received {:agent_chat, ^conv, {:message, %{role: :error}}}
+  end
+
+  test "an error result renders its text instead of discarding it" do
+    {:ok, scripts} =
+      Agent.start_link(fn ->
+        [
+          [
+            %{"type" => "system", "session_id" => "sess-err"},
+            %{
+              "type" => "result",
+              "subtype" => "error_during_execution",
+              "is_error" => true,
+              "result" => "Invalid API key. Please run claude login.",
+              "num_turns" => 1
+            }
+          ]
+        ]
+      end)
+
+    conv = start_chat(scripting_spawner(self(), scripts))
+    assert :ok = Chat.send_message(conv, "hello")
+
+    assert_receive {:agent_chat, ^conv,
+                    {:message, %{role: :error, text: "Invalid API key. Please run claude login."}}}
+  end
+
+  test "an error result with no body still says something" do
+    {:ok, scripts} =
+      Agent.start_link(fn ->
+        [[%{"type" => "result", "subtype" => "error_max_turns", "num_turns" => 50}]]
+      end)
+
+    conv = start_chat(scripting_spawner(self(), scripts))
+    assert :ok = Chat.send_message(conv, "hello")
+
+    assert_receive {:agent_chat, ^conv, {:message, %{role: :error, text: text}}}
+    assert text =~ "error_max_turns"
+  end
 end

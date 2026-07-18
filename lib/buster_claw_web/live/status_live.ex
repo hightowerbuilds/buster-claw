@@ -43,6 +43,9 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(status: Status.snapshot())
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
+     # Gate the composer proactively: discovering the missing CLI by typing into
+     # a silent void was the review's worst day-one failure.
+     |> assign(:agent_cli_missing, match?({:error, _}, BusterClaw.AgentRunner.detect()))
      |> load_trust()
      # Header widget: which sub-tab is showing (Calendar / Contacts / Time & Place).
      |> assign(:widget_tab, "calendar")
@@ -863,6 +866,7 @@ defmodule BusterClawWeb.StatusLive do
                 running={@chat_running}
                 thinking={@chat_thinking}
                 queue={@chat_queue}
+                agent_cli_missing={@agent_cli_missing}
               />
             </div>
           </div>
