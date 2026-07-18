@@ -65,7 +65,7 @@ These three compound into the single worst day-one experience: **when the requir
 
 - **Even well-formed error results are thrown away.** `agent/chat.ex:439-449` — when Claude emits a proper `result` event carrying an error, `project_event(:result)` only synthesizes a cost/turns meta line and discards `event.text`. `normalize/1` captures the body (`stream_event.ex:97-105`) but Chat never renders it. The best case is a bubble reading "thought 3.2s · 1 turns · $0.00" with no error text.
 
-**Net effect:** the most common first-run failure (not logged into Claude) is completely invisible. The reactive `error_text(:no_agent_cli)` = "No agent CLI found. Install Claude Code to chat." (`chat.ex:541`) exists but only fires if the process reaches the spawn — the blockers above bypass it — and it has no install link.
+**Net effect:** the most common first-run failure (not logged into Claude) is completely invisible. The reactive `error_text(:no_agent_cli)` = "No agent CLI found. Install Claude Code to chat." (`chat.ex:541`) exists but only fires if the process reaches the spawn — the blockers above bypass it — and it has no install link. **→ ALL THREE RESOLVED 07-18 (`937d4a9`): non-zero exits are failed runs surfaced with the CLI's raw-output tail plus a login/rate-limit hint; non-NDJSON lines are kept in a bounded tail instead of dropped; error results render their text. Covered by four new tests.**
 
 ### 2.2 Major
 
@@ -285,7 +285,7 @@ Ranked by "how many new customers does this lose, and how early." Fixing the top
 ### Tier 0 — A stranger cannot succeed without these (ship-blockers)
 
 1. **Sign + notarize the DMG, and ship an arm64 build (or a universal binary).** Without this, a large fraction never open the app. (§1.1)
-2. **Make Claude-Code-login failures visible in chat.** Fix the exit-code/stderr/error-result trilogy so a not-logged-in user sees "Install & log into Claude Code" instead of silence. Gate the composer on `AgentRunner.detect/0`. (§2.1)
+2. **Make Claude-Code-login failures visible in chat.** Fix the exit-code/stderr/error-result trilogy so a not-logged-in user sees "Install & log into Claude Code" instead of silence. Gate the composer on `AgentRunner.detect/0`. (§2.1) **→ RESOLVED 07-18 (`937d4a9`), composer gate included — banner with the npm install command + `claude login`, input disabled until a CLI is detected.**
 3. **Move Google's OAuth app out of "Testing."** Complete verification (or at minimum a self-serve tester path) — the founder-email gate and weekly token death are disqualifying for a downloaded product. (§3.1)
 4. **Decide what BusterPhone *is* on day one.** Either give it an in-app config path + a real "get a number"/pay flow, or gate the dock tab behind a clear "coming soon / join waitlist" state so it doesn't read as broken. Today it's a visible, empty, unconfigurable, unpurchasable tab. (§4.1)
 5. **Add a single-instance guard** before two launches corrupt the DB. (§1.2)
