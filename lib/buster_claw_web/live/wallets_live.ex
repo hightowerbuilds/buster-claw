@@ -84,18 +84,27 @@ defmodule BusterClawWeb.WalletsLive do
   # Live phone spend for the BusterClaw panel — only recompute when the open
   # wallet actually uses the template.
   def handle_info({:telephony_event, _event}, socket) do
-    case socket.assigns.selected do
-      %Wallet{template: "busterclaw"} = wallet ->
-        {:noreply, assign(socket, :busterclaw, Wallets.busterclaw_summary(wallet))}
+    {:noreply, refresh_busterclaw(socket)}
+  end
 
-      _ ->
-        {:noreply, socket}
-    end
+  # Cost back-fills land as one batched message per drain pass, not per row.
+  def handle_info(:telephony_costs_updated, socket) do
+    {:noreply, refresh_busterclaw(socket)}
   end
 
   # Ignore any unexpected message shape on the subscribed topic rather than
   # crashing the LiveView with a FunctionClauseError.
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp refresh_busterclaw(socket) do
+    case socket.assigns.selected do
+      %Wallet{template: "busterclaw"} = wallet ->
+        assign(socket, :busterclaw, Wallets.busterclaw_summary(wallet))
+
+      _ ->
+        socket
+    end
+  end
 
   # --- wallet CRUD -----------------------------------------------------------
 

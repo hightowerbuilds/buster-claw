@@ -47,6 +47,7 @@ defmodule BusterClawWeb.PhoneLive do
      |> assign(:contact_error, nil)
      |> assign(:contact_trusted, false)
      |> assign(:contact_history, [])
+     |> assign(:reload_queued, false)
      |> assign(:face_shaders, BusterClaw.Shaders.list())
      |> load_contacts()
      |> load_data()}
@@ -201,9 +202,24 @@ defmodule BusterClawWeb.PhoneLive do
     end
   end
 
+  # Telephony broadcasts arrive in bursts — the drain tick can land several
+  # events back-to-back — so reloads are coalesced: the first message arms a
+  # short timer, the rest ride along, and one `:reload_telephony` does the
+  # actual re-query.
   @impl true
   def handle_info({:telephony_event, _event}, socket) do
-    socket = load_data(socket)
+    {:noreply, schedule_reload(socket)}
+  end
+
+  def handle_info(:telephony_costs_updated, socket) do
+    {:noreply, schedule_reload(socket)}
+  end
+
+  def handle_info(:reload_telephony, socket) do
+    socket =
+      socket
+      |> assign(:reload_queued, false)
+      |> load_data()
 
     socket =
       case socket.assigns.selected_thread do
@@ -223,6 +239,15 @@ defmodule BusterClawWeb.PhoneLive do
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  @reload_debounce_ms 250
+
+  defp schedule_reload(%{assigns: %{reload_queued: true}} = socket), do: socket
+
+  defp schedule_reload(socket) do
+    Process.send_after(self(), :reload_telephony, @reload_debounce_ms)
+    assign(socket, :reload_queued, true)
+  end
 
   defp load_contacts(socket) do
     contacts = Contacts.list_contacts()

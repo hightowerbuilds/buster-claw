@@ -98,10 +98,18 @@ defmodule BusterClaw.Telephony do
   @doc """
   Back-fill every unpriced voicemail (no-op when Twilio isn't configured). Cheap:
   touches only rows still missing a final price. Called from the drain tick.
+
+  Broadcasts a single `:telephony_costs_updated` after the batch rather than one
+  event per priced row — a full drain tick can price 25 rows, and 25 broadcasts
+  meant 25 full reloads in every subscribed LiveView.
   """
   def refresh_unpriced_costs(opts \\ []) do
     if Twilio.configured?() do
-      unpriced_voicemails() |> Enum.each(&refresh_cost(&1, opts))
+      priced =
+        unpriced_voicemails()
+        |> Enum.count(fn event -> match?({:ok, _}, refresh_cost(event, opts)) end)
+
+      if priced > 0, do: broadcast(:telephony_costs_updated)
     end
 
     :ok
@@ -128,14 +136,6 @@ defmodule BusterClaw.Telephony do
       metadata: metadata
     })
     |> Repo.update()
-    |> case do
-      {:ok, updated} ->
-        broadcast({:telephony_event, updated})
-        {:ok, updated}
-
-      {:error, _} = error ->
-        error
-    end
   end
 
   def get_event!(id), do: Repo.get!(Event, id) |> Repo.preload(:document)
