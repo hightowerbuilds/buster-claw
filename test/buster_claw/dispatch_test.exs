@@ -11,7 +11,6 @@ defmodule BusterClaw.DispatchTest do
                "gmail_message_id" => "19ea389de2179b2b",
                "trusted_sender" => "hightowerbuilds.dev@gmail.com",
                "trusted" => true,
-               "auth_status" => "trusted",
                "request_summary" => "Build an agentic plan to follow the World Cup.",
                "recommended_agent" => "Ingest Analyst",
                "risk" => "safe_research_planning"
@@ -20,7 +19,6 @@ defmodule BusterClaw.DispatchTest do
     assert item.status == "queued"
     assert item.dedupe_key == "gmail:19ea389de2179b2b"
     assert item.trusted
-    assert item.auth_status == "trusted"
   end
 
   test "dedupe key prevents repeated Dispatch entries for the same request" do
@@ -50,7 +48,6 @@ defmodule BusterClaw.DispatchTest do
              Dispatch.enqueue_gmail(account, message, %{
                trusted_sender: "hightowerbuilds.dev@gmail.com",
                trusted: true,
-               auth_status: "trusted",
                request_summary: "Build an agentic World Cup follow-up plan.",
                recommended_agent: "Ingest Analyst",
                recommended_role_key: "ingest-analyst"

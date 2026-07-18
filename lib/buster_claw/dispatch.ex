@@ -19,7 +19,6 @@ defmodule BusterClaw.Dispatch do
     sender
     trusted_sender
     trusted
-    auth_status
     gmail_message_id
     gmail_thread_id
     gmail_rfc_message_id
@@ -124,7 +123,6 @@ defmodule BusterClaw.Dispatch do
       attrs
       |> normalize_attrs()
       |> put_new(:status, "queued")
-      |> put_new(:auth_status, "unverified")
       |> put_generated_dedupe_key()
 
     %Item{}

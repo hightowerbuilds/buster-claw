@@ -18,7 +18,6 @@ defmodule BusterClaw.Dispatch.Item do
              :sender,
              :trusted_sender,
              :trusted,
-             :auth_status,
              :gmail_message_id,
              :gmail_thread_id,
              :gmail_rfc_message_id,
@@ -50,7 +49,6 @@ defmodule BusterClaw.Dispatch.Item do
     field :sender, :string
     field :trusted_sender, :string
     field :trusted, :boolean, default: false
-    field :auth_status, :string, default: "unverified"
     field :gmail_message_id, :string
     field :gmail_thread_id, :string
     field :gmail_rfc_message_id, :string
@@ -86,7 +84,6 @@ defmodule BusterClaw.Dispatch.Item do
       :sender,
       :trusted_sender,
       :trusted,
-      :auth_status,
       :gmail_message_id,
       :gmail_thread_id,
       :gmail_rfc_message_id,
