@@ -207,3 +207,66 @@ operator call. Note `scheduler_test.exs` covers fires-when-due and
 stays-armed-when-future, but not the repro's exactly-once-across-rapid-ticks
 assertion — if that guarantee matters, it deserves a real test someday.
 Working tree clean.
+
+## Night: the first-look reviews, then the Notify sound board
+
+### Three distribute-today reviews land in roadmaps (`6ae70ba`)
+
+Seven parallel reviewers walked the new-customer journey — install/first-run,
+home chat, GWS/on-duty, BusterPhone, browser/terminal/library, settings/
+security, product gaps vs. the other claws — and the synthesis is
+`roadmaps/FIRST_LOOK_CRITICAL_REVIEW.md` (~7,100 words, severity-tiered, with
+a punch list). Committed alongside the two companion docs from the same pass
+(`CUSTOMER_FIRST_LOOK_REVIEW.md`, `FIRST_USER_REVIEW_ROADMAP.md`); all three
+also copied into the DataZone. The recurring pattern: **the interior is better
+than the entrance** — the ship-blockers are the unsigned Intel-only DMG, the
+silent chat failure when Claude Code isn't logged in, the tester-list OAuth
+gate, the unconfigurable/unpurchasable phone tab, and the missing
+single-instance guard.
+
+### Notify sound board: per-event routing (`a1eb389`)
+
+The DataZone `sounds/` folder now holds real audio — `wilhelm.wav` (the
+Wilhelm scream) and `bongos.wav`, both CC0 from Wikimedia Commons, normalized
+and trimmed with ffmpeg, plus a synthesized neutral `notify.wav` default and a
+provenance README. On top of it, `Notifications.Sound` grew from
+single-chime resolution into a routable library: a JSON map in Settings keys
+sounds by **source** (chat/terminal/email/voicemail/manual), **kind**
+(timer/alarm/reminder), or default — source beats kind beats default, floor is
+the legacy `notify.*`/first-file walk. `/notify/sound/:name` serves only real
+directory entries (membership in `list/0` is the allowlist — no traversal
+surface), and the `NotifySound` hook swaps `src` on its one gesture-unlocked
+audio element so per-event sounds don't lose playback permission.
+
+The new **Settings → Notify** tab is a control surface, not an explainer (the
+Voice-tab mistake, not repeated): a routing grid with an honest "plays: X"
+readout per row, client-side Preview, a **Test** button that fires a real
+notification through the full pipeline (scheduler → modal → routed sound),
+and library management — upload with a server-side extension gate,
+delete prunes routings. One catch en route: the repo's own guard test
+rejected `data-confirm` (a no-op in the webview — the exact hole the browser
+review documented) and forced `data-claw-confirm`.
+
+### The widget learns all three kinds (`44e00f1`)
+
+The corner widget's Notify form was timer-only; now a segmented
+Timer | Alarm | Reminder row picks what gets armed. Timer stays
+label + minutes. Alarm is a wall-clock `<input type="time">` with the label
+**optional** (blank → "Alarm"). Reminder — after an operator course-correct
+away from the command surface's fire-now semantics — is label + a scheduled
+announcement time. Both wall-clock kinds arm the **next local occurrence**
+(OS-clock offset rounded to 15-minute granularity, no tz database; an alarm
+set across a DST flip lands an hour off — documented, accepted). The kind row
+also **filters the right column**: the seven-segment hero re-keys to the
+soonest of the selected kind and the list shows only that kind, with per-kind
+empty states. Form type settled at 13px inputs / 11px controls after one
+too-small → too-big → just-right iteration.
+
+**Open from the widget review** (deliberately not fixed tonight): Snooze on an
+*upcoming* row re-arms to now+5m — pulling a 45-minute timer to 5 minutes;
+ShaderTimer only pauses on `document.hidden`, so hidden-tab heroes burn a
+60fps WebGPU loop; `notify_modal`'s doc comment still credits StatusLive for
+what NotifyLive now does.
+
+**State of the tree:** full suite green — **1090 tests**, 0 failures.
+Working tree clean after this summary commit; pushed to main.
