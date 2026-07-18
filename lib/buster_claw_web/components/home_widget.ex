@@ -181,9 +181,9 @@ defmodule BusterClawWeb.HomeWidget do
 
   defp notify_panel(assigns) do
     ~H"""
-    <section class="ic-panel grid h-full grid-cols-3">
-      <%!-- Left 2/3: notifier creation. --%>
-      <div class="col-span-2 flex min-h-0 flex-col border-r border-base-content/15 px-3 py-3">
+    <section class="ic-panel grid h-full grid-cols-5">
+      <%!-- Left 3/5: notifier creation. --%>
+      <div class="col-span-3 flex min-h-0 flex-col border-r border-base-content/15 px-3 py-3">
         <.form for={@form} id="notify-form" phx-submit="notify_create" class="flex flex-col gap-1.5">
           <label class="font-mono text-[0.625rem] font-bold uppercase tracking-widest text-base-content/55">
             New timer
@@ -220,8 +220,8 @@ defmodule BusterClawWeb.HomeWidget do
         </.form>
       </div>
 
-      <%!-- Right 1/3: the timers themselves — soonest as a shader countdown, then the list. --%>
-      <div class="col-span-1 flex min-h-0 flex-col">
+      <%!-- Right 2/5: the timers themselves — soonest as a shader countdown, then the list. --%>
+      <div class="col-span-2 flex min-h-0 flex-col">
         {if @notifications != [], do: notify_hero(%{soonest: hd(@notifications)})}
 
         <ul class="min-h-0 flex-1 divide-y divide-base-content/10 overflow-auto">
