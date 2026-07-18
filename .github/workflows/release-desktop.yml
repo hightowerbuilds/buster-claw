@@ -1,0 +1,107 @@
+# Two-arch desktop DMG builds — the Livebook pattern (livebook-dev/livebook
+# release.yml): one native runner per architecture, each building its own
+# native ERTS. Never lipo the Erlang tree — a universal ERTS kills the JIT on
+# the Intel slice (DISTRIBUTION_ROADMAP §6).
+#
+# Until the Apple Developer secrets exist, artifacts are UNSIGNED — fine for
+# CI verification, not for distribution. When enrollment lands, add the
+# cert-import + notarization steps at the TODO(payday) marker; nothing else
+# here should need to change.
+name: Release Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dmg:
+    name: DMG (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: aarch64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      MIX_ENV: prod
+      # Flips true when the Developer ID cert secret exists (payday).
+      HAVE_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Versions pinned to .tool-versions, same as ci.yml.
+      - name: Set up Elixir/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28.4.2"
+          elixir-version: "1.19.5"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/tauri
+          key: ${{ matrix.arch }}
+
+      - name: Cache mix deps and _build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-${{ matrix.arch }}-mix-prod-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.arch }}-mix-prod-
+
+      # cargo install is slow but rust-cache keeps the binary across runs;
+      # the guard makes warm runs a no-op (Livebook's exact pattern).
+      - name: Install tauri-cli
+        run: |
+          if ! command -v cargo-tauri >/dev/null 2>&1; then
+            cargo install tauri-cli --version "=2.8.0" --locked
+          fi
+
+      # TODO(payday): before the build —
+      #   1. Import the Developer ID cert (APPLE_CERTIFICATE P12 + password)
+      #      into a throwaway keychain.
+      #   2. Add the mix-release codesign pass over every Mach-O in the OTP
+      #      tree (ElixirKit Release.codesign pattern: --options runtime
+      #      --timestamp --entitlements on EVERY binary incl. beam.smp),
+      #      BEFORE tauri bundles resources.
+      #   3. Export APPLE_SIGNING_IDENTITY / APPLE_ID / APPLE_PASSWORD /
+      #      APPLE_TEAM_ID so tauri signs, notarizes, and staples on its own.
+      # Gate each step on env.HAVE_APPLE_CERT == 'true'.
+
+      - name: Build DMG
+        run: ./scripts/build_desktop.sh
+
+      # Meaningful only once signing lands; a hard failure here then means a
+      # broken signature, which must never ship.
+      - name: Gatekeeper assessment
+        if: env.HAVE_APPLE_CERT == 'true'
+        run: spctl -a -t exec -vvv "desktop/tauri/target/release/bundle/macos/Buster Claw.app"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: buster-claw-dmg-${{ matrix.arch }}
+          if-no-files-found: error
+          path: desktop/tauri/target/release/bundle/dmg/*.dmg
