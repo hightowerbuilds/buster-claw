@@ -16,6 +16,7 @@ defmodule BusterClawWeb.NotifyLive do
   use BusterClawWeb, :live_view
 
   alias BusterClaw.Notifications
+  alias BusterClaw.Notifications.Sound
 
   @impl true
   def mount(_params, _session, socket) do
@@ -32,7 +33,7 @@ defmodule BusterClawWeb.NotifyLive do
       {:noreply,
        socket
        |> assign(:fired_queue, socket.assigns.fired_queue ++ [notification])
-       |> push_event("notify:play-sound", %{})}
+       |> push_event("notify:play-sound", %{name: Sound.for_notification(notification)})}
     end
   end
 

@@ -19,7 +19,7 @@ import {ShaderTimer} from "./shader_timer.js"
 import {SvgViewerDock} from "./svg_viewer.js"
 import {FileTreeDnd} from "./file_tree_dnd.js"
 import {WorkspaceDropzone} from "./workspace_dropzone.js"
-import {NotifySound} from "./notify_sound.js"
+import {NotifySound, SoundPreview} from "./notify_sound.js"
 
 export const Hooks = {
   CornerWidget,
@@ -48,4 +48,5 @@ export const Hooks = {
   FileTreeDnd,
   WorkspaceDropzone,
   NotifySound,
+  SoundPreview,
 }

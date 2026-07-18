@@ -37,6 +37,7 @@ defmodule BusterClawWeb.Router do
       live "/appearance", AppearanceLive, :index
       live "/get-started", GetStartedLive, :index
       live "/voice", VoiceLive, :index
+      live "/notify-settings", NotifySettingsLive, :index
       live "/phone", PhoneLive, :index
       live "/workspace", WorkspaceLive, :index
       live "/manual", UserGuideLive, :index
@@ -61,10 +62,13 @@ defmodule BusterClawWeb.Router do
     get "/recording", TelephonyRecordingController, :show
   end
 
-  # The workspace notification chime, played by the NotifySound hook when a
-  # notification fires. Fixed path (Notifications.Sound), so no traversal surface.
+  # Workspace notification sounds, played by the NotifySound hook when a
+  # notification fires and auditioned from Settings → Notify. `:show` is the
+  # fixed-path fallback chime; `:named` only resolves names that are real
+  # library entries (Sound.path_for), so no traversal surface.
   scope "/notify", BusterClawWeb do
     get "/sound", NotifySoundController, :show
+    get "/sound/:name", NotifySoundController, :named
   end
 
   # Renders a workspace file (Markdown → HTML, .html as-is) for the in-app browser.
