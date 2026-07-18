@@ -1,6 +1,6 @@
 # Agent Web Automation — our own driver, no Playwright
 
-**Date:** 2026-07-18 · **Status:** ACTIVE — the ambitious path, chosen by operator decision.
+**Date:** 2026-07-18 · **Status:** SHIPPED same day — all five phases landed (`46ba418`, `fd7abd1`, `777bcaa`) plus an inline review pass; the operator-calls section below is what remains open.
 
 Two operator calls on 07-18, made together:
 
