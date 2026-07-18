@@ -19,14 +19,35 @@ defmodule BusterClaw.Search do
       limit = Keyword.get(opts, :limit, 5)
 
       with {:ok, body} <- fetch(query, opts) do
-        results =
-          body
-          |> parse_results()
-          |> Enum.take(limit)
-
-        {:ok, results}
+        case parse_results(body) do
+          [] -> classify_empty(body)
+          results -> {:ok, Enum.take(results, limit)}
+        end
       end
     end
+  end
+
+  # A 200 with zero parsed results is only a genuine "no results" when the
+  # page actually says so. Otherwise DDG changed its markup or served a
+  # bot-challenge page — pretending that's an empty result set hides the
+  # breakage from the agent and the user, who just see silent nothing.
+  defp classify_empty(body) do
+    cond do
+      no_results_page?(body) -> {:ok, []}
+      challenge_page?(body) -> {:error, :blocked_by_provider}
+      true -> {:error, :scrape_failed}
+    end
+  end
+
+  defp no_results_page?(body) do
+    String.contains?(body, "no-results") or String.contains?(body, "did not match")
+  end
+
+  defp challenge_page?(body) do
+    down = String.downcase(body)
+
+    String.contains?(down, "anomaly") or String.contains?(down, "captcha") or
+      String.contains?(down, "challenge")
   end
 
   def format_results([]), do: "No search results found."

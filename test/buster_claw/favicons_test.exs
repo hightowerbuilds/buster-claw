@@ -33,6 +33,78 @@ defmodule BusterClaw.FaviconsTest do
              Favicons.fetch("example.com", cache_dir: dir)
   end
 
+  test "discovers <link rel=icon> when /favicon.ico misses", %{dir: dir} do
+    Req.Test.stub(BusterClaw.FaviconHTTP, fn conn ->
+      case conn.request_path do
+        "/favicon.ico" ->
+          Plug.Conn.send_resp(conn, 404, "")
+
+        "/" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("text/html")
+          |> Plug.Conn.send_resp(
+            200,
+            ~s(<html><head><link rel="apple-touch-icon" href="/big.png">) <>
+              ~s(<link rel="icon" type="image/png" href="/static/fav.png"></head></html>)
+          )
+
+        "/static/fav.png" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("image/png", nil)
+          |> Plug.Conn.send_resp(200, @png)
+
+        other ->
+          flunk("unexpected fetch of #{other} — plain icon rel should win")
+      end
+    end)
+
+    assert {:ok, %{body: @png, content_type: "image/png"}} =
+             Favicons.fetch("spa.example", cache_dir: dir)
+  end
+
+  test "follows an absolute declared icon URL", %{dir: dir} do
+    Req.Test.stub(BusterClaw.FaviconHTTP, fn conn ->
+      case conn.request_path do
+        "/favicon.ico" ->
+          Plug.Conn.send_resp(conn, 404, "")
+
+        "/" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("text/html")
+          |> Plug.Conn.send_resp(
+            200,
+            ~s(<html><head><link rel="shortcut icon" href="https://cdn.example/icon.png"></head></html>)
+          )
+
+        "/icon.png" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("image/png", nil)
+          |> Plug.Conn.send_resp(200, @png)
+      end
+    end)
+
+    assert {:ok, %{body: @png}} = Favicons.fetch("cdnsite.example", cache_dir: dir)
+  end
+
+  test "a data: icon href is a miss, not a fetch", %{dir: dir} do
+    Req.Test.stub(BusterClaw.FaviconHTTP, fn conn ->
+      case conn.request_path do
+        "/favicon.ico" ->
+          Plug.Conn.send_resp(conn, 404, "")
+
+        "/" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("text/html")
+          |> Plug.Conn.send_resp(
+            200,
+            ~s(<html><head><link rel="icon" href="data:image/png;base64,AAAA"></head></html>)
+          )
+      end
+    end)
+
+    assert :error = Favicons.fetch("datauri.example", cache_dir: dir)
+  end
+
   test "caches misses so a host is not re-fetched within the TTL", %{dir: dir} do
     Req.Test.stub(BusterClaw.FaviconHTTP, fn conn -> Plug.Conn.send_resp(conn, 404, "") end)
     assert :error = Favicons.fetch("nofavicon.com", cache_dir: dir)
