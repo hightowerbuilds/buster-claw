@@ -189,6 +189,12 @@
           "markdownDescription": "Enables the browser_back command without any pre-configured scope."
         },
         {
+          "description": "Enables the browser_click_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-click-active",
+          "markdownDescription": "Enables the browser_click_active command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_close command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-close",
@@ -201,10 +207,34 @@
           "markdownDescription": "Enables the browser_close_tab command without any pre-configured scope."
         },
         {
+          "description": "Enables the browser_current command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-current",
+          "markdownDescription": "Enables the browser_current command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_fill_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-fill-active",
+          "markdownDescription": "Enables the browser_fill_active command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_find command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-find",
           "markdownDescription": "Enables the browser_find command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_find_count command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-find-count",
+          "markdownDescription": "Enables the browser_find_count command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_find_elements_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-find-elements-active",
+          "markdownDescription": "Enables the browser_find_elements_active command without any pre-configured scope."
         },
         {
           "description": "Enables the browser_forward command without any pre-configured scope.",
@@ -225,6 +255,12 @@
           "markdownDescription": "Enables the browser_navigate command without any pre-configured scope."
         },
         {
+          "description": "Enables the browser_navigate_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-navigate-active",
+          "markdownDescription": "Enables the browser_navigate_active command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_new_tab command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-new-tab",
@@ -237,10 +273,28 @@
           "markdownDescription": "Enables the browser_open command without any pre-configured scope."
         },
         {
+          "description": "Enables the browser_open_tab_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-open-tab-active",
+          "markdownDescription": "Enables the browser_open_tab_active command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_read_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-read-active",
+          "markdownDescription": "Enables the browser_read_active command without any pre-configured scope."
+        },
+        {
           "description": "Enables the browser_reload command without any pre-configured scope.",
           "type": "string",
           "const": "allow-browser-reload",
           "markdownDescription": "Enables the browser_reload command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the browser_render_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-browser-render-page",
+          "markdownDescription": "Enables the browser_render_page command without any pre-configured scope."
         },
         {
           "description": "Enables the browser_reveal_download command without any pre-configured scope.",
@@ -297,6 +351,12 @@
           "markdownDescription": "Enables the terminal_attach command without any pre-configured scope."
         },
         {
+          "description": "Enables the terminal_busy command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-terminal-busy",
+          "markdownDescription": "Enables the terminal_busy command without any pre-configured scope."
+        },
+        {
           "description": "Enables the terminal_close command without any pre-configured scope.",
           "type": "string",
           "const": "allow-terminal-close",
@@ -333,6 +393,12 @@
           "markdownDescription": "Denies the browser_back command without any pre-configured scope."
         },
         {
+          "description": "Denies the browser_click_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-click-active",
+          "markdownDescription": "Denies the browser_click_active command without any pre-configured scope."
+        },
+        {
           "description": "Denies the browser_close command without any pre-configured scope.",
           "type": "string",
           "const": "deny-browser-close",
@@ -345,10 +411,34 @@
           "markdownDescription": "Denies the browser_close_tab command without any pre-configured scope."
         },
         {
+          "description": "Denies the browser_current command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-current",
+          "markdownDescription": "Denies the browser_current command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_fill_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-fill-active",
+          "markdownDescription": "Denies the browser_fill_active command without any pre-configured scope."
+        },
+        {
           "description": "Denies the browser_find command without any pre-configured scope.",
           "type": "string",
           "const": "deny-browser-find",
           "markdownDescription": "Denies the browser_find command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_find_count command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-find-count",
+          "markdownDescription": "Denies the browser_find_count command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_find_elements_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-find-elements-active",
+          "markdownDescription": "Denies the browser_find_elements_active command without any pre-configured scope."
         },
         {
           "description": "Denies the browser_forward command without any pre-configured scope.",
@@ -369,6 +459,12 @@
           "markdownDescription": "Denies the browser_navigate command without any pre-configured scope."
         },
         {
+          "description": "Denies the browser_navigate_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-navigate-active",
+          "markdownDescription": "Denies the browser_navigate_active command without any pre-configured scope."
+        },
+        {
           "description": "Denies the browser_new_tab command without any pre-configured scope.",
           "type": "string",
           "const": "deny-browser-new-tab",
@@ -381,10 +477,28 @@
           "markdownDescription": "Denies the browser_open command without any pre-configured scope."
         },
         {
+          "description": "Denies the browser_open_tab_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-open-tab-active",
+          "markdownDescription": "Denies the browser_open_tab_active command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_read_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-read-active",
+          "markdownDescription": "Denies the browser_read_active command without any pre-configured scope."
+        },
+        {
           "description": "Denies the browser_reload command without any pre-configured scope.",
           "type": "string",
           "const": "deny-browser-reload",
           "markdownDescription": "Denies the browser_reload command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the browser_render_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-browser-render-page",
+          "markdownDescription": "Denies the browser_render_page command without any pre-configured scope."
         },
         {
           "description": "Denies the browser_reveal_download command without any pre-configured scope.",
@@ -439,6 +553,12 @@
           "type": "string",
           "const": "deny-terminal-attach",
           "markdownDescription": "Denies the terminal_attach command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the terminal_busy command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-terminal-busy",
+          "markdownDescription": "Denies the terminal_busy command without any pre-configured scope."
         },
         {
           "description": "Denies the terminal_close command without any pre-configured scope.",

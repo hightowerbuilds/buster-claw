@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-render-page"
+description = "Enables the browser_render_page command without any pre-configured scope."
+commands.allow = ["browser_render_page"]
+
+[[permission]]
+identifier = "deny-browser-render-page"
+description = "Denies the browser_render_page command without any pre-configured scope."
+commands.deny = ["browser_render_page"]

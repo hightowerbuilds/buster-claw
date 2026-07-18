@@ -12,6 +12,7 @@
     "allow-terminal-attach",
     "allow-terminal-input",
     "allow-terminal-resize",
+    "allow-terminal-busy",
     "allow-terminal-close",
     "allow-browser-open",
     "allow-browser-set-bounds",
@@ -22,6 +23,14 @@
     "allow-browser-hide",
     "allow-browser-close",
     "allow-browser-screenshot",
+    "allow-browser-current",
+    "allow-browser-navigate-active",
+    "allow-browser-open-tab-active",
+    "allow-browser-read-active",
+    "allow-browser-find-elements-active",
+    "allow-browser-click-active",
+    "allow-browser-fill-active",
+    "allow-browser-render-page",
     "allow-speak",
     "allow-stop-speaking"
   ]

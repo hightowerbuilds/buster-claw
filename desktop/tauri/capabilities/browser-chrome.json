@@ -19,6 +19,7 @@
     "allow-browser-reveal-download",
     "allow-browser-set-zoom",
     "allow-browser-find",
+    "allow-browser-find-count",
     "allow-browser-set-content-blocking"
   ]
 }

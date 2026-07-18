@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-find-elements-active"
+description = "Enables the browser_find_elements_active command without any pre-configured scope."
+commands.allow = ["browser_find_elements_active"]
+
+[[permission]]
+identifier = "deny-browser-find-elements-active"
+description = "Denies the browser_find_elements_active command without any pre-configured scope."
+commands.deny = ["browser_find_elements_active"]
