@@ -201,6 +201,9 @@ fix is backend-invisible or pixel-identical.
   zero-allocation smoke-shader frame loop.
 
 **State of the tree:** `mix precommit` green — **1061 tests**, 0 failures.
-Untracked scratch file `test/buster_claw/notifications/repeat_repro_test.exs`
-(a Notify debugging repro with an `IO.puts`) was left untracked on purpose —
-promote it to a real test or delete it.
+The untracked Notify debugging repro
+(`test/buster_claw/notifications/repeat_repro_test.exs`) was deleted by
+operator call. Note `scheduler_test.exs` covers fires-when-due and
+stays-armed-when-future, but not the repro's exactly-once-across-rapid-ticks
+assertion — if that guarantee matters, it deserves a real test someday.
+Working tree clean.
