@@ -4,7 +4,7 @@ defmodule BusterClaw.Commands.Web do
   import BusterClaw.Commands.Helpers
 
   alias BusterClaw.{Browser, BrowserHistory, Search}
-  alias BusterClaw.Browser.{Bridge, Capture, FlowRunner}
+  alias BusterClaw.Browser.{Bridge, Capture, Checks, FlowRunner}
 
   def web_search(%{"query" => query} = args) do
     limit = Map.get(args, "limit", 10)
@@ -585,6 +585,38 @@ defmodule BusterClaw.Commands.Web do
         step
     end)
   end
+
+  @doc """
+  Save a named, re-runnable site check — a flow definition stored as markdown
+  in `<workspace>/checks/` with an append-only run history
+  (`BusterClaw.Browser.Checks`). Overwriting keeps the history.
+  """
+  def browser_check_save(%{"name" => name, "steps" => steps} = args) when is_list(steps) do
+    Checks.save(name, steps, Map.get(args, "description"))
+  end
+
+  def browser_check_save(_args), do: {:error, :missing_name_or_steps}
+
+  def browser_check_list(_args \\ %{}), do: {:ok, %{checks: Checks.list()}}
+
+  @doc """
+  Run a saved check as a browser flow in the user's live session and append
+  the pass/fail result to its run history. The history append is best-effort
+  (logged, never fatal); the flow report itself is the return value.
+  """
+  def browser_check_run(%{"name" => name}) when is_binary(name) and name != "" do
+    with {:ok, %{steps: steps}} <- Checks.load(name) do
+      started = System.monotonic_time(:millisecond)
+
+      with {:ok, report} <- browser_flow(%{"steps" => steps}) do
+        total_ms = System.monotonic_time(:millisecond) - started
+        _ = Checks.record_run(name, report, total_ms)
+        {:ok, Map.put(report, :check, name)}
+      end
+    end
+  end
+
+  def browser_check_run(_args), do: {:error, :missing_name}
 
   @doc """
   The browser's current tab strip, read from the durable per-surface tab state

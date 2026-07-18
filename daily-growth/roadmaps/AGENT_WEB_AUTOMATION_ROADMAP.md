@@ -103,7 +103,7 @@ files its result in the Library.
 **Exit test:** a broken selector produces "step 3 failed: #signup-btn not found
 [screenshot]", never a silent empty extract.
 
-### Phase 5 — The testing product ("build our own testing")
+### Phase 5 — The testing product ("build our own testing") ✅ DONE 07-18
 Saved flows become **re-runnable site checks**: "test my signup flow" → a named
 flow in the workspace (markdown-defined, like skills), run on demand by the
 operator or the agent, pass/fail history in the Library. This is the prize: the

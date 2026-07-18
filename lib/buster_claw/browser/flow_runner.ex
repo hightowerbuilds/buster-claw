@@ -59,12 +59,19 @@ defmodule BusterClaw.Browser.FlowRunner do
 
   def run(_steps, _opts), do: {:error, :steps_must_be_a_list}
 
-  defp validate([]), do: {:error, :empty_flow}
+  @doc """
+  Validate a step list without running it — `:ok` or the same typed errors
+  `run/2` would return. Used by saved checks to refuse a bad definition at
+  save time rather than at 2am when the check runs.
+  """
+  def validate(steps)
 
-  defp validate(steps) when length(steps) > @max_steps,
+  def validate([]), do: {:error, :empty_flow}
+
+  def validate(steps) when length(steps) > @max_steps,
     do: {:error, {:too_many_steps, length(steps)}}
 
-  defp validate(steps) do
+  def validate(steps) when is_list(steps) do
     steps
     |> Enum.with_index(1)
     |> Enum.find_value(:ok, fn
@@ -74,6 +81,8 @@ defmodule BusterClaw.Browser.FlowRunner do
       {_step, index} -> {:error, {:bad_step, index, :not_a_map}}
     end)
   end
+
+  def validate(_steps), do: {:error, :steps_must_be_a_list}
 
   defp run_steps(steps, exec) do
     steps

@@ -670,4 +670,55 @@ defmodule BusterClaw.Commands.WebCopresenceTest do
       assert length(BusterClaw.Sentinel.list_events()) == before
     end
   end
+
+  describe "browser_check_run" do
+    setup do
+      root = Path.join(System.tmp_dir!(), "bc_checkrun_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+      previous = Application.get_env(:buster_claw, :workspace_root)
+      Application.put_env(:buster_claw, :workspace_root, root)
+
+      on_exit(fn ->
+        if is_nil(previous) do
+          Application.delete_env(:buster_claw, :workspace_root)
+        else
+          Application.put_env(:buster_claw, :workspace_root, previous)
+        end
+
+        File.rm_rf(root)
+      end)
+
+      :ok
+    end
+
+    test "runs the saved flow via the desktop and appends to the run history" do
+      assert {:ok, %{name: "smoke", steps: 1}} =
+               Commands.browser_check_save(%{
+                 "name" => "smoke",
+                 "steps" => [%{"action" => "navigate", "url" => "https://example.com"}]
+               })
+
+      Bridge.subscribe()
+      task = Task.async(fn -> Commands.browser_check_run(%{"name" => "smoke"}) end)
+
+      assert_receive {:browser_command, ref, :navigate, %{"url" => "https://example.com"}}, 1_000
+      Bridge.fulfill(ref, {:ok, %{}})
+
+      assert {:ok, %{status: "passed", check: "smoke", failed_step: nil}} = Task.await(task)
+
+      assert [%{name: "smoke", last_run: last}] = BusterClaw.Browser.Checks.list()
+      assert last =~ "PASSED (1 steps"
+
+      assert Enum.any?(
+               BusterClaw.Sentinel.list_events(limit: 3),
+               &(&1.metadata["via"] == "browser_flow")
+             )
+    end
+
+    test "unknown or missing check names are typed errors" do
+      assert {:error, :check_not_found} = Commands.browser_check_run(%{"name" => "ghost"})
+      assert {:error, :missing_name} = Commands.browser_check_run(%{})
+      assert {:error, :missing_name_or_steps} = Commands.browser_check_save(%{"name" => "x"})
+    end
+  end
 end
