@@ -21,7 +21,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, Url, WebviewUrl};
@@ -546,6 +546,42 @@ pub fn browser_find(
     tab_eval(&app, &state, &sid, &tab_id, &js)
 }
 
+/// Total match count for the chrome's find bar ("N matches"): counts
+/// case-insensitive occurrences of `query` in the page's rendered `innerText`.
+/// An approximation of what `window.find` steps through (innerText already
+/// excludes hidden text), but cheap and honest enough for a count label —
+/// positional "3 of 17" tracking would need the native WKWebView find API.
+#[tauri::command]
+pub fn browser_find_count(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: String,
+    tab_id: String,
+    query: String,
+) -> Result<u32, String> {
+    let sid = sanitize_sid(&surface_id);
+    if query.is_empty() {
+        return Ok(0);
+    }
+    let webview =
+        resolve_target(&app, &state, &sid, &tab_id).ok_or_else(|| "no such tab".to_string())?;
+    let js = format!(
+        r#"String((function () {{
+  var q = {}.toLowerCase();
+  if (!q) return 0;
+  var t = ((document.body && document.body.innerText) || "").toLowerCase();
+  var c = 0, i = 0;
+  while ((i = t.indexOf(q, i)) !== -1) {{ c++; i += q.length; if (c > 9999) break; }}
+  return c;
+}})())"#,
+        js_str(&query)
+    );
+    let raw = eval_with_result(&webview, &js)?;
+    raw.trim()
+        .parse::<u32>()
+        .map_err(|_| "bad match count".to_string())
+}
+
 /// Set a content tab's page zoom (⌘+/⌘−/⌘0 through the chrome). The chrome
 /// tracks the per-tab factor; this just applies it, clamped to a sane range.
 #[tauri::command]
@@ -722,6 +758,68 @@ pub fn browser_read_active(
 pub struct ReadPage {
     /// JSON-encoded `{url, title, text, links}` straight from the page script.
     pub data: String,
+}
+
+// Off-screen render webview labels — unique per render so concurrent renders
+// never collide.
+static RENDER_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Server-side fetch fallback for JS-heavy pages (packaged builds carry no
+/// Playwright sidecar): load `url` in a hidden, **ephemeral** child webview
+/// (non-persistent data store — never the user's cookies or session), wait for
+/// the document to finish loading plus a short hydration settle, run the same
+/// read script `browser_read_active` uses, and close the webview. The Phoenix
+/// `Browser` module decides *when* a render is worth it; this command just
+/// renders. Returns `{data}` in the `browser_read_active` shape.
+#[tauri::command]
+pub fn browser_render_page(
+    app: AppHandle,
+    url: String,
+    wait_ms: Option<u64>,
+) -> Result<ReadPage, String> {
+    let parsed = parse_web_url(&url)?;
+    let window = app
+        .get_window("main")
+        .ok_or_else(|| "main window missing".to_string())?;
+    let label = format!(
+        "browser-render-{}",
+        RENDER_SEQ.fetch_add(1, Ordering::Relaxed)
+    );
+    // Parked far off-screen: laid out and rendered (so innerText is real) but
+    // never visible and never focused. Viewport-sized so pages don't collapse
+    // into a degenerate layout.
+    let builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
+        .incognito(true)
+        .focused(false);
+    let webview = window
+        .add_child(
+            builder,
+            LogicalPosition::new(-4000.0, 0.0),
+            LogicalSize::new(1100.0, 900.0),
+        )
+        .map_err(|e| format!("failed to create {label}: {e}"))?;
+    let result = render_settle_and_read(&webview, wait_ms.unwrap_or(9_000));
+    let _ = webview.close();
+    result.map(|data| ReadPage { data })
+}
+
+// Poll the document until it reports `complete` (or the budget runs out — a
+// slow page still yields whatever has rendered by then), give SPA hydration a
+// short settle, then read. Runs on the command's worker thread; each poll is a
+// main-thread `evaluateJavaScript` round-trip via `eval_with_result`.
+fn render_settle_and_read(webview: &tauri::Webview, budget_ms: u64) -> Result<String, String> {
+    use std::time::{Duration, Instant};
+    let deadline = Instant::now() + Duration::from_millis(budget_ms.clamp(1_000, 20_000));
+    loop {
+        std::thread::sleep(Duration::from_millis(300));
+        match eval_with_result(webview, "String(document.readyState)") {
+            Ok(state) if state == "complete" => break,
+            _ if Instant::now() >= deadline => break,
+            _ => {}
+        }
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    eval_with_result(webview, READ_PAGE_JS)
 }
 
 /// Interaction script for `browser_find_elements_active`: collects the page's
@@ -1438,6 +1536,66 @@ fn ensure_chrome(
 // Create a content webview for `tab_id` in a surface with the navigation guard,
 // popup guard, and per-tab navigation reporting back to that surface's chrome.
 #[allow(clippy::too_many_arguments)]
+// Injected into each content webview before page scripts. Background-tab
+// eviction (MAX_LIVE_TABS) closes the webview, so a switch-back reloads the
+// saved URL at the top of the page — this shim makes that reload land where
+// the user left off. Positions are debounce-saved per URL into origin-scoped
+// localStorage (one LRU-capped map under a single key, so a site only ever
+// sees its own origin's entries) and restored on fresh loads. Restore is
+// skipped when the URL carries an anchor hash, when the site restored a
+// position itself, or when the entry has aged out. Form input is not
+// preserved — that would mean serializing page state we can't do safely.
+const SCROLL_RESTORE_JS: &str = r##"
+(function () {
+  try {
+    if (window.top !== window) return;
+    var KEY = "__bcScrollV1";
+    var TTL_MS = 6 * 60 * 60 * 1000;
+    var MAX_ENTRIES = 30;
+    function read() {
+      try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; }
+      catch (_e) { return {}; }
+    }
+    function write(m) {
+      try { localStorage.setItem(KEY, JSON.stringify(m)); } catch (_e) {}
+    }
+    function href() { return location.href.split("#")[0]; }
+    function saveNow() {
+      var m = read();
+      m[href()] = [window.scrollX || 0, window.scrollY || 0, Date.now()];
+      var keys = Object.keys(m);
+      if (keys.length > MAX_ENTRIES) {
+        keys.sort(function (a, b) { return (m[a][2] || 0) - (m[b][2] || 0); });
+        for (var i = 0; i < keys.length - MAX_ENTRIES; i++) delete m[keys[i]];
+      }
+      write(m);
+    }
+    var t = null;
+    window.addEventListener("scroll", function () {
+      if (t) clearTimeout(t);
+      t = setTimeout(saveNow, 250);
+    }, {passive: true});
+    window.addEventListener("pagehide", saveNow);
+    function restore() {
+      if (location.hash) return;
+      var e = read()[href()];
+      if (!e || (!e[0] && !e[1])) return;
+      if (Date.now() - (e[2] || 0) > TTL_MS) return;
+      var tries = 0;
+      (function attempt() {
+        if ((window.scrollY || 0) > 8) return;
+        var max = (document.documentElement.scrollHeight || 0) - window.innerHeight;
+        if (max >= e[1] || tries >= 20) { window.scrollTo(e[0], e[1]); return; }
+        tries++;
+        setTimeout(attempt, 150);
+      })();
+    }
+    if (document.readyState === "complete") setTimeout(restore, 80);
+    else window.addEventListener("load", function () { setTimeout(restore, 80); });
+  } catch (_e) {}
+})();
+"##;
+
 fn create_content(
     app: &AppHandle,
     sid: &str,
@@ -1556,7 +1714,8 @@ fn create_content(
                 );
             }
         })
-        .initialization_script(POPUPS_AS_TABS_JS);
+        .initialization_script(POPUPS_AS_TABS_JS)
+        .initialization_script(SCROLL_RESTORE_JS);
 
     window
         .add_child(

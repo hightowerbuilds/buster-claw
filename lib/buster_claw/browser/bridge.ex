@@ -4,30 +4,30 @@ defmodule BusterClaw.Browser.Bridge do
 
   Mirrors `BusterClaw.Browser.Capture`, but instead of a single screenshot action
   it carries a small set of co-presence commands (`:current`, `:read`,
-  `:find_elements`, `:click`, `:fill`, `:navigate`, `:open_tab`) the agent can
-  issue to read and drive the tab the user is viewing.
+  `:find_elements`, `:click`, `:fill`, `:navigate`, `:open_tab`, `:render`) the
+  agent can issue to read and drive the tab the user is viewing — or, for
+  `:render`, to load a URL in a hidden ephemeral webview when the plain-HTTP
+  fetch pipeline can't produce readable content.
 
   The agent drives the Phoenix command surface, but the webviews live in the
-  separate Tauri process. `request/2` issues a command: it broadcasts it (tagged
+  separate Tauri process. `request/3` issues a command: it broadcasts it (tagged
   with a unique ref) to connected top-level LiveViews, then **blocks** until the
   desktop side POSTs the result back to `/browser/command`, which calls
   `fulfill/2`. If no desktop UI answers in time, the caller gets `:browser_timeout`
-  — there's simply no live browser to act on.
+  — there's simply no live browser to act on. `available?/0` reports whether any
+  shell LiveView is currently subscribed, so slow-to-fail paths (the fetch
+  fallback) can skip the wait entirely when no desktop is attached.
   """
 
   use GenServer
 
   @topic "browser_bridge"
   @default_timeout_ms 8_000
-  @actions ~w(current read find_elements click fill navigate open_tab)a
+  @actions ~w(current read find_elements click fill navigate open_tab render)a
 
   # The internal expiry; overridable in tests via :browser_bridge_timeout_ms.
   defp timeout_ms,
     do: Application.get_env(:buster_claw, :browser_bridge_timeout_ms, @default_timeout_ms)
-
-  # The client call waits a touch longer than the internal expiry so the GenServer
-  # always replies (with a result or a clean timeout) before the call itself exits.
-  defp call_timeout_ms, do: timeout_ms() + 2_000
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
@@ -37,23 +37,52 @@ defmodule BusterClaw.Browser.Bridge do
   def topic, do: @topic
 
   @doc "Subscribe the current process to command requests (used by the on_mount hook)."
-  def subscribe, do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, @topic)
+  def subscribe do
+    GenServer.cast(__MODULE__, {:track, self()})
+    Phoenix.PubSub.subscribe(BusterClaw.PubSub, @topic)
+  end
+
+  @doc """
+  Whether a desktop shell is listening right now (any live subscriber). Lets
+  optional co-presence work — like the live-render fetch fallback — bail out
+  instantly instead of blocking a full request timeout when the app isn't open.
+  """
+  def available? do
+    case Process.whereis(__MODULE__) do
+      nil ->
+        false
+
+      _pid ->
+        try do
+          GenServer.call(__MODULE__, :available?, 1_000)
+        catch
+          :exit, _ -> false
+        end
+    end
+  end
 
   @doc """
   Issue a co-presence command and block until the desktop side fulfils it.
 
-  Returns `{:ok, result}` (for `:current`, `%{url:, title:}`; for the trigger
-  actions, an empty map confirming success) or `{:error, reason}`
-  (`:browser_unavailable`, `:browser_timeout`, or a desktop-reported reason).
+  Returns `{:ok, result}` (for `:current`, `%{url:, title:}`; for `:read` and
+  `:render`, `%{data: json}`; for the trigger actions, an empty map confirming
+  success) or `{:error, reason}` (`:browser_unavailable`, `:browser_timeout`,
+  or a desktop-reported reason).
+
+  Options: `:timeout_ms` overrides the per-request expiry — `:render` waits on
+  a real page load, so its callers pass a budget above the 8s default.
   """
-  def request(action, payload \\ %{}) when action in @actions and is_map(payload) do
+  def request(action, payload \\ %{}, opts \\ [])
+      when action in @actions and is_map(payload) and is_list(opts) do
+    timeout = Keyword.get(opts, :timeout_ms, timeout_ms())
+
     case Process.whereis(__MODULE__) do
       nil ->
         {:error, :browser_unavailable}
 
       _pid ->
         try do
-          GenServer.call(__MODULE__, {:request, action, payload}, call_timeout_ms())
+          GenServer.call(__MODULE__, {:request, action, payload, timeout}, timeout + 2_000)
         catch
           :exit, _ -> {:error, :browser_timeout}
         end
@@ -67,34 +96,51 @@ defmodule BusterClaw.Browser.Bridge do
   end
 
   @impl true
-  def init(_opts), do: {:ok, %{}}
+  def init(_opts), do: {:ok, %{pending: %{}, subscribers: MapSet.new()}}
 
   @impl true
-  def handle_call({:request, action, payload}, from, pending) do
+  def handle_call({:request, action, payload, timeout}, from, state) do
     ref = generate_ref()
-    Process.send_after(self(), {:expire, ref}, timeout_ms())
+    Process.send_after(self(), {:expire, ref}, timeout)
     Phoenix.PubSub.broadcast(BusterClaw.PubSub, @topic, {:browser_command, ref, action, payload})
-    {:noreply, Map.put(pending, ref, from)}
+    {:noreply, put_in(state.pending[ref], from)}
+  end
+
+  def handle_call(:available?, _from, state) do
+    {:reply, MapSet.size(state.subscribers) > 0, state}
   end
 
   @impl true
-  def handle_cast({:fulfill, ref, result}, pending) do
-    {:noreply, reply_and_drop(pending, ref, result)}
+  def handle_cast({:fulfill, ref, result}, state) do
+    {:noreply, reply_and_drop(state, ref, result)}
+  end
+
+  def handle_cast({:track, pid}, state) do
+    if MapSet.member?(state.subscribers, pid) do
+      {:noreply, state}
+    else
+      Process.monitor(pid)
+      {:noreply, update_in(state.subscribers, &MapSet.put(&1, pid))}
+    end
   end
 
   @impl true
-  def handle_info({:expire, ref}, pending) do
-    {:noreply, reply_and_drop(pending, ref, {:error, :browser_timeout})}
+  def handle_info({:expire, ref}, state) do
+    {:noreply, reply_and_drop(state, ref, {:error, :browser_timeout})}
   end
 
-  defp reply_and_drop(pending, ref, result) do
-    case Map.pop(pending, ref) do
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
+    {:noreply, update_in(state.subscribers, &MapSet.delete(&1, pid))}
+  end
+
+  defp reply_and_drop(state, ref, result) do
+    case Map.pop(state.pending, ref) do
       {nil, pending} ->
-        pending
+        %{state | pending: pending}
 
       {from, pending} ->
         GenServer.reply(from, result)
-        pending
+        %{state | pending: pending}
     end
   end
 

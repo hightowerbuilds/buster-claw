@@ -48,6 +48,42 @@ defmodule BusterClaw.Browser.BridgeTest do
     assert {:error, :browser_timeout} = Bridge.request(:current)
   end
 
+  test "a per-request timeout override beats the configured expiry" do
+    # Config default is 8s — an unanswered request with a 50ms override must
+    # expire on the override, not the config.
+    assert {:error, :browser_timeout} = Bridge.request(:current, %{}, timeout_ms: 50)
+  end
+
+  test "available? tracks live subscribers and their deaths" do
+    parent = self()
+
+    pid =
+      spawn(fn ->
+        Bridge.subscribe()
+        send(parent, :subscribed)
+
+        receive do
+          :stop -> :ok
+        end
+      end)
+
+    assert_receive :subscribed
+    assert Bridge.available?()
+
+    ref = Process.monitor(pid)
+    send(pid, :stop)
+    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+    assert wait_until(fn -> not Bridge.available?() end)
+  end
+
+  defp wait_until(fun, tries \\ 50) do
+    cond do
+      fun.() -> true
+      tries == 0 -> false
+      true -> Process.sleep(10) && wait_until(fun, tries - 1)
+    end
+  end
+
   defp restore(key, nil), do: Application.delete_env(:buster_claw, key)
   defp restore(key, value), do: Application.put_env(:buster_claw, key, value)
 end

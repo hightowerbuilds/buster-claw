@@ -55,6 +55,12 @@ export const ScreenshotBridge = {
           // session: "user" rides the user's cookies; anything else (the
           // default) opens an ephemeral sandbox tab (Phase 3.4).
           await invoke("browser_open_tab_active", {url: payload.url, session: payload.session})
+        } else if (action === "render") {
+          // Hidden ephemeral webview render (server-side fetch fallback for
+          // JS-heavy pages); `data` is the read script's JSON string, decoded
+          // server-side by the Browser live-render path.
+          const page = await invoke("browser_render_page", {url: payload.url, waitMs: payload.wait_ms || null})
+          data = {ok: true, data: page.data}
         } else {
           this.reportCommand(ref, {error: "unknown browser command"})
           return

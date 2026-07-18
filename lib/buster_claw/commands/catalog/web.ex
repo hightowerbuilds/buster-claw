@@ -21,8 +21,16 @@ defmodule BusterClaw.Commands.Catalog.Web do
         name: "browser_fetch",
         type: :trigger,
         tier: :safe,
-        description: "Fetch a URL and convert to markdown.",
-        args: %{"url" => %{type: :string, required: true}}
+        description:
+          "Fetch a URL and convert to markdown. JS-heavy pages that come back empty over plain HTTP are automatically re-rendered in a hidden ephemeral desktop webview (never the user's session) when the app is open.",
+        args: %{
+          "url" => %{type: :string, required: true},
+          "render" => %{
+            type: :string,
+            required: false,
+            description: "\"live\" forces the hidden-webview render; \"off\" forbids it."
+          }
+        }
       },
       %{
         name: "browser_download",

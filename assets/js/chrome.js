@@ -449,6 +449,8 @@ addr.addEventListener("blur", function () { setTimeout(clearSuggestions, 150) })
 // (WebKit window.find): selection + scroll with wraparound.
 let findOpen = false
 let findInput = null
+let findCount = null
+let findCountT = null
 
 function openFindBar() {
   findOpen = true
@@ -459,12 +461,33 @@ function openFindBar() {
 function closeFindBar() {
   findOpen = false
   findInput = null
+  findCount = null
+  if (findCountT) { clearTimeout(findCountT); findCountT = null }
   drawBookmarks()
 }
 
 function findStep(backwards) {
   const q = findInput && findInput.value.trim()
   if (q) inv("browser_find", {tabId: activeId, query: q, backwards: !!backwards})
+}
+
+// Total-match label ("17 matches") next to the input, refreshed when the query
+// changes (not on next/prev steps — the total doesn't move). Debounced so fast
+// typing doesn't queue a count round-trip per keystroke; a stale reply (the
+// query changed while it was in flight) is dropped.
+function updateFindCount() {
+  if (findCountT) clearTimeout(findCountT)
+  findCountT = setTimeout(() => {
+    const q = findInput && findInput.value.trim()
+    if (!findCount) return
+    if (!q) { findCount.textContent = ""; findCount.classList.remove("none"); return }
+    inv("browser_find_count", {tabId: activeId, query: q}).then((n) => {
+      if (!findCount || !findInput || findInput.value.trim() !== q) return
+      if (typeof n !== "number") { findCount.textContent = ""; return }
+      findCount.textContent = n === 0 ? "No matches" : n === 1 ? "1 match" : n + " matches"
+      findCount.classList.toggle("none", n === 0)
+    }).catch(() => { if (findCount) findCount.textContent = "" })
+  }, 150)
 }
 
 function drawFindBar() {
@@ -480,7 +503,7 @@ function drawFindBar() {
     if (e.key === "Enter") { e.preventDefault(); findStep(e.shiftKey) }
     else if (e.key === "Escape") { e.preventDefault(); closeFindBar() }
   })
-  findInput.addEventListener("input", function () { findStep(false) })
+  findInput.addEventListener("input", function () { findStep(false); updateFindCount() })
   const mk = (label, title, fn) => {
     const b = document.createElement("button")
     b.type = "button"; b.className = "fbtn"; b.title = title; b.textContent = label
@@ -488,6 +511,9 @@ function drawFindBar() {
     return b
   }
   wrap.appendChild(findInput)
+  findCount = document.createElement("span")
+  findCount.className = "fcount"
+  wrap.appendChild(findCount)
   wrap.appendChild(mk("‹", "Previous match (⇧↵)", () => findStep(true)))
   wrap.appendChild(mk("›", "Next match (↵)", () => findStep(false)))
   wrap.appendChild(mk("×", "Close (Esc)", closeFindBar))

@@ -15,7 +15,18 @@ defmodule BusterClaw.Commands.Web do
   # Browser
   # -----------------------------------------------------------------------
 
-  def browser_fetch(%{"url" => url}), do: Browser.fetch(url, [])
+  def browser_fetch(%{"url" => url} = args), do: Browser.fetch(url, render: render_mode(args))
+
+  # "live" forces the desktop shell's hidden-webview render; "off" forbids it;
+  # anything else lets Browser.fetch upgrade automatically when the plain
+  # pipeline comes back JS-thin.
+  defp render_mode(args) do
+    case Map.get(args, "render") do
+      "live" -> :live
+      "off" -> :off
+      _other -> :auto
+    end
+  end
 
   def browser_download(%{"url" => url} = args) when is_binary(url) and url != "" do
     with {:ok, dl} <- Browser.download(url) do

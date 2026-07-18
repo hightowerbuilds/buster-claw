@@ -223,6 +223,9 @@ defmodule BusterClawWeb.BrowserChromeController do
               border: 1px solid rgba(244,241,234,.2); border-radius: 4px; cursor: pointer;
               font-size: 13px; line-height: 1; }
       .fbtn:hover { border-color: #ff4d1c; color: #ff4d1c; }
+      .fcount { flex: 0 0 auto; padding: 0 4px; color: rgba(244,241,234,.55);
+                font: 11px/1 ui-monospace, monospace; white-space: nowrap; }
+      .fcount.none { color: #ff4d1c; }
     </style>
     </head>
     <body data-sid="#{sid}" data-search-url="#{escape_attr(search_url)}">

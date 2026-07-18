@@ -76,6 +76,11 @@ config :buster_claw, :onboarding_gate, false
 # its unit test.
 config :buster_claw, :ssrf_resolve_dns, false
 
+# No desktop shell in tests: never let Browser.fetch wait on the live-render
+# bridge. The fallback path is covered explicitly in browser_test.exs with the
+# flag flipped on and a manually fulfilled Bridge request.
+config :buster_claw, :browser_live_render_enabled, false
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

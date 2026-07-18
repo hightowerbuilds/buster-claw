@@ -1,7 +1,18 @@
 defmodule BusterClaw.Browser do
-  @moduledoc "Browser-rendered fetch boundary with an optional supervised Playwright sidecar."
+  @moduledoc """
+  Browser-rendered fetch boundary.
 
-  alias BusterClaw.Browser.Sidecar
+  Three engines, in falling order of fidelity: the Playwright sidecar (dev
+  only), the desktop shell's hidden-webview **live render** (via
+  `BusterClaw.Browser.Bridge` — the packaged app's only real-JS path), and
+  plain HTTP. `fetch/2` runs the classic sidecar/HTTP pipeline first and
+  upgrades to a live render only when the result comes back JS-thin (an SPA
+  shell with no readable text) or failed outright (bot-walled) — and only when
+  the desktop app is actually attached. `render: :live` forces the live path,
+  `render: :off` forbids it.
+  """
+
+  alias BusterClaw.Browser.{Bridge, Sidecar}
   alias BusterClaw.Ingest.Content
   alias BusterClaw.URLGuard
 
@@ -28,9 +39,17 @@ defmodule BusterClaw.Browser do
     end
   end
 
-  # A successful fetch pulls untrusted external content in → record it.
-  defp observe_fetch({:ok, _page} = result, url) do
-    BusterClaw.Sentinel.observe(:untrusted_ingest, "Browsed #{url}", %{url: url, trust: "fetched"})
+  # A successful fetch pulls untrusted external content in → record it. A
+  # live-rendered page carries its engine in the metadata so the audit feed
+  # shows the content executed in a (hidden, ephemeral) WebKit view rather
+  # than arriving over plain HTTP.
+  defp observe_fetch({:ok, page} = result, url) do
+    meta = %{url: url, trust: "fetched"}
+
+    meta =
+      if Map.get(page, :rendered) == "live", do: Map.put(meta, :via, "live_render"), else: meta
+
+    BusterClaw.Sentinel.observe(:untrusted_ingest, "Browsed #{url}", meta)
 
     result
   end
@@ -154,6 +173,24 @@ defmodule BusterClaw.Browser do
   end
 
   defp do_fetch(url, opts) do
+    case live_render_mode(opts) do
+      :live ->
+        # Forced live render; a failure (no desktop open, load timeout) still
+        # degrades to the classic pipeline rather than returning nothing.
+        case fetch_with_live_render(url, opts) do
+          {:ok, page} -> {:ok, page}
+          {:error, _reason} -> classic_fetch(url, opts)
+        end
+
+      :off ->
+        classic_fetch(url, opts)
+
+      :auto ->
+        url |> classic_fetch(opts) |> maybe_live_upgrade(url, opts)
+    end
+  end
+
+  defp classic_fetch(url, opts) do
     if sidecar_url = sidecar_url(opts) do
       case fetch_with_sidecar(sidecar_url, url, opts) do
         {:ok, page} ->
@@ -169,6 +206,130 @@ defmodule BusterClaw.Browser do
     else
       fetch_with_http(url, opts)
     end
+  end
+
+  # The classic pipeline succeeded but extracted almost no readable text — the
+  # SPA-shell case (`<div id="root"></div>` plus scripts). A real WebKit render
+  # usually recovers the page the visible tab would show.
+  defp maybe_live_upgrade({:ok, page} = ok, url, opts) do
+    if thin_page?(page) do
+      case fetch_with_live_render(url, opts) do
+        {:ok, live} -> {:ok, live}
+        {:error, _reason} -> ok
+      end
+    else
+      ok
+    end
+  end
+
+  # A failed plain fetch (bot-walled 403s included) can still succeed in a real
+  # WebKit view; keep the original error if the live render can't either.
+  defp maybe_live_upgrade({:error, _reason} = error, url, opts) do
+    case fetch_with_live_render(url, opts) do
+      {:ok, live} -> {:ok, live}
+      {:error, _reason} -> error
+    end
+  end
+
+  # HTML that converted to next-to-no markdown. Non-HTML bodies (JSON APIs,
+  # plain text) are never "thin" — a webview wouldn't render them better.
+  defp thin_page?(%{html: html, markdown: markdown}) do
+    is_binary(html) and String.contains?(html, "<") and
+      markdown |> to_string() |> String.trim() |> String.length() < live_render_thin_chars()
+  end
+
+  defp thin_page?(_page), do: false
+
+  defp fetch_with_live_render(url, opts) do
+    cond do
+      not live_render_enabled?() or Keyword.get(opts, :live_render, true) == false ->
+        {:error, :live_render_disabled}
+
+      not Bridge.available?() ->
+        {:error, :browser_unavailable}
+
+      true ->
+        timeout = live_render_timeout_ms()
+        # Leave headroom for the settle + read round-trips after the load
+        # budget; the Rust side clamps to its own [1s, 20s] window.
+        wait_ms = max(timeout - 3_000, 2_000)
+
+        case Bridge.request(:render, %{"url" => url, "wait_ms" => wait_ms}, timeout_ms: timeout) do
+          {:ok, %{data: raw}} when is_binary(raw) -> decode_rendered_page(raw, url)
+          {:ok, _other} -> {:error, :bad_render_payload}
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  defp decode_rendered_page(raw, url) do
+    case Jason.decode(raw) do
+      {:ok, %{} = page} ->
+        url = presence(page["url"]) || url
+        title = presence(page["title"]) || URI.parse(url).host || url
+
+        {:ok,
+         %{
+           url: url,
+           title: title,
+           html: "",
+           markdown: rendered_markdown(page),
+           rendered: "live"
+         }}
+
+      _other ->
+        {:error, :bad_render_payload}
+    end
+  end
+
+  # The read script returns rendered innerText + links, not HTML — compose the
+  # same readable-markdown shape the classic pipeline produces.
+  defp rendered_markdown(page) do
+    text = page["text"] |> to_string() |> String.trim()
+
+    links =
+      for %{} = link <- List.wrap(page["links"]),
+          url = link["url"],
+          is_binary(url) and url != "" do
+        case link["label"] do
+          label when is_binary(label) and label != "" -> "- [#{label}](#{url})"
+          _other -> "- #{url}"
+        end
+      end
+
+    case links do
+      [] -> text
+      lines -> text <> "\n\n## Links\n\n" <> Enum.join(lines, "\n")
+    end
+  end
+
+  defp presence(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp presence(_value), do: nil
+
+  defp live_render_mode(opts) do
+    case Keyword.get(opts, :render, :auto) do
+      :live -> :live
+      :off -> :off
+      _other -> :auto
+    end
+  end
+
+  defp live_render_enabled? do
+    Application.get_env(:buster_claw, :browser_live_render_enabled, true)
+  end
+
+  defp live_render_timeout_ms do
+    Application.get_env(:buster_claw, :browser_live_render_timeout_ms, 15_000)
+  end
+
+  defp live_render_thin_chars do
+    Application.get_env(:buster_claw, :browser_live_render_thin_chars, 280)
   end
 
   defp fetch_with_sidecar(sidecar_url, url, opts) do
