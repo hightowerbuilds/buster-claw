@@ -270,3 +270,90 @@ what NotifyLive now does.
 
 **State of the tree:** full suite green — **1090 tests**, 0 failures.
 Working tree clean after this summary commit; pushed to main.
+
+---
+
+## Night session: the browser leg of the first-look review
+
+Operator call: park the review findings we can't act on yet (Apple signing,
+Google verification, BusterPhone's missing door) and work the browser section,
+which is entirely in our hands. Four review items went in — and the
+investigation surfaced a fifth thing nobody knew was broken.
+
+### Co-presence was ACL-dead the whole time (`a6668a1`)
+
+The review's §5.3 credits "the agent genuinely drives the live browser" as a
+strength. Statically, it couldn't have: `browser_current`, all six `*_active`
+co-presence verbs, and `terminal_busy` were in `generate_handler` but **never
+in `build.rs`'s AppManifest or any capability file** — and on Tauri 2.11.1
+the ACL denies unregistered commands before they reach Rust. Every
+`browser_read`/`browser_click` from the agent has failed at the ACL since
+Phase 3 shipped. The bitter part: `build.rs`'s own comment documents this
+exact failure mode, and the browser-roadmap memory records the
+"three registrations" rule — the Phase 3 commit just didn't follow it.
+Registered everything, verified the resolved ACL in `gen/schemas` carries all
+the allows. Memory corrected so "shipped" claims about Tauri-invoked features
+get checked against the registration triple.
+
+### The packaged app learns to read SPAs (`f963963`)
+
+The review's sharpest browser finding: prod has no Playwright sidecar, so
+`browser_fetch` falls back to plain HTTP and modern JS-rendered pages come
+back as garbage — while the same URL renders fine in the visible tab. The fix
+rides the machinery we already ship: a new `browser_render_page` Tauri command
+loads the URL in a **hidden, off-screen, ephemeral** webview (incognito data
+store — never the user's session), waits for `readyState: complete` plus a
+hydration settle, runs the same read script `browser_read` uses, and closes
+it. `Browser.fetch` upgrades to it automatically when the classic pipeline
+comes back JS-thin (<280 chars of readable text) **or fails outright** — a
+real WebKit view walks past the bot-wall 403s that stonewall a bare HTTP
+client. The Bridge grew subscriber tracking (`available?/0`) so CLI-only use
+skips the fallback instantly instead of eating a timeout, plus per-request
+`timeout_ms` for load-sized budgets. Live-rendered pages are marked
+`via: live_render` on the Sentinel feed — the audit trail says which engine
+executed the content.
+
+Same commit, two smaller review items: **evicted tabs keep their scroll** —
+an injected shim (popup-shim pattern) debounce-saves scroll per URL into
+origin-scoped localStorage (LRU-capped, 6h TTL) and restores on the
+switch-back reload, skipping anchor URLs and self-restoring sites; form input
+stays unrecoverable, deliberately. And **find-in-page shows "17 matches"** —
+`browser_find_count` counts occurrences in rendered `innerText` via
+`eval_with_result`; not positional "3 of 17" (that needs the native find
+API), but no more flying blind.
+
+### Favicons and honest search errors (`ff4197c`)
+
+Favicon fetch only ever tried `/favicon.ico`; on a miss it now reads the site
+root and follows `<link rel="icon">` (plain `icon` beats apple-touch, `data:`
+skipped, resolved URL re-vetted by URLGuard so a hostile page can't aim the
+fetcher at metadata addresses). And DDG search stops returning `{:ok, []}`
+for every zero-parse: a genuine no-results page stays empty, a challenge page
+is `:blocked_by_provider`, changed markup is `:scrape_failed` — breakage
+stops masquerading as "no results", which was one of the review's recurring
+silent-failure patterns.
+
+### The docs-drift gate had been dead too (`b8f0f8c`)
+
+Running the gate against the catalog change revealed it exits 1 with **zero
+output** — and does on clean HEAD too. The CLI dispatch moved from
+`case args do` to `route/2` function heads at some point; the gate's sed
+matched nothing, `set -e` killed it at the empty VERBS assignment, and the
+guard built to stop silent rot rotted silently. Reparsed from the route
+heads, added a loud fail-on-empty guard. No actual drift had accumulated —
+lucky.
+
+**Deliberately not touched:** the WKUIDelegate ceiling (accepted 07-04 —
+`window.confirm` in content tabs rides with it; a sync shim can't fake a
+blocking dialog) and the Playwright sidecar prune (parked, operator call).
+
+**Verification honesty:** the fallback logic is exercised in tests with a
+fake desktop fulfilling bridge requests; Rust compiles clean; bundles build.
+But the end-to-end paths — ACL-unblocked co-presence, the hidden render,
+scroll restore, the find count — need a live app run: `./scripts/dev.sh`,
+then `browser_read` a page, `browser_fetch` a React docs page, open 7+ tabs
+and switch back to the first, ⌘F something.
+
+**State of the tree:** full suite green — **1104 tests**, 0 failures; 78 JS
+tests green; `cargo check` clean; credo strict clean; drift gate green.
+Working tree clean after this summary commit; pushed to main.
