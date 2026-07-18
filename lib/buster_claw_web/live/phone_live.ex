@@ -254,8 +254,8 @@ defmodule BusterClawWeb.PhoneLive do
 
     socket
     |> assign(:contacts, contacts)
-    |> assign(:contacts_by_number, Contacts.by_phone())
-    |> assign(:orphan_numbers, Contacts.orphan_entries().numbers)
+    |> assign(:contacts_by_number, Contacts.by_phone(contacts))
+    |> assign(:orphan_numbers, Contacts.orphan_entries(contacts).numbers)
     |> refresh_selected_contact(contacts)
   end
 

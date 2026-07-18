@@ -80,9 +80,13 @@ defmodule BusterClaw.Contacts do
     |> tap_broadcast()
   end
 
-  @doc "Phone → contact, for naming rows in the Message Machine log."
-  def by_phone do
-    list_contacts()
+  @doc """
+  Phone → contact, for naming rows in the Message Machine log. Pass an
+  already-loaded contact list to derive without re-querying (PhoneLive reloads
+  contacts on every telephony broadcast).
+  """
+  def by_phone(contacts \\ nil) do
+    (contacts || list_contacts())
     |> Enum.reject(&is_nil(&1.phone))
     |> Map.new(&{&1.phone, &1})
   end
@@ -170,9 +174,11 @@ defmodule BusterClaw.Contacts do
   a smaller trust surface than the gate actually has. A `*@domain` rule is *always*
   an orphan: it grants trust to people who have no contact row at all, which is
   exactly why it must stay visible.
+
+  Accepts an already-loaded contact list for the same reason as `by_phone/1`.
   """
-  def orphan_entries do
-    contacts = list_contacts()
+  def orphan_entries(contacts \\ nil) do
+    contacts = contacts || list_contacts()
     known_emails = contacts |> Enum.map(& &1.email) |> Enum.reject(&is_nil/1) |> MapSet.new()
     known_phones = contacts |> Enum.map(& &1.phone) |> Enum.reject(&is_nil/1) |> MapSet.new()
 
