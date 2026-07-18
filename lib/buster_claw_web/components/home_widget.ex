@@ -20,6 +20,7 @@ defmodule BusterClawWeb.HomeWidget do
   attr :weather_form, :boolean, required: true
   attr :notifications, :list, required: true
   attr :notify_form, :any, required: true
+  attr :notify_kind, :string, required: true
 
   # Calendar + Contacts as a rectangle filling the header gap to the right of the
   # banner. The card is absolutely positioned to fill the widget box, so its
@@ -88,7 +89,7 @@ defmodule BusterClawWeb.HomeWidget do
             <.place_panel weather={@weather} form={@weather_form} />
           </div>
           <div class={["h-full", @tab != "notify" && "hidden"]}>
-            <.notify_panel notifications={@notifications} form={@notify_form} />
+            <.notify_panel notifications={@notifications} form={@notify_form} kind={@notify_kind} />
           </div>
         </div>
       </div>
@@ -170,62 +171,104 @@ defmodule BusterClawWeb.HomeWidget do
   defp event_time_label(%{start_time: %Time{} = time}),
     do: Elixir.Calendar.strftime(time, "%H:%M")
 
-  # Notify: a quick timer form over the list of upcoming notifications. The list
-  # shows every armed kind (timers, alarms, reminders — however they were set);
-  # the form makes the common case (a countdown timer) a two-field action.
-  # `select_widget_tab`, `notify_create`, `notify_snooze`, and `notify_dismiss`
-  # are handled by StatusLive. The relative "fires in" label re-renders on every
-  # change; the live per-second countdown arrives with the digit shader (Phase 2).
+  # Notify: a kind-aware creation form over the upcoming notifications of that
+  # kind. The segmented row does double duty — it picks what the form arms
+  # (Timer: label + minutes; Alarm: optional label + wall-clock time; Reminder:
+  # label + wall-clock time — both wall-clock kinds arm the next local
+  # occurrence) AND filters the right column, so the shader countdown and list
+  # show only the selected kind. `select_widget_tab`, `notify_kind`,
+  # `notify_create`, `notify_snooze`, and `notify_dismiss` are handled by
+  # StatusLive. The relative "fires in" label re-renders on every change; the
+  # live per-second countdown arrives with the digit shader (Phase 2).
   attr :notifications, :list, required: true
   attr :form, :any, required: true
+  attr :kind, :string, required: true
 
   defp notify_panel(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :kind_notifications,
+        Enum.filter(assigns.notifications, &(&1.kind == assigns.kind))
+      )
+
     ~H"""
     <section class="ic-panel grid h-full grid-cols-5">
       <%!-- Left 3/5: notifier creation. --%>
       <div class="col-span-3 flex min-h-0 flex-col border-r border-base-content/15 px-3 py-3">
+        <div
+          role="radiogroup"
+          aria-label="Notification kind"
+          class="mb-1.5 flex gap-1"
+        >
+          <button
+            :for={{key, text} <- [{"timer", "Timer"}, {"alarm", "Alarm"}, {"reminder", "Reminder"}]}
+            type="button"
+            role="radio"
+            aria-checked={to_string(@kind == key)}
+            phx-click="notify_kind"
+            phx-value-kind={key}
+            class={[
+              "border px-2 py-1 font-mono text-[0.6875rem] font-bold uppercase tracking-widest transition",
+              if(@kind == key,
+                do: "border-primary text-primary",
+                else: "border-base-content/25 text-base-content/55 hover:text-base-content"
+              )
+            ]}
+          >
+            {text}
+          </button>
+        </div>
+
         <.form for={@form} id="notify-form" phx-submit="notify_create" class="flex flex-col gap-1.5">
-          <label class="font-mono text-[0.625rem] font-bold uppercase tracking-widest text-base-content/55">
-            New timer
-          </label>
+          <input type="hidden" name="notify[kind]" value={@kind} />
           <input
             type="text"
             name="notify[label]"
             value={@form[:label].value}
-            required
-            placeholder="Label, e.g. Tea"
+            required={@kind != "alarm"}
+            placeholder={notify_label_placeholder(@kind)}
             autocomplete="off"
-            class="min-w-0 border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-xs"
+            class="min-w-0 border-2 border-base-content/25 bg-base-100 px-2.5 py-1.5 font-mono text-[0.8125rem]"
           />
           <div class="flex gap-1.5">
             <input
+              :if={@kind == "timer"}
               type="number"
               name="notify[minutes]"
               value={@form[:minutes].value}
               min="1"
               required
               placeholder="min"
-              class="min-w-0 flex-1 border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-xs"
+              class="min-w-0 flex-1 border-2 border-base-content/25 bg-base-100 px-2.5 py-1.5 font-mono text-[0.8125rem]"
+            />
+            <input
+              :if={@kind in ["alarm", "reminder"]}
+              type="time"
+              name="notify[at]"
+              value={@form[:at].value}
+              required
+              class="min-w-0 flex-1 border-2 border-base-content/25 bg-base-100 px-2.5 py-1.5 font-mono text-[0.8125rem]"
             />
             <button
               type="submit"
-              class="shrink-0 border-2 border-primary px-2 py-1 font-display text-[0.625rem] font-bold uppercase tracking-wide text-primary transition hover:bg-primary hover:text-primary-content"
+              class="shrink-0 border-2 border-primary px-2.5 py-1.5 font-display text-[0.6875rem] font-bold uppercase tracking-wide text-primary transition hover:bg-primary hover:text-primary-content"
             >
               Set
             </button>
           </div>
-          <p :if={@form.errors != []} class="font-mono text-[0.625rem] text-primary">
+          <p :if={@form.errors != []} class="font-mono text-[0.6875rem] text-primary">
             {form_error_text(@form)}
           </p>
         </.form>
       </div>
 
-      <%!-- Right 2/5: the timers themselves — soonest as a shader countdown, then the list. --%>
+      <%!-- Right 2/5: the selected kind only — soonest as a shader countdown, then the list. --%>
       <div class="col-span-2 flex min-h-0 flex-col">
-        {if @notifications != [], do: notify_hero(%{soonest: hd(@notifications)})}
+        {if @kind_notifications != [], do: notify_hero(%{soonest: hd(@kind_notifications)})}
 
         <ul class="min-h-0 flex-1 divide-y divide-base-content/10 overflow-auto">
-          <li :for={notification <- @notifications} class="px-2 py-2">
+          <li :for={notification <- @kind_notifications} class="px-2 py-2">
             <div class="truncate font-mono text-xs text-base-content">{notification.label}</div>
             <div class="font-mono text-[0.625rem] uppercase tracking-wide text-base-content/55">
               {kind_label(notification.kind)} · {fires_in_label(notification.fire_at)}
@@ -250,10 +293,10 @@ defmodule BusterClawWeb.HomeWidget do
             </div>
           </li>
           <li
-            :if={@notifications == []}
+            :if={@kind_notifications == []}
             class="px-2 py-8 text-center font-mono text-[0.625rem] uppercase tracking-widest text-base-content/45"
           >
-            None set
+            No {kind_label(@kind) |> String.downcase()}s set
           </li>
         </ul>
       </div>
@@ -357,6 +400,10 @@ defmodule BusterClawWeb.HomeWidget do
   defp kind_label("alarm"), do: "Alarm"
   defp kind_label("reminder"), do: "Reminder"
   defp kind_label(other), do: other
+
+  defp notify_label_placeholder("alarm"), do: "Label (optional)"
+  defp notify_label_placeholder("reminder"), do: "Label, e.g. Stretch"
+  defp notify_label_placeholder(_timer), do: "Label, e.g. Tea"
 
   # A coarse, timezone-free "fires in" label. Placeholder for the live shader
   # countdown; re-computed each render, so it tracks reloads/changes, not seconds.

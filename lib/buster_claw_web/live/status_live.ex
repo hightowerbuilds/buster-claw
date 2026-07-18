@@ -49,6 +49,7 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:weather, nil)
      |> assign(:weather_form, false)
      |> assign(:notify_form, notify_form())
+     |> assign(:notify_kind, "timer")
      |> load_notifications()
      |> init_chats()
      |> load_calendar_month()
@@ -100,7 +101,7 @@ defmodule BusterClawWeb.StatusLive do
 
   defp load_notifications(socket), do: assign(socket, :notifications, Notifications.upcoming())
 
-  defp notify_form, do: to_form(%{"label" => "", "minutes" => ""}, as: :notify)
+  defp notify_form, do: to_form(%{"label" => "", "minutes" => "", "at" => ""}, as: :notify)
 
   defp assign_notify_error(socket, params, field, message) do
     assign(socket, :notify_form, to_form(params, as: :notify, errors: [{field, {message, []}}]))
@@ -111,6 +112,67 @@ defmodule BusterClawWeb.StatusLive do
       {minutes, _rest} when minutes > 0 -> minutes
       _ -> :error
     end
+  end
+
+  # An alarm's label is optional — a bedside clock doesn't need naming — so a
+  # blank one becomes "Alarm" (the schema and the list/modal require a label).
+  # Timers and reminders keep theirs: the label IS the message.
+  defp default_notify_label("", "alarm"), do: "Alarm"
+  defp default_notify_label(label, _kind), do: label
+
+  # The moment a widget submission should fire, per kind: a timer counts down;
+  # alarms AND reminders arm the next local wall-clock occurrence of the picked
+  # time. (The `notify_create` command's reminder fires immediately — that's the
+  # agent announcing something now; a human setting a reminder is scheduling
+  # its announcement.)
+  defp notify_fire_at("timer", params) do
+    case params |> Map.get("minutes", "") |> parse_minutes() do
+      :error -> {:error, :minutes, "minutes must be a positive number"}
+      minutes -> {:ok, DateTime.add(now(), minutes * 60, :second)}
+    end
+  end
+
+  defp notify_fire_at(kind, params) when kind in ["alarm", "reminder"] do
+    case parse_wall_time(Map.get(params, "at", "")) do
+      {:ok, time} -> {:ok, next_local_occurrence(time)}
+      :error -> {:error, :at, "pick a time"}
+    end
+  end
+
+  defp notify_fire_at(_kind, _params), do: {:error, :label, "unknown kind"}
+
+  # <input type="time"> submits "HH:MM" (sometimes "HH:MM:SS").
+  defp parse_wall_time(value) do
+    value = String.trim(to_string(value))
+    padded = if String.length(value) == 5, do: value <> ":00", else: value
+
+    case Time.from_iso8601(padded) do
+      {:ok, time} -> {:ok, time}
+      _ -> :error
+    end
+  end
+
+  # The next moment the Mac's local clock reads `time`, as UTC: today if still
+  # ahead, else tomorrow. The offset comes from comparing the OS local clock to
+  # UTC (no tz database in the app); rounded to 15-minute granularity — real
+  # offsets are — so the seconds between the two reads can't skew it. An alarm
+  # set across a DST flip lands an hour off; acceptable for a bedside clock.
+  defp next_local_occurrence(%Time{} = time) do
+    local_now = NaiveDateTime.from_erl!(:calendar.local_time())
+    candidate = NaiveDateTime.new!(NaiveDateTime.to_date(local_now), time)
+
+    candidate =
+      if NaiveDateTime.compare(candidate, local_now) == :gt,
+        do: candidate,
+        else: NaiveDateTime.add(candidate, 86_400, :second)
+
+    utc_now = NaiveDateTime.from_erl!(:calendar.universal_time())
+    offset = round(NaiveDateTime.diff(local_now, utc_now) / 900) * 900
+
+    candidate
+    |> NaiveDateTime.add(-offset, :second)
+    |> DateTime.from_naive!("Etc/UTC")
+    |> DateTime.truncate(:second)
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
@@ -166,34 +228,35 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
+  def handle_event("notify_kind", %{"kind" => kind}, socket)
+      when kind in ["timer", "alarm", "reminder"] do
+    {:noreply, socket |> assign(:notify_kind, kind) |> assign(:notify_form, notify_form())}
+  end
+
   def handle_event("notify_create", %{"notify" => params}, socket) do
-    label = params |> Map.get("label", "") |> String.trim()
-    minutes = params |> Map.get("minutes", "") |> parse_minutes()
+    kind = Map.get(params, "kind", "timer")
+    label = params |> Map.get("label", "") |> String.trim() |> default_notify_label(kind)
 
-    cond do
-      label == "" ->
-        {:noreply, assign_notify_error(socket, params, :label, "add a label")}
+    with :ok <- if(label == "", do: {:error, :label, "add a label"}, else: :ok),
+         {:ok, fire_at} <- notify_fire_at(kind, params) do
+      attrs = %{
+        "kind" => kind,
+        "label" => label,
+        "fire_at" => fire_at,
+        "status" => "pending",
+        "source" => "manual"
+      }
 
-      minutes == :error ->
-        {:noreply,
-         assign_notify_error(socket, params, :minutes, "minutes must be a positive number")}
+      case Notifications.create_notification(attrs) do
+        {:ok, _notification} ->
+          {:noreply, socket |> assign(:notify_form, notify_form()) |> load_notifications()}
 
-      true ->
-        attrs = %{
-          "kind" => "timer",
-          "label" => label,
-          "fire_at" => DateTime.add(now(), minutes * 60, :second),
-          "status" => "pending",
-          "source" => "manual"
-        }
-
-        case Notifications.create_notification(attrs) do
-          {:ok, _notification} ->
-            {:noreply, socket |> assign(:notify_form, notify_form()) |> load_notifications()}
-
-          {:error, _changeset} ->
-            {:noreply, assign_notify_error(socket, params, :label, "could not create timer")}
-        end
+        {:error, _changeset} ->
+          {:noreply, assign_notify_error(socket, params, :label, "could not create #{kind}")}
+      end
+    else
+      {:error, field, message} ->
+        {:noreply, assign_notify_error(socket, params, field, message)}
     end
   end
 
@@ -782,6 +845,7 @@ defmodule BusterClawWeb.StatusLive do
               weather_form={@weather_form}
               notifications={@notifications}
               notify_form={@notify_form}
+              notify_kind={@notify_kind}
             />
           </div>
 
