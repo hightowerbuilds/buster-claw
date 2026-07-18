@@ -11,28 +11,50 @@ export const AudioClip = {
     this.wave = null
     this.raf = null
     this.destroyed_ = false
+    // The shimmer only needs to run for clips actually in the viewport — a
+    // 200-row rack must not run 200 render loops. Off-screen clips park until
+    // the IntersectionObserver scrolls them back in.
+    this.visible = false
 
-    this.onVisibility = () => {
-      if (!document.hidden && this.wave && this.raf == null) {
-        this.raf = requestAnimationFrame(this.frame)
-      }
-    }
+    this.frame = this.frame.bind(this)
+
+    this.onVisibility = () => this.startLoop()
     document.addEventListener("visibilitychange", this.onVisibility)
+
+    this.intersection = new IntersectionObserver((entries) => {
+      this.visible = entries[entries.length - 1].isIntersecting
+      if (this.visible) this.startLoop()
+      else this.stopLoop()
+    })
+    this.intersection.observe(this.el)
 
     this.observer = new ResizeObserver(() => this.fitCanvas())
     this.observer.observe(this.el)
     this.fitCanvas()
 
-    this.frame = this.frame.bind(this)
     this.boot()
   },
 
   destroyed() {
     this.destroyed_ = true
-    if (this.raf != null) cancelAnimationFrame(this.raf)
+    this.stopLoop()
     document.removeEventListener("visibilitychange", this.onVisibility)
+    this.intersection?.disconnect()
     this.observer?.disconnect()
     this.wave?.destroy()
+  },
+
+  startLoop() {
+    if (this.wave && this.raf == null && this.visible && !document.hidden) {
+      this.raf = requestAnimationFrame(this.frame)
+    }
+  },
+
+  stopLoop() {
+    if (this.raf != null) {
+      cancelAnimationFrame(this.raf)
+      this.raf = null
+    }
   },
 
   async boot() {
@@ -57,19 +79,18 @@ export const AudioClip = {
     if (this.destroyed_) return this.wave.destroy()
 
     this.wave.lost.then(() => {
-      if (this.raf != null) cancelAnimationFrame(this.raf)
-      this.raf = null
+      this.stopLoop()
       this.wave = null
     })
 
-    this.raf = requestAnimationFrame(this.frame)
+    this.startLoop()
   },
 
   frame(now) {
     this.raf = null
     if (!this.wave || this.destroyed_) return
     this.wave.render(now / 1000)
-    if (!document.hidden) this.raf = requestAnimationFrame(this.frame)
+    if (!document.hidden && this.visible) this.raf = requestAnimationFrame(this.frame)
   },
 
   fitCanvas() {
