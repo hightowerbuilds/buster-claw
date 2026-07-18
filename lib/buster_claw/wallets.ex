@@ -398,7 +398,7 @@ defmodule BusterClaw.Wallets do
     |> where([f], f.enabled == true and f.kind in ^Feed.polled_kinds())
     |> Repo.all()
     |> Enum.filter(&due?(&1, now))
-    |> Enum.map(&poll_feed(&1, opts))
+    |> poll_feeds(opts)
   end
 
   @doc "Immediately poll all of a wallet's enabled timer-driven feeds (manual trigger)."
@@ -409,30 +409,61 @@ defmodule BusterClaw.Wallets do
       f.wallet_id == ^wallet.id and f.enabled == true and f.kind in ^Feed.polled_kinds()
     )
     |> Repo.all()
-    |> Enum.map(&poll_feed(&1, opts))
+    |> poll_feeds(opts)
+  end
+
+  # The poller is a single GenServer, so one hung endpoint used to stall every
+  # feed behind it for the whole tick. Fetches now run concurrently with a hard
+  # timeout; the DB writes stay on this process (SQLite is single-writer).
+  @poll_concurrency 4
+  @poll_timeout_ms 15_000
+
+  defp poll_feeds(feeds, opts) do
+    feeds
+    |> Task.async_stream(&fetch_feed(&1, opts),
+      max_concurrency: @poll_concurrency,
+      timeout: @poll_timeout_ms,
+      on_timeout: :kill_task,
+      ordered: true
+    )
+    |> Enum.zip(feeds)
+    |> Enum.map(fn
+      {{:ok, result}, feed} -> apply_feed_result(feed, result)
+      {{:exit, _reason}, feed} -> fail_feed(feed, :poll_timeout)
+    end)
   end
 
   @doc "Poll a single feed now, recording status/value and broadcasting the change."
-  def poll_feed(%Feed{kind: "market"} = feed, opts) do
+  def poll_feed(%Feed{} = feed, opts) do
+    apply_feed_result(feed, fetch_feed(feed, opts))
+  end
+
+  defp apply_feed_result(feed, {:ok, attrs}), do: finish_feed(feed, attrs)
+  defp apply_feed_result(feed, {:error, reason}), do: fail_feed(feed, reason)
+  defp apply_feed_result(feed, :noop), do: {:ok, feed}
+
+  # Pure fetch — no DB writes, safe to run inside a task.
+  defp fetch_feed(%Feed{kind: "market"} = feed, opts) do
     finance = Keyword.get(opts, :finance, &Finance.quote/1)
     symbol = feed.config["symbol"]
 
     case finance.(symbol) do
       {:ok, %{price: price} = quote} ->
-        finish_feed(feed, %{
-          last_status: "ok",
-          last_error: nil,
-          last_value: format_price(symbol, price),
-          last_run_at: timestamp(),
-          metadata_source: Map.take(quote, [:source, :as_of, :percent_change])
-        })
+        {:ok,
+         %{
+           last_status: "ok",
+           last_error: nil,
+           last_value: format_price(symbol, price),
+           last_run_at: timestamp(),
+           metadata_source: Map.take(quote, [:source, :as_of, :percent_change])
+         }}
 
       {:error, reason} ->
-        fail_feed(feed, reason)
+        {:error, reason}
     end
   end
 
-  def poll_feed(%Feed{kind: "url"} = feed, opts) do
+  defp fetch_feed(%Feed{kind: "url"} = feed, opts) do
     fetch = Keyword.get(opts, :fetch, &Browser.fetch/1)
     url = feed.config["url"]
 
@@ -441,36 +472,32 @@ defmodule BusterClaw.Wallets do
         hash = Library.body_hash(page.markdown || page.html || "")
         changed = feed.last_content_hash != nil and hash != feed.last_content_hash
 
-        finish_feed(feed, %{
-          last_status: "ok",
-          last_error: nil,
-          last_content_hash: hash,
-          last_value:
-            if(changed, do: "changed", else: "unchanged") <> " · " <> (page.title || url),
-          last_run_at: timestamp()
-        })
+        {:ok,
+         %{
+           last_status: "ok",
+           last_error: nil,
+           last_content_hash: hash,
+           last_value:
+             if(changed, do: "changed", else: "unchanged") <> " · " <> (page.title || url),
+           last_run_at: timestamp()
+         }}
 
       {:error, reason} ->
-        fail_feed(feed, reason)
+        {:error, reason}
     end
   end
 
-  def poll_feed(%Feed{kind: "integration"} = feed, _opts) do
+  defp fetch_feed(%Feed{kind: "integration"} = feed, _opts) do
     case latest_integration_summary(feed.config["integration_id"]) do
       {:ok, value} ->
-        finish_feed(feed, %{
-          last_status: "ok",
-          last_error: nil,
-          last_value: value,
-          last_run_at: timestamp()
-        })
+        {:ok, %{last_status: "ok", last_error: nil, last_value: value, last_run_at: timestamp()}}
 
       {:error, reason} ->
-        fail_feed(feed, reason)
+        {:error, reason}
     end
   end
 
-  def poll_feed(%Feed{} = feed, _opts), do: {:ok, feed}
+  defp fetch_feed(%Feed{}, _opts), do: :noop
 
   @doc """
   Record an inbound Gmail receipt against every enabled `gmail` feed. Amount

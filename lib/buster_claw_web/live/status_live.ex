@@ -664,6 +664,8 @@ defmodule BusterClawWeb.StatusLive do
   # tab-switch. It is NOT a saved gallery — the drawings only live as long as the
   # chat's transcript does, so deleting the chat takes them with it.
   defp load_chat_history(socket, conv_id) do
+    # Built by prepending (appending with ++ inside the reduce is quadratic
+    # over the 200-row transcript), then reversed back into reading order.
     {messages, svgs} =
       conv_id
       |> AgentTranscript.recent(limit: 200)
@@ -673,15 +675,19 @@ defmodule BusterClawWeb.StatusLive do
             {clean, block_svgs} = SvgViewer.extract(row.content)
 
             svgs =
-              svgs ++ Enum.map(block_svgs, &(&1 |> SvgViewer.sanitize() |> SvgViewer.normalize()))
+              Enum.reduce(block_svgs, svgs, fn svg, acc ->
+                [svg |> SvgViewer.sanitize() |> SvgViewer.normalize() | acc]
+              end)
 
-            msgs = if clean == "", do: msgs, else: msgs ++ [%{role: :assistant, text: clean}]
+            msgs = if clean == "", do: msgs, else: [%{role: :assistant, text: clean} | msgs]
             {msgs, svgs}
 
           role ->
-            {msgs ++ [%{role: role, text: row.content}], svgs}
+            {[%{role: role, text: row.content} | msgs], svgs}
         end
       end)
+
+    {messages, svgs} = {Enum.reverse(messages), Enum.reverse(svgs)}
 
     messages = messages |> Enum.with_index(1) |> Enum.map(fn {m, i} -> Map.put(m, :id, i) end)
     svgs = svgs |> Enum.with_index(1) |> Enum.map(fn {svg, i} -> %{id: i, svg: svg} end)

@@ -56,6 +56,12 @@ export const SmokeBackground = {
     }
     this.intensity = 0.85
     this.uniforms = packUniforms({width: 0, height: 0, timeSec: 0, intensity: this.intensity, reveal: 0})
+    // Frame-loop scratch state, hoisted so the 60fps loop allocates nothing:
+    // lens/expression objects are mutated in place, and the chat panel node is
+    // cached (re-looked-up only if LiveView replaced it).
+    this.lensScratch = {x: 0, y: 0, radius: 0, strength: 0}
+    this.exprScratch = {...NEUTRAL_EXPRESSION}
+    this.chatEl = null
 
     this.onVisibility = () => {
       if (!document.hidden && this.smoke && this.raf == null) {
@@ -119,8 +125,10 @@ export const SmokeBackground = {
 
     // Subtle churn while the agent is running — read the chat panel's existing
     // data-running (LiveView keeps it current; no new event needed).
-    const running =
-      document.getElementById("home-agent-chat")?.getAttribute("data-running") === "true"
+    if (!this.chatEl || !this.chatEl.isConnected) {
+      this.chatEl = document.getElementById("home-agent-chat")
+    }
+    const running = this.chatEl?.getAttribute("data-running") === "true"
     const target = running ? 1.15 : 0.85
     this.intensity += (target - this.intensity) * 0.03
 
@@ -128,7 +136,11 @@ export const SmokeBackground = {
     if (this.daylight) {
       const d = new Date()
       const frac = (d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()) / 86400
-      lens = {x: frac, y: 0, radius: 0, strength: 0}
+      lens = this.lensScratch
+      lens.x = frac
+      lens.y = 0
+      lens.radius = 0
+      lens.strength = 0
     }
 
     // Real sky for the weather shader, packed into otherwise-unused background
@@ -144,19 +156,16 @@ export const SmokeBackground = {
       }
       this.live += (1 - this.live) * 0.01
       freezeTime = this.live
-      lens = {
-        x: localDayFrac(Date.now() / 1000, this.sky.utc_offset),
-        y: this.sky.sunrise_frac,
-        radius: this.sky.sunset_frac,
-        strength: this.skyAmts.cloud,
-      }
-      expression = {
-        ...this.expr,
-        energy: this.skyAmts.rain,
-        temp: this.skyAmts.bolt,
-        density: this.skyAmts.snow,
-        paletteAmt: this.skyAmts.wind,
-      }
+      lens = this.lensScratch
+      lens.x = localDayFrac(Date.now() / 1000, this.sky.utc_offset)
+      lens.y = this.sky.sunrise_frac
+      lens.radius = this.sky.sunset_frac
+      lens.strength = this.skyAmts.cloud
+      expression = Object.assign(this.exprScratch, this.expr)
+      expression.energy = this.skyAmts.rain
+      expression.temp = this.skyAmts.bolt
+      expression.density = this.skyAmts.snow
+      expression.paletteAmt = this.skyAmts.wind
     }
 
     packUniforms(

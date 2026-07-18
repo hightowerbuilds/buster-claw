@@ -86,9 +86,17 @@ defmodule BusterClaw.Telephony do
   `{:error, :no_sids | reason}`.
   """
   def refresh_cost(%Event{} = event, opts \\ []) do
+    case fetch_cost(event, opts) do
+      {:ok, cost} -> apply_cost(event, cost)
+      {:error, _} = error -> error
+    end
+  end
+
+  # Pure Twilio fetch — no DB writes, safe to run inside a task.
+  defp fetch_cost(%Event{} = event, opts) do
     with %{} = sids <- cost_sids(event),
          {:ok, cost} <- Twilio.cost_for(sids, opts) do
-      apply_cost(event, cost)
+      {:ok, cost}
     else
       :no_sids -> {:error, :no_sids}
       {:error, _} = error -> error
@@ -102,12 +110,31 @@ defmodule BusterClaw.Telephony do
   Broadcasts a single `:telephony_costs_updated` after the batch rather than one
   event per priced row — a full drain tick can price 25 rows, and 25 broadcasts
   meant 25 full reloads in every subscribed LiveView.
+
+  The Twilio fetches run concurrently with a hard timeout (the drain is a single
+  GenServer — 25 sequential calls against a slow API used to stall the whole
+  tick); the row updates stay on this process (SQLite is single-writer).
   """
+  @cost_concurrency 4
+  @cost_timeout_ms 15_000
+
   def refresh_unpriced_costs(opts \\ []) do
     if Twilio.configured?() do
+      events = unpriced_voicemails()
+
       priced =
-        unpriced_voicemails()
-        |> Enum.count(fn event -> match?({:ok, _}, refresh_cost(event, opts)) end)
+        events
+        |> Task.async_stream(&fetch_cost(&1, opts),
+          max_concurrency: @cost_concurrency,
+          timeout: @cost_timeout_ms,
+          on_timeout: :kill_task,
+          ordered: true
+        )
+        |> Enum.zip(events)
+        |> Enum.count(fn
+          {{:ok, {:ok, cost}}, event} -> match?({:ok, _}, apply_cost(event, cost))
+          _ -> false
+        end)
 
       if priced > 0, do: broadcast(:telephony_costs_updated)
     end
