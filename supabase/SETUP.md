@@ -1,4 +1,4 @@
-# BusterPhone — operator console checklist (Phases 0–1)
+# BusterPhone — operator console checklist (Phases 0–2)
 
 Everything in this file happens in web consoles and a terminal; no app code
 runs until the Mac-side `BusterClaw.Telephony` context lands. The code that
@@ -42,6 +42,7 @@ repo even though it runs on Supabase.
    ```sh
    supabase secrets set TWILIO_ACCOUNT_SID=ACxxxxxxxx TWILIO_AUTH_TOKEN=xxxxxxxx
    supabase secrets set PUBLIC_URL_BASE=https://<PROJECT_REF>.supabase.co/functions/v1/voice
+   supabase secrets set PUBLIC_SMS_URL_BASE=https://<PROJECT_REF>.supabase.co/functions/v1/sms
    ```
 
    **`PUBLIC_URL_BASE` is required, not optional.** Twilio signs the exact URL
@@ -58,10 +59,12 @@ repo even though it runs on Supabase.
 
    ```sh
    supabase functions deploy voice --no-verify-jwt
+   supabase functions deploy sms --no-verify-jwt
    ```
 
    The public URL is:
    `https://<PROJECT_REF>.supabase.co/functions/v1/voice`
+   (SMS uses the same base with `/sms`.)
 
    Smoke-test it without a phone — an unsigned POST must be refused:
 
@@ -94,11 +97,8 @@ repo even though it runs on Supabase.
    per emergency call without one. The app has no outbound calling at all, so
    nothing can dial 911 today — but it's free to add and becomes a real
    liability the moment outbound lands.
-6. Leave Messaging unconfigured for now (Phase 2), **but** if you want SMS on
-   schedule, start **A2P 10DLC brand + campaign registration** today —
-   it's paperwork plus a multi-day wait and it's the Phase 2 gate.
-   Voice needs no registration, so 10DLC is **not** on the Phase 1 critical
-   path; don't let the banner on the number page bait you into it.
+6. Voice needs no A2P registration. Texting does; follow the Phase 2 activation
+   checklist below before turning on outbound sends.
 
 ## 2b. Caller PINs (the credential caller ID is not)
 
@@ -197,3 +197,53 @@ the `.mp3` into the Library, inserts into local SQLite, and the row flips to
   env (not an integration row). The drain child only starts when both are set.
 - Secrets live in two places by design (app + Supabase env). Documented risk;
   Sentinel can't see the Edge Function.
+
+## 4. Phase 2 SMS activation
+
+The code path is fail-closed. Inbound can be deployed immediately; outbound
+will return `sms_disabled` until the operator deliberately flips its kill switch.
+
+1. In Twilio, register an A2P 10DLC Brand and Campaign. A Sole Proprietor Brand
+   is the current Twilio path for a US/Canadian direct customer without an EIN;
+   use a Standard Brand when the business has an EIN. Campaign approval can take
+   days or weeks, so do this before promising an activation date.
+2. Create a **Messaging Service**, attach `+13603646763` to its sender pool, and
+   associate the approved campaign. Record its `MG...` SID.
+3. Keep Twilio's opt-out handling enabled. The inbound function stores
+   `OptOutType`; the Mac archives STOP/START/HELP traffic without dispatching it
+   or sending a second response. `sms_send` also refuses an opted-out recipient
+   until a later START/UNSTOP event restores consent.
+4. Point the inbound messaging webhook (HTTP POST) at:
+
+   ```text
+   https://<PROJECT_REF>.supabase.co/functions/v1/sms
+   ```
+
+5. Run `supabase db push`, set `PUBLIC_SMS_URL_BASE`, deploy `sms` with
+   `--no-verify-jwt`, and verify an unsigned POST returns 403.
+6. Add these to the Mac's environment. Leave the kill switch false until the
+   campaign and sender pool are correct:
+
+   ```sh
+   TWILIO_MESSAGING_SERVICE_SID=MGxxxxxxxx
+   BUSTER_CLAW_SMS_ENABLED=false
+   BUSTER_CLAW_SMS_DAILY_RECIPIENT_CAP=20
+   ```
+
+7. Send a real phone an inbound text. Within one drain interval it should appear
+   under `/phone`; only a number in `memory/trusted-phone-numbers.md` should
+   create an `sms-triage` Dispatch item.
+8. After campaign approval, set `BUSTER_CLAW_SMS_ENABLED=true`, restart the app,
+   and run one controlled outbound test:
+
+   ```sh
+   ./buster-claw run sms_send --json '{"to":"+15551234567","body":"BusterPhone SMS test"}'
+   ```
+
+   Confirm the command returns a Twilio `SM...` SID, `/phone` shows the outbound
+   row, Sentinel records `outbound_send`, and a send above the daily recipient
+   cap is refused. Trial accounts can only send to verified recipient numbers.
+
+Primary Twilio references: [Message resource](https://www.twilio.com/docs/messaging/api/message-resource),
+[A2P 10DLC quickstart](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc/quickstart),
+and [Advanced Opt-Out](https://www.twilio.com/docs/messaging/tutorials/advanced-opt-out).

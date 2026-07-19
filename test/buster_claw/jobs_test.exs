@@ -23,6 +23,7 @@ defmodule BusterClaw.JobsTest do
     assert :ok = Jobs.ensure()
 
     assert File.exists?(Path.join(root, "job-descriptions/mail-triage.md"))
+    assert File.exists?(Path.join(root, "job-descriptions/sms-triage.md"))
     assert File.exists?(Path.join(root, "job-descriptions/README.md"))
     assert File.exists?(Path.join(root, "memory/trusted-email-senders.md"))
 
@@ -70,7 +71,11 @@ defmodule BusterClaw.JobsTest do
   test "list returns defined jobs without bodies; get returns the body", %{root: _root} do
     Jobs.ensure()
 
-    assert [%{key: "mail-triage", name: "Mail Triage"} = entry, %{key: "voicemail-triage"}] =
+    assert [
+             %{key: "mail-triage", name: "Mail Triage"} = entry,
+             %{key: "sms-triage"},
+             %{key: "voicemail-triage"}
+           ] =
              Jobs.list()
 
     refute Map.has_key?(entry, :body)
@@ -83,7 +88,9 @@ defmodule BusterClaw.JobsTest do
     assert job.body =~ "dispatch reply <id>"
   end
 
-  test "the seeded voicemail-triage job tells the agent it cannot call back", %{root: _root} do
+  test "the seeded voicemail-triage job does not treat voicemail as consent to text", %{
+    root: _root
+  } do
     Jobs.ensure()
 
     job = Jobs.get("voicemail-triage")
@@ -91,15 +98,27 @@ defmodule BusterClaw.JobsTest do
     assert job.body =~ "dispatch claim --job voicemail-triage"
     assert job.body =~ "phone_get"
 
-    # The load-bearing instruction: BusterPhone is inbound-only, and `dispatch reply`
-    # is a Gmail send that refuses a voicemail item. An agent carrying over its
-    # mail-triage habit would otherwise try to email a phone number.
-    assert job.body =~ "cannot call or text anyone back"
+    # `dispatch reply` is Gmail-only, and a voicemail is not permission to use
+    # the separate SMS channel.
+    assert job.body =~ "voicemail is not consent to text"
     assert job.body =~ "no_reply_channel"
 
     # Transcripts are machine-made and are a stranger's words — both warnings matter.
     assert job.body =~ "often wrong"
     assert job.body =~ "untrusted input"
+  end
+
+  test "the seeded sms-triage job replies only through the gated SMS command", %{root: _root} do
+    Jobs.ensure()
+
+    job = Jobs.get("sms-triage")
+    assert job.name == "SMS Triage"
+    assert job.body =~ "dispatch claim --job sms-triage"
+    assert job.body =~ "phone_get"
+    assert job.body =~ "sms_send"
+    assert job.body =~ "original sender"
+    assert job.body =~ "STOP/START/HELP"
+    assert job.body =~ "persisted: false"
   end
 
   test "get derives name/summary from frontmatter or falls back to the key/body", %{root: root} do

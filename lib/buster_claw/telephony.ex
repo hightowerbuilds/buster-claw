@@ -4,21 +4,10 @@ defmodule BusterClaw.Telephony do
   SQLite. The Message Machine panel (`PhoneLive`) reads everything through this
   context.
 
-  ## What is actually wired
-
-  **Inbound voicemail only.** Events arrive one way — Twilio → the Supabase edge
-  function → the relay table → `Telephony.Drain` → `record_event/2`. That path is
-  complete.
-
-  **There is no outbound path.** No Twilio REST client exists anywhere in the
-  app, and nothing calls `record_event/2` with `direction: "outbound"`. The
-  schema permits `outbound`, and `sms_threads/0` will render an outbound row if
-  one ever appears, but no code produces one. Inbound SMS is likewise unbuilt:
-  the `sms` kind is accepted end-to-end, but only the `voice` edge function
-  exists, so nothing writes an SMS row either (A2P 10DLC registration is the
-  gate — see `daily-growth/roadmaps/BUSTERPHONE_ROADMAP.md`).
-
-  Treat the outbound/SMS surfaces here as schema-ready, not working.
+  Inbound voicemail and SMS arrive through signed Supabase Edge Functions and
+  the durable relay drain. Outbound SMS uses Twilio's Messages API, but remains
+  disabled until the operator explicitly enables the kill switch after the
+  Messaging Service and A2P registration are ready.
   """
 
   import Ecto.Query
@@ -27,6 +16,7 @@ defmodule BusterClaw.Telephony do
 
   alias BusterClaw.Telephony.Event
   alias BusterClaw.Telephony.Twilio
+  alias BusterClaw.TrustedNumbers
 
   @topic "telephony"
 
@@ -57,6 +47,164 @@ defmodule BusterClaw.Telephony do
 
       broadcast({:telephony_event, event})
       {:ok, event}
+    end
+  end
+
+  @doc "Send and persist one SMS, subject to the configured recipient/day cap."
+  def send_sms(to, body, opts \\ []) do
+    with {:ok, recipient} <- normalize_recipient(to),
+         {:ok, body} <- validate_sms_body(body) do
+      :global.trans({__MODULE__, {:sms_send, recipient}}, fn ->
+        deliver_sms(recipient, body, opts)
+      end)
+    end
+  end
+
+  @doc "Count locally-persisted outbound SMS to one recipient since 00:00 UTC."
+  def sent_today_to(recipient) do
+    start_of_day = DateTime.new!(Date.utc_today(), ~T[00:00:00], "Etc/UTC")
+
+    Event
+    |> where(
+      [event],
+      event.kind == "sms" and event.direction == "outbound" and
+        event.to_number == ^recipient and event.occurred_at >= ^start_of_day
+    )
+    |> Repo.aggregate(:count)
+  end
+
+  @doc "Whether the latest inbound SMS consent event for a number is an opt-out."
+  def sms_opted_out?(recipient) do
+    Event
+    |> where(
+      [event],
+      event.kind == "sms" and event.direction == "inbound" and
+        event.from_number == ^recipient
+    )
+    |> order_by([event], desc: event.occurred_at, desc: event.id)
+    |> Repo.all()
+    |> Enum.reduce_while(false, fn event, _state ->
+      case sms_consent_event(event) do
+        :opt_out -> {:halt, true}
+        :opt_in -> {:halt, false}
+        :none -> {:cont, false}
+      end
+    end)
+  end
+
+  defp deliver_sms(recipient, body, opts) do
+    cap = sms_daily_cap(opts)
+
+    cond do
+      sms_opted_out?(recipient) ->
+        {:error, :recipient_opted_out}
+
+      sent_today_to(recipient) >= cap ->
+        {:error, {:sms_daily_cap_reached, cap}}
+
+      true ->
+        with {:ok, receipt} <- Twilio.send_sms(recipient, body, opts) do
+          persist_outbound_sms(recipient, body, receipt)
+        end
+    end
+  end
+
+  defp sms_consent_event(%Event{metadata: metadata, body: body}) do
+    type = metadata && (metadata["opt_out_type"] || metadata[:opt_out_type])
+    keyword = type || body
+
+    case keyword |> to_string() |> String.trim() |> String.upcase() do
+      value when value in ~w(STOP STOPALL UNSUBSCRIBE CANCEL END QUIT) -> :opt_out
+      value when value in ~w(START UNSTOP) -> :opt_in
+      _ -> :none
+    end
+  end
+
+  defp persist_outbound_sms(recipient, body, receipt) do
+    attrs = %{
+      direction: "outbound",
+      kind: "sms",
+      from_number: receipt.from || our_number() || receipt.messaging_service_sid,
+      to_number: recipient,
+      body: body,
+      twilio_sid: receipt.sid,
+      occurred_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      metadata: %{
+        "twilio_status" => receipt.status,
+        "messaging_service_sid" => receipt.messaging_service_sid
+      }
+    }
+
+    case record_event(attrs, observe: false) do
+      {:ok, event} ->
+        observe_sms_send(recipient, receipt, true)
+
+        {:ok,
+         %{
+           id: event.id,
+           sent: true,
+           persisted: true,
+           to: recipient,
+           twilio_sid: receipt.sid,
+           status: receipt.status
+         }}
+
+      {:error, changeset} ->
+        # Twilio has already accepted the message. Report partial success so a
+        # caller does not blindly retry and create a duplicate delivery.
+        observe_sms_send(recipient, receipt, false)
+
+        {:ok,
+         %{
+           sent: true,
+           persisted: false,
+           to: recipient,
+           twilio_sid: receipt.sid,
+           status: receipt.status,
+           persistence_error: inspect(changeset.errors)
+         }}
+    end
+  end
+
+  defp observe_sms_send(recipient, receipt, persisted?) do
+    BusterClaw.Sentinel.observe(
+      :outbound_send,
+      "SMS sent to #{recipient}",
+      %{
+        kind: "sms",
+        to: recipient,
+        twilio_sid: receipt.sid,
+        status: receipt.status,
+        persisted: persisted?
+      }
+    )
+  end
+
+  defp normalize_recipient(raw) do
+    case TrustedNumbers.normalize(raw) do
+      {:ok, recipient} -> {:ok, recipient}
+      :error -> {:error, :invalid_recipient}
+    end
+  end
+
+  defp validate_sms_body(body) when is_binary(body) do
+    cond do
+      String.trim(body) == "" -> {:error, :empty_body}
+      String.length(body) > 1600 -> {:error, :body_too_long}
+      true -> {:ok, body}
+    end
+  end
+
+  defp validate_sms_body(_body), do: {:error, :invalid_body}
+
+  defp sms_daily_cap(opts) do
+    case Keyword.get(
+           opts,
+           :daily_cap,
+           Application.get_env(:buster_claw, :sms_daily_recipient_cap, 20)
+         ) do
+      cap when is_integer(cap) and cap > 0 -> cap
+      _ -> 20
     end
   end
 

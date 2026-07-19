@@ -44,6 +44,13 @@ defmodule BusterClaw.Commands.Telephony do
 
   def phone_stats(_args \\ %{}), do: {:ok, Telephony.stats()}
 
+  def sms_send(%{"to" => to, "body" => body}) when is_binary(to) and is_binary(body) do
+    Telephony.send_sms(to, body)
+  end
+
+  def sms_send(%{"to" => to}) when is_binary(to), do: {:error, :missing_body}
+  def sms_send(_args), do: {:error, :missing_recipient}
+
   def phone_mark_heard(%{"id" => id}) do
     case Telephony.get_event(id) do
       nil ->

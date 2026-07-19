@@ -564,6 +564,7 @@ defmodule BusterClaw.Commands do
   defdelegate phone_get(args), to: BusterClaw.Commands.Telephony
   defdelegate phone_stats(args \\ %{}), to: BusterClaw.Commands.Telephony
   defdelegate phone_mark_heard(args), to: BusterClaw.Commands.Telephony
+  defdelegate sms_send(args), to: BusterClaw.Commands.Telephony
   defdelegate phone_trusted_list(args \\ %{}), to: BusterClaw.Commands.Telephony
   defdelegate phone_trusted_add(args), to: BusterClaw.Commands.Telephony
   defdelegate phone_trusted_remove(args), to: BusterClaw.Commands.Telephony

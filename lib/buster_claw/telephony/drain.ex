@@ -182,13 +182,21 @@ defmodule BusterClaw.Telephony.Drain do
            verified: row["verified"] == true,
            recording_path: recording_path,
            occurred_at: occurred_at,
-           metadata: Map.merge(%{"relay_id" => row["id"]}, flags)
+           metadata:
+             row
+             |> Map.get("metadata", %{})
+             |> normalize_metadata()
+             |> Map.merge(%{"relay_id" => row["id"]})
+             |> Map.merge(flags)
          }}
 
       :error ->
         {:error, {:bad_created_at, row["created_at"]}}
     end
   end
+
+  defp normalize_metadata(metadata) when is_map(metadata), do: metadata
+  defp normalize_metadata(_metadata), do: %{}
 
   defp persist(attrs) do
     case Telephony.record_event(attrs) do
@@ -220,6 +228,27 @@ defmodule BusterClaw.Telephony.Drain do
   # expected and stays quiet, and no error can fail the drain and strand a
   # voicemail — but an *unexpected* enqueue failure is logged, because it means
   # a trusted caller's voicemail silently never became agent work.
+  defp maybe_enqueue_dispatch(%Event{direction: "inbound", kind: "sms"} = event) do
+    cond do
+      compliance_message?(event) ->
+        :skip
+
+      number = TrustedNumbers.match(event.from_number) ->
+        event
+        |> Dispatch.enqueue_sms(%{
+          trusted: true,
+          trusted_sender: number,
+          recommended_role_key: "sms-triage",
+          request_summary: "Text message from #{number}",
+          metadata: %{"telephony_event_id" => event.id}
+        })
+        |> log_enqueue_failure("SMS #{event.twilio_sid}")
+
+      true ->
+        :skip
+    end
+  end
+
   defp maybe_enqueue_dispatch(%Event{direction: "inbound", kind: "voicemail"} = event) do
     case TrustedNumbers.match(event.from_number) do
       nil ->
@@ -251,6 +280,23 @@ defmodule BusterClaw.Telephony.Drain do
   end
 
   defp maybe_enqueue_dispatch(_event), do: :skip
+
+  # Twilio's Advanced Opt-Out flow owns these exchanges. Archive them, but do
+  # not let an agent send a second response or reinterpret a compliance command
+  # as work. The body check also fails safe when Advanced Opt-Out is not enabled.
+  defp compliance_message?(%Event{metadata: metadata, body: body}) do
+    opt_out_type = metadata && (metadata["opt_out_type"] || metadata[:opt_out_type])
+
+    present?(opt_out_type) or
+      body
+      |> to_string()
+      |> String.trim()
+      |> String.upcase()
+      |> then(&(&1 in ~w(STOP STOPALL UNSUBSCRIBE CANCEL END QUIT START UNSTOP HELP INFO)))
+  end
+
+  defp present?(value) when is_binary(value), do: String.trim(value) != ""
+  defp present?(value), do: not is_nil(value)
 
   # Dedupe conflicts (re-drain of an already-queued voicemail) are expected and
   # stay quiet; anything else is a trusted voicemail that never reached the

@@ -138,6 +138,15 @@ defmodule BusterClaw.Commands.TelephonyTest do
 
       assert BusterClaw.TrustedNumbers.list_entries() == []
     end
+
+    test "an untrusted run cannot send SMS" do
+      assert {:error, :requires_confirmation} =
+               Commands.call(
+                 "sms_send",
+                 %{"to" => "+15035550123", "body" => "Do not send"},
+                 caller: :agent_untrusted
+               )
+    end
   end
 
   describe "phone_trusted_add / _list / _remove" do

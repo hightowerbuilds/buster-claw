@@ -37,17 +37,16 @@ number, **the user never learns Twilio exists.** One bill to us; we pay the whol
 | **Free / Channel A** | BYO Twilio + BYO Supabase, wire the webhook yourself (document this). | **$0** → free. Same principle as BYO Claude. |
 | **Paid** | We are your phone company: a number, the relay, zero setup. | **Real, recurring, per-user** → earns a recurring price honestly. |
 
-**Sequencing consequence — voice first, and it's a big one.** As shipped, BusterPhone
-is a pure **inbound answering machine**: `<Say>` → `<Record>` → transcribe
-(`supabase/functions/voice/index.ts:77-83`), with **no outbound Twilio call anywhere in
-the codebase**. Inbound voice **does not require A2P 10DLC** — that registration grind
-is an *SMS* gate. So:
+**Sequencing consequence — voice first, and it's a big one.** Voice shipped first as
+a pure inbound answering machine. The SMS code path landed 2026-07-18, disabled by
+default pending Messaging Service and A2P activation. Inbound voice **does not require
+A2P 10DLC** — that registration grind is an *SMS* gate. So:
 
 - **Phase 1 (voice/voicemail) is shippable as the paid tier with NO A2P registration.**
   This is the fastest honest path to revenue. Do not let SMS block it.
-- **Phase 2 (SMS) is what triggers A2P 10DLC** — and A2P brand registration wants an
-  **EIN**, which likely forces the LLC earlier than `GO_TO_MARKET` Part I assumes
-  ("entity deferred"). **Confirm this before committing to an SMS date.**
+- **Phase 2 (SMS) is what triggers A2P 10DLC.** Twilio currently supports a Sole
+  Proprietor Brand for eligible direct customers without an EIN; Standard Brand
+  registration uses an EIN. Carrier review time, not the LLC, is the schedule risk.
 
 **New obligations that come with being the retailer** (none of these are in the phases
 below yet — they are net-new work):
@@ -152,17 +151,16 @@ transcript doc appear in the workspace without touching the app.
 
 ### Phase 2 — Texting (inbound + outbound SMS)
 
-> **Drafted in detail 2026-07-15.** SMS is already half-built by construction:
-> the `telephony_events` schema + migration accept `kind: "sms"` and
-> `direction: "outbound"`, the `/phone` Message Machine already renders a
-> **Texts** tab with per-number threads and sent/received styling, and the
-> trusted-numbers gate exists from the voicemail path. Every one of those
-> moduledocs says the same thing — *"schema-ready, not working; nothing writes
-> an SMS row."* This phase makes something write the rows. The honest gaps
-> confirmed in the tree on 07-15: **there is no Twilio REST client anywhere in
-> the app** (the rotary dial in `/phone` genuinely just accumulates digits — it
-> is decorative), there is **no `sms` edge function** (only `voice`), and
-> `Telephony.Drain` special-cases `kind: "voicemail"` only.
+> **Code-complete 2026-07-18; operator activation remains.** Signed inbound SMS,
+> trusted-number Dispatch, `sms_send`, local outbound persistence, Sentinel audit,
+> kill switch, and daily recipient cap are implemented and tested. The `/phone`
+> thread view remains read-only. Live delivery still requires the Messaging Service
+> SID, webhook deployment, and approved A2P campaign described below.
+>
+> **Historical baseline (2026-07-15).** The schema and `/phone` thread renderer
+> existed, but no SMS webhook, drain dispatch, REST send, cap, or command wrote
+> an SMS row. The 2026-07-18 implementation closes those code gaps; the rotary
+> dial is still decorative because outbound voice remains out of scope.
 
 **The one fact that shapes the whole phase: A2P 10DLC is the long pole, and it
 is paperwork, not code.** US carriers filter application-to-person SMS from
@@ -253,7 +251,7 @@ without touching the app. Works during campaign review; only cross-carrier
   record), sending **via the Messaging Service SID** (`MessagingServiceSid`
   param, not `From`) so the campaign registration applies. Injectable HTTP for
   tests, like `Telephony.Relay`.
-- **`sms_send` command** in `Commands.Catalog.Integrations` — tier
+- **`sms_send` command** in `Commands.Catalog.Telephony` — tier
   **`:restricted`** (args `to` + `body`), so an `agent_untrusted` caller is
   refused-and-queued, not silently sent. Agent-drivable via `./buster-claw
   sms_send` and `/api/run`; **`Sentinel.observe(:outbound_send, …)` on every

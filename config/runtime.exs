@@ -91,16 +91,26 @@ if config_env() != :test do
     telephony_relay_key: telephony_relay_key,
     telephony_drain_enabled: telephony_drain_enabled
 
-  # Twilio REST creds on the Mac — read-only usage here (pricing back-fill), but
-  # the same creds SMS Phase 2B will send with. Set TWILIO_ACCOUNT_SID /
-  # TWILIO_AUTH_TOKEN in the environment; never commit them. Absent → the Twilio
-  # client reports not-configured and cost back-fill simply doesn't run.
+  # Twilio REST creds on the Mac. SMS is fail-closed even when credentials are
+  # present: it additionally requires a Messaging Service SID and the explicit
+  # BUSTER_CLAW_SMS_ENABLED=true kill switch.
   if System.get_env("TWILIO_ACCOUNT_SID") do
     config :buster_claw, :twilio, %{
       account_sid: System.get_env("TWILIO_ACCOUNT_SID"),
-      auth_token: System.get_env("TWILIO_AUTH_TOKEN")
+      auth_token: System.get_env("TWILIO_AUTH_TOKEN"),
+      messaging_service_sid: System.get_env("TWILIO_MESSAGING_SERVICE_SID"),
+      sms_enabled:
+        System.get_env("BUSTER_CLAW_SMS_ENABLED") in ["1", "true", "TRUE", "yes", "YES"]
     }
   end
+
+  sms_daily_recipient_cap =
+    case Integer.parse(System.get_env("BUSTER_CLAW_SMS_DAILY_RECIPIENT_CAP") || "20") do
+      {cap, ""} when cap > 0 -> cap
+      _ -> 20
+    end
+
+  config :buster_claw, :sms_daily_recipient_cap, sms_daily_recipient_cap
 end
 
 # Finnhub API key for the finance_quote / finance_news commands. Optional — when

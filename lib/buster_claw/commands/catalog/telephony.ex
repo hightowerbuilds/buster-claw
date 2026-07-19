@@ -48,6 +48,18 @@ defmodule BusterClaw.Commands.Catalog.Telephony do
           "Mark a phone event as heard (clears the answering machine's blinking light).",
         args: %{"id" => %{type: :integer, required: true}}
       },
+      %{
+        name: "sms_send",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Send one SMS through BusterPhone. Gated, disabled until explicitly configured, and capped per recipient per UTC day.",
+        args: %{
+          "to" => %{type: :string, required: true},
+          "body" => %{type: :string, required: true}
+        }
+      },
       # :restricted, not :safe — this is a *policy* read, not operational data.
       # Caller ID is trivially spoofable, so handing an untrusted-provenance run the
       # allowlist hands it exactly the number to spoof to get its voicemail queued.

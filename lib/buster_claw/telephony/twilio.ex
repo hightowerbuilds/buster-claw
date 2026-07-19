@@ -1,6 +1,6 @@
 defmodule BusterClaw.Telephony.Twilio do
   @moduledoc """
-  Twilio REST client — the Mac's read side of Twilio billing
+  Twilio REST client for voicemail billing and outbound SMS
   (`VOICEMAIL_COST_ROADMAP.md`). Twilio never sends price in a webhook; it lives
   on the REST resources and populates **asynchronously** (null right after the
   call, settled a bit later), so cost is a retryable back-fill, not a
@@ -19,9 +19,9 @@ defmodule BusterClaw.Telephony.Twilio do
   component whose price hasn't settled is `:pending`; `final?` is true only when
   every component has settled, which is the signal to stop back-filling a row.
 
-  Creds come from app env `:twilio` (`%{account_sid, auth_token}`), set from
-  `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` in `config/runtime.exs`. `req_options`
-  (Req.Test plugs) inject in tests. This is the same client SMS Phase 2B reuses.
+  Creds come from app env `:twilio`, set in `config/runtime.exs`. Outbound SMS
+  additionally requires a Messaging Service SID and the explicit SMS kill
+  switch. `req_options` (Req.Test plugs) inject in tests.
   """
 
   @api "https://api.twilio.com"
@@ -29,6 +29,32 @@ defmodule BusterClaw.Telephony.Twilio do
   @doc "True when both the Twilio Account SID and Auth Token are configured."
   def configured? do
     present?(account_sid()) and present?(auth_token())
+  end
+
+  @doc "True only when credentials, Messaging Service, and the SMS kill switch are set."
+  def sms_configured? do
+    configured?() and present?(messaging_service_sid()) and sms_enabled?()
+  end
+
+  @doc "Create one outbound SMS through the configured Twilio Messaging Service."
+  def send_sms(to, body, opts \\ []) do
+    with :ok <- sms_ready(),
+         :ok <- validate_recipient(to),
+         {:ok, body} <- validate_body(body) do
+      path = "/2010-04-01/Accounts/#{account_sid()}/Messages.json"
+
+      request(opts)
+      |> Req.merge(
+        url: path,
+        form: [
+          {"To", to},
+          {"Body", body},
+          {"MessagingServiceSid", messaging_service_sid()}
+        ]
+      )
+      |> Req.post()
+      |> normalize_sms_response()
+    end
   end
 
   @doc """
@@ -96,6 +122,55 @@ defmodule BusterClaw.Telephony.Twilio do
     end
   end
 
+  defp normalize_sms_response({:ok, %{status: status, body: body}})
+       when status in 200..299 and is_map(body) do
+    case body["sid"] do
+      sid when is_binary(sid) and sid != "" ->
+        {:ok,
+         %{
+           sid: sid,
+           status: body["status"],
+           to: body["to"],
+           from: body["from"],
+           messaging_service_sid: body["messaging_service_sid"] || messaging_service_sid()
+         }}
+
+      _ ->
+        {:error, :malformed_twilio_response}
+    end
+  end
+
+  defp normalize_sms_response({:ok, %{status: status, body: body}}),
+    do: {:error, {:twilio_status, status, body}}
+
+  defp normalize_sms_response({:error, reason}),
+    do: {:error, {:twilio_request_failed, reason}}
+
+  defp sms_ready do
+    cond do
+      not sms_enabled?() -> {:error, :sms_disabled}
+      not configured?() -> {:error, :not_configured}
+      not present?(messaging_service_sid()) -> {:error, :missing_messaging_service}
+      true -> :ok
+    end
+  end
+
+  defp validate_recipient(to) when is_binary(to) do
+    if Regex.match?(~r/^\+[1-9]\d{7,14}$/, to), do: :ok, else: {:error, :invalid_recipient}
+  end
+
+  defp validate_recipient(_to), do: {:error, :invalid_recipient}
+
+  defp validate_body(body) when is_binary(body) do
+    cond do
+      String.trim(body) == "" -> {:error, :empty_body}
+      String.length(body) > 1600 -> {:error, :body_too_long}
+      true -> {:ok, body}
+    end
+  end
+
+  defp validate_body(_body), do: {:error, :invalid_body}
+
   # Twilio price is a negative USD string ("-0.00850") once settled, or null while
   # billing is still being computed. → integer micro-USD (absolute), or :pending.
   @doc false
@@ -138,6 +213,8 @@ defmodule BusterClaw.Telephony.Twilio do
 
   defp account_sid, do: get_in(config(), [:account_sid])
   defp auth_token, do: get_in(config(), [:auth_token])
+  def messaging_service_sid, do: get_in(config(), [:messaging_service_sid])
+  defp sms_enabled?, do: get_in(config(), [:sms_enabled]) == true
   defp config, do: Application.get_env(:buster_claw, :twilio, %{})
 
   defp present?(value), do: is_binary(value) and value != ""

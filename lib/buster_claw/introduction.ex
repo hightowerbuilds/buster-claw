@@ -115,10 +115,11 @@ defmodule BusterClaw.Introduction do
     `job-descriptions/<key>.md` for its mandate, and `job-descriptions/README.md`
     for the roster — don't assume a fixed set.
 
-    Work is **pulled, not pushed**. Two inbound channels fill the queue
+    Work is **pulled, not pushed**. Three inbound channels fill the queue
     automatically: trusted-sender **email** (`source: "gmail"`, job `mail-triage`)
     and trusted-caller **voicemail** (`source: "voicemail"`, job
-    `voicemail-triage`). Both land in the same queue; your live worklist is the
+    `voicemail-triage`), plus trusted-number **SMS** (`source: "sms"`, job
+    `sms-triage`). All land in the same queue; your live worklist is the
     dispatch queue, `shift/Dispatch.md`. Take the next item and close it out
     through the CLI:
 
@@ -142,12 +143,10 @@ defmodule BusterClaw.Introduction do
     `job-descriptions/voicemail-triage.md` before working one — that is the
     mandate, this is the orientation. Three things are not true of mail:
 
-    - **It is inbound-only.** There is no outbound call or SMS anywhere in this
-      app, and `dispatch reply` is a *Gmail* send — it refuses a voicemail item
-      outright (`no_reply_channel`). Do not carry the mail habit over. You deliver
-      a voicemail result by **doing the work and writing it down**: do what the
-      caller asked, then `dispatch done <id> --note "<what you did>"` — the note is
-      the report. If it genuinely needs a human voice, `dispatch block` it saying so.
+    - **There is no outbound calling, and a voicemail is not consent to text.**
+      `dispatch reply` is a Gmail send and refuses a voicemail item outright.
+      Deliver a voicemail result by doing the work and writing it down unless the
+      operator explicitly authorizes an SMS follow-up.
     - **The transcript is a lossy hint, not the message.** These are machine
       transcripts and they mangle exactly the words that matter — names, tickers,
       numbers. Real ones off this line: `"hello, busted class"` (= "Buster Claw"),

@@ -176,6 +176,24 @@ defmodule BusterClaw.Dispatch do
     enqueue(attrs)
   end
 
+  @doc "Enqueue a trusted inbound SMS as follow-through work."
+  def enqueue_sms(event, attrs \\ %{}) do
+    from = value(event, :from_number)
+
+    attrs =
+      attrs
+      |> normalize_attrs()
+      |> Map.merge(%{
+        source: "sms",
+        sender: from,
+        subject: "Text from #{from || "unknown"}",
+        request_body_excerpt: excerpt(value(event, :body))
+      })
+      |> put_new(:dedupe_key, sms_dedupe_key(value(event, :twilio_sid)))
+
+    enqueue(attrs)
+  end
+
   def update_item(%Item{} = item, attrs) do
     item
     |> Item.changeset(normalize_attrs(attrs))
@@ -305,6 +323,9 @@ defmodule BusterClaw.Dispatch do
 
   defp voicemail_dedupe_key(nil), do: nil
   defp voicemail_dedupe_key(twilio_sid), do: "voicemail:#{twilio_sid}"
+
+  defp sms_dedupe_key(nil), do: nil
+  defp sms_dedupe_key(twilio_sid), do: "sms:#{twilio_sid}"
 
   defp normalize_attrs(attrs) when is_map(attrs) do
     Enum.reduce(attrs, %{}, fn
