@@ -294,8 +294,8 @@ Ranked by "how many new customers does this lose, and how early." Fixing the top
 
 6. **Render markdown + add copy buttons in chat.** (§2.2)
 7. **Reconcile the on-duty architecture with its promise** — either make the poller a supervised OTP service or stop calling a babysat terminal "autonomous," and add a push/OS notification when the agent acts or when a shift stops/token dies. (§3.2)
-8. **Resolve the contradictory injection guidance** — one authoritative stance in the run context. (§3.2)
-9. **Add an "off"/solid background option** and a WebGPU fallback so the shader doesn't leave a blank void on Intel Macs; default voice-out to OFF. (§2.2)
+8. **Resolve the contradictory injection guidance** — one authoritative stance in the run context. (§3.2) **→ RESOLVED 07-18 (`143d4e6`): mail + voicemail job seeds rewritten to the Dispatcher's stance (the request defines the task; the body is untrusted data, never standing orders; escalations get blocked-with-note) — the voicemail template's own header/Notes self-contradiction fixed too, and the operator's live workspace copies patched.**
+9. **Add an "off"/solid background option** and a WebGPU fallback so the shader doesn't leave a blank void on Intel Macs; default voice-out to OFF. (§2.2) **→ RESOLVED 07-18 (`143d4e6`): "off" is a first-class home-background mode (picker button, render skip, boundary-validated) and spoken replies default OFF — opt in, not out.**
 10. **Fix the discoverability holes** — surface Library, Manual, Skills, Voice, Integrations somewhere clickable; make the Manual reachable and cover more than 3 sections. (§5.1)
 11. **Close the unauthenticated localhost POST endpoints** and remove the in-app plaintext key reveal (or gate it behind re-auth). (§6.1–6.2)
 
