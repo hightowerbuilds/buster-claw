@@ -147,11 +147,12 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert response =~ ~s(form[phx-submit="chat_send"]) or
                response =~ ~s(phx-submit="chat_send")
 
-      # Spoken replies (TTS): the Voice on/off toggle in the chat header. The
-      # STT mic (Mic hook, listening overlay) was demolished 06-28.
+      # Spoken replies (TTS): the Voice on/off toggle in the chat header,
+      # default OFF since 07-18 (opt in, not out). The STT mic (Mic hook,
+      # listening overlay) was demolished 06-28.
       assert response =~ ~s(id="voice-toggle")
       assert response =~ ~s(phx-hook="VoiceToggle")
-      assert response =~ "Voice on"
+      assert response =~ "Voice off"
       refute response =~ ~s(id="chat-mic")
       refute response =~ ~s(phx-hook="Mic")
       refute response =~ "Click to talk"
