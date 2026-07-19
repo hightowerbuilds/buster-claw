@@ -557,7 +557,7 @@ defmodule BusterClaw.Commands.Web do
             via: "browser_flow",
             status: report.status,
             failed_step: report.failed_step,
-            steps: audit_steps(steps)
+            steps: redact_flow_steps(steps)
           }
         )
 
@@ -570,9 +570,15 @@ defmodule BusterClaw.Commands.Web do
 
   def browser_flow(_args), do: {:error, :missing_steps}
 
-  # Fill values never ride the flow event raw — length only, the browser_fill
-  # precedent.
-  defp audit_steps(steps) do
+  @doc """
+  Reduce a flow's `fill` steps to value *lengths* — the `browser_fill`
+  precedent. Public because the dispatch choke point applies it to
+  `browser_flow`'s audited args as well (`BusterClaw.Commands.audit_invoke/4`):
+  Sentinel redacts by key name, and `"value"` nested inside a steps array is
+  too generic a key to redact globally, so a credential typed by a flow would
+  otherwise persist plaintext in `security_events`.
+  """
+  def redact_flow_steps(steps) when is_list(steps) do
     Enum.map(steps, fn
       %{"action" => "fill"} = step ->
         value = step |> Map.get("value", "") |> to_string()

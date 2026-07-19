@@ -193,6 +193,12 @@ defmodule BusterClaw.Commands.Catalog.Web do
       %{
         name: "browser_wait",
         type: :read,
+        # The only :safe-tier co-presence command, and a deliberate one
+        # (operator-ratified 07-18): it returns just matched: true/false, so no
+        # page content reaches the agent, and frictionless polling is the whole
+        # point of a wait primitive. The accepted trade: it is a yes/no oracle
+        # about the live tab. Don't "fix" this to :restricted without revisiting
+        # that call — every wait inside a flow pays the tier.
         tier: :safe,
         description:
           "Wait for the active browser tab to settle or match a condition — navigation complete, a CSS selector present/visible, or text on the page. Read-only polling inside the desktop shell; never acts on the page and ingests nothing. An exhausted budget returns matched: false, not an error. Requires the desktop app to be open.",

@@ -657,6 +657,38 @@ defmodule BusterClaw.Commands.WebCopresenceTest do
       refute_received {:browser_command, _ref, :extract, _payload}
     end
 
+    test "the choke-point audit never persists a fill value, only its length" do
+      Bridge.subscribe()
+      secret = "choke-point-secret-42"
+
+      steps = [%{"action" => "fill", "selector" => "#pw", "value" => secret}]
+
+      task =
+        Task.async(fn ->
+          Commands.call("browser_flow", %{"steps" => steps}, caller: :trusted)
+        end)
+
+      assert_receive {:browser_command, ref, :fill, %{"value" => ^secret}}, 1_000
+      result = %{"ok" => true, "label" => "Password", "matched_by" => "selector"}
+      Bridge.fulfill(ref, {:ok, %{data: Jason.encode!(result)}})
+
+      assert {:ok, %{status: "passed"}} = Task.await(task)
+
+      invoke =
+        BusterClaw.Sentinel.list_events(limit: 10)
+        |> Enum.find(
+          &(&1.category == "command_invoke" and &1.metadata["command"] == "browser_flow")
+        )
+
+      assert invoke, "the dispatch choke point should have audited the flow"
+      [step] = invoke.metadata["args"]["steps"]
+      assert step["value_length"] == String.length(secret)
+      refute Map.has_key?(step, "value")
+      # The selector still rides along — we redact the secret, not the story.
+      assert step["selector"] == "#pw"
+      refute inspect(invoke.metadata) =~ secret
+    end
+
     test "invalid flows are typed errors and never reach the desktop or the feed" do
       Bridge.subscribe()
       before = length(BusterClaw.Sentinel.list_events())

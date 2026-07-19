@@ -36,26 +36,18 @@ break becomes a beta user's bug report with cold context.
 
 ---
 
-### Decide: `browser_wait` tier + `browser_flow` audit posture
+### Refresh out-of-repo prompts naming the old click/fill error atoms
 
-**What.** Two trust-model defaults chosen deliberately in the 07-18 build,
-awaiting operator ratification. (a) `browser_wait` is the **only safe-tier
-co-presence command** — it returns just `matched: true/false`, but that is a
-yes/no oracle about the live tab; flipping to `:restricted` is two lines plus
-the tier snapshot. (b) `browser_flow`'s auto-audit records **full step args —
-including fill values — to `security_events`** (documented out loud in the
-catalog); the flow-level event redacts to lengths, but a password in a fill
-step persists plaintext in the local audit DB. Alternative: length-redact
-fill values before the choke-point audit too. Related one-liner: refresh any
-out-of-repo prompts/skill docs naming the old `:missing_index` atoms
-(now `:missing_target`).
+**What.** `browser_click` / `browser_fill` fallbacks were renamed
+`:missing_index` / `:missing_index_or_value` → `:missing_target` /
+`:missing_target_or_value` on 07-18 (they can fail on more than an index now).
+The repo is clean; anything *outside* it — saved prompts, agent skill docs,
+personal notes — that names the old atoms should be updated.
 
-**Why deferred.** Operator judgment on trust boundaries; the defaults are
-live and documented, so nothing is broken meanwhile.
+**Why deferred.** Nothing in the repo can find or fix out-of-repo text.
 
-**What makes it expensive later.** (b) becomes a privacy surprise the first
-time a real credential rides a flow — deciding after beta users exist means
-renegotiating what's already on their audit feeds.
+**What makes it expensive later.** It doesn't get more expensive; it just
+quietly misleads whoever reads that prompt next.
 
 ---
 

@@ -275,12 +275,27 @@ defmodule BusterClaw.Commands do
       record(
         :command_invoke,
         "#{name} (#{outcome})",
-        %{command: name, args: args, caller: caller, tier: command_tier(name), outcome: outcome}
+        %{
+          command: name,
+          args: scrub_audit_args(name, args),
+          caller: caller,
+          tier: command_tier(name),
+          outcome: outcome
+        }
       )
     end
 
     :ok
   end
+
+  # Sentinel's redaction is key-name + value-shape based, which can't see a
+  # secret nested inside a command's own payload under a generic key. The one
+  # such case today: a browser_flow `fill` step's "value". Reduce those to
+  # lengths before the args reach the audit row (operator call, 07-18).
+  defp scrub_audit_args("browser_flow", %{"steps" => steps} = args) when is_list(steps),
+    do: Map.put(args, "steps", BusterClaw.Commands.Web.redact_flow_steps(steps))
+
+  defp scrub_audit_args(_name, args), do: args
 
   # Sentinel persistence + broadcast is on the hot command path. In tests it must
   # run inline so it shares the request's Ecto sandbox connection (tests read the
