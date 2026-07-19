@@ -2,7 +2,7 @@ defmodule BusterClawWeb.PhoneLive do
   @moduledoc """
   The Message Machine: BusterPhone's call/text log as a shader window — the log
   fills the left column; the right column divides into Playback (top, over the
-  `mandel` WGSL shader) and Contacts (bottom). Voicemails play inline from the
+  telephone `keypad` WGSL shader) and Contacts (bottom). Voicemails play inline from the
   Library (`/phone/recording`) and show their Twilio cost (back-filled — see
   `VOICEMAIL_COST_ROADMAP.md`), SMS reads as per-number threads, and unheard
   voicemails are the blinking light — selecting one marks it heard. Live-updates
@@ -22,8 +22,10 @@ defmodule BusterClawWeb.PhoneLive do
     %{key: "call", label: "Calls"}
   ]
 
+  @keypad_keys ~w(1 2 3 4 5 6 7 8 9 * 0 #)
+
   # Shader palette for the Playback panel (base / accent / highlight), fed as
-  # custom colors — hazard orange over near-black behind the mandelbrot.
+  # custom colors — hazard orange over near-black behind the keypad.
   @wave_colors %{
     playback: "#160d09,#ff4d1c,#ffc9b3"
   }
@@ -38,10 +40,13 @@ defmodule BusterClawWeb.PhoneLive do
     {:ok,
      socket
      |> assign(:page_title, "Phone")
+     |> assign(:keypad_keys, @keypad_keys)
      |> assign(:filter, "all")
      |> assign(:selected_event, nil)
      |> assign(:selected_thread, nil)
      |> assign(:thread_messages, [])
+     |> assign(:dialed_number, "")
+     |> assign(:dial_match, nil)
      |> assign(:selected_contact, nil)
      |> assign(:adding_contact, false)
      |> assign(:contact_error, nil)
@@ -95,6 +100,25 @@ defmodule BusterClawWeb.PhoneLive do
      |> assign(:selected_thread, nil)}
   end
 
+  def handle_event("dial_key", %{"key" => key}, socket) when key in @keypad_keys do
+    dialed_number =
+      if String.length(socket.assigns.dialed_number) < 15,
+        do: socket.assigns.dialed_number <> key,
+        else: socket.assigns.dialed_number
+
+    {:noreply, assign_dial(socket, dialed_number)}
+  end
+
+  def handle_event("dial_backspace", _params, socket) do
+    length = max(String.length(socket.assigns.dialed_number) - 1, 0)
+    dialed_number = String.slice(socket.assigns.dialed_number, 0, length)
+    {:noreply, assign_dial(socket, dialed_number)}
+  end
+
+  def handle_event("dial_clear", _params, socket) do
+    {:noreply, assign_dial(socket, "")}
+  end
+
   # Manual "refresh costs" — back-fill Twilio prices now rather than waiting for
   # the drain tick. No-op (with a hint) when Twilio isn't configured.
   def handle_event("refresh_costs", _params, socket) do
@@ -114,7 +138,12 @@ defmodule BusterClawWeb.PhoneLive do
   end
 
   def handle_event("select_contact", %{"id" => id}, socket) do
-    {:noreply, select_contact(socket, Contacts.get_contact!(id))}
+    contact = Contacts.get_contact!(id)
+
+    {:noreply,
+     socket
+     |> select_contact(contact)
+     |> select_contact_number(contact)}
   end
 
   def handle_event("close_contact", _params, socket) do
@@ -140,6 +169,7 @@ defmodule BusterClawWeb.PhoneLive do
          socket
          |> assign(adding_contact: false, contact_error: nil)
          |> select_contact(contact)
+         |> select_contact_number(contact)
          |> load_contacts()}
 
       {:error, changeset} ->
@@ -256,7 +286,63 @@ defmodule BusterClawWeb.PhoneLive do
     |> assign(:contacts, contacts)
     |> assign(:contacts_by_number, Contacts.by_phone(contacts))
     |> assign(:orphan_numbers, Contacts.orphan_entries(contacts).numbers)
+    |> assign(:dial_match, closest_contact(contacts, socket.assigns[:dialed_number] || ""))
     |> refresh_selected_contact(contacts)
+  end
+
+  defp assign_dial(socket, dialed_number) do
+    assign(socket,
+      dialed_number: dialed_number,
+      dial_match: closest_contact(socket.assigns.contacts, dialed_number)
+    )
+  end
+
+  defp select_contact_number(socket, %{phone: phone}) when is_binary(phone) do
+    assign_dial(socket, national_digits(phone))
+  end
+
+  defp select_contact_number(socket, _contact), do: socket
+
+  defp closest_contact(_contacts, ""), do: nil
+
+  defp closest_contact(contacts, dialed_number) do
+    query = digits_only(dialed_number)
+
+    if query == "" do
+      nil
+    else
+      contacts
+      |> Enum.reject(&is_nil(&1.phone))
+      |> Enum.map(&{dial_match_score(&1.phone, query), &1})
+      |> Enum.reject(fn {score, _contact} -> is_nil(score) end)
+      |> Enum.max_by(fn {score, contact} -> {score, contact.name} end, fn -> nil end)
+      |> case do
+        nil -> nil
+        {_score, contact} -> contact
+      end
+    end
+  end
+
+  defp dial_match_score(phone, query) do
+    full = digits_only(phone)
+    national = national_digits(phone)
+
+    cond do
+      String.starts_with?(national, query) -> {3, -String.length(national)}
+      String.starts_with?(full, query) -> {2, -String.length(full)}
+      String.contains?(national, query) -> {1, -String.length(national)}
+      true -> nil
+    end
+  end
+
+  defp digits_only(value), do: String.replace(value, ~r/\D/, "")
+
+  defp national_digits(phone) do
+    digits = digits_only(phone)
+
+    if String.starts_with?(digits, "1") and byte_size(digits) == 11,
+      do: binary_part(digits, 1, 10),
+      else: digits
   end
 
   # Re-read the selected contact's derived state whenever the list moves, so the
@@ -580,7 +666,6 @@ defmodule BusterClawWeb.PhoneLive do
         <%!-- RIGHT: divided column — Playback over Machine --%>
         <div class="flex min-h-0 flex-1 flex-col gap-3 lg:col-span-2">
           <section class="ic-panel relative isolate flex min-h-0 flex-1 flex-col overflow-hidden">
-            <.shader_bg id="phone-mandel-playback" shader="mandel" colors={@wave_colors.playback} />
             <div class="relative z-10 flex min-h-0 flex-1 flex-col">
               <div class="ic-panel-h ic-glass shrink-0">
                 <span>
@@ -592,6 +677,7 @@ defmodule BusterClawWeb.PhoneLive do
                 </span>
                 <button
                   :if={@selected_event || @selected_thread}
+                  id="phone-close-detail"
                   phx-click="close_detail"
                   class="text-base-content/50 transition hover:text-base-content"
                   title="Close"
@@ -600,24 +686,132 @@ defmodule BusterClawWeb.PhoneLive do
                 </button>
               </div>
 
-              <div class="min-h-0 flex-1 overflow-y-auto p-3">
-                <div
-                  :if={!@selected_event and !@selected_thread}
-                  class="grid h-full min-h-0 place-items-center p-6 text-center"
-                >
-                  <div class="ic-glass border-2 border-base-content/20 px-6 py-8">
-                    <.icon name="hero-play-circle" class="mx-auto size-9 text-base-content/40" />
-                    <p class="mt-3 font-mono text-sm uppercase tracking-wide text-base-content/60">
-                      Select a message to play it here
-                    </p>
-                    <p class="mt-1 text-xs text-base-content/45">
-                      Voicemails play inline; texts open as a thread.
-                    </p>
+              <div
+                :if={!@selected_event and !@selected_thread}
+                id="phone-keypad-stage"
+                class="relative min-h-0 flex-1 overflow-hidden"
+              >
+                <.shader_bg
+                  id="phone-keypad-playback"
+                  shader="keypad"
+                  colors={@wave_colors.playback}
+                />
+
+                <div class="absolute inset-x-4 top-3 z-10">
+                  <div class="flex min-h-9 items-center gap-2 border-b-2 border-base-content/20 pb-2">
+                    <span
+                      id="phone-dialed-number"
+                      class="min-w-0 flex-1 truncate font-mono text-lg font-bold tracking-normal text-base-content"
+                    >
+                      {if @dialed_number == "",
+                        do: "Enter a number",
+                        else: format_dialed(@dialed_number)}
+                    </span>
+                    <button
+                      :if={@dialed_number != ""}
+                      id="phone-dial-clear"
+                      type="button"
+                      phx-click="dial_clear"
+                      class="grid size-8 shrink-0 place-items-center text-base-content/45 transition hover:bg-base-content/10 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      title="Clear number"
+                      aria-label="Clear number"
+                    >
+                      <.icon name="hero-x-mark" class="size-4" />
+                    </button>
+                    <button
+                      :if={@dialed_number != ""}
+                      id="phone-dial-backspace"
+                      type="button"
+                      phx-click="dial_backspace"
+                      class="grid size-8 shrink-0 place-items-center text-base-content/45 transition hover:bg-base-content/10 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      title="Delete last digit"
+                      aria-label="Delete last digit"
+                    >
+                      <.icon name="hero-backspace" class="size-4" />
+                    </button>
                   </div>
+
+                  <button
+                    :if={
+                      @dial_match && (!@selected_contact || @selected_contact.id != @dial_match.id)
+                    }
+                    id="phone-dial-match"
+                    type="button"
+                    phx-click="select_contact"
+                    phx-value-id={@dial_match.id}
+                    class="mt-2 flex w-full items-center justify-between gap-3 border-l-2 border-accent px-2 py-1 text-left transition hover:bg-accent/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  >
+                    <span class="min-w-0 truncate font-mono text-xs font-bold">
+                      {@dial_match.name}
+                    </span>
+                    <span class="shrink-0 font-mono text-[11px] text-base-content/60">
+                      {format_phone(@dial_match.phone)}
+                    </span>
+                  </button>
+
+                  <div
+                    :if={@selected_contact && @selected_contact.phone}
+                    id="phone-contact-actions"
+                    class="mt-2 grid grid-cols-2 gap-2"
+                  >
+                    <button
+                      id="phone-contact-text"
+                      type="button"
+                      disabled
+                      aria-disabled="true"
+                      class="flex h-8 cursor-not-allowed items-center justify-center gap-2 border-2 border-base-content/15 bg-base-100/30 font-mono text-[11px] font-bold uppercase text-base-content/40"
+                      title="Outbound texting is not enabled yet"
+                    >
+                      <.icon name="hero-chat-bubble-left-right" class="size-3.5" /> Text
+                    </button>
+                    <button
+                      id="phone-contact-call"
+                      type="button"
+                      disabled
+                      aria-disabled="true"
+                      class="flex h-8 cursor-not-allowed items-center justify-center gap-2 border-2 border-base-content/15 bg-base-100/30 font-mono text-[11px] font-bold uppercase text-base-content/40"
+                      title="Outbound calling is not enabled yet"
+                    >
+                      <.icon name="hero-phone" class="size-3.5" /> Call
+                    </button>
+                  </div>
+
+                  <p
+                    :if={@dialed_number != "" and is_nil(@dial_match) and is_nil(@selected_contact)}
+                    id="phone-dial-no-match"
+                    class="mt-2 px-2 font-mono text-[10px] uppercase tracking-wide text-base-content/40"
+                  >
+                    No contact match
+                  </p>
                 </div>
 
                 <div
+                  id="phone-keypad-controls"
+                  class="absolute bottom-[4%] left-1/2 z-10 grid h-[66%] max-w-[86%] -translate-x-1/2 grid-cols-3 grid-rows-4 aspect-[0.78]"
+                  aria-label="Contact number search keypad"
+                >
+                  <button
+                    :for={key <- @keypad_keys}
+                    id={"phone-dial-key-#{if key == "*", do: "star", else: if(key == "#", do: "hash", else: key)}"}
+                    type="button"
+                    phx-click="dial_key"
+                    phx-value-key={key}
+                    class="grid min-h-0 min-w-0 place-items-center bg-transparent transition hover:bg-accent/10 active:bg-accent/25 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                    aria-label={"Dial #{if key == "*", do: "star", else: if(key == "#", do: "hash", else: key)}"}
+                  >
+                    <span class="sr-only">{key}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div
+                :if={@selected_event || @selected_thread}
+                id="phone-message-detail"
+                class="min-h-0 flex-1 overflow-y-auto p-3"
+              >
+                <div
                   :if={@selected_event}
+                  id="phone-event-player"
                   class="ic-glass space-y-4 border-2 border-base-content/20 p-4"
                 >
                   <div>
@@ -681,7 +875,7 @@ defmodule BusterClawWeb.PhoneLive do
                   </p>
                 </div>
 
-                <div :if={@selected_thread} class="space-y-3">
+                <div :if={@selected_thread} id="phone-text-thread" class="space-y-3">
                   <div
                     :for={message <- @thread_messages}
                     class={[
@@ -915,25 +1109,41 @@ defmodule BusterClawWeb.PhoneLive do
                 </div>
 
                 <%!-- History: this contact's calls and voicemails. --%>
-                <div
+                <details
                   :if={@contact_history != []}
-                  class="max-h-32 shrink-0 overflow-y-auto border-t-2 border-base-content/20 p-2"
+                  id="phone-contact-history"
+                  class="group max-h-36 shrink-0 overflow-y-auto border-t-2 border-base-content/20"
                 >
-                  <p class="pb-1 font-mono text-[10px] uppercase tracking-wider text-base-content/40">
-                    History
-                  </p>
-                  <div
-                    :for={event <- @contact_history}
-                    class="flex items-baseline justify-between gap-2 py-0.5"
+                  <summary
+                    id="phone-contact-history-toggle"
+                    class="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-base-content/50 transition hover:bg-base-content/5 hover:text-base-content focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                   >
-                    <span class="font-mono text-[11px] text-base-content/70">
-                      {event_label(event)}
+                    <span>Caller history</span>
+                    <span class="flex items-center gap-1.5">
+                      <span class="text-base-content/35">{length(@contact_history)}</span>
+                      <.icon
+                        name="hero-chevron-down"
+                        class="size-3 transition-transform group-open:rotate-180"
+                      />
                     </span>
-                    <span class="shrink-0 font-mono text-[10px] text-base-content/40">
-                      {format_dt(event.occurred_at)}
-                    </span>
+                  </summary>
+                  <div
+                    id="phone-contact-history-items"
+                    class="border-t border-base-content/10 px-3 py-1.5"
+                  >
+                    <div
+                      :for={event <- @contact_history}
+                      class="flex items-baseline justify-between gap-2 py-0.5"
+                    >
+                      <span class="font-mono text-[11px] text-base-content/70">
+                        {event_label(event)}
+                      </span>
+                      <span class="shrink-0 font-mono text-[10px] text-base-content/40">
+                        {format_dt(event.occurred_at)}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                </details>
 
                 <div class="shrink-0 space-y-1 border-t-2 border-base-content/20 p-2">
                   <form phx-change="set_face" class="flex items-center gap-2">
@@ -1017,6 +1227,11 @@ defmodule BusterClawWeb.PhoneLive do
     do: "(#{a}) #{b}-#{c}"
 
   defp format_phone(number), do: number
+
+  defp format_dialed(<<a::binary-size(3), b::binary-size(3), c::binary-size(4)>>),
+    do: "(#{a}) #{b}-#{c}"
+
+  defp format_dialed(number), do: number
 
   defp format_duration(seconds) when is_integer(seconds) do
     "#{div(seconds, 60)}:#{seconds |> rem(60) |> Integer.to_string() |> String.pad_leading(2, "0")}"

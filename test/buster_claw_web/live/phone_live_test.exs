@@ -48,7 +48,14 @@ defmodule BusterClawWeb.PhoneLiveTest do
 
     assert detail =~ "/phone/recording?path=raw%2F2026-07-11%2Fvoicemail-demo-1.m4a"
     assert detail =~ "Transcript"
+    assert has_element?(view, "#phone-event-player")
+    refute has_element?(view, "#phone-keypad-stage")
     assert Telephony.unheard_count() == 0
+
+    view |> element("#phone-close-detail") |> render_click()
+
+    assert has_element?(view, "#phone-keypad-stage")
+    refute has_element?(view, "#phone-message-detail")
   end
 
   test "groups texts into threads and opens one", %{conn: conn} do
@@ -126,13 +133,65 @@ defmodule BusterClawWeb.PhoneLiveTest do
     assert detail =~ "pricing…"
   end
 
-  test "playback panel rests on a placeholder with nothing selected", %{conn: conn} do
-    {:ok, _view, html} = live(conn, "/phone")
+  test "playback panel rests on the functional keypad", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/phone")
 
-    # The retired rotary dial is gone; the resting state prompts a selection.
-    assert html =~ "Select a message to play it here"
-    refute html =~ "rotary-dial"
-    refute html =~ "data-rotor"
+    assert has_element?(view, "#phone-keypad-stage")
+    assert has_element?(view, "#phone-keypad-playback[data-shader=keypad]")
+    assert has_element?(view, "#phone-keypad-controls")
+    assert has_element?(view, "#phone-dial-key-1")
+    assert has_element?(view, "#phone-dial-key-0")
+    refute has_element?(view, "#phone-contact-actions")
+    refute has_element?(view, "#phone-message-detail")
+  end
+
+  test "keypad searches contacts by number and supports correction", %{conn: conn} do
+    {:ok, contact} =
+      Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
+
+    {:ok, view, _html} = live(conn, "/phone")
+
+    view |> element("#phone-dial-key-5") |> render_click()
+    view |> element("#phone-dial-key-0") |> render_click()
+    view |> element("#phone-dial-key-3") |> render_click()
+
+    assert has_element?(view, "#phone-dialed-number", "503")
+    assert has_element?(view, "#phone-dial-match[phx-value-id='#{contact.id}']", "Dana Printshop")
+
+    view |> element("#phone-dial-backspace") |> render_click()
+    assert has_element?(view, "#phone-dialed-number", "50")
+
+    view |> element("#phone-dial-clear") |> render_click()
+    assert has_element?(view, "#phone-dialed-number", "Enter a number")
+    refute has_element?(view, "#phone-dial-match")
+  end
+
+  test "selected contact shows pending actions and collapsed caller history", %{conn: conn} do
+    {:ok, contact} =
+      Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
+
+    record!(%{
+      from_number: contact.phone,
+      transcript: "Call me after lunch.",
+      recording_path: "raw/2026-07-11/voicemail-dana.m4a"
+    })
+
+    {:ok, view, _html} = live(conn, "/phone")
+
+    view |> element("#phone-dial-key-5") |> render_click()
+    view |> element("#phone-dial-key-0") |> render_click()
+    view |> element("#phone-dial-key-3") |> render_click()
+    view |> element("#phone-dial-match") |> render_click()
+
+    assert has_element?(view, "#phone-dialed-number", "(503) 555-0142")
+    assert has_element?(view, "#phone-contact-actions")
+    assert has_element?(view, "#phone-contact-text[disabled]")
+    assert has_element?(view, "#phone-contact-call[disabled]")
+    refute has_element?(view, "#phone-dial-match")
+
+    assert has_element?(view, "#phone-contact-history:not([open])")
+    assert has_element?(view, "#phone-contact-history-toggle", "Caller history")
+    assert has_element?(view, "#phone-contact-history-items", "Voicemail")
   end
 
   test "contacts: add via form, select shows the shaderface card", %{conn: conn} do

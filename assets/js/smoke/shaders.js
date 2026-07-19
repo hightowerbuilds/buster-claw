@@ -8,6 +8,7 @@ import {WEATHER_WGSL} from "./weather.wgsl.js"
 import {FACE_WGSL} from "./face.wgsl.js"
 import {DAYCYCLE_WGSL} from "./daycycle.wgsl.js"
 import {SEVENSEG_WGSL} from "./sevenseg.wgsl.js"
+import {KEYPAD_WGSL} from "./keypad.wgsl.js"
 
 export const SHADERS = {
   smoke: SMOKE_WGSL,
@@ -17,6 +18,7 @@ export const SHADERS = {
   face: FACE_WGSL,
   daycycle: DAYCYCLE_WGSL,
   sevenseg: SEVENSEG_WGSL,
+  keypad: KEYPAD_WGSL,
 }
 
 export const DEFAULT_SHADER = "smoke"

@@ -1,6 +1,8 @@
 # 07-18-26 — Playwright's funeral, and the automation build that replaced it
 
-The densest shipping day on record: seven arcs, all pushed to main.
+The densest shipping day on record. The original seven arcs and the late
+BusterPhone SMS leg are pushed to main; the final keypad polish remains in the
+working tree at this update.
 
 ## 1. Browser fixes from the overnight review (`723f60c`, `dd97932`)
 The Tauri 2 main-thread deadlock: sync commands run ON the main thread, so
@@ -148,16 +150,70 @@ were stale assertions on exactly the behaviors changed on purpose; fixed in
 minutes. The pattern was the real bug — every gated pipe now runs under
 `set -o pipefail`, and the lesson is in agent memory.
 
+## 10. BusterPhone SMS shipped; carrier registration is still the gate (`7dc2bed`)
+
+The complete SMS backend landed in one 23-file commit (+1,002/-86): signed
+Supabase ingress, durable drain handling, trusted-number Dispatch work,
+`sms_send`, Twilio Messaging Service delivery, local outbound persistence,
+Sentinel audit, STOP/START consent state, a recipient/day cap, and an explicit
+kill switch. The relay schema gained event metadata so carrier consent and
+Twilio delivery state survive the cloud-to-local hop.
+
+The live path is proven through inbound: the operator sent a real text to the
+BusterPhone number and it arrived in the `/phone` log/thread. The paid local
+number is attached to the Messaging Service. **Outbound remains deliberately
+disabled.** Twilio/A2P registration is still under carrier review, so the kill
+switch stays off until the campaign is approved and a real test send through
+the Messaging Service lands. Waiting is the current task; there is no remaining
+code or migration step masquerading as that external approval.
+
+## 11. The Message Machine became a real number surface (working tree)
+
+The decorative Mandelbrot playback background was replaced with a compact
+3x4 telephone keypad shader. Its digits are not an imitation: the alarm/timer
+seven-segment WGSL was extracted into one shared glyph module and compiled into
+both shaders. The keypad now accepts digit presses, shows the dialed number,
+and surfaces the closest matching contact number as the query develops.
+
+Selecting a contact fills the complete formatted number and reveals `Text` and
+`Call` actions. Both are visibly disabled until outbound capability is actually
+ready; there is no fake `tel:` handoff or UI that implies Twilio can call. The
+keypad and voicemail/text detail are mutually exclusive DOM states, so playback
+never layers over the numbers. Contact caller history moved into a native
+collapsed disclosure, closed on first render. Browser inspection verified the
+WebGPU canvas, contact match, disabled actions, non-overlapping hit geometry,
+player swap, and collapsed history. `naga` validates the WGSL; the full gate is
+1,153 tests with zero failures.
+
+## 12. The Wave reviewed — approved direction, not implementation
+
+Read the DataZone roadmap `roadmap/wave-gesture-control.md`. The safety shape is
+sound: local MediaPipe HandLandmarker, explicit open-palm arm/disarm, confidence
+and vote gates, cooldowns, and a fist hold that can act only while the app's
+full-detail confirmation dialog is already visible. Purchases and third-party
+sends should remain click/typed-only in v1, exactly as the roadmap recommends.
+
+One integration correction belongs on the record before build work starts: the
+roadmap names React/TypeScript-shaped pieces (`useHandTracking.ts`,
+`GestureOverlay`), while this app is Phoenix LiveView with plain ES modules and
+external hooks. The same architecture should land as focused modules under
+`assets/js/` plus a LiveView hook, wired into the existing app-owned
+`data-claw-confirm` dialog. The model and MediaPipe runtime must be vendored into
+the supported `app.js` bundle/resource path — no CDN or new layout script.
+Phase 1 remains unstarted.
+
 ## State at close
-- Tests: 1,138, zero failures; cargo 8/8; catalog 157 commands.
+- Tests: 1,153, zero failures; cargo 8/8; catalog 158 commands.
 - CI: release-desktop green on macos-15 (aarch64) AND macos-15-intel — the
   arm64 fire is out, pending only signing.
 - First-look punch list: Tier 0 #2/#5 and Tier 1 #8/#9 RESOLVED today, on
   top of the browser leg; remaining Tier 0 = OAuth-out-of-Testing (needs the
-  site) + the BusterPhone door (operator decision).
+  site) + BusterPhone carrier approval (external wait).
 - LEFTOVERS: three operator-only items (primitive walk — now including the
   double-launch check, wait-tier + flow-audit ratifications, password
   bookkeeping).
-- Next: payday → cert into CI secrets; free critical path meanwhile =
-  busterclaw.lol site + privacy policy → start Google verification. Best
-  fresh-session opener: markdown rendering + copy buttons in chat (#6).
+- BusterPhone: inbound SMS is live; outbound stays kill-switched while Twilio
+  registration is pending. Do not turn waiting into speculative send code.
+- Next engineering fork while registration runs: begin The Wave's tracking
+  spike in the Phoenix hook architecture, or return to the free distribution
+  critical path (busterclaw.lol + privacy policy → Google verification).
