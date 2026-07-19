@@ -174,6 +174,14 @@ defmodule BusterClaw.AppearanceTest do
     assert {:error, :invalid_mode} = Appearance.set_home_background_mode("does-not-exist")
   end
 
+  test "off is a first-class mode: no shader, no image", %{root: _root} do
+    assert {:ok, "off"} = Appearance.set_home_background_mode("off")
+    assert Appearance.home_background_state().mode == "off"
+
+    assert {:ok, "waves"} = Appearance.set_home_background_mode("waves")
+    assert Appearance.home_background_state().mode == "waves"
+  end
+
   # Faces flow one way: a background may be picked as a contact face, but a
   # contact's face is never offered — or honored — as the homepage background.
 

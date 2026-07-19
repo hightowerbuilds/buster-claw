@@ -90,12 +90,12 @@ defmodule BusterClawWeb.ChatPanel do
             phx-hook="VoiceToggle"
             phx-update="ignore"
             type="button"
-            aria-pressed="true"
+            aria-pressed="false"
             title="Toggle spoken replies"
-            class="inline-flex items-center gap-1.5 rounded border-2 border-primary px-2.5 py-1 font-mono text-[0.62rem] uppercase tracking-wide text-primary transition"
+            class="inline-flex items-center gap-1.5 rounded border-2 border-base-content/20 px-2.5 py-1 font-mono text-[0.62rem] uppercase tracking-wide text-base-content/40 transition"
           >
             <.icon name="hero-speaker-wave" class="size-3.5" />
-            <span data-voice-label>Voice on</span>
+            <span data-voice-label>Voice off</span>
           </button>
           <.thinking_chip thinking={@thinking} />
           <button

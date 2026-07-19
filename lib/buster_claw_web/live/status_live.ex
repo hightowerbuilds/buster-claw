@@ -792,7 +792,7 @@ defmodule BusterClawWeb.StatusLive do
         >
         </div>
         <div
-          :if={@home_bg.mode != "image"}
+          :if={@home_bg.mode not in ["image", "off"]}
           id={"home-shader-#{@home_bg.mode}-#{:erlang.phash2({@home_bg.custom, @home_bg.colors})}"}
           phx-hook="SmokeBackground"
           phx-update="ignore"

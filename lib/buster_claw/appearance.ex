@@ -360,6 +360,7 @@ defmodule BusterClaw.Appearance do
 
     mode =
       cond do
+        home_background_mode() == "off" -> "off"
         home_background_mode() == "image" and not is_nil(url) -> "image"
         home_background_mode() in @home_shaders -> home_background_mode()
         custom_shader_mode?(home_background_mode()) -> home_background_mode()
@@ -437,10 +438,18 @@ defmodule BusterClaw.Appearance do
   def home_background_mode, do: Settings.get(@home_mode_key, @home_default_mode)
 
   @doc """
-  Set the homepage background mode: a shader name from `home_shaders/0`, or
-  `\"image\"` (only honored when an image is present). Returns `{:ok, mode}` or
+  Set the homepage background mode: a shader name from `home_shaders/0`,
+  `\"image\"` (only honored when an image is present), or `\"off\"` (no shader,
+  no image — the plain base background; also the graceful answer for machines
+  where WebGPU misbehaves). Returns `{:ok, mode}` or
   `{:error, :invalid_mode}` / `{:error, :no_image}`.
   """
+  def set_home_background_mode("off") do
+    Settings.put(@home_mode_key, "off")
+    broadcast_home()
+    {:ok, "off"}
+  end
+
   def set_home_background_mode("image") do
     if home_background_image_url() do
       Settings.put(@home_mode_key, "image")

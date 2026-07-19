@@ -500,6 +500,15 @@ defmodule BusterClawWeb.AppearanceLive do
             >
               <.icon name="hero-photo" class="size-4" /> Image
             </button>
+            <button
+              type="button"
+              phx-click="set_home_bg"
+              phx-value-mode="off"
+              title="No shader, no image — the plain background"
+              class={home_opt_btn(@home_bg.mode == "off")}
+            >
+              <.icon name="hero-no-symbol" class="size-4" /> Off
+            </button>
           </div>
 
           <%!-- Live preview + custom palette (applies to the selected shader). --%>
