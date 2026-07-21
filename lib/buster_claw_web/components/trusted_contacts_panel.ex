@@ -35,88 +35,62 @@ defmodule BusterClawWeb.TrustedContactsPanel do
     assigns = assign(assigns, :empty?, assigns.contacts == [] and assigns.entries == [])
 
     ~H"""
-    <section id="home-contacts-panel" class="ic-panel flex h-full flex-col overflow-hidden">
-      <form
-        phx-submit="add_contact"
-        class="flex shrink-0 items-center gap-2 border-b-2 border-base-content/20 p-3"
+    <div
+      :if={!@empty?}
+      id="trusted-contacts-list"
+      class="flex flex-wrap content-start gap-1.5"
+    >
+      <%!-- Named people first: a contact you can also see, and face, on /phone. --%>
+      <span
+        :for={contact <- @contacts}
+        id={"trusted-contact-#{contact.id}"}
+        class="inline-flex max-w-full items-center gap-1.5 rounded-xs border border-success/50 px-2 py-1"
+        title={contact.email}
       >
-        <input
-          type="text"
-          name="entry"
-          value=""
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="alice@example.com · *@acme.com"
-          class="input input-sm min-w-0 flex-1 font-mono text-xs"
-        />
+        <span class="truncate font-display text-[0.6875rem] font-bold text-base-content">
+          {contact.name}
+        </span>
         <button
-          type="submit"
-          class="shrink-0 rounded-xs bg-primary px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85"
+          type="button"
+          phx-click="untrust_contact"
+          phx-value-id={contact.id}
+          data-claw-confirm={"Stop trusting #{contact.name}? They stay in your contacts; their mail just stops reaching the agent."}
+          aria-label={"Stop trusting #{contact.name}"}
+          class="shrink-0 font-mono text-sm leading-none text-base-content/45 transition hover:text-error"
         >
-          Add
+          ×
         </button>
-      </form>
+      </span>
 
-      <div
-        :if={!@empty?}
-        id="trusted-contacts-list"
-        class="flex min-h-0 flex-1 flex-wrap content-start gap-1.5 overflow-hidden p-3"
+      <%!-- Then the entries with nobody behind them. --%>
+      <span
+        :for={entry <- @entries}
+        id={"trusted-entry-#{entry.value}"}
+        class={[
+          "inline-flex max-w-full items-center gap-1.5 rounded-xs border px-2 py-1",
+          if(entry.type == :domain, do: "border-info/50", else: "border-base-content/30")
+        ]}
       >
-        <%!-- Named people first: a contact you can also see, and face, on /phone. --%>
-        <span
-          :for={contact <- @contacts}
-          id={"trusted-contact-#{contact.id}"}
-          class="inline-flex max-w-full items-center gap-1.5 rounded-xs border border-success/50 px-2 py-1"
-          title={contact.email}
+        <span class="truncate font-mono text-[0.6875rem] text-base-content">{entry.value}</span>
+        <button
+          type="button"
+          phx-click="remove_contact"
+          phx-value-entry={entry.value}
+          data-claw-confirm={"Stop trusting #{entry.value}?"}
+          aria-label={"Remove #{entry.value}"}
+          class="shrink-0 font-mono text-sm leading-none text-base-content/45 transition hover:text-error"
         >
-          <span class="truncate font-display text-[0.6875rem] font-bold text-base-content">
-            {contact.name}
-          </span>
-          <button
-            type="button"
-            phx-click="untrust_contact"
-            phx-value-id={contact.id}
-            data-claw-confirm={"Stop trusting #{contact.name}? They stay in your contacts; their mail just stops reaching the agent."}
-            aria-label={"Stop trusting #{contact.name}"}
-            class="shrink-0 font-mono text-sm leading-none text-base-content/45 transition hover:text-error"
-          >
-            ×
-          </button>
-        </span>
+          ×
+        </button>
+      </span>
+    </div>
 
-        <%!-- Then the entries with nobody behind them. --%>
-        <span
-          :for={entry <- @entries}
-          id={"trusted-entry-#{entry.value}"}
-          class={[
-            "inline-flex max-w-full items-center gap-1.5 rounded-xs border px-2 py-1",
-            if(entry.type == :domain, do: "border-info/50", else: "border-base-content/30")
-          ]}
-        >
-          <span class="truncate font-mono text-[0.6875rem] text-base-content">{entry.value}</span>
-          <button
-            type="button"
-            phx-click="remove_contact"
-            phx-value-entry={entry.value}
-            data-claw-confirm={"Stop trusting #{entry.value}?"}
-            aria-label={"Remove #{entry.value}"}
-            class="shrink-0 font-mono text-sm leading-none text-base-content/45 transition hover:text-error"
-          >
-            ×
-          </button>
-        </span>
-      </div>
-
-      <div
-        :if={@empty?}
-        class="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 p-4 text-center"
-      >
-        <p class="ic-eyebrow">No trusted senders</p>
-        <p class="font-mono text-[0.6875rem] text-base-content/55">
-          Add a sender above to queue their mail.
-        </p>
-      </div>
-    </section>
+    <p
+      :if={@empty?}
+      class="font-mono text-[0.6875rem] text-base-content/55"
+    >
+      No trusted senders yet — use “+ Add” by Contacts.
+    </p>
     """
   end
 end

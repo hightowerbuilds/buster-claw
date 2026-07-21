@@ -5,7 +5,9 @@ defmodule BusterClawWeb.StatusLiveTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Calendar
+  alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
+  alias BusterClaw.Telephony
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_status_#{System.unique_integer([:positive])}")
@@ -47,10 +49,11 @@ defmodule BusterClawWeb.StatusLiveTest do
     # Home sub-tabs: Chat (default) | Calendar | Notes.
     assert response =~ "Calendar"
     assert response =~ "Notes"
-    # Trusted contacts live inside the corner widget (Contacts is now the default,
-    # visible tab).
+    # The Contacts widget tab is now a comms hub (recent phone activity + contacts
+    # with Text/Call/Email); its panel keeps the id and shows empty states here.
     assert response =~ ~s(id="home-contacts-panel")
-    assert response =~ "No trusted senders"
+    assert response =~ "No contacts yet."
+    assert response =~ "No recent phone activity."
     # Right column: agent chat panel.
     assert response =~ ~s(id="home-agent-chat")
     assert response =~ ~s(phx-hook="AgentChat")
@@ -111,6 +114,9 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert html =~ "No trusted senders"
     refute html =~ contact
 
+    # The add input is collapsed behind the Contacts "+ Add" button.
+    render_click(view, "toggle_add_contact", %{})
+
     html =
       view
       |> form(~s(form[phx-submit="add_contact"]), %{"entry" => contact})
@@ -130,6 +136,9 @@ defmodule BusterClawWeb.StatusLiveTest do
 
   test "rejects an invalid trusted-contact entry with a flash", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
+
+    # The add input is collapsed behind the Contacts "+ Add" button.
+    render_click(view, "toggle_add_contact", %{})
 
     html =
       view
@@ -258,6 +267,47 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       assert has_element?(view, ~s(button[phx-value-tab="contacts"][aria-selected="true"]))
       assert has_element?(view, ~s(button[phx-value-tab="place"][aria-selected="false"]))
+    end
+  end
+
+  describe "contacts comms hub" do
+    test "the Email action prefills the chat and switches to the Chat sub-tab", %{conn: conn} do
+      {:ok, contact} = Contacts.create_contact(%{name: "Dana Ops", email: "dana@example.com"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "email_contact", %{"id" => to_string(contact.id)})
+
+      assert_push_event(view, "bc:chat_prefill", %{text: text})
+      assert text =~ "Please email Dana Ops (dana@example.com) with the following message:"
+      # Chat is now the active sub-tab (calendar/notes hidden).
+      refute has_element?(view, "#calendar-grid")
+      assert has_element?(view, "button[phx-value-tab='chat'].bg-primary")
+    end
+
+    test "recent phone activity surfaces in the Contacts widget", %{conn: conn} do
+      {:ok, _event} =
+        Telephony.record_event(
+          %{
+            direction: "inbound",
+            kind: "sms",
+            from_number: "+15035551234",
+            to_number: "+13603646763",
+            body: "on my way",
+            occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+          },
+          observe: false
+        )
+
+      {:ok, _view, html} = live(conn, ~p"/")
+      assert html =~ "on my way"
+    end
+
+    test "the add-contact input is hidden until the Add button is toggled", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, ~s(form[phx-submit="add_contact"]))
+      render_click(view, "toggle_add_contact", %{})
+      assert has_element?(view, ~s(form[phx-submit="add_contact"]))
     end
   end
 

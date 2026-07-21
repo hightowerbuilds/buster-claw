@@ -11,6 +11,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
   alias BusterClaw.SvgViewer
+  alias BusterClaw.Telephony
   alias BusterClaw.TrustedSenders
   alias BusterClaw.Weather
 
@@ -32,6 +33,8 @@ defmodule BusterClawWeb.StatusLive do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
       Notifications.subscribe()
+      # Keep the corner-widget's "Recent activity" live as calls/texts land.
+      Telephony.subscribe()
       Process.send_after(self(), :sky_refresh, @sky_refresh_ms)
     end
 
@@ -46,6 +49,7 @@ defmodule BusterClawWeb.StatusLive do
      # a silent void was the review's worst day-one failure.
      |> assign(:agent_cli_missing, match?({:error, _}, BusterClaw.AgentRunner.detect()))
      |> load_trust()
+     |> load_comms()
      # Home main view: "chat" (default) or "calendar". The sub-tab toggle swaps
      # the whole panel — the chat is hidden while the calendar is showing.
      |> assign(:home_tab, "chat")
@@ -53,6 +57,9 @@ defmodule BusterClawWeb.StatusLive do
      # Notify, and Time & Place leads (its analog clock renders instantly, and
      # `mount_weather/1` fills conditions on connect).
      |> assign(:widget_tab, "place")
+     # The "add a trusted sender" input is collapsed behind the Contacts header's
+     # + button; hidden until toggled so the tab stays uncluttered.
+     |> assign(:show_add_contact, false)
      |> assign(:weather, nil)
      |> assign(:weather_form, false)
      |> assign(:notify_form, notify_form())
@@ -101,6 +108,82 @@ defmodule BusterClawWeb.StatusLive do
     socket
     |> assign(:trusted_people, people)
     |> assign(:trusted_entries, Contacts.orphan_entries().emails)
+  end
+
+  # The corner-widget "Contacts" tab is a comms hub: recent phone activity plus
+  # the contact list (with a trusted marker) and per-person actions. Both are
+  # pre-shaped here so HomeWidget stays presentational.
+  defp load_comms(socket) do
+    contacts = Contacts.list_contacts()
+    names = Contacts.by_phone(contacts)
+
+    people =
+      Enum.map(contacts, fn c ->
+        %{id: c.id, name: c.name, phone: c.phone, email: c.email, trusted?: Contacts.trusted?(c)}
+      end)
+
+    activity = Enum.map(Telephony.list_events(limit: 6), &activity_row(&1, names))
+
+    socket
+    |> assign(:comms_contacts, people)
+    |> assign(:phone_activity, activity)
+  end
+
+  # Shape one telephony event into a compact widget row: the other party's name
+  # (or bare number), a direction mark + human title, a one-line snippet, and a
+  # relative timestamp.
+  defp activity_row(event, names) do
+    number = Telephony.counterparty(event)
+
+    label =
+      case Map.get(names, number) do
+        %{name: name} -> name
+        _ -> number || "Unknown"
+      end
+
+    %{
+      id: event.id,
+      label: label,
+      mark: if(event.direction == "outbound", do: "↗", else: "↙"),
+      title: "#{String.capitalize(event.direction)} #{kind_label(event.kind)}",
+      snippet: activity_snippet(event),
+      when: relative_time(event.occurred_at)
+    }
+  end
+
+  defp kind_label("voicemail"), do: "voicemail"
+  defp kind_label("sms"), do: "text"
+  defp kind_label("call"), do: "call"
+  defp kind_label(other), do: other
+
+  defp activity_snippet(%{kind: "sms", body: body}) when is_binary(body), do: snip(body)
+
+  defp activity_snippet(%{kind: "voicemail", transcript: t}) when is_binary(t) and t != "",
+    do: snip(t)
+
+  defp activity_snippet(%{kind: "voicemail"}), do: "voicemail"
+  defp activity_snippet(%{kind: "call"}), do: "call"
+  defp activity_snippet(_), do: ""
+
+  defp snip(text) do
+    text = String.trim(text)
+    if String.length(text) > 60, do: String.slice(text, 0, 60) <> "…", else: text
+  end
+
+  # A coarse relative timestamp for the activity feed ("3m", "2h", "5d"); older
+  # than a week falls back to a short date. occurred_at is UTC; so is now/0.
+  defp relative_time(nil), do: ""
+
+  defp relative_time(%DateTime{} = dt) do
+    seconds = DateTime.diff(now(), dt, :second)
+
+    cond do
+      seconds < 60 -> "now"
+      seconds < 3600 -> "#{div(seconds, 60)}m"
+      seconds < 86_400 -> "#{div(seconds, 3600)}h"
+      seconds < 604_800 -> "#{div(seconds, 86_400)}d"
+      true -> Elixir.Calendar.strftime(dt, "%b %-d")
+    end
   end
 
   # --- Notify widget ---------------------------------------------------------
@@ -184,6 +267,10 @@ defmodule BusterClawWeb.StatusLive do
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   @impl true
+  def handle_event("toggle_add_contact", _params, socket) do
+    {:noreply, assign(socket, :show_add_contact, !socket.assigns.show_add_contact)}
+  end
+
   def handle_event("add_contact", %{"entry" => entry}, socket) do
     case TrustedSenders.add_entry(entry) do
       {:ok, _value} ->
@@ -235,7 +322,27 @@ defmodule BusterClawWeb.StatusLive do
     case tab do
       "place" -> {:noreply, load_weather(socket)}
       "notify" -> {:noreply, load_notifications(socket)}
+      "contacts" -> {:noreply, load_comms(socket)}
       _ -> {:noreply, socket}
+    end
+  end
+
+  # The corner-widget "Email <contact>" button: hand the chat a templated request
+  # and flip to the Chat sub-tab so the user can type the message body. The agent
+  # (not us) sends the mail — this only stages the ask; texting/calling are inert
+  # until outbound telephony exists.
+  def handle_event("email_contact", %{"id" => id}, socket) do
+    case Enum.find(socket.assigns.comms_contacts, &(to_string(&1.id) == id)) do
+      %{email: email, name: name} when is_binary(email) ->
+        template = "Please email #{name} (#{email}) with the following message:\n\n"
+
+        {:noreply,
+         socket
+         |> assign(:home_tab, "chat")
+         |> push_event("bc:chat_prefill", %{text: template})}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -494,6 +601,9 @@ defmodule BusterClawWeb.StatusLive do
   # modal itself is the app-wide NotifyLive's job (a separate subscriber).
   def handle_info({:notification_fired, _notification}, socket),
     do: {:noreply, load_notifications(socket)}
+
+  # A call/text landed — refresh the corner-widget "Recent activity" feed.
+  def handle_info({:telephony_event, _event}, socket), do: {:noreply, load_comms(socket)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -862,7 +972,10 @@ defmodule BusterClawWeb.StatusLive do
             </div>
             <BusterClawWeb.HomeWidget.corner_widget
               tab={@widget_tab}
-              contacts={@trusted_people}
+              contacts={@comms_contacts}
+              activity={@phone_activity}
+              show_add={@show_add_contact}
+              trusted={@trusted_people}
               entries={@trusted_entries}
               weather={@weather}
               weather_form={@weather_form}

@@ -65,6 +65,20 @@ export const AgentChat = {
     this.form.addEventListener("submit", this.onSubmit)
     this.handle?.addEventListener("pointerdown", this.onHandleDown)
     // Voice input lives in its own reusable `Mic` hook on the mic button.
+
+    // Prefill the composer from elsewhere in the app (e.g. the corner widget's
+    // "Email <contact>" button): drop in the template, focus, and put the cursor
+    // at the end so the user just types their message. The input event lets any
+    // auto-resize react. Received even when the hook just mounted because the
+    // Chat sub-tab was switched on in the same render.
+    this.handleEvent("bc:chat_prefill", ({text}) => {
+      if (typeof text !== "string") return
+      this.input.value = text
+      this.input.focus()
+      const end = this.input.value.length
+      this.input.setSelectionRange(end, end)
+      this.input.dispatchEvent(new Event("input", {bubbles: true}))
+    })
   },
   updated() {
     this.applyHeight()
