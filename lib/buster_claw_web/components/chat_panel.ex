@@ -191,129 +191,73 @@ defmodule BusterClawWeb.ChatPanel do
   end
 
   @doc """
-  The SVG viewer sidebar (left of the chat): every SVG Claude drew this session,
-  shown as a real, crisp SVG. `svgs` is a list of `%{id, svg}` (sanitized upstream,
-  session-live — never persisted). Always present via a tap-to-toggle bumper;
-  `open` shows/hides the panel. Click a card to open it full-screen; `zoomed` is
-  the id in the modal (or nil), and ← / → page through the set.
+  Full-screen SVG preview modal. There is no persistent viewer — a drawing lives
+  in the transcript as a "View drawing" link on its message, which opens this
+  modal (the `zoom_svg` event). `svgs` is the session's `%{id, svg}` list and
+  `zoomed` is the id being shown (nil = closed). ← / → page through the whole set;
+  Esc or the backdrop closes.
   """
   attr :svgs, :list, required: true
   attr :zoomed, :any, required: true
-  attr :open, :boolean, required: true
 
-  def svg_viewer(assigns) do
+  def svg_modal(assigns) do
     assigns =
       assign(assigns, :zoom_idx, Enum.find_index(assigns.svgs, &(&1.id == assigns.zoomed)))
 
     ~H"""
-    <div
-      id="home-svg-viewer"
-      phx-hook="SvgViewerDock"
-      class="flex min-h-0 shrink-0 gap-1 overflow-hidden"
-    >
-      <aside
-        :if={@open}
-        class="ic-panel flex w-80 min-h-0 max-h-full flex-col self-start overflow-hidden"
-        aria-label="SVG Viewer"
-      >
-        <header class="flex items-center justify-between border-b-2 border-base-content/20 px-4 py-3">
-          <p class="ic-eyebrow">SVG Viewer</p>
-          <span class="font-mono text-[0.62rem] text-base-content/45">{length(@svgs)}</span>
-        </header>
-        <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
-          <div
-            :if={@svgs == []}
-            class="m-auto max-w-[12rem] text-center text-sm text-base-content/45"
-          >
-            No drawings yet. Ask Buster Claw to sketch or diagram something.
-          </div>
-          <button
-            :for={item <- @svgs}
-            type="button"
-            phx-click="zoom_svg"
-            phx-value-id={item.id}
-            title="Click to view full screen"
-            class="ic-svg-card block w-full rounded-sm border-2 border-base-content/20 bg-base-100 p-2 transition hover:border-primary"
-          >
-            {Phoenix.HTML.raw(item.svg)}
-          </button>
-        </div>
-      </aside>
-
-      <%!-- The bumper: always visible; tap to open/close the panel. --%>
-      <button
-        type="button"
-        phx-click="toggle_svg_viewer"
-        aria-expanded={to_string(@open)}
-        title={if @open, do: "Hide SVG viewer", else: "Show SVG viewer"}
-        class="ic-panel flex w-8 shrink-0 self-start flex-col items-center gap-3 py-3 text-base-content/60 transition hover:border-primary hover:text-primary"
-      >
-        <.icon name={if @open, do: "hero-chevron-left", else: "hero-chevron-right"} class="size-4" />
-        <span class="font-mono text-[0.6rem] uppercase tracking-widest [writing-mode:vertical-rl]">
-          SVG Viewer
-        </span>
-        <span
-          :if={@svgs != []}
-          class="mt-auto grid size-5 place-items-center rounded-full bg-primary text-[0.6rem] font-bold text-primary-content"
-        >
-          {length(@svgs)}
-        </span>
-      </button>
-
-      <%!-- Full-screen modal. The backdrop button closes; the image sits above it
+    <%!-- Full-screen modal. The backdrop button closes; the image sits above it
             (pointer-events-auto) so clicking it doesn't close. ← / → page through
             the viewer, Esc closes. --%>
-      <div :if={@zoom_idx} class="fixed inset-0 z-50" phx-window-keydown="zoom_key">
-        <button
-          type="button"
-          phx-click="close_zoom"
-          aria-label="Close full-screen"
-          class="absolute inset-0 h-full w-full cursor-zoom-out bg-black/80 backdrop-blur"
-        >
-        </button>
-        <div class="pointer-events-none absolute inset-0 grid place-items-center p-8">
-          <div class="ic-svg-modal pointer-events-auto overflow-auto rounded-sm border-2 border-base-content/30 bg-base-100 p-4 shadow-2xl">
-            {Phoenix.HTML.raw(Enum.at(@svgs, @zoom_idx).svg)}
-          </div>
+    <div :if={@zoom_idx} class="fixed inset-0 z-50" phx-window-keydown="zoom_key">
+      <button
+        type="button"
+        phx-click="close_zoom"
+        aria-label="Close full-screen"
+        class="absolute inset-0 h-full w-full cursor-zoom-out bg-black/80 backdrop-blur"
+      >
+      </button>
+      <div class="pointer-events-none absolute inset-0 grid place-items-center p-8">
+        <div class="ic-svg-modal pointer-events-auto overflow-auto rounded-sm border-2 border-base-content/30 bg-base-100 p-4 shadow-2xl">
+          {Phoenix.HTML.raw(Enum.at(@svgs, @zoom_idx).svg)}
         </div>
+      </div>
 
-        <button
-          type="button"
-          phx-click="close_zoom"
-          aria-label="Close full-screen"
-          class="absolute right-4 top-4 z-10 grid size-10 place-items-center rounded-sm border-2 border-base-content/40 bg-base-100 text-xl leading-none transition hover:border-primary hover:text-primary"
-        >
-          ×
-        </button>
+      <button
+        type="button"
+        phx-click="close_zoom"
+        aria-label="Close full-screen"
+        class="absolute right-4 top-4 z-10 grid size-10 place-items-center rounded-sm border-2 border-base-content/40 bg-base-100 text-xl leading-none transition hover:border-primary hover:text-primary"
+      >
+        ×
+      </button>
 
-        <button
-          :if={length(@svgs) > 1}
-          type="button"
-          phx-click="zoom_nav"
-          phx-value-dir="prev"
-          disabled={@zoom_idx == 0}
-          aria-label="Previous drawing"
-          class="pointer-events-auto absolute left-4 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full border-2 border-base-content/40 bg-base-100 text-2xl leading-none transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          ‹
-        </button>
-        <button
-          :if={length(@svgs) > 1}
-          type="button"
-          phx-click="zoom_nav"
-          phx-value-dir="next"
-          disabled={@zoom_idx == length(@svgs) - 1}
-          aria-label="Next drawing"
-          class="pointer-events-auto absolute right-4 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full border-2 border-base-content/40 bg-base-100 text-2xl leading-none transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          ›
-        </button>
-        <div
-          :if={length(@svgs) > 1}
-          class="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-sm border-2 border-base-content/20 bg-base-100 px-2 py-1 font-mono text-xs text-base-content/70"
-        >
-          {@zoom_idx + 1} / {length(@svgs)}
-        </div>
+      <button
+        :if={length(@svgs) > 1}
+        type="button"
+        phx-click="zoom_nav"
+        phx-value-dir="prev"
+        disabled={@zoom_idx == 0}
+        aria-label="Previous drawing"
+        class="pointer-events-auto absolute left-4 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full border-2 border-base-content/40 bg-base-100 text-2xl leading-none transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+      >
+        ‹
+      </button>
+      <button
+        :if={length(@svgs) > 1}
+        type="button"
+        phx-click="zoom_nav"
+        phx-value-dir="next"
+        disabled={@zoom_idx == length(@svgs) - 1}
+        aria-label="Next drawing"
+        class="pointer-events-auto absolute right-4 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full border-2 border-base-content/40 bg-base-100 text-2xl leading-none transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+      >
+        ›
+      </button>
+      <div
+        :if={length(@svgs) > 1}
+        class="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-sm border-2 border-base-content/20 bg-base-100 px-2 py-1 font-mono text-xs text-base-content/70"
+      >
+        {@zoom_idx + 1} / {length(@svgs)}
       </div>
     </div>
     """
@@ -411,11 +355,27 @@ defmodule BusterClawWeb.ChatPanel do
   end
 
   defp chat_bubble(%{msg: %{role: :assistant}} = assigns) do
+    assigns = assign(assigns, :svg_ids, Map.get(assigns.msg, :svg_ids, []))
+
     ~H"""
-    <div id={@id} class="flex justify-start">
-      <div class="max-w-[85%] whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-100 px-3 py-2 text-[17px]">
+    <div id={@id} class="flex flex-col items-start gap-1">
+      <div
+        :if={@msg.text != ""}
+        class="max-w-[85%] whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-100 px-3 py-2 text-[17px]"
+      >
         {@msg.text}
       </div>
+      <%!-- Drawings are stripped from the text and open in the modal on demand. --%>
+      <button
+        :if={@svg_ids != []}
+        type="button"
+        phx-click="zoom_svg"
+        phx-value-id={hd(@svg_ids)}
+        class="inline-flex items-center gap-1.5 rounded-sm border-2 border-primary/40 px-2.5 py-1 font-mono text-[0.75rem] text-primary transition hover:bg-primary hover:text-primary-content"
+      >
+        <.icon name="hero-photo" class="size-3.5" />
+        View {if(length(@svg_ids) == 1, do: "drawing", else: "#{length(@svg_ids)} drawings")}
+      </button>
     </div>
     """
   end

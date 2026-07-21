@@ -220,6 +220,45 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute render(view) =~ "background reply"
     end
 
+    test "an SVG in a reply becomes a View drawing link that opens the modal", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      active = active_chat(view)
+
+      svg = ~s(<svg viewBox="0 0 10 10"><circle r="5" /></svg>)
+
+      send(
+        view.pid,
+        {:agent_chat, active,
+         {:message, %{role: :assistant, text: "Here is a circle:\n```svg\n#{svg}\n```"}}}
+      )
+
+      html = render(view)
+      # The raw block is stripped from the bubble and replaced by a link; there is
+      # no persistent side viewer anymore.
+      assert html =~ "Here is a circle:"
+      refute html =~ "```svg"
+      assert html =~ "View drawing"
+      refute has_element?(view, "#home-svg-viewer")
+
+      # The link opens the full-screen modal with the (sanitized) drawing.
+      html = view |> element(~s(button[phx-click="zoom_svg"])) |> render_click()
+      assert html =~ "circle"
+    end
+
+    test "an SVG-only reply still shows a View drawing link", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      active = active_chat(view)
+
+      send(
+        view.pid,
+        {:agent_chat, active,
+         {:message,
+          %{role: :assistant, text: ~s(```svg\n<svg viewBox="0 0 10 10"><rect /></svg>\n```)}}}
+      )
+
+      assert render(view) =~ "View drawing"
+    end
+
     test "New chat adds a tab and clears the panel", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 

@@ -84,7 +84,6 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
     |> assign(:zoomed_id, nil)
-    |> assign(:svg_viewer_open, false)
     # The transcript is a stream: appends send one bubble, not the whole list,
     # and the server doesn't hold 200 messages per socket. dom_id matches the
     # ids chat_bubble always rendered.
@@ -490,9 +489,6 @@ defmodule BusterClawWeb.StatusLive do
   def handle_event("close_zoom", _params, socket),
     do: {:noreply, assign(socket, :zoomed_id, nil)}
 
-  def handle_event("toggle_svg_viewer", _params, socket),
-    do: {:noreply, update(socket, :svg_viewer_open, &(!&1))}
-
   def handle_event("zoom_nav", %{"dir" => dir}, socket),
     do: {:noreply, zoom_step(socket, dir)}
 
@@ -730,18 +726,26 @@ defmodule BusterClawWeb.StatusLive do
       else: socket
   end
 
-  # Assistant replies may carry ```svg blocks: route those to the SVG viewer
-  # sidebar (as real SVGs) and strip them from the spoken/shown bubble text. A
-  # reply that was *only* an SVG adds no bubble.
+  # Assistant replies may carry ```svg blocks: strip them from the spoken/shown
+  # bubble text and stash the drawings, tagging this message's bubble with their
+  # ids so it renders a "View drawing" link into the modal. An SVG-only reply
+  # still gets a bubble (text-less) so the drawing stays reachable.
   defp apply_chat(socket, conv_id, {:message, %{role: :assistant, text: text}}) do
     if conv_id == socket.assigns.active_chat do
       {clean, svgs} = SvgViewer.extract(text)
+      base = socket.assigns.svg_seq
       socket = collect_svgs(socket, svgs)
+      svg_ids = svg_ids_for(base, svgs)
 
-      if clean == "" do
-        socket
-      else
-        socket |> maybe_speak(:assistant, clean) |> push_msg(:assistant, clean)
+      cond do
+        clean != "" ->
+          socket |> maybe_speak(:assistant, clean) |> push_msg(:assistant, clean, svg_ids)
+
+        svgs != [] ->
+          push_msg(socket, :assistant, "", svg_ids)
+
+        true ->
+          socket
       end
     else
       update_tab(socket, conv_id, &%{&1 | unread: true})
@@ -759,6 +763,11 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   defp apply_chat(socket, _conv_id, _other), do: socket
+
+  # The pool ids `collect_svgs/2` just assigned to this batch (it numbers a batch
+  # `svg_seq+1 .. svg_seq+n`), so a bubble can link straight to its own drawings.
+  defp svg_ids_for(_base, []), do: []
+  defp svg_ids_for(base, svgs), do: Enum.to_list((base + 1)..(base + length(svgs)))
 
   # Speak the model's replies aloud (client gates on the Voice toggle + desktop
   # app). Only `:assistant` text — never tool/meta/error lines. A turn emits one
@@ -801,9 +810,9 @@ defmodule BusterClawWeb.StatusLive do
     text |> String.trim() |> String.replace(~r/\s+/, " ") |> String.slice(0, 40)
   end
 
-  defp push_msg(socket, role, text) do
+  defp push_msg(socket, role, text, svg_ids \\ []) do
     seq = socket.assigns.chat_seq + 1
-    msg = %{id: seq, role: role, text: text}
+    msg = %{id: seq, role: role, text: text, svg_ids: svg_ids}
 
     socket
     |> assign(:chat_seq, seq)
@@ -862,33 +871,53 @@ defmodule BusterClawWeb.StatusLive do
   # tab-switch. It is NOT a saved gallery — the drawings only live as long as the
   # chat's transcript does, so deleting the chat takes them with it.
   defp load_chat_history(socket, conv_id) do
-    # Built by prepending (appending with ++ inside the reduce is quadratic
-    # over the 200-row transcript), then reversed back into reading order.
-    {messages, svgs} =
+    # Reading-order entries built by prepending (++ in the reduce would be
+    # quadratic over the 200-row transcript) then reversing. Each assistant entry
+    # keeps the drawings pulled from its ```svg blocks, so its bubble can link to
+    # them; an SVG-only reply keeps a text-less bubble rather than vanishing.
+    entries =
       conv_id
       |> AgentTranscript.recent(limit: 200)
-      |> Enum.reduce({[], []}, fn row, {msgs, svgs} ->
+      |> Enum.reduce([], fn row, acc ->
         case history_role(row.role) do
           :assistant ->
             {clean, block_svgs} = SvgViewer.extract(row.content)
 
-            svgs =
-              Enum.reduce(block_svgs, svgs, fn svg, acc ->
-                [svg |> SvgViewer.sanitize() |> SvgViewer.normalize() | acc]
-              end)
+            drawings =
+              Enum.map(block_svgs, &(&1 |> SvgViewer.sanitize() |> SvgViewer.normalize()))
 
-            msgs = if clean == "", do: msgs, else: [%{role: :assistant, text: clean} | msgs]
-            {msgs, svgs}
+            if clean == "" and drawings == [],
+              do: acc,
+              else: [%{role: :assistant, text: clean, drawings: drawings} | acc]
 
           role ->
-            {[%{role: role, text: row.content} | msgs], svgs}
+            [%{role: role, text: row.content, drawings: []} | acc]
         end
       end)
+      |> Enum.reverse()
 
-    {messages, svgs} = {Enum.reverse(messages), Enum.reverse(svgs)}
+    # Number every drawing across the transcript (reading order), hand each
+    # message the ids of its own drawings, and build the flat modal pool in step.
+    {messages_rev, pool_rev, _next} =
+      Enum.reduce(entries, {[], [], 1}, fn entry, {msgs, pool, next} ->
+        n = length(entry.drawings)
+        ids = if n == 0, do: [], else: Enum.to_list(next..(next + n - 1))
 
-    messages = messages |> Enum.with_index(1) |> Enum.map(fn {m, i} -> Map.put(m, :id, i) end)
-    svgs = svgs |> Enum.with_index(1) |> Enum.map(fn {svg, i} -> %{id: i, svg: svg} end)
+        pool =
+          Enum.reduce(Enum.zip(ids, entry.drawings), pool, fn {id, svg}, p ->
+            [%{id: id, svg: svg} | p]
+          end)
+
+        {[%{role: entry.role, text: entry.text, svg_ids: ids} | msgs], pool, next + n}
+      end)
+
+    messages =
+      messages_rev
+      |> Enum.reverse()
+      |> Enum.with_index(1)
+      |> Enum.map(fn {m, i} -> Map.put(m, :id, i) end)
+
+    svgs = Enum.reverse(pool_rev)
 
     socket
     |> stream(:chat_messages, messages, reset: true)
@@ -1016,21 +1045,14 @@ defmodule BusterClawWeb.StatusLive do
 
             <div :if={@home_tab == "chat"} class="flex min-h-0 flex-1 flex-col gap-2">
               <BusterClawWeb.ChatPanel.chat_tabs chats={@chats} active={@active_chat} />
-              <div class="flex min-h-0 flex-1 gap-4">
-                <BusterClawWeb.ChatPanel.svg_viewer
-                  svgs={@chat_svgs}
-                  zoomed={@zoomed_id}
-                  open={@svg_viewer_open}
-                />
-                <BusterClawWeb.ChatPanel.chat_panel
-                  messages={@streams.chat_messages}
-                  seq={@chat_seq}
-                  running={@chat_running}
-                  thinking={@chat_thinking}
-                  queue={@chat_queue}
-                  agent_cli_missing={@agent_cli_missing}
-                />
-              </div>
+              <BusterClawWeb.ChatPanel.chat_panel
+                messages={@streams.chat_messages}
+                seq={@chat_seq}
+                running={@chat_running}
+                thinking={@chat_thinking}
+                queue={@chat_queue}
+                agent_cli_missing={@agent_cli_missing}
+              />
             </div>
 
             <div
@@ -1048,6 +1070,9 @@ defmodule BusterClawWeb.StatusLive do
               <.live_component module={BusterClawWeb.NotesComponent} id="home-notes" />
             </div>
           </div>
+
+          <%!-- Full-screen SVG preview, opened by a message's "View drawing" link. --%>
+          <BusterClawWeb.ChatPanel.svg_modal svgs={@chat_svgs} zoomed={@zoomed_id} />
         </div>
       </section>
     </Layouts.app>
