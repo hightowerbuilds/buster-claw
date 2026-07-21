@@ -40,14 +40,21 @@ const DEFAULT_SID: &str = "main";
 // chrome HTML paints only those two bands — its center is permanently covered.
 const CHROME_TOP_HEIGHT: f64 = 112.0; // app-tab row (~34) + toolbar (46) + bookmark bar (32)
 const SIDEBAR_WIDTH: f64 = 220.0; // vertical browser-tab strip on the left
-                                  // Narrow surfaces (split panes) scale the sidebar down; MUST match the chrome
-                                  // CSS `--sidebar-w: min(220px, 35vw)` or the content webview will misalign.
+// Narrow surfaces (split panes) scale the sidebar down; MUST match the chrome
+// CSS `--sidebar-w: min(220px, 35vw)` or the content webview will misalign.
 const SIDEBAR_MAX_FRACTION: f64 = 0.35;
+// Collapsed sidebar: only the bumper strip stays. MUST match the chrome CSS
+// `body.sidebar-collapsed { --sidebar-w: 16px }`.
+const SIDEBAR_COLLAPSED_WIDTH: f64 = 16.0;
 
 // Content inset for a surface box: (content_x, content_y, content_w, content_h).
-fn content_box(x: f64, y: f64, width: f64, height: f64) -> (f64, f64, f64, f64) {
+fn content_box(x: f64, y: f64, width: f64, height: f64, collapsed: bool) -> (f64, f64, f64, f64) {
     let top_h = CHROME_TOP_HEIGHT.min(height);
-    let sidebar_w = SIDEBAR_WIDTH.min(width * SIDEBAR_MAX_FRACTION);
+    let sidebar_w = if collapsed {
+        SIDEBAR_COLLAPSED_WIDTH.min(width)
+    } else {
+        SIDEBAR_WIDTH.min(width * SIDEBAR_MAX_FRACTION)
+    };
     (
         x + sidebar_w,
         y + top_h,
@@ -93,6 +100,14 @@ pub struct BrowserState {
     // Content blocking is ON by default. We store the *disabled* flag so the
     // derived Default (false) means enabled; toggled by browser_set_content_blocking.
     blocking_disabled: AtomicBool,
+    // surface id -> the surface's last full box (x, y, w, h), written by
+    // open/set_bounds. browser_set_sidebar re-derives the content inset from it
+    // when the sidebar collapses/expands between bounds syncs.
+    boxes: Mutex<HashMap<String, (f64, f64, f64, f64)>>,
+    // Surfaces whose tab sidebar is collapsed to the bumper strip. The chrome
+    // owns the preference (persisted in its localStorage) and syncs it here so
+    // open/set_bounds inset the content correctly.
+    sidebar_collapsed: Mutex<HashSet<String>>,
 }
 
 // How many content webviews may stay live per surface before the least-recently
@@ -253,6 +268,36 @@ impl BrowserState {
             .next()
             .cloned()
     }
+    fn set_box(&self, sid: &str, bounds: (f64, f64, f64, f64)) {
+        self.boxes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(sid.to_string(), bounds);
+    }
+    fn box_for(&self, sid: &str) -> Option<(f64, f64, f64, f64)> {
+        self.boxes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(sid)
+            .copied()
+    }
+    fn set_sidebar_collapsed(&self, sid: &str, collapsed: bool) {
+        let mut set = self
+            .sidebar_collapsed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if collapsed {
+            set.insert(sid.to_string());
+        } else {
+            set.remove(sid);
+        }
+    }
+    fn is_sidebar_collapsed(&self, sid: &str) -> bool {
+        self.sidebar_collapsed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(sid)
+    }
     fn download_started(&self, url: &str, path: PathBuf) -> u64 {
         let mut log = self.downloads.lock().unwrap_or_else(|e| e.into_inner());
         log.next_id += 1;
@@ -399,7 +444,9 @@ pub fn browser_open(
     height: f64,
 ) -> Result<(), String> {
     let sid = sanitize_sid(&surface_id);
-    let (cx, cy, content_w, content_h) = content_box(x, y, width, height);
+    state.set_box(&sid, (x, y, width, height));
+    let (cx, cy, content_w, content_h) =
+        content_box(x, y, width, height, state.is_sidebar_collapsed(&sid));
 
     // Full box: the chrome paints the top block + tab sidebar; content covers
     // the rest (created later, so it stacks above the chrome's dead center).
@@ -456,7 +503,9 @@ pub fn browser_set_bounds(
     height: f64,
 ) -> Result<(), String> {
     let sid = sanitize_sid(&surface_id);
-    let (cx, cy, content_w, content_h) = content_box(x, y, width, height);
+    state.set_box(&sid, (x, y, width, height));
+    let (cx, cy, content_w, content_h) =
+        content_box(x, y, width, height, state.is_sidebar_collapsed(&sid));
 
     state.set_shown(&sid);
     let chrome = chrome_label(&sid);
@@ -464,6 +513,28 @@ pub fn browser_set_bounds(
     show(&app, &chrome);
     for label in content_labels_for(&app, &sid) {
         place(&app, &label, cx, cy, content_w, content_h);
+    }
+    Ok(())
+}
+
+/// Collapse/expand a surface's tab sidebar (the chrome's bumper or ⌘B). The
+/// chrome owns the preference and repaints itself via CSS; this re-insets the
+/// content webviews to match, from the surface box saved by open/set_bounds.
+#[tauri::command]
+pub fn browser_set_sidebar(
+    app: AppHandle,
+    state: State<BrowserState>,
+    surface_id: String,
+    collapsed: bool,
+) -> Result<(), String> {
+    let sid = sanitize_sid(&surface_id);
+    state.set_sidebar_collapsed(&sid, collapsed);
+
+    if let Some((x, y, width, height)) = state.box_for(&sid) {
+        let (cx, cy, content_w, content_h) = content_box(x, y, width, height, collapsed);
+        for label in content_labels_for(&app, &sid) {
+            place(&app, &label, cx, cy, content_w, content_h);
+        }
     }
     Ok(())
 }

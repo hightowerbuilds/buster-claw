@@ -293,6 +293,7 @@ const zoomLevels = {} // tab id -> factor
 window.__menuShortcut = function (action) {
   if (action === "new_tab") return newTab()
   if (action === "close_tab") return closeTab(activeId)
+  if (action === "toggle_sidebar") return toggleSidebar()
   if (action === "reload") return inv("browser_reload", {tabId: activeId})
   if (action === "focus_address") { addr.focus(); addr.select(); return }
   if (action === "find") return openFindBar()
@@ -831,6 +832,30 @@ renderShield()
 // Rust's in-session default is ON; sync it to the persisted preference on load
 // (matters when the user previously turned blocking off).
 inv("browser_set_content_blocking", {enabled: blocking})
+
+// --- tab sidebar collapse (bumper + ⌘B via the Tabs menu) ---
+// The chrome owns the preference (persisted per surface); CSS repaints the
+// sidebar, and Rust re-insets the content webviews to match (browser_set_sidebar).
+const bumperEl = document.getElementById("bumper")
+let sidebarCollapsed = localStorage.getItem("bc:sidebar:" + SID) === "1"
+function renderSidebar() {
+  document.body.classList.toggle("sidebar-collapsed", sidebarCollapsed)
+  if (!bumperEl) return
+  bumperEl.querySelector(".glyph").textContent = sidebarCollapsed ? "›" : "‹"
+  bumperEl.title = (sidebarCollapsed ? "Show tabs" : "Hide tabs") + " (⌘B)"
+  bumperEl.setAttribute("aria-expanded", String(!sidebarCollapsed))
+}
+function toggleSidebar() {
+  sidebarCollapsed = !sidebarCollapsed
+  localStorage.setItem("bc:sidebar:" + SID, sidebarCollapsed ? "1" : "0")
+  renderSidebar()
+  inv("browser_set_sidebar", {collapsed: sidebarCollapsed})
+}
+if (bumperEl) bumperEl.addEventListener("click", toggleSidebar)
+renderSidebar()
+// Rust's in-session default is expanded; sync the persisted preference on load
+// (matters when the user previously collapsed the sidebar).
+if (sidebarCollapsed) inv("browser_set_sidebar", {collapsed: true})
 
 renderTabs()
 renderAppTabs()

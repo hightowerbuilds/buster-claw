@@ -12,6 +12,7 @@ fn main() {
             "terminal_close",
             "browser_open",
             "browser_set_bounds",
+            "browser_set_sidebar",
             "browser_navigate",
             "browser_back",
             "browser_forward",

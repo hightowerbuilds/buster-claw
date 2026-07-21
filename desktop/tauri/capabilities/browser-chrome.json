@@ -16,6 +16,7 @@
     "allow-browser-switch-tab",
     "allow-browser-close-tab",
     "allow-browser-app-navigate",
+    "allow-browser-set-sidebar",
     "allow-browser-reveal-download",
     "allow-browser-set-zoom",
     "allow-browser-find",

@@ -67,10 +67,27 @@ defmodule BusterClawWeb.BrowserChromeController do
       #top { display: flex; flex-direction: column; flex: 0 0 auto; height: 112px;
              border-bottom: 2px solid rgba(244,241,234,.18); }
       #main { display: flex; flex: 1 1 auto; min-height: 0; }
-      #sidebar { display: flex; flex-direction: column; flex: 0 0 auto;
+      #sidebar { display: flex; flex-direction: row; flex: 0 0 auto;
                  width: var(--sidebar-w); min-height: 0;
                  border-right: 2px solid rgba(244,241,234,.18); }
       #void { flex: 1 1 auto; }
+      /* Bumper: a full-height strip on the sidebar's edge; click (or ⌘B, via
+         the Tabs menu → __menuShortcut) collapses the sidebar to just this
+         strip. Collapsed width MUST match Rust's SIDEBAR_COLLAPSED_WIDTH (16 =
+         14px bumper + the sidebar's 2px border). */
+      #bumper { flex: 0 0 14px; display: flex; flex-direction: column;
+                align-items: center; justify-content: center; gap: 8px;
+                cursor: pointer; background: transparent; border: none; padding: 0;
+                border-left: 1px solid rgba(244,241,234,.1);
+                color: rgba(244,241,234,.45); font-size: 11px; line-height: 1; }
+      #bumper:hover { color: #ff4d1c; background: rgba(255,77,28,.08); }
+      #bumper .glyph { font-size: 12px; }
+      #bumper .word { writing-mode: vertical-rl; font: 700 9px/1 ui-monospace, monospace;
+                      letter-spacing: .2em; text-transform: uppercase; display: none; }
+      body.sidebar-collapsed { --sidebar-w: 16px; }
+      body.sidebar-collapsed #tabs { display: none; }
+      body.sidebar-collapsed #bumper { border-left: none; }
+      body.sidebar-collapsed #bumper .word { display: block; }
       /* loading affordance: indeterminate hazard-orange bar across the top, shown
          while the active tab is loading. Overlaid (absolute) so it adds no layout
          height. */
@@ -276,6 +293,10 @@ defmodule BusterClawWeb.BrowserChromeController do
       <div id="main">
         <div id="sidebar">
           <div id="tabs" role="tablist" aria-label="Browser tabs"></div>
+          <button id="bumper" type="button" aria-label="Toggle tab sidebar">
+            <span class="glyph"></span>
+            <span class="word">Tabs</span>
+          </button>
         </div>
         <div id="void" aria-hidden="true"></div>
       </div>

@@ -361,6 +361,7 @@ fn build_tabs_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Subm
     let zoom_in = item("bc_zoom_in", "Zoom In", "CmdOrCtrl+=")?;
     let zoom_out = item("bc_zoom_out", "Zoom Out", "CmdOrCtrl+-")?;
     let zoom_reset = item("bc_zoom_reset", "Actual Size", "CmdOrCtrl+0")?;
+    let toggle_sidebar = item("bc_toggle_sidebar", "Toggle Tab Sidebar", "CmdOrCtrl+B")?;
     let sep2 = PredefinedMenuItem::separator(handle)?;
     let prev_tab = item("bc_prev_tab", "Previous Tab", "CmdOrCtrl+Shift+[")?;
     let next_tab = item("bc_next_tab", "Next Tab", "CmdOrCtrl+Shift+]")?;
@@ -388,6 +389,7 @@ fn build_tabs_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Subm
         &zoom_out,
         &zoom_reset,
         &sep2,
+        &toggle_sidebar,
         &prev_tab,
         &next_tab,
         &sep3,
@@ -441,6 +443,7 @@ fn main() {
             terminal::terminal_close,
             browser::browser_open,
             browser::browser_set_bounds,
+            browser::browser_set_sidebar,
             browser::browser_navigate,
             browser::browser_back,
             browser::browser_forward,

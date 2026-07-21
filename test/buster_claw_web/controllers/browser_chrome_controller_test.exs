@@ -22,6 +22,10 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
     assert body =~ ~s(id="top")
     assert body =~ ~s(id="void")
     assert body =~ "--sidebar-w: min(220px, 35vw)"
+    # The sidebar bumper (click to collapse/expand; ⌘B does the same via the
+    # Tabs menu). Collapsed width 16px must match Rust's SIDEBAR_COLLAPSED_WIDTH.
+    assert body =~ ~s(id="bumper")
+    assert body =~ "--sidebar-w: 16px"
     # The behavior lives in the bundled chrome app, not inline script.
     assert body =~ ~s(<script src="/assets/js/chrome.js"></script>)
     refute body =~ "window.__onContentNavigated"
