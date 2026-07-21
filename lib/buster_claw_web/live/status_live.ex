@@ -5,7 +5,6 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
   alias BusterClaw.Appearance
-  alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
   alias BusterClaw.Notifications
@@ -50,16 +49,17 @@ defmodule BusterClawWeb.StatusLive do
      # Home main view: "chat" (default) or "calendar". The sub-tab toggle swaps
      # the whole panel — the chat is hidden while the calendar is showing.
      |> assign(:home_tab, "chat")
-     # Header widget: which sub-tab is showing (Calendar / Contacts / Time & Place).
-     |> assign(:widget_tab, "calendar")
+     # Header widget: which sub-tab is showing. Order is Time & Place / Contacts /
+     # Notify, and Time & Place leads (its analog clock renders instantly, and
+     # `mount_weather/1` fills conditions on connect).
+     |> assign(:widget_tab, "place")
      |> assign(:weather, nil)
      |> assign(:weather_form, false)
      |> assign(:notify_form, notify_form())
      |> assign(:notify_kind, "timer")
      |> load_notifications()
      |> init_chats()
-     |> load_calendar_month()
-     |> then(fn s -> if connected?(s), do: maybe_fetch_sky(s), else: s end)}
+     |> then(fn s -> if connected?(s), do: mount_weather(s), else: s end)}
   end
 
   # Load the open conversations (tabs), subscribe to each so background runs update
@@ -222,12 +222,12 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("select_home_tab", %{"tab" => tab}, socket)
-      when tab in ["chat", "calendar"] do
+      when tab in ["chat", "calendar", "notes"] do
     {:noreply, assign(socket, :home_tab, tab)}
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
-      when tab in ["calendar", "contacts", "place", "notify"] do
+      when tab in ["contacts", "place", "notify"] do
     socket = assign(socket, :widget_tab, tab)
 
     # Selecting Time & Place (re)loads conditions (TTL-cached, so a real fetch at
@@ -533,6 +533,20 @@ defmodule BusterClawWeb.StatusLive do
         socket
         |> assign(:weather, :loading)
         |> start_async(:weather, fn -> Weather.current() end)
+    end
+  end
+
+  # On connect, populate the default Time & Place widget tab and, when the
+  # background is in weather mode, the sky. Both read the TTL-cached Weather and
+  # both would start_async(:weather); the branch keeps exactly one of them from
+  # firing so two tasks never race on the same async key. In weather mode
+  # `maybe_fetch_sky/1` covers both surfaces (its result also lands in `@weather`
+  # via `handle_async/3`); otherwise `load_weather/1` just fills the widget.
+  defp mount_weather(socket) do
+    if socket.assigns.home_bg.mode == "weather" do
+      maybe_fetch_sky(socket)
+    else
+      load_weather(socket)
     end
   end
 
@@ -848,8 +862,6 @@ defmodule BusterClawWeb.StatusLive do
             </div>
             <BusterClawWeb.HomeWidget.corner_widget
               tab={@widget_tab}
-              today={@today}
-              days={@calendar_days}
               contacts={@trusted_people}
               entries={@trusted_entries}
               weather={@weather}
@@ -869,7 +881,9 @@ defmodule BusterClawWeb.StatusLive do
               aria-label="Home view"
             >
               <button
-                :for={{key, label} <- [{"chat", "Chat"}, {"calendar", "Calendar"}]}
+                :for={
+                  {key, label} <- [{"chat", "Chat"}, {"calendar", "Calendar"}, {"notes", "Notes"}]
+                }
                 type="button"
                 role="tab"
                 aria-selected={@home_tab == key}
@@ -916,44 +930,14 @@ defmodule BusterClawWeb.StatusLive do
                 today={@today}
               />
             </div>
+
+            <div :if={@home_tab == "notes"} class="flex min-h-0 flex-1 flex-col">
+              <.live_component module={BusterClawWeb.NotesComponent} id="home-notes" />
+            </div>
           </div>
         </div>
       </section>
     </Layouts.app>
     """
   end
-
-  # Build the current month as a Sunday-aligned 6-week grid (42 cells) for the
-  # home corner widget. Each cell carries its date, whether it's in the current
-  # month, and its sorted events; the widget highlights today and the
-  # CalendarPopover hook reveals a cell's events on hover.
-  defp load_calendar_month(socket) do
-    today = socket.assigns.today
-    first = Date.beginning_of_month(today)
-    grid_start = Date.add(first, -(Date.day_of_week(first, :sunday) - 1))
-
-    by_date =
-      grid_start
-      |> AppCalendar.events_in_range(Date.add(grid_start, 41))
-      |> Enum.group_by(& &1.date)
-      |> Map.new(fn {date, events} ->
-        {date, Enum.sort_by(events, &daily_event_sort_key/1)}
-      end)
-
-    days =
-      Enum.map(0..41, fn offset ->
-        date = Date.add(grid_start, offset)
-
-        %{
-          date: date,
-          in_month?: date.month == today.month,
-          events: Map.get(by_date, date, [])
-        }
-      end)
-
-    assign(socket, :calendar_days, days)
-  end
-
-  defp daily_event_sort_key(%{start_time: nil}), do: {0, ~T[00:00:00]}
-  defp daily_event_sort_key(%{start_time: time}), do: {1, time}
 end

@@ -39,13 +39,16 @@ defmodule BusterClawWeb.StatusLiveTest do
     # The unattended-shift panel was removed; the chat + prompt pathway replaces it.
     refute response =~ ~s(id="home-shift")
     refute response =~ "Unattended Shift"
-    # Corner widget: calendar + contacts tabs.
+    # Corner widget: Contacts / Time & Place / Notify (Calendar moved out of the
+    # widget and onto the Home sub-tab row).
     assert response =~ ~s(id="home-corner-widget")
     assert response =~ ~s(phx-hook="CornerWidget")
-    assert response =~ "Calendar"
     assert response =~ "Contacts"
-    # Trusted contacts live inside the corner widget (Contacts tab renders
-    # hidden alongside the Calendar tab).
+    # Home sub-tabs: Chat (default) | Calendar | Notes.
+    assert response =~ "Calendar"
+    assert response =~ "Notes"
+    # Trusted contacts live inside the corner widget (Contacts is now the default,
+    # visible tab).
     assert response =~ ~s(id="home-contacts-panel")
     assert response =~ "No trusted senders"
     # Right column: agent chat panel.
@@ -62,7 +65,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     refute response =~ ~s(href="/mcp")
   end
 
-  test "GET / renders today's calendar events", %{conn: conn} do
+  test "the Home Calendar sub-tab renders today's calendar events", %{conn: conn} do
     today = LocalTime.today()
 
     {:ok, _event} =
@@ -75,14 +78,15 @@ defmodule BusterClawWeb.StatusLiveTest do
         color: "work"
       })
 
-    conn = get(conn, ~p"/")
-    response = html_response(conn, 200)
+    {:ok, view, _html} = live(conn, ~p"/")
 
-    # The corner widget's month grid carries each event day's detail in a
-    # hidden popover block, so title + time are in the rendered HTML.
-    assert response =~ ~s(id="home-month-grid")
-    assert response =~ "Home page planning block"
-    assert response =~ "09:30"
+    # Chat is the default; the calendar (and its events) appear once the Calendar
+    # sub-tab is selected, mounting the embedded CalendarComponent.
+    html = render_click(view, "select_home_tab", %{"tab" => "calendar"})
+
+    assert html =~ ~s(id="calendar-grid")
+    assert html =~ "Home page planning block"
+    assert html =~ "09:30"
   end
 
   test "lists existing trusted contacts, marking domain wildcards", %{conn: conn, root: root} do
@@ -230,23 +234,34 @@ defmodule BusterClawWeb.StatusLiveTest do
   defp active_chat(_view), do: "default"
 
   describe "corner widget tabs" do
-    test "default to Calendar and switch to Contacts (Get Started has moved)", %{conn: conn} do
+    test "default to Time & Place and switch to Contacts (Calendar/Get Started have moved)",
+         %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      # Get Started is no longer a corner-widget tab.
-      refute has_element?(view, ~s(button[phx-value-tab="get-started"]))
+      # Get Started and Calendar are no longer corner-widget tabs (Calendar moved
+      # to the Home sub-tab row, which uses select_home_tab — scope by handler).
+      refute has_element?(
+               view,
+               ~s(button[phx-click="select_widget_tab"][phx-value-tab="get-started"])
+             )
 
-      assert has_element?(view, ~s(button[phx-value-tab="calendar"][aria-selected="true"]))
+      refute has_element?(
+               view,
+               ~s(button[phx-click="select_widget_tab"][phx-value-tab="calendar"])
+             )
+
+      # Time & Place leads and is selected by default; Contacts follows.
+      assert has_element?(view, ~s(button[phx-value-tab="place"][aria-selected="true"]))
       assert has_element?(view, ~s(button[phx-value-tab="contacts"][aria-selected="false"]))
 
       view |> element(~s(button[phx-value-tab="contacts"])) |> render_click()
 
       assert has_element?(view, ~s(button[phx-value-tab="contacts"][aria-selected="true"]))
-      assert has_element?(view, ~s(button[phx-value-tab="calendar"][aria-selected="false"]))
+      assert has_element?(view, ~s(button[phx-value-tab="place"][aria-selected="false"]))
     end
   end
 
-  test "GET / uses the app-local date for the daily calendar", %{conn: conn} do
+  test "the Home calendar anchors to the app-local date, not UTC", %{conn: conn} do
     previous = Application.get_env(:buster_claw, :local_today)
     Application.put_env(:buster_claw, :local_today, ~D[2026-05-26])
 
@@ -265,10 +280,10 @@ defmodule BusterClawWeb.StatusLiveTest do
         title: "Local today event"
       })
 
-    # An event in the REAL current (UTC) month. The month grid must be anchored
-    # to the app-local date (May 2026), so this event's month is never shown —
-    # if the grid used UTC "today" instead, this title would render and the
-    # May event would not.
+    # An event in the REAL current (UTC) month. The calendar opens on the
+    # app-local month (May 2026), so this event's month is never shown — if the
+    # grid used UTC "today" instead, this title would render and the May event
+    # would not.
     {:ok, _event} =
       Calendar.create_event(%{
         event_id: "home-utc-month",
@@ -276,11 +291,11 @@ defmodule BusterClawWeb.StatusLiveTest do
         title: "UTC month event"
       })
 
-    conn = get(conn, ~p"/")
-    response = html_response(conn, 200)
+    {:ok, view, _html} = live(conn, ~p"/")
+    html = render_click(view, "select_home_tab", %{"tab" => "calendar"})
 
-    assert response =~ "Local today event"
-    refute response =~ "UTC month event"
+    assert html =~ "Local today event"
+    refute html =~ "UTC month event"
   end
 
   describe "corner widget Time & Place tab" do
@@ -576,7 +591,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     end
   end
 
-  describe "home sub-tabs (chat / calendar)" do
+  describe "home sub-tabs (chat / calendar / notes)" do
     test "chat is the default view and the calendar is hidden", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
@@ -598,6 +613,33 @@ defmodule BusterClawWeb.StatusLiveTest do
       # ...and switching back to Chat hides the calendar again.
       render_click(view, "select_home_tab", %{"tab" => "chat"})
       refute has_element?(view, "#calendar-grid")
+    end
+
+    test "the Notes sub-tab shows the note surface and creates + edits a note",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      html = render_click(view, "select_home_tab", %{"tab" => "notes"})
+      refute has_element?(view, "#calendar-grid")
+      assert html =~ "Select a note"
+      assert has_element?(view, "button[phx-value-tab='notes'].bg-primary")
+
+      # Create a note via the component's new-note form.
+      view
+      |> form("#new-note-form", note: %{title: "Roadmap ideas"})
+      |> render_submit()
+
+      assert has_element?(view, "button[phx-value-name='Roadmap ideas']")
+
+      # Editing autosaves and updates the live reading view.
+      html =
+        view
+        |> form("#note-editor-form", %{body: "# Ideas\n\nship notes"})
+        |> render_change()
+
+      assert html =~ "ship notes"
+      assert %{body: body} = BusterClaw.Notes.get("Roadmap ideas")
+      assert body =~ "ship notes"
     end
   end
 end

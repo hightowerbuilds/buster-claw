@@ -203,8 +203,8 @@ defmodule BusterClawWeb.SplitLiveTest do
 
     refute html =~ "can&#39;t be opened in a split pane"
     refute html =~ "can't be opened in a split pane"
-    # Home (StatusLive) content renders embedded — its corner-widget month grid.
-    assert has_element?(view, "#home-month-grid")
+    # Home (StatusLive) content renders embedded — its corner widget.
+    assert has_element?(view, "#home-corner-widget")
   end
 
   defp put_terminal_background do

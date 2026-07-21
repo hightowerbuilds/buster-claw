@@ -9,13 +9,9 @@ defmodule BusterClawWeb.HomeWidget do
   """
   use BusterClawWeb, :html
 
-  alias BusterClawWeb.CalendarColors
-
   attr :tab, :string, required: true
   attr :contacts, :list, required: true
   attr :entries, :list, required: true
-  attr :today, Date, required: true
-  attr :days, :list, required: true
   attr :weather, :any, required: true
   attr :weather_form, :boolean, required: true
   attr :notifications, :list, required: true
@@ -54,9 +50,8 @@ defmodule BusterClawWeb.HomeWidget do
           class="flex gap-1 border-b-2 border-base-content/20 px-2 pt-2"
         >
           <%= for {key, text} <- [
-            {"calendar", "Calendar"},
-            {"contacts", "Contacts"},
             {"place", "Time & Place"},
+            {"contacts", "Contacts"},
             {"notify", "Notify"}
           ] do %>
             <button
@@ -79,9 +74,6 @@ defmodule BusterClawWeb.HomeWidget do
         </div>
 
         <div class="min-h-0 flex-1 overflow-auto">
-          <div class={["h-full", @tab != "calendar" && "hidden"]}>
-            <.month_calendar today={@today} days={@days} />
-          </div>
           <div class={["h-full", @tab != "contacts" && "hidden"]}>
             <BusterClawWeb.TrustedContactsPanel.panel contacts={@contacts} entries={@entries} />
           </div>
@@ -96,80 +88,6 @@ defmodule BusterClawWeb.HomeWidget do
     </div>
     """
   end
-
-  attr :today, Date, required: true
-  attr :days, :list, required: true
-
-  # The current month as a Sunday-aligned grid that fills the card both axes.
-  # Today is highlighted; days with events carry a dot and a hidden detail block
-  # the CalendarPopover hook reveals as a floating popover on hover.
-  defp month_calendar(assigns) do
-    ~H"""
-    <section class="ic-panel flex h-full flex-col">
-      <div class="grid shrink-0 grid-cols-7 gap-1.5 border-b border-base-content/15 px-3 pb-2 pt-3">
-        <div
-          :for={label <- ~w(Sun Mon Tue Wed Thu Fri Sat)}
-          class="text-center font-mono text-[0.625rem] font-bold uppercase tracking-wide text-base-content/45"
-        >
-          {String.first(label)}
-        </div>
-      </div>
-
-      <div
-        id="home-month-grid"
-        phx-hook="CalendarPopover"
-        class="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1.5 px-3 py-3"
-      >
-        <div
-          :for={day <- @days}
-          data-day
-          data-has-events={day.events != [] && "1"}
-          class={[
-            "relative flex items-center justify-center rounded-xs font-mono text-xs transition",
-            day_cell_class(day, @today)
-          ]}
-        >
-          {day.date.day}
-
-          <div :if={day.events != []} data-day-detail hidden>
-            <p class="mb-1 font-mono text-[0.625rem] font-bold uppercase tracking-wide text-base-content/60">
-              {Elixir.Calendar.strftime(day.date, "%a · %b %-d")}
-            </p>
-            <ul class="space-y-0.5">
-              <li
-                :for={event <- day.events}
-                class={[
-                  "flex items-baseline gap-1.5 font-mono text-[0.6875rem]",
-                  CalendarColors.text(event.color)
-                ]}
-              >
-                <span class="shrink-0 text-current">{event_time_label(event)}</span>
-                <span class="truncate text-base-content">{event.title}</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
-    """
-  end
-
-  # Today wins (solid primary fill); then days with events take a translucent
-  # fill of the first event's category color so the whole cell reads as "busy" at
-  # a glance (the hover popover lists them). Out-of-month empty days are dimmed.
-  defp day_cell_class(day, today) do
-    cond do
-      day.date == today -> "bg-primary font-bold text-primary-content"
-      day.events != [] -> CalendarColors.cell_fill(hd(day.events).color) <> " text-base-content"
-      not day.in_month? -> "text-base-content/35 hover:bg-base-content/5"
-      true -> "text-base-content hover:bg-base-content/5"
-    end
-  end
-
-  defp event_time_label(%{start_time: nil}), do: "All day"
-
-  defp event_time_label(%{start_time: %Time{} = time}),
-    do: Elixir.Calendar.strftime(time, "%H:%M")
 
   # Notify: a kind-aware creation form over the upcoming notifications of that
   # kind. The segmented row does double duty — it picks what the form arms
