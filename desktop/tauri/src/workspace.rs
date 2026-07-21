@@ -14,7 +14,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const WORKSPACE_FILE: &str = "workspace_root";
-const SUBDIRS: [&str; 5] = ["library/raw", "library/reports", "sources", "analysis", "memory"];
+const SUBDIRS: [&str; 5] = [
+    "library/raw",
+    "library/reports",
+    "sources",
+    "analysis",
+    "memory",
+];
 
 /// Default workspace location for a fresh install: `~/Desktop/BusterClawCLI`.
 pub fn default_workspace_root() -> Result<PathBuf, String> {

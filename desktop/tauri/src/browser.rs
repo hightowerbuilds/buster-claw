@@ -5,14 +5,18 @@
 //! browser+browser split). Each surface is fully independent — its own chrome,
 //! its own content tabs, its own active-tab pointer.
 //!
-//! - **chrome** (`browser-chrome-<sid>`): a strip on top loading our own toolbar
-//!   + tab bar page, served by Phoenix so it can call the `browser_*` Tauri
-//!   commands.
+//! - **chrome** (`browser-chrome-<sid>`): covers the surface's whole box,
+//!   loading our own chrome page (top block: app tabs + toolbar + bookmark bar;
+//!   left sidebar: the vertical browser-tab strip), served by Phoenix so it can
+//!   call the `browser_*` Tauri commands. Its center region is permanently
+//!   covered by the content webview (see `content_box`).
 //! - **content** (`browser-content-<sid>-<tabid>`): one webview per open tab,
-//!   loading the external site. Each is in no capability, so loaded pages get no
-//!   Tauri access. Exactly one content webview per surface is shown at a time
-//!   (that surface's active tab); the rest are hidden but kept alive so switching
-//!   is instant and state is preserved.
+//!   loading the external site, inset below the chrome's top block and right of
+//!   its sidebar. Each is in no capability, so loaded pages get no Tauri access.
+//!   Exactly one content webview per surface is shown at a time (that surface's
+//!   active tab); the rest are hidden but kept alive so switching is instant and
+//!   state is preserved. Content webviews are always created after the chrome,
+//!   which is what keeps them above it in NSView sibling (paint) order.
 //!
 //! The chrome JS owns the tab-strip UI and tab lifecycle; Rust owns the webviews
 //! and the per-surface active-tab pointer (`BrowserState`) so navigate/back/
@@ -30,7 +34,27 @@ const CHROME_PREFIX: &str = "browser-chrome-"; // browser-chrome-<sid>
 const CONTENT_PREFIX: &str = "browser-content-"; // browser-content-<sid>-<tabid>
 const FIRST_TAB: &str = "1";
 const DEFAULT_SID: &str = "main";
-const CHROME_HEIGHT: f64 = 112.0; // tab strip (~34) + toolbar (46) + bookmark bar (32)
+// The chrome webview covers the surface's ENTIRE box; the content webview is
+// created after it (NSView sibling order = paint order, so content sits on top)
+// and is inset below the chrome's top block and right of its tab sidebar. The
+// chrome HTML paints only those two bands — its center is permanently covered.
+const CHROME_TOP_HEIGHT: f64 = 112.0; // app-tab row (~34) + toolbar (46) + bookmark bar (32)
+const SIDEBAR_WIDTH: f64 = 220.0; // vertical browser-tab strip on the left
+                                  // Narrow surfaces (split panes) scale the sidebar down; MUST match the chrome
+                                  // CSS `--sidebar-w: min(220px, 35vw)` or the content webview will misalign.
+const SIDEBAR_MAX_FRACTION: f64 = 0.35;
+
+// Content inset for a surface box: (content_x, content_y, content_w, content_h).
+fn content_box(x: f64, y: f64, width: f64, height: f64) -> (f64, f64, f64, f64) {
+    let top_h = CHROME_TOP_HEIGHT.min(height);
+    let sidebar_w = SIDEBAR_WIDTH.min(width * SIDEBAR_MAX_FRACTION);
+    (
+        x + sidebar_w,
+        y + top_h,
+        (width - sidebar_w).max(0.0),
+        (height - top_h).max(0.0),
+    )
+}
 
 // Native content blocking (roadmap Phase 4). A curated EasyList subset of the
 // highest-impact ad/tracker/analytics hosts, compiled once by WebKit's own
@@ -97,25 +121,50 @@ impl BrowserState {
             .insert(sid.to_string(), tab_id.to_string());
     }
     fn get(&self, sid: &str) -> Option<String> {
-        self.surfaces.lock().unwrap_or_else(|e| e.into_inner()).get(sid).cloned()
+        self.surfaces
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(sid)
+            .cloned()
     }
     // Drop just the active-tab pointer for a surface (its chrome + other state
     // survive). Used when the active tab is closed and no sibling remains.
     fn unset(&self, sid: &str) {
-        self.surfaces.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
+        self.surfaces
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(sid);
     }
     fn clear(&self, sid: &str) {
-        self.surfaces.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
-        self.shown.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
-        self.mru.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
+        self.surfaces
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(sid);
+        self.shown
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(sid);
+        self.mru
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(sid);
         let prefix = format!("{CONTENT_PREFIX}{sid}-");
-        self.ephemeral.lock().unwrap_or_else(|e| e.into_inner()).retain(|l| !l.starts_with(&prefix));
+        self.ephemeral
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|l| !l.starts_with(&prefix));
     }
     fn clear_all(&self) {
-        self.surfaces.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.surfaces
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         self.shown.lock().unwrap_or_else(|e| e.into_inner()).clear();
         self.mru.lock().unwrap_or_else(|e| e.into_inner()).clear();
-        self.ephemeral.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.ephemeral
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
     }
     // Mark a tab most-recently-used (front of its surface's LRU list).
     fn touch(&self, sid: &str, tab_id: &str) {
@@ -126,7 +175,12 @@ impl BrowserState {
     }
     // Drop a tab from the LRU list (its chip was closed).
     fn forget(&self, sid: &str, tab_id: &str) {
-        if let Some(list) = self.mru.lock().unwrap_or_else(|e| e.into_inner()).get_mut(sid) {
+        if let Some(list) = self
+            .mru
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(sid)
+        {
             list.retain(|id| id != tab_id);
         }
     }
@@ -136,7 +190,11 @@ impl BrowserState {
     fn live_by_recency(&self, sid: &str, live: &HashSet<String>) -> Vec<String> {
         let mru = self.mru.lock().unwrap_or_else(|e| e.into_inner());
         let order = mru.get(sid).cloned().unwrap_or_default();
-        let mut out: Vec<String> = order.iter().filter(|id| live.contains(*id)).cloned().collect();
+        let mut out: Vec<String> = order
+            .iter()
+            .filter(|id| live.contains(*id))
+            .cloned()
+            .collect();
         // Any live tab the LRU never saw (defensive) goes to the back.
         for id in live {
             if !out.contains(id) {
@@ -155,7 +213,10 @@ impl BrowserState {
         }
     }
     fn is_ephemeral(&self, sid: &str, tab_id: &str) -> bool {
-        self.ephemeral.lock().unwrap_or_else(|e| e.into_inner()).contains(&content_label(sid, tab_id))
+        self.ephemeral
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&content_label(sid, tab_id))
     }
     fn content_blocking(&self) -> bool {
         !self.blocking_disabled.load(Ordering::Relaxed)
@@ -165,16 +226,32 @@ impl BrowserState {
     }
     // Any known surface — the default screenshot target when none is specified.
     fn any_sid(&self) -> Option<String> {
-        self.surfaces.lock().unwrap_or_else(|e| e.into_inner()).keys().next().cloned()
+        self.surfaces
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .keys()
+            .next()
+            .cloned()
     }
     fn set_shown(&self, sid: &str) {
-        self.shown.lock().unwrap_or_else(|e| e.into_inner()).insert(sid.to_string());
+        self.shown
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(sid.to_string());
     }
     fn set_hidden(&self, sid: &str) {
-        self.shown.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
+        self.shown
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(sid);
     }
     fn any_shown(&self) -> Option<String> {
-        self.shown.lock().unwrap_or_else(|e| e.into_inner()).iter().next().cloned()
+        self.shown
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .next()
+            .cloned()
     }
     fn download_started(&self, url: &str, path: PathBuf) -> u64 {
         let mut log = self.downloads.lock().unwrap_or_else(|e| e.into_inner());
@@ -202,7 +279,10 @@ impl BrowserState {
     }
     fn download_path(&self, id: u64) -> Option<PathBuf> {
         let log = self.downloads.lock().unwrap_or_else(|e| e.into_inner());
-        log.items.iter().find(|i| i.id == id).map(|i| i.path.clone())
+        log.items
+            .iter()
+            .find(|i| i.id == id)
+            .map(|i| i.path.clone())
     }
 }
 
@@ -319,11 +399,11 @@ pub fn browser_open(
     height: f64,
 ) -> Result<(), String> {
     let sid = sanitize_sid(&surface_id);
-    let chrome_h = CHROME_HEIGHT.min(height);
-    let content_h = (height - chrome_h).max(0.0);
-    let cy = y + chrome_h;
+    let (cx, cy, content_w, content_h) = content_box(x, y, width, height);
 
-    ensure_chrome(&app, &sid, &chrome_url, x, y, width, chrome_h)?;
+    // Full box: the chrome paints the top block + tab sidebar; content covers
+    // the rest (created later, so it stacks above the chrome's dead center).
+    ensure_chrome(&app, &sid, &chrome_url, x, y, width, height)?;
 
     // Pick the tab to show: the saved active one if it still exists, else any
     // existing content tab for this surface, else create the first tab.
@@ -340,7 +420,16 @@ pub fn browser_open(
             None => {
                 let blocking = state.content_blocking();
                 create_content(
-                    &app, &sid, FIRST_TAB, &content_url, x, cy, width, content_h, false, blocking,
+                    &app,
+                    &sid,
+                    FIRST_TAB,
+                    &content_url,
+                    cx,
+                    cy,
+                    content_w,
+                    content_h,
+                    false,
+                    blocking,
                 )?;
                 FIRST_TAB.to_string()
             }
@@ -349,7 +438,7 @@ pub fn browser_open(
 
     state.set(&sid, &show_id);
     state.set_shown(&sid);
-    show_only(&app, &sid, &show_id, x, cy, width, content_h);
+    show_only(&app, &sid, &show_id, cx, cy, content_w, content_h);
     enforce_tab_budget(&app, &state, &sid, &show_id);
     Ok(())
 }
@@ -367,16 +456,14 @@ pub fn browser_set_bounds(
     height: f64,
 ) -> Result<(), String> {
     let sid = sanitize_sid(&surface_id);
-    let chrome_h = CHROME_HEIGHT.min(height);
-    let content_h = (height - chrome_h).max(0.0);
-    let cy = y + chrome_h;
+    let (cx, cy, content_w, content_h) = content_box(x, y, width, height);
 
     state.set_shown(&sid);
     let chrome = chrome_label(&sid);
-    place(&app, &chrome, x, y, width, chrome_h);
+    place(&app, &chrome, x, y, width, height);
     show(&app, &chrome);
     for label in content_labels_for(&app, &sid) {
-        place(&app, &label, x, cy, width, content_h);
+        place(&app, &label, cx, cy, content_w, content_h);
     }
     Ok(())
 }
@@ -396,7 +483,18 @@ pub fn browser_new_tab(
     let sid = sanitize_sid(&surface_id);
     let is_ephemeral = ephemeral.unwrap_or(false);
     let (x, y, w, h) = sample_content_bounds(&app, &sid).ok_or("no content bounds yet")?;
-    create_content(&app, &sid, &tab_id, &url, x, y, w, h, is_ephemeral, state.content_blocking())?;
+    create_content(
+        &app,
+        &sid,
+        &tab_id,
+        &url,
+        x,
+        y,
+        w,
+        h,
+        is_ephemeral,
+        state.content_blocking(),
+    )?;
     state.mark_ephemeral(&sid, &tab_id, is_ephemeral);
     state.set(&sid, &tab_id);
     show_only(&app, &sid, &tab_id, x, y, w, h);
@@ -421,7 +519,18 @@ pub fn browser_switch_tab(
     if app.get_webview(&content_label(&sid, &tab_id)).is_none() {
         if let Some(u) = url.as_deref().filter(|u| !u.is_empty()) {
             if w > 0.0 && h > 0.0 {
-                create_content(&app, &sid, &tab_id, u, x, y, w, h, false, state.content_blocking())?;
+                create_content(
+                    &app,
+                    &sid,
+                    &tab_id,
+                    u,
+                    x,
+                    y,
+                    w,
+                    h,
+                    false,
+                    state.content_blocking(),
+                )?;
             }
         }
     }
@@ -1106,7 +1215,8 @@ fn wait_probe_js(condition: &str, value: Option<&str>) -> Result<String, String>
             ))
         }
         "text" => {
-            let text = value.ok_or("wait condition \"text\" needs a value (the text to wait for)")?;
+            let text =
+                value.ok_or("wait condition \"text\" needs a value (the text to wait for)")?;
             Ok(format!(
                 r#"(function () {{
   var body = (document.body && document.body.innerText) || "";
@@ -1152,8 +1262,7 @@ pub async fn browser_wait_active(
     };
 
     let started = Instant::now();
-    let deadline =
-        started + Duration::from_millis(timeout_ms.unwrap_or(10_000).clamp(250, 30_000));
+    let deadline = started + Duration::from_millis(timeout_ms.unwrap_or(10_000).clamp(250, 30_000));
     let mut matched = false;
     loop {
         match eval_with_result(&webview, &probe) {
@@ -1468,10 +1577,7 @@ fn report_download(app: &AppHandle, chrome_label: &str, url: &str, file: &PathBu
 /// session's download log by id — the chrome can never pass a raw path, so a
 /// hostile page title/URL can't turn this into an arbitrary-path probe.
 #[tauri::command]
-pub fn browser_reveal_download(
-    state: State<BrowserState>,
-    download_id: u64,
-) -> Result<(), String> {
+pub fn browser_reveal_download(state: State<BrowserState>, download_id: u64) -> Result<(), String> {
     let path = state
         .download_path(download_id)
         .ok_or_else(|| "unknown download".to_string())?;
@@ -2128,7 +2234,6 @@ fn notify_navigated(
     emit_navigated(app, chrome_label, tab_id, url, "");
 }
 
-
 fn emit_navigated(app: &AppHandle, chrome_label: &str, tab_id: &str, url: &str, title: &str) {
     if let Some(chrome) = app.get_webview(chrome_label) {
         let _ = chrome.eval(&format!(
@@ -2154,7 +2259,9 @@ fn phoenix_origin(app: &AppHandle, chrome_label: &str) -> Option<String> {
 }
 
 fn record_history(app: &AppHandle, chrome_label: &str, url: &str, title: &str) {
-    let Ok(parsed) = url.parse::<Url>() else { return };
+    let Ok(parsed) = url.parse::<Url>() else {
+        return;
+    };
     if !matches!(parsed.scheme(), "http" | "https") {
         return;
     }

@@ -14,6 +14,14 @@ defmodule BusterClawWeb.BrowserChromeControllerTest do
     assert body =~ ~s(id="apptabs")
     assert body =~ ~s(id="tabs")
     assert body =~ ~s(id="bookmarkbar")
+    # Sidebar layout: browser tabs live in a left sidebar; the top block keeps
+    # the app tabs + toolbar; #void is the region the content webview covers.
+    # The CSS sidebar width must stay in lockstep with Rust's content_box()
+    # (SIDEBAR_WIDTH=220 / SIDEBAR_MAX_FRACTION=0.35) or content misaligns.
+    assert body =~ ~s(id="sidebar")
+    assert body =~ ~s(id="top")
+    assert body =~ ~s(id="void")
+    assert body =~ "--sidebar-w: min(220px, 35vw)"
     # The behavior lives in the bundled chrome app, not inline script.
     assert body =~ ~s(<script src="/assets/js/chrome.js"></script>)
     refute body =~ "window.__onContentNavigated"

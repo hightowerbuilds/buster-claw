@@ -52,16 +52,28 @@ defmodule BusterClawWeb.BrowserChromeController do
     <style>
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; overflow: hidden; }
+      /* The chrome webview covers the surface's WHOLE box. Only two bands are
+         ever visible: #top (app tabs + toolbar + bookmark bar) and #sidebar
+         (the vertical browser-tab strip). The remaining area (#void) sits
+         permanently under the content webview. --sidebar-w MUST match the Rust
+         content_box() math (SIDEBAR_WIDTH / SIDEBAR_MAX_FRACTION). */
+      :root { --sidebar-w: min(220px, 35vw); }
       body {
         position: relative;
-        display: flex; flex-direction: column; height: 112px;
+        display: flex; flex-direction: column; height: 100%;
         background: #121212; color: #f4f1ea;
         font: 13px/1 -apple-system, system-ui, sans-serif;
-        border-bottom: 2px solid rgba(244,241,234,.18);
       }
+      #top { display: flex; flex-direction: column; flex: 0 0 auto; height: 112px;
+             border-bottom: 2px solid rgba(244,241,234,.18); }
+      #main { display: flex; flex: 1 1 auto; min-height: 0; }
+      #sidebar { display: flex; flex-direction: column; flex: 0 0 auto;
+                 width: var(--sidebar-w); min-height: 0;
+                 border-right: 2px solid rgba(244,241,234,.18); }
+      #void { flex: 1 1 auto; }
       /* loading affordance: indeterminate hazard-orange bar across the top, shown
          while the active tab is loading. Overlaid (absolute) so it adds no layout
-         height — the chrome webview stays exactly 112px tall. */
+         height. */
       #progress { position: absolute; top: 0; left: 0; right: 0; height: 2px;
                   overflow: hidden; pointer-events: none; opacity: 0;
                   transition: opacity .15s; z-index: 5; }
@@ -71,35 +83,39 @@ defmodule BusterClawWeb.BrowserChromeController do
       #progress.on::after { animation: ic-load 1s ease-in-out infinite; }
       @keyframes ic-load { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
       @keyframes ic-spin { to { transform: rotate(360deg); } }
-      /* top row: app-tab switcher (left) + browser tab strip (right) */
-      #row { display: flex; align-items: stretch; height: 34px; min-width: 0; }
+      /* top row: the app-tab switcher (browser tabs live in the sidebar now).
+         Styled to MATCH the app's own TabStrip (layouts.ex / tab_strip.js):
+         a bg-base-200/80 strip with a base-300 bottom border, browser-style
+         rounded-top chips sitting on it. Theme tokens are hardcoded from the
+         dark theme in app.css (base-100 #121212, base-200 #0c0c0c, base-300
+         #1f1f1f, base-content #fafafa) — the chrome page has no Tailwind. */
+      #row { display: flex; align-items: stretch; height: 34px; min-width: 0;
+             background: rgba(12,12,12,.8); border-bottom: 1px solid #1f1f1f; }
       /* App-tab chips: the native browser webviews cover the app's DOM tab
          strip, so the chrome carries its own switcher (Home + open app tabs). */
-      #apptabs { display: flex; align-items: stretch; gap: 4px; flex: 0 1 auto;
-                 max-width: 45%; padding: 4px 6px 0 6px; overflow-x: auto;
-                 overflow-y: hidden; border-right: 1px solid rgba(244,241,234,.14); }
+      #apptabs { display: flex; align-items: flex-end; gap: 4px; flex: 1 1 auto;
+                 min-width: 0; padding: 4px 8px 0 8px; overflow-x: auto;
+                 overflow-y: hidden; }
       #apptabs::-webkit-scrollbar { height: 0; }
-      /* App tabs: same chrome as site tabs, but a translucent hazard-orange
-         BACKGROUND (only the fill differs) so they can't be mistaken for sites. */
-      .atab { display: flex; align-items: center; flex: 0 0 auto; max-width: 140px;
-              height: 30px; padding: 0 10px; cursor: pointer;
-              background: rgba(255,77,28,.14); color: rgba(244,241,234,.7);
-              border: 1px solid rgba(244,241,234,.14);
-              border-bottom: none; border-radius: 6px 6px 0 0;
-              font: 600 11px/1 ui-monospace, monospace; white-space: nowrap;
-              overflow: hidden; text-overflow: ellipsis; }
-      .atab:hover { background: rgba(255,77,28,.26); color: #f4f1ea; }
-      .atab.current { background: rgba(255,77,28,.34); color: #f4f1ea;
-                      border-color: rgba(244,241,234,.3); cursor: default; }
-      /* browser tab strip */
-      #tabs { display: flex; align-items: stretch; gap: 4px; flex: 1 1 auto;
-              min-width: 0; padding: 4px 6px 0; overflow-x: auto; overflow-y: hidden; }
-      #tabs::-webkit-scrollbar { height: 0; }
-      .tab { display: flex; align-items: center; gap: 6px; max-width: 200px;
+      .atab { display: flex; align-items: center; flex: 0 0 auto; max-width: 192px;
+              height: 29px; padding: 0 12px; cursor: pointer;
+              background: #0c0c0c; color: rgba(250,250,250,.6);
+              border: 1px solid transparent; border-bottom: none;
+              border-radius: 8px 8px 0 0;
+              font: 400 14px/1 -apple-system, system-ui, sans-serif;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .atab:hover { background: rgba(18,18,18,.7); color: #fafafa; }
+      .atab.current { background: #121212; color: #fafafa; font-weight: 500;
+                      border-color: #1f1f1f; cursor: default; }
+      /* browser tab strip — vertical, in the sidebar */
+      #tabs { display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+              flex: 1 1 auto; min-height: 0; padding: 8px 6px;
+              overflow-y: auto; overflow-x: hidden; }
+      #tabs::-webkit-scrollbar { width: 0; }
+      .tab { display: flex; align-items: center; gap: 6px; width: 100%;
              padding: 0 8px; height: 30px; cursor: pointer; flex: 0 0 auto;
              background: #1c1c1c; color: rgba(244,241,234,.6);
-             border: 1px solid rgba(244,241,234,.14); border-bottom: none;
-             border-radius: 6px 6px 0 0; }
+             border: 1px solid rgba(244,241,234,.14); border-radius: 4px; }
       .tab.active { background: #2a2a2a; color: #f4f1ea; border-color: rgba(244,241,234,.3); }
       /* Ephemeral (agent sandbox) tabs: dashed outline — the session dies with
          the tab and it's excluded from session restore. */
@@ -108,8 +124,8 @@ defmodule BusterClawWeb.BrowserChromeController do
       /* Suspended (background-tab eviction freed the webview): dimmed to signal
          a click will reload it. The chip and its URL survive. */
       .tab.suspended .label { opacity: .5; font-style: italic; }
-      .tab .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-                    font-size: 12px; max-width: 150px; }
+      .tab .label { flex: 1 1 auto; min-width: 0; overflow: hidden;
+                    text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
       .tab .fav { width: 14px; height: 14px; flex: 0 0 auto; border-radius: 3px; }
       .tab .spin { width: 12px; height: 12px; flex: 0 0 auto; border-radius: 50%;
                    border: 2px solid rgba(244,241,234,.25); border-top-color: #ff4d1c;
@@ -118,9 +134,11 @@ defmodule BusterClawWeb.BrowserChromeController do
                 border-radius: 3px; color: rgba(244,241,234,.45); font-size: 13px;
                 flex: 0 0 auto; }
       .tab .x:hover { background: rgba(244,241,234,.12); color: #ff4d1c; }
-      #newtab, #newprivate { flex: 0 0 auto; width: 28px; height: 30px; display: grid;
+      /* New tab / new private: a row pinned under the tab list. */
+      .newrow { display: flex; gap: 4px; flex: 0 0 auto; }
+      #newtab, #newprivate { flex: 1 1 0; height: 28px; display: grid;
                 place-items: center; background: transparent; color: #f4f1ea;
-                border: 1px solid rgba(244,241,234,.2); border-radius: 6px 6px 0 0;
+                border: 1px solid rgba(244,241,234,.2); border-radius: 4px;
                 cursor: pointer; font-size: 16px; line-height: 1; }
       #newtab:hover, #newprivate:hover { border-color: #ff4d1c; color: #ff4d1c; }
       /* Private-tab button: dashed hazard outline, echoing the .tab.eph chips. */
@@ -230,29 +248,36 @@ defmodule BusterClawWeb.BrowserChromeController do
     </head>
     <body data-sid="#{sid}" data-search-url="#{escape_attr(search_url)}">
       <div id="progress"></div>
-      <div id="row">
-        <div id="apptabs" role="tablist" aria-label="App tabs"></div>
-        <div id="tabs"></div>
+      <div id="top">
+        <div id="row">
+          <div id="apptabs" role="tablist" aria-label="App tabs"></div>
+        </div>
+        <div id="toolbar">
+          <button class="nav" id="home" title="Home" aria-label="Home">&#8962;</button>
+          <button class="bm" id="pages" title="Pages — HTML the agent built for you">Pages</button>
+          <button class="nav" id="back" title="Back" aria-label="Back">&#9664;</button>
+          <button class="nav" id="fwd" title="Forward" aria-label="Forward">&#9654;</button>
+          <button class="nav" id="reload" title="Reload" aria-label="Reload">&#8635;</button>
+          <span id="secure" class="secure" aria-hidden="true"></span>
+          <form id="form">
+            <input id="addr" type="text" autocomplete="off" spellcheck="false"
+                   placeholder="Search, https://…, or /path in your workspace"
+                   value="#{escape_attr(initial)}" />
+            <button class="go" type="submit">Go</button>
+          </form>
+          <button class="nav shield" id="shield" type="button" aria-label="Content blocking">&#128737;</button>
+          <button class="bm" id="bookmark" type="button" title="Bookmark this page">+ Bookmark</button>
+        </div>
+        <div id="row2">
+          <div id="downloads"></div>
+          <div id="bookmarkbar"></div>
+        </div>
       </div>
-      <div id="toolbar">
-        <button class="nav" id="home" title="Home" aria-label="Home">&#8962;</button>
-        <button class="bm" id="pages" title="Pages — HTML the agent built for you">Pages</button>
-        <button class="nav" id="back" title="Back" aria-label="Back">&#9664;</button>
-        <button class="nav" id="fwd" title="Forward" aria-label="Forward">&#9654;</button>
-        <button class="nav" id="reload" title="Reload" aria-label="Reload">&#8635;</button>
-        <span id="secure" class="secure" aria-hidden="true"></span>
-        <form id="form">
-          <input id="addr" type="text" autocomplete="off" spellcheck="false"
-                 placeholder="Search, https://…, or /path in your workspace"
-                 value="#{escape_attr(initial)}" />
-          <button class="go" type="submit">Go</button>
-        </form>
-        <button class="nav shield" id="shield" type="button" aria-label="Content blocking">&#128737;</button>
-        <button class="bm" id="bookmark" type="button" title="Bookmark this page">+ Bookmark</button>
-      </div>
-      <div id="row2">
-        <div id="downloads"></div>
-        <div id="bookmarkbar"></div>
+      <div id="main">
+        <div id="sidebar">
+          <div id="tabs" role="tablist" aria-label="Browser tabs"></div>
+        </div>
+        <div id="void" aria-hidden="true"></div>
       </div>
       <script src="/assets/js/chrome.js"></script>
     </body>

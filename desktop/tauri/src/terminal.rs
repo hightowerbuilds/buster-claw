@@ -219,11 +219,7 @@ pub fn terminal_attach(state: State<TerminalState>, id: String) -> Result<Option
 }
 
 #[tauri::command]
-pub fn terminal_input(
-    state: State<TerminalState>,
-    id: String,
-    data: String,
-) -> Result<(), String> {
+pub fn terminal_input(state: State<TerminalState>, id: String, data: String) -> Result<(), String> {
     let mut sessions = state
         .sessions
         .lock()

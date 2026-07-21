@@ -200,10 +200,13 @@ function renderTabs() {
     tab.appendChild(x)
     tabsEl.appendChild(tab)
   })
+  // New-tab buttons share one row under the (vertical) tab list.
+  const newrow = document.createElement("div")
+  newrow.className = "newrow"
   const add = document.createElement("button")
   add.id = "newtab"; add.type = "button"; add.title = "New tab"; add.textContent = "+"
   add.onclick = () => newTab(false)
-  tabsEl.appendChild(add)
+  newrow.appendChild(add)
   // Private (ephemeral) tab — a human-facing entry to the same non-persistent
   // data store the agent's sandbox tabs use: no cookies/storage shared with the
   // normal session, nothing written to disk, excluded from session restore.
@@ -211,7 +214,8 @@ function renderTabs() {
   priv.id = "newprivate"; priv.type = "button"; priv.textContent = "🕳"
   priv.title = "New private tab — ephemeral, nothing persists"
   priv.onclick = () => newTab(true)
-  tabsEl.appendChild(priv)
+  newrow.appendChild(priv)
+  tabsEl.appendChild(newrow)
   updateProgress()
   updateSecurity(activeTab())
 }
@@ -251,7 +255,12 @@ function loadAppTabs() {
 function renderAppTabs() {
   if (!appTabsEl) return
   appTabsEl.textContent = ""
-  const chips = [{path: "/", label: "⌂ Home"}].concat(loadAppTabs())
+  // Home is always the first chip (the guaranteed way back into the app), so a
+  // persisted "/" tab from bc:tabs would render as a SECOND Home — drop it.
+  const saved = loadAppTabs().filter(
+    (t) => !(t && typeof t.path === "string" && t.path.split("?")[0] === "/")
+  )
+  const chips = [{path: "/", label: "Home"}].concat(saved)
   chips.forEach((t) => {
     if (!t || typeof t.path !== "string" || !t.path.startsWith("/")) return
     // The browser's own app tab is where we already are — show it as current.
@@ -357,7 +366,8 @@ function loadBookmarks() {
 }
 
 // --- omnibox suggestions (roadmap Phase 2.2) ---
-// The chrome webview is a fixed 112px strip, so a classic dropdown would be
+// The chrome's top block is a fixed 112px band (the content webview covers
+// everything under it), so a classic dropdown would be
 // clipped at its edge; while typing, suggestions take over the bookmark row
 // as chips instead. ↓/↑ (or Tab/⇧Tab) select, Enter opens, Esc restores the
 // bookmarks. Fed by /browser/suggest: bookmark matches + FTS history.
@@ -444,7 +454,8 @@ addr.addEventListener("blur", function () { setTimeout(clearSuggestions, 150) })
 
 // --- find in page (⌘F; roadmap Phase 2.4) ---
 // The find bar takes over the bookmark row (same trick as suggestions — the
-// 112px chrome can't host a floating panel). Enter steps forward, ⇧Enter
+// 112px top block can't host a floating panel; everything below it is covered
+// by the content webview). Enter steps forward, ⇧Enter
 // back, Esc closes. Matching runs in the content webview via browser_find
 // (WebKit window.find): selection + scroll with wraparound.
 let findOpen = false
