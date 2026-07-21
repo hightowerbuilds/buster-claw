@@ -72,10 +72,13 @@ defmodule BusterClawWeb.CalendarLiveTest do
     {:ok, view, _html} = live_isolated(conn, BusterClawWeb.CalendarLive)
 
     # A malformed phx-value-id would raise on Calendar.get_event!/1; the guarded
-    # handlers must swallow it and keep the view alive.
-    assert render_click(view, "inspect", %{"id" => "not-a-number"})
-    assert render_click(view, "edit", %{"id" => "not-a-number"})
-    assert render_click(view, "delete", %{"id" => "999999999"})
+    # handlers must swallow it and keep the view alive. The calendar now lives in
+    # a LiveComponent, so route the events through a component-owned element
+    # (#calendar-grid carries phx-target) rather than the root LiveView.
+    grid = element(view, "#calendar-grid")
+    assert render_hook(grid, "inspect", %{"id" => "not-a-number"})
+    assert render_hook(grid, "edit", %{"id" => "not-a-number"})
+    assert render_hook(grid, "delete", %{"id" => "999999999"})
     assert Process.alive?(view.pid)
   end
 

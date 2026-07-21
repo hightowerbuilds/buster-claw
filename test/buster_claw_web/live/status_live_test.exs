@@ -575,4 +575,29 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute html =~ "time&#39;s up"
     end
   end
+
+  describe "home sub-tabs (chat / calendar)" do
+    test "chat is the default view and the calendar is hidden", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#calendar-grid")
+      # The active sub-tab carries the primary wash; Chat is active on load.
+      assert has_element?(view, "button[phx-value-tab='chat'].bg-primary")
+      refute has_element?(view, "button[phx-value-tab='calendar'].bg-primary")
+    end
+
+    test "the Calendar sub-tab shows the calendar and hides the chat", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      render_click(view, "select_home_tab", %{"tab" => "calendar"})
+
+      assert has_element?(view, "#calendar-grid")
+      assert has_element?(view, "#event-form")
+      assert has_element?(view, "button[phx-value-tab='calendar'].bg-primary")
+
+      # ...and switching back to Chat hides the calendar again.
+      render_click(view, "select_home_tab", %{"tab" => "chat"})
+      refute has_element?(view, "#calendar-grid")
+    end
+  end
 end

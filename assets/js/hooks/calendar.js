@@ -50,7 +50,10 @@ export const CalendarDrag = {
       const newDate = cell.dataset.dropDate
       cell.classList.remove("ring-2", "ring-base-content")
       lastTarget = null
-      this.pushEvent("move_event", {id: draggingId, date: newDate})
+      // The grid lives inside a LiveComponent (phx-target on its root), so route
+      // the drop to that component rather than the host LiveView. pushEventTo with
+      // this.el resolves the component via the nearest phx-target ancestor.
+      this.pushEventTo(this.el, "move_event", {id: draggingId, date: newDate})
       draggingId = null
     })
   }

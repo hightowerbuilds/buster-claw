@@ -28,12 +28,9 @@ defmodule BusterClawWeb.Layouts do
       # a plain /terminal navigation would reattach to the shared "main" shell.
       new_terminal: true
     },
-    %{
-      label: "Calendar",
-      path: "/calendar",
-      icon: "hero-calendar-days",
-      image: "/images/brand/calendar-icon.png"
-    },
+    # Calendar is no longer a dock tab — it lives on the Home page as a sub-tab
+    # (see StatusLive). The /calendar route still exists (deep links + SplitLive
+    # split pane), so its tab-strip label is preserved in @tab_labels below.
     # No brand PNG yet — the dock falls back to the text label (see render below).
     %{
       label: "Phone",
@@ -61,6 +58,10 @@ defmodule BusterClawWeb.Layouts do
   @tab_labels Map.merge(
                 Map.new(@navigation_items, &{&1.path, &1.label}),
                 %{
+                  # Reachable via the Home "Calendar" sub-tab and SplitLive, but
+                  # no longer a dock item — label it here so the tab strip still
+                  # names it when opened directly.
+                  "/calendar" => "Calendar",
                   "/integrations" => "Integrations",
                   "/security" => "Security",
                   "/settings" => "Settings",

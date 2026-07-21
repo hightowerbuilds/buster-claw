@@ -47,6 +47,9 @@ defmodule BusterClawWeb.StatusLive do
      # a silent void was the review's worst day-one failure.
      |> assign(:agent_cli_missing, match?({:error, _}, BusterClaw.AgentRunner.detect()))
      |> load_trust()
+     # Home main view: "chat" (default) or "calendar". The sub-tab toggle swaps
+     # the whole panel — the chat is hidden while the calendar is showing.
+     |> assign(:home_tab, "chat")
      # Header widget: which sub-tab is showing (Calendar / Contacts / Time & Place).
      |> assign(:widget_tab, "calendar")
      |> assign(:weather, nil)
@@ -216,6 +219,11 @@ defmodule BusterClawWeb.StatusLive do
          |> put_flash(:error, "Could not update the trust policy: #{inspect(reason)}")
          |> load_trust()}
     end
+  end
+
+  def handle_event("select_home_tab", %{"tab" => tab}, socket)
+      when tab in ["chat", "calendar"] do
+    {:noreply, assign(socket, :home_tab, tab)}
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
@@ -853,20 +861,59 @@ defmodule BusterClawWeb.StatusLive do
           </div>
 
           <div class="flex min-h-0 flex-1 flex-col gap-2">
-            <BusterClawWeb.ChatPanel.chat_tabs chats={@chats} active={@active_chat} />
-            <div class="flex min-h-0 flex-1 gap-4">
-              <BusterClawWeb.ChatPanel.svg_viewer
-                svgs={@chat_svgs}
-                zoomed={@zoomed_id}
-                open={@svg_viewer_open}
-              />
-              <BusterClawWeb.ChatPanel.chat_panel
-                messages={@streams.chat_messages}
-                seq={@chat_seq}
-                running={@chat_running}
-                thinking={@chat_thinking}
-                queue={@chat_queue}
-                agent_cli_missing={@agent_cli_missing}
+            <%!-- Home sub-tabs: Chat | Calendar. Switching to Calendar hides the
+                  chat entirely and mounts the full calendar in its place. --%>
+            <div
+              class="flex gap-0.5 self-start border-2 border-base-content/20 p-0.5"
+              role="tablist"
+              aria-label="Home view"
+            >
+              <button
+                :for={{key, label} <- [{"chat", "Chat"}, {"calendar", "Calendar"}]}
+                type="button"
+                role="tab"
+                aria-selected={@home_tab == key}
+                phx-click="select_home_tab"
+                phx-value-tab={key}
+                class={[
+                  "rounded-xs px-4 py-1.5 font-mono text-xs font-bold uppercase tracking-wide transition",
+                  if(@home_tab == key,
+                    do: "bg-primary text-primary-content",
+                    else: "text-base-content/60 hover:bg-base-content/10"
+                  )
+                ]}
+              >
+                {label}
+              </button>
+            </div>
+
+            <div :if={@home_tab == "chat"} class="flex min-h-0 flex-1 flex-col gap-2">
+              <BusterClawWeb.ChatPanel.chat_tabs chats={@chats} active={@active_chat} />
+              <div class="flex min-h-0 flex-1 gap-4">
+                <BusterClawWeb.ChatPanel.svg_viewer
+                  svgs={@chat_svgs}
+                  zoomed={@zoomed_id}
+                  open={@svg_viewer_open}
+                />
+                <BusterClawWeb.ChatPanel.chat_panel
+                  messages={@streams.chat_messages}
+                  seq={@chat_seq}
+                  running={@chat_running}
+                  thinking={@chat_thinking}
+                  queue={@chat_queue}
+                  agent_cli_missing={@agent_cli_missing}
+                />
+              </div>
+            </div>
+
+            <div
+              :if={@home_tab == "calendar"}
+              class="flex min-h-0 flex-1 flex-col overflow-y-auto"
+            >
+              <.live_component
+                module={BusterClawWeb.CalendarComponent}
+                id="home-calendar"
+                today={@today}
               />
             </div>
           </div>
