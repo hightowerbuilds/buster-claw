@@ -150,7 +150,7 @@ were stale assertions on exactly the behaviors changed on purpose; fixed in
 minutes. The pattern was the real bug — every gated pipe now runs under
 `set -o pipefail`, and the lesson is in agent memory.
 
-## 10. BusterPhone SMS shipped; carrier registration is still the gate (`7dc2bed`)
+## 10. BusterPhone SMS shipped; registration tier reset is now the gate (`7dc2bed`)
 
 The complete SMS backend landed in one 23-file commit (+1,002/-86): signed
 Supabase ingress, durable drain handling, trusted-number Dispatch work,
@@ -162,10 +162,14 @@ Twilio delivery state survive the cloud-to-local hop.
 The live path is proven through inbound: the operator sent a real text to the
 BusterPhone number and it arrived in the `/phone` log/thread. The paid local
 number is attached to the Messaging Service. **Outbound remains deliberately
-disabled.** Twilio/A2P registration is still under carrier review, so the kill
-switch stays off until the campaign is approved and a real test send through
-the Messaging Service lands. Waiting is the current task; there is no remaining
-code or migration step masquerading as that external approval.
+disabled.** At the night cutoff the operator recognized that the existing A2P
+submission appears to have started as a business registration, which is the wrong
+identity path for an individual without an EIN. The decision is now locked:
+**Direct Sole Proprietor**. Tomorrow begins by recording the current Brand Type,
+Brand Status, and Campaign Status; if the business path is confirmed, delete the
+Campaign first and Brand second, then recreate the Starter Profile/Sole Proprietor
+Brand and campaign using the operator's legal identity and personal-mobile OTP.
+The Messaging Service and paid number should be reused if Console permits it.
 
 ## 11. The Message Machine became a real number surface (working tree)
 
@@ -208,12 +212,13 @@ Phase 1 remains unstarted.
   arm64 fire is out, pending only signing.
 - First-look punch list: Tier 0 #2/#5 and Tier 1 #8/#9 RESOLVED today, on
   top of the browser leg; remaining Tier 0 = OAuth-out-of-Testing (needs the
-  site) + BusterPhone carrier approval (external wait).
+  site) + BusterPhone Direct Sole Proprietor registration/approval.
 - LEFTOVERS: three operator-only items (primitive walk — now including the
   double-launch check, wait-tier + flow-audit ratifications, password
   bookkeeping).
 - BusterPhone: inbound SMS is live; outbound stays kill-switched while Twilio
-  registration is pending. Do not turn waiting into speculative send code.
-- Next engineering fork while registration runs: begin The Wave's tracking
-  spike in the Phoenix hook architecture, or return to the free distribution
-  critical path (busterclaw.lol + privacy policy → Google verification).
+  registration is corrected and approved. No outbound test tonight.
+- Tomorrow's first move: inventory the current Twilio Brand/Campaign states,
+  correct the identity tier, and resubmit. After that external wait resumes,
+  begin The Wave's tracking spike or return to the free distribution critical
+  path (busterclaw.lol + privacy policy → Google verification).

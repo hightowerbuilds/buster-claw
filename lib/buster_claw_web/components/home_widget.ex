@@ -9,13 +9,12 @@ defmodule BusterClawWeb.HomeWidget do
   """
   use BusterClawWeb, :html
 
-  alias BusterClawWeb.CalendarColors
-
   attr :tab, :string, required: true
   attr :contacts, :list, required: true
+  attr :activity, :list, required: true
+  attr :show_add, :boolean, required: true
+  attr :trusted, :list, required: true
   attr :entries, :list, required: true
-  attr :today, Date, required: true
-  attr :days, :list, required: true
   attr :weather, :any, required: true
   attr :weather_form, :boolean, required: true
   attr :notifications, :list, required: true
@@ -54,9 +53,8 @@ defmodule BusterClawWeb.HomeWidget do
           class="flex gap-1 border-b-2 border-base-content/20 px-2 pt-2"
         >
           <%= for {key, text} <- [
-            {"calendar", "Calendar"},
-            {"contacts", "Contacts"},
             {"place", "Time & Place"},
+            {"contacts", "Contacts"},
             {"notify", "Notify"}
           ] do %>
             <button
@@ -79,11 +77,14 @@ defmodule BusterClawWeb.HomeWidget do
         </div>
 
         <div class="min-h-0 flex-1 overflow-auto">
-          <div class={["h-full", @tab != "calendar" && "hidden"]}>
-            <.month_calendar today={@today} days={@days} />
-          </div>
           <div class={["h-full", @tab != "contacts" && "hidden"]}>
-            <BusterClawWeb.TrustedContactsPanel.panel contacts={@contacts} entries={@entries} />
+            <.comms_panel
+              contacts={@contacts}
+              activity={@activity}
+              show_add={@show_add}
+              trusted={@trusted}
+              entries={@entries}
+            />
           </div>
           <div class={["h-full", @tab != "place" && "hidden"]}>
             <.place_panel weather={@weather} form={@weather_form} />
@@ -97,79 +98,147 @@ defmodule BusterClawWeb.HomeWidget do
     """
   end
 
-  attr :today, Date, required: true
-  attr :days, :list, required: true
+  attr :contacts, :list, required: true
+  attr :activity, :list, required: true
+  attr :show_add, :boolean, required: true
+  attr :trusted, :list, required: true
+  attr :entries, :list, required: true
 
-  # The current month as a Sunday-aligned grid that fills the card both axes.
-  # Today is highlighted; days with events carry a dot and a hidden detail block
-  # the CalendarPopover hook reveals as a floating popover on hover.
-  defp month_calendar(assigns) do
+  # The Contacts tab as a comms hub — three inline columns: contacts (with
+  # per-person Text / Call / Email), recent phone activity, and the trusted-sender
+  # list. Text and Call are inert for now (outbound telephony isn't wired — the
+  # same decorative state as the /phone dialpad); Email drops a templated request
+  # into the home chat, handled by StatusLive's `email_contact`. Rows/people are
+  # pre-shaped by StatusLive, so this stays presentational.
+  defp comms_panel(assigns) do
     ~H"""
-    <section class="ic-panel flex h-full flex-col">
-      <div class="grid shrink-0 grid-cols-7 gap-1.5 border-b border-base-content/15 px-3 pb-2 pt-3">
-        <div
-          :for={label <- ~w(Sun Mon Tue Wed Thu Fri Sat)}
-          class="text-center font-mono text-[0.625rem] font-bold uppercase tracking-wide text-base-content/45"
-        >
-          {String.first(label)}
+    <section id="home-comms-panel" class="ic-panel grid h-full grid-cols-3 overflow-hidden">
+      <%!-- Left: contacts with per-person Text / Call / Email actions. --%>
+      <div class="flex min-h-0 flex-col border-r-2 border-base-content/20">
+        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-base-content/15 px-3 pb-2 pt-3">
+          <p class="ic-eyebrow">Contacts</p>
+          <button
+            type="button"
+            phx-click="toggle_add_contact"
+            aria-expanded={to_string(@show_add)}
+            title="Add a trusted sender"
+            aria-label="Add contact"
+            class={[
+              "inline-flex shrink-0 items-center gap-1 rounded-xs border px-1.5 py-0.5 font-mono text-[0.625rem] font-bold uppercase tracking-wide transition",
+              if(@show_add,
+                do: "border-primary text-primary",
+                else: "border-base-content/25 text-base-content/55 hover:text-base-content"
+              )
+            ]}
+          >
+            <.icon name="hero-plus" class="size-3" /> Add
+          </button>
         </div>
+
+        <form
+          :if={@show_add}
+          phx-submit="add_contact"
+          class="flex shrink-0 items-center gap-1.5 border-b border-base-content/15 px-3 py-2"
+        >
+          <input
+            type="text"
+            name="entry"
+            value=""
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="alice@example.com · *@acme.com"
+            class="input input-xs min-w-0 flex-1 font-mono text-[0.6875rem]"
+          />
+          <button
+            type="submit"
+            class="shrink-0 rounded-xs bg-primary px-2 py-1 font-display text-[0.625rem] font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85"
+          >
+            Add
+          </button>
+        </form>
+
+        <ul :if={@contacts != []} class="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+          <li :for={c <- @contacts} class="flex items-center gap-2">
+            <span class="flex min-w-0 flex-1 items-center gap-1">
+              <span
+                :if={c.trusted?}
+                title="Trusted"
+                aria-label="Trusted"
+                class="shrink-0 font-mono text-[0.625rem] font-bold text-success"
+              >
+                ✓
+              </span>
+              <span class="truncate font-display text-xs font-bold text-base-content">{c.name}</span>
+            </span>
+            <div class="flex shrink-0 items-center gap-1">
+              <button
+                :if={c.phone}
+                type="button"
+                disabled
+                title="Texting isn't available yet"
+                class="cursor-not-allowed rounded-xs border border-base-content/20 p-1 text-base-content/35"
+              >
+                <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
+              </button>
+              <button
+                :if={c.phone}
+                type="button"
+                disabled
+                title="Calling isn't available yet"
+                class="cursor-not-allowed rounded-xs border border-base-content/20 p-1 text-base-content/35"
+              >
+                <.icon name="hero-phone" class="size-3.5" />
+              </button>
+              <button
+                :if={c.email}
+                type="button"
+                phx-click="email_contact"
+                phx-value-id={c.id}
+                title={"Email #{c.name} via the chat"}
+                aria-label={"Email #{c.name}"}
+                class="rounded-xs border border-primary/50 p-1 text-primary transition hover:bg-primary hover:text-primary-content"
+              >
+                <.icon name="hero-envelope" class="size-3.5" />
+              </button>
+            </div>
+          </li>
+        </ul>
+        <p :if={@contacts == []} class="p-3 font-mono text-[0.6875rem] text-base-content/55">
+          No contacts yet.
+        </p>
       </div>
 
-      <div
-        id="home-month-grid"
-        phx-hook="CalendarPopover"
-        class="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1.5 px-3 py-3"
-      >
-        <div
-          :for={day <- @days}
-          data-day
-          data-has-events={day.events != [] && "1"}
-          class={[
-            "relative flex items-center justify-center rounded-xs font-mono text-xs transition",
-            day_cell_class(day, @today)
-          ]}
-        >
-          {day.date.day}
+      <%!-- Middle: recent phone activity (voicemails, texts, calls). --%>
+      <div class="flex min-h-0 flex-col border-r-2 border-base-content/20">
+        <p class="ic-eyebrow shrink-0 border-b border-base-content/15 px-3 pb-2 pt-3">
+          Recent activity
+        </p>
+        <ul :if={@activity != []} class="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">
+          <li :for={row <- @activity} class="flex items-baseline gap-2 font-mono text-[0.6875rem]">
+            <span class="shrink-0 text-base-content/45" title={row.title}>{row.mark}</span>
+            <span class="shrink-0 truncate font-bold text-base-content">{row.label}</span>
+            <span class="min-w-0 flex-1 truncate text-base-content/60">{row.snippet}</span>
+            <span class="shrink-0 text-base-content/45">{row.when}</span>
+          </li>
+        </ul>
+        <p :if={@activity == []} class="p-3 font-mono text-[0.6875rem] text-base-content/50">
+          No recent phone activity.
+        </p>
+      </div>
 
-          <div :if={day.events != []} data-day-detail hidden>
-            <p class="mb-1 font-mono text-[0.625rem] font-bold uppercase tracking-wide text-base-content/60">
-              {Elixir.Calendar.strftime(day.date, "%a · %b %-d")}
-            </p>
-            <ul class="space-y-0.5">
-              <li
-                :for={event <- day.events}
-                class={[
-                  "flex items-baseline gap-1.5 font-mono text-[0.6875rem]",
-                  CalendarColors.text(event.color)
-                ]}
-              >
-                <span class="shrink-0 text-current">{event_time_label(event)}</span>
-                <span class="truncate text-base-content">{event.title}</span>
-              </li>
-            </ul>
-          </div>
+      <%!-- Right: trusted-sender allowlist (the chips render via TrustedContactsPanel;
+            add lives with the Contacts header's "+ Add"). --%>
+      <div id="home-contacts-panel" class="flex min-h-0 flex-col">
+        <p class="ic-eyebrow shrink-0 border-b border-base-content/15 px-3 pb-2 pt-3">
+          Trusted senders
+        </p>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3">
+          <BusterClawWeb.TrustedContactsPanel.panel contacts={@trusted} entries={@entries} />
         </div>
       </div>
     </section>
     """
   end
-
-  # Today wins (solid primary fill); then days with events take a translucent
-  # fill of the first event's category color so the whole cell reads as "busy" at
-  # a glance (the hover popover lists them). Out-of-month empty days are dimmed.
-  defp day_cell_class(day, today) do
-    cond do
-      day.date == today -> "bg-primary font-bold text-primary-content"
-      day.events != [] -> CalendarColors.cell_fill(hd(day.events).color) <> " text-base-content"
-      not day.in_month? -> "text-base-content/35 hover:bg-base-content/5"
-      true -> "text-base-content hover:bg-base-content/5"
-    end
-  end
-
-  defp event_time_label(%{start_time: nil}), do: "All day"
-
-  defp event_time_label(%{start_time: %Time{} = time}),
-    do: Elixir.Calendar.strftime(time, "%H:%M")
 
   # Notify: a kind-aware creation form over the upcoming notifications of that
   # kind. The segmented row does double duty — it picks what the form arms

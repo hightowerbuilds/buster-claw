@@ -46,7 +46,9 @@ A2P 10DLC** — that registration grind is an *SMS* gate. So:
   This is the fastest honest path to revenue. Do not let SMS block it.
 - **Phase 2 (SMS) is what triggers A2P 10DLC.** Twilio currently supports a Sole
   Proprietor Brand for eligible direct customers without an EIN; Standard Brand
-  registration uses an EIN. Carrier review time, not the LLC, is the schedule risk.
+  registration uses an EIN. **Operator decision 07-18: register BusterPhone as a
+  Direct Sole Proprietor, not as a business.** The immediate schedule risk is now
+  correcting the registration path, then carrier review — not forming an LLC.
 
 **New obligations that come with being the retailer** (none of these are in the phases
 below yet — they are net-new work):
@@ -154,8 +156,9 @@ transcript doc appear in the workspace without touching the app.
 > **Code-complete 2026-07-18; operator activation remains.** Signed inbound SMS,
 > trusted-number Dispatch, `sms_send`, local outbound persistence, Sentinel audit,
 > kill switch, and daily recipient cap are implemented and tested. The `/phone`
-> thread view remains read-only. Live delivery still requires the Messaging Service
-> SID, webhook deployment, and approved A2P campaign described below.
+> thread view remains read-only. The Messaging Service, sender number, webhook, and
+> verified inbound path are live. Outbound delivery still requires a correctly
+> registered Direct Sole Proprietor Brand and approved campaign described below.
 >
 > **Historical baseline (2026-07-15).** The schema and `/phone` thread renderer
 > existed, but no SMS webhook, drain dispatch, REST send, cap, or command wrote
@@ -169,53 +172,56 @@ background while the code track is built and tested against your own verified
 number. Nothing below delivers to a stranger's phone until registration
 clears — but everything below can be *built and proven* before it does.
 
-#### The Twilio / registration track (operator — do this first, it waits on carriers)
+#### The Twilio / registration track (operator — Direct Sole Proprietor locked 07-18)
 
-> **Confirm the tier before anything else.** The Campaign Registry has a **Sole
-> Proprietor** brand path for individuals with **no EIN** — lower throughput
-> (a small MPS cap, one campaign, ~limited daily volume) but no company
-> required. If that path still stands (verify current Twilio + TCR terms — these
-> programs move), **SMS does not have to wait on forming the LLC**, which
-> reverses this roadmap's original "SMS forces the entity early" assumption.
-> Decide Sole Proprietor vs. Standard before registering; re-tiering later is a
-> re-registration, not a toggle.
+> **Decision:** BusterPhone is registering as a **Direct Sole Proprietor**. The
+> operator is an individual in the US without an EIN and is not presenting this
+> registration as an LLC or formal business. Twilio still classifies application
+> traffic from an individual as A2P; this is the correct identity tier, not an
+> exemption. If an EIN or LLC exists later, this decision must be revisited because
+> that requires Standard or Low-Volume Standard registration.
+>
+> **Current state at the 07-18 cutoff:** the existing submission appears to have
+> started down the business path. Do not keep waiting and assume review will repair
+> a wrong identity class. Tomorrow, record the current Brand Type, Brand Status, and
+> Campaign Status in Console before deleting anything. If the Brand is Standard or
+> Low-Volume Standard, remove its Campaign first, delete the Brand second, then
+> recreate through the Direct Sole Proprietor flow. Outbound remains kill-switched
+> through the entire reset and approval period.
 
 Steps in the Twilio Console (and TCR, which Twilio walks you through):
 
-1. **Upgrade the account** off trial if not already, and make sure the paid
-   **local 10-digit number** (bought 07-13 — **+1 (360) 364-6763**) is the one
-   you'll text from.
-   Toll-free is the fallback if 10DLC drags — it has its own (lighter,
-   verification-based) path, no TCR campaign.
-2. **Register the A2P Brand** — *Messaging → Regulatory Compliance → A2P 10DLC
-   → Brand*. Sole Proprietor: your legal name, address, mobile number for the
-   OTP verification, email. Standard: legal business name + **EIN** + website.
-   A one-time vetting fee applies (~$4 SP / ~$44 Standard, confirm current).
-3. **Create a Campaign** under the brand — use case is **"Low-Volume Mixed"**
-   or **"Account Notification"** (an agent replying to the number's owner is
-   conversational/notification, not marketing). You must supply: a campaign
-   description, **2–3 sample messages** the agent would actually send, opt-in
-   language, and the **STOP/HELP** handling statement. ~$10 one-time + ~$2/mo.
-4. **Create a Messaging Service** — *Messaging → Services* — attach the number
-   to it as the sender pool, and attach the approved campaign to the service.
-   (Outbound sends go *through the Messaging Service SID*, not the raw number,
-   so the campaign registration is applied.)
-5. **Point the number's Messaging webhook** at the new `sms` edge function URL
-   (*Phone Numbers → your number → Messaging → "A message comes in" → Webhook,
-   POST*), exactly as you did for Voice. This can be wired before the campaign
-   clears — inbound receipt works during review; it's *outbound* that carriers
-   gate.
-6. **STOP/HELP compliance is automatic but yours to honor** — Twilio
+1. **Inventory before deletion:** open *Messaging → Regulatory Compliance* and
+   record the current Brand Type/Status and Campaign Status. Do not share or
+   rotate the Auth Token for this step.
+2. **Remove the wrong registration if necessary:** delete/unregister the
+   associated Campaign first, then delete the Standard/Low-Volume Standard Brand.
+   Deletion is permanent and a replacement registration can incur new fees.
+3. **Create or select a Starter Profile** and answer **No** when asked whether
+   the US/Canadian registrant has a tax ID. Use the operator's real first name,
+   last name, non-disposable email, and address.
+4. **Register the Sole Proprietor Brand** using the operator's legal identity.
+   Complete OTP verification with a personal US/Canadian mobile number — not the
+   Twilio number or another CPaaS number. Avoid LLC/Inc./Corp. identity language.
+5. **Create the Sole Proprietor Campaign.** Its A2P use-case type must be **Sole
+   Proprietor**. Describe the actual BusterPhone flow, provide two representative
+   messages, and state precisely how the operator opts in and how STOP/HELP works.
+6. **Reuse the existing Messaging Service if Console permits it** and attach only
+   the paid local number **+1 (360) 364-6763**. A Sole Proprietor Campaign supports
+   one registered 10DLC number. If Console forces a new Messaging Service, update
+   `TWILIO_MESSAGING_SERVICE_SID`; otherwise the application configuration stays
+   unchanged.
+7. **Keep the live inbound webhook in place.** It is already deployed and a real
+   inbound SMS has drained into `/phone`; the registration reset should not undo
+   that proven path.
+8. **STOP/HELP compliance is automatic but yours to honor** — Twilio
    auto-responds to STOP/HELP by default; keep that on. Note it in the greeting
    copy and don't send to a number that has replied STOP.
-7. **Record the IDs** the code needs: **Messaging Service SID** (`MG…`), the
-   Account SID (`AC…`) and Auth Token you already have, and the number in E.164.
-   These go in the encrypted `twilio` integration record (app side) and the
-   edge function's Supabase env vars (inbound signature verification).
 
-**Registration exit test:** the campaign shows **Approved** in the console, and
-a test send through the Messaging Service to your own phone arrives (Twilio
-lets you send to verified numbers during review).
+**Registration exit test:** the Brand Type shows **Sole Proprietor**, the campaign
+shows **Approved**, the paid number reports registered through its linked Messaging
+Service, and a test send to the operator's phone arrives. Only then set the SMS kill
+switch true.
 
 #### 2A — Inbound (buildable and testable now, before the campaign clears)
 
@@ -345,10 +351,10 @@ the paid tier (Part V.1), these numbers set the margin:
 - **Secrets in two places** — Twilio creds live encrypted in the app *and*
   in Supabase env vars. Document it; Sentinel can't see the Edge Function.
 - **10DLC is the schedule risk** for SMS, not code. Voicemail has no such
-  gate — hence the phase order. **Register first, build while it grinds** (Phase
-  2A is fully testable against your own verified number during review). Confirm
-  the **Sole Proprietor** brand tier — if it holds, SMS ships without the LLC,
-  reversing the old "SMS forces the entity" assumption.
+  gate — hence the phase order. **Direct Sole Proprietor is now the locked tier.**
+  The first submission likely used the wrong business identity path; record its
+  statuses, reset Campaign then Brand if confirmed, and resubmit correctly. Phase
+  2A is already proven by a live inbound message and does not need rebuilding.
 - **Outbound is the first thing in the app that spends money and reaches a
   stranger unprompted.** The `:restricted` tier on `sms_send` and the usage cap
   are the guardrails; a prompt-injected agent must not be able to fire texts.
