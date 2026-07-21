@@ -939,7 +939,7 @@ defmodule BusterClawWeb.StatusLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} socket={@socket}>
       <section class="ic-home relative isolate flex flex-1 flex-col">
         <%!-- Homepage background (Appearance setting): an uploaded image, or a
               hook-owned WebGPU shader canvas that LiveView never patches inside.

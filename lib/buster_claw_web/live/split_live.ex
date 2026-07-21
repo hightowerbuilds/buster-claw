@@ -130,7 +130,7 @@ defmodule BusterClawWeb.SplitLive do
       assign(assigns, :split_bg, split_bg(assigns.left, assigns.right, assigns.terminal_bg))
 
     ~H"""
-    <Layouts.app flash={@flash} full_bleed>
+    <Layouts.app flash={@flash} socket={@socket} full_bleed>
       <div
         id="split-root"
         phx-hook="SplitResizer"

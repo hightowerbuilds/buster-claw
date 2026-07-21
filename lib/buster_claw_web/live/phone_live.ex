@@ -459,7 +459,7 @@ defmodule BusterClawWeb.PhoneLive do
     assigns = assign(assigns, filters: @filters, wave_colors: @wave_colors)
 
     ~H"""
-    <Layouts.app flash={@flash} full_bleed>
+    <Layouts.app flash={@flash} socket={@socket} full_bleed>
       <div class="flex h-full min-h-0 flex-col gap-3 p-3 lg:grid lg:grid-cols-5">
         <%!-- LEFT: full column — the log --%>
         <%!-- No background shader here — the clips themselves are the shader

@@ -108,6 +108,11 @@ defmodule BusterClawWeb.Layouts do
     doc:
       "drop only the centered max-width (keep padding + normal scroll) so content fills the window width"
 
+  attr :socket, :any,
+    default: nil,
+    doc:
+      "the caller's LiveView socket — enables the sticky dock status widget (DockLive); pages that omit it just render the dock without the widget"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -209,8 +214,12 @@ defmodule BusterClawWeb.Layouts do
           </div>
         </nav>
 
+        <%!-- Right side: the sticky status widget (upcoming alarms/timers/
+              reminders + temperature + clock). A separate LiveView process
+              (sticky), so it survives page navigation — armed notifications
+              stay visible even with the homepage closed. --%>
         <div class="ml-auto shrink-0">
-          <.theme_toggle />
+          {@socket && live_render(@socket, BusterClawWeb.DockLive, id: "bc-dock", sticky: true)}
         </div>
       </footer>
     </div>
@@ -258,43 +267,6 @@ defmodule BusterClawWeb.Layouts do
         {gettext("Attempting to reconnect")}
         <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
-    </div>
-    """
-  end
-
-  @doc """
-  Provides dark vs light theme toggle based on themes defined in app.css.
-
-  See <head> in root.html.heex which applies the theme before page load.
-  """
-  def theme_toggle(assigns) do
-    ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="system"
-      >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="light"
-      >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="dark"
-      >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
     </div>
     """
   end

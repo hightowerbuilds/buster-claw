@@ -111,6 +111,28 @@ Follow-ups from the operator's first look, same session:
   box now cached in BrowserState — registered at all three ACL points
   (build.rs, capability, invoke_handler), the 07-17 lesson applied.
 
+## 8. The dock grew a status widget; the theme toggle retired
+The footer dock's right side: the day/night toggle is gone (it was the only
+theme control — the mechanism and saved choice survive, there's just no UI;
+Settings → Appearance is the natural home if it returns), replaced by
+**upcoming alarms/timers/reminders + temperature + clock**.
+
+The architectural insight: the *firing* side was already global — the
+Notifications.Scheduler GenServer + the sticky root-layout NotifyLive ring the
+modal and chime on any page — but *visibility* was homepage-only. `DockLive`
+closes that gap: a LiveView mounted `sticky: true` inside the dock footer, its
+own process with its own notifications subscription, surviving page navigation —
+a timer set on Home keeps counting down from /browse. Chips show the soonest 3
+(kind glyph + label + time) with a `+N` overflow; timers tick a countdown,
+alarms/reminders show local wall-clock fire time — all client-side via the new
+`DockClock` hook (clock, countdowns, wall-times off the Mac's clock; zero
+per-second socket traffic). Temperature reuses the TTL-cached Weather with an
+async fetch + 10-minute refresh, silent when no location is set. Plumbing:
+`Layouts.app` gained an optional `socket` attr (threaded through all 18
+LiveView call sites) so the footer can live_render the sticky child; DockLive
+joined the onboarding-gate allowlist beside NotifyLive. Operator walked it in
+the real app: working.
+
 ## Status at this update
 - **Tests green throughout:** `1168 tests, 0 failures`; clean
   `compile --warnings-as-errors` + `cargo check`; `credo --strict` clean on all

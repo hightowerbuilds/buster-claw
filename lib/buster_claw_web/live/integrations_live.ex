@@ -124,7 +124,7 @@ defmodule BusterClawWeb.IntegrationsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} socket={@socket}>
       <div class="space-y-6">
         <BusterClawWeb.SettingsTabs.tabs active={:integrations} />
 

@@ -234,7 +234,7 @@ defmodule BusterClawWeb.SetupLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} socket={@socket}>
       <section id="setup-wizard" class="mx-auto max-w-2xl space-y-8">
         <div class="flex items-center justify-between border-b-2 border-base-content/20 pb-5">
           <p class="ic-eyebrow">Getting started</p>

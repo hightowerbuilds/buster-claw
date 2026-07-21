@@ -22,7 +22,7 @@ defmodule BusterClawWeb.CalendarLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} wide>
+    <Layouts.app flash={@flash} socket={@socket} wide>
       <.live_component module={BusterClawWeb.CalendarComponent} id="calendar" today={@today} />
     </Layouts.app>
     """

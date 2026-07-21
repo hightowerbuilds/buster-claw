@@ -614,20 +614,26 @@ defmodule BusterClawWeb.StatusLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
       render_click(view, "select_widget_tab", %{"tab" => "notify"})
 
+      # Assertions scope to the notify panel: the DOCK's status widget also shows
+      # upcoming notifications page-wide, so whole-page refutes would false-fail.
+      panel = fn -> view |> element("#home-notify-panel") |> render() end
+
       # Timer kind (default): the timer's countdown and row; the alarm is absent.
-      html = render(view)
+      html = panel.()
       assert html =~ ~s(id="notify-countdown-#{timer.id}-#{DateTime.to_unix(timer.fire_at)}")
       assert html =~ "Tea"
       refute html =~ "Wake"
 
       # Alarm kind: the hero re-keys to the alarm; the timer leaves the column.
-      html = render_click(view, "notify_kind", %{"kind" => "alarm"})
+      render_click(view, "notify_kind", %{"kind" => "alarm"})
+      html = panel.()
       assert html =~ ~s(id="notify-countdown-#{alarm.id}-#{DateTime.to_unix(alarm.fire_at)}")
       assert html =~ "Wake"
       refute html =~ "Tea"
 
       # Reminder kind: nothing armed — no shader, honest per-kind empty state.
-      html = render_click(view, "notify_kind", %{"kind" => "reminder"})
+      render_click(view, "notify_kind", %{"kind" => "reminder"})
+      html = panel.()
       refute html =~ "notify-countdown-"
       assert html =~ "No reminders set"
     end

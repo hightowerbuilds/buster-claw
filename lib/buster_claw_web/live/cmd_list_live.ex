@@ -110,7 +110,7 @@ defmodule BusterClawWeb.CmdListLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} socket={@socket}>
       <section id="cmd-list" class="space-y-6">
         <BusterClawWeb.SettingsTabs.tabs active={:cmd_list} />
 

@@ -33,7 +33,7 @@ defmodule BusterClawWeb.UserGuideLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} socket={@socket}>
       <section class="flex flex-1 flex-col space-y-6">
         <div class="space-y-3 border-b-2 border-base-content/20 pb-5">
           <p class="ic-eyebrow">Reference</p>

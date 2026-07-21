@@ -262,7 +262,7 @@ defmodule BusterClawWeb.HomeWidget do
       )
 
     ~H"""
-    <section class="ic-panel grid h-full grid-cols-5">
+    <section id="home-notify-panel" class="ic-panel grid h-full grid-cols-5">
       <%!-- Left 3/5: notifier creation. --%>
       <div class="col-span-3 flex min-h-0 flex-col border-r border-base-content/15 px-3 py-3">
         <div

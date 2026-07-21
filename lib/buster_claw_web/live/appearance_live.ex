@@ -182,7 +182,7 @@ defmodule BusterClawWeb.AppearanceLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} socket={@socket}>
       <section class="space-y-6">
         <BusterClawWeb.SettingsTabs.tabs active={:appearance} />
 

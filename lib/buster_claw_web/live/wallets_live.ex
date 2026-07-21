@@ -309,7 +309,7 @@ defmodule BusterClawWeb.WalletsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} socket={@socket}>
       <div class="space-y-6">
         <header class="flex items-end justify-between">
           <div>
