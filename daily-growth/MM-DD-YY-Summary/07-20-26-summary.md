@@ -84,7 +84,7 @@ SvgViewerDock hook deleted. **Workflow note (operator call, recorded in agent
 memory): routine work now commits straight to main — no more feature-branch/PR
 churn per change.**
 
-## 7. The browser grew a tab sidebar (`4f215aa` + working tree)
+## 7. The browser grew a tab sidebar (`4f215aa`, `a8202e6`)
 The big one: browser tabs moved from the horizontal strip to a **left sidebar**,
 Arc-style, while the app-tab system stays on top. The trick that made it one
 webview instead of two: the chrome webview now covers the surface's ENTIRE box —
@@ -102,7 +102,7 @@ Follow-ups from the operator's first look, same session:
   base-200/80 strip, active chip merging into the toolbar; dark-theme tokens
   hardcoded since the chrome page has no Tailwind). A persisted "/" tab is
   filtered so the synthetic Home chip can't double up.
-- **Bumper + ⌘B** (working tree at this update): a 14px full-height strip on the
+- **Bumper + ⌘B** (`a8202e6`): a 14px full-height strip on the
   sidebar edge collapses/expands it (chevron + vertical "TABS" when closed), and
   ⌘B does the same via a new "Toggle Tab Sidebar" item in the native Tabs menu
   (menu accelerators fire regardless of webview focus). The chrome owns the
@@ -121,7 +121,7 @@ Follow-ups from the operator's first look, same session:
 - **On main:** calendar sub-tab (`bcc68d4`), notes + widget (`685f3fc`),
   BusterPhone A2P doc reset (`4c5540d`), comms hub (`bada073`, merged via
   `fc60e49`), SVG modal (`361a0fc`), browser sidebar + app-tab parity
-  (`4f215aa`), then the bumper/⌘B + this summary.
+  (`4f215aa`), bumper/⌘B (`a8202e6`).
 - **Real-app walk still owed** (operator hands, WKWebView): the browser
   sidebar's z-order + pixel alignment held up on first look; the bumper/⌘B
   toggle and a browser+browser split with the scaled sidebar remain unwalked.
