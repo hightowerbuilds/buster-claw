@@ -131,6 +131,7 @@ fn pure_modules_have_no_tauri_imports() {
         ("js.rs", include_str!("../src/browser/js.rs")),
         ("labels.rs", include_str!("../src/browser/labels.rs")),
         ("geometry.rs", include_str!("../src/browser/geometry.rs")),
+        ("state.rs", include_str!("../src/browser/state.rs")),
     ] {
         assert!(
             !text.contains("use tauri") && !text.contains("tauri::"),
