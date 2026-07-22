@@ -24,6 +24,9 @@ portable-pty = "0.8"
 keyring = "2"
 serde = { version = "1", features = ["derive"] }
 base64 = "0.22"
+# Already in the tree via tauri (tauri::Url IS url::Url); a direct dep so the
+# pure labels module can name the type without importing tauri.
+url = "2"
 tauri-plugin-single-instance = "2"
 
 # macOS-only: reach the underlying WKWebView (via tauri's PlatformWebview::inner())

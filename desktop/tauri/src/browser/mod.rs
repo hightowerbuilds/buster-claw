@@ -30,39 +30,21 @@ use std::sync::Mutex;
 use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, Url, WebviewUrl};
 
-const CHROME_PREFIX: &str = "browser-chrome-"; // browser-chrome-<sid>
-const CONTENT_PREFIX: &str = "browser-content-"; // browser-content-<sid>-<tabid>
-const FIRST_TAB: &str = "1";
-const DEFAULT_SID: &str = "main";
-// The chrome webview covers the surface's ENTIRE box; the content webview is
-// created after it (NSView sibling order = paint order, so content sits on top)
-// and is inset below the chrome's top block and right of its tab sidebar. The
-// chrome HTML paints only those two bands — its center is permanently covered.
-const CHROME_TOP_HEIGHT: f64 = 112.0; // app-tab row (~34) + toolbar (46) + bookmark bar (32)
-                                      // The vertical browser-tab strip on the left. Narrow surfaces (split panes)
-                                      // scale it down via SIDEBAR_MAX_FRACTION; both MUST match the chrome CSS
-                                      // `--sidebar-w: min(220px, 35vw)` or the content webview will misalign.
-const SIDEBAR_WIDTH: f64 = 220.0;
-const SIDEBAR_MAX_FRACTION: f64 = 0.35;
-// Collapsed sidebar: only the bumper strip stays. MUST match the chrome CSS
-// `body.sidebar-collapsed { --sidebar-w: 16px }`.
-const SIDEBAR_COLLAPSED_WIDTH: f64 = 16.0;
+mod geometry;
+mod js;
+mod labels;
 
-// Content inset for a surface box: (content_x, content_y, content_w, content_h).
-fn content_box(x: f64, y: f64, width: f64, height: f64, collapsed: bool) -> (f64, f64, f64, f64) {
-    let top_h = CHROME_TOP_HEIGHT.min(height);
-    let sidebar_w = if collapsed {
-        SIDEBAR_COLLAPSED_WIDTH.min(width)
-    } else {
-        SIDEBAR_WIDTH.min(width * SIDEBAR_MAX_FRACTION)
-    };
-    (
-        x + sidebar_w,
-        y + top_h,
-        (width - sidebar_w).max(0.0),
-        (height - top_h).max(0.0),
-    )
-}
+use geometry::content_box;
+pub(crate) use js::js_str;
+use js::{
+    click_js, error_data, extract_matches_js, fill_js, find_elements_js, wait_probe_js,
+    wait_result_json, ActTarget, EXTRACT_PAGE_JS, NO_TARGET_DATA, POPUPS_AS_TABS_JS, READ_PAGE_JS,
+    SCROLL_RESTORE_JS,
+};
+use labels::{
+    chrome_label, content_label, parse_web_url, sanitize_sid, CHROME_PREFIX, CONTENT_PREFIX,
+    DEFAULT_SID, FIRST_TAB,
+};
 
 // Native content blocking (roadmap Phase 4). A curated EasyList subset of the
 // highest-impact ad/tracker/analytics hosts, compiled once by WebKit's own
@@ -72,7 +54,7 @@ fn content_box(x: f64, y: f64, width: f64, height: f64, collapsed: bool) -> (f64
 // store recompiles instead of serving a stale cached list.
 const BLOCKLIST_ID: &str = "buster-blocklist-v1";
 #[cfg(target_os = "macos")]
-const BLOCKLIST_JSON: &str = include_str!("blocklist.json");
+const BLOCKLIST_JSON: &str = include_str!("../blocklist.json");
 
 /// Per-surface active content tab id (the visible one for that surface). Managed
 /// by Tauri so it survives across commands; the chrome JS keeps it in sync via
@@ -330,74 +312,6 @@ impl BrowserState {
             .find(|i| i.id == id)
             .map(|i| i.path.clone())
     }
-}
-
-// Injected into each content webview before page scripts. Popups and
-// target=_blank links open as real tabs: the shim routes the URL through a
-// sentinel scheme (`bcpopup://open?u=…`) that this surface's `on_navigation`
-// guard intercepts, cancels, and hands to the chrome's `__agentOpenTab` — so
-// the tab strip stays in sync and the current page is never clobbered.
-// Documented ceiling (roadmap Phase 1.2): `window.open` returns null, so flows
-// that need a live `window.opener`/`postMessage` back-channel still fail;
-// fixing those requires a real WKUIDelegate popup webview.
-const POPUPS_AS_TABS_JS: &str = r#"
-(function () {
-  try {
-    function openAsTab(url) {
-      if (url) {
-        try {
-          var abs = new URL(String(url), window.location.href).href;
-          window.location.href = "bcpopup://open?u=" + encodeURIComponent(abs);
-        } catch (_e) {}
-      }
-      return null;
-    }
-    window.open = openAsTab;
-    document.addEventListener("click", function (e) {
-      var link = e.target && e.target.closest && e.target.closest("a[href]");
-      // Cmd/Ctrl-click any link -> new tab (browser convention).
-      if (link && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        openAsTab(link.href);
-        return;
-      }
-      var a = e.target && e.target.closest && e.target.closest("a[target]");
-      if (a && a.target && a.target !== "_self" && a.href) {
-        e.preventDefault();
-        openAsTab(a.href);
-      }
-    }, true);
-    // Middle-click a link -> new tab.
-    document.addEventListener("auxclick", function (e) {
-      if (e.button !== 1) return;
-      var a = e.target && e.target.closest && e.target.closest("a[href]");
-      if (a && a.href) {
-        e.preventDefault();
-        openAsTab(a.href);
-      }
-    }, true);
-  } catch (_e) {}
-})();
-"#;
-
-// Restrict surface ids to a hyphen-free alphanumeric alphabet so the
-// `browser-content-<sid>-<tabid>` label parses unambiguously and per-surface
-// prefix filtering is exact. Mirrors the dom-id sanitiser in split_live.ex.
-fn sanitize_sid(sid: &str) -> String {
-    let cleaned: String = sid.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-    if cleaned.is_empty() {
-        DEFAULT_SID.to_string()
-    } else {
-        cleaned
-    }
-}
-
-fn chrome_label(sid: &str) -> String {
-    format!("{CHROME_PREFIX}{sid}")
-}
-
-fn content_label(sid: &str, tab_id: &str) -> String {
-    format!("{CONTENT_PREFIX}{sid}-{tab_id}")
 }
 
 // All content webview labels belonging to one surface.
@@ -898,29 +812,6 @@ pub fn browser_current(
     Ok(CurrentTab { url, title })
 }
 
-/// Extraction script for `browser_read_active`: the rendered page as the user
-/// sees it — title, visible text (innerText, capped), and deduped http(s)
-/// links. Returns a JSON string (WebKit hands JS strings back to the
-/// completion handler as NSString).
-const READ_PAGE_JS: &str = r#"
-JSON.stringify((function () {
-  var links = [];
-  var seen = {};
-  var as = document.links || [];
-  for (var i = 0; i < as.length && links.length < 200; i++) {
-    var a = as[i];
-    var label = (a.innerText || "").replace(/\s+/g, " ").trim().slice(0, 120);
-    if (!a.href || !/^https?:/i.test(a.href) || !label) continue;
-    var key = label + "|" + a.href;
-    if (seen[key]) continue;
-    seen[key] = 1;
-    links.push({label: label, url: a.href});
-  }
-  var text = ((document.body && document.body.innerText) || "").slice(0, 200000);
-  return {url: location.href, title: document.title || "", text: text, links: links};
-})())
-"#;
-
 /// The page the user is viewing, read from the **rendered DOM** of the active
 /// content tab (agent co-presence). Unlike the server-side fetch pipeline,
 /// this sees the page as the user's session sees it — logged-in views
@@ -1006,179 +897,6 @@ fn render_settle_and_read(webview: &tauri::Webview, budget_ms: u64) -> Result<St
     eval_with_result(webview, READ_PAGE_JS)
 }
 
-/// Interaction script for `browser_find_elements_active`: collects the page's
-/// visible interactive elements, registers the live references in
-/// `window.__bcEls` (the per-page index registry `browser_click_active` /
-/// `browser_fill_active` act on — navigation invalidates it), and returns a
-/// JSON string: an array of `{i, tag, type, label, value, href}`. `query`
-/// (page-controlled once eval'd, so it arrives via `js_str`) is a
-/// case-insensitive substring filter on the label.
-fn find_elements_js(query: &str) -> String {
-    format!(
-        r#"
-JSON.stringify((function () {{
-  var q = {query}.toLowerCase();
-  var sel = 'a[href], button, input, select, textarea, [role="button"], [onclick]';
-  var nodes = document.querySelectorAll(sel);
-  var els = [];
-  var out = [];
-  for (var i = 0; i < nodes.length && out.length < 100; i++) {{
-    var el = nodes[i];
-    if (el.offsetParent === null && el.getClientRects().length === 0) continue;
-    var label = (el.innerText || el.placeholder || el.getAttribute("aria-label") ||
-      el.getAttribute("name") || "").replace(/\s+/g, " ").trim().slice(0, 120);
-    if (q && label.toLowerCase().indexOf(q) === -1) continue;
-    out.push({{
-      i: els.length,
-      tag: el.tagName.toLowerCase(),
-      type: el.getAttribute("type") || "",
-      label: label,
-      value: typeof el.value === "string" ? el.value.slice(0, 120) : "",
-      href: typeof el.href === "string" ? el.href : ""
-    }});
-    els.push(el);
-  }}
-  window.__bcEls = els;
-  return out;
-}})())
-"#,
-        query = js_str(query)
-    )
-}
-
-// Shared JS snippet: a registered element's human label (mirrors the label
-// logic in find_elements_js).
-const EL_LABEL_JS: &str = r#"(el.innerText || el.placeholder || el.getAttribute("aria-label") ||
-    el.getAttribute("name") || "").replace(/\s+/g, " ").trim().slice(0, 120)"#;
-
-// Look up `window.__bcEls[index]`; stale/missing entries return the "stale
-// index" error the agent recovers from by re-running browser_find_elements.
-fn el_lookup_js(index: usize) -> String {
-    format!(
-        r#"var els = window.__bcEls;
-  var el = els && els[{index}];
-  if (!el || !el.isConnected)
-    return {{ok: false, error: "stale index — call browser_find_elements again"}};"#
-    )
-}
-
-/// How `browser_click_active` / `browser_fill_active` resolve the element to
-/// act on, in priority order when several are given: an explicit CSS
-/// selector, then visible-text matching, then the legacy `window.__bcEls`
-/// index from `browser_find_elements_active`. Resolution happens at act time
-/// inside the page script, which tags its result with `matched_by` so the
-/// agent knows which strategy fired.
-pub(crate) enum ActTarget {
-    Selector(String),
-    Text(String),
-    Index(usize),
-}
-
-impl ActTarget {
-    fn from_params(
-        index: Option<usize>,
-        selector: Option<String>,
-        text: Option<String>,
-    ) -> Option<Self> {
-        if let Some(selector) = selector {
-            Some(Self::Selector(selector))
-        } else if let Some(text) = text {
-            Some(Self::Text(text))
-        } else {
-            index.map(Self::Index)
-        }
-    }
-
-    // The resolution prelude: binds `el` + `matchedBy`, or returns the
-    // `{ok: false}` object the Elixir side surfaces as an element_action
-    // failure. Selector/text matches may sit below the fold, so those paths
-    // scroll into view before acting; the index path keeps the original
-    // find_elements semantics untouched — no scroll, same stale-index error.
-    fn resolve_js(&self) -> String {
-        match self {
-            Self::Selector(selector) => format!(
-                r#"var el;
-  try {{ el = document.querySelector({selector}); }}
-  catch (e) {{ return {{ok: false, error: "invalid selector"}}; }}
-  if (!el) return {{ok: false, error: "no element matches selector"}};
-  var matchedBy = "selector";
-  el.scrollIntoView({{block: "center"}});"#,
-                selector = js_str(selector)
-            ),
-            Self::Text(text) => format!(
-                r#"var t = {text};
-  var tl = t.toLowerCase();
-  var sel = 'a[href], button, input, select, textarea, [role="button"], [onclick]';
-  var nodes = document.querySelectorAll(sel);
-  var el = null;
-  var sub = null;
-  for (var i = 0; i < nodes.length; i++) {{
-    var n = nodes[i];
-    if (n.offsetParent === null && n.getClientRects().length === 0) continue;
-    var label = (n.innerText || n.placeholder || n.getAttribute("aria-label") ||
-      n.getAttribute("name") || "").replace(/\s+/g, " ").trim();
-    if (label === t) {{ el = n; break; }}
-    if (!sub && label.toLowerCase().indexOf(tl) !== -1) sub = n;
-  }}
-  if (!el) el = sub;
-  if (!el) return {{ok: false, error: "no element matches text"}};
-  var matchedBy = "text";
-  el.scrollIntoView({{block: "center"}});"#,
-                text = js_str(text)
-            ),
-            Self::Index(index) => {
-                format!("{}\n  var matchedBy = \"index\";", el_lookup_js(*index))
-            }
-        }
-    }
-}
-
-fn click_js(target: &ActTarget) -> String {
-    format!(
-        r#"
-JSON.stringify((function () {{
-  {resolve}
-  var label = {label};
-  if (el.focus) el.focus();
-  el.click();
-  return {{ok: true, label: label, matched_by: matchedBy}};
-}})())
-"#,
-        resolve = target.resolve_js(),
-        label = EL_LABEL_JS
-    )
-}
-
-fn fill_js(target: &ActTarget, value: &str) -> String {
-    format!(
-        r#"
-JSON.stringify((function () {{
-  {resolve}
-  var tag = el.tagName.toLowerCase();
-  if (tag !== "input" && tag !== "textarea" && tag !== "select")
-    return {{ok: false, error: "not fillable (" + tag + ")"}};
-  if (el.focus) el.focus();
-  el.value = {value};
-  el.dispatchEvent(new Event("input", {{bubbles: true}}));
-  el.dispatchEvent(new Event("change", {{bubbles: true}}));
-  return {{ok: true, label: {label}, matched_by: matchedBy}};
-}})())
-"#,
-        resolve = target.resolve_js(),
-        value = js_str(value),
-        label = EL_LABEL_JS
-    )
-}
-
-// The `{ok: false}` data payload the Elixir side decodes as a command-level
-// failure — distinct from a transport-level Err. js_str's output is also a
-// valid JSON string literal, so it does the quoting.
-fn error_data(msg: &str) -> String {
-    format!(r#"{{"ok":false,"error":{}}}"#, js_str(msg))
-}
-
-const NO_TARGET_DATA: &str = r#"{"ok":false,"error":"no target"}"#;
-
 /// A JSON string result from an interaction script run in the active tab.
 #[derive(serde::Serialize)]
 pub struct EvalData {
@@ -1254,66 +972,6 @@ pub async fn browser_fill_active(
     Ok(EvalData { data })
 }
 
-// Build the wait probe: a tiny script evaluating to "1" (condition holds),
-// "0" (not yet), or "e" (the selector itself is invalid — surfaced
-// immediately instead of burning the whole budget). Err = unusable
-// condition/value combo, reported as `{ok: false}` data, never a transport
-// error.
-fn wait_probe_js(condition: &str, value: Option<&str>) -> Result<String, String> {
-    match condition {
-        "navigation" => Ok(r#"document.readyState === "complete" ? "1" : "0""#.to_string()),
-        "selector" => {
-            let sel = value.ok_or("wait condition \"selector\" needs a value (a CSS selector)")?;
-            Ok(format!(
-                r#"(function () {{
-  try {{ return document.querySelector({sel}) ? "1" : "0"; }}
-  catch (e) {{ return "e"; }}
-}})()"#,
-                sel = js_str(sel)
-            ))
-        }
-        "visible" => {
-            let sel = value.ok_or("wait condition \"visible\" needs a value (a CSS selector)")?;
-            Ok(format!(
-                r#"(function () {{
-  try {{
-    var el = document.querySelector({sel});
-    if (!el) return "0";
-    var r = el.getBoundingClientRect();
-    if (r.width <= 0 || r.height <= 0) return "0";
-    var cs = window.getComputedStyle(el);
-    if (cs.display === "none" || cs.visibility === "hidden") return "0";
-    return "1";
-  }} catch (e) {{ return "e"; }}
-}})()"#,
-                sel = js_str(sel)
-            ))
-        }
-        "text" => {
-            let text =
-                value.ok_or("wait condition \"text\" needs a value (the text to wait for)")?;
-            Ok(format!(
-                r#"(function () {{
-  var body = (document.body && document.body.innerText) || "";
-  return body.indexOf({text}) === -1 ? "0" : "1";
-}})()"#,
-                text = js_str(text)
-            ))
-        }
-        other => Err(format!("unknown wait condition: {other}")),
-    }
-}
-
-// The success payload for browser_wait_active. An exhausted budget is
-// `matched: false` with `ok: true` — a wait that timed out is still a
-// successful wait command; flow_runner and browser_assert depend on that.
-fn wait_result_json(matched: bool, waited_ms: u128, condition: &str) -> String {
-    format!(
-        r#"{{"ok":true,"matched":{matched},"waited_ms":{waited_ms},"condition":{condition}}}"#,
-        condition = js_str(condition)
-    )
-}
-
 /// Wait until the active content tab satisfies `condition`, polling a tiny
 /// probe script inside Rust every 250ms (the `render_settle_and_read`
 /// precedent) up to `timeout_ms` (clamped 250..30_000, default 10_000).
@@ -1382,50 +1040,6 @@ pub async fn browser_wait_active(
     Ok(EvalData {
         data: wait_result_json(matched, waited_ms, &condition),
     })
-}
-
-/// Whole-page extraction script for `browser_extract_active` without a
-/// selector: url + title + visible text — the READ_PAGE_JS shape minus links,
-/// wrapped in the `{ok: true}` envelope.
-const EXTRACT_PAGE_JS: &str = r#"
-JSON.stringify((function () {
-  var text = ((document.body && document.body.innerText) || "").slice(0, 200000);
-  return {ok: true, url: location.href, title: document.title || "", text: text};
-})())
-"#;
-
-// Selector extraction: up to 50 matches as `{text, href?, value?, attr?}`.
-// `attr` is an optional attribute name to read per match. Both strings are
-// agent-supplied, so they ride through js_str.
-fn extract_matches_js(selector: &str, attr: Option<&str>) -> String {
-    let attr_line = match attr {
-        Some(attr) => format!(
-            r#"var av = el.getAttribute({attr});
-    if (av !== null) m.attr = String(av).slice(0, 2000);"#,
-            attr = js_str(attr)
-        ),
-        None => String::new(),
-    };
-    format!(
-        r#"
-JSON.stringify((function () {{
-  var nodes;
-  try {{ nodes = document.querySelectorAll({selector}); }}
-  catch (e) {{ return {{ok: false, error: "invalid selector"}}; }}
-  var out = [];
-  for (var i = 0; i < nodes.length && out.length < 50; i++) {{
-    var el = nodes[i];
-    var m = {{text: (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 2000)}};
-    if (typeof el.href === "string" && el.href) m.href = el.href;
-    if (typeof el.value === "string" && el.value) m.value = el.value.slice(0, 2000);
-    {attr_line}
-    out.push(m);
-  }}
-  return {{ok: true, count: out.length, matches: out}};
-}})())
-"#,
-        selector = js_str(selector)
-    )
 }
 
 /// Structured extraction from the active content tab (agent co-presence).
@@ -1725,16 +1339,6 @@ pub fn browser_app_navigate(app: AppHandle, path: String) -> Result<(), String> 
         .map_err(|e| e.to_string())
 }
 
-// Parse a URL and require an http(s) scheme (the content webviews refuse other
-// schemes anyway; reject early with a clear message).
-fn parse_web_url(url: &str) -> Result<Url, String> {
-    let parsed: Url = url.parse().map_err(|e| format!("invalid url: {e}"))?;
-    match parsed.scheme() {
-        "http" | "https" => Ok(parsed),
-        other => Err(format!("only http(s) URLs are allowed, got {other}")),
-    }
-}
-
 // The surface to act on: the requested one (sanitised), else any open surface,
 // else the default.
 fn active_sid(state: &State<BrowserState>, surface_id: Option<String>) -> String {
@@ -2018,67 +1622,6 @@ fn ensure_chrome(
 
 // Create a content webview for `tab_id` in a surface with the navigation guard,
 // popup guard, and per-tab navigation reporting back to that surface's chrome.
-#[allow(clippy::too_many_arguments)]
-// Injected into each content webview before page scripts. Background-tab
-// eviction (MAX_LIVE_TABS) closes the webview, so a switch-back reloads the
-// saved URL at the top of the page — this shim makes that reload land where
-// the user left off. Positions are debounce-saved per URL into origin-scoped
-// localStorage (one LRU-capped map under a single key, so a site only ever
-// sees its own origin's entries) and restored on fresh loads. Restore is
-// skipped when the URL carries an anchor hash, when the site restored a
-// position itself, or when the entry has aged out. Form input is not
-// preserved — that would mean serializing page state we can't do safely.
-const SCROLL_RESTORE_JS: &str = r##"
-(function () {
-  try {
-    if (window.top !== window) return;
-    var KEY = "__bcScrollV1";
-    var TTL_MS = 6 * 60 * 60 * 1000;
-    var MAX_ENTRIES = 30;
-    function read() {
-      try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; }
-      catch (_e) { return {}; }
-    }
-    function write(m) {
-      try { localStorage.setItem(KEY, JSON.stringify(m)); } catch (_e) {}
-    }
-    function href() { return location.href.split("#")[0]; }
-    function saveNow() {
-      var m = read();
-      m[href()] = [window.scrollX || 0, window.scrollY || 0, Date.now()];
-      var keys = Object.keys(m);
-      if (keys.length > MAX_ENTRIES) {
-        keys.sort(function (a, b) { return (m[a][2] || 0) - (m[b][2] || 0); });
-        for (var i = 0; i < keys.length - MAX_ENTRIES; i++) delete m[keys[i]];
-      }
-      write(m);
-    }
-    var t = null;
-    window.addEventListener("scroll", function () {
-      if (t) clearTimeout(t);
-      t = setTimeout(saveNow, 250);
-    }, {passive: true});
-    window.addEventListener("pagehide", saveNow);
-    function restore() {
-      if (location.hash) return;
-      var e = read()[href()];
-      if (!e || (!e[0] && !e[1])) return;
-      if (Date.now() - (e[2] || 0) > TTL_MS) return;
-      var tries = 0;
-      (function attempt() {
-        if ((window.scrollY || 0) > 8) return;
-        var max = (document.documentElement.scrollHeight || 0) - window.innerHeight;
-        if (max >= e[1] || tries >= 20) { window.scrollTo(e[0], e[1]); return; }
-        tries++;
-        setTimeout(attempt, 150);
-      })();
-    }
-    if (document.readyState === "complete") setTimeout(restore, 80);
-    else window.addEventListener("load", function () { setTimeout(restore, 80); });
-  } catch (_e) {}
-})();
-"##;
-
 // Candidate for a params struct when this moves to webviews.rs (Phase 4 of the
 // shell rebuild); not worth a signature churn while it lives in the monolith.
 #[allow(clippy::too_many_arguments)]
@@ -2373,32 +1916,6 @@ fn record_history(app: &AppHandle, chrome_label: &str, url: &str, title: &str) {
             eprintln!("[buster-claw] history report to {endpoint} failed: {e}");
         }
     });
-}
-
-// Encode a string as a JS string literal for safe interpolation into eval'd JS.
-// The single crate-wide encoder (main.rs's release-monitor navigation uses it
-// too), so the U+2028/U+2029 escaping below is applied everywhere.
-pub(crate) fn js_str(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            // U+2028/U+2029 are valid in modern JS string literals but are line
-            // terminators on older engines; escape them so a page-controlled title
-            // can never break out of the eval'd literal.
-            '\u{2028}' => out.push_str("\\u2028"),
-            '\u{2029}' => out.push_str("\\u2029"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
 }
 
 #[cfg(test)]
