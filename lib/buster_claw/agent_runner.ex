@@ -87,13 +87,26 @@ defmodule BusterClaw.AgentRunner do
   Resolve which agent CLI to use, `{:ok, {agent, binary_path}}` or
   `{:error, :no_agent_cli}`. Exposed so the Phase 1 dispatcher can refuse to go
   unattended (with a clear message) when no agent is installed.
+
+  Test seam: the `:agent_cli` app env forces the result — `{agent, path}` for
+  present, `:none` for absent — so UI tests don't depend on whether the host
+  machine happens to have `claude` on PATH (CI runners don't).
   """
   @spec detect() :: {:ok, {atom(), String.t()}} | {:error, :no_agent_cli}
   def detect do
-    cond do
-      path = claude_path() -> {:ok, {:claude, path}}
-      path = codex_path() -> {:ok, {:codex, path}}
-      true -> {:error, :no_agent_cli}
+    case Application.get_env(:buster_claw, :agent_cli) do
+      {agent, path} when is_atom(agent) and is_binary(path) ->
+        {:ok, {agent, path}}
+
+      :none ->
+        {:error, :no_agent_cli}
+
+      _ ->
+        cond do
+          path = claude_path() -> {:ok, {:claude, path}}
+          path = codex_path() -> {:ok, {:codex, path}}
+          true -> {:error, :no_agent_cli}
+        end
     end
   end
 
@@ -247,8 +260,10 @@ defmodule BusterClaw.AgentRunner do
       {:os_pid, os_pid} ->
         # Kill the whole group (pgid == os_pid), then the leader directly as a
         # belt-and-suspenders in case the group signal missed it (e.g. `setpgrp`
-        # was unavailable and the process never became a leader).
-        System.cmd("/bin/kill", ["-KILL", "-#{os_pid}"], stderr_to_stdout: true)
+        # was unavailable and the process never became a leader). The `--` is
+        # load-bearing on Linux: procps kill parses a bare `-123` as an option
+        # and silently fails (BSD/macOS kill tolerates it), leaking the group.
+        System.cmd("/bin/kill", ["-KILL", "--", "-#{os_pid}"], stderr_to_stdout: true)
         System.cmd("/bin/kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
 
       _ ->

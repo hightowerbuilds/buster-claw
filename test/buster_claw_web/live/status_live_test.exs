@@ -16,8 +16,15 @@ defmodule BusterClawWeb.StatusLiveTest do
     prev = Application.get_env(:buster_claw, :workspace_root)
     Application.put_env(:buster_claw, :workspace_root, root)
 
+    # The home shell renders an "Install Claude Code" prompt when no agent CLI
+    # is detected; force detection so the assertions don't depend on whether
+    # the host machine has `claude` on PATH (CI runners don't).
+    prev_cli = Application.get_env(:buster_claw, :agent_cli)
+    Application.put_env(:buster_claw, :agent_cli, {:claude, "/usr/local/bin/claude"})
+
     on_exit(fn ->
       Application.put_env(:buster_claw, :workspace_root, prev)
+      Application.put_env(:buster_claw, :agent_cli, prev_cli)
       File.rm_rf(root)
     end)
 

@@ -1,6 +1,8 @@
 defmodule BusterClaw.Google.CalendarSyncTest do
   use BusterClaw.DataCase
 
+  alias BusterClaw.LocalTimeFixtures
+
   alias BusterClaw.Calendar, as: AppCalendar
   alias BusterClaw.Google
   alias BusterClaw.Google.CalendarSync
@@ -50,8 +52,8 @@ defmodule BusterClaw.Google.CalendarSyncTest do
             "description" => "Imported from Google.",
             "location" => "Office",
             "htmlLink" => "https://calendar.google.com/event?eid=google-event-1",
-            "start" => %{"dateTime" => "2026-05-27T09:30:00-07:00"},
-            "end" => %{"dateTime" => "2026-05-27T10:00:00-07:00"}
+            "start" => %{"dateTime" => LocalTimeFixtures.local_rfc3339(~N[2026-05-27 09:30:00])},
+            "end" => %{"dateTime" => LocalTimeFixtures.local_rfc3339(~N[2026-05-27 10:00:00])}
           },
           %{
             "id" => "cancelled-event",

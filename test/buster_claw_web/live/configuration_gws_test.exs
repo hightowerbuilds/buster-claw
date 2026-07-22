@@ -1,6 +1,8 @@
 defmodule BusterClawWeb.ConfigurationGwsTest do
   use BusterClawWeb.ConnCase
 
+  alias BusterClaw.LocalTimeFixtures
+
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Calendar, as: AppCalendar
@@ -191,8 +193,8 @@ defmodule BusterClawWeb.ConfigurationGwsTest do
             "id" => "calendar-event-1",
             "status" => "confirmed",
             "summary" => "GWS planning",
-            "start" => %{"dateTime" => "2026-05-27T09:30:00-07:00"},
-            "end" => %{"dateTime" => "2026-05-27T10:00:00-07:00"}
+            "start" => %{"dateTime" => LocalTimeFixtures.local_rfc3339(~N[2026-05-27 09:30:00])},
+            "end" => %{"dateTime" => LocalTimeFixtures.local_rfc3339(~N[2026-05-27 10:00:00])}
           }
         ]
       })
