@@ -24,7 +24,7 @@
 //! re-passing it each time.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
@@ -39,9 +39,10 @@ const DEFAULT_SID: &str = "main";
 // and is inset below the chrome's top block and right of its tab sidebar. The
 // chrome HTML paints only those two bands — its center is permanently covered.
 const CHROME_TOP_HEIGHT: f64 = 112.0; // app-tab row (~34) + toolbar (46) + bookmark bar (32)
-const SIDEBAR_WIDTH: f64 = 220.0; // vertical browser-tab strip on the left
-// Narrow surfaces (split panes) scale the sidebar down; MUST match the chrome
-// CSS `--sidebar-w: min(220px, 35vw)` or the content webview will misalign.
+                                      // The vertical browser-tab strip on the left. Narrow surfaces (split panes)
+                                      // scale it down via SIDEBAR_MAX_FRACTION; both MUST match the chrome CSS
+                                      // `--sidebar-w: min(220px, 35vw)` or the content webview will misalign.
+const SIDEBAR_WIDTH: f64 = 220.0;
 const SIDEBAR_MAX_FRACTION: f64 = 0.35;
 // Collapsed sidebar: only the bumper strip stays. MUST match the chrome CSS
 // `body.sidebar-collapsed { --sidebar-w: 16px }`.
@@ -432,6 +433,9 @@ fn all_content_labels(app: &AppHandle) -> Vec<String> {
 /// tab (creating the first tab on a cold open, or re-showing the saved active tab
 /// on return to `/browse` after `browser_hide`).
 #[tauri::command]
+// The flat x/y/width/height params ARE the JS contract (camelCase invoke args
+// from chrome.js/browser.js) — bundling them into a struct would rename them.
+#[allow(clippy::too_many_arguments)]
 pub fn browser_open(
     app: AppHandle,
     state: State<BrowserState>,
@@ -1619,7 +1623,7 @@ pub fn browser_open_tab_active(
         .get_webview(&chrome_label(&sid))
         .ok_or_else(|| "no browser surface open".to_string())?;
     chrome
-        .eval(&format!(
+        .eval(format!(
             "window.__agentOpenTab && window.__agentOpenTab({}, {ephemeral})",
             js_str(parsed.as_str())
         ))
@@ -1629,7 +1633,7 @@ pub fn browser_open_tab_active(
 // Report a finished download to Phoenix (`POST /browser/download`) so it lands
 // on the Sentinel audit feed — a download pulls untrusted bytes onto disk, the
 // one browser ingress the server-side fetch pipeline never sees.
-fn report_download(app: &AppHandle, chrome_label: &str, url: &str, file: &PathBuf, success: bool) {
+fn report_download(app: &AppHandle, chrome_label: &str, url: &str, file: &Path, success: bool) {
     let Some(origin) = phoenix_origin(app, chrome_label) else {
         return;
     };
@@ -1697,7 +1701,7 @@ pub fn handle_menu_shortcut(app: &AppHandle, id: &str) {
             None => return,
         },
     };
-    let _ = webview.eval(&format!(
+    let _ = webview.eval(format!(
         "window.{hook} && window.{hook}({})",
         js_str(action)
     ));
@@ -1717,7 +1721,7 @@ pub fn browser_app_navigate(app: AppHandle, path: String) -> Result<(), String> 
     let main = app
         .get_webview("main")
         .ok_or_else(|| "main webview missing".to_string())?;
-    main.eval(&format!("window.location.href = {}", js_str(&path)))
+    main.eval(format!("window.location.href = {}", js_str(&path)))
         .map_err(|e| e.to_string())
 }
 
@@ -1766,7 +1770,7 @@ fn ping_agent_activity(
 ) {
     let sid = active_sid(state, surface_id);
     if let Some(chrome) = app.get_webview(&chrome_label(&sid)) {
-        let _ = chrome.eval(&format!(
+        let _ = chrome.eval(format!(
             "window.__agentActivity && window.__agentActivity({})",
             js_str(action)
         ));
@@ -1955,7 +1959,7 @@ fn enforce_tab_budget(app: &AppHandle, state: &State<BrowserState>, sid: &str, a
         if let Some(webview) = app.get_webview(&content_label(sid, id)) {
             let _ = webview.close();
             if let Some(chrome) = app.get_webview(&chrome_label(sid)) {
-                let _ = chrome.eval(&format!(
+                let _ = chrome.eval(format!(
                     "window.__onTabSuspended && window.__onTabSuspended({})",
                     js_str(id)
                 ));
@@ -2075,6 +2079,9 @@ const SCROLL_RESTORE_JS: &str = r##"
 })();
 "##;
 
+// Candidate for a params struct when this moves to webviews.rs (Phase 4 of the
+// shell rebuild); not worth a signature churn while it lives in the monolith.
+#[allow(clippy::too_many_arguments)]
 fn create_content(
     app: &AppHandle,
     sid: &str,
@@ -2125,7 +2132,7 @@ fn create_content(
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_else(|| "download".to_string());
                     if let Some(chrome) = app_for_dl.get_webview(&chrome_for_dl) {
-                        let _ = chrome.eval(&format!(
+                        let _ = chrome.eval(format!(
                             "window.__onDownloadStarted && window.__onDownloadStarted({id}, {})",
                             js_str(&name)
                         ));
@@ -2134,7 +2141,7 @@ fn create_content(
                 DownloadEvent::Finished { url, success, .. } => {
                     if let Some((id, path)) = state.download_finished(url.as_str()) {
                         if let Some(chrome) = app_for_dl.get_webview(&chrome_for_dl) {
-                            let _ = chrome.eval(&format!(
+                            let _ = chrome.eval(format!(
                                 "window.__onDownloadFinished && window.__onDownloadFinished({id}, {success})"
                             ));
                         }
@@ -2156,7 +2163,7 @@ fn create_content(
                     .map(|(_, v)| v.into_owned());
                 if let Some(Ok(target)) = carried.map(|u| parse_web_url(&u)) {
                     if let Some(chrome) = app_for_nav.get_webview(&chrome_for_nav) {
-                        let _ = chrome.eval(&format!(
+                        let _ = chrome.eval(format!(
                             "window.__agentOpenTab && window.__agentOpenTab({})",
                             js_str(target.as_str())
                         ));
@@ -2171,7 +2178,7 @@ fn create_content(
                 // loading (spinner + optimistic address-bar/url update). The real
                 // title arrives on completion via `on_page_load` below.
                 if let Some(chrome) = app_for_nav.get_webview(&chrome_for_nav) {
-                    let _ = chrome.eval(&format!(
+                    let _ = chrome.eval(format!(
                         "window.__onContentLoading && window.__onContentLoading({}, {})",
                         js_str(&id_for_nav),
                         js_str(url.as_str())
@@ -2314,7 +2321,7 @@ fn notify_navigated(
 
 fn emit_navigated(app: &AppHandle, chrome_label: &str, tab_id: &str, url: &str, title: &str) {
     if let Some(chrome) = app.get_webview(chrome_label) {
-        let _ = chrome.eval(&format!(
+        let _ = chrome.eval(format!(
             "window.__onContentNavigated && window.__onContentNavigated({}, {}, {})",
             js_str(tab_id),
             js_str(url),
@@ -2655,7 +2662,7 @@ mod tests {
         s.touch("main", "3");
         s.touch("main", "2");
         s.touch("main", "1"); // MRU: 1, 2, 3
-        // "2" has no live webview: MRU order among the live survives.
+                              // "2" has no live webview: MRU order among the live survives.
         let live: HashSet<String> = ["1", "3"].iter().map(|t| t.to_string()).collect();
         assert_eq!(s.live_by_recency("main", &live), vec!["1", "3"]);
         // A live tab the LRU never saw goes to the back (defensive path).

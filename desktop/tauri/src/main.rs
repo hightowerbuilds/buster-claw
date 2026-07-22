@@ -102,7 +102,7 @@ impl ReleaseLauncher {
                 "error.html".to_string()
             };
 
-            if let Err(e) = window.eval(&format!(
+            if let Err(e) = window.eval(format!(
                 "window.location.replace({})",
                 browser::js_str(&target)
             )) {
@@ -121,7 +121,7 @@ impl ReleaseLauncher {
         let Some(window) = self.handle.get_webview_window("main") else {
             return;
         };
-        if let Err(e) = window.eval(&format!(
+        if let Err(e) = window.eval(format!(
             "window.location.replace({})",
             browser::js_str("error.html")
         )) {
@@ -505,7 +505,7 @@ fn main() {
                             "error.html".to_string()
                         };
 
-                        if let Err(e) = window.eval(&format!(
+                        if let Err(e) = window.eval(format!(
                             "window.location.replace({})",
                             browser::js_str(&target)
                         )) {

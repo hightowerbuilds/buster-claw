@@ -4,6 +4,12 @@ version = "0.1.0"
 description = "Tauri desktop shell for the Buster Claw Phoenix rewrite"
 edition = "2021"
 
+[lints.rust]
+# The pre-2018 `objc` crate's macros expand `#[cfg(feature = "cargo-clippy")]`
+# (the old clippy-detection idiom); register the value so check-cfg doesn't flag
+# every msg_send!/class! site as an unexpected cfg. Drop when objc is replaced.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy"))'] }
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

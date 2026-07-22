@@ -33,7 +33,7 @@ static SPEAKER: OnceLock<&'static Speaker> = OnceLock::new();
 
 /// Lazily start the speech worker on first use and return the shared handle.
 fn speaker() -> &'static Speaker {
-    *SPEAKER.get_or_init(|| {
+    SPEAKER.get_or_init(|| {
         let speaker: &'static Speaker = Box::leak(Box::new(Speaker {
             queue: Mutex::new(VecDeque::new()),
             signal: Condvar::new(),
