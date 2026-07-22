@@ -38,3 +38,45 @@ pub(super) fn parse_web_url(url: &str) -> Result<Url, String> {
         other => Err(format!("only http(s) URLs are allowed, got {other}")),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Parity fixtures: keep in lockstep with the sanitiser test in
+    // test/buster_claw_web/controllers/browser_chrome_controller_test.exs. Both
+    // sides must agree on the sanitised id or the chrome and Rust address
+    // different surfaces and the browser goes blank.
+    #[test]
+    fn sanitize_sid_matches_the_phoenix_sanitiser() {
+        let fixtures = [
+            ("main", "main"),
+            ("left", "left"),
+            ("A1b2", "A1b2"),
+            ("a\"-<b>/3", "ab3"),
+            ("we-ird_id", "weirdid"),
+            ("../etc", "etc"),
+            ("", "main"),
+            ("!!!", "main"),
+        ];
+        for (input, expected) in fixtures {
+            assert_eq!(sanitize_sid(input), expected, "sid {input:?}");
+        }
+    }
+
+    #[test]
+    fn parse_web_url_allows_only_http_https() {
+        assert!(parse_web_url("https://example.com/a?b=1").is_ok());
+        assert!(parse_web_url("http://127.0.0.1:4000/x").is_ok());
+        assert!(parse_web_url("file:///etc/passwd").is_err());
+        assert!(parse_web_url("javascript:alert(1)").is_err());
+        assert!(parse_web_url("ftp://mirror.example").is_err());
+        assert!(parse_web_url("not a url").is_err());
+    }
+
+    #[test]
+    fn webview_labels_have_parseable_shapes() {
+        assert_eq!(chrome_label("main"), "browser-chrome-main");
+        assert_eq!(content_label("left", "3"), "browser-content-left-3");
+    }
+}

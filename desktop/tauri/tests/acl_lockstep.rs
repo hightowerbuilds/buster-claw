@@ -122,6 +122,23 @@ fn every_registered_command_is_allowed_by_a_capability() {
     );
 }
 
+// The pure modules are the tested core of the shell; the moment one grows a
+// tauri dependency it stops being constructible in a unit test and the
+// functional-core/imperative-shell split starts rotting. Enforce it textually.
+#[test]
+fn pure_modules_have_no_tauri_imports() {
+    for (name, text) in [
+        ("js.rs", include_str!("../src/browser/js.rs")),
+        ("labels.rs", include_str!("../src/browser/labels.rs")),
+        ("geometry.rs", include_str!("../src/browser/geometry.rs")),
+    ] {
+        assert!(
+            !text.contains("use tauri") && !text.contains("tauri::"),
+            "browser/{name} is a PURE module — it must not touch tauri"
+        );
+    }
+}
+
 #[test]
 fn no_capability_allows_an_unregistered_command() {
     let orphans: Vec<_> = capability_allows()

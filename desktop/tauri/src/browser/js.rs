@@ -437,3 +437,146 @@ pub(crate) fn js_str(s: &str) -> String {
     out.push('"');
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The interaction scripts interpolate agent-supplied strings; they must
+    // ride through js_str, never raw format — a hostile value/query can't
+    // break out of the eval'd literal.
+    #[test]
+    fn interaction_scripts_escape_agent_supplied_strings() {
+        let fill = fill_js(&ActTarget::Index(3), "a\"; alert(1); //\u{2028}");
+        assert!(fill.contains(r#"el.value = "a\"; alert(1); //\u2028""#));
+        assert!(fill.contains("window.__bcEls"));
+        assert!(fill.contains("els[3]"));
+
+        let find = find_elements_js("Sign\" out");
+        assert!(find.contains(r#"var q = "Sign\" out".toLowerCase()"#));
+
+        let click = click_js(&ActTarget::Index(7));
+        assert!(click.contains("els[7]"));
+        assert!(click.contains("el.click()"));
+    }
+
+    // Selector/text resolution interpolates agent-supplied strings \u2014 through
+    // js_str only \u2014 and tags results with the strategy that matched. The
+    // legacy index path keeps the find_elements semantics untouched.
+    #[test]
+    fn target_resolution_escapes_and_tags_matched_by() {
+        let click = click_js(&ActTarget::Selector("a[href=\"x\"]".into()));
+        assert!(click.contains(r##"document.querySelector("a[href=\"x\"]")"##));
+        assert!(click.contains(r#"var matchedBy = "selector""#));
+        assert!(click.contains(r#"scrollIntoView({block: "center"})"#));
+        assert!(click.contains("matched_by: matchedBy"));
+
+        let fill = fill_js(&ActTarget::Text("Sign\" in".into()), "v");
+        assert!(fill.contains(r#"var t = "Sign\" in""#));
+        assert!(fill.contains(r#"var matchedBy = "text""#));
+        assert!(fill.contains("matched_by: matchedBy"));
+
+        let legacy = click_js(&ActTarget::Index(2));
+        assert!(legacy.contains(r#"var matchedBy = "index""#));
+        assert!(!legacy.contains("scrollIntoView"));
+        assert!(legacy.contains("stale index"));
+    }
+
+    #[test]
+    fn act_target_priority_is_selector_then_text_then_index() {
+        let t = ActTarget::from_params(Some(1), Some("s".into()), Some("t".into()));
+        assert!(matches!(t, Some(ActTarget::Selector(ref s)) if s == "s"));
+        let t = ActTarget::from_params(Some(1), None, Some("t".into()));
+        assert!(matches!(t, Some(ActTarget::Text(ref s)) if s == "t"));
+        let t = ActTarget::from_params(Some(1), None, None);
+        assert!(matches!(t, Some(ActTarget::Index(1))));
+        assert!(ActTarget::from_params(None, None, None).is_none());
+    }
+
+    // Wait probes interpolate agent-supplied selectors/text; bad combos are
+    // rejected before any eval.
+    #[test]
+    fn wait_probes_escape_values_and_validate_conditions() {
+        let nav = wait_probe_js("navigation", None).unwrap();
+        assert!(nav.contains("document.readyState"));
+
+        let sel = wait_probe_js("selector", Some("#a\"b")).unwrap();
+        assert!(sel.contains(r##"document.querySelector("#a\"b")"##));
+
+        let vis = wait_probe_js("visible", Some(".x")).unwrap();
+        assert!(vis.contains("getBoundingClientRect"));
+        assert!(vis.contains("getComputedStyle"));
+
+        let text = wait_probe_js("text", Some("Done\u{2028}!")).unwrap();
+        assert!(text.contains(r#"body.indexOf("Done\u2028!")"#));
+
+        assert!(wait_probe_js("selector", None).is_err());
+        assert!(wait_probe_js("visible", None).is_err());
+        assert!(wait_probe_js("text", None).is_err());
+        assert!(wait_probe_js("nope", None).is_err());
+    }
+
+    #[test]
+    fn extract_js_escapes_selector_and_attr() {
+        let js = extract_matches_js("a[data-x=\"1\"]", Some("data-\"attr"));
+        assert!(js.contains(r#"document.querySelectorAll("a[data-x=\"1\"]")"#));
+        assert!(js.contains(r#"el.getAttribute("data-\"attr")"#));
+        assert!(js.contains("out.length < 50"));
+
+        let plain = extract_matches_js(".row", None);
+        assert!(!plain.contains("getAttribute"));
+
+        assert!(EXTRACT_PAGE_JS.contains("innerText"));
+    }
+
+    // error_data rides js_str, whose escapes are all valid JSON \u2014 a hostile
+    // message can't corrupt the data payload the Elixir side decodes.
+    #[test]
+    fn error_data_is_valid_json_with_escaped_message() {
+        assert_eq!(
+            error_data("bad \"thing\""),
+            r#"{"ok":false,"error":"bad \"thing\""}"#
+        );
+        assert_eq!(NO_TARGET_DATA, error_data("no target"));
+    }
+
+    #[test]
+    fn js_str_escapes_page_controlled_input() {
+        assert_eq!(js_str("plain"), "\"plain\"");
+        assert_eq!(js_str("a\"b"), "\"a\\\"b\"");
+        assert_eq!(js_str("a\\b"), "\"a\\\\b\"");
+        assert_eq!(js_str("a\nb\tc"), "\"a\\nb\\tc\"");
+        // A hostile title can't break out of the eval'd literal.
+        assert_eq!(
+            js_str("</script>\u{2028}alert(1)"),
+            "\"</script>\\u2028alert(1)\""
+        );
+        assert_eq!(js_str("\u{1}"), "\"\\u0001\"");
+    }
+
+    #[test]
+    fn act_target_index_zero_is_valid() {
+        // The JS bridge sends `index ?? null` precisely so 0 survives the trip;
+        // from_params must treat Some(0) as a real target, not as falsy.
+        let t = ActTarget::from_params(Some(0), None, None);
+        assert!(matches!(t, Some(ActTarget::Index(0))));
+        assert!(click_js(&ActTarget::Index(0)).contains("els[0]"));
+    }
+
+    #[test]
+    fn wait_result_json_reports_timeout_as_success() {
+        let v: serde_json::Value =
+            serde_json::from_str(&wait_result_json(false, 10_000, "selector")).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["matched"], false);
+        assert_eq!(v["waited_ms"], 10_000);
+        assert_eq!(v["condition"], "selector");
+
+        // js_str's escapes are all valid JSON, so a hostile condition string
+        // can't corrupt the payload web.ex decodes.
+        let v: serde_json::Value =
+            serde_json::from_str(&wait_result_json(true, 250, "a\"b\u{2028}")).unwrap();
+        assert_eq!(v["matched"], true);
+        assert_eq!(v["condition"], "a\"b\u{2028}");
+    }
+}

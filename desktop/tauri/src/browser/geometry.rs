@@ -38,3 +38,30 @@ pub(super) fn content_box(
         (height - top_h).max(0.0),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn content_box_insets_below_chrome_and_right_of_sidebar() {
+        // Wide surface: full 220px sidebar under the 112px chrome band.
+        assert_eq!(
+            content_box(0.0, 0.0, 1000.0, 800.0, false),
+            (220.0, 112.0, 780.0, 688.0)
+        );
+        // Narrow split pane: the 35% clamp beats the 220px sidebar.
+        assert_eq!(
+            content_box(0.0, 0.0, 400.0, 800.0, false),
+            (140.0, 112.0, 260.0, 688.0)
+        );
+        // Collapsed: only the 16px bumper strip, offsets preserved.
+        assert_eq!(
+            content_box(10.0, 20.0, 1000.0, 800.0, true),
+            (26.0, 132.0, 984.0, 688.0)
+        );
+        // Degenerate boxes clamp to zero, never negative.
+        let (_, _, w, h) = content_box(0.0, 0.0, 8.0, 50.0, false);
+        assert!(w >= 0.0 && h >= 0.0);
+    }
+}
