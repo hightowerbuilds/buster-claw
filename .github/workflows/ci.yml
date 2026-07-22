@@ -70,6 +70,51 @@ jobs:
       - name: Run tests
         run: mix test
 
+  # The desktop shell gate (shell-rebuild Phase 1). Runs on macOS because the
+  # shipped code path IS the objc/WKWebView path — an ubuntu runner would test
+  # the ffi stubs. Steps mirror scripts/check_rust.sh exactly; the toolchain is
+  # pinned by desktop/tauri/rust-toolchain.toml (rustup auto-installs it).
+  rust:
+    name: Rust (fmt, clippy, test)
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: desktop/tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      # Triggers rustup's auto-install of the pinned toolchain + components
+      # before rust-cache computes its cache key.
+      - name: Install pinned toolchain
+        run: rustup show
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/tauri
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests (incl. ACL lockstep guard)
+        run: cargo test
+
+  # The JS pure-logic tests (URL heuristics, ANSI parsing, tab state) existed
+  # before this job but nothing enforced them — same disease the rust job cures.
+  js:
+    name: JS (bun test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Run bun tests
+        run: bun test assets/js
+
   # Dialyzer is currently non-blocking: there are pre-existing :unmatched_return
   # findings to clear before it can gate merges. Flip continue-on-error to false
   # once those are resolved.

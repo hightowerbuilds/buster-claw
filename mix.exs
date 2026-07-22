@@ -135,7 +135,8 @@ defmodule BusterClaw.MixProject do
         "deps.unlock --unused",
         "format",
         "credo --strict",
-        "test"
+        "test",
+        "cmd scripts/check_rust.sh"
       ],
       # GHSA-52mm-h59v-f3c7 (earmark stored-XSS via HTML attribute) has no
       # upstream patch; rendered markdown is run through html_sanitize_ex, which
