@@ -1,0 +1,5 @@
+# Pin the shell's toolchain so local dev and CI run identical fmt/clippy/test —
+# the .tool-versions convention, translated to Rust.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]

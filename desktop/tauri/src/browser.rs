@@ -1300,6 +1300,16 @@ fn wait_probe_js(condition: &str, value: Option<&str>) -> Result<String, String>
     }
 }
 
+// The success payload for browser_wait_active. An exhausted budget is
+// `matched: false` with `ok: true` — a wait that timed out is still a
+// successful wait command; flow_runner and browser_assert depend on that.
+fn wait_result_json(matched: bool, waited_ms: u128, condition: &str) -> String {
+    format!(
+        r#"{{"ok":true,"matched":{matched},"waited_ms":{waited_ms},"condition":{condition}}}"#,
+        condition = js_str(condition)
+    )
+}
+
 /// Wait until the active content tab satisfies `condition`, polling a tiny
 /// probe script inside Rust every 250ms (the `render_settle_and_read`
 /// precedent) up to `timeout_ms` (clamped 250..30_000, default 10_000).
@@ -1366,10 +1376,7 @@ pub async fn browser_wait_active(
     }
     let waited_ms = started.elapsed().as_millis();
     Ok(EvalData {
-        data: format!(
-            r#"{{"ok":true,"matched":{matched},"waited_ms":{waited_ms},"condition":{condition}}}"#,
-            condition = js_str(&condition)
-        ),
+        data: wait_result_json(matched, waited_ms, &condition),
     })
 }
 
@@ -2522,5 +2529,205 @@ mod tests {
             "\"</script>\\u2028alert(1)\""
         );
         assert_eq!(js_str("\u{1}"), "\"\\u0001\"");
+    }
+
+    // ---- Characterization freeze (07-21, shell-rebuild Phase 0). Everything
+    // below asserts OBSERVED behavior ahead of the browser/ module split; an
+    // intentional behavior change must update these knowingly, and a module
+    // move must pass them unmodified.
+
+    #[test]
+    fn act_target_index_zero_is_valid() {
+        // The JS bridge sends `index ?? null` precisely so 0 survives the trip;
+        // from_params must treat Some(0) as a real target, not as falsy.
+        let t = ActTarget::from_params(Some(0), None, None);
+        assert!(matches!(t, Some(ActTarget::Index(0))));
+        assert!(click_js(&ActTarget::Index(0)).contains("els[0]"));
+    }
+
+    // web.ex's decoders and the ScreenshotBridge JS read these field names
+    // (shot.data/shot.url, cur.url/cur.title, page.data, res.data). Renaming a
+    // field is a cross-language breaking change, not a refactor.
+    #[test]
+    fn return_structs_serialize_with_contract_field_names() {
+        let v = serde_json::to_value(EvalData { data: "x".into() }).unwrap();
+        assert_eq!(v, serde_json::json!({"data": "x"}));
+
+        let v = serde_json::to_value(ReadPage { data: "y".into() }).unwrap();
+        assert_eq!(v, serde_json::json!({"data": "y"}));
+
+        let v = serde_json::to_value(Screenshot {
+            data: "p".into(),
+            url: "u".into(),
+        })
+        .unwrap();
+        assert_eq!(v, serde_json::json!({"data": "p", "url": "u"}));
+
+        let v = serde_json::to_value(CurrentTab {
+            url: "u".into(),
+            title: "t".into(),
+        })
+        .unwrap();
+        assert_eq!(v, serde_json::json!({"url": "u", "title": "t"}));
+    }
+
+    #[test]
+    fn wait_result_json_reports_timeout_as_success() {
+        let v: serde_json::Value =
+            serde_json::from_str(&wait_result_json(false, 10_000, "selector")).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["matched"], false);
+        assert_eq!(v["waited_ms"], 10_000);
+        assert_eq!(v["condition"], "selector");
+
+        // js_str's escapes are all valid JSON, so a hostile condition string
+        // can't corrupt the payload web.ex decodes.
+        let v: serde_json::Value =
+            serde_json::from_str(&wait_result_json(true, 250, "a\"b\u{2028}")).unwrap();
+        assert_eq!(v["matched"], true);
+        assert_eq!(v["condition"], "a\"b\u{2028}");
+    }
+
+    #[test]
+    fn content_box_insets_below_chrome_and_right_of_sidebar() {
+        // Wide surface: full 220px sidebar under the 112px chrome band.
+        assert_eq!(
+            content_box(0.0, 0.0, 1000.0, 800.0, false),
+            (220.0, 112.0, 780.0, 688.0)
+        );
+        // Narrow split pane: the 35% clamp beats the 220px sidebar.
+        assert_eq!(
+            content_box(0.0, 0.0, 400.0, 800.0, false),
+            (140.0, 112.0, 260.0, 688.0)
+        );
+        // Collapsed: only the 16px bumper strip, offsets preserved.
+        assert_eq!(
+            content_box(10.0, 20.0, 1000.0, 800.0, true),
+            (26.0, 132.0, 984.0, 688.0)
+        );
+        // Degenerate boxes clamp to zero, never negative.
+        let (_, _, w, h) = content_box(0.0, 0.0, 8.0, 50.0, false);
+        assert!(w >= 0.0 && h >= 0.0);
+    }
+
+    #[test]
+    fn parse_web_url_allows_only_http_https() {
+        assert!(parse_web_url("https://example.com/a?b=1").is_ok());
+        assert!(parse_web_url("http://127.0.0.1:4000/x").is_ok());
+        assert!(parse_web_url("file:///etc/passwd").is_err());
+        assert!(parse_web_url("javascript:alert(1)").is_err());
+        assert!(parse_web_url("ftp://mirror.example").is_err());
+        assert!(parse_web_url("not a url").is_err());
+    }
+
+    #[test]
+    fn webview_labels_have_parseable_shapes() {
+        assert_eq!(chrome_label("main"), "browser-chrome-main");
+        assert_eq!(content_label("left", "3"), "browser-content-left-3");
+    }
+
+    #[test]
+    fn active_tab_pointer_is_per_surface() {
+        let s = BrowserState::default();
+        assert_eq!(s.get("main"), None);
+        s.set("main", "1");
+        s.set("left", "4");
+        assert_eq!(s.get("main").as_deref(), Some("1"));
+        assert_eq!(s.get("left").as_deref(), Some("4"));
+        s.unset("main");
+        assert_eq!(s.get("main"), None);
+        assert_eq!(s.get("left").as_deref(), Some("4"));
+    }
+
+    #[test]
+    fn touch_moves_tab_to_mru_front_without_duplicates() {
+        let s = BrowserState::default();
+        s.touch("main", "1");
+        s.touch("main", "2");
+        s.touch("main", "1"); // re-touch: back to front, no duplicate entry
+        let live: HashSet<String> = ["1", "2"].iter().map(|t| t.to_string()).collect();
+        assert_eq!(s.live_by_recency("main", &live), vec!["1", "2"]);
+    }
+
+    #[test]
+    fn live_by_recency_filters_to_live_and_appends_unseen() {
+        let s = BrowserState::default();
+        s.touch("main", "3");
+        s.touch("main", "2");
+        s.touch("main", "1"); // MRU: 1, 2, 3
+        // "2" has no live webview: MRU order among the live survives.
+        let live: HashSet<String> = ["1", "3"].iter().map(|t| t.to_string()).collect();
+        assert_eq!(s.live_by_recency("main", &live), vec!["1", "3"]);
+        // A live tab the LRU never saw goes to the back (defensive path).
+        let live: HashSet<String> = ["3", "9"].iter().map(|t| t.to_string()).collect();
+        assert_eq!(s.live_by_recency("main", &live), vec!["3", "9"]);
+        // A forgotten tab that is still live re-enters via the same path.
+        s.forget("main", "3");
+        let live: HashSet<String> = ["1", "3"].iter().map(|t| t.to_string()).collect();
+        assert_eq!(s.live_by_recency("main", &live), vec!["1", "3"]);
+    }
+
+    #[test]
+    fn ephemeral_marks_are_per_tab_and_cleared_with_their_surface() {
+        let s = BrowserState::default();
+        s.mark_ephemeral("main", "1", true);
+        s.mark_ephemeral("left", "1", true);
+        assert!(s.is_ephemeral("main", "1"));
+        assert!(!s.is_ephemeral("main", "2"));
+        s.mark_ephemeral("main", "1", false);
+        assert!(!s.is_ephemeral("main", "1"));
+
+        // clear(sid) drops only that surface's marks (content-label prefix).
+        s.mark_ephemeral("main", "1", true);
+        s.clear("main");
+        assert!(!s.is_ephemeral("main", "1"));
+        assert!(s.is_ephemeral("left", "1"));
+    }
+
+    #[test]
+    fn content_blocking_defaults_on_and_toggles() {
+        let s = BrowserState::default();
+        assert!(s.content_blocking());
+        s.set_content_blocking(false);
+        assert!(!s.content_blocking());
+        s.set_content_blocking(true);
+        assert!(s.content_blocking());
+    }
+
+    #[test]
+    fn download_ids_are_monotonic_and_finish_resolves_newest_unfinished() {
+        let s = BrowserState::default();
+        let a = s.download_started("https://x/f.pdf", PathBuf::from("/tmp/f.pdf"));
+        let b = s.download_started("https://x/f.pdf", PathBuf::from("/tmp/f (1).pdf"));
+        assert!(b > a);
+        // Finished events carry only the URL on macOS: newest unfinished wins.
+        let (id, path) = s.download_finished("https://x/f.pdf").unwrap();
+        assert_eq!(id, b);
+        assert_eq!(path, PathBuf::from("/tmp/f (1).pdf"));
+        let (id, _) = s.download_finished("https://x/f.pdf").unwrap();
+        assert_eq!(id, a);
+        assert_eq!(s.download_finished("https://x/f.pdf"), None);
+        assert_eq!(s.download_path(a), Some(PathBuf::from("/tmp/f.pdf")));
+        assert_eq!(s.download_path(999), None);
+    }
+
+    #[test]
+    fn surface_boxes_shown_and_sidebar_state_roundtrip() {
+        let s = BrowserState::default();
+        assert_eq!(s.box_for("main"), None);
+        s.set_box("main", (1.0, 2.0, 3.0, 4.0));
+        assert_eq!(s.box_for("main"), Some((1.0, 2.0, 3.0, 4.0)));
+
+        assert!(!s.is_sidebar_collapsed("main"));
+        s.set_sidebar_collapsed("main", true);
+        assert!(s.is_sidebar_collapsed("main"));
+        s.set_sidebar_collapsed("main", false);
+        assert!(!s.is_sidebar_collapsed("main"));
+
+        assert_eq!(s.any_shown(), None);
+        s.set_shown("main");
+        assert_eq!(s.any_shown().as_deref(), Some("main"));
+        s.set_hidden("main");
+        assert_eq!(s.any_shown(), None);
     }
 }
