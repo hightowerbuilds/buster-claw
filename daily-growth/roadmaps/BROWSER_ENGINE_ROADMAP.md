@@ -17,6 +17,8 @@
 >   sessions.
 > - **Be the real user.** Real browser build, real profile, real residential IP,
 >   human-paced actions. No fingerprint-spoofing arms race.
+> - **Engine host (settled 07-22): the user's installed Chromium-family browser**,
+>   launched by us with a dedicated profile, CDP over a pipe. Not bundled.
 
 ---
 
@@ -82,14 +84,62 @@ answer — the contents of one profile directory — instead of an inference abo
 prompt behavior. It also sidesteps the unwinnable problem of sharing a cookie jar
 between WKWebView and Chrome.
 
-**Engine host — the one decision still open.** Recommend driving the **user's
-installed Chrome with a dedicated Buster Claw profile directory**: no bundle
-cost, a real browser build with a real fingerprint, real residential IP, and
-credential exposure scoped to a profile the user chose. What would flip it to a
-bundled Chromium: deciding the feature must work with zero external
-prerequisites. What must never happen either way is a silent degrade — the exact
-failure that killed Browserbase on 07-12, where a driver depended on a sidecar
-prod never bundled.
+**Engine host — DECIDED 2026-07-22: the user's installed Chromium-family
+browser, launched by us, with a dedicated `--user-data-dir`.** Not a bundled
+Chromium. The distribution evidence is lopsided:
+
+- **Size.** The app is 67MB and the DMG 27MB today. A Chromium is ~300–400MB
+  unpacked per arch — a roughly 5× increase in both, riding *every* update.
+  `DISTRIBUTION_ROADMAP.md` already rejected an 88MB item for precisely this
+  reason ("it must never travel on the update channel"). Chromium is larger than
+  the thing that rule was written about.
+- **Signing, which matters more than size.** Notarization already requires 25
+  Mach-O objects signed individually, inside-out, never `--deep` — and Tauri does
+  not sign `bundle.resources`, so the naïve path "succeeds, runs fine on your
+  machine, and then notarization comes back rejected 25 times over." A bundled
+  Chromium drops ~20 more Mach-O objects (framework, Renderer/GPU/Plugin helpers,
+  SwiftShader dylibs) into that exact trap, each needing V8's entitlement set —
+  `allow-jit`, `allow-unsigned-executable-memory`,
+  `disable-library-validation` — which is a *different* set from the BEAM's. Per
+  the same doc, entitlements do not inherit across process boundaries, so getting
+  it wrong fails nowhere in our pipeline and everywhere in the user's.
+- **Order of operations.** The 25-object pass has not shipped once yet. Making it
+  a 45-object pass with two distinct entitlement profiles before it has ever
+  worked is the wrong sequence.
+- **Fingerprint.** A real Chrome build beats Chrome-for-Testing on exactly the
+  commerce sites this roadmap targets, which is what "be the real user" asked
+  for.
+
+**Transport: `--remote-debugging-pipe`, never `--remote-debugging-port`.**
+A loopback-bound debug port is still reachable by *any* local process, and what
+sits behind it is a browser holding the user's logged-in sessions — a
+session-theft hole, not a theoretical one. Because we launch the browser
+ourselves (which the dedicated profile requires anyway), we own the pipe's file
+descriptors and no socket exists at all. This supersedes the earlier
+"debug port bound to loopback" framing in Phase 0.
+
+**Detection order:** Chrome → Brave → Edge → Chromium. All are Chromium-family
+and speak the same CDP surface, which widens coverage well past Chrome alone —
+and this user base skews heavily toward having at least one.
+
+**Do not pass `--enable-automation`.** It sets the automation infobar and trips
+detection for no benefit; a CDP connection alone does not set
+`navigator.webdriver`.
+
+**Accepted cost:** a prerequisite. Mitigated by loudness, not by fallback — no
+Chromium found means Agent Mode is visibly unavailable with install guidance,
+per the product contract. That is survivable in a way Browserbase's silent
+degrade was not.
+
+**Revisit trigger:** flip to bundled Chromium if the "no Chromium found" rate
+turns out to be material in real use, or if CDP surface drift from Chrome's
+auto-updates breaks us twice. Both are observable; neither is speculative enough
+to pay 5× distribution weight against today.
+
+**Download-on-first-use was considered and rejected.** It trades bundle weight
+for a `com.apple.quarantine` fight over an executable we fetched at runtime —
+strip-quarantine-then-exec is both fragile and the exact shape of behavior that
+gets an app flagged.
 
 ## Product contract
 
@@ -119,9 +169,11 @@ click one element, read the DOM back — **from the signed, packaged, notarized
 app, on both architectures.** Reuse the packaged-app smoke harness from the shell
 rebuild (07-22).
 
-Specifically prove: process launch survives the app sandbox and entitlements;
-the debug port is bound to loopback and nothing else; profile directory creation
-works under the packaged app's file access; teardown leaves no orphan process.
+Specifically prove: process launch survives hardened runtime and the packaged
+app's entitlements; **the CDP pipe works and no debug socket is opened at all**;
+profile directory creation works under the packaged app's file access; a
+Chromium-family browser is detected across the Chrome/Brave/Edge/Chromium order;
+teardown leaves no orphan process.
 
 If Phase 0 doesn't pass, the roadmap stops here and we say so. Everything below
 assumes it did.
@@ -303,7 +355,8 @@ Expand the action vocabulary only where a real flow needed it: `select`, `hover`
 
 1. Phase 0 passes on both architectures from the signed packaged app.
 2. A Stripe-style checkout popup opens, renders, and completes in Agent Mode.
-3. All CDP traffic is loopback. Verifiable by inspection with the engine running.
+3. No listening socket exists for CDP. Verifiable with `lsof`/`netstat` against
+   the engine process while a task is running — the transport is a pipe.
 4. A page instructing the agent to leave its frozen scope produces a halt, and
    the attempt is visible in the trajectory.
 5. Stop halts before the next action, from every mode.
@@ -333,9 +386,10 @@ Expand the action vocabulary only where a real flow needed it: `select`, `hover`
 
 1. **Shipping a capability that isn't there in prod.** The Browserbase failure,
    exactly. Phase 0 is the whole mitigation and it must not be reordered.
-2. **Distribution weight.** If this flips to a bundled Chromium, it lands on top
-   of the arm64 two-DMG work already on the critical path. Chrome-dependency vs
-   bundle size is the open decision and it has a distribution cost either way.
+2. **The Chromium prerequisite.** Settled in favor of the system browser, so the
+   residual risk is users without any Chromium-family browser. Bounded by the
+   four-browser detection order and by failing loudly. Watch the real rate; the
+   revisit trigger is written down.
 3. **Prompt injection against a browser with hands.** Phase 3 before Phase 5,
    with no exceptions and no "we'll tighten it later."
 4. **Two engines, two mental models.** Users will ask why one tab can do
