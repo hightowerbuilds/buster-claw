@@ -291,11 +291,38 @@ no DNS. 31 always-on tests + 1 live gate test.
 text from instructions is a prompt-construction contract the agent loop enforces
 when it exists; Phase 3 provides the gate it will call.
 
-## Phase 3.5 — Model egress: earning the consent
+## Phase 3.5 — Model egress: earning the consent — **CORE SHIPPED 07-22**
 
 Sits here because its enforcement point and Phase 4's "what the model saw" view
 are the same plumbing, and because both must exist before the agent reads
 anything that matters.
+
+**Status — the pure, enforceable core landed** (four modules under
+`BrowserControl.Egress`, 30 always-on tests):
+
+- **`SecretRef`** (part 1) — the model emits `$secret.<name>`; `resolve/2` swaps
+  it for the real value in the executor, `mask/1` renders the log-safe
+  `⟨secret:name⟩`. The value passes through the executor, never the reasoner or
+  the trajectory; an unknown name fails the whole resolution rather than
+  half-filling a form.
+- **`Redactor`** (part 2) — typed placeholders (`⟨redacted:card⟩`, not a
+  collapsed `[redacted]`) for Luhn-valid cards, SSNs, IBANs, and
+  credential-prefixed tokens, with per-type counts. Deliberately parallel to
+  Sentinel's audit masker — different consumer, so not shared.
+- **`Policy`** (part 4) — per-host `:full | :structure_only | :never`; operator
+  overrides win most-specific (stricter breaks ties), banking/health/gov
+  sensitive by default, unknown → `:full`. Redaction runs at every level.
+- **`Egress`** (parts 3 + 5) — `prepare/3` takes the structure-first `Snapshot`,
+  applies the level, redacts at capture, and returns the payload plus a
+  falsifiable **`Report`** (bytes in/out, redaction counts, level, secrets
+  resolved). `summarize/1` folds a run into the *"17 steps, 41KB, 6 redacted, 3
+  resolved"* line.
+
+**Deferred to Phase 4:** the real DOM→`Snapshot` extractor (needs the live page),
+the trajectory's "what the model saw" rendering (parts 3/5's UI), and wiring the
+egress level into `policy.md`'s literal grammar. Part 6 (retention/training copy)
+is a verification task, not code. The `Snapshot`/`Report` contracts are fixed
+here so Phase 4 fills them rather than redesigning them.
 
 The problem this solves is the qualifier from the top of this document: the
 session never leaves the machine, but page content the agent reasons over goes to
