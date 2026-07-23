@@ -153,3 +153,17 @@ through Phase 3; and a Trading tab wired to a real brokerage through the
 user's own agent — verified against real money ($2.38 of it). Next trading
 step is the operator's: fund the Agentic account. CI green on every blocking
 job all evening.
+
+## 9. Late: the Trading tab gets its cockpit (`1e0da59`)
+UI iteration on operator direction: the chat shrinks to a 22rem left rail
+and the account panel takes the rest. Positions became an allocation chart —
+thin single-hue bars scaled to the largest holding, direct labels, native
+tooltips (dataviz method: one measure, one hue, no legend; the buy/sell
+status pair CVD-validated against both surfaces) — and a Recent-trades list
+landed beneath it, each order carrying a *written* BUY/SELL chip, qty@price,
+state, and relative time. The snapshot schema grew an `orders[]` array
+(order-history tool, 10 most recent), parsed as defensively as positions;
+pre-orders cached snapshots degrade to honest empty states. Meanwhile the
+parallel session pushed browser-control Phase 3.5 (model-egress controls,
+`f2a8d1e`) — the two streams stayed collision-free to the end. 1,277 tests
+green at close.
