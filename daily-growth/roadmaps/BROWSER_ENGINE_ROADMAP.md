@@ -216,7 +216,7 @@ home to nobody, and that's a flag list we can point at.
 `sessionId` scoping, event subscription, graceful-then-armed stop that reaps the
 real engine pid). 24 always-on tests + 2 live-engine tests, all green.
 
-## Phase 2 — Session pool
+## Phase 2 — Session pool — **SHIPPED 07-22**
 
 A `DynamicSupervisor` over session processes. Each session owns one target, one
 profile scope, a lease, and an idle reaper. Default a small N — this is
@@ -228,6 +228,27 @@ rather than by policy.
 
 Crash semantics: a dead engine process must fail sessions loudly and reap the OS
 process. A leaked headless Chrome is the kind of bug users find via their fan.
+
+**Status:** three modules, wired into the app tree (both free at rest — no
+engine launches until the first checkout):
+
+- `Session` (`restart: :temporary`) — one `CDP` engine + one flat-attached
+  target + one ephemeral profile. Owns its idle reaper (armed while idle,
+  cancelled while leased); subscribes to its engine and stops **loudly** the
+  instant the engine exits; reaps the engine on every terminate path.
+  `command/3` auto-scopes the `sessionId`; `navigate/2` awaits the load event.
+- `SessionSupervisor` — one-for-one `DynamicSupervisor`; sessions never
+  auto-respawn (a failed headless read shouldn't silently retry).
+- `Pool` — the single door: hard cap (`{:error, :pool_exhausted}`), lazy start +
+  reuse, leases bound to the caller (owner death auto-releases), session death
+  purged from every structure so a leak can't masquerade as capacity, and a loud
+  `{:error, :no_browser}` — never a silent degrade. `with_session/2` brackets
+  checkout/checkin across raises.
+
+11 stub-driven pool tests (cap, reuse, owner-death, session-death, error
+passthrough — no browser) + 3 live-engine tests (navigate/evaluate, reuse,
+idle-reap, and **kill the OS engine → session dies → pool frees the slot**).
+35 BrowserControl tests green.
 
 ## Phase 3 — Frozen scope and injection defense
 

@@ -49,6 +49,11 @@ defmodule BusterClaw.Application do
         # Bounded fan-out for parallel sub-runs (Phase 4). Always on (cheap; an idle
         # Task.Supervisor holds no resources).
         {Task.Supervisor, name: BusterClaw.SwarmTaskSupervisor},
+        # BrowserControl session pool (BROWSER_ENGINE_ROADMAP Phase 2). Both are
+        # free at rest — no engine launches until the first checkout. The
+        # DynamicSupervisor must precede the pool that starts children under it.
+        BusterClaw.BrowserControl.SessionSupervisor,
+        BusterClaw.BrowserControl.Pool,
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
       ]
