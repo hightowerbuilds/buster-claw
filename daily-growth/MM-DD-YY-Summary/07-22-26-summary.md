@@ -99,3 +99,15 @@ packaged launch needs it closed. Roadmap archived complete at
 - Noted for later: `block v0.1.6` is flagged future-incompatible — one more
   reason to modernize the objc corner eventually; Dialyzer stays known-red
   and non-blocking.
+
+## 7. Two new roadmaps scoped in parallel (operator session)
+While the rebuild wrapped, two forward roadmaps were scoped and committed
+separately: **`BROWSER_ENGINE_ROADMAP.md`** (`7c6f6d2` + `0be25f4`) — our own
+Browserbase-style CDP engine for Agent Mode, hybrid with WKWebView as the
+human surface; engine host settled same day as the *user's installed
+Chromium-family browser over a CDP pipe*, not a bundled build; agent fills
+the cart, human always pays. And **`SHADIOX_ROADMAP.md`** (`2c560a5`) —
+agent-authored WGSL shader avatars rendering live on notesthatfloat.com, a
+separate JS app with real accounts; the model stays on the user's Mac via
+the existing AgentRunner. Both build directly on what this arc hardened:
+the 8-module shell and the shader/agent plumbing.
