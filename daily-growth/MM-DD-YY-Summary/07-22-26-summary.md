@@ -1,13 +1,14 @@
 # 07-22-26 — The monolith dies with its contracts intact
 
-One session, one arc: the 2,526-line `browser.rs` — flagged as the weakest code
-in the repo — was dismantled into eight modules behind a wall of tests, with
-zero UI change and zero contract change. The operator's brief was "code safety
-is everything"; the session answered with a researched roadmap doc, then
-executed Phases 0–4 of it back-to-back. Along the way it found two latent ACL
-bugs, discovered CI had been silently red for four days, and fixed a real
-cross-platform process-leak bug. Everything went straight to main; the tree
-ends green everywhere that gates.
+One session, one arc, now COMPLETE: the 2,526-line `browser.rs` — flagged as
+the weakest code in the repo — was dismantled into eight modules behind a wall
+of tests, with zero UI change and zero contract change. The operator's brief
+was "code safety is everything"; the session answered with a researched
+roadmap doc, then executed all six phases of it back-to-back, ending with a
+packaged-app smoke test that PASSED against the real .app. Along the way it
+found two latent ACL bugs, discovered CI had been silently red for four days,
+and fixed a real cross-platform process-leak bug. Everything went straight to
+main; the tree ends green everywhere that gates.
 
 ## 1. The roadmap (`b58e2d4`, `BROWSER_SHELL_REBUILD_ROADMAP.md`)
 Three explorers mapped the monolith function-by-function, every JS/Elixir
@@ -64,15 +65,35 @@ new pure `select_evictions` — eviction policy now has 5 tests of its own),
 `pure_modules_have_no_tauri_imports` guard, so the architecture is enforced,
 not aspirational. 31 Rust tests, up from 8.
 
+## 6. Phase 5 — the smoke test that actually ran (`7e0b9f4`)
+Terminal helper tests landed (`new_id`/`default_shell`/`pty_size` — 34 Rust
+tests total), then the capstone: `scripts/smoke_desktop.sh` was written AND
+proven against a freshly built packaged .app. It launches (or attaches to) the
+real bundle, finds the random port via the release BEAM's listener, pulls the
+token from env→Keychain, and asserts: health, the 159-command catalog, 401 on
+a bad token, a native bridge round-trip, and — the ACL-dead detector — a
+hidden-webview live render returning real page text through the full
+Phoenix→LiveView→JS→Tauri→WebKit loop. Full PASS, both modes exercised.
+
+Proving it surfaced three gotchas now baked into the script: the API launders
+unknown error strings to `"unexpected error"` by design (ErrorFormatter), so
+ACL death is only detectable by *positive* assertion — hence the render check;
+a stale bundle `epmd` outlives the app and fools naive `pgrep` (filtered via
+its :4369 listener); and the dev shell holds the single-instance lock, so a
+packaged launch needs it closed. Roadmap archived complete at
+`archive/07-22-26-browser-shell-rebuild-roadmap.md`.
+
 ## Where it stands
-- Phases 0–4 shipped; the browser shell has real tests, a real CI gate, and
-  no monolith.
+- **The shell rebuild is COMPLETE** — all six phases, one arc. Final
+  scorecard: 2,526-line monolith → eight modules; 8 tests → 34 + ACL
+  lockstep + purity guards; zero Rust CI → fmt/clippy/test gating every push
+  + a proven pre-release smoke; two latent ACL bugs and one Linux
+  process-leak bug found and fixed; every external contract byte-identical.
 - **Owed by operator**: the manual `./scripts/dev.sh` browser checklist
   (7-tab eviction churn, click/fill/wait/extract, screenshot, download +
-  reveal, sidebar, zoom, find count, popup-as-tab, menu shortcuts) — the
-  human pass over the live app before Phase 5.
-- **Phase 5 remains**: terminal pure-helper tests + `smoke_desktop.sh`
-  against a packaged build (closes the LEFTOVERS real-desktop smoke item).
+  reveal, sidebar, zoom, find count, popup-as-tab, menu shortcuts) plus the
+  LEFTOVERS ~5-min primitive walk. The dev shell was killed for the smoke
+  run — relaunch with `./scripts/dev.sh`.
 - Noted for later: `block v0.1.6` is flagged future-incompatible — one more
   reason to modernize the objc corner eventually; Dialyzer stays known-red
   and non-blocking.
