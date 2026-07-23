@@ -15,6 +15,16 @@ config :buster_claw, BusterClaw.Repo,
   # still run — they just queue on DB checkout rather than holding rival connections.
   pool_size: 1,
   busy_timeout: 5_000,
+  # With pool_size: 1, queuing on checkout is BY DESIGN (see above) — but
+  # DBConnection's default load-shedding (queue_target: 50ms, queue_interval:
+  # 1000ms) drops a queued checkout after ~200ms, so under bursty async load —
+  # especially while a crash-path test's disconnect/reconnect briefly frees the
+  # lone connection — a bystander test fails in `setup_sandbox/1` with a
+  # :queue_timeout before it ever runs. Widen the window so contended checkouts
+  # WAIT (up to the ownership timeout) instead of being shed. This makes the
+  # single-connection design behave as its own comment promises.
+  queue_target: 5_000,
+  queue_interval: 5_000,
   pool: Ecto.Adapters.SQL.Sandbox
 
 # We don't run a server during test. If one is required,
