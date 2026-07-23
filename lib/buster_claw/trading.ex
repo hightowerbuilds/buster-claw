@@ -31,10 +31,14 @@ defmodule BusterClaw.Trading do
 
   @snapshot_prompt """
   Call mcp__robinhood__get_accounts and mcp__robinhood__get_portfolio for the
-  agentic account, then output ONLY one JSON object — no prose, no code fences:
+  agentic account, plus the order-history tool for the 10 most recent orders,
+  then output ONLY one JSON object — no prose, no code fences:
   {"account": "<masked account id>", "value": <total usd number>,
    "cash": <usd number>, "buying_power": <usd number>,
-   "positions": [{"symbol": "<ticker>", "quantity": <number>, "value": <usd number>}]}
+   "positions": [{"symbol": "<ticker>", "quantity": <number>, "value": <usd number>}],
+   "orders": [{"symbol": "<ticker>", "side": "buy" or "sell", "quantity": <number>,
+    "price": <usd number or null>, "state": "<order state>",
+    "placed_at": "<ISO8601 timestamp or null>"}]}
   Numbers must come from the tool results — never invent them. If the tools are
   unavailable or unauthenticated, output exactly: {"error": "<one-line reason>"}
   """
@@ -161,7 +165,8 @@ defmodule BusterClaw.Trading do
         when is_number(v) and is_number(c) and is_number(bp) ->
           {:ok,
            snap
-           |> Map.put("positions", List.wrap(snap["positions"]))
+           |> Map.put("positions", snap["positions"] |> List.wrap() |> Enum.filter(&is_map/1))
+           |> Map.put("orders", snap["orders"] |> List.wrap() |> Enum.filter(&is_map/1))
            |> Map.put("fetched_at", DateTime.utc_now() |> DateTime.to_iso8601())}
 
         _other ->

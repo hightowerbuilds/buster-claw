@@ -929,35 +929,78 @@ defmodule BusterClawWeb.StatusLive do
         <span :if={@snap} class="text-base-content/60">{@snap["account"]}</span>
       </div>
 
-      <div :if={@snap} class="space-y-4 pt-3">
-        <div>
-          <p class="ic-stat-n text-3xl">{money(@snap["value"])}</p>
-          <p class="uppercase tracking-wide text-base-content/60">Account value</p>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2">
+      <div :if={@snap} class="space-y-5 pt-3">
+        <div class="grid grid-cols-3 gap-2">
           <div>
-            <p class="font-bold">{money(@snap["cash"])}</p>
+            <p class="ic-stat-n text-3xl">{money(@snap["value"])}</p>
+            <p class="uppercase tracking-wide text-base-content/60">Account value</p>
+          </div>
+          <div class="pt-1">
+            <p class="text-lg font-bold">{money(@snap["cash"])}</p>
             <p class="uppercase text-base-content/60">Cash</p>
           </div>
-          <div>
-            <p class="font-bold">{money(@snap["buying_power"])}</p>
+          <div class="pt-1">
+            <p class="text-lg font-bold">{money(@snap["buying_power"])}</p>
             <p class="uppercase text-base-content/60">Buying power</p>
           </div>
         </div>
 
+        <%!-- Allocation: one measure (value) per symbol — single-hue thin bars,
+              direct labels in text tokens, no legend (single series). --%>
         <div>
           <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
             Positions
           </p>
-          <p :if={@snap["positions"] == []} class="pt-2 text-base-content/50">No positions</p>
-          <table :if={@snap["positions"] != []} class="w-full">
-            <tr :for={pos <- @snap["positions"]} class="border-b border-base-content/10">
-              <td class="py-1 font-bold">{pos["symbol"]}</td>
-              <td class="py-1 text-right text-base-content/70">{pos["quantity"]}</td>
-              <td class="py-1 text-right">{money(pos["value"])}</td>
-            </tr>
-          </table>
+          <p :if={@snap["positions"] == []} class="pt-2 text-base-content/50">
+            No positions — the account is all cash.
+          </p>
+          <div :if={@snap["positions"] != []} class="space-y-2 pt-2">
+            <div
+              :for={pos <- sorted_positions(@snap)}
+              class="grid grid-cols-[5rem_minmax(0,1fr)_6rem] items-center gap-2"
+              title={"#{pos["symbol"]}: #{pos["quantity"]} worth #{money(pos["value"])}"}
+            >
+              <span class="truncate font-bold">{pos["symbol"]}</span>
+              <div class="h-2.5 w-full rounded-xs bg-base-content/10">
+                <div
+                  class="h-full rounded-xs bg-primary"
+                  style={"width: #{bar_width(pos, @snap)}%"}
+                >
+                </div>
+              </div>
+              <span class="text-right text-base-content/80">{money(pos["value"])}</span>
+            </div>
+          </div>
+        </div>
+
+        <%!-- Trades: an event list, not a chart — side is written (BUY/SELL),
+              never carried by color alone. --%>
+        <div>
+          <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
+            Recent trades
+          </p>
+          <p :if={List.wrap(@snap["orders"]) == []} class="pt-2 text-base-content/50">
+            No trades yet.
+          </p>
+          <div :if={List.wrap(@snap["orders"]) != []} class="divide-y divide-base-content/10">
+            <div
+              :for={order <- List.wrap(@snap["orders"])}
+              class="grid grid-cols-[3.5rem_4.5rem_minmax(0,1fr)_auto] items-center gap-2 py-1.5"
+            >
+              <span class={[
+                "border px-1.5 py-0.5 text-center font-bold uppercase",
+                order_side_class(order["side"])
+              ]}>
+                {order["side"] || "?"}
+              </span>
+              <span class="font-bold">{order["symbol"]}</span>
+              <span class="truncate text-base-content/70">
+                {order["quantity"]} @ {money(order["price"])}
+                <span class="text-base-content/50">· {order["state"]}</span>
+              </span>
+              <span class="text-right text-base-content/50">{order_when(order)}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -988,6 +1031,40 @@ defmodule BusterClawWeb.StatusLive do
 
   defp money(v) when is_number(v), do: "$" <> :erlang.float_to_binary(v * 1.0, decimals: 2)
   defp money(_v), do: "—"
+
+  defp sorted_positions(%{"positions" => positions}),
+    do: Enum.sort_by(List.wrap(positions), &(-position_value(&1)))
+
+  # Bar length as a % of the LARGEST position (allocation-relative, so one
+  # holding always reads full-width). Guarded so a zero/garbage value can't
+  # divide by zero or overflow the track.
+  defp bar_width(pos, snap) do
+    max =
+      snap
+      |> sorted_positions()
+      |> Enum.map(&position_value/1)
+      |> Enum.max(fn -> 0 end)
+
+    if max > 0, do: Float.round(position_value(pos) / max * 100, 1), else: 0
+  end
+
+  defp position_value(%{"value" => v}) when is_number(v) and v > 0, do: v
+  defp position_value(_pos), do: 0
+
+  # Buy/sell chips: status colors validated vs both surfaces (CVD ΔE 9.7 dark /
+  # 7.4 light); the written BUY/SELL word is the required secondary encoding.
+  defp order_side_class("buy"), do: "border-success/50 text-success"
+  defp order_side_class("sell"), do: "border-error/50 text-error"
+  defp order_side_class(_side), do: "border-base-content/30 text-base-content/60"
+
+  defp order_when(%{"placed_at" => stamp}) when is_binary(stamp) do
+    case DateTime.from_iso8601(stamp) do
+      {:ok, at, _} -> relative_time(at)
+      _ -> ""
+    end
+  end
+
+  defp order_when(_order), do: ""
 
   defp card_asof(%{"fetched_at" => stamp}) when is_binary(stamp) do
     case DateTime.from_iso8601(stamp) do
@@ -1294,7 +1371,7 @@ defmodule BusterClawWeb.StatusLive do
 
             <div
               :if={@home_tab == "trading"}
-              class="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_22rem]"
+              class="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[22rem_minmax(0,1fr)]"
             >
               <div class="flex min-h-0 flex-col gap-2">
                 <div class="border-2 border-warning/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-warning">

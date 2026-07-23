@@ -353,10 +353,23 @@ defmodule BusterClawWeb.StatusLiveTest do
         {:ok,
          %{
            "account" => "••••6587",
-           "value" => 2.38,
+           "value" => 3.38,
            "cash" => 2.38,
            "buying_power" => 2.38,
-           "positions" => [%{"symbol" => "VOO", "quantity" => 0.01, "value" => 1.0}],
+           "positions" => [
+             %{"symbol" => "VOO", "quantity" => 0.01, "value" => 1.0},
+             %{"symbol" => "AAPL", "quantity" => 0.002, "value" => 0.5}
+           ],
+           "orders" => [
+             %{
+               "symbol" => "VOO",
+               "side" => "buy",
+               "quantity" => 0.01,
+               "price" => 100.0,
+               "state" => "filled",
+               "placed_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+             }
+           ],
            "fetched_at" => DateTime.utc_now() |> DateTime.to_iso8601()
          }}
       end)
@@ -366,13 +379,24 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "trading-account-card"
 
       html = render_async(view)
-      assert html =~ "$2.38"
+      assert html =~ "$3.38"
       assert html =~ "VOO"
       assert html =~ "Buying power"
       assert html =~ "as of"
 
+      # Allocation bars: the largest position reads full-width; the smaller one
+      # is proportional (0.5 / 1.0 = 50%).
+      assert html =~ "width: 100.0%"
+      assert html =~ "width: 50.0%"
+
+      # Trades: side is WRITTEN (buy), with the status chip class, never
+      # color-alone.
+      assert html =~ "buy"
+      assert html =~ "text-success"
+      assert html =~ "filled"
+
       # The snapshot persisted — a fresh cached read has it.
-      assert {:ok, %{"value" => 2.38}} = BusterClaw.Trading.cached_snapshot()
+      assert {:ok, %{"value" => 3.38}} = BusterClaw.Trading.cached_snapshot()
     end
 
     test "a failed refresh keeps the last good snapshot visible", %{conn: conn} do
