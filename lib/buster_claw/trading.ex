@@ -16,10 +16,28 @@ defmodule BusterClaw.Trading do
   tab's strip, while the transcript still persists via `Agent.Transcript`.
   """
 
+  alias BusterClaw.AgentRunner
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.Settings
 
   @conv_id "trading"
   @mcp_url "https://agent.robinhood.com/mcp/trading"
+
+  # The account panel's cached snapshot (JSON blob in Settings — the
+  # browser_tabs precedent). Every refresh is a real (cheap, haiku) agent run,
+  # so staleness is tolerated rather than polled away.
+  @snapshot_key "trading_account_snapshot"
+  @stale_after_min 15
+
+  @snapshot_prompt """
+  Call mcp__robinhood__get_accounts and mcp__robinhood__get_portfolio for the
+  agentic account, then output ONLY one JSON object — no prose, no code fences:
+  {"account": "<masked account id>", "value": <total usd number>,
+   "cash": <usd number>, "buying_power": <usd number>,
+   "positions": [{"symbol": "<ticker>", "quantity": <number>, "value": <usd number>}]}
+  Numbers must come from the tool results — never invent them. If the tools are
+  unavailable or unauthenticated, output exactly: {"error": "<one-line reason>"}
+  """
 
   @system_prompt """
   You are trading on the operator's Robinhood Agentic account through the
@@ -74,5 +92,83 @@ defmodule BusterClaw.Trading do
       },
       pretty: true
     ) <> "\n"
+  end
+
+  # --- Account snapshot (the tab's right-hand panel) ---
+
+  @doc "The cached snapshot, `{:ok, map} | :none`."
+  def cached_snapshot do
+    with raw when is_binary(raw) <- Settings.get(@snapshot_key),
+         {:ok, %{"value" => _} = snap} <- Jason.decode(raw) do
+      {:ok, snap}
+    else
+      _ -> :none
+    end
+  end
+
+  @doc "True when the snapshot is missing a stamp or older than #{@stale_after_min} minutes."
+  def snapshot_stale?(%{"fetched_at" => stamp}) when is_binary(stamp) do
+    case DateTime.from_iso8601(stamp) do
+      {:ok, at, _} -> DateTime.diff(DateTime.utc_now(), at, :minute) >= @stale_after_min
+      _ -> true
+    end
+  end
+
+  def snapshot_stale?(_snap), do: true
+
+  def store_snapshot(snap), do: Settings.put(@snapshot_key, Jason.encode!(snap))
+
+  @doc """
+  Fetch a fresh account snapshot through the operator's own `claude` (haiku —
+  a refresh costs cents, not dollars). Blocking (~10s); callers run it under
+  `start_async`. Test seam: `:trading_snapshot_fetcher` app env.
+  """
+  def fetch_account_snapshot do
+    case Application.get_env(:buster_claw, :trading_snapshot_fetcher) do
+      fun when is_function(fun, 0) -> fun.()
+      nil -> run_snapshot_fetch()
+    end
+  end
+
+  defp run_snapshot_fetch do
+    opts = [
+      extra_args: ["--strict-mcp-config", "--mcp-config", ensure_mcp_config()],
+      model: "haiku",
+      timeout_ms: 90_000,
+      login: true
+    ]
+
+    case AgentRunner.run(@snapshot_prompt, opts) do
+      {:ok, %{exit_status: 0, output: output}} -> parse_snapshot(output)
+      {:ok, %{exit_status: status}} -> {:error, {:agent_exit, status}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Extract and validate the snapshot JSON from an agent's raw output. Stderr is
+  merged into stdout by the runner, so tolerate surrounding noise; stamp
+  `fetched_at` app-side — the model's clock is never trusted.
+  """
+  def parse_snapshot(output) when is_binary(output) do
+    with [json] <- Regex.run(~r/\{.*\}/s, output) || :nomatch,
+         {:ok, decoded} <- Jason.decode(json) do
+      case decoded do
+        %{"error" => msg} ->
+          {:error, {:robinhood, to_string(msg)}}
+
+        %{"value" => v, "cash" => c, "buying_power" => bp} = snap
+        when is_number(v) and is_number(c) and is_number(bp) ->
+          {:ok,
+           snap
+           |> Map.put("positions", List.wrap(snap["positions"]))
+           |> Map.put("fetched_at", DateTime.utc_now() |> DateTime.to_iso8601())}
+
+        _other ->
+          {:error, :bad_snapshot}
+      end
+    else
+      _ -> {:error, :bad_snapshot}
+    end
   end
 end

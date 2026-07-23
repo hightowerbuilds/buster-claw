@@ -89,6 +89,10 @@ defmodule BusterClawWeb.StatusLive do
     # Where to return when leaving the Trading tab (the last ordinary chat).
     |> assign(:last_chat, active)
     |> assign(:trading_unread, false)
+    # Agentic-account panel: nil | {:loading, prev} | {:ok, snap} |
+    # {:error, reason, prev} — prev = last good snapshot (or nil), kept visible
+    # under the spinner/error line instead of blanking real data.
+    |> assign(:trading_account, nil)
     |> assign(:chat_running, Chat.running?(active))
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
@@ -319,6 +323,10 @@ defmodule BusterClawWeb.StatusLive do
   def handle_event("select_home_tab", %{"tab" => tab}, socket)
       when tab in ["chat", "calendar", "notes", "trading"] do
     {:noreply, switch_home_tab(socket, tab)}
+  end
+
+  def handle_event("trading_refresh", _params, socket) do
+    {:noreply, maybe_refresh_account(socket)}
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
@@ -659,6 +667,25 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, assign(socket, :weather, {:error, {:exit, reason}})}
   end
 
+  def handle_async(:trading_account, {:ok, result}, socket) do
+    case result do
+      {:ok, snap} ->
+        Trading.store_snapshot(snap)
+        {:noreply, assign(socket, :trading_account, {:ok, snap})}
+
+      {:error, reason} ->
+        # Keep the last good snapshot visible under the error line.
+        prev = last_snapshot(socket.assigns.trading_account)
+        {:noreply, assign(socket, :trading_account, {:error, reason, prev})}
+    end
+  end
+
+  # A crashed fetch task degrades to the error state — never a stalled panel.
+  def handle_async(:trading_account, {:exit, reason}, socket) do
+    prev = last_snapshot(socket.assigns.trading_account)
+    {:noreply, assign(socket, :trading_account, {:error, {:exit, reason}, prev})}
+  end
+
   # Fetch off the LiveView process; a slow weather API must never stall the
   # homepage. No location yet → show the form instead of spawning a fetch; a
   # loaded map is kept (Weather.current/0 handles staleness via its own TTL).
@@ -738,15 +765,23 @@ defmodule BusterClawWeb.StatusLive do
   defp apply_chat(socket, conv_id, {:status, status}) do
     socket = update_tab(socket, conv_id, &%{&1 | running: status == :running})
 
-    if conv_id == socket.assigns.active_chat do
-      socket
-      |> assign(:chat_running, status == :running)
-      # Start the live timer on :running; clear it on :idle (the finished duration
-      # lives on in the transcript's :meta line, so the header chip can disappear).
-      |> assign(:chat_thinking, if(status == :running, do: :running, else: nil))
-    else
-      socket
-    end
+    socket =
+      if conv_id == socket.assigns.active_chat do
+        socket
+        |> assign(:chat_running, status == :running)
+        # Start the live timer on :running; clear it on :idle (the finished duration
+        # lives on in the transcript's :meta line, so the header chip can disappear).
+        |> assign(:chat_thinking, if(status == :running, do: :running, else: nil))
+      else
+        socket
+      end
+
+    # A finished trading run may have moved money — re-snapshot the account
+    # while the operator is looking at it.
+    if status == :idle and conv_id == Trading.conv_id() and
+         socket.assigns.home_tab == "trading",
+       do: maybe_refresh_account(socket),
+       else: socket
   end
 
   defp apply_chat(socket, conv_id, {:thinking, ms}) do
@@ -832,6 +867,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:last_chat, last)
     |> assign(:trading_unread, false)
     |> activate_chat(Trading.conv_id())
+    |> load_trading_account()
   end
 
   defp switch_home_tab(socket, "chat") do
@@ -843,6 +879,130 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   defp switch_home_tab(socket, tab), do: assign(socket, :home_tab, tab)
+
+  # Show whatever snapshot is cached immediately; refresh only when missing or
+  # stale — every refresh is a real (haiku) agent run, cents not free.
+  defp load_trading_account(socket) do
+    case Trading.cached_snapshot() do
+      {:ok, snap} ->
+        socket = assign(socket, :trading_account, {:ok, snap})
+        if Trading.snapshot_stale?(snap), do: maybe_refresh_account(socket), else: socket
+
+      :none ->
+        maybe_refresh_account(socket)
+    end
+  end
+
+  # One in-flight refresh max; the last good snapshot stays visible while a
+  # fresh one loads (or fails — see handle_async).
+  defp maybe_refresh_account(socket) do
+    case socket.assigns.trading_account do
+      {:loading, _prev} ->
+        socket
+
+      current ->
+        socket
+        |> assign(:trading_account, {:loading, last_snapshot(current)})
+        |> start_async(:trading_account, fn -> Trading.fetch_account_snapshot() end)
+    end
+  end
+
+  defp last_snapshot({:ok, snap}), do: snap
+  defp last_snapshot({:loading, prev}), do: prev
+  defp last_snapshot({:error, _reason, prev}), do: prev
+  defp last_snapshot(_), do: nil
+
+  # The Agentic-account panel (Trading tab, right column). Shows whichever
+  # snapshot we have — including a stale one under a spinner or error line —
+  # with an honest as-of stamp; the truth costs an agent run, so it is never
+  # silently auto-polled.
+  defp trading_account_card(assigns) do
+    assigns = assign(assigns, :snap, last_snapshot(assigns.account))
+
+    ~H"""
+    <aside
+      id="trading-account-card"
+      class="ic-panel flex min-h-0 flex-col overflow-y-auto p-4 font-mono text-xs"
+    >
+      <div class="flex items-center justify-between border-b-2 border-base-content/20 pb-2">
+        <p class="font-bold uppercase tracking-widest">Agentic account</p>
+        <span :if={@snap} class="text-base-content/60">{@snap["account"]}</span>
+      </div>
+
+      <div :if={@snap} class="space-y-4 pt-3">
+        <div>
+          <p class="ic-stat-n text-3xl">{money(@snap["value"])}</p>
+          <p class="uppercase tracking-wide text-base-content/60">Account value</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <p class="font-bold">{money(@snap["cash"])}</p>
+            <p class="uppercase text-base-content/60">Cash</p>
+          </div>
+          <div>
+            <p class="font-bold">{money(@snap["buying_power"])}</p>
+            <p class="uppercase text-base-content/60">Buying power</p>
+          </div>
+        </div>
+
+        <div>
+          <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
+            Positions
+          </p>
+          <p :if={@snap["positions"] == []} class="pt-2 text-base-content/50">No positions</p>
+          <table :if={@snap["positions"] != []} class="w-full">
+            <tr :for={pos <- @snap["positions"]} class="border-b border-base-content/10">
+              <td class="py-1 font-bold">{pos["symbol"]}</td>
+              <td class="py-1 text-right text-base-content/70">{pos["quantity"]}</td>
+              <td class="py-1 text-right">{money(pos["value"])}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <p :if={is_nil(@snap) and not match?({:loading, _}, @account)} class="pt-3 text-base-content/60">
+        No snapshot yet — refresh to load the account.
+      </p>
+      <p :if={is_nil(@snap) and match?({:loading, _}, @account)} class="pt-3 text-base-content/60">
+        Loading account…
+      </p>
+      <p :if={match?({:error, _, _}, @account)} class="pt-3 font-bold text-error">
+        Refresh failed: {card_error(@account)}
+      </p>
+
+      <div class="mt-auto flex items-center justify-between gap-2 border-t-2 border-base-content/20 pt-2">
+        <span class="text-base-content/50">{card_asof(@snap)}</span>
+        <button
+          type="button"
+          phx-click="trading_refresh"
+          disabled={match?({:loading, _}, @account)}
+          class="border-2 border-base-content/40 px-3 py-1 font-bold uppercase tracking-wide transition hover:bg-base-content/10 disabled:opacity-50"
+        >
+          {if match?({:loading, _}, @account), do: "Refreshing…", else: "Refresh"}
+        </button>
+      </div>
+    </aside>
+    """
+  end
+
+  defp money(v) when is_number(v), do: "$" <> :erlang.float_to_binary(v * 1.0, decimals: 2)
+  defp money(_v), do: "—"
+
+  defp card_asof(%{"fetched_at" => stamp}) when is_binary(stamp) do
+    case DateTime.from_iso8601(stamp) do
+      {:ok, at, _} -> "as of #{relative_time(at)}"
+      _ -> ""
+    end
+  end
+
+  defp card_asof(_snap), do: ""
+
+  defp card_error({:error, {:robinhood, msg}, _prev}), do: msg
+  defp card_error({:error, :bad_snapshot, _prev}), do: "unreadable snapshot"
+  defp card_error({:error, {:agent_exit, status}, _prev}), do: "agent exited #{status}"
+  defp card_error({:error, :no_agent_cli, _prev}), do: "Claude Code CLI not found"
+  defp card_error({:error, _reason, _prev}), do: "agent run failed"
 
   defp activate_chat(socket, id) do
     Conversations.touch(id)
@@ -1132,35 +1292,43 @@ defmodule BusterClawWeb.StatusLive do
               />
             </div>
 
-            <div :if={@home_tab == "trading"} class="flex min-h-0 flex-1 flex-col gap-2">
-              <div class="border-2 border-warning/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-warning">
-                Robinhood agentic account — real orders execute here
-              </div>
-              <%!-- First-run setup: the OAuth handshake is interactive by nature
+            <div
+              :if={@home_tab == "trading"}
+              class="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_22rem]"
+            >
+              <div class="flex min-h-0 flex-col gap-2">
+                <div class="border-2 border-warning/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-warning">
+                  Robinhood agentic account — real orders execute here
+                </div>
+                <%!-- First-run setup: the OAuth handshake is interactive by nature
                     (a browser window), so it happens once in a terminal — the
                     keychain tokens are then reused by every headless turn. --%>
-              <div
-                :if={@chat_seq == 0}
-                class="space-y-2 border-2 border-base-content/20 p-4 font-mono text-xs"
-              >
-                <p class="font-bold uppercase tracking-wide">One-time setup (in a terminal)</p>
-                <pre class="overflow-x-auto bg-base-200 p-2">claude mcp add --transport http --scope user robinhood https://agent.robinhood.com/mcp/trading</pre>
-                <pre class="overflow-x-auto bg-base-200 p-2">claude mcp login robinhood</pre>
-                <p class="text-base-content/70">
-                  The login opens Robinhood's OAuth page in your browser; tokens land in the
-                  macOS Keychain and every trading turn here reuses them. Known issue
-                  (claude-code #65895): if the tools still report unavailable after logging
-                  in, run <code class="font-bold">claude mcp logout robinhood</code> and log in again.
-                </p>
+                <div
+                  :if={@chat_seq == 0}
+                  class="space-y-2 border-2 border-base-content/20 p-4 font-mono text-xs"
+                >
+                  <p class="font-bold uppercase tracking-wide">One-time setup (in a terminal)</p>
+                  <pre class="overflow-x-auto bg-base-200 p-2">claude mcp add --transport http --scope user robinhood https://agent.robinhood.com/mcp/trading</pre>
+                  <pre class="overflow-x-auto bg-base-200 p-2">claude mcp login robinhood</pre>
+                  <p class="text-base-content/70">
+                    The login opens Robinhood's OAuth page in your browser; tokens land in the
+                    macOS Keychain and every trading turn here reuses them. Known issue
+                    (claude-code #65895): if the tools still report unavailable after logging
+                    in, run <code class="font-bold">claude mcp logout robinhood</code>
+                    and log in again.
+                  </p>
+                </div>
+                <BusterClawWeb.ChatPanel.chat_panel
+                  messages={@streams.chat_messages}
+                  seq={@chat_seq}
+                  running={@chat_running}
+                  thinking={@chat_thinking}
+                  queue={@chat_queue}
+                  agent_cli_missing={@agent_cli_missing}
+                />
               </div>
-              <BusterClawWeb.ChatPanel.chat_panel
-                messages={@streams.chat_messages}
-                seq={@chat_seq}
-                running={@chat_running}
-                thinking={@chat_thinking}
-                queue={@chat_queue}
-                agent_cli_missing={@agent_cli_missing}
-              />
+
+              <.trading_account_card account={@trading_account} />
             </div>
 
             <div

@@ -22,9 +22,19 @@ defmodule BusterClawWeb.StatusLiveTest do
     prev_cli = Application.get_env(:buster_claw, :agent_cli)
     Application.put_env(:buster_claw, :agent_cli, {:claude, "/usr/local/bin/claude"})
 
+    # Entering the Trading tab starts an account-snapshot fetch, which would
+    # otherwise spawn a REAL claude run from a test. Default seam: an error the
+    # panel renders honestly; individual tests override with richer fetchers.
+    prev_fetcher = Application.get_env(:buster_claw, :trading_snapshot_fetcher)
+
+    Application.put_env(:buster_claw, :trading_snapshot_fetcher, fn ->
+      {:error, {:robinhood, "disabled in test"}}
+    end)
+
     on_exit(fn ->
       Application.put_env(:buster_claw, :workspace_root, prev)
       Application.put_env(:buster_claw, :agent_cli, prev_cli)
+      Application.put_env(:buster_claw, :trading_snapshot_fetcher, prev_fetcher)
       File.rm_rf(root)
     end)
 
@@ -336,6 +346,56 @@ defmodule BusterClawWeb.StatusLiveTest do
       html = render_click(view, "select_home_tab", %{"tab" => "trading"})
       refute html =~ ~s(rounded-full bg-warning)
       assert html =~ "Filled 1 VOO"
+    end
+
+    test "the account card loads a snapshot via the fetcher seam", %{conn: conn} do
+      Application.put_env(:buster_claw, :trading_snapshot_fetcher, fn ->
+        {:ok,
+         %{
+           "account" => "••••6587",
+           "value" => 2.38,
+           "cash" => 2.38,
+           "buying_power" => 2.38,
+           "positions" => [%{"symbol" => "VOO", "quantity" => 0.01, "value" => 1.0}],
+           "fetched_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+         }}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      html = render_click(view, "select_home_tab", %{"tab" => "trading"})
+      assert html =~ "trading-account-card"
+
+      html = render_async(view)
+      assert html =~ "$2.38"
+      assert html =~ "VOO"
+      assert html =~ "Buying power"
+      assert html =~ "as of"
+
+      # The snapshot persisted — a fresh cached read has it.
+      assert {:ok, %{"value" => 2.38}} = BusterClaw.Trading.cached_snapshot()
+    end
+
+    test "a failed refresh keeps the last good snapshot visible", %{conn: conn} do
+      good = %{
+        "account" => "••••6587",
+        "value" => 42.0,
+        "cash" => 42.0,
+        "buying_power" => 42.0,
+        "positions" => [],
+        "fetched_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      BusterClaw.Trading.store_snapshot(good)
+
+      # Force staleness so entering the tab triggers the (failing) fetcher.
+      BusterClaw.Trading.store_snapshot(Map.put(good, "fetched_at", "2020-01-01T00:00:00Z"))
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "trading"})
+      html = render_async(view)
+
+      assert html =~ "Refresh failed: disabled in test"
+      assert html =~ "$42.00"
     end
 
     test "leaving the trading tab re-activates the previous conversation", %{conn: conn} do
