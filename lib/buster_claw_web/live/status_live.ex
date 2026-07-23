@@ -922,7 +922,7 @@ defmodule BusterClawWeb.StatusLive do
     ~H"""
     <aside
       id="trading-account-card"
-      class="ic-panel flex min-h-0 flex-col overflow-y-auto p-4 font-mono text-xs"
+      class="ic-panel flex min-h-0 w-full flex-col overflow-y-auto p-4 font-mono text-xs"
     >
       <div class="flex items-center justify-between border-b-2 border-base-content/20 pb-2">
         <p class="font-bold uppercase tracking-widest">Agentic account</p>
@@ -1371,9 +1371,14 @@ defmodule BusterClawWeb.StatusLive do
 
             <div
               :if={@home_tab == "trading"}
-              class="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[22rem_minmax(0,1fr)]"
+              id="trading-split"
+              phx-hook="SplitResizer"
+              data-resize-var="--trading-left"
+              data-resize-key="bc:trading-split-ratio"
+              data-resize-default="0.3"
+              class="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-0"
             >
-              <div class="flex min-h-0 flex-col gap-2">
+              <div class="bc-trading-left flex min-h-0 flex-col gap-2">
                 <div class="border-2 border-warning/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-warning">
                   Robinhood agentic account — real orders execute here
                 </div>
@@ -1405,7 +1410,17 @@ defmodule BusterClawWeb.StatusLive do
                 />
               </div>
 
-              <.trading_account_card account={@trading_account} />
+              <div
+                data-split-divider
+                title="Drag to resize"
+                class="group relative hidden shrink-0 cursor-col-resize items-center justify-center lg:flex lg:w-3"
+              >
+                <span class="h-full w-px bg-base-content/15 transition group-hover:bg-primary"></span>
+              </div>
+
+              <div class="bc-trading-right flex min-h-0">
+                <.trading_account_card account={@trading_account} />
+              </div>
             </div>
 
             <div

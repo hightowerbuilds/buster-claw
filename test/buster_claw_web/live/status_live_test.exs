@@ -310,6 +310,10 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "#65895"
       # The chat surface renders without the conversation strip.
       assert html =~ ~s(id="home-agent-chat")
+      # The chat/account partition is draggable (parameterized SplitResizer).
+      assert html =~ ~s(phx-hook="SplitResizer")
+      assert html =~ ~s(data-resize-var="--trading-left")
+      assert html =~ "data-split-divider"
     end
 
     test "a trading message renders on-tab; off-tab it sets the unread dot", %{conn: conn} do

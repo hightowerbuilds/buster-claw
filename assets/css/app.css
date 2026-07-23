@@ -162,6 +162,14 @@
   .bc-split-right { flex: 1 1 0; }
 }
 
+/* Trading tab: chat rail | draggable divider | account panel (SplitResizer
+   with data-resize-var="--trading-left"). */
+.bc-trading-left, .bc-trading-right { min-width: 0; }
+@media (min-width: 1024px) {
+  .bc-trading-left { flex: 0 0 var(--trading-left, 30%); }
+  .bc-trading-right { flex: 1 1 0; }
+}
+
 /* ============================================================
    INDUSTRIAL CLAW — type system + identity layer
    ============================================================ */

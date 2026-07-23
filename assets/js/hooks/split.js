@@ -1,8 +1,14 @@
 import {SPLIT_RATIO_KEY} from "../lib/tabs.js"
 
-// Resizable + swappable joined view (/split). The grabbable divider sets the
-// left pane's width via the `--split-left` CSS var (persisted in localStorage);
-// the swap button flips the two sides by reusing the tab strip's swapSides.
+// Resizable side-by-side panes. The grabbable divider sets the left pane's
+// width via a CSS var, persisted in localStorage. Defaults are the /split
+// view's (var `--split-left`, key SPLIT_RATIO_KEY, 50/50); other surfaces
+// parameterize via data attrs on the hook element:
+//   data-resize-var      CSS var to set (e.g. "--trading-left")
+//   data-resize-key      localStorage key
+//   data-resize-default  initial ratio (0..1)
+// The swap/close buttons remain /split-only (their data attrs simply don't
+// exist elsewhere).
 export const SplitResizer = {
   mounted() {
     this.applyStoredRatio()
@@ -20,15 +26,25 @@ export const SplitResizer = {
     this.el.removeEventListener("click", this.onClick)
     this.endDrag()
   },
+  varName() {
+    return this.el.dataset.resizeVar || "--split-left"
+  },
+  storageKey() {
+    return this.el.dataset.resizeKey || SPLIT_RATIO_KEY
+  },
+  defaultRatio() {
+    const d = parseFloat(this.el.dataset.resizeDefault)
+    return isFinite(d) ? d : 0.5
+  },
   storedRatio() {
-    const raw = parseFloat(localStorage.getItem(SPLIT_RATIO_KEY))
-    return isFinite(raw) ? Math.min(0.85, Math.max(0.15, raw)) : 0.5
+    const raw = parseFloat(localStorage.getItem(this.storageKey()))
+    return isFinite(raw) ? Math.min(0.85, Math.max(0.15, raw)) : this.defaultRatio()
   },
   applyStoredRatio() {
     this.setRatio(this.storedRatio())
   },
   setRatio(ratio) {
-    this.el.style.setProperty("--split-left", `${(ratio * 100).toFixed(2)}%`)
+    this.el.style.setProperty(this.varName(), `${(ratio * 100).toFixed(2)}%`)
   },
   handleClick(e) {
     if (e.target.closest("[data-split-swap]")) {
@@ -71,7 +87,7 @@ export const SplitResizer = {
       document.body.style.userSelect = ""
       document.body.style.cursor = ""
       if (typeof this.ratio === "number") {
-        localStorage.setItem(SPLIT_RATIO_KEY, String(this.ratio))
+        localStorage.setItem(this.storageKey(), String(this.ratio))
       }
     }
     this.dragging = false
