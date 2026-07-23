@@ -158,6 +158,10 @@ defmodule BusterClaw.Agent.Chat do
   @doc """
   Ensure a conversation's chat process is running (started lazily under the
   DynamicSupervisor), returning `{:ok, pid}`. Idempotent and race-safe.
+
+  `start_opts` (`:append_system_prompt`, `:extra_cli_args`, …) are captured
+  only when the process actually starts — a no-op once it exists. Changing a
+  conversation's profile requires `stop/1` first.
   """
   def ensure_started(conv_id, start_opts \\ []) when is_binary(conv_id) do
     case whereis(conv_id) do
@@ -234,6 +238,10 @@ defmodule BusterClaw.Agent.Chat do
       # teaches the SVG-viewer ```svg vocabulary). Passed to `claude` as
       # `--append-system-prompt` on every turn; nil = unchanged behaviour.
       append_system_prompt: Keyword.get(opts, :append_system_prompt),
+      # Optional extra CLI flags appended verbatim to every turn's argv (e.g.
+      # the trading conversation's `--strict-mcp-config --mcp-config <path>`).
+      # Captured at first start like every other opt; [] = unchanged behaviour.
+      extra_cli_args: Keyword.get(opts, :extra_cli_args, []),
       # Injectable for tests: `spawner.(prompt, opts) :: {:ok, port} | {:error, reason}`.
       spawner: Keyword.get(opts, :spawner, &default_spawner/2)
     }
@@ -392,7 +400,8 @@ defmodule BusterClaw.Agent.Chat do
     extra =
       ~w(--output-format stream-json --verbose) ++
         resume_args(state.session_id) ++
-        append_system_prompt_args(state.append_system_prompt)
+        append_system_prompt_args(state.append_system_prompt) ++
+        state.extra_cli_args
 
     case state.spawner.(text, extra_args: extra, login: true) do
       {:ok, port} ->

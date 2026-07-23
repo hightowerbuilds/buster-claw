@@ -286,6 +286,71 @@ defmodule BusterClawWeb.StatusLiveTest do
   end
 
   # The active conversation id is the first seeded conversation ("default").
+  describe "trading sub-tab" do
+    test "renders the tab, the warning banner, and first-run setup", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/")
+
+      # The tab button exists; the trading conversation is NOT a chat-strip tab.
+      assert html =~ ~s(phx-value-tab="trading")
+      refute html =~ ~s(phx-value-id="trading")
+
+      html = render_click(view, "select_home_tab", %{"tab" => "trading"})
+      assert html =~ "real orders execute here"
+      assert html =~ "claude mcp login robinhood"
+      assert html =~ "#65895"
+      # The chat surface renders without the conversation strip.
+      assert html =~ ~s(id="home-agent-chat")
+    end
+
+    test "a trading message renders on-tab; off-tab it sets the unread dot", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # On the Trading tab, its conversation is the active one.
+      render_click(view, "select_home_tab", %{"tab" => "trading"})
+
+      send(
+        view.pid,
+        {:agent_chat, "trading", {:message, %{role: :assistant, text: "AAPL $210.11"}}}
+      )
+
+      assert render(view) =~ "AAPL $210.11"
+
+      # Back on Chat: trading messages must not enter the visible transcript,
+      # but the Trading tab button gains the unread dot. (In production the Chat
+      # process persists the line to the Transcript; this harness only fakes the
+      # PubSub side, so persist it by hand for the re-entry assertion below.)
+      render_click(view, "select_home_tab", %{"tab" => "chat"})
+      BusterClaw.Agent.Transcript.record("trading", :assistant, "Filled 1 VOO")
+
+      send(
+        view.pid,
+        {:agent_chat, "trading", {:message, %{role: :assistant, text: "Filled 1 VOO"}}}
+      )
+
+      html = render(view)
+      refute html =~ "Filled 1 VOO"
+      assert html =~ ~s(rounded-full bg-warning)
+
+      # ...which clears on entering the tab, where history reloads from the
+      # durable transcript.
+      html = render_click(view, "select_home_tab", %{"tab" => "trading"})
+      refute html =~ ~s(rounded-full bg-warning)
+      assert html =~ "Filled 1 VOO"
+    end
+
+    test "leaving the trading tab re-activates the previous conversation", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      render_click(view, "select_home_tab", %{"tab" => "trading"})
+      html = render_click(view, "select_home_tab", %{"tab" => "chat"})
+
+      # The ordinary conversation is active again: its broadcasts render.
+      send(view.pid, {:agent_chat, "default", {:message, %{role: :assistant, text: "back home"}}})
+      assert render(view) =~ "back home"
+      refute html =~ "real orders execute here"
+    end
+  end
+
   defp active_chat(_view), do: "default"
 
   describe "corner widget tabs" do

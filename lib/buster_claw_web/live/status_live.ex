@@ -12,6 +12,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Setup
   alias BusterClaw.SvgViewer
   alias BusterClaw.Telephony
+  alias BusterClaw.Trading
   alias BusterClaw.TrustedSenders
   alias BusterClaw.Weather
 
@@ -75,11 +76,19 @@ defmodule BusterClawWeb.StatusLive do
     chats = Conversations.list() |> Enum.map(&to_chat_tab/1)
     active = (List.first(chats) || %{id: Chat.default_conv_id()}).id
 
-    if connected?(socket), do: Enum.each(chats, &Chat.subscribe(&1.id))
+    if connected?(socket) do
+      Enum.each(chats, &Chat.subscribe(&1.id))
+      # The Trading tab's pinned conversation has no Conversations row (so it
+      # never shows in the chat strip) but still streams over PubSub.
+      Chat.subscribe(Trading.conv_id())
+    end
 
     socket
     |> assign(:chats, chats)
     |> assign(:active_chat, active)
+    # Where to return when leaving the Trading tab (the last ordinary chat).
+    |> assign(:last_chat, active)
+    |> assign(:trading_unread, false)
     |> assign(:chat_running, Chat.running?(active))
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
@@ -308,8 +317,8 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("select_home_tab", %{"tab" => tab}, socket)
-      when tab in ["chat", "calendar", "notes"] do
-    {:noreply, assign(socket, :home_tab, tab)}
+      when tab in ["chat", "calendar", "notes", "trading"] do
+    {:noreply, switch_home_tab(socket, tab)}
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
@@ -337,7 +346,9 @@ defmodule BusterClawWeb.StatusLive do
 
         {:noreply,
          socket
-         |> assign(:home_tab, "chat")
+         # switch_home_tab, not a bare assign: fired while on the Trading tab,
+         # a raw tab flip would prefill the mail ask into the trading chat.
+         |> switch_home_tab("chat")
          |> push_event("bc:chat_prefill", %{text: template})}
 
       _ ->
@@ -540,12 +551,39 @@ defmodule BusterClawWeb.StatusLive do
     # appended inline as a persistent message.
     conv_id = socket.assigns.active_chat
 
-    # Start the conversation taught the SVG viewer vocabulary (idempotent — the
-    # guide is fixed at first start; a no-op once the process exists).
-    Chat.ensure_started(conv_id, append_system_prompt: SvgViewer.guide())
+    if conv_id == Trading.conv_id() do
+      # Trading requires the Claude CLI specifically: the MCP flags in
+      # Trading.chat_opts/0 are Claude's, and codex would choke on them.
+      case BusterClaw.AgentRunner.detect() do
+        {:ok, {:claude, _path}} ->
+          # One audit line per money-adjacent send. Length only — the full text
+          # already persists in the conversation transcript.
+          BusterClaw.Sentinel.observe(:outbound_send, "Trading chat message sent", %{
+            source: "trading_chat",
+            conv_id: conv_id,
+            chars: String.length(text)
+          })
 
-    # While a run is in flight send_message/2 queues the text (returns :ok) rather
-    # than rejecting it; the queued item arrives back over PubSub as {:queue, …}.
+          Chat.ensure_started(conv_id, Trading.chat_opts())
+          do_send(socket, conv_id, text)
+
+        _other ->
+          push_msg(socket, :error, "Trading requires the Claude Code CLI.")
+      end
+    else
+      # Start the conversation taught the SVG viewer vocabulary (idempotent — the
+      # guide is fixed at first start; a no-op once the process exists).
+      Chat.ensure_started(conv_id, append_system_prompt: SvgViewer.guide())
+      do_send(socket, conv_id, text)
+    end
+  catch
+    :exit, _reason ->
+      push_msg(socket, :error, "Chat backend isn't running — restart the server.")
+  end
+
+  # While a run is in flight send_message/2 queues the text (returns :ok) rather
+  # than rejecting it; the queued item arrives back over PubSub as {:queue, …}.
+  defp do_send(socket, conv_id, text) do
     case Chat.send_message(conv_id, text) do
       :ok ->
         maybe_autotitle(socket, conv_id, text)
@@ -556,9 +594,6 @@ defmodule BusterClawWeb.StatusLive do
       {:error, reason} ->
         push_msg(socket, :error, "Could not start the run: #{inspect(reason)}")
     end
-  catch
-    :exit, _reason ->
-      push_msg(socket, :error, "Chat backend isn't running — restart the server.")
   end
 
   @impl true
@@ -748,7 +783,7 @@ defmodule BusterClawWeb.StatusLive do
           socket
       end
     else
-      update_tab(socket, conv_id, &%{&1 | unread: true})
+      mark_unread(socket, conv_id)
     end
   end
 
@@ -758,11 +793,19 @@ defmodule BusterClawWeb.StatusLive do
       |> maybe_speak(role, text)
       |> push_msg(role, text)
     else
-      update_tab(socket, conv_id, &%{&1 | unread: true})
+      mark_unread(socket, conv_id)
     end
   end
 
   defp apply_chat(socket, _conv_id, _other), do: socket
+
+  # The trading conversation has no chat-strip tab; its unread signal is a dot
+  # on the Trading home sub-tab instead.
+  defp mark_unread(socket, conv_id) do
+    if conv_id == Trading.conv_id(),
+      do: assign(socket, :trading_unread, true),
+      else: update_tab(socket, conv_id, &%{&1 | unread: true})
+  end
 
   # The pool ids `collect_svgs/2` just assigned to this batch (it numbers a batch
   # `svg_seq+1 .. svg_seq+n`), so a bubble can link straight to its own drawings.
@@ -774,6 +817,32 @@ defmodule BusterClawWeb.StatusLive do
   # `:assistant` message per text block; each is enqueued and spoken in order.
   defp maybe_speak(socket, :assistant, text), do: push_event(socket, "bc:speak", %{text: text})
   defp maybe_speak(socket, _role, _text), do: socket
+
+  # Trading is a pinned conversation riding the single active-chat surface:
+  # entering the tab activates it; returning to Chat re-activates the last
+  # ordinary conversation. Calendar/Notes never touch the active chat.
+  defp switch_home_tab(socket, "trading") do
+    last =
+      if socket.assigns.active_chat == Trading.conv_id(),
+        do: socket.assigns.last_chat,
+        else: socket.assigns.active_chat
+
+    socket
+    |> assign(:home_tab, "trading")
+    |> assign(:last_chat, last)
+    |> assign(:trading_unread, false)
+    |> activate_chat(Trading.conv_id())
+  end
+
+  defp switch_home_tab(socket, "chat") do
+    socket = assign(socket, :home_tab, "chat")
+
+    if socket.assigns.active_chat == Trading.conv_id(),
+      do: activate_chat(socket, socket.assigns.last_chat),
+      else: socket
+  end
+
+  defp switch_home_tab(socket, tab), do: assign(socket, :home_tab, tab)
 
   defp activate_chat(socket, id) do
     Conversations.touch(id)
@@ -1024,7 +1093,12 @@ defmodule BusterClawWeb.StatusLive do
             >
               <button
                 :for={
-                  {key, label} <- [{"chat", "Chat"}, {"calendar", "Calendar"}, {"notes", "Notes"}]
+                  {key, label} <- [
+                    {"chat", "Chat"},
+                    {"calendar", "Calendar"},
+                    {"notes", "Notes"},
+                    {"trading", "Trading"}
+                  ]
                 }
                 type="button"
                 role="tab"
@@ -1039,12 +1113,46 @@ defmodule BusterClawWeb.StatusLive do
                   )
                 ]}
               >
-                {label}
+                {label}<span
+                  :if={key == "trading" and @trading_unread}
+                  class="ml-1.5 inline-block size-1.5 rounded-full bg-warning align-middle"
+                />
               </button>
             </div>
 
             <div :if={@home_tab == "chat"} class="flex min-h-0 flex-1 flex-col gap-2">
               <BusterClawWeb.ChatPanel.chat_tabs chats={@chats} active={@active_chat} />
+              <BusterClawWeb.ChatPanel.chat_panel
+                messages={@streams.chat_messages}
+                seq={@chat_seq}
+                running={@chat_running}
+                thinking={@chat_thinking}
+                queue={@chat_queue}
+                agent_cli_missing={@agent_cli_missing}
+              />
+            </div>
+
+            <div :if={@home_tab == "trading"} class="flex min-h-0 flex-1 flex-col gap-2">
+              <div class="border-2 border-warning/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-warning">
+                Robinhood agentic account — real orders execute here
+              </div>
+              <%!-- First-run setup: the OAuth handshake is interactive by nature
+                    (a browser window), so it happens once in a terminal — the
+                    keychain tokens are then reused by every headless turn. --%>
+              <div
+                :if={@chat_seq == 0}
+                class="space-y-2 border-2 border-base-content/20 p-4 font-mono text-xs"
+              >
+                <p class="font-bold uppercase tracking-wide">One-time setup (in a terminal)</p>
+                <pre class="overflow-x-auto bg-base-200 p-2">claude mcp add --transport http --scope user robinhood https://agent.robinhood.com/mcp/trading</pre>
+                <pre class="overflow-x-auto bg-base-200 p-2">claude mcp login robinhood</pre>
+                <p class="text-base-content/70">
+                  The login opens Robinhood's OAuth page in your browser; tokens land in the
+                  macOS Keychain and every trading turn here reuses them. Known issue
+                  (claude-code #65895): if the tools still report unavailable after logging
+                  in, run <code class="font-bold">claude mcp logout robinhood</code> and log in again.
+                </p>
+              </div>
               <BusterClawWeb.ChatPanel.chat_panel
                 messages={@streams.chat_messages}
                 seq={@chat_seq}

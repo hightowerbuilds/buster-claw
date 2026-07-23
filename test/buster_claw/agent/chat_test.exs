@@ -239,6 +239,35 @@ defmodule BusterClaw.Agent.ChatTest do
     assert "sess-xyz" in extra
   end
 
+  test "extra_cli_args ride every turn, including resumed ones" do
+    {:ok, scripts} =
+      Agent.start_link(fn ->
+        [
+          [
+            %{"type" => "system", "session_id" => "sess-mcp"},
+            %{"type" => "result", "result" => "ok"}
+          ],
+          [%{"type" => "result", "result" => "ok again"}]
+        ]
+      end)
+
+    mcp_args = ["--strict-mcp-config", "--mcp-config", "/tmp/robinhood.json"]
+    conv = start_chat(scripting_spawner(self(), scripts), extra_cli_args: mcp_args)
+
+    assert :ok = Chat.send_message(conv, "list my positions")
+    assert_receive {:spawned, "list my positions", first_opts}
+    first = Keyword.fetch!(first_opts, :extra_args)
+    assert Enum.take(first, -3) == mcp_args
+    assert_receive {:agent_chat, ^conv, {:status, :idle}}
+
+    # The flags survive --resume threading on the second turn.
+    assert :ok = Chat.send_message(conv, "and my balance")
+    assert_receive {:spawned, "and my balance", second_opts}
+    second = Keyword.fetch!(second_opts, :extra_args)
+    assert "--resume" in second
+    assert Enum.take(second, -3) == mcp_args
+  end
+
   test "a hung run is killed and reported as a timeout" do
     spawner = fn _prompt, _opts -> {:ok, make_ref()} end
     conv = start_chat(spawner, timeout_ms: 30)
