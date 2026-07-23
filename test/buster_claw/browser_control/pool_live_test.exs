@@ -4,8 +4,12 @@ defmodule BusterClaw.BrowserControl.PoolLiveTest do
 
   Excluded by default; run with `mix test --include browser_engine` on a machine
   with a Chromium-family browser. Uses the app's real `SessionSupervisor`.
+
+  A DataCase (not plain ExUnit) so the scope-gate test's synchronous
+  `Scope.guard` has a sandbox connection to persist its Sentinel event; the
+  browser processes themselves never touch the DB.
   """
-  use ExUnit.Case, async: false
+  use BusterClaw.DataCase, async: false
 
   alias BusterClaw.BrowserControl.{Pool, Session}
 
@@ -49,6 +53,32 @@ defmodule BusterClaw.BrowserControl.PoolLiveTest do
     wait_until(fn -> not Process.alive?(s1) end, 200)
     wait_until(fn -> Pool.stats(pool).total == 0 end, 200)
     assert %{total: 0, leased: 0} = Pool.stats(pool)
+  end
+
+  test "the scope gate blocks a real navigation before it reaches the engine" do
+    alias BusterClaw.BrowserControl
+    alias BusterClaw.BrowserControl.{Scope, Session}
+
+    {:ok, pool} = Pool.start_link(name: nil, max_sessions: 1, idle_ms: 60_000)
+    {:ok, s} = Pool.checkout(pool)
+
+    scope = Scope.new("read example", ["example.com"], id: "live-gate")
+
+    # In scope: the engine actually navigates and the session records the url.
+    assert {:ok, _origin} = BrowserControl.navigate(s, scope, "https://example.com/")
+    in_scope_url = Session.info(s).url
+    assert in_scope_url == "https://example.com/"
+
+    # Out of scope: halted, and the session's url is unchanged — the engine
+    # never saw evil.com.
+    assert {:halt, :out_of_scope, _} = BrowserControl.navigate(s, scope, "https://evil.com/")
+    assert Session.info(s).url == in_scope_url
+
+    # Payment page on the allowed host: halted the same way.
+    assert {:halt, :payment_stop, _} =
+             BrowserControl.navigate(s, scope, "https://example.com/checkout")
+
+    assert Session.info(s).url == in_scope_url
   end
 
   defp wait_until(fun, tries) do

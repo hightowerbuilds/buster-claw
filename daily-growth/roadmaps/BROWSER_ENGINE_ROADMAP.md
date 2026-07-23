@@ -250,7 +250,7 @@ passthrough — no browser) + 3 live-engine tests (navigate/evaluate, reuse,
 idle-reap, and **kill the OS engine → session dies → pool frees the slot**).
 35 BrowserControl tests green.
 
-## Phase 3 — Frozen scope and injection defense
+## Phase 3 — Frozen scope and injection defense — **SHIPPED 07-22**
 
 **Before the agent can act broadly, not after.** This property is cheap to design
 in and effectively impossible to retrofit.
@@ -269,6 +269,27 @@ the entire threat model, and it costs an attacker nothing to try.
 - Sentinel already tags `untrusted_ingest`; extend it so every action carries the
   origin that motivated it, which makes an injected action visible in the
   trajectory as an action with no legitimate cause.
+
+**Status:** `BusterClaw.BrowserControl.Scope` — an immutable value minted once
+from `intent` + an allowlist, with **no mutator** (no `add_domain`, no `widen`),
+so page content cannot expand it because there is no function through which it
+could. `authorize/2` is **pure** — page text is never a parameter, which is what
+makes "page content can't widen scope" true by construction; a test asserts the
+API exposes no widening function so a future one can't slip in unreviewed. The
+gate fires in order: malformed URL → payment page (hard stop *regardless of
+allowlist* — the Phase 5 handoff) → domain off the frozen allowlist (subdomains
+in, suffix lookalikes like `example.com.evil.com` out) → allow, tagged with the
+scope's origin for the trajectory. `guard/2` records a **critical**
+`:security_block` Sentinel event on every halt, so an injected action shows up as
+an action with no legitimate cause. Made load-bearing via
+`BrowserControl.navigate/3`, which guards before the URL reaches the engine — a
+live test confirms an off-scope/payment URL never changes the session's page.
+SSRF stays with `URLGuard` at the network boundary; this layer is pure policy,
+no DNS. 31 always-on tests + 1 live gate test.
+
+**Deferred to Phase 4 (the action loop):** the structural separation of page
+text from instructions is a prompt-construction contract the agent loop enforces
+when it exists; Phase 3 provides the gate it will call.
 
 ## Phase 3.5 — Model egress: earning the consent
 

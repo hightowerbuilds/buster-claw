@@ -13,7 +13,7 @@ defmodule BusterClaw.BrowserControl do
   this surface; nothing above it may talk to the engine another way.
   """
 
-  alias BusterClaw.BrowserControl.{CDP, Detect}
+  alias BusterClaw.BrowserControl.{CDP, Detect, Scope, Session}
   alias BusterClaw.Library.Artifact
 
   @probe_page "data:text/html,<title>bc-probe</title>ok"
@@ -21,6 +21,28 @@ defmodule BusterClaw.BrowserControl do
 
   @doc "The engine binary in use: `{:ok, path}` or `{:error, :no_browser}`."
   defdelegate detect, to: Detect, as: :find
+
+  @doc """
+  Navigate a leased session, but **only after the frozen `Scope` authorizes it**
+  (BROWSER_ENGINE_ROADMAP Phase 3). An out-of-scope, payment, or malformed URL is
+  halted here and never reaches the engine — the gate is load-bearing, not
+  advisory. Returns `{:ok, origin}` (the provenance to stamp on the action) or
+  the guard's `{:halt, reason, meta}`. This is the primitive Phase 4's action
+  loop drives; a bare `Session.navigate/2` bypasses the gate and is for
+  scope-free internal use (the probe) only.
+  """
+  def navigate(session, %Scope{} = scope, url) do
+    case Scope.guard(scope, {:navigate, url}) do
+      {:ok, origin} ->
+        case Session.navigate(session, url) do
+          :ok -> {:ok, origin}
+          other -> other
+        end
+
+      {:halt, _reason, _meta} = halt ->
+        halt
+    end
+  end
 
   @doc "Whether Agent Mode has an engine at all. Absence is surfaced, never papered over."
   def available?, do: match?({:ok, _}, detect())
