@@ -385,7 +385,7 @@ deliberately not built now.
 **Default posture:** structure and task-relevant text go; identifiers and secrets
 never do; the user can loosen it per site and can always see what left.
 
-## Phase 4 — Agent Mode: the watchable surface
+## Phase 4 — Agent Mode: the watchable surface — **BRAIN SHIPPED 07-22**
 
 The mode switch is the product. A user who can watch will trust it; a user who
 can't, won't, and shouldn't.
@@ -403,6 +403,35 @@ can't, won't, and shouldn't.
 - **Redaction is enforced at capture**, not at render. A screenshot of a filled
   card field must never exist on disk, because a redaction applied at display
   time is one bug away from not being applied.
+
+**Status — the orchestration brain landed** (three modules, 22 always-on tests +
+1 live). The UI (headful window + rail) is the deferred slice and renders this;
+it adds no authority of its own.
+
+- **`Mode`** — the pure state machine. `agent_working` is the *only* state that
+  permits acting, so take-the-wheel and stop actually stop the agent by
+  construction; terminal states (`done/stopped/halted`) take no transition; every
+  unlisted pair is an explicit error.
+- **`Trajectory`** — pure, append-only, replayable. The single
+  **redaction-at-capture** point: a fill's secret is masked when the step is
+  *formed*, so a value that was never stored cannot leak no matter what renders
+  it. Each step carries its motivating `Scope` origin — a step that can't be tied
+  to the intent is what an injected action looks like on scrub-back. `summary/1`
+  folds in the `Egress` roll-up.
+- **`AgentMode`** (GenServer) — ties a leased `Session` + frozen `Scope` +
+  `Egress` + `Trajectory`, serializes actions, and broadcasts every transition so
+  the rail is a projection, not a second source of truth. Enforced here, not
+  hoped for: only `agent_working` acts; **stop halts before the next action**
+  (the next `act` sees a non-acting mode and does nothing); the scope gate halts
+  the run and records the halt with its origin; **secrets resolve in the executor
+  and the trajectory stores only `⟨secret:name⟩`** — proven by a test where the
+  stub browser receives the resolved card while the trajectory never sees the
+  digits.
+
+**Deferred (the UI slice):** the headful Tauri window, the LiveView trajectory
+rail with the hazard-accent mode banner, scrub-back rendering, and pixel-layer
+screenshot redaction at capture. All of it consumes `subscribe/1` +
+`trajectory/1`; the contracts are fixed here.
 
 ## Phase 5 — Commerce: cart in, human pays
 
