@@ -158,16 +158,15 @@ gets an app flagged.
 
 ---
 
-## Phase 0 — Prove the engine in the packaged app
+## Phase 0 — Prove the engine in the packaged app — **DEV-PROVEN 07-22**
 
 This is first because of our own history, not out of caution. Browserbase was
 2158 lines that never ran for a real user because its driver depended on
 something prod never bundled.
 
-Launch the engine, connect our CDP client over a localhost WebSocket, navigate,
-click one element, read the DOM back — **from the signed, packaged, notarized
-app, on both architectures.** Reuse the packaged-app smoke harness from the shell
-rebuild (07-22).
+Launch the engine, connect our CDP client over the pipe, navigate, read the DOM
+back — **from the signed, packaged app, on both architectures.** Reuse the
+packaged-app smoke harness from the shell rebuild (07-22).
 
 Specifically prove: process launch survives hardened runtime and the packaged
 app's entitlements; **the CDP pipe works and no debug socket is opened at all**;
@@ -175,22 +174,33 @@ profile directory creation works under the packaged app's file access; a
 Chromium-family browser is detected across the Chrome/Brave/Edge/Chromium order;
 teardown leaves no orphan process.
 
+**Status:** `BrowserControl.probe/1` proves the full path (detect → launch →
+getVersion → createTarget → attach → navigate → loadEventFired → read title →
+Browser.close → confirm OS exit). Exposed as the `browser_control_probe` command
+and wired into `scripts/smoke_desktop.sh`. Green in dev against real Chrome, and
+the tagged live suite (`--include browser_engine`) asserts `lsof` sees **no
+listening socket** while the engine runs. Packaged x86_64 smoke: run via
+`smoke_desktop.sh`. **arm64 packaged run is pending the Apple Silicon build
+machine** (same hardware gate as `DISTRIBUTION_ROADMAP.md`) — the one remaining
+"both architectures" item, and the only thing between here and Phase 0 fully
+closed.
+
 If Phase 0 doesn't pass, the roadmap stops here and we say so. Everything below
 assumes it did.
 
-## Phase 1 — Our CDP client
+## Phase 1 — Our CDP client — **SHIPPED 07-22**
 
-`BusterClaw.Browser.CDP` — connect, command, subscribe, dispatch.
+`BusterClaw.BrowserControl.CDP` — connect, command, subscribe, dispatch.
 
-CDP is JSON over a WebSocket: `{id, method, params}` out, `{id, result}` and
+CDP is JSON documents, `{id, method, params}` out and `{id, result}` /
 `{method, params}` events back. Owning it is the whole point — every byte on the
 wire is ours, which is what makes the privacy claim inspectable rather than
-promised.
+promised. **Transport is the pipe, not a WebSocket** (settled with the engine
+host, 07-22): fd3/fd4 NUL-delimited frames, so there is no socket to reach.
 
 "No outside library" means **no Playwright, Puppeteer, or Selenium** — no
-third-party automation framework interposing on the session. It does not mean
-writing a WebSocket implementation from scratch; the transport Phoenix already
-ships is fine. The line is: nobody else's code decides what our browser does.
+third-party automation framework interposing on the session. The line is: nobody
+else's code decides what our browser does.
 
 Domains we actually need, and no more: `Page`, `Runtime`, `DOM`, `Input`,
 `Network` (read-only for the trajectory), `Target`, `Browser`. Resist enabling
@@ -199,6 +209,12 @@ domains we don't consume — every enabled domain is event volume and surface.
 Launch flags matter for the privacy claim: disable background networking, sync,
 component update, default-browser checks, and metrics. The engine should phone
 home to nobody, and that's a flag list we can point at.
+
+**Status:** landed as four modules — `Detect` (browser discovery + override),
+`Launch` (pure argv, the fd-wiring shim, pinned hygiene flags),
+`Frames` (pure NUL framing), and `CDP` (the GenServer: id correlation, flat-mode
+`sessionId` scoping, event subscription, graceful-then-armed stop that reaps the
+real engine pid). 24 always-on tests + 2 live-engine tests, all green.
 
 ## Phase 2 — Session pool
 

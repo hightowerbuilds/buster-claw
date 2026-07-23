@@ -125,4 +125,27 @@ else
   say "  hidden-webview render returned real page text"
 fi
 
+say "BrowserControl engine probe (BROWSER_ENGINE_ROADMAP Phase 0)"
+# Launches an installed Chromium-family browser headless over the CDP pipe from
+# INSIDE the packaged release, navigates, reads a title back, exits cleanly.
+# This is the anti-Browserbase gate: the engine must work in the shipped
+# artifact, not just in dev. Absence of any Chromium is a loud, named failure —
+# SMOKE_NO_ENGINE=1 downgrades exactly that one case for engine-less machines.
+BODY=$(curl -sS --max-time 90 -X POST "$BASE/api/run" \
+  -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  -d '{"command":"browser_control_probe"}')
+if echo "$BODY" | grep -q '"ok":true'; then
+  echo "$BODY" | grep -q '"title":"bc-probe"' \
+    || fail "engine probe ok but wrong title read back: $(echo "$BODY" | head -c 200)"
+  say "  engine launched, navigated, read back, exited: $(echo "$BODY" | head -c 120)"
+elif echo "$BODY" | grep -q 'no_browser'; then
+  if [ "${SMOKE_NO_ENGINE:-0}" = 1 ]; then
+    say "  NO ENGINE on this machine (accepted via SMOKE_NO_ENGINE=1) — probe not exercised"
+  else
+    fail "no Chromium-family browser installed (set SMOKE_NO_ENGINE=1 to accept): $BODY"
+  fi
+else
+  fail "engine probe failed in the packaged app: $(echo "$BODY" | head -c 300)"
+fi
+
 say "PASS — packaged app boots, authenticates, and completes a native bridge round-trip"

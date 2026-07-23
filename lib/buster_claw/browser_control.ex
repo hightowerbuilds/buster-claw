@@ -60,23 +60,52 @@ defmodule BusterClaw.BrowserControl do
   end
 
   defp run_probe(browser, profile, opts) do
-    with {:ok, pid} <- launch(browser, profile, opts),
-         :ok <- CDP.subscribe(pid),
+    case launch(browser, profile, opts) do
+      {:ok, pid} ->
+        # A failed step must not leave an engine behind: the success path stops
+        # it in close_and_confirm; every other path stops it here.
+        try do
+          probe_steps(browser, pid)
+        after
+          if Process.alive?(pid), do: CDP.stop(pid)
+        end
+
+      {:error, :launch, reason} ->
+        {:error, :launch, reason}
+    end
+  end
+
+  # Per-step CDP deadline; tests shrink it to fail a mute engine fast.
+  defp timeout_ms,
+    do: Application.get_env(:buster_claw, :browser_control_probe_timeout_ms, 15_000)
+
+  defp probe_steps(browser, pid) do
+    with {:subscribe, :ok} <- {:subscribe, CDP.subscribe(pid)},
          os_pid = CDP.os_pid(pid),
          {:version, {:ok, %{"product" => product}}} <-
-           {:version, CDP.command(pid, "Browser.getVersion")},
+           {:version, CDP.command(pid, "Browser.getVersion", %{}, timeout: timeout_ms())},
          {:target, {:ok, %{"targetId" => target_id}}} <-
-           {:target, CDP.command(pid, "Target.createTarget", %{"url" => "about:blank"})},
+           {:target,
+            CDP.command(pid, "Target.createTarget", %{"url" => "about:blank"},
+              timeout: timeout_ms()
+            )},
          {:attach, {:ok, %{"sessionId" => session}}} <-
            {:attach,
-            CDP.command(pid, "Target.attachToTarget", %{
-              "targetId" => target_id,
-              "flatten" => true
-            })},
-         {:page, {:ok, _}} <- {:page, CDP.command(pid, "Page.enable", %{}, session_id: session)},
+            CDP.command(
+              pid,
+              "Target.attachToTarget",
+              %{"targetId" => target_id, "flatten" => true},
+              timeout: timeout_ms()
+            )},
+         {:page, {:ok, _}} <-
+           {:page,
+            CDP.command(pid, "Page.enable", %{}, session_id: session, timeout: timeout_ms())},
          {:navigate, {:ok, _}} <-
            {:navigate,
-            CDP.command(pid, "Page.navigate", %{"url" => @probe_page}, session_id: session)},
+            CDP.command(pid, "Page.navigate", %{"url" => @probe_page},
+              session_id: session,
+              timeout: timeout_ms()
+            )},
          {:load, :ok} <- {:load, await_load(session)},
          {:title, {:ok, title}} <- {:title, read_title(pid, session)},
          {:exit, {:ok, status}} <- {:exit, close_and_confirm(pid)} do
@@ -117,7 +146,8 @@ defmodule BusterClaw.BrowserControl do
 
   defp read_title(pid, session) do
     case CDP.command(pid, "Runtime.evaluate", %{"expression" => "document.title"},
-           session_id: session
+           session_id: session,
+           timeout: timeout_ms()
          ) do
       {:ok, %{"result" => %{"value" => title}}} -> {:ok, title}
       {:ok, other} -> {:error, {:unexpected_evaluate, other}}

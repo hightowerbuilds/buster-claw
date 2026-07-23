@@ -543,6 +543,7 @@ defmodule BusterClaw.Commands do
   defdelegate browser_flow(args), to: BusterClaw.Commands.Web
   defdelegate browser_check_save(args), to: BusterClaw.Commands.Web
   defdelegate browser_check_list(args \\ %{}), to: BusterClaw.Commands.Web
+  defdelegate browser_control_probe(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_check_run(args), to: BusterClaw.Commands.Web
   defdelegate browser_tabs(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_navigate(args), to: BusterClaw.Commands.Web

@@ -725,6 +725,27 @@ defmodule BusterClaw.Commands.Web do
   end
 
   # -----------------------------------------------------------------------
+  # BrowserControl (the in-house CDP engine — BROWSER_ENGINE_ROADMAP)
+  # -----------------------------------------------------------------------
+
+  @doc """
+  Run the Phase 0 engine probe and return its report as data, success or not:
+  a diagnostic's failure detail IS its result, so it must survive the API's
+  error laundering. `ok: false` carries the first failing step by name
+  (`detect`, `launch`, `version`, `target`, `attach`, `page`, `navigate`,
+  `load`, `title`, `exit`) — the packaged-app smoke greps for these.
+  """
+  def browser_control_probe(_args \\ %{}) do
+    case BusterClaw.BrowserControl.probe() do
+      {:ok, report} ->
+        {:ok, Map.put(report, :ok, true)}
+
+      {:error, step, reason} ->
+        {:ok, %{ok: false, failed_step: step, reason: inspect(reason)}}
+    end
+  end
+
+  # -----------------------------------------------------------------------
   # Browsing history (read-only; recording happens in the desktop shell)
   # -----------------------------------------------------------------------
 

@@ -55,11 +55,23 @@ defmodule BusterClaw.BrowserControl.CDP do
     end
   end
 
-  @doc "Subscribe the caller to engine events and the exit notification."
-  def subscribe(server), do: GenServer.call(server, :subscribe)
+  @doc """
+  Subscribe the caller to engine events and the exit notification. An engine
+  that already died (instant-crash launch) is `{:error, :browser_exited}`,
+  never a caller-killing `:noproc` exit.
+  """
+  def subscribe(server) do
+    GenServer.call(server, :subscribe)
+  catch
+    :exit, _ -> {:error, :browser_exited}
+  end
 
-  @doc "The engine's OS pid (the real one — the shim exec'd into it)."
-  def os_pid(server), do: GenServer.call(server, :os_pid)
+  @doc "The engine's OS pid (the real one — the shim exec'd into it); nil if gone."
+  def os_pid(server) do
+    GenServer.call(server, :os_pid)
+  catch
+    :exit, _ -> nil
+  end
 
   @doc """
   Graceful stop: `Browser.close`, wait for the process to actually exit, then

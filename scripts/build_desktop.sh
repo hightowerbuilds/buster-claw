@@ -73,15 +73,16 @@ echo "==> Assembling Elixir release"
 MIX_ENV=prod mix release --overwrite
 
 echo "==> Staging release into Tauri resources"
-rm -rf desktop/tauri/resources/release
-mkdir -p desktop/tauri/resources
-cp -R "$REPO_ROOT/_build/prod/rel/buster_claw" desktop/tauri/resources/release
+rm -rf deskt
 
 echo "==> Building Tauri bundle"
 # tauri-build's copy_resources overwrites with fs::copy without removing first;
 # the staged erts binaries are mode 0555, so a prior copy left read-only files
-# that fail to overwrite (EACCES). Clear the previous staging dir first.
-rm -rf desktop/tauri/target/release/release
+# that fail to overwrite (EACCES). Clear the previous staging dirs first — BOTH
+# profiles: the debug one is populated by check_rust.sh (clippy/test builds),
+# and a stale debug copy makes `mix precommit` fail the same way after the
+# resources are restaged here.
+rm -rf desktop/tauri/target/release/release desktop/tauri/target/debug/release
 cd desktop/tauri
 cargo tauri build
 

@@ -56,6 +56,14 @@ defmodule BusterClaw.Commands.Catalog.Web do
         args: %{}
       },
       %{
+        name: "browser_control_probe",
+        type: :trigger,
+        tier: :restricted,
+        description:
+          "Diagnostic: prove the BrowserControl engine end to end — detect an installed Chromium-family browser, launch it headless over the CDP pipe, navigate, read a page title back, and exit cleanly. Returns the report either way (ok: true/false); never launders the failing step.",
+        args: %{}
+      },
+      %{
         name: "browser_current",
         type: :read,
         tier: :restricted,
