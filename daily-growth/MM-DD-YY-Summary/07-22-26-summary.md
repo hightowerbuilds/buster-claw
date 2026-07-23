@@ -167,3 +167,16 @@ pre-orders cached snapshots degrade to honest empty states. Meanwhile the
 parallel session pushed browser-control Phase 3.5 (model-egress controls,
 `f2a8d1e`) — the two streams stayed collision-free to the end. 1,277 tests
 green at close.
+
+## 10. Last call: the partition learns to drag (`8ca7552`)
+The trading tab's chat/account boundary became a real draggable divider by
+generalizing the /split view's `SplitResizer` hook with backward-compatible
+data attrs (`data-resize-var/key/default`) — /split untouched, any future
+two-pane surface gets resizing for three attributes. Ratio persists
+client-side (`bc:trading-split-ratio`, default 30% chat, clamped 15–85%).
+
+Also learned the hard way tonight: two sessions running `mix test`
+concurrently poison the shared SQLite test DB (38 SQLITE_BUSY across random
+suites, different victims each run). Scoped runs + CI arbitration covered
+this commit; a per-session test-DB path is the future fix if parallel
+sessions become the norm.
