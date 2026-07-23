@@ -31,6 +31,19 @@ bun test assets/js
 Pure-logic tests (URL heuristics, ANSI parsing, tab state). Runs as the `js`
 job in CI.
 
+## Packaged app (pre-release)
+
+```sh
+./scripts/build_desktop.sh && ./scripts/smoke_desktop.sh
+```
+
+Launches the real .app (or attaches to a running one) and drives the HTTP API
+from outside: health, catalog, auth, a bridge round-trip, and a hidden-webview
+live render that returns real page text — the only check that exercises
+production ACL resolution end-to-end (`tests/acl_lockstep.rs` is the static
+half). `SMOKE_OFFLINE=1` skips the render when there is no network. Manual,
+before a release — not per-PR.
+
 For desktop testing, use the single-command launcher (boots Phoenix, waits for `/_health`, then opens the Tauri window):
 
 ```sh

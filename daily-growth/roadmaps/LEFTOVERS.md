@@ -15,6 +15,12 @@ roadmap, not here.
 
 ### Walk the new automation primitives in the real app (~5 min)
 
+**Update 07-22 (shell-rebuild Phase 5):** the *infrastructure* half of this is
+now automated — `scripts/smoke_desktop.sh` launches the packaged .app and
+proves boot, auth, catalog, and a full native-bridge round-trip (the packaged
+ACL check the 07-17/07-21 bugs demanded). What remains manual below is only
+the interactive primitive walk in a real browser surface.
+
 **What.** The 07-18 automation build (wait / selector acting / extract /
 flow / checks) is covered by fake-desktop protocol tests and Rust injection
 tests, and the operator confirmed the browser works after the cold-boot fix —

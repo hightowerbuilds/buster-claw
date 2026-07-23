@@ -309,3 +309,37 @@ pub fn shutdown_all(app: &AppHandle) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_id_is_twelve_alphanumerics_and_unique() {
+        let a = new_id();
+        let b = new_id();
+        assert_eq!(a.len(), 12);
+        assert!(a.chars().all(|c| c.is_ascii_alphanumeric()));
+        // 62^12 ids: a collision here means the generator is broken, not unlucky.
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn default_shell_honours_env_and_falls_back_absolute() {
+        let shell = default_shell();
+        assert!(shell.starts_with('/'), "shell must be absolute: {shell}");
+        match std::env::var("SHELL") {
+            Ok(env_shell) => assert_eq!(shell, env_shell),
+            Err(_) => assert_eq!(shell, "/bin/zsh"),
+        }
+    }
+
+    #[test]
+    fn pty_size_maps_dims_and_zeroes_pixels() {
+        let size = pty_size(120, 40);
+        assert_eq!(size.cols, 120);
+        assert_eq!(size.rows, 40);
+        assert_eq!(size.pixel_width, 0);
+        assert_eq!(size.pixel_height, 0);
+    }
+}

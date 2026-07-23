@@ -1,5 +1,13 @@
 # The Browser Shell Gets a Skeleton
 
+> **COMPLETE 2026-07-22 — all six phases shipped in one arc (doc b58e2d4 → smoke 
+> proven same-week).** browser.rs is eight modules; 34 Rust tests + ACL lockstep 
+> + purity guards; rust/js CI jobs gate every push; `scripts/smoke_desktop.sh` 
+> PASSED against the packaged .app (launch, auth, bridge round-trip, live render). 
+> Bonus finds along the way: the speak/stop_speaking ACL gap (fixed 3c96b7e) and 
+> the Linux `kill -pgid` group-leak bug (fixed bd425b2). Remaining operator item 
+> lives in roadmaps/LEFTOVERS.md (the ~5-min interactive primitive walk).
+
 **Rust shell rebuild · Buster Claw 0.1.0**
 
 Dismantling the 2,526-line `browser.rs` monolith and closing the 150-to-8 test asymmetry — without renaming a command, moving a pixel, or touching a single contract the Elixir side depends on.
