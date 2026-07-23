@@ -111,3 +111,45 @@ agent-authored WGSL shader avatars rendering live on notesthatfloat.com, a
 separate JS app with real accounts; the model stays on the user's Mac via
 the existing AgentRunner. Both build directly on what this arc hardened:
 the 8-module shell and the shader/agent plumbing.
+
+## 8. Evening: the Trading tab ships and trades-ready (`c808de4`, `bf0d65a`)
+A hard gear-change after the rebuild wrapped: Robinhood launched agentic
+trading as an MCP endpoint, and the operator wanted in. Two commits, same
+evening, planned and shipped:
+
+**v1 — the tab (`c808de4`).** A fourth home sub-tab riding the existing chat
+surface via a deliberately DB-less pinned conversation ("trading" — hidden
+from the chat strip by construction). The app holds no broker credentials and
+speaks no MCP: the user's own `claude` runs the turns with
+`--strict-mcp-config --mcp-config <workspace>/mcp/robinhood.json`, one new
+general Chat opt (`:extra_cli_args`) being the entire plumbing. Money
+boundary = Robinhood's dedicated Agentic account (primary invisible to
+agents — verified live). Full trading enabled day one by operator call;
+Claude-only v1; one Sentinel line per send.
+
+**Setup, live.** OAuth needed a real TTY; the winning trick was
+`script -q /dev/null claude mcp login robinhood` (PTY allocation +
+localhost callback — no #65895 bug). First real exchange through the actual
+pipeline: *"tools reachable, Agentic account ••••6587, $2.38, all cash"* —
+6 turns, $0.44, transcript + Sentinel audit both landed.
+
+**v2 — the account panel (`bf0d65a`).** The tab became chat-left /
+account-right: value, cash, buying power, positions, honest as-of stamp.
+A snapshot is one cheap haiku run with a strict-JSON prompt, parsed
+defensively (`parse_snapshot` tolerates stderr noise, rejects invented
+shapes, stamps time app-side) and cached in Settings. No polling — refresh
+on stale tab entry, after trading runs, or by button; the last good numbers
+never blank under a spinner or error. 17 new tests across the two commits.
+
+**Meanwhile, in the other window:** the operator's parallel session executed
+the morning's browser-engine roadmap at speed — the CDP engine over a pipe
+(`be1500d`), packaged-app probe green (`2886f96`), session pool (`de1d52d`),
+frozen scope + injection defense (`8423d97`). Two streams, one main, no
+collisions.
+
+## Where the day ends
+Main holds: a rebuilt, gated, smoke-proven browser shell; a live CDP engine
+through Phase 3; and a Trading tab wired to a real brokerage through the
+user's own agent — verified against real money ($2.38 of it). Next trading
+step is the operator's: fund the Agentic account. CI green on every blocking
+job all evening.
