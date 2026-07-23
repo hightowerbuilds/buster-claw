@@ -13,34 +13,15 @@ roadmap, not here.
 
 ## Open
 
-### Walk the new automation primitives in the real app (~5 min)
-
-**Update 07-22 (shell-rebuild Phase 5):** the *infrastructure* half of this is
-now automated — `scripts/smoke_desktop.sh` launches the packaged .app and
-proves boot, auth, catalog, and a full native-bridge round-trip (the packaged
-ACL check the 07-17/07-21 bugs demanded). What remains manual below is only
-the interactive primitive walk in a real browser surface.
-
-**What.** The 07-18 automation build (wait / selector acting / extract /
-flow / checks) is covered by fake-desktop protocol tests and Rust injection
-tests, and the operator confirmed the browser works after the cold-boot fix —
-but the five primitive-specific checks were never individually run:
-(1) `browser_wait until:"selector"` on a slow SPA resolves past the old 8s
-ceiling; (2) `browser_click text:"…"` acts with scroll-into-view; (3)
-`browser_extract` with a selector returns structured matches; (4) a 3-step
-`browser_flow` with a wrong selector fails at step 3 *with a screenshot*;
-(5) `browser_check_save` → `run` → the `## Runs` line appears;
-(6) with the app running, launch it a second time — the second launch must
-exit immediately and focus the first window (single-instance guard; only
-works between two post-07-18 binaries, so both launches must be fresh builds).
-
-**Why deferred.** Needs operator hands on the real WKWebView; the operator
-moved on after confirming the browser itself works (07-18).
-
-**What makes it expensive later.** Same as every unwalked feature: the first
-break becomes a beta user's bug report with cold context.
-
----
+<!-- DONE 07-22: "Walk the new automation primitives in the real app" — walked
+against the PACKAGED app (stronger than the dev-shell ask). Agent side driven
+via /api/run: wait (match + real 10s timeout), click text (matched_by:text +
+navigation), extract selector+attr (30 matches), flow failing at the reported
+step WITH screenshot on disk (twice), check_save→run→`## Runs` line, plus
+open_tab (session:ephemeral honored), find_elements, read, screenshot (valid
+PNG). Operator confirmed GUI side: co-presence badge flashed on every call,
+7-tab eviction, sidebar bumper/⌘B, zoom, ⌘F count, popup-as-tab, download +
+reveal, menu accelerators, and the double-launch single-instance check. -->
 
 ### Refresh out-of-repo prompts naming the old click/fill error atoms
 

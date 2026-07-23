@@ -89,11 +89,13 @@ packaged launch needs it closed. Roadmap archived complete at
   lockstep + purity guards; zero Rust CI → fmt/clippy/test gating every push
   + a proven pre-release smoke; two latent ACL bugs and one Linux
   process-leak bug found and fixed; every external contract byte-identical.
-- **Owed by operator**: the manual `./scripts/dev.sh` browser checklist
-  (7-tab eviction churn, click/fill/wait/extract, screenshot, download +
-  reveal, sidebar, zoom, find count, popup-as-tab, menu shortcuts) plus the
-  LEFTOVERS ~5-min primitive walk. The dev shell was killed for the smoke
-  run — relaunch with `./scripts/dev.sh`.
+- **Manual checklist: DONE, same day.** Walked jointly against the packaged
+  app — agent primitives driven via `/api/run` (wait/click/extract/flow-with-
+  screenshot/check-save-run/open_tab-sandbox/screenshot, all passed with
+  verified payloads and artifacts on disk), operator confirmed the GUI side
+  (co-presence badge on every call, 7-tab eviction, sidebar/⌘B, zoom, ⌘F
+  count, popup-as-tab, download + reveal, menu keys, single-instance
+  double-launch). The 07-18 LEFTOVERS primitive-walk item is closed.
 - Noted for later: `block v0.1.6` is flagged future-incompatible — one more
   reason to modernize the objc corner eventually; Dialyzer stays known-red
   and non-blocking.
