@@ -49,11 +49,31 @@ defmodule BusterClaw.BrowserControl.Scope do
     checkout.stripe.com js.stripe.com api.stripe.com connect.stripe.com
     paypal.com paypalobjects.com braintreegateway.com adyen.com
     squareup.com checkout.square.site plaid.com klarna.com afterpay.com
-    checkout.shopify.com
+    checkout.shopify.com pay.google.com payments.amazon.com
+    affirm.com checkout.com
   )
 
-  # Path fragments that mark a payment/checkout step on an otherwise-allowed host.
-  @payment_path_re ~r{(^|/)(checkout|payment|payments|billing|pay|purchase|place-?order|complete-?order)(/|$|\?)}i
+  # Path segments that mark a payment/checkout step on an otherwise-allowed host.
+  # Two lists, and the difference between them is the fix from the 07-25 field
+  # test — where this gate failed OPEN on Amazon and let a commerce run walk
+  # into checkout still in `agent_working`.
+  #
+  #   * `@payment_fragments` — a path segment that *contains* one of these.
+  #     Whole-segment matching was the bug: Amazon's literal payment page is
+  #     `/gp/buy/payselect/handlers/display.html`, and `payselect` is not the
+  #     token `pay`. Substring matching also picks up Shopify's `/checkouts/`
+  #     (plural), which the old anchored form missed too.
+  #   * `@payment_words` — a path segment that *is* one of these. `buy` lives
+  #     here rather than above because a substring `buy` also matches ordinary
+  #     shopping content (`/best-buy-deals`, `/buyers-guide`), and halting a
+  #     browse page is a worse trade than the segment form — which still
+  #     catches Amazon's entire `/gp/buy/` funnel, the actual defect.
+  #
+  # The Phase 3 bias is unchanged: over-halting hands off to a human and is
+  # safe; under-halting is the failure that matters. `/api/payload` halting is
+  # an accepted false positive, and it is cheaper than the alternative.
+  @payment_fragments ~w(checkout pay billing purchase)
+  @payment_words ~w(buy buynow buy-now placeorder place-order completeorder complete-order)
 
   @doc """
   Freeze a scope from `intent` (the task, verbatim) and `allowed_domains`
@@ -159,11 +179,26 @@ defmodule BusterClaw.BrowserControl.Scope do
     end)
   end
 
+  # Segment-wise rather than one regex over the whole path: the boundary rules
+  # differ per list (contains vs equals), and splitting makes both the intent
+  # and the test table readable. Only `URI.path` is examined — the query string
+  # is deliberately out of scope, since `?ref=paypal` on a product page is a
+  # halt nobody wants. That is a known gap, not an oversight.
   defp payment_path?(url) do
     case URI.parse(url) do
-      %URI{path: path} when is_binary(path) -> Regex.match?(@payment_path_re, path)
-      _ -> false
+      %URI{path: path} when is_binary(path) ->
+        path
+        |> String.downcase()
+        |> String.split("/", trim: true)
+        |> Enum.any?(&payment_segment?/1)
+
+      _ ->
+        false
     end
+  end
+
+  defp payment_segment?(segment) do
+    segment in @payment_words or Enum.any?(@payment_fragments, &String.contains?(segment, &1))
   end
 
   defp host_of(url) do

@@ -56,6 +56,45 @@ defmodule BusterClaw.BrowserControl.PageTest do
     assert {:error, :no_match} = Page.fill(session, %{"selector" => "#gone"}, "x", opts())
   end
 
+  describe "ambiguous text targeting (field test 07-25)" do
+    test "several matches is a refusal, distinct from no-match" do
+      session = evaluated(%{"matched" => false, "ambiguous" => 3})
+
+      assert {:error, {:ambiguous_text, 3}} =
+               Page.click(session, %{"text" => "45 inches"}, opts())
+
+      assert {:error, {:ambiguous_text, 3}} =
+               Page.fill(session, %{"text" => "45 inches"}, "x", opts())
+    end
+
+    test "the refusal carries a count and never the matched labels" do
+      # Labels are page content; an error path is not egress-accounted, so the
+      # count is all that may cross. Asserted here so a later "helpful" patch
+      # that adds labels fails loudly instead of quietly widening egress.
+      session = evaluated(%{"matched" => false, "ambiguous" => 2})
+      assert {:error, {:ambiguous_text, 2}} = Page.click(session, %{"text" => "Buy"}, opts())
+    end
+
+    test "the generated JS resolves exact matches before substring matches" do
+      session = fn "Runtime.evaluate", %{"expression" => js} ->
+        assert js =~ ~s|label(el) === want|, "exact tier missing"
+        assert js =~ ~s|label(el).includes(want)|, "substring tier missing"
+        assert js =~ "exact.length > 0 ? exact :", "exact tier must be preferred"
+        assert js =~ "pool.length > 1", "ambiguity check missing"
+        {:ok, %{"result" => %{"value" => %{"matched" => true, "clicked" => "45 inches"}}}}
+      end
+
+      assert {:ok, _} = Page.click(session, %{"text" => "45 inches"}, opts())
+    end
+
+    test "selector and index keep first-match semantics — only text refuses" do
+      session = evaluated(%{"matched" => true, "clicked" => "Go"})
+
+      assert {:ok, _} = Page.click(session, %{"selector" => ".item"}, opts())
+      assert {:ok, _} = Page.click(session, %{"index" => 0}, opts())
+    end
+  end
+
   test "fill JSON-encodes the value into the page script" do
     session = fn "Runtime.evaluate", %{"expression" => js} ->
       assert js =~ ~s("with \\"quotes\\"")

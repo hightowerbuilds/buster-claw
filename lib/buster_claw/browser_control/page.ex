@@ -75,14 +75,17 @@ defmodule BusterClaw.BrowserControl.Page do
 
   @doc """
   Click an element by `%{"selector" => css}`, `%{"text" => visible}`, or
-  `%{"index" => n}`. Returns `{:ok, %{"clicked" => label}}` or
-  `{:error, :no_match}`.
+  `%{"index" => n}`. Returns `{:ok, %{"clicked" => label}}`, `{:error, :no_match}`,
+  or — when a `text` target matches more than one element —
+  `{:error, {:ambiguous_text, count}}`. It never picks one of several.
   """
   def click(session, target, opts \\ []) do
     with {:ok, finder} <- finder_js(target) do
       js = """
       (() => {
-        const el = #{finder};
+        const found = #{finder};
+        if (found.ambiguous > 1) return {matched: false, ambiguous: found.ambiguous};
+        const el = found.el;
         if (!el) return {matched: false};
         const label = (el.innerText || el.value || '').trim().slice(0, 120);
         el.click();
@@ -90,24 +93,23 @@ defmodule BusterClaw.BrowserControl.Page do
       })()
       """
 
-      case eval(session, js, opts) do
-        {:ok, %{"matched" => true} = result} -> {:ok, Map.delete(result, "matched")}
-        {:ok, _no_match} -> {:error, :no_match}
-        other -> other
-      end
+      session |> eval(js, opts) |> resolve_match()
     end
   end
 
   @doc """
-  Fill an input by the same targeting as `click/3`, dispatching `input` and
-  `change` so framework-bound fields notice. The caller resolves any secret
-  reference before the value reaches this module (AgentMode's executor rule).
+  Fill an input by the same targeting as `click/3` — including the ambiguity
+  refusal — dispatching `input` and `change` so framework-bound fields notice.
+  The caller resolves any secret reference before the value reaches this module
+  (AgentMode's executor rule).
   """
   def fill(session, target, value, opts \\ []) when is_binary(value) do
     with {:ok, finder} <- finder_js(target) do
       js = """
       (() => {
-        const el = #{finder};
+        const found = #{finder};
+        if (found.ambiguous > 1) return {matched: false, ambiguous: found.ambiguous};
+        const el = found.el;
         if (!el) return {matched: false};
         el.focus();
         el.value = #{Jason.encode!(value)};
@@ -117,11 +119,7 @@ defmodule BusterClaw.BrowserControl.Page do
       })()
       """
 
-      case eval(session, js, opts) do
-        {:ok, %{"matched" => true} = result} -> {:ok, Map.delete(result, "matched")}
-        {:ok, _no_match} -> {:error, :no_match}
-        other -> other
-      end
+      session |> eval(js, opts) |> resolve_match()
     end
   end
 
@@ -239,21 +237,70 @@ defmodule BusterClaw.BrowserControl.Page do
 
   defp condition_js(_condition), do: {:error, :missing_condition}
 
+  # A finder yields `{el, ambiguous}` rather than a bare element, so the callers
+  # can tell "nothing matched" (act is impossible) from "too many matched"
+  # (acting would be a guess). Those are different answers and only one of them
+  # is safe to paper over.
   defp finder_js(%{"selector" => selector}) when is_binary(selector) and selector != "",
-    do: {:ok, "document.querySelector(#{Jason.encode!(selector)})"}
+    do: {:ok, "({el: document.querySelector(#{Jason.encode!(selector)}), ambiguous: 0})"}
 
+  # Text targeting resolves in two tiers — exact match first, substring second —
+  # and refuses when the winning tier has more than one member. Both halves come
+  # from the 07-25 field test, where `click text: "45 inches"` matched a customer
+  # *review's* variant byline ("Size: 45 inchesColor: Dark Brown") rather than the
+  # size swatch, and came one unlucky DOM order away from silently carting the
+  # wrong size.
+  #
+  # Exact-first is what keeps the ordinary case working: the real swatch reads
+  # exactly "45 inches" while the review byline merely contains it. Refusing a
+  # tie is what makes the ambiguous case safe — picking the first of several is
+  # a guess, and a guess that reaches the cart is indistinguishable from a
+  # correct answer downstream, because the cart is then cent-exact about the
+  # wrong item.
+  #
+  # `selector` deliberately keeps `querySelector` first-match semantics: it is
+  # the operator's precise instrument, `text` is the fuzzy one, so `text` is the
+  # one that must not guess.
   defp finder_js(%{"text" => text}) when is_binary(text) and text != "" do
     {:ok,
      """
-     #{@enumerate_js}
-       .find(el => (el.innerText || el.value || '').trim().includes(#{Jason.encode!(text)}))
+     (() => {
+       const want = #{Jason.encode!(text)};
+       const label = el => (el.innerText || el.value || '').trim();
+       const all = #{@enumerate_js};
+       const exact = all.filter(el => label(el) === want);
+       const pool = exact.length > 0 ? exact : all.filter(el => label(el).includes(want));
+       if (pool.length > 1) return {el: null, ambiguous: pool.length};
+       return {el: pool[0] || null, ambiguous: 0};
+     })()
      """}
   end
 
   defp finder_js(%{"index" => index}) when is_integer(index) and index >= 0,
-    do: {:ok, "#{@enumerate_js}[#{index}]"}
+    do: {:ok, "({el: #{@enumerate_js}[#{index}] || null, ambiguous: 0})"}
 
   defp finder_js(_target), do: {:error, :missing_target}
+
+  # The ambiguity error carries the count and deliberately NOT the matched
+  # labels. Labels are page content, and an error returned straight to the model
+  # would route them around `Egress` — untracked bytes that the run summary
+  # could not reconcile (acceptance criterion 12). The agent disambiguates with
+  # `find_elements` or `extract`, both of which are egress-accounted.
+  defp resolve_match(result) do
+    case result do
+      {:ok, %{"matched" => true} = value} ->
+        {:ok, Map.delete(value, "matched")}
+
+      {:ok, %{"ambiguous" => count}} when is_integer(count) and count > 1 ->
+        {:error, {:ambiguous_text, count}}
+
+      {:ok, _no_match} ->
+        {:error, :no_match}
+
+      other ->
+        other
+    end
+  end
 
   # Runtime.evaluate with returnByValue; unwraps the CDP result envelope and
   # surfaces in-page exceptions as typed errors.

@@ -107,6 +107,97 @@ defmodule BusterClaw.BrowserControl.ScopeTest do
     end
   end
 
+  # The 07-25 field test found this gate failing OPEN on Amazon: the old
+  # whole-segment regex had no `buy` token and could not see `payselect` inside
+  # a segment, so a commerce run could walk the entire checkout funnel still in
+  # `agent_working`. The suite passed at the time because its fixtures were
+  # idealized (`/checkout/`) — paths we invented, not paths that exist.
+  #
+  # So this table is real URLs only. Anything added here must be a path a
+  # retailer actually serves; if you cannot name where it came from, it does not
+  # belong in this test.
+  describe "payment gate vs. real checkout URLs (field test 07-25)" do
+    @real_checkout_paths [
+      # Amazon — the funnel that defeated the original regex.
+      {"amazon.com", "/gp/buy/spc/handlers/display.html"},
+      {"amazon.com", "/gp/buy/payselect/handlers/display.html"},
+      {"amazon.com", "/gp/buy/shipoptionselect/handlers/display.html"},
+      {"amazon.com", "/checkout/entry/edit-address"},
+      # Shopify — plural segment; the old anchored `checkout` token missed it.
+      {"shop.example.com", "/checkouts/c/abc123def456"},
+      {"shop.example.com", "/checkouts/c/abc123/information"},
+      {"shop.example.com", "/cart/checkout"},
+      # Stripe-hosted and PayPal, by path as well as by host.
+      {"checkout.stripe.com", "/c/pay/cs_live_a1b2c3"},
+      {"www.paypal.com", "/checkoutnow"},
+      {"www.paypal.com", "/webapps/hermes"},
+      # Common storefront conventions.
+      {"store.example.com", "/payment/method"},
+      {"store.example.com", "/billing/address"},
+      {"store.example.com", "/purchase/confirm"},
+      {"store.example.com", "/place-order"}
+    ]
+
+    test "every real checkout URL halts as :payment_stop" do
+      for {host, path} <- @real_checkout_paths do
+        # Allowlist the host on purpose: the payment gate must fire *before*
+        # the allowlist, or a merchant we trust is a merchant we let it pay at.
+        s = scope([host])
+        url = "https://#{host}#{path}"
+
+        assert {:halt, :payment_stop, _meta} = Scope.authorize(s, {:navigate, url}),
+               "payment gate failed OPEN on a real checkout URL: #{url}"
+      end
+    end
+
+    test "acting is gated on the same real URLs, not just navigating" do
+      s = scope(["amazon.com"])
+
+      assert {:halt, :payment_stop, _} =
+               Scope.authorize(
+                 s,
+                 {:act, :click, "https://amazon.com/gp/buy/payselect/handlers/display.html"}
+               )
+    end
+
+    @real_shopping_paths [
+      # Amazon browse/product/cart-view — the run must not halt on these or the
+      # gate is useless in the other direction.
+      {"amazon.com", "/gp/cart/view.html"},
+      {"amazon.com", "/dp/B08N5WRWNW"},
+      {"amazon.com", "/s?k=boot+laces"},
+      {"amazon.com", "/gp/product/B01N0VJ0F4"},
+      {"amazon.com", "/Benchmark-Waxed-Kevlar-Boot-Laces/dp/B00KLM"},
+      # Ordinary storefront browsing, including words that merely look close.
+      {"store.example.com", "/products/paper"},
+      {"store.example.com", "/collections/all"},
+      {"store.example.com", "/cart"},
+      {"store.example.com", "/orders/12345"},
+      {"store.example.com", "/display/gallery"}
+    ]
+
+    test "real shopping URLs are not payment pages" do
+      for {host, path} <- @real_shopping_paths do
+        s = scope([host])
+        url = "https://#{host}#{path}"
+
+        assert {:ok, _origin} = Scope.authorize(s, {:navigate, url}),
+               "gate over-halted on an ordinary shopping URL: #{url}"
+      end
+    end
+
+    test "buy matches as a whole segment, not as a substring of browse content" do
+      s = scope(["example.com"])
+
+      assert {:halt, :payment_stop, _} =
+               Scope.authorize(s, {:navigate, "https://example.com/gp/buy/spc"})
+
+      # Substring `buy` would halt these, which is why `buy` is a word match.
+      assert {:ok, _} = Scope.authorize(s, {:navigate, "https://example.com/buyers-guide"})
+      assert {:ok, _} = Scope.authorize(s, {:navigate, "https://example.com/best-buy-deals"})
+    end
+  end
+
   describe "malformed input" do
     test "unparseable or hostless URLs halt as :bad_url" do
       s = scope(["example.com"])

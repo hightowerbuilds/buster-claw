@@ -55,6 +55,15 @@ defmodule BusterClawWeb.ErrorFormatter do
     end
   end
 
+  # Browser text targeting refused to guess between several matching elements.
+  # The count is deliberate and the labels are deliberately absent: labels are
+  # page content, and an error path is not egress-accounted. Point the caller at
+  # the primitives that are.
+  def format({:ambiguous_text, count}) when is_integer(count) do
+    "text target matched #{count} elements — refusing to guess. " <>
+      "Use a `selector`, or call `find_elements`/`extract` to disambiguate first."
+  end
+
   def format({:missing_config, key}), do: "missing config: #{key}"
   def format({:unexpected_response, _body}), do: "unexpected response from upstream"
 
