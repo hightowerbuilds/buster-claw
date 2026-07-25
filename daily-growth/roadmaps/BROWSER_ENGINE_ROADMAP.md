@@ -20,6 +20,13 @@
 > - **Engine host (settled 07-22): the user's installed Chromium-family browser**,
 >   launched by us with a dedicated profile, CDP over a pipe. Not bundled.
 
+**Status 07-25 — reopened.** Phases 0–6 shipped 07-24. The first live field test
+(Amazon, commerce mode) ran 07-25: **the errand succeeded and four wiring-layer
+defects surfaced, one of which fails the payment gate open on Amazon.** See
+[Field test 07-25](#field-test-07-25--first-real-run-and-what-it-cost-us) for
+the repairs and [Phase 7](#phase-7--the-mirror-agent-mode-inside-the-app) for
+the mirror that makes the run watchable without leaving the app.
+
 ---
 
 ## Outcome
@@ -465,6 +472,221 @@ Expand the action vocabulary only where a real flow needed it: `select`, `hover`
 
 ---
 
+## Field test 07-25 — first real run, and what it cost us
+
+First exercise of the Phase 0–6 stack against a live, adversarial, logged-in
+commercial site instead of a fixture. Full report:
+[`BROWSER_CONTROL_FIELD_TEST_07-25.md`](BROWSER_CONTROL_FIELD_TEST_07-25.md).
+
+**The errand succeeded.** Amazon, commerce mode, scope `["amazon.com"]`: the
+agent searched, compared, selected a size variant, added two items to the
+operator's real cart, froze a cart matching Amazon's subtotal to the cent, and
+handed off. Operator paid. 66 steps, 65 ok, 89.8 KB egressed.
+
+The pure layers — `Scope`, `Trajectory`, `Cart`, `Egress` — behaved exactly as
+designed. **Every defect was at the wiring layer**: capabilities that exist, are
+tested, and are correct in isolation but are not connected to the surface the
+agent actually calls. That is a specific and fixable class of failure, and it is
+the predictable cost of shipping six phases without a live walk.
+
+Two things are worth carrying forward as judgments, not just tasks:
+
+**The payment gate failed open on the largest retailer on the internet.** Not
+subtly — `@payment_path_re` has no `buy` token and anchors to whole path
+segments, so Amazon's entire `/gp/buy/` funnel and its literal `payselect` page
+both sail through. The gate that exists specifically to guarantee "the agent
+cannot act on a payment page" did nothing. Phase 3's own note says this gate is
+"intentionally conservative — over-halting is safe; under-halting is the failure
+that matters." It under-halted. The lesson is that the test table used idealized
+paths (`/checkout/`), and a gate tested only against its own idea of the world
+is not tested.
+
+**The run nearly bought the wrong product, and no gate would have caught it.**
+The size selector defaulted to 54"; correcting it via `click text: "45 inches"`
+matched a *customer review's variant byline* and navigated to the reviews page.
+Had it matched a different valid swatch instead, the wrong size would have gone
+into the cart silently, and every downstream receipt would have been perfectly
+accurate about the wrong thing. It was caught by verifying against the cart line
+— which renders the resolved variant — not by anything in the stack.
+
+**And the thing that actually saved the run was that a human could see it.** The
+report's own conclusion: the single most effective safety property in this run
+was not a gate, it was that the run is headful and supervised. That is the
+argument for Phase 7.
+
+### Repairs
+
+| # | Item | Where | Size | Priority | Status |
+|---|---|---|---|---|---|
+| 1 | Add `buy` to the token list; substring-within-segment matching for the `pay*` family; test table of **real** checkout URLs (Amazon `/gp/buy/`, Shopify `/checkouts/`, Stripe, PayPal) | `scope.ex:56` | S | **High** | **DONE 07-25** |
+| 2 | `text` targeting errors on ambiguous multi-match instead of silently taking the first | `page.ex:245` | S | **High** | **DONE 07-25** |
+| 3 | Walk a live checkout and confirm the gate fires post-fix | — | S | **High** | **PARTIAL 07-25** |
+| 4 | Give `find_elements` a real `selector` parameter | `page.ex:61` | S | Low | open |
+| 5 | Keychain-backed `secret_resolver` wired into `agent_run_start` | `commands/agent_runs.ex` | M | Medium | open |
+| 6 | Per-host egress levels with a config surface; `amazon.com` → `:structure_only` | `egress.ex:51` | M | Low | open |
+| 7 | **Re-check the landed URL after navigation** — see Finding 6 below | `browser_control.ex:35` | M | **High** | open |
+
+### What landed, 07-25
+
+**1 — the gate.** `@payment_path_re` is gone, replaced by segment-wise matching
+over two lists: `@payment_fragments` (segment *contains* — `checkout`, `pay`,
+`billing`, `purchase`, which is what finally sees `payselect`) and
+`@payment_words` (segment *equals* — `buy`, `place-order`, …, so `buy` catches
+Amazon's funnel without halting `/buyers-guide`). Four payment hosts added.
+Test table is real URLs only, with a stated rule: *if you cannot name where a
+path came from, it does not belong in that test.*
+
+**2 — text targeting.** Two-tier resolution: exact match first, substring
+second, refuse when the winning tier has more than one member
+(`{:error, {:ambiguous_text, count}}`). Exact-first is what makes the field
+test's own case *resolve correctly* rather than merely fail safely — the swatch
+reads exactly `45 inches`, the review byline only contains it. The refusal
+carries the count and deliberately **not** the labels: labels are page content
+and an error path is not egress-accounted, so shipping them would be untracked
+egress that criterion 12 could not reconcile. There is a test asserting their
+absence, so a later "helpful" patch fails loudly.
+
+**3 — the walk, and exactly how far it got.** Two new test files run the *real*
+gate rather than a stand-in: `commerce_payment_gate_test.exs` (real
+`BrowserControl.navigate/3`, real Sentinel record, and a commerce run that hands
+off at Amazon checkout with a cent-exact frozen cart) and
+`page_targeting_live_test.exs` (six tests against a real Chromium on the exact
+DOM shape that defeated targeting — the stub suite could only assert the JS we
+*generate*, which is how the defect survived in the first place).
+
+Then a live anonymous probe: throwaway Chrome profile, no account, no purchase —
+search → product → add to cart → read what the real checkout control points at.
+It is **`https://www.amazon.com/checkout/entry/cart`**, and the gate halts it.
+
+**Be precise about what that does and does not prove.** `/checkout/entry/cart`
+would have been caught by the *old* regex too — `checkout` is a whole segment
+there. It was never the gap. The gap is the `/gp/buy/` funnel, which is only
+reachable from a **logged-in** session, and the field-test agent only reached it
+by constructing the URL itself (hence its "Page Not Found"). So: the live entry
+point is confirmed gated, and the logged-in funnel is confirmed gated *by test*
+but still not *by walk*. Closing that last mile needs the operator's own signed-in
+session and is the one remaining piece of item 3.
+
+### Finding 6 — the gate authorizes the requested URL, not the landed one — **HIGH**
+
+**Where:** `lib/buster_claw/browser_control.ex:35`
+
+Surfaced while walking item 3. `navigate/3` runs `Scope.guard` on the URL it is
+*asked* for, then calls `Session.navigate`, which waits for the load event — and
+nothing re-checks where the browser actually ended up. A 302 therefore carries a
+run from an allowed URL onto a payment page or an off-scope host with the mode
+still `agent_working`, which is the only state that permits acting.
+
+This is Finding 1's failure mode reached by a different road, and it is the more
+general one: Finding 1 was a bad pattern, this is a missing check.
+
+**Second-order consequence, and it is not small.** `AgentMode` sets
+`current_host` from the pre-navigation origin (`agent_mode.ex:329`) and
+`Egress.prepare/2` selects the redaction level from that host
+(`agent_mode.ex:419`). After a cross-host redirect, page content is prepared at
+the *original* host's level — so a domain the operator set to `:structure_only`
+can be read at `:full` by being redirected to.
+
+**Fix shape (needs a decision, hence not done here):** read the landed URL after
+the load event and re-authorize it. The open question is what a failed re-check
+should *do* — halting is right for payment, but for an off-scope redirect the
+run is already sitting on the page, so "halt" has to mean halt-and-navigate-away
+or halt-and-hand-off, not merely refuse the next action.
+
+**Two corrections to the report's recommendations, made deliberately:**
+
+- **Finding 2 is already closed the right way.** `Commerce.confirm_purchase/3`
+  is unreachable from `/api/run`, and it should stay that way. The report
+  recommends exposing `agent_run_confirm_purchase`; we are not going to. A
+  `:restricted` command is runnable by `agent_untrusted` — an agent that has
+  been reading Amazon page content — which would let the agent write its own
+  ledger entry for a purchase it claims happened. Confirming is the *human's*
+  act. The LiveView button (`browse_live.ex:72`) is the correct and complete
+  surface. If it is ever put on the API it must be `gated: true`.
+- **Ordering.** Item 2 is promoted to High. The report rates it Medium, but a
+  silent wrong-variant purchase backed by a cent-exact cart is the worst failure
+  this system can produce: every receipt agrees, and the ledger is confidently
+  wrong.
+
+---
+
+## Phase 7 — The mirror: Agent Mode inside the app
+
+**The problem, stated from the field test:** the agent works in a Chromium window
+and the user works in Buster Claw, so watching the agent means alt-tabbing. The
+supervision that saved this run was *available* but not *practical*. Phase 4
+promised "the user watches it work"; today they watch it work somewhere else.
+
+### What we are not building, and why
+
+**We are not embedding the Chromium window itself.** macOS provides no supported
+cross-process view reparenting — there is no `SetParent` equivalent, and an
+external process's `NSWindow` cannot become a subview of ours. The approaches
+that get close (Accessibility-API window shoving, private `_NSSetWindowParent`)
+produce a window that *floats above* ours rather than living inside it: it will
+not clip to the pane, it loses z-order the moment the user clicks our app, it
+does not follow Spaces, and it is a notarization and robustness liability. The
+Tauri shell does real embedding for WKWebViews (`browser/webviews.rs`); an
+external browser process is a different category of thing. Ruled out on the
+merits, recorded here so it is not re-proposed.
+
+### What we are building
+
+**A live mirror driven by CDP screencast.** `Page.startScreencast` makes the
+engine push JPEG frames of the page viewport as `Page.screencastFrame` events —
+over the pipe we already own, through the `CDP` GenServer that already fans
+events out to subscribers. The mirror is another subscriber. This is the same
+mechanism behind Browserbase's live view and Playwright's inspector, and it
+requires no new transport, no new process, and no new trust boundary.
+
+| Piece | Approach |
+|---|---|
+| **Capture** | `BrowserControl.Screencast`, one per run. `Page.startScreencast` (jpeg, q≈60, `maxWidth`/`maxHeight` from the pane). **Ack every frame** with `Page.screencastFrameAck` — the engine throttles to a stall without it. Holds the latest frame only; no buffering. |
+| **Transport** | `GET /browser/agent-view/:run_id`, `multipart/x-mixed-replace`, chunked from Bandit, rendered as a plain `<img>`. CSP already permits it (`img-src 'self'`). No JS decode path, no base64 inflation. |
+| **Rail** | The existing `browse_live` Agent Mode panel gains the viewport beside the trajectory. The rail stays a projection of `subscribe/1` — the mirror adds no authority. |
+| **Input** | Hook maps client coords → viewport coords via the screencast metadata scale, forwards `Input.dispatchMouseEvent` / `dispatchKeyEvent`. |
+| **Real window** | Run stays headful, positioned behind. "Open the real window" calls `Page.bringToFront`. Always one click away. |
+
+**The transport decision is load-bearing.** Do not push base64 frames through
+`push_event` into a canvas: at 1280×900 / q60 / 15fps that is roughly 0.5–1 MB/s
+of JSON contending with every other diff on the LiveView channel. MJPEG costs
+nothing on loopback and the webview decodes natively.
+
+**One change falls out of reading the code.** `CDP.handle_frame/2` broadcasts
+every event to every subscriber, and `AgentMode` is a subscriber — it would take
+~15 × 60 KB messages per second into its mailbox for nothing. `subscribe/2`
+needs an event filter before this ships. Small, but it is a prerequisite, not a
+cleanup.
+
+### Rules this phase must not break
+
+- **Input forwarding is gated on mode.** Refuse while `agent_working`. The
+  existing invariant is "only `agent_working` acts"; the mirror's inverse must be
+  "the human only acts when the agent isn't," or take-the-wheel stops meaning
+  anything.
+- **No payment credential through the mirror. Ever.** At `awaiting_human` the
+  mirror goes read-only and the real Chromium window comes forward for the human
+  to pay in. Typing a card into the mirrored view would route the PAN through
+  `Input.dispatchKeyEvent` → the pipe → the BEAM, and destroy the cleanest claim
+  in `commerce.ex`: *no payment credential ever passes through the agent*. This
+  is a hard constraint on the design, not a preference about UX.
+- **The mirror is a mirror, not a replacement.** It shows the page viewport
+  only: no tab bar, no basic-auth dialog, no file picker, no permission prompt,
+  no native `<select>` popup. Those are OS widgets outside the compositor. The
+  escape hatch to the real window is part of the feature, not an admission of
+  failure.
+- **Headless-plus-mirror is the wrong trade.** One window is nicer, but it
+  forfeits popup fidelity and the payment handoff — the two things the hybrid
+  engine exists to provide. Stay headful.
+
+### Ceiling
+
+Expect 10–20 fps at 1280×900 / q60 on loopback. That is right for watching and
+wrong for anything latency-sensitive. If a run needs frame-accurate interaction,
+the answer is the real window, not a better codec.
+
+---
+
 ## Acceptance criteria
 
 1. Phase 0 passes on both architectures from the signed packaged app.
@@ -484,6 +706,17 @@ Expand the action vocabulary only where a real flow needed it: `select`, `hover`
     `structure-only` sends no free text beyond element labels and headings.
 12. Every step's exact post-redaction payload is inspectable in the trajectory,
     and the run summary's byte count reconciles with the sum of its steps.
+13. The payment gate halts on a **real** retailer checkout URL, proven against a
+    table of live paths — Amazon `/gp/buy/spc/`, Amazon `/gp/buy/payselect/`,
+    Shopify `/checkouts/`, Stripe, PayPal — and a live checkout is walked end to
+    end to confirm it fires in the run, not only in the test. (Field test 07-25.)
+14. A `click` whose `text` target matches more than one element returns an error
+    naming the ambiguity. It never silently picks the first. (Field test 07-25.)
+15. A run is watchable end to end from inside the app without switching windows,
+    and the mirrored viewport tracks the engine within ~1s of a navigation.
+16. Input forwarded from the mirror is refused while the mode is `agent_working`,
+    and refused entirely while `awaiting_human` on a payment page — proven by the
+    run's own egress and trajectory records.
 
 ## Deferred
 
@@ -495,6 +728,10 @@ Expand the action vocabulary only where a real flow needed it: `select`, `hover`
 - Replacing WKWebView for human browsing.
 - A local model for element selection — the only true fix for the Phase 3.5
   residual, named as the ceiling rather than built.
+- **True OS-level embedding of the engine window.** Not deferred — ruled out on
+  the merits (Phase 7). macOS has no supported cross-process view reparenting.
+- Scrub-back rendering of the mirrored frames. The trajectory already replays;
+  storing a frame per step is a disk-cost decision to make after Phase 7 ships.
 
 ## Risks, descending
 
@@ -511,3 +748,12 @@ Expand the action vocabulary only where a real flow needed it: `select`, `hover`
    it becomes a support burden.
 5. **Opportunity cost.** BusterPhone is still the money leg and arm64 still gates
    shipping. This is a large build that competes with both.
+6. **Gates tested only against their own idea of the world.** Added 07-25, and
+   it is now the risk with a proven instance: the payment regex passed its suite
+   and failed on Amazon because the suite used `/checkout/`. Any gate whose
+   fixtures we authored ourselves is unverified until it meets a real site. The
+   mitigation is a live walk per gate, not a larger table of imagined paths.
+7. **The mirror inviting credential entry.** A viewport embedded in our own app
+   reads as "type here" — that is what makes it good UX and what makes it
+   dangerous. The read-only-at-`awaiting_human` rule is the entire mitigation and
+   it must not be relaxed for convenience later.
