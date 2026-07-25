@@ -81,6 +81,30 @@ defmodule BusterClaw.BrowserControl.PoolLiveTest do
     assert Session.info(s).url == in_scope_url
   end
 
+  test "a real HTTP redirect is authorized where it LANDED, not where it was sent" do
+    alias BusterClaw.BrowserControl
+    alias BusterClaw.BrowserControl.Scope
+
+    {:ok, pool} = Pool.start_link(name: nil, max_sessions: 1, idle_ms: 60_000)
+    {:ok, s} = Pool.checkout(pool)
+
+    # amazon.com 301s to www.amazon.com — a real cross-host redirect, and both
+    # are in scope (subdomains of an allowed domain are allowed), so the gate
+    # permits it and the origin must describe the landing.
+    scope = Scope.new("redirect check", ["amazon.com"], id: "live-redirect")
+
+    assert {:ok, origin} = BrowserControl.navigate(s, scope, "https://amazon.com/")
+
+    # The engine really does land on the www host. Before Finding 6 the origin
+    # echoed the request, so this read "amazon.com" and the app believed it.
+    assert origin.url == "https://www.amazon.com/"
+    assert origin.host == "www.amazon.com"
+    assert origin.redirected_from == "https://amazon.com/"
+
+    # And the session agrees, rather than reporting what it was asked for.
+    assert Session.info(s).url == "https://www.amazon.com/"
+  end
+
   defp wait_until(fun, tries) do
     cond do
       tries <= 0 ->

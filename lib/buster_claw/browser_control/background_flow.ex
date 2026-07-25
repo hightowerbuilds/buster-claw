@@ -81,7 +81,7 @@ defmodule BusterClaw.BrowserControl.BackgroundFlow do
 
     fn
       "navigate", %{"url" => url} ->
-        case navigate_mod.navigate(session, scope, url) do
+        case navigate_mod.navigate(session, scope, url, page_opts) do
           {:ok, origin} -> {:ok, %{navigated: url, origin: origin}}
           {:halt, reason, meta} -> {:error, {reason, meta[:url]}}
           other -> other

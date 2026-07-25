@@ -40,7 +40,7 @@ defmodule BusterClawWeb.BrowseLiveTest do
 
     # Scripted scope-gate: /checkout is a payment page, everything on-scope ok.
     defmodule StubNav do
-      def navigate(_session, %Scope{} = scope, url) do
+      def navigate(_session, %Scope{} = scope, url, _opts \\ []) do
         if String.contains?(url, "checkout") do
           {:halt, :payment_stop, %{url: url, host: "shop.com"}}
         else

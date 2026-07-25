@@ -13,7 +13,7 @@ defmodule BusterClaw.BrowserControl.AgentModeTest do
 
   # Stands in for BrowserControl (navigate/3) — scripted per URL host.
   defmodule StubNav do
-    def navigate(_session, %Scope{} = scope, url) do
+    def navigate(_session, %Scope{} = scope, url, _opts \\ []) do
       cond do
         String.contains?(url, "evil.com") ->
           {:halt, :out_of_scope, %{url: url, host: "evil.com"}}

@@ -524,7 +524,7 @@ argument for Phase 7.
 | 4 | Give `find_elements` a real `selector` parameter | `page.ex:61` | S | Low | open |
 | 5 | Keychain-backed `secret_resolver` wired into `agent_run_start` | `commands/agent_runs.ex` | M | Medium | open |
 | 6 | Per-host egress levels with a config surface; `amazon.com` → `:structure_only` | `egress.ex:51` | M | Low | open |
-| 7 | **Re-check the landed URL after navigation** — see Finding 6 below | `browser_control.ex:35` | M | **High** | open |
+| 7 | **Re-check the landed URL after navigation** — see Finding 6 below | `browser_control.ex:35` | M | **High** | **DONE 07-25** |
 
 ### What landed, 07-25
 
@@ -587,11 +587,47 @@ general one: Finding 1 was a bad pattern, this is a missing check.
 the *original* host's level — so a domain the operator set to `:structure_only`
 can be read at `:full` by being redirected to.
 
-**Fix shape (needs a decision, hence not done here):** read the landed URL after
-the load event and re-authorize it. The open question is what a failed re-check
-should *do* — halting is right for payment, but for an off-scope redirect the
-run is already sitting on the page, so "halt" has to mean halt-and-navigate-away
-or halt-and-hand-off, not merely refuse the next action.
+**FIXED 07-25.** `navigate/3` became `navigate/4` and the gate now fires twice:
+once on the requested URL before the engine sees it, once on the landed URL
+after the load event. The returned origin always describes the **landing**, so
+`current_host` — and therefore the egress level — tracks reality. A redirect
+adds `:redirected_from` to the origin or halt meta, and the trajectory renders
+it as `navigate A → B (redirect)` rather than as an ordinary visit, because on
+scrub-back "went somewhere I was not sent" is the signature of a hijacked
+navigation and must not read like a normal step.
+
+On the open question — what a failed re-check *does* — the answer turned out to
+be that the mode machine already had it right. A halt flips the mode, and
+`agent_working` is the only state that permits acting, so the agent cannot read,
+click, or navigate from the page it was redirected onto. Nothing needed to
+navigate away; the run simply loses the wheel. Payment redirects on a commerce
+run take the normal handoff.
+
+**Fails closed:** an unreadable landing is `{:halt, :unverified_location, meta}`.
+Not knowing where the browser is, is not a reason to let the agent act there.
+
+**Known limit, written into the docstring:** the check runs once, at the load
+event. A JS redirect fired afterwards (`setTimeout`, meta-refresh) is not
+caught; catching those needs CDP frame-navigation events rather than a
+point-in-time read.
+
+**Two things fell out of the fix.**
+
+*`Session.info/1` was lying the same way.* It reported the URL navigation was
+*requested* for, while calling it "current url (best-effort)". Same defect, one
+layer down. `Session` now stores the landed URL. Caught by the live redirect
+test asserting the origin agreed with the session — it did not.
+
+*The `session_mod` contract widened.* It now stands in for `Session` proper —
+`navigate/2` **and** `command/3` — because the landing read is threaded through
+it. A stub implementing only the command half fails on the first navigation, so
+this is documented on `AgentMode.start_link/1`.
+
+**And `guarded_navigate_test` stopped re-implementing the thing it tests.** It
+previously copied the guard/navigate composition into the test file and asserted
+against the copy — the same "correct in isolation, not wired to the surface that
+runs" shape as the original field-test defects. With `session_mod` injectable it
+now drives the real function.
 
 **Two corrections to the report's recommendations, made deliberately:**
 
@@ -717,6 +753,12 @@ the answer is the real window, not a better codec.
 16. Input forwarded from the mirror is refused while the mode is `agent_working`,
     and refused entirely while `awaiting_human` on a payment page — proven by the
     run's own egress and trajectory records.
+17. A redirect from an allowed URL onto a payment or off-scope page halts the run,
+    and the halt names both the landing and where it was redirected from.
+    (Finding 6.)
+18. After a cross-host redirect, the egress report's host and level are the
+    **landed** host's — a `:structure_only` domain cannot be read at `:full` by
+    being redirected to. (Finding 6, second order.)
 
 ## Deferred
 

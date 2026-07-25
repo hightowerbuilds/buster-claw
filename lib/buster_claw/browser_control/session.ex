@@ -61,7 +61,12 @@ defmodule BusterClaw.BrowserControl.Session do
     :exit, _ -> {:error, :session_gone}
   end
 
-  @doc "Snapshot: id, lease state, target/session ids, current url (best-effort)."
+  @doc """
+  Snapshot: id, lease state, target/session ids, and the URL the browser landed
+  on after its last navigation — not the URL that was requested, which differ
+  whenever something redirected. Best-effort: falls back to the requested URL if
+  the read failed.
+  """
   def info(session), do: GenServer.call(session, :info)
 
   @doc "Stop the session and reap its engine."
@@ -120,7 +125,12 @@ defmodule BusterClaw.BrowserControl.Session do
       end
 
     case result do
-      :ok -> {:reply, :ok, %{state | url: url}}
+      # Store where the browser actually ENDED, not what we asked for. A 302
+      # means those differ, and a session reporting the requested URL as its
+      # current one is the same "believes it is somewhere it isn't" defect the
+      # navigation gate was fixed for (Finding 6, 07-25) — smaller, but it feeds
+      # anything that trusts `info/1`.
+      :ok -> {:reply, :ok, %{state | url: landed_url(state, url)}}
       other -> {:reply, other, state}
     end
   end
@@ -171,6 +181,22 @@ defmodule BusterClaw.BrowserControl.Session do
   end
 
   # ── internals ─────────────────────────────────────────────────────────────
+
+  # Best-effort: a failed read keeps the requested URL rather than blanking it,
+  # since a stale-but-plausible value beats nil for a diagnostic field. The
+  # security decision does not rest here — `BrowserControl.navigate/4` runs its
+  # own landing check and fails closed.
+  defp landed_url(state, requested) do
+    case CDP.command(
+           state.cdp,
+           "Runtime.evaluate",
+           %{"expression" => "location.href", "returnByValue" => true},
+           session_id: state.session_id
+         ) do
+      {:ok, %{"result" => %{"value" => href}}} when is_binary(href) and href != "" -> href
+      _ -> requested
+    end
+  end
 
   defp attach_target(cdp) do
     with {:ok, %{"targetId" => target_id}} <-

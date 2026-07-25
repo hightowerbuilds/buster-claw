@@ -47,9 +47,12 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   Start an Agent Mode run. Options:
     * `:scope` (required) — the frozen `Scope`.
     * `:session` (required) — a leased session pid (or a `:session_mod` stub).
-    * `:session_mod` — module answering `navigate/2` + `command/4` (default
-      `Session`); injectable for tests.
-    * `:navigate_mod` — module answering `navigate/3` (default `BrowserControl`);
+    * `:session_mod` — a stand-in for `Session` (default `Session`), answering
+      **both** `navigate/2` and `command/3`. It is threaded to `Page` (which
+      needs only `command/3`) *and* to `BrowserControl.navigate/4`, whose
+      post-navigation landing check reads `location.href` through it — so a stub
+      that implements only the command half will fail on the first navigation.
+    * `:navigate_mod` — module answering `navigate/4` (default `BrowserControl`);
       injectable so the scope gate is exercised without a browser.
     * `:secret_resolver` — `fn name -> {:ok, value} | :error end`.
     * `:on_payment` — `:halt` (default) ends the run at a payment page; `:handoff`
@@ -324,12 +327,19 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   # ── actions ──────────────────────────────────────────────────────────────────
 
   defp do_navigate(s, url) do
-    case s.navigate_mod.navigate(s.session, s.scope, url) do
+    case s.navigate_mod.navigate(s.session, s.scope, url, session_mod: s.session_mod) do
       {:ok, origin} ->
+        # The origin describes where we LANDED, not what was requested, so this
+        # is what keeps Egress's per-host level honest across a redirect.
         s = %{s | current_host: origin[:host] || s.current_host}
 
         s =
-          record(s, %{type: :navigate, summary: "navigate #{url}", origin: origin, outcome: :ok})
+          record(s, %{
+            type: :navigate,
+            summary: navigate_summary(url, origin),
+            origin: origin,
+            outcome: :ok
+          })
 
         {:reply, {:ok, origin}, s}
 
@@ -356,7 +366,7 @@ defmodule BusterClaw.BrowserControl.AgentMode do
 
       {:halt, reason, meta} ->
         s =
-          record(s, %{type: :halt, summary: "halted (#{reason}) #{meta[:url]}", outcome: :halted})
+          record(s, %{type: :halt, summary: halt_summary(reason, meta), outcome: :halted})
 
         {_, next} = safe_transition(s, :halt)
         s = %{s | mode: next}
@@ -368,6 +378,19 @@ defmodule BusterClaw.BrowserControl.AgentMode do
         {:reply, other, s}
     end
   end
+
+  # A redirect is a URL the agent never asked for, so the trajectory has to say
+  # so — on scrub-back, "went somewhere I was not sent" is the signature of an
+  # injected or hijacked navigation, and it must not read like an ordinary one.
+  defp navigate_summary(requested, %{redirected_from: _} = origin),
+    do: "navigate #{requested} → #{origin[:url]} (redirect)"
+
+  defp navigate_summary(requested, _origin), do: "navigate #{requested}"
+
+  defp halt_summary(reason, %{redirected_from: from} = meta),
+    do: "halted (#{reason}) #{meta[:url]} — redirected from #{from}"
+
+  defp halt_summary(reason, meta), do: "halted (#{reason}) #{meta[:url]}"
 
   defp do_act(s, :fill, args) do
     raw = Map.get(args, "value") || Map.get(args, :value) || ""

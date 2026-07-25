@@ -9,8 +9,11 @@ defmodule BusterClaw.BrowserControl.CommercePaymentGateTest do
   in the suite ever asked the real `Scope` about a real checkout URL, which is
   the only question that mattered.
 
-  Everything here therefore runs the **real** gate. `StubNav` is not used; the
-  session double exists only to prove the browser is never reached.
+  Everything here therefore runs the **real** gate — and, since Finding 6, the
+  real `BrowserControl.navigate/4` including its post-navigation landing check.
+  No navigate stub appears in this file. The session double only records what it
+  was asked to open and scripts what `location.href` answers, which is how a
+  redirect is expressed without a browser.
   """
   use BusterClaw.DataCase, async: false
 
@@ -76,30 +79,43 @@ defmodule BusterClaw.BrowserControl.CommercePaymentGateTest do
   end
 
   describe "a commerce run reaching Amazon checkout" do
-    # The real gate, composed exactly as BrowserControl.navigate/3 composes it,
-    # with an injectable session so "the browser was never navigated" is exact.
-    defmodule GuardedNav do
-      def navigate(session, %Scope{} = scope, url) do
-        case Scope.guard(scope, {:navigate, url}) do
-          {:ok, origin} ->
-            Agent.update(session, &[url | &1])
-            {:ok, origin}
+    # No navigate stub: the run drives the REAL `BrowserControl.navigate/4`,
+    # gate and landing check included. Only the session is a double — it records
+    # what it was asked to open and answers `location.href` with a scripted
+    # landing, which is how a redirect is expressed without a browser.
+    defmodule FakeSession do
+      use Agent
 
-          halt ->
-            halt
-        end
+      @redirects %{
+        "https://amazon.com/gp/offer-listing/B01N0VJ0F4" =>
+          "https://www.amazon.com/gp/buy/spc/handlers/display.html"
+      }
+
+      def start_link, do: Agent.start_link(fn -> [] end)
+
+      def navigate(pid, url) do
+        Agent.update(pid, &[url | &1])
+        :ok
       end
+
+      def command(pid, "Runtime.evaluate", _params) do
+        requested = Agent.get(pid, &List.first/1)
+        landed = Map.get(@redirects, requested, requested)
+        {:ok, %{"result" => %{"value" => %{"url" => landed, "title" => "t"}}}}
+      end
+
+      def urls(pid), do: Agent.get(pid, &Enum.reverse/1)
     end
 
     setup do
-      {:ok, session} = Agent.start_link(fn -> [] end)
+      {:ok, session} = FakeSession.start_link()
       scope = Scope.new("buy 45in boot laces", ["amazon.com"], id: "commerce_gate")
 
       {:ok, run} =
         AgentMode.start_link(
           scope: scope,
           session: session,
-          navigate_mod: GuardedNav,
+          session_mod: FakeSession,
           on_payment: :handoff,
           clock: fn -> 0 end
         )
@@ -141,6 +157,17 @@ defmodule BusterClaw.BrowserControl.CommercePaymentGateTest do
 
       # The checkout URL never reached the browser; the shopping URLs did.
       assert Agent.get(session, &Enum.reverse/1) == [@amazon_product, @amazon_cart]
+    end
+
+    test "a redirect onto a payment page halts the run, not just the request", %{run: run} do
+      # The requested URL is ordinary shopping and passes the pre-navigation
+      # gate; the browser lands on checkout. Before Finding 6 was fixed this run
+      # stayed in agent_working ON the payment page.
+      assert {:handoff, :payment, meta} =
+               AgentMode.navigate(run, "https://amazon.com/gp/offer-listing/B01N0VJ0F4")
+
+      assert meta[:redirected_from] == "https://amazon.com/gp/offer-listing/B01N0VJ0F4"
+      assert AgentMode.mode(run) == :awaiting_human
     end
 
     test "the agent can neither act nor navigate once it is awaiting_human", %{run: run} do

@@ -18,7 +18,7 @@ defmodule BusterClaw.BrowserControl.CommerceTest do
 
   # Scripted navigate: /checkout is a payment page, evil.com is off-merchant.
   defmodule StubNav do
-    def navigate(_session, %Scope{} = scope, url) do
+    def navigate(_session, %Scope{} = scope, url, _opts \\ []) do
       cond do
         String.contains?(url, "evil") -> {:halt, :out_of_scope, %{url: url, host: "evil.com"}}
         String.contains?(url, "checkout") -> {:halt, :payment_stop, %{url: url, host: "shop.com"}}

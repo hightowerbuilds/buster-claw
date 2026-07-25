@@ -14,7 +14,7 @@ defmodule BusterClaw.BrowserControl.BackgroundFlowTest do
   # Scope-gated navigation stub with the real authorize decision (pure — no
   # Sentinel write, so the test stays async).
   defmodule StubNav do
-    def navigate(_session, %Scope{} = scope, url) do
+    def navigate(_session, %Scope{} = scope, url, _opts \\ []) do
       case Scope.authorize(scope, {:navigate, url}) do
         {:ok, origin} -> {:ok, origin}
         halt -> halt

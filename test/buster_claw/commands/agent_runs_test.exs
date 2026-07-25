@@ -10,27 +10,45 @@ defmodule BusterClaw.Commands.AgentRunsTest do
   alias BusterClaw.Commands
 
   # A "session": a GenServer that tolerates Session.lease's cast, answers
-  # Session.navigate's call, and stops cleanly under Session.stop.
+  # Session.navigate's call, and stops cleanly under Session.stop. It remembers
+  # the last URL so the scripted surface can answer `location.href` — the
+  # post-navigation landing check (Finding 6) reads it on every navigation.
   defmodule StubSession do
     use GenServer
     def start, do: GenServer.start(__MODULE__, :ok)
     @impl true
-    def init(:ok), do: {:ok, :ok}
+    def init(:ok), do: {:ok, %{url: nil}}
     @impl true
     def handle_cast(_msg, state), do: {:noreply, state}
     @impl true
-    def handle_call({:navigate, _url, _timeout}, _from, state), do: {:reply, :ok, state}
+    def handle_call({:navigate, url, _timeout}, _from, state),
+      do: {:reply, :ok, %{state | url: url}}
+
+    def handle_call(:last_url, _from, state), do: {:reply, state.url, state}
     def handle_call(_msg, _from, state), do: {:reply, {:error, :stub}, state}
   end
 
-  # A scripted CDP surface for the run's acts (set via :agent_run_session_mod).
+  # A scripted stand-in for `Session` (set via :agent_run_session_mod): the CDP
+  # command surface the run's acts use, plus navigation, which since Finding 6
+  # also flows through this module rather than straight to `Session`.
   defmodule ScriptedSessionMod do
-    def command(_session, "Runtime.evaluate", %{"expression" => js}) do
+    defdelegate navigate(session, url), to: BusterClaw.BrowserControl.Session
+
+    def command(session, "Runtime.evaluate", %{"expression" => js}) do
       value =
-        if js =~ "text: (document.body" do
-          %{"url" => "https://example.com/x", "title" => "X", "text" => "plenty of page text"}
-        else
-          %{"matched" => true, "clicked" => "Go", "filled" => "input"}
+        cond do
+          # Page.read / extract — must be checked first, its JS also mentions
+          # location.href.
+          js =~ "text: (document.body" ->
+            %{"url" => "https://example.com/x", "title" => "X", "text" => "plenty of page text"}
+
+          # Page.current — the landing read. Echoing the requested URL is the
+          # "nothing redirected" case.
+          js =~ "location.href" ->
+            %{"url" => GenServer.call(session, :last_url), "title" => "X"}
+
+          true ->
+            %{"matched" => true, "clicked" => "Go", "filled" => "input"}
         end
 
       {:ok, %{"result" => %{"value" => value}}}

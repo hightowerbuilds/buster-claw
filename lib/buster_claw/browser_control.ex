@@ -13,8 +13,9 @@ defmodule BusterClaw.BrowserControl do
   this surface; nothing above it may talk to the engine another way.
   """
 
-  alias BusterClaw.BrowserControl.{CDP, Detect, Scope, Session}
+  alias BusterClaw.BrowserControl.{CDP, Detect, Page, Scope, Session}
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.Sentinel
 
   @probe_page "data:text/html,<title>bc-probe</title>ok"
   @load_timeout_ms 10_000
@@ -24,19 +25,53 @@ defmodule BusterClaw.BrowserControl do
 
   @doc """
   Navigate a leased session, but **only after the frozen `Scope` authorizes it**
-  (BROWSER_ENGINE_ROADMAP Phase 3). An out-of-scope, payment, or malformed URL is
-  halted here and never reaches the engine — the gate is load-bearing, not
-  advisory. Returns `{:ok, origin}` (the provenance to stamp on the action) or
-  the guard's `{:halt, reason, meta}`. This is the primitive Phase 4's action
-  loop drives; a bare `Session.navigate/2` bypasses the gate and is for
-  scope-free internal use only — the probe, and `Browser`'s fetch render,
+  (BROWSER_ENGINE_ROADMAP Phase 3) — and only if it authorizes where the browser
+  actually *landed* (Finding 6, 07-25).
+
+  The gate fires twice, on purpose:
+
+    1. **Before** the request. An out-of-scope, payment, or malformed URL never
+       reaches the engine.
+    2. **After** the load event, against the URL the browser really ended on. A
+       302 is a URL the agent never asked for and the scope never saw; without
+       this check a redirect walks a run onto a payment page or an off-scope
+       host with the mode still `agent_working`, which is the only state that
+       permits acting. Same failure as the 07-25 payment-regex gap, reached by a
+       different road — that was a bad pattern, this was a missing check.
+
+  The returned origin always describes the **landed** URL, which is what makes
+  `AgentMode`'s `current_host` — and therefore `Egress`'s per-host redaction
+  level — track reality. Before this, a cross-host redirect left content being
+  prepared at the *previous* host's level, so a domain set to `:structure_only`
+  could be read at `:full` simply by being redirected to. A redirect adds
+  `:redirected_from` to the origin (or the halt meta) so the trajectory and the
+  security feed can tell a redirect apart from a direct navigation — a
+  distinction that matters when diagnosing injection.
+
+  **Fails closed.** If the landed URL cannot be read, the result is
+  `{:halt, :unverified_location, meta}`: not knowing where the browser is, is
+  not a reason to let the agent act there.
+
+  **Known limit.** The check runs once, at the load event. A JS redirect fired
+  afterwards (`setTimeout`, meta-refresh) is not caught. Catching those needs
+  CDP frame-navigation events rather than a point-in-time read; the mode machine
+  still bounds the damage, since acting is serialized through `AgentMode`.
+
+  Returns `{:ok, origin}` or `{:halt, reason, meta}`. This is the primitive
+  Phase 4's action loop drives; a bare `Session.navigate/2` bypasses the gate and
+  is for scope-free internal use only — the probe, and `Browser`'s fetch render,
   which is URL-guarded at its own entry.
+
+  `opts[:session_mod]` (default `Session`) makes the whole composition testable
+  without a browser.
   """
-  def navigate(session, %Scope{} = scope, url) do
+  def navigate(session, %Scope{} = scope, url, opts \\ []) do
     case Scope.guard(scope, {:navigate, url}) do
-      {:ok, origin} ->
-        case Session.navigate(session, url) do
-          :ok -> {:ok, origin}
+      {:ok, _requested_origin} ->
+        session_mod = Keyword.get(opts, :session_mod, Session)
+
+        case session_mod.navigate(session, url) do
+          :ok -> verify_landing(session, scope, url, opts)
           other -> other
         end
 
@@ -44,6 +79,41 @@ defmodule BusterClaw.BrowserControl do
         halt
     end
   end
+
+  # Re-run the gate on the URL the browser actually ended on. Guarding the
+  # landed URL unconditionally (rather than only when it differs) keeps one
+  # decision path: when nothing redirected, it is the same pure verdict on the
+  # same input, and `Scope.guard` only records to Sentinel on a halt.
+  defp verify_landing(session, scope, requested, opts) do
+    case landed_url(session, opts) do
+      {:ok, landed} ->
+        case Scope.guard(scope, {:navigate, landed}) do
+          {:ok, origin} -> {:ok, mark_redirect(origin, requested, landed)}
+          {:halt, reason, meta} -> {:halt, reason, mark_redirect(meta, requested, landed)}
+        end
+
+      :error ->
+        meta = %{url: requested, scope_id: scope.id, intent: scope.intent}
+
+        Sentinel.observe(
+          :security_block,
+          "browser landing unverifiable after navigate: #{requested}",
+          Map.put(meta, :trust, "policy")
+        )
+
+        {:halt, :unverified_location, meta}
+    end
+  end
+
+  defp landed_url(session, opts) do
+    case Page.current(session, opts) do
+      {:ok, %{"url" => url}} when is_binary(url) and url != "" -> {:ok, url}
+      _ -> :error
+    end
+  end
+
+  defp mark_redirect(meta, same, same), do: meta
+  defp mark_redirect(meta, requested, _landed), do: Map.put(meta, :redirected_from, requested)
 
   @doc "Whether Agent Mode has an engine at all. Absence is surfaced, never papered over."
   def available?, do: match?({:ok, _}, detect())
