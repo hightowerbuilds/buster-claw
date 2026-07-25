@@ -32,11 +32,14 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   alias BusterClaw.BrowserControl
   alias BusterClaw.BrowserControl.AgentMode.{Mode, Trajectory}
   alias BusterClaw.BrowserControl.Commerce.Cart
+  alias BusterClaw.BrowserControl.Egress
   alias BusterClaw.BrowserControl.Egress.SecretRef
+  alias BusterClaw.BrowserControl.Page
   alias BusterClaw.BrowserControl.Session
   alias Phoenix.PubSub
 
   @topic_prefix "browser_agent_mode:"
+  @runs_topic "browser_agent_mode_runs"
 
   # ── Public API ──────────────────────────────────────────────────────────────
 
@@ -71,11 +74,46 @@ defmodule BusterClaw.BrowserControl.AgentMode do
     PubSub.subscribe(BusterClaw.PubSub, topic(id))
   end
 
+  @doc """
+  Subscribe to the ALL-runs feed: every run's `{:agent_mode, run_id, event}` is
+  mirrored here, plus `{:agent_mode, run_id, :run_started}` on registration.
+  This is what the browse tab's mode switch watches — it needs to notice runs
+  it didn't start.
+  """
+  def subscribe_runs, do: PubSub.subscribe(BusterClaw.PubSub, @runs_topic)
+
+  @doc "The pid of a registered run by id, or nil."
+  def whereis(run_id) do
+    case Registry.lookup(BusterClaw.BrowserControl.RunRegistry, run_id) do
+      [{pid, _value}] -> pid
+      [] -> nil
+    end
+  end
+
+  @doc "All registered runs, newest first: `[%{run_id, pid, mode}]`."
+  def list_runs do
+    BusterClaw.BrowserControl.RunRegistry
+    |> Registry.select([{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2", :"$3"}}]}])
+    |> Enum.map(fn {run_id, pid, registered_at} ->
+      %{run_id: run_id, pid: pid, mode: safe_mode(pid), registered_at: registered_at}
+    end)
+    |> Enum.sort_by(& &1.registered_at, :desc)
+  end
+
+  defp safe_mode(pid) do
+    mode(pid)
+  catch
+    :exit, _ -> :gone
+  end
+
   @doc "The run's id."
   def run_id(server), do: GenServer.call(server, :run_id)
 
   @doc "The current mode."
   def mode(server), do: GenServer.call(server, :mode)
+
+  @doc "The run's session (pid or test stub) — the command surface stops it with the run."
+  def session(server), do: GenServer.call(server, :session)
 
   @doc "The trajectory so far (for scrub-back / the rail)."
   def trajectory(server), do: GenServer.call(server, :trajectory)
@@ -142,6 +180,19 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   def init(opts) do
     scope = Keyword.fetch!(opts, :scope)
 
+    # Discoverability (the browse tab's mode switch): best-effort — a duplicate
+    # run id (test reuse) keeps the run working, just not registered.
+    case Registry.register(
+           BusterClaw.BrowserControl.RunRegistry,
+           scope.id,
+           System.unique_integer([:monotonic])
+         ) do
+      {:ok, _ref} -> :ok
+      {:error, {:already_registered, _pid}} -> :ok
+    end
+
+    PubSub.broadcast(BusterClaw.PubSub, @runs_topic, {:agent_mode, scope.id, :run_started})
+
     {:ok,
      %{
        run_id: scope.id,
@@ -157,6 +208,9 @@ defmodule BusterClaw.BrowserControl.AgentMode do
        on_payment: Keyword.get(opts, :on_payment, :halt),
        # The cart the agent has built (Phase 5); frozen by the payment handoff.
        cart: nil,
+       # Host of the last successful navigation — the egress policy key for
+       # content-returning acts on the current page.
+       current_host: nil,
        mode: :idle,
        trajectory: Trajectory.new()
      }}
@@ -165,6 +219,7 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   @impl true
   def handle_call(:run_id, _from, s), do: {:reply, s.run_id, s}
   def handle_call(:mode, _from, s), do: {:reply, s.mode, s}
+  def handle_call(:session, _from, s), do: {:reply, s.session, s}
   def handle_call(:cart, _from, s), do: {:reply, s.cart, s}
 
   # Cart updates only while the agent is shopping: after the handoff the cart is
@@ -271,6 +326,8 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   defp do_navigate(s, url) do
     case s.navigate_mod.navigate(s.session, s.scope, url) do
       {:ok, origin} ->
+        s = %{s | current_host: origin[:host] || s.current_host}
+
         s =
           record(s, %{type: :navigate, summary: "navigate #{url}", origin: origin, outcome: :ok})
 
@@ -314,14 +371,13 @@ defmodule BusterClaw.BrowserControl.AgentMode do
 
   defp do_act(s, :fill, args) do
     raw = Map.get(args, "value") || Map.get(args, :value) || ""
-    selector = Map.get(args, "selector") || Map.get(args, :selector) || ""
 
     case SecretRef.resolve(raw, s.secret_resolver) do
       {:ok, resolved} ->
         # The browser gets the resolved value; the trajectory stores only the
         # masked reference — the secret never enters the record.
-        result = fill(s, selector, resolved)
-        summary = "fill #{selector} = #{SecretRef.mask(raw)}"
+        result = page(s, fn opts -> Page.fill(s.session, args, resolved, opts) end)
+        summary = "fill #{target_label(args)} = #{SecretRef.mask(raw)}"
         s = record(s, %{type: :fill, summary: summary, outcome: outcome(result)})
         {:reply, result, s}
 
@@ -329,7 +385,7 @@ defmodule BusterClaw.BrowserControl.AgentMode do
         s =
           record(s, %{
             type: :fill,
-            summary: "fill #{selector} (unresolved secret)",
+            summary: "fill #{target_label(args)} (unresolved secret)",
             outcome: :error
           })
 
@@ -337,21 +393,107 @@ defmodule BusterClaw.BrowserControl.AgentMode do
     end
   end
 
-  defp do_act(s, action, args) do
-    summary =
-      "#{action} #{Map.get(args, "selector") || Map.get(args, :selector) || ""}" |> String.trim()
+  defp do_act(s, :click, args) do
+    result = page(s, fn opts -> Page.click(s.session, args, opts) end)
 
-    s = record(s, %{type: action, summary: summary, outcome: :ok})
-    {:reply, {:ok, %{action: action}}, s}
+    s =
+      record(s, %{type: :click, summary: "click #{target_label(args)}", outcome: outcome(result)})
+
+    {:reply, result, s}
   end
 
-  # A fill via the injected session module; a stub records without a browser.
-  defp fill(s, selector, value) do
-    if function_exported?(s.session_mod, :command, 3) do
-      s.session_mod.command(s.session, "DOM.setValue", %{"selector" => selector, "value" => value})
-    else
-      {:ok, %{filled: selector}}
+  defp do_act(s, :wait, args) do
+    timeout = Map.get(args, "timeout_ms")
+    opts = if is_integer(timeout) and timeout > 0, do: [timeout_ms: timeout], else: []
+    result = page(s, fn page_opts -> Page.wait(s.session, args, page_opts ++ opts) end)
+    s = record(s, %{type: :wait, summary: "wait", outcome: outcome(result)})
+    {:reply, result, s}
+  end
+
+  # Content-returning acts (Phase 3.5 made real): the raw page result becomes a
+  # Snapshot, egress policy + redaction run at capture, the model gets ONLY the
+  # prepared payload, and the step carries the falsifiable Report.
+  defp do_act(s, action, args) when action in [:extract, :read, :find_elements] do
+    case page(s, fn opts -> page_read(s.session, action, args, opts) end) do
+      {:ok, {snapshot, detail}} ->
+        {payload, report} = Egress.prepare(s.current_host || "unknown", snapshot)
+
+        s =
+          record(s, %{
+            type: action,
+            summary: String.trim("#{action} #{detail}"),
+            outcome: :ok,
+            egress: report
+          })
+
+        {:reply, {:ok, payload}, s}
+
+      {:error, _reason} = error ->
+        s = record(s, %{type: action, summary: to_string(action), outcome: :error})
+        {:reply, error, s}
     end
+  end
+
+  defp do_act(s, action, _args) do
+    s = record(s, %{type: action, summary: "#{action} (unknown action)", outcome: :error})
+    {:reply, {:error, {:unknown_action, action}}, s}
+  end
+
+  # Engine acts require a CDP surface; a data-only stub session refuses loudly
+  # rather than pretending the browser did something.
+  defp page(s, fun) do
+    if function_exported?(s.session_mod, :command, 3) do
+      fun.(session_mod: s.session_mod)
+    else
+      {:error, :engine_unsupported}
+    end
+  end
+
+  defp page_read(session, :extract, args, opts) do
+    selector = Map.get(args, "selector") || Map.get(args, :selector)
+
+    with {:ok, result} <- Page.extract(session, selector, opts) do
+      {:ok, {extract_snapshot(result), selector || "page"}}
+    end
+  end
+
+  defp page_read(session, :read, _args, opts) do
+    with {:ok, page} <- Page.read(session, opts) do
+      elements =
+        for %{} = link <- List.wrap(page["links"]),
+            do: %{role: "link", label: to_string(link["label"] || link["url"])}
+
+      {:ok,
+       {%Egress.Snapshot{
+          title: to_string(page["title"] || ""),
+          text: to_string(page["text"] || ""),
+          elements: elements
+        }, to_string(page["url"] || "")}}
+    end
+  end
+
+  defp page_read(session, :find_elements, _args, opts) do
+    with {:ok, elements} <- Page.find_elements(session, opts) do
+      shaped =
+        for %{} = el <- List.wrap(elements),
+            do: %{role: to_string(el["tag"] || "element"), label: to_string(el["label"] || "")}
+
+      {:ok, {%Egress.Snapshot{elements: shaped}, "#{length(shaped)} elements"}}
+    end
+  end
+
+  defp extract_snapshot(%{"matches" => matches}) when is_list(matches) do
+    %Egress.Snapshot{elements: Enum.map(matches, &%{label: to_string(&1["text"] || "")})}
+  end
+
+  defp extract_snapshot(%{} = page) do
+    %Egress.Snapshot{title: to_string(page["title"] || ""), text: to_string(page["text"] || "")}
+  end
+
+  defp target_label(args) do
+    Map.get(args, "selector") || Map.get(args, :selector) ||
+      Map.get(args, "text") || Map.get(args, :text) ||
+      "index #{Map.get(args, "index") || Map.get(args, :index)}"
   end
 
   defp outcome({:ok, _}), do: :ok
@@ -407,7 +549,11 @@ defmodule BusterClaw.BrowserControl.AgentMode do
     end
   end
 
+  # Every event goes to the run's own topic AND the all-runs topic, so the
+  # browse tab can watch without knowing run ids up front.
   defp broadcast(s, event) do
-    PubSub.broadcast(BusterClaw.PubSub, topic(s.run_id), {:agent_mode, s.run_id, event})
+    message = {:agent_mode, s.run_id, event}
+    PubSub.broadcast(BusterClaw.PubSub, topic(s.run_id), message)
+    PubSub.broadcast(BusterClaw.PubSub, @runs_topic, message)
   end
 end

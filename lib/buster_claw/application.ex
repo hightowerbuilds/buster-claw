@@ -54,6 +54,10 @@ defmodule BusterClaw.Application do
         # DynamicSupervisor must precede the pool that starts children under it.
         BusterClaw.BrowserControl.SessionSupervisor,
         BusterClaw.BrowserControl.Pool,
+        # Agent Mode runs: discoverable by run_id (the browse tab's mode switch)
+        # and supervised so a run outlives the command call that started it.
+        {Registry, keys: :unique, name: BusterClaw.BrowserControl.RunRegistry},
+        BusterClaw.BrowserControl.RunSupervisor,
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
       ]

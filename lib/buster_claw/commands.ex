@@ -550,6 +550,13 @@ defmodule BusterClaw.Commands do
   defdelegate browser_check_run(args), to: BusterClaw.Commands.Web
   defdelegate browser_tabs(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_navigate(args), to: BusterClaw.Commands.Web
+  # Agent Mode runs (browser-engine UI slice)
+  defdelegate agent_run_start(args), to: BusterClaw.Commands.AgentRuns
+  defdelegate agent_run_navigate(args), to: BusterClaw.Commands.AgentRuns
+  defdelegate agent_run_act(args), to: BusterClaw.Commands.AgentRuns
+  defdelegate agent_run_cart(args), to: BusterClaw.Commands.AgentRuns
+  defdelegate agent_run_status(args \\ %{}), to: BusterClaw.Commands.AgentRuns
+  defdelegate agent_run_stop(args), to: BusterClaw.Commands.AgentRuns
   defdelegate browser_open_tab(args), to: BusterClaw.Commands.Web
   defdelegate bookmark_add(args), to: BusterClaw.Commands.Web
   defdelegate bookmark_list(args \\ %{}), to: BusterClaw.Commands.Web

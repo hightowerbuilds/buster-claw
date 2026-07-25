@@ -27,15 +27,26 @@ defmodule BusterClaw.BrowserControl.AgentModeTest do
     end
   end
 
-  # Stands in for Session — records DOM.setValue values the executor sends.
+  # Stands in for Session — records every Runtime.evaluate expression the
+  # executor sends (Page's verbs all arrive as page JS) and answers a match.
   defmodule RecordingSession do
     use Agent
     def start_link, do: Agent.start_link(fn -> [] end)
 
-    def command(pid, "DOM.setValue", %{"value" => v}),
-      do: Agent.update(pid, &[v | &1]) && {:ok, %{}}
+    def command(pid, "Runtime.evaluate", %{"expression" => js}) do
+      Agent.update(pid, &[js | &1])
 
-    def values(pid), do: Agent.get(pid, &Enum.reverse(&1))
+      value =
+        if js =~ "innerText: (document.body" or js =~ "text: (document.body" do
+          %{"url" => "https://example.com/x", "title" => "X", "text" => "Card 4111111111111111"}
+        else
+          %{"matched" => true, "clicked" => "Go", "filled" => "input"}
+        end
+
+      {:ok, %{"result" => %{"value" => value}}}
+    end
+
+    def scripts(pid), do: Agent.get(pid, &Enum.reverse(&1))
   end
 
   defp start(opts \\ []) do
@@ -128,8 +139,8 @@ defmodule BusterClaw.BrowserControl.AgentModeTest do
     assert {:ok, _} =
              AgentMode.act(pid, :fill, %{"selector" => "#card", "value" => "$secret.card"})
 
-    # The browser (executor) received the resolved value...
-    assert RecordingSession.values(sess) == ["4242424242424242"]
+    # The browser (executor) received the resolved value in the fill script...
+    assert Enum.any?(RecordingSession.scripts(sess), &(&1 =~ "4242424242424242"))
 
     # ...but the trajectory shows only the masked reference, never the number.
     step = AgentMode.trajectory(pid) |> Trajectory.last()
@@ -144,8 +155,48 @@ defmodule BusterClaw.BrowserControl.AgentModeTest do
     assert {:error, {:unknown_secret, "unknown"}} =
              AgentMode.act(pid, :fill, %{"selector" => "#x", "value" => "$secret.unknown"})
 
-    assert RecordingSession.values(sess) == []
+    assert RecordingSession.scripts(sess) == []
     assert AgentMode.trajectory(pid) |> Trajectory.last() |> Map.get(:outcome) == :error
+  end
+
+  test "an extract egresses through policy + redaction, with the receipt on the step" do
+    {pid, _} = start()
+    AgentMode.start_run(pid)
+    {:ok, _} = AgentMode.navigate(pid, "https://example.com/account")
+
+    # The page's raw text carries a card number; the model's payload must not.
+    assert {:ok, payload} = AgentMode.act(pid, :extract, %{})
+    refute inspect(payload) =~ "4111111111111111"
+
+    step = AgentMode.trajectory(pid) |> Trajectory.last()
+    assert step.type == :extract
+    assert %{host: "example.com", bytes_out: bytes} = step.egress
+    assert bytes > 0
+    assert step.egress.redactions.card >= 1
+
+    # And the run summary rolls the receipt up.
+    assert AgentMode.summary(pid).egress.bytes_out >= bytes
+  end
+
+  # A session module with no CDP surface at all.
+  defmodule NoCommandSession do
+  end
+
+  test "a data-only stub session refuses acts loudly, never pretends" do
+    scope = Scope.new("read", ["example.com"], id: "stub-#{System.unique_integer([:positive])}")
+
+    {:ok, pid} =
+      AgentMode.start_link(
+        scope: scope,
+        session: :stub,
+        session_mod: NoCommandSession,
+        navigate_mod: StubNav,
+        clock: fn -> 0 end
+      )
+
+    AgentMode.start_run(pid)
+    assert {:error, :engine_unsupported} = AgentMode.act(pid, :click, %{"selector" => "#x"})
+    assert {:error, {:unknown_action, :teleport}} = AgentMode.act(pid, :teleport, %{})
   end
 
   test "subscribers see mode transitions and steps" do

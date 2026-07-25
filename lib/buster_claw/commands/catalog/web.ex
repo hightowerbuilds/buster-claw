@@ -320,6 +320,86 @@ defmodule BusterClaw.Commands.Catalog.Web do
         description: "List saved site checks with step counts and each check's last run result.",
         args: %{}
       },
+      # Agent Mode runs (the browse tab's mode switch)
+      %{
+        name: "agent_run_start",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Start a supervised Agent Mode run: a headful window of the user's installed Chromium, scope frozen from intent + domains (navigation outside the allowlist halts). commerce: true turns payment pages into a human handoff (cart in, human pays) instead of a halt. The browse tab switches into agent-workspace mode while a run is active.",
+        args: %{
+          "intent" => %{type: :string, required: true, description: "The task, verbatim."},
+          "domains" => %{
+            type: :array,
+            required: true,
+            description: "Allowed hosts (subdomains included); everything else halts."
+          },
+          "commerce" => %{
+            type: :boolean,
+            required: false,
+            description: "Payment pages hand off to the human instead of halting."
+          }
+        }
+      },
+      %{
+        name: "agent_run_navigate",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Navigate an Agent Mode run under its frozen scope. Off-scope URLs come back result: \"halted\"; a payment page on a commerce run comes back result: \"handoff\" with the frozen cart (the human pays from the browse tab).",
+        args: %{
+          "id" => %{type: :string, required: true},
+          "url" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "agent_run_act",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "One page action in an Agent Mode run: click | fill | extract | read | find_elements | wait. Target by selector/text/index; fill takes value ($secret.<name> resolves in the executor and never enters the record); wait takes until/timeout_ms. Content-returning actions come back egress-prepared (policy + redaction), never raw page text.",
+        args: %{
+          "id" => %{type: :string, required: true},
+          "action" => %{type: :string, required: true},
+          "selector" => %{type: :string, required: false},
+          "text" => %{type: :string, required: false},
+          "index" => %{type: :integer, required: false},
+          "value" => %{type: :string, required: false},
+          "until" => %{type: :string, required: false},
+          "timeout_ms" => %{type: :integer, required: false}
+        }
+      },
+      %{
+        name: "agent_run_cart",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Attach/replace the run's cart (commerce): items of {name, unit_cents, qty}. Frozen at the payment handoff — the human is shown exactly what the ledger may bill.",
+        args: %{
+          "id" => %{type: :string, required: true},
+          "items" => %{
+            type: :array,
+            required: true,
+            description: "Line items: {\"name\", \"unit_cents\", \"qty\" (default 1)}."
+          }
+        }
+      },
+      %{
+        name: "agent_run_status",
+        type: :read,
+        tier: :safe,
+        description:
+          "Live status of an Agent Mode run (mode, step/egress summary, cart) by id, or all registered runs without one.",
+        args: %{"id" => %{type: :string, required: false}}
+      },
+      %{
+        name: "agent_run_stop",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Stop an Agent Mode run (halts before its next action) and shut down its browser window. The trajectory stays inspectable.",
+        args: %{"id" => %{type: :string, required: true}}
+      },
       %{
         name: "browser_check_run",
         type: :mutate,
