@@ -272,13 +272,18 @@ defmodule BusterClaw.Commands.Catalog.Web do
         type: :mutate,
         tier: :restricted,
         description:
-          "Run an ordered browser flow in the user's live tab: steps of navigate/wait/click/fill/extract/assert/find_elements, halting at the first failure with a per-step report and a best-effort failure screenshot. Step arguments are recorded on the security audit feed. Max 25 steps. Requires the desktop app to be open.",
+          "Run an ordered browser flow: steps of navigate/wait/click/fill/extract/assert/find_elements, halting at the first failure with a per-step report. Step arguments are recorded on the security audit feed. Max 25 steps. engine \"tab\" (default) drives the user's live tab and requires the desktop app; \"background\" runs headlessly on the user's installed Chromium (no desktop needed), scope-locked to the flow's own navigate hosts.",
         args: %{
           "steps" => %{
             type: :array,
             required: true,
             description:
               "Ordered step maps: {\"action\": \"navigate\" | \"wait\" | \"click\" | \"fill\" | \"extract\" | \"assert\" | \"find_elements\", ...that command's args}."
+          },
+          "engine" => %{
+            type: :string,
+            required: false,
+            description: "\"tab\" (live tab, default) or \"background\" (headless CDP engine)."
           }
         }
       },
@@ -299,7 +304,13 @@ defmodule BusterClaw.Commands.Catalog.Web do
             required: true,
             description: "Flow steps, same shape as browser_flow."
           },
-          "description" => %{type: :string, required: false}
+          "description" => %{type: :string, required: false},
+          "engine" => %{
+            type: :string,
+            required: false,
+            description:
+              "Where the check runs: \"tab\" (live tab, default) or \"background\" (headless CDP engine — runs unattended)."
+          }
         }
       },
       %{
@@ -314,8 +325,15 @@ defmodule BusterClaw.Commands.Catalog.Web do
         type: :mutate,
         tier: :restricted,
         description:
-          "Run a saved site check as a browser flow in the user's live tab and append the pass/fail result to its run history. Requires the desktop app to be open.",
-        args: %{"name" => %{type: :string, required: true}}
+          "Run a saved site check as a browser flow on its saved engine (live tab, or the background CDP engine — no desktop needed) and append the pass/fail result to its run history.",
+        args: %{
+          "name" => %{type: :string, required: true},
+          "engine" => %{
+            type: :string,
+            required: false,
+            description: "Override the saved engine for this run: \"tab\" or \"background\"."
+          }
+        }
       },
 
       # Bookmarks

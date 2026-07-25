@@ -91,6 +91,11 @@ config :buster_claw, :ssrf_resolve_dns, false
 # flag flipped on and a manually fulfilled Bridge request.
 config :buster_claw, :browser_live_render_enabled, false
 
+# Likewise never launch a real Chromium from a unit test: the CDP-engine
+# render fallback is off by default here; tests that exercise it inject an
+# :engine_render fun instead.
+config :buster_claw, :browser_engine_render_enabled, false
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

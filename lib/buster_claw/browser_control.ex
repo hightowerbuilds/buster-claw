@@ -29,7 +29,8 @@ defmodule BusterClaw.BrowserControl do
   advisory. Returns `{:ok, origin}` (the provenance to stamp on the action) or
   the guard's `{:halt, reason, meta}`. This is the primitive Phase 4's action
   loop drives; a bare `Session.navigate/2` bypasses the gate and is for
-  scope-free internal use (the probe) only.
+  scope-free internal use only — the probe, and `Browser`'s fetch render,
+  which is URL-guarded at its own entry.
   """
   def navigate(session, %Scope{} = scope, url) do
     case Scope.guard(scope, {:navigate, url}) do

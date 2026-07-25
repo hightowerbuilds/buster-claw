@@ -701,6 +701,36 @@ defmodule BusterClaw.Commands.WebCopresenceTest do
       refute_received {:browser_command, _ref, _action, _payload}
       assert length(BusterClaw.Sentinel.list_events()) == before
     end
+
+    test "engine: background dispatches to the engine runner, never the desktop" do
+      Bridge.subscribe()
+      steps = [%{"action" => "navigate", "url" => "https://example.com"}]
+
+      # Test seam: a fake engine runner so no Chromium launches from a test.
+      Application.put_env(:buster_claw, :background_flow_runner, fn ^steps ->
+        {:ok,
+         %{
+           status: "passed",
+           steps: [%{step: 1, action: "navigate", status: "passed"}],
+           failed_step: nil
+         }}
+      end)
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :background_flow_runner) end)
+
+      assert {:ok, %{status: "passed", engine: "background"}} =
+               Commands.browser_flow(%{"steps" => steps, "engine" => "background"})
+
+      # The desktop bridge saw nothing; the audit event names the engine.
+      refute_received {:browser_command, _ref, _action, _payload}
+
+      assert [event | _] = BusterClaw.Sentinel.list_events(limit: 1)
+      assert event.metadata["via"] == "browser_flow"
+      assert event.metadata["engine"] == "background"
+
+      assert {:error, :unknown_engine} =
+               Commands.browser_flow(%{"steps" => steps, "engine" => "cloud"})
+    end
   end
 
   describe "browser_check_run" do
@@ -751,6 +781,39 @@ defmodule BusterClaw.Commands.WebCopresenceTest do
       assert {:error, :check_not_found} = Commands.browser_check_run(%{"name" => "ghost"})
       assert {:error, :missing_name} = Commands.browser_check_run(%{})
       assert {:error, :missing_name_or_steps} = Commands.browser_check_save(%{"name" => "x"})
+    end
+
+    test "a background-engine check saves its engine and runs on the engine runner" do
+      Application.put_env(:buster_claw, :background_flow_runner, fn _steps ->
+        {:ok,
+         %{
+           status: "passed",
+           steps: [%{step: 1, action: "navigate", status: "passed"}],
+           failed_step: nil
+         }}
+      end)
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :background_flow_runner) end)
+
+      assert {:ok, %{name: "nightly"}} =
+               Commands.browser_check_save(%{
+                 "name" => "nightly",
+                 "steps" => [%{"action" => "navigate", "url" => "https://example.com"}],
+                 "engine" => "background"
+               })
+
+      assert [%{name: "nightly", engine: "background"}] = BusterClaw.Browser.Checks.list()
+
+      # No Bridge round-trip needed: the saved engine routes to the CDP runner.
+      assert {:ok, %{status: "passed", check: "nightly", engine: "background"}} =
+               Commands.browser_check_run(%{"name" => "nightly"})
+
+      assert {:error, :unknown_engine} =
+               Commands.browser_check_save(%{
+                 "name" => "bad",
+                 "steps" => [%{"action" => "navigate", "url" => "https://example.com"}],
+                 "engine" => "cloud"
+               })
     end
   end
 end

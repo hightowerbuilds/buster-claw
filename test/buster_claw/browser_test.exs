@@ -166,6 +166,56 @@ defmodule BusterClaw.BrowserTest do
 
       refute Map.has_key?(page, :rendered)
     end
+
+    test "no desktop attached falls through to the CDP engine render (Phase 6)" do
+      stub_thin_http()
+
+      Application.put_env(:buster_claw, :engine_render, fn url ->
+        {:ok,
+         %{
+           url: url,
+           title: "Engine",
+           html: "",
+           markdown: "Rendered by the user's Chromium",
+           rendered: "live",
+           engine: "chromium"
+         }}
+      end)
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :engine_render) end)
+
+      assert {:ok, page} =
+               Browser.fetch("https://spa.example",
+                 req_options: [plug: {Req.Test, BusterClaw.BrowserHTTP}]
+               )
+
+      assert page.rendered == "live"
+      assert page.engine == "chromium"
+      assert page.markdown =~ "Chromium"
+
+      # The audit trail names the engine that executed the untrusted content.
+      assert [event | _] = BusterClaw.Sentinel.list_events(limit: 1)
+      assert event.metadata["via"] == "live_render"
+      assert event.metadata["engine"] == "chromium"
+    end
+
+    test "an engine render failure keeps the webkit error and the classic result" do
+      stub_thin_http()
+
+      Application.put_env(:buster_claw, :engine_render, fn _url ->
+        {:error, :engine_unavailable}
+      end)
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :engine_render) end)
+
+      assert {:ok, page} =
+               Browser.fetch("https://spa.example",
+                 req_options: [plug: {Req.Test, BusterClaw.BrowserHTTP}]
+               )
+
+      # Thin classic result survives — the failed upgrades never mask it.
+      refute Map.has_key?(page, :rendered)
+    end
   end
 
   describe "download/2" do

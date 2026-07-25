@@ -121,3 +121,53 @@ handoff meta, not a caller-side cart). Suite at close: 1317 green + Rust
 gates. Deferred, matching the arc's phasing: the LiveView/Tauri handoff-card
 rail (the roadmap's deferred UI slice) and the live Stripe-style checkout
 walk (acceptance criterion 2, needs the packaged app).
+
+---
+
+# Third arc — Phase 6 lands: the engine gets real hands, the surface migrates
+
+The browser-engine roadmap's last unbuilt phase. The migration principle held
+throughout: move to the CDP engine **where it's better**, keep WKWebView
+co-presence where reading the user's live tab is the feature.
+
+## 10. `BrowserControl.Page` — the CDP verbs that didn't exist
+
+Phase 4's act loop was placeholder-level below navigate. Now the engine has
+real verbs: read, find_elements, click/fill (selector | visible text |
+index), extract, wait, screenshot — `Runtime.evaluate`-based (the same v1
+approach as the WKWebView Rust side), speaking the tab's exact vocabulary
+(`until: navigation/selector/visible/text`, asserts
+`url_contains/title_contains/selector/text`, extract's two shapes). A flow
+authored for the live tab runs unchanged on the engine — proven by a new
+`:browser_engine` live test running a saved-check-shaped flow end to end in
+real headless Chromium (1.7s, passed).
+
+## 11. Background flows — checks that run at 2am
+
+`browser_flow` / `browser_check_save` / `browser_check_run` take
+`engine: "tab" | "background"`. Tab stays default (co-presence is a
+feature); `"background"` runs on a pooled headless session of the user's
+installed Chromium — no desktop shell, nothing hijacks the visible tab.
+Checks persist their engine (pre-Phase-6 checks load as `"tab"`); FlowRunner
+stayed the single validator/orchestrator — the engine only swaps the
+per-step executor. Security inherited, not invented: a background flow's
+scope is **frozen from its own navigate steps**, every navigation goes
+through `Scope.guard`, and the payment gate holds (a checkout URL fails the
+flow — tested).
+
+## 12. `Browser.fetch` — three engines, falling order
+
+Live-render chain is now WebKit hidden view → CDP engine → plain result:
+thin-SPA and bot-walled fetches recover with real JS even with the desktop
+app closed, and the Sentinel row names which engine executed the untrusted
+content. Unit tests can never launch a browser (config-gated off in test,
+injectable seam for the tests that exercise the path).
+
+## 13. Deliberately not built
+
+The six speculative actions (`select`/`hover`/`scroll`/`upload`/`dialog`/
+`wait_for_navigation`) — the roadmap's own rule is "only where a real flow
+needed it," and none has. Suite at close: 1339 unit tests + 147
+browser-control tests including live Chromium runs, credo/dialyzer/Rust
+clean. Remaining on the arc: the deferred UI slice (Agent Mode rail +
+handoff card — next up) and the packaged-app acceptance walk.

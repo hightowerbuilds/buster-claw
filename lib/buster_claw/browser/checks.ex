@@ -22,13 +22,18 @@ defmodule BusterClaw.Browser.Checks do
 
   def dir, do: Artifact.workspace_path(@subdir)
 
+  @engines ~w(tab background)
+
   @doc """
   Save (or overwrite) a check definition. Steps are validated with
   `FlowRunner.validate/1` so a broken flow is refused now, not at run time.
-  An existing check's run history survives a re-save.
+  An existing check's run history survives a re-save. `engine` (Phase 6) names
+  where the check runs — `"tab"` (live-tab co-presence, default) or
+  `"background"` (headless CDP engine, so a check runs unattended).
   """
-  def save(name, steps, description \\ nil) do
+  def save(name, steps, description \\ nil, engine \\ "tab") do
     with :ok <- validate_name(name),
+         :ok <- validate_engine(engine),
          :ok <- FlowRunner.validate(steps) do
       File.mkdir_p!(dir())
       path = path_for(name)
@@ -37,6 +42,7 @@ defmodule BusterClaw.Browser.Checks do
         Frontmatter.build(%{
           name: name,
           description: description,
+          engine: engine,
           steps: steps,
           saved: DateTime.utc_now() |> DateTime.truncate(:second)
         })
@@ -73,7 +79,15 @@ defmodule BusterClaw.Browser.Checks do
 
       case fields do
         %{"steps" => steps} when is_list(steps) ->
-          {:ok, %{name: name, steps: steps, description: fields["description"]}}
+          {:ok,
+           %{
+             name: name,
+             steps: steps,
+             description: fields["description"],
+             # Checks saved before Phase 6 have no engine field — they ran on
+             # the live tab, so that is what they load as.
+             engine: fields["engine"] || "tab"
+           }}
 
         _ ->
           {:error, :invalid_check}
@@ -131,6 +145,7 @@ defmodule BusterClaw.Browser.Checks do
         %{
           name: name,
           description: check.description,
+          engine: check.engine,
           steps: length(check.steps),
           last_run: last_run(name)
         }
@@ -177,4 +192,7 @@ defmodule BusterClaw.Browser.Checks do
   end
 
   defp validate_name(_name), do: {:error, :invalid_check_name}
+
+  defp validate_engine(engine) when engine in @engines, do: :ok
+  defp validate_engine(_engine), do: {:error, :unknown_engine}
 end

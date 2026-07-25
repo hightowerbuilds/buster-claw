@@ -540,35 +540,58 @@ defmodule BusterClaw.Commands.Web do
     end
   end
 
+  @flow_engines ~w(tab background)
+
   @doc """
   Run an ordered browser flow — the multi-step composition of
   navigate/wait/click/fill/extract/assert/find_elements, halting at the first
   failing step with a per-step report (`BusterClaw.Browser.FlowRunner`). The
   flow-level Sentinel event reduces fill values to lengths; the individual
   steps still fire their own events as they run.
+
+  `engine` picks where the steps execute (Phase 6): `"tab"` (default) drives
+  the user's live tab via co-presence; `"background"` runs on a pooled
+  headless CDP session (`BusterClaw.BrowserControl.BackgroundFlow`) — scope
+  frozen from the flow's own navigate hosts — so checks run without the
+  desktop shell and without touching the tab the user is looking at.
   """
-  def browser_flow(%{"steps" => steps}) when is_list(steps) do
-    case FlowRunner.run(steps) do
-      {:ok, report} ->
-        BusterClaw.Sentinel.observe(
-          :outbound_send,
-          "Ran a #{length(steps)}-step browser flow (#{report.status})",
-          %{
-            via: "browser_flow",
-            status: report.status,
-            failed_step: report.failed_step,
-            steps: redact_flow_steps(steps)
-          }
-        )
+  def browser_flow(%{"steps" => steps} = args) when is_list(steps) do
+    engine = Map.get(args, "engine", "tab")
 
-        {:ok, report}
+    with :ok <- validate_engine(engine),
+         {:ok, report} <- run_flow(engine, steps) do
+      BusterClaw.Sentinel.observe(
+        :outbound_send,
+        "Ran a #{length(steps)}-step browser flow (#{report.status}, #{engine})",
+        %{
+          via: "browser_flow",
+          engine: engine,
+          status: report.status,
+          failed_step: report.failed_step,
+          steps: redact_flow_steps(steps)
+        }
+      )
 
-      {:error, _reason} = error ->
-        error
+      {:ok, Map.put(report, :engine, engine)}
     end
   end
 
   def browser_flow(_args), do: {:error, :missing_steps}
+
+  defp validate_engine(engine) when engine in @flow_engines, do: :ok
+  defp validate_engine(_engine), do: {:error, :unknown_engine}
+
+  defp run_flow("tab", steps), do: FlowRunner.run(steps)
+  defp run_flow("background", steps), do: background_flow_runner().(steps)
+
+  # Test seam: unit tests must never launch a real Chromium.
+  defp background_flow_runner do
+    Application.get_env(
+      :buster_claw,
+      :background_flow_runner,
+      &BusterClaw.BrowserControl.BackgroundFlow.run/1
+    )
+  end
 
   @doc """
   Reduce a flow's `fill` steps to value *lengths* — the `browser_fill`
@@ -598,7 +621,7 @@ defmodule BusterClaw.Commands.Web do
   (`BusterClaw.Browser.Checks`). Overwriting keeps the history.
   """
   def browser_check_save(%{"name" => name, "steps" => steps} = args) when is_list(steps) do
-    Checks.save(name, steps, Map.get(args, "description"))
+    Checks.save(name, steps, Map.get(args, "description"), Map.get(args, "engine", "tab"))
   end
 
   def browser_check_save(_args), do: {:error, :missing_name_or_steps}
@@ -606,15 +629,17 @@ defmodule BusterClaw.Commands.Web do
   def browser_check_list(_args \\ %{}), do: {:ok, %{checks: Checks.list()}}
 
   @doc """
-  Run a saved check as a browser flow in the user's live session and append
+  Run a saved check as a browser flow on its saved engine (live tab or the
+  background CDP engine; an `"engine"` arg overrides for this run) and append
   the pass/fail result to its run history. The history append is best-effort
   (logged, never fatal); the flow report itself is the return value.
   """
-  def browser_check_run(%{"name" => name}) when is_binary(name) and name != "" do
-    with {:ok, %{steps: steps}} <- Checks.load(name) do
+  def browser_check_run(%{"name" => name} = args) when is_binary(name) and name != "" do
+    with {:ok, %{steps: steps, engine: saved_engine}} <- Checks.load(name) do
       started = System.monotonic_time(:millisecond)
 
-      with {:ok, report} <- browser_flow(%{"steps" => steps}) do
+      with {:ok, report} <-
+             browser_flow(%{"steps" => steps, "engine" => Map.get(args, "engine", saved_engine)}) do
         total_ms = System.monotonic_time(:millisecond) - started
         _ = Checks.record_run(name, report, total_ms)
         {:ok, Map.put(report, :check, name)}

@@ -2,15 +2,20 @@ defmodule BusterClaw.Browser do
   @moduledoc """
   Browser-rendered fetch boundary.
 
-  Two engines, in falling order of fidelity: the desktop shell's hidden-webview
-  **live render** (via `BusterClaw.Browser.Bridge` — the only real-JS path) and
-  plain HTTP. `fetch/2` runs the HTTP fetch first and upgrades to a live render
-  only when the result comes back JS-thin (an SPA shell with no readable text)
-  or failed outright (bot-walled) — and only when the desktop app is actually
-  attached. `render: :live` forces the live path, `render: :off` forbids it.
+  Three engines, in falling order of preference: the desktop shell's
+  hidden-webview **live render** (via `BusterClaw.Browser.Bridge`), the **CDP
+  engine** driving the user's installed Chromium headlessly
+  (BROWSER_ENGINE_ROADMAP Phase 6 — real JS without the desktop shell even
+  being open), and plain HTTP. `fetch/2` runs the HTTP fetch first and
+  upgrades to a live render only when the result comes back JS-thin (an SPA
+  shell with no readable text) or failed outright (bot-walled); the live
+  chain tries WebKit, then the CDP engine. `render: :live` forces the live
+  path, `render: :off` forbids it.
   """
 
   alias BusterClaw.Browser.Bridge
+  alias BusterClaw.BrowserControl
+  alias BusterClaw.BrowserControl.{Page, Pool, Session}
   alias BusterClaw.Ingest.Content
   alias BusterClaw.URLGuard
 
@@ -44,7 +49,9 @@ defmodule BusterClaw.Browser do
     meta = %{url: url, trust: "fetched"}
 
     meta =
-      if Map.get(page, :rendered) == "live", do: Map.put(meta, :via, "live_render"), else: meta
+      if Map.get(page, :rendered) == "live",
+        do: meta |> Map.put(:via, "live_render") |> Map.put(:engine, Map.get(page, :engine)),
+        else: meta
 
     BusterClaw.Sentinel.observe(:untrusted_ingest, "Browsed #{url}", meta)
 
@@ -228,7 +235,23 @@ defmodule BusterClaw.Browser do
 
   defp text_length(markdown), do: markdown |> to_string() |> String.trim() |> String.length()
 
+  # The live-render chain (Phase 6): WebKit's hidden view when the desktop
+  # shell is attached, else/then the CDP engine. The first success wins; the
+  # first engine's error is kept when both fail (it names the primary path).
   defp fetch_with_live_render(url, opts) do
+    case fetch_with_webkit_render(url, opts) do
+      {:ok, page} ->
+        {:ok, page}
+
+      {:error, webkit_reason} ->
+        case fetch_with_engine_render(url) do
+          {:ok, page} -> {:ok, page}
+          {:error, _engine_reason} -> {:error, webkit_reason}
+        end
+    end
+  end
+
+  defp fetch_with_webkit_render(url, opts) do
     cond do
       not live_render_enabled?() or Keyword.get(opts, :live_render, true) == false ->
         {:error, :live_render_disabled}
@@ -262,12 +285,63 @@ defmodule BusterClaw.Browser do
            title: title,
            html: "",
            markdown: rendered_markdown(page),
-           rendered: "live"
+           rendered: "live",
+           engine: "webkit"
          }}
 
       _other ->
         {:error, :bad_render_payload}
     end
+  end
+
+  # CDP-engine render: a pooled headless session of the user's installed
+  # Chromium. Navigation is deliberately scope-free `Session.navigate/2` —
+  # this is a read, guarded by `URLGuard` at the `fetch/2` entry, not an
+  # agent action under a frozen scope. Gated off in tests (a unit test must
+  # never launch a browser) and injectable for the tests that exercise it.
+  defp fetch_with_engine_render(url) do
+    case Application.get_env(:buster_claw, :engine_render, :default) do
+      :default ->
+        if engine_render_enabled?(),
+          do: engine_render(url),
+          else: {:error, :engine_render_disabled}
+
+      fun when is_function(fun, 1) ->
+        fun.(url)
+
+      _off ->
+        {:error, :engine_render_disabled}
+    end
+  end
+
+  @doc false
+  def engine_render(url) do
+    if BrowserControl.available?() do
+      Pool.with_session(fn session ->
+        with :ok <- Session.navigate(session, url),
+             {:ok, read} <- Page.read(session) do
+          {:ok,
+           %{
+             url: presence(read["url"]) || url,
+             title: presence(read["title"]) || URI.parse(url).host || url,
+             html: "",
+             markdown: rendered_markdown(read),
+             rendered: "live",
+             engine: "chromium"
+           }}
+        else
+          :timeout -> {:error, :render_timeout}
+          {:error, _reason} = error -> error
+          other -> {:error, {:engine_render_failed, other}}
+        end
+      end)
+    else
+      {:error, :engine_unavailable}
+    end
+  end
+
+  defp engine_render_enabled? do
+    Application.get_env(:buster_claw, :browser_engine_render_enabled, true)
   end
 
   # The read script returns rendered innerText + links, not HTML — compose the
