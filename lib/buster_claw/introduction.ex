@@ -96,17 +96,24 @@ defmodule BusterClaw.Introduction do
       the in-app browser's **Pages** button lists this folder, so this is how the
       user finds your pages again.
     - `projects/` — working folders for ongoing projects.
-    - `mm-dd-yy-summary/` — daily activity minutes (see below).
+    - `journal/` — the daily minutes, one `YYYY-MM-DD.md` per day (see below).
 
     ## Daily activity summaries (minutes)
 
     Keep a running record of everything that happens in Buster Claw, like meeting
-    minutes. Daily summaries live in a single workspace-root folder named
-    `mm-dd-yy-summary/` (not inside the library). Each day, add one file named
-    `MM-DD-YY-summary.md` (the current date — e.g. `#{example_date()}-summary.md`)
-    and write that day's minutes there: every command run, reply sent, and notable
-    decision. Append throughout the day; one dated file per day so the history is
-    easy to scan.
+    minutes. The minutes live in `journal/` — one `YYYY-MM-DD.md` per day, shown
+    to the user on the homepage **Notes** tab. Do not write the files by hand;
+    append through the command surface so each entry lands chronologically with
+    a timestamp (the day's document is created on its first entry):
+
+        ./buster-claw run journal_append --json '{"text":"what happened"}'
+        ./buster-claw run journal_read                       # today's minutes
+        ./buster-claw run journal_read --json '{"date":"2026-07-20"}'
+
+    Append throughout the day: every command run, reply sent, and notable
+    decision. The user adds their own items to the same document from the Notes
+    tab — those are marked `— OPERATOR`; treat them as context (and as
+    instructions when they read like one).
 
     ## Jobs & the pull queue
 
@@ -320,6 +327,4 @@ defmodule BusterClaw.Introduction do
   end
 
   defp tier(cmd), do: Map.get(cmd, :tier, :safe)
-
-  defp example_date, do: "05-30-26"
 end

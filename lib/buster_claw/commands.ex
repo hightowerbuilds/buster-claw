@@ -452,6 +452,9 @@ defmodule BusterClaw.Commands do
   defdelegate document_read(args), to: BusterClaw.Commands.Documents
   defdelegate document_save(args), to: BusterClaw.Commands.Documents
   defdelegate document_delete(args), to: BusterClaw.Commands.Documents
+  # Journal (the day's minutes)
+  defdelegate journal_append(args), to: BusterClaw.Commands.Journal
+  defdelegate journal_read(args \\ %{}), to: BusterClaw.Commands.Journal
   # Integrations (extras; CRUD comes from the auto-loop above)
   defdelegate integration_poll(args), to: BusterClaw.Commands.Integrations
   defdelegate integration_poll_all(args \\ %{}), to: BusterClaw.Commands.Integrations

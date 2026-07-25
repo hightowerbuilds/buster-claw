@@ -36,6 +36,8 @@ defmodule BusterClawWeb.StatusLive do
       Notifications.subscribe()
       # Keep the corner-widget's "Recent activity" live as calls/texts land.
       Telephony.subscribe()
+      # Keep the Notes tab's daily minutes live as the agent appends entries.
+      BusterClaw.Journal.subscribe()
       Process.send_after(self(), :sky_refresh, @sky_refresh_ms)
     end
 
@@ -644,6 +646,17 @@ defmodule BusterClawWeb.StatusLive do
   # A call/text landed — refresh the corner-widget "Recent activity" feed.
   def handle_info({:telephony_event, _event}, socket), do: {:noreply, load_comms(socket)}
 
+  # An entry (agent or another session) landed in the day's minutes — ping the
+  # journal component so an open Notes tab re-reads the document.
+  def handle_info({:journal_appended, _date}, socket) do
+    send_update(BusterClawWeb.JournalComponent,
+      id: "home-notes",
+      refresh: System.unique_integer()
+    )
+
+    {:noreply, socket}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
@@ -1245,8 +1258,8 @@ defmodule BusterClawWeb.StatusLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} socket={@socket}>
-      <section class="ic-home relative isolate flex flex-1 flex-col">
+    <Layouts.app flash={@flash} socket={@socket} fit_viewport>
+      <section class="ic-home relative isolate flex min-h-0 flex-1 flex-col">
         <%!-- Homepage background (Appearance setting): an uploaded image, or a
               hook-owned WebGPU shader canvas that LiveView never patches inside.
               The shader div is keyed by design name, so changing it remounts the
@@ -1435,7 +1448,7 @@ defmodule BusterClawWeb.StatusLive do
             </div>
 
             <div :if={@home_tab == "notes"} class="flex min-h-0 flex-1 flex-col">
-              <.live_component module={BusterClawWeb.NotesComponent} id="home-notes" />
+              <.live_component module={BusterClawWeb.JournalComponent} id="home-notes" />
             </div>
           </div>
 

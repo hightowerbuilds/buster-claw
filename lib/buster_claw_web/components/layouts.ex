@@ -108,6 +108,11 @@ defmodule BusterClawWeb.Layouts do
     doc:
       "drop only the centered max-width (keep padding + normal scroll) so content fills the window width"
 
+  attr :fit_viewport, :boolean,
+    default: false,
+    doc:
+      "clamp the shell to the window height (no page scroll) while keeping the centered max-width/padding — inner panes scroll themselves"
+
   attr :socket, :any,
     default: nil,
     doc:
@@ -143,7 +148,7 @@ defmodule BusterClawWeb.Layouts do
       id="app-shell"
       class={[
         "flex flex-col",
-        if(@full_bleed, do: "h-screen overflow-hidden", else: "min-h-screen")
+        if(@full_bleed or @fit_viewport, do: "h-screen overflow-hidden", else: "min-h-screen")
       ]}
     >
       <header class="sticky top-0 z-30">
@@ -168,12 +173,13 @@ defmodule BusterClawWeb.Layouts do
 
       <main class={[
         "flex min-w-0 flex-1 flex-col",
-        @full_bleed && "min-h-0 overflow-hidden"
+        (@full_bleed or @fit_viewport) && "min-h-0 overflow-hidden"
       ]}>
         <div class={[
           "flex w-full flex-1 flex-col",
           cond do
             @full_bleed -> "min-h-0"
+            @fit_viewport -> "mx-auto min-h-0 max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8"
             @wide -> "space-y-4 px-4 py-8 sm:px-6 lg:px-8"
             true -> "mx-auto max-w-7xl space-y-4 px-4 py-8 sm:px-6 lg:px-8"
           end

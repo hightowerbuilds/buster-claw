@@ -25,6 +25,31 @@ defmodule BusterClaw.Commands.Catalog.Library do
       },
       Helpers.delete_entry("document_delete", "Delete a document's file and mark it deleted."),
 
+      # Journal (the minutes of the day, shown on the homepage Notes tab)
+      %{
+        name: "journal_append",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Append a timestamped entry to today's journal — the minutes of the day on the Notes tab.",
+        args: %{
+          "text" => %{type: :string, required: true}
+        }
+      },
+      %{
+        name: "journal_read",
+        type: :read,
+        tier: :safe,
+        description: "Read one day's journal document.",
+        args: %{
+          "date" => %{
+            type: :string,
+            required: false,
+            description: "ISO 8601 date; defaults to today"
+          }
+        }
+      },
+
       # Events
       Helpers.list_entry("event_list", "List all calendar events."),
       Helpers.get_entry("event_get", "Fetch an event by ID."),

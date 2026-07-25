@@ -141,6 +141,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       integration_run_list
       job_list
       job_show
+      journal_read
       memory_search
       notify_get
       notify_list

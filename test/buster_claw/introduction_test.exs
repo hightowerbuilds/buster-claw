@@ -22,7 +22,7 @@ defmodule BusterClaw.IntroductionTest do
     md = Introduction.markdown()
 
     assert md =~ "Buster Claw — Operating Guide"
-    assert md =~ "MM-DD-YY-summary"
+    assert md =~ "journal_append"
     assert md =~ "library/"
     # Command surface, grouped by tier, with real catalog entries.
     assert md =~ "Safe (agent-callable)"
@@ -38,13 +38,14 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "`job-descriptions/`"
     assert md =~ "`analysis/`"
     assert md =~ "`shift/`"
-    assert md =~ "`mm-dd-yy-summary/`"
+    assert md =~ "`journal/`"
 
-    # Daily minutes: a single workspace-root folder with one file per day —
-    # NOT a per-day folder inside the library (the old, inaccurate convention).
-    assert md =~ "mm-dd-yy-summary/"
-    assert md =~ "one dated file per day"
-    refute md =~ "one dated folder per day"
+    # Daily minutes: one journal document per day, appended through the command
+    # surface (NOT hand-written files — the old mm-dd-yy-summary/ convention).
+    assert md =~ "journal_append"
+    assert md =~ "journal_read"
+    assert md =~ "YYYY-MM-DD.md"
+    refute md =~ "mm-dd-yy-summary"
 
     # Jobs & the pull queue: points at the job-descriptions roster as the source
     # of truth and describes pulling work from the dispatch queue via the CLI.

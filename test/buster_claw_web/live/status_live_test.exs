@@ -870,31 +870,41 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute has_element?(view, "#calendar-grid")
     end
 
-    test "the Notes sub-tab shows the note surface and creates + edits a note",
+    test "the Notes sub-tab shows the daily minutes and appends an operator item",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       html = render_click(view, "select_home_tab", %{"tab" => "notes"})
       refute has_element?(view, "#calendar-grid")
-      assert html =~ "Select a note"
+      # Fresh day: no document exists until the first entry.
+      assert html =~ "No minutes for this day yet"
+      assert html =~ BusterClaw.Journal.today_name()
       assert has_element?(view, "button[phx-value-tab='notes'].bg-primary")
 
-      # Create a note via the component's new-note form.
-      view
-      |> form("#new-note-form", note: %{title: "Roadmap ideas"})
-      |> render_submit()
-
-      assert has_element?(view, "button[phx-value-name='Roadmap ideas']")
-
-      # Editing autosaves and updates the live reading view.
+      # The composer appends an OPERATOR-marked entry to today's minutes.
       html =
         view
-        |> form("#note-editor-form", %{body: "# Ideas\n\nship notes"})
-        |> render_change()
+        |> form("#journal-composer-form", %{text: "Renew the domain."})
+        |> render_submit()
 
-      assert html =~ "ship notes"
-      assert %{body: body} = BusterClaw.Notes.get("Roadmap ideas")
-      assert body =~ "ship notes"
+      assert html =~ "Renew the domain."
+      assert html =~ "OPERATOR"
+      assert %{body: body} = BusterClaw.Journal.get(BusterClaw.Journal.today_name())
+      assert body =~ "Renew the domain."
+      assert body =~ "OPERATOR"
+    end
+
+    test "agent journal appends update an open Notes tab live", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      # An agent entry lands via the command surface; the broadcast should reach
+      # the mounted LiveView and re-render the minutes without any user action.
+      {:ok, _} = BusterClaw.Journal.append("Handled dispatch #7.", :agent)
+
+      _ = :sys.get_state(view.pid)
+      html = render(view)
+      assert html =~ "Handled dispatch #7."
     end
   end
 end
