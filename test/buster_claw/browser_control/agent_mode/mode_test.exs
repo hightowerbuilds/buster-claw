@@ -35,10 +35,16 @@ defmodule BusterClaw.BrowserControl.AgentMode.ModeTest do
     end
   end
 
+  test "the human can complete the task straight from a handoff" do
+    # Phase 5: after paying at the payment handoff, the run finishes without the
+    # agent resuming.
+    assert {:ok, :done} = Mode.transition(:awaiting_human, :complete)
+  end
+
   test "illegal pairs are always errors, never silent" do
     assert {:error, :invalid_transition} = Mode.transition(:idle, :complete)
     assert {:error, :invalid_transition} = Mode.transition(:idle, :resume)
     assert {:error, :invalid_transition} = Mode.transition(:agent_working, :start)
-    assert {:error, :invalid_transition} = Mode.transition(:awaiting_human, :complete)
+    assert {:error, :invalid_transition} = Mode.transition(:done, :resume)
   end
 end

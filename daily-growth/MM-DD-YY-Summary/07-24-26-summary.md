@@ -79,3 +79,45 @@ Suite state at close: 1314 Elixir tests green (plus Rust gates), formatter
 clean, `--warnings-as-errors` clean. In-flight commerce Phase 5 work
 (`BrowserControl.Commerce` + friends) deliberately left uncommitted —
 separate arc, separate commit.
+
+---
+
+# Second arc — Phase 5 lands: commerce, cart in, human pays
+
+Back to the browser engine. The in-flight Phase 5 work (handoff on
+`payment_stop`, `awaiting_human → done`, `browser_agent` ledger source,
+`Cart`, `Commerce.confirm_purchase`) was reviewed against the roadmap spec
+and finished: two spec bullets were unbuilt, plus one real integrity gap.
+
+## 7. The cart lives on the run — the ledger can't disagree with the human
+
+The spec's handoff shows "the total and full cart," but the run didn't know
+the cart — and `confirm_purchase` billed whatever cart the *caller* passed,
+which nothing tied to what the human saw. Now: `AgentMode.put_cart/2`
+attaches the cart while shopping (recorded as a watchable `:cart` trajectory
+step), the payment handoff **freezes** it (`put_cart` refuses in
+`awaiting_human`) and carries the summary in the handoff step + reply meta,
+and `confirm_purchase` lost its cart argument entirely — it bills the run's
+frozen cart, so ledger-equals-shown holds by construction, not by test.
+
+## 8. The confirmation page is captured — best-effort, never entry-losing
+
+`AgentMode.capture_confirmation/1`, allowed only in `awaiting_human` (it
+receipts the human's own checkout; it deliberately can't give a working
+agent eyes): CDP `Page.captureScreenshot` → PNG at
+`<workspace>/browser-control/captures/<run_id>-confirmation.png` (run id
+sanitized to one path component), recorded as a `:capture` step.
+`confirm_purchase` wires the path into tx metadata; a dead engine or a
+capture-less stub degrades to a receipt-less ledger entry, never a lost one
+— non-raising end to end, exit-trapped at the Commerce boundary.
+
+## 9. One found bug + coverage
+
+`fsm_reply` broadcast `{:mode, %{from, to}}` after updating state, so `from`
+always equaled `to` — now reports the real pre-transition mode. Commerce
+tests 6 → 10: handoff-shows-cart, cart-step, cart-frozen, capture-receipted,
+capture-degrades, no-cart refusal, billed-equals-shown (asserted against the
+handoff meta, not a caller-side cart). Suite at close: 1317 green + Rust
+gates. Deferred, matching the arc's phasing: the LiveView/Tauri handoff-card
+rail (the roadmap's deferred UI slice) and the live Stripe-style checkout
+walk (acceptance criterion 2, needs the packaged app).

@@ -31,6 +31,7 @@ defmodule BusterClaw.BrowserControl.AgentMode do
 
   alias BusterClaw.BrowserControl
   alias BusterClaw.BrowserControl.AgentMode.{Mode, Trajectory}
+  alias BusterClaw.BrowserControl.Commerce.Cart
   alias BusterClaw.BrowserControl.Egress.SecretRef
   alias BusterClaw.BrowserControl.Session
   alias Phoenix.PubSub
@@ -48,6 +49,8 @@ defmodule BusterClaw.BrowserControl.AgentMode do
     * `:navigate_mod` — module answering `navigate/3` (default `BrowserControl`);
       injectable so the scope gate is exercised without a browser.
     * `:secret_resolver` — `fn name -> {:ok, value} | :error end`.
+    * `:on_payment` — `:halt` (default) ends the run at a payment page; `:handoff`
+      (commerce) suspends into `awaiting_human` for the human to pay.
     * `:clock` — `fn -> integer end` for step timestamps (no wall-clock read here).
     * `:name` — registered name (omit for anonymous, as tests do).
   """
@@ -96,6 +99,17 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   """
   def act(server, action, args \\ %{}), do: GenServer.call(server, {:act, action, args}, 30_000)
 
+  @doc """
+  Attach/replace the cart the agent has built (Phase 5 commerce). Allowed only
+  while `agent_working` — the cart is frozen by the payment handoff, so what the
+  human is shown is exactly what a later `confirm_purchase` may bill. Recorded
+  as a `:cart` step so cart-building is watchable in the trajectory.
+  """
+  def put_cart(server, cart), do: GenServer.call(server, {:put_cart, cart})
+
+  @doc "The cart attached to the run (or nil)."
+  def cart(server), do: GenServer.call(server, :cart)
+
   @doc "Hand off to the human: `agent_working → awaiting_human`."
   def request_human(server, reason \\ "handoff"),
     do: GenServer.call(server, {:request_human, reason})
@@ -105,6 +119,16 @@ defmodule BusterClaw.BrowserControl.AgentMode do
 
   @doc "Human returns control: `awaiting_human → agent_working`."
   def resume(server), do: GenServer.call(server, :resume)
+
+  @doc """
+  Capture the page the human is looking at (Phase 5: the confirmation page,
+  after they paid) as a PNG under `<workspace>/browser-control/captures/`.
+  Allowed only in `awaiting_human` — this exists to receipt the human's own
+  checkout, not to give a working agent eyes. Recorded as a `:capture` step.
+  Returns `{:ok, path}` or `{:error, reason}`; never raises (a failed capture
+  must not take the run down with it).
+  """
+  def capture_confirmation(server), do: GenServer.call(server, :capture_confirmation, 30_000)
 
   @doc "Mark the run complete: `agent_working → done`."
   def complete(server), do: GenServer.call(server, :complete)
@@ -127,6 +151,12 @@ defmodule BusterClaw.BrowserControl.AgentMode do
        navigate_mod: Keyword.get(opts, :navigate_mod, BrowserControl),
        secret_resolver: Keyword.get(opts, :secret_resolver, fn _ -> :error end),
        clock: Keyword.get(opts, :clock, fn -> nil end),
+       # `:halt` (default, safe): a payment page ends the run. `:handoff`
+       # (commerce runs): a payment page suspends the agent into awaiting_human
+       # for the human to pay. Either way the agent never touches a payment field.
+       on_payment: Keyword.get(opts, :on_payment, :halt),
+       # The cart the agent has built (Phase 5); frozen by the payment handoff.
+       cart: nil,
        mode: :idle,
        trajectory: Trajectory.new()
      }}
@@ -135,6 +165,62 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   @impl true
   def handle_call(:run_id, _from, s), do: {:reply, s.run_id, s}
   def handle_call(:mode, _from, s), do: {:reply, s.mode, s}
+  def handle_call(:cart, _from, s), do: {:reply, s.cart, s}
+
+  # Cart updates only while the agent is shopping: after the handoff the cart is
+  # frozen, so the total the human sees is the total the ledger can bill.
+  def handle_call({:put_cart, %Cart{} = cart}, _from, s) do
+    if s.mode == :agent_working do
+      summary = Cart.summary(cart)
+      s = %{s | cart: cart}
+      s = record(s, %{type: :cart, summary: "cart #{summary.lines} = #{summary.total}"})
+      {:reply, {:ok, summary}, s}
+    else
+      {:reply, {:error, {:cart_frozen, s.mode}}, s}
+    end
+  end
+
+  def handle_call({:put_cart, _other}, _from, s), do: {:reply, {:error, :invalid_cart}, s}
+
+  # Deliberately non-raising end to end: a capture failure after the human has
+  # paid must degrade to "no receipt image", never crash the run that the
+  # ledger write depends on.
+  def handle_call(:capture_confirmation, _from, s) do
+    cond do
+      s.mode != :awaiting_human ->
+        {:reply, {:error, {:not_awaiting_human, s.mode}}, s}
+
+      not function_exported?(s.session_mod, :command, 3) ->
+        {:reply, {:error, :capture_unavailable}, s}
+
+      true ->
+        case screenshot_png(s) do
+          {:ok, png} ->
+            path = capture_path(s.run_id)
+
+            with :ok <- File.mkdir_p(Path.dirname(path)),
+                 :ok <- File.write(path, png) do
+              s =
+                record(s, %{
+                  type: :capture,
+                  summary: "confirmation capture #{Path.basename(path)}",
+                  thumbnail: path
+                })
+
+              {:reply, {:ok, path}, s}
+            else
+              {:error, posix} -> {:reply, {:error, {:capture_write_failed, posix}}, s}
+            end
+
+          {:error, reason} ->
+            s =
+              record(s, %{type: :capture, summary: "confirmation capture failed", outcome: :error})
+
+            {:reply, {:error, reason}, s}
+        end
+    end
+  end
+
   def handle_call(:trajectory, _from, s), do: {:reply, s.trajectory, s}
   def handle_call(:summary, _from, s), do: {:reply, Trajectory.summary(s.trajectory), s}
 
@@ -169,8 +255,9 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   defp fsm_reply(s, event, meta \\ %{}) do
     case Mode.transition(s.mode, event) do
       {:ok, next} ->
+        prev = s.mode
         s = %{s | mode: next}
-        broadcast(s, {:mode, %{from: s.mode, to: next, event: event, meta: meta}})
+        broadcast(s, {:mode, %{from: prev, to: next, event: event, meta: meta}})
         broadcast(s, {:mode_changed, next})
         {:reply, {:ok, next}, s}
 
@@ -188,6 +275,27 @@ defmodule BusterClaw.BrowserControl.AgentMode do
           record(s, %{type: :navigate, summary: "navigate #{url}", origin: origin, outcome: :ok})
 
         {:reply, {:ok, origin}, s}
+
+      # A payment page in a commerce run is a HANDOFF, not a dead end (Phase 5):
+      # the agent stops acting, the human completes checkout in the same headful
+      # surface where popups actually work, and the run waits in awaiting_human.
+      # The handoff shows the human the total and the full cart — the step and
+      # the reply both carry the cart summary the ledger will later bill.
+      {:halt, :payment_stop, meta} when s.on_payment == :handoff ->
+        cart_summary = if s.cart, do: Cart.summary(s.cart)
+        meta = Map.put(meta, :cart, cart_summary)
+
+        s =
+          record(s, %{
+            type: :handoff,
+            summary: "payment handoff #{meta[:url]}#{handoff_cart_line(cart_summary)}",
+            outcome: :awaiting_human
+          })
+
+        {_, next} = safe_transition(s, :need_human)
+        s = %{s | mode: next}
+        broadcast(s, {:mode_changed, next})
+        {:reply, {:handoff, :payment, meta}, s}
 
       {:halt, reason, meta} ->
         s =
@@ -249,6 +357,40 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   defp outcome({:ok, _}), do: :ok
   defp outcome(:ok), do: :ok
   defp outcome(_), do: :error
+
+  defp handoff_cart_line(nil), do: ""
+  defp handoff_cart_line(summary), do: " — #{summary.lines} = #{summary.total}"
+
+  defp screenshot_png(s) do
+    case s.session_mod.command(s.session, "Page.captureScreenshot", %{}) do
+      {:ok, %{"data" => b64}} when is_binary(b64) ->
+        case Base.decode64(b64) do
+          {:ok, png} -> {:ok, png}
+          :error -> {:error, :bad_capture_data}
+        end
+
+      {:ok, other} ->
+        {:error, {:bad_capture_result, other}}
+
+      {:error, reason} ->
+        {:error, reason}
+
+      other ->
+        {:error, {:capture_failed, other}}
+    end
+  end
+
+  # Run ids are caller-supplied (the scope id) — collapse them to one safe path
+  # component before they name a file.
+  defp capture_path(run_id) do
+    safe = String.replace(run_id, ~r/[^A-Za-z0-9._-]/, "-")
+
+    BusterClaw.Library.Artifact.workspace_path([
+      "browser-control",
+      "captures",
+      safe <> "-confirmation.png"
+    ])
+  end
 
   defp record(s, attrs) do
     attrs = Map.put_new(attrs, :at, s.clock.())

@@ -48,5 +48,8 @@ defmodule BusterClaw.BrowserControl.AgentMode.Mode do
   def transition(:awaiting_human, :resume), do: {:ok, :agent_working}
   def transition(:awaiting_human, :take_wheel), do: {:ok, :awaiting_human}
   def transition(:awaiting_human, :stop), do: {:ok, :stopped}
+  # The human finished the manual step (e.g. paid at the Phase 5 handoff) and the
+  # task is done without the agent resuming.
+  def transition(:awaiting_human, :complete), do: {:ok, :done}
   def transition(_mode, _event), do: {:error, :invalid_transition}
 end

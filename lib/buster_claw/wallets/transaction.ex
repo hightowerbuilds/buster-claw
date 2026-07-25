@@ -6,7 +6,9 @@ defmodule BusterClaw.Wallets.Transaction do
   alias BusterClaw.Wallets.Wallet
 
   @kinds ~w(income expense)
-  @sources ~w(manual market url integration gmail)
+  # `browser_agent`: an agent-assisted purchase the human confirmed at the Phase 5
+  # commerce handoff (BusterClaw.BrowserControl.Commerce).
+  @sources ~w(manual market url integration gmail browser_agent)
 
   schema "wallet_transactions" do
     field :kind, :string
