@@ -59,9 +59,16 @@ defmodule BusterClaw.BrowserControl.CDP do
   Subscribe the caller to engine events and the exit notification. An engine
   that already died (instant-crash launch) is `{:error, :browser_exited}`,
   never a caller-killing `:noproc` exit.
+
+  `opts[:methods]` restricts delivery to the listed CDP method names. This is
+  not an optimization detail — a screencast pushes ~15 frames a second at tens
+  of kilobytes each, and without a filter every one of those lands in the
+  mailbox of every subscriber that has no use for them (`Session`, waiting for a
+  load event, would copy megabytes per minute for nothing). The exit
+  notification is always delivered regardless of the filter.
   """
-  def subscribe(server) do
-    GenServer.call(server, :subscribe)
+  def subscribe(server, opts \\ []) do
+    GenServer.call(server, {:subscribe, Keyword.get(opts, :methods)})
   catch
     :exit, _ -> {:error, :browser_exited}
   end
@@ -119,7 +126,8 @@ defmodule BusterClaw.BrowserControl.CDP do
        buffer: "",
        next_id: 1,
        pending: %{},
-       subscribers: MapSet.new(),
+       # %{pid => MapSet.t(method) | nil} — nil means "every event".
+       subscribers: %{},
        exit_status: nil
      }}
   end
@@ -142,9 +150,10 @@ defmodule BusterClaw.BrowserControl.CDP do
     {:noreply, %{state | next_id: id + 1, pending: Map.put(state.pending, id, from)}}
   end
 
-  def handle_call(:subscribe, {pid, _tag}, state) do
+  def handle_call({:subscribe, methods}, {pid, _tag}, state) do
     Process.monitor(pid)
-    {:reply, :ok, %{state | subscribers: MapSet.put(state.subscribers, pid)}}
+    filter = if is_list(methods), do: MapSet.new(methods), else: nil
+    {:reply, :ok, %{state | subscribers: Map.put(state.subscribers, pid, filter)}}
   end
 
   def handle_call(:os_pid, _from, state), do: {:reply, state.os_pid, state}
@@ -170,7 +179,9 @@ defmodule BusterClaw.BrowserControl.CDP do
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     for {_id, from} <- state.pending, do: GenServer.reply(from, {:error, :browser_exited})
-    for pid <- state.subscribers, do: send(pid, {:browser_control_exit, status})
+    # Death is never filtered — a subscriber that asked for one method still
+    # needs to know the engine is gone.
+    for {pid, _filter} <- state.subscribers, do: send(pid, {:browser_control_exit, status})
     {:stop, :normal, %{state | pending: %{}, exit_status: status}}
   end
 
@@ -187,7 +198,7 @@ defmodule BusterClaw.BrowserControl.CDP do
   end
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
-    {:noreply, %{state | subscribers: MapSet.delete(state.subscribers, pid)}}
+    {:noreply, %{state | subscribers: Map.delete(state.subscribers, pid)}}
   end
 
   def handle_info({:EXIT, port, _reason}, %{port: port} = state), do: {:noreply, state}
@@ -217,7 +228,9 @@ defmodule BusterClaw.BrowserControl.CDP do
 
       {:ok, %{"method" => method} = msg} ->
         event = {:browser_control_event, method, msg["params"] || %{}, msg["sessionId"]}
-        for pid <- state.subscribers, do: send(pid, event)
+
+        for {pid, filter} <- state.subscribers, wants?(filter, method), do: send(pid, event)
+
         state
 
       _ ->
@@ -225,6 +238,9 @@ defmodule BusterClaw.BrowserControl.CDP do
         state
     end
   end
+
+  defp wants?(nil, _method), do: true
+  defp wants?(filter, method), do: MapSet.member?(filter, method)
 
   defp response(%{"error" => error}), do: {:error, {:cdp, error}}
   defp response(%{"result" => result}), do: {:ok, result}

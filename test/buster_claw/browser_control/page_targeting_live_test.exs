@@ -23,13 +23,13 @@ defmodule BusterClaw.BrowserControl.PageTargetingLiveTest do
   @moduletag :browser_engine
   @moduletag timeout: 90_000
 
+  # Base64 rather than percent-encoding: `URI.encode/1` does not escape `#`, so
+  # a `data:text/html,` URL truncates at the first one and the page silently
+  # arrives half-built. These fixtures happen not to contain `#` today, which is
+  # exactly what makes it a trap for the next one.
   defp page(session, body) do
-    :ok =
-      Session.navigate(
-        session,
-        "data:text/html," <> URI.encode("<html><body>#{body}</body></html>")
-      )
-
+    html = "<html><body>#{body}</body></html>"
+    :ok = Session.navigate(session, "data:text/html;base64," <> Base.encode64(html))
     session
   end
 

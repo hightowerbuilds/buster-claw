@@ -191,6 +191,34 @@ export const EmbeddedBrowser = {
     this.settle = setTimeout(() => this.scheduleSync(), 250)
   },
 
+  // Agent Mode's mirror takes the surface slot while a run is live, so the
+  // native webviews have to get out of the way — otherwise they keep painting
+  // over the <img> at their last bounds. LiveView removes/re-adds the surface
+  // element, so re-query it rather than trusting the mounted reference.
+  updated() {
+    if (!this.invoke) return
+
+    const mirroring = this.el.dataset.agentMirror === "1"
+
+    if (mirroring) {
+      if (!this.mirrorHidden) {
+        this.mirrorHidden = true
+        if (this.ro && this.surface) this.ro.unobserve(this.surface)
+        this.surface = null
+        this.invoke("browser_hide", { surfaceId: this.sid }).catch(() => {})
+      }
+      return
+    }
+
+    if (this.mirrorHidden) {
+      this.mirrorHidden = false
+      this.surface = this.el.querySelector("[data-browser-surface]")
+      // set_bounds re-shows a hidden surface, so a plain re-sync restores it.
+      if (this.ro && this.surface) this.ro.observe(this.surface)
+      this.scheduleSync()
+    }
+  },
+
   // Initial content URL (shared heuristic in lib/browser_url.js): scheme kept,
   // absolute workspace path → /ws/file, bare domain → https://, empty → the
   // browser homepage (recent URLs).

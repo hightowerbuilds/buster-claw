@@ -79,6 +79,14 @@ defmodule BusterClawWeb.Router do
     get "/image", WorkspaceFileController, :image
   end
 
+  # The Agent Mode mirror: an MJPEG stream of a run's viewport, rendered by an
+  # <img> in the browse tab (Phase 7). No pipeline — this is a long-lived chunked
+  # media response, not an HTML page. Loopback-only; the frames show a page the
+  # user is already watching in a window on their own machine.
+  scope "/browser", BusterClawWeb do
+    get "/agent-view/:run_id", AgentViewController, :show
+  end
+
   # Raw WGSL for a custom homepage shader, fetched by the SmokeBackground hook and
   # compiled live in the webview. No pipeline; name guarded by Shaders.read/1;
   # loopback-only.

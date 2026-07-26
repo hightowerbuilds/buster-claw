@@ -42,6 +42,20 @@ defmodule BusterClaw.BrowserControl.Session do
   def release(session) when is_pid(session), do: GenServer.cast(session, :release)
 
   @doc """
+  The underlying CDP client and attached-target session id:
+  `{:ok, cdp_pid, session_id}`.
+
+  For callers that need the raw connection rather than one command — the
+  screencast subscribes to frame events on it directly. Prefer `command/4`;
+  this is the escape hatch, not the front door.
+  """
+  def handles(session) do
+    GenServer.call(session, :handles)
+  catch
+    :exit, _ -> {:error, :session_gone}
+  end
+
+  @doc """
   Run a CDP command scoped to this session's attached target. Same return
   contract as `CDP.command/4`; `session_id` is supplied automatically.
   """
@@ -87,7 +101,9 @@ defmodule BusterClaw.BrowserControl.Session do
              profile_dir: profile,
              headless: Keyword.get(opts, :headless, true)
            ),
-         :ok <- CDP.subscribe(cdp),
+         # Only the event this process actually waits on. Without the filter a
+         # running screencast would push every frame into this mailbox too.
+         :ok <- CDP.subscribe(cdp, methods: ["Page.loadEventFired"]),
          {:ok, target_id, session_id} <- attach_target(cdp) do
       state = %{
         id: Keyword.get(opts, :id, inspect(self())),

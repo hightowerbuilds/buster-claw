@@ -69,6 +69,20 @@ defmodule BusterClawWeb.BrowseLive do
   def handle_event("agent_resume", _params, socket), do: run_call(socket, &AgentMode.resume/1)
   def handle_event("agent_stop", _params, socket), do: run_call(socket, &AgentMode.stop_run/1)
 
+  # Raises the engine's own window. Deliberately not a mode change: the mirror
+  # cannot show native dialogs and must not take payment details, so "go look at
+  # the real thing" has to work without disturbing the run.
+  def handle_event("agent_show_window", _params, socket) do
+    case socket.assigns.agent_run do
+      %{pid: pid} ->
+        AgentMode.bring_to_front(pid)
+        {:noreply, socket}
+
+      _none ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_event("agent_confirm_purchase", params, socket) do
     with %{pid: pid} <- socket.assigns.agent_run,
          %Wallets.Wallet{} = wallet <- picked_wallet(socket, params["wallet_id"]) do
@@ -161,6 +175,7 @@ defmodule BusterClawWeb.BrowseLive do
         phx-hook="EmbeddedBrowser"
         data-initial-url={@initial_url}
         data-surface-id={@surface_id}
+        data-agent-mirror={@agent_run && "1"}
         class="flex min-h-0 flex-1 flex-col"
       >
         <%!-- Agent-workspace mode: the visible switch. Rendered OUTSIDE the
@@ -182,6 +197,16 @@ defmodule BusterClawWeb.BrowseLive do
           <span class="truncate font-mono text-xs text-base-content/60">{@agent_run.run_id}</span>
 
           <div class="ml-auto flex items-center gap-1.5">
+            <%!-- The mirror is viewport-only and payment is deliberately not
+                 doable through it, so the real window must always be one click
+                 away. This is that click. --%>
+            <button
+              type="button"
+              phx-click="agent_show_window"
+              class="rounded-xs border-2 border-base-content/30 px-2 py-0.5 font-mono text-[11px] font-bold uppercase transition hover:border-primary"
+            >
+              Real window
+            </button>
             <button
               :if={@agent_run.mode == :agent_working}
               type="button"
@@ -210,9 +235,27 @@ defmodule BusterClawWeb.BrowseLive do
         </div>
 
         <div class="flex min-h-0 flex-1">
+          <%!-- The mirror (Phase 7). While a run is live this takes the surface
+               slot and the native webviews are hidden by the hook, so the browse
+               tab genuinely BECOMES the agent's workspace instead of showing an
+               unrelated page beside it.
+
+               MJPEG in a plain <img>: the webview decodes natively and the
+               frames never touch the LiveView channel. --%>
+          <div :if={@agent_run} class="relative min-h-0 flex-1 bg-base-300">
+            <img
+              src={~p"/browser/agent-view/#{@agent_run.run_id}"}
+              alt="Agent browser viewport"
+              class="h-full w-full object-contain"
+            />
+            <p class="absolute bottom-2 left-2 rounded-xs bg-base-100/80 px-2 py-1 font-mono text-[11px] text-base-content/70">
+              Live view — dialogs and popups appear in the real window
+            </p>
+          </div>
+
           <%!-- The native chrome (toolbar) + content webviews are positioned over
                this surface by the hook; shrinking it makes room for the rail. --%>
-          <div data-browser-surface class="relative min-h-0 flex-1">
+          <div :if={!@agent_run} data-browser-surface class="relative min-h-0 flex-1">
             <div
               data-browser-fallback
               class="hidden h-full place-items-center p-8 text-center text-sm text-base-content/60"

@@ -646,7 +646,66 @@ now drives the real function.
 
 ---
 
-## Phase 7 — The mirror: Agent Mode inside the app
+## Phase 7 — The mirror: Agent Mode inside the app — **VIEW SHIPPED 07-25**
+
+**Status.** The watchable half is built, walked end to end against a real
+headful run, and green (`Screencast`, `AgentViewController`, the browse-tab
+panel, 6 live engine tests). **Input forwarding is deliberately NOT shipped** —
+see "Why the mirror is view-only" below; it is the next slice, and it needs a
+state-machine change first.
+
+### What the walk found that the tests could not
+
+Three defects survived a green unit suite and only appeared when the whole path
+ran for real. Recording them because the pattern is now familiar:
+
+1. **A static page produces no frames at all.** A screencast emits on *new
+   compositor frames*, so a page that has finished painting sends nothing — and
+   the agent usually pauses on a settled page. The mirror opened black and
+   stayed black, which reads as a broken feature rather than a still page. Fixed
+   with a `Page.captureScreenshot` seed at startup, which renders on demand
+   instead of waiting for the compositor.
+2. **The caster was a `:permanent` child.** It stops normally whenever the last
+   watcher leaves; the supervisor read that as failure and restarted it, which
+   stopped again for the same reason. The loop tripped max_restarts, took the
+   DynamicSupervisor down, and cascaded into the application supervisor — *the
+   whole app died because somebody closed a tab*. Now `:temporary`, like
+   `Session`. This one failed 30 unrelated tests as collateral, which is how it
+   was caught.
+3. **A missing supervisor surfaced as a 500.** Found by driving a dev node that
+   predated the tree change (code reload recompiles modules; it never adds
+   supervision children). Now a legible `:screencast_unavailable`.
+
+Also worth writing down because it cost real time: `URI.encode/1` does not
+escape `#`, so a `data:text/html,` fixture silently truncates at the first CSS
+colour. The page arrives without its script, paints once, and the symptom is
+indistinguishable from "screencast only ever sends one frame". Test fixtures now
+use `data:text/html;base64,`.
+
+### Why the mirror is view-only
+
+The roadmap's rule was: input refused while `agent_working`, read-only at
+`awaiting_human` on a payment page. Implementing that revealed the state machine
+cannot express it. `awaiting_human` is reached by **two** routes —
+`Mode.transition(:agent_working, :take_wheel)` and
+`(:agent_working, :need_human)` — and the resulting state is identical. A
+deliberate take-the-wheel and a payment handoff are indistinguishable, so
+"allow input when the human took the wheel, never when they are paying" is not
+expressible today.
+
+Given the choice between shipping input with a rule that cannot be enforced, and
+shipping the watchable mirror without input, the second is obviously right: the
+field test's whole finding was that *watching* is what made the run safe. A
+"Real window" button (`Page.bringToFront`) gives take-the-wheel a real
+destination in the meantime.
+
+**Prerequisite for the input slice:** carry an `awaiting_reason`
+(`:take_wheel | :payment`) on the run so the payment case is distinguishable by
+construction rather than by inspecting the URL at input time.
+
+---
+
+## Phase 7 — design notes
 
 **The problem, stated from the field test:** the agent works in a Chromium window
 and the user works in Buster Claw, so watching the agent means alt-tabbing. The
@@ -680,19 +739,19 @@ requires no new transport, no new process, and no new trust boundary.
 | **Capture** | `BrowserControl.Screencast`, one per run. `Page.startScreencast` (jpeg, q≈60, `maxWidth`/`maxHeight` from the pane). **Ack every frame** with `Page.screencastFrameAck` — the engine throttles to a stall without it. Holds the latest frame only; no buffering. |
 | **Transport** | `GET /browser/agent-view/:run_id`, `multipart/x-mixed-replace`, chunked from Bandit, rendered as a plain `<img>`. CSP already permits it (`img-src 'self'`). No JS decode path, no base64 inflation. |
 | **Rail** | The existing `browse_live` Agent Mode panel gains the viewport beside the trajectory. The rail stays a projection of `subscribe/1` — the mirror adds no authority. |
-| **Input** | Hook maps client coords → viewport coords via the screencast metadata scale, forwards `Input.dispatchMouseEvent` / `dispatchKeyEvent`. |
-| **Real window** | Run stays headful, positioned behind. "Open the real window" calls `Page.bringToFront`. Always one click away. |
+| **Input** | *Deferred to the next slice* — hook maps client coords → viewport coords via the screencast metadata scale, forwards `Input.dispatchMouseEvent` / `dispatchKeyEvent`. Blocked on `awaiting_reason`; see above. |
+| **Real window** | Run stays headful. "Real window" calls `Page.bringToFront`. Always one click away. **Shipped.** |
 
 **The transport decision is load-bearing.** Do not push base64 frames through
 `push_event` into a canvas: at 1280×900 / q60 / 15fps that is roughly 0.5–1 MB/s
 of JSON contending with every other diff on the LiveView channel. MJPEG costs
 nothing on loopback and the webview decodes natively.
 
-**One change falls out of reading the code.** `CDP.handle_frame/2` broadcasts
-every event to every subscriber, and `AgentMode` is a subscriber — it would take
-~15 × 60 KB messages per second into its mailbox for nothing. `subscribe/2`
-needs an event filter before this ships. Small, but it is a prerequisite, not a
-cleanup.
+**One change falls out of reading the code.** `CDP.handle_frame/2` broadcast
+every event to every subscriber, so a running screencast would have pushed
+~15 × 60 KB messages per second into `Session`'s mailbox for nothing.
+`CDP.subscribe/2` now takes a `:methods` filter and `Session` asks only for
+`Page.loadEventFired`. **Shipped** — it was a prerequisite, not a cleanup.
 
 ### Rules this phase must not break
 

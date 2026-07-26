@@ -162,6 +162,18 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   def resume(server), do: GenServer.call(server, :resume)
 
   @doc """
+  Raise the run's real Chromium window (`Page.bringToFront`).
+
+  The Phase 7 mirror shows the page viewport and nothing else — no tab bar, no
+  basic-auth dialog, no file picker, no permission prompt, no native `<select>`
+  popup, because those are OS widgets outside the compositor. And payment is
+  deliberately not doable through the mirror. So the real window has to stay one
+  click away; this is that click. Changes no mode and records no step — it moves
+  a window, it does not touch the run.
+  """
+  def bring_to_front(server), do: GenServer.call(server, :bring_to_front)
+
+  @doc """
   Capture the page the human is looking at (Phase 5: the confirmation page,
   after they paid) as a PNG under `<workspace>/browser-control/captures/`.
   Allowed only in `awaiting_human` — this exists to receipt the human's own
@@ -286,6 +298,10 @@ defmodule BusterClaw.BrowserControl.AgentMode do
 
   def handle_call({:request_human, reason}, _from, s),
     do: fsm_reply(s, :need_human, %{reason: reason})
+
+  def handle_call(:bring_to_front, _from, s) do
+    {:reply, s.session_mod.command(s.session, "Page.bringToFront", %{}), s}
+  end
 
   def handle_call(:take_wheel, _from, s), do: fsm_reply(s, :take_wheel)
   def handle_call(:resume, _from, s), do: fsm_reply(s, :resume)

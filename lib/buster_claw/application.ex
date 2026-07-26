@@ -58,6 +58,12 @@ defmodule BusterClaw.Application do
         # and supervised so a run outlives the command call that started it.
         {Registry, keys: :unique, name: BusterClaw.BrowserControl.RunRegistry},
         BusterClaw.BrowserControl.RunSupervisor,
+        # The mirror (Phase 7). Both are free at rest: a caster starts only when
+        # something actually watches a run, and stops when the last watcher
+        # leaves, so an unwatched run costs no engine CPU encoding frames.
+        {Registry, keys: :unique, name: BusterClaw.BrowserControl.ScreencastRegistry},
+        {DynamicSupervisor,
+         strategy: :one_for_one, name: BusterClaw.BrowserControl.ScreencastSupervisor},
         # Start to serve requests, typically the last entry
         BusterClawWeb.Endpoint
       ]
