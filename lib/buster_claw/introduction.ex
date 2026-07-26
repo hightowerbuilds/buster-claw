@@ -212,15 +212,32 @@ defmodule BusterClaw.Introduction do
     purchases or paid changes, deletes, credential/account/integration changes, and
     sending to third parties.
 
-    ## Driving the in-app browser
+    ## Browsing the web — pick the engine by consequence
 
-    Buster Claw has its own browser inside the desktop app, and you can drive it
-    directly — you act **inside the user's live, logged-in session** (real
-    co-presence, Sentinel-audited on every action): the `browser_*` commands move
-    the actual window the user sees. All need the desktop app open and are
-    `restricted`.
+    There are three ways to reach the web and they are **not** interchangeable.
+    Choose by what the action can *cost*, not by what is quickest to type.
 
-    The loop:
+    | If the errand… | Use | Why |
+    |---|---|---|
+    | Only reads public pages | `web_search`, `browser_fetch` | No session, no side effects, nothing to watch |
+    | Concerns the tab the user is looking at right now | `browser_*` | Co-presence — you move the window they can see |
+    | **Touches a logged-in account, or spends money** | `agent_run_*` | Frozen scope, payment gate, full trajectory, watchable |
+
+    The rule in one line: **if it can spend money or act as the user, it belongs
+    in an Agent Mode run.** Reading a recipe does not. Reordering something from
+    an account does.
+
+    ### Reading and searching
+
+    `web_search` for the open web; `browser_fetch` to pull one URL as markdown
+    (SSRF-guarded). Neither carries the user's cookies. Prefer these for lookups
+    — they are cheap, need no window, and cannot act.
+
+    ### Co-presence: the tab the user is looking at
+
+    The `browser_*` commands move **the actual window the user sees** (real
+    co-presence, Sentinel-audited, `restricted`, desktop app must be open). Reach
+    for these when the point *is* the page they have open.
 
     1. **Open / go** — `browser_open_tab` opens a tab at a URL (an ephemeral
        sandbox by default — no user cookies; pass `session: "user"` to ride the
@@ -232,6 +249,64 @@ defmodule BusterClaw.Introduction do
        `browser_click` / `browser_fill` act by index. The index registry is
        **per-page**: any navigation invalidates it, so re-run
        `browser_find_elements` after you navigate before clicking/filling again.
+
+    ### Agent Mode: scoped errands with consequences
+
+    `agent_run_*` drives a **separate real Chromium** with the user's persistent
+    agent profile. It is the heavier path and that is the point: the guardrails
+    are what make a consequential errand safe to run.
+
+    ```
+    agent_run_start   {"intent": "...", "domains": ["example.com"], "commerce": true?}
+    agent_run_navigate {"id": "...", "url": "..."}
+    agent_run_act      {"id": "...", "action": "click|fill|extract|read|find_elements|wait", ...}
+    agent_run_cart     {"id": "...", "items": [{"name","unit_cents","qty"}]}
+    agent_run_status   {"id": "..."}          # safe tier — check it freely
+    agent_run_stop     {"id": "..."}
+    ```
+
+    What the guardrails actually do, so you can work with them instead of
+    against them:
+
+    - **The scope is frozen at start.** `intent` and `domains` are fixed for the
+      run's life; nothing you read on a page can widen them. A navigation off the
+      allowlist comes back `result: "halted"` — that is a decision, not an error
+      to retry. Ask the user to start a new run if the errand genuinely needs
+      another domain.
+    - **Payment pages stop the run.** Always. With `commerce: true` the stop
+      becomes `result: "handoff"` carrying the frozen cart, the run waits in
+      `awaiting_human`, and **the user pays in the real window and confirms in
+      the app**. You cannot confirm a purchase; do not try, and do not offer to.
+    - **Build the cart with `agent_run_cart` as you shop.** What the human is
+      shown at the handoff is exactly what the ledger may bill, so the cart must
+      match the site's subtotal to the cent before you hand off.
+    - **A redirect is re-checked.** Landing somewhere off-scope or on a payment
+      page halts the run even if the URL you asked for was fine.
+
+    ### Targeting, and the mistake that nearly bought the wrong thing
+
+    `agent_run_act` targets by `selector`, `text`, or `index`.
+
+    **Use `selector` for anything that decides what gets bought.** `text`
+    matching is fuzzy: it resolves exact matches first, then substrings, and
+    **refuses with `ambiguous_text` when more than one element matches** rather
+    than guessing. That refusal is doing its job — disambiguate with
+    `find_elements` or `extract`, do not retry the same target hoping for a
+    different answer.
+
+    On a real errand, `click text: "45 inches"` matched a customer *review's*
+    variant byline instead of the size swatch. Nothing downstream would have
+    caught it: the cart would have been perfectly accurate about the wrong item.
+    So: **verify a chosen variant against the cart line, never against the
+    product page's default.** The cart is ground truth.
+
+    ### The user can watch
+
+    A run is mirrored live in the app's **Browse tab** — the viewport streams
+    there while it works, with the trajectory beside it. When you start a run,
+    say so, and tell the user they can watch it in Browse. Dialogs, file pickers
+    and popups appear only in the real window, which they can raise from that
+    same panel.
 
     ## Homepage shader patterns
 

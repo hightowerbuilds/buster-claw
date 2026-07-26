@@ -31,6 +31,31 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "`document_save`"
   end
 
+  test "routes web work by consequence, not by convenience" do
+    md = Introduction.markdown()
+
+    # The three engines and the rule that separates them. Without this the model
+    # reaches for whatever is listed first, which is how a purchase ends up on
+    # the ungated path.
+    assert md =~ "pick the engine by consequence"
+    assert md =~ "if it can spend money or act as the user, it belongs"
+    assert md =~ "`web_search`"
+    assert md =~ "`browser_*`"
+    assert md =~ "`agent_run_*`"
+
+    # The guardrails the model has to work WITH rather than retry against.
+    assert md =~ "scope is frozen at start"
+    assert md =~ "Payment pages stop the run"
+    assert md =~ "You cannot confirm a purchase"
+    assert md =~ "ambiguous_text"
+
+    # The 07-25 field-test lesson, in the model's own guide.
+    assert md =~ "verify a chosen variant against the cart line"
+
+    # And where the human watches it.
+    assert md =~ "Browse tab"
+  end
+
   test "documents the workspace layout, role model, and corrected summary convention" do
     md = Introduction.markdown()
 
