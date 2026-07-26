@@ -115,6 +115,60 @@ defmodule BusterClaw.BrowserControl do
   defp mark_redirect(meta, same, same), do: meta
   defp mark_redirect(meta, requested, _landed), do: Map.put(meta, :redirected_from, requested)
 
+  @doc """
+  Push the engine's window off-screen so it stops competing with our own for the
+  user's attention. The mirror (Phase 7) shows the page inside the app, so the
+  real window only needs to exist — it does not need to be looked at.
+
+  **Why not minimize.** Measured 07-25: a minimized window stops compositing on
+  macOS, so `Page.screencastFrame` dries up after one frame and the mirror
+  freezes. Off-screen keeps rendering. That rules out the tidier-looking option.
+
+  **Honest limit.** macOS clamps window positions to keep a window reachable, so
+  a requested `left: -32000` lands around `-1240` for a 1280-wide window — a
+  ~40px sliver stays visible at the screen edge. Out of the way, not invisible.
+  Fully hiding it is not available without giving up the live view.
+
+  Best-effort: a failure here is cosmetic and must never fail a run.
+  """
+  def stash_window(session, opts \\ []) do
+    with_window(session, opts, fn wid, mod ->
+      mod.command(session, "Browser.setWindowBounds", %{
+        "windowId" => wid,
+        "bounds" => %{"left" => -32_000, "top" => 0}
+      })
+    end)
+  end
+
+  @doc """
+  Bring the engine's window back on-screen and focus it — the counterpart to
+  `stash_window/2`, and what the "Real window" control needs.
+
+  `Page.bringToFront` alone is not enough once the window has been stashed: it
+  would focus a window that is still off-screen. Position is restored first.
+  """
+  def reveal_window(session, opts \\ []) do
+    with_window(session, opts, fn wid, mod ->
+      mod.command(session, "Browser.setWindowBounds", %{
+        "windowId" => wid,
+        "bounds" => %{"left" => 60, "top" => 60, "windowState" => "normal"}
+      })
+
+      mod.command(session, "Page.bringToFront", %{})
+    end)
+  end
+
+  defp with_window(session, opts, fun) do
+    mod = Keyword.get(opts, :session_mod, Session)
+
+    case mod.command(session, "Browser.getWindowForTarget", %{}) do
+      {:ok, %{"windowId" => wid}} -> fun.(wid, mod)
+      other -> other
+    end
+  catch
+    :exit, _ -> {:error, :session_gone}
+  end
+
   @doc "Whether Agent Mode has an engine at all. Absence is surfaced, never papered over."
   def available?, do: match?({:ok, _}, detect())
 

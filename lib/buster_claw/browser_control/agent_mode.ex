@@ -300,7 +300,7 @@ defmodule BusterClaw.BrowserControl.AgentMode do
     do: fsm_reply(s, :need_human, %{reason: reason})
 
   def handle_call(:bring_to_front, _from, s) do
-    {:reply, s.session_mod.command(s.session, "Page.bringToFront", %{}), s}
+    {:reply, BrowserControl.reveal_window(s.session, session_mod: s.session_mod), s}
   end
 
   def handle_call(:take_wheel, _from, s), do: fsm_reply(s, :take_wheel)

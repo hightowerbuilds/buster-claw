@@ -226,13 +226,20 @@ defmodule BusterClaw.Commands.AgentRuns do
   end
 
   defp start_headful_session do
-    with {:ok, browser_path} <- BrowserControl.detect() do
-      SessionSupervisor.start_session(
-        browser_path: browser_path,
-        profile_dir: BrowserControl.profile_dir(),
-        headless: false,
-        id: "agent-run"
-      )
+    with {:ok, browser_path} <- BrowserControl.detect(),
+         {:ok, session} <-
+           SessionSupervisor.start_session(
+             browser_path: browser_path,
+             profile_dir: BrowserControl.profile_dir(),
+             headless: false,
+             id: "agent-run"
+           ) do
+      # Headful, but not in the user's face: the mirror shows the page inside the
+      # app, so the real window is pushed aside rather than left on top of
+      # everything. It still exists — checkout popups and native dialogs need a
+      # real window — and the rail's "Real window" control brings it back.
+      BrowserControl.stash_window(session)
+      {:ok, session}
     end
   end
 

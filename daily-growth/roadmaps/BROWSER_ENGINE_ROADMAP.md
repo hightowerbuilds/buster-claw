@@ -740,7 +740,24 @@ requires no new transport, no new process, and no new trust boundary.
 | **Transport** | `GET /browser/agent-view/:run_id`, `multipart/x-mixed-replace`, chunked from Bandit, rendered as a plain `<img>`. CSP already permits it (`img-src 'self'`). No JS decode path, no base64 inflation. |
 | **Rail** | The existing `browse_live` Agent Mode panel gains the viewport beside the trajectory. The rail stays a projection of `subscribe/1` — the mirror adds no authority. |
 | **Input** | *Deferred to the next slice* — hook maps client coords → viewport coords via the screencast metadata scale, forwards `Input.dispatchMouseEvent` / `dispatchKeyEvent`. Blocked on `awaiting_reason`; see above. |
-| **Real window** | Run stays headful. "Real window" calls `Page.bringToFront`. Always one click away. **Shipped.** |
+| **Real window** | Run stays headful but is **stashed off-screen** at start, so it never pops up over the app. "Real window" restores its position and focuses it. **Shipped.** |
+
+**On "make Chrome appear inside our browser."** The mirror is the answer to
+that, and it is as close as the platform allows: the page appears inside the
+app, the window does not. What the 07-25 pass added is that the window is also
+pushed *out of the way* — `stash_window/2` at run start, `reveal_window/2`
+behind the "Real window" control.
+
+Two measured constraints, both recorded in `WindowPlacementLiveTest` because
+both are easy to "tidy up" back into a broken state:
+
+- **Minimizing does not work.** A minimized window stops compositing on macOS,
+  so `Page.screencastFrame` dries up after one frame and the mirror freezes.
+  Off-screen keeps rendering.
+- **macOS clamps window positions** to keep a window reachable, so a requested
+  `left: -32000` lands near `-1240` for a 1280-wide window. A ~40px sliver stays
+  visible at the screen edge. Out of the way, not invisible — and there is no
+  way to close that last gap without giving up the live view.
 
 **The transport decision is load-bearing.** Do not push base64 frames through
 `push_event` into a canvas: at 1280×900 / q60 / 15fps that is roughly 0.5–1 MB/s
