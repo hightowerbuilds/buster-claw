@@ -68,6 +68,15 @@ defmodule BusterClawWeb.TradingLive do
       |> assign(:trading_backfilling, false)
       |> assign(:trading_table, false)
       |> assign(:trading_costs_loading, false)
+      # The chart pane: the portfolio gain/loss line, or one symbol's price
+      # chart (Phase 4). Line mode is the default because it renders from
+      # cached closes with no run; candles are one click and (at most) one
+      # bounded fetch away.
+      |> assign(:trading_chart_view, :portfolio)
+      |> assign(:symbol_range, "3M")
+      |> assign(:symbol_mode, :line)
+      |> assign(:symbol_bars, [])
+      |> assign(:symbol_bars_loading, false)
       |> stream_configure(:chat_messages, dom_id: &"chat-msg-#{&1.id}")
       |> load_chat_history()
 
@@ -183,6 +192,39 @@ defmodule BusterClawWeb.TradingLive do
       _other ->
         {:noreply, socket}
     end
+  end
+
+  # --- Symbol chart (Phase 4) ---
+
+  def handle_event("trading_view_symbol", %{"symbol" => symbol}, socket) do
+    {:noreply,
+     socket
+     |> assign(:trading_chart_view, {:symbol, symbol})
+     |> load_symbol_bars()
+     |> maybe_fetch_symbol_bars()}
+  end
+
+  # The done-when: "Portfolio" returns to the gain/loss line.
+  def handle_event("trading_view_portfolio", _params, socket) do
+    {:noreply, socket |> assign(:trading_chart_view, :portfolio) |> assign(:symbol_bars, [])}
+  end
+
+  def handle_event("trading_symbol_range", %{"range" => range}, socket)
+      when range in ["1M", "3M", "1Y", "5Y"] do
+    {:noreply,
+     socket
+     |> assign(:symbol_range, range)
+     |> load_symbol_bars()
+     |> maybe_fetch_symbol_bars()}
+  end
+
+  def handle_event("trading_symbol_mode", %{"mode" => mode}, socket)
+      when mode in ["line", "candles"] do
+    {:noreply,
+     socket
+     |> assign(:symbol_mode, String.to_existing_atom(mode))
+     |> load_symbol_bars()
+     |> maybe_fetch_symbol_bars()}
   end
 
   # Load/refresh cost basis: one agent run per named account, exactly like the
@@ -391,6 +433,27 @@ defmodule BusterClawWeb.TradingLive do
      socket
      |> assign(:trading_backfilling, false)
      |> push_msg(:error, "The history fetch crashed.")}
+  end
+
+  def handle_async({:symbol_bars, symbol, interval}, {:ok, result}, socket) do
+    socket = assign(socket, :symbol_bars_loading, false)
+
+    case result do
+      {:ok, rows} ->
+        BusterClaw.MarketData.store_ohlc(symbol, interval, rows)
+        {:noreply, load_symbol_bars(socket)}
+
+      {:error, reason} ->
+        {:noreply,
+         push_msg(socket, :error, "Couldn't fetch #{symbol} bars: #{bars_error(reason)}")}
+    end
+  end
+
+  def handle_async({:symbol_bars, symbol, _interval}, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:symbol_bars_loading, false)
+     |> push_msg(:error, "The #{symbol} bar fetch crashed.")}
   end
 
   def handle_async(:trading_costs, {:ok, results}, socket) do
@@ -608,6 +671,59 @@ defmodule BusterClawWeb.TradingLive do
     |> Portfolio.accounts_missing_costs()
   end
 
+  # --- Symbol chart data (Phase 4) ---
+
+  # Range -> (window, interval). 5Y is weekly because ~260 rows is the most
+  # transcription one run may carry; the disclosure line says which is showing.
+  defp symbol_window("1M"), do: {31, "day"}
+  defp symbol_window("3M"), do: {93, "day"}
+  defp symbol_window("1Y"), do: {366, "day"}
+  defp symbol_window("5Y"), do: {1830, "week"}
+
+  defp load_symbol_bars(%{assigns: %{trading_chart_view: {:symbol, symbol}}} = socket) do
+    {days, interval} = symbol_window(socket.assigns.symbol_range)
+    from = Date.add(BusterClaw.MarketCalendar.today(), -days)
+    assign(socket, :symbol_bars, BusterClaw.MarketData.chart_bars(symbol, interval, from))
+  end
+
+  defp load_symbol_bars(socket), do: assign(socket, :symbol_bars, [])
+
+  # Fetch only when the cache can't already answer. Line mode over the short
+  # ranges rides the sweep's closes for free; candles (any range) and the deep
+  # ranges need full OHLC the sweep never fetches.
+  defp maybe_fetch_symbol_bars(%{assigns: %{trading_chart_view: {:symbol, symbol}} = a} = socket) do
+    {days, interval} = symbol_window(a.symbol_range)
+    today = BusterClaw.MarketCalendar.today()
+    from = Date.add(today, -days)
+
+    needs_full? = a.symbol_mode == :candles or a.symbol_range in ["1Y", "5Y"]
+
+    cond do
+      not needs_full? ->
+        socket
+
+      a.symbol_bars_loading ->
+        socket
+
+      BusterClaw.MarketData.chart_coverage?(symbol, interval, from, today) ->
+        socket
+
+      true ->
+        socket
+        |> assign(:symbol_bars_loading, true)
+        |> start_async({:symbol_bars, symbol, interval}, fn ->
+          Trading.fetch_symbol_bars(symbol, from, interval)
+        end)
+    end
+  end
+
+  defp maybe_fetch_symbol_bars(socket), do: socket
+
+  defp bars_error({:robinhood, msg}), do: msg
+  defp bars_error(:bad_snapshot), do: "unreadable response"
+  defp bars_error({:timeout, _}), do: "the run timed out"
+  defp bars_error(other), do: inspect(other)
+
   defp all_cost_candidates(socket) do
     excluded = Portfolio.excluded_accounts()
 
@@ -783,6 +899,11 @@ defmodule BusterClawWeb.TradingLive do
               costs_missing={@trading_costs_missing}
               costs_loading={@trading_costs_loading}
               prices_as_of={@prices_as_of}
+              chart_view={@trading_chart_view}
+              symbol_bars={@symbol_bars}
+              symbol_range={@symbol_range}
+              symbol_mode={@symbol_mode}
+              symbol_loading={@symbol_bars_loading}
             />
           </div>
         </div>
@@ -814,6 +935,11 @@ defmodule BusterClawWeb.TradingLive do
   attr :costs_missing, :list, required: true
   attr :costs_loading, :boolean, required: true
   attr :prices_as_of, :any, required: true
+  attr :chart_view, :any, required: true
+  attr :symbol_bars, :list, required: true
+  attr :symbol_range, :string, required: true
+  attr :symbol_mode, :atom, required: true
+  attr :symbol_loading, :boolean, required: true
 
   defp trading_account_card(assigns) do
     snap = last_snapshot(assigns.account)
@@ -974,7 +1100,7 @@ defmodule BusterClawWeb.TradingLive do
         </form>
       </div>
 
-      <div class="pt-3">
+      <div :if={@chart_view == :portfolio} class="pt-3">
         <BusterClawWeb.PortfolioChart.portfolio_chart
           series={@series}
           range={@range}
@@ -984,6 +1110,76 @@ defmodule BusterClawWeb.TradingLive do
           coverage={@coverage}
           backfilling={@backfilling}
           table={@table}
+        />
+      </div>
+
+      <%!-- One symbol's price chart (Phase 4). "Portfolio" is always one click
+            away, and the disclosure line names the interval actually drawn —
+            weekly at 5Y, because bounded transcription beats fake density. --%>
+      <div :if={match?({:symbol, _}, @chart_view)} class="space-y-2 pt-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              phx-click="trading_view_portfolio"
+              class="border-2 border-base-content/30 px-2 py-0.5 uppercase tracking-wide transition hover:bg-base-content/10"
+            >
+              ◀ Portfolio
+            </button>
+            <span class="font-bold uppercase tracking-widest">{elem(@chart_view, 1)}</span>
+          </div>
+          <div class="flex gap-0.5 border-2 border-base-content/20 p-0.5">
+            <button
+              :for={{mode, label} <- [{"line", "Line"}, {"candles", "Candles"}]}
+              type="button"
+              phx-click="trading_symbol_mode"
+              phx-value-mode={mode}
+              aria-pressed={to_string(@symbol_mode) == mode}
+              class={[
+                "px-2 py-0.5 uppercase tracking-wide transition",
+                if(to_string(@symbol_mode) == mode,
+                  do: "bg-primary text-primary-content",
+                  else: "text-base-content/60 hover:bg-base-content/10"
+                )
+              ]}
+            >
+              {label}
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex gap-1" role="tablist" aria-label="Symbol time range">
+            <button
+              :for={range <- ["1M", "3M", "1Y", "5Y"]}
+              type="button"
+              role="tab"
+              aria-selected={@symbol_range == range}
+              phx-click="trading_symbol_range"
+              phx-value-range={range}
+              class={[
+                "border-2 px-2 py-0.5 font-bold uppercase tracking-wide transition",
+                if(@symbol_range == range,
+                  do: "border-primary bg-primary/10",
+                  else: "border-base-content/25 hover:bg-base-content/5"
+                )
+              ]}
+            >
+              {range}
+            </button>
+          </div>
+          <span class="text-base-content/50">
+            {if elem(symbol_window(@symbol_range), 1) == "week", do: "weekly", else: "daily"} · {length(
+              @symbol_bars
+            )} bars{if @symbol_loading,
+              do: " · fetching full bars (one agent run)…"}
+          </span>
+        </div>
+
+        <BusterClawWeb.PortfolioChart.symbol_plot
+          bars={@symbol_bars}
+          mode={@symbol_mode}
+          symbol={elem(@chart_view, 1)}
         />
       </div>
 
@@ -1030,10 +1226,18 @@ defmodule BusterClawWeb.TradingLive do
             class="grid grid-cols-[3.5rem_minmax(0,1fr)_5rem_5.5rem_6.5rem] items-center gap-2 py-1.5"
             title={"#{pos.symbol}: #{qty(pos.quantity)} across #{Enum.join(pos.accounts, ", ")}"}
           >
-            <div class="min-w-0">
-              <p class="truncate font-bold">{pos.symbol}</p>
+            <button
+              type="button"
+              phx-click="trading_view_symbol"
+              phx-value-symbol={pos.symbol}
+              class="min-w-0 text-left hover:bg-base-content/5"
+              title={"Open the #{pos.symbol} chart"}
+            >
+              <p class="truncate font-bold underline decoration-base-content/30 underline-offset-2">
+                {pos.symbol}
+              </p>
               <p class="truncate text-base-content/50">{qty(pos.quantity)} sh</p>
-            </div>
+            </button>
             <div class="flex justify-center">
               <BusterClawWeb.PortfolioChart.sparkline closes={pos.closes} label={pos.symbol} />
             </div>

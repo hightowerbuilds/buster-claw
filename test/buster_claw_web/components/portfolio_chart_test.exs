@@ -425,6 +425,101 @@ defmodule BusterClawWeb.PortfolioChartTest do
     end
   end
 
+  describe "symbol_geometry/2 and symbol_readout/2 — the price chart's rules" do
+    defp bar(day, o, h, l, c) do
+      %{
+        bar_on: d(day),
+        interval: "day",
+        open_cents: o,
+        high_cents: h,
+        low_cents: l,
+        close_cents: c,
+        volume: 1_000
+      }
+    end
+
+    defp close_only(day, c) do
+      %{
+        bar_on: d(day),
+        interval: "day",
+        open_cents: nil,
+        high_cents: nil,
+        low_cents: nil,
+        close_cents: c,
+        volume: nil
+      }
+    end
+
+    test "zero is NOT forced into frame — the domain is padded min/max" do
+      bars = [
+        bar("2026-07-23", 32_000, 32_600, 31_800, 32_210),
+        bar("2026-07-24", 32_200, 32_550, 31_900, 31_974)
+      ]
+
+      geometry = PortfolioChart.symbol_geometry(bars, :candles)
+
+      # A $300 stock charted from $0 is unreadable; the gain chart's rule
+      # deliberately inverts here.
+      assert geometry.min_cents > 0
+      assert geometry.min_cents < 31_800
+      assert geometry.max_cents > 32_600
+    end
+
+    test "candles carry direction as class AND geometry, with a doji still visible" do
+      bars = [
+        bar("2026-07-22", 100, 120, 90, 110),
+        bar("2026-07-23", 110, 115, 95, 100),
+        bar("2026-07-24", 100, 105, 95, 100)
+      ]
+
+      geometry = PortfolioChart.symbol_geometry(bars, :candles)
+      [up, down, doji] = geometry.candles
+
+      assert up.class == "text-success"
+      assert down.class == "text-error"
+      # open == close still draws a sliver, not nothing.
+      assert doji.body_h >= 1.0
+      assert Enum.all?(geometry.candles, &(&1.wick_top <= &1.body_top))
+    end
+
+    test "line mode draws from closes alone — close-only rows are enough" do
+      bars = [close_only("2026-07-23", 100), close_only("2026-07-24", 200)]
+
+      geometry = PortfolioChart.symbol_geometry(bars, :line)
+      assert geometry.candles == []
+      assert length(String.split(geometry.line_points, " ")) == 2
+    end
+
+    test "the readout WRITES the OHLC — direction is never color alone" do
+      bars = [
+        bar("2026-07-23", 32_000, 32_600, 31_800, 32_210),
+        bar("2026-07-24", 32_200, 32_550, 31_900, 31_974)
+      ]
+
+      [_, second] = Jason.decode!(PortfolioChart.symbol_readout(bars, :candles))
+
+      assert second["label"] =~ "2026-07-24"
+      assert second["label"] =~ "O $322.00"
+      assert second["label"] =~ "H $325.50"
+      assert second["label"] =~ "L $319.00"
+      assert second["label"] =~ "C $319.74"
+      assert second["label"] =~ "vol 1000"
+    end
+
+    test "a close-only row's readout admits it has only a close" do
+      bars = [close_only("2026-07-23", 100), close_only("2026-07-24", 200)]
+      [first, _] = Jason.decode!(PortfolioChart.symbol_readout(bars, :line))
+      assert first["label"] =~ "close $1.00"
+      refute first["label"] =~ "O $"
+    end
+
+    test "one bar draws nothing rather than a floating rectangle" do
+      geometry = PortfolioChart.symbol_geometry([bar("2026-07-24", 100, 105, 95, 100)], :candles)
+      assert geometry.candles == []
+      assert PortfolioChart.symbol_readout([], :candles) == "[]"
+    end
+  end
+
   describe "spark_points/1" do
     test "fewer than two closes is nil — a dot is not a trend" do
       assert PortfolioChart.spark_points([]) == nil

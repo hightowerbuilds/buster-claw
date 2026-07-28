@@ -218,6 +218,68 @@ defmodule BusterClaw.MarketDataTest do
     end
   end
 
+  describe "chart tier: store_ohlc, chart_bars, coverage" do
+    defp ohlc(day, o, h, l, c, v \\ 100) do
+      %{bar_on: d(day), open: o, high: h, low: l, close: c, volume: v}
+    end
+
+    test "full rows upsert OVER a closes-tier row for the same day" do
+      MarketData.store_bars(closes(%{"GOOGL" => [{"2026-07-24", 319.74}]}))
+
+      assert 1 =
+               MarketData.store_ohlc("GOOGL", "day", [
+                 ohlc("2026-07-24", 322.0, 325.5, 318.0, 319.80)
+               ])
+
+      assert [bar] = MarketData.bars("GOOGL")
+      assert bar.open_cents == 32_200
+      assert bar.close_cents == 31_980
+    end
+
+    test "weekly rows never leak into daily queries" do
+      assert 1 =
+               MarketData.store_ohlc("GOOGL", "week", [
+                 ohlc("2026-07-21", 310.0, 326.0, 305.0, 319.74)
+               ])
+
+      # Sparkline/freshness surfaces are daily-only.
+      assert MarketData.bars("GOOGL") == []
+      assert MarketData.latest_close("GOOGL") == nil
+      assert MarketData.latest_bar_on() == nil
+
+      # The chart sees them under their own interval.
+      assert [_] = MarketData.chart_bars("GOOGL", "week", d("2026-01-01"))
+      assert MarketData.chart_bars("GOOGL", "day", d("2026-01-01")) == []
+    end
+
+    test "coverage needs full rows spanning the window to (near) the latest trading day" do
+      today = d("2026-07-27")
+      from = d("2026-07-01")
+
+      refute MarketData.chart_coverage?("GOOGL", "day", from, today)
+
+      # Closes-tier rows (no OHLC) never count as coverage.
+      MarketData.store_bars(closes(%{"GOOGL" => [{"2026-07-02", 1.0}, {"2026-07-24", 2.0}]}))
+      refute MarketData.chart_coverage?("GOOGL", "day", from, today)
+
+      # Full rows reaching the window's edges do — and a newest bar one
+      # trading day behind still counts: the API doesn't materialize today's
+      # bar until well after the close, and coverage that ignored that would
+      # re-spend a run on every toggle all evening (probed 07-28).
+      MarketData.store_ohlc("GOOGL", "day", [
+        ohlc("2026-07-02", 300.0, 310.0, 295.0, 305.0),
+        ohlc("2026-07-24", 320.0, 326.0, 318.0, 319.74)
+      ])
+
+      # Friday's bar covers Monday evening (the lag case, verbatim from the
+      # probe)...
+      assert MarketData.chart_coverage?("GOOGL", "day", from, d("2026-07-27"))
+      # ...but two trading days behind is genuinely stale.
+      refute MarketData.chart_coverage?("GOOGL", "day", from, d("2026-07-28"))
+      refute MarketData.chart_coverage?("GOOGL", "day", from, d("2026-08-10"))
+    end
+  end
+
   describe "quote_for/1, latest_close/1, prices_as_of/0" do
     test "quote_for derives change like the index chips do" do
       MarketData.store_quotes(%{

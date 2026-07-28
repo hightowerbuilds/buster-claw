@@ -664,6 +664,263 @@ defmodule BusterClawWeb.PortfolioChart do
   end
 
   # ---------------------------------------------------------------------------
+  # Symbol chart (TRADING_TAB_ROADMAP Phase 4)
+  # ---------------------------------------------------------------------------
+  #
+  # A PRICE chart, and two of the gain chart's rules deliberately invert here:
+  #
+  #   * Zero is NOT forced into frame. That rule exists for gain lines, where a
+  #     cropped baseline turns a wobble into a rout; a $300 stock charted from
+  #     $0 is unreadable. The domain is padded min/max, and the axis labels say
+  #     "not zero-based" so the crop is disclosed rather than discovered.
+  #   * Bars are INDEX-spaced, not date-scaled. Candles are per-trading-day by
+  #     construction — a date scale would draw weekend voids into every week —
+  #     so equal spacing is the honest convention here, and the readout carries
+  #     each bar's real date.
+
+  @sym_w 720
+  @sym_h 220
+  @sym_pad 8
+
+  attr :bars, :list, required: true, doc: "MarketData.Bar rows, oldest first"
+  attr :mode, :atom, required: true, doc: ":line | :candles"
+  attr :symbol, :string, required: true
+
+  def symbol_plot(assigns) do
+    candles = Enum.filter(assigns.bars, &is_integer(&1.open_cents))
+    plotted = if assigns.mode == :candles, do: candles, else: assigns.bars
+
+    assigns =
+      assigns
+      |> assign(:plotted, plotted)
+      |> assign(:geometry, symbol_geometry(plotted, assigns.mode))
+      |> assign(:readout, symbol_readout(plotted, assigns.mode))
+      |> assign(:w, @sym_w)
+      |> assign(:h, @sym_h)
+
+    ~H"""
+    <div
+      :if={length(@plotted) > 1}
+      class="relative"
+      id={"symbol-plot-#{@symbol}-#{@mode}"}
+      phx-hook="PortfolioChart"
+      phx-update="ignore"
+      data-readout={@readout}
+    >
+      <svg
+        viewBox={"0 0 #{@w} #{@h}"}
+        preserveAspectRatio="none"
+        class="h-56 w-full cursor-crosshair focus:outline-2 focus:outline-primary"
+        tabindex="0"
+        role="img"
+        aria-label={"#{@symbol} price chart. Use arrow keys to read individual bars."}
+      >
+        <%!-- Line mode: closes only. --%>
+        <polyline
+          :if={@mode == :line}
+          points={@geometry.line_points}
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linejoin="round"
+          vector-effect="non-scaling-stroke"
+          class={@geometry.line_class}
+        />
+
+        <%!-- Candles: wick (high..low) then body (open..close). Direction is
+              color AND written OHLC in the readout — never color alone. --%>
+        <g :for={candle <- @geometry.candles} class={candle.class}>
+          <line
+            x1={candle.x}
+            y1={candle.wick_top}
+            x2={candle.x}
+            y2={candle.wick_bottom}
+            stroke="currentColor"
+            stroke-width="1"
+            vector-effect="non-scaling-stroke"
+          />
+          <rect
+            x={candle.body_x}
+            y={candle.body_top}
+            width={candle.body_w}
+            height={candle.body_h}
+            fill="currentColor"
+          />
+        </g>
+
+        <line
+          data-crosshair
+          x1="0"
+          y1="0"
+          x2="0"
+          y2={@h}
+          stroke="currentColor"
+          stroke-width="1"
+          vector-effect="non-scaling-stroke"
+          class="text-base-content/40"
+          style="display: none"
+        />
+        <circle
+          data-crosshair-dot
+          r="4"
+          fill="currentColor"
+          vector-effect="non-scaling-stroke"
+          class="text-base-content/70"
+          style="display: none"
+        />
+      </svg>
+
+      <div class="pointer-events-none absolute inset-0 flex flex-col justify-between text-base-content/50">
+        <span>{money_from_cents(@geometry.max_cents)}</span>
+        <span>{money_from_cents(@geometry.min_cents)} · not zero-based</span>
+      </div>
+
+      <div
+        data-tooltip
+        class="pointer-events-none absolute z-10 hidden max-w-[18rem] border-2 border-base-content/40 bg-base-100 px-2 py-1 shadow-lg"
+      >
+      </div>
+      <p data-live class="sr-only" aria-live="polite"></p>
+    </div>
+
+    <p :if={length(@plotted) <= 1} class="border-2 border-base-content/20 p-4 text-base-content/60">
+      {if @mode == :candles,
+        do: "No full bars cached for #{@symbol} yet — Load candles fetches them (one agent run).",
+        else: "Not enough cached closes to draw #{@symbol} yet."}
+    </p>
+    """
+  end
+
+  @doc "Geometry for the symbol plot. Public for tests."
+  def symbol_geometry(bars, mode) when length(bars) < 2,
+    do: %{candles: [], line_points: "", line_class: "", min_cents: 0, max_cents: 0, mode: mode}
+
+  def symbol_geometry(bars, mode) do
+    {min_cents, max_cents} = symbol_domain(bars, mode)
+    spread = max(max_cents - min_cents, 1)
+    n = length(bars)
+    slot = @sym_w / n
+    usable = @sym_h - 2 * @sym_pad
+
+    y = fn cents -> @sym_h - @sym_pad - (cents - min_cents) / spread * usable end
+
+    candles =
+      if mode == :candles do
+        body_w = max(Float.round(slot * 0.6, 2), 1.0)
+
+        bars
+        |> Enum.with_index()
+        |> Enum.map(fn {bar, i} ->
+          x = Float.round((i + 0.5) * slot, 2)
+          top = y.(max(bar.open_cents, bar.close_cents))
+          bottom = y.(min(bar.open_cents, bar.close_cents))
+
+          %{
+            x: x,
+            wick_top: Float.round(y.(bar.high_cents) * 1.0, 2),
+            wick_bottom: Float.round(y.(bar.low_cents) * 1.0, 2),
+            body_x: Float.round(x - body_w / 2, 2),
+            body_top: Float.round(top * 1.0, 2),
+            # A doji (open == close) still gets a visible sliver.
+            body_h: Float.round(max(bottom - top, 1.0) * 1.0, 2),
+            body_w: body_w,
+            class: if(bar.close_cents < bar.open_cents, do: "text-error", else: "text-success")
+          }
+        end)
+      else
+        []
+      end
+
+    line_points =
+      if mode == :line do
+        bars
+        |> Enum.with_index()
+        |> Enum.map_join(" ", fn {bar, i} ->
+          "#{Float.round((i + 0.5) * slot, 2)},#{Float.round(y.(bar.close_cents) * 1.0, 2)}"
+        end)
+      else
+        ""
+      end
+
+    line_class =
+      case {List.first(bars), List.last(bars)} do
+        {first, last} when last.close_cents < first.close_cents -> "text-error"
+        _other -> "text-success"
+      end
+
+    %{
+      candles: candles,
+      line_points: line_points,
+      line_class: line_class,
+      min_cents: min_cents,
+      max_cents: max_cents,
+      mode: mode
+    }
+  end
+
+  # Padded min/max: candles span low..high, lines span closes. ~4% breathing
+  # room each side so extremes don't kiss the frame.
+  defp symbol_domain(bars, mode) do
+    {low, high} =
+      case mode do
+        :candles ->
+          {bars |> Enum.map(& &1.low_cents) |> Enum.min(),
+           bars |> Enum.map(& &1.high_cents) |> Enum.max()}
+
+        _line ->
+          bars |> Enum.map(& &1.close_cents) |> Enum.min_max()
+      end
+
+    pad = max(round((high - low) * 0.04), 1)
+    {low - pad, high + pad}
+  end
+
+  @doc "Per-bar readout for the shared crosshair hook. OHLC is WRITTEN here."
+  def symbol_readout(bars, _mode) when length(bars) < 2, do: "[]"
+
+  def symbol_readout(bars, mode) do
+    geometry = symbol_geometry(bars, mode)
+    n = length(bars)
+    slot = @sym_w / n
+    {min_cents, max_cents} = {geometry.min_cents, geometry.max_cents}
+    spread = max(max_cents - min_cents, 1)
+    usable = @sym_h - 2 * @sym_pad
+
+    bars
+    |> Enum.with_index()
+    |> Enum.map(fn {bar, i} ->
+      %{
+        x: Float.round((i + 0.5) * slot, 2),
+        y:
+          Float.round(
+            (@sym_h - @sym_pad - (bar.close_cents - min_cents) / spread * usable) * 1.0,
+            2
+          ),
+        label: bar_label(bar)
+      }
+    end)
+    |> Jason.encode!()
+  end
+
+  defp bar_label(bar) do
+    ohlc =
+      if is_integer(bar.open_cents) do
+        "O #{money_from_cents(bar.open_cents)} · H #{money_from_cents(bar.high_cents)} · " <>
+          "L #{money_from_cents(bar.low_cents)} · C #{money_from_cents(bar.close_cents)}"
+      else
+        "close #{money_from_cents(bar.close_cents)}"
+      end
+
+    volume = if is_integer(bar.volume), do: " · vol #{bar.volume}", else: ""
+    "#{Date.to_iso8601(bar.bar_on)} · #{ohlc}#{volume}"
+  end
+
+  defp money_from_cents(cents) when is_integer(cents),
+    do: "$" <> :erlang.float_to_binary(cents / 100, decimals: 2)
+
+  defp money_from_cents(_cents), do: "—"
+
+  # ---------------------------------------------------------------------------
   # Sparkline (TRADING_TAB_ROADMAP Phase 3)
   # ---------------------------------------------------------------------------
 

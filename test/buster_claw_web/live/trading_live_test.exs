@@ -538,6 +538,127 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "GOOGL"
     end
 
+    test "clicking a position opens its chart, and Portfolio returns to the line",
+         %{conn: conn} do
+      alias BusterClaw.{MarketData, Portfolio}
+
+      Portfolio.store_costs("6587", [
+        %{symbol: "GOOGL", quantity: 0.25, lots: 1, cost_basis: 69.99}
+      ])
+
+      MarketData.store_bars(%{
+        "GOOGL" => [
+          %{bar_on: ~D[2026-07-23], close: 322.10},
+          %{bar_on: ~D[2026-07-24], close: 319.74}
+        ]
+      })
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_async(view)
+
+      # Open the symbol view: line mode renders from cached closes, no fetch —
+      # the default fetcher stubs would error loudly if one were attempted.
+      html = render_click(view, "trading_view_symbol", %{"symbol" => "GOOGL"})
+
+      assert html =~ "◀ Portfolio"
+      assert html =~ ~r/daily\s*·\s*2 bars/
+      assert html =~ "<polyline"
+      assert html =~ "not zero-based"
+      refute html =~ "Gain / loss"
+
+      # And back (the done-when).
+      html = render_click(view, "trading_view_portfolio", %{})
+      assert html =~ "Gain / loss"
+      refute html =~ "◀ Portfolio"
+    end
+
+    test "candles fetch full bars once, then render and cache", %{conn: conn} do
+      alias BusterClaw.{MarketData, Portfolio}
+      test_pid = self()
+
+      Portfolio.store_costs("6587", [
+        %{symbol: "GOOGL", quantity: 0.25, lots: 1, cost_basis: 69.99}
+      ])
+
+      MarketData.store_bars(%{"GOOGL" => [%{bar_on: ~D[2026-07-24], close: 319.74}]})
+
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn symbol, start, interval ->
+        send(test_pid, {:bars_fetched, symbol, start, interval})
+
+        # Spanning the requested window edge-to-edge, like a real fetch —
+        # coverage is what makes the re-toggle below free, and a fixture
+        # narrower than its window would (correctly) fail it.
+        {:ok,
+         [
+           %{
+             bar_on: Date.add(start, 2),
+             open: 315.0,
+             high: 323.0,
+             low: 314.0,
+             close: 322.10,
+             volume: 900
+           },
+           %{
+             bar_on:
+               BusterClaw.MarketCalendar.latest_trading_day(BusterClaw.MarketCalendar.today()),
+             open: 322.0,
+             high: 325.5,
+             low: 318.0,
+             close: 319.74,
+             volume: 1_000
+           }
+         ]}
+      end)
+
+      on_exit(fn -> Application.put_env(:buster_claw, :trading_bars_fetcher, nil) end)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_async(view)
+      render_click(view, "trading_view_symbol", %{"symbol" => "GOOGL"})
+
+      html = render_click(view, "trading_symbol_mode", %{"mode" => "candles"})
+      assert html =~ "fetching full bars (one agent run)"
+
+      html = render_async(view)
+      assert_receive {:bars_fetched, "GOOGL", _start, "day"}
+
+      # Candles drew: wick lines + body rects inside success/error groups.
+      assert html =~ "<rect"
+      assert html =~ "text-success"
+      refute html =~ "fetching full bars"
+
+      # Toggling away and back re-renders from the cache: no second run.
+      render_click(view, "trading_symbol_mode", %{"mode" => "line"})
+      render_click(view, "trading_symbol_mode", %{"mode" => "candles"})
+      refute_receive {:bars_fetched, _, _, _}, 50
+    end
+
+    test "5Y asks for weekly bars and says so", %{conn: conn} do
+      alias BusterClaw.Portfolio
+      test_pid = self()
+
+      Portfolio.store_costs("6587", [
+        %{symbol: "GOOGL", quantity: 0.25, lots: 1, cost_basis: 69.99}
+      ])
+
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn symbol, start, interval ->
+        send(test_pid, {:bars_fetched, symbol, start, interval})
+        {:ok, []}
+      end)
+
+      on_exit(fn -> Application.put_env(:buster_claw, :trading_bars_fetcher, nil) end)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_async(view)
+      render_click(view, "trading_view_symbol", %{"symbol" => "GOOGL"})
+
+      html = render_click(view, "trading_symbol_range", %{"range" => "5Y"})
+      render_async(view)
+
+      assert_receive {:bars_fetched, "GOOGL", _start, "week"}
+      assert html =~ "weekly"
+    end
+
     test "a stage-1 reading lands in the portfolio ledger", %{conn: conn} do
       stub_trading_fetchers()
 

@@ -219,6 +219,10 @@ defmodule BusterClaw.Trading do
   # Costs: discovery + positions + one tax-lots call per held symbol. Scales
   # with holdings, so it gets stage-2-plus headroom.
   @costs_timeout_ms 240_000
+  # Chart tier: one tool call, but up to ~260 six-field rows of transcription —
+  # heavier per row than the sweep's pairs. Sized against the sweep's measured
+  # 213s with headroom.
+  @symbol_bars_timeout_ms 300_000
 
   @doc """
   Stage 1: fetch balances for every account through the operator's own `claude`
@@ -243,6 +247,104 @@ defmodule BusterClaw.Trading do
       nil -> run_agent(detail_prompt(last4), @detail_timeout_ms, &parse_detail/1)
     end
   end
+
+  @doc """
+  The chart-tier fetch (TRADING_TAB_ROADMAP Phase 4): full OHLCV for ONE
+  symbol across one bounded window. Blocking; callers run it under
+  `start_async`. Test seam: `:trading_bars_fetcher` app env (an arity-3
+  function of symbol, start `Date`, and interval `"day" | "week"`).
+  """
+  def fetch_symbol_bars(symbol, %Date{} = start, interval)
+      when is_binary(symbol) and interval in ["day", "week"] do
+    case Application.get_env(:buster_claw, :trading_bars_fetcher) do
+      fun when is_function(fun, 3) ->
+        fun.(symbol, start, interval)
+
+      nil ->
+        run_agent(
+          symbol_bars_prompt(symbol, start, interval),
+          @symbol_bars_timeout_ms,
+          &parse_symbol_bars/1
+        )
+    end
+  end
+
+  @doc """
+  The chart-tier prompt. Exposed for tests.
+
+  One symbol, one explicit interval, one bounded window — the whole reason the
+  chart tier exists apart from the closes sweep is that ~260 six-field rows is
+  the most transcription a run is allowed to carry.
+  """
+  def symbol_bars_prompt(symbol, %Date{} = start, interval) do
+    """
+    Fetch price history for EXACTLY ONE symbol: #{symbol}.
+
+    Call mcp__robinhood__get_equity_historicals once, with:
+    - symbols: ["#{symbol}"]
+    - interval: "#{interval}"
+    - start_time: "#{Date.to_iso8601(start)}T00:00:00Z"
+
+    Then output ONLY one JSON object — no prose, no code fences:
+    {"bars": [["YYYY-MM-DD", <open>, <high>, <low>, <close>, <volume integer or null>], ...]}
+
+    Rules:
+    - Read only. Never place, amend, or cancel an order.
+    - One array entry per bar the tool returns, OLDEST FIRST, all prices in
+      usd, transcribed exactly — never invented, averaged, or resampled to a
+      different interval than "#{interval}".
+    - Omit bars the tool marks "interpolated": true; they carry no information.
+    - If the tools are unavailable, unauthenticated, or the symbol has no data,
+      output exactly: {"error": "<one-line reason>"}
+    """
+  end
+
+  @doc """
+  Extract and validate chart-tier bars. Returns `{:ok, [%{bar_on, open, high,
+  low, close, volume}]}` oldest first. A row is dropped when its date is
+  unparseable, any price is non-positive, or high < low — the one arithmetic
+  identity a real bar cannot violate, and therefore the cheapest transcription
+  tripwire we have.
+  """
+  def parse_symbol_bars(output) when is_binary(output) do
+    with [json] <- Regex.run(~r/\{.*\}/s, output) || :nomatch,
+         {:ok, decoded} <- Jason.decode(json) do
+      case decoded do
+        %{"error" => msg} ->
+          {:error, {:robinhood, to_string(msg)}}
+
+        %{"bars" => bars} when is_list(bars) ->
+          {:ok,
+           bars
+           |> Enum.map(&normalize_ohlc_row/1)
+           |> Enum.reject(&is_nil/1)
+           |> Enum.sort_by(& &1.bar_on, Date)}
+
+        _other ->
+          {:error, :bad_snapshot}
+      end
+    else
+      _ -> {:error, :bad_snapshot}
+    end
+  end
+
+  defp normalize_ohlc_row([date, open, high, low, close | rest]) do
+    with true <- Enum.all?([open, high, low, close], &(is_number(&1) and &1 > 0)),
+         true <- high >= low,
+         {:ok, parsed} <- Date.from_iso8601(to_string(date)) do
+      volume =
+        case rest do
+          [v | _] when is_integer(v) and v >= 0 -> v
+          _ -> nil
+        end
+
+      %{bar_on: parsed, open: open, high: high, low: low, close: close, volume: volume}
+    else
+      _ -> nil
+    end
+  end
+
+  defp normalize_ohlc_row(_row), do: nil
 
   @doc """
   The cost-basis fetch (TRADING_TAB_ROADMAP Phase 3): one account's positions

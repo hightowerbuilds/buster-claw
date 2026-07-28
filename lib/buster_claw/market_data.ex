@@ -110,12 +110,13 @@ defmodule BusterClaw.MarketData do
           |> Bar.changeset(%{
             symbol: symbol,
             bar_on: bar.bar_on,
+            interval: "day",
             close_cents: round(bar.close * 100)
           })
           |> Repo.insert(
             # Replace the close only: chart-tier OHLC on the same row survives.
             on_conflict: {:replace, [:close_cents, :updated_at]},
-            conflict_target: [:symbol, :bar_on]
+            conflict_target: [:symbol, :bar_on, :interval]
           )
           |> case do
             {:ok, _bar} ->
@@ -137,7 +138,7 @@ defmodule BusterClaw.MarketData do
   def bars(symbol, days \\ nil) when is_binary(symbol) do
     query =
       Bar
-      |> where([b], b.symbol == ^symbol)
+      |> where([b], b.symbol == ^symbol and b.interval == "day")
       |> order_by([b], asc: b.bar_on)
 
     case days do
@@ -147,7 +148,7 @@ defmodule BusterClaw.MarketData do
       days when is_integer(days) ->
         # Trailing window: newest N, re-sorted ascending for drawing.
         Bar
-        |> where([b], b.symbol == ^symbol)
+        |> where([b], b.symbol == ^symbol and b.interval == "day")
         |> order_by([b], desc: b.bar_on)
         |> limit(^days)
         |> Repo.all()
@@ -167,6 +168,7 @@ defmodule BusterClaw.MarketData do
   @doc "The newest bar date across all symbols, or nil."
   def latest_bar_on do
     Bar
+    |> where([b], b.interval == "day")
     |> select([b], max(b.bar_on))
     |> Repo.one()
   end
@@ -179,6 +181,96 @@ defmodule BusterClaw.MarketData do
     case latest_bar_on() do
       nil -> false
       newest -> Date.compare(newest, MarketCalendar.latest_trading_day(day)) != :lt
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Chart tier (TRADING_TAB_ROADMAP Phase 4)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Store chart-tier OHLCV rows for one symbol+interval. Full-row upsert — unlike
+  the closes tier this REPLACES OHLC, because these rows are the fresher truth
+  for every field.
+  """
+  def store_ohlc(symbol, interval, rows)
+      when is_binary(symbol) and interval in ["day", "week"] and is_list(rows) do
+    Enum.count(rows, fn row ->
+      result =
+        %Bar{}
+        |> Bar.changeset(%{
+          symbol: symbol,
+          bar_on: row.bar_on,
+          interval: interval,
+          open_cents: round(row.open * 100),
+          high_cents: round(row.high * 100),
+          low_cents: round(row.low * 100),
+          close_cents: round(row.close * 100),
+          volume: row.volume
+        })
+        |> Repo.insert(
+          on_conflict:
+            {:replace, [:open_cents, :high_cents, :low_cents, :close_cents, :volume, :updated_at]},
+          conflict_target: [:symbol, :bar_on, :interval]
+        )
+
+      case result do
+        {:ok, _bar} ->
+          true
+
+        {:error, changeset} ->
+          Logger.warning(
+            "MarketData: refusing OHLC #{symbol} #{row.bar_on}: #{inspect(changeset.errors)}"
+          )
+
+          false
+      end
+    end)
+  end
+
+  @doc "Bars for a symbol chart: one interval, from a start date, oldest first."
+  def chart_bars(symbol, interval, %Date{} = from)
+      when is_binary(symbol) and interval in ["day", "week"] do
+    Bar
+    |> where([b], b.symbol == ^symbol and b.interval == ^interval and b.bar_on >= ^from)
+    |> order_by([b], asc: b.bar_on)
+    |> Repo.all()
+  end
+
+  @doc """
+  True when cached bars can draw candles for the window without a fetch:
+  full-OHLC rows exist reaching back to (near) `from` and forward to (near) the
+  latest trading day. "Near" is a few days of slack at the old end — a symbol
+  younger than the window can never cover it exactly — and an interval's width
+  at the new end.
+  """
+  def chart_coverage?(symbol, interval, %Date{} = from, %Date{} = today) do
+    edges =
+      Bar
+      |> where([b], b.symbol == ^symbol and b.interval == ^interval)
+      |> where([b], not is_nil(b.open_cents) and b.bar_on >= ^from)
+      |> select([b], {min(b.bar_on), max(b.bar_on), count(b.id)})
+      |> Repo.one()
+
+    case edges do
+      {%Date{} = oldest, %Date{} = newest, count} when count > 1 ->
+        target_end = MarketCalendar.latest_trading_day(today)
+
+        # One trading day of lag is tolerated at the new end: the API doesn't
+        # materialize today's daily bar until well after the close (measured
+        # twice, 07-28), and without this allowance a freshly-fetched chart
+        # reads as uncovered all evening — every candle toggle would re-spend a
+        # ~2-minute agent run to learn nothing new.
+        acceptable_end =
+          case interval do
+            "day" -> MarketCalendar.latest_trading_day(Date.add(target_end, -1))
+            "week" -> Date.add(target_end, -7)
+          end
+
+        Date.diff(oldest, from) <= 7 and Date.compare(newest, acceptable_end) != :lt
+
+      _other ->
+        false
     end
   end
 
@@ -277,7 +369,7 @@ defmodule BusterClaw.MarketData do
   @doc "A symbol's newest cached close, `%{bar_on: Date, close_cents: integer}` or nil."
   def latest_close(symbol) when is_binary(symbol) do
     Bar
-    |> where([b], b.symbol == ^symbol)
+    |> where([b], b.symbol == ^symbol and b.interval == "day")
     |> order_by([b], desc: b.bar_on)
     |> limit(1)
     |> Repo.one()

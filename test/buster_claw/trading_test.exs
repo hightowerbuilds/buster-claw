@@ -233,6 +233,54 @@ defmodule BusterClaw.TradingTest do
     end
   end
 
+  describe "parse_symbol_bars/1" do
+    test "parses OHLCV rows oldest first, volume optional" do
+      out = ~s({"bars": [
+        ["2026-07-24", 322.0, 325.5, 318.0, 319.74, 1000000],
+        ["2026-07-23", 315.0, 323.0, 314.0, 322.1, null]
+      ]})
+
+      assert {:ok, [a, b]} = Trading.parse_symbol_bars(out)
+      assert a.bar_on == ~D[2026-07-23]
+      assert a.volume == nil
+      assert b.close == 319.74
+      assert b.volume == 1_000_000
+    end
+
+    test "high < low is a transcription tripwire — the row is dropped" do
+      out = ~s({"bars": [
+        ["2026-07-24", 322.0, 318.0, 325.5, 319.74, 1],
+        ["2026-07-23", 315.0, 323.0, 314.0, 322.1, 1]
+      ]})
+
+      assert {:ok, [only]} = Trading.parse_symbol_bars(out)
+      assert only.bar_on == ~D[2026-07-23]
+    end
+
+    test "non-positive prices and bad dates cost their rows" do
+      out = ~s({"bars": [
+        ["2026-07-24", 0, 325.5, 318.0, 319.74, 1],
+        ["not a date", 315.0, 323.0, 314.0, 322.1, 1],
+        ["2026-07-22", 315.0, 323.0, 314.0, 322.1, 1]
+      ]})
+
+      assert {:ok, [only]} = Trading.parse_symbol_bars(out)
+      assert only.bar_on == ~D[2026-07-22]
+    end
+
+    test "errors pass through; the prompt is one symbol, one explicit interval" do
+      assert {:error, {:robinhood, _}} = Trading.parse_symbol_bars(~s({"error": "no data"}))
+
+      prompt = Trading.symbol_bars_prompt("GOOGL", ~D[2025-07-28], "week")
+      assert prompt =~ ~s(EXACTLY ONE symbol: GOOGL)
+      assert prompt =~ ~s(interval: "week")
+      assert prompt =~ "2025-07-28T00:00:00Z"
+      assert prompt =~ "OLDEST FIRST"
+      assert prompt =~ ~s("interpolated": true)
+      assert prompt =~ "Read only"
+    end
+  end
+
   describe "parse_costs/1" do
     test "parses rows, keeping a null basis as nil — never zero" do
       out = ~s({"positions": [
