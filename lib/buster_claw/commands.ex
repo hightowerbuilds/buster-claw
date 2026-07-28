@@ -35,37 +35,54 @@ defmodule BusterClaw.Commands do
 
   # The catalog (its declarative data lives in `BusterClaw.Commands.Catalog`) is
   # constant, but local functions can't be called from a module attribute during
-  # compilation, so build it once at runtime and cache it — plus the derived
+  # compilation, so it is built once at runtime and cached — plus the derived
   # name-index and safe subset — in :persistent_term for O(1) reuse instead of
-  # rebuilding/rescanning a fresh list on every call.
-  defp catalog do
-    case :persistent_term.get({__MODULE__, :catalog}, nil) do
-      nil ->
-        built = Catalog.entries()
-        :persistent_term.put({__MODULE__, :catalog}, built)
-        :persistent_term.put({__MODULE__, :by_name}, Map.new(built, &{&1.name, &1}))
+  # rebuilding/rescanning a fresh list on every dispatch.
+  #
+  # Except in dev, where that cache outlives code reloading. Phoenix recompiles
+  # the catalog modules on the next request, but nothing invalidates the cached
+  # list, so a newly-added command answers `unknown_command` until the server is
+  # restarted — which cost time on 07-28 adding `portfolio_history` and would
+  # cost it again for whoever adds the next one. Dev therefore rebuilds on every
+  # call: a few hundred literal maps, far cheaper than the confusion.
+  #
+  # Cache invalidation can't be done properly here on the cheap. The entries are
+  # spread across a dozen `Catalog.*` modules, so keying the cache on any one
+  # module's identity would miss edits to the others — and "mostly invalidates"
+  # is worse than either honest option.
+  @memoize_catalog Application.compile_env(:buster_claw, :memoize_catalog, true)
 
-        :persistent_term.put(
-          {__MODULE__, :safe_commands},
-          Enum.filter(built, &(&1.tier == :safe))
-        )
+  defp build_catalog do
+    entries = Catalog.entries()
 
-        built
+    %{
+      catalog: entries,
+      by_name: Map.new(entries, &{&1.name, &1}),
+      safe_commands: Enum.filter(entries, &(&1.tier == :safe))
+    }
+  end
 
-      built ->
-        built
+  if @memoize_catalog do
+    defp catalog_part(key) do
+      case :persistent_term.get({__MODULE__, key}, nil) do
+        nil ->
+          built = build_catalog()
+
+          Enum.each(built, fn {part, value} -> :persistent_term.put({__MODULE__, part}, value) end)
+
+          Map.fetch!(built, key)
+
+        value ->
+          value
+      end
     end
+  else
+    defp catalog_part(key), do: build_catalog() |> Map.fetch!(key)
   end
 
-  defp by_name do
-    catalog()
-    :persistent_term.get({__MODULE__, :by_name})
-  end
-
-  defp safe_catalog do
-    catalog()
-    :persistent_term.get({__MODULE__, :safe_commands})
-  end
+  defp catalog, do: catalog_part(:catalog)
+  defp by_name, do: catalog_part(:by_name)
+  defp safe_catalog, do: catalog_part(:safe_commands)
 
   # -----------------------------------------------------------------------
   # Dispatch

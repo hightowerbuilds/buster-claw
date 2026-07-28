@@ -72,6 +72,12 @@ config :buster_claw, BusterClawWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :buster_claw, dev_routes: true
 
+# Don't cache the command catalog in dev. The :persistent_term cache survives
+# code reloading, so a command added while the server is running stays invisible
+# — `unknown_command` from the CLI until a restart. Rebuilding per dispatch
+# costs microseconds; the stale cache costs a confused ten minutes.
+config :buster_claw, :memoize_catalog, false
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

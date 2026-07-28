@@ -21,6 +21,34 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
   # carries a justified exception above.
   @mutating_name_pattern ~r/(send|delete|create|update|save|write|reply|move|archive|trash|remove|approve|dismiss|^set_|_set$)/
 
+  describe "catalog access" do
+    # Whether the catalog is memoized differs by environment (dev rebuilds so
+    # newly-added commands appear without a restart; prod caches). Both paths
+    # must answer identically and repeatably — a caching bug here would show up
+    # as commands intermittently not existing.
+    test "repeated reads are stable and agree with the raw entries" do
+      first = BusterClaw.Commands.list_commands()
+      second = BusterClaw.Commands.list_commands()
+
+      assert first == second
+      assert Enum.map(first, & &1.name) == Enum.map(Catalog.entries(), & &1.name)
+    end
+
+    test "every catalogued command has an implementation behind it" do
+      # Checked by reflection, never by calling them: dispatching 170 real
+      # commands to find out would send mail, hit APIs, and mutate the workspace.
+      missing =
+        Catalog.entries()
+        |> Enum.map(& &1.name)
+        |> Enum.reject(fn name ->
+          function_exported?(BusterClaw.Commands, String.to_existing_atom(name), 1)
+        end)
+
+      assert missing == [],
+             "catalogued but unimplemented (dispatch would answer unknown_command): #{inspect(missing)}"
+    end
+  end
+
   describe "structural invariants" do
     test "names are unique" do
       names = Enum.map(@entries, & &1.name)
