@@ -117,6 +117,9 @@ defmodule BusterClawWeb.StatusLive do
     # The chart: which time range is showing, the joined series for whatever is
     # selected, how complete the backfill is, and whether one is in flight.
     |> assign(:trading_range, "1M")
+    # Until the user picks a range, the panel chooses the shortest one that has
+    # something to show. Their choice wins from the moment they make it.
+    |> assign(:trading_range_pinned, false)
     |> assign(:trading_series, [])
     |> assign(:trading_coverage, nil)
     |> assign(:trading_backfilling, false)
@@ -401,7 +404,10 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("trading_select_range", %{"range" => range}, socket) do
-    {:noreply, assign(socket, :trading_range, range)}
+    {:noreply,
+     socket
+     |> assign(:trading_range, range)
+     |> assign(:trading_range_pinned, true)}
   end
 
   # The backfill trigger, deferred out of Phase 3 because this is where it earns
@@ -1157,7 +1163,14 @@ defmodule BusterClawWeb.StatusLive do
     socket
     |> assign(:trading_series, series)
     |> assign(:trading_coverage, Portfolio.backfill_coverage())
+    |> maybe_default_range(series)
   end
+
+  defp maybe_default_range(%{assigns: %{trading_range_pinned: true}} = socket, _series),
+    do: socket
+
+  defp maybe_default_range(socket, series),
+    do: assign(socket, :trading_range, BusterClawWeb.PortfolioChart.default_range(series))
 
   # Best-effort by construction: the ledger is a side effect of showing balances,
   # and a ledger failure must not cost the user the panel they asked for.

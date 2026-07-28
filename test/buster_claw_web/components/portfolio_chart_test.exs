@@ -128,6 +128,53 @@ defmodule BusterClawWeb.PortfolioChartTest do
     end
   end
 
+  describe "default_range/1" do
+    test "skips ranges with nothing to show and lands on the shortest with movement" do
+      # The operator's own shape on 07-28: one recent reading, a flat month, and
+      # real movement further back. Opening on 1M showed a flat line while two
+      # years of history sat one click away.
+      series = [
+        point("2025-08-28", 0, :realized),
+        point("2026-05-28", 50_000, :realized),
+        point("2026-06-28", 51_386, :realized),
+        point("2026-07-27", 51_386)
+      ]
+
+      assert PortfolioChart.default_range(series) == "3M"
+    end
+
+    test "prefers a short range once it has movement of its own" do
+      series = [
+        point("2024-01-01", 0, :realized),
+        point("2026-07-26", 1_000),
+        point("2026-07-27", 2_000)
+      ]
+
+      assert PortfolioChart.default_range(series) == "1W"
+    end
+
+    test "falls back to ALL when no range moves" do
+      assert PortfolioChart.default_range([]) == "ALL"
+      assert PortfolioChart.default_range([point("2026-07-27", 100)]) == "ALL"
+
+      flat = [point("2026-07-26", 500), point("2026-07-27", 500)]
+      assert PortfolioChart.default_range(flat) == "ALL"
+    end
+
+    test "the chosen range is always drawable" do
+      series = [
+        point("2024-01-01", 0, :realized),
+        point("2026-01-28", -70_000, :realized),
+        point("2026-07-27", -70_000)
+      ]
+
+      chosen = PortfolioChart.default_range(series)
+      windowed = series |> PortfolioChart.window(chosen) |> PortfolioChart.rebase(series)
+
+      assert match?([_, _ | _], windowed)
+    end
+  end
+
   describe "granularity/1" do
     test "is chosen from the span, not the point count" do
       assert PortfolioChart.granularity([]) == :daily

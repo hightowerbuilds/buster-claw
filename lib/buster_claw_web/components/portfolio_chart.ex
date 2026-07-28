@@ -566,6 +566,29 @@ defmodule BusterClawWeb.PortfolioChart do
     Map.new(@ranges, fn {name, _days} -> {name, series |> window(name) |> length()} end)
   end
 
+  @doc """
+  The range to open on: the **shortest** one that actually shows movement,
+  falling back to "ALL".
+
+  A fixed default cannot be right at both ends of the ledger's life. Opening on
+  "1M" was correct-looking and useless — with the recorder one day old and the
+  backfill in monthly buckets, the past month held two identical readings, so
+  the tab opened on a flat line while two years of real history sat one click
+  away (reported 07-28). Opening on "ALL" forever would have the opposite fault
+  once daily readings accumulate: two years of context every time you want to
+  know about this week.
+
+  Picking the shortest range with something in it migrates on its own — it will
+  answer "1M", then "1W", as the series fills in — and it never opens on a view
+  with nothing to see while a populated one exists.
+  """
+  def default_range(series) do
+    Enum.find_value(@ranges, "ALL", fn {name, _days} ->
+      windowed = series |> window(name) |> rebase(series)
+      if match?([_, _ | _], windowed) and not flat?(windowed), do: name
+    end)
+  end
+
   @doc "True when every point in the window carries the same cumulative."
   def flat?([]), do: false
   def flat?(points), do: match?([_], points |> Enum.map(& &1.cumulative_cents) |> Enum.uniq())
