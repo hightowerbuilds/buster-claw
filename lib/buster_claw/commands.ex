@@ -50,7 +50,14 @@ defmodule BusterClaw.Commands do
   # spread across a dozen `Catalog.*` modules, so keying the cache on any one
   # module's identity would miss edits to the others — and "mostly invalidates"
   # is worse than either honest option.
-  @memoize_catalog Application.compile_env(:buster_claw, :memoize_catalog, true)
+  #
+  # Read at RUNTIME, not via compile_env. The compile-time version turned any
+  # stale _build into a hard boot failure ("different value set for key
+  # :memoize_catalog during runtime compared to compile time"), which is a
+  # miserable trade for what is only a dev convenience — it broke the operator's
+  # server on 07-28. One ETS lookup per dispatch is nothing next to the work it
+  # guards.
+  defp memoize_catalog?, do: Application.get_env(:buster_claw, :memoize_catalog, true)
 
   defp build_catalog do
     entries = Catalog.entries()
@@ -62,8 +69,8 @@ defmodule BusterClaw.Commands do
     }
   end
 
-  if @memoize_catalog do
-    defp catalog_part(key) do
+  defp catalog_part(key) do
+    if memoize_catalog?() do
       case :persistent_term.get({__MODULE__, key}, nil) do
         nil ->
           built = build_catalog()
@@ -75,9 +82,9 @@ defmodule BusterClaw.Commands do
         value ->
           value
       end
+    else
+      build_catalog() |> Map.fetch!(key)
     end
-  else
-    defp catalog_part(key), do: build_catalog() |> Map.fetch!(key)
   end
 
   defp catalog, do: catalog_part(:catalog)
