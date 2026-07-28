@@ -162,6 +162,72 @@ trace* in the line. Without a mark, the arithmetic is unverifiable by the person
 whose money it is. Flagged days now carry a tick on the plot, a phrase in the
 tooltip, and a column in the table.
 
+---
+
+# The landing page, in the other repo
+
+`hightowerbuilds/BusterClaw-Website` — a read of the whole codebase, then a
+cleanup. 11 files, +7/-236.
+
+## 11. The config described a project that does not exist
+
+The site is a single `<canvas>`: no DOM text nodes, no JSX, zero runtime
+dependencies. Its config said otherwise. `.cursorrules` — 35 lines — instructed
+any agent reading it to use `createSignal()`, Tailwind `@apply`, dark mode via
+the `dark:` variant, and TanStack Router. `.cta.json` declared
+`framework: solid`, `tailwind: true`, `mode: file-router`. `vite.config.ts`
+existed for the sole purpose of loading `vite-plugin-solid`, and `tsconfig`
+carried `jsxImportSource: "solid-js"` for a repo with no `.tsx` file in it.
+
+None of it had ever been true. It is scaffolding from `create-tanstack-app`
+that outlived the decision to hand-write a canvas renderer.
+
+**The cost is not the dead bytes, it's that an instructions file is read as
+authority.** `.cursorrules` is aimed squarely at the next agent to open the
+repo, and it would have sent one off writing Solid components for a page that
+has no component tree. Config that lies is worse than config that is absent,
+because absence prompts a question and a confident wrong answer does not.
+
+Two scripts were also aimed at nothing: `"test": "vitest run"` with vitest not
+installed, and `"start"` pointing at a Nitro `.output/` this project has never
+produced.
+
+## 12. Strict TypeScript was green the entire time
+
+`noUnusedLocals` and `noUnusedParameters` are both on, and `tsc --noEmit` had
+been clean across every commit that carried the dead code:
+
+- `drawTable/5` in `helpers.ts` — 36 lines, never called once, superseded long
+  ago by the table renderer inlined into `content.ts`
+- `heroSettled` — state whose only reader was the guard on its own assignment
+- `PIE_COLORS`, `compileTileProgram` — exported, never imported anywhere
+
+**Strict mode never sees an unused export.** The moment a symbol has `export` in
+front of it, it is invisible to the one check that would have caught it, because
+the compiler has to assume something outside the program might want it. In a
+codebase with no external consumers, every `export` is a hole in the analysis.
+Found by counting references across `src/`, which took one command.
+
+## 13. The render loop never idles — flagged, not fixed
+
+`setAnimating(false)` is never called. `animating` initialises to `true` and
+nothing lowers it, so `render()` re-schedules itself forever and the page holds
+60fps while parked on a static screen.
+
+Found by trying to screenshot the production build: headless Chrome hung, twice,
+because `--virtual-time-budget` waits for quiescence and an unconditional
+`requestAnimationFrame` never quiesces. The build was green, the typecheck was
+clean, and the page looked perfect.
+
+Left alone deliberately — the rain is a real feature and `drawRain()` runs every
+frame, so making the loop idle is a behaviour change, not a cleanup. But it is
+the same shape as everything else today: **the tooling said fine, and running
+the actual thing said otherwise.**
+
+Verified after the cut with a real preview build — `tsc` clean, 32 modules to
+57.19 kB, both routes rendering, WebGL2 absent in headless so the flat-fill
+fallback path got exercised for free.
+
 ## What today keeps teaching
 
 Every real defect — the 90s cap, the unmasked numbers, the gate eating deposits,

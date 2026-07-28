@@ -2,6 +2,14 @@
 
 **Claude by default, Codex as the first alternative**
 
+> **Archived 07-29 — NOT PURSUED** as
+> `07-18-26-home-chat-agent-selection-roadmap.md` (originally
+> `HOME_CHAT_AGENT_SELECTION_ROADMAP.md`). Scoped 07-18, never built: no
+> agent-selection code exists in Settings. Operator decision on archive day, not
+> a lapse. The design below is sound and re-openable if Codex support is ever
+> wanted; note the Trading tab meanwhile went the other way, hard-requiring
+> Claude (its MCP flags are Claude's).
+>
 > Scoped 2026-07-18 against the current Phoenix chat pipeline, Codex CLI 0.144.6,
 > and the current official Codex manual. This roadmap adds one
 > capability: choosing which installed agent powers the Home chat from

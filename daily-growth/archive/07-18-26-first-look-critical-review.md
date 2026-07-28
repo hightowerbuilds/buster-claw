@@ -4,6 +4,12 @@
 
 **Method:** Seven parallel reviewers each walked one leg of the new-user journey end to end — install/first-run, home chat, Google Workspace + the on-duty email loop, BusterPhone/telephony, browser/library/terminal, settings/security/trust, and product-level gaps vs. the competition. Findings are consolidated here by theme, then by severity, with `file:line` anchors. This is deliberately exhaustive and merciless — the goal was to surface **all** of it: the holes, the redundancy, the over-engineering, and what's missing. Genuine strengths are recorded too, because several of them are the reason the product is worth fixing rather than scrapping.
 
+> **Archived 07-29** as `07-18-26-first-look-critical-review.md` (originally
+> `FIRST_LOOK_CRITICAL_REVIEW.md`). Its findings were synthesized into
+> `CRITICAL_PATH_ROADMAP.md`, which remains the live tracker and cites this
+> review by finding number (First-Look #3, #11, #12, …). Archived for the
+> detail behind those numbers, not as a second to-do list.
+
 **Verdict up front:** The engineering *inside* the product is, in many places, better than the product itself. The crypto (Vault, URLGuard, token tiers), the crash-safe dispatch queue, the single `AgentRunner` funnel, and the notification scheduler are genuinely well-built. But a new customer never reaches that quality, because the **entire path from download to first value is a wall of blockers**: an unsigned Intel-only DMG that Gatekeeper rejects, a Google login gated behind emailing the founder to be added to a tester list, a "paid" phone feature that literally cannot be turned on from a shipped app, and a chat surface that shows *nothing* when the one required dependency (Claude Code, logged in) is missing. On top of that sits a layer of scope creep — a budgeting ledger, stock research, weather widgets, a 615-line wallpaper engine — that dilutes the pitch and inflates the surface a first-time user has to make sense of.
 
 The rest of this document is the detail.

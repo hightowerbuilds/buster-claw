@@ -23,6 +23,84 @@ PNG). Operator confirmed GUI side: co-presence badge flashed on every call,
 7-tab eviction, sidebar bumper/⌘B, zoom, ⌘F count, popup-as-tab, download +
 reveal, menu accelerators, and the double-launch single-instance check. -->
 
+### Walk a live signed-in checkout and confirm the payment gate fires — **HIGH**
+
+**What.** Browser-engine repair item 3, left PARTIAL on 07-25. After the
+07-25 gate rewrite, Amazon's live entry point is confirmed gated and the
+`/gp/buy/` funnel is confirmed gated *by test* — but never *by walk*, because
+that funnel is only reachable from a logged-in session. Drive one real
+Agent-Mode commerce run to a signed-in checkout and confirm the run halts.
+
+**Why deferred.** Needs the operator's own signed-in Amazon session; nothing in
+the repo can do it.
+
+**What makes it expensive later.** This is the one item here that is
+safety-adjacent rather than tidy. The field test found the gate failing OPEN on
+exactly this funnel; the fix is tested but unwalked, and the cost of being wrong
+is an agent proceeding through a real payment page. Cheap now, and the only way
+to buy certainty.
+
+---
+
+### Give `find_elements` a real `selector` parameter
+
+**What.** Browser-engine repair item 4. `page.ex:61` — `find_elements` has no
+selector parameter, so callers filter client-side.
+
+**Why deferred.** Low priority; the workaround costs a round trip, not
+correctness.
+
+**What makes it expensive later.** It doesn't — small, local, and additive.
+
+---
+
+### Keychain-backed `secret_resolver` wired into `agent_run_start`
+
+**What.** Browser-engine repair item 5, in `commands/agent_runs.ex`. Secrets for
+Agent-Mode fills currently resolve from the process environment; the design
+calls for macOS Keychain.
+
+**Why deferred.** Medium size, and the Egress `$secret.<name>` masking that
+makes it safe already shipped — this is the storage half.
+
+**What makes it expensive later.** The longer env-var resolution is the only
+path, the more prompts and docs quietly assume it.
+
+---
+
+### Per-host egress levels with a config surface
+
+**What.** Browser-engine repair item 6, `egress.ex:51` — per-host redaction
+levels (e.g. `amazon.com` → `:structure_only`) exist in the code's shape but
+have no operator-facing config.
+
+**Why deferred.** Low priority; the global default is the safe one.
+
+**What makes it expensive later.** Cheap to add whenever a host actually needs
+a different level.
+
+---
+
+### Mirror input forwarding (click/type into the Agent Mode mirror)
+
+**What.** The Phase 7 mirror renders a run's viewport as MJPEG but is
+view-only. Forwarding input means mapping client coords → viewport coords via
+the screencast metadata scale, then `Input.dispatchMouseEvent` /
+`dispatchKeyEvent` over the CDP pipe we already own.
+
+**Why deferred.** It is blocked on a real prerequisite, not on effort: the run
+must carry an `awaiting_reason` so the mirror knows *when* human input is
+legitimate. Taking the wheel at an arbitrary moment races the agent's own
+actions. Inherited here 07-29 when BROWSER_ENGINE_ROADMAP closed, alongside its four
+unfinished field-test repairs above. Everything in that roadmap's *Deferred*
+list was ruled out on the merits; these five were not.
+
+**What makes it expensive later.** Nothing structural — the transport and the
+scale metadata already exist. It gets expensive only if `awaiting_reason` is
+designed without this consumer in mind.
+
+---
+
 ### Refresh out-of-repo prompts naming the old click/fill error atoms
 
 **What.** `browser_click` / `browser_fill` fallbacks were renamed

@@ -20,6 +20,20 @@
 > - **Engine host (settled 07-22): the user's installed Chromium-family browser**,
 >   launched by us with a dedicated profile, CDP over a pipe. Not bundled.
 
+**Status 07-29 — CLOSED, phases 0–7 shipped** (archived as
+`07-25-26-browser-engine-roadmap.md`; originally `BROWSER_ENGINE_ROADMAP.md`,
+the name ~25 code comments still cite).
+
+**Five items were still open at close and ALL moved to `LEFTOVERS.md`** — the
+four unfinished field-test repairs (items 3–6 in the Repairs table below) plus
+the deferred mirror input slice. Item 3 is **HIGH and safety-adjacent**: the
+`/gp/buy/` payment funnel is gated *by test* but has never been walked in a
+real signed-in session, and only the operator can do that. Archiving this
+roadmap does not close that; it moves it somewhere it will be seen.
+
+Everything in the Deferred list below was ruled out on the merits, not
+postponed.
+
 **Status 07-25 — reopened.** Phases 0–6 shipped 07-24. The first live field test
 (Amazon, commerce mode) ran 07-25: **the errand succeeded and four wiring-layer
 defects surfaced, one of which fails the payment gate open on Amazon.** See
@@ -450,9 +464,9 @@ screenshot redaction at capture. All of it consumes `subscribe/1` +
 - **The handoff must land somewhere checkout actually works** — Agent Mode's CDP
   surface, with real popups. Handing off into the WKWebView tab would drop the
   user onto the exact broken path that motivated the hybrid.
-- After the human confirms, capture the confirmation page and write a
-  `Wallets` transaction. Budgets and ledger already exist; this closes the loop
-  and makes agent-assisted spending visible where the user's money already lives.
+- After the human confirms, capture the confirmation page and finish the run.
+  The confirmation receipt stays attached to that interaction rather than
+  creating a separate financial ledger.
 
 Honest note on the chosen model: cart-building with human payment is a real V1
 and it removes the entire payment-credential threat surface. It is not
@@ -476,7 +490,8 @@ Expand the action vocabulary only where a real flow needed it: `select`, `hover`
 
 First exercise of the Phase 0–6 stack against a live, adversarial, logged-in
 commercial site instead of a fixture. Full report:
-[`BROWSER_CONTROL_FIELD_TEST_07-25.md`](BROWSER_CONTROL_FIELD_TEST_07-25.md).
+[`07-25-26-browser-control-field-test.md`](07-25-26-browser-control-field-test.md)
+(archived alongside this file; originally `BROWSER_CONTROL_FIELD_TEST_07-25.md`).
 
 **The errand succeeded.** Amazon, commerce mode, scope `["amazon.com"]`: the
 agent searched, compared, selected a size variant, added two items to the
@@ -631,14 +646,14 @@ now drives the real function.
 
 **Two corrections to the report's recommendations, made deliberately:**
 
-- **Finding 2 is already closed the right way.** `Commerce.confirm_purchase/3`
+- **Finding 2 is already closed the right way.** `Commerce.confirm_purchase/2`
   is unreachable from `/api/run`, and it should stay that way. The report
   recommends exposing `agent_run_confirm_purchase`; we are not going to. A
   `:restricted` command is runnable by `agent_untrusted` — an agent that has
-  been reading Amazon page content — which would let the agent write its own
-  ledger entry for a purchase it claims happened. Confirming is the *human's*
-  act. The LiveView button (`browse_live.ex:72`) is the correct and complete
-  surface. If it is ever put on the API it must be `gated: true`.
+  been reading Amazon page content — which would let the agent attest that a
+  purchase happened. Confirming is the *human's* act. The LiveView button is the
+  correct and complete surface. If it is ever put on the API it must be
+  `gated: true`.
 - **Ordering.** Item 2 is promoted to High. The report rates it Medium, but a
   silent wrong-variant purchase backed by a cent-exact cart is the worst failure
   this system can produce: every receipt agrees, and the ledger is confidently

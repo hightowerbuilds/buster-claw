@@ -1,8 +1,10 @@
 # Critical Path to First Revenue
 
-*Synthesized 2026-07-20 from the seven active roadmaps (Distribution, Go-to-Market,
-BusterPhone, First-Look Critical Review, First-User Review, Home-Chat Agent
-Selection, Leftovers). This document is the ordered, costed to-do list that falls
+*Synthesized 2026-07-20 from the seven then-active roadmaps (Distribution,
+Go-to-Market, BusterPhone, First-Look Critical Review, First-User Review,
+Home-Chat Agent Selection, Leftovers). Two of those sources were archived
+07-29 — the First-Look review (its findings live on here, cited by number) and
+Home-Chat Agent Selection (not pursued); both are in `daily-growth/archive/`. This document is the ordered, costed to-do list that falls
 out of them — not new strategy, just the convergent path the others already point
 at.*
 
@@ -55,7 +57,7 @@ architecture.
 |---|---|---|
 | 1a | Pick one front door; make README + onboarding wizard + home primary action all say the same sentence | Hours |
 | 1b | Delete retired features from `introduction.md` / user guide (Scheduler, Webhooks, Delivery — they don't exist) | Hours |
-| 1c | Move the half-built / decorative surfaces (Phone showcase, Voice dead-end, Wallets, SVG viewer) out of main nav or behind a labs toggle | Small diffs (First-User #20–24) |
+| 1c | Move the half-built / decorative surfaces (Phone showcase, Voice dead-end, SVG viewer) out of main nav or behind a labs toggle. Wallets was removed 07-27. | Small diffs (First-User #20–24) |
 
 ## Stage 2 — The trust story (a day or two)
 

@@ -17,6 +17,34 @@
 >   that account.
 > - **We record our own time series.** There is no portfolio-value history API.
 
+**Status 07-27 — SHIPPED, all phases** (archived 07-29 as
+`07-27-26-portfolio-history-roadmap.md`; originally
+`PORTFOLIO_HISTORY_ROADMAP.md`, the name ~14 code comments still cite).
+Phases 0–6 landed in one arc, each probed against the live API before commit.
+What the plan did not predict:
+
+- **The sanity gate was suppressing its own evidence.** Phase 0's
+  order-of-magnitude check rejected a $500 deposit into a $3.38 account (149×) —
+  throwing away the day AND the transfer prompt that would have explained it. It
+  now requires a fold violation *and* real money moved.
+- **The chart's seam was drawn as a break.** Running the real 32-point series
+  through the geometry showed the 1M view drawing no line at all: a *gap* and a
+  *change of measure* had been treated as the same event. 25 chart tests were
+  green while it was broken.
+- **A new account's opening balance counted as gain** ($910 of "performance" for
+  opening an account) — found by a Phase 6 command test, fixed by folding
+  entering accounts in with the hand-marked flows.
+- **Ranges meant nothing until they were rebased**, and rebasing to the previous
+  point credited sixteen months of recovery to "past month" — so windows re-zero
+  at their first *visible* point.
+- **Added after the plan, on operator request:** transfer marks on the chart
+  (a netted-out deposit is otherwise invisible and its arithmetic uncheckable),
+  and per-account exclusion from the combined total, disclosed everywhere it
+  applies.
+
+Superseded by TRADING_TAB_ROADMAP, which moved this chart onto the top-level
+Trading tab and built the dashboard around it.
+
 ---
 
 ## Outcome
@@ -121,8 +149,8 @@ I'll build that instead.
 
 ## Data model
 
-Three tables. Money is **integer cents** everywhere (the `wallet_transactions`
-precedent); dates are **market days in America/New_York**, matching
+Three tables. Money is **integer cents** everywhere; dates are **market days in
+America/New_York**, matching
 `get_realized_pnl`'s default bucket boundary.
 
 ```

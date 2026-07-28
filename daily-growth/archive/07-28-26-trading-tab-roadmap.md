@@ -21,7 +21,9 @@
 > - Layout keeps the split: **chat left, dashboard right**, on the existing
 >   `SplitResizer`.
 
-**Status 07-28 — SHIPPED, all phases.** 0 through 6 landed in one arc
+**Status 07-28 — SHIPPED, all phases** (archived 07-29 as
+`07-28-26-trading-tab-roadmap.md`; originally `TRADING_TAB_ROADMAP.md`, the name
+~12 code comments still cite). 0 through 6 landed in one arc
 (commits 34dc0e8..4863db8 + the close-out), each phase probed against the live
 API before commit. Deviations from the plan as written, all recorded in the
 relevant commit:
