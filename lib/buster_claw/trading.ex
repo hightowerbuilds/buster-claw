@@ -216,6 +216,9 @@ defmodule BusterClaw.Trading do
   # failure as the original 90s stage-1 cap. It runs from the daily pump where
   # nobody is watching a spinner, so the cap is set with real headroom.
   @market_data_timeout_ms 480_000
+  # Costs: discovery + positions + one tax-lots call per held symbol. Scales
+  # with holdings, so it gets stage-2-plus headroom.
+  @costs_timeout_ms 240_000
 
   @doc """
   Stage 1: fetch balances for every account through the operator's own `claude`
@@ -238,6 +241,97 @@ defmodule BusterClaw.Trading do
     case Application.get_env(:buster_claw, :trading_detail_fetcher) do
       fun when is_function(fun, 1) -> fun.(last4)
       nil -> run_agent(detail_prompt(last4), @detail_timeout_ms, &parse_detail/1)
+    end
+  end
+
+  @doc """
+  The cost-basis fetch (TRADING_TAB_ROADMAP Phase 3): one account's positions
+  WITH what was paid for them, from the tax-lot tools. Blocking; callers run it
+  under `start_async`. Test seam: `:trading_costs_fetcher` app env (an arity-1
+  function of `last4`).
+  """
+  def fetch_costs(last4) when is_binary(last4) do
+    case Application.get_env(:buster_claw, :trading_costs_fetcher) do
+      fun when is_function(fun, 1) -> fun.(last4)
+      nil -> run_agent(costs_prompt(last4), @costs_timeout_ms, &parse_costs/1)
+    end
+  end
+
+  @doc """
+  The cost-basis prompt. Exposed for tests.
+
+  `cost_basis` must come from the tax-lot tool's own lot figures — never
+  quantity × current price, which is the market value wearing the cost's
+  clothes and would make every unrealized gain read as zero.
+  """
+  def costs_prompt(last4) when is_binary(last4) do
+    """
+    Fetch positions WITH THEIR COST BASIS for ONE account: the one whose
+    account number ENDS IN #{last4}.
+
+    1. Call mcp__robinhood__get_accounts and find the account whose number ends
+       in #{last4}. Output {"error": "account not found"} and stop ONLY if no
+       account ends in those digits. If more than one does, use the first.
+    2. Call mcp__robinhood__get_equity_positions for that account_number.
+    3. For EACH symbol held, call mcp__robinhood__get_equity_tax_lots for that
+       account_number and that symbol, and SUM the open lots' cost basis.
+
+    Then output ONLY one JSON object — no prose, no code fences:
+    {"positions": [{"symbol": "<ticker>", "quantity": <number>,
+      "lots": <integer>, "cost_basis": <total usd number, or null>}]}
+
+    Rules:
+    - Read only. Never place, amend, or cancel an order.
+    - "cost_basis" is the sum of the OPEN lots' cost basis from the tax-lot
+      tool — NEVER quantity times the current price, and never a guess. If the
+      tool cannot provide lots for a symbol, keep the row with
+      "cost_basis": null and "lots": 0 rather than dropping or inventing it.
+    - An account with no holdings is {"positions": []}.
+    - If the tools are unavailable or unauthenticated, output exactly:
+      {"error": "<one-line reason>"}
+    """
+  end
+
+  @doc """
+  Extract and validate the cost-basis JSON. Returns `{:ok, [%{symbol, quantity,
+  lots, cost_basis}]}` — `cost_basis` nil when the tool couldn't say, which
+  callers must render as "unavailable", never as zero.
+  """
+  def parse_costs(output) when is_binary(output) do
+    with [json] <- Regex.run(~r/\{.*\}/s, output) || :nomatch,
+         {:ok, decoded} <- Jason.decode(json) do
+      case decoded do
+        %{"error" => msg} ->
+          {:error, {:robinhood, to_string(msg)}}
+
+        %{"positions" => positions} when is_list(positions) ->
+          {:ok,
+           positions
+           |> Enum.filter(&is_map/1)
+           |> Enum.map(&normalize_cost_row/1)
+           |> Enum.reject(&is_nil/1)}
+
+        _other ->
+          {:error, :bad_snapshot}
+      end
+    else
+      _ -> {:error, :bad_snapshot}
+    end
+  end
+
+  defp normalize_cost_row(row) do
+    with symbol when is_binary(symbol) <- row["symbol"],
+         true <- valid_symbol?(symbol),
+         quantity when is_number(quantity) and quantity > 0 <- row["quantity"] do
+      %{
+        symbol: symbol,
+        quantity: quantity * 1.0,
+        lots: if(is_integer(row["lots"]) and row["lots"] >= 0, do: row["lots"], else: 0),
+        cost_basis:
+          if(is_number(row["cost_basis"]) and row["cost_basis"] >= 0, do: row["cost_basis"])
+      }
+    else
+      _ -> nil
     end
   end
 

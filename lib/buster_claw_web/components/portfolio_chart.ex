@@ -664,6 +664,77 @@ defmodule BusterClawWeb.PortfolioChart do
   end
 
   # ---------------------------------------------------------------------------
+  # Sparkline (TRADING_TAB_ROADMAP Phase 3)
+  # ---------------------------------------------------------------------------
+
+  @spark_w 72
+  @spark_h 22
+
+  attr :closes, :list,
+    required: true,
+    doc: "close_cents, oldest first — one shared lookback across rows"
+
+  attr :label, :string, required: true
+
+  @doc """
+  A positions-row trend glyph. Not a chart: no axes, no readout, no gaps logic —
+  the full symbol chart (Phase 4) is one click away. Trend direction carries the
+  window's first-to-last color, with the written P&L numbers beside it carrying
+  the real information; fewer than two closes renders a dash rather than a dot
+  pretending to be a trend.
+  """
+  def sparkline(assigns) do
+    assigns =
+      assigns
+      |> assign(:points, spark_points(assigns.closes))
+      |> assign(:trend, spark_trend(assigns.closes))
+      |> assign(:w, @spark_w)
+      |> assign(:h, @spark_h)
+
+    ~H"""
+    <span :if={@points == nil} class="text-base-content/40">—</span>
+    <svg
+      :if={@points}
+      viewBox={"0 0 #{@w} #{@h}"}
+      class="h-[1.4rem] w-[4.5rem]"
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={"#{@label} trend over the sparkline window"}
+    >
+      <polyline
+        points={@points}
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        vector-effect="non-scaling-stroke"
+        class={if @trend == :down, do: "text-error", else: "text-success"}
+      />
+    </svg>
+    """
+  end
+
+  @doc "Polyline points for a sparkline, or nil when fewer than two closes."
+  def spark_points(closes) when length(closes) < 2, do: nil
+
+  def spark_points(closes) do
+    {min, max} = Enum.min_max(closes)
+    spread = max(max - min, 1)
+    last = length(closes) - 1
+    pad = 2
+
+    closes
+    |> Enum.with_index()
+    |> Enum.map_join(" ", fn {close, i} ->
+      x = Float.round(i / last * @spark_w * 1.0, 1)
+      y = Float.round(@spark_h - pad - (close - min) / spread * (@spark_h - 2 * pad) * 1.0, 1)
+      "#{x},#{y}"
+    end)
+  end
+
+  defp spark_trend([first | _] = closes), do: if(List.last(closes) < first, do: :down, else: :up)
+  defp spark_trend(_closes), do: :up
+
+  # ---------------------------------------------------------------------------
   # Display
   # ---------------------------------------------------------------------------
 

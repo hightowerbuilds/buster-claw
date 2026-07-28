@@ -233,6 +233,53 @@ defmodule BusterClaw.TradingTest do
     end
   end
 
+  describe "parse_costs/1" do
+    test "parses rows, keeping a null basis as nil — never zero" do
+      out = ~s({"positions": [
+        {"symbol": "GOOGL", "quantity": 0.2014, "lots": 2, "cost_basis": 69.99},
+        {"symbol": "QXO", "quantity": 10, "lots": 4, "cost_basis": null}
+      ]})
+
+      assert {:ok, [googl, qxo]} = Trading.parse_costs(out)
+      assert googl.cost_basis == 69.99
+      assert googl.lots == 2
+      assert qxo.cost_basis == nil
+      assert qxo.quantity == 10.0
+    end
+
+    test "bad rows cost themselves, not the fetch" do
+      out = ~s({"positions": [
+        {"symbol": "not a ticker", "quantity": 1, "cost_basis": 1.0},
+        {"symbol": "GOOGL", "quantity": 0, "cost_basis": 1.0},
+        {"symbol": "QXO", "quantity": 10, "lots": 4, "cost_basis": 142.0}
+      ]})
+
+      assert {:ok, [only]} = Trading.parse_costs(out)
+      assert only.symbol == "QXO"
+    end
+
+    test "a negative basis is refused into nil, and errors pass through" do
+      out = ~s({"positions": [{"symbol": "QXO", "quantity": 1, "cost_basis": -5.0}]})
+      assert {:ok, [row]} = Trading.parse_costs(out)
+      assert row.cost_basis == nil
+
+      assert {:error, {:robinhood, _}} = Trading.parse_costs(~s({"error": "down"}))
+      assert {:error, :bad_snapshot} = Trading.parse_costs("junk")
+    end
+
+    test "the prompt demands lot-sourced basis and stays read-only" do
+      prompt = Trading.costs_prompt("6587")
+
+      assert prompt =~ "ENDS IN 6587"
+      assert prompt =~ "get_equity_tax_lots"
+      assert prompt =~ "SUM the open lots"
+      # The one wrong answer named explicitly: market value in cost clothing.
+      assert prompt =~ "NEVER quantity times the current price"
+      assert prompt =~ ~s("cost_basis": null)
+      assert prompt =~ "Read only. Never place, amend, or cancel"
+    end
+  end
+
   describe "parse_market_data/1" do
     test "parses compact pairs into dated closes, oldest first" do
       out = ~s({"closes": {"GOOGL": [["2026-07-27", 349.0], ["2026-07-24", 347.52]],

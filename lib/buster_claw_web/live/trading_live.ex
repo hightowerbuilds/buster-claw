@@ -67,6 +67,7 @@ defmodule BusterClawWeb.TradingLive do
       |> assign(:trading_coverage, nil)
       |> assign(:trading_backfilling, false)
       |> assign(:trading_table, false)
+      |> assign(:trading_costs_loading, false)
       |> stream_configure(:chat_messages, dom_id: &"chat-msg-#{&1.id}")
       |> load_chat_history()
 
@@ -181,6 +182,28 @@ defmodule BusterClawWeb.TradingLive do
 
       _other ->
         {:noreply, socket}
+    end
+  end
+
+  # Load/refresh cost basis: one agent run per named account, exactly like the
+  # backfill. "Load" spends runs only on accounts with nothing; "Refresh"
+  # re-fetches every included holdings-capable account.
+  def handle_event("trading_load_costs", _params, socket) do
+    keys =
+      case socket.assigns.trading_costs_missing do
+        [_ | _] = missing -> missing
+        [] -> all_cost_candidates(socket)
+      end
+
+    if keys == [] or socket.assigns.trading_costs_loading do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(:trading_costs_loading, true)
+       |> start_async(:trading_costs, fn ->
+         Enum.map(keys, &{&1, Portfolio.refresh_costs(&1)})
+       end)}
     end
   end
 
@@ -370,6 +393,29 @@ defmodule BusterClawWeb.TradingLive do
      |> push_msg(:error, "The history fetch crashed.")}
   end
 
+  def handle_async(:trading_costs, {:ok, results}, socket) do
+    failed = for {key, {:error, reason}} <- results, do: {key, reason}
+
+    socket =
+      socket
+      |> assign(:trading_costs_loading, false)
+      |> load_positions()
+
+    if failed == [] do
+      {:noreply, socket}
+    else
+      {:noreply,
+       push_msg(socket, :error, "Couldn't load cost basis for #{length(failed)} account(s).")}
+    end
+  end
+
+  def handle_async(:trading_costs, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:trading_costs_loading, false)
+     |> push_msg(:error, "The cost-basis fetch crashed.")}
+  end
+
   # Stage 2 lands. The id is carried through the result rather than read off the
   # socket: the user may have clicked another chip while this ran, and the data
   # belongs to the account that was asked for, not the one now on screen.
@@ -497,7 +543,80 @@ defmodule BusterClawWeb.TradingLive do
     # exclusion that moves one must move the other in the same render.
     |> assign(:trading_day_change, Portfolio.total_day_change())
     |> assign(:market_indexes, BusterClaw.MarketData.index_summary())
+    |> load_positions()
     |> maybe_default_range(series)
+  end
+
+  # The positions panel (Phase 3): cost rows joined with cached prices and
+  # sparkline closes — ALL of it from SQLite/Settings, zero agent runs on
+  # render. The only run this panel can cause is the explicit Load/Refresh.
+  @spark_lookback_days 30
+
+  defp load_positions(socket) do
+    rows =
+      Portfolio.position_rows()
+      |> Enum.map(&display_position/1)
+      |> Enum.sort_by(&(-(&1.value_cents || 0)))
+
+    socket
+    |> assign(:trading_positions, rows)
+    |> assign(:trading_costs_missing, costs_missing(socket))
+    |> assign(:prices_as_of, BusterClaw.MarketData.prices_as_of())
+  end
+
+  defp display_position(row) do
+    quote_info = BusterClaw.MarketData.quote_for(row.symbol)
+    latest = BusterClaw.MarketData.latest_close(row.symbol)
+
+    price_cents =
+      cond do
+        quote_info -> round(quote_info.price * 100)
+        latest -> latest.close_cents
+        true -> nil
+      end
+
+    value_cents = price_cents && round(row.quantity * price_cents)
+
+    unrealized_cents =
+      if value_cents && row.cost_basis_cents, do: value_cents - row.cost_basis_cents
+
+    row
+    |> Map.merge(%{
+      price_cents: price_cents,
+      day_change_pct: quote_info && quote_info.change_pct,
+      value_cents: value_cents,
+      unrealized_cents: unrealized_cents,
+      unrealized_pct:
+        if(unrealized_cents && row.cost_basis_cents > 0,
+          do: unrealized_cents / row.cost_basis_cents * 100
+        ),
+      closes:
+        BusterClaw.MarketData.bars(row.symbol, @spark_lookback_days)
+        |> Enum.map(& &1.close_cents)
+    })
+  end
+
+  # Included, holdings-capable accounts with no cost rows yet — what the Load
+  # button will spend runs on. Crypto accounts are never candidates: there is
+  # no tax-lot tool to answer for them.
+  defp costs_missing(socket) do
+    socket.assigns.trading_account
+    |> last_snapshot()
+    |> Trading.accounts()
+    |> Enum.filter(&(&1["holdings_supported"] and is_binary(Trading.last4(&1))))
+    |> Enum.map(&Trading.last4/1)
+    |> Portfolio.accounts_missing_costs()
+  end
+
+  defp all_cost_candidates(socket) do
+    excluded = Portfolio.excluded_accounts()
+
+    socket.assigns.trading_account
+    |> last_snapshot()
+    |> Trading.accounts()
+    |> Enum.filter(&(&1["holdings_supported"] and is_binary(Trading.last4(&1))))
+    |> Enum.map(&Trading.last4/1)
+    |> Enum.reject(&(&1 in excluded))
   end
 
   defp maybe_default_range(%{assigns: %{trading_range_pinned: true}} = socket, _series),
@@ -660,6 +779,10 @@ defmodule BusterClawWeb.TradingLive do
               table={@trading_table}
               day_change={@trading_day_change}
               indexes={@market_indexes}
+              positions={@trading_positions}
+              costs_missing={@trading_costs_missing}
+              costs_loading={@trading_costs_loading}
+              prices_as_of={@prices_as_of}
             />
           </div>
         </div>
@@ -687,6 +810,10 @@ defmodule BusterClawWeb.TradingLive do
   attr :table, :boolean, required: true
   attr :day_change, :any, required: true
   attr :indexes, :any, required: true
+  attr :positions, :list, required: true
+  attr :costs_missing, :list, required: true
+  attr :costs_loading, :boolean, required: true
+  attr :prices_as_of, :any, required: true
 
   defp trading_account_card(assigns) do
     snap = last_snapshot(assigns.account)
@@ -858,6 +985,86 @@ defmodule BusterClawWeb.TradingLive do
           backfilling={@backfilling}
           table={@table}
         />
+      </div>
+
+      <%!-- Positions across included accounts (Phase 3): what you hold, what
+            it's worth, and what you PAID — which is what makes the gain a fact.
+            Everything here renders from the local cache; the only agent runs
+            this panel can cause are the explicit Load / Refresh buttons. --%>
+      <div :if={@all?} class="pt-3">
+        <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
+          <p class="uppercase tracking-wide text-base-content/60">Positions</p>
+          <div class="flex items-center gap-2">
+            <span :if={@positions != []} class="text-base-content/40">
+              {prices_as_of_label(@prices_as_of)}
+            </span>
+            <button
+              :if={@positions != [] or @costs_missing != []}
+              type="button"
+              phx-click="trading_load_costs"
+              disabled={@costs_loading}
+              class="border-2 border-base-content/30 px-2 py-0.5 uppercase tracking-wide transition hover:bg-base-content/10 disabled:opacity-50"
+            >
+              {cond do
+                @costs_loading -> "Loading…"
+                @positions == [] -> "Load"
+                true -> "Refresh"
+              end}
+            </button>
+          </div>
+        </div>
+
+        <p :if={@positions == [] and @costs_missing == []} class="pt-2 text-base-content/50">
+          No positions loaded yet — they appear once an account snapshot exists.
+        </p>
+        <p :if={@positions == [] and @costs_missing != []} class="pt-2 text-base-content/50">
+          Cost basis not loaded for {length(@costs_missing)} account{if length(@costs_missing) == 1,
+            do: "",
+            else: "s"} — Load fetches the
+          tax lots (one agent run per account) so gains show what you actually paid.
+        </p>
+
+        <div :if={@positions != []} class="divide-y divide-base-content/10">
+          <div
+            :for={pos <- @positions}
+            class="grid grid-cols-[3.5rem_minmax(0,1fr)_5rem_5.5rem_6.5rem] items-center gap-2 py-1.5"
+            title={"#{pos.symbol}: #{qty(pos.quantity)} across #{Enum.join(pos.accounts, ", ")}"}
+          >
+            <div class="min-w-0">
+              <p class="truncate font-bold">{pos.symbol}</p>
+              <p class="truncate text-base-content/50">{qty(pos.quantity)} sh</p>
+            </div>
+            <div class="flex justify-center">
+              <BusterClawWeb.PortfolioChart.sparkline closes={pos.closes} label={pos.symbol} />
+            </div>
+            <div class="text-right">
+              <p class="text-base-content/80">{money_cents(pos.price_cents)}</p>
+              <p class={position_day_class(pos.day_change_pct)}>
+                {if pos.day_change_pct, do: signed_pct(pos.day_change_pct), else: "—"}
+              </p>
+            </div>
+            <p class="text-right text-base-content/80">{money_cents(pos.value_cents)}</p>
+            <div class="text-right">
+              <p
+                :if={pos.unrealized_cents}
+                class={[
+                  "font-bold",
+                  if(pos.unrealized_cents < 0, do: "text-error", else: "text-success")
+                ]}
+              >
+                {signed_money(pos.unrealized_cents)}
+              </p>
+              <p :if={pos.unrealized_cents && pos.unrealized_pct} class="text-base-content/50">
+                {signed_pct(pos.unrealized_pct)}
+              </p>
+              <%!-- A nil basis is "unavailable", NEVER $0 — zero would claim
+                    the shares were free and gift the gain the whole purchase. --%>
+              <p :if={is_nil(pos.unrealized_cents)} class="text-base-content/40">
+                cost basis unavailable
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <%!-- The combined view has no single account to detail, so it lists them
@@ -1113,6 +1320,27 @@ defmodule BusterClawWeb.TradingLive do
     sign = if pct < 0, do: "-", else: "+"
     sign <> :erlang.float_to_binary(abs(pct) * 1.0, decimals: 2) <> "%"
   end
+
+  defp money_cents(cents) when is_integer(cents), do: money(cents / 100)
+  defp money_cents(_cents), do: "—"
+
+  # Fractional shares, floats for display only — trimmed so 0.1 + 0.2 never
+  # renders its float dust.
+  defp qty(quantity) when is_float(quantity) do
+    if quantity == trunc(quantity),
+      do: Integer.to_string(trunc(quantity)),
+      else: quantity |> Float.round(4) |> Float.to_string()
+  end
+
+  defp qty(quantity), do: to_string(quantity)
+
+  defp position_day_class(nil), do: "text-base-content/40"
+  defp position_day_class(pct) when pct < 0, do: "text-error"
+  defp position_day_class(_pct), do: "text-success"
+
+  defp prices_as_of_label({:quotes, at}), do: "prices as of #{relative_time(at)}"
+  defp prices_as_of_label({:bars, day}), do: "prices from #{Date.to_iso8601(day)} close"
+  defp prices_as_of_label(_other), do: ""
 
   # An index level, not a dollar amount — no currency mark.
   defp index_price(price) when is_number(price),

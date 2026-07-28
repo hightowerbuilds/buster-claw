@@ -237,9 +237,13 @@ defmodule BusterClaw.MarketData do
     %{
       label: index_label(row),
       price: row["price"],
-      change_pct: row["change_pct"] || derived_change_pct(row)
+      change_pct: change_pct_of(row)
     }
   end
+
+  # Given by the tool, or our division over two tool-sourced numbers, or nil.
+  # Shared by index chips and equity quotes: the honesty rule is the same.
+  defp change_pct_of(row), do: row["change_pct"] || derived_change_pct(row)
 
   defp index_label(row) do
     case row["name"] do
@@ -253,6 +257,54 @@ defmodule BusterClaw.MarketData do
        do: (price / prev - 1) * 100
 
   defp derived_change_pct(_row), do: nil
+
+  @doc """
+  One symbol's cached quote (TRADING_TAB_ROADMAP Phase 3):
+  `%{price: number, change_pct: number | nil}` or nil. Same change derivation
+  as the index chips — the tool's own figure, else our division over price and
+  prev_close, else nil.
+  """
+  def quote_for(symbol) when is_binary(symbol) do
+    with {:ok, blob} <- cached_quotes(),
+         %{} = row <- Enum.find(List.wrap(blob["quotes"]), &(&1["symbol"] == symbol)),
+         price when is_number(price) <- row["price"] do
+      %{price: price, change_pct: change_pct_of(row)}
+    else
+      _ -> nil
+    end
+  end
+
+  @doc "A symbol's newest cached close, `%{bar_on: Date, close_cents: integer}` or nil."
+  def latest_close(symbol) when is_binary(symbol) do
+    Bar
+    |> where([b], b.symbol == ^symbol)
+    |> order_by([b], desc: b.bar_on)
+    |> limit(1)
+    |> Repo.one()
+    |> case do
+      nil -> nil
+      bar -> %{bar_on: bar.bar_on, close_cents: bar.close_cents}
+    end
+  end
+
+  @doc """
+  What "current prices" means right now, for the panel's as-of line:
+  `{:quotes, DateTime}` when a quotes blob exists, else `{:bars, Date}` from
+  the newest close, else `:none`. One line for the whole panel — per-row
+  staleness would be noise.
+  """
+  def prices_as_of do
+    with {:ok, blob} <- cached_quotes(),
+         {:ok, at, _} <- DateTime.from_iso8601(blob["fetched_at"] || "") do
+      {:quotes, at}
+    else
+      _ ->
+        case latest_bar_on() do
+          nil -> :none
+          day -> {:bars, day}
+        end
+    end
+  end
 
   @doc "True when the quotes blob is missing a stamp or older than #{@quotes_stale_min} minutes."
   def quotes_stale?(%{"fetched_at" => stamp}) when is_binary(stamp) do

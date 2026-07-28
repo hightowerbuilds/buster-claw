@@ -428,6 +428,116 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "as of"
     end
 
+    test "positions render from the cache with real unrealized P&L and no fetch",
+         %{conn: conn} do
+      alias BusterClaw.{MarketData, Portfolio}
+
+      # Everything seeded locally; the default fetcher stubs ERROR, so any
+      # attempted agent run would surface as a failed refresh — rendering from
+      # cache alone is the done-when.
+      Portfolio.store_costs("6587", [
+        %{symbol: "GOOGL", quantity: 0.25, lots: 2, cost_basis: 69.99}
+      ])
+
+      MarketData.store_bars(%{
+        "GOOGL" => [
+          %{bar_on: ~D[2026-07-23], close: 310.0},
+          %{bar_on: ~D[2026-07-24], close: 319.74}
+        ]
+      })
+
+      MarketData.store_quotes(%{
+        quotes: [
+          %{
+            "symbol" => "GOOGL",
+            "name" => nil,
+            "price" => 325.13,
+            "prev_close" => 320.0,
+            "change_pct" => nil
+          }
+        ],
+        indexes: []
+      })
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      assert html =~ "Positions"
+      assert html =~ "GOOGL"
+      assert html =~ "0.25 sh"
+      # value = 0.25 × $325.13 quote = $81.28; unrealized = 81.28 − 69.99.
+      assert html =~ "$81.28"
+      assert html =~ "+$11.29"
+      assert html =~ "+16.13%"
+      # Day change derived from prev_close, our division.
+      assert html =~ "+1.60%"
+      # The sparkline drew from cached closes.
+      assert html =~ "<polyline"
+      assert html =~ "prices as of"
+    end
+
+    test "a missing cost basis says so — never $0", %{conn: conn} do
+      alias BusterClaw.{MarketData, Portfolio}
+
+      Portfolio.store_costs("8262", [%{symbol: "QXO", quantity: 10.0, lots: 0, cost_basis: nil}])
+      MarketData.store_bars(%{"QXO" => [%{bar_on: ~D[2026-07-24], close: 13.67}]})
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      assert html =~ "QXO"
+      # Value still renders (quantity × latest close)...
+      assert html =~ "$136.70"
+      # ...but the gain is worded as unavailable, not zeroed.
+      assert html =~ "cost basis unavailable"
+      refute html =~ "+$136.70"
+    end
+
+    test "with no cost rows the panel offers Load, sized to the missing accounts",
+         %{conn: conn} do
+      stub_trading_fetchers()
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      # Stage 1 landed (three accounts, crypto excluded from candidacy), no
+      # costs stored -> the not-loaded wording names the two eligible accounts.
+      # HEEx wraps between the count interpolation and its noun.
+      assert html =~ "Cost basis not loaded for 2"
+      assert html =~ ~r/2\s+accounts/
+      assert html =~ "one agent run per account"
+      assert html =~ ~r/>\s*Load\s*</
+    end
+
+    test "Load fetches costs for exactly the missing, eligible accounts", %{conn: conn} do
+      alias BusterClaw.Portfolio
+      test_pid = self()
+      stub_trading_fetchers()
+
+      Application.put_env(:buster_claw, :trading_costs_fetcher, fn last4 ->
+        send(test_pid, {:costs_fetched, last4})
+        {:ok, [%{symbol: "GOOGL", quantity: 0.25, lots: 1, cost_basis: 69.99}]}
+      end)
+
+      on_exit(fn -> Application.put_env(:buster_claw, :trading_costs_fetcher, nil) end)
+
+      # One eligible account already has rows; only the other should be fetched.
+      Portfolio.store_costs("6587", [%{symbol: "OKYO", quantity: 1.0, lots: 1, cost_basis: 1.51}])
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_async(view)
+
+      render_click(view, "trading_load_costs", %{})
+      html = render_async(view)
+
+      assert_receive {:costs_fetched, "4821"}
+      # 6587 already had rows; 9013 is crypto (no tax-lot tool). Neither runs.
+      refute_receive {:costs_fetched, "6587"}, 50
+      refute_receive {:costs_fetched, "9013"}, 50
+
+      assert html =~ "GOOGL"
+    end
+
     test "a stage-1 reading lands in the portfolio ledger", %{conn: conn} do
       stub_trading_fetchers()
 

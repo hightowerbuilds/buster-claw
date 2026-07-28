@@ -218,6 +218,54 @@ defmodule BusterClaw.MarketDataTest do
     end
   end
 
+  describe "quote_for/1, latest_close/1, prices_as_of/0" do
+    test "quote_for derives change like the index chips do" do
+      MarketData.store_quotes(%{
+        quotes: [
+          %{
+            "symbol" => "GOOGL",
+            "name" => nil,
+            "price" => 325.13,
+            "prev_close" => 320.0,
+            "change_pct" => nil
+          },
+          %{
+            "symbol" => "QXO",
+            "name" => nil,
+            "price" => 14.15,
+            "prev_close" => nil,
+            "change_pct" => 0.14
+          }
+        ],
+        indexes: []
+      })
+
+      googl = MarketData.quote_for("GOOGL")
+      assert googl.price == 325.13
+      assert_in_delta googl.change_pct, 1.603, 0.001
+
+      assert MarketData.quote_for("QXO").change_pct == 0.14
+      assert MarketData.quote_for("MISSING") == nil
+    end
+
+    test "latest_close returns the newest cached bar" do
+      MarketData.store_bars(closes(%{"GOOGL" => [{"2026-07-23", 1.0}, {"2026-07-24", 319.74}]}))
+
+      assert %{bar_on: ~D[2026-07-24], close_cents: 31_974} = MarketData.latest_close("GOOGL")
+      assert MarketData.latest_close("MISSING") == nil
+    end
+
+    test "prices_as_of prefers the quotes blob, falls back to bars, admits :none" do
+      assert MarketData.prices_as_of() == :none
+
+      MarketData.store_bars(closes(%{"GOOGL" => [{"2026-07-24", 1.0}]}))
+      assert {:bars, ~D[2026-07-24]} = MarketData.prices_as_of()
+
+      MarketData.store_quotes(%{quotes: [], indexes: []})
+      assert {:quotes, %DateTime{}} = MarketData.prices_as_of()
+    end
+  end
+
   describe "quotes blob" do
     test "round-trips and knows staleness" do
       assert MarketData.cached_quotes() == :none

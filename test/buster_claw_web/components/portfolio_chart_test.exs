@@ -425,6 +425,33 @@ defmodule BusterClawWeb.PortfolioChartTest do
     end
   end
 
+  describe "spark_points/1" do
+    test "fewer than two closes is nil — a dot is not a trend" do
+      assert PortfolioChart.spark_points([]) == nil
+      assert PortfolioChart.spark_points([100]) == nil
+    end
+
+    test "a flat series stays in bounds without dividing by zero" do
+      points = PortfolioChart.spark_points([500, 500, 500])
+      assert is_binary(points)
+
+      for pair <- String.split(points, " "),
+          [x, y] = String.split(pair, ",") do
+        assert String.to_float(x) >= 0.0
+        assert String.to_float(y) >= 0.0
+      end
+    end
+
+    test "points span the full width, oldest left" do
+      points = PortfolioChart.spark_points([100, 200, 300])
+      pairs = String.split(points, " ")
+
+      assert length(pairs) == 3
+      assert hd(pairs) |> String.starts_with?("0.0,")
+      assert List.last(pairs) |> String.starts_with?("72.0,")
+    end
+  end
+
   describe "geometry/1" do
     test "zero is always inside the domain, even for an all-positive series" do
       series = [point("2026-07-27", 5_000), point("2026-07-28", 9_000)]

@@ -55,6 +55,7 @@ defmodule BusterClaw.Portfolio do
 
   alias BusterClaw.MarketCalendar
   alias BusterClaw.Portfolio.Flow
+  alias BusterClaw.Portfolio.PositionCost
   alias BusterClaw.Portfolio.RealizedPoint
   alias BusterClaw.Portfolio.Snapshot
   alias BusterClaw.Repo
@@ -727,6 +728,116 @@ defmodule BusterClaw.Portfolio do
       |> Repo.delete_all()
 
     {:ok, count}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Position costs (TRADING_TAB_ROADMAP Phase 3)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Fetch and store one account's positions-with-cost-basis, replacing whatever
+  was stored for it. Returns `{:ok, count}` or `{:error, reason}`.
+  """
+  def refresh_costs(account_key) when is_binary(account_key) do
+    case Trading.fetch_costs(account_key) do
+      {:ok, rows} -> {:ok, store_costs(account_key, rows)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Store parsed cost rows for an account, replacing any prior set — a wholesale
+  replace, like the backfill: positions sold since the last fetch must vanish,
+  and merging two snapshots of "what do I hold" would resurrect them.
+  """
+  def store_costs(account_key, rows) when is_binary(account_key) and is_list(rows) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    Repo.transaction(fn ->
+      PositionCost
+      |> where([c], c.account_key == ^account_key)
+      |> Repo.delete_all()
+
+      Enum.count(rows, fn row ->
+        result =
+          %PositionCost{}
+          |> PositionCost.changeset(%{
+            account_key: account_key,
+            symbol: row.symbol,
+            quantity: row.quantity,
+            lots: row.lots,
+            cost_basis_cents: row.cost_basis && round(row.cost_basis * 100),
+            as_of: now
+          })
+          |> Repo.insert()
+
+        match?({:ok, _}, result)
+      end)
+    end)
+    |> case do
+      {:ok, count} -> count
+      {:error, _reason} -> 0
+    end
+  end
+
+  @doc "Every stored cost row, ordered for stable display."
+  def all_costs do
+    PositionCost
+    |> order_by([c], asc: c.symbol, asc: c.account_key)
+    |> Repo.all()
+  end
+
+  @doc """
+  The positions panel's rows: cost rows aggregated per symbol across included
+  accounts, largest cost first. Excluded accounts are filtered exactly as they
+  are from every total.
+
+      [%{symbol, quantity, lots, cost_basis_cents (nil when incomplete),
+         accounts: [account_key], as_of: oldest DateTime}]
+
+  If ANY contributing account's basis is nil the aggregate is nil — a partial
+  cost basis presented as the whole would overstate the gain by the missing
+  purchase, which is the one direction this number must never err in.
+  """
+  def position_rows(excluded \\ nil) do
+    excluded = excluded || excluded_accounts()
+
+    all_costs()
+    |> Enum.reject(&(&1.account_key in excluded))
+    |> Enum.group_by(& &1.symbol)
+    |> Enum.map(fn {symbol, rows} ->
+      %{
+        symbol: symbol,
+        quantity: rows |> Enum.map(& &1.quantity) |> Enum.sum(),
+        lots: rows |> Enum.map(& &1.lots) |> Enum.sum(),
+        cost_basis_cents:
+          if(Enum.all?(rows, &is_integer(&1.cost_basis_cents)),
+            do: rows |> Enum.map(& &1.cost_basis_cents) |> Enum.sum()
+          ),
+        accounts: rows |> Enum.map(& &1.account_key) |> Enum.sort(),
+        as_of: rows |> Enum.map(& &1.as_of) |> Enum.min(DateTime)
+      }
+    end)
+    |> Enum.sort_by(&(-(&1.cost_basis_cents || 0)))
+  end
+
+  @doc """
+  Included accounts that could hold positions but have no cost rows yet — the
+  panel's "not loaded" set. Keyed off the ledger's known accounts; crypto-style
+  accounts can't be told apart here, so callers pass the keys stage 1 marked
+  `holdings_supported`.
+  """
+  def accounts_missing_costs(candidate_keys) when is_list(candidate_keys) do
+    have =
+      PositionCost
+      |> select([c], c.account_key)
+      |> distinct(true)
+      |> Repo.all()
+      |> MapSet.new()
+
+    excluded = excluded_accounts()
+
+    Enum.reject(candidate_keys, &(&1 in excluded or MapSet.member?(have, &1)))
   end
 
   # ---------------------------------------------------------------------------
