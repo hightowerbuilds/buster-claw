@@ -37,6 +37,14 @@ defmodule BusterClawWeb.Layouts do
       path: "/phone",
       icon: "hero-phone"
     },
+    # Trading (TRADING_TAB_ROADMAP Phase 0): the pinned agent conversation
+    # beside the accounts dashboard — promoted from a Home sub-tab to a
+    # top-level surface. No brand PNG yet; the dock falls back to the label.
+    %{
+      label: "Trading",
+      path: "/trading",
+      icon: "hero-chart-bar"
+    },
     %{
       label: "Wallets",
       path: "/wallets",
