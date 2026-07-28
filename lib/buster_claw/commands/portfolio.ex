@@ -23,19 +23,28 @@ defmodule BusterClaw.Commands.Portfolio do
   @doc """
   The cumulative gain/loss series, optionally windowed and scoped to one account.
 
+  `cumulative` is the change across the requested range, re-zeroed at its start
+  — `range: "ALL"` is therefore the since-inception figure, and `range: "1M"`
+  is the past month's.
+
   Args: `range` (1W/1M/3M/1Y/ALL, default ALL), `account` (last four digits;
   omit for the combined total).
   """
   def portfolio_history(args \\ %{}) do
     range = Map.get(args, "range", "ALL")
 
-    series =
+    full =
       case Map.get(args, "account") do
         nil -> Portfolio.total_cumulative_series()
         "" -> Portfolio.total_cumulative_series()
         key -> Portfolio.cumulative_series(to_string(key))
       end
-      |> PortfolioChart.window(range)
+
+    # Windowed AND re-zeroed against what the window inherited, exactly as the
+    # chart does — `cumulative` is change across the requested range, not since
+    # inception. The two surfaces read the same ledger and must not disagree
+    # about what the number means.
+    series = full |> PortfolioChart.window(range) |> PortfolioChart.rebase(full)
 
     {:ok,
      %{

@@ -37,6 +37,54 @@ defmodule BusterClawWeb.PortfolioChartTest do
     end
   end
 
+  describe "rebase/2 — the range control must mean something" do
+    test "a window is re-zeroed against what it inherited" do
+      series = [
+        point("2026-01-01", -50_000),
+        point("2026-06-01", -49_000),
+        point("2026-06-20", -48_000)
+      ]
+
+      windowed = PortfolioChart.window(series, "1M")
+      assert [a, b] = PortfolioChart.rebase(windowed, series)
+
+      # Entering the window carrying -$500 of history, the past month is +$10.
+      assert a.cumulative_cents == 0
+      assert b.cumulative_cents == 1_000
+    end
+
+    test "the baseline is the point BEFORE the window, so the first visible change survives" do
+      series = [point("2026-06-01", 1_000), point("2026-06-20", 3_000)]
+
+      # "ALL" inherits nothing, so the opening point keeps its own change rather
+      # than being flattened to zero.
+      assert [a, b] = PortfolioChart.rebase(PortfolioChart.window(series, "ALL"), series)
+      assert a.cumulative_cents == 1_000
+      assert b.cumulative_cents == 3_000
+    end
+
+    test "the operator's own case: an old loss stops swamping a recent window" do
+      # An account that lost $715 in early 2025 and has barely traded since.
+      series = [
+        point("2025-02-28", -71_581, :realized),
+        point("2026-06-28", -49_841, :realized),
+        point("2026-07-27", -49_841, :recorded)
+      ]
+
+      all = PortfolioChart.rebase(PortfolioChart.window(series, "ALL"), series)
+      month = PortfolioChart.rebase(PortfolioChart.window(series, "1M"), series)
+
+      # All-time still tells the truth about the loss...
+      assert List.last(all).cumulative_cents == -49_841
+      # ...but the past month reads as the flat stretch it actually was.
+      assert List.last(month).cumulative_cents == 0
+    end
+
+    test "an empty window rebases to nothing rather than raising" do
+      assert PortfolioChart.rebase([], [point("2026-01-01", 100)]) == []
+    end
+  end
+
   describe "granularity/1" do
     test "is chosen from the span, not the point count" do
       assert PortfolioChart.granularity([]) == :daily

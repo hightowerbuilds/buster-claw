@@ -44,7 +44,7 @@ defmodule BusterClaw.Commands.Catalog.Finance do
         type: :read,
         tier: :safe,
         description:
-          "Cumulative gain/loss over time. Points before recording began are realized trades only; after, realized + unrealized. Amounts in dollars.",
+          "Gain/loss over time, re-zeroed at the start of the requested range (ALL = since inception). Points before recording began are realized trades only; after, realized + unrealized. Amounts in dollars.",
         args: %{
           "range" => %{type: :string, required: false},
           "account" => %{type: :string, required: false}

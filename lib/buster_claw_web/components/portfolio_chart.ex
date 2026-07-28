@@ -66,7 +66,7 @@ defmodule BusterClawWeb.PortfolioChart do
   attr :table, :boolean, default: false
 
   def portfolio_chart(assigns) do
-    windowed = window(assigns.series, assigns.range)
+    windowed = assigns.series |> window(assigns.range) |> rebase(assigns.series)
 
     assigns =
       assigns
@@ -88,7 +88,7 @@ defmodule BusterClawWeb.PortfolioChart do
     ~H"""
     <section class="space-y-2" id="portfolio-chart">
       <div class="flex flex-wrap items-baseline justify-between gap-2">
-        <p class="font-bold uppercase tracking-widest">Cumulative gain / loss</p>
+        <p class="font-bold uppercase tracking-widest">Gain / loss · {range_label(@range)}</p>
         <span class={["ic-stat-n text-xl", hero_class(@points)]}>{hero(@points)}</span>
       </div>
 
@@ -494,8 +494,46 @@ defmodule BusterClawWeb.PortfolioChart do
   end
 
   @doc """
+  Re-zero a window so the line measures change *across the readings shown*.
+
+  Without this the line always read cumulative-since-inception, so selecting
+  "1M" still showed a figure accumulated over two and a half years — dominated,
+  in the operator's own data, by an account that now holds $0 and did its
+  trading in early 2025. Both numbers were true; together they were unreadable,
+  and the range control looked broken (reported 07-28).
+
+  The baseline is the **first visible point**, not the last one before the
+  window. That distinction only bites while the data is sparse, and then it
+  bites hard: with monthly backfill buckets and a single recorded day, measuring
+  from the previous point credited sixteen months of recovery to "past month".
+  Measuring across what is actually on screen cannot do that. Once daily
+  recording accumulates the two converge, because the previous point is
+  yesterday.
+
+  "ALL" is left alone — nothing precedes it, and its first point already steps
+  from an implicit zero, so re-zeroing would erase that first bucket's result.
+  """
+  def rebase([], _series), do: []
+
+  def rebase([first | _] = windowed, series) do
+    baseline = if windowed_from?(series, first.day), do: first.cumulative_cents, else: 0
+    Enum.map(windowed, &Map.update!(&1, :cumulative_cents, fn cents -> cents - baseline end))
+  end
+
+  # True when the series carries history the window is cutting away.
+  defp windowed_from?(series, first_day),
+    do: Enum.any?(series, &(Date.compare(&1.day, first_day) == :lt))
+
+  defp range_label("ALL"), do: "all time"
+  defp range_label("1W"), do: "past week"
+  defp range_label("1M"), do: "past month"
+  defp range_label("3M"), do: "past 3 months"
+  defp range_label("1Y"), do: "past year"
+  defp range_label(other), do: other
+
+  @doc """
   The per-point payload the hover/keyboard hook reads, as JSON on a data
-  attribute.
+  attribute.\"""
 
   Sent as data rather than re-queried per mousemove: a crosshair that round-trips
   to the server for every pixel of pointer movement is a crosshair that lags.
