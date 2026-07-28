@@ -149,6 +149,8 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       phone_get
       phone_list
       phone_stats
+      portfolio_flow_list
+      portfolio_history
       runtime_status
       sheets_get
       sheets_get_values

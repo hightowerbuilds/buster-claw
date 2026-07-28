@@ -220,6 +220,39 @@ defmodule BusterClaw.PortfolioFlowsTest do
       assert second.gain_cents == 500
     end
 
+    test "a newly opened account's balance is a flow, not performance" do
+      record("2026-07-27", [account("6587", 100.0)])
+      # A second account appears, holding $900 it did not earn here.
+      record("2026-07-28", [account("6587", 110.0), account("8262", 900.0)])
+
+      assert [_first, second] = Portfolio.total_gain_series()
+      assert second.value_cents == 101_000
+      # Only the $10 the first account actually made.
+      assert second.gain_cents == 1_000
+    end
+
+    test "an account entering on the very first day is not double-counted" do
+      # Nothing precedes the first point, so its gain is nil and the entering
+      # balance has nothing to be subtracted from.
+      record("2026-07-27", [account("6587", 100.0), account("8262", 900.0)])
+      record("2026-07-28", [account("6587", 110.0), account("8262", 900.0)])
+
+      assert [first, second] = Portfolio.total_gain_series()
+      assert first.gain_cents == nil
+      assert second.gain_cents == 1_000
+    end
+
+    test "an entering account and a marked deposit on the same day both net out" do
+      record("2026-07-27", [account("6587", 100.0)])
+      record("2026-07-28", [account("6587", 610.0), account("8262", 900.0)])
+
+      {:ok, _} = deposit("6587", "2026-07-28", 500.0)
+
+      assert [_, second] = Portfolio.total_gain_series()
+      # $900 entering + $500 deposited, leaving the $10 genuinely earned.
+      assert second.gain_cents == 1_000
+    end
+
     test "it inherits the completeness rule — an incomplete day is skipped" do
       record("2026-07-27", [account("6587", 100.0), account("8262", 200.0)])
       # The Roth failed to record on the 28th.

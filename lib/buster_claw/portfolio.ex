@@ -245,7 +245,24 @@ defmodule BusterClaw.Portfolio do
         Enum.count(first_seen, fn {_key, seen_on} -> Date.compare(seen_on, day) != :gt end)
 
       if length(rows) == expected and expected > 0 do
-        [%{day: day, value_cents: Enum.sum(Enum.map(rows, & &1.value_cents)), accounts: expected}]
+        [
+          %{
+            day: day,
+            value_cents: Enum.sum(Enum.map(rows, & &1.value_cents)),
+            accounts: expected,
+            # The opening balance of any account reporting for the FIRST time
+            # today. An account joining the tracked set moves money into that
+            # set exactly the way a deposit moves money into an account, and
+            # counting it as gain would credit the user with $900 of
+            # performance for opening an account (caught 07-28 via the command
+            # surface's own test). `total_gain_series/0` subtracts it.
+            entering_cents:
+              rows
+              |> Enum.filter(&(Map.get(first_seen, &1.account_key) == day))
+              |> Enum.map(& &1.value_cents)
+              |> Enum.sum()
+          }
+        ]
       else
         # An incomplete day is a gap, not a smaller total. Drawing the sum of
         # whatever happened to report would render a crash the size of the
@@ -366,9 +383,24 @@ defmodule BusterClaw.Portfolio do
   from the last complete day to the next one.
   """
   def total_gain_series do
-    total_series()
+    points = total_series()
+
+    # Accounts entering the tracked set are folded in with the hand-marked
+    # transfers, because they are the same kind of event: money crossing the
+    # boundary of what we measure, not money earned inside it.
+    entering =
+      points
+      |> Enum.reject(&(&1.day == points |> List.first() |> then(fn p -> p && p.day end)))
+      |> Map.new(&{&1.day, &1.entering_cents})
+
+    flows =
+      all_flows()
+      |> flows_by_day()
+      |> Map.merge(entering, fn _day, flow, entering -> flow + entering end)
+
+    points
     |> Enum.map(&%{day: &1.day, value_cents: &1.value_cents})
-    |> build_gain_series(flows_by_day(all_flows()))
+    |> build_gain_series(flows)
   end
 
   defp flows_by_day(flows) do

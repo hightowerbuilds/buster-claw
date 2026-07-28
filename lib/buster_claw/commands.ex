@@ -453,6 +453,10 @@ defmodule BusterClaw.Commands do
   defdelegate document_save(args), to: BusterClaw.Commands.Documents
   defdelegate document_delete(args), to: BusterClaw.Commands.Documents
   # Journal (the day's minutes)
+  defdelegate portfolio_history(args \\ %{}), to: BusterClaw.Commands.Portfolio
+  defdelegate portfolio_flow_list(args), to: BusterClaw.Commands.Portfolio
+  defdelegate portfolio_flow_add(args), to: BusterClaw.Commands.Portfolio
+
   defdelegate journal_append(args), to: BusterClaw.Commands.Journal
   defdelegate journal_read(args \\ %{}), to: BusterClaw.Commands.Journal
   # Integrations (extras; CRUD comes from the auto-loop above)
