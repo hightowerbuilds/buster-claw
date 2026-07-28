@@ -21,6 +21,30 @@
 > - Layout keeps the split: **chat left, dashboard right**, on the existing
 >   `SplitResizer`.
 
+**Status 07-28 — SHIPPED, all phases.** 0 through 6 landed in one arc
+(commits 34dc0e8..4863db8 + the close-out), each phase probed against the live
+API before commit. Deviations from the plan as written, all recorded in the
+relevant commit:
+
+- **Earnings ride the daily sweep** rather than a separate cached fetch — the
+  calendar tool turned out to be market-wide (no symbol filter), so the sweep
+  filters to the held set it already discovered, and one-run-per-day held.
+- **The activity panel renders on both views** (combined = merged-and-gap-named,
+  selected = scoped), not only the dashboard — a promotion that deleted the
+  per-account block without losing its information.
+- **Chart coverage tolerates one trading day of API lag** — the API doesn't
+  materialize today's bar until well after the close (measured twice); without
+  the allowance every candle toggle re-spent a ~2-minute run all evening.
+- **`position_costs.quantity` is a float**, not the planned numeric-as-string —
+  display-only either way, and aggregation across accounts made the string form
+  pure friction.
+- The **1-in-6 model flake** appeared twice more in new costumes ("tool not
+  callable"; unmasked account numbers were already Phase-0 lore) — every
+  fetch path retries by design and every parser enforces rather than requests.
+
+Open (deliberate): drag-pan/zoom, intraday, order entry, benchmark overlays —
+see "not building" below, unchanged.
+
 ---
 
 ## Outcome

@@ -1,19 +1,38 @@
 defmodule BusterClaw.Trading do
   @moduledoc """
-  The Trading home sub-tab's conversation profile: Robinhood's agentic-trading
-  MCP server, attached to a dedicated pinned chat conversation.
+  Everything that talks to Robinhood through the operator's own agent: the
+  pinned trading conversation's profile, and every read the Trading tab's
+  dashboard is built from — each one a prompt, a parser, and a test seam.
 
-  Deliberately thin. The app holds no broker credentials and speaks no MCP —
-  the operator's own `claude` CLI does both (OAuth tokens live in the macOS
-  Keychain after a one-time interactive `claude mcp login robinhood`; headless
-  runs reuse them). Robinhood-side, orders execute on the dedicated Agentic
-  account — the primary account is read-only to agents. The app's contribution
-  is the surface, the pinned system prompt, and the Sentinel audit line on
-  every send (see `StatusLive.dispatch_chat/2`).
+  The app holds no broker credentials and speaks no MCP — the operator's
+  `claude` CLI does both (OAuth tokens live in the macOS Keychain after a
+  one-time interactive `claude mcp login robinhood`; headless runs reuse them).
+  Robinhood-side, orders execute only on the dedicated Agentic account; every
+  other account is read-only to the agent, and every chat send lands a Sentinel
+  `:outbound_send` line (see `TradingLive.dispatch_chat/2`).
+
+  ## The reads (each: prompt + parser + `:trading_*_fetcher` seam)
+
+  - **Stage 1** — balances for every account (`fetch_account_snapshot/0`)
+  - **Stage 2** — one account's holdings/orders, by last-four
+    (`fetch_account_detail/1`)
+  - **Costs** — one account's positions with tax-lot cost basis
+    (`fetch_costs/1`)
+  - **Sweep** — daily closes for held symbols + quotes + indexes + earnings, one
+    run per trading day (`fetch_market_data/1`; stored by `BusterClaw.MarketData`)
+  - **Chart tier** — full OHLCV for one symbol, bounded window
+    (`fetch_symbol_bars/3`)
+  - **Backfill** — realized P&L history (`fetch_realized_pnl/1`; stored by
+    `BusterClaw.Portfolio`)
+
+  Two rules every parser enforces rather than requests: sensitive shapes are
+  normalized app-side (account numbers are masked here no matter what the model
+  returns), and payloads stay bounded — every number transits a language model,
+  so transcription size is a correctness parameter.
 
   The conversation is DB-less on purpose: `"trading"` never gets a
-  `Conversations` row, so it can't appear in (or be closed from) the Chat
-  tab's strip, while the transcript still persists via `Agent.Transcript`.
+  `Conversations` row, so it can't appear in (or be closed from) Home's chat
+  strip, while the transcript still persists via `Agent.Transcript`.
   """
 
   alias BusterClaw.AgentRunner

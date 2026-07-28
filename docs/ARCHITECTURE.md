@@ -26,6 +26,9 @@ Buster Claw has no built-in LLM and needs no API keys: the intelligence is a ter
 - `BusterClaw.Dispatch` (+ `BusterClaw.DispatchProjector`): the durable SQLite pull-queue and its projection to workspace markdown (`shift/Dispatch.md`) that a terminal agent works.
 - `BusterClaw.Orchestration`: the unattended, indefinite "shift" — `Orchestrator` (a supervised kill-switch janitor), `Uptime`, and the `shifts` / `shift_assignments` schemas.
 - `BusterClaw.Sentinel`: the security/audit spine — every command, outbound send, and untrusted fetch is recorded; restricted actions from untrusted callers are refused and queued.
+- `BusterClaw.Trading` (+ `BusterClawWeb.TradingLive`, the top-level Trading tab): the Robinhood agentic-MCP surface — the pinned trading conversation beside a dashboard (hero/day change, positions with tax-lot cost basis, per-symbol charts, earnings). Every read runs through the operator's own `claude` CLI; the app holds no broker credentials.
+- `BusterClaw.Portfolio`: the portfolio ledger — daily balance readings per account (Robinhood keeps no value history, so this table is the only place that past exists), hand-marked transfer flows, realized-P&L backfill, and the gain math the chart and `portfolio_history` command share.
+- `BusterClaw.MarketData`: the market-data cache — daily closes/OHLCV per held symbol, quotes/indexes/earnings blob — refreshed once per trading day by `Portfolio.Recorder` so the Trading tab renders with zero agent runs on open.
 - `BusterClaw.Settings`: app settings.
 
 ## Desktop Shell
