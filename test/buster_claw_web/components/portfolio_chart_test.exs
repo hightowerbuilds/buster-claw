@@ -85,6 +85,49 @@ defmodule BusterClawWeb.PortfolioChartTest do
     end
   end
 
+  describe "range_counts/1 and flat?/1 — telling 'nothing to draw' from 'broken'" do
+    test "counts what each range would plot, so a thin range can say so" do
+      series = [
+        point("2024-06-01", 100),
+        point("2026-07-26", 200),
+        point("2026-07-27", 300)
+      ]
+
+      counts = PortfolioChart.range_counts(series)
+
+      # Two recent readings and one from two years ago.
+      assert counts["1W"] == 2
+      assert counts["ALL"] == 3
+      # A range holding fewer than two points cannot draw a line at all.
+      assert counts["3M"] == 2
+    end
+
+    test "a single-reading range is identified, not rendered as an empty axis" do
+      series = [point("2024-06-01", 100), point("2026-07-27", 300)]
+      counts = PortfolioChart.range_counts(series)
+
+      assert counts["1W"] == 1
+      assert counts["ALL"] == 2
+    end
+
+    test "flat? spots a window where nothing moved" do
+      # The operator's own 1M case: two readings, identical cumulative. The line
+      # lands exactly on the zero baseline and looks like a failed render.
+      flat = [point("2026-06-28", 0, :realized), point("2026-07-27", 0)]
+      assert PortfolioChart.flat?(flat)
+
+      refute PortfolioChart.flat?([point("2026-07-26", 0), point("2026-07-27", 500)])
+      refute PortfolioChart.flat?([])
+    end
+
+    test "a flat window still produces a drawable segment" do
+      # It must be drawn AND described — the caption explains the line, it does
+      # not replace it.
+      flat = [point("2026-07-27", 0), point("2026-07-28", 0)]
+      assert [_segment] = PortfolioChart.segments(flat)
+    end
+  end
+
   describe "granularity/1" do
     test "is chosen from the span, not the point count" do
       assert PortfolioChart.granularity([]) == :daily

@@ -84,6 +84,11 @@ defmodule BusterClawWeb.PortfolioChart do
       |> assign(:height, @height)
       |> assign(:readout, readout(assigns.plotted))
       |> assign(:flow_marks, flow_marks(assigns.plotted))
+      |> assign(:range_counts, range_counts(assigns.series))
+      |> assign(:flat?, flat?(windowed))
+      # One test for "is there a line", so the plot, its axis labels and the
+      # not-enough-data notice can never disagree about whether one exists.
+      |> assign(:drawable?, match?([_, _ | _], windowed))
 
     ~H"""
     <section class="space-y-2" id="portfolio-chart">
@@ -101,12 +106,18 @@ defmodule BusterClawWeb.PortfolioChart do
             aria-selected={@range == name}
             phx-click="trading_select_range"
             phx-value-range={name}
+            title={
+              if Map.get(@range_counts, name, 0) < 2,
+                do: "Not enough readings yet to draw a line for this range",
+                else: nil
+            }
             class={[
               "border-2 px-2 py-0.5 font-bold uppercase tracking-wide transition",
               if(@range == name,
                 do: "border-primary bg-primary/10",
                 else: "border-base-content/25 hover:bg-base-content/5"
-              )
+              ),
+              Map.get(@range_counts, name, 0) < 2 && "opacity-40"
             ]}
           >
             {name}
@@ -122,8 +133,24 @@ defmodule BusterClawWeb.PortfolioChart do
         the line begins as soon as there are two.
       </p>
 
+      <%!-- One reading cannot be a line. Saying so beats rendering an axis with
+            a lone dot on it, which reads as a chart that failed to draw. --%>
+      <p :if={match?([_], @points)} class="border-2 border-base-content/20 p-4 text-base-content/60">
+        Only one reading in {range_phrase(@range)} — a line needs two. Readings are taken
+        once per trading day, so this fills in tomorrow. A longer range will show
+        the history that already exists.
+      </p>
+
+      <%!-- A flat window is a real answer, but it draws the line exactly on top
+            of the zero baseline, where it reads as nothing having rendered. So
+            the result gets said in words as well as drawn. --%>
+      <p :if={@flat? and @drawable?} class="text-base-content/60">
+        No change over {range_phrase(@range)} — the line sits on zero because nothing
+        moved, not because it is missing.
+      </p>
+
       <div
-        :if={@points != []}
+        :if={@drawable?}
         class="relative"
         id="portfolio-chart-plot"
         phx-hook="PortfolioChart"
@@ -230,7 +257,7 @@ defmodule BusterClawWeb.PortfolioChart do
         <p data-live class="sr-only" aria-live="polite"></p>
       </div>
 
-      <div :if={@points != []} class="flex flex-wrap justify-between gap-2 text-base-content/50">
+      <div :if={length(@points) > 1} class="flex flex-wrap justify-between gap-2 text-base-content/50">
         <span>{first_day(@points)}</span>
         <span>{last_day(@points)}</span>
       </div>
@@ -533,6 +560,19 @@ defmodule BusterClawWeb.PortfolioChart do
   # True when the series carries history the window is cutting away.
   defp windowed_from?(series, first_day),
     do: Enum.any?(series, &(Date.compare(&1.day, first_day) == :lt))
+
+  @doc "How many points each range would plot — drives the range buttons' state."
+  def range_counts(series) do
+    Map.new(@ranges, fn {name, _days} -> {name, series |> window(name) |> length()} end)
+  end
+
+  @doc "True when every point in the window carries the same cumulative."
+  def flat?([]), do: false
+  def flat?(points), do: match?([_], points |> Enum.map(& &1.cumulative_cents) |> Enum.uniq())
+
+  # "the past week" reads correctly; "the all time" does not.
+  defp range_phrase("ALL"), do: "all time"
+  defp range_phrase(range), do: "the " <> range_label(range)
 
   defp range_label("ALL"), do: "all time"
   defp range_label("1W"), do: "past week"
