@@ -37,6 +37,7 @@ defmodule BusterClaw.Portfolio.Recorder do
   require Logger
 
   alias BusterClaw.MarketCalendar
+  alias BusterClaw.MarketData
   alias BusterClaw.Portfolio
   alias BusterClaw.Trading
 
@@ -77,23 +78,21 @@ defmodule BusterClaw.Portfolio.Recorder do
     {:noreply, state}
   end
 
-  # The one decision this process makes, kept small enough to read in one go.
+  # Two independent duties per trading day, each with its own already-done
+  # latch: file the balance reading, and run the market-data sweep
+  # (TRADING_TAB_ROADMAP Phase 1). Independent because either can be satisfied
+  # without the other — opening the Trading tab records balances but fetches no
+  # bars, and neither duty may re-fire on the ~30-minute self-heal ticks that
+  # follow.
   defp run_if_due(state) do
     today = MarketCalendar.today()
 
-    cond do
-      not MarketCalendar.trading_day?(today) ->
-        :ok
-
-      not past_fire_time?(state, today) ->
-        :ok
-
-      Portfolio.recorded_on?(today) ->
-        :ok
-
-      true ->
-        record_today(today)
+    if MarketCalendar.trading_day?(today) and past_fire_time?(state, today) do
+      unless Portfolio.recorded_on?(today), do: record_today(today)
+      unless MarketData.attempted_on?(today), do: sweep_market_data(today)
     end
+
+    :ok
   rescue
     error ->
       # A bad tick is logged, never fatal — the supervisor restarting this
@@ -121,6 +120,20 @@ defmodule BusterClaw.Portfolio.Recorder do
         # No placeholder row. Tomorrow's tick tries again; today stays a gap,
         # which the chart draws honestly.
         Logger.warning("Portfolio.Recorder: fetch failed for #{today}: #{inspect(reason)}")
+    end
+  end
+
+  defp sweep_market_data(today) do
+    Logger.info("Portfolio.Recorder: market sweep for #{today}")
+
+    case MarketData.refresh(today) do
+      {:ok, %{symbols: symbols, bars: bars}} ->
+        Logger.info("Portfolio.Recorder: cached #{bars} bar(s) for #{length(symbols)} symbol(s)")
+
+      {:error, reason} ->
+        # No placeholder rows. The attempt is latched, so tomorrow retries;
+        # today's sparklines simply stay a day older.
+        Logger.warning("Portfolio.Recorder: market sweep failed: #{inspect(reason)}")
     end
   end
 

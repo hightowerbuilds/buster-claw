@@ -15,10 +15,19 @@ defmodule BusterClaw.Portfolio.RecorderTest do
   setup do
     prev_today = Application.get_env(:buster_claw, :local_today)
     prev_fetcher = Application.get_env(:buster_claw, :trading_snapshot_fetcher)
+    prev_market = Application.get_env(:buster_claw, :trading_market_data_fetcher)
+
+    # The Recorder's second duty (the market sweep) fires on any un-attempted
+    # trading day; without a stub every balance test here would spawn a REAL
+    # agent run for it.
+    Application.put_env(:buster_claw, :trading_market_data_fetcher, fn _start ->
+      {:ok, %{closes: %{}, quotes: [], indexes: [], skipped: [], errors: []}}
+    end)
 
     on_exit(fn ->
       Application.put_env(:buster_claw, :local_today, prev_today)
       Application.put_env(:buster_claw, :trading_snapshot_fetcher, prev_fetcher)
+      Application.put_env(:buster_claw, :trading_market_data_fetcher, prev_market)
     end)
 
     :ok
@@ -172,6 +181,85 @@ defmodule BusterClaw.Portfolio.RecorderTest do
 
     assert_receive :fetch_called
     assert length(Portfolio.all_snapshots()) == 2
+  end
+
+  describe "the market sweep duty" do
+    defp stub_market(result) do
+      test_pid = self()
+
+      Application.put_env(:buster_claw, :trading_market_data_fetcher, fn start ->
+        send(test_pid, {:sweep_called, start})
+        result
+      end)
+    end
+
+    defp market_parsed(closes) do
+      %{closes: closes, quotes: [], indexes: [], skipped: [], errors: []}
+    end
+
+    test "sweeps after recording, and bars land in the cache" do
+      Application.put_env(:buster_claw, :local_today, @past_trading_day)
+      stub_fetcher({:ok, snapshot()})
+
+      stub_market({:ok, market_parsed(%{"GOOGL" => [%{bar_on: ~D[2026-07-24], close: 347.52}]})})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+
+      assert_receive {:sweep_called, _start}
+      assert BusterClaw.MarketData.known_symbols() == ["GOOGL"]
+    end
+
+    test "sweeps even when the tab already recorded today's balances" do
+      Application.put_env(:buster_claw, :local_today, @past_trading_day)
+      {:ok, 2} = Portfolio.record(snapshot(), day: @past_trading_day, source: "tab_open")
+      stub_fetcher({:ok, snapshot()})
+      stub_market({:ok, market_parsed(%{})})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+
+      # Balances were satisfied by the tab; the sweep is an independent duty.
+      refute_receive :fetch_called, 50
+      assert_receive {:sweep_called, _start}
+    end
+
+    test "the attempt latch stops a second sweep the same day" do
+      Application.put_env(:buster_claw, :local_today, @past_trading_day)
+      stub_fetcher({:ok, snapshot()})
+      stub_market({:ok, market_parsed(%{})})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+      assert_receive {:sweep_called, _start}
+
+      tick_and_settle(pid)
+      refute_receive {:sweep_called, _start}, 50
+    end
+
+    test "no sweep on a weekend" do
+      Application.put_env(:buster_claw, :local_today, @saturday)
+      stub_fetcher({:ok, snapshot()})
+      stub_market({:ok, market_parsed(%{})})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+
+      refute_receive {:sweep_called, _start}, 50
+    end
+
+    test "a failed sweep writes no bars and does not take the recorder down" do
+      Application.put_env(:buster_claw, :local_today, @past_trading_day)
+      stub_fetcher({:ok, snapshot()})
+      stub_market({:error, {:robinhood, "down"}})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+
+      assert_receive {:sweep_called, _start}
+      assert Process.alive?(pid)
+      assert BusterClaw.MarketData.known_symbols() == []
+    end
   end
 
   test "the autostart path ticks on boot — the catch-up for a day opened late" do

@@ -233,6 +233,90 @@ defmodule BusterClaw.TradingTest do
     end
   end
 
+  describe "parse_market_data/1" do
+    test "parses compact pairs into dated closes, oldest first" do
+      out = ~s({"closes": {"GOOGL": [["2026-07-27", 349.0], ["2026-07-24", 347.52]],
+        "QXO": [["2026-07-24", 14.26]]},
+        "quotes": [{"symbol": "GOOGL", "price": 349.1, "change_pct": 0.4}],
+        "indexes": [{"symbol": "SPX", "name": "S&P 500", "price": 6100.0, "change_pct": -0.2}],
+        "skipped": []})
+
+      assert {:ok, parsed} = Trading.parse_market_data(out)
+      assert [a, b] = parsed.closes["GOOGL"]
+      assert a.bar_on == ~D[2026-07-24]
+      assert b.close == 349.0
+      assert [%{"symbol" => "GOOGL", "price" => 349.1}] = parsed.quotes
+      assert [%{"symbol" => "SPX", "name" => "S&P 500"}] = parsed.indexes
+    end
+
+    test "a bad pair costs the pair; a bad symbol key costs the symbol" do
+      out = ~s({"closes": {
+        "GOOGL": [["not a date", 1.0], ["2026-07-24", 347.52], ["2026-07-25", 0]],
+        "not a ticker": [["2026-07-24", 1.0]],
+        "EMPTY": []
+      }})
+
+      assert {:ok, parsed} = Trading.parse_market_data(out)
+      # The unparseable date and the zero close are dropped; the real bar stays.
+      assert [%{close: 347.52}] = parsed.closes["GOOGL"]
+      refute Map.has_key?(parsed.closes, "not a ticker")
+      # A symbol with nothing left is dropped whole rather than kept empty.
+      refute Map.has_key?(parsed.closes, "EMPTY")
+    end
+
+    test "quotes missing a numeric price are dropped, not zeroed" do
+      out = ~s({"closes": {}, "quotes": [
+        {"symbol": "GOOGL", "price": "unavailable", "change_pct": null},
+        {"symbol": "QXO", "price": 14.26, "change_pct": null}
+      ]})
+
+      assert {:ok, %{quotes: [only]}} = Trading.parse_market_data(out)
+      assert only["symbol"] == "QXO"
+      assert only["change_pct"] == nil
+    end
+
+    test "prev_close rides along when the tool provides it — day change is computed app-side" do
+      # The 07-28 live sweep returned change_pct: null for both indexes; the
+      # tool doesn't hand it over. Two tool-sourced numbers and our own division
+      # beat trusting the model with arithmetic.
+      out = ~s({"closes": {}, "indexes": [
+        {"symbol": "SPX", "name": "S&P 500", "price": 7413.18, "prev_close": 7400.0,
+         "change_pct": null}
+      ]})
+
+      assert {:ok, %{indexes: [spx]}} = Trading.parse_market_data(out)
+      assert spx["prev_close"] == 7400.0
+      assert spx["change_pct"] == nil
+    end
+
+    test "partial failure carries its errors alongside the good sections" do
+      out = ~s({"closes": {"GOOGL": [["2026-07-24", 347.52]]}, "quotes": [],
+        "indexes": [], "errors": ["index quotes failed"]})
+
+      assert {:ok, parsed} = Trading.parse_market_data(out)
+      assert parsed.errors == ["index quotes failed"]
+      assert map_size(parsed.closes) == 1
+    end
+
+    test "errors and garbage stay distinguishable" do
+      assert {:error, {:robinhood, _}} =
+               Trading.parse_market_data(~s({"error": "not authenticated"}))
+
+      assert {:error, :bad_snapshot} = Trading.parse_market_data("no json")
+    end
+
+    test "the prompt batches, bounds, and stays read-only" do
+      prompt = Trading.market_data_prompt(~D[2026-04-29])
+
+      assert prompt =~ "ONCE for ALL held symbols"
+      assert prompt =~ "2026-04-29T00:00:00Z"
+      assert prompt =~ "[date, close] pairs"
+      assert prompt =~ ~s("interpolated": true)
+      assert prompt =~ "list the others in \"skipped\""
+      assert prompt =~ "Read only. Never place, amend, or cancel"
+    end
+  end
+
   describe "parse_detail/1 and merge_detail/3" do
     setup do
       {:ok, snap} =

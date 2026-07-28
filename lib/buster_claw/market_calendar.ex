@@ -80,6 +80,16 @@ defmodule BusterClaw.MarketCalendar do
   end
 
   @doc """
+  The most recent trading day on or before `date` — the day whose close is the
+  freshest a daily bar can possibly be. Bounded walk (a holiday weekend is the
+  longest closure), so termination is structural.
+  """
+  def latest_trading_day(%Date{} = date) do
+    Enum.find(0..10, &trading_day?(Date.add(date, -&1)))
+    |> then(&Date.add(date, -&1))
+  end
+
+  @doc """
   The observed market holidays for `year`, as a sorted list of dates.
 
   Memoized per year in `:persistent_term`: the recorder asks on every tick and

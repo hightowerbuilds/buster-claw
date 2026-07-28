@@ -90,6 +90,22 @@ defmodule BusterClaw.MarketCalendarTest do
     end
   end
 
+  describe "latest_trading_day/1" do
+    test "a trading day is its own latest" do
+      assert MarketCalendar.latest_trading_day(d("2026-07-27")) == d("2026-07-27")
+    end
+
+    test "a weekend resolves to Friday" do
+      assert MarketCalendar.latest_trading_day(d("2026-07-25")) == d("2026-07-24")
+      assert MarketCalendar.latest_trading_day(d("2026-07-26")) == d("2026-07-24")
+    end
+
+    test "a holiday weekend walks back past the observed holiday" do
+      # Sat 07-04-2026; Fri 07-03 observed closed -> Thu 07-02.
+      assert MarketCalendar.latest_trading_day(d("2026-07-04")) == d("2026-07-02")
+    end
+  end
+
   describe "today/0" do
     test "honors the :local_today test seam" do
       prev = Application.get_env(:buster_claw, :local_today)

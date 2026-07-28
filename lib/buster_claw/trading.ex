@@ -209,6 +209,13 @@ defmodule BusterClaw.Trading do
   # The backfill is three calls like stage 2, but returns years of buckets — the
   # 07-27 probe came back with 31 of them — so it gets the same generous cap.
   @backfill_timeout_ms 180_000
+  # The market sweep is the longest run in the app: discovery + a batched
+  # historicals call + two quote calls + the largest transcription any prompt
+  # asks for (90 close-pairs per held symbol). 240s was measured too small on
+  # 07-28 — the run was killed with no output at all, the same our-own-stopwatch
+  # failure as the original 90s stage-1 cap. It runs from the daily pump where
+  # nobody is watching a spinner, so the cap is set with real headroom.
+  @market_data_timeout_ms 480_000
 
   @doc """
   Stage 1: fetch balances for every account through the operator's own `claude`
@@ -232,6 +239,149 @@ defmodule BusterClaw.Trading do
       fun when is_function(fun, 1) -> fun.(last4)
       nil -> run_agent(detail_prompt(last4), @detail_timeout_ms, &parse_detail/1)
     end
+  end
+
+  @doc """
+  The market-data sweep (TRADING_TAB_ROADMAP Phase 1): one run that discovers
+  the held symbols and returns their daily closes since `start`, current quotes,
+  and index quotes. Blocking; the Recorder calls it once per trading day.
+  Test seam: `:trading_market_data_fetcher` app env (an arity-1 function of the
+  start `Date`).
+  """
+  def fetch_market_data(%Date{} = start) do
+    case Application.get_env(:buster_claw, :trading_market_data_fetcher) do
+      fun when is_function(fun, 1) -> fun.(start)
+      nil -> run_agent(market_data_prompt(start), @market_data_timeout_ms, &parse_market_data/1)
+    end
+  end
+
+  @doc """
+  The market-data prompt. Exposed for tests.
+
+  Closes travel as compact `[date, close]` pairs — every row transits a
+  language model, so payload size is a correctness parameter, and the pair form
+  roughly halves the tokens per bar. The historicals call is batched (the tool
+  takes up to 10 symbols); anything past 10 is skipped BY NAME rather than
+  silently, and interpolated bars are dropped at the source since they carry no
+  information.
+  """
+  def market_data_prompt(%Date{} = start) do
+    """
+    Collect market data for the operator's holdings, in ONE pass.
+
+    1. Call mcp__robinhood__get_accounts, then mcp__robinhood__get_equity_positions
+       for EACH account. Collect the distinct stock symbols held. Skip accounts
+       whose positions the tools cannot read.
+    2. Call mcp__robinhood__get_equity_historicals ONCE for ALL held symbols (it
+       accepts up to 10 per call) with interval "day" and start_time
+       "#{Date.to_iso8601(start)}T00:00:00Z". If more than 10 symbols are held,
+       fetch the 10 largest positions by value and list the others in "skipped".
+    3. Call mcp__robinhood__get_equity_quotes for the same symbols.
+    4. Call mcp__robinhood__get_indexes, find the S&P 500 and the Nasdaq
+       Composite, and call mcp__robinhood__get_index_quotes for both.
+
+    Then output ONLY one JSON object — no prose, no code fences:
+    {"closes": {"<SYMBOL>": [["YYYY-MM-DD", <close usd number>], ...]},
+     "quotes": [{"symbol": "<SYMBOL>", "price": <usd number>,
+      "prev_close": <usd number or null>, "change_pct": <percent number or null>}],
+     "indexes": [{"symbol": "<index symbol>", "name": "<index name>",
+      "price": <number>, "prev_close": <number or null>,
+      "change_pct": <percent number or null>}],
+     "skipped": ["<SYMBOL>"]}
+
+    Rules:
+    - Read only. Never place, amend, or cancel an order.
+    - "prev_close" and "change_pct" come from the quote tool's own fields when
+      it provides them (previous close / adjusted previous close); null when it
+      does not. Never compute them yourself.
+    - Closes are DAILY bars as [date, close] pairs, oldest first, transcribed
+      exactly from the tool results — never invented, never averaged. Omit bars
+      the tool marks "interpolated": true; they carry no information.
+    - If the operator holds no stocks, output "closes": {} and "quotes": []
+      but still fill "indexes".
+    - If one tool fails, leave its section empty and add a one-line reason to
+      an "errors" array; keep the sections that worked.
+    - If the tools are entirely unavailable or unauthenticated, output exactly:
+      {"error": "<one-line reason>"}
+    """
+  end
+
+  @doc """
+  Extract and validate the market-data JSON. Returns
+  `{:ok, %{closes: %{symbol => [%{bar_on: Date, close: number}]}, quotes: [...],
+  indexes: [...], skipped: [...], errors: [...]}}`.
+
+  Per-row tolerance, per the ledger's posture: an unparseable pair is dropped
+  (with the rest of its symbol kept), a symbol key that isn't a plausible
+  ticker is dropped whole, and a non-positive close is refused — a stock cannot
+  close at nothing, and a zero would cliff every sparkline that touches it.
+  """
+  def parse_market_data(output) when is_binary(output) do
+    with [json] <- Regex.run(~r/\{.*\}/s, output) || :nomatch,
+         {:ok, decoded} <- Jason.decode(json) do
+      case decoded do
+        %{"error" => msg} ->
+          {:error, {:robinhood, to_string(msg)}}
+
+        %{"closes" => closes} when is_map(closes) ->
+          {:ok,
+           %{
+             closes: normalize_closes(closes),
+             quotes: normalize_quote_list(decoded["quotes"]),
+             indexes: normalize_quote_list(decoded["indexes"]),
+             skipped: decoded["skipped"] |> List.wrap() |> Enum.filter(&valid_symbol?/1),
+             errors: decoded["errors"] |> List.wrap() |> Enum.filter(&is_binary/1)
+           }}
+
+        _other ->
+          {:error, :bad_snapshot}
+      end
+    else
+      _ -> {:error, :bad_snapshot}
+    end
+  end
+
+  @symbol_re ~r/\A[A-Z][A-Z0-9.]{0,9}\z/
+  defp valid_symbol?(symbol), do: is_binary(symbol) and Regex.match?(@symbol_re, symbol)
+
+  defp normalize_closes(closes) do
+    closes
+    |> Enum.filter(fn {symbol, pairs} -> valid_symbol?(symbol) and is_list(pairs) end)
+    |> Map.new(fn {symbol, pairs} ->
+      bars =
+        pairs
+        |> Enum.map(&normalize_pair/1)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.sort_by(& &1.bar_on, Date)
+
+      {symbol, bars}
+    end)
+    |> Map.reject(fn {_symbol, bars} -> bars == [] end)
+  end
+
+  defp normalize_pair([date, close]) when is_binary(date) and is_number(close) and close > 0 do
+    case Date.from_iso8601(date) do
+      {:ok, parsed} -> %{bar_on: parsed, close: close}
+      _error -> nil
+    end
+  end
+
+  defp normalize_pair(_pair), do: nil
+
+  defp normalize_quote_list(list) do
+    list
+    |> List.wrap()
+    |> Enum.filter(&is_map/1)
+    |> Enum.map(fn quote_row ->
+      %{
+        "symbol" => quote_row["symbol"],
+        "name" => quote_row["name"],
+        "price" => if(is_number(quote_row["price"]), do: quote_row["price"]),
+        "prev_close" => if(is_number(quote_row["prev_close"]), do: quote_row["prev_close"]),
+        "change_pct" => if(is_number(quote_row["change_pct"]), do: quote_row["change_pct"])
+      }
+    end)
+    |> Enum.filter(&(is_binary(&1["symbol"]) and is_number(&1["price"])))
   end
 
   @doc """
