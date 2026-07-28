@@ -47,33 +47,170 @@ defmodule BusterClaw.TradingTest do
   test "the system prompt carries the money-truthfulness rules" do
     prompt = Keyword.fetch!(Trading.chat_opts(), :append_system_prompt)
 
-    assert prompt =~ "real money"
-    assert prompt =~ "list_positions"
+    assert prompt =~ "get_equity_positions"
     assert prompt =~ "never invent prices"
     assert prompt =~ "never simulate"
   end
 
+  test "the system prompt confines orders to the agentic account while reads roam" do
+    prompt = Keyword.fetch!(Trading.chat_opts(), :append_system_prompt)
+
+    assert prompt =~ "You may READ any account"
+    assert prompt =~ "ONLY on the dedicated Agentic"
+    assert prompt =~ "READ-ONLY to you"
+    # Naming the other account types matters: the rule has to bind the exact
+    # accounts the panel now puts in front of the model.
+    assert prompt =~ "Roth IRA"
+    assert prompt =~ "Crypto"
+  end
+
+  test "stage 1 asks for every account's balances and nothing deeper" do
+    prompt = Trading.accounts_prompt()
+
+    assert prompt =~ "get_accounts"
+    assert prompt =~ "For EACH account"
+    assert prompt =~ "Never merge or omit accounts"
+    # The crypto gap is instructed, not left to chance.
+    assert prompt =~ "no crypto positions tool"
+    # The whole point of the split: stage 1 must not pull holdings.
+    assert prompt =~ "Do NOT fetch positions or"
+  end
+
+  test "stage 2 identifies its account by last four and stays read-only" do
+    prompt = Trading.detail_prompt("6587")
+
+    assert prompt =~ "ENDS IN 6587"
+    assert prompt =~ "get_equity_positions"
+    assert prompt =~ "get_equity_orders"
+    # A read surface must say so: this prompt runs against accounts the agent
+    # is otherwise forbidden to touch.
+    assert prompt =~ "Read only. Never place, amend, or cancel"
+  end
+
   describe "parse_snapshot/1" do
-    test "accepts clean JSON and stamps fetched_at app-side" do
-      out =
-        ~s({"account": "••••6587", "value": 2.38, "cash": 2.38, "buying_power": 2.38, "positions": []})
+    test "accepts a multi-account payload and stamps fetched_at app-side" do
+      out = ~s({"accounts": [
+        {"id": "801666587", "label": "Investing", "agentic": true,
+         "value": 100.5, "cash": 50.0, "buying_power": 50.0},
+        {"id": "515464821", "label": "Roth IRA", "value": 900.0, "cash": 0.0,
+         "buying_power": 0.0}
+      ]})
 
       assert {:ok, snap} = Trading.parse_snapshot(out)
-      assert snap["value"] == 2.38
-      assert snap["positions"] == []
+      assert [investing, roth] = snap["accounts"]
+
+      assert investing["label"] == "Investing"
+      assert investing["agentic"]
+
+      assert roth["label"] == "Roth IRA"
+      # Absent `agentic` is false, never nil — the badge is a safety claim and
+      # must not be decided by a missing key.
+      refute roth["agentic"]
+
       assert {:ok, _at, _} = DateTime.from_iso8601(snap["fetched_at"])
+    end
+
+    test "stage 1 leaves holdings ABSENT rather than empty" do
+      out = ~s({"accounts": [
+        {"id": "801666587", "label": "Investing", "value": 1.0, "cash": 1.0,
+         "buying_power": 1.0}
+      ]})
+
+      assert {:ok, %{"accounts" => [acct]}} = Trading.parse_snapshot(out)
+
+      # `[]` would claim stage 1 looked and found nothing. It never looked.
+      refute Map.has_key?(acct, "positions")
+      refute Map.has_key?(acct, "orders")
+      refute Trading.detail_loaded?(acct)
+      assert Trading.needs_detail?(acct)
+    end
+
+    test "holdings a model volunteers in stage 1 are discarded, not trusted" do
+      # The prompt says not to fetch them; if one arrives anyway it has no
+      # detail_at stamp behind it, so it is not a real read.
+      out = ~s({"accounts": [
+        {"id": "801666587", "label": "Investing", "value": 1.0, "cash": 1.0,
+         "buying_power": 1.0,
+         "positions": [{"symbol": "GME", "quantity": 999, "value": 99999}]}
+      ]})
+
+      assert {:ok, %{"accounts" => [acct]}} = Trading.parse_snapshot(out)
+      refute Map.has_key?(acct, "positions")
+    end
+
+    test "holdings_supported defaults true and survives an explicit false" do
+      out = ~s({"accounts": [
+        {"id": "111111111", "label": "Investing", "value": 1.0, "cash": 1.0, "buying_power": 1.0},
+        {"id": "222222222", "label": "Crypto", "value": 2.0, "cash": 0.0, "buying_power": 0.0,
+         "holdings_supported": false}
+      ]})
+
+      assert {:ok, %{"accounts" => [investing, crypto]}} = Trading.parse_snapshot(out)
+      assert investing["holdings_supported"]
+      refute crypto["holdings_supported"]
+    end
+
+    test "a raw account number is masked app-side even though the prompt asked nicely" do
+      # Observed 07-27: the model returns the unmasked brokerage number. Only
+      # the last four survive, and they must never reach the cache in full.
+      out = ~s({"accounts": [
+        {"id": "801666587", "label": "Agentic", "value": 1.0, "cash": 1.0, "buying_power": 1.0}
+      ]})
+
+      assert {:ok, %{"accounts" => [acct]}} = Trading.parse_snapshot(out)
+      assert acct["id"] == "••••6587"
+      refute acct["id"] =~ "801666587"
+    end
+
+    test "an already-masked id, a short id, and a junk id all stay safe" do
+      out = ~s({"accounts": [
+        {"id": "8016****6587", "label": "A", "value": 1.0, "cash": 0.0, "buying_power": 0.0},
+        {"id": "42", "label": "B", "value": 1.0, "cash": 0.0, "buying_power": 0.0},
+        {"id": null, "label": "C", "value": 1.0, "cash": 0.0, "buying_power": 0.0}
+      ]})
+
+      assert {:ok, %{"accounts" => [a, b, c]}} = Trading.parse_snapshot(out)
+      assert a["id"] == "••••6587"
+      assert b["id"] == "••••42"
+      assert c["id"] == "account"
+    end
+
+    test "accounts sharing their last four still get distinct selection keys" do
+      out = ~s({"accounts": [
+        {"id": "111116587", "label": "Investing", "value": 1.0, "cash": 0.0, "buying_power": 0.0},
+        {"id": "999996587", "label": "Roth IRA", "value": 2.0, "cash": 0.0, "buying_power": 0.0}
+      ]})
+
+      assert {:ok, %{"accounts" => [first, second]}} = Trading.parse_snapshot(out)
+      assert first["id"] == "••••6587"
+      assert second["id"] != first["id"]
+
+      # Both remain reachable — a duplicate key would strand one chip.
+      assert Trading.select_account(%{"accounts" => [first, second]}, second["id"])["label"] ==
+               "Roth IRA"
     end
 
     test "tolerates prose/stderr noise around the JSON" do
       out = """
       some warning on stderr
-      {"account": "••••6587", "value": 100.5, "cash": 50.0, "buying_power": 50.0,
-       "positions": [{"symbol": "VOO", "quantity": 0.1, "value": 50.5}]}
+      {"accounts": [{"id": "801666587", "label": "Investing", "value": 100.5,
+       "cash": 50.0, "buying_power": 50.0}]}
       trailing chatter
       """
 
-      assert {:ok, snap} = Trading.parse_snapshot(out)
-      assert [%{"symbol" => "VOO"}] = snap["positions"]
+      assert {:ok, %{"accounts" => [acct]}} = Trading.parse_snapshot(out)
+      assert acct["label"] == "Investing"
+      assert acct["value"] == 100.5
+    end
+
+    test "one malformed account is dropped rather than blanking the others" do
+      out = ~s({"accounts": [
+        "not an account",
+        {"id": "515468262", "label": "Roth IRA", "value": 900.0, "cash": 0.0, "buying_power": 0.0}
+      ]})
+
+      assert {:ok, %{"accounts" => [acct]}} = Trading.parse_snapshot(out)
+      assert acct["label"] == "Roth IRA"
     end
 
     test "a reported tool failure surfaces as a robinhood error" do
@@ -83,11 +220,148 @@ defmodule BusterClaw.TradingTest do
       assert msg =~ "authenticated"
     end
 
-    test "garbage and non-numeric payloads are rejected" do
+    test "garbage, empty, and legacy single-account payloads are rejected" do
       assert {:error, :bad_snapshot} = Trading.parse_snapshot("no json here at all")
+      assert {:error, :bad_snapshot} = Trading.parse_snapshot(~s({"accounts": []}))
+      assert {:error, :bad_snapshot} = Trading.parse_snapshot(~s({"accounts": ["junk"]}))
 
+      # The pre-multi-account shape is not silently half-accepted.
       assert {:error, :bad_snapshot} =
-               Trading.parse_snapshot(~s({"value": "lots", "cash": 1, "buying_power": 1}))
+               Trading.parse_snapshot(
+                 ~s({"account": "••••6587", "value": 2.38, "cash": 2.38, "buying_power": 2.38})
+               )
+    end
+  end
+
+  describe "parse_detail/1 and merge_detail/3" do
+    setup do
+      {:ok, snap} =
+        Trading.parse_snapshot(~s({"accounts": [
+          {"id": "801666587", "label": "Investing", "agentic": true, "value": 100.0,
+           "cash": 1.0, "buying_power": 1.0},
+          {"id": "515464821", "label": "Roth IRA", "value": 900.0, "cash": 0.0,
+           "buying_power": 0.0}
+        ]}))
+
+      {:ok, snap: snap}
+    end
+
+    test "a stage-2 payload is stamped and normalized" do
+      out = ~s({"positions": [{"symbol": "VOO", "quantity": 0.1, "value": 50.5}],
+                "orders": [{"symbol": "VOO", "side": "buy", "quantity": 0.1,
+                 "price": 500.0, "state": "filled", "placed_at": null}]})
+
+      assert {:ok, detail} = Trading.parse_detail(out)
+      assert [%{"symbol" => "VOO"}] = detail["positions"]
+      assert [%{"side" => "buy"}] = detail["orders"]
+      assert {:ok, _at, _} = DateTime.from_iso8601(detail["detail_at"])
+    end
+
+    test "an account with genuinely nothing still counts as read" do
+      assert {:ok, detail} = Trading.parse_detail(~s({"positions": [], "orders": []}))
+      assert detail["positions"] == []
+      # The stamp is what separates "read it, found nothing" from "never asked".
+      assert is_binary(detail["detail_at"])
+    end
+
+    test "a reported failure and garbage stay distinguishable" do
+      assert {:error, {:robinhood, msg}} =
+               Trading.parse_detail(~s({"error": "account not found"}))
+
+      assert msg =~ "not found"
+      assert {:error, :bad_snapshot} = Trading.parse_detail("no json at all")
+    end
+
+    test "merging fills exactly one account and marks it loaded", %{snap: snap} do
+      {:ok, detail} = Trading.parse_detail(~s({"positions": [{"symbol": "VOO"}], "orders": []}))
+
+      merged = Trading.merge_detail(snap, "••••6587", detail)
+      [investing, roth] = Trading.accounts(merged)
+
+      assert Trading.detail_loaded?(investing)
+      assert [%{"symbol" => "VOO"}] = investing["positions"]
+
+      # The sibling is untouched and still wants its own fetch.
+      refute Trading.detail_loaded?(roth)
+      assert Trading.needs_detail?(roth)
+    end
+
+    test "a detail landing for an account that no longer exists is dropped", %{snap: snap} do
+      {:ok, detail} = Trading.parse_detail(~s({"positions": [{"symbol": "GME"}], "orders": []}))
+
+      merged = Trading.merge_detail(snap, "••••0000", detail)
+
+      # Nothing resurrected, nothing corrupted.
+      assert length(Trading.accounts(merged)) == 2
+      refute Enum.any?(Trading.accounts(merged), &Trading.detail_loaded?/1)
+    end
+
+    test "an unreadable account is never worth a stage-2 run" do
+      {:ok, %{"accounts" => [crypto]}} =
+        Trading.parse_snapshot(~s({"accounts": [
+          {"id": "999999013", "label": "Crypto", "value": 12.5, "cash": 0.0,
+           "buying_power": 0.0, "holdings_supported": false}
+        ]}))
+
+      refute Trading.needs_detail?(crypto)
+    end
+
+    test "last4 comes from the stored field, not the display id" do
+      {:ok, %{"accounts" => [a, b]}} =
+        Trading.parse_snapshot(~s({"accounts": [
+          {"id": "111116587", "label": "A", "value": 1.0, "cash": 0.0, "buying_power": 0.0},
+          {"id": "999996587", "label": "B", "value": 1.0, "cash": 0.0, "buying_power": 0.0}
+        ]}))
+
+      # Both really do end in 6587; the dedupe suffix on B's display id must not
+      # leak into the digits stage 2 matches on.
+      assert Trading.last4(a) == "6587"
+      assert Trading.last4(b) == "6587"
+      assert b["id"] != a["id"]
+    end
+  end
+
+  describe "total_value/1 and select_account/2" do
+    setup do
+      {:ok, snap} =
+        Trading.parse_snapshot(~s({"accounts": [
+          {"id": "111111111", "label": "Investing", "value": 100.0, "cash": 0.0,
+           "buying_power": 0.0},
+          {"id": "222222222", "label": "Roth IRA", "agentic": true, "value": 25.0, "cash": 0.0,
+           "buying_power": 0.0},
+          {"id": "333333333", "label": "Crypto", "value": "unknown", "cash": 0.0,
+           "buying_power": 0.0}
+        ]}))
+
+      {:ok, snap: snap}
+    end
+
+    test "total skips accounts whose value isn't a number", %{snap: snap} do
+      assert Trading.total_value(snap) == 125.0
+    end
+
+    test "an explicit selection wins", %{snap: snap} do
+      assert Trading.select_account(snap, "••••1111")["label"] == "Investing"
+    end
+
+    test "no selection falls back to the agentic account", %{snap: snap} do
+      assert Trading.select_account(snap, nil)["label"] == "Roth IRA"
+    end
+
+    test "a stale selection falls back rather than pointing at nothing", %{snap: snap} do
+      assert Trading.select_account(snap, "deleted-account")["label"] == "Roth IRA"
+    end
+
+    test "with no agentic account the largest wins" do
+      {:ok, snap} =
+        Trading.parse_snapshot(~s({"accounts": [
+          {"id": "111111111", "label": "Small", "value": 1.0, "cash": 0.0, "buying_power": 0.0},
+          {"id": "222222222", "label": "Big", "value": 900.0, "cash": 0.0, "buying_power": 0.0}
+        ]}))
+
+      assert Trading.select_account(snap, nil)["label"] == "Big"
+      assert Trading.total_value(%{}) == 0
+      assert Trading.select_account(%{"accounts" => []}, nil) == nil
     end
   end
 
@@ -96,16 +370,29 @@ defmodule BusterClaw.TradingTest do
 
     {:ok, snap} =
       Trading.parse_snapshot(
-        ~s({"account": "••••6587", "value": 2.38, "cash": 2.38, "buying_power": 2.38, "positions": []})
+        ~s({"accounts": [{"id": "••••6587", "label": "Investing", "value": 2.38,
+            "cash": 2.38, "buying_power": 2.38, "positions": []}]})
       )
 
     Trading.store_snapshot(snap)
     assert {:ok, cached} = Trading.cached_snapshot()
-    assert cached["value"] == 2.38
+    assert [%{"label" => "Investing"}] = cached["accounts"]
     refute Trading.snapshot_stale?(cached)
 
     old = Map.put(cached, "fetched_at", "2020-01-01T00:00:00Z")
     assert Trading.snapshot_stale?(old)
     assert Trading.snapshot_stale?(%{})
+  end
+
+  test "a snapshot cached in the old single-account shape reads as absent" do
+    BusterClaw.Settings.put(
+      "trading_account_snapshot",
+      ~s({"account": "••••6587", "value": 2.38, "cash": 2.38, "buying_power": 2.38,
+          "fetched_at": "2026-07-27T00:00:00Z"})
+    )
+
+    # Not an error and not half-rendered: the panel just refetches into the new
+    # shape on the next open.
+    assert Trading.cached_snapshot() == :none
   end
 end

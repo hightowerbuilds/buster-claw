@@ -41,6 +41,7 @@ defmodule BusterClaw.Application do
         analyzer_child(),
         telephony_drain_child(),
         notifications_scheduler_child(),
+        portfolio_recorder_child(),
         # Per-conversation chat: a Registry for {:via} lookup by conv_id and a
         # DynamicSupervisor that starts one Chat process per open conversation,
         # lazily on the first message. Always on (cheap; tests use them too).
@@ -185,6 +186,15 @@ defmodule BusterClaw.Application do
   defp telephony_drain_child do
     if Application.get_env(:buster_claw, :telephony_drain_enabled, false) do
       BusterClaw.Telephony.Drain
+    end
+  end
+
+  # The daily portfolio recorder: files one balance reading per trading day so
+  # the ledger doesn't depend on the user opening the Trading tab. Off in tests
+  # (the suite drives run_if_due via tick_now/1 with a stubbed fetcher).
+  defp portfolio_recorder_child do
+    if Application.get_env(:buster_claw, :portfolio_recorder_enabled, true) do
+      BusterClaw.Portfolio.Recorder
     end
   end
 

@@ -1,6 +1,12 @@
 defmodule BusterClawWeb.StatusLive do
   use BusterClawWeb, :live_view
 
+  require Logger
+
+  # The combined-total chip. A sentinel rather than nil so the selection is
+  # always an explicit choice, and so it round-trips through phx-value-id.
+  @all_accounts "__all__"
+
   alias BusterClaw.Agent.Chat
   alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
@@ -8,6 +14,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
   alias BusterClaw.Notifications
+  alias BusterClaw.Portfolio
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
   alias BusterClaw.SvgViewer
@@ -91,10 +98,28 @@ defmodule BusterClawWeb.StatusLive do
     # Where to return when leaving the Trading tab (the last ordinary chat).
     |> assign(:last_chat, active)
     |> assign(:trading_unread, false)
-    # Agentic-account panel: nil | {:loading, prev} | {:ok, snap} |
+    # Accounts panel: nil | {:loading, prev} | {:ok, snap} |
     # {:error, reason, prev} — prev = last good snapshot (or nil), kept visible
     # under the spinner/error line instead of blanking real data.
     |> assign(:trading_account, nil)
+    # Which account's detail is expanded. An id, not an index: a refresh can
+    # reorder or drop accounts, and Trading.select_account/2 falls back when the
+    # id is gone, so a stale selection can never point at someone else's money.
+    # Starts on the combined total — "how did my money do" is the first question.
+    |> assign(:trading_account_sel, @all_accounts)
+    # Stage 2 (one account's holdings/orders): nil | {:loading, id} |
+    # {:error, id, reason}. The detail itself lives on the account in the
+    # snapshot; this only tracks the in-flight run.
+    |> assign(:trading_detail, nil)
+    # The selected account's most recent unexplained move, if any — the input to
+    # the "was that a transfer?" prompt.
+    |> assign(:trading_anomaly, nil)
+    # The chart: which time range is showing, the joined series for whatever is
+    # selected, how complete the backfill is, and whether one is in flight.
+    |> assign(:trading_range, "1M")
+    |> assign(:trading_series, [])
+    |> assign(:trading_coverage, nil)
+    |> assign(:trading_backfilling, false)
     |> assign(:chat_running, Chat.running?(active))
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
@@ -329,6 +354,75 @@ defmodule BusterClawWeb.StatusLive do
 
   def handle_event("trading_refresh", _params, socket) do
     {:noreply, maybe_refresh_account(socket)}
+  end
+
+  # "Was that a transfer?" — the answer to the anomaly prompt. `kind` decides
+  # whether the amount is money in, money out, or nothing at all; the amount
+  # itself is always the day's raw change, which is what the user is looking at.
+  def handle_event("trading_mark_flow", %{"kind" => kind, "day" => day} = params, socket) do
+    with {:ok, day} <- Date.from_iso8601(day),
+         account_key when is_binary(account_key) <- params["account_key"],
+         {:ok, cents} <- flow_cents(kind, params["amount"]) do
+      attrs = %{
+        account_key: account_key,
+        occurred_on: day,
+        amount_cents: cents,
+        kind: kind,
+        note: params["note"],
+        source: "manual"
+      }
+
+      case Portfolio.put_flow(attrs) do
+        {:ok, _flow} ->
+          # The gain math just changed underneath the chart.
+          {:noreply, socket |> assign(:trading_anomaly, nil) |> load_chart()}
+
+        {:error, _changeset} ->
+          {:noreply,
+           push_msg(socket, :error, "That transfer didn't look right — check the amount.")}
+      end
+    else
+      _error ->
+        {:noreply, push_msg(socket, :error, "Couldn't record that transfer.")}
+    end
+  end
+
+  def handle_event("trading_select_range", %{"range" => range}, socket) do
+    {:noreply, assign(socket, :trading_range, range)}
+  end
+
+  # The backfill trigger, deferred out of Phase 3 because this is where it earns
+  # its place. Only ever fills accounts that are missing history — it is a
+  # repair, not a refresh, and re-fetching what we already have would spend real
+  # agent runs to learn nothing.
+  def handle_event("trading_backfill", _params, socket) do
+    case socket.assigns.trading_coverage do
+      %{missing: [_ | _] = missing} when not socket.assigns.trading_backfilling ->
+        {:noreply,
+         socket
+         |> assign(:trading_backfilling, true)
+         |> start_async(:trading_backfill, fn ->
+           Enum.map(missing, &{&1, Portfolio.backfill(&1)})
+         end)}
+
+      _other ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("trading_retry_detail", _params, socket) do
+    # Drop the error first: maybe_load_detail/1 leaves an in-flight run alone,
+    # and a cleared error is what makes the panel show "Loading…" again.
+    {:noreply, socket |> assign(:trading_detail, nil) |> maybe_load_detail()}
+  end
+
+  def handle_event("trading_select_account", %{"id" => id}, socket) do
+    {:noreply,
+     socket
+     |> assign(:trading_account_sel, id)
+     |> maybe_load_detail()
+     |> load_anomaly()
+     |> load_chart()}
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
@@ -684,7 +778,21 @@ defmodule BusterClawWeb.StatusLive do
     case result do
       {:ok, snap} ->
         Trading.store_snapshot(snap)
-        {:noreply, assign(socket, :trading_account, {:ok, snap})}
+
+        # Every stage-1 reading also lands in the durable ledger. Robinhood keeps
+        # no value history, so a reading we don't record is a day that never
+        # existed — recording is best-effort and must never break the panel.
+        record_portfolio(snap)
+
+        # Balances are on screen now; the selected account's holdings follow in
+        # their own run. That split is the whole point — chips render without
+        # waiting on positions for accounts nobody is looking at.
+        {:noreply,
+         socket
+         |> assign(:trading_account, {:ok, snap})
+         |> maybe_load_detail()
+         |> load_anomaly()
+         |> load_chart()}
 
       {:error, reason} ->
         # Keep the last good snapshot visible under the error line.
@@ -697,6 +805,48 @@ defmodule BusterClawWeb.StatusLive do
   def handle_async(:trading_account, {:exit, reason}, socket) do
     prev = last_snapshot(socket.assigns.trading_account)
     {:noreply, assign(socket, :trading_account, {:error, {:exit, reason}, prev})}
+  end
+
+  # Stage 2 lands. The id is carried through the result rather than read off the
+  # socket: the user may have clicked another chip while this ran, and the data
+  # belongs to the account that was asked for, not the one now on screen.
+  def handle_async(:trading_backfill, {:ok, results}, socket) do
+    failed = for {key, {:error, reason}} <- results, do: {key, reason}
+
+    socket =
+      socket
+      |> assign(:trading_backfilling, false)
+      |> load_chart()
+
+    # A backfill that failed says so. Silently leaving the coverage warning up
+    # would read as "still loading" forever.
+    if failed == [] do
+      {:noreply, socket}
+    else
+      {:noreply,
+       push_msg(socket, :error, "Couldn't load history for #{length(failed)} account(s).")}
+    end
+  end
+
+  def handle_async(:trading_backfill, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:trading_backfilling, false)
+     |> push_msg(:error, "The history fetch crashed.")}
+  end
+
+  def handle_async({:trading_detail, id}, {:ok, result}, socket) do
+    case result do
+      {:ok, detail} ->
+        {:noreply, store_detail(socket, id, detail)}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :trading_detail, {:error, id, reason})}
+    end
+  end
+
+  def handle_async({:trading_detail, id}, {:exit, reason}, socket) do
+    {:noreply, assign(socket, :trading_detail, {:error, id, {:exit, reason}})}
   end
 
   # Fetch off the LiveView process; a slow weather API must never stall the
@@ -899,7 +1049,14 @@ defmodule BusterClawWeb.StatusLive do
     case Trading.cached_snapshot() do
       {:ok, snap} ->
         socket = assign(socket, :trading_account, {:ok, snap})
-        if Trading.snapshot_stale?(snap), do: maybe_refresh_account(socket), else: socket
+
+        # Fresh balances still need the selected account's holdings, which are
+        # cached per-account and may be absent even when stage 1 is current.
+        socket = load_chart(socket)
+
+        if Trading.snapshot_stale?(snap),
+          do: maybe_refresh_account(socket),
+          else: socket |> maybe_load_detail() |> load_anomaly()
 
       :none ->
         maybe_refresh_account(socket)
@@ -920,17 +1077,182 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
+  # The "All" chip is a selection the snapshot has no account for, so it is
+  # answered here rather than inside Trading.select_account/2 — which would
+  # otherwise fall back to the agentic account and quietly chart the wrong thing.
+  defp selected_account_key(%{assigns: %{trading_account_sel: @all_accounts}}),
+    do: {:error, :all_accounts}
+
+  defp selected_account_key(socket) do
+    snap = last_snapshot(socket.assigns.trading_account)
+    account = snap && Trading.select_account(snap, socket.assigns.trading_account_sel)
+
+    case account && Trading.last4(account) do
+      nil -> {:error, :no_account}
+      key -> {:ok, key}
+    end
+  end
+
+  # The sign lives with the kind, so the form only ever collects a magnitude —
+  # a user typing "-500" for a withdrawal must not end up with a double negative.
+  defp flow_cents("not_a_transfer", _amount), do: {:ok, 0}
+
+  defp flow_cents(kind, amount) when kind in ["deposit", "withdrawal"] do
+    case Float.parse(to_string(amount || "")) do
+      {dollars, _rest} when dollars > 0 ->
+        cents = round(dollars * 100)
+        {:ok, if(kind == "withdrawal", do: -cents, else: cents)}
+
+      _other ->
+        {:error, :bad_amount}
+    end
+  end
+
+  defp flow_cents(_kind, _amount), do: {:error, :bad_kind}
+
+  # The panel asks about the selected account's most recent unexplained move —
+  # or, on the combined view, about any account's, since a prompt nobody can
+  # reach is a prompt that never gets answered.
+  defp load_anomaly(socket) do
+    anomaly =
+      case selected_account_key(socket) do
+        {:ok, key} -> Portfolio.latest_anomaly(key)
+        {:error, :all_accounts} -> Portfolio.latest_anomaly_across(ledger_keys(socket))
+        {:error, _} -> nil
+      end
+
+    assign(socket, :trading_anomaly, anomaly)
+  end
+
+  defp ledger_keys(socket) do
+    socket.assigns.trading_account
+    |> last_snapshot()
+    |> Trading.accounts()
+    |> Enum.map(&Trading.last4/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # The chart's series follows the chip: the combined total, or one account.
+  defp load_chart(socket) do
+    series =
+      case selected_account_key(socket) do
+        {:ok, key} -> Portfolio.cumulative_series(key)
+        {:error, :all_accounts} -> Portfolio.total_cumulative_series()
+        {:error, _} -> []
+      end
+
+    socket
+    |> assign(:trading_series, series)
+    |> assign(:trading_coverage, Portfolio.backfill_coverage())
+  end
+
+  # Best-effort by construction: the ledger is a side effect of showing balances,
+  # and a ledger failure must not cost the user the panel they asked for.
+  defp record_portfolio(snap) do
+    case Portfolio.record(snap) do
+      {:ok, _count} -> :ok
+      {:error, reason} -> Logger.warning("Portfolio: recording skipped: #{inspect(reason)}")
+    end
+  rescue
+    error -> Logger.warning("Portfolio: recording raised: #{inspect(error)}")
+  end
+
   defp last_snapshot({:ok, snap}), do: snap
   defp last_snapshot({:loading, prev}), do: prev
   defp last_snapshot({:error, _reason, prev}), do: prev
   defp last_snapshot(_), do: nil
 
-  # The Agentic-account panel (Trading tab, right column). Shows whichever
-  # snapshot we have — including a stale one under a spinner or error line —
-  # with an honest as-of stamp; the truth costs an agent run, so it is never
-  # silently auto-polled.
+  # Stage 2, on demand: fetch the selected account's holdings only if they
+  # aren't already loaded, the account can be read at all (crypto can't), and
+  # nothing is already in flight for it. Selecting a chip whose detail is
+  # cached costs nothing.
+  defp maybe_load_detail(%{assigns: %{trading_account_sel: @all_accounts}} = socket), do: socket
+
+  defp maybe_load_detail(socket) do
+    snap = last_snapshot(socket.assigns.trading_account)
+    account = snap && Trading.select_account(snap, socket.assigns.trading_account_sel)
+
+    cond do
+      is_nil(account) ->
+        socket
+
+      not Trading.needs_detail?(account) ->
+        # Already loaded (or unreadable): clear any stale error for this
+        # account so a cached chip doesn't render a leftover failure.
+        clear_detail_error(socket, account["id"])
+
+      match?({:loading, _}, socket.assigns.trading_detail) ->
+        socket
+
+      is_nil(Trading.last4(account)) ->
+        # No digits to match on — stage 2 has nothing to look the account up
+        # by, so say so rather than launching a run that cannot succeed.
+        assign(socket, :trading_detail, {:error, account["id"], :unidentifiable_account})
+
+      true ->
+        id = account["id"]
+        last4 = Trading.last4(account)
+
+        socket
+        |> assign(:trading_detail, {:loading, id})
+        |> start_async({:trading_detail, id}, fn -> Trading.fetch_account_detail(last4) end)
+    end
+  end
+
+  defp clear_detail_error(socket, id) do
+    case socket.assigns.trading_detail do
+      {:error, ^id, _reason} -> assign(socket, :trading_detail, nil)
+      _ -> socket
+    end
+  end
+
+  # Merge stage 2 into the cached snapshot so the detail survives a tab switch
+  # and a remount, exactly like the balances do.
+  defp store_detail(socket, id, detail) do
+    case last_snapshot(socket.assigns.trading_account) do
+      nil ->
+        assign(socket, :trading_detail, nil)
+
+      snap ->
+        merged = Trading.merge_detail(snap, id, detail)
+        Trading.store_snapshot(merged)
+
+        socket
+        |> assign(:trading_account, put_snapshot(socket.assigns.trading_account, merged))
+        |> assign(:trading_detail, nil)
+    end
+  end
+
+  # Replace the snapshot inside whatever stage-1 state we're in, without
+  # disturbing that state — a detail landing mid-refresh must not cancel the
+  # spinner or clear an error line that is still true.
+  defp put_snapshot({:ok, _prev}, snap), do: {:ok, snap}
+  defp put_snapshot({:loading, _prev}, snap), do: {:loading, snap}
+  defp put_snapshot({:error, reason, _prev}, snap), do: {:error, reason, snap}
+  defp put_snapshot(_other, snap), do: {:ok, snap}
+
+  # The accounts panel (Trading tab, right column). Shows whichever snapshot we
+  # have — including a stale one under a spinner or error line — with an honest
+  # as-of stamp; the truth costs an agent run, so it is never silently
+  # auto-polled.
+  #
+  # Every account is readable here; exactly one is writable. The chips carry
+  # that distinction (ORDERS HERE / READ-ONLY) because a panel that shows four
+  # accounts identically invites the assumption that the agent can trade in all
+  # four.
   defp trading_account_card(assigns) do
-    assigns = assign(assigns, :snap, last_snapshot(assigns.account))
+    snap = last_snapshot(assigns.account)
+    all? = assigns.selected_id == @all_accounts
+    selected = if all?, do: nil, else: snap && Trading.select_account(snap, assigns.selected_id)
+
+    assigns =
+      assigns
+      |> assign(:snap, snap)
+      |> assign(:accounts, Trading.accounts(snap))
+      |> assign(:selected, selected)
+      |> assign(:all?, all?)
+      |> assign(:all_accounts, @all_accounts)
+      |> assign(:detail_state, detail_state(selected, assigns.detail))
 
     ~H"""
     <aside
@@ -938,22 +1260,155 @@ defmodule BusterClawWeb.StatusLive do
       class="ic-panel flex min-h-0 w-full flex-col overflow-y-auto p-4 font-mono text-xs"
     >
       <div class="flex items-center justify-between border-b-2 border-base-content/20 pb-2">
-        <p class="font-bold uppercase tracking-widest">Agentic account</p>
-        <span :if={@snap} class="text-base-content/60">{@snap["account"]}</span>
+        <p class="font-bold uppercase tracking-widest">
+          {if length(@accounts) > 1, do: "All accounts", else: "Account"}
+        </p>
+        <span :if={@snap} class="ic-stat-n text-xl">{money(Trading.total_value(@snap))}</span>
       </div>
 
-      <div :if={@snap} class="space-y-5 pt-3">
+      <%!-- Account chips. Tabs semantically: one panel below, one selected chip.
+            "All" leads because the combined total is the default question. --%>
+      <div :if={@accounts != []} class="flex flex-wrap gap-1 pt-2" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={@selected_id == @all_accounts}
+          phx-click="trading_select_account"
+          phx-value-id={@all_accounts}
+          class={[
+            "flex flex-col items-start border-2 px-2 py-1 text-left transition",
+            if(@selected_id == @all_accounts,
+              do: "border-primary bg-primary/10",
+              else: "border-base-content/25 hover:bg-base-content/5"
+            )
+          ]}
+        >
+          <span class="font-bold uppercase tracking-wide">All</span>
+          <span class="text-base-content/70">{money(Trading.total_value(@snap))}</span>
+        </button>
+        <button
+          :for={acct <- @accounts}
+          type="button"
+          role="tab"
+          aria-selected={@selected && acct["id"] == @selected["id"]}
+          phx-click="trading_select_account"
+          phx-value-id={acct["id"]}
+          title={"#{acct["label"]} #{acct["id"]} — #{money(acct["value"])}"}
+          class={[
+            "flex flex-col items-start border-2 px-2 py-1 text-left transition",
+            if(@selected && acct["id"] == @selected["id"],
+              do: "border-primary bg-primary/10",
+              else: "border-base-content/25 hover:bg-base-content/5"
+            )
+          ]}
+        >
+          <span class="font-bold uppercase tracking-wide">{acct["label"]}</span>
+          <span class="text-base-content/70">{money(acct["value"])}</span>
+        </button>
+      </div>
+
+      <%!-- The transfer prompt. It ASKS; it never decides. There is no
+            transfers tool on the Robinhood surface, so a large move is
+            equally explainable by a deposit or by the market, and inferring
+            which would mean the app making up claims about the user's money.
+            Answering it — either way — is what makes it go away. --%>
+      <div
+        :if={@anomaly}
+        class="space-y-2 border-2 border-warning/50 p-2"
+        id="trading-anomaly-prompt"
+      >
+        <p class="font-bold uppercase tracking-wide text-warning">
+          {signed_money(@anomaly.gain_cents)} on {@anomaly.day}
+        </p>
+        <p class="text-base-content/70">
+          Was that a transfer? Until it's marked, it counts as gain.
+        </p>
+        <form phx-submit="trading_mark_flow" class="flex flex-wrap items-center gap-1">
+          <input type="hidden" name="day" value={Date.to_iso8601(@anomaly.day)} />
+          <input type="hidden" name="account_key" value={@anomaly.account_key} />
+          <input
+            type="text"
+            name="amount"
+            value={abs(@anomaly.gain_cents) / 100}
+            inputmode="decimal"
+            aria-label="Transfer amount in dollars"
+            class="w-24 border-2 border-base-content/30 bg-transparent px-1 py-0.5"
+          />
+          <button
+            type="submit"
+            name="kind"
+            value={if @anomaly.gain_cents >= 0, do: "deposit", else: "withdrawal"}
+            class="border-2 border-base-content/40 px-2 py-0.5 font-bold uppercase hover:bg-base-content/10"
+          >
+            {if @anomaly.gain_cents >= 0, do: "Deposit", else: "Withdrawal"}
+          </button>
+          <button
+            type="submit"
+            name="kind"
+            value="not_a_transfer"
+            class="border-2 border-base-content/25 px-2 py-0.5 uppercase text-base-content/70 hover:bg-base-content/10"
+          >
+            No, the market
+          </button>
+        </form>
+      </div>
+
+      <div class="pt-3">
+        <BusterClawWeb.PortfolioChart.portfolio_chart
+          series={@series}
+          range={@range}
+          label={
+            if @all?, do: "all accounts", else: (@selected && @selected["label"]) || "this account"
+          }
+          coverage={@coverage}
+          backfilling={@backfilling}
+        />
+      </div>
+
+      <%!-- The combined view has no single account to detail, so it lists them
+            instead of pretending one of them is "the" account. --%>
+      <div :if={@all?} class="space-y-1 pt-3">
+        <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
+          Accounts
+        </p>
+        <button
+          :for={acct <- @accounts}
+          type="button"
+          phx-click="trading_select_account"
+          phx-value-id={acct["id"]}
+          class="flex w-full items-center justify-between gap-2 py-1 text-left hover:bg-base-content/5"
+        >
+          <span class="truncate font-bold">{acct["label"]}</span>
+          <span class="text-base-content/60">{acct["id"]}</span>
+          <span class="text-right text-base-content/80">{money(acct["value"])}</span>
+        </button>
+      </div>
+
+      <div :if={@selected} class="space-y-5 pt-3">
+        <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
+          <span class="text-base-content/60">{@selected["id"]}</span>
+          <span class={[
+            "border px-1.5 py-0.5 font-bold uppercase tracking-wide",
+            if(@selected["agentic"],
+              do: "border-warning/60 text-warning",
+              else: "border-base-content/30 text-base-content/60"
+            )
+          ]}>
+            {if @selected["agentic"], do: "Orders execute here", else: "Read-only to agent"}
+          </span>
+        </div>
+
         <div class="grid grid-cols-3 gap-2">
           <div>
-            <p class="ic-stat-n text-3xl">{money(@snap["value"])}</p>
+            <p class="ic-stat-n text-3xl">{money(@selected["value"])}</p>
             <p class="uppercase tracking-wide text-base-content/60">Account value</p>
           </div>
           <div class="pt-1">
-            <p class="text-lg font-bold">{money(@snap["cash"])}</p>
+            <p class="text-lg font-bold">{money(@selected["cash"])}</p>
             <p class="uppercase text-base-content/60">Cash</p>
           </div>
           <div class="pt-1">
-            <p class="text-lg font-bold">{money(@snap["buying_power"])}</p>
+            <p class="text-lg font-bold">{money(@selected["buying_power"])}</p>
             <p class="uppercase text-base-content/60">Buying power</p>
           </div>
         </div>
@@ -964,12 +1419,37 @@ defmodule BusterClawWeb.StatusLive do
           <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
             Positions
           </p>
-          <p :if={@snap["positions"] == []} class="pt-2 text-base-content/50">
+          <%!-- Four distinct facts, four distinct lines. "Can't read it",
+                "haven't asked yet", "asked and it failed", and "there is
+                nothing to read" must never share wording — the whole reason
+                holdings load separately is that the first three are now
+                common states. --%>
+          <p :if={@detail_state == :unsupported} class="pt-2 text-base-content/50">
+            Holdings unavailable — the Robinhood agent tools expose no
+            positions for this account type. The value above is still real.
+          </p>
+          <p :if={@detail_state == :loading} class="pt-2 text-base-content/60">
+            Loading holdings…
+          </p>
+          <%!-- Retry hits stage 2 only. The Refresh button below re-runs stage 1
+                too, which is ~28s of work nobody asked for when the balances on
+                screen are fine and only the holdings run failed. --%>
+          <div :if={match?({:error, _}, @detail_state)} class="flex items-center gap-2 pt-2">
+            <p class="font-bold text-error">Holdings failed to load: {detail_error(@detail_state)}</p>
+            <button
+              type="button"
+              phx-click="trading_retry_detail"
+              class="border-2 border-base-content/40 px-2 py-0.5 font-bold uppercase tracking-wide transition hover:bg-base-content/10"
+            >
+              Retry
+            </button>
+          </div>
+          <p :if={@detail_state == :empty} class="pt-2 text-base-content/50">
             No positions — the account is all cash.
           </p>
-          <div :if={@snap["positions"] != []} class="space-y-2 pt-2">
+          <div :if={@detail_state == :loaded} class="space-y-2 pt-2">
             <div
-              :for={pos <- sorted_positions(@snap)}
+              :for={pos <- sorted_positions(@selected)}
               class="grid grid-cols-[5rem_minmax(0,1fr)_6rem] items-center gap-2"
               title={"#{pos["symbol"]}: #{pos["quantity"]} worth #{money(pos["value"])}"}
             >
@@ -977,7 +1457,7 @@ defmodule BusterClawWeb.StatusLive do
               <div class="h-2.5 w-full rounded-xs bg-base-content/10">
                 <div
                   class="h-full rounded-xs bg-primary"
-                  style={"width: #{bar_width(pos, @snap)}%"}
+                  style={"width: #{bar_width(pos, @selected)}%"}
                 >
                 </div>
               </div>
@@ -987,17 +1467,18 @@ defmodule BusterClawWeb.StatusLive do
         </div>
 
         <%!-- Trades: an event list, not a chart — side is written (BUY/SELL),
-              never carried by color alone. --%>
-        <div>
+              never carried by color alone. Same stage-2 gating as positions:
+              orders arrive in the same run, so they share its states. --%>
+        <div :if={@detail_state not in [:unsupported, :loading]}>
           <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
             Recent trades
           </p>
-          <p :if={List.wrap(@snap["orders"]) == []} class="pt-2 text-base-content/50">
+          <p :if={List.wrap(@selected["orders"]) == []} class="pt-2 text-base-content/50">
             No trades yet.
           </p>
-          <div :if={List.wrap(@snap["orders"]) != []} class="divide-y divide-base-content/10">
+          <div :if={List.wrap(@selected["orders"]) != []} class="divide-y divide-base-content/10">
             <div
-              :for={order <- List.wrap(@snap["orders"])}
+              :for={order <- List.wrap(@selected["orders"])}
               class="grid grid-cols-[3.5rem_4.5rem_minmax(0,1fr)_auto] items-center gap-2 py-1.5"
             >
               <span class={[
@@ -1018,10 +1499,10 @@ defmodule BusterClawWeb.StatusLive do
       </div>
 
       <p :if={is_nil(@snap) and not match?({:loading, _}, @account)} class="pt-3 text-base-content/60">
-        No snapshot yet — refresh to load the account.
+        No snapshot yet — refresh to load your accounts.
       </p>
       <p :if={is_nil(@snap) and match?({:loading, _}, @account)} class="pt-3 text-base-content/60">
-        Loading account…
+        Loading accounts…
       </p>
       <p :if={match?({:error, _, _}, @account)} class="pt-3 font-bold text-error">
         Refresh failed: {card_error(@account)}
@@ -1042,18 +1523,63 @@ defmodule BusterClawWeb.StatusLive do
     """
   end
 
+  # Collapse (account, in-flight stage-2 state) into the one thing the template
+  # renders. Order matters: unreadable beats in-flight beats failed beats
+  # loaded, because an account with no positions tool is never "loading".
+  defp detail_state(nil, _detail), do: :unsupported
+
+  defp detail_state(%{"holdings_supported" => false}, _detail), do: :unsupported
+
+  defp detail_state(account, detail) do
+    id = account["id"]
+
+    case detail do
+      {:loading, ^id} ->
+        :loading
+
+      {:error, ^id, reason} ->
+        {:error, reason}
+
+      _ ->
+        cond do
+          not Trading.detail_loaded?(account) -> :loading
+          sorted_positions(account) == [] -> :empty
+          true -> :loaded
+        end
+    end
+  end
+
+  defp detail_error({:error, {:robinhood, msg}}), do: msg
+  defp detail_error({:error, :bad_snapshot}), do: "unreadable response"
+  defp detail_error({:error, :unidentifiable_account}), do: "account number unavailable"
+  defp detail_error({:error, {:agent_exit, status}}), do: "agent exited #{status}"
+  defp detail_error({:error, :no_agent_cli}), do: "Claude Code CLI not found"
+  defp detail_error(_state), do: "agent run failed"
+
   defp money(v) when is_number(v), do: "$" <> :erlang.float_to_binary(v * 1.0, decimals: 2)
   defp money(_v), do: "—"
+
+  # Cents to a signed dollar string. The sign is WRITTEN, never left to color —
+  # the same rule the buy/sell chips follow.
+  defp signed_money(cents) when is_integer(cents) do
+    sign = if cents < 0, do: "-", else: "+"
+    sign <> money(abs(cents) / 100)
+  end
+
+  defp signed_money(_cents), do: "—"
 
   defp sorted_positions(%{"positions" => positions}),
     do: Enum.sort_by(List.wrap(positions), &(-position_value(&1)))
 
-  # Bar length as a % of the LARGEST position (allocation-relative, so one
-  # holding always reads full-width). Guarded so a zero/garbage value can't
-  # divide by zero or overflow the track.
-  defp bar_width(pos, snap) do
+  defp sorted_positions(_account), do: []
+
+  # Bar length as a % of the largest position IN THAT ACCOUNT (allocation is
+  # per-account — scaling a Roth holding against an Investing holding would
+  # compare two things the user never asked to compare). Guarded so a
+  # zero/garbage value can't divide by zero or overflow the track.
+  defp bar_width(pos, account) do
     max =
-      snap
+      account
       |> sorted_positions()
       |> Enum.map(&position_value/1)
       |> Enum.max(fn -> 0 end)
@@ -1393,7 +1919,7 @@ defmodule BusterClawWeb.StatusLive do
             >
               <div class="bc-trading-left flex min-h-0 flex-col gap-2">
                 <div class="border-2 border-warning/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-warning">
-                  Robinhood agentic account — real orders execute here
+                  Real orders execute on the Robinhood agentic account — every other account is read-only
                 </div>
                 <%!-- First-run setup: the OAuth handshake is interactive by nature
                     (a browser window), so it happens once in a terminal — the
@@ -1432,7 +1958,16 @@ defmodule BusterClawWeb.StatusLive do
               </div>
 
               <div class="bc-trading-right flex min-h-0">
-                <.trading_account_card account={@trading_account} />
+                <.trading_account_card
+                  account={@trading_account}
+                  selected_id={@trading_account_sel}
+                  detail={@trading_detail}
+                  anomaly={@trading_anomaly}
+                  series={@trading_series}
+                  range={@trading_range}
+                  coverage={@trading_coverage}
+                  backfilling={@trading_backfilling}
+                />
               </div>
             </div>
 

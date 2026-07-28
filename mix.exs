@@ -102,6 +102,10 @@ defmodule BusterClaw.MixProject do
       {:jason, "~> 1.2"},
       {:earmark, "~> 1.4"},
       {:html_sanitize_ex, "~> 1.4"},
+      # IANA time zone database. The portfolio ledger buckets by MARKET day
+      # (America/New_York), which Elixir cannot resolve without one. Autoupdate
+      # is disabled in config.exs — see the note there.
+      {:tzdata, "~> 1.1"},
       {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},

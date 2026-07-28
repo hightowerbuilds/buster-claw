@@ -60,6 +60,10 @@ config :buster_claw, :telephony_drain_enabled, false
 # The Notify scheduler is off in tests; the Scheduler suite starts its own
 # instance and drives it via tick_now/1, and the context suite calls fire_due/1.
 config :buster_claw, :notifications_scheduler_enabled, false
+# The portfolio recorder is off in tests: an autostarting instance would fire a
+# REAL stage-1 agent run on boot. The Recorder suite starts its own with a
+# stubbed fetcher and drives it via tick_now/1.
+config :buster_claw, :portfolio_recorder_enabled, false
 config :buster_claw, :telephony_relay_url, "http://relay.test"
 config :buster_claw, :telephony_relay_key, "test-service-role-key"
 # Call-rate limiting is off in tests so command-heavy suites aren't throttled; the

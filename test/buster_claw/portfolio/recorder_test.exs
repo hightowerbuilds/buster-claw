@@ -1,0 +1,185 @@
+defmodule BusterClaw.Portfolio.RecorderTest do
+  # async: false — the recorder runs in its own process and needs the shared
+  # sandbox connection, and the tests move the global :local_today seam.
+  use BusterClaw.DataCase, async: false
+
+  alias BusterClaw.Portfolio
+  alias BusterClaw.Portfolio.Recorder
+
+  # A trading day comfortably in the past, so the real clock is always past its
+  # 16:30 ET fire moment.
+  @past_trading_day ~D[2026-07-27]
+  @saturday ~D[2026-07-25]
+  @holiday ~D[2026-07-03]
+
+  setup do
+    prev_today = Application.get_env(:buster_claw, :local_today)
+    prev_fetcher = Application.get_env(:buster_claw, :trading_snapshot_fetcher)
+
+    on_exit(fn ->
+      Application.put_env(:buster_claw, :local_today, prev_today)
+      Application.put_env(:buster_claw, :trading_snapshot_fetcher, prev_fetcher)
+    end)
+
+    :ok
+  end
+
+  defp stub_fetcher(result) do
+    test_pid = self()
+
+    Application.put_env(:buster_claw, :trading_snapshot_fetcher, fn ->
+      send(test_pid, :fetch_called)
+      result
+    end)
+  end
+
+  defp snapshot do
+    %{
+      "accounts" => [
+        %{"id" => "••••6587", "last4" => "6587", "label" => "Agentic", "value" => 102.24},
+        %{"id" => "••••8262", "last4" => "8262", "label" => "Roth IRA", "value" => 211.99}
+      ],
+      "fetched_at" => "2026-07-27T00:00:00Z"
+    }
+  end
+
+  # Start a recorder that does NOT autostart, then tick it deliberately, so each
+  # test controls exactly one evaluation. The default registered name is safe:
+  # start_supervised tears its instance down between tests, so only one is ever
+  # running.
+  defp start_recorder do
+    start_supervised!({Recorder, autostart: false})
+  end
+
+  defp tick_and_settle(pid) do
+    Recorder.tick_now(pid)
+    # Two round-trips: the tick itself, then the :rearm continue.
+    _ = :sys.get_state(pid)
+    _ = :sys.get_state(pid)
+  end
+
+  test "records a trading day that has no reading yet" do
+    Application.put_env(:buster_claw, :local_today, @past_trading_day)
+    stub_fetcher({:ok, snapshot()})
+
+    pid = start_recorder()
+    tick_and_settle(pid)
+
+    assert_receive :fetch_called
+    rows = Portfolio.all_snapshots()
+    assert length(rows) == 2
+    assert Enum.all?(rows, &(&1.captured_on == @past_trading_day))
+    # The source distinguishes a pumped day from one you happened to look at.
+    assert Enum.all?(rows, &(&1.source == "daily_pump"))
+  end
+
+  test "does nothing on a Saturday" do
+    Application.put_env(:buster_claw, :local_today, @saturday)
+    stub_fetcher({:ok, snapshot()})
+
+    pid = start_recorder()
+    tick_and_settle(pid)
+
+    refute_receive :fetch_called, 50
+    assert Portfolio.all_snapshots() == []
+  end
+
+  test "does nothing on an observed market holiday" do
+    Application.put_env(:buster_claw, :local_today, @holiday)
+    stub_fetcher({:ok, snapshot()})
+
+    pid = start_recorder()
+    tick_and_settle(pid)
+
+    refute_receive :fetch_called, 50
+    assert Portfolio.all_snapshots() == []
+  end
+
+  test "does not compete with a reading the Trading tab already filed" do
+    Application.put_env(:buster_claw, :local_today, @past_trading_day)
+
+    # The tab recorded first.
+    {:ok, 2} = Portfolio.record(snapshot(), day: @past_trading_day, source: "tab_open")
+
+    stub_fetcher({:ok, snapshot()})
+    pid = start_recorder()
+    tick_and_settle(pid)
+
+    # No agent run was spent, and the tab's rows are untouched.
+    refute_receive :fetch_called, 50
+    assert Enum.all?(Portfolio.all_snapshots(), &(&1.source == "tab_open"))
+  end
+
+  test "does not fire before the day's close" do
+    # Today, evaluated against the real clock. Before 16:30 ET this must not
+    # fire; after it, it may — so the assertion is conditional on the actual
+    # moment rather than pretending the clock is fixed.
+    today = BusterClaw.MarketCalendar.today()
+    Application.put_env(:buster_claw, :local_today, today)
+    stub_fetcher({:ok, snapshot()})
+
+    now = BusterClaw.MarketCalendar.now()
+    before_close? = now.hour < 16 or (now.hour == 16 and now.minute < 30)
+
+    pid = start_recorder()
+    tick_and_settle(pid)
+
+    if BusterClaw.MarketCalendar.trading_day?(today) and not before_close? do
+      assert_receive :fetch_called
+    else
+      refute_receive :fetch_called, 50
+      assert Portfolio.all_snapshots() == []
+    end
+  end
+
+  test "a failed fetch writes no placeholder row" do
+    Application.put_env(:buster_claw, :local_today, @past_trading_day)
+    stub_fetcher({:error, {:robinhood, "not authenticated"}})
+
+    pid = start_recorder()
+    tick_and_settle(pid)
+
+    assert_receive :fetch_called
+    # A gap is recoverable; a guessed row is not.
+    assert Portfolio.all_snapshots() == []
+  end
+
+  test "a fetch that raises does not take the recorder down" do
+    Application.put_env(:buster_claw, :local_today, @past_trading_day)
+
+    Application.put_env(:buster_claw, :trading_snapshot_fetcher, fn ->
+      raise "boom"
+    end)
+
+    pid = start_recorder()
+    tick_and_settle(pid)
+
+    assert Process.alive?(pid)
+    assert Portfolio.all_snapshots() == []
+  end
+
+  test "it re-arms after every tick, so one bad day doesn't stop the pump" do
+    Application.put_env(:buster_claw, :local_today, @saturday)
+    stub_fetcher({:ok, snapshot()})
+
+    pid = start_recorder()
+    tick_and_settle(pid)
+    assert Process.alive?(pid)
+
+    # A second tick still evaluates cleanly, and a trading day now records.
+    Application.put_env(:buster_claw, :local_today, @past_trading_day)
+    tick_and_settle(pid)
+
+    assert_receive :fetch_called
+    assert length(Portfolio.all_snapshots()) == 2
+  end
+
+  test "the autostart path ticks on boot — the catch-up for a day opened late" do
+    Application.put_env(:buster_claw, :local_today, @past_trading_day)
+    stub_fetcher({:ok, snapshot()})
+
+    start_supervised!(Recorder)
+
+    assert_receive :fetch_called, 1_000
+  end
+end
