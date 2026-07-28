@@ -15,6 +15,9 @@ defmodule BusterClaw.PortfolioFlowsTest do
     :ok
   end
 
+  defp bucket(day, realized, trades),
+    do: %{bucket_on: d(day), realized: realized, trades: trades}
+
   defp deposit(key, day, dollars, note \\ nil) do
     Portfolio.put_flow(%{
       account_key: key,
@@ -264,6 +267,78 @@ defmodule BusterClaw.PortfolioFlowsTest do
       assert second.day == d("2026-07-29")
       # The gain spans the skipped day rather than measuring against a phantom.
       assert second.gain_cents == 2_000
+    end
+  end
+
+  describe "excluding an account from the total" do
+    setup do
+      record("2026-07-27", [account("6587", 100.0), account("8735", 0.0)])
+      record("2026-07-28", [account("6587", 110.0), account("8735", 0.0)])
+      :ok
+    end
+
+    test "the total drops the excluded account without deleting anything" do
+      assert List.last(Portfolio.total_series()).value_cents == 11_000
+
+      {:ok, _} = Portfolio.exclude_account("8735")
+
+      last = List.last(Portfolio.total_series())
+      assert last.value_cents == 11_000
+      assert last.accounts == 1
+
+      # Its readings are untouched — exclusion is a view of the total, not a
+      # deletion, and its own chart must still work.
+      assert length(Portfolio.series("8735")) == 2
+      assert length(Portfolio.gain_series("8735")) == 2
+    end
+
+    test "the completeness rule still holds for the accounts that remain" do
+      {:ok, _} = Portfolio.exclude_account("8735")
+      # Two complete days for the one included account, not zero.
+      assert length(Portfolio.total_series()) == 2
+    end
+
+    test "an excluded account's realized history leaves the combined line too" do
+      Portfolio.store_backfill("6587", [bucket("2026-06-28", 10.0, 1)])
+      Portfolio.store_backfill("8735", [bucket("2026-06-28", -715.81, 148)])
+
+      before = Portfolio.total_cumulative_series() |> List.first()
+      assert before.cumulative_cents == -70_581
+
+      {:ok, _} = Portfolio.exclude_account("8735")
+
+      after_exclusion = Portfolio.total_cumulative_series() |> List.first()
+      assert after_exclusion.cumulative_cents == 1_000
+    end
+
+    test "coverage reports the exclusion rather than hiding it" do
+      {:ok, _} = Portfolio.exclude_account("8735")
+      coverage = Portfolio.backfill_coverage()
+
+      assert coverage.excluded == ["8735"]
+      # And it stops nagging about backfill for an account nobody is counting.
+      assert coverage.accounts == 1
+      refute "8735" in coverage.missing
+    end
+
+    test "it round-trips — including puts the account back" do
+      {:ok, _} = Portfolio.exclude_account("8735")
+      assert Portfolio.excluded?("8735")
+
+      {:ok, _} = Portfolio.include_account("8735")
+      refute Portfolio.excluded?("8735")
+      assert List.last(Portfolio.total_series()).accounts == 2
+    end
+
+    test "excluding twice is not two exclusions" do
+      {:ok, _} = Portfolio.exclude_account("8735")
+      {:ok, keys} = Portfolio.exclude_account("8735")
+      assert keys == ["8735"]
+    end
+
+    test "nothing is excluded by default" do
+      assert Portfolio.excluded_accounts() == []
+      refute Portfolio.excluded?("8735")
     end
   end
 

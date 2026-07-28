@@ -58,6 +58,7 @@ defmodule BusterClaw.Portfolio do
   alias BusterClaw.Portfolio.RealizedPoint
   alias BusterClaw.Portfolio.Snapshot
   alias BusterClaw.Repo
+  alias BusterClaw.Settings
   alias BusterClaw.Trading
 
   # A reading may not differ from the account's previous reading by more than
@@ -234,7 +235,8 @@ defmodule BusterClaw.Portfolio do
   today does not retroactively invalidate a year of complete history.
   """
   def total_series do
-    snapshots = all_snapshots()
+    excluded = excluded_accounts()
+    snapshots = Enum.reject(all_snapshots(), &(&1.account_key in excluded))
     first_seen = first_seen_by_account(snapshots)
 
     snapshots
@@ -283,6 +285,56 @@ defmodule BusterClaw.Portfolio do
   @doc "Dollars for display, from integer cents."
   def to_dollars(cents) when is_integer(cents), do: cents / 100
   def to_dollars(_cents), do: nil
+
+  # ---------------------------------------------------------------------------
+  # Excluded accounts
+  # ---------------------------------------------------------------------------
+
+  @excluded_key "portfolio_excluded_accounts"
+
+  @doc """
+  Account keys the operator has taken out of the combined total.
+
+  Excluding is a *presentation* choice about the total, never a deletion: the
+  account keeps every reading, keeps its own chart, and can be brought back with
+  one click. It exists because a dormant account can dominate a combined figure
+  — a $0 balance carrying a −$715 realized history swamped the operator's two
+  live accounts (07-28).
+
+  Which is also why every surface that applies this must SAY it is applying it.
+  A total that quietly drops a losing account is not a simplification, it is a
+  more flattering number, and the whole ledger is built on not producing those.
+  """
+  def excluded_accounts do
+    case Settings.get(@excluded_key) do
+      raw when is_binary(raw) ->
+        case Jason.decode(raw) do
+          {:ok, keys} when is_list(keys) -> Enum.filter(keys, &is_binary/1)
+          _other -> []
+        end
+
+      _other ->
+        []
+    end
+  end
+
+  @doc "Take an account out of the combined total."
+  def exclude_account(key) when is_binary(key) do
+    put_excluded(Enum.uniq([key | excluded_accounts()]))
+  end
+
+  @doc "Put an account back into the combined total."
+  def include_account(key) when is_binary(key) do
+    put_excluded(excluded_accounts() -- [key])
+  end
+
+  @doc "True when the account is currently out of the total."
+  def excluded?(key) when is_binary(key), do: key in excluded_accounts()
+
+  defp put_excluded(keys) do
+    Settings.put(@excluded_key, Jason.encode!(keys))
+    {:ok, keys}
+  end
 
   # ---------------------------------------------------------------------------
   # Flows (Phase 2)
@@ -610,15 +662,23 @@ defmodule BusterClaw.Portfolio do
   one account of three to a transient MCP outage.)
   """
   def backfill_coverage do
+    excluded = excluded_accounts()
+
     keys =
       Snapshot
       |> select([s], s.account_key)
       |> distinct(true)
       |> Repo.all()
+      |> Enum.reject(&(&1 in excluded))
 
     missing = Enum.reject(keys, &backfilled?/1)
 
-    %{accounts: length(keys), backfilled: length(keys) - length(missing), missing: missing}
+    %{
+      accounts: length(keys),
+      backfilled: length(keys) - length(missing),
+      missing: missing,
+      excluded: excluded
+    }
   end
 
   @doc "Discard an account's backfill, degrading the chart to recorded history."
@@ -732,10 +792,13 @@ defmodule BusterClaw.Portfolio do
   # total is the sum of each account's most recent cumulative — a step function,
   # so accounts with different bucket boundaries still combine correctly.
   defp merged_realized_points do
+    excluded = excluded_accounts()
+
     by_account =
       RealizedPoint
       |> order_by([p], asc: p.bucket_on)
       |> Repo.all()
+      |> Enum.reject(&(&1.account_key in excluded))
       |> Enum.group_by(& &1.account_key)
 
     cumulative_by_account =

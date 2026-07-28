@@ -289,6 +289,16 @@ defmodule BusterClawWeb.PortfolioChart do
         </table>
       </div>
 
+      <%!-- Exclusions. A total that quietly drops an account is not a
+            simplification, it is a more flattering number — so the line says
+            how many it is leaving out, every time it is leaving any out. --%>
+      <p :if={@coverage && Map.get(@coverage, :excluded, []) != []} class="text-base-content/60">
+        Excludes {length(@coverage.excluded)} account{if length(@coverage.excluded) == 1,
+          do: "",
+          else: "s"} you took out of the total.
+        Their own charts are unaffected.
+      </p>
+
       <%!-- Coverage. An understated total is a quiet failure, so it gets loud
             text rather than being left to infer from the line's shape. --%>
       <div :if={@coverage && @coverage.missing != []} class="flex flex-wrap items-center gap-2">

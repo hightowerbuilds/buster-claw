@@ -388,6 +388,14 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
+  def handle_event("trading_toggle_excluded", %{"id" => key}, socket) do
+    if Portfolio.excluded?(key),
+      do: Portfolio.include_account(key),
+      else: Portfolio.exclude_account(key)
+
+    {:noreply, load_chart(socket)}
+  end
+
   def handle_event("trading_toggle_table", _params, socket) do
     {:noreply, update(socket, :trading_table, &(!&1))}
   end
@@ -1257,6 +1265,7 @@ defmodule BusterClawWeb.StatusLive do
       |> assign(:selected, selected)
       |> assign(:all?, all?)
       |> assign(:all_accounts, @all_accounts)
+      |> assign(:excluded, (assigns.coverage && assigns.coverage[:excluded]) || [])
       |> assign(:detail_state, detail_state(selected, assigns.detail))
 
     ~H"""
@@ -1266,9 +1275,15 @@ defmodule BusterClawWeb.StatusLive do
     >
       <div class="flex items-center justify-between border-b-2 border-base-content/20 pb-2">
         <p class="font-bold uppercase tracking-widest">
-          {if length(@accounts) > 1, do: "All accounts", else: "Account"}
+          {cond do
+            @excluded != [] -> "Included accounts"
+            length(@accounts) > 1 -> "All accounts"
+            true -> "Account"
+          end}
         </p>
-        <span :if={@snap} class="ic-stat-n text-xl">{money(Trading.total_value(@snap))}</span>
+        <span :if={@snap} class="ic-stat-n text-xl">
+          {money(included_total(@snap, @excluded))}
+        </span>
       </div>
 
       <%!-- Account chips. Tabs semantically: one panel below, one selected chip.
@@ -1377,17 +1392,45 @@ defmodule BusterClawWeb.StatusLive do
         <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
           Accounts
         </p>
-        <button
-          :for={acct <- @accounts}
-          type="button"
-          phx-click="trading_select_account"
-          phx-value-id={acct["id"]}
-          class="flex w-full items-center justify-between gap-2 py-1 text-left hover:bg-base-content/5"
-        >
-          <span class="truncate font-bold">{acct["label"]}</span>
-          <span class="text-base-content/60">{acct["id"]}</span>
-          <span class="text-right text-base-content/80">{money(acct["value"])}</span>
-        </button>
+        <div :for={acct <- @accounts} class="flex items-center gap-2 py-1">
+          <button
+            type="button"
+            phx-click="trading_select_account"
+            phx-value-id={acct["id"]}
+            class="flex min-w-0 flex-1 items-center justify-between gap-2 text-left hover:bg-base-content/5"
+          >
+            <span class={[
+              "truncate font-bold",
+              Enum.member?(@excluded, acct["last4"]) && "text-base-content/40 line-through"
+            ]}>
+              {acct["label"]}
+            </span>
+            <span class="text-base-content/60">{acct["id"]}</span>
+            <span class={[
+              "text-right",
+              if(Enum.member?(@excluded, acct["last4"]),
+                do: "text-base-content/40",
+                else: "text-base-content/80"
+              )
+            ]}>
+              {money(acct["value"])}
+            </span>
+          </button>
+          <button
+            type="button"
+            phx-click="trading_toggle_excluded"
+            phx-value-id={acct["last4"]}
+            aria-pressed={Enum.member?(@excluded, acct["last4"])}
+            title={
+              if Enum.member?(@excluded, acct["last4"]),
+                do: "Count this account in the total again",
+                else: "Leave this account out of the total (its own chart is unaffected)"
+            }
+            class="shrink-0 border-2 border-base-content/25 px-1.5 py-0.5 uppercase tracking-wide transition hover:bg-base-content/10"
+          >
+            {if Enum.member?(@excluded, acct["last4"]), do: "Include", else: "Exclude"}
+          </button>
+        </div>
       </div>
 
       <div :if={@selected} class="space-y-5 pt-3">
@@ -1561,6 +1604,17 @@ defmodule BusterClawWeb.StatusLive do
   defp detail_error({:error, {:agent_exit, status}}), do: "agent exited #{status}"
   defp detail_error({:error, :no_agent_cli}), do: "Claude Code CLI not found"
   defp detail_error(_state), do: "agent run failed"
+
+  # The headline total must agree with the chart it sits above. Once an account
+  # is excluded, summing every account would show a number the line never draws.
+  defp included_total(snap, excluded) do
+    snap
+    |> Trading.accounts()
+    |> Enum.reject(&(Trading.last4(&1) in excluded))
+    |> Enum.map(& &1["value"])
+    |> Enum.filter(&is_number/1)
+    |> Enum.sum()
+  end
 
   defp money(v) when is_number(v), do: "$" <> :erlang.float_to_binary(v * 1.0, decimals: 2)
   defp money(_v), do: "—"
