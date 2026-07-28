@@ -493,6 +493,10 @@ defmodule BusterClawWeb.TradingLive do
     socket
     |> assign(:trading_series, series)
     |> assign(:trading_coverage, Portfolio.backfill_coverage())
+    # The hero recomputes with the chart: both read the ledger, and a flow or
+    # exclusion that moves one must move the other in the same render.
+    |> assign(:trading_day_change, Portfolio.total_day_change())
+    |> assign(:market_indexes, BusterClaw.MarketData.index_summary())
     |> maybe_default_range(series)
   end
 
@@ -654,6 +658,8 @@ defmodule BusterClawWeb.TradingLive do
               coverage={@trading_coverage}
               backfilling={@trading_backfilling}
               table={@trading_table}
+              day_change={@trading_day_change}
+              indexes={@market_indexes}
             />
           </div>
         </div>
@@ -670,6 +676,18 @@ defmodule BusterClawWeb.TradingLive do
   # that distinction (ORDERS HERE / READ-ONLY) because a panel that shows four
   # accounts identically invites the assumption that the agent can trade in all
   # four.
+  attr :account, :any, required: true
+  attr :selected_id, :string, required: true
+  attr :detail, :any, required: true
+  attr :anomaly, :any, required: true
+  attr :series, :list, required: true
+  attr :range, :string, required: true
+  attr :coverage, :any, required: true
+  attr :backfilling, :boolean, required: true
+  attr :table, :boolean, required: true
+  attr :day_change, :any, required: true
+  attr :indexes, :any, required: true
+
   defp trading_account_card(assigns) do
     snap = last_snapshot(assigns.account)
     all? = assigns.selected_id == @all_accounts
@@ -690,17 +708,60 @@ defmodule BusterClawWeb.TradingLive do
       id="trading-account-card"
       class="ic-panel flex min-h-0 w-full flex-col overflow-y-auto p-4 font-mono text-xs"
     >
-      <div class="flex items-center justify-between border-b-2 border-base-content/20 pb-2">
-        <p class="font-bold uppercase tracking-widest">
-          {cond do
-            @excluded != [] -> "Included accounts"
-            length(@accounts) > 1 -> "All accounts"
-            true -> "Account"
-          end}
-        </p>
-        <span :if={@snap} class="ic-stat-n text-xl">
-          {money(included_total(@snap, @excluded))}
-        </span>
+      <%!-- The hero row (Phase 2): the five-second test. Total value and its
+            day change first, market context beside them. The change comes from
+            the LEDGER's two most recent readings with flows netted — the same
+            series the chart draws, so the two cannot disagree — and its label
+            is honest about the baseline: "today" only when no trading day
+            between the readings went unrecorded. --%>
+      <div class="border-b-2 border-base-content/20 pb-2">
+        <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+          <div>
+            <p class="uppercase tracking-widest text-base-content/60">
+              {cond do
+                @excluded != [] -> "Included accounts"
+                length(@accounts) > 1 -> "All accounts"
+                true -> "Account"
+              end}
+            </p>
+            <p :if={@snap} class="ic-stat-n text-3xl">
+              {money(included_total(@snap, @excluded))}
+            </p>
+            <p :if={is_map(@day_change)} class="pt-0.5">
+              <span class={[
+                "font-bold",
+                if(@day_change.change_cents < 0, do: "text-error", else: "text-success")
+              ]}>
+                {signed_money(@day_change.change_cents)}{pct_suffix(@day_change.change_pct)}
+              </span>
+              <span class="text-base-content/50">
+                {if @day_change.contiguous?,
+                  do: "today",
+                  else: "since #{Date.to_iso8601(@day_change.prev_day)}"}
+              </span>
+            </p>
+            <p :if={match?({:single, _}, @day_change)} class="pt-0.5 text-base-content/50">
+              First reading {@day_change |> elem(1) |> Map.fetch!(:day) |> Date.to_iso8601()} —
+              day change starts with tomorrow's.
+            </p>
+          </div>
+
+          <%!-- "Was that me or the market": index chips from the daily sweep,
+                with an as-of because cached context must say its age. A chip
+                with no derivable change writes a dash, never a zero. --%>
+          <div :if={match?({:ok, _}, @indexes)} class="text-right">
+            <div :for={chip <- elem(@indexes, 1).indexes} class="flex justify-end gap-2">
+              <span class="font-bold text-base-content/70">{chip.label}</span>
+              <span class="text-base-content/80">{index_price(chip.price)}</span>
+              <span class={index_change_class(chip.change_pct)}>
+                {index_change(chip.change_pct)}
+              </span>
+            </div>
+            <p class="pt-0.5 text-base-content/40">
+              as of {relative_time(elem(@indexes, 1).fetched_at)}
+            </p>
+          </div>
+        </div>
       </div>
 
       <%!-- Account chips. Tabs semantically: one panel below, one selected chip.
@@ -1042,6 +1103,29 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   defp signed_money(_cents), do: "—"
+
+  # " (+1.40%)" — appended to the day-change dollars; empty when the base was
+  # zero and no percentage exists.
+  defp pct_suffix(nil), do: ""
+  defp pct_suffix(pct), do: " (#{signed_pct(pct)})"
+
+  defp signed_pct(pct) when is_number(pct) do
+    sign = if pct < 0, do: "-", else: "+"
+    sign <> :erlang.float_to_binary(abs(pct) * 1.0, decimals: 2) <> "%"
+  end
+
+  # An index level, not a dollar amount — no currency mark.
+  defp index_price(price) when is_number(price),
+    do: :erlang.float_to_binary(price * 1.0, decimals: 2)
+
+  defp index_price(_price), do: "—"
+
+  defp index_change(nil), do: "—"
+  defp index_change(pct), do: signed_pct(pct)
+
+  defp index_change_class(nil), do: "text-base-content/40"
+  defp index_change_class(pct) when pct < 0, do: "text-error"
+  defp index_change_class(_pct), do: "text-success"
 
   defp sorted_positions(%{"positions" => positions}),
     do: Enum.sort_by(List.wrap(positions), &(-position_value(&1)))

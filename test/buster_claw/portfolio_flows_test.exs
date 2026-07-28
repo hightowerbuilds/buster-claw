@@ -342,6 +342,68 @@ defmodule BusterClaw.PortfolioFlowsTest do
     end
   end
 
+  describe "total_day_change/0" do
+    test "empty ledger and lone reading are distinct non-answers" do
+      assert Portfolio.total_day_change() == :empty
+
+      record("2026-07-27", [account("6587", 100.0)])
+      assert {:single, %{day: ~D[2026-07-27], value_cents: 10_000}} = Portfolio.total_day_change()
+    end
+
+    test "two contiguous readings give change, pct, and 'today' labeling" do
+      # Friday -> Monday: contiguous, because no TRADING day sits between.
+      record("2026-07-24", [account("6587", 100.0)])
+      record("2026-07-27", [account("6587", 110.0)])
+
+      change = Portfolio.total_day_change()
+      assert change.change_cents == 1_000
+      assert_in_delta change.change_pct, 10.0, 0.001
+      assert change.contiguous?
+      assert change.prev_day == ~D[2026-07-24]
+    end
+
+    test "a deposit is netted out — funding the account is not a green day" do
+      record("2026-07-24", [account("6587", 100.0)])
+      record("2026-07-27", [account("6587", 610.0)])
+      {:ok, _} = deposit("6587", "2026-07-27", 500.0)
+
+      change = Portfolio.total_day_change()
+      assert change.change_cents == 1_000
+      assert change.value_cents == 61_000
+    end
+
+    test "a missed trading day breaks contiguity — the label must name the baseline" do
+      # Mon 07-20 recorded, then nothing until Mon 07-27: four trading days
+      # unrecorded. Calling that "today's change" would be a lie of framing.
+      record("2026-07-20", [account("6587", 100.0)])
+      record("2026-07-27", [account("6587", 110.0)])
+
+      change = Portfolio.total_day_change()
+      assert change.change_cents == 1_000
+      refute change.contiguous?
+      assert change.prev_day == ~D[2026-07-20]
+    end
+
+    test "a zero previous value yields no percentage rather than infinity" do
+      record("2026-07-24", [account("6587", 0.0)])
+      record("2026-07-27", [account("6587", 110.0)])
+
+      change = Portfolio.total_day_change()
+      assert change.change_pct == nil
+      assert change.change_cents == 11_000
+    end
+
+    test "it respects exclusions like everything else derived from the total" do
+      record("2026-07-24", [account("6587", 100.0), account("8735", 0.0)])
+      record("2026-07-27", [account("6587", 110.0), account("8735", 0.0)])
+      {:ok, _} = Portfolio.exclude_account("8735")
+
+      change = Portfolio.total_day_change()
+      assert change.change_cents == 1_000
+      assert change.value_cents == 11_000
+    end
+  end
+
   describe "anomalies/1" do
     test "a large unexplained move is flagged" do
       record("2026-07-27", [account("6587", 100.0)])

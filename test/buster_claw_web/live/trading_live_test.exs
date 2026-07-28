@@ -327,6 +327,107 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "transfer +$500.00"
     end
 
+    test "the hero's day change agrees with the ledger's two most recent readings",
+         %{conn: conn} do
+      alias BusterClaw.Portfolio
+
+      # Friday -> Monday, with a $500 Monday deposit that must be netted out.
+      for {day, value} <- [{~D[2026-07-24], 100.0}, {~D[2026-07-27], 610.0}] do
+        {:ok, _} =
+          Portfolio.record(
+            %{"accounts" => [%{"last4" => "6587", "label" => "Investing", "value" => value}]},
+            day: day
+          )
+      end
+
+      {:ok, _} =
+        Portfolio.put_flow(%{
+          account_key: "6587",
+          occurred_on: ~D[2026-07-27],
+          amount_cents: 50_000,
+          kind: "deposit",
+          source: "manual"
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      # The done-when: the hero shows the ledger's math, not the raw delta.
+      assert html =~ "+$10.00 (+10.00%)"
+      assert html =~ "today"
+      refute html =~ "+$510.00"
+    end
+
+    test "a lone reading says day change starts tomorrow — never $0.00", %{conn: conn} do
+      alias BusterClaw.Portfolio
+
+      {:ok, _} =
+        Portfolio.record(
+          %{"accounts" => [%{"last4" => "6587", "label" => "Investing", "value" => 100.0}]},
+          day: ~D[2026-07-27]
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      assert html =~ "First reading 2026-07-27"
+      assert html =~ "day change starts with tomorrow"
+    end
+
+    test "a recording gap is labeled by its baseline date, not called 'today'",
+         %{conn: conn} do
+      alias BusterClaw.Portfolio
+
+      for {day, value} <- [{~D[2026-07-20], 100.0}, {~D[2026-07-27], 110.0}] do
+        {:ok, _} =
+          Portfolio.record(
+            %{"accounts" => [%{"last4" => "6587", "label" => "Investing", "value" => value}]},
+            day: day
+          )
+      end
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      assert html =~ "+$10.00"
+      assert html =~ "since 2026-07-20"
+    end
+
+    test "index chips render from the cached sweep, with an as-of and honest dashes",
+         %{conn: conn} do
+      BusterClaw.MarketData.store_quotes(%{
+        quotes: [],
+        indexes: [
+          %{
+            "symbol" => "SPX",
+            "name" => "S&P 500",
+            "price" => 7413.18,
+            "prev_close" => 7400.0,
+            "change_pct" => nil
+          },
+          %{
+            "symbol" => "NDX",
+            "name" => "",
+            "price" => 28_039.21,
+            "prev_close" => nil,
+            "change_pct" => nil
+          }
+        ]
+      })
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      # HEEx escapes the ampersand.
+      assert html =~ "S&amp;P 500"
+      assert html =~ "7413.18"
+      # Derived from prev_close: our division, two tool-sourced numbers.
+      assert html =~ "+0.18%"
+      # No prev_close and no given change: a written dash, never a zero.
+      assert html =~ "NDX"
+      assert html =~ "as of"
+    end
+
     test "a stage-1 reading lands in the portfolio ledger", %{conn: conn} do
       stub_trading_fetchers()
 

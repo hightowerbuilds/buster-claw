@@ -208,6 +208,52 @@ defmodule BusterClaw.MarketData do
     end
   end
 
+  @doc """
+  The hero row's index chips (TRADING_TAB_ROADMAP Phase 2):
+  `{:ok, %{indexes: [...], fetched_at: DateTime, stale?: bool}}` or `:none`.
+
+  Day change per index is the given `change_pct` when the tool provided one, or
+  OUR division over `price` and `prev_close` when it provided those — two
+  tool-sourced numbers and our arithmetic, never the model's (the 07-28 live
+  sweep returned `change_pct: null` for both indexes). Neither available →
+  nil, and the chip renders a written "—", not a zero.
+  """
+  def index_summary do
+    with {:ok, blob} <- cached_quotes(),
+         [_ | _] = indexes <- blob["indexes"],
+         {:ok, fetched_at, _} <- DateTime.from_iso8601(blob["fetched_at"] || "") do
+      {:ok,
+       %{
+         indexes: Enum.map(indexes, &index_chip/1),
+         fetched_at: fetched_at,
+         stale?: quotes_stale?(blob)
+       }}
+    else
+      _ -> :none
+    end
+  end
+
+  defp index_chip(row) do
+    %{
+      label: index_label(row),
+      price: row["price"],
+      change_pct: row["change_pct"] || derived_change_pct(row)
+    }
+  end
+
+  defp index_label(row) do
+    case row["name"] do
+      name when is_binary(name) and name != "" -> name
+      _other -> row["symbol"]
+    end
+  end
+
+  defp derived_change_pct(%{"price" => price, "prev_close" => prev})
+       when is_number(price) and is_number(prev) and prev > 0,
+       do: (price / prev - 1) * 100
+
+  defp derived_change_pct(_row), do: nil
+
   @doc "True when the quotes blob is missing a stamp or older than #{@quotes_stale_min} minutes."
   def quotes_stale?(%{"fetched_at" => stamp}) when is_binary(stamp) do
     case DateTime.from_iso8601(stamp) do

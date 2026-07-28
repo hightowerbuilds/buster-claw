@@ -545,6 +545,44 @@ defmodule BusterClaw.Portfolio do
       magnitude / previous >= @anomaly_ratio
   end
 
+  @doc """
+  The hero row's day change (TRADING_TAB_ROADMAP Phase 2): the combined
+  (included) total's two most recent readings, with flows and entering accounts
+  netted out — the SAME math as the chart, taken from the same series, because
+  the hero number and the line beneath it must not be able to disagree.
+
+  Returns:
+
+    * `:empty` — no complete readings at all
+    * `{:single, %{day, value_cents}}` — one reading; there is nothing to
+      measure against, and the caller must say so rather than show $0.00
+    * `%{day, prev_day, value_cents, change_cents, change_pct, contiguous?}` —
+      `contiguous?` is false when a trading day between the two readings went
+      unrecorded, in which case this is not "today's change" and the caller
+      must label the baseline date instead
+  """
+  def total_day_change do
+    case total_gain_series() |> Enum.take(-2) do
+      [] ->
+        :empty
+
+      [only] ->
+        {:single, %{day: only.day, value_cents: only.value_cents}}
+
+      [prev, last] ->
+        prev_trading = MarketCalendar.latest_trading_day(Date.add(last.day, -1))
+
+        %{
+          day: last.day,
+          prev_day: prev.day,
+          value_cents: last.value_cents,
+          change_cents: last.gain_cents,
+          change_pct: if(prev.value_cents > 0, do: last.gain_cents / prev.value_cents * 100),
+          contiguous?: Date.compare(prev.day, prev_trading) != :lt
+        }
+    end
+  end
+
   @doc "The most recent unaccounted-for anomaly for an account, or nil."
   def latest_anomaly(account_key) when is_binary(account_key) do
     case account_key |> anomalies() |> List.last() do

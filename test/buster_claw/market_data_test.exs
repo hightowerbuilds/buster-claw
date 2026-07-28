@@ -156,6 +156,68 @@ defmodule BusterClaw.MarketDataTest do
     end
   end
 
+  describe "index_summary/0" do
+    defp store_indexes(indexes) do
+      MarketData.store_quotes(%{quotes: [], indexes: indexes})
+    end
+
+    test ":none without a blob or without indexes" do
+      assert MarketData.index_summary() == :none
+      store_indexes([])
+      assert MarketData.index_summary() == :none
+    end
+
+    test "a given change_pct is passed through untouched" do
+      store_indexes([
+        %{
+          "symbol" => "SPX",
+          "name" => "S&P 500",
+          "price" => 7413.18,
+          "prev_close" => nil,
+          "change_pct" => 0.5
+        }
+      ])
+
+      assert {:ok, %{indexes: [chip], stale?: false}} = MarketData.index_summary()
+      assert chip.label == "S&P 500"
+      assert chip.change_pct == 0.5
+    end
+
+    test "absent change_pct is OUR division over price and prev_close" do
+      # The 07-28 live sweep: the index tool hands over no change_pct. Two
+      # tool-sourced numbers, our arithmetic.
+      store_indexes([
+        %{
+          "symbol" => "SPX",
+          "name" => "",
+          "price" => 7413.18,
+          "prev_close" => 7400.0,
+          "change_pct" => nil
+        }
+      ])
+
+      assert {:ok, %{indexes: [chip]}} = MarketData.index_summary()
+      # Empty name falls back to the symbol.
+      assert chip.label == "SPX"
+      assert_in_delta chip.change_pct, 0.1781, 0.001
+    end
+
+    test "neither given nor derivable is nil — a dash, never a zero" do
+      store_indexes([
+        %{
+          "symbol" => "NDX",
+          "name" => nil,
+          "price" => 28_039.21,
+          "prev_close" => nil,
+          "change_pct" => nil
+        }
+      ])
+
+      assert {:ok, %{indexes: [chip]}} = MarketData.index_summary()
+      assert chip.change_pct == nil
+    end
+  end
+
   describe "quotes blob" do
     test "round-trips and knows staleness" do
       assert MarketData.cached_quotes() == :none
