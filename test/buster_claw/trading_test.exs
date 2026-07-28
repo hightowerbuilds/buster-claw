@@ -370,6 +370,28 @@ defmodule BusterClaw.TradingTest do
       assert only["change_pct"] == nil
     end
 
+    test "earnings ride the sweep: held symbols only, dates validated, timing whitelisted" do
+      out = ~s({"closes": {}, "earnings": [
+        {"symbol": "GOOGL", "date": "2026-07-31", "timing": "pm"},
+        {"symbol": "QXO", "date": "2026-08-05", "timing": "sometime"},
+        {"symbol": "not a ticker", "date": "2026-08-01", "timing": "am"},
+        {"symbol": "VOO", "date": "not a date", "timing": "am"}
+      ]})
+
+      assert {:ok, %{earnings: [googl, qxo]}} = Trading.parse_market_data(out)
+      assert googl == %{"symbol" => "GOOGL", "date" => "2026-07-31", "timing" => "pm"}
+      # An unknown timing word degrades to nil rather than surviving as prose.
+      assert qxo["timing"] == nil
+    end
+
+    test "the sweep prompt filters the market-wide calendar to held symbols" do
+      prompt = Trading.market_data_prompt(~D[2026-04-29])
+
+      assert prompt =~ "get_earnings_calendar once with days: 31"
+      assert prompt =~ "ONLY the entries whose symbol is one of the held symbols"
+      assert prompt =~ "an empty list is the correct answer"
+    end
+
     test "prev_close rides along when the tool provides it — day change is computed app-side" do
       # The 07-28 live sweep returned change_pct: null for both indexes; the
       # tool doesn't hand it over. Two tool-sourced numbers and our own division

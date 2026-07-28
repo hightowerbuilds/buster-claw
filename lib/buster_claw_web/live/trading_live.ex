@@ -625,6 +625,10 @@ defmodule BusterClawWeb.TradingLive do
     |> assign(:trading_positions, rows)
     |> assign(:trading_costs_missing, costs_missing(socket))
     |> assign(:prices_as_of, BusterClaw.MarketData.prices_as_of())
+    |> assign(
+      :trading_earnings,
+      BusterClaw.MarketData.upcoming_earnings(BusterClaw.MarketCalendar.today())
+    )
   end
 
   defp display_position(row) do
@@ -904,6 +908,7 @@ defmodule BusterClawWeb.TradingLive do
               symbol_range={@symbol_range}
               symbol_mode={@symbol_mode}
               symbol_loading={@symbol_bars_loading}
+              earnings={@trading_earnings}
             />
           </div>
         </div>
@@ -940,6 +945,7 @@ defmodule BusterClawWeb.TradingLive do
   attr :symbol_range, :string, required: true
   attr :symbol_mode, :atom, required: true
   attr :symbol_loading, :boolean, required: true
+  attr :earnings, :list, required: true
 
   defp trading_account_card(assigns) do
     snap = last_snapshot(assigns.account)
@@ -955,6 +961,13 @@ defmodule BusterClawWeb.TradingLive do
       |> assign(:all_accounts, @all_accounts)
       |> assign(:excluded, (assigns.coverage && assigns.coverage[:excluded]) || [])
       |> assign(:detail_state, detail_state(selected, assigns.detail))
+
+    assigns =
+      assign(
+        assigns,
+        :activity,
+        activity_rows(assigns.accounts, assigns.excluded, selected, assigns.detail_state)
+      )
 
     ~H"""
     <aside
@@ -1271,6 +1284,34 @@ defmodule BusterClawWeb.TradingLive do
         </div>
       </div>
 
+      <%!-- Upcoming earnings for held symbols (Phase 5): the thing you want to
+            see BEFORE it moves you. Scoped by the sweep to what you hold; an
+            empty window says so in words — silence would read as "not built". --%>
+      <div :if={@all?} class="pt-3">
+        <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
+          Upcoming earnings
+        </p>
+        <p :if={@earnings == []} class="pt-2 text-base-content/50">
+          No earnings scheduled for your holdings in the next month.
+        </p>
+        <div :if={@earnings != []} class="flex flex-wrap gap-x-4 gap-y-1 pt-2">
+          <p :for={report <- @earnings} class="whitespace-nowrap">
+            <button
+              type="button"
+              phx-click="trading_view_symbol"
+              phx-value-symbol={report.symbol}
+              class="font-bold underline decoration-base-content/30 underline-offset-2 hover:bg-base-content/5"
+            >
+              {report.symbol}
+            </button>
+            <span class="text-base-content/70">reports {earnings_when(report.date)}</span>
+            <span :if={report.timing} class="text-base-content/50">
+              {if report.timing == "am", do: "before open", else: "after close"}
+            </span>
+          </p>
+        </div>
+      </div>
+
       <%!-- The combined view has no single account to detail, so it lists them
             instead of pretending one of them is "the" account. --%>
       <div :if={@all?} class="space-y-1 pt-3">
@@ -1401,35 +1442,38 @@ defmodule BusterClawWeb.TradingLive do
             </div>
           </div>
         </div>
+      </div>
 
-        <%!-- Trades: an event list, not a chart — side is written (BUY/SELL),
-              never carried by color alone. Same stage-2 gating as positions:
-              orders arrive in the same run, so they share its states. --%>
-        <div :if={@detail_state not in [:unsupported, :loading]}>
-          <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
-            Recent trades
-          </p>
-          <p :if={List.wrap(@selected["orders"]) == []} class="pt-2 text-base-content/50">
-            No trades yet.
-          </p>
-          <div :if={List.wrap(@selected["orders"]) != []} class="divide-y divide-base-content/10">
-            <div
-              :for={order <- List.wrap(@selected["orders"])}
-              class="grid grid-cols-[3.5rem_4.5rem_minmax(0,1fr)_auto] items-center gap-2 py-1.5"
-            >
-              <span class={[
-                "border px-1.5 py-0.5 text-center font-bold uppercase",
-                order_side_class(order["side"])
-              ]}>
-                {order["side"] || "?"}
-              </span>
-              <span class="font-bold">{order["symbol"]}</span>
-              <span class="truncate text-base-content/70">
-                {order["quantity"]} @ {money(order["price"])}
-                <span class="text-base-content/50">· {order["state"]}</span>
-              </span>
-              <span class="text-right text-base-content/50">{order_when(order)}</span>
-            </div>
+      <%!-- Recent activity (Phase 5): the per-account trades list, promoted to
+            one shared panel. On the combined view it merges every account whose
+            holdings are loaded and SAYS when that is only some of them — a
+            partial merge presented as the whole would hide trades by omission.
+            Side is written (BUY/SELL), never carried by color alone. --%>
+      <div :if={@activity != :hidden} class="pt-3">
+        <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
+          <p class="uppercase tracking-wide text-base-content/60">Recent activity</p>
+          <span :if={@activity.note} class="text-base-content/40">{@activity.note}</span>
+        </div>
+        <p :if={@activity.orders == []} class="pt-2 text-base-content/50">
+          No trades yet.
+        </p>
+        <div :if={@activity.orders != []} class="divide-y divide-base-content/10">
+          <div
+            :for={{order, account_label} <- @activity.orders}
+            class="grid grid-cols-[3.5rem_4.5rem_minmax(0,1fr)_auto] items-center gap-2 py-1.5"
+          >
+            <span class={[
+              "border px-1.5 py-0.5 text-center font-bold uppercase",
+              order_side_class(order["side"])
+            ]}>
+              {order["side"] || "?"}
+            </span>
+            <span class="font-bold">{order["symbol"]}</span>
+            <span class="truncate text-base-content/70">
+              {order["quantity"]} @ {money(order["price"])}
+              <span class="text-base-content/50">· {order["state"]} · {account_label}</span>
+            </span>
+            <span class="text-right text-base-content/50">{order_when(order)}</span>
           </div>
         </div>
       </div>
@@ -1523,6 +1567,63 @@ defmodule BusterClawWeb.TradingLive do
   defp signed_pct(pct) when is_number(pct) do
     sign = if pct < 0, do: "-", else: "+"
     sign <> :erlang.float_to_binary(abs(pct) * 1.0, decimals: 2) <> "%"
+  end
+
+  # The activity panel's rows: `:hidden`, or %{orders: [{order, account_label}],
+  # note: nil | "…"}. Selected view shows that account's orders under the same
+  # gating its holdings use; the combined view merges every LOADED account and
+  # names the gap when some aren't.
+  defp activity_rows(accounts, excluded, nil = _selected, _detail_state) do
+    eligible =
+      accounts
+      |> Enum.filter(&(&1["holdings_supported"] and Trading.last4(&1) not in excluded))
+
+    loaded = Enum.filter(eligible, &Trading.detail_loaded?/1)
+
+    orders =
+      loaded
+      |> Enum.flat_map(fn account ->
+        account["orders"]
+        |> List.wrap()
+        |> Enum.map(&{&1, account["label"]})
+      end)
+      |> Enum.sort_by(fn {order, _label} -> order["placed_at"] || "" end, :desc)
+      |> Enum.take(8)
+
+    cond do
+      eligible == [] ->
+        :hidden
+
+      loaded == [] ->
+        %{orders: [], note: "open an account chip to load its trades"}
+
+      length(loaded) < length(eligible) ->
+        %{orders: orders, note: "from #{length(loaded)} of #{length(eligible)} accounts"}
+
+      true ->
+        %{orders: orders, note: nil}
+    end
+  end
+
+  defp activity_rows(_accounts, _excluded, selected, detail_state) do
+    if detail_state in [:unsupported, :loading] or match?({:error, _}, detail_state) do
+      :hidden
+    else
+      %{
+        orders: selected["orders"] |> List.wrap() |> Enum.map(&{&1, selected["label"]}),
+        note: nil
+      }
+    end
+  end
+
+  defp earnings_when(%Date{} = date) do
+    today = BusterClaw.MarketCalendar.today()
+
+    case Date.diff(date, today) do
+      0 -> "today"
+      1 -> "tomorrow"
+      _ -> Elixir.Calendar.strftime(date, "%a %b %-d")
+    end
   end
 
   defp money_cents(cents) when is_integer(cents), do: money(cents / 100)

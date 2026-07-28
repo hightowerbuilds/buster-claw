@@ -328,6 +328,35 @@ defmodule BusterClaw.MarketDataTest do
     end
   end
 
+  describe "upcoming_earnings/1" do
+    test "soonest first, today included, the past dropped, absent key tolerated" do
+      MarketData.store_quotes(%{
+        quotes: [],
+        indexes: [],
+        earnings: [
+          %{"symbol" => "QXO", "date" => "2026-08-05", "timing" => nil},
+          %{"symbol" => "GOOGL", "date" => "2026-07-28", "timing" => "pm"},
+          %{"symbol" => "OLD", "date" => "2026-07-20", "timing" => "am"},
+          %{"symbol" => "BAD", "date" => "junk", "timing" => "am"}
+        ]
+      })
+
+      assert [today_report, later] = MarketData.upcoming_earnings(~D[2026-07-28])
+      # A report happening TODAY is the one you most want on screen.
+      assert today_report.symbol == "GOOGL"
+      assert today_report.date == ~D[2026-07-28]
+      assert later.symbol == "QXO"
+    end
+
+    test "a blob stored before earnings existed answers [] — not a crash" do
+      # Pre-Phase-5 stubs call store_quotes without :earnings.
+      MarketData.store_quotes(%{quotes: [], indexes: []})
+      assert MarketData.upcoming_earnings(~D[2026-07-28]) == []
+      assert {:ok, blob} = MarketData.cached_quotes()
+      assert blob["earnings"] == []
+    end
+  end
+
   describe "quotes blob" do
     test "round-trips and knows staleness" do
       assert MarketData.cached_quotes() == :none

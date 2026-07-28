@@ -278,16 +278,42 @@ defmodule BusterClaw.MarketData do
   # Quotes blob
   # ---------------------------------------------------------------------------
 
-  @doc "Cache the sweep's quotes + indexes with an app-side stamp."
-  def store_quotes(%{quotes: quotes, indexes: indexes}) do
+  @doc "Cache the sweep's quotes + indexes + earnings with an app-side stamp."
+  def store_quotes(%{quotes: quotes, indexes: indexes} = parsed) do
     Settings.put(
       @quotes_key,
       Jason.encode!(%{
         "quotes" => quotes,
         "indexes" => indexes,
+        "earnings" => Map.get(parsed, :earnings, []),
         "fetched_at" => DateTime.utc_now() |> DateTime.to_iso8601()
       })
     )
+  end
+
+  @doc """
+  Upcoming earnings for held symbols (TRADING_TAB_ROADMAP Phase 5), from the
+  sweep's cached calendar: `[%{symbol, date: Date, timing: "am"|"pm"|nil}]`,
+  soonest first, today's report included — a report happening TODAY is the one
+  you most want on screen. Past dates are dropped rather than displayed stale.
+  """
+  def upcoming_earnings(%Date{} = today) do
+    with {:ok, blob} <- cached_quotes(),
+         rows when is_list(rows) <- blob["earnings"] do
+      rows
+      |> Enum.filter(&is_map/1)
+      |> Enum.map(fn row ->
+        case Date.from_iso8601(to_string(row["date"] || "")) do
+          {:ok, date} -> %{symbol: row["symbol"], date: date, timing: row["timing"]}
+          _error -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.filter(&(Date.compare(&1.date, today) != :lt))
+      |> Enum.sort_by(& &1.date, Date)
+    else
+      _ -> []
+    end
   end
 
   @doc "The cached quotes blob, `{:ok, map} | :none`."

@@ -475,6 +475,8 @@ defmodule BusterClaw.Trading do
     3. Call mcp__robinhood__get_equity_quotes for the same symbols.
     4. Call mcp__robinhood__get_indexes, find the S&P 500 and the Nasdaq
        Composite, and call mcp__robinhood__get_index_quotes for both.
+    5. Call mcp__robinhood__get_earnings_calendar once with days: 31, and keep
+       ONLY the entries whose symbol is one of the held symbols from step 1.
 
     Then output ONLY one JSON object — no prose, no code fences:
     {"closes": {"<SYMBOL>": [["YYYY-MM-DD", <close usd number>], ...]},
@@ -483,6 +485,8 @@ defmodule BusterClaw.Trading do
      "indexes": [{"symbol": "<index symbol>", "name": "<index name>",
       "price": <number>, "prev_close": <number or null>,
       "change_pct": <percent number or null>}],
+     "earnings": [{"symbol": "<SYMBOL>", "date": "YYYY-MM-DD",
+      "timing": "am" or "pm" or null}],
      "skipped": ["<SYMBOL>"]}
 
     Rules:
@@ -493,8 +497,11 @@ defmodule BusterClaw.Trading do
     - Closes are DAILY bars as [date, close] pairs, oldest first, transcribed
       exactly from the tool results — never invented, never averaged. Omit bars
       the tool marks "interpolated": true; they carry no information.
-    - If the operator holds no stocks, output "closes": {} and "quotes": []
-      but still fill "indexes".
+    - "earnings" holds only HELD symbols' upcoming reports from the calendar
+      tool — an empty list is the correct answer when none report in the
+      window. Dates and timing come from the tool, never inferred.
+    - If the operator holds no stocks, output "closes": {}, "quotes": [] and
+      "earnings": [] but still fill "indexes".
     - If one tool fails, leave its section empty and add a one-line reason to
       an "errors" array; keep the sections that worked.
     - If the tools are entirely unavailable or unauthenticated, output exactly:
@@ -525,6 +532,7 @@ defmodule BusterClaw.Trading do
              closes: normalize_closes(closes),
              quotes: normalize_quote_list(decoded["quotes"]),
              indexes: normalize_quote_list(decoded["indexes"]),
+             earnings: normalize_earnings(decoded["earnings"]),
              skipped: decoded["skipped"] |> List.wrap() |> Enum.filter(&valid_symbol?/1),
              errors: decoded["errors"] |> List.wrap() |> Enum.filter(&is_binary/1)
            }}
@@ -563,6 +571,26 @@ defmodule BusterClaw.Trading do
   end
 
   defp normalize_pair(_pair), do: nil
+
+  defp normalize_earnings(list) do
+    list
+    |> List.wrap()
+    |> Enum.filter(&is_map/1)
+    |> Enum.map(fn row ->
+      with symbol when is_binary(symbol) <- row["symbol"],
+           true <- valid_symbol?(symbol),
+           {:ok, date} <- Date.from_iso8601(to_string(row["date"] || "")) do
+        %{
+          "symbol" => symbol,
+          "date" => Date.to_iso8601(date),
+          "timing" => if(row["timing"] in ["am", "pm"], do: row["timing"])
+        }
+      else
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
 
   defp normalize_quote_list(list) do
     list

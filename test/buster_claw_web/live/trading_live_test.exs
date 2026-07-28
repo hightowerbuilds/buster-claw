@@ -659,6 +659,61 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "weekly"
     end
 
+    test "the earnings strip shows held symbols' report dates — and says so when empty",
+         %{conn: conn} do
+      BusterClaw.MarketData.store_quotes(%{
+        quotes: [],
+        indexes: [],
+        earnings: [
+          %{
+            "symbol" => "GOOGL",
+            "date" => BusterClaw.MarketCalendar.today() |> Date.add(3) |> Date.to_iso8601(),
+            "timing" => "pm"
+          }
+        ]
+      })
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      assert html =~ "Upcoming earnings"
+      assert html =~ "GOOGL"
+      assert html =~ "reports"
+      assert html =~ "after close"
+
+      # And the empty state is worded, not silent (the done-when).
+      BusterClaw.MarketData.store_quotes(%{quotes: [], indexes: [], earnings: []})
+      {:ok, view2, _html} = live(conn, ~p"/trading")
+      html = render_async(view2)
+      assert html =~ "No earnings scheduled for your holdings"
+    end
+
+    test "the activity panel merges loaded accounts and names the gap", %{conn: conn} do
+      # One account's detail loaded (with an order), the other's not.
+      snap = multi_account_snapshot()
+
+      accounts =
+        Enum.map(snap["accounts"], fn account ->
+          if account["last4"] == "6587",
+            do: Map.merge(account, detail_for("6587")),
+            else: account
+        end)
+
+      Application.put_env(:buster_claw, :trading_snapshot_fetcher, fn ->
+        {:ok, %{snap | "accounts" => accounts}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      assert html =~ "Recent activity"
+      # The loaded account's order, tagged with its label.
+      assert html =~ "VOO"
+      assert html =~ "Investing"
+      # The gap is named: one of two holdings-capable accounts is loaded.
+      assert html =~ ~r/from 1 of 2\s+accounts/
+    end
+
     test "a stage-1 reading lands in the portfolio ledger", %{conn: conn} do
       stub_trading_fetchers()
 
