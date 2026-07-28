@@ -223,6 +223,70 @@ defmodule BusterClawWeb.PortfolioChartTest do
     end
   end
 
+  describe "readout/1 — one sentence, three consumers" do
+    test "each point carries coordinates and a formatted label" do
+      series = [point("2026-07-27", 10_000), point("2026-07-28", 12_500)]
+
+      assert [first, second] = Jason.decode!(PortfolioChart.readout(series))
+
+      assert is_number(first["x"])
+      assert is_number(first["y"])
+      assert first["label"] =~ "2026-07-27"
+      assert second["label"] =~ "+$125.00 cumulative"
+    end
+
+    test "a loss is signed, never left to color" do
+      series = [point("2026-07-27", 0), point("2026-07-28", -4_200)]
+      assert [_, loss] = Jason.decode!(PortfolioChart.readout(series))
+      assert loss["label"] =~ "-$42.00"
+    end
+
+    test "a realized point says so — the reader must know what it excludes" do
+      series = [
+        point("2026-05-01", 100, :realized),
+        point("2026-06-01", 200, :realized)
+      ]
+
+      assert [_, second] = Jason.decode!(PortfolioChart.readout(series))
+      assert second["label"] =~ "realized trades only"
+      assert second["label"] =~ "bucket"
+    end
+
+    test "a day carrying a transfer discloses it" do
+      series = [
+        point("2026-07-27", 0),
+        Map.put(point("2026-07-28", 0), :flow_cents, 50_000)
+      ]
+
+      assert [_, marked] = Jason.decode!(PortfolioChart.readout(series))
+      # The deposit was netted out of the gain, so the line shows nothing —
+      # the label is the only place a reader can see it happened.
+      assert marked["label"] =~ "includes a +$500.00 transfer"
+    end
+
+    test "an empty series is valid JSON, not a crash" do
+      assert Jason.decode!(PortfolioChart.readout([])) == []
+    end
+  end
+
+  describe "flow_marks/1" do
+    test "marks only the days that actually carry a transfer" do
+      series = [
+        point("2026-07-27", 0),
+        Map.put(point("2026-07-28", 0), :flow_cents, 50_000),
+        point("2026-07-29", 0)
+      ]
+
+      assert [mark] = PortfolioChart.flow_marks(series)
+      assert is_number(mark.x)
+    end
+
+    test "no transfers means no marks" do
+      assert PortfolioChart.flow_marks([point("2026-07-27", 0)]) == []
+      assert PortfolioChart.flow_marks([]) == []
+    end
+  end
+
   describe "geometry/1" do
     test "zero is always inside the domain, even for an all-positive series" do
       series = [point("2026-07-27", 5_000), point("2026-07-28", 9_000)]

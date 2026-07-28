@@ -529,6 +529,94 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert today.gain_cents == 50_000
     end
 
+    test "the chart renders with a range control, a readout, and a table",
+         %{conn: conn} do
+      alias BusterClaw.Portfolio
+
+      today = BusterClaw.MarketCalendar.today()
+
+      # Two recorded days plus a realized bucket, so the chart has a seam.
+      # Inside the default 1M window on purpose — a bucket further back would be
+      # correctly trimmed away and there would be no seam to caption.
+      Portfolio.store_backfill("6587", [
+        %{bucket_on: Date.add(today, -20), realized: 100.0, trades: 4}
+      ])
+
+      for {offset, value} <- [{-1, 3.38}, {0, 4.38}] do
+        {:ok, _} =
+          Portfolio.record(
+            %{"accounts" => [%{"last4" => "6587", "label" => "Investing", "value" => value}]},
+            day: Date.add(today, offset)
+          )
+      end
+
+      stub_trading_fetchers()
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "trading"})
+      html = render_async(view)
+
+      assert html =~ ~s(id="portfolio-chart")
+      assert html =~ ~s(phx-hook="PortfolioChart")
+      # Range control and the disclosed granularity.
+      assert html =~ ~s(phx-value-range="1M")
+      assert html =~ ~s(phx-value-range="ALL")
+      assert html =~ "points"
+      # The seam caption, since a realized stretch is present.
+      assert html =~ "realized trades only, before recording began"
+      # The keyboard path is advertised in the accessible name.
+      assert html =~ "Use arrow keys"
+
+      # The table is behind a toggle and lists the same points the line draws.
+      refute html =~ ~s(<table)
+      html = render_click(view, "trading_toggle_table", %{})
+      assert html =~ ~s(<table)
+      assert html =~ "Cumulative"
+      assert html =~ Date.to_iso8601(today)
+
+      html = render_click(view, "trading_toggle_table", %{})
+      refute html =~ ~s(<table)
+    end
+
+    test "a marked transfer is disclosed on the chart, not hidden by the math",
+         %{conn: conn} do
+      alias BusterClaw.Portfolio
+
+      today = BusterClaw.MarketCalendar.today()
+
+      for {offset, value} <- [{-1, 3.38}, {0, 503.38}] do
+        {:ok, _} =
+          Portfolio.record(
+            %{"accounts" => [%{"last4" => "6587", "label" => "Investing", "value" => value}]},
+            day: Date.add(today, offset)
+          )
+      end
+
+      {:ok, _} =
+        Portfolio.put_flow(%{
+          account_key: "6587",
+          occurred_on: today,
+          amount_cents: 50_000,
+          kind: "deposit",
+          source: "manual"
+        })
+
+      stub_trading_fetchers()
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "trading"})
+      render_async(view)
+      html = render_click(view, "trading_select_account", %{"id" => "••••6587"})
+
+      # Netting the deposit out of the gain makes it invisible in the LINE, so
+      # the readout has to say it happened — otherwise the arithmetic is
+      # uncheckable.
+      assert html =~ "includes a +$500.00 transfer"
+
+      html = render_click(view, "trading_toggle_table", %{})
+      assert html =~ "transfer +$500.00"
+    end
+
     test "a stage-1 reading lands in the portfolio ledger", %{conn: conn} do
       stub_trading_fetchers()
 

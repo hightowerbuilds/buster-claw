@@ -63,6 +63,7 @@ defmodule BusterClawWeb.PortfolioChart do
   attr :label, :string, required: true
   attr :coverage, :map, default: nil
   attr :backfilling, :boolean, default: false
+  attr :table, :boolean, default: false
 
   def portfolio_chart(assigns) do
     windowed = window(assigns.series, assigns.range)
@@ -81,6 +82,8 @@ defmodule BusterClawWeb.PortfolioChart do
       # ~H, `@width` resolves against assigns, not module attributes.
       |> assign(:width, @width)
       |> assign(:height, @height)
+      |> assign(:readout, readout(assigns.plotted))
+      |> assign(:flow_marks, flow_marks(assigns.plotted))
 
     ~H"""
     <section class="space-y-2" id="portfolio-chart">
@@ -119,13 +122,21 @@ defmodule BusterClawWeb.PortfolioChart do
         the line begins as soon as there are two.
       </p>
 
-      <div :if={@points != []} class="relative">
+      <div
+        :if={@points != []}
+        class="relative"
+        id="portfolio-chart-plot"
+        phx-hook="PortfolioChart"
+        phx-update="ignore"
+        data-readout={@readout}
+      >
         <svg
           viewBox={"0 0 #{@width} #{@height}"}
           preserveAspectRatio="none"
-          class="h-48 w-full"
+          class="h-48 w-full cursor-crosshair focus:outline-2 focus:outline-primary"
+          tabindex="0"
           role="img"
-          aria-label={"Cumulative gain and loss for #{@label}: #{hero(@points)}"}
+          aria-label={"Cumulative gain and loss for #{@label}: #{hero(@points)}. Use arrow keys to read individual points."}
         >
           <%!-- Zero baseline. Recessive, but always present. --%>
           <line
@@ -152,6 +163,44 @@ defmodule BusterClawWeb.PortfolioChart do
             class={segment_class(segment.measure, @points)}
           />
 
+          <%!-- Transfer marks. A deposit is netted OUT of the gain by design,
+                so it leaves no trace in the line — which means a reader has no
+                way to check the arithmetic unless the day is marked. --%>
+          <line
+            :for={mark <- @flow_marks}
+            x1={mark.x}
+            y1="0"
+            x2={mark.x}
+            y2={@height}
+            stroke="currentColor"
+            stroke-width="1"
+            stroke-dasharray="2 3"
+            vector-effect="non-scaling-stroke"
+            class="text-warning/60"
+          />
+
+          <line
+            data-crosshair
+            x1="0"
+            y1="0"
+            x2="0"
+            y2={@height}
+            stroke="currentColor"
+            stroke-width="1"
+            vector-effect="non-scaling-stroke"
+            class="text-base-content/40"
+            style="display: none"
+          />
+
+          <circle
+            data-crosshair-dot
+            r="4"
+            fill="currentColor"
+            vector-effect="non-scaling-stroke"
+            class={segment_class(:recorded, @points)}
+            style="display: none"
+          />
+
           <circle
             :for={dot <- @geometry.dots}
             cx={dot.x}
@@ -169,6 +218,16 @@ defmodule BusterClawWeb.PortfolioChart do
           <span>{money(@geometry.max_cents)}</span>
           <span>{money(@geometry.min_cents)}</span>
         </div>
+
+        <div
+          data-tooltip
+          class="pointer-events-none absolute z-10 hidden max-w-[16rem] border-2 border-base-content/40 bg-base-100 px-2 py-1 shadow-lg"
+        >
+        </div>
+
+        <%!-- The screen-reader path. Hover and keyboard produce the same
+              sentence; without this the chart is mouse-only in practice. --%>
+        <p data-live class="sr-only" aria-live="polite"></p>
       </div>
 
       <div :if={@points != []} class="flex flex-wrap justify-between gap-2 text-base-content/50">
@@ -183,6 +242,52 @@ defmodule BusterClawWeb.PortfolioChart do
         realized trades only, before recording began · <span class="font-bold">──</span>
         realized + unrealized, recorded here
       </p>
+
+      <div :if={@points != []}>
+        <button
+          type="button"
+          phx-click="trading_toggle_table"
+          aria-expanded={@table}
+          class="border-2 border-base-content/30 px-2 py-0.5 uppercase tracking-wide transition hover:bg-base-content/10"
+        >
+          {if @table, do: "Hide table", else: "Show table"}
+        </button>
+      </div>
+
+      <%!-- The table is the accessible equivalent AND the thing you copy numbers
+            out of. It lists exactly the plotted points, so it can never disagree
+            with the line above it. --%>
+      <div
+        :if={@table and @points != []}
+        class="max-h-64 overflow-auto border-2 border-base-content/20"
+      >
+        <table class="w-full text-left">
+          <thead class="sticky top-0 bg-base-100">
+            <tr class="border-b-2 border-base-content/20">
+              <th scope="col" class="px-2 py-1">Date</th>
+              <th scope="col" class="px-2 py-1 text-right">Change</th>
+              <th scope="col" class="px-2 py-1 text-right">Cumulative</th>
+              <th scope="col" class="px-2 py-1 text-right">Value</th>
+              <th scope="col" class="px-2 py-1">Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={p <- Enum.reverse(@plotted)} class="border-b border-base-content/10">
+              <td class="px-2 py-1">{Date.to_iso8601(p.day)}</td>
+              <td class="px-2 py-1 text-right">{signed_money(p.gain_cents)}</td>
+              <td class="px-2 py-1 text-right">{signed_money(p.cumulative_cents)}</td>
+              <td class="px-2 py-1 text-right">{money(p.value_cents)}</td>
+              <td class="px-2 py-1 text-base-content/60">
+                {if p.measure == :realized, do: "realized", else: "recorded"}<span
+                  :if={Map.get(p, :flow_cents, 0) != 0}
+                  class="text-warning"
+                >
+                  · transfer {signed_money(p.flow_cents)}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <%!-- Coverage. An understated total is a quiet failure, so it gets loud
             text rather than being left to infer from the line's shape. --%>
@@ -386,6 +491,65 @@ defmodule BusterClawWeb.PortfolioChart do
       command = if index == 0, do: "M", else: "L"
       "#{command} #{x},#{y}"
     end)
+  end
+
+  @doc """
+  The per-point payload the hover/keyboard hook reads, as JSON on a data
+  attribute.
+
+  Sent as data rather than re-queried per mousemove: a crosshair that round-trips
+  to the server for every pixel of pointer movement is a crosshair that lags.
+  """
+  def readout([]), do: "[]"
+
+  def readout(points) do
+    scale = scale_fns(points)
+
+    points
+    |> Enum.map(fn point ->
+      %{
+        x: Float.round(scale.x.(point.day) * 1.0, 2),
+        y: Float.round(scale.y.(point.cumulative_cents) * 1.0, 2),
+        label: point_label(point)
+      }
+    end)
+    |> Jason.encode!()
+  end
+
+  # One sentence per point, built server-side so the hover text, the keyboard
+  # readout, and the screen-reader announcement can never drift apart.
+  defp point_label(point) do
+    [
+      Date.to_iso8601(point.day),
+      "#{signed_money(point.cumulative_cents)} cumulative",
+      point.gain_cents && "#{signed_money(point.gain_cents)} that #{period_word(point)}",
+      point.value_cents && "value #{money(point.value_cents)}",
+      flow_phrase(point),
+      point.measure == :realized && "realized trades only"
+    ]
+    |> Enum.reject(&(&1 in [nil, false]))
+    |> Enum.join(" · ")
+  end
+
+  defp period_word(%{measure: :realized}), do: "bucket"
+  defp period_word(_point), do: "day"
+
+  defp flow_phrase(point) do
+    case Map.get(point, :flow_cents, 0) do
+      0 -> nil
+      cents -> "includes a #{signed_money(cents)} transfer"
+    end
+  end
+
+  @doc "Plot x-positions of days carrying a transfer, for the chart's marks."
+  def flow_marks([]), do: []
+
+  def flow_marks(points) do
+    scale = scale_fns(points)
+
+    points
+    |> Enum.filter(&(Map.get(&1, :flow_cents, 0) != 0))
+    |> Enum.map(&%{x: Float.round(scale.x.(&1.day) * 1.0, 2)})
   end
 
   # ---------------------------------------------------------------------------

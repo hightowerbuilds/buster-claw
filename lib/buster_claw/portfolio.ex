@@ -658,7 +658,8 @@ defmodule BusterClaw.Portfolio do
           cumulative_cents: cumulative,
           measure: :realized,
           gain_cents: realized_cents_of(point),
-          value_cents: nil
+          value_cents: nil,
+          flow_cents: 0
         }
       end)
 
@@ -671,7 +672,11 @@ defmodule BusterClaw.Portfolio do
           cumulative_cents: offset + point.cumulative_cents,
           measure: :recorded,
           gain_cents: point.gain_cents,
-          value_cents: point.value_cents
+          value_cents: point.value_cents,
+          # Carried through so the chart can MARK the day. A deposit that was
+          # netted out of the gain is invisible in the line by design; a reader
+          # who can't see it was there has no way to check the arithmetic.
+          flow_cents: Map.get(point, :flow_cents, 0)
         }
       end)
 

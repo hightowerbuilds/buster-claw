@@ -120,6 +120,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:trading_series, [])
     |> assign(:trading_coverage, nil)
     |> assign(:trading_backfilling, false)
+    |> assign(:trading_table, false)
     |> assign(:chat_running, Chat.running?(active))
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
@@ -385,6 +386,10 @@ defmodule BusterClawWeb.StatusLive do
       _error ->
         {:noreply, push_msg(socket, :error, "Couldn't record that transfer.")}
     end
+  end
+
+  def handle_event("trading_toggle_table", _params, socket) do
+    {:noreply, update(socket, :trading_table, &(!&1))}
   end
 
   def handle_event("trading_select_range", %{"range" => range}, socket) do
@@ -1362,6 +1367,7 @@ defmodule BusterClawWeb.StatusLive do
           }
           coverage={@coverage}
           backfilling={@backfilling}
+          table={@table}
         />
       </div>
 
@@ -1967,6 +1973,7 @@ defmodule BusterClawWeb.StatusLive do
                   range={@trading_range}
                   coverage={@trading_coverage}
                   backfilling={@trading_backfilling}
+                  table={@trading_table}
                 />
               </div>
             </div>

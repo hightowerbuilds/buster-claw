@@ -19,8 +19,10 @@ import {ShaderTimer} from "./shader_timer.js"
 import {FileTreeDnd} from "./file_tree_dnd.js"
 import {WorkspaceDropzone} from "./workspace_dropzone.js"
 import {NotifySound, SoundPreview} from "./notify_sound.js"
+import {PortfolioChart} from "./portfolio_chart.js"
 
 export const Hooks = {
+  PortfolioChart,
   CornerWidget,
   Clock,
   DockClock,
