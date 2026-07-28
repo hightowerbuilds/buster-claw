@@ -5,7 +5,7 @@
 **Task:** Buy 45" durable shoelaces and superglue on Amazon; cart in, human pays.
 **Outcome:** Order placed successfully, $23.71. Four defects found.
 
-> **Archived 07-29** as `07-25-26-browser-control-field-test.md` (originally
+> **Archived 07-28** as `07-25-26-browser-control-field-test.md` (originally
 > `BROWSER_CONTROL_FIELD_TEST_07-25.md`). All four findings were fixed on 07-25
 > and are recorded in the browser-engine roadmap's own "Field test 07-25"
 > section. Kept for the reasoning, not as open work.

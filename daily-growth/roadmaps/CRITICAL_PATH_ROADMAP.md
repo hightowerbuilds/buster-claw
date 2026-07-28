@@ -3,7 +3,7 @@
 *Synthesized 2026-07-20 from the seven then-active roadmaps (Distribution,
 Go-to-Market, BusterPhone, First-Look Critical Review, First-User Review,
 Home-Chat Agent Selection, Leftovers). Two of those sources were archived
-07-29 — the First-Look review (its findings live on here, cited by number) and
+07-28 — the First-Look review (its findings live on here, cited by number) and
 Home-Chat Agent Selection (not pursued); both are in `daily-growth/archive/`. This document is the ordered, costed to-do list that falls
 out of them — not new strategy, just the convergent path the others already point
 at.*

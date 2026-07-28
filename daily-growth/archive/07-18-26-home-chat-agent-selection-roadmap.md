@@ -2,7 +2,7 @@
 
 **Claude by default, Codex as the first alternative**
 
-> **Archived 07-29 — NOT PURSUED** as
+> **Archived 07-28 — NOT PURSUED** as
 > `07-18-26-home-chat-agent-selection-roadmap.md` (originally
 > `HOME_CHAT_AGENT_SELECTION_ROADMAP.md`). Scoped 07-18, never built: no
 > agent-selection code exists in Settings. Operator decision on archive day, not

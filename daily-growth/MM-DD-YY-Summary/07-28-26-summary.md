@@ -6,9 +6,11 @@ hero and day change, positions with tax-lot cost basis, candlestick charts,
 market context, earnings — on our own SVG engine, fed by one agent run per
 trading day.
 
-7 commits (34dc0e8..4863db8 + close-out). Suite at close: 1662 tests,
-credo/Rust clean. Every phase probed against the live API before its commit,
-and the probes out-caught the suite again, every single time.
+9 commits (34dc0e8..24066e1). Suite at close: 1662 tests, credo/Rust clean.
+Every phase probed against the live API before its commit, and the probes
+out-caught the suite again, every single time. The evening closed by archiving
+six finished roadmaps — and by catching that I had miscounted what one of them
+still had open (§9).
 
 ## 1. Research first, and the engine decision
 
@@ -107,6 +109,48 @@ later. The commit was path-scoped to exactly six files so the parallel
 session's in-flight rename stayed its own. (That session independently widened
 the test pool's queue window against the same contention — right fix, right
 place.)
+
+## 9. The archive, and a correction I had to make mid-sweep
+
+`roadmaps/` went from eleven files to four live ones (Critical Path,
+Distribution, Go-to-Market, First-User Review) plus LEFTOVERS and phone-maps.
+Six moved to `archive/` by `git mv` so history follows, renamed to the folder's
+date-prefixed convention — **each keeping its original filename inside its own
+header**, because ~50 code comments cite these by name (`TRADING_TAB_ROADMAP
+Phase 4`) and a grep has to keep landing.
+
+Archived: Portfolio History and Trading Tab (both complete — Portfolio had no
+closing status block, so it got one naming what the plan failed to predict);
+the Browser Control field test (findings fixed, absorbed upstream, its inbound
+link repointed to the archived sibling); the First-Look review (synthesized
+into Critical Path, which stays live and cites it by finding number); and
+Home-Chat Agent Selection — scoped 07-18, never built, archived as an explicit
+decision not to pursue rather than as tidying.
+
+**The correction.** I presented Browser Engine to the operator as "7/7 shipped,
+one deferred slice" and they approved the archive on that basis. It was wrong:
+**five** items were open — the four unfinished field-test repairs plus the
+mirror input slice. I had read the phase list and the first clause of a memory
+description instead of the roadmap's own Repairs table, two screens further
+down. All five moved to LEFTOVERS with file:line pointers and blockers, and the
+archived roadmap now says so at the top.
+
+One of them is HIGH and safety-adjacent: the `/gp/buy/` payment funnel is gated
+*by test* and has never been walked in a signed-in session. The field test found
+that gate failing **open** on exactly that funnel. Fixed, tested, unwalked — and
+archiving a document is a very effective way to end that quietly, which is why
+it is now the first line in LEFTOVERS (2 items → 7) rather than page 40 of a
+closed file.
+
+**The lesson, stated plainly:** a summary offered to a decision-maker is part of
+the decision. "Complete" was a claim about a document I had skimmed, and the
+operator's approval was only as good as my reading. Check the table, not the
+headline — especially when the answer determines whether open safety work stays
+visible.
+
+Also fixed on the way out: I had stamped every archive header `07-29`. It was
+`07-28` in market time and `07-27` locally — the 29th had not happened in any
+timezone. Ten files corrected.
 
 ## What the week keeps teaching, compressed
 

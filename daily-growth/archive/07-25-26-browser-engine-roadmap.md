@@ -20,7 +20,7 @@
 > - **Engine host (settled 07-22): the user's installed Chromium-family browser**,
 >   launched by us with a dedicated profile, CDP over a pipe. Not bundled.
 
-**Status 07-29 — CLOSED, phases 0–7 shipped** (archived as
+**Status 07-28 — CLOSED, phases 0–7 shipped** (archived as
 `07-25-26-browser-engine-roadmap.md`; originally `BROWSER_ENGINE_ROADMAP.md`,
 the name ~25 code comments still cite).
 

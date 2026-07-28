@@ -91,7 +91,7 @@ the screencast metadata scale, then `Input.dispatchMouseEvent` /
 **Why deferred.** It is blocked on a real prerequisite, not on effort: the run
 must carry an `awaiting_reason` so the mirror knows *when* human input is
 legitimate. Taking the wheel at an arbitrary moment races the agent's own
-actions. Inherited here 07-29 when BROWSER_ENGINE_ROADMAP closed, alongside its four
+actions. Inherited here 07-28 when BROWSER_ENGINE_ROADMAP closed, alongside its four
 unfinished field-test repairs above. Everything in that roadmap's *Deferred*
 list was ruled out on the merits; these five were not.
 

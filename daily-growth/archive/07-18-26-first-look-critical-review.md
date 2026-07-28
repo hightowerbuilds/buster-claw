@@ -4,7 +4,7 @@
 
 **Method:** Seven parallel reviewers each walked one leg of the new-user journey end to end — install/first-run, home chat, Google Workspace + the on-duty email loop, BusterPhone/telephony, browser/library/terminal, settings/security/trust, and product-level gaps vs. the competition. Findings are consolidated here by theme, then by severity, with `file:line` anchors. This is deliberately exhaustive and merciless — the goal was to surface **all** of it: the holes, the redundancy, the over-engineering, and what's missing. Genuine strengths are recorded too, because several of them are the reason the product is worth fixing rather than scrapping.
 
-> **Archived 07-29** as `07-18-26-first-look-critical-review.md` (originally
+> **Archived 07-28** as `07-18-26-first-look-critical-review.md` (originally
 > `FIRST_LOOK_CRITICAL_REVIEW.md`). Its findings were synthesized into
 > `CRITICAL_PATH_ROADMAP.md`, which remains the live tracker and cites this
 > review by finding number (First-Look #3, #11, #12, …). Archived for the

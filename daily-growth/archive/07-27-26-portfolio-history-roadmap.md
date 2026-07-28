@@ -17,7 +17,7 @@
 >   that account.
 > - **We record our own time series.** There is no portfolio-value history API.
 
-**Status 07-27 — SHIPPED, all phases** (archived 07-29 as
+**Status 07-27 — SHIPPED, all phases** (archived 07-28 as
 `07-27-26-portfolio-history-roadmap.md`; originally
 `PORTFOLIO_HISTORY_ROADMAP.md`, the name ~14 code comments still cite).
 Phases 0–6 landed in one arc, each probed against the live API before commit.
