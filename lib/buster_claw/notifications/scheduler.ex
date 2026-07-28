@@ -9,7 +9,7 @@ defmodule BusterClaw.Notifications.Scheduler do
   have moved the next moment earlier. On wake it calls `Notifications.fire_due/0`,
   which flips due rows to `fired` and broadcasts `{:notification_fired, _}`.
 
-  Modeled on the other supervised pumps (`WalletPoller`, `Orchestration.Uptime`):
+  Modeled on the other supervised pumps (`Portfolio.Recorder`, `Orchestration.Uptime`):
   config-gated in `application.ex`, off in tests (the suite drives `fire_due/1`
   and `tick_now/1` directly), and crash-safe — a bad tick is logged, never fatal.
   """

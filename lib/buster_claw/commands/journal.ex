@@ -1,5 +1,5 @@
 defmodule BusterClaw.Commands.Journal do
-  @moduledoc "Journal commands (the day's minutes). Delegated to from `BusterClaw.Commands`."
+  @moduledoc "Journal commands (the Notes record). Delegated to from `BusterClaw.Commands`."
 
   alias BusterClaw.Journal
 
@@ -7,7 +7,7 @@ defmodule BusterClaw.Commands.Journal do
   def journal_append(_args), do: {:error, :missing_text}
 
   @doc """
-  Read a day's minutes. Defaults to today; a day with no document yet reads as
+  Read a day's Notes record. Defaults to today; a day with no document yet reads as
   an empty body (so the agent's first look on a fresh day isn't an error).
   """
   def journal_read(args \\ %{}) do

@@ -721,18 +721,18 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute has_element?(view, "#calendar-grid")
     end
 
-    test "the Notes sub-tab shows the daily minutes and appends an operator item",
+    test "the Notes sub-tab shows the day's record and appends an operator item",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       html = render_click(view, "select_home_tab", %{"tab" => "notes"})
       refute has_element?(view, "#calendar-grid")
       # Fresh day: no document exists until the first entry.
-      assert html =~ "No minutes for this day yet"
+      assert html =~ "No notes for this day yet"
       assert html =~ BusterClaw.Journal.today_name()
       assert has_element?(view, "button[phx-value-tab='notes'].bg-primary")
 
-      # The composer appends an OPERATOR-marked entry to today's minutes.
+      # The composer appends an OPERATOR-marked entry to today's notes.
       html =
         view
         |> form("#journal-composer-form", %{text: "Renew the domain."})
@@ -750,7 +750,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       render_click(view, "select_home_tab", %{"tab" => "notes"})
 
       # An agent entry lands via the command surface; the broadcast should reach
-      # the mounted LiveView and re-render the minutes without any user action.
+      # the mounted LiveView and re-render the notes without any user action.
       {:ok, _} = BusterClaw.Journal.append("Handled dispatch #7.", :agent)
 
       _ = :sys.get_state(view.pid)

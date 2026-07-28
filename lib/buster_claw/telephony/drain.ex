@@ -28,8 +28,8 @@ defmodule BusterClaw.Telephony.Drain do
     relay row). Either factor alone is a claim, not a caller — so both are
     required; a trusted number that skipped the PIN is recorded but never queued.
 
-  Modeled on `BusterClaw.WalletPoller`: self-rescheduling tick, crash-safe tick
-  body, `tick_now/1`, and injected `req_options` for tests.
+  It uses a self-rescheduling tick and crash-safe body, with `tick_now/1` and
+  injected `req_options` for tests.
   """
   use GenServer
 

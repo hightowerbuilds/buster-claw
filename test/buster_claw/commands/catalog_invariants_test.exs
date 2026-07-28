@@ -35,7 +35,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     end
 
     test "every catalogued command has an implementation behind it" do
-      # Checked by reflection, never by calling them: dispatching 170 real
+      # Checked by reflection, never by calling them: dispatching every real
       # commands to find out would send mail, hit APIs, and mutate the workspace.
       missing =
         Catalog.entries()
@@ -194,11 +194,6 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       tasks_list
       terminal_command_list
       terminal_tab_open
-      wallet_budget_summary
-      wallet_feed_list
-      wallet_get
-      wallet_list
-      wallet_list_transactions
       web_search
     )
 

@@ -10,15 +10,13 @@ defmodule BusterClaw.Integrations do
   and `poll_all/1` run only when something calls them — the two buttons in
   `IntegrationsLive`, or the `integration_poll` / `integration_poll_all` agent
   commands. `Integration.polling_interval_minutes` is stored, validated, and shown
-  in the settings form, but **no scheduler reads it** (only `Wallets` honours a
-  polling interval, on its own feeds). Don't infer a background cadence from that
-  field.
+  in the settings form, but **no scheduler reads it**. Don't infer a background
+  cadence from that field.
 
   **Integrations never enqueue Dispatch work.** A poll or a verified webhook writes
-  documents and broadcasts `{:integration_run, run}` on the `"integrations"` topic;
-  the only subscriber is `WalletPoller`, which stamps a record count onto any wallet
-  feed bound to the integration. The Dispatch queue is fed by Gmail trusted-senders
-  only (`Google.GmailSync`). A GitHub push does not become agent work.
+  documents and broadcasts `{:integration_run, run}` on the `"integrations"` topic
+  so the UI can refresh. The Dispatch queue is fed by Gmail trusted-senders only
+  (`Google.GmailSync`). A GitHub push does not become agent work.
   """
 
   import Ecto.Query

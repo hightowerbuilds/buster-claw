@@ -37,7 +37,7 @@ defmodule BusterClawWeb.StatusLive do
       Notifications.subscribe()
       # Keep the corner-widget's "Recent activity" live as calls/texts land.
       Telephony.subscribe()
-      # Keep the Notes tab's daily minutes live as the agent appends entries.
+      # Keep the Notes tab's record live as the agent appends entries.
       BusterClaw.Journal.subscribe()
       Process.send_after(self(), :sky_refresh, @sky_refresh_ms)
     end
@@ -610,7 +610,7 @@ defmodule BusterClawWeb.StatusLive do
   # A call/text landed — refresh the corner-widget "Recent activity" feed.
   def handle_info({:telephony_event, _event}, socket), do: {:noreply, load_comms(socket)}
 
-  # An entry (agent or another session) landed in the day's minutes — ping the
+  # An entry (agent or another session) landed in the day's Notes — ping the
   # journal component so an open Notes tab re-reads the document.
   def handle_info({:journal_appended, _date}, socket) do
     send_update(BusterClawWeb.JournalComponent,

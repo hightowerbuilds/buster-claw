@@ -5,26 +5,25 @@ defmodule BusterClaw.BrowserControl.Commerce do
   The honest model, stated plainly: the agent searches, compares, and builds a
   `Cart` in Agent Mode, in view; at the payment step it **hands off** to the
   human, who pays in the same headful surface where checkout popups actually
-  work; and only after the human confirms does a `Wallets` transaction land, so
-  agent-assisted spending shows up where the user's money already lives. This is
-  **not** autonomous purchasing — no payment credential ever passes through the
-  agent, which is what removes the entire payment-credential threat surface.
+  work; and only after the human confirms does the run complete and capture the
+  confirmation page. This is **not** autonomous purchasing — no payment
+  credential ever passes through the agent, which removes the entire
+  payment-credential threat surface.
 
   The boundaries are reused, not reinvented: the "trusted merchants" allowlist is
   a Phase 3 `Scope`, and the payment hard-stop is that scope's payment gate — a
   commerce run just asks Agent Mode to turn that stop into a handoff
   (`on_payment: :handoff`) instead of a dead end.
 
-  This module is the thin composition: start a scoped commerce run, and — once
-  the human has paid — turn the frozen cart into a ledger entry. The agent
+  This module is the thin composition: start a scoped commerce run and, once
+  the human has paid, capture the confirmation and finish the run. The agent
   attaches the cart to the run as it shops (`AgentMode.put_cart/2`); the payment
-  handoff freezes it and shows it to the human, and `confirm_purchase/3` bills
-  **that** cart — the ledger can never disagree with what the human saw.
+  handoff freezes it and shows it to the human, and `confirm_purchase/2`
+  confirms **that** cart.
   """
 
   alias BusterClaw.BrowserControl.{AgentMode, Scope}
   alias BusterClaw.BrowserControl.Commerce.Cart
-  alias BusterClaw.Wallets
 
   @doc """
   Freeze a commerce scope from a task intent and a **merchant allowlist**. Same
@@ -46,20 +45,17 @@ defmodule BusterClaw.BrowserControl.Commerce do
   end
 
   @doc """
-  Close the loop after the human has paid: write a `Wallets` transaction for the
-  **run's** cart — the one frozen and shown at the handoff — and mark the run
-  `done`. There is no cart argument on purpose: the ledger can only ever bill
-  what the human saw.
+  Close the loop after the human has paid: capture the confirmation page for the
+  **run's** frozen cart and mark the run `done`.
 
   Refuses unless the run is in `awaiting_human` (i.e. a handoff actually
-  happened) and the run's cart exists and is non-empty — a ledger entry must
-  correspond to a real human-confirmed purchase, never a speculative one.
-  `attrs` may carry `:occurred_on`, `:category` (default `"shopping"`), and
-  `:confirmation` (an order id / URL recorded in metadata).
+  happened) and the run's cart exists and is non-empty. `attrs` may carry
+  `:confirmation` (an order id or URL included in the returned receipt).
 
-  Returns `{:ok, transaction}` or `{:error, reason}`.
+  Returns `{:ok, receipt}` or `{:error, reason}`. The receipt is returned to the
+  caller and is not persisted as a financial ledger.
   """
-  def confirm_purchase(run, %Wallets.Wallet{} = wallet, attrs \\ %{}) do
+  def confirm_purchase(run, attrs \\ %{}) do
     attrs = Map.new(attrs)
     cart = AgentMode.cart(run)
 
@@ -71,40 +67,21 @@ defmodule BusterClaw.BrowserControl.Commerce do
         {:error, {:not_awaiting_human, AgentMode.mode(run)}}
 
       true ->
-        summary = Cart.summary(cart)
+        receipt = %{
+          run_id: AgentMode.run_id(run),
+          cart: cart_metadata(cart),
+          confirmation: Map.get(attrs, :confirmation),
+          confirmation_capture: capture_confirmation(run)
+        }
 
-        tx_attrs =
-          %{
-            kind: "expense",
-            amount_cents: summary.total_cents,
-            category: Map.get(attrs, :category, "shopping"),
-            description: "Agent purchase: #{summary.lines}",
-            occurred_on: Map.get(attrs, :occurred_on),
-            source: "browser_agent",
-            metadata: %{
-              "run_id" => AgentMode.run_id(run),
-              "cart" => cart_metadata(cart),
-              "confirmation" => Map.get(attrs, :confirmation),
-              # Roadmap: "capture the confirmation page". Best-effort — a failed
-              # capture degrades to a receipt-less entry, never a lost entry.
-              "confirmation_capture" => capture_confirmation(run)
-            }
-          }
-          # Drop occurred_on when nil so Wallets' put_new default (today) applies
-          # rather than a nil failing validate_required.
-          |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-          |> Map.new()
-
-        with {:ok, tx} <- Wallets.add_transaction(wallet, tx_attrs) do
-          AgentMode.complete(run)
-          {:ok, tx}
-        end
+        AgentMode.complete(run)
+        {:ok, receipt}
     end
   end
 
   # The run's capture can fail for engine reasons (dead session, stub without a
   # CDP surface); the exit-trap keeps a post-payment engine death from also
-  # losing the ledger entry.
+  # losing the handoff confirmation.
   defp capture_confirmation(run) do
     case AgentMode.capture_confirmation(run) do
       {:ok, path} -> path

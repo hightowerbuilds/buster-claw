@@ -1,8 +1,8 @@
 // Replacement for LiveView's `data-confirm`, which gates the event behind a
 // synchronous `window.confirm()`. In the Tauri/WKWebView shell there is no
 // WKUIDelegate to service native JS dialogs, so `window.confirm()` is a no-op
-// that returns `false` — every native-confirm-gated action (delete wallet,
-// delete transaction, untrust contact, …) silently did nothing.
+// that returns `false` — every native-confirm-gated destructive action would
+// otherwise silently do nothing.
 //
 // Instead we own the dialog. Destructive controls carry `data-claw-confirm="…"`,
 // and a capture-phase click interceptor shows an Industrial Claw modal, then —

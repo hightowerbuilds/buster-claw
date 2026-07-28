@@ -30,7 +30,6 @@ defmodule BusterClawWeb.BrowseLive do
   alias BusterClaw.BrowserControl.AgentMode.Trajectory
   alias BusterClaw.BrowserControl.Commerce
   alias BusterClaw.BrowserControl.Commerce.Cart
-  alias BusterClaw.Wallets
 
   @impl true
   def mount(params, session, socket) do
@@ -84,21 +83,22 @@ defmodule BusterClawWeb.BrowseLive do
   end
 
   def handle_event("agent_confirm_purchase", params, socket) do
-    with %{pid: pid} <- socket.assigns.agent_run,
-         %Wallets.Wallet{} = wallet <- picked_wallet(socket, params["wallet_id"]) do
-      case Commerce.confirm_purchase(pid, wallet, confirmation: presence(params["confirmation"])) do
-        {:ok, tx} ->
-          {:noreply,
-           socket
-           |> put_flash(:info, "Purchase recorded: #{tx.description}")
-           |> assign(:confirmation, "")
-           |> load_agent()}
+    case socket.assigns.agent_run do
+      %{pid: pid} ->
+        case Commerce.confirm_purchase(pid, confirmation: presence(params["confirmation"])) do
+          {:ok, _receipt} ->
+            {:noreply,
+             socket
+             |> put_flash(:info, "Purchase confirmed.")
+             |> assign(:confirmation, "")
+             |> load_agent()}
 
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Confirm failed: #{inspect(reason)}")}
-      end
-    else
-      _no_run_or_wallet -> {:noreply, put_flash(socket, :error, "Pick a wallet first.")}
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Confirm failed: #{inspect(reason)}")}
+        end
+
+      nil ->
+        {:noreply, put_flash(socket, :error, "The browser run is no longer available.")}
     end
   end
 
@@ -111,10 +111,6 @@ defmodule BusterClawWeb.BrowseLive do
       nil ->
         {:noreply, socket}
     end
-  end
-
-  defp picked_wallet(socket, wallet_id) do
-    Enum.find(socket.assigns.wallets, fn w -> to_string(w.id) == to_string(wallet_id) end)
   end
 
   # Project the newest registered run into assigns. Every read is exit-safe:
@@ -130,13 +126,11 @@ defmodule BusterClawWeb.BrowseLive do
       |> assign(:agent_run, run)
       |> assign(:agent_steps, Enum.reverse(steps))
       |> assign(:agent_cart, cart && Cart.summary(cart))
-      |> assign(:wallets, Wallets.list_wallets())
     else
       socket
       |> assign(:agent_run, nil)
       |> assign(:agent_steps, [])
       |> assign(:agent_cart, nil)
-      |> assign(:wallets, [])
     end
   end
 
@@ -289,17 +283,15 @@ defmodule BusterClawWeb.BrowseLive do
               <p class="font-mono text-xs leading-relaxed">{@agent_cart.lines}</p>
               <p class="font-mono text-sm font-bold">Total {@agent_cart.total}</p>
               <p class="font-mono text-[11px] text-base-content/60">
-                Pay in the agent's browser window, then confirm here — the ledger
-                entry is exactly this cart.
+                Pay in the agent's browser window, then confirm here to capture
+                the confirmation page and finish this run.
               </p>
 
-              <form phx-submit="agent_confirm_purchase" class="space-y-2">
-                <select
-                  name="wallet_id"
-                  class="w-full rounded-xs border-2 border-base-content/25 bg-base-100 px-2 py-1 font-mono text-xs"
-                >
-                  <option :for={wallet <- @wallets} value={wallet.id}>{wallet.name}</option>
-                </select>
+              <form
+                id="agent-confirm-purchase-form"
+                phx-submit="agent_confirm_purchase"
+                class="space-y-2"
+              >
                 <input
                   type="text"
                   name="confirmation"
@@ -312,7 +304,7 @@ defmodule BusterClawWeb.BrowseLive do
                   type="submit"
                   class="w-full rounded-xs bg-warning px-2 py-1.5 font-mono text-xs font-bold uppercase text-warning-content transition hover:opacity-85"
                 >
-                  I've paid — record it
+                  I've paid — finish handoff
                 </button>
               </form>
             </div>

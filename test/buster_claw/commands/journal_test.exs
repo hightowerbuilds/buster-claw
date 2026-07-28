@@ -28,7 +28,7 @@ defmodule BusterClaw.Commands.JournalTest do
     assert Commands.command_type("journal_read") == :read
   end
 
-  test "journal_append writes an agent entry into today's minutes" do
+  test "journal_append writes an agent entry into today's notes" do
     assert {:ok, day} = Commands.journal_append(%{"text" => "Cleared the queue."})
 
     assert day.body =~ "Cleared the queue."

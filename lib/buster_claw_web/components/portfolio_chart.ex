@@ -154,7 +154,6 @@ defmodule BusterClawWeb.PortfolioChart do
         class="relative"
         id="portfolio-chart-plot"
         phx-hook="PortfolioChart"
-        phx-update="ignore"
         data-readout={@readout}
       >
         <svg
@@ -704,7 +703,6 @@ defmodule BusterClawWeb.PortfolioChart do
       class="relative"
       id={"symbol-plot-#{@symbol}-#{@mode}"}
       phx-hook="PortfolioChart"
-      phx-update="ignore"
       data-readout={@readout}
     >
       <svg

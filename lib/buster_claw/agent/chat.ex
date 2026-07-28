@@ -242,6 +242,10 @@ defmodule BusterClaw.Agent.Chat do
       # the trading conversation's `--strict-mcp-config --mcp-config <path>`).
       # Captured at first start like every other opt; [] = unchanged behaviour.
       extra_cli_args: Keyword.get(opts, :extra_cli_args, []),
+      # Most conversations inherit AgentRunner's bypassPermissions default.
+      # Tool surfaces outside BusterClaw.Commands can choose a deny-by-default
+      # Claude mode such as `dontAsk` and pair it with an explicit allowlist.
+      permission_mode: Keyword.get(opts, :permission_mode),
       # Injectable for tests: `spawner.(prompt, opts) :: {:ok, port} | {:error, reason}`.
       spawner: Keyword.get(opts, :spawner, &default_spawner/2)
     }
@@ -403,7 +407,11 @@ defmodule BusterClaw.Agent.Chat do
         append_system_prompt_args(state.append_system_prompt) ++
         state.extra_cli_args
 
-    case state.spawner.(text, extra_args: extra, login: true) do
+    spawn_opts =
+      [extra_args: extra, login: true]
+      |> maybe_put_permission_mode(state.permission_mode)
+
+    case state.spawner.(text, spawn_opts) do
       {:ok, port} ->
         broadcast(state, {:status, :running})
         timer = Process.send_after(self(), {:run_timeout, token}, state.timeout_ms)
@@ -631,6 +639,11 @@ defmodule BusterClaw.Agent.Chat do
   defp append_system_prompt_args(nil), do: []
   defp append_system_prompt_args(""), do: []
   defp append_system_prompt_args(prompt), do: ["--append-system-prompt", prompt]
+
+  defp maybe_put_permission_mode(opts, nil), do: opts
+
+  defp maybe_put_permission_mode(opts, mode) when is_binary(mode),
+    do: Keyword.put(opts, :permission_mode, mode)
 
   defp broadcast(state, payload),
     do: PubSub.broadcast(BusterClaw.PubSub, state.topic, {:agent_chat, state.conv_id, payload})

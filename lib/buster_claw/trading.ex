@@ -7,8 +7,9 @@ defmodule BusterClaw.Trading do
   The app holds no broker credentials and speaks no MCP — the operator's
   `claude` CLI does both (OAuth tokens live in the macOS Keychain after a
   one-time interactive `claude mcp login robinhood`; headless runs reuse them).
-  Robinhood-side, orders execute only on the dedicated Agentic account; every
-  other account is read-only to the agent, and every chat send lands a Sentinel
+  Robinhood marks one account as Agentic, but this application currently exposes
+  only an allowlisted set of read tools. Orders cannot be placed, amended, or
+  cancelled from the Trading chat. Every chat send lands a Sentinel
   `:outbound_send` line (see `TradingLive.dispatch_chat/2`).
 
   ## The reads (each: prompt + parser + `:trading_*_fetcher` seam)
@@ -41,6 +42,19 @@ defmodule BusterClaw.Trading do
 
   @conv_id "trading"
   @mcp_url "https://agent.robinhood.com/mcp/trading"
+  @read_tools ~w(
+    mcp__robinhood__get_accounts
+    mcp__robinhood__get_earnings_calendar
+    mcp__robinhood__get_equity_historicals
+    mcp__robinhood__get_equity_orders
+    mcp__robinhood__get_equity_positions
+    mcp__robinhood__get_equity_quotes
+    mcp__robinhood__get_equity_tax_lots
+    mcp__robinhood__get_index_quotes
+    mcp__robinhood__get_indexes
+    mcp__robinhood__get_portfolio
+    mcp__robinhood__get_realized_pnl
+  )
 
   # The account panel's cached snapshot (JSON blob in Settings — the
   # browser_tabs precedent). Every refresh is a real (cheap, haiku) agent run,
@@ -83,25 +97,18 @@ defmodule BusterClaw.Trading do
   """
 
   @system_prompt """
-  You are trading on the operator's Robinhood accounts through the
-  mcp__robinhood__* tools.
+  You are the operator's READ-ONLY Robinhood portfolio assistant.
 
-  Account authority — this is the one rule that never bends:
-  - You may READ any account (get_accounts, get_portfolio, positions, orders).
-  - You may place, amend, or cancel orders ONLY on the dedicated Agentic
-    account. Every other account — Investing, Roth IRA, Traditional IRA,
-    Crypto — is READ-ONLY to you.
-  - If the operator asks you to trade in a non-agentic account, do not do it.
-    Say which account you can trade in and stop.
+  Authority — this is the one rule that never bends:
+  - You may READ any account using the available get_* tools.
+  - You may NEVER place, amend, or cancel an order on ANY account.
+  - If the operator asks you to trade, explain that order execution is disabled
+    until Buster Claw has an application-owned preview and confirmation gate.
+    You may research the symbol and draft a proposed order, but do not execute it.
 
   Rules:
-  - Check current positions and buying power (get_portfolio,
-    get_equity_positions) before placing any order.
-  - Every tool call takes an account_number — pass the agentic account's
-    number on anything that writes. Never let a read of another account carry
-    into an order.
-  - After placing or cancelling an order, re-check the order tools and report
-    the actual status and fill — never assume an order executed.
+  - Use get_portfolio and get_equity_positions for account facts.
+  - Treat order history as read-only evidence. Never claim a draft was submitted.
   - Quote real numbers from the quote tools; never invent prices, fills, or P&L.
   - If the Robinhood tools are unavailable or unauthenticated, say so plainly
     and stop — never simulate trading activity.
@@ -128,7 +135,8 @@ defmodule BusterClaw.Trading do
 
     1. Call mcp__robinhood__get_accounts and find the account whose number ends
        in #{last4}. Output {"error": "account not found"} and stop ONLY if no
-       account ends in those digits. If more than one does, use the first.
+       account ends in those digits. If more than one does, output
+       {"error": "ambiguous account identity"} and stop.
     2. Call mcp__robinhood__get_equity_positions for that account_number.
     3. Call mcp__robinhood__get_equity_orders for that account_number and keep
        the 10 most recent.
@@ -159,7 +167,28 @@ defmodule BusterClaw.Trading do
   def chat_opts do
     [
       append_system_prompt: @system_prompt,
-      extra_cli_args: ["--strict-mcp-config", "--mcp-config", ensure_mcp_config()]
+      permission_mode: "dontAsk",
+      extra_cli_args: read_only_cli_args()
+    ]
+  end
+
+  @doc """
+  Claude arguments that make the Robinhood surface deny-by-default.
+
+  `dontAsk` is supplied as the AgentRunner permission mode. The built-in tool set
+  is disabled, the MCP config is scoped to Robinhood, and only the named `get_*`
+  tools are pre-approved. A write tool introduced by Robinhood later remains
+  denied without a code change here.
+  """
+  def read_only_cli_args do
+    [
+      "--tools",
+      "",
+      "--allowedTools",
+      Enum.join(@read_tools, ","),
+      "--strict-mcp-config",
+      "--mcp-config",
+      ensure_mcp_config()
     ]
   end
 
@@ -392,7 +421,8 @@ defmodule BusterClaw.Trading do
 
     1. Call mcp__robinhood__get_accounts and find the account whose number ends
        in #{last4}. Output {"error": "account not found"} and stop ONLY if no
-       account ends in those digits. If more than one does, use the first.
+       account ends in those digits. If more than one does, output
+       {"error": "ambiguous account identity"} and stop.
     2. Call mcp__robinhood__get_equity_positions for that account_number.
     3. For EACH symbol held, call mcp__robinhood__get_equity_tax_lots for that
        account_number and that symbol, and SUM the open lots' cost basis.
@@ -656,7 +686,8 @@ defmodule BusterClaw.Trading do
 
     1. Call mcp__robinhood__get_accounts and find the account whose number ends
        in #{last4}. Output {"error": "account not found"} and stop ONLY if no
-       account ends in those digits. If more than one does, use the first.
+       account ends in those digits. If more than one does, output
+       {"error": "ambiguous account identity"} and stop.
     2. Call mcp__robinhood__get_realized_pnl for that account_number with
        span "all".
 
@@ -727,8 +758,9 @@ defmodule BusterClaw.Trading do
 
   defp run_agent(prompt, timeout_ms, parser) do
     opts = [
-      extra_args: ["--strict-mcp-config", "--mcp-config", ensure_mcp_config()],
+      extra_args: read_only_cli_args(),
       model: "haiku",
+      permission_mode: "dontAsk",
       timeout_ms: timeout_ms,
       login: true
     ]
@@ -761,6 +793,7 @@ defmodule BusterClaw.Trading do
           case accounts
                |> Enum.filter(&is_map/1)
                |> Enum.map(&normalize_account/1)
+               |> mark_identity_ambiguity()
                |> uniquify() do
             [] ->
               {:error, :bad_snapshot}
@@ -850,6 +883,28 @@ defmodule BusterClaw.Trading do
     Enum.reverse(reversed)
   end
 
+  # Last-four digits are only a safe local identity when exactly one account in
+  # the broker snapshot carries them. Keep colliding accounts visible in the
+  # balance overview, but mark them so every detail and persistence path can
+  # fail closed instead of silently selecting or merging the first match.
+  defp mark_identity_ambiguity(accounts) do
+    frequencies =
+      accounts
+      |> Enum.map(& &1["last4"])
+      |> Enum.reject(&is_nil/1)
+      |> Enum.frequencies()
+
+    Enum.map(accounts, fn account ->
+      ambiguous? =
+        case account["last4"] do
+          nil -> false
+          last4 -> Map.get(frequencies, last4, 0) > 1
+        end
+
+      Map.put(account, "identity_ambiguous", ambiguous?)
+    end)
+  end
+
   @doc """
   Extract and validate the stage-2 JSON (one account's holdings and orders).
   Same noise tolerance and app-side stamping as `parse_snapshot/1`.
@@ -864,8 +919,16 @@ defmodule BusterClaw.Trading do
         %{} = detail ->
           {:ok,
            %{
-             "positions" => detail["positions"] |> List.wrap() |> Enum.filter(&is_map/1),
-             "orders" => detail["orders"] |> List.wrap() |> Enum.filter(&is_map/1),
+             "positions" =>
+               detail["positions"]
+               |> List.wrap()
+               |> Enum.map(&normalize_detail_position/1)
+               |> Enum.reject(&is_nil/1),
+             "orders" =>
+               detail["orders"]
+               |> List.wrap()
+               |> Enum.map(&normalize_detail_order/1)
+               |> Enum.reject(&is_nil/1),
              "detail_at" => DateTime.utc_now() |> DateTime.to_iso8601()
            }}
 
@@ -876,6 +939,57 @@ defmodule BusterClaw.Trading do
       _ -> {:error, :bad_snapshot}
     end
   end
+
+  defp normalize_detail_position(row) when is_map(row) do
+    with symbol when is_binary(symbol) <- row["symbol"],
+         true <- valid_symbol?(symbol),
+         quantity when is_number(quantity) and quantity > 0 <- row["quantity"],
+         value when is_number(value) and value >= 0 <- row["value"] do
+      %{"symbol" => symbol, "quantity" => quantity, "value" => value}
+    else
+      _ -> nil
+    end
+  end
+
+  defp normalize_detail_position(_row), do: nil
+
+  defp normalize_detail_order(row) when is_map(row) do
+    with symbol when is_binary(symbol) <- row["symbol"],
+         true <- valid_symbol?(symbol),
+         side when side in ["buy", "sell"] <- row["side"],
+         quantity when is_number(quantity) and quantity > 0 <- row["quantity"],
+         {:ok, price} <- optional_nonnegative_number(row["price"]),
+         state when is_binary(state) and state != "" <- row["state"],
+         {:ok, placed_at} <- optional_iso8601(row["placed_at"]) do
+      %{
+        "symbol" => symbol,
+        "side" => side,
+        "quantity" => quantity,
+        "price" => price,
+        "state" => state,
+        "placed_at" => placed_at
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  defp normalize_detail_order(_row), do: nil
+
+  defp optional_nonnegative_number(nil), do: {:ok, nil}
+  defp optional_nonnegative_number(value) when is_number(value) and value >= 0, do: {:ok, value}
+  defp optional_nonnegative_number(_value), do: :error
+
+  defp optional_iso8601(nil), do: {:ok, nil}
+
+  defp optional_iso8601(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, _at, _offset} -> {:ok, value}
+      _error -> :error
+    end
+  end
+
+  defp optional_iso8601(_value), do: :error
 
   @doc """
   Merge a stage-2 result into the account with `id`. A snapshot that no longer
@@ -903,6 +1017,7 @@ defmodule BusterClaw.Trading do
   there is no tool that would answer.
   """
   def needs_detail?(%{"holdings_supported" => false}), do: false
+  def needs_detail?(%{"identity_ambiguous" => true}), do: false
   def needs_detail?(account) when is_map(account), do: not detail_loaded?(account)
   def needs_detail?(_account), do: false
 
@@ -915,8 +1030,20 @@ defmodule BusterClaw.Trading do
   def last4(%{"last4" => last4}) when is_binary(last4), do: last4
   def last4(_account), do: nil
 
+  @doc """
+  Collision-safe local key for ledger, flow, exclusion, cost, and backfill data.
+
+  The current Robinhood surface exposes the account number but no separate
+  opaque identifier. Until that exists, unique last-four digits are the local
+  key. A collision returns nil and every dependent operation fails closed.
+  """
+  def account_key(%{"identity_ambiguous" => true}), do: nil
+  def account_key(account), do: last4(account)
+
   @doc "The snapshot's accounts, or `[]`."
-  def accounts(%{"accounts" => accounts}) when is_list(accounts), do: accounts
+  def accounts(%{"accounts" => accounts}) when is_list(accounts),
+    do: mark_identity_ambiguity(accounts)
+
   def accounts(_snap), do: []
 
   @doc """

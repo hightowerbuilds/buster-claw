@@ -46,11 +46,6 @@ defmodule BusterClawWeb.Layouts do
       icon: "hero-chart-bar"
     },
     %{
-      label: "Wallets",
-      path: "/wallets",
-      icon: "hero-wallet"
-    },
-    %{
       label: "Settings",
       path: "/appearance",
       icon: "hero-cog-6-tooth",

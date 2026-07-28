@@ -65,12 +65,30 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "`shift/`"
     assert md =~ "`journal/`"
 
-    # Daily minutes: one journal document per day, appended through the command
+    # The Notes record: one journal document per day, appended through the command
     # surface (NOT hand-written files — the old mm-dd-yy-summary/ convention).
     assert md =~ "journal_append"
     assert md =~ "journal_read"
     assert md =~ "YYYY-MM-DD.md"
     refute md =~ "mm-dd-yy-summary"
+
+    # ONE activity log. The whole point of the Notes-record consolidation: the
+    # doc must name a single destination and must not reintroduce the competing
+    # vocabulary ("minutes"/"diary"/"daily summary") that made it read as three.
+    assert md =~ "The Notes record"
+    assert md =~ "exactly one activity log"
+    assert md =~ "What is NOT the activity log"
+    refute md =~ "daily minutes"
+    refute md =~ "dated diary"
+
+    # ...and the near-miss surfaces are named as non-destinations, so the model
+    # can't reason its way into writing activity where nobody will read it.
+    assert md =~ "activity_report"
+    assert md =~ "the Library holds artifacts"
+
+    # notesthatfloat.com is a separate product, acknowledged and firewalled off.
+    assert md =~ "notesthatfloat.com"
+    assert md =~ "not part of Buster Claw"
 
     # Jobs & the pull queue: points at the job-descriptions roster as the source
     # of truth and describes pulling work from the dispatch queue via the CLI.

@@ -268,6 +268,34 @@ defmodule BusterClaw.Agent.ChatTest do
     assert Enum.take(second, -3) == mcp_args
   end
 
+  test "a stricter permission mode rides every turn" do
+    {:ok, scripts} =
+      Agent.start_link(fn ->
+        [
+          [
+            %{"type" => "system", "session_id" => "sess-read-only"},
+            %{"type" => "result", "result" => "ok"}
+          ],
+          [%{"type" => "result", "result" => "ok again"}]
+        ]
+      end)
+
+    conv =
+      start_chat(scripting_spawner(self(), scripts),
+        permission_mode: "dontAsk",
+        extra_cli_args: ["--allowedTools", "mcp__robinhood__get_accounts"]
+      )
+
+    assert :ok = Chat.send_message(conv, "accounts")
+    assert_receive {:spawned, "accounts", first_opts}
+    assert first_opts[:permission_mode] == "dontAsk"
+    assert_receive {:agent_chat, ^conv, {:status, :idle}}
+
+    assert :ok = Chat.send_message(conv, "again")
+    assert_receive {:spawned, "again", second_opts}
+    assert second_opts[:permission_mode] == "dontAsk"
+  end
+
   test "a hung run is killed and reported as a timeout" do
     spawner = fn _prompt, _opts -> {:ok, make_ref()} end
     conv = start_chat(spawner, timeout_ms: 30)

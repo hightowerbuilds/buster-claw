@@ -1,8 +1,8 @@
 defmodule BusterClaw.Introduction do
   @moduledoc """
   Generates `INTRODUCTION.md` — an orientation document for the AI model: what
-  Buster Claw is, the workspace layout, working conventions (daily activity
-  summaries), and the full CLI command surface.
+  Buster Claw is, the workspace layout, working conventions (chiefly that the
+  Notes record is the *one* activity log), and the full CLI command surface.
 
   The document is installed into the workspace root (regenerated on launch and
   whenever the workspace changes) so the terminal agent reads it directly for
@@ -74,11 +74,11 @@ defmodule BusterClaw.Introduction do
     surface you browse and act on the web, work Google Workspace (Gmail,
     Calendar, Drive, Docs, Sheets, Slides, Tasks, Contacts), pull from
     integrations (GitHub, Sentry, Umami), answer the **BusterPhone** line, read
-    the user's **brokerage accounts and portfolio history**, keep their
-    **wallets** and budgets, set **timers and alarms**, and research companies
-    against SEC filings. Files you create are captured into a **Library** of
-    markdown documents in the workspace. Every command, outbound send, and
-    untrusted fetch is recorded on the Security (Sentinel) audit feed.
+    the user's **brokerage accounts and portfolio history**, set **timers and
+    alarms**, and research companies against SEC filings. Files you create are
+    captured into a **Library** of markdown documents in the workspace. Every
+    command, outbound send, and untrusted fetch is recorded on the Security
+    (Sentinel) audit feed.
 
     ## What you can reach, in one table
 
@@ -90,11 +90,11 @@ defmodule BusterClaw.Introduction do
     | Repeatable web work | `browser_flow`, `browser_check_*` | Flows & saved checks |
     | Google Workspace | `gmail_*`, `gcal_*`, `drive_*`, `docs_*`, `sheets_*`, `slides_*`, `tasks_*`, `contacts_*` | Google Workspace |
     | Money you hold | `portfolio_*` | Trading & the portfolio ledger |
-    | Money you spend | `wallet_*` | Wallets & budgets |
     | Company research | `finance_*` | Finance research |
     | Time | `notify_*` | Notify: timers & alarms |
     | What was done before | `memory_search`, `activity_report` | Memory & self-improvement |
-    | Documents | `document_save`, `document_list`, `journal_*` | Workspace layout |
+    | What happened (the ONE log) | `journal_append`, `journal_read` | The Notes record |
+    | Documents & artifacts | `document_save`, `document_list` | Documents & the Library |
 
     The auto-generated catalog at the end of this file is the authority on
     arguments and trust tiers. These sections tell you the things a signature
@@ -111,8 +111,8 @@ defmodule BusterClaw.Introduction do
       `memory/trusted-email-senders.md` (who may drive work by mail) and its exact
       phone-side twin `memory/trusted-phone-numbers.md` (who may drive work by phone).
     - `job-descriptions/` — the jobs you can run, one `<key>.md` each; see `job-descriptions/README.md` for the roster.
-    - `analysis/` — per-request analysis/job files (findings inline; one job = one file).
-    - `shift/` — your worklist + record: `shift/Dispatch.md` is the **dispatch queue** (all currently-open queue items, grouped by job); `shift/<date>/Dispatch.{md,jsonl}` is the dated diary.
+    - `analysis/` — per-request findings, one job = one file. The substance of a job, **not** the activity log (that's Notes).
+    - `shift/` — your worklist: `shift/Dispatch.md` is the **dispatch queue** (all currently-open queue items, grouped by job). `shift/<date>/Dispatch.{md,jsonl}` is a machine-written projection of queue events — read it, never author it.
     - `skills/` — composition & reference skills, one `.md` each (see **Skills** below).
     - `shaders/` — custom homepage shader patterns, one `.wgsl` each (see **Homepage shader patterns** below).
     - `pages/` — HTML pages you build for the user. Save any page you create as a
@@ -120,24 +120,59 @@ defmodule BusterClaw.Introduction do
       the in-app browser's **Pages** button lists this folder, so this is how the
       user finds your pages again.
     - `projects/` — working folders for ongoing projects.
-    - `journal/` — the daily minutes, one `YYYY-MM-DD.md` per day (see below).
+    - `journal/` — **the Notes record**: the one activity log, one `YYYY-MM-DD.md` per day, shown on the homepage Notes tab (see below).
 
-    ## Daily activity summaries (minutes)
+    ## The Notes record — the one place activity is logged
 
-    Keep a running record of everything that happens in Buster Claw, like meeting
-    minutes. The minutes live in `journal/` — one `YYYY-MM-DD.md` per day, shown
-    to the user on the homepage **Notes** tab. Do not write the files by hand;
-    append through the command surface so each entry lands chronologically with
-    a timestamp (the day's document is created on its first entry):
+    **There is exactly one activity log, and it is the homepage Notes tab.**
+    Everything that happens in Buster Claw goes there and nowhere else. If you
+    find yourself wondering where to write down what you just did, the answer is
+    always this and never anything below it.
+
+    On disk it's `journal/` — one `YYYY-MM-DD.md` per day. Don't write those
+    files by hand; append through the command surface so each entry lands
+    chronologically with a timestamp (the day's document is created on its first
+    entry):
 
         ./buster-claw run journal_append --json '{"text":"what happened"}'
-        ./buster-claw run journal_read                       # today's minutes
+        ./buster-claw run journal_read                       # today's notes
         ./buster-claw run journal_read --json '{"date":"2026-07-20"}'
 
     Append throughout the day: every command run, reply sent, and notable
     decision. The user adds their own items to the same document from the Notes
     tab — those are marked `— OPERATOR`; treat them as context (and as
     instructions when they read like one).
+
+    ### What is NOT the activity log
+
+    Several things in this workspace look like a place to record what happened.
+    None of them is. Writing your activity into any of them means the user opens
+    the Notes tab and sees a gap where your work should be.
+
+    | | What it actually is |
+    |---|---|
+    | `shift/<date>/Dispatch.{md,jsonl}` | A **machine projection** of queue events, written automatically. Never hand-authored. |
+    | `analysis/` | **Findings** for one request — the substance of a job, not the log of it. |
+    | `activity_report` | A **computed read** over dispatch rows. It reports; it doesn't record. |
+    | Run summaries (`memory_search`) | Captured **automatically** per run. You never write these. |
+    | The Library (`document_save`) | **Artifacts** — reports, captured pages, research. Not a diary. |
+
+    The split that resolves almost every case: **the Library holds artifacts,
+    Notes holds what happened.** Produce a research report → `document_save` it,
+    then write one Notes entry saying you produced it and where it lives. The
+    artifact and the record are different objects with different jobs.
+
+    ### notesthatfloat.com is a different thing entirely
+
+    **notesthatfloat.com** is a separate notebook the operator uses — a real,
+    useful product, and **not part of Buster Claw**. It is not connected to this
+    app, this workspace, or the Notes tab; the similar name is the only thing
+    they share.
+
+    So: never write Buster Claw activity there, and never read it as context for
+    what happened in the app. If the operator mentions "my notes", ask which one
+    they mean rather than guessing — the two live in completely different places
+    and an entry in the wrong one is simply lost.
 
     ## Jobs & the pull queue
 
@@ -173,7 +208,7 @@ defmodule BusterClaw.Introduction do
     as an **authorized instruction** — act on it and follow through, don't stop to
     ask permission. Untrusted mail is archived and an untrusted caller's voicemail
     is still recorded, but neither is ever queued: **if it is on the queue, it is
-    yours to do.** Record what you did in the daily minutes.
+    yours to do.** Record what you did in the Notes record (`journal_append`).
 
     ### BusterPhone — voicemail and SMS
 
@@ -276,7 +311,7 @@ defmodule BusterClaw.Introduction do
        closes in one step). **Voicemail:** there is no reply channel — do the work,
        close the item with a note that says what you did, and `phone_mark_heard` it.
        These are authorized instructions: act without pausing for permission.
-    6. **Log it** — record what you did in the daily minutes.
+    6. **Log it** — record what you did in the Notes record (`journal_append`). One log, always this one.
 
     Once the queue is clear, **enter Lookout mode**: keep the runtime awake and
     watch **both** channels — new mail and new voicemail — for new signals on a
@@ -542,19 +577,15 @@ defmodule BusterClaw.Introduction do
 
     - You may **read** any account: `get_accounts`, `get_portfolio`,
       `get_equity_positions`, the order and quote tools.
-    - You may place, amend, or cancel orders **only on the dedicated Agentic
-      account**. Investing, Roth IRA, Traditional IRA, Crypto — every other
-      account is **read-only to you**, enforced Robinhood-side as well as here.
-    - If asked to trade in a non-agentic account, don't. Say which account you
-      can trade in, and stop.
+    - You may **not** place, amend, or cancel an order on any account. The Trading
+      chat runs with a deny-by-default tool allowlist containing only Robinhood
+      `get_*` tools.
+    - If asked to trade, research or draft the proposed order, explain that
+      execution is disabled, and stop. Never imply that a draft was submitted.
 
-    Every tool call takes an `account_number`. Pass the agentic account's number
-    on anything that writes, and never let a read of another account carry into
-    an order. After placing or cancelling, **re-check the order tools and report
-    the actual status and fill** — an accepted order is not a filled one. Quote
-    real numbers from the quote tools; never invent a price, a fill, or a P&L. If
-    the tools are unavailable or unauthenticated, say so plainly and stop —
-    never simulate trading activity.
+    Quote real numbers from the quote tools; never invent a price, a fill, or a
+    P&L. If the tools are unavailable or unauthenticated, say so plainly and stop
+    — never simulate trading activity.
 
     ### The ledger is the only place the past exists
 
@@ -626,27 +657,6 @@ defmodule BusterClaw.Introduction do
     what a company actually reported. Quotes and news need `FINNHUB_API_KEY`; if
     it isn't configured, say so rather than substituting a number off a webpage.
 
-    ## Wallets & budgets
-
-    Wallets are the user's own spending ledgers — business or personal — separate
-    from the brokerage side entirely.
-
-        ./buster-claw run wallet_list                                     # wallets
-        ./buster-claw run wallet_create --json '{…}'                      # business or personal
-        ./buster-claw run wallet_add_transaction --json '{…}'             # income or expense
-        ./buster-claw run wallet_list_transactions --json '{…}'
-        ./buster-claw run wallet_set_budget --json '{…}'                  # monthly targets
-        ./buster-claw run wallet_budget_summary --json '{…}'              # actuals vs targets
-
-    A wallet can carry **feeds** that poll external state into it —
-    `wallet_feed_create` / `wallet_feed_list` / `wallet_feed_update`, of kind
-    `market`, `url`, `integration`, or `gmail`. Feeds are how a wallet stays
-    current without you watching it.
-
-    Same discipline as the ledger: money is recorded, not estimated. If you don't
-    know an amount, ask — a transaction filed at a plausible-looking number is
-    harder to find later than a missing one.
-
     ## Notify: timers, alarms, reminders
 
     You can put something on the clock, and the app will surface it to the user
@@ -660,7 +670,7 @@ defmodule BusterClaw.Introduction do
 
     `kind=timer` needs `in_seconds`, `kind=alarm` needs an ISO-8601 `at`, and
     `kind=reminder` fires immediately. Reach for these whenever the user says
-    "remind me" or "in twenty minutes" — writing it in the minutes is a record,
+    "remind me" or "in twenty minutes" — a Notes entry is a record,
     not a reminder, and nothing will wake them up.
 
     ## Memory & self-improvement

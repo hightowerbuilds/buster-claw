@@ -1,7 +1,13 @@
 defmodule BusterClaw.Journal do
   @moduledoc """
-  The minutes of the day: one rolling markdown document per calendar day under
-  `<workspace>/journal/`, named `YYYY-MM-DD.md`.
+  The **Notes record**: the single place Buster Claw activity is logged. One
+  rolling markdown document per calendar day under `<workspace>/journal/`,
+  named `YYYY-MM-DD.md`, surfaced as the homepage **Notes** tab.
+
+  There is deliberately no second activity log. `shift/<date>/Dispatch.*` is a
+  machine projection of queue events, `analysis/` holds per-request findings,
+  and `activity_report` is computed from dispatch rows — none of them is where
+  "what happened today" is written. This is.
 
   Both the agent (via the `journal_append` command) and the operator (via the
   homepage Notes tab) append entries; each entry lands chronologically under a
@@ -39,7 +45,7 @@ defmodule BusterClaw.Journal do
   def subscribe, do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, @topic)
 
   @doc """
-  Append one entry to today's minutes. `source` is `:agent` or `:operator`;
+  Append one entry to today's Notes record. `source` is `:agent` or `:operator`;
   operator entries are marked in the timestamp heading. Creates the day's
   document (with a title line) on the first entry. Returns `{:ok, day}` with
   the updated day map, or `{:error, :blank}` for empty text.
@@ -86,7 +92,7 @@ defmodule BusterClaw.Journal do
   end
 
   @doc """
-  Read one day's minutes by ISO date string. Returns
+  Read one day's Notes record by ISO date string. Returns
   `%{date: Date.t(), name: String.t(), body: String.t()}` or `nil` when the
   day has no document (or the name isn't a date).
   """

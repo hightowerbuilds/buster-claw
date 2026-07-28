@@ -138,12 +138,11 @@ defmodule BusterClaw.Portfolio do
     end
   end
 
-  # The ledger keys on last4, the same value stage 2 matches accounts on. An
-  # account without one cannot be tracked across days — its rows would detach
-  # from every earlier reading — so it is skipped rather than filed under a key
-  # that will not match tomorrow.
+  # The ledger currently keys on a unique last4, the same value stage 2 matches
+  # accounts on. Trading.account_key/1 refuses collisions: recording neither
+  # ambiguous account is safer than overwriting one with the other.
   defp account_key(account) do
-    case Trading.last4(account) do
+    case Trading.account_key(account) do
       nil -> {:error, :unidentifiable_account}
       key -> {:ok, key}
     end

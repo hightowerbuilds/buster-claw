@@ -48,9 +48,6 @@ config :buster_claw, :orchestrator_enabled, false
 # The unattended work pump is off in tests; the Dispatcher suite starts its own
 # instance with a stub runner and drives it via tick_now/1.
 config :buster_claw, :dispatcher_enabled, false
-# The wallet feed poller is off in tests; the WalletPoller suite starts its own
-# instance with injected fetchers and drives it via tick_now/1.
-config :buster_claw, :wallet_poller_enabled, false
 # The self-improvement scanner is off in tests; the Analyzer suite drives scan/1
 # directly with seeded audit events.
 config :buster_claw, :analyzer_enabled, false

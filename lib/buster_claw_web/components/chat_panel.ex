@@ -71,6 +71,13 @@ defmodule BusterClawWeb.ChatPanel do
   attr :queue, :list, required: true
   attr :agent_cli_missing, :boolean, default: false
 
+  attr :empty_message, :string,
+    default:
+      "Ask Buster Claw to check your mail, work the queue, or look something up. It runs headless Claude — no terminal needed."
+
+  attr :placeholder, :string,
+    default: "Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
+
   def chat_panel(assigns) do
     ~H"""
     <section
@@ -126,8 +133,7 @@ defmodule BusterClawWeb.ChatPanel do
           id="agent-chat-empty"
           class="m-auto hidden max-w-xs text-center text-[17px] text-base-content/55 only:block"
         >
-          Ask Buster Claw to check your mail, work the queue, or look something up.
-          It runs headless Claude — no terminal needed.
+          {@empty_message}
         </div>
 
         <.chat_bubble :for={{dom_id, msg} <- @messages} id={dom_id} msg={msg} />
@@ -161,7 +167,7 @@ defmodule BusterClawWeb.ChatPanel do
             placeholder={
               if @agent_cli_missing,
                 do: "Install Claude Code to chat",
-                else: "Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
+                else: @placeholder
             }
             class="min-h-0 w-full resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-[17px] focus:border-primary focus:outline-none disabled:opacity-50"
           ></textarea>

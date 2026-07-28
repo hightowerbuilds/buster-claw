@@ -143,7 +143,7 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   @doc """
   Attach/replace the cart the agent has built (Phase 5 commerce). Allowed only
   while `agent_working` — the cart is frozen by the payment handoff, so what the
-  human is shown is exactly what a later `confirm_purchase` may bill. Recorded
+  human is shown is exactly what a later `confirm_purchase` confirms. Recorded
   as a `:cart` step so cart-building is watchable in the trajectory.
   """
   def put_cart(server, cart), do: GenServer.call(server, {:put_cart, cart})

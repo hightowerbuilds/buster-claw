@@ -37,7 +37,6 @@ defmodule BusterClaw.Application do
         orchestrator_child(),
         uptime_child(),
         dispatcher_child(),
-        wallet_poller_child(),
         analyzer_child(),
         telephony_drain_child(),
         notifications_scheduler_child(),
@@ -88,7 +87,7 @@ defmodule BusterClaw.Application do
         # Create <workspace>/sounds/ + README so the notification chime is
         # discoverable (operator drops an audio file in; best-effort).
         BusterClaw.Notifications.Sound.ensure()
-        # Create <workspace>/journal/ so the Home "Notes" minutes have a home on disk.
+        # Create <workspace>/journal/ so the Home "Notes" record has a home on disk.
         BusterClaw.Journal.ensure()
         ok
 
@@ -161,14 +160,6 @@ defmodule BusterClaw.Application do
   defp dispatcher_child do
     if Application.get_env(:buster_claw, :dispatcher_enabled, true) do
       BusterClaw.Dispatcher
-    end
-  end
-
-  # The wallet feed polling pump (market/url/integration feeds + Gmail signals).
-  # Off in tests (they drive a WalletPoller instance with injected fetchers).
-  defp wallet_poller_child do
-    if Application.get_env(:buster_claw, :wallet_poller_enabled, true) do
-      BusterClaw.WalletPoller
     end
   end
 

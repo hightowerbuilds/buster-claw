@@ -46,9 +46,11 @@ defmodule BusterClawWeb.TradingLiveTest do
     test "renders the banner, the split, and first-run setup", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/trading")
 
-      # The banner names the write scope: reads span every account, orders one.
-      assert html =~ "Real orders execute on the Robinhood agentic account"
-      assert html =~ "every other account is read-only"
+      assert html =~ "trading-read-only-banner"
+      assert html =~ "Buster Claw cannot place, amend, or cancel Robinhood orders"
+      assert html =~ "Read-only portfolio assistant"
+      assert html =~ "Ask about your portfolio"
+      refute html =~ "check your mail"
       assert html =~ "claude mcp login robinhood"
       assert html =~ "#65895"
       # The chat surface renders without the conversation strip.
@@ -119,7 +121,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       refute_receive {:detail_requested, "4821"}, 50
 
       assert html =~ "Buying power"
-      assert html =~ "Orders execute here"
+      assert html =~ "Agentic account · writes disabled"
       assert html =~ "Loading holdings…"
       refute html =~ "VOO"
     end
@@ -186,6 +188,16 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "trading-anomaly-prompt"
       assert html =~ "Was that a transfer?"
       assert html =~ "+$500.00"
+
+      # Currency parsing is strict: a numeric prefix with trailing junk must not
+      # silently become a real ledger entry.
+      html =
+        view
+        |> element("#trading-anomaly-prompt form")
+        |> render_submit(%{"kind" => "deposit", "amount" => "500oops"})
+
+      assert html =~ "trading-anomaly-prompt"
+      assert Portfolio.flows("6587") == []
 
       # Answer it: a $500 deposit.
       html =
@@ -269,6 +281,7 @@ defmodule BusterClawWeb.TradingLiveTest do
 
       assert html =~ ~s(id="portfolio-chart")
       assert html =~ ~s(phx-hook="PortfolioChart")
+      refute html =~ ~r/id="portfolio-chart-plot"[^>]*phx-update="ignore"/
       # Range control and the disclosed granularity.
       assert html =~ ~s(phx-value-range="1M")
       assert html =~ ~s(phx-value-range="ALL")
@@ -633,6 +646,64 @@ defmodule BusterClawWeb.TradingLiveTest do
       refute_receive {:bars_fetched, _, _, _}, 50
     end
 
+    test "switching symbols during a bar fetch hands off to the current symbol",
+         %{conn: conn} do
+      test_pid = self()
+
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn symbol, start, _interval ->
+        send(test_pid, {:bars_waiting, symbol, self()})
+
+        if symbol == "AAAA" do
+          receive do
+            :release_bars -> :ok
+          end
+        end
+
+        {:ok,
+         [
+           %{
+             bar_on: Date.add(start, 2),
+             open: 10.0,
+             high: 12.0,
+             low: 9.0,
+             close: 11.0,
+             volume: nil
+           },
+           %{
+             bar_on:
+               BusterClaw.MarketCalendar.latest_trading_day(BusterClaw.MarketCalendar.today()),
+             open: 11.0,
+             high: 13.0,
+             low: 10.0,
+             close: 12.0,
+             volume: nil
+           }
+         ]}
+      end)
+
+      on_exit(fn -> Application.put_env(:buster_claw, :trading_bars_fetcher, nil) end)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_async(view)
+
+      render_click(view, "trading_view_symbol", %{"symbol" => "AAAA"})
+      render_click(view, "trading_symbol_mode", %{"mode" => "candles"})
+      assert_receive {:bars_waiting, "AAAA", first_task}
+
+      html = render_click(view, "trading_view_symbol", %{"symbol" => "BBBB"})
+      assert html =~ "BBBB"
+      refute_receive {:bars_waiting, "BBBB", _}, 50
+
+      send(first_task, :release_bars)
+      render_async(view)
+
+      assert_receive {:bars_waiting, "BBBB", _}
+      html = render_async(view)
+      assert html =~ "BBBB"
+      assert html =~ "<rect"
+      refute html =~ "fetching full bars"
+    end
+
     test "5Y asks for weekly bars and says so", %{conn: conn} do
       alias BusterClaw.Portfolio
       test_pid = self()
@@ -686,6 +757,11 @@ defmodule BusterClawWeb.TradingLiveTest do
       {:ok, view2, _html} = live(conn, ~p"/trading")
       html = render_async(view2)
       assert html =~ "No earnings scheduled for your holdings"
+
+      BusterClaw.Settings.put("market_quotes_snapshot", nil)
+      {:ok, view3, _html} = live(conn, ~p"/trading")
+      html = render_async(view3)
+      assert html =~ "Earnings unavailable"
     end
 
     test "the activity panel merges loaded accounts and names the gap", %{conn: conn} do
@@ -771,7 +847,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       # The Roth's numbers are on screen and it is marked unwritable.
       assert html =~ "$900.00"
       assert html =~ "VTI"
-      assert html =~ "Read-only to agent"
+      assert html =~ "Read-only account"
       refute html =~ "Orders execute here"
     end
 
@@ -802,6 +878,78 @@ defmodule BusterClawWeb.TradingLiveTest do
       refute_receive {:detail_requested, "6587"}, 50
       assert html =~ "VOO"
       refute html =~ "Loading holdings…"
+    end
+
+    test "switching accounts during a detail fetch loads the current selection", %{conn: conn} do
+      test_pid = self()
+      stub_trading_fetchers()
+
+      Application.put_env(:buster_claw, :trading_detail_fetcher, fn
+        "6587" ->
+          send(test_pid, {:detail_waiting, "6587", self()})
+
+          receive do
+            :release_detail -> {:ok, detail_for("6587")}
+          end
+
+        "4821" ->
+          send(test_pid, {:detail_requested, "4821"})
+          {:ok, detail_for("4821")}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_async(view)
+
+      render_click(view, "trading_select_account", %{"id" => "••••6587"})
+      assert_receive {:detail_waiting, "6587", first_task}
+
+      # The second click lands while the first account still owns the one
+      # in-flight slot. Completion must hand off to the CURRENT selection.
+      html = render_click(view, "trading_select_account", %{"id" => "••••4821"})
+      assert html =~ "Loading holdings…"
+      refute_receive {:detail_requested, "4821"}, 50
+
+      send(first_task, :release_detail)
+      render_async(view)
+
+      assert_receive {:detail_requested, "4821"}
+      html = render_async(view)
+      assert html =~ "VTI"
+      refute html =~ "Loading holdings…"
+    end
+
+    test "ambiguous account identities stay visible but cannot load or persist detail",
+         %{conn: conn} do
+      test_pid = self()
+
+      {:ok, snap} =
+        BusterClaw.Trading.parse_snapshot(~s({"accounts": [
+          {"id": "111116587", "label": "Investing", "value": 10.0,
+           "cash": 1.0, "buying_power": 1.0},
+          {"id": "999996587", "label": "Roth IRA", "value": 20.0,
+           "cash": 2.0, "buying_power": 2.0}
+        ]}))
+
+      Application.put_env(:buster_claw, :trading_snapshot_fetcher, fn -> {:ok, snap} end)
+
+      Application.put_env(:buster_claw, :trading_detail_fetcher, fn last4 ->
+        send(test_pid, {:detail_requested, last4})
+        {:ok, detail_for("6587")}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      assert html =~ "Investing"
+      assert html =~ "Roth IRA"
+      assert html =~ "Ambiguous ID"
+      assert BusterClaw.Portfolio.all_snapshots() == []
+
+      html = render_click(view, "trading_select_account", %{"id" => "••••6587 (2)"})
+
+      refute_receive {:detail_requested, _}, 50
+      assert html =~ "Holdings disabled"
+      assert html =~ "will not guess"
     end
 
     test "a crypto account says holdings are unreadable and is never fetched", %{conn: conn} do
@@ -896,7 +1044,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       html = render_async(view)
 
       # Falls back to the agentic account rather than rendering an empty detail.
-      assert html =~ "Orders execute here"
+      assert html =~ "Agentic account · writes disabled"
       assert html =~ "$3.38"
       refute html =~ "Holdings unavailable"
     end
@@ -933,7 +1081,8 @@ defmodule BusterClawWeb.TradingLiveTest do
   end
 
   # Stage 1: three accounts covering the cases the panel has to tell apart —
-  # the agentic (writable) one, an ordinary read-only one, and a crypto account
+  # the agentic-capable one (writes disabled here), an ordinary read-only one,
+  # and a crypto account
   # whose holdings the Robinhood tool surface cannot read at all. No positions
   # or orders here; that is precisely what stage 1 does not fetch.
   defp multi_account_snapshot do

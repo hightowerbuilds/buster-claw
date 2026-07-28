@@ -35,13 +35,24 @@ defmodule BusterClaw.TradingTest do
     assert File.read!(path) =~ "custom"
   end
 
-  test "chat_opts scope the conversation to exactly the seeded server" do
+  test "chat_opts deny by default and allow only Robinhood read tools" do
     opts = Trading.chat_opts()
     extra = Keyword.fetch!(opts, :extra_cli_args)
 
+    assert Keyword.fetch!(opts, :permission_mode) == "dontAsk"
+    assert "--tools" in extra
+    assert "" in extra
+    assert "--allowedTools" in extra
     assert "--strict-mcp-config" in extra
     assert "--mcp-config" in extra
     assert Enum.any?(extra, &String.ends_with?(&1, "mcp/robinhood.json"))
+
+    allowed = Enum.at(extra, Enum.find_index(extra, &(&1 == "--allowedTools")) + 1)
+    assert allowed =~ "mcp__robinhood__get_accounts"
+    assert allowed =~ "mcp__robinhood__get_equity_orders"
+    refute allowed =~ "place"
+    refute allowed =~ "cancel"
+    refute allowed =~ "amend"
   end
 
   test "the system prompt carries the money-truthfulness rules" do
@@ -52,16 +63,13 @@ defmodule BusterClaw.TradingTest do
     assert prompt =~ "never simulate"
   end
 
-  test "the system prompt confines orders to the agentic account while reads roam" do
+  test "the system prompt refuses orders on every account" do
     prompt = Keyword.fetch!(Trading.chat_opts(), :append_system_prompt)
 
-    assert prompt =~ "You may READ any account"
-    assert prompt =~ "ONLY on the dedicated Agentic"
-    assert prompt =~ "READ-ONLY to you"
-    # Naming the other account types matters: the rule has to bind the exact
-    # accounts the panel now puts in front of the model.
-    assert prompt =~ "Roth IRA"
-    assert prompt =~ "Crypto"
+    assert prompt =~ "READ-ONLY"
+    assert prompt =~ "NEVER place, amend, or cancel"
+    assert prompt =~ "ANY account"
+    assert prompt =~ "preview and confirmation gate"
   end
 
   test "stage 1 asks for every account's balances and nothing deeper" do
@@ -184,10 +192,30 @@ defmodule BusterClaw.TradingTest do
       assert {:ok, %{"accounts" => [first, second]}} = Trading.parse_snapshot(out)
       assert first["id"] == "••••6587"
       assert second["id"] != first["id"]
+      assert first["identity_ambiguous"]
+      assert second["identity_ambiguous"]
 
-      # Both remain reachable — a duplicate key would strand one chip.
+      # Both remain visible, but neither may drive detail or durable ledger data:
+      # choosing "the first" would associate one account's money with the other.
       assert Trading.select_account(%{"accounts" => [first, second]}, second["id"])["label"] ==
                "Roth IRA"
+
+      assert is_nil(Trading.account_key(first))
+      assert is_nil(Trading.account_key(second))
+      refute Trading.needs_detail?(first)
+      refute Trading.needs_detail?(second)
+
+      legacy_snapshot = %{
+        "accounts" => [
+          %{"id" => "••••6587", "last4" => "6587"},
+          %{"id" => "••••6587-2", "last4" => "6587"}
+        ]
+      }
+
+      assert Enum.all?(Trading.accounts(legacy_snapshot), & &1["identity_ambiguous"])
+
+      assert {:ok, 0} = BusterClaw.Portfolio.record(%{"accounts" => [first, second]})
+      assert BusterClaw.Portfolio.all_snapshots() == []
     end
 
     test "tolerates prose/stderr noise around the JSON" do
@@ -458,6 +486,26 @@ defmodule BusterClaw.TradingTest do
       assert {:ok, _at, _} = DateTime.from_iso8601(detail["detail_at"])
     end
 
+    test "invalid position and order rows are dropped instead of displayed as facts" do
+      out = ~s({"positions": [
+                  {"symbol": "VOO", "quantity": 0.1, "value": 50.5},
+                  {"symbol": "bad symbol", "quantity": 1, "value": 10},
+                  {"symbol": "GME", "quantity": -1, "value": 10}
+                ],
+                "orders": [
+                  {"symbol": "VOO", "side": "buy", "quantity": 0.1,
+                   "price": 500.0, "state": "filled", "placed_at": null},
+                  {"symbol": "VOO", "side": "hold", "quantity": 0.1,
+                   "price": 500.0, "state": "filled", "placed_at": null},
+                  {"symbol": "GME", "side": "sell", "quantity": 1,
+                   "price": -1, "state": "filled", "placed_at": null}
+                ]})
+
+      assert {:ok, detail} = Trading.parse_detail(out)
+      assert [%{"symbol" => "VOO"}] = detail["positions"]
+      assert [%{"symbol" => "VOO", "side" => "buy"}] = detail["orders"]
+    end
+
     test "an account with genuinely nothing still counts as read" do
       assert {:ok, detail} = Trading.parse_detail(~s({"positions": [], "orders": []}))
       assert detail["positions"] == []
@@ -474,7 +522,10 @@ defmodule BusterClaw.TradingTest do
     end
 
     test "merging fills exactly one account and marks it loaded", %{snap: snap} do
-      {:ok, detail} = Trading.parse_detail(~s({"positions": [{"symbol": "VOO"}], "orders": []}))
+      {:ok, detail} =
+        Trading.parse_detail(
+          ~s({"positions": [{"symbol": "VOO", "quantity": 0.1, "value": 50.0}], "orders": []})
+        )
 
       merged = Trading.merge_detail(snap, "••••6587", detail)
       [investing, roth] = Trading.accounts(merged)
@@ -488,7 +539,10 @@ defmodule BusterClaw.TradingTest do
     end
 
     test "a detail landing for an account that no longer exists is dropped", %{snap: snap} do
-      {:ok, detail} = Trading.parse_detail(~s({"positions": [{"symbol": "GME"}], "orders": []}))
+      {:ok, detail} =
+        Trading.parse_detail(
+          ~s({"positions": [{"symbol": "GME", "quantity": 1.0, "value": 20.0}], "orders": []})
+        )
 
       merged = Trading.merge_detail(snap, "••••0000", detail)
 

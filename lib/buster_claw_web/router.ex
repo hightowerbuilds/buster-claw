@@ -30,7 +30,6 @@ defmodule BusterClawWeb.Router do
       live "/split", SplitLive, :index
       live "/terminal", TerminalLive, :index
       live "/calendar", CalendarLive, :index
-      live "/wallets", WalletsLive, :index
       live "/integrations", IntegrationsLive, :index
       live "/security", SecurityLive, :index
       live "/settings", SettingsLive, :index

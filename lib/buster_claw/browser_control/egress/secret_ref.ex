@@ -14,7 +14,7 @@ defmodule BusterClaw.BrowserControl.Egress.SecretRef do
 
     * `resolve/2` swaps references for real values just before a `fill`/`type`
       reaches the browser. The resolver is injected (`fn name -> {:ok, v} |
-      :error end`) so the secret store — Keychain, wallet, encrypted settings —
+      :error end`) so the secret store — Keychain or encrypted settings —
       stays out of this pure module.
     * `mask/1` produces the **log-safe** form: the reference token survives, the
       value never appears. The trajectory records `$secret.shipping_address`,

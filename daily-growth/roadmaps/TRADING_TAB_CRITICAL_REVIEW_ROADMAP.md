@@ -1,6 +1,6 @@
 # Trading Tab — Critical Review and Remediation Roadmap
 
-**Date:** 2026-07-27 · **Status:** ACTIVE REVIEW · **Recommendation:** Do not ship with real-money write access until Stages 0–2 are complete.
+**Date:** 2026-07-27 · **Status:** ACTIVE BUILD-OUT · **Recommendation:** Do not ship with real-money write access until Stages 0–2 are complete.
 
 > **Verdict:** The Trading tab contains unusually thoughtful financial-display
 > work, but its execution boundary is unsafe and several correctness defects can
@@ -414,11 +414,34 @@ the stale SVG defect.
 
 ## Remediation roadmap
 
+### Build progress — 2026-07-27
+
+The first safety/correctness slice is implemented:
+
+- Trading chat and background reads now run Claude in `dontAsk` mode with built-in
+  tools disabled and an explicit allowlist containing only Robinhood `get_*`
+  tools.
+- The system prompt, banner, account badges, and operator introduction now state
+  that order writes are disabled on every account.
+- Duplicate last-four account identities fail closed: balances remain visible,
+  while detail, ledger, cost, backfill, flow, and exclusion actions are disabled.
+- Portfolio and symbol charts no longer freeze their server-rendered SVG behind
+  `phx-update="ignore"`.
+- Account-detail and symbol-bar requests hand off to the current selection after
+  an older in-flight request completes.
+- Transfer amounts reject trailing junk instead of accepting a numeric prefix.
+- Position and order rows are normalized before display; malformed financial rows
+  are dropped.
+- Earnings now distinguish unavailable data from a confirmed empty calendar.
+- Trading uses context-specific read-only chat copy and correctly requires Claude,
+  not merely any agent CLI.
+- Focused runner/chat/trading/market-data/LiveView regressions pass.
+
 ### Stage 0 — Stop expanding the unsafe surface
 
-- [ ] Make Robinhood MCP access read-only from the Trading chat.
-- [ ] Remove or disable order-writing tools until an application-owned gate exists.
-- [ ] Change the banner to state the current enforcement mode, not merely describe
+- [x] Make Robinhood MCP access read-only from the Trading chat.
+- [x] Remove or disable order-writing tools until an application-owned gate exists.
+- [x] Change the banner to state the current enforcement mode, not merely describe
       Robinhood account capabilities.
 - [ ] Document that Stop cannot reverse an accepted remote action.
 
@@ -429,7 +452,8 @@ the stale SVG defect.
 - [ ] Introduce a stable opaque account key or HMAC-based identity.
 - [ ] Migrate snapshots, flows, exclusions, realized P&L, and cost basis away from
       last-four keys.
-- [ ] Detect collisions during migration and refuse ambiguous association.
+- [x] Detect collisions and refuse ambiguous association. Migration to a stable
+      opaque key remains outstanding.
 - [ ] Replace model-transcribed brokerage reads with structured machine-to-machine
       responses.
 - [ ] Retain the model only for explanation and research over already validated data.
@@ -459,16 +483,17 @@ validated, confirmed, audited application transaction can do so.
 
 ### Stage 3 — Repair browser correctness and async state
 
-- [ ] Remove inappropriate `phx-update="ignore"` usage or make the hook fully own
+- [x] Remove inappropriate `phx-update="ignore"` usage or make the hook fully own
       and redraw the SVG DOM.
-- [ ] Rebind all hook element references after patches.
+- [x] Rebind all hook element references after patches.
 - [ ] Key account-detail loading state by account.
 - [ ] Key symbol-bar loading state by symbol, interval, and range.
-- [ ] Cancel obsolete fetches where safe, or allow parallel keyed fetches.
-- [ ] On completion, reconcile against the current selection and launch any still
+- [x] Hand off from obsolete fetches to the current selection. Fully parallel keyed
+      fetches remain a later optimization.
+- [x] On completion, reconcile against the current selection and launch any still
       missing current request.
 - [ ] Validate all LiveView event values, including portfolio ranges and symbols.
-- [ ] Reject partially parsed transfer amounts such as `500abc`.
+- [x] Reject partially parsed transfer amounts such as `500abc`.
 
 **Done when:** Rapidly switching accounts, symbols, modes, and ranges cannot
 display stale data or leave a phantom loading state.
@@ -477,7 +502,8 @@ display stale data or leave a phantom loading state.
 
 - [ ] Introduce `loading | fresh | stale | unavailable | confirmed_empty` states for
       every dashboard dataset.
-- [ ] Stop translating cache failure into definitive empty-state copy.
+- [x] Stop translating earnings-cache failure into definitive empty-state copy.
+      Apply the same state model to the remaining datasets.
 - [ ] Display data timestamps beside the values they govern.
 - [ ] Define whether the product is end-of-day portfolio monitoring or live trading.
 - [ ] If live trading remains a goal, use an appropriately current quote path rather
@@ -490,7 +516,7 @@ is unknown, missing, or stale.
 ### Stage 5 — Simplify the product surface
 
 - [ ] Replace transcript-based setup detection with real Robinhood connection health.
-- [ ] Give the Trading tab context-specific onboarding and composer copy.
+- [x] Give the Trading tab context-specific onboarding and composer copy.
 - [ ] Split portfolio monitoring from order execution.
 - [ ] Establish one primary dashboard question per view.
 - [ ] Move transfer reconciliation and account exclusions into secondary workflows.
@@ -503,9 +529,10 @@ cannot confuse read-only portfolio data with an executable order surface.
 
 - [ ] Browser test: account and range changes redraw the actual SVG path.
 - [ ] Browser test: tooltip, accessibility label, headline, and plotted line agree.
-- [ ] LiveView test: switch accounts while the first detail fetch is in flight.
-- [ ] LiveView test: switch symbols/ranges while a bar fetch is in flight.
-- [ ] Persistence test: two accounts with identical last four remain isolated.
+- [x] LiveView test: switch accounts while the first detail fetch is in flight.
+- [x] LiveView test: switch symbols/ranges while a bar fetch is in flight.
+- [x] Persistence test: two accounts with identical last four fail closed rather
+      than sharing a ledger identity.
 - [ ] Security test: an unconfirmed order can never reach a write tool.
 - [ ] Security test: a confirmed payload cannot be altered or replayed.
 - [ ] Audit test: every submitted order can be reconstructed from durable records.
@@ -513,6 +540,29 @@ cannot confuse read-only portfolio data with an executable order surface.
 
 **Done when:** The dangerous paths are tested through the same browser, process,
 and persistence boundaries used in production.
+
+### Stage 7 — Deferred shader-based financial visualization
+
+Do not begin this stage until the correctness work above is stable. Shader work
+should make relationships easier to perceive; it must never become another
+source of financial calculations or hide uncertainty behind visual spectacle.
+
+- [ ] Prototype shader-driven portfolio movement, allocation, volume, or risk
+      views using the already validated server-side data model.
+- [ ] Keep all financial calculations in deterministic Elixir code; shaders
+      receive display-ready values only.
+- [ ] Preserve the existing SVG/table representation as an accessible fallback
+      and copy/export surface.
+- [ ] Respect reduced-motion preferences and provide a static mode.
+- [ ] Cap GPU work when the tab is hidden, the window is backgrounded, or the
+      visualization is outside the viewport.
+- [ ] Test color contrast and provide text/shape encodings so gain/loss,
+      buy/sell, and uncertainty are never communicated by color alone.
+- [ ] Compare comprehension against the conventional chart before promoting a
+      shader prototype into the main workflow.
+
+**Done when:** The shader view materially improves comprehension, remains
+optional, and cannot disagree with the conventional chart or accessible table.
 
 ---
 

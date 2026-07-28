@@ -27,13 +27,16 @@ defmodule BusterClaw.AgentRunner do
 
   ## Trust boundary (important)
 
-  We run `claude` with `--permission-mode bypassPermissions` so it does not stall
-  on its own permission prompts in headless mode. That is **not** what authorizes
-  the agent's actions — `BusterClaw.Commands` (the `:trusted` tier + the
-  provenance gate on outbound/irreversible commands) is the real authorization
-  boundary. The agent's own permission system only governs "may it run our
-  `./buster-claw` CLI at all"; what that CLI is allowed to *do* is enforced server
-  side.
+  Most callers run `claude` with `--permission-mode bypassPermissions` so it does
+  not stall on its own permission prompts in headless mode. That is **not** what
+  authorizes the agent's actions — `BusterClaw.Commands` (the `:trusted` tier +
+  the provenance gate on outbound/irreversible commands) is the usual
+  authorization boundary.
+
+  Callers that expose tools outside `BusterClaw.Commands` must choose a stricter
+  mode explicitly. The Trading surface, for example, uses `dontAsk` plus an
+  allowlist containing only Robinhood's read tools. An unlisted write tool is
+  denied by the agent process before the model can invoke it.
   """
 
   require Logger
@@ -72,6 +75,9 @@ defmodule BusterClaw.AgentRunner do
     * `:shell` — shell to spawn through (default `/bin/sh`).
     * `:login` — run the shell as a login shell so it sources the user's profile
       (PATH/auth). Default `false`; the Dispatcher sets it for real runs.
+    * `:permission_mode` — Claude permission mode (default `"bypassPermissions"`).
+      Use `"dontAsk"` with an explicit `--allowedTools` list for a deny-by-default
+      tool surface.
   """
   @spec run(String.t(), keyword()) :: {:ok, run_result()} | {:error, term()}
   def run(prompt, opts \\ []) when is_binary(prompt) do
@@ -163,7 +169,7 @@ defmodule BusterClaw.AgentRunner do
   end
 
   defp default_args(:claude, prompt, opts),
-    do: ["-p", prompt, "--permission-mode", "bypassPermissions"] ++ model_args(opts)
+    do: ["-p", prompt, "--permission-mode", permission_mode(opts)] ++ model_args(opts)
 
   defp default_args(:codex, prompt, _opts), do: ["exec", prompt]
   defp default_args(_other, prompt, _opts), do: [prompt]
@@ -174,6 +180,8 @@ defmodule BusterClaw.AgentRunner do
       _ -> []
     end
   end
+
+  defp permission_mode(opts), do: Keyword.get(opts, :permission_mode, "bypassPermissions")
 
   defp exec(agent, binary, args, cwd, opts, timeout) do
     start = now_ms()

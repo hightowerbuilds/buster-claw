@@ -1,9 +1,9 @@
 defmodule BusterClawWeb.JournalComponent do
   @moduledoc """
-  The minutes of the day, as an embeddable `Phoenix.LiveComponent` — the
-  homepage "Notes" sub-tab.
+  The Notes record, as an embeddable `Phoenix.LiveComponent` — the homepage
+  "Notes" sub-tab, and the single place Buster Claw activity is logged.
 
-  Left rail: the list of days that have minutes (newest first). Main pane: the
+  Left rail: the list of days that have notes (newest first). Main pane: the
   selected day rendered as markdown, with a composer underneath that appends an
   operator-marked entry to **today** — the journal is chronological, so there is
   no retro-editing surface; your item lands at the end of today's document
@@ -78,15 +78,15 @@ defmodule BusterClawWeb.JournalComponent do
   def render(assigns) do
     ~H"""
     <div class="flex min-h-0 flex-1 gap-4">
-      <%!-- Left rail: the days that have minutes, newest first. --%>
+      <%!-- Left rail: the days that have notes, newest first. --%>
       <aside class="ic-panel flex w-64 shrink-0 flex-col overflow-hidden">
         <p class="border-b-2 border-base-content/20 p-3 font-mono text-xs font-bold uppercase tracking-wide text-base-content/70">
-          Daily minutes
+          Daily notes
         </p>
 
         <ul class="min-h-0 flex-1 overflow-y-auto">
           <li :if={@days == []} class="px-3 py-4 text-center font-mono text-xs text-base-content/50">
-            No minutes yet.
+            No notes yet.
           </li>
           <li :for={day <- @days}>
             <button
@@ -114,14 +114,14 @@ defmodule BusterClawWeb.JournalComponent do
         </ul>
       </aside>
 
-      <%!-- Main pane: the day's minutes + the operator composer. --%>
+      <%!-- Main pane: the day's notes + the operator composer. --%>
       <section class="flex min-h-0 flex-1 flex-col gap-2">
         <header class="flex items-baseline justify-between gap-3">
           <h2 class="truncate font-display text-lg font-black uppercase tracking-tight">
             {@selected}
           </h2>
           <p class="shrink-0 font-mono text-[10px] uppercase text-base-content/50">
-            Agent minutes + your items
+            Agent notes + your items
           </p>
         </header>
 
@@ -138,7 +138,7 @@ defmodule BusterClawWeb.JournalComponent do
           class="ic-panel ic-scanlines flex min-h-0 flex-1 items-center justify-center p-8 text-center"
         >
           <p class="font-mono text-sm text-base-content/55">
-            No minutes for this day yet. The document starts with the first entry.
+            No notes for this day yet. The document starts with the first entry.
           </p>
         </div>
 
@@ -153,7 +153,7 @@ defmodule BusterClawWeb.JournalComponent do
               name="text"
               rows="2"
               spellcheck="true"
-              placeholder="Add your own item to today's minutes… markdown supported."
+              placeholder="Add your own item to today's notes… markdown supported."
               class="ic-panel w-full resize-none bg-transparent p-3 font-mono text-sm leading-relaxed focus:outline-none"
             ></textarea>
           </div>

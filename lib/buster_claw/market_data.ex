@@ -298,21 +298,38 @@ defmodule BusterClaw.MarketData do
   you most want on screen. Past dates are dropped rather than displayed stale.
   """
   def upcoming_earnings(%Date{} = today) do
+    case earnings_summary(today) do
+      {:ok, %{earnings: earnings}} -> earnings
+      :none -> []
+    end
+  end
+
+  @doc """
+  Upcoming earnings plus the cache state that makes an empty list meaningful.
+
+  `:none` means the sweep has never produced a readable earnings payload.
+  `{:ok, ...}` means the list is known (possibly empty) and carries its age.
+  """
+  def earnings_summary(%Date{} = today) do
     with {:ok, blob} <- cached_quotes(),
-         rows when is_list(rows) <- blob["earnings"] do
-      rows
-      |> Enum.filter(&is_map/1)
-      |> Enum.map(fn row ->
-        case Date.from_iso8601(to_string(row["date"] || "")) do
-          {:ok, date} -> %{symbol: row["symbol"], date: date, timing: row["timing"]}
-          _error -> nil
-        end
-      end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.filter(&(Date.compare(&1.date, today) != :lt))
-      |> Enum.sort_by(& &1.date, Date)
+         rows when is_list(rows) <- blob["earnings"],
+         {:ok, fetched_at, _} <- DateTime.from_iso8601(blob["fetched_at"] || "") do
+      earnings =
+        rows
+        |> Enum.filter(&is_map/1)
+        |> Enum.map(fn row ->
+          case Date.from_iso8601(to_string(row["date"] || "")) do
+            {:ok, date} -> %{symbol: row["symbol"], date: date, timing: row["timing"]}
+            _error -> nil
+          end
+        end)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.filter(&(Date.compare(&1.date, today) != :lt))
+        |> Enum.sort_by(& &1.date, Date)
+
+      {:ok, %{earnings: earnings, fetched_at: fetched_at, stale?: quotes_stale?(blob)}}
     else
-      _ -> []
+      _ -> :none
     end
   end
 

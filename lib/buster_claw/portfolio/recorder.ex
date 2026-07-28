@@ -9,9 +9,9 @@ defmodule BusterClaw.Portfolio.Recorder do
   the reading itself.
 
   Modeled on the other supervised pumps (`Notifications.Scheduler`,
-  `WalletPoller`): config-gated in `application.ex`, off in tests, crash-safe,
-  and it **arms a timer to the next moment rather than polling hot** — a daily
-  job has no business waking every minute.
+  `Orchestration.Uptime`): config-gated in `application.ex`, off in tests,
+  crash-safe, and it **arms a timer to the next moment rather than polling hot**
+  — a daily job has no business waking every minute.
 
   ## Discipline
 

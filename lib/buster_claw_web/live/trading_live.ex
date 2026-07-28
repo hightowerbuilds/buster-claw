@@ -44,7 +44,7 @@ defmodule BusterClawWeb.TradingLive do
     socket =
       socket
       |> assign(:page_title, "Trading")
-      |> assign(:agent_cli_missing, match?({:error, _}, BusterClaw.AgentRunner.detect()))
+      |> assign(:agent_cli_missing, trading_cli_missing?())
       |> assign(:chat_running, Chat.running?(Trading.conv_id()))
       |> assign(:chat_thinking, if(Chat.running?(Trading.conv_id()), do: :running, else: nil))
       |> assign(:chat_queue, Chat.queue(Trading.conv_id()))
@@ -435,25 +435,16 @@ defmodule BusterClawWeb.TradingLive do
      |> push_msg(:error, "The history fetch crashed.")}
   end
 
-  def handle_async({:symbol_bars, symbol, interval}, {:ok, result}, socket) do
-    socket = assign(socket, :symbol_bars_loading, false)
-
-    case result do
-      {:ok, rows} ->
-        BusterClaw.MarketData.store_ohlc(symbol, interval, rows)
-        {:noreply, load_symbol_bars(socket)}
-
-      {:error, reason} ->
-        {:noreply,
-         push_msg(socket, :error, "Couldn't fetch #{symbol} bars: #{bars_error(reason)}")}
-    end
+  def handle_async({:symbol_bars, symbol, interval, requested_from}, {:ok, result}, socket) do
+    handle_symbol_bars_result(symbol, interval, requested_from, result, socket)
   end
 
-  def handle_async({:symbol_bars, symbol, _interval}, {:exit, _reason}, socket) do
+  def handle_async({:symbol_bars, symbol, interval, requested_from}, {:exit, _reason}, socket) do
     {:noreply,
      socket
      |> assign(:symbol_bars_loading, false)
-     |> push_msg(:error, "The #{symbol} bar fetch crashed.")}
+     |> push_msg(:error, "The #{symbol} bar fetch crashed.")
+     |> maybe_fetch_current_symbol_after({symbol, interval, requested_from})}
   end
 
   def handle_async(:trading_costs, {:ok, results}, socket) do
@@ -484,13 +475,45 @@ defmodule BusterClawWeb.TradingLive do
   # belongs to the account that was asked for, not the one now on screen.
   def handle_async({:trading_detail, id}, {:ok, result}, socket) do
     case result do
-      {:ok, detail} -> {:noreply, store_detail(socket, id, detail)}
-      {:error, reason} -> {:noreply, assign(socket, :trading_detail, {:error, id, reason})}
+      {:ok, detail} ->
+        {:noreply,
+         socket
+         |> store_detail(id, detail)
+         |> maybe_load_current_after_detail(id)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:trading_detail, {:error, id, reason})
+         |> maybe_load_current_after_detail(id)}
     end
   end
 
   def handle_async({:trading_detail, id}, {:exit, reason}, socket) do
-    {:noreply, assign(socket, :trading_detail, {:error, id, {:exit, reason}})}
+    {:noreply,
+     socket
+     |> assign(:trading_detail, {:error, id, {:exit, reason}})
+     |> maybe_load_current_after_detail(id)}
+  end
+
+  defp handle_symbol_bars_result(symbol, interval, requested_from, result, socket) do
+    socket = assign(socket, :symbol_bars_loading, false)
+
+    case result do
+      {:ok, rows} ->
+        BusterClaw.MarketData.store_ohlc(symbol, interval, rows)
+
+        {:noreply,
+         socket
+         |> load_symbol_bars()
+         |> maybe_fetch_current_symbol_after({symbol, interval, requested_from})}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> push_msg(:error, "Couldn't fetch #{symbol} bars: #{bars_error(reason)}")
+         |> maybe_fetch_current_symbol_after({symbol, interval, requested_from})}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -545,7 +568,7 @@ defmodule BusterClawWeb.TradingLive do
     snap = last_snapshot(socket.assigns.trading_account)
     account = snap && Trading.select_account(snap, socket.assigns.trading_account_sel)
 
-    case account && Trading.last4(account) do
+    case account && Trading.account_key(account) do
       nil -> {:error, :no_account}
       key -> {:ok, key}
     end
@@ -557,9 +580,13 @@ defmodule BusterClawWeb.TradingLive do
 
   defp flow_cents(kind, amount) when kind in ["deposit", "withdrawal"] do
     case Float.parse(to_string(amount || "")) do
-      {dollars, _rest} when dollars > 0 ->
-        cents = round(dollars * 100)
-        {:ok, if(kind == "withdrawal", do: -cents, else: cents)}
+      {dollars, rest} when dollars > 0 ->
+        if String.trim(rest) == "" do
+          cents = round(dollars * 100)
+          {:ok, if(kind == "withdrawal", do: -cents, else: cents)}
+        else
+          {:error, :bad_amount}
+        end
 
       _other ->
         {:error, :bad_amount}
@@ -586,7 +613,7 @@ defmodule BusterClawWeb.TradingLive do
     socket.assigns.trading_account
     |> last_snapshot()
     |> Trading.accounts()
-    |> Enum.map(&Trading.last4/1)
+    |> Enum.map(&Trading.account_key/1)
     |> Enum.reject(&is_nil/1)
   end
 
@@ -616,6 +643,9 @@ defmodule BusterClawWeb.TradingLive do
   @spark_lookback_days 30
 
   defp load_positions(socket) do
+    earnings_summary =
+      BusterClaw.MarketData.earnings_summary(BusterClaw.MarketCalendar.today())
+
     rows =
       Portfolio.position_rows()
       |> Enum.map(&display_position/1)
@@ -625,11 +655,12 @@ defmodule BusterClawWeb.TradingLive do
     |> assign(:trading_positions, rows)
     |> assign(:trading_costs_missing, costs_missing(socket))
     |> assign(:prices_as_of, BusterClaw.MarketData.prices_as_of())
-    |> assign(
-      :trading_earnings,
-      BusterClaw.MarketData.upcoming_earnings(BusterClaw.MarketCalendar.today())
-    )
+    |> assign(:trading_earnings_summary, earnings_summary)
+    |> assign(:trading_earnings, earnings_from_summary(earnings_summary))
   end
+
+  defp earnings_from_summary({:ok, %{earnings: earnings}}), do: earnings
+  defp earnings_from_summary(:none), do: []
 
   defp display_position(row) do
     quote_info = BusterClaw.MarketData.quote_for(row.symbol)
@@ -670,8 +701,8 @@ defmodule BusterClawWeb.TradingLive do
     socket.assigns.trading_account
     |> last_snapshot()
     |> Trading.accounts()
-    |> Enum.filter(&(&1["holdings_supported"] and is_binary(Trading.last4(&1))))
-    |> Enum.map(&Trading.last4/1)
+    |> Enum.filter(&(&1["holdings_supported"] and is_binary(Trading.account_key(&1))))
+    |> Enum.map(&Trading.account_key/1)
     |> Portfolio.accounts_missing_costs()
   end
 
@@ -715,13 +746,31 @@ defmodule BusterClawWeb.TradingLive do
       true ->
         socket
         |> assign(:symbol_bars_loading, true)
-        |> start_async({:symbol_bars, symbol, interval}, fn ->
+        |> start_async({:symbol_bars, symbol, interval, from}, fn ->
           Trading.fetch_symbol_bars(symbol, from, interval)
         end)
     end
   end
 
   defp maybe_fetch_symbol_bars(socket), do: socket
+
+  defp maybe_fetch_current_symbol_after(socket, completed_request) do
+    case current_symbol_request(socket) do
+      nil -> socket
+      ^completed_request -> socket
+      _current_request -> maybe_fetch_symbol_bars(socket)
+    end
+  end
+
+  defp current_symbol_request(%{
+         assigns: %{trading_chart_view: {:symbol, symbol}, symbol_range: range}
+       }) do
+    {days, interval} = symbol_window(range)
+    from = Date.add(BusterClaw.MarketCalendar.today(), -days)
+    {symbol, interval, from}
+  end
+
+  defp current_symbol_request(_socket), do: nil
 
   defp bars_error({:robinhood, msg}), do: msg
   defp bars_error(:bad_snapshot), do: "unreadable response"
@@ -734,8 +783,8 @@ defmodule BusterClawWeb.TradingLive do
     socket.assigns.trading_account
     |> last_snapshot()
     |> Trading.accounts()
-    |> Enum.filter(&(&1["holdings_supported"] and is_binary(Trading.last4(&1))))
-    |> Enum.map(&Trading.last4/1)
+    |> Enum.filter(&(&1["holdings_supported"] and is_binary(Trading.account_key(&1))))
+    |> Enum.map(&Trading.account_key/1)
     |> Enum.reject(&(&1 in excluded))
   end
 
@@ -788,6 +837,9 @@ defmodule BusterClawWeb.TradingLive do
         # by, so say so rather than launching a run that cannot succeed.
         assign(socket, :trading_detail, {:error, account["id"], :unidentifiable_account})
 
+      is_nil(Trading.account_key(account)) ->
+        assign(socket, :trading_detail, {:error, account["id"], :ambiguous_account})
+
       true ->
         id = account["id"]
         last4 = Trading.last4(account)
@@ -803,6 +855,12 @@ defmodule BusterClawWeb.TradingLive do
       {:error, ^id, _reason} -> assign(socket, :trading_detail, nil)
       _ -> socket
     end
+  end
+
+  defp maybe_load_current_after_detail(socket, completed_id) do
+    if socket.assigns.trading_account_sel == completed_id,
+      do: socket,
+      else: maybe_load_detail(socket)
   end
 
   # Merge stage 2 into the cached snapshot so the detail survives a remount,
@@ -848,8 +906,11 @@ defmodule BusterClawWeb.TradingLive do
           class="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-0"
         >
           <div class="bc-trading-left flex min-h-0 flex-col gap-2">
-            <div class="border-2 border-warning/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-warning">
-              Real orders execute on the Robinhood agentic account — every other account is read-only
+            <div
+              id="trading-read-only-banner"
+              class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-success"
+            >
+              Read-only mode — Buster Claw cannot place, amend, or cancel Robinhood orders
             </div>
             <%!-- First-run setup: the OAuth handshake is interactive by nature
                   (a browser window), so it happens once in a terminal — the
@@ -875,6 +936,8 @@ defmodule BusterClawWeb.TradingLive do
               thinking={@chat_thinking}
               queue={@chat_queue}
               agent_cli_missing={@agent_cli_missing}
+              empty_message="Read-only portfolio assistant. Ask about balances, positions, order history, market data, or a proposed trade. Order execution is disabled."
+              placeholder="Ask about your portfolio…  (Enter to send, Shift+Enter for a new line)"
             />
           </div>
 
@@ -909,6 +972,7 @@ defmodule BusterClawWeb.TradingLive do
               symbol_mode={@symbol_mode}
               symbol_loading={@symbol_bars_loading}
               earnings={@trading_earnings}
+              earnings_summary={@trading_earnings_summary}
             />
           </div>
         </div>
@@ -921,10 +985,9 @@ defmodule BusterClawWeb.TradingLive do
   # including a stale one under a spinner or error line — with an honest as-of
   # stamp; the truth costs an agent run, so it is never silently auto-polled.
   #
-  # Every account is readable here; exactly one is writable. The chips carry
-  # that distinction (ORDERS HERE / READ-ONLY) because a panel that shows four
-  # accounts identically invites the assumption that the agent can trade in all
-  # four.
+  # Every account is readable here. Robinhood still identifies the account that
+  # is Agentic-capable, but this app disables writes at the Claude tool boundary;
+  # the chip says both facts so capability is never mistaken for authorization.
   attr :account, :any, required: true
   attr :selected_id, :string, required: true
   attr :detail, :any, required: true
@@ -946,6 +1009,7 @@ defmodule BusterClawWeb.TradingLive do
   attr :symbol_mode, :atom, required: true
   attr :symbol_loading, :boolean, required: true
   attr :earnings, :list, required: true
+  attr :earnings_summary, :any, required: true
 
   defp trading_account_card(assigns) do
     snap = last_snapshot(assigns.account)
@@ -1292,7 +1356,12 @@ defmodule BusterClawWeb.TradingLive do
           Upcoming earnings
         </p>
         <p :if={@earnings == []} class="pt-2 text-base-content/50">
-          No earnings scheduled for your holdings in the next month.
+          <%= if @earnings_summary == :none do %>
+            Earnings unavailable — the market-data sweep has not produced a readable calendar yet.
+          <% else %>
+            No earnings scheduled for your holdings in the next month.
+            <span class="text-base-content/40">{earnings_asof(@earnings_summary)}</span>
+          <% end %>
         </p>
         <div :if={@earnings != []} class="flex flex-wrap gap-x-4 gap-y-1 pt-2">
           <p :for={report <- @earnings} class="whitespace-nowrap">
@@ -1310,6 +1379,9 @@ defmodule BusterClawWeb.TradingLive do
             </span>
           </p>
         </div>
+        <p :if={@earnings != []} class="pt-1 text-base-content/40">
+          {earnings_asof(@earnings_summary)}
+        </p>
       </div>
 
       <%!-- The combined view has no single account to detail, so it lists them
@@ -1327,14 +1399,15 @@ defmodule BusterClawWeb.TradingLive do
           >
             <span class={[
               "truncate font-bold",
-              Enum.member?(@excluded, acct["last4"]) && "text-base-content/40 line-through"
+              Enum.member?(@excluded, Trading.account_key(acct)) &&
+                "text-base-content/40 line-through"
             ]}>
               {acct["label"]}
             </span>
             <span class="text-base-content/60">{acct["id"]}</span>
             <span class={[
               "text-right",
-              if(Enum.member?(@excluded, acct["last4"]),
+              if(Enum.member?(@excluded, Trading.account_key(acct)),
                 do: "text-base-content/40",
                 else: "text-base-content/80"
               )
@@ -1343,19 +1416,27 @@ defmodule BusterClawWeb.TradingLive do
             </span>
           </button>
           <button
+            :if={is_binary(Trading.account_key(acct))}
             type="button"
             phx-click="trading_toggle_excluded"
-            phx-value-id={acct["last4"]}
-            aria-pressed={Enum.member?(@excluded, acct["last4"])}
+            phx-value-id={Trading.account_key(acct)}
+            aria-pressed={Enum.member?(@excluded, Trading.account_key(acct))}
             title={
-              if Enum.member?(@excluded, acct["last4"]),
+              if Enum.member?(@excluded, Trading.account_key(acct)),
                 do: "Count this account in the total again",
                 else: "Leave this account out of the total (its own chart is unaffected)"
             }
             class="shrink-0 border-2 border-base-content/25 px-1.5 py-0.5 uppercase tracking-wide transition hover:bg-base-content/10"
           >
-            {if Enum.member?(@excluded, acct["last4"]), do: "Include", else: "Exclude"}
+            {if Enum.member?(@excluded, Trading.account_key(acct)), do: "Include", else: "Exclude"}
           </button>
+          <span
+            :if={is_nil(Trading.account_key(acct))}
+            class="shrink-0 border border-error/50 px-1.5 py-0.5 font-bold uppercase text-error"
+            title="This account shares its last four digits with another account. Detail and ledger actions are disabled to prevent cross-account data."
+          >
+            Ambiguous ID
+          </span>
         </div>
       </div>
 
@@ -1369,7 +1450,9 @@ defmodule BusterClawWeb.TradingLive do
               else: "border-base-content/30 text-base-content/60"
             )
           ]}>
-            {if @selected["agentic"], do: "Orders execute here", else: "Read-only to agent"}
+            {if @selected["agentic"],
+              do: "Agentic account · writes disabled",
+              else: "Read-only account"}
           </span>
         </div>
 
@@ -1394,7 +1477,7 @@ defmodule BusterClawWeb.TradingLive do
           <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
             Positions
           </p>
-          <%!-- Four distinct facts, four distinct lines. "Can't read it",
+          <%!-- Distinct facts get distinct lines. "Can't read it",
                 "haven't asked yet", "asked and it failed", and "there is
                 nothing to read" must never share wording — the whole reason
                 holdings load separately is that the first three are now
@@ -1402,6 +1485,10 @@ defmodule BusterClawWeb.TradingLive do
           <p :if={@detail_state == :unsupported} class="pt-2 text-base-content/50">
             Holdings unavailable — the Robinhood agent tools expose no
             positions for this account type. The value above is still real.
+          </p>
+          <p :if={@detail_state == :ambiguous} class="pt-2 font-bold text-error">
+            Holdings disabled — this account shares its last four digits with
+            another account. Buster Claw will not guess which account the broker tools mean.
           </p>
           <p :if={@detail_state == :loading} class="pt-2 text-base-content/60">
             Loading holdings…
@@ -1509,6 +1596,7 @@ defmodule BusterClawWeb.TradingLive do
   defp detail_state(nil, _detail), do: :unsupported
 
   defp detail_state(%{"holdings_supported" => false}, _detail), do: :unsupported
+  defp detail_state(%{"identity_ambiguous" => true}, _detail), do: :ambiguous
 
   defp detail_state(account, detail) do
     id = account["id"]
@@ -1532,6 +1620,7 @@ defmodule BusterClawWeb.TradingLive do
   defp detail_error({:error, {:robinhood, msg}}), do: msg
   defp detail_error({:error, :bad_snapshot}), do: "unreadable response"
   defp detail_error({:error, :unidentifiable_account}), do: "account number unavailable"
+  defp detail_error({:error, :ambiguous_account}), do: "account identity is ambiguous"
   defp detail_error({:error, {:agent_exit, status}}), do: "agent exited #{status}"
   defp detail_error({:error, :no_agent_cli}), do: "Claude Code CLI not found"
   defp detail_error(_state), do: "agent run failed"
@@ -1541,7 +1630,7 @@ defmodule BusterClawWeb.TradingLive do
   defp included_total(snap, excluded) do
     snap
     |> Trading.accounts()
-    |> Enum.reject(&(Trading.last4(&1) in excluded))
+    |> Enum.reject(&(Trading.account_key(&1) in excluded))
     |> Enum.map(& &1["value"])
     |> Enum.filter(&is_number/1)
     |> Enum.sum()
@@ -1576,7 +1665,10 @@ defmodule BusterClawWeb.TradingLive do
   defp activity_rows(accounts, excluded, nil = _selected, _detail_state) do
     eligible =
       accounts
-      |> Enum.filter(&(&1["holdings_supported"] and Trading.last4(&1) not in excluded))
+      |> Enum.filter(
+        &(&1["holdings_supported"] and is_binary(Trading.account_key(&1)) and
+            Trading.account_key(&1) not in excluded)
+      )
 
     loaded = Enum.filter(eligible, &Trading.detail_loaded?/1)
 
@@ -1625,6 +1717,13 @@ defmodule BusterClawWeb.TradingLive do
       _ -> Elixir.Calendar.strftime(date, "%a %b %-d")
     end
   end
+
+  defp earnings_asof({:ok, %{fetched_at: at, stale?: stale?}}) do
+    prefix = if stale?, do: "stale · ", else: ""
+    "#{prefix}as of #{relative_time(at)}"
+  end
+
+  defp earnings_asof(_summary), do: ""
 
   defp money_cents(cents) when is_integer(cents), do: money(cents / 100)
   defp money_cents(_cents), do: "—"
@@ -1724,5 +1823,9 @@ defmodule BusterClawWeb.TradingLive do
       seconds < 604_800 -> "#{div(seconds, 86_400)}d"
       true -> Elixir.Calendar.strftime(dt, "%b %-d")
     end
+  end
+
+  defp trading_cli_missing? do
+    not match?({:ok, {:claude, _path}}, BusterClaw.AgentRunner.detect())
   end
 end

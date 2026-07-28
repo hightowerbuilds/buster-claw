@@ -9,21 +9,15 @@
 //   * the hover text, the keyboard readout, and the screen-reader announcement
 //     are the same string, built once on the server, and cannot drift apart.
 //
-// The element carries phx-update="ignore", so the hook owns the DOM inside it
-// between renders. `updated()` re-reads the data attribute because a range
-// change replaces the whole series underneath us.
+// LiveView owns and patches the server-rendered SVG geometry. The hook owns only
+// transient interaction state (crosshair, tooltip, keyboard selection), so it
+// deliberately does NOT use phx-update="ignore". `updated()` rebinds the patched
+// elements and rereads the new series.
 const VIEWBOX_WIDTH = 720
 
 export const PortfolioChart = {
   mounted() {
-    this.svg = this.el.querySelector("svg")
-    this.crosshair = this.el.querySelector("[data-crosshair]")
-    this.dot = this.el.querySelector("[data-crosshair-dot]")
-    this.tooltip = this.el.querySelector("[data-tooltip]")
-    this.live = this.el.querySelector("[data-live]")
     this.index = null
-
-    this.readPoints()
 
     this.onMove = (e) => this.handleMove(e)
     this.onLeave = () => this.clear()
@@ -31,15 +25,15 @@ export const PortfolioChart = {
 
     this.el.addEventListener("pointermove", this.onMove)
     this.el.addEventListener("pointerleave", this.onLeave)
-    if (this.svg) {
-      this.svg.addEventListener("keydown", this.onKey)
-      this.svg.addEventListener("blur", this.onLeave)
-    }
+    this.bindElements()
+    this.readPoints()
   },
 
   updated() {
-    // A new range or a new account means new points; drop any stale selection
-    // rather than pointing at an index that no longer exists.
+    // A LiveView patch may replace SVG descendants. Rebind before reading the
+    // new points so pointer, keyboard, geometry, and accessible text stay in
+    // the same version of the chart.
+    this.bindElements()
     this.readPoints()
     this.clear()
   },
@@ -47,6 +41,24 @@ export const PortfolioChart = {
   destroyed() {
     this.el.removeEventListener("pointermove", this.onMove)
     this.el.removeEventListener("pointerleave", this.onLeave)
+    this.unbindSvg()
+  },
+
+  bindElements() {
+    this.unbindSvg()
+    this.svg = this.el.querySelector("svg")
+    this.crosshair = this.el.querySelector("[data-crosshair]")
+    this.dot = this.el.querySelector("[data-crosshair-dot]")
+    this.tooltip = this.el.querySelector("[data-tooltip]")
+    this.live = this.el.querySelector("[data-live]")
+
+    if (this.svg) {
+      this.svg.addEventListener("keydown", this.onKey)
+      this.svg.addEventListener("blur", this.onLeave)
+    }
+  },
+
+  unbindSvg() {
     if (this.svg) {
       this.svg.removeEventListener("keydown", this.onKey)
       this.svg.removeEventListener("blur", this.onLeave)

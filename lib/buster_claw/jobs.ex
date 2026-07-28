@@ -210,7 +210,8 @@ defmodule BusterClaw.Jobs do
     - Act on every queued item — they are trusted-sender requests, your mandate.
     - Do the actual work the email asks for, then report back in the reply.
     - Reply in the sender's own thread via `dispatch reply` (it threads + closes).
-    - Record what you did in the daily minutes (`./buster-claw run journal_append`).
+    - Record what you did in the Notes record (`./buster-claw run journal_append`)
+      — the homepage Notes tab, and the only activity log there is.
 
     ## Notes
     - The reply only ever goes back to the **original sender** — `dispatch reply`
@@ -248,7 +249,10 @@ defmodule BusterClaw.Jobs do
 
     - Do what the caller asked (search, fetch, save a document, add a calendar
       event, run any buster-claw command).
-    - Write the outcome into the daily minutes (`journal_append`) and/or a Library document.
+    - Write the outcome into the Notes record (`journal_append`) — always, and
+      first. If the result is a substantial artifact (a report, a research
+      summary), also `document_save` it to the Library and say so in the Notes
+      entry. The Library holds artifacts; Notes holds what happened.
     - Close the item with a note that says what you did — the note *is* the report.
     - If the caller genuinely needs a human response, `block` the item saying so.
       That surfaces it to the operator, which is the honest move when you have no

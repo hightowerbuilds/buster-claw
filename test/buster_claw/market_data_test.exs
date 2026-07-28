@@ -355,6 +355,15 @@ defmodule BusterClaw.MarketDataTest do
       assert {:ok, blob} = MarketData.cached_quotes()
       assert blob["earnings"] == []
     end
+
+    test "summary distinguishes unavailable from a confirmed empty calendar" do
+      assert MarketData.earnings_summary(~D[2026-07-28]) == :none
+
+      MarketData.store_quotes(%{quotes: [], indexes: [], earnings: []})
+
+      assert {:ok, %{earnings: [], fetched_at: %DateTime{}, stale?: false}} =
+               MarketData.earnings_summary(~D[2026-07-28])
+    end
   end
 
   describe "quotes blob" do

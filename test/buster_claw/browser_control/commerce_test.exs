@@ -1,20 +1,18 @@
 defmodule BusterClaw.BrowserControl.CommerceTest do
   @moduledoc """
-  The Phase 5 flow with stubs + a real ledger: an in-scope commerce run attaches
-  a cart as it shops, a payment page HANDS OFF (not halts) showing that cart,
-  and — only from awaiting_human with a non-empty run cart — the human's
-  confirmation captures the page and writes a Wallets transaction for exactly
-  the cart the human was shown. No payment credential ever passes through the
+  The Phase 5 flow with stubs: an in-scope commerce run attaches a cart as it
+  shops, a payment page HANDS OFF (not halts) showing that cart, and — only from
+  awaiting_human with a non-empty run cart — the human's confirmation captures
+  the page and finishes the run. No payment credential ever passes through the
   agent.
   """
   # async: false — points the global :workspace_root at a tmp captures dir.
-  use BusterClaw.DataCase, async: false
+  use ExUnit.Case, async: false
 
   alias BusterClaw.BrowserControl.{AgentMode, Commerce}
   alias BusterClaw.BrowserControl.AgentMode.Trajectory
   alias BusterClaw.BrowserControl.Commerce.Cart
   alias BusterClaw.BrowserControl.Scope
-  alias BusterClaw.Wallets
 
   # Scripted navigate: /checkout is a payment page, evil.com is off-merchant.
   defmodule StubNav do
@@ -75,11 +73,6 @@ defmodule BusterClaw.BrowserControl.CommerceTest do
     c
   end
 
-  defp wallet do
-    {:ok, w} = Wallets.create_wallet(%{name: "Household", type: "personal"})
-    w
-  end
-
   defp shop_to_handoff(pid) do
     AgentMode.start_run(pid)
     AgentMode.navigate(pid, "https://shop.com/cart")
@@ -131,23 +124,20 @@ defmodule BusterClaw.BrowserControl.CommerceTest do
     assert AgentMode.mode(pid) == :halted
   end
 
-  test "confirming after the handoff captures the page, writes the ledger entry, and finishes",
+  test "confirming after the handoff captures the page and finishes",
        %{root: root} do
     pid = run()
     {:handoff, :payment, _} = shop_to_handoff(pid)
 
-    assert {:ok, tx} = Commerce.confirm_purchase(pid, wallet(), confirmation: "ORDER-123")
+    assert {:ok, receipt} = Commerce.confirm_purchase(pid, confirmation: "ORDER-123")
 
-    assert tx.kind == "expense"
-    assert tx.amount_cents == 3497
-    assert tx.source == "browser_agent"
-    assert tx.description =~ "Printer paper"
-    assert tx.metadata["run_id"] == "buy1"
-    assert tx.metadata["confirmation"] == "ORDER-123"
-    assert tx.metadata["cart"]["total_cents"] == 3497
+    assert receipt.run_id == "buy1"
+    assert receipt.confirmation == "ORDER-123"
+    assert receipt.cart["total_cents"] == 3497
+    assert Enum.any?(receipt.cart["items"], &(&1["name"] == "Printer paper"))
 
     # The confirmation page was captured under the workspace and receipted.
-    capture = tx.metadata["confirmation_capture"]
+    capture = receipt.confirmation_capture
     assert capture == Path.join([root, "browser-control", "captures", "buy1-confirmation.png"])
     assert File.read!(capture) == "png-bytes"
 
@@ -155,24 +145,24 @@ defmodule BusterClaw.BrowserControl.CommerceTest do
     assert AgentMode.mode(pid) == :done
   end
 
-  test "a missing capture surface degrades to a receipt-less entry, never a lost one" do
+  test "a missing capture surface degrades to a receipt without an image" do
     pid = run(session_mod: NoCaptureSession)
     {:handoff, :payment, _} = shop_to_handoff(pid)
 
-    assert {:ok, tx} = Commerce.confirm_purchase(pid, wallet())
-    assert tx.amount_cents == 3497
-    assert tx.metadata["confirmation_capture"] == nil
+    assert {:ok, receipt} = Commerce.confirm_purchase(pid)
+    assert receipt.cart["total_cents"] == 3497
+    assert receipt.confirmation_capture == nil
     assert AgentMode.mode(pid) == :done
   end
 
-  test "refuses to write a ledger entry before a handoff has happened" do
+  test "refuses confirmation before a handoff has happened" do
     pid = run()
     AgentMode.start_run(pid)
     {:ok, _} = AgentMode.put_cart(pid, cart())
 
     # Still agent_working — no payment handoff yet.
     assert {:error, {:not_awaiting_human, :agent_working}} =
-             Commerce.confirm_purchase(pid, wallet())
+             Commerce.confirm_purchase(pid)
   end
 
   test "refuses when the run has no cart (nothing was shown, nothing can be billed)" do
@@ -180,14 +170,14 @@ defmodule BusterClaw.BrowserControl.CommerceTest do
     AgentMode.start_run(pid)
     AgentMode.navigate(pid, "https://shop.com/checkout")
 
-    assert {:error, :empty_cart} = Commerce.confirm_purchase(pid, wallet())
+    assert {:error, :empty_cart} = Commerce.confirm_purchase(pid)
   end
 
-  test "the written amount is exactly the cart total the human was shown" do
+  test "the receipt amount is exactly the cart total the human was shown" do
     pid = run()
     {:handoff, :payment, meta} = shop_to_handoff(pid)
 
-    {:ok, tx} = Commerce.confirm_purchase(pid, wallet())
-    assert tx.amount_cents == meta.cart.total_cents
+    {:ok, receipt} = Commerce.confirm_purchase(pid)
+    assert receipt.cart["total_cents"] == meta.cart.total_cents
   end
 end

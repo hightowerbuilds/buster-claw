@@ -25,8 +25,7 @@ defmodule BusterClaw.Commands do
     Calendar,
     Integrations,
     PolicyEngine,
-    Skills,
-    Wallets
+    Skills
   }
 
   alias BusterClaw.Commands.Catalog
@@ -428,8 +427,7 @@ defmodule BusterClaw.Commands do
 
   for {prefix, context, ctx_singular, ctx_plural} <- [
         {:event, Calendar, :event, :events},
-        {:integration, Integrations, :integration, :integrations},
-        {:wallet, Wallets, :wallet, :wallets}
+        {:integration, Integrations, :integration, :integrations}
       ] do
     # These atoms are minted at COMPILE time (the `for` runs over a hardcoded
     # literal list during module compilation), so no runtime input can reach
@@ -476,7 +474,7 @@ defmodule BusterClaw.Commands do
   defdelegate document_read(args), to: BusterClaw.Commands.Documents
   defdelegate document_save(args), to: BusterClaw.Commands.Documents
   defdelegate document_delete(args), to: BusterClaw.Commands.Documents
-  # Journal (the day's minutes)
+  # Journal (the Notes record)
   defdelegate portfolio_history(args \\ %{}), to: BusterClaw.Commands.Portfolio
   defdelegate portfolio_flow_list(args), to: BusterClaw.Commands.Portfolio
   defdelegate portfolio_flow_add(args), to: BusterClaw.Commands.Portfolio
@@ -487,16 +485,6 @@ defmodule BusterClaw.Commands do
   defdelegate integration_poll(args), to: BusterClaw.Commands.Integrations
   defdelegate integration_poll_all(args \\ %{}), to: BusterClaw.Commands.Integrations
   defdelegate integration_run_list(args), to: BusterClaw.Commands.Integrations
-  # Wallets (extras; CRUD comes from the auto-loop above)
-  defdelegate wallet_list_transactions(args), to: BusterClaw.Commands.Wallets
-  defdelegate wallet_add_transaction(args), to: BusterClaw.Commands.Wallets
-  defdelegate wallet_set_budget(args), to: BusterClaw.Commands.Wallets
-  defdelegate wallet_budget_summary(args), to: BusterClaw.Commands.Wallets
-  defdelegate wallet_feed_list(args), to: BusterClaw.Commands.Wallets
-  defdelegate wallet_feed_create(args), to: BusterClaw.Commands.Wallets
-  defdelegate wallet_feed_update(args), to: BusterClaw.Commands.Wallets
-  defdelegate wallet_feed_delete(args), to: BusterClaw.Commands.Wallets
-  defdelegate wallet_poll(args), to: BusterClaw.Commands.Wallets
   # Notify (timers, alarms, reminders)
   defdelegate notify_list(args \\ %{}), to: BusterClaw.Commands.Notify
   defdelegate notify_get(args), to: BusterClaw.Commands.Notify

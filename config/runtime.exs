@@ -150,7 +150,7 @@ if config_env() == :prod do
     # SQLite is single-writer; WAL (the adapter default) lets readers run alongside
     # the one writer, but two writers still serialize. Wait up to 5s for the write
     # lock (the adapter default is 2s) so brief contention between the app's
-    # background writers (Dispatcher, WalletPoller, chat/Sentinel audit) doesn't
+    # background writers (Dispatcher, portfolio recorder, chat/Sentinel audit) doesn't
     # surface as "Database busy".
     busy_timeout: 5_000
 

@@ -4,9 +4,9 @@ defmodule BusterClaw.Analyzer.Server do
   interval it scans recent command history for repeated sequences and files skill
   *suggestions* — it never enables anything, so this is safe to run unattended.
 
-  Modeled on `BusterClaw.WalletPoller`: self-rescheduling tick, crash-safe body,
-  `tick_now/1` for tests/manual nudge. Off in tests (`:analyzer_enabled`); the
-  Analyzer suite drives `BusterClaw.Analyzer.scan/1` directly.
+  It uses a self-rescheduling tick and crash-safe body, with `tick_now/1` for
+  tests/manual nudges. Off in tests (`:analyzer_enabled`); the Analyzer suite
+  drives `BusterClaw.Analyzer.scan/1` directly.
   """
   use GenServer
 

@@ -45,6 +45,21 @@ defmodule BusterClaw.AgentRunnerTest do
     assert out =~ "login-ok"
   end
 
+  test "a caller can replace bypassPermissions with deny-by-default dontAsk" do
+    assert {:ok, %{exit_status: 0, output: out}} =
+             AgentRunner.run("portfolio",
+               agent: :claude,
+               agent_binary: "/bin/echo",
+               cwd: @tmp,
+               permission_mode: "dontAsk",
+               extra_args: ["--allowedTools", "mcp__robinhood__get_accounts"]
+             )
+
+    assert out =~ "--permission-mode dontAsk"
+    assert out =~ "--allowedTools mcp__robinhood__get_accounts"
+    refute out =~ "bypassPermissions"
+  end
+
   test "reports a non-zero exit status without treating it as a crash" do
     assert {:ok, %{exit_status: 3}} =
              AgentRunner.run("ignored",

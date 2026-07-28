@@ -36,7 +36,6 @@ defmodule BusterClawWeb.BrowseLiveTest do
   describe "agent-workspace mode" do
     alias BusterClaw.BrowserControl.{AgentMode, Scope}
     alias BusterClaw.BrowserControl.Commerce.Cart
-    alias BusterClaw.Wallets
 
     # Scripted scope-gate: /checkout is a payment page, everything on-scope ok.
     defmodule StubNav do
@@ -100,9 +99,9 @@ defmodule BusterClawWeb.BrowseLiveTest do
       assert AgentMode.mode(pid) == :stopped
     end
 
-    test "the payment handoff shows the cart card and confirm writes the ledger", %{conn: conn} do
-      {:ok, wallet} = Wallets.create_wallet(%{name: "Household", type: "personal"})
-
+    test "the payment handoff shows the cart card and confirmation finishes the run", %{
+      conn: conn
+    } do
       pid = start_run(true)
       {:ok, cart} = Cart.add_item(Cart.new(), "Stapler", 899)
       {:ok, _} = AgentMode.put_cart(pid, cart)
@@ -119,20 +118,12 @@ defmodule BusterClawWeb.BrowseLiveTest do
 
       html =
         view
-        |> form("#agent-handoff-card form", %{
-          "wallet_id" => wallet.id,
-          "confirmation" => "ORDER-9"
-        })
+        |> form("#agent-confirm-purchase-form", %{"confirmation" => "ORDER-9"})
         |> render_submit()
 
-      assert html =~ "Purchase recorded"
+      assert html =~ "Purchase confirmed"
       assert html =~ "DONE"
       assert AgentMode.mode(pid) == :done
-
-      assert [tx | _] = Wallets.list_transactions(wallet)
-      assert tx.amount_cents == 899
-      assert tx.source == "browser_agent"
-      assert tx.metadata["confirmation"] == "ORDER-9"
     end
 
     test "take the wheel and resume round-trip from the banner", %{conn: conn} do
