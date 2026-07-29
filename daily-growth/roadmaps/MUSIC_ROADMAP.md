@@ -1,6 +1,6 @@
 # Music in Buster Claw — Roadmap V.1
 
-**Date:** 2026-07-28 · **Status:** ACTIVE — Phase 0 shipped; Phase 1 code-complete, packaged-app check outstanding ·
+**Date:** 2026-07-28 · **Status:** ACTIVE — Phases 0–2 landed (1 pending its packaged-app walk; 2 pending UI wiring) ·
 **Scope of this document:** upload music into the DataZone and play it from a new
 home tab beside Chat, Calendar, and Notes. Nothing further.
 
@@ -21,6 +21,7 @@ home tab beside Chat, Calendar, and Notes. Nothing further.
 - [Part IV — The phases](#part-iv--the-phases)
 - [Part V — Deliberately out of scope](#part-v--deliberately-out-of-scope)
 - [Part VI — Risks](#part-vi--risks)
+- [Part VII — Found along the way](#part-vii--found-along-the-way)
 
 ---
 
@@ -194,7 +195,29 @@ check in the packaged app, not just a browser tab** — per Finding 1 this is th
 one behavior that differs by webview, and per the 07-28 build blocker, "the tests
 pass" is not a claim about the artifact.
 
-### Phase 2 — Upload
+### Phase 2 — Upload — **INGEST SHIPPED 07-28** (`b5a3fbc`), UI wiring deferred to Phase 4
+
+> `Music.store/2` + `Music.safe_name/1` landed with all three acceptance
+> criteria met and 54 tests on the context. **The `allow_upload` /
+> `live_file_input` wiring did not** — this phase as written puts it "in the
+> Music tab", which is Phase 4 and does not exist yet. Every acceptance
+> criterion is a property of the ingest function, so building a throwaway host
+> for the picker would have been the wrong trade; the wiring is a few lines once
+> the tab is there.
+>
+> Two things worth carrying forward:
+>
+> - **The sanitizer had to be wider than `Sound`'s.** Sound replaces spaces, which
+>   would have turned `Miles Davis - So What.mp3` into `Miles-Davis---So-What.mp3`
+>   and destroyed the `Artist - Title` convention Phase 0 is built on. A direct
+>   interaction between two phases that only shows up when both exist.
+> - **A silent-vanishing bug, now pinned by an invariant test.** `safe_name/1`
+>   read the extension from a trimmed basename while `store/2` read it from the
+>   original; `"   .mp3"` trims to `".mp3"`, which Elixir reads as a dotfile with
+>   no extension, so an upload passed the accept check and landed as a file
+>   called `track` that `list/0` ignored. Success message, no track. The test now
+>   asserts the general rule over nine hostile names rather than trusting two
+>   functions to keep agreeing.
 
 `allow_upload` in the Music tab with the accept list and cap from Part III;
 `consume_uploaded_entries` re-checking the extension server-side; sanitized,
@@ -278,3 +301,35 @@ more will be added to this roadmap.
    surfaced, not fixed.
 5. **Disk.** The DataZone is the user's disk and music is the largest thing
    anyone will put in it. Show library size in the tab; add no quota.
+
+---
+
+## Part VII — Found along the way
+
+Things the build surfaced that were not in the plan.
+
+### `nosniff` is absent app-wide, on routes that serve workspace files — **open**
+
+Discovered in Phase 2. `X-Content-Type-Options` appears **nowhere** in the
+codebase, and every media route (`/music`, `/phone`, `/notify`, `/appearance`,
+`/shaders`, `/ws`) is intentionally pipeline-less — which also means no
+`put_secure_browser_headers` and **no CSP header** on those responses.
+
+What those routes serve is a *workspace file*: bytes a user uploaded or an agent
+wrote. Without `nosniff`, a browser may sniff a file whose name says `.mp3` and
+whose content is HTML, render it, and execute its inline script from our own
+origin — with no CSP on that response to stop it. That is the
+`window.__TAURI__` → `terminal_*` → shell chain `ContentSecurityPolicy`'s
+moduledoc exists to break, reached by a route that never gets the header.
+
+`RangeResponse` now sends `nosniff`, which covers **music and voicemail**.
+Still open, same shape, not touched because they are outside this roadmap:
+
+- `NotifySoundController` (`/notify/sound`, `/notify/sound/:name`)
+- `AppearanceController` (`/appearance/*` — user-uploaded images)
+- `ShaderController` (`/shaders/:name` — user-authored WGSL)
+- `WorkspaceFileController` (`/ws/file` — **renders workspace `.html` as-is**, so
+  this one is worth looking at first)
+
+Cheap fix, one header each. It belongs to whoever owns the security surface, not
+to the music roadmap — but it should not stay unrecorded.
