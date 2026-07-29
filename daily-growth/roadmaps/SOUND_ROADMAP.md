@@ -1,6 +1,6 @@
 # Sound in Buster Claw — Roadmap V.2
 
-**Date:** 2026-07-28 · **Status:** ACTIVE — Phases 0–2 shipped; next: Phase 3 (DTMF + boot). Open: the `order` ring call site in TradingLive; the operator audition ·
+**Date:** 2026-07-28 · **Status:** CODE-COMPLETE 07-28 — all four phases + the `order` wire shipped. Open: the operator audition (the taste gate) and the packaged-app autoplay check ·
 **Scope:** sound effects for app events — the second half of the "music and sound
 effects" ask that `MUSIC_ROADMAP.md` deliberately scoped out. Music is built;
 this is everything else that rings.
@@ -192,7 +192,15 @@ affordances, grouped A/B/C/D, each key routable to any library sound or
 "silent".
 *Acceptance:* every Part II key visible, auditioning works, "silent" sticks.
 
-### Phase 3 — DTMF + boot
+### Phase 3 — DTMF + boot — **SHIPPED 07-28** (`d024b34`) — the close
+
+> Real Q.23 pairs on pointerdown (the tone belongs to the press), the grid in a
+> bun-tested lib module because a wrong frequency is a wrong *number* to any
+> real decoder; the boot chime once per BEAM via `:persistent_term`, through
+> the normal bus gates, config-off in tests. The `order` wire also landed here
+> once the other session released `TradingLive` — every Part II key now has a
+> live caller. What remains cannot be run by a suite: the sixteen-chime
+> audition, and the packaged-app autoplay posture (Risk 2).
 
 WebAudio oscillator pairs in the keypad hook (true frequencies, ~80ms,
 envelope so no clicks); `boot` once per BEAM boot.
