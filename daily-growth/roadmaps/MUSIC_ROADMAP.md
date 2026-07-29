@@ -1,6 +1,6 @@
 # Music in Buster Claw — Roadmap V.1
 
-**Date:** 2026-07-28 · **Status:** ACTIVE — Phase 0 shipped (`9213941`) ·
+**Date:** 2026-07-28 · **Status:** ACTIVE — Phase 0 shipped; Phase 1 code-complete, packaged-app check outstanding ·
 **Scope of this document:** upload music into the DataZone and play it from a new
 home tab beside Chat, Calendar, and Notes. Nothing further.
 
@@ -163,7 +163,25 @@ only real audio files sorted; `path_for/1` refuses a name outside `list/0`,
 including `../` traversal attempts; unit tests cover empty dir, non-audio files
 present, and the traversal refusal.
 
-### Phase 1 — Byte-range streaming — *the load-bearing phase*
+### Phase 1 — Byte-range streaming — **CODE COMPLETE 07-28** (`3825a20`), acceptance **NOT** met
+
+> `RangeResponse` + `MusicController` + the `/music/track/:name` route landed
+> with 33 tests, and `TelephonyRecordingController` moved onto the same helper
+> (it had no tests at all before; the migration brought them, including the path
+> guard that was the route's whole point).
+>
+> **The packaged-app check below has not been run**, and it is the half of this
+> phase that a test suite cannot stand in for — the whole reason this phase
+> exists is a behavior that differs by webview. Risk 2 is also still open: which
+> of the six accepted formats WKWebView actually plays is unknown, and
+> `Music.accepted_extensions/0` is expected to shrink if the probe says so.
+> Phase 1 is not closable until both are walked.
+>
+> One decision worth keeping: the range spec is **not** whitespace-trimmed. That
+> first fell out of an incidental `String.trim`, a test caught the inconsistency,
+> and the strict reading won because the malformed fall-through (whole file) is
+> a safe answer while a lenient parse is an interpretation of a header nothing
+> sends.
 
 A small `BusterClawWeb.RangeResponse` helper: parse `Range`, emit `206` with
 `Content-Range` + `Accept-Ranges: bytes`, `416` on unsatisfiable, fall through to
