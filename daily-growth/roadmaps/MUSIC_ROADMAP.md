@@ -1,8 +1,8 @@
 # Music in Buster Claw — Roadmap V.1
 
-**Date:** 2026-07-28 · **Status:** SCOPED, not started · **Scope of this document:**
-upload music into the DataZone and play it from a new home tab beside Chat,
-Calendar, and Notes. Nothing further.
+**Date:** 2026-07-28 · **Status:** ACTIVE — Phase 0 shipped (`9213941`) ·
+**Scope of this document:** upload music into the DataZone and play it from a new
+home tab beside Chat, Calendar, and Notes. Nothing further.
 
 > **The headline:** most of this is already built. Buster Claw has a working
 > audio library, two audio-serving controllers, an upload flow that lands files
@@ -143,7 +143,14 @@ and this never comes up. Recorded so nobody "optimizes" into it later.
 
 Each phase is committable on its own and leaves the app working.
 
-### Phase 0 — `BusterClaw.Music`: the library and the DataZone folder
+### Phase 0 — `BusterClaw.Music`: the library and the DataZone folder — **SHIPPED 07-28** (`9213941`)
+
+> Landed as planned, 29 tests, credo clean. Two departures from
+> `Notifications.Sound` were taken and commented in place: case-insensitive
+> sort (a browsed library, not a handful of chimes) and
+> `application/octet-stream` for unknown extensions rather than a guessed audio
+> type. `total_bytes/0` and `any?/0` were added for Risk 5 and the tab's empty
+> state.
 
 Create the context: `dir/0`, `list/0`, `path_for/1`, `delete/1`, `content_type/1`,
 `accepted_extensions/0`, `ensure/0` (folder + README, best-effort, never raises —
