@@ -227,7 +227,14 @@ defmodule BusterClawWeb.Layouts do
               reminders + temperature + clock). A separate LiveView process
               (sticky), so it survives page navigation — armed notifications
               stay visible even with the homepage closed. --%>
-        <div class="ml-auto shrink-0">
+        <%!-- The music player sits beside the status widget and is sticky for
+              the same reason, plus one of its own: an <audio> element inside a
+              page (or inside the Music tab's :if) is destroyed on navigation,
+              which would stop the music every time you changed tabs. Here it
+              outlives both. --%>
+        <div class="ml-auto flex shrink-0 items-center gap-3">
+          {@socket &&
+            live_render(@socket, BusterClawWeb.MusicPlayerLive, id: "bc-music", sticky: true)}
           {@socket && live_render(@socket, BusterClawWeb.DockLive, id: "bc-dock", sticky: true)}
         </div>
       </footer>
