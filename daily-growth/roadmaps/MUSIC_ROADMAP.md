@@ -1,6 +1,6 @@
 # Music in Buster Claw — Roadmap V.1
 
-**Date:** 2026-07-28 · **Status:** ACTIVE — Phases 0–2 landed (1 pending its packaged-app walk; 2 pending UI wiring) ·
+**Date:** 2026-07-28 · **Status:** ACTIVE — Phases 0–3 landed; Phase 4 (the tab) is next. Three walks owed: packaged-app ranges, codec probe, playback-across-navigation ·
 **Scope of this document:** upload music into the DataZone and play it from a new
 home tab beside Chat, Calendar, and Notes. Nothing further.
 
@@ -229,7 +229,26 @@ lands as a safe basename inside `<workspace>/music/`; two uploads of the same
 name coexist as `song.mp3` / `song-2.mp3`; a `.pdf` renamed to `.mp3` is rejected
 by the server-side check, not only by the picker.
 
-### Phase 3 — The player (sticky dock)
+### Phase 3 — The player (sticky dock) — **SHIPPED 07-28** (`3ee0147`), browser walk pending
+
+> `Music.Player` (pure transitions + PubSub bus) and `MusicPlayerLive` (sticky in
+> the dock) landed with 43 tests. Finding 2's design held up exactly as written:
+> the player is in the dock, the tab will drive it over PubSub.
+>
+> Two bugs the unit tests caught that a browser session would have hidden for
+> weeks: `push_history/1` returned `[]` for a nil track, so stop-then-play
+> silently erased everything `previous/1` could reach; and history was unbounded
+> in a process that, being sticky, never restarts.
+>
+> The rule worth keeping: **the server decides what should play, the element
+> reports what is playing.** A refused autoplay corrects the UI rather than
+> leaving it claiming to play, and `ended` runs the same transition as `next` so
+> the two cannot drift.
+>
+> **The walk is still owed** — start a track, switch tabs, navigate to
+> `/browse`, come back. The transport logic is tested and the sticky mount is
+> the pattern `DockLive` already documents, but DOM persistence across live
+> navigation has not been watched in a real window.
 
 `MusicPlayerLive`, mounted `sticky: true` in `Layouts.app` beside `DockLive`. Owns
 the `<audio>` element, current track, queue, play/pause/next/prev/seek/volume,
