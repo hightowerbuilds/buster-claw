@@ -1105,6 +1105,9 @@ defmodule BusterClawWeb.TradingLive do
 
   defp current_symbol_request(_socket), do: nil
 
+  defp bars_error(:broker_tools_unavailable),
+    do: "Robinhood tools unavailable — run `claude mcp login robinhood`"
+
   defp bars_error({:robinhood, msg}), do: msg
   defp bars_error(:bad_snapshot), do: "unreadable response"
   defp bars_error({:timeout, _}), do: "the run timed out"
@@ -1307,14 +1310,23 @@ defmodule BusterClawWeb.TradingLive do
 
   defp order_result_heading({:ok, _id}), do: "Sent"
   defp order_result_heading({:error, {:refused, _reason}}), do: "Refused by the broker"
+  defp order_result_heading({:error, :not_sent}), do: "Not sent"
   defp order_result_heading({:error, _reason}), do: "Status unknown"
 
   defp order_result_class({:ok, _id}), do: "text-success"
   defp order_result_class({:error, {:refused, _reason}}), do: "text-warning"
+  defp order_result_class({:error, :not_sent}), do: "text-warning"
   defp order_result_class({:error, _reason}), do: "text-error"
 
   defp order_result_detail({:ok, id}), do: "Broker order id #{id}."
   defp order_result_detail({:error, {:refused, reason}}), do: reason
+
+  # `:not_sent` is a verified negative — the run made no place call at all — so
+  # unlike the unknown below it is safe to say plainly that nothing happened.
+  defp order_result_detail({:error, :not_sent}),
+    do:
+      "The order never reached Robinhood — the broker tools were not available to " <>
+        "the run. Nothing was placed. Check `claude mcp login robinhood` and try again."
 
   defp order_result_detail({:error, _reason}),
     do:
@@ -2271,6 +2283,9 @@ defmodule BusterClawWeb.TradingLive do
 
   defp detail_fetched_at(_account), do: nil
 
+  defp detail_error({:error, :broker_tools_unavailable}),
+    do: "Robinhood tools unavailable — run `claude mcp login robinhood`"
+
   defp detail_error({:error, {:robinhood, msg}}), do: msg
   defp detail_error({:error, :bad_snapshot}), do: "unreadable response"
   defp detail_error({:error, :unidentifiable_account}), do: "account number unavailable"
@@ -2542,6 +2557,11 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   defp order_when(_order), do: ""
+
+  # The 07-28 failure mode gets its own line: the run answered, it just answered
+  # without ever reaching the broker. "agent run failed" would understate it.
+  defp card_error({:error, :broker_tools_unavailable, _prev}),
+    do: "Robinhood tools unavailable — run `claude mcp login robinhood`"
 
   defp card_error({:error, {:robinhood, msg}, _prev}), do: msg
   defp card_error({:error, :bad_snapshot, _prev}), do: "unreadable snapshot"

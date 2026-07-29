@@ -32,8 +32,8 @@ defmodule BusterClaw.TradingOrder do
   is the one recovery this module will not automate.
   """
 
+  alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.AgentRunner
-  alias BusterClaw.Trading
 
   # get_accounts is here because placing needs a real account number and we
   # deliberately never persist one — the card carries last four digits, and the
@@ -243,29 +243,71 @@ defmodule BusterClaw.TradingOrder do
 
   defp run_submit(order) do
     opts = [
-      extra_args: submit_cli_args(),
+      extra_args: submit_cli_args() ++ ~w(--output-format stream-json --verbose),
       permission_mode: "dontAsk",
       timeout_ms: @submit_timeout_ms,
       login: true
     ]
 
     case AgentRunner.run(submit_prompt(order), opts) do
-      {:ok, %{exit_status: 0, output: output}} -> parse_submit_result(output)
+      {:ok, %{exit_status: 0, output: output}} -> verdict(output)
       {:ok, %{exit_status: _status}} -> {:error, :unknown}
       {:error, _reason} -> {:error, :unknown}
     end
   end
 
-  @doc "Claude arguments for the submit run: the write tool, and nothing else."
+  @doc """
+  Read a submit run's stream, distinguishing "never sent" from "outcome unknown".
+
+  The distinction is the whole point. If the stream contains no
+  `place_equity_order` tool call then nothing reached the broker, and saying so
+  is both true and safe — the operator can retry. If the call WAS made but no
+  verdict came back, the order may be live, and only then do we report the
+  unknown that forbids a retry.
+
+  Getting this backwards in either direction is expensive: a false "unknown"
+  strands an order that was never placed, and a false "nothing sent" invites a
+  second submission of an order that already exists.
+  """
+  def verdict(output) when is_binary(output) do
+    events =
+      output
+      |> String.split("\n")
+      |> Enum.flat_map(fn line ->
+        case StreamEvent.parse(line) do
+          {:ok, event} -> [event]
+          :error -> []
+        end
+      end)
+
+    if Enum.any?(events, &place_call?/1) do
+      case Enum.filter(events, &(&1.kind == :result and is_binary(&1.text))) do
+        [] -> {:error, :unknown}
+        results -> results |> List.last() |> Map.fetch!(:text) |> parse_submit_result()
+      end
+    else
+      {:error, :not_sent}
+    end
+  end
+
+  defp place_call?(%StreamEvent{kind: :tool_use, tool: "mcp__robinhood__place_equity_order"}),
+    do: true
+
+  defp place_call?(_event), do: false
+
+  @doc """
+  Claude arguments for the submit run: the write tool, and nothing else.
+
+  No `--mcp-config` here, for the reason documented on
+  `Trading.read_only_cli_args/0` — it declares a credential-free server that
+  shadows the authenticated one. The allowlist is the confinement.
+  """
   def submit_cli_args do
     [
       "--tools",
       "",
       "--allowedTools",
-      Enum.join(@submit_tools, ","),
-      "--strict-mcp-config",
-      "--mcp-config",
-      Trading.ensure_mcp_config()
+      Enum.join(@submit_tools, ",")
     ]
   end
 

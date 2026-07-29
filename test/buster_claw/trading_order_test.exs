@@ -126,8 +126,11 @@ defmodule BusterClaw.TradingOrderTest do
       assert submit =~ "mcp__robinhood__place_equity_order"
       refute chat =~ "place_equity_order"
 
-      # Built-in tools stay off and the MCP config stays scoped in both.
-      assert submit =~ "--strict-mcp-config"
+      # Built-in tools stay off in both, and neither carries an --mcp-config:
+      # it shadows the authenticated server (see the 07-28 note in Trading).
+      assert submit =~ "--tools"
+      refute submit =~ "--mcp-config"
+      refute chat =~ "--mcp-config"
       refute submit =~ "mcp__robinhood__get_equity_quotes"
     end
   end
@@ -151,6 +154,53 @@ defmodule BusterClaw.TradingOrderTest do
       assert prompt =~ "time in force: gtc"
       assert prompt =~ "IN 4821"
       assert prompt =~ "Never retry a place_equity_order call."
+    end
+  end
+
+  describe "verdict/1 — never sent vs outcome unknown" do
+    defp line(map), do: Jason.encode!(map) <> "\n"
+
+    defp place_call,
+      do:
+        line(%{
+          "type" => "assistant",
+          "message" => %{
+            "content" => [
+              %{
+                "type" => "tool_use",
+                "name" => "mcp__robinhood__place_equity_order",
+                "input" => %{}
+              }
+            ]
+          }
+        })
+
+    defp result(text), do: line(%{"type" => "result", "result" => text})
+
+    test "no place call means nothing was sent — safe to retry, and says so" do
+      stream =
+        line(%{
+          "type" => "assistant",
+          "message" => %{"content" => [%{"type" => "text", "text" => "I placed it!"}]}
+        }) <> result(~s({"order_id": "invented-123"}))
+
+      # The model claims an id. It never called the tool, so the claim is void
+      # and — crucially — this is NOT the unknown that forbids a retry.
+      assert TradingOrder.verdict(stream) == {:error, :not_sent}
+    end
+
+    test "a place call with a broker id is an acceptance" do
+      assert TradingOrder.verdict(place_call() <> result(~s({"order_id": "rh-9"}))) ==
+               {:ok, "rh-9"}
+    end
+
+    test "a place call with NO result is unknown — the order may be live" do
+      assert TradingOrder.verdict(place_call()) == {:error, :unknown}
+    end
+
+    test "a place call the broker refused keeps the reason" do
+      stream = place_call() <> result(~s({"error": "insufficient buying power"}))
+      assert TradingOrder.verdict(stream) == {:error, {:refused, "insufficient buying power"}}
     end
   end
 

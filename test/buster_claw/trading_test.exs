@@ -20,19 +20,16 @@ defmodule BusterClaw.TradingTest do
     {:ok, root: root}
   end
 
-  test "seeds the Robinhood MCP config once and never overwrites operator edits", %{root: root} do
-    path = Trading.ensure_mcp_config()
-    assert path == Path.join([root, "mcp", "robinhood.json"])
+  test "the read args carry NO mcp-config — it shadowed the authenticated server" do
+    extra = Trading.read_only_cli_args()
 
-    config = path |> File.read!() |> Jason.decode!()
-    server = config["mcpServers"]["robinhood"]
-    assert server["type"] == "http"
-    assert server["url"] == "https://agent.robinhood.com/mcp/trading"
-
-    # Operator edits win: a second call must not clobber the file.
-    File.write!(path, ~s({"mcpServers": {"robinhood": {"custom": true}}}\n))
-    assert Trading.ensure_mcp_config() == path
-    assert File.read!(path) =~ "custom"
+    # Regression guard for the 07-28 fabrication bug. `--mcp-config` declares a
+    # credential-free robinhood server that shadows the user-scoped registration
+    # the OAuth tokens are bound to, and `--strict-mcp-config` makes it the only
+    # one — so the tools load unauthenticated and the model invents data.
+    refute "--strict-mcp-config" in extra
+    refute "--mcp-config" in extra
+    refute Enum.any?(extra, &String.ends_with?(&1, "mcp/robinhood.json"))
   end
 
   test "unconfirmed or free-form turns cannot reach a Robinhood write tool" do
@@ -43,9 +40,6 @@ defmodule BusterClaw.TradingTest do
     assert "--tools" in extra
     assert "" in extra
     assert "--allowedTools" in extra
-    assert "--strict-mcp-config" in extra
-    assert "--mcp-config" in extra
-    assert Enum.any?(extra, &String.ends_with?(&1, "mcp/robinhood.json"))
 
     allowed = Enum.at(extra, Enum.find_index(extra, &(&1 == "--allowedTools")) + 1)
     allowed_tools = String.split(allowed, ",", trim: true)
@@ -111,6 +105,66 @@ defmodule BusterClaw.TradingTest do
     # A read surface must say so: this prompt runs against accounts the agent
     # is otherwise forbidden to touch.
     assert prompt =~ "Read only. Never place, amend, or cancel"
+  end
+
+  describe "verified_result/1 — the gate that a prompt could never be" do
+    # On 07-28 a run with no working Robinhood connection invented five accounts,
+    # four of which do not exist, totalling $69,322 against a real $118. The
+    # stage-1 prompt already said to emit {"error": ...} when the tools are
+    # unavailable; the model ignored it, and nothing downstream could tell. Only
+    # a tool-use event can, so that is what these assert on.
+    defp line(map), do: Jason.encode!(map) <> "\n"
+
+    defp tool_use(name),
+      do:
+        line(%{
+          "type" => "assistant",
+          "message" => %{
+            "content" => [%{"type" => "tool_use", "name" => name, "input" => %{}}]
+          }
+        })
+
+    defp result(text), do: line(%{"type" => "result", "result" => text})
+
+    test "a run backed by a real broker call returns its answer" do
+      stream =
+        tool_use("mcp__robinhood__get_accounts") <>
+          result(~s({"accounts": []}))
+
+      assert Trading.verified_result(stream) == {:ok, ~s({"accounts": []})}
+    end
+
+    test "a fabricated answer with NO tool call is refused outright" do
+      # Exactly the 07-28 shape: perfectly well-formed, entirely invented.
+      stream =
+        line(%{
+          "type" => "assistant",
+          "message" => %{"content" => [%{"type" => "text", "text" => "calling get_accounts"}]}
+        }) <>
+          result(~s({"accounts": [{"id": "801663435", "label": "Roth IRA", "value": 23650.38}]}))
+
+      assert Trading.verified_result(stream) == {:error, :broker_tools_unavailable}
+    end
+
+    test "a non-broker tool call does not satisfy the gate" do
+      stream = tool_use("Bash") <> result(~s({"accounts": []}))
+      assert Trading.verified_result(stream) == {:error, :broker_tools_unavailable}
+    end
+
+    test "a broker call with no result is not silently treated as empty" do
+      assert Trading.verified_result(tool_use("mcp__robinhood__get_portfolio")) ==
+               {:error, :no_result}
+    end
+
+    test "garbage between events is tolerated, as stderr is merged into stdout" do
+      stream =
+        "some warning from the CLI\n" <>
+          tool_use("mcp__robinhood__get_accounts") <>
+          "another stray line\n" <>
+          result(~s({"accounts": []}))
+
+      assert Trading.verified_result(stream) == {:ok, ~s({"accounts": []})}
+    end
   end
 
   describe "parse_snapshot/1" do

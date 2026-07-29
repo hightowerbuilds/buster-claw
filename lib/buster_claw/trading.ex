@@ -36,8 +36,8 @@ defmodule BusterClaw.Trading do
   strip, while the transcript still persists via `Agent.Transcript`.
   """
 
+  alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.AgentRunner
-  alias BusterClaw.Library.Artifact
   alias BusterClaw.Settings
 
   @conv_id "trading"
@@ -76,16 +76,23 @@ defmodule BusterClaw.Trading do
 
   Then output ONLY one JSON object — no prose, no code fences:
   {"accounts": [
-    {"id": "<the account number>",
-     "label": "<human name: Investing, Roth IRA, Traditional IRA, Crypto, …>",
+    {"id": "<the account_number field, exactly as get_accounts returned it>",
+     "label": "<the nickname if set, otherwise the brokerage_account_type>",
      "agentic": true or false,
      "holdings_supported": true or false,
-     "value": <total usd number>, "cash": <usd number>,
-     "buying_power": <usd number>}
+     "value": <get_portfolio total_value>,
+     "cash": <get_portfolio cash>,
+     "buying_power": <get_portfolio buying_power.buying_power>}
   ]}
 
   Rules:
   - One entry per account from get_accounts. Never merge or omit accounts.
+  - Copy each number from the named get_portfolio field. Do NOT substitute
+    equity_value for total_value, and do not add pending_deposits to anything —
+    total_value already accounts for them.
+  - Negative cash and negative buying power are REAL and common (unsettled
+    deposits). Report them as negative. Never clamp to zero, round, or tidy a
+    number into a cleaner-looking one.
   - Numbers must come from the tool results — never invent them.
   - "agentic": true ONLY if the tool data explicitly marks that account as
     enabled for agentic trading. When the data does not say, use false.
@@ -205,44 +212,43 @@ defmodule BusterClaw.Trading do
   Claude arguments that make the Robinhood surface deny-by-default.
 
   `dontAsk` is supplied as the AgentRunner permission mode. The built-in tool set
-  is disabled, the MCP config is scoped to Robinhood, and only the named `get_*`
-  tools are pre-approved. A write tool introduced by Robinhood later remains
-  denied without a code change here.
+  is disabled and only the named `get_*` tools are pre-approved. A write tool
+  introduced by Robinhood later remains denied without a code change here.
+
+  ## Why there is no `--mcp-config` here (2026-07-28)
+
+  There used to be `--strict-mcp-config --mcp-config <workspace>/mcp/robinhood.json`,
+  which scoped the run to exactly this server. It also silently broke every
+  trading read for as long as it existed.
+
+  The OAuth tokens minted by `claude mcp login robinhood` are bound to the
+  USER-SCOPED server registration. Passing a `--mcp-config` file declares a
+  *different*, credential-free server under the same name, and `--strict-mcp-config`
+  makes that the only one — so the tools loaded unauthenticated, which is to say
+  they did not load at all. Verified both ways against the operator's real
+  account: with those flags the model emitted a fabricated `<function_calls>`
+  block as plain text and never reached the broker; without them it returned real
+  account JSON immediately.
+
+  The allowlist below, not the config scoping, is what actually confines this
+  surface: `--tools ""` plus an explicit `--allowedTools` means another operator's
+  MCP server may have its definitions loaded but none of its tools can be called.
   """
   def read_only_cli_args do
     [
       "--tools",
       "",
       "--allowedTools",
-      Enum.join(@read_tools, ","),
-      "--strict-mcp-config",
-      "--mcp-config",
-      ensure_mcp_config()
+      Enum.join(@read_tools, ",")
     ]
   end
 
   @doc """
-  Seed `<workspace>/mcp/robinhood.json` and return its path. Never overwrites
-  an existing file — operator edits (extra headers, a different endpoint) win,
-  the same contract as `Jobs.seed_agent_settings/0`.
+  The Robinhood MCP endpoint. Kept for the setup instructions the tab prints —
+  the operator registers it once with `claude mcp add`, and that registration
+  (not a file we write) is what carries the OAuth tokens.
   """
-  def ensure_mcp_config do
-    path = Artifact.workspace_path(["mcp", "robinhood.json"])
-    File.mkdir_p!(Path.dirname(path))
-    unless File.exists?(path), do: File.write!(path, default_mcp_config())
-    path
-  end
-
-  defp default_mcp_config do
-    Jason.encode!(
-      %{
-        "mcpServers" => %{
-          "robinhood" => %{"type" => "http", "url" => @mcp_url, "timeout" => 60_000}
-        }
-      },
-      pretty: true
-    ) <> "\n"
-  end
+  def mcp_url, do: @mcp_url
 
   # --- Account snapshot (the tab's right-hand panel) ---
 
@@ -787,7 +793,7 @@ defmodule BusterClaw.Trading do
 
   defp run_agent(prompt, timeout_ms, parser) do
     opts = [
-      extra_args: read_only_cli_args(),
+      extra_args: read_only_cli_args() ++ ~w(--output-format stream-json --verbose),
       model: "haiku",
       permission_mode: "dontAsk",
       timeout_ms: timeout_ms,
@@ -795,9 +801,60 @@ defmodule BusterClaw.Trading do
     ]
 
     case AgentRunner.run(prompt, opts) do
-      {:ok, %{exit_status: 0, output: output}} -> parser.(output)
-      {:ok, %{exit_status: status}} -> {:error, {:agent_exit, status}}
-      {:error, reason} -> {:error, reason}
+      {:ok, %{exit_status: 0, output: output}} ->
+        with {:ok, text} <- verified_result(output), do: parser.(text)
+
+      {:ok, %{exit_status: status}} ->
+        {:error, {:agent_exit, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Take a run's final answer, but ONLY if it is backed by a real broker tool call.
+
+  This is the gate that the stage-1 prompt's "if the tools are unavailable,
+  output `{"error": ...}`" instruction could never be. On 2026-07-28 a run with
+  no working Robinhood connection did not follow that instruction: it invented
+  five accounts, four of which do not exist, with plausible balances totalling
+  $69,322 against a real $118. `parse_snapshot/1` saw well-formed JSON and cached
+  it, and nothing downstream could tell the difference.
+
+  Nothing in a model's *text* can distinguish a real number from an invented one.
+  A tool-use event can, so that is what we check: the stream must contain at
+  least one `mcp__robinhood__*` call, or the run is refused outright. A model
+  that fabricates now fails loudly instead of convincingly.
+  """
+  def verified_result(output) when is_binary(output) do
+    events =
+      output
+      |> String.split("\n")
+      |> Enum.flat_map(fn line ->
+        case StreamEvent.parse(line) do
+          {:ok, event} -> [event]
+          :error -> []
+        end
+      end)
+
+    if Enum.any?(events, &broker_tool_use?/1),
+      do: last_result_text(events),
+      else: {:error, :broker_tools_unavailable}
+  end
+
+  defp broker_tool_use?(%StreamEvent{kind: :tool_use, tool: tool}) when is_binary(tool),
+    do: String.starts_with?(tool, "mcp__robinhood__")
+
+  defp broker_tool_use?(_event), do: false
+
+  defp last_result_text(events) do
+    events
+    |> Enum.filter(&(&1.kind == :result and is_binary(&1.text)))
+    |> List.last()
+    |> case do
+      nil -> {:error, :no_result}
+      %StreamEvent{text: text} -> {:ok, text}
     end
   end
 
