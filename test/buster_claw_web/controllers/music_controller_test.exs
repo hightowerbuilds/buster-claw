@@ -38,6 +38,20 @@ defmodule BusterClawWeb.MusicControllerTest do
       assert get_resp_header(conn, "content-range") == []
     end
 
+    test "refuses to let the browser sniff a content type", %{conn: conn, root: root} do
+      # These routes carry no pipeline, so they get neither
+      # put_secure_browser_headers nor a CSP header — and what they serve is a
+      # workspace file, which a user upload or an agent can write. Without
+      # nosniff, a file named .mp3 whose content is HTML could be rendered and
+      # its inline script run from our own origin with nothing to stop it.
+      File.write!(Path.join([root, "music", "sneaky.mp3"]), "<html><script>x</script></html>")
+
+      conn = get(conn, ~p"/music/track/sneaky.mp3")
+
+      assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+      assert get_resp_header(conn, "content-type") == ["audio/mpeg"]
+    end
+
     test "does not mark a track immutable", %{conn: conn} do
       # A library name is reusable after a delete, so the bytes behind it can
       # change. Caching it forever would serve the deleted track.

@@ -64,6 +64,15 @@ defmodule BusterClawWeb.RangeResponse do
       # Advertised on every response, including the 200 fall-through: it is how
       # a client learns it may seek at all.
       |> put_resp_header("accept-ranges", "bytes")
+      # These routes carry no pipeline, so they get neither
+      # `put_secure_browser_headers` nor the CSP header. That matters because
+      # what they serve is a WORKSPACE FILE — bytes a user uploaded or an agent
+      # wrote. Without nosniff a browser may sniff a file whose name says audio
+      # and whose content is HTML, render it, and run its inline script from our
+      # own origin with no CSP to stop it — the exact `window.__TAURI__` -> shell
+      # chain ContentSecurityPolicy exists to break. One header ends the whole
+      # question: the declared type is the only type.
+      |> put_resp_header("x-content-type-options", "nosniff")
 
     case parse_range(get_req_header(conn, "range"), size) do
       :none ->
