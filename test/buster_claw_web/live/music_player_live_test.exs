@@ -112,6 +112,16 @@ defmodule BusterClawWeb.MusicPlayerLiveTest do
       assert html =~ "Artist — Two"
     end
 
+    test "an error announces the failed name so the tab can say so", %{conn: conn} do
+      Player.subscribe_state()
+      view = player(conn)
+      Player.request_play("Artist - One.mp3")
+
+      render_hook(view, "error", %{"src" => "whatever"})
+
+      assert_receive {:music_state, %Player{last_error: "Artist - One.mp3"}}
+    end
+
     test "a refused autoplay corrects the UI instead of lying about it", %{conn: conn} do
       view = player(conn)
       Player.request_play("Artist - One.mp3")

@@ -231,6 +231,73 @@ defmodule BusterClaw.Music.PlayerTest do
     end
   end
 
+  describe "fail_current/1" do
+    test "records the failure, advances, and keeps playing the queue" do
+      state =
+        Player.new()
+        |> Player.play("bad.mp3")
+        |> Player.enqueue("good.mp3")
+        |> Player.fail_current()
+
+      assert state.last_error == "bad.mp3"
+      assert state.track == "good.mp3"
+      assert state.playing?
+    end
+
+    test "an empty queue fails to a stopped player with the message, not a dead one" do
+      state = Player.new() |> Player.play("bad.mp3") |> Player.fail_current()
+
+      assert state.last_error == "bad.mp3"
+      assert state.track == nil
+      refute state.playing?
+    end
+
+    test "the failed track is unreachable via previous" do
+      # Otherwise back-arrow bounces onto the bad file and straight into
+      # fail_current again.
+      state =
+        Player.new()
+        |> Player.play("good.mp3")
+        |> Player.play("bad.mp3")
+        |> Player.fail_current()
+
+      refute "bad.mp3" in state.history
+      assert Player.previous(state).track == "good.mp3"
+    end
+
+    test "a whole shelf of bad files drains and stops rather than looping" do
+      state =
+        Player.new()
+        |> Player.play("bad1.mp3")
+        |> Player.enqueue("bad2.mp3")
+        |> Player.enqueue("bad3.mp3")
+        |> Player.fail_current()
+        |> Player.fail_current()
+        |> Player.fail_current()
+
+      assert state.track == nil
+      assert state.queue == []
+      assert state.last_error == "bad3.mp3"
+      # Nothing more to fail on: idempotent from here.
+      assert Player.fail_current(state) == state
+    end
+
+    test "the note survives the next track starting, and clears on a deliberate play" do
+      state =
+        Player.new()
+        |> Player.play("bad.mp3")
+        |> Player.enqueue("good.mp3")
+        |> Player.fail_current()
+        # The replacement track starts playing — the skip note must outlive this,
+        # or nobody ever sees it.
+        |> Player.report_playing(true)
+
+      assert state.last_error == "bad.mp3"
+
+      assert Player.play(state, "chosen.mp3").last_error == nil
+    end
+  end
+
   describe "prune/2" do
     test "drops tracks the library no longer has" do
       state =

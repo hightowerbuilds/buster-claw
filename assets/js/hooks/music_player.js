@@ -36,6 +36,35 @@ export const MusicPlayer = {
       if (this.currentSrc) this.pushEvent("error", {src: this.currentSrc})
     })
 
+    // Keyboard transport, YouTube-style: Space toggles, media keys map to
+    // their names. Guarded three ways — no track loaded means keys pass
+    // through untouched (Space must still scroll an idle page); anything
+    // typed into an input/textarea/select/contenteditable is never ours (this
+    // also covers xterm, whose hidden helper is a textarea); and key repeat is
+    // dropped so holding Space doesn't strobe play/pause.
+    this.onKey = (e) => {
+      if (!this.currentSrc || e.repeat) return
+      const t = e.target
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      ) {
+        return
+      }
+      if (e.code === "Space" || e.code === "MediaPlayPause") {
+        e.preventDefault()
+        this.pushEvent("toggle", {})
+      } else if (e.code === "MediaTrackNext") {
+        this.pushEvent("next", {})
+      } else if (e.code === "MediaTrackPrevious") {
+        this.pushEvent("previous", {})
+      }
+    }
+    window.addEventListener("keydown", this.onKey)
+
     // Position is reported on a throttle, not per frame: the server only needs
     // it for a readout, and per-frame traffic over the socket would be waste.
     this.audio.addEventListener("timeupdate", () => {
@@ -55,6 +84,7 @@ export const MusicPlayer = {
   },
 
   destroyed() {
+    window.removeEventListener("keydown", this.onKey)
     // Sticky LiveViews are not supposed to be torn down mid-session, but if one
     // is, leave silence behind rather than an orphaned element still playing.
     try {

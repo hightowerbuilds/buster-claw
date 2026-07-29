@@ -181,6 +181,85 @@ defmodule BusterClawWeb.MusicComponentTest do
     end
   end
 
+  describe "the now-playing strip (Phase 5)" do
+    test "renders the waveform container with its fallback when a track is loaded",
+         %{conn: conn, root: root} do
+      add(root, "Artist - One.mp3")
+
+      {view, _html} = open_music(conn)
+
+      Player.new() |> Player.play("Artist - One.mp3") |> Player.announce()
+      html = render(view)
+
+      assert html =~ "Now playing"
+      # The AudioClip contract: hook + canvas + CSS fallback, so no WebGPU /
+      # fetch / decode failure can leave a broken canvas.
+      assert html =~ ~s(phx-hook="AudioClip")
+      assert html =~ "data-clip-canvas"
+      assert html =~ "data-clip-fallback"
+      assert html =~ "/music/track/Artist%20-%20One.mp3"
+    end
+
+    test "the strip disappears when the player stops", %{conn: conn, root: root} do
+      add(root, "Artist - One.mp3")
+
+      {view, _html} = open_music(conn)
+
+      Player.new() |> Player.play("Artist - One.mp3") |> Player.announce()
+      assert render(view) =~ "Now playing"
+
+      Player.new() |> Player.play("Artist - One.mp3") |> Player.stop() |> Player.announce()
+      refute render(view) =~ "Now playing"
+    end
+
+    test "a remount happens on track change — the id is keyed by the track",
+         %{conn: conn, root: root} do
+      add(root, "a.mp3")
+      add(root, "b.mp3")
+
+      {view, _html} = open_music(conn)
+
+      Player.new() |> Player.play("a.mp3") |> Player.announce()
+      first = render(view)
+      Player.new() |> Player.play("b.mp3") |> Player.announce()
+      second = render(view)
+
+      # phx-update="ignore" means only a NEW id remounts the hook, and the hook
+      # decodes data-src exactly once, at mount — same id would freeze the wave
+      # on the first track forever.
+      [id_a] = Regex.run(~r/id="(music-wave-\d+)"/, first, capture: :all_but_first)
+      [id_b] = Regex.run(~r/id="(music-wave-\d+)"/, second, capture: :all_but_first)
+      assert id_a != id_b
+    end
+
+    test "names the /split limitation instead of letting it read as a bug",
+         %{conn: conn, root: root} do
+      add(root, "Artist - One.mp3")
+
+      {view, _html} = open_music(conn)
+      Player.new() |> Player.play("Artist - One.mp3") |> Player.announce()
+
+      assert render(view) =~ "Split view has no dock"
+    end
+
+    test "a skipped track is named, not silently dropped", %{conn: conn, root: root} do
+      add(root, "good.mp3")
+
+      {view, _html} = open_music(conn)
+
+      Player.new()
+      |> Player.play("bad.mp3")
+      |> Player.enqueue("good.mp3")
+      |> Player.fail_current()
+      |> Player.announce()
+
+      html = render(view)
+
+      # Apostrophes render escaped, so assert around them.
+      assert html =~ "play bad.mp3 — skipped"
+    end
+  end
+
   describe "deleting" do
     test "removes the file and refreshes the list", %{conn: conn, root: root} do
       add(root, "Artist - One.mp3")

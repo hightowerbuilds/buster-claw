@@ -53,7 +53,11 @@ defmodule BusterClaw.Music.Player do
             # Bumped on every seek so the client can tell a NEW seek request
             # from a re-render carrying the same target position.
             seek_id: 0,
-            seek_to: nil
+            seek_to: nil,
+            # The track that most recently failed to load/decode, kept so the
+            # Music tab can say "couldn't play X — skipped" instead of the queue
+            # silently shortening. Cleared the next time anything succeeds.
+            last_error: nil
 
   @type t :: %__MODULE__{}
 
@@ -78,7 +82,10 @@ defmodule BusterClaw.Music.Player do
         playing?: true,
         position: 0.0,
         duration: nil,
-        history: push_history(state)
+        history: push_history(state),
+        # A deliberate play is a fresh start; a stale failure note would read
+        # as a verdict on the track just chosen.
+        last_error: nil
     }
   end
 
@@ -184,9 +191,32 @@ defmodule BusterClaw.Music.Player do
 
   def report_duration(%__MODULE__{} = state, _seconds), do: state
 
-  @doc "The client says it is actually playing (or not) — the element is the truth."
+  @doc """
+  The client says it is actually playing (or not) — the element is the truth.
+
+  Note this does NOT clear `last_error`: after a failed track auto-advances, the
+  next one starts playing within a second, and clearing on success would erase
+  the "skipped X" note before anyone could read it. The note stays until the
+  user deliberately plays something (`play/2` clears it) — it remains true
+  either way.
+  """
   def report_playing(%__MODULE__{} = state, playing?) when is_boolean(playing?),
     do: %{state | playing?: playing?}
+
+  @doc """
+  The current track failed to load or decode. Records the name for the UI and
+  advances — the acceptance rule is *one track fails with a message, the player
+  does not die*. Advancing (not retrying) is what makes a whole shelf of bad
+  files drain instead of loop: the queue is finite and only ever shrinks.
+  """
+  def fail_current(%__MODULE__{track: nil} = state), do: state
+
+  def fail_current(%__MODULE__{track: track} = state) do
+    failed = %{advance(state) | last_error: track}
+    # The failed track must not be reachable via previous/1 — going "back" onto
+    # a file that cannot play would bounce straight into fail_current again.
+    %{failed | history: Enum.reject(failed.history, &(&1 == track))}
+  end
 
   @doc """
   Drop tracks that are no longer in the library — the user can delete a file in

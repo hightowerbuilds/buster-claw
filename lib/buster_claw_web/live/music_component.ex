@@ -253,6 +253,54 @@ defmodule BusterClawWeb.MusicComponent do
         {elem(@flash_note, 1)}
       </p>
 
+      <%!-- A track that failed to load/decode was skipped, and the queue moved
+            on — the player stayed alive, but silence about WHY reads as a bug.
+            The note persists until the next deliberate play (Player.play/2
+            clears it), because the next track starting must not erase it. --%>
+      <p :if={@player && @player.last_error} class="font-mono text-xs text-warning">
+        Couldn't play {@player.last_error} — skipped.
+      </p>
+
+      <%!-- Now playing: the clipwave waveform from the Phone rack, wholesale.
+            The id is keyed by the track name so a track change REMOUNTS the
+            hook (it decodes data-src exactly once, at mount); phx-update=ignore
+            keeps LiveView's hands off the canvas in between. AudioClip owns its
+            own failure path — no WebGPU, fetch, or decode trouble reveals the
+            CSS fallback bars, never a broken canvas. --%>
+      <div :if={@player && @player.track} class="border-2 border-base-content/20 p-2">
+        <div class="mb-1 flex items-baseline justify-between gap-2">
+          <span class="truncate font-mono text-xs uppercase tracking-wide text-base-content/60">
+            Now playing · {@player.track}
+          </span>
+          <span
+            :if={not @player.playing?}
+            class="shrink-0 font-mono text-xs text-base-content/40"
+          >
+            paused
+          </span>
+        </div>
+        <div
+          id={"music-wave-#{:erlang.phash2(@player.track)}"}
+          phx-hook="AudioClip"
+          phx-update="ignore"
+          data-src={~p"/music/track/#{@player.track}"}
+          data-color-a="#ff4d1c"
+          data-color-b="#66210e"
+          class="relative h-12 w-full"
+        >
+          <canvas data-clip-canvas class="absolute inset-0 h-full w-full"></canvas>
+          <div
+            data-clip-fallback
+            class="absolute inset-x-3 inset-y-4 hidden opacity-30"
+            style="background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 6px);"
+          >
+          </div>
+        </div>
+        <p class="mt-1 font-mono text-[10px] text-base-content/40">
+          Space pauses (when you're not typing) · Split view has no dock, so playback stops there
+        </p>
+      </div>
+
       <%!-- Empty state: an invitation, not a bug report. It names the folder
             because the library is a real directory the user can also fill from
             Finder. --%>

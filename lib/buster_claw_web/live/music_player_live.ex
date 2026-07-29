@@ -82,10 +82,12 @@ defmodule BusterClawWeb.MusicPlayerLive do
   end
 
   def handle_event("error", _params, socket) do
-    # The file went away or will not decode. Move on rather than sitting on a
-    # track that cannot play — `advance/1` terminates because the queue is
-    # finite, so a whole shelf of bad files drains instead of looping.
-    {:noreply, update_player(socket, &Player.advance/1)}
+    # The file went away or will not decode. `fail_current/1` records the name
+    # for the Music tab ("couldn't play X — skipped"), advances, and removes
+    # the bad track from history so previous/1 cannot bounce back onto it. The
+    # queue is finite and only shrinks, so a whole shelf of bad files drains
+    # instead of looping.
+    {:noreply, update_player(socket, &Player.fail_current/1)}
   end
 
   # --- Controls in the dock itself ---
