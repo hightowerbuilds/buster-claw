@@ -36,11 +36,16 @@ defmodule BusterClawWeb.NotifyLive do
       # modal — off means the app goes visually-only, it doesn't mean alarms
       # stop surfacing. Checked per fire, so flipping the switch needs no
       # remount to take effect.
+      #
+      # The is_binary gate is the "silent" routing (Phase 2) honored: a nil
+      # resolution must not reach the hook, whose no-name fallback URL would
+      # play the legacy default — ringing on the one key the operator muted.
       socket =
-        if Sound.enabled?() do
-          push_event(socket, "notify:play-sound", %{name: Sound.for_notification(notification)})
+        with true <- Sound.enabled?(),
+             name when is_binary(name) <- Sound.for_notification(notification) do
+          push_event(socket, "notify:play-sound", %{name: name})
         else
-          socket
+          _ -> socket
         end
 
       {:noreply, socket}

@@ -4,6 +4,7 @@ defmodule BusterClawWeb.NotifyLiveTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Notifications
+  alias BusterClaw.Notifications.Sound
 
   defp fire_at(offset_seconds),
     do: DateTime.add(DateTime.utc_now(), offset_seconds, :second)
@@ -56,9 +57,32 @@ defmodule BusterClawWeb.NotifyLiveTest do
     assert_push_event(view, "notify:play-sound", %{})
   end
 
+  test "a kind routed to silent does not ring — and does not fall back to the legacy URL",
+       %{conn: conn} do
+    # A nil resolution must be a SKIPPED push: the hook's no-name fallback URL
+    # plays the legacy default, which would ring on the one key just muted.
+    Sound.assign("timer", "silent")
+
+    {:ok, view, _html} = live_isolated(conn, BusterClawWeb.NotifyLive)
+
+    {:ok, _} =
+      Notifications.create_notification(%{
+        "kind" => "timer",
+        "label" => "Muted",
+        "fire_at" => fire_at(-5),
+        "status" => "pending"
+      })
+
+    Notifications.fire_due()
+    _ = :sys.get_state(view.pid)
+
+    assert render(view) =~ "Muted"
+    refute_push_event(view, "notify:play-sound", %{})
+  end
+
   test "the master switch silences the ring but never the modal", %{conn: conn} do
-    BusterClaw.Notifications.Sound.set_enabled(false)
-    on_exit(fn -> BusterClaw.Notifications.Sound.set_enabled(true) end)
+    Sound.set_enabled(false)
+    on_exit(fn -> Sound.set_enabled(true) end)
 
     {:ok, view, _html} = live_isolated(conn, BusterClawWeb.NotifyLive)
 

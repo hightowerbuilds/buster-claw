@@ -79,4 +79,75 @@ defmodule BusterClawWeb.NotifySettingsLiveTest do
     # The library row (and its preview link) is gone; the flash may still name it.
     refute render(view) =~ "/notify/sound/bongos.wav"
   end
+
+  describe "the SoundBoard keys (Phase 2)" do
+    test "every Part II routing key has a visible row", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/notify-settings")
+
+      for label <- [
+            "Agent attention",
+            "Confirm",
+            "Shift end",
+            "Blocked",
+            "Browser",
+            "Order",
+            "Comms",
+            "SMS",
+            "Security",
+            "Chimes",
+            "Boot"
+          ] do
+        assert html =~ label, "missing row/group #{label}"
+      end
+    end
+
+    test "silent sticks, and the row says so", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/notify-settings")
+
+      html =
+        view
+        |> element(~s(#assign-voicemail))
+        |> render_change(%{"key" => "voicemail", "sound" => "silent"})
+
+      assert Sound.sound_map()["voicemail"] == "silent"
+      assert html =~ "plays: silent"
+      # And the resolution honors it end-to-end, not just the display.
+      assert Sound.for_notification(%{kind: "reminder", source: "voicemail"}) == nil
+    end
+
+    test "a bundled default is routable without any workspace file", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/notify-settings")
+
+      view
+      |> element(~s(#assign-confirm))
+      |> render_change(%{"key" => "confirm", "sound" => "boot.wav"})
+
+      assert Sound.sound_map()["confirm"] == "boot.wav"
+      assert Sound.resolved("confirm") == "boot.wav"
+    end
+
+    test "Test on a board key rings the SoundBoard lane, not a fake notification",
+         %{conn: conn} do
+      BusterClaw.Notifications.SoundBoard.subscribe()
+      {:ok, view, _html} = live(conn, ~p"/notify-settings")
+
+      render_click(view, "test", %{"key" => "confirm"})
+
+      assert_receive {:sound_ring, "confirm"}
+      # No notification was fabricated for an event family that never makes one.
+      assert Notifications.upcoming(10) == []
+    end
+
+    test "the master switch toggles from the panel", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/notify-settings")
+      assert Sound.enabled?()
+
+      html = render_click(view, "toggle_sound", %{})
+      refute Sound.enabled?()
+      assert html =~ "Sound off"
+
+      render_click(view, "toggle_sound", %{})
+      assert Sound.enabled?()
+    end
+  end
 end

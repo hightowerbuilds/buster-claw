@@ -87,6 +87,14 @@ defmodule BusterClawWeb.SoundBoardLiveTest do
       refute_push_event(view, "notify:play-sound", %{})
     end
 
+    test "a key routed to silent is board-silent too", %{view: view} do
+      assert Sound.assign("confirm", "silent") == :ok
+
+      deliver(view, {:pending_action, %{id: 1}})
+
+      refute_push_event(view, "notify:play-sound", %{})
+    end
+
     test "the master switch silences the board", %{view: view} do
       Sound.set_enabled(false)
       on_exit(fn -> Sound.set_enabled(true) end)

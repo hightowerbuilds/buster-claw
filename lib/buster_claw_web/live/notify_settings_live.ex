@@ -37,7 +37,20 @@ defmodule BusterClawWeb.NotifySettingsLive do
       kind: "reminder",
       source: "voicemail"
     },
-    %{key: "manual", label: "Manual", group: :source, kind: "reminder", source: "manual"}
+    %{key: "manual", label: "Manual", group: :source, kind: "reminder", source: "manual"},
+    # SOUND_ROADMAP Part II — SoundBoard keys. Their Test goes through
+    # SoundBoard.ring/1, not a fabricated notification: these keys never fire
+    # the notification pipeline in real life, so a Test that did would pass on
+    # a path production never takes. The board's cooldown applies to Test too —
+    # that IS the pipeline, so two rapid Tests ringing once is honest.
+    %{key: "confirm", label: "Confirm", group: :agent, test: :ring},
+    %{key: "shift", label: "Shift end", group: :agent, test: :ring},
+    %{key: "blocked", label: "Blocked", group: :agent, test: :ring},
+    %{key: "web", label: "Browser", group: :agent, test: :ring},
+    %{key: "order", label: "Order", group: :agent, test: :ring},
+    %{key: "sms", label: "SMS", group: :comms, test: :ring},
+    %{key: "security", label: "Security", group: :security, test: :ring},
+    %{key: "boot", label: "Boot", group: :playful, test: :ring}
   ]
 
   @impl true
@@ -73,20 +86,17 @@ defmodule BusterClawWeb.NotifySettingsLive do
   def handle_event("test", %{"key" => key}, socket) do
     row = Enum.find(@rows, &(&1.key == key))
 
-    attrs = %{
-      kind: row.kind,
-      source: row.source,
-      label: "Notify test — #{row.label}",
-      fire_at: DateTime.utc_now() |> DateTime.truncate(:second)
-    }
-
-    case Notifications.create_notification(attrs) do
-      {:ok, _notification} ->
-        {:noreply, socket}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Couldn't fire a test notification.")}
+    if row[:test] == :ring do
+      BusterClaw.Notifications.SoundBoard.ring(key)
+      {:noreply, socket}
+    else
+      test_notification(row, socket)
     end
+  end
+
+  def handle_event("toggle_sound", _params, socket) do
+    Sound.set_enabled(not Sound.enabled?())
+    {:noreply, refresh(socket)}
   end
 
   def handle_event("delete_sound", %{"name" => name}, socket) do
@@ -128,10 +138,36 @@ defmodule BusterClawWeb.NotifySettingsLive do
     end
   end
 
+  defp test_notification(row, socket) do
+    attrs = %{
+      kind: row.kind,
+      source: row.source,
+      label: "Notify test — #{row.label}",
+      fire_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    }
+
+    case Notifications.create_notification(attrs) do
+      {:ok, _notification} ->
+        {:noreply, socket}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Couldn't fire a test notification.")}
+    end
+  end
+
   defp refresh(socket) do
     socket
     |> assign(:sounds, Sound.list())
+    |> assign(:bundled, Sound.bundled_list())
     |> assign(:map, Sound.sound_map())
+    |> assign(:sound_on, Sound.enabled?())
+    # The walk, MATERIALIZED. Calling @resolved[row.key] inline in the
+    # template read beautifully and was permanently stale: the expression's
+    # only tracked assign was `row`, and @rows never changes, so LiveView
+    # rendered every row's resolution exactly once — at mount — and never
+    # again. An assign is both single-source (still Sound's walk, not a
+    # reimplementation) and diffed like any other state.
+    |> assign(:resolved, Map.new(Sound.route_keys(), &{&1, Sound.resolved(&1)}))
   end
 
   # A collision-free destination basename: sanitized, and suffixed -2, -3, …
@@ -147,18 +183,9 @@ defmodule BusterClawWeb.NotifySettingsLive do
 
   defp display_name(file), do: file |> Path.rootname() |> String.capitalize()
 
-  # What a routing row actually resolves to right now, for honest display.
-  # Matches Sound.for_notification/1's source → kind → default → floor walk from
-  # this row's key downward.
-  defp effective(map, "default"), do: map["default"] || fallback_name()
-  defp effective(map, key), do: map[key] || map["default"] || fallback_name()
-
-  defp fallback_name do
-    case Sound.path() do
-      nil -> nil
-      path -> Path.basename(path)
-    end
-  end
+  # Row display comes from @resolved (materialized in refresh/1) — one walk,
+  # Sound's own, snapshotted into a tracked assign. See the note in refresh/1
+  # for why calling Sound.resolved/1 inline in the template cannot work.
 
   @impl true
   def render(assigns) do
@@ -182,15 +209,33 @@ defmodule BusterClawWeb.NotifySettingsLive do
                 fires a real
                 notification through the full pipeline — modal and all.
               </p>
+              <label class="mt-3 flex w-fit cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={@sound_on}
+                  phx-click="toggle_sound"
+                  class="toggle toggle-primary toggle-sm"
+                />
+                <span class="text-sm font-semibold">
+                  {if @sound_on, do: "Sound on", else: "Sound off — everything is visual-only"}
+                </span>
+              </label>
             </header>
 
             <div class="divide-y divide-base-300 px-5">
-              <div :for={group <- [:base, :kind, :source]} class="py-4">
+              <div
+                :for={group <- [:base, :kind, :source, :agent, :comms, :security, :playful]}
+                class="py-4"
+              >
                 <p class="ic-eyebrow mb-2">
                   {case group do
                     :base -> "Default"
                     :kind -> "By kind"
                     :source -> "By source"
+                    :agent -> "Agent attention"
+                    :comms -> "Comms"
+                    :security -> "Security"
+                    :playful -> "Chimes"
                   end}
                 </p>
                 <div class="space-y-2">
@@ -212,6 +257,9 @@ defmodule BusterClawWeb.NotifySettingsLive do
                             do: "Auto (notify.* or first file)",
                             else: "— inherit —"}
                         </option>
+                        <option value="silent" selected={@map[row.key] == "silent"}>
+                          Silent
+                        </option>
                         <option
                           :for={sound <- @sounds}
                           value={sound}
@@ -219,20 +267,27 @@ defmodule BusterClawWeb.NotifySettingsLive do
                         >
                           {display_name(sound)}
                         </option>
+                        <option
+                          :for={sound <- @bundled -- @sounds}
+                          value={sound}
+                          selected={@map[row.key] == sound}
+                        >
+                          Built-in: {display_name(sound)}
+                        </option>
                       </select>
                     </form>
 
                     <span class="text-xs text-base-content/50">
-                      {case effective(@map, row.key) do
+                      {case @resolved[row.key] do
                         nil -> "plays: silent"
                         name -> "plays: #{display_name(name)}"
                       end}
                     </span>
 
                     <button
-                      :if={effective(@map, row.key)}
+                      :if={@resolved[row.key]}
                       type="button"
-                      data-preview-url={~p"/notify/sound/#{effective(@map, row.key)}"}
+                      data-preview-url={~p"/notify/sound/#{@resolved[row.key]}"}
                       class="btn btn-ghost btn-xs"
                       aria-label={"Preview the #{row.label} sound"}
                     >

@@ -196,6 +196,51 @@ defmodule BusterClaw.Notifications.SoundTest do
     end
   end
 
+  describe "silent routing (Phase 2)" do
+    defp fired3(kind, source), do: %{kind: kind, source: source}
+
+    test "silent on a key resolves to nothing, past every fallback layer", %{root: root} do
+      # Even with a workspace file AND a bundled default available, silent wins.
+      File.write!(sound(root, "notify.wav"), "x")
+
+      assert Sound.assign("voicemail", "silent") == :ok
+      assert Sound.sound_map()["voicemail"] == "silent"
+      assert Sound.for_notification(fired3("reminder", "voicemail")) == nil
+    end
+
+    test "silent on a SOURCE does not fall through to the kind's sound", %{root: root} do
+      # "Mute voicemails" must not ring the timer chime — silent is a
+      # definitive answer, not an inherit.
+      File.write!(sound(root, "bongos.wav"), "x")
+      assert Sound.assign("timer", "bongos.wav") == :ok
+      assert Sound.assign("voicemail", "silent") == :ok
+
+      assert Sound.for_notification(fired3("timer", "voicemail")) == nil
+      # The kind's own routing still works for other sources.
+      assert Sound.for_notification(fired3("timer", "manual")) == "bongos.wav"
+    end
+
+    test "resolved/1 reports silent as nil for the settings display" do
+      assert Sound.assign("security", "silent") == :ok
+      assert Sound.resolved("security") == nil
+    end
+
+    test "clearing a silent entry restores inheritance down to bundled" do
+      assert Sound.assign("confirm", "silent") == :ok
+      assert Sound.resolved("confirm") == nil
+
+      assert Sound.assign("confirm", "") == :ok
+      assert Sound.resolved("confirm") == "confirm.wav"
+    end
+
+    test "a bundled name is routable with no workspace copy" do
+      assert Sound.assign("confirm", "boot.wav") == :ok
+      assert Sound.resolved("confirm") == "boot.wav"
+      # And survives the sound_map validity filter on read.
+      assert Sound.sound_map()["confirm"] == "boot.wav"
+    end
+  end
+
   describe "the master switch" do
     test "defaults ON, flips OFF and back, and re-enabling deletes the setting" do
       assert Sound.enabled?()

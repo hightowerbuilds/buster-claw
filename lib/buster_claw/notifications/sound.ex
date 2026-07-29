@@ -36,6 +36,9 @@ defmodule BusterClaw.Notifications.Sound do
 
   @map_key "notify_sound_map"
   @enabled_key "sound_enabled"
+  # Stored in the routing map to mean "this key plays nothing, on purpose".
+  # Not a filename on either layer, so it can never collide with a real sound.
+  @silent "silent"
   # Routing keys the map accepts: sources outrank kinds; "default" is the floor.
   # The second row is SOUND_ROADMAP Part II — group A agent-attention (confirm/
   # order/shift/blocked/web), group B arrivals (sms; email/voicemail predate it),
@@ -176,12 +179,19 @@ defmodule BusterClaw.Notifications.Sound do
   sound file no longer exists are dropped on read.
   """
   def sound_map do
-    sounds = list()
+    # A routing value may be a workspace sound, a bundled default (routing
+    # "confirm" to the built-in "boot.wav" is legitimate), or the "silent"
+    # sentinel (Phase 2): the explicit request for nothing, which the
+    # resolution walk treats as a definitive stop rather than an inherit.
+    valid = MapSet.new(list() ++ bundled_list() ++ [@silent])
 
     Settings.get(@map_key)
     |> decode_map()
-    |> Map.filter(fn {key, value} -> key in @route_keys and value in sounds end)
+    |> Map.filter(fn {key, value} -> key in @route_keys and value in valid end)
   end
+
+  @doc "The routing value that means \"nothing, on purpose\"."
+  def silent, do: @silent
 
   @doc """
   Route `key` (a source, kind, or `"default"`) to a library sound. `nil` or
@@ -192,7 +202,7 @@ defmodule BusterClaw.Notifications.Sound do
       name in [nil, ""] ->
         persist_map(Map.delete(sound_map(), key))
 
-      name in list() ->
+      name == @silent or name in list() or name in bundled_list() ->
         persist_map(Map.put(sound_map(), key, name))
 
       true ->
@@ -212,18 +222,31 @@ defmodule BusterClaw.Notifications.Sound do
   def for_notification(%{source: source, kind: kind}) do
     map = sound_map()
 
-    map[source] || map[kind] || map["default"] || default_name() ||
-      bundled_default(source) || bundled_default(kind)
+    # "silent" anywhere in the routed walk is a definitive answer, not an
+    # inherit: routing a SOURCE to silent must not fall through to its kind's
+    # sound, or "mute voicemails" would still ring on the timer chime.
+    case map[source] || map[kind] || map["default"] do
+      @silent -> nil
+      nil -> default_name() || bundled_default(source) || bundled_default(kind)
+      name -> name
+    end
   end
 
   @doc "The sound name a routing key currently resolves to, walking inheritance."
   def resolved(key) when key in @route_keys do
     map = sound_map()
 
-    cond do
-      map[key] -> map[key]
-      key != "default" and map["default"] -> map["default"]
-      true -> default_name() || bundled_default(key)
+    routed =
+      cond do
+        map[key] -> map[key]
+        key != "default" -> map["default"]
+        true -> nil
+      end
+
+    case routed do
+      @silent -> nil
+      nil -> default_name() || bundled_default(key)
+      name -> name
     end
   end
 
