@@ -87,6 +87,9 @@ defmodule BusterClaw.Application do
         # Create <workspace>/sounds/ + README so the notification chime is
         # discoverable (operator drops an audio file in; best-effort).
         BusterClaw.Notifications.Sound.ensure()
+        # Create <workspace>/music/ + README so the music library is reachable
+        # from the filesystem, not only from the Music tab (best-effort).
+        BusterClaw.Music.ensure()
         # Create <workspace>/journal/ so the Home "Notes" record has a home on disk.
         BusterClaw.Journal.ensure()
         ok
