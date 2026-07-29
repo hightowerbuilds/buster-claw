@@ -1,6 +1,6 @@
 # Sound in Buster Claw — Roadmap V.2
 
-**Date:** 2026-07-28 · **Status:** ACTIVE — Phases 0–1 shipped; next: Phase 2 (routing UI). Open: the `order` ring call site in TradingLive; the operator audition ·
+**Date:** 2026-07-28 · **Status:** ACTIVE — Phases 0–2 shipped; next: Phase 3 (DTMF + boot). Open: the `order` ring call site in TradingLive; the operator audition ·
 **Scope:** sound effects for app events — the second half of the "music and sound
 effects" ask that `MUSIC_ROADMAP.md` deliberately scoped out. Music is built;
 this is everything else that rings.
@@ -168,7 +168,24 @@ test. The `order` key wired directly from `TradingLive`.
 `:warning` security event → provably no sound; rings while music plays; rings
 from `/browse`.
 
-### Phase 2 — Routing UI
+### Phase 2 — Routing UI — **SHIPPED 07-28** (`cdff6f9`)
+
+> All three acceptance criteria pinned: every Part II key renders in its
+> roadmap group, auditioning works through the two-layer route, and "silent"
+> sticks — as a *definitive* answer in the walk, stopping every fallback layer
+> including bundled, with `NotifyLive` skipping the push entirely (the hook's
+> no-name fallback would otherwise ring the legacy default on the one key just
+> muted). Bundled built-ins are routable targets; Test on a board key rings the
+> real `SoundBoard` lane, cooldown included, not a fabricated notification.
+>
+> **Two lessons paid for here, recorded for reuse:** (1) a template expression
+> calling `Sound.resolved(key)` inline was *permanently stale* — its only
+> tracked assign was `row`, which never changes, so LiveView rendered each
+> row's resolution exactly once, at mount. The fix materializes the walk into
+> a `@resolved` assign: single-source AND diffable. (2) a `MIX_ENV=test mix
+> run -e` diagnostic probe runs with NO sandbox and committed writes straight
+> into `buster_claw_test.db`, making unrelated tests fail on state nothing in
+> the suite wrote. Probe test databases through actual tests.
 
 Settings → Notify grows the new keys with the existing assign/preview
 affordances, grouped A/B/C/D, each key routable to any library sound or
@@ -184,7 +201,19 @@ boot chime does not re-fire on navigation or reconnect.
 
 ---
 
-## Part V — Risks
+## Part V — Docketed next (operator, 07-28)
+
+**Audio editor with a CLI** — splice edits out of recordings (voicemails, and
+anything else in the workspace) and apply the cuts as sound effects in the
+library. **Plan first, then build** — the roadmap gets written when the sound
+work above closes, absorbing whatever the audition teaches. Natural seams
+already in place: recordings live under the Library root with a serving route,
+the SFX library is `<workspace>/sounds/` with allowlist resolution, `SoundGen`
+proves we can write WAVs, and the command surface is the CLI front door.
+
+---
+
+## Part VI — Risks
 
 1. **Sound fatigue is the product risk.** Mitigations are structural: cooldowns,
    the Never list, per-key silence, one master switch. If any default proves
