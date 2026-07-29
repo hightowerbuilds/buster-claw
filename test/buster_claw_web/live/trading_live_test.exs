@@ -5,6 +5,9 @@ defmodule BusterClawWeb.TradingLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias BusterClaw.Agent.Conversations
+  alias BusterClaw.Agent.Transcript
+
   setup do
     root = Path.join(System.tmp_dir!(), "bc_trading_live_#{System.unique_integer([:positive])}")
     File.mkdir_p!(Path.join(root, "memory"))
@@ -23,6 +26,19 @@ defmodule BusterClawWeb.TradingLiveTest do
     prev_fetcher = Application.get_env(:buster_claw, :trading_snapshot_fetcher)
     prev_detail = Application.get_env(:buster_claw, :trading_detail_fetcher)
 
+    # Without this the Research panel makes three real HTTP calls (SEC + Finnhub)
+    # from a test. The real fetch path is covered in BusterClaw.ResearchTest.
+    prev_research = Application.get_env(:buster_claw, :research_loader)
+
+    Application.put_env(:buster_claw, :research_loader, fn symbol ->
+      %{
+        symbol: symbol,
+        quote: BusterClaw.DataState.unavailable(:not_configured, source: :finnhub),
+        fundamentals: BusterClaw.DataState.unavailable({:unknown_symbol, symbol}, source: :edgar),
+        filings: BusterClaw.DataState.unavailable({:unknown_symbol, symbol}, source: :edgar)
+      }
+    end)
+
     Application.put_env(:buster_claw, :trading_snapshot_fetcher, fn ->
       {:error, {:robinhood, "disabled in test"}}
     end)
@@ -36,6 +52,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       Application.put_env(:buster_claw, :agent_cli, prev_cli)
       Application.put_env(:buster_claw, :trading_snapshot_fetcher, prev_fetcher)
       Application.put_env(:buster_claw, :trading_detail_fetcher, prev_detail)
+      Application.put_env(:buster_claw, :research_loader, prev_research)
       File.rm_rf(root)
     end)
 
@@ -175,6 +192,107 @@ defmodule BusterClawWeb.TradingLiveTest do
       refute render(view) =~ "trading-order-confirm"
     end
 
+    test "the page opens on a pinned Robinhood tab that adopts the old transcript", %{conn: conn} do
+      # The conversation was DB-less before the tab strip existed, so its history
+      # lives under the "trading" conv_id. Seeding that exact id is what stops
+      # the strip from orphaning every message written before today.
+      Transcript.record("trading", :assistant, "Older reading")
+
+      {:ok, view, html} = live(conn, ~p"/trading")
+
+      assert html =~ "Older reading"
+      assert has_element?(view, ~s(#trading-tab-trading), "Robinhood")
+      assert html =~ "trading-read-only-banner"
+      # A Trading tab must never leak into Home's chat strip.
+      refute Enum.any?(Conversations.list(), &(&1.id == "trading"))
+    end
+
+    test "a Research tab has its own chat, its own panel, and no broker surface",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      render_click(view, "trading_new_tab", %{"kind" => "research"})
+      html = render(view)
+
+      # The banner states the stronger fact: absent, not restricted.
+      assert html =~ "trading-research-banner"
+      assert html =~ "cannot see your accounts"
+      assert has_element?(view, "#trading-research-card")
+      # The broker dashboard and its order card are not on this tab at all.
+      refute has_element?(view, "#trading-account-card")
+      refute html =~ "trading-read-only-banner"
+
+      # Two tabs now, and the new one is a distinct conversation.
+      tabs = Conversations.list_kinds(["robinhood", "research"])
+      assert length(tabs) == 2
+      assert Enum.any?(tabs, &(&1.kind == "research"))
+    end
+
+    test "switching tabs swaps the panel and never carries a proposal across",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      propose(
+        view,
+        ~s({"side":"buy","symbol":"AAPL","quantity":2,"order_type":"market",) <>
+          ~s("time_in_force":"day","account_last4":"6587"})
+      )
+
+      assert render(view) =~ "trading-order-confirm"
+
+      render_click(view, "trading_new_tab", %{"kind" => "research"})
+
+      # A BUY card floating above a different conversation's transcript would be
+      # the worst possible carry-over on this surface.
+      refute render(view) =~ "trading-order-confirm"
+      assert has_element?(view, "#trading-research-card")
+
+      render_click(view, "trading_select_tab", %{"id" => "trading"})
+      assert has_element?(view, "#trading-account-card")
+      refute has_element?(view, "#trading-research-card")
+    end
+
+    test "the research panel renders app-fetched figures, and says when it cannot",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "research"})
+
+      # No symbol chosen: an instruction, never zeros.
+      html = render(view)
+      assert html =~ "Search a ticker above"
+      refute html =~ "$0.00"
+
+      # A symbol EDGAR cannot resolve is named, not blanked.
+      html = render_click(view, "research_open", %{"symbol" => "NOTAREALTICKER"})
+      assert html =~ "NOTAREALTICKER"
+      assert html =~ "no company matching"
+    end
+
+    test "closing the last tab leaves a usable page rather than an empty strip",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      render_click(view, "trading_close_tab", %{"id" => "trading"})
+      html = render(view)
+
+      # The page IS the tab strip; an empty one has nothing to render into.
+      assert html =~ "trading-read-only-banner"
+      assert [_one] = Conversations.list_kinds(["robinhood", "research"])
+    end
+
+    test "a forged tab id cannot select or close anything", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      render_click(view, "trading_select_tab", %{"id" => "not-a-tab"})
+      render_click(view, "trading_close_tab", %{"id" => "not-a-tab"})
+      render_click(view, "trading_new_tab", %{"kind" => "sudo"})
+
+      assert [%{id: "trading"}] =
+               Conversations.list_kinds(["robinhood", "research"])
+
+      assert has_element?(view, "#trading-account-card")
+    end
+
     test "a broadcast message renders live, and the transcript survives a remount",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")
@@ -188,7 +306,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert render(view) =~ "AAPL $210.11"
 
       # The durable transcript is what a fresh mount reads back.
-      BusterClaw.Agent.Transcript.record("trading", :assistant, "Filled 1 VOO")
+      Transcript.record("trading", :assistant, "Filled 1 VOO")
       {:ok, _view2, html} = live(conn, ~p"/trading")
       assert html =~ "Filled 1 VOO"
     end

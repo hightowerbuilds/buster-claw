@@ -86,6 +86,15 @@ defmodule BusterClaw.Research do
   them being unavailable must not blank the other two.
   """
   def load(symbol, opts \\ []) when is_binary(symbol) do
+    # The same seam the Trading fetchers use: without it a LiveView test of the
+    # panel makes three real HTTP calls to the SEC and Finnhub.
+    case Application.get_env(:buster_claw, :research_loader) do
+      fun when is_function(fun, 1) -> fun.(normalize(symbol))
+      _default -> fetch(symbol, opts)
+    end
+  end
+
+  defp fetch(symbol, opts) do
     symbol = normalize(symbol)
 
     %{

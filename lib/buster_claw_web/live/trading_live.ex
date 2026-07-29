@@ -25,9 +25,11 @@ defmodule BusterClawWeb.TradingLive do
   require Logger
 
   alias BusterClaw.Agent.Chat
+  alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
   alias BusterClaw.DataState
   alias BusterClaw.Portfolio
+  alias BusterClaw.Research
   alias BusterClaw.Trading
 
   # The combined-total chip. A sentinel rather than nil so the selection is
@@ -50,15 +52,28 @@ defmodule BusterClawWeb.TradingLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Chat.subscribe(Trading.conv_id())
+    # Every open tab is subscribed, not just the active one: a run keeps going
+    # when you switch away, and its tab has to be able to show an unread dot.
+    tabs = Trading.tabs()
+    active = hd(tabs)
+    if connected?(socket), do: Enum.each(tabs, &Chat.subscribe(&1.id))
 
     socket =
       socket
       |> assign(:page_title, "Trading")
       |> assign(:agent_cli_missing, trading_cli_missing?())
-      |> assign(:chat_running, Chat.running?(Trading.conv_id()))
-      |> assign(:chat_thinking, if(Chat.running?(Trading.conv_id()), do: :running, else: nil))
-      |> assign(:chat_queue, Chat.queue(Trading.conv_id()))
+      |> assign(:tabs, Enum.map(tabs, &to_tab/1))
+      |> assign(:active_tab, active.id)
+      |> assign(:active_kind, active.kind)
+      |> assign(:new_tab_open, false)
+      # Research panel state per conversation, so switching tabs doesn't lose
+      # the symbol a tab was looking at.
+      |> assign(:research, %{})
+      |> assign(:research_query, "")
+      |> assign(:research_matches, [])
+      |> assign(:chat_running, Chat.running?(active.id))
+      |> assign(:chat_thinking, if(Chat.running?(active.id), do: :running, else: nil))
+      |> assign(:chat_queue, Chat.queue(active.id))
       # Accounts panel: nil | {:loading, prev} | {:ok, snap} |
       # {:error, reason, prev} — prev = last good snapshot (or nil), kept visible
       # under the spinner/error line instead of blanking real data.
@@ -125,7 +140,7 @@ defmodule BusterClawWeb.TradingLive do
 
   def handle_event("cancel_queued", %{"id" => id}, socket) do
     case Integer.parse(id) do
-      {qid, ""} -> Chat.remove_queued(Trading.conv_id(), qid)
+      {qid, ""} -> Chat.remove_queued(socket.assigns.active_tab, qid)
       _ -> :ok
     end
 
@@ -133,8 +148,68 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   def handle_event("cut_run", _params, socket) do
-    Chat.interrupt(Trading.conv_id())
+    Chat.interrupt(socket.assigns.active_tab)
     {:noreply, push_event(socket, "bc:stop_speak", %{})}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Tabs — each one a typed conversation
+  # ---------------------------------------------------------------------------
+
+  def handle_event("trading_select_tab", %{"id" => id}, socket) do
+    if known_tab?(socket, id), do: {:noreply, activate_tab(socket, id)}, else: {:noreply, socket}
+  end
+
+  def handle_event("trading_new_tab_menu", _params, socket) do
+    {:noreply, assign(socket, :new_tab_open, not socket.assigns.new_tab_open)}
+  end
+
+  def handle_event("trading_new_tab", %{"kind" => kind}, socket)
+      when kind in ["robinhood", "research"] do
+    {:ok, conv} = Conversations.create(%{title: Trading.kind_label(kind), kind: kind})
+    if connected?(socket), do: Chat.subscribe(conv.id)
+
+    {:noreply,
+     socket
+     |> assign(:tabs, socket.assigns.tabs ++ [to_tab(conv)])
+     |> assign(:new_tab_open, false)
+     |> activate_tab(conv.id)}
+  end
+
+  def handle_event("trading_new_tab", _params, socket),
+    do: {:noreply, assign(socket, :new_tab_open, false)}
+
+  def handle_event("trading_close_tab", %{"id" => id}, socket) do
+    if known_tab?(socket, id), do: {:noreply, close_tab(socket, id)}, else: {:noreply, socket}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Research panel
+  # ---------------------------------------------------------------------------
+
+  def handle_event("research_search", %{"query" => query}, socket) do
+    {:noreply,
+     socket
+     |> assign(:research_query, query)
+     |> assign(:research_matches, Research.search(query))}
+  end
+
+  def handle_event("research_open", %{"symbol" => symbol}, socket) do
+    # Loaded synchronously: three small HTTP GETs against free endpoints, not an
+    # agent run. There is no token cost to defer and no model to wait for.
+    {:noreply,
+     socket
+     |> put_research(Research.load(symbol))
+     |> assign(:research_query, "")
+     |> assign(:research_matches, [])}
+  end
+
+  def handle_event("research_clear", _params, socket) do
+    {:noreply,
+     socket
+     |> put_research(Research.blank())
+     |> assign(:research_query, "")
+     |> assign(:research_matches, [])}
   end
 
   # ---------------------------------------------------------------------------
@@ -356,11 +431,17 @@ defmodule BusterClawWeb.TradingLive do
   # Chat stream (from the conversation's PubSub broadcasts)
   # ---------------------------------------------------------------------------
 
+  # Broadcasts arrive from every open tab, not only the visible one. The active
+  # tab's events are applied; a background tab's only get far enough to raise its
+  # unread dot, because rendering another conversation's messages into the
+  # transcript on screen would be worse than missing them.
   @impl true
   def handle_info({:agent_chat, conv_id, payload}, socket) do
-    if conv_id == Trading.conv_id(),
-      do: {:noreply, apply_chat(socket, payload)},
-      else: {:noreply, socket}
+    cond do
+      conv_id == socket.assigns.active_tab -> {:noreply, apply_chat(socket, payload)}
+      known_tab?(socket, conv_id) -> {:noreply, note_background(socket, conv_id, payload)}
+      true -> {:noreply, socket}
+    end
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -418,7 +499,7 @@ defmodule BusterClawWeb.TradingLive do
   defp maybe_speak(socket, _role, _text), do: socket
 
   defp dispatch_chat(socket, text) do
-    conv_id = Trading.conv_id()
+    conv_id = socket.assigns.active_tab
 
     # Trading requires the Claude CLI specifically: the MCP flags in
     # Trading.chat_opts/0 are Claude's, and codex would choke on them.
@@ -474,9 +555,88 @@ defmodule BusterClawWeb.TradingLive do
   # Restore the transcript from the conversation's persisted history. Unlike the
   # Home chat there is no SVG extraction: the trading agent quotes numbers, and
   # a sketchpad here would be a second surface to keep honest for no benefit.
+  # --- Tab helpers ---
+
+  defp to_tab(conv),
+    do: %{id: conv.id, title: conv.title, kind: conv.kind, running: false, unread: false}
+
+  defp known_tab?(socket, id), do: Enum.any?(socket.assigns.tabs, &(&1.id == id))
+
+  defp active_tab_kind(socket) do
+    case Enum.find(socket.assigns.tabs, &(&1.id == socket.assigns.active_tab)) do
+      nil -> "robinhood"
+      tab -> tab.kind
+    end
+  end
+
+  defp activate_tab(socket, id) do
+    Conversations.touch(id)
+
+    socket
+    |> assign(:active_tab, id)
+    |> assign(:chat_running, Chat.running?(id))
+    |> assign(:chat_thinking, if(Chat.running?(id), do: :running, else: nil))
+    |> assign(:chat_queue, Chat.queue(id))
+    # A proposal belongs to the conversation that made it; carrying it across a
+    # tab switch would put a BUY card above someone else's transcript.
+    |> assign(:pending_order, nil)
+    |> update_tab(id, &%{&1 | unread: false})
+    |> then(&assign(&1, :active_kind, active_tab_kind(&1)))
+    |> load_chat_history()
+  end
+
+  defp update_tab(socket, id, fun) do
+    tabs = Enum.map(socket.assigns.tabs, fn t -> if t.id == id, do: fun.(t), else: t end)
+    assign(socket, :tabs, tabs)
+  end
+
+  defp close_tab(socket, id) do
+    Chat.stop(id)
+    Conversations.close(id)
+    if connected?(socket), do: Phoenix.PubSub.unsubscribe(BusterClaw.PubSub, Chat.topic(id))
+
+    remaining = Enum.reject(socket.assigns.tabs, &(&1.id == id))
+    socket = update(socket, :research, &Map.delete(&1, id))
+
+    cond do
+      # The page is a tab strip; an empty one has nothing to render into.
+      remaining == [] ->
+        {:ok, conv} = Conversations.create(%{title: "Robinhood", kind: "robinhood"})
+        if connected?(socket), do: Chat.subscribe(conv.id)
+        socket |> assign(:tabs, [to_tab(conv)]) |> activate_tab(conv.id)
+
+      socket.assigns.active_tab == id ->
+        socket |> assign(:tabs, remaining) |> activate_tab(hd(remaining).id)
+
+      true ->
+        assign(socket, :tabs, remaining)
+    end
+  end
+
+  # A background tab's traffic never enters the visible transcript — only its
+  # dot and its running state, which is everything the strip needs to show.
+  defp note_background(socket, conv_id, {:status, status}) do
+    update_tab(socket, conv_id, &%{&1 | running: status == :running})
+  end
+
+  defp note_background(socket, conv_id, {:message, %{role: role}}) when role != :user do
+    update_tab(socket, conv_id, &%{&1 | unread: true})
+  end
+
+  defp note_background(socket, _conv_id, _payload), do: socket
+
+  # --- Research helpers ---
+
+  defp put_research(socket, panel),
+    do: update(socket, :research, &Map.put(&1, socket.assigns.active_tab, panel))
+
+  defp research_panel(socket_or_assigns) do
+    Map.get(socket_or_assigns.research, socket_or_assigns.active_tab) || Research.blank()
+  end
+
   defp load_chat_history(socket) do
     messages =
-      Trading.conv_id()
+      socket.assigns.active_tab
       |> AgentTranscript.recent(limit: 200)
       |> Enum.with_index(1)
       |> Enum.map(fn {row, i} ->
@@ -1234,6 +1394,321 @@ defmodule BusterClawWeb.TradingLive do
   defp put_snapshot({:error, reason, _prev}, snap), do: {:error, reason, snap}
   defp put_snapshot(_other, snap), do: {:ok, snap}
 
+  attr :panel, :map, required: true
+  attr :query, :string, required: true
+  attr :matches, :list, required: true
+
+  # Everything here is rendered from what the APP fetched — Finnhub and EDGAR
+  # through `BusterClaw.Finance` — never from anything the model typed. Each
+  # dataset states its own source and age because each can fail alone.
+  defp research_card(assigns) do
+    ~H"""
+    <aside
+      id="trading-research-card"
+      class="ic-panel flex min-h-0 w-full flex-col overflow-y-auto p-4 font-mono text-xs"
+    >
+      <form phx-change="research_search" phx-submit="research_search" autocomplete="off">
+        <input
+          type="text"
+          name="query"
+          value={@query}
+          placeholder="Search a ticker or company…"
+          class="w-full border-2 border-base-content/25 bg-base-100 px-2 py-1.5 focus:border-primary focus:outline-none"
+        />
+      </form>
+
+      <div
+        :if={@matches != []}
+        class="mt-1 divide-y divide-base-content/10 border-2 border-base-content/20"
+      >
+        <button
+          :for={match <- @matches}
+          type="button"
+          phx-click="research_open"
+          phx-value-symbol={match.symbol}
+          class="flex w-full items-baseline gap-2 px-2 py-1.5 text-left transition hover:bg-base-content/10"
+        >
+          <span class="font-bold">{match.symbol}</span>
+          <span class="truncate text-base-content/60">{match.name}</span>
+        </button>
+      </div>
+
+      <p :if={is_nil(@panel.symbol)} class="pt-6 text-center text-base-content/50">
+        Search a ticker above to see its quote, fundamentals and recent SEC filings.
+      </p>
+
+      <div :if={@panel.symbol} class="pt-3">
+        <div class="flex items-baseline justify-between border-b border-base-content/15 pb-1">
+          <p class="text-lg font-black tracking-wide">{@panel.symbol}</p>
+          <button
+            type="button"
+            phx-click="research_clear"
+            class="uppercase tracking-wide text-base-content/50 hover:text-base-content"
+          >
+            Clear
+          </button>
+        </div>
+
+        <%!-- Quote. The delay is stated every time: a free-tier print is not a
+              live one, and a number without its age invites being read as now. --%>
+        <div class="pt-3">
+          <div :if={@panel.quote.status == :fresh} class="flex items-baseline gap-3">
+            <p class="text-2xl font-black">{research_price(@panel.quote.data)}</p>
+            <p class={research_change_class(@panel.quote.data)}>
+              {research_change(@panel.quote.data)}
+            </p>
+          </div>
+          <p :if={@panel.quote.status == :fresh} class="pt-0.5 text-base-content/40">
+            {@panel.quote.data.source} · delayed ~15 min · {as_of_label(@panel.quote)}
+          </p>
+          <p :if={@panel.quote.reason == :not_configured} class="text-base-content/50">
+            No quote — set FINNHUB_API_KEY to enable prices. Filings below are unaffected.
+          </p>
+          <p
+            :if={@panel.quote.status == :unavailable and @panel.quote.reason != :not_configured}
+            class="text-base-content/50"
+          >
+            Quote unavailable for {@panel.symbol}.
+          </p>
+        </div>
+
+        <div class="pt-4">
+          <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
+            Fundamentals
+          </p>
+          <p :if={@panel.fundamentals.status != :fresh} class="pt-2 text-base-content/50">
+            {research_edgar_error(@panel.fundamentals, @panel.symbol)}
+          </p>
+          <div :if={@panel.fundamentals.status == :fresh} class="pt-2">
+            <p
+              :for={{label, value} <- research_facts(@panel.fundamentals.data)}
+              class="flex justify-between gap-3 py-0.5"
+            >
+              <span class="text-base-content/60">{label}</span>
+              <span class="font-bold">{value}</span>
+            </p>
+            <p class="pt-1 text-base-content/40">
+              SEC EDGAR (XBRL) · {as_of_label(@panel.fundamentals)}
+            </p>
+          </div>
+        </div>
+
+        <div class="pt-4">
+          <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
+            Recent filings
+          </p>
+          <p :if={@panel.filings.status != :fresh} class="pt-2 text-base-content/50">
+            {research_edgar_error(@panel.filings, @panel.symbol)}
+          </p>
+          <div :if={@panel.filings.status == :fresh} class="divide-y divide-base-content/10 pt-1">
+            <p
+              :for={filing <- research_filings(@panel.filings.data)}
+              class="flex justify-between gap-3 py-1"
+            >
+              <span class="font-bold">{filing.form}</span>
+              <span class="text-base-content/60">{filing.filed_on}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </aside>
+    """
+  end
+
+  # --- Research renderers ---
+  #
+  # Every one of these tolerates a nil: EDGAR returns a fact map whose values are
+  # individually nil when a company never filed that concept, and Finnhub returns
+  # zeros for a symbol it does not cover. A dash is the honest render for both —
+  # never a 0, which would read as a real measurement of nothing.
+
+  defp research_price(%{price: price}) when is_number(price) and price > 0,
+    do: "$" <> :erlang.float_to_binary(price * 1.0, decimals: 2)
+
+  defp research_price(_quote), do: "—"
+
+  defp research_change(%{percent_change: pct, change: change})
+       when is_number(pct) and is_number(change) do
+    "#{signed_pct(pct)} (#{signed_money(round(change * 100))})"
+  end
+
+  defp research_change(_quote), do: "—"
+
+  defp research_change_class(%{percent_change: pct}) when is_number(pct) and pct > 0,
+    do: "font-bold text-success"
+
+  defp research_change_class(%{percent_change: pct}) when is_number(pct) and pct < 0,
+    do: "font-bold text-error"
+
+  defp research_change_class(_quote), do: "text-base-content/60"
+
+  @fundamental_labels [
+    revenue: "Revenue",
+    net_income: "Net income",
+    assets: "Assets",
+    liabilities: "Liabilities",
+    stockholders_equity: "Shareholders' equity"
+  ]
+
+  defp research_facts(%{facts: facts}) when is_map(facts) do
+    Enum.map(@fundamental_labels, fn {key, label} ->
+      {label, research_fact_value(Map.get(facts, key))}
+    end)
+  end
+
+  defp research_facts(_data), do: []
+
+  # The period is part of the figure. A revenue number with no year attached is
+  # a number the reader has to guess the meaning of.
+  defp research_fact_value(%{value: value, as_of: as_of}) when is_number(value) do
+    "#{research_big_money(value)}#{if as_of, do: " (#{as_of})", else: ""}"
+  end
+
+  defp research_fact_value(_fact), do: "—"
+
+  defp research_big_money(value) when is_number(value) do
+    abs = abs(value)
+
+    cond do
+      abs >= 1_000_000_000 -> "$#{Float.round(value / 1_000_000_000, 2)}B"
+      abs >= 1_000_000 -> "$#{Float.round(value / 1_000_000, 1)}M"
+      true -> "$#{round(value)}"
+    end
+  end
+
+  defp research_filings(%{filings: filings}) when is_list(filings) do
+    filings
+    |> Enum.take(8)
+    |> Enum.map(&%{form: &1.form || "—", filed_on: &1.filing_date || "—"})
+  end
+
+  defp research_filings(_data), do: []
+
+  defp research_edgar_error(%DataState{reason: {:unknown_symbol, _sym}}, symbol),
+    do: "SEC EDGAR has no company matching #{symbol}."
+
+  defp research_edgar_error(%DataState{reason: :no_symbol}, _symbol),
+    do: "Search a ticker to load this."
+
+  defp research_edgar_error(_state, _symbol),
+    do: "SEC EDGAR could not be reached."
+
+  attr :tabs, :list, required: true
+  attr :active, :string, required: true
+  attr :menu_open, :boolean, required: true
+
+  defp trading_tabs(assigns) do
+    ~H"""
+    <div class="relative flex items-center gap-1" role="tablist" aria-label="Trading tabs">
+      <div
+        :for={tab <- @tabs}
+        id={"trading-tab-#{tab.id}"}
+        role="tab"
+        aria-selected={to_string(tab.id == @active)}
+        phx-click="trading_select_tab"
+        phx-value-id={tab.id}
+        class={[
+          "group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-sm border-2 px-2.5 py-1.5 font-mono text-xs transition",
+          if(tab.id == @active,
+            do: "border-base-content/30 bg-base-200 text-base-content",
+            else: "border-base-content/15 bg-base-200/40 text-base-content/55 hover:text-base-content"
+          )
+        ]}
+      >
+        <%!-- The kind is written, not merely coloured: which surface a tab can
+              reach is the single most important thing about it. --%>
+        <span class={[
+          "shrink-0 border px-1 text-[0.55rem] font-black uppercase tracking-wider",
+          if(tab.kind == "research",
+            do: "border-info/50 text-info",
+            else: "border-success/50 text-success"
+          )
+        ]}>
+          {if tab.kind == "research", do: "RES", else: "RH"}
+        </span>
+        <span
+          :if={tab.running}
+          class="size-2 shrink-0 animate-pulse rounded-full bg-primary"
+          title="Working"
+        >
+        </span>
+        <span
+          :if={tab.unread and tab.id != @active}
+          class="size-2 shrink-0 rounded-full bg-warning"
+          title="New messages"
+        >
+        </span>
+        <span class="max-w-[10rem] truncate font-medium">{tab.title}</span>
+        <span
+          phx-click="trading_close_tab"
+          phx-value-id={tab.id}
+          title="Close tab"
+          class="ml-0.5 grid size-4 shrink-0 place-items-center rounded-sm text-base-content/40 hover:bg-base-content/15 hover:text-primary"
+        >
+          ×
+        </span>
+      </div>
+
+      <button
+        id="trading-new-tab"
+        type="button"
+        phx-click="trading_new_tab_menu"
+        title="New tab"
+        aria-label="New tab"
+        aria-expanded={to_string(@menu_open)}
+        class="grid size-7 shrink-0 place-items-center rounded-sm border-2 border-base-content/20 font-mono text-base-content/70 transition hover:border-primary hover:text-primary"
+      >
+        +
+      </button>
+
+      <div
+        :if={@menu_open}
+        id="trading-new-tab-menu"
+        class="absolute left-0 top-full z-20 mt-1 w-56 border-2 border-base-content/25 bg-base-100 font-mono text-xs shadow-[3px_3px_0_0_oklch(var(--bc)/0.15)]"
+      >
+        <button
+          type="button"
+          phx-click="trading_new_tab"
+          phx-value-kind="robinhood"
+          class="block w-full px-3 py-2 text-left transition hover:bg-base-content/10"
+        >
+          <span class="font-black uppercase tracking-wide text-success">Robinhood</span>
+          <span class="block text-[0.68rem] text-base-content/60">
+            Your accounts, positions and orders
+          </span>
+        </button>
+        <button
+          type="button"
+          phx-click="trading_new_tab"
+          phx-value-kind="research"
+          class="block w-full border-t-2 border-base-content/15 px-3 py-2 text-left transition hover:bg-base-content/10"
+        >
+          <span class="font-black uppercase tracking-wide text-info">Research</span>
+          <span class="block text-[0.68rem] text-base-content/60">
+            Public quotes and filings — no account access
+          </span>
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp chat_empty_message("research"),
+    do:
+      "Public-market research. Look up a symbol on the right, then ask about the filings, " <>
+        "the fundamentals, or what the numbers mean. This chat cannot see your accounts."
+
+  defp chat_empty_message(_robinhood),
+    do:
+      "Portfolio assistant. Ask about balances, positions, order history, or market data — " <>
+        "or ask it to buy or sell, and it will put the order up for your confirmation."
+
+  defp chat_placeholder("research"),
+    do: "Ask about a company…  (Enter to send, Shift+Enter for a new line)"
+
+  defp chat_placeholder(_robinhood),
+    do: "Ask about your portfolio…  (Enter to send, Shift+Enter for a new line)"
+
   # The confirm card: the app's rendering of what it parsed, and the button that
   # sends it. Everything shown here comes from the `TradingOrder` struct, not from
   # the model's prose — so what the operator reads is exactly what gets placed.
@@ -1384,6 +1859,7 @@ defmodule BusterClawWeb.TradingLive do
     ~H"""
     <Layouts.app flash={@flash} socket={@socket} fit_viewport>
       <section class="flex min-h-0 flex-1 flex-col gap-2 p-4">
+        <.trading_tabs tabs={@tabs} active={@active_tab} menu_open={@new_tab_open} />
         <div
           id="trading-split"
           phx-hook="SplitResizer"
@@ -1394,16 +1870,26 @@ defmodule BusterClawWeb.TradingLive do
         >
           <div class="bc-trading-left flex min-h-0 flex-col gap-2">
             <div
+              :if={@active_kind == "robinhood"}
               id="trading-read-only-banner"
               class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-success"
             >
               Read-only mode — Buster Claw cannot place, amend, or cancel Robinhood orders
             </div>
+            <%!-- Research states the stronger fact: the broker isn't restricted
+                  here, it's absent. This chat has no Robinhood tool to deny. --%>
+            <div
+              :if={@active_kind == "research"}
+              id="trading-research-banner"
+              class="border-2 border-info/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-info"
+            >
+              Public data only — this chat cannot see your accounts
+            </div>
             <%!-- First-run setup: the OAuth handshake is interactive by nature
                   (a browser window), so it happens once in a terminal — the
                   keychain tokens are then reused by every headless turn. --%>
             <div
-              :if={@chat_seq == 0}
+              :if={@chat_seq == 0 and @active_kind == "robinhood"}
               class="space-y-2 border-2 border-base-content/20 p-4 font-mono text-xs"
             >
               <p class="font-bold uppercase tracking-wide">One-time setup (in a terminal)</p>
@@ -1423,8 +1909,8 @@ defmodule BusterClawWeb.TradingLive do
               thinking={@chat_thinking}
               queue={@chat_queue}
               agent_cli_missing={@agent_cli_missing}
-              empty_message="Portfolio assistant. Ask about balances, positions, order history, or market data — or ask it to buy or sell, and it will put the order up for your confirmation."
-              placeholder="Ask about your portfolio…  (Enter to send, Shift+Enter for a new line)"
+              empty_message={chat_empty_message(@active_kind)}
+              placeholder={chat_placeholder(@active_kind)}
             >
               <:pinned :if={@pending_order}>
                 <.order_confirm pending={@pending_order} />
@@ -1441,7 +1927,14 @@ defmodule BusterClawWeb.TradingLive do
           </div>
 
           <div class="bc-trading-right flex min-h-0">
+            <.research_card
+              :if={@active_kind == "research"}
+              panel={research_panel(assigns)}
+              query={@research_query}
+              matches={@research_matches}
+            />
             <.trading_account_card
+              :if={@active_kind == "robinhood"}
               account={@trading_account}
               selected_id={@trading_account_sel}
               detail={@trading_detail}
