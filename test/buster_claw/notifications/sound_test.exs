@@ -130,4 +130,84 @@ defmodule BusterClaw.Notifications.SoundTest do
       assert Sound.for_notification(fired("reminder", "voicemail")) == "notify.wav"
     end
   end
+
+  describe "bundled defaults (SOUND_ROADMAP Phase 0)" do
+    defp fired2(kind, source), do: %{kind: kind, source: source}
+
+    test "the generated set is present and lists every routed key's file" do
+      # This asserts against the COMMITTED priv/static/sounds, not a fixture —
+      # the whole point of bundled-ON is that these ship.
+      bundled = Sound.bundled_list()
+
+      for key <- Sound.route_keys() -- ["default"] do
+        assert "#{key}.wav" in bundled, "no bundled default for routing key #{key}"
+      end
+    end
+
+    test "an empty workspace library rings on bundled defaults — the day-one contract" do
+      assert Sound.list() == []
+
+      assert Sound.for_notification(fired2("timer", "chat")) == "chat.wav"
+      # Source without a bundled file falls to the kind.
+      assert Sound.for_notification(fired2("timer", "no-such-source")) == "timer.wav"
+      assert Sound.resolved("confirm") == "confirm.wav"
+      assert Sound.resolved("security") == "security.wav"
+    end
+
+    test "any workspace layer outranks bundled", %{root: root} do
+      # A routed workspace sound wins…
+      File.write!(sound(root, "wilhelm.wav"), "x")
+      assert Sound.assign("chat", "wilhelm.wav") == :ok
+      assert Sound.for_notification(fired2("timer", "chat")) == "wilhelm.wav"
+
+      # …and so does the legacy unrouted fallback (first audio file): dropping
+      # ONE file into sounds/ takes over everything, exactly as before bundling.
+      assert Sound.assign("chat", nil) == :ok
+      assert Sound.for_notification(fired2("timer", "chat")) == "wilhelm.wav"
+    end
+
+    test "resolve_path: workspace wins by basename, bundled is the floor", %{root: root} do
+      bundled_path = Sound.resolve_path("confirm.wav")
+      assert bundled_path == Path.join(Sound.bundled_dir(), "confirm.wav")
+      assert File.regular?(bundled_path)
+
+      # Same-name workspace file shadows the bundled one — the drop-a-file
+      # customization story, no routing entry needed.
+      File.write!(sound(root, "confirm.wav"), "custom")
+      assert Sound.resolve_path("confirm.wav") == sound(root, "confirm.wav")
+
+      # Deleting the override falls BACK to bundled rather than to silence.
+      File.rm!(sound(root, "confirm.wav"))
+      assert Sound.resolve_path("confirm.wav") == bundled_path
+    end
+
+    test "resolve_path refuses what neither allowlist contains" do
+      assert Sound.resolve_path("nope.wav") == nil
+      assert Sound.resolve_path("../confirm.wav") == nil
+      assert Sound.resolve_path("../../etc/passwd") == nil
+    end
+
+    test "the new routing keys are assignable like the old ones", %{root: root} do
+      File.write!(sound(root, "wilhelm.wav"), "x")
+
+      for key <- ~w(confirm order shift blocked web sms security boot) do
+        assert Sound.assign(key, "wilhelm.wav") == :ok, "#{key} not assignable"
+      end
+    end
+  end
+
+  describe "the master switch" do
+    test "defaults ON, flips OFF and back, and re-enabling deletes the setting" do
+      assert Sound.enabled?()
+
+      assert Sound.set_enabled(false) == :ok
+      refute Sound.enabled?()
+
+      assert Sound.set_enabled(true) == :ok
+      assert Sound.enabled?()
+      # ON is the absence of the setting — a fresh install and a re-enabled one
+      # are the same state.
+      assert BusterClaw.Settings.get("sound_enabled") == nil
+    end
+  end
 end

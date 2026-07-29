@@ -30,10 +30,20 @@ defmodule BusterClawWeb.NotifyLive do
       # Already showing (a duplicate broadcast) — don't re-ring.
       {:noreply, socket}
     else
-      {:noreply,
-       socket
-       |> assign(:fired_queue, socket.assigns.fired_queue ++ [notification])
-       |> push_event("notify:play-sound", %{name: Sound.for_notification(notification)})}
+      socket = assign(socket, :fired_queue, socket.assigns.fired_queue ++ [notification])
+
+      # The master switch (Settings → sound_enabled) gates the RING, not the
+      # modal — off means the app goes visually-only, it doesn't mean alarms
+      # stop surfacing. Checked per fire, so flipping the switch needs no
+      # remount to take effect.
+      socket =
+        if Sound.enabled?() do
+          push_event(socket, "notify:play-sound", %{name: Sound.for_notification(notification)})
+        else
+          socket
+        end
+
+      {:noreply, socket}
     end
   end
 

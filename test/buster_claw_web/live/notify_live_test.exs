@@ -56,6 +56,28 @@ defmodule BusterClawWeb.NotifyLiveTest do
     assert_push_event(view, "notify:play-sound", %{})
   end
 
+  test "the master switch silences the ring but never the modal", %{conn: conn} do
+    BusterClaw.Notifications.Sound.set_enabled(false)
+    on_exit(fn -> BusterClaw.Notifications.Sound.set_enabled(true) end)
+
+    {:ok, view, _html} = live_isolated(conn, BusterClawWeb.NotifyLive)
+
+    {:ok, _past} =
+      Notifications.create_notification(%{
+        "kind" => "timer",
+        "label" => "Silent",
+        "fire_at" => fire_at(-5),
+        "status" => "pending"
+      })
+
+    Notifications.fire_due()
+    _ = :sys.get_state(view.pid)
+
+    # The alarm still SURFACES — off means visually-only, not invisible.
+    assert render(view) =~ "Silent"
+    refute_push_event(view, "notify:play-sound", %{})
+  end
+
   test "Snooze from the modal re-arms the notification", %{conn: conn} do
     {:ok, view, _html} = live_isolated(conn, BusterClawWeb.NotifyLive)
 

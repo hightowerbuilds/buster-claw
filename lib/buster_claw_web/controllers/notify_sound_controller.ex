@@ -18,7 +18,10 @@ defmodule BusterClawWeb.NotifySoundController do
   end
 
   def named(conn, %{"name" => name}) do
-    serve(conn, Sound.path_for(name))
+    # Two layers (SOUND_ROADMAP Phase 0): the workspace library wins, the
+    # bundled synthesized set is the floor. Both sides are allowlists over real
+    # directory entries, so the traversal posture is unchanged.
+    serve(conn, Sound.resolve_path(name))
   end
 
   defp serve(conn, nil) do

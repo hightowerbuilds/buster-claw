@@ -49,4 +49,22 @@ defmodule BusterClawWeb.NotifySoundControllerTest do
     assert get(conn, ~p"/notify/sound/missing.wav").status == 404
     assert get(conn, ~p"/notify/sound/#{URI.encode_www_form("../secret.wav")}").status == 404
   end
+
+  test "serves a bundled default when the workspace has no such file", %{conn: conn} do
+    conn = get(conn, ~p"/notify/sound/confirm.wav")
+
+    assert conn.status == 200
+    assert get_resp_header(conn, "content-type") == ["audio/wav"]
+    # A generated WAV, not a workspace file: starts with a RIFF header.
+    assert <<"RIFF", _::binary>> = conn.resp_body
+  end
+
+  test "a workspace file with a bundled name shadows the bundled one", %{conn: conn, root: root} do
+    File.write!(Path.join([root, "sounds", "confirm.wav"]), "the operator's own")
+
+    conn = get(conn, ~p"/notify/sound/confirm.wav")
+
+    assert conn.status == 200
+    assert conn.resp_body == "the operator's own"
+  end
 end
