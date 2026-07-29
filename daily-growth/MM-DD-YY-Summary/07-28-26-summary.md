@@ -388,3 +388,102 @@ silently since the 22nd behind a green exit code. **Green means the checks you
 wrote passed. It has never meant the artifact works** — and the same is true of
 a number on a screen. Neither the suite nor the model can tell you a balance is
 real. Only the tool call behind it can.
+
+---
+
+# Third session — music, roadmap to working feature in one sitting
+
+A gear change on the operator's call: music in Buster Claw. Thirteen commits
+(`deea07d..0ab4af6`): a roadmap, then all six of its phases, then the operator
+walked it live and it worked. The music surface closed carrying **160 tests of
+its own**; the full suite ended the day at 1835. Along the way the 07-27
+LAUNCH_ROADMAP consolidation — sitting untracked while three files pointed at
+the four deleted roadmaps it absorbed — finally got committed (`b37c133`).
+
+## 15. The roadmap was an inventory before it was a plan
+
+The first hour was spent reading, not writing, and it shrank the build to
+almost nothing new: `Notifications.Sound` was already an audio library with the
+allowlist-as-path-guard posture, notify-settings already uploaded audio into
+the DataZone with collision-free naming, two controllers already served audio,
+and clipwave already decoded real files into a WGSL waveform. Three findings
+did all the shaping:
+
+- **Nothing in the app spoke HTTP byte ranges** — every audio route sent a
+  whole-file 200, fine for a chime and wrong for anything you scrub. WKWebView,
+  the webview that ships, is the strict case: it can refuse to seek at all. The
+  one genuinely new module, so it went in early with the full RFC 7233 matrix.
+- **Home tabs render behind `:if`, which destroys DOM** — a player inside the
+  Music tab would die on every tab switch, a failure of the actual requirement
+  that would demo perfectly. `DockLive`'s `sticky: true` mount was the answer
+  already in the codebase: the player lives in the dock, the tab just commands
+  it over PubSub.
+- **CSP forbids one design silently**: the `default-src 'self'` media fallback
+  excludes `blob:`, and CSP is Report-Only in dev, enforced in prod — a
+  blob-URL player would pass all of development and fail only in the shipped
+  app. Recorded so nobody optimizes into it.
+
+## 16. What the tests caught that a demo never would
+
+Every phase gated green, and the interesting bugs were all caught **before**
+anything played a note:
+
+- **The silent-vanishing upload.** `safe_name/1` read the extension from a
+  trimmed basename while `store/2` read it from the original; `"   .mp3"`
+  trims to `".mp3"`, which Elixir reads as a dotfile with *no* extension — so
+  the upload passed the accept check and landed as a file `list/0` ignores.
+  Success message, no track. Now both read from one place, and an invariant
+  test over nine hostile names pins the rule itself: anything `store/2`
+  accepts must be visible in `list/0`.
+- **The sanitizer had to be wider than `Sound`'s.** Sound flattens spaces,
+  which would have turned `Miles Davis - So What.mp3` into
+  `Miles-Davis---So-What.mp3` and destroyed the `Artist - Title` convention
+  Phase 0 built the library around — a collision between two phases that only
+  exists once both do.
+- **Stop-then-play erased history.** `push_history/1` returned `[]` for a nil
+  track, so stopping quietly destroyed everything `previous/1` could reach. A
+  pure state machine made that a one-line unit test instead of a
+  weeks-later mystery.
+- **The skip note that must outlive its own fix.** A corrupt file advances
+  with a message — but auto-advance starts the next track within a second, so
+  clearing the note on success would erase it unread. It clears on the next
+  *deliberate* play, and stays true meanwhile.
+- **`.m4a` crashed the tab at mount.** LiveView's `allow_upload` `:accept`
+  only takes extensions the `mime` package knows, and `.m4a` isn't one — the
+  whole tab failed to render, not just the picker. The picker now takes
+  `audio/*` and `store/2` stays the real gate, which is the right shape
+  anyway: a file the picker admits gets a refusal with a reason; a file it
+  blocks is one the user can't even try.
+
+## 17. Found along the way: nosniff is absent app-wide
+
+Building the serving route surfaced a gap bigger than the feature:
+`X-Content-Type-Options` appears nowhere in the app, and every media route is
+pipeline-less — no `put_secure_browser_headers`, **no CSP header** on exactly
+the responses that serve workspace files a user or agent can write. A file
+named `.mp3` whose content is HTML could be sniffed, rendered, and its script
+run from our own origin — the `window.__TAURI__` → shell chain the CSP exists
+to break, reached by a route that never gets the header. `RangeResponse` now
+sends nosniff (music + voicemail closed); four routes remain, recorded in
+MUSIC_ROADMAP Part VII with `WorkspaceFileController` flagged first because it
+renders workspace HTML as-is.
+
+## 18. The operator walked it, and it worked
+
+Upload from the tab, play, switch to Chat, navigate to `/browse`, come back —
+**the music never stopped.** That closes the walk the sticky-dock design
+existed for, and it was the one of the three owed walks that dev mode could
+prove. Two remain, both needing a packaged build: WKWebView byte-range
+behavior, and the codec probe that decides whether FLAC/OGG stay in
+`accepted_extensions/0`. Conveniently, running `build_desktop.sh` for those
+will also be the first end-to-end exercise of §13's staging fix and its new
+assertion.
+
+## The third session, compressed
+
+The roadmap's best decision was made before any code: read the codebase first,
+and most of the feature turned out to already exist. The best catches were all
+made by tests against a state machine no browser had touched yet — and the one
+thing tests could not prove, the operator proved in two minutes of clicking.
+Each layer did the job only it could do. **Inventory, then invariants, then a
+walk — in that order, each one cheap where the next is blind.**

@@ -1,6 +1,6 @@
 # Music in Buster Claw — Roadmap V.1
 
-**Date:** 2026-07-28 · **Status:** BUILD COMPLETE 07-28 — **all six phases landed.** What remains is verification: the three browser walks (packaged-app ranges, codec probe, playback-across-navigation) ·
+**Date:** 2026-07-28 · **Status:** BUILD COMPLETE 07-28 — all six phases landed. **Playback-across-navigation WALKED by the operator 07-28 (dev): upload → play → tab switch → /browse → back, music never stopped.** Two walks remain, both needing a packaged build: WKWebView byte ranges, codec probe ·
 **Scope of this document:** upload music into the DataZone and play it from a new
 home tab beside Chat, Calendar, and Notes. Nothing further.
 
