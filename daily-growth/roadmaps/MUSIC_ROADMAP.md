@@ -321,7 +321,8 @@ more will be added to this roadmap.
 - **Sound effects.** Mentioned in the same breath as music, but the app already
   has an SFX system: `Notifications.Sound` routes per-event sounds with a
   settings UI. Extending *that* is a different, smaller job than this one and
-  shouldn't be tangled into it. Its own section, later.
+  shouldn't be tangled into it. **Scoped 07-28 → `SOUND_ROADMAP.md`** (all four
+  event groups in, bundled defaults ON, by operator decision).
 - **Agent control of playback** ("play something quiet"). Natural and cheap once
   Phase 3 exists — the player is already a GenServer-ish surface and the command
   catalog is the front door. Deferred so V.1 is a music player before it is an
