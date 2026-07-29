@@ -1,6 +1,6 @@
 # Sound in Buster Claw — Roadmap V.2
 
-**Date:** 2026-07-28 · **Status:** SCOPED (operator decisions locked), not started ·
+**Date:** 2026-07-28 · **Status:** ACTIVE — Phase 0 shipped (`2faa436`); Phase 1 (SoundBoard) next ·
 **Scope:** sound effects for app events — the second half of the "music and sound
 effects" ask that `MUSIC_ROADMAP.md` deliberately scoped out. Music is built;
 this is everything else that rings.
@@ -115,7 +115,18 @@ with meanwhile.
 
 ## Part IV — The phases
 
-### Phase 0 — The bundled set, generated
+### Phase 0 — The bundled set, generated — **SHIPPED 07-28** (`2faa436`)
+
+> Sixteen chimes, ~360 KB, committed. All four acceptance criteria hold, plus
+> two the plan didn't ask for: every WAV validates against `afinfo` (macOS's own
+> decoder), and tests pin what a listener can't check — header lengths that
+> agree, no silence, no clipping, near-zero edge samples, durations capped.
+> One refinement to the plan: the WAVs are committed and the *generator* is the
+> recipe, because libm's `sin` differs across machines in the last ulp —
+> "generate at build time" would make artifacts differ by builder.
+> **Not yet heard by a human ear** — the operator audition (Settings → Notify
+> preview already plays bundled names through the two-layer route) is the taste
+> gate, per Risk 3.
 
 A checked-in generator (`scripts/gen_sounds.exs`: pure-Elixir PCM→WAV, no
 deps) producing the default set into `priv/static/sounds/` — distinct short
