@@ -67,7 +67,7 @@ cargo tauri dev
 
 Phoenix serves at `http://127.0.0.1:4000/`; the Tauri shell opens the same app in a native window. Override the endpoint with `BUSTER_CLAW_PHOENIX_URL`.
 
-> **macOS note:** the current build is **x86_64 only**. An Apple-Silicon-native build is in progress — see `daily-growth/roadmaps/DISTRIBUTION_ROADMAP.md`.
+> **macOS note:** the current build is **x86_64 only**. An Apple-Silicon-native build is in progress — see `daily-growth/roadmaps/LAUNCH_ROADMAP.md`.
 
 ## Driving Buster Claw
 

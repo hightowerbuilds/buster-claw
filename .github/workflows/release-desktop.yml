@@ -1,7 +1,7 @@
 # Two-arch desktop DMG builds — the Livebook pattern (livebook-dev/livebook
 # release.yml): one native runner per architecture, each building its own
 # native ERTS. Never lipo the Erlang tree — a universal ERTS kills the JIT on
-# the Intel slice (DISTRIBUTION_ROADMAP §6).
+# the Intel slice (daily-growth/roadmaps/LAUNCH_ROADMAP.md §III.G).
 #
 # Until the Apple Developer secrets exist, artifacts are UNSIGNED — fine for
 # CI verification, not for distribution. When enrollment lands, add the
