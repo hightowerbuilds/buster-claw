@@ -36,7 +36,13 @@ defmodule BusterClawWeb.TradingLive do
   @portfolio_ranges ~w(1W 1M 3M 1Y ALL)
   @symbol_ranges ~w(1M 3M 1Y 5Y)
   @symbol_modes ~w(line candles)
-  @detail_stale_min 15
+  # How old a holdings read may be before an EMPTY one stops counting as a
+  # confirmation. This only ever gates the wording of "no positions — all cash":
+  # everything else says its age and lets the reader judge. Twelve hours, not
+  # minutes — holdings are fetched by an explicit agent run, so a 15-minute
+  # threshold marked every panel stale within a quarter hour of the only refresh
+  # the user ever asks for, which is an alarm that is always ringing.
+  @holdings_stale_min 12 * 60
 
   # Cap the retained in-memory transcript on a long-lived tab; the persisted
   # transcript is the source of truth and is re-read on mount.
@@ -741,14 +747,19 @@ defmodule BusterClawWeb.TradingLive do
   defp state_data(%DataState{data: data}) when is_list(data), do: data
   defp state_data(%DataState{}), do: []
 
-  defp positions_state(rows, _candidates, [_ | _] = missing) do
-    DataState.unavailable(:partial,
-      data: rows,
-      as_of: oldest_position_at(rows),
-      source: :tax_lots,
-      reason: {:missing_accounts, missing}
-    )
+  # Rows we have are rows we have: a partial load is `cached`, not `unavailable`.
+  # Marking the dataset unavailable while handing it real data put the words
+  # "Holdings: unavailable" directly above a populated holdings table. Which
+  # accounts are still missing is a separate fact, and `costs_missing` already
+  # says it in its own sentence under the header.
+  defp positions_state([_ | _] = rows, _candidates, _missing) do
+    as_of = oldest_position_at(rows)
+
+    DataState.cached(rows, datetime_stale?(as_of), as_of: as_of, source: :tax_lots)
   end
+
+  defp positions_state([], _candidates, [_ | _]),
+    do: DataState.unavailable(:not_loaded, source: :tax_lots)
 
   defp positions_state([], [], []),
     do: DataState.unavailable(:no_supported_accounts, source: :tax_lots)
@@ -770,16 +781,6 @@ defmodule BusterClawWeb.TradingLive do
     end
   end
 
-  defp positions_state(rows, _candidates, []) do
-    as_of = oldest_position_at(rows)
-
-    DataState.cached(rows, datetime_stale?(as_of),
-      as_of: as_of,
-      source: :tax_lots
-    )
-  end
-
-  defp oldest_position_at([]), do: nil
   defp oldest_position_at(rows), do: rows |> Enum.map(& &1.as_of) |> Enum.min(DateTime)
 
   defp allowed_symbols(socket) do
@@ -1002,10 +1003,13 @@ defmodule BusterClawWeb.TradingLive do
     as_of = rows |> List.last() |> Map.fetch!(:bar_on)
     latest = BusterClaw.MarketCalendar.latest_trading_day(BusterClaw.MarketCalendar.today())
 
+    # A catch-all, not two clauses: `symbol_window/1` returns only day/week
+    # today, but an unmatched interval here would raise inside a render path —
+    # a blank Trading tab because someone added a third window.
     stale? =
       case interval do
-        "day" -> Date.compare(as_of, latest) == :lt
         "week" -> Date.compare(as_of, Date.add(latest, -7)) == :lt
+        _day -> Date.compare(as_of, latest) == :lt
       end
 
     DataState.cached(rows, stale?, as_of: as_of, source: :price_history)
@@ -1316,13 +1320,6 @@ defmodule BusterClawWeb.TradingLive do
       id="trading-account-card"
       class="ic-panel flex min-h-0 w-full flex-col overflow-y-auto p-4 font-mono text-xs"
     >
-      <div
-        id="trading-monitoring-mode"
-        class="mb-2 flex flex-wrap items-center justify-between gap-2 border border-base-content/20 px-2 py-1 text-[0.68rem] uppercase tracking-wide text-base-content/60"
-      >
-        <span class="font-bold">End-of-day portfolio monitor</span>
-        <span>Quotes may be intraday; holdings and performance are cached snapshots</span>
-      </div>
       <%!-- The hero row (Phase 2): the five-second test. Total value and its
             day change first, market context beside them. The change comes from
             the LEDGER's two most recent readings with flows netted — the same
@@ -1364,20 +1361,15 @@ defmodule BusterClawWeb.TradingLive do
           <%!-- "Was that me or the market": index chips from the daily sweep,
                 with an as-of because cached context must say its age. A chip
                 with no derivable change writes a dash, never a zero. --%>
-          <div id="trading-index-state" class="text-right">
-            <div
-              :for={chip <- state_data(@indexes_state)}
-              class="flex justify-end gap-2"
-            >
+          <div :if={state_data(@indexes_state) != []} id="trading-index-state" class="text-right">
+            <div :for={chip <- state_data(@indexes_state)} class="flex justify-end gap-2">
               <span class="font-bold text-base-content/70">{chip.label}</span>
               <span class="text-base-content/80">{index_price(chip.price)}</span>
               <span class={index_change_class(chip.change_pct)}>
                 {index_change(chip.change_pct)}
               </span>
             </div>
-            <p class="pt-0.5 text-base-content/40">
-              {dataset_label(@indexes_state, "Market indexes")}
-            </p>
+            <p class="pt-0.5 text-base-content/40">{as_of_label(@indexes_state)}</p>
           </div>
         </div>
       </div>
@@ -1467,7 +1459,7 @@ defmodule BusterClawWeb.TradingLive do
 
       <div :if={@chart_view == :portfolio} class="pt-3">
         <p id="trading-performance-state" class="pb-1 text-right text-base-content/40">
-          {dataset_label(@performance_state, "Performance")}
+          {as_of_label(@performance_state)}
         </p>
         <BusterClawWeb.PortfolioChart.portfolio_chart
           series={@series}
@@ -1539,11 +1531,8 @@ defmodule BusterClawWeb.TradingLive do
           <span id="trading-symbol-state" class="text-right text-base-content/50">
             {if elem(symbol_window(@symbol_range), 1) == "week", do: "weekly", else: "daily"} · {length(
               @symbol_bars
-            )} bars · {if @symbol_state.status == :loading,
-              do: "fetching full bars (one agent run) · "}{dataset_label(
-              @symbol_state,
-              "Price history"
-            )}
+            )} bars{if @symbol_state.status == :loading,
+              do: " · fetching full bars (one agent run)…"}
           </span>
         </div>
 
@@ -1562,11 +1551,11 @@ defmodule BusterClawWeb.TradingLive do
         <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
           <p class="uppercase tracking-wide text-base-content/60">Positions</p>
           <div class="flex items-center gap-2">
+            <%!-- One age, not two. The prices are the number that moves, so
+                  theirs is the one worth stating; cost-basis age is what the
+                  Load/Refresh button and the missing-accounts line are for. --%>
             <span id="trading-positions-state" class="text-right text-base-content/40">
-              {dataset_label(@positions_state, "Holdings")} · {dataset_label(
-                @prices_state,
-                "Prices"
-              )}
+              {as_of_label(@prices_state)}
             </span>
             <button
               :if={@positions != [] or @costs_missing != []}
@@ -1584,6 +1573,10 @@ defmodule BusterClawWeb.TradingLive do
           </div>
         </div>
 
+        <%!-- The four empty cases stay four distinct sentences — that
+              distinction is the reason DataState exists. They are just
+              sentences now, not status readouts with the model's vocabulary
+              in them. --%>
         <p
           :if={@positions_state.status == :loading and @positions == []}
           class="pt-2 text-base-content/50"
@@ -1603,17 +1596,17 @@ defmodule BusterClawWeb.TradingLive do
           :if={@positions_state.status == :unavailable and @costs_missing == []}
           class="pt-2 text-base-content/50"
         >
-          Holdings unavailable — no included account currently has a confirmed positions snapshot.
+          No positions loaded yet — they appear once an account snapshot exists.
         </p>
         <p :if={@positions_state.status == :confirmed_empty} class="pt-2 text-base-content/50">
-          No open positions in the confirmed brokerage response {dataset_time_suffix(@positions_state)}.
+          No open positions{as_of_suffix(@positions_state)} — every included account is cash.
         </p>
         <p
           :if={@positions_state.status == :stale and @positions == []}
           class="pt-2 text-base-content/50"
         >
-          The stale positions response is empty; refresh before treating every included account
-          as all cash.
+          Last read{as_of_suffix(@positions_state)} showed no positions — old enough to refresh
+          before calling it all cash.
         </p>
 
         <div :if={@positions != []} class="divide-y divide-base-content/10">
@@ -1641,9 +1634,6 @@ defmodule BusterClawWeb.TradingLive do
               <p class="text-base-content/80">{money_cents(pos.price_cents)}</p>
               <p class={position_day_class(pos.day_change_pct)}>
                 {if pos.day_change_pct, do: signed_pct(pos.day_change_pct), else: "—"}
-              </p>
-              <p class="text-[0.65rem] text-base-content/40">
-                {row_price_label(pos.price_state)}
               </p>
             </div>
             <p class="text-right text-base-content/80">{money_cents(pos.value_cents)}</p>
@@ -1677,22 +1667,21 @@ defmodule BusterClawWeb.TradingLive do
         <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
           <p class="uppercase tracking-wide text-base-content/60">Upcoming earnings</p>
           <span id="trading-earnings-state" class="text-base-content/40">
-            {dataset_label(@earnings_state, "Calendar")}
+            {as_of_label(@earnings_state)}
           </span>
         </div>
         <p :if={@earnings_state.status == :unavailable} class="pt-2 text-base-content/50">
           Earnings unavailable — the market-data sweep has not produced a readable calendar yet.
         </p>
         <p :if={@earnings_state.status == :confirmed_empty} class="pt-2 text-base-content/50">
-          No earnings scheduled for your holdings in the next month {dataset_time_suffix(
-            @earnings_state
-          )}.
+          No earnings scheduled for your holdings in the next month{as_of_suffix(@earnings_state)}.
         </p>
         <p
           :if={@earnings_state.status == :stale and @earnings == []}
           class="pt-2 text-base-content/50"
         >
-          The stale calendar contains no upcoming reports; refresh before treating that as current.
+          Last calendar{as_of_suffix(@earnings_state)} listed no upcoming reports — old enough
+          to re-check.
         </p>
         <div :if={@earnings != []} class="flex flex-wrap gap-x-4 gap-y-1 pt-2">
           <p :for={report <- @earnings} class="whitespace-nowrap">
@@ -1805,7 +1794,7 @@ defmodule BusterClawWeb.TradingLive do
           <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
             <p class="uppercase tracking-wide text-base-content/60">Positions</p>
             <span id="trading-detail-state" class="text-base-content/40">
-              {dataset_label(@detail_dataset_state, "Holdings")}
+              {as_of_label(@detail_dataset_state)}
             </span>
           </div>
           <%!-- Distinct facts get distinct lines. "Can't read it",
@@ -1843,16 +1832,14 @@ defmodule BusterClawWeb.TradingLive do
             :if={@detail_state == :empty and @detail_dataset_state.status == :confirmed_empty}
             class="pt-2 text-base-content/50"
           >
-            No positions in the confirmed brokerage response {dataset_time_suffix(
-              @detail_dataset_state
-            )}.
+            No positions — the account is all cash{as_of_suffix(@detail_dataset_state)}.
           </p>
           <p
             :if={@detail_state == :empty and @detail_dataset_state.status == :stale}
             class="pt-2 text-base-content/50"
           >
-            The stale brokerage response contains no positions; refresh before treating the
-            account as all cash.
+            Last read{as_of_suffix(@detail_dataset_state)} showed no positions — old enough to
+            refresh before calling the account all cash.
           </p>
           <div :if={@detail_state == :loaded} class="space-y-2 pt-2">
             <div
@@ -1883,7 +1870,7 @@ defmodule BusterClawWeb.TradingLive do
         <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
           <p class="uppercase tracking-wide text-base-content/60">Recent activity</p>
           <div class="text-right text-base-content/40">
-            <p id="trading-activity-state">{dataset_label(@activity.state, "Orders")}</p>
+            <p id="trading-activity-state">{as_of_label(@activity.state)}</p>
             <p :if={@activity.note}>{@activity.note}</p>
           </div>
         </div>
@@ -1894,13 +1881,13 @@ defmodule BusterClawWeb.TradingLive do
           Trade history unavailable — load an account's holdings to request its order history.
         </p>
         <p :if={@activity.state.status == :confirmed_empty} class="pt-2 text-base-content/50">
-          No trades in the confirmed brokerage response {dataset_time_suffix(@activity.state)}.
+          No trades{as_of_suffix(@activity.state)}.
         </p>
         <p
           :if={@activity.state.status == :stale and @activity.orders == []}
           class="pt-2 text-base-content/50"
         >
-          The stale brokerage response contains no trades; it is not a current confirmation.
+          Last read{as_of_suffix(@activity.state)} showed no trades — old enough to re-check.
         </p>
         <%= for {section, rows} <- activity_order_sections(@activity.orders) do %>
           <div :if={rows != []} class="pt-2">
@@ -1927,17 +1914,13 @@ defmodule BusterClawWeb.TradingLive do
           </div>
         <% end %>
 
-        <div class="border-t border-base-content/10 pt-2">
-          <div class="flex items-center justify-between">
-            <p class="font-bold uppercase tracking-wide text-base-content/50">
-              Manual transfer reconciliations
-            </p>
-            <span class="text-base-content/40">
-              {dataset_label(@transfer_activity.state, "Transfers")}
-            </span>
-          </div>
-          <p :if={@transfer_activity.rows == []} class="pt-1 text-base-content/50">
-            No manual transfer reconciliations recorded in the local ledger.
+        <%!-- Marked transfers, when there are any. A section that exists only
+              to report its own emptiness is chrome; the flows matter because
+              they change the gain math, and that is worth a line ONLY when
+              some exist. --%>
+        <div :if={@transfer_activity.rows != []} class="border-t border-base-content/10 pt-2">
+          <p class="font-bold uppercase tracking-wide text-base-content/50">
+            Marked transfers
           </p>
           <p
             :for={flow <- @transfer_activity.rows}
@@ -1947,25 +1930,10 @@ defmodule BusterClawWeb.TradingLive do
             <span>{signed_money(flow.amount_cents)} · {Date.to_iso8601(flow.occurred_on)}</span>
           </p>
         </div>
-
-        <div class="grid gap-2 border-t border-base-content/10 pt-2 sm:grid-cols-2">
-          <div>
-            <p class="font-bold uppercase tracking-wide text-base-content/50">Dividends</p>
-            <p class="text-base-content/50">
-              Unavailable — the current broker read surface provides no dividend-events dataset.
-            </p>
-          </div>
-          <div>
-            <p class="font-bold uppercase tracking-wide text-base-content/50">Market movement</p>
-            <p class="text-base-content/50">
-              Shown in the gain/loss chart; manual transfers are netted separately.
-            </p>
-          </div>
-        </div>
       </div>
 
       <p :if={is_nil(@snap) and not match?({:loading, _}, @account)} class="pt-3 text-base-content/60">
-        Account balances unavailable — refresh to request a brokerage snapshot.
+        No snapshot yet — refresh to load your accounts.
       </p>
       <p :if={is_nil(@snap) and match?({:loading, _}, @account)} class="pt-3 text-base-content/60">
         Loading accounts…
@@ -1976,7 +1944,7 @@ defmodule BusterClawWeb.TradingLive do
 
       <div class="mt-auto flex items-center justify-between gap-2 border-t-2 border-base-content/20 pt-2">
         <span id="trading-account-state" class="text-base-content/50">
-          {dataset_label(@account_state, "Account balances")}
+          {as_of_label(@account_state)}
         </span>
         <button
           type="button"
@@ -2365,34 +2333,25 @@ defmodule BusterClawWeb.TradingLive do
   defp card_error({:error, :no_agent_cli, _prev}), do: "Claude Code CLI not found"
   defp card_error({:error, _reason, _prev}), do: "agent run failed"
 
-  defp dataset_label(%DataState{status: :loading, as_of: nil}, label),
-    do: "#{label}: loading"
+  # The as-of IS the status line. An age ("as of 3h") carries everything a
+  # `stale` badge would, without asking the user to learn a second vocabulary —
+  # and it degrades gracefully, where a badge that is on permanently (which
+  # `stale` was, at a 15-minute threshold against data refreshed by an explicit
+  # agent run) stops being read at all.
+  #
+  # The distinctions a timestamp genuinely cannot carry — "we asked and got
+  # nothing back" versus "we never asked" — are the panel's own empty-state
+  # sentence, one line lower. That is the right place for them: they only matter
+  # when there is nothing else on screen.
+  defp as_of_label(%DataState{status: :loading}), do: "updating…"
+  defp as_of_label(%DataState{status: :unavailable}), do: ""
+  defp as_of_label(%DataState{as_of: nil}), do: ""
+  defp as_of_label(%DataState{as_of: as_of}), do: "as of #{format_data_time(as_of)}"
 
-  defp dataset_label(%DataState{status: :loading, as_of: as_of}, label),
-    do: "#{label}: loading · showing #{format_data_time(as_of)}"
-
-  defp dataset_label(%DataState{status: :fresh, as_of: as_of}, label),
-    do: "#{label}: fresh#{data_time_label(as_of)}"
-
-  defp dataset_label(%DataState{status: :stale, as_of: as_of}, label),
-    do: "#{label}: stale#{data_time_label(as_of)}"
-
-  defp dataset_label(%DataState{status: :unavailable}, label),
-    do: "#{label}: unavailable"
-
-  defp dataset_label(%DataState{status: :confirmed_empty, as_of: as_of}, label),
-    do: "#{label}: confirmed empty#{data_time_label(as_of)}"
-
-  defp dataset_time_suffix(%DataState{as_of: nil}), do: ""
-  defp dataset_time_suffix(%DataState{as_of: as_of}), do: "as of #{format_data_time(as_of)}"
-
-  defp row_price_label(%DataState{status: status, source: source, as_of: as_of}) do
-    source_label = if source == :quotes, do: "quote", else: "close"
-    "#{status} #{source_label}#{data_time_label(as_of)}"
-  end
-
-  defp data_time_label(nil), do: ""
-  defp data_time_label(as_of), do: " · as of #{format_data_time(as_of)}"
+  # Parenthetical for an empty-state sentence, where the age qualifies a claim
+  # ("no positions — as of when?") rather than labelling a panel.
+  defp as_of_suffix(%DataState{as_of: nil}), do: ""
+  defp as_of_suffix(%DataState{as_of: as_of}), do: " (as of #{format_data_time(as_of)})"
 
   defp format_data_time(%DateTime{} = at), do: relative_time(at)
   defp format_data_time(%Date{} = day), do: Date.to_iso8601(day)
@@ -2407,7 +2366,7 @@ defmodule BusterClawWeb.TradingLive do
   defp datetime_stale?(nil), do: true
 
   defp datetime_stale?(%DateTime{} = at),
-    do: DateTime.diff(DateTime.utc_now(), at, :minute) >= @detail_stale_min
+    do: DateTime.diff(DateTime.utc_now(), at, :minute) >= @holdings_stale_min
 
   # A coarse relative timestamp ("3m", "2h", "5d"); older than a week falls back
   # to a short date. Stamps are UTC; so is utc_now.

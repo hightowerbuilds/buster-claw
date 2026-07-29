@@ -112,8 +112,11 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "Crypto"
       assert html =~ "$915.88"
       assert html =~ "$3.38"
-      assert html =~ "Account balances: fresh"
-      assert html =~ "Performance: fresh"
+      # Each panel states its age, and states it once — no status vocabulary.
+      assert has_element?(view, "#trading-account-state", "as of")
+      assert has_element?(view, "#trading-performance-state", "as of")
+      refute html =~ ": fresh"
+      refute html =~ ": stale"
       refute html =~ "VOO"
 
       # Selecting an account is what starts its holdings fetch, and until it
@@ -249,7 +252,7 @@ defmodule BusterClawWeb.TradingLiveTest do
         |> render_submit(%{"kind" => "deposit", "amount" => "500.00"})
 
       refute html =~ "trading-anomaly-prompt"
-      assert html =~ "Manual transfer reconciliations"
+      assert html =~ "Marked transfers"
       assert html =~ "deposit · account 6587"
 
       # The gain is now the $0 that was actually earned, while the value stands.
@@ -483,8 +486,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "+0.18%"
       # No prev_close and no given change: a written dash, never a zero.
       assert html =~ "NDX"
-      assert html =~ "as of"
-      assert html =~ "Market indexes: fresh"
+      assert has_element?(view, "#trading-index-state", "as of")
     end
 
     test "positions render from the cache with real unrealized P&L and no fetch",
@@ -532,7 +534,10 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "+1.60%"
       # The sparkline drew from cached closes.
       assert html =~ "<polyline"
-      assert html =~ "Prices: fresh"
+      # One age for the panel, none on the rows.
+      assert has_element?(view, "#trading-positions-state", "as of")
+      refute html =~ "fresh quote"
+      refute html =~ "stale close"
     end
 
     test "a missing cost basis says so — never $0", %{conn: conn} do
@@ -564,7 +569,6 @@ defmodule BusterClawWeb.TradingLiveTest do
       # HEEx wraps between the count interpolation and its noun.
       assert html =~ "Cost basis not loaded for 2"
       assert html =~ ~r/2\s+accounts/
-      assert html =~ "Holdings: unavailable"
       assert html =~ "one agent run per account"
       assert html =~ ~r/>\s*Load\s*</
     end
@@ -579,8 +583,10 @@ defmodule BusterClawWeb.TradingLiveTest do
       {:ok, view, _html} = live(conn, ~p"/trading")
       html = render_async(view)
 
-      assert html =~ "Holdings: confirmed empty"
-      assert html =~ "No open positions in the confirmed brokerage response"
+      # A confirmed empty says so plainly, and dates the claim.
+      assert html =~ "No open positions"
+      assert html =~ "every included account is cash"
+      assert html =~ "as of"
       refute html =~ "Cost basis not loaded"
     end
 
@@ -818,20 +824,18 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "GOOGL"
       assert html =~ "reports"
       assert html =~ "after close"
-      assert html =~ "Calendar: fresh"
+      assert has_element?(view, "#trading-earnings-state", "as of")
 
       # And the empty state is worded, not silent (the done-when).
       BusterClaw.MarketData.store_quotes(%{quotes: [], indexes: [], earnings: []})
       {:ok, view2, _html} = live(conn, ~p"/trading")
       html = render_async(view2)
       assert html =~ "No earnings scheduled for your holdings"
-      assert html =~ "Calendar: confirmed empty"
 
       BusterClaw.Settings.put("market_quotes_snapshot", nil)
       {:ok, view3, _html} = live(conn, ~p"/trading")
       html = render_async(view3)
       assert html =~ "Earnings unavailable"
-      assert html =~ "Calendar: unavailable"
     end
 
     test "the activity panel merges loaded accounts and names the gap", %{conn: conn} do
@@ -861,9 +865,11 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "VOO"
       assert html =~ "Investing"
       assert html =~ "Fills (from filled-order status)"
-      assert html =~ "Manual transfer reconciliations"
-      assert html =~ "Dividends"
-      assert html =~ "Market movement"
+      # Sections that exist only to report their own emptiness are gone: with no
+      # marked flows there is no transfers block, and dividends — which this
+      # broker surface cannot answer at all — get no permanent tile.
+      refute html =~ "Marked transfers"
+      refute html =~ "Dividends"
       # The gap is named: one of two holdings-capable accounts is loaded.
       assert html =~ ~r/partial · 1 of 2\s+accounts/
       refute html =~ "No trades yet"
@@ -871,8 +877,8 @@ defmodule BusterClawWeb.TradingLiveTest do
       render_click(view, "trading_select_account", %{"id" => "••••4821"})
       html = render_async(view)
 
-      assert html =~ "Orders: confirmed empty"
-      assert html =~ "No trades in the confirmed brokerage response"
+      assert html =~ "No trades"
+      assert html =~ "as of"
     end
 
     test "a stage-1 reading lands in the portfolio ledger", %{conn: conn} do
@@ -1165,7 +1171,9 @@ defmodule BusterClawWeb.TradingLiveTest do
 
       assert html =~ "Refresh failed: disabled in test"
       assert html =~ "$42.00"
-      assert html =~ "Account balances: stale"
+      # The kept snapshot still dates itself; the failure is its own line above.
+      assert has_element?(view, "#trading-account-state", "as of")
+      refute html =~ "stale"
     end
   end
 
@@ -1251,5 +1259,4 @@ defmodule BusterClawWeb.TradingLiveTest do
       {:ok, detail_for(last4)}
     end)
   end
-
 end
