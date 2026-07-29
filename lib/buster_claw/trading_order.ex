@@ -34,6 +34,7 @@ defmodule BusterClaw.TradingOrder do
 
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.AgentRunner
+  alias BusterClaw.Trading
 
   # get_accounts is here because placing needs a real account number and we
   # deliberately never persist one — the card carries last four digits, and the
@@ -298,16 +299,20 @@ defmodule BusterClaw.TradingOrder do
   @doc """
   Claude arguments for the submit run: the write tool, and nothing else.
 
-  No `--mcp-config` here, for the reason documented on
-  `Trading.read_only_cli_args/0` — it declares a credential-free server that
-  shadows the authenticated one. The allowlist is the confinement.
+  Same three-part confinement as `Trading.read_only_cli_args/0`, and for the
+  reasons documented there — notably that `--tools ""` would take the MCP tools
+  down with the built-ins, which on a submit run means an order that silently
+  never happens.
   """
   def submit_cli_args do
     [
-      "--tools",
-      "",
+      "--disallowedTools",
+      Enum.join(Trading.denied_tools(), ","),
       "--allowedTools",
-      Enum.join(@submit_tools, ",")
+      Enum.join(@submit_tools, ","),
+      "--strict-mcp-config",
+      "--mcp-config",
+      Trading.ensure_mcp_config()
     ]
   end
 

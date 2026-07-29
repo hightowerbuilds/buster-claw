@@ -38,6 +38,7 @@ defmodule BusterClaw.Trading do
 
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.AgentRunner
+  alias BusterClaw.Library.Artifact
   alias BusterClaw.Settings
 
   @conv_id "trading"
@@ -54,6 +55,17 @@ defmodule BusterClaw.Trading do
     mcp__robinhood__get_indexes
     mcp__robinhood__get_portfolio
     mcp__robinhood__get_realized_pnl
+  )
+
+  # Named explicitly rather than emptied with `--tools ""`, which also silences
+  # MCP. Shared by the read args and TradingOrder's submit args — a trading run
+  # has no business touching the filesystem, the shell, or the web.
+  @denied_tools ~w(
+    Bash BashOutput KillShell
+    Edit Write NotebookEdit
+    Read Glob Grep
+    Task WebFetch WebSearch
+    TodoWrite SlashCommand ExitPlanMode
   )
 
   # The account panel's cached snapshot (JSON blob in Settings — the
@@ -211,44 +223,70 @@ defmodule BusterClaw.Trading do
   @doc """
   Claude arguments that make the Robinhood surface deny-by-default.
 
-  `dontAsk` is supplied as the AgentRunner permission mode. The built-in tool set
-  is disabled and only the named `get_*` tools are pre-approved. A write tool
-  introduced by Robinhood later remains denied without a code change here.
+  `dontAsk` is the AgentRunner permission mode; the run is scoped to the
+  Robinhood MCP server, the built-in tools are explicitly denied, and only the
+  named `get_*` tools are pre-approved. A write tool introduced by Robinhood
+  later remains unapproved without a code change here.
 
-  ## Why there is no `--mcp-config` here (2026-07-28)
+  ## Why `--disallowedTools` and not `--tools ""` (2026-07-28)
 
-  There used to be `--strict-mcp-config --mcp-config <workspace>/mcp/robinhood.json`,
-  which scoped the run to exactly this server. It also silently broke every
-  trading read for as long as it existed.
+  This used to pass `--tools ""` to empty the built-in tool set. That silently
+  broke every trading read for as long as it existed: `--tools ""` does not just
+  drop the built-ins, it takes MCP tools with it. Measured against the operator's
+  real account, `--tools ""` produced **0 broker tool calls in 4 runs** across two
+  models, and the model filled the silence with invented accounts rather than
+  stopping. Dropping it: 1 call in 1 run on the default model.
 
-  The OAuth tokens minted by `claude mcp login robinhood` are bound to the
-  USER-SCOPED server registration. Passing a `--mcp-config` file declares a
-  *different*, credential-free server under the same name, and `--strict-mcp-config`
-  makes that the only one — so the tools loaded unauthenticated, which is to say
-  they did not load at all. Verified both ways against the operator's real
-  account: with those flags the model emitted a fabricated `<function_calls>`
-  block as plain text and never reached the broker; without them it returned real
-  account JSON immediately.
+  `--allowedTools` alone is NOT confinement — it is an approval list, not a deny
+  list. Under `dontAsk`, a built-in that is merely absent from it still runs:
+  a probe asked for `Bash` with only the Robinhood tool allowed and got a clean
+  execution with an empty `permission_denials`. `--disallowedTools` is what
+  actually refuses it (same probe, 0 Bash calls), and it leaves MCP intact.
 
-  The allowlist below, not the config scoping, is what actually confines this
-  surface: `--tools ""` plus an explicit `--allowedTools` means another operator's
-  MCP server may have its definitions loaded but none of its tools can be called.
+  So all three do distinct work and all three are load-bearing: `--mcp-config`
+  scopes which servers exist, `--disallowedTools` refuses the built-ins,
+  `--allowedTools` pre-approves the reads.
   """
   def read_only_cli_args do
     [
-      "--tools",
-      "",
+      "--disallowedTools",
+      Enum.join(@denied_tools, ","),
       "--allowedTools",
-      Enum.join(@read_tools, ",")
+      Enum.join(@read_tools, ","),
+      "--strict-mcp-config",
+      "--mcp-config",
+      ensure_mcp_config()
     ]
   end
 
   @doc """
-  The Robinhood MCP endpoint. Kept for the setup instructions the tab prints —
-  the operator registers it once with `claude mcp add`, and that registration
-  (not a file we write) is what carries the OAuth tokens.
+  The built-in tools a trading run is refused. Exposed so `TradingOrder`'s
+  submit args share one list rather than drifting from this one.
   """
-  def mcp_url, do: @mcp_url
+  def denied_tools, do: @denied_tools
+
+  @doc """
+  Seed `<workspace>/mcp/robinhood.json` and return its path. Never overwrites
+  an existing file — operator edits (extra headers, a different endpoint) win,
+  the same contract as `Jobs.seed_agent_settings/0`.
+  """
+  def ensure_mcp_config do
+    path = Artifact.workspace_path(["mcp", "robinhood.json"])
+    File.mkdir_p!(Path.dirname(path))
+    unless File.exists?(path), do: File.write!(path, default_mcp_config())
+    path
+  end
+
+  defp default_mcp_config do
+    Jason.encode!(
+      %{
+        "mcpServers" => %{
+          "robinhood" => %{"type" => "http", "url" => @mcp_url, "timeout" => 60_000}
+        }
+      },
+      pretty: true
+    ) <> "\n"
+  end
 
   # --- Account snapshot (the tab's right-hand panel) ---
 
@@ -794,7 +832,12 @@ defmodule BusterClaw.Trading do
   defp run_agent(prompt, timeout_ms, parser) do
     opts = [
       extra_args: read_only_cli_args() ++ ~w(--output-format stream-json --verbose),
-      model: "haiku",
+      # NOT haiku. It was chosen when these reads were cheap and their failure
+      # mode was assumed to be an error; measured on 07-28 it invoked the broker
+      # tool in only 1 of 2 runs, and on the miss it invented the answer rather
+      # than reporting a problem. A read that silently fabricates half the time
+      # is worse than a read that costs more, so this inherits the operator's
+      # default model.
       permission_mode: "dontAsk",
       timeout_ms: timeout_ms,
       login: true

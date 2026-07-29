@@ -126,11 +126,12 @@ defmodule BusterClaw.TradingOrderTest do
       assert submit =~ "mcp__robinhood__place_equity_order"
       refute chat =~ "place_equity_order"
 
-      # Built-in tools stay off in both, and neither carries an --mcp-config:
-      # it shadows the authenticated server (see the 07-28 note in Trading).
-      assert submit =~ "--tools"
-      refute submit =~ "--mcp-config"
-      refute chat =~ "--mcp-config"
+      # Same confinement as the read args, and never `--tools ""` — on a submit
+      # run that would mean an order that silently never happens.
+      refute submit =~ "--tools "
+      assert submit =~ "--disallowedTools"
+      assert submit =~ "Bash"
+      assert submit =~ "--strict-mcp-config"
       refute submit =~ "mcp__robinhood__get_equity_quotes"
     end
   end

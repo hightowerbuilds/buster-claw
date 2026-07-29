@@ -20,16 +20,38 @@ defmodule BusterClaw.TradingTest do
     {:ok, root: root}
   end
 
-  test "the read args carry NO mcp-config — it shadowed the authenticated server" do
+  test "the read args never empty the tool set — that silences MCP too" do
     extra = Trading.read_only_cli_args()
 
-    # Regression guard for the 07-28 fabrication bug. `--mcp-config` declares a
-    # credential-free robinhood server that shadows the user-scoped registration
-    # the OAuth tokens are bound to, and `--strict-mcp-config` makes it the only
-    # one — so the tools load unauthenticated and the model invents data.
-    refute "--strict-mcp-config" in extra
-    refute "--mcp-config" in extra
-    refute Enum.any?(extra, &String.ends_with?(&1, "mcp/robinhood.json"))
+    # Regression guard for the 07-28 fabrication bug. `--tools ""` drops the
+    # built-ins AND the MCP tools with them: measured 0 broker calls in 4 runs
+    # across two models, with invented accounts in place of an error.
+    refute "--tools" in extra
+
+    # Built-ins are refused by NAME instead. `--allowedTools` cannot do this job
+    # — it is an approval list, not a deny list, and under `dontAsk` an absent
+    # built-in still runs (probed: Bash executed with empty permission_denials).
+    assert "--disallowedTools" in extra
+    denied = Enum.at(extra, Enum.find_index(extra, &(&1 == "--disallowedTools")) + 1)
+    assert denied =~ "Bash"
+    assert denied =~ "Write"
+    assert denied =~ "WebFetch"
+
+    # Server scoping is fine and worth keeping — it was never the bug.
+    assert "--strict-mcp-config" in extra
+    assert Enum.any?(extra, &String.ends_with?(&1, "mcp/robinhood.json"))
+  end
+
+  test "seeds the Robinhood MCP config once and never overwrites operator edits", %{root: root} do
+    path = Trading.ensure_mcp_config()
+    assert path == Path.join([root, "mcp", "robinhood.json"])
+
+    config = path |> File.read!() |> Jason.decode!()
+    assert config["mcpServers"]["robinhood"]["url"] == "https://agent.robinhood.com/mcp/trading"
+
+    File.write!(path, ~s({"mcpServers": {"robinhood": {"custom": true}}}\n))
+    assert Trading.ensure_mcp_config() == path
+    assert File.read!(path) =~ "custom"
   end
 
   test "unconfirmed or free-form turns cannot reach a Robinhood write tool" do
@@ -37,8 +59,6 @@ defmodule BusterClaw.TradingTest do
     extra = Keyword.fetch!(opts, :extra_cli_args)
 
     assert Keyword.fetch!(opts, :permission_mode) == "dontAsk"
-    assert "--tools" in extra
-    assert "" in extra
     assert "--allowedTools" in extra
 
     allowed = Enum.at(extra, Enum.find_index(extra, &(&1 == "--allowedTools")) + 1)
