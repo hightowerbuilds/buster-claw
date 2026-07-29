@@ -341,19 +341,44 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert has_element?(view, "#trading-account-card")
     end
 
-    test "a new Chat tab opens floating, with no panel of its own", %{conn: conn} do
+    test "a new Chat tab starts docked — it IS the sub-tab, not a window", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")
 
       render_click(view, "trading_new_tab", %{"kind" => "chat"})
       chat = Enum.find(Conversations.list_kinds(["chat"]), & &1)
 
-      refute chat.docked
-      assert has_element?(view, "#trading-chat-#{chat.id}")
-      # A neutral chat has no dashboard, so the tab says why it is empty and
-      # names the gesture that fills it rather than showing a blank pane.
-      assert has_element?(view, "#trading-float-hint")
-      assert render(view) =~ "Drag its window onto the tab bar"
+      assert chat.docked
+      assert has_element?(view, "#trading-dock-#{chat.id}")
+      # Docked means no floating window and no leftover hint.
+      refute has_element?(view, "#trading-chat-#{chat.id}")
+      refute has_element?(view, "#trading-float-hint")
       refute has_element?(view, "#trading-account-card")
+    end
+
+    test "a new tab that HAS a panel starts floating, so the panel is visible",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      render_click(view, "trading_new_tab", %{"kind" => "research"})
+      research = Enum.find(Conversations.list_kinds(["research"]), & &1)
+
+      # Docking these on creation would hide the dashboard the tab exists for.
+      refute research.docked
+      assert has_element?(view, "#trading-research-card")
+      assert has_element?(view, "#trading-chat-#{research.id}")
+    end
+
+    test "a floating Chat tab explains itself instead of rendering a blank pane",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chat"})
+      chat = Enum.find(Conversations.list_kinds(["chat"]), & &1)
+
+      render_click(view, "trading_float_chat", %{"id" => chat.id})
+
+      assert has_element?(view, "#trading-float-hint")
+      assert has_element?(view, "#trading-chat-#{chat.id}")
+      assert render(view) =~ "Drag its window back onto the tab bar"
     end
 
     test "dropping a chat on the tab bar docks it, and floating brings the panel back",

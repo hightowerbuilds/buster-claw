@@ -168,17 +168,30 @@ defmodule BusterClawWeb.TradingLive do
 
   def handle_event("trading_new_tab", %{"kind" => kind}, socket)
       when kind in ["chat", "robinhood", "research"] do
-    {:ok, conv} = Conversations.create(%{title: Trading.kind_label(kind), kind: kind})
+    # A new tab starts docked — it opens as a sub-tab rather than a window the
+    # operator has to place. The exception is a kind that HAS a data panel:
+    # docking a Robinhood or Research tab hides the very dashboard you just
+    # asked for, so those start with the panel showing and the chat floating
+    # over it. Either can be dragged or buttoned into the other state after.
+    docked = kind == "chat"
+
+    {:ok, conv} =
+      Conversations.create(%{title: Trading.kind_label(kind), kind: kind, docked: docked})
+
     if connected?(socket), do: Chat.subscribe(conv.id)
 
-    # A tab you just made is one you want to talk to, so its window opens with
-    # it — and appended, so it is the focused one. Selecting an EXISTING tab
-    # deliberately does not do this: a window the operator closed stays closed.
+    # A tab you just made is one you want to talk to, so a floating one opens
+    # with it — and appended, so it is the focused one. Selecting an EXISTING
+    # tab deliberately does not do this: a window the operator closed stays
+    # closed. A docked tab needs no window; it is already the tab.
+    open_chats =
+      if docked, do: socket.assigns.open_chats, else: socket.assigns.open_chats ++ [conv.id]
+
     {:noreply,
      socket
      |> assign(:tabs, socket.assigns.tabs ++ [to_tab(conv)])
      |> assign(:new_tab_open, false)
-     |> assign(:open_chats, socket.assigns.open_chats ++ [conv.id])
+     |> assign(:open_chats, open_chats)
      |> activate_tab(conv.id)}
   end
 
@@ -1901,8 +1914,8 @@ defmodule BusterClawWeb.TradingLive do
         id="trading-new-tab-menu"
         class="absolute left-0 top-full z-20 mt-1 w-56 border-2 border-base-content/25 bg-base-100 font-mono text-xs shadow-[3px_3px_0_0_oklch(var(--bc)/0.15)]"
       >
-        <%!-- Chat leads: it is the neutral one, it opens floating, and it can be
-              pointed at either of the others afterwards. --%>
+        <%!-- Chat leads: it is the neutral one, and it can be pointed at either
+              of the others afterwards. --%>
         <button
           type="button"
           phx-click="trading_new_tab"
@@ -1911,7 +1924,7 @@ defmodule BusterClawWeb.TradingLive do
         >
           <span class="font-black uppercase tracking-wide">Chat</span>
           <span class="block text-[0.68rem] text-base-content/60">
-            Opens floating · drag onto the tab bar to dock it
+            Opens as a sub-tab · float it from its title bar
           </span>
         </button>
         <button
@@ -2236,8 +2249,8 @@ defmodule BusterClawWeb.TradingLive do
         >
           <p class="font-bold uppercase tracking-wide">This chat is floating</p>
           <p class="pt-2 leading-relaxed">
-            Drag its window onto the tab bar to dock it here, or point it at
-            Robinhood or Research from the selector in its title bar.
+            Drag its window back onto the tab bar to dock it here again, or point
+            it at Robinhood or Research from the selector in its title bar.
           </p>
         </div>
       </section>
