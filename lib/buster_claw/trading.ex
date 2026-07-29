@@ -147,7 +147,12 @@ defmodule BusterClaw.Trading do
       6. day or gtc (good till cancelled)
     Never guess a missing one, and never default the size or the price.
   - Name the account by the last four digits of its number, from get_accounts.
-    If the operator has more than one eligible account, ask which.
+  - Only ever propose for an account whose get_accounts entry has
+    `agentic_allowed: true`. Robinhood refuses orders on any other account, so
+    proposing one wastes the operator's confirmation on something that cannot
+    work. If they ask for a different account, say plainly that it is not
+    agent-enabled and name the ones that are. If more than one is eligible, ask
+    which.
   - It is worth quoting the symbol first so your proposal carries a real price.
   - Then end your message with a fenced block, exactly this form:
 

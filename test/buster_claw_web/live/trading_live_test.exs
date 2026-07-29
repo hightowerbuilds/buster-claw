@@ -64,7 +64,6 @@ defmodule BusterClawWeb.TradingLiveTest do
       {:ok, view, html} = live(conn, ~p"/trading")
 
       assert html =~ "trading-read-only-banner"
-      assert html =~ "Buster Claw cannot place, amend, or cancel Robinhood orders"
       assert html =~ "claude mcp login robinhood"
       assert html =~ "#65895"
       refute html =~ "check your mail"
@@ -167,6 +166,69 @@ defmodule BusterClawWeb.TradingLiveTest do
       html = render_async(view)
       assert html =~ "Sent"
       assert html =~ "rh-order-991"
+    end
+
+    test "the banner describes the order path instead of denying it exists",
+         %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/trading")
+
+      # This copy said "Buster Claw cannot place, amend, or cancel Robinhood
+      # orders" for a full day after the confirm card shipped. It was true when
+      # written and false when read.
+      refute html =~ "cannot place, amend, or cancel"
+      assert html =~ "Orders leave only from a card you click"
+      assert html =~ "the assistant proposes, it never sends"
+    end
+
+    test "a proposal for a non-agentic account is refused before it is drawn",
+         %{conn: conn} do
+      stub_trading_fetchers()
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_async(view)
+
+      # ••••4821 is on the snapshot but is not agent-enabled.
+      propose(
+        view,
+        ~s({"side":"buy","symbol":"AAPL","quantity":1,"order_type":"market",) <>
+          ~s("time_in_force":"day","account_last4":"4821"})
+      )
+
+      html = render(view)
+      assert html =~ "not agent-enabled"
+      assert html =~ "Nothing was sent"
+      # Naming the accounts that DO work is what makes the refusal actionable.
+      assert html =~ "Orders can be placed from"
+      refute has_element?(view, "#trading-order-confirm-trading")
+    end
+
+    test "a proposal for an account that is not on the snapshot is refused",
+         %{conn: conn} do
+      stub_trading_fetchers()
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_async(view)
+
+      propose(
+        view,
+        ~s({"side":"buy","symbol":"AAPL","quantity":1,"order_type":"market",) <>
+          ~s("time_in_force":"day","account_last4":"9999"})
+      )
+
+      assert render(view) =~ "No account ending 9999"
+      refute has_element?(view, "#trading-order-confirm-trading")
+    end
+
+    test "an agent-enabled account still arms the card", %{conn: conn} do
+      stub_trading_fetchers()
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_async(view)
+
+      propose(
+        view,
+        ~s({"side":"buy","symbol":"AAPL","quantity":1,"order_type":"market",) <>
+          ~s("time_in_force":"day","account_last4":"6587"})
+      )
+
+      assert has_element?(view, "#trading-order-confirm-trading")
     end
 
     test "a submission with no verdict says UNKNOWN and offers no retry", %{conn: conn} do
@@ -521,7 +583,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       refute_receive {:detail_requested, "4821"}, 50
 
       assert html =~ "Buying power"
-      assert html =~ "Agentic account · writes disabled"
+      assert html =~ "Agentic · orders need your confirmation"
       assert html =~ "Loading holdings…"
       refute html =~ "VOO"
     end
@@ -1333,7 +1395,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       # The Roth's numbers are on screen and it is marked unwritable.
       assert html =~ "$900.00"
       assert html =~ "VTI"
-      assert html =~ "Read-only account"
+      assert html =~ "Read-only · not agent-enabled"
       refute html =~ "Orders execute here"
     end
 

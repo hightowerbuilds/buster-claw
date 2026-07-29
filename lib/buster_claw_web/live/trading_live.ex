@@ -625,8 +625,7 @@ defmodule BusterClawWeb.TradingLive do
         # group A, the one key with no broadcast of its own). Through the
         # SoundBoard's direct lane, so it passes the same master-switch /
         # cooldown / routing gates as every other chime.
-        BusterClaw.Notifications.SoundBoard.ring("order")
-        put_chat(socket, conv, &%{&1 | pending_order: {:proposed, order}})
+        arm_or_refuse(socket, conv, order)
 
       :none ->
         socket
@@ -643,6 +642,64 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   defp maybe_propose_order(socket, _conv, _role, _text), do: socket
+
+  # Only an agent-enabled account can take an order, so a proposal naming any
+  # other one is refused HERE rather than at the broker. Otherwise the operator
+  # reads a card, clicks confirm, waits out a run, and gets a rejection for a
+  # reason the app knew before it ever drew the card.
+  defp arm_or_refuse(socket, conv, order) do
+    case account_orderability(socket, order.account_last4) do
+      :ok ->
+        # A money moment waiting on the operator gets a sound (SOUND_ROADMAP
+        # group A, the one key with no broadcast of its own). Through the
+        # SoundBoard's direct lane, so it passes the same master-switch /
+        # cooldown / routing gates as every other chime.
+        BusterClaw.Notifications.SoundBoard.ring("order")
+        put_chat(socket, conv, &%{&1 | pending_order: {:proposed, order}})
+
+      {:refused, message} ->
+        push_msg_to(socket, conv, :error, message)
+    end
+  end
+
+  defp account_orderability(socket, last4) do
+    accounts =
+      socket.assigns.trading_account
+      |> last_snapshot()
+      |> Trading.accounts()
+
+    cond do
+      # No snapshot yet: we genuinely do not know, and blocking on our own
+      # ignorance would make ordering depend on the dashboard having loaded.
+      # The broker still gets the final say.
+      accounts == [] ->
+        :ok
+
+      Enum.any?(accounts, &(&1["last4"] == last4 and &1["agentic"])) ->
+        :ok
+
+      Enum.any?(accounts, &(&1["last4"] == last4)) ->
+        {:refused,
+         "Account ••••#{last4} is not agent-enabled, so Robinhood will not accept an order " <>
+           "for it. Nothing was sent. #{orderable_hint(accounts)}"}
+
+      true ->
+        {:refused,
+         "No account ending #{last4} is on your latest snapshot, so Buster Claw will not " <>
+           "send an order for it. Nothing was sent. #{orderable_hint(accounts)}"}
+    end
+  end
+
+  defp orderable_hint(accounts) do
+    case Enum.filter(accounts, & &1["agentic"]) do
+      [] ->
+        "None of your accounts are currently marked agent-enabled."
+
+      agentic ->
+        "Orders can be placed from: " <>
+          Enum.map_join(agentic, ", ", &"#{&1["label"]} ••••#{&1["last4"]}") <> "."
+    end
+  end
 
   # Speak the model's replies aloud (client gates on the Voice toggle + desktop
   # app). Only `:assistant` text — never tool/meta/error lines.
@@ -2149,9 +2206,15 @@ defmodule BusterClawWeb.TradingLive do
         >
           <div
             id="trading-read-only-banner"
-            class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-success"
+            class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs text-success"
           >
-            Read-only mode — Buster Claw cannot place, amend, or cancel Robinhood orders
+            <p class="font-bold uppercase tracking-wide">
+              Orders leave only from a card you click — the assistant proposes, it never sends
+            </p>
+            <p class="pt-0.5 text-[0.68rem] text-success/70">
+              Ask this chat to buy or sell. It gathers the details, then Buster Claw shows you
+              the exact order to confirm.
+            </p>
           </div>
           <%!-- First-run setup: the OAuth handshake is interactive by nature
                 (a browser window), so it happens once in a terminal — the
@@ -2812,8 +2875,8 @@ defmodule BusterClawWeb.TradingLive do
             )
           ]}>
             {if @selected["agentic"],
-              do: "Agentic account · writes disabled",
-              else: "Read-only account"}
+              do: "Agentic · orders need your confirmation",
+              else: "Read-only · not agent-enabled"}
           </span>
         </div>
 
