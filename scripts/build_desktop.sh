@@ -73,7 +73,29 @@ echo "==> Assembling Elixir release"
 MIX_ENV=prod mix release --overwrite
 
 echo "==> Staging release into Tauri resources"
-rm -rf deskt
+rm -rf desktop/tauri/resources/release
+mkdir -p desktop/tauri/resources
+cp -R "$REPO_ROOT/_build/prod/rel/buster_claw" desktop/tauri/resources/release
+
+# Assert the artifact, not the exit code. `cp` into an empty destination is not
+# an error and cargo tauri will happily bundle an empty resources dir, so a
+# broken staging step produces a .dmg that installs, launches, and never starts
+# Phoenix — while every command in this script exits 0. That is not theoretical:
+# a truncated edit in 2886f96 reduced the three lines above to `rm -rf deskt`,
+# and every DMG built between 07-22 and 07-28 (including the ones CI uploaded)
+# shipped an empty Resources/release. Nothing failed. Nobody noticed for six days.
+STAGED_REL="desktop/tauri/resources/release"
+if [ ! -x "$STAGED_REL/bin/buster_claw" ] || ! compgen -G "$STAGED_REL/erts-*" >/dev/null; then
+  echo "" >&2
+  echo "FATAL: release staging did not produce a runnable release." >&2
+  echo "       expected: $STAGED_REL/bin/buster_claw (executable) + $STAGED_REL/erts-*" >&2
+  echo "       found:    $(ls -A "$STAGED_REL" 2>/dev/null | tr '\n' ' ' || echo '<missing>')" >&2
+  echo "" >&2
+  echo "The bundle would ship an empty Resources/release and could not boot Phoenix." >&2
+  echo "Check the staging block above and that \`mix release\` wrote _build/prod/rel/buster_claw." >&2
+  exit 1
+fi
+echo "    staged $(du -sh "$STAGED_REL" | cut -f1) release + $(basename "$(echo "$STAGED_REL"/erts-*)")"
 
 echo "==> Building Tauri bundle"
 # tauri-build's copy_resources overwrites with fs::copy without removing first;

@@ -160,3 +160,134 @@ green through every real defect; the live probes caught all of them: two
 stopwatch bugs, a null the tools never fill, an economy leak, a midnight
 rollover. **Run the real thing. The suite answers the questions you thought to
 ask; the probe asks the ones you didn't.**
+
+---
+
+# Second session — the evening proper
+
+Everything above was written at 22:56 and closed the previous working session;
+by the convention §9 set (date it by the date that has actually happened) it and
+what follows share this file. Three minutes after that commit the wallets
+subsystem came out (`db10a58`) — the whole context, its four tables, and the
+journal/introduction/chat tightening that fell out of it. Then the evening's own
+arc, which is a build-and-delete: `5ee249f..a8a20e3`, four commits, and the net
+line count is **negative**.
+
+## 10. The order lane, built and then removed
+
+A full deterministic trade lane was authored and committed *as a checkpoint so it
+could be deleted safely*: `TradingOrders` with a draft→review→policy→confirm
+intent chain, `TradingBroker` carrying its own OAuth and MCP client, an order-lane
+component, an OAuth callback route, a reconciler child, two tables. ~6,000 lines,
+suite green.
+
+It was reverted the same hour. The reasoning in `adc9699` is one sentence:
+**trade creation does not belong in a second broker stack.** The thing that
+actually prevented the chat from placing an order was never the lane — it was
+`Trading.read_only_cli_args/0` (`trading.ex:212`): `--tools ""` plus an explicit
+`--allowedTools` of `get_*` names, which is deny-by-default. A write tool
+Robinhood adds later stays denied without a code change here. The lane was 6,000
+lines of ceremony guarding a door that one allowlist already held shut.
+
+Kept from the same batch rather than thrown out with it: AgentRunner's stdin
+`/dev/null` fix, the event input allowlists, and `DataState`. The drop migration
+(`20260728210000`) is `drop_if_exists` on all four tables and a no-op on a fresh
+database — the tables only ever existed on a machine that ran the creates before
+they were reverted.
+
+**Committing a thing in order to delete it in the next commit is not indecision
+— it is how you keep a rejected design readable in history instead of losing it
+to a stash.**
+
+## 11. DataState survives; its vocabulary does not
+
+The five-way freshness distinction was right. Rendering it as itself was not.
+"Holdings: stale · as of 3h" is the model's internal enum wearing a UI; "as of
+3h" is the same fact in the user's language. `dataset_label/2` became
+`as_of_label/1` — one age per panel, and on Positions it's the *price* age,
+because that's the number that actually moves.
+
+The staleness threshold went 15 minutes → 12 hours. Cost rows are written by an
+explicit agent run, so a 15-minute threshold marked every panel stale a quarter
+hour after the only refresh the user ever asks for. **An alarm that is always
+ringing is not an alarm.** Also gone: a "Holdings: unavailable" banner rendered
+directly above a populated holdings table (a partial cost load is *cached*, not
+missing), and a Dividends tile whose only content was that dividends don't exist.
+
+## 12. The model proposes in prose; the app submits from a struct
+
+Trade creation came back to the chat without giving the chat a write tool. The
+run keeps the read-only allowlist unchanged. The model gathers side, symbol,
+size, type, price and TIF *in English* — the system prompt makes it **ask**
+rather than default any of them — and closes with a fenced ```` ```order ````
+block. `BusterClaw.TradingOrder` parses that block, validates every field, and
+`TradingLive` renders **the parsed values** as a card pinned above the composer.
+The click runs a separate one-shot run whose allowlist has the write tool and
+whose parameters are literals from the struct.
+
+A misread "sell 100" cannot reach the broker without the operator first seeing
+`SELL 100 AAPL` rendered back from the parsed value.
+
+Refusals chosen over conveniences at every branch: shares XOR dollars; a limit
+order without a price and a market order with one are both **refused**, not
+defaulted or stripped; the fence is the trigger, so explaining an order can't arm
+the card, and only assistant turns are parsed (a pasted block does nothing); the
+confirm event takes **no parameters**, so there is nothing in the click to forge;
+and there is no retry — a run returning no verdict reports UNKNOWN and says to
+check the broker, because AgentRunner's timeout kills the process group but
+cannot know whether the order landed first. **Re-sending on a guess is how you
+buy something twice.**
+
+Suite at close: 1665 tests, 0 failures.
+
+## 13. The build had been broken for six days, and nothing said so
+
+`scripts/build_desktop.sh:76` read `rm -rf deskt`. A truncated edit in `2886f96`
+(07-22) destroyed the three lines that stage the Elixir release into the Tauri
+bundle:
+
+```bash
+rm -rf desktop/tauri/resources/release
+mkdir -p desktop/tauri/resources
+cp -R "$REPO_ROOT/_build/prod/rel/buster_claw" desktop/tauri/resources/release
+```
+
+Restored verbatim from `git show 2886f96`, and proven exact rather than
+plausible: the repaired file diffed against `c808de4` — the commit *before* the
+truncation — now differs only by that commit's intended change, the added
+`target/debug/release` clear. Nothing else moved.
+
+Verified: `bash -n` clean; the copy source is real (`_build/prod/rel/buster_claw`
+stages to a 50M tree with `bin/buster_claw`, `erts-16.3.1`, `lib/`, `releases/`);
+`desktop/tauri/.gitignore:2` still covers the staged output so the post-build
+`.gitkeep` touch keeps working; and `release-desktop.yml:94` calls this script,
+so every CI-built DMG picks the fix up with no second patch. A full
+`cargo tauri build` was **not** run — it would only prove x86_64, which is its
+own open blocker. Grepped the rest of `2886f96`'s nine files for the same damage:
+clean.
+
+**Why it stayed hidden for six days is the actual finding.** `cp` into an empty
+directory is not an error, and `cargo tauri build` will happily bundle nothing.
+Every DMG since 07-22 — including everything the release workflow uploaded —
+carried an empty `Resources/release/` and could not boot Phoenix, and every one
+of those builds *exited 0*. This is the same lesson §6 taught with a stopwatch,
+arriving by a different road: the suite was green, the workflow was green, and
+the artifact was hollow.
+
+So the fix is not the three restored lines — those only undo the typo. The fix
+is the guard that now follows them: the build **asserts the artifact instead of
+trusting the exit code**, refusing to proceed unless `resources/release/` holds
+an executable `bin/buster_claw` *and* an `erts-*` directory, and printing what it
+found when it doesn't. Exercised both ways before commit — against an empty
+directory (the exact 07-22 state: exit 1, named cause) and against a real staged
+release (exit 0, `staged 50M release + erts-16.3.1`). A hollow bundle can still
+be built by some path nobody has thought of; it can no longer be built *quietly*.
+
+## The evening, compressed
+
+Two designs were deleted today and the app got safer for it — the order lane
+because one allowlist already did its job, and DataState's vocabulary because
+the user does not speak enum. What survived the deletions is smaller and says
+less. Meanwhile the one thing nobody was watching, the build, had been failing
+silently since the 22nd behind a green exit code. **Green means the checks you
+wrote passed. It has never meant the artifact works.**
