@@ -87,6 +87,11 @@ defmodule BusterClawWeb.ChatPanel do
   attr :queue, :list, required: true
   attr :minimized, :boolean, default: false
   attr :focused, :boolean, default: false
+
+  attr :docked, :boolean,
+    default: false,
+    doc: "docked windows sit in the tab's flow instead of floating over it"
+
   attr :agent_cli_missing, :boolean, default: false
   attr :empty_message, :string, required: true
   attr :placeholder, :string, required: true
@@ -120,31 +125,61 @@ defmodule BusterClawWeb.ChatPanel do
       data-index={@index}
       data-running={to_string(@running)}
       data-minimized={to_string(@minimized)}
+      data-docked={to_string(@docked)}
       data-seq={@seq}
-      phx-click="trading_focus_chat"
+      phx-click={not @docked && "trading_focus_chat"}
       phx-value-id={@conv}
-      class={[
-        "ic-panel fixed z-30 flex flex-col overflow-hidden border-2 backdrop-blur-md transition-colors",
-        if(@focused,
-          do: "border-primary/60 bg-base-100/95 shadow-[4px_4px_0_0_oklch(var(--bc)/0.25)]",
-          else: "border-base-content/25 bg-base-100/75 shadow-[3px_3px_0_0_oklch(var(--bc)/0.12)]"
-        )
-      ]}
+      class={
+        [
+          "ic-panel flex flex-col overflow-hidden border-2",
+          # Docked: it IS the tab, so it takes the flow and drops the translucency
+          # that only earned its place over a dashboard.
+          if(@docked,
+            do: "min-h-0 flex-1 border-base-content/25 bg-base-100",
+            else: "fixed z-30 backdrop-blur-md transition-colors"
+          ),
+          not @docked and
+            if(@focused,
+              do: "border-primary/60 bg-base-100/95 shadow-[4px_4px_0_0_oklch(var(--bc)/0.25)]",
+              else: "border-base-content/25 bg-base-100/75 shadow-[3px_3px_0_0_oklch(var(--bc)/0.12)]"
+            )
+        ]
+      }
     >
       <header
-        data-window-drag
-        class="flex shrink-0 cursor-grab items-center gap-2 border-b-2 border-base-content/20 bg-base-200/60 px-2 py-1.5 active:cursor-grabbing"
+        data-window-drag={not @docked}
+        class={[
+          "flex shrink-0 items-center gap-2 border-b-2 border-base-content/20 bg-base-200/60 px-2 py-1.5",
+          not @docked and "cursor-grab active:cursor-grabbing"
+        ]}
       >
-        <span class={[
-          "shrink-0 border px-1 font-mono text-[0.55rem] font-black uppercase tracking-wider",
-          if(@kind == "research",
-            do: "border-info/50 text-info",
-            else: "border-success/50 text-success"
-          )
-        ]}>
-          {if @kind == "research", do: "RES", else: "RH"}
-        </span>
         <span class="min-w-0 flex-1 truncate font-mono text-xs font-bold">{@title}</span>
+
+        <%!-- What this conversation is pointed at, and the control to change it.
+              Retyping restarts the session, so it is a decision, not a filter —
+              which is why the current one is written, not just highlighted. --%>
+        <div class="flex shrink-0 items-center gap-px" role="group" aria-label="Chat kind">
+          <button
+            :for={{k, badge} <- [{"chat", "CHAT"}, {"robinhood", "RH"}, {"research", "RES"}]}
+            type="button"
+            phx-click="trading_set_kind"
+            phx-value-id={@conv}
+            phx-value-kind={k}
+            title={"Point this chat at #{k}"}
+            aria-pressed={to_string(@kind == k)}
+            class={[
+              "border px-1 font-mono text-[0.55rem] font-black uppercase tracking-wider transition",
+              cond do
+                @kind != k -> "border-base-content/20 text-base-content/35 hover:text-base-content"
+                k == "research" -> "border-info/60 bg-info/10 text-info"
+                k == "chat" -> "border-base-content/50 bg-base-content/10 text-base-content"
+                true -> "border-success/60 bg-success/10 text-success"
+              end
+            ]}
+          >
+            {badge}
+          </button>
+        </div>
 
         <.thinking_chip thinking={@thinking} id={"#{@id}-thinking"} />
 
@@ -159,6 +194,17 @@ defmodule BusterClawWeb.ChatPanel do
           Stop
         </button>
         <button
+          :if={@docked}
+          type="button"
+          phx-click="trading_float_chat"
+          phx-value-id={@conv}
+          title="Float this chat back over the panel"
+          class="grid size-5 shrink-0 place-items-center rounded-sm font-mono text-base-content/50 hover:bg-base-content/15 hover:text-base-content"
+        >
+          ⇱
+        </button>
+        <button
+          :if={not @docked}
           type="button"
           phx-click="trading_minimize_chat"
           phx-value-id={@conv}
@@ -168,6 +214,7 @@ defmodule BusterClawWeb.ChatPanel do
           {if @minimized, do: "▢", else: "—"}
         </button>
         <button
+          :if={not @docked}
           type="button"
           phx-click="trading_toggle_chat"
           phx-value-id={@conv}
@@ -231,6 +278,7 @@ defmodule BusterClawWeb.ChatPanel do
         </form>
 
         <div
+          :if={not @docked}
           data-window-resize
           title="Drag to resize"
           class="absolute bottom-0 right-0 size-4 cursor-nwse-resize"

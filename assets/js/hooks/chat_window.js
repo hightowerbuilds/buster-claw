@@ -93,7 +93,15 @@ export const ChatWindow = {
     }
   },
 
+  docked() {
+    return this.el.dataset.docked === "true"
+  },
+
   applyStoredGeometry() {
+    // A docked chat is sized by the tab it fills. Writing left/top/width onto it
+    // would drag it back out of the flow and pin it over its own panel.
+    if (this.docked()) return
+
     const g = this.storedGeometry() || this.defaultGeometry()
     const clamped = this.clamp(g)
     this.el.style.left = clamped.x + "px"
@@ -165,17 +173,53 @@ export const ChatWindow = {
       })
       this.el.style.left = g.x + "px"
       this.el.style.top = g.y + "px"
+      this.highlightDropzone(this.overDropzone(e))
     }
-    this.onDragUp = () => {
-      this.storeGeometry(this.currentGeometry())
+    this.onDragUp = (e) => {
+      const dropping = this.overDropzone(e)
+      this.highlightDropzone(false)
+
+      if (dropping) {
+        // Dock: hand the conversation to the tab bar. Geometry is still stored
+        // first, so floating it again puts the window back where it was rather
+        // than in the default corner.
+        this.storeGeometry(this.currentGeometry())
+        this.pushEvent("trading_dock_chat", {id: this.conv})
+      } else {
+        this.storeGeometry(this.currentGeometry())
+      }
+
       this.endDrag()
     }
 
     this.handle.addEventListener("pointerdown", this.onDragDown)
   },
 
+  // The tab bar is the drop target. Hit-tested by pointer position rather than
+  // HTML5 drag-and-drop: this is a pointer-driven window drag, and mixing the
+  // two APIs would mean two different drag models on the same element.
+  dropzone() {
+    return document.querySelector("[data-tab-dropzone]")
+  },
+
+  overDropzone(e) {
+    const zone = this.dropzone()
+    if (!zone || !e) return false
+    const r = zone.getBoundingClientRect()
+    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
+  },
+
+  highlightDropzone(on) {
+    const zone = this.dropzone()
+    if (!zone) return
+    // NOT `bc-dropzone-active` — the workspace file dropzone already owns that
+    // name, and reusing it would light that surface up during a chat drag.
+    zone.classList.toggle("bc-tab-dropzone-active", !!on)
+  },
+
   endDrag() {
     this.dragging = null
+    this.highlightDropzone(false)
     window.removeEventListener("pointermove", this.onDragMove)
     window.removeEventListener("pointerup", this.onDragUp)
     document.body.style.userSelect = ""

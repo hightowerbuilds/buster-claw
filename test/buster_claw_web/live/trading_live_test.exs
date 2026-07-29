@@ -341,6 +341,92 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert has_element?(view, "#trading-account-card")
     end
 
+    test "a new Chat tab opens floating, with no panel of its own", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      render_click(view, "trading_new_tab", %{"kind" => "chat"})
+      chat = Enum.find(Conversations.list_kinds(["chat"]), & &1)
+
+      refute chat.docked
+      assert has_element?(view, "#trading-chat-#{chat.id}")
+      # A neutral chat has no dashboard, so the tab says why it is empty and
+      # names the gesture that fills it rather than showing a blank pane.
+      assert has_element?(view, "#trading-float-hint")
+      assert render(view) =~ "Drag its window onto the tab bar"
+      refute has_element?(view, "#trading-account-card")
+    end
+
+    test "dropping a chat on the tab bar docks it, and floating brings the panel back",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      assert has_element?(view, "#trading-account-card")
+
+      # The tab strip is the drop target the ChatWindow hook hit-tests against.
+      assert has_element?(view, "[data-tab-dropzone]")
+
+      # This is what the hook pushes when a window is released over the strip.
+      render_click(view, "trading_dock_chat", %{"id" => "trading"})
+
+      assert Conversations.get("trading").docked
+      assert has_element?(view, "#trading-dock-trading")
+      # Docked means it IS the tab: the floating window is gone and so is the
+      # dashboard it used to sit on top of.
+      refute has_element?(view, "#trading-chat-trading")
+      refute has_element?(view, "#trading-account-card")
+
+      render_click(view, "trading_float_chat", %{"id" => "trading"})
+
+      refute Conversations.get("trading").docked
+      refute has_element?(view, "#trading-dock-trading")
+      assert has_element?(view, "#trading-chat-trading")
+      assert has_element?(view, "#trading-account-card")
+    end
+
+    test "docking survives a remount — it is a layout decision, not session state",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_dock_chat", %{"id" => "trading"})
+
+      {:ok, view2, _html} = live(conn, ~p"/trading")
+      assert has_element?(view2, "#trading-dock-trading")
+      refute has_element?(view2, "#trading-account-card")
+    end
+
+    test "retyping a chat changes its toolset and starts a fresh session",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chat"})
+      chat = Enum.find(Conversations.list_kinds(["chat"]), & &1)
+
+      render_click(view, "trading_set_kind", %{"id" => chat.id, "kind" => "research"})
+
+      assert Conversations.get(chat.id).kind == "research"
+      # The operator is told, in the transcript, that the model's context was
+      # dropped — otherwise a retyped chat looks like it still remembers.
+      html = render(view)
+      assert html =~ "Switched to Research"
+      assert html =~ "will not see anything above this line"
+
+      # And back again, with the tab's badge following.
+      render_click(view, "trading_set_kind", %{"id" => chat.id, "kind" => "robinhood"})
+      assert Conversations.get(chat.id).kind == "robinhood"
+    end
+
+    test "a forged kind or a forged conversation cannot retype anything",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      render_click(view, "trading_set_kind", %{"id" => "trading", "kind" => "home"})
+      render_click(view, "trading_set_kind", %{"id" => "not-a-tab", "kind" => "research"})
+      render_click(view, "trading_dock_chat", %{"id" => "not-a-tab"})
+
+      # "home" would hide the tab from this page entirely by putting it in Home's
+      # strip, so it is not an accepted target here.
+      assert Conversations.get("trading").kind == "robinhood"
+      refute Conversations.get("trading").docked
+      assert has_element?(view, "#trading-account-card")
+    end
+
     test "a broadcast message renders live, and the transcript survives a remount",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")

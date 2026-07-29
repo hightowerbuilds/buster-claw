@@ -167,7 +167,7 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   def handle_event("trading_new_tab", %{"kind" => kind}, socket)
-      when kind in ["robinhood", "research"] do
+      when kind in ["chat", "robinhood", "research"] do
     {:ok, conv} = Conversations.create(%{title: Trading.kind_label(kind), kind: kind})
     if connected?(socket), do: Chat.subscribe(conv.id)
 
@@ -232,6 +232,66 @@ defmodule BusterClawWeb.TradingLive do
       {:noreply, socket}
     end
   end
+
+  # Dropping a floating window on the tab bar is the dock gesture; the button in
+  # a docked chat's header is the way back out.
+  def handle_event("trading_dock_chat", %{"id" => id}, socket) do
+    if known_tab?(socket, id) do
+      {:ok, _conv} = Conversations.set_docked(id, true)
+
+      {:noreply,
+       socket
+       |> update_tab(id, &%{&1 | docked: true, unread: false})
+       # A docked chat is not also a window: it lives in the tab now.
+       |> assign(:open_chats, List.delete(socket.assigns.open_chats, id))
+       |> update(:minimized, &MapSet.delete(&1, id))
+       |> activate_tab(id)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("trading_float_chat", %{"id" => id}, socket) do
+    if known_tab?(socket, id) do
+      {:ok, _conv} = Conversations.set_docked(id, false)
+
+      {:noreply,
+       socket
+       |> update_tab(id, &%{&1 | docked: false})
+       |> assign(:open_chats, socket.assigns.open_chats ++ [id])}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Retyping a conversation changes what it can reach, so the running process is
+  # stopped: its session id dies with it and the next message starts a FRESH
+  # claude session. Without that, a Robinhood chat retyped to Research would
+  # `--resume` into a context full of account balances that the research toolset
+  # is specifically supposed to have no way of seeing.
+  def handle_event("trading_set_kind", %{"id" => id, "kind" => kind}, socket)
+      when kind in ["chat", "robinhood", "research"] do
+    if known_tab?(socket, id) and tab_kind(socket, id) != kind do
+      {:ok, _conv} = Conversations.set_kind(id, kind)
+      Chat.stop(id)
+
+      {:noreply,
+       socket
+       |> update_tab(id, &%{&1 | kind: kind, running: false})
+       |> put_chat(id, &%{&1 | running: false, thinking: nil, queue: [], pending_order: nil})
+       |> push_msg_to(
+         id,
+         :meta,
+         "Switched to #{Trading.kind_label(kind)}. This starts a new session — the " <>
+           "assistant will not see anything above this line."
+       )
+       |> then(&assign(&1, :active_kind, active_tab_kind(&1)))}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("trading_set_kind", _params, socket), do: {:noreply, socket}
 
   # ---------------------------------------------------------------------------
   # Research panel
@@ -683,7 +743,21 @@ defmodule BusterClawWeb.TradingLive do
   # --- Tab helpers ---
 
   defp to_tab(conv),
-    do: %{id: conv.id, title: conv.title, kind: conv.kind, running: false, unread: false}
+    do: %{
+      id: conv.id,
+      title: conv.title,
+      kind: conv.kind,
+      docked: conv.docked,
+      running: false,
+      unread: false
+    }
+
+  defp docked?(tabs, conv) do
+    case Enum.find(tabs, &(&1.id == conv)) do
+      nil -> false
+      tab -> tab.docked
+    end
+  end
 
   defp known_tab?(socket, id), do: Enum.any?(socket.assigns.tabs, &(&1.id == id))
 
@@ -1727,7 +1801,16 @@ defmodule BusterClawWeb.TradingLive do
 
   defp trading_tabs(assigns) do
     ~H"""
-    <div class="relative flex items-center gap-1" role="tablist" aria-label="Trading tabs">
+    <%!-- The strip doubles as the dock target: drag a floating chat onto it and
+          it becomes a sub-tab. `bc-dropzone-active` is toggled by the ChatWindow
+          hook while a window is over it. --%>
+    <div
+      id="trading-tab-strip"
+      data-tab-dropzone
+      class="relative flex items-center gap-1 rounded-sm border-2 border-transparent px-1 py-0.5 transition"
+      role="tablist"
+      aria-label="Trading tabs"
+    >
       <div
         :for={tab <- @tabs}
         id={"trading-tab-#{tab.id}"}
@@ -1752,7 +1835,14 @@ defmodule BusterClawWeb.TradingLive do
             else: "border-success/50 text-success"
           )
         ]}>
-          {if tab.kind == "research", do: "RES", else: "RH"}
+          {Trading.kind_badge(tab.kind)}
+        </span>
+        <span
+          :if={tab.docked}
+          title="This chat is docked into the tab"
+          class="shrink-0 font-mono text-[0.6rem] text-base-content/40"
+        >
+          ⊞
         </span>
         <span
           :if={tab.running}
@@ -1811,11 +1901,24 @@ defmodule BusterClawWeb.TradingLive do
         id="trading-new-tab-menu"
         class="absolute left-0 top-full z-20 mt-1 w-56 border-2 border-base-content/25 bg-base-100 font-mono text-xs shadow-[3px_3px_0_0_oklch(var(--bc)/0.15)]"
       >
+        <%!-- Chat leads: it is the neutral one, it opens floating, and it can be
+              pointed at either of the others afterwards. --%>
+        <button
+          type="button"
+          phx-click="trading_new_tab"
+          phx-value-kind="chat"
+          class="block w-full px-3 py-2 text-left transition hover:bg-base-content/10"
+        >
+          <span class="font-black uppercase tracking-wide">Chat</span>
+          <span class="block text-[0.68rem] text-base-content/60">
+            Opens floating · drag onto the tab bar to dock it
+          </span>
+        </button>
         <button
           type="button"
           phx-click="trading_new_tab"
           phx-value-kind="robinhood"
-          class="block w-full px-3 py-2 text-left transition hover:bg-base-content/10"
+          class="block w-full border-t-2 border-base-content/15 px-3 py-2 text-left transition hover:bg-base-content/10"
         >
           <span class="font-black uppercase tracking-wide text-success">Robinhood</span>
           <span class="block text-[0.68rem] text-base-content/60">
@@ -2022,7 +2125,10 @@ defmodule BusterClawWeb.TradingLive do
         <%!-- The panel owns the whole tab. Chat is not beside it any more but on
               top of it, in windows the operator places — which is why the panel
               gets to be this wide and why those windows are translucent. --%>
-        <div :if={@active_kind == "robinhood"} class="flex min-h-0 flex-1 flex-col gap-2">
+        <div
+          :if={@active_kind == "robinhood" and not docked?(@tabs, @active_tab)}
+          class="flex min-h-0 flex-1 flex-col gap-2"
+        >
           <div
             id="trading-read-only-banner"
             class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-success"
@@ -2074,7 +2180,10 @@ defmodule BusterClawWeb.TradingLive do
           />
         </div>
 
-        <div :if={@active_kind == "research"} class="flex min-h-0 flex-1 flex-col gap-2">
+        <div
+          :if={@active_kind == "research" and not docked?(@tabs, @active_tab)}
+          class="flex min-h-0 flex-1 flex-col gap-2"
+        >
           <%!-- Research states the stronger fact: the broker isn't restricted
                 here, it's absent. This chat has no Robinhood tool to deny. --%>
           <div
@@ -2089,6 +2198,48 @@ defmodule BusterClawWeb.TradingLive do
             matches={@research_matches}
           />
         </div>
+        <%!-- A docked chat IS the tab's content: same component, positioned in
+              flow instead of fixed. Its panel is hidden while it is docked, and
+              floating it again brings the panel straight back. --%>
+        <BusterClawWeb.ChatPanel.chat_window
+          :if={docked?(@tabs, @active_tab)}
+          id={"trading-dock-#{@active_tab}"}
+          conv={@active_tab}
+          docked
+          index={0}
+          title={tab_title(@tabs, @active_tab)}
+          kind={@active_kind}
+          messages={chat_state(assigns, @active_tab).messages}
+          seq={chat_state(assigns, @active_tab).seq}
+          running={chat_state(assigns, @active_tab).running}
+          thinking={chat_state(assigns, @active_tab).thinking}
+          queue={chat_state(assigns, @active_tab).queue}
+          focused
+          agent_cli_missing={@agent_cli_missing}
+          empty_message={chat_empty_message(@active_kind)}
+          placeholder={chat_placeholder(@active_kind)}
+        >
+          <:pinned :if={chat_state(assigns, @active_tab).pending_order}>
+            <.order_confirm
+              conv={@active_tab}
+              pending={chat_state(assigns, @active_tab).pending_order}
+            />
+          </:pinned>
+        </BusterClawWeb.ChatPanel.chat_window>
+
+        <%!-- A neutral chat has no data panel of its own, so an undocked one
+              leaves the tab empty. Say why, and name the gesture that fills it. --%>
+        <div
+          :if={@active_kind == "chat" and not docked?(@tabs, @active_tab)}
+          id="trading-float-hint"
+          class="m-auto max-w-sm text-center font-mono text-xs text-base-content/50"
+        >
+          <p class="font-bold uppercase tracking-wide">This chat is floating</p>
+          <p class="pt-2 leading-relaxed">
+            Drag its window onto the tab bar to dock it here, or point it at
+            Robinhood or Research from the selector in its title bar.
+          </p>
+        </div>
       </section>
 
       <%!-- Rendered outside the section, and outside the tab switch: a window
@@ -2096,7 +2247,7 @@ defmodule BusterClawWeb.TradingLive do
             is focus order — the last one drawn is the opaque, keyboard-owning
             one. --%>
       <BusterClawWeb.ChatPanel.chat_window
-        :for={{conv, i} <- Enum.with_index(@open_chats)}
+        :for={{conv, i} <- Enum.with_index(Enum.reject(@open_chats, &docked?(@tabs, &1)))}
         id={"trading-chat-#{conv}"}
         conv={conv}
         index={i}

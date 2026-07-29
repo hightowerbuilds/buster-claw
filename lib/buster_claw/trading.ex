@@ -45,9 +45,10 @@ defmodule BusterClaw.Trading do
   alias BusterClaw.Library.Artifact
   alias BusterClaw.Research
   alias BusterClaw.Settings
+  alias BusterClaw.SvgViewer
 
   @conv_id "trading"
-  @tab_kinds ~w(robinhood research)
+  @tab_kinds ~w(chat robinhood research)
   @mcp_url "https://agent.robinhood.com/mcp/trading"
   @read_tools ~w(
     mcp__robinhood__get_accounts
@@ -208,11 +209,20 @@ defmodule BusterClaw.Trading do
   click.
   """
   def chat_opts_for("research"), do: Research.chat_opts()
+  # A neutral chat is Home's chat, on this page: the full Buster Claw toolset,
+  # deliberately broader than the two confined kinds. Retyping it narrows it.
+  def chat_opts_for("chat"), do: [append_system_prompt: SvgViewer.guide()]
   def chat_opts_for(_robinhood), do: chat_opts()
 
   @doc "Human label for a kind, used when titling a new tab."
   def kind_label("research"), do: "Research"
+  def kind_label("chat"), do: "Chat"
   def kind_label(_robinhood), do: "Robinhood"
+
+  @doc "Short badge for a kind, written on tabs and window title bars."
+  def kind_badge("research"), do: "RES"
+  def kind_badge("chat"), do: "CHAT"
+  def kind_badge(_robinhood), do: "RH"
 
   @doc "The stage-1 (balances for every account) prompt. Exposed for tests."
   def accounts_prompt, do: @accounts_prompt

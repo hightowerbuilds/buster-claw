@@ -83,6 +83,31 @@ defmodule BusterClaw.Agent.Conversations do
     |> Repo.insert()
   end
 
+  @doc """
+  Set a Trading conversation's kind — which decides its toolset on the next turn.
+
+  The caller is responsible for stopping the conversation's `Chat` process
+  afterwards. That is not incidental: the session id lives in that process, so
+  stopping it means the next message starts a FRESH claude session instead of
+  `--resume`-ing one whose context was gathered under the old kind. Retyping a
+  Robinhood chat to Research would otherwise hand account balances to a run that
+  is supposed to have no account access at all.
+  """
+  def set_kind(id, kind) when is_binary(kind) do
+    case get(id) do
+      nil -> {:error, :not_found}
+      conv -> conv |> Conversation.changeset(%{kind: kind}) |> Repo.update()
+    end
+  end
+
+  @doc "Dock a conversation into the sub-tab system, or float it back out."
+  def set_docked(id, docked?) when is_boolean(docked?) do
+    case get(id) do
+      nil -> {:error, :not_found}
+      conv -> conv |> Conversation.changeset(%{docked: docked?}) |> Repo.update()
+    end
+  end
+
   @doc "Rename a conversation (used to title a 'New chat' from its first message)."
   def rename(id, title) when is_binary(title) and title != "" do
     case get(id) do
