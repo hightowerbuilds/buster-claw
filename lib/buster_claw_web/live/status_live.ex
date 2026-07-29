@@ -39,6 +39,9 @@ defmodule BusterClawWeb.StatusLive do
       Telephony.subscribe()
       # Keep the Notes tab's record live as the agent appends entries.
       BusterClaw.Journal.subscribe()
+      # The Music tab renders transport it does not own — the player is the
+      # sticky dock LiveView, so its state arrives over PubSub.
+      BusterClaw.Music.Player.subscribe_state()
       Process.send_after(self(), :sky_refresh, @sky_refresh_ms)
     end
 
@@ -57,6 +60,9 @@ defmodule BusterClawWeb.StatusLive do
      # Home main view: "chat" (default) or "calendar". The sub-tab toggle swaps
      # the whole panel — the chat is hidden while the calendar is showing.
      |> assign(:home_tab, "chat")
+     # Transport for the Music tab. nil until the dock player announces —
+     # the tab renders a library with no transport rather than guessing.
+     |> assign(:music_player, nil)
      # Header widget: which sub-tab is showing. Order is Time & Place / Contacts /
      # Notify, and Time & Place leads (its analog clock renders instantly, and
      # `mount_weather/1` fills conditions on connect).
@@ -314,7 +320,7 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("select_home_tab", %{"tab" => tab}, socket)
-      when tab in ["chat", "calendar", "notes"] do
+      when tab in ["chat", "calendar", "notes", "music"] do
     {:noreply, switch_home_tab(socket, tab)}
   end
 
@@ -611,6 +617,11 @@ defmodule BusterClawWeb.StatusLive do
   def handle_info({:telephony_event, _event}, socket), do: {:noreply, load_comms(socket)}
 
   # An entry (agent or another session) landed in the day's Notes — ping the
+  # The dock player announced new transport state; the Music tab renders it.
+  def handle_info({:music_state, player}, socket) do
+    {:noreply, assign(socket, :music_player, player)}
+  end
+
   # journal component so an open Notes tab re-reads the document.
   def handle_info({:journal_appended, _date}, socket) do
     send_update(BusterClawWeb.JournalComponent,
@@ -1052,7 +1063,12 @@ defmodule BusterClawWeb.StatusLive do
             >
               <button
                 :for={
-                  {key, label} <- [{"chat", "Chat"}, {"calendar", "Calendar"}, {"notes", "Notes"}]
+                  {key, label} <- [
+                    {"chat", "Chat"},
+                    {"calendar", "Calendar"},
+                    {"notes", "Notes"},
+                    {"music", "Music"}
+                  ]
                 }
                 type="button"
                 role="tab"
@@ -1096,6 +1112,14 @@ defmodule BusterClawWeb.StatusLive do
 
             <div :if={@home_tab == "notes"} class="flex min-h-0 flex-1 flex-col">
               <.live_component module={BusterClawWeb.JournalComponent} id="home-notes" />
+            </div>
+
+            <div :if={@home_tab == "music"} class="flex min-h-0 flex-1 flex-col">
+              <.live_component
+                module={BusterClawWeb.MusicComponent}
+                id="home-music"
+                player={@music_player}
+              />
             </div>
           </div>
 
