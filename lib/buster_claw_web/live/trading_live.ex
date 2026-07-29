@@ -91,6 +91,10 @@ defmodule BusterClawWeb.TradingLive do
       # nil | {symbol, interval, requested_from}. Keeping the request identity
       # prevents an obsolete completion from clearing a newer loading state.
       |> assign(:symbol_bars_request, nil)
+      # nil | {:proposed, order} | {:submitting, order} | {:settled, order, result}.
+      # Deliberately NOT persisted: a proposal that outlives the tab it was made
+      # in is a proposal nobody is looking at any more.
+      |> assign(:pending_order, nil)
       |> stream_configure(:chat_messages, dom_id: &"chat-msg-#{&1.id}")
       |> load_chat_history()
 
@@ -131,6 +135,45 @@ defmodule BusterClawWeb.TradingLive do
   def handle_event("cut_run", _params, socket) do
     Chat.interrupt(Trading.conv_id())
     {:noreply, push_event(socket, "bc:stop_speak", %{})}
+  end
+
+  # ---------------------------------------------------------------------------
+  # The order confirmation — the only path from this tab to the broker
+  # ---------------------------------------------------------------------------
+
+  # Matches ONLY on {:proposed, order} in the socket. The order that gets placed
+  # is the one the app parsed and rendered, never anything carried by the click:
+  # the event takes no parameters at all, so there is nothing in it to forge.
+  def handle_event(
+        "trading_order_confirm",
+        _params,
+        %{assigns: %{pending_order: {:proposed, order}}} = socket
+      ) do
+    BusterClaw.Sentinel.observe(:outbound_send, "Trading order confirmed by operator", %{
+      source: "trading_chat_order",
+      order: BusterClaw.TradingOrder.summary(order)
+    })
+
+    {:noreply,
+     socket
+     |> assign(:pending_order, {:submitting, order})
+     |> start_async(:trading_order, fn -> BusterClaw.TradingOrder.submit(order) end)}
+  end
+
+  def handle_event("trading_order_confirm", _params, socket), do: {:noreply, socket}
+
+  def handle_event(
+        "trading_order_dismiss",
+        _params,
+        %{assigns: %{pending_order: {:submitting, _order}}} = socket
+      ) do
+    # Refuse to clear a card whose run is still out: the operator would be left
+    # believing nothing happened while a place call is in flight.
+    {:noreply, socket}
+  end
+
+  def handle_event("trading_order_dismiss", _params, socket) do
+    {:noreply, assign(socket, :pending_order, nil)}
   end
 
   # ---------------------------------------------------------------------------
@@ -340,9 +383,34 @@ defmodule BusterClawWeb.TradingLive do
     socket
     |> maybe_speak(role, text)
     |> push_msg(role, text)
+    |> maybe_propose_order(role, text)
   end
 
   defp apply_chat(socket, _other), do: socket
+
+  # An assistant turn carrying a fenced ```order block arms the confirm card.
+  # Only the assistant's own turns are read: echoing the operator's text back
+  # through the parser would let a pasted block arm the card without the model —
+  # and without the parameter-gathering that is the point of asking it.
+  defp maybe_propose_order(socket, :assistant, text) do
+    case BusterClaw.TradingOrder.parse(text) do
+      {:ok, order} ->
+        assign(socket, :pending_order, {:proposed, order})
+
+      :none ->
+        socket
+
+      {:error, reason} ->
+        push_msg(
+          socket,
+          :error,
+          "The assistant proposed an order Buster Claw would not read: #{order_error(reason)}. " <>
+            "Nothing was sent. Ask it to restate the order."
+        )
+    end
+  end
+
+  defp maybe_propose_order(socket, _role, _text), do: socket
 
   # Speak the model's replies aloud (client gates on the Voice toggle + desktop
   # app). Only `:assistant` text — never tool/meta/error lines.
@@ -517,6 +585,18 @@ defmodule BusterClawWeb.TradingLive do
      socket
      |> assign(:trading_costs_loading, false)
      |> push_msg(:error, "The cost-basis fetch crashed.")}
+  end
+
+  # The submit run came back. Whatever it says, the card settles here and offers
+  # no retry — see the double-submission note in BusterClaw.TradingOrder.
+  def handle_async(:trading_order, {:ok, result}, socket) do
+    {:noreply, settle_order(socket, result)}
+  end
+
+  # A crashed submit is exactly the unknown case: the run died, and nothing here
+  # can tell whether the broker took the order before it did.
+  def handle_async(:trading_order, {:exit, _reason}, socket) do
+    {:noreply, settle_order(socket, {:error, :unknown})}
   end
 
   # Stage 2 lands. The id is carried through the result rather than read off the
@@ -1151,6 +1231,138 @@ defmodule BusterClawWeb.TradingLive do
   defp put_snapshot({:error, reason, _prev}, snap), do: {:error, reason, snap}
   defp put_snapshot(_other, snap), do: {:ok, snap}
 
+  # The confirm card: the app's rendering of what it parsed, and the button that
+  # sends it. Everything shown here comes from the `TradingOrder` struct, not from
+  # the model's prose — so what the operator reads is exactly what gets placed.
+  attr :pending, :any, required: true
+
+  defp order_confirm(assigns) do
+    ~H"""
+    <div id="trading-order-confirm" class="space-y-2 p-4 font-mono text-xs">
+      <%= case @pending do %>
+        <% {:proposed, order} -> %>
+          <p class="text-[0.62rem] font-bold uppercase tracking-[0.2em] text-base-content/50">
+            Confirm to send
+          </p>
+          <p id="trading-order-summary" class="text-sm font-black tracking-wide">
+            {BusterClaw.TradingOrder.summary(order)}
+          </p>
+          <p class="text-base-content/60">
+            This is what Buster Claw will send. Nothing has reached the broker yet.
+          </p>
+          <div class="flex gap-2 pt-1">
+            <button
+              id="trading-order-confirm-button"
+              type="button"
+              phx-click="trading_order_confirm"
+              class="border-2 border-error bg-error/10 px-3 py-2 font-black uppercase tracking-wide text-error transition hover:bg-error hover:text-error-content"
+            >
+              Place this order
+            </button>
+            <button
+              type="button"
+              phx-click="trading_order_dismiss"
+              class="border-2 border-base-content/25 px-3 py-2 font-bold uppercase tracking-wide transition hover:border-base-content/50"
+            >
+              Discard
+            </button>
+          </div>
+        <% {:submitting, order} -> %>
+          <p class="text-[0.62rem] font-bold uppercase tracking-[0.2em] text-base-content/50">
+            Sending
+          </p>
+          <p class="text-sm font-black tracking-wide">
+            {BusterClaw.TradingOrder.summary(order)}
+          </p>
+          <p id="trading-order-submitting" class="text-base-content/60">
+            Placing the order… don't close this tab.
+          </p>
+        <% {:settled, order, result} -> %>
+          <p class={[
+            "text-[0.62rem] font-bold uppercase tracking-[0.2em]",
+            order_result_class(result)
+          ]}>
+            {order_result_heading(result)}
+          </p>
+          <p class="text-sm font-black tracking-wide">
+            {BusterClaw.TradingOrder.summary(order)}
+          </p>
+          <%!-- No retry button, on purpose. A submission that did not return a
+                verdict may already be live at the broker; the only safe next
+                step is for a human to go look. --%>
+          <p id="trading-order-result" class={["text-xs", order_result_class(result)]}>
+            {order_result_detail(result)}
+          </p>
+          <button
+            type="button"
+            phx-click="trading_order_dismiss"
+            class="border-2 border-base-content/25 px-3 py-1.5 font-bold uppercase tracking-wide transition hover:border-base-content/50"
+          >
+            Dismiss
+          </button>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp order_result_heading({:ok, _id}), do: "Sent"
+  defp order_result_heading({:error, {:refused, _reason}}), do: "Refused by the broker"
+  defp order_result_heading({:error, _reason}), do: "Status unknown"
+
+  defp order_result_class({:ok, _id}), do: "text-success"
+  defp order_result_class({:error, {:refused, _reason}}), do: "text-warning"
+  defp order_result_class({:error, _reason}), do: "text-error"
+
+  defp order_result_detail({:ok, id}), do: "Broker order id #{id}."
+  defp order_result_detail({:error, {:refused, reason}}), do: reason
+
+  defp order_result_detail({:error, _reason}),
+    do:
+      "The submission did not come back with a verdict, so this order may or may not " <>
+        "have reached Robinhood. Check your order history there before sending it again."
+
+  # ---------------------------------------------------------------------------
+  # Order confirmation helpers
+  # ---------------------------------------------------------------------------
+
+  defp settle_order(%{assigns: %{pending_order: {:submitting, order}}} = socket, result) do
+    summary = BusterClaw.TradingOrder.summary(order)
+
+    # Every outcome — including the unknown one — lands on the audit feed and in
+    # the transcript, so the conversation itself records what the click did.
+    BusterClaw.Sentinel.observe(:outbound_send, "Trading order submission settled", %{
+      source: "trading_chat_order",
+      order: summary,
+      outcome: order_outcome_tag(result)
+    })
+
+    socket
+    |> assign(:pending_order, {:settled, order, result})
+    |> push_msg(:meta, order_transcript_line(summary, result))
+  end
+
+  defp settle_order(socket, _result), do: socket
+
+  defp order_outcome_tag({:ok, _id}), do: "accepted"
+  defp order_outcome_tag({:error, {:refused, _reason}}), do: "refused"
+  defp order_outcome_tag({:error, _reason}), do: "unknown"
+
+  defp order_transcript_line(summary, {:ok, id}),
+    do: "Order sent — #{summary}. Broker order id #{id}."
+
+  defp order_transcript_line(summary, {:error, {:refused, reason}}),
+    do: "Order refused by the broker — #{summary}. Reason: #{reason}."
+
+  defp order_transcript_line(summary, {:error, _reason}),
+    do:
+      "Order status UNKNOWN — #{summary}. The submission did not return a verdict; " <>
+        "check your Robinhood order history before trying again."
+
+  defp order_error(reason) when is_atom(reason),
+    do: reason |> Atom.to_string() |> String.replace("_", " ")
+
+  defp order_error(_reason), do: "unreadable order"
+
   # ---------------------------------------------------------------------------
   # Render
   # ---------------------------------------------------------------------------
@@ -1199,9 +1411,13 @@ defmodule BusterClawWeb.TradingLive do
               thinking={@chat_thinking}
               queue={@chat_queue}
               agent_cli_missing={@agent_cli_missing}
-              empty_message="Read-only portfolio assistant. Ask about balances, positions, order history, market data, or a proposed trade. Order execution is disabled."
+              empty_message="Portfolio assistant. Ask about balances, positions, order history, or market data — or ask it to buy or sell, and it will put the order up for your confirmation."
               placeholder="Ask about your portfolio…  (Enter to send, Shift+Enter for a new line)"
-            />
+            >
+              <:pinned :if={@pending_order}>
+                <.order_confirm pending={@pending_order} />
+              </:pinned>
+            </BusterClawWeb.ChatPanel.chat_panel>
           </div>
 
           <div

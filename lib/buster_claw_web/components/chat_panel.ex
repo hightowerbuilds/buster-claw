@@ -75,6 +75,11 @@ defmodule BusterClawWeb.ChatPanel do
     default:
       "Ask Buster Claw to check your mail, work the queue, or look something up. It runs headless Claude — no terminal needed."
 
+  slot :pinned,
+    doc:
+      "rendered between the log and the composer — a pending action the caller wants answered " <>
+        "before the next message, kept in view while the log scrolls"
+
   attr :placeholder, :string,
     default: "Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
 
@@ -140,6 +145,10 @@ defmodule BusterClawWeb.ChatPanel do
       </div>
 
       <.queue_strip queue={@queue} />
+
+      <div :if={@pinned != []} class="border-t-2 border-base-content/20">
+        {render_slot(@pinned)}
+      </div>
 
       <div
         :if={@agent_cli_missing}

@@ -48,7 +48,8 @@ defmodule BusterClawWeb.TradingLiveTest do
 
       assert html =~ "trading-read-only-banner"
       assert html =~ "Buster Claw cannot place, amend, or cancel Robinhood orders"
-      assert html =~ "Read-only portfolio assistant"
+      assert html =~ "Portfolio assistant"
+      assert html =~ "put the order up for your confirmation"
       assert html =~ "Ask about your portfolio"
       refute html =~ "check your mail"
       assert html =~ "claude mcp login robinhood"
@@ -61,6 +62,117 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ ~s(phx-hook="SplitResizer")
       assert html =~ ~s(data-resize-var="--trading-left")
       assert html =~ "data-split-divider"
+    end
+
+    test "an assistant order proposal arms a confirm card, and the click sends it",
+         %{conn: conn} do
+      test_pid = self()
+
+      Application.put_env(:buster_claw, :trading_order_submitter, fn order ->
+        send(test_pid, {:submitted, order})
+        {:ok, "rh-order-991"}
+      end)
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :trading_order_submitter) end)
+
+      {:ok, view, html} = live(conn, ~p"/trading")
+      # Nothing pinned until there is something to answer.
+      refute html =~ "trading-order-confirm"
+
+      propose(
+        view,
+        ~s({"side":"buy","symbol":"AAPL","quantity":2,"order_type":"limit",) <>
+          ~s("limit_price":199.25,"time_in_force":"day","account_last4":"6587"})
+      )
+
+      html = render(view)
+      assert html =~ "trading-order-confirm"
+      # The card renders the PARSED values, not the model's prose.
+      assert html =~ "BUY · 2 sh · AAPL · LIMIT $199.25 · DAY"
+      assert html =~ "Nothing has reached the broker yet"
+
+      # The confirm event carries no parameters — the order placed is the one
+      # already parsed into the socket, so there is nothing in the click to forge.
+      render_click(view, "trading_order_confirm", %{})
+      assert_receive {:submitted, order}
+      assert order.symbol == "AAPL"
+      assert order.quantity == 2.0
+      assert order.limit_price == 199.25
+
+      html = render_async(view)
+      assert html =~ "Sent"
+      assert html =~ "rh-order-991"
+    end
+
+    test "a submission with no verdict says UNKNOWN and offers no retry", %{conn: conn} do
+      Application.put_env(:buster_claw, :trading_order_submitter, fn _order ->
+        {:error, :unknown}
+      end)
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :trading_order_submitter) end)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      propose(
+        view,
+        ~s({"side":"sell","symbol":"VOO","quantity":1,"order_type":"market",) <>
+          ~s("time_in_force":"day","account_last4":"6587"})
+      )
+
+      render_click(view, "trading_order_confirm", %{})
+      html = render_async(view)
+
+      assert html =~ "Status unknown"
+      assert html =~ "may or may not"
+      assert html =~ "Check your order history"
+      # The one recovery this surface will not automate.
+      refute html =~ "Retry"
+      refute html =~ "Place this order"
+    end
+
+    test "an order block the app will not read sends nothing and says so", %{conn: conn} do
+      Application.put_env(:buster_claw, :trading_order_submitter, fn _order ->
+        flunk("a refused proposal must never reach the submitter")
+      end)
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :trading_order_submitter) end)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      # A limit order with no price: the model left out a number the operator
+      # would otherwise have to notice was missing.
+      propose(
+        view,
+        ~s({"side":"buy","symbol":"AAPL","quantity":2,"order_type":"limit",) <>
+          ~s("time_in_force":"day","account_last4":"6587"})
+      )
+
+      html = render(view)
+      assert html =~ "would not read"
+      assert html =~ "missing limit price"
+      refute html =~ "trading-order-confirm"
+
+      # And a bare confirm click with nothing proposed is inert.
+      render_click(view, "trading_order_confirm", %{})
+    end
+
+    test "the operator's own pasted block never arms the card", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      send(
+        view.pid,
+        {:agent_chat, "trading",
+         {:message,
+          %{
+            role: :user,
+            text:
+              ~s(```order\n{"side":"buy","symbol":"AAPL","quantity":99,) <>
+                ~s("order_type":"market","time_in_force":"day","account_last4":"6587"}\n```)
+          }}}
+      )
+
+      _ = :sys.get_state(view.pid)
+      refute render(view) =~ "trading-order-confirm"
     end
 
     test "a broadcast message renders live, and the transcript survives a remount",
@@ -1250,6 +1362,17 @@ defmodule BusterClawWeb.TradingLiveTest do
   end
 
   # Wire both stages to the fixtures above.
+  defp propose(view, json) do
+    send(
+      view.pid,
+      {:agent_chat, "trading",
+       {:message, %{role: :assistant, text: "Proposed.\n\n```order\n#{json}\n```"}}}
+    )
+
+    _ = :sys.get_state(view.pid)
+    :ok
+  end
+
   defp stub_trading_fetchers do
     Application.put_env(:buster_claw, :trading_snapshot_fetcher, fn ->
       {:ok, multi_account_snapshot()}

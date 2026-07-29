@@ -66,13 +66,28 @@ defmodule BusterClaw.TradingTest do
     assert prompt =~ "never simulate"
   end
 
-  test "the system prompt refuses orders on every account" do
+  test "the system prompt tells the model it proposes, and the operator sends" do
     prompt = Keyword.fetch!(Trading.chat_opts(), :append_system_prompt)
 
-    assert prompt =~ "READ-ONLY"
-    assert prompt =~ "NEVER place, amend, or cancel"
-    assert prompt =~ "ANY account"
-    assert prompt =~ "preview and confirmation gate"
+    assert prompt =~ "NO order tool"
+    assert prompt =~ "place, amend, or cancel anything"
+    assert prompt =~ "Their click, not"
+    # It must never claim to have done what only a confirm click can do.
+    assert prompt =~ "Never say or imply that you placed"
+  end
+
+  test "the system prompt makes the model gather every order parameter first" do
+    prompt = Keyword.fetch!(Trading.chat_opts(), :append_system_prompt)
+
+    assert prompt =~ "buy or sell"
+    assert prompt =~ "market or limit"
+    assert prompt =~ "the limit price, if it is a limit order"
+    assert prompt =~ "day or gtc"
+    assert prompt =~ "shares or a dollar amount, not both"
+    # The two failure modes worth naming: inventing a value, and arming the
+    # card from an explanation rather than a request.
+    assert prompt =~ "never default the size or the price"
+    assert prompt =~ "never in an explanation of how"
   end
 
   test "stage 1 asks for every account's balances and nothing deeper" do
