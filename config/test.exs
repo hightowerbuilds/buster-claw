@@ -48,6 +48,10 @@ config :buster_claw, :orchestrator_enabled, false
 # The unattended work pump is off in tests; the Dispatcher suite starts its own
 # instance with a stub runner and drives it via tick_now/1.
 config :buster_claw, :dispatcher_enabled, false
+# Boot chime off: its once-per-BEAM :persistent_term flag would make the
+# first root-layout test of every run special. The chime path itself is
+# tested explicitly with the flag reset and this config overridden.
+config :buster_claw, boot_chime_enabled: false
 # The self-improvement scanner is off in tests; the Analyzer suite drives scan/1
 # directly with seeded audit events.
 config :buster_claw, :analyzer_enabled, false

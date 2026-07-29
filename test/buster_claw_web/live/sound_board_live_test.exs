@@ -125,6 +125,46 @@ defmodule BusterClawWeb.SoundBoardLiveTest do
     end
   end
 
+  describe "the boot chime (Phase 3)" do
+    setup do
+      flag = {BusterClaw.Notifications.SoundBoard, :boot_rung}
+      prev = Application.get_env(:buster_claw, :boot_chime_enabled)
+      Application.put_env(:buster_claw, :boot_chime_enabled, true)
+      :persistent_term.erase(flag)
+
+      on_exit(fn ->
+        Application.put_env(:buster_claw, :boot_chime_enabled, prev)
+        :persistent_term.erase(flag)
+      end)
+
+      :ok
+    end
+
+    test "the first board of a BEAM boot rings boot; the second does not" do
+      {:ok, first, _html} = live_isolated(build_conn(), BusterClawWeb.SoundBoardLive)
+      _ = :sys.get_state(first.pid)
+      assert_push_event(first, "notify:play-sound", %{name: "boot.wav"})
+
+      # A navigation or reconnect mounts a fresh board — same BEAM, no re-ring.
+      {:ok, second, _html} = live_isolated(build_conn(), BusterClawWeb.SoundBoardLive)
+      _ = :sys.get_state(second.pid)
+      refute_push_event(second, "notify:play-sound", %{})
+    end
+
+    test "the test config keeps it off by default" do
+      # The suite-wide default (config/test.exs) — without it, the first
+      # root-layout test of every run would be special. This test proves the
+      # gate the whole suite relies on.
+      Application.put_env(:buster_claw, :boot_chime_enabled, false)
+
+      {:ok, view, _html} = live_isolated(build_conn(), BusterClawWeb.SoundBoardLive)
+      _ = :sys.get_state(view.pid)
+
+      refute_push_event(view, "notify:play-sound", %{})
+      refute :persistent_term.get({BusterClaw.Notifications.SoundBoard, :boot_rung}, false)
+    end
+  end
+
   describe "the client contract" do
     test "renders the NotifySound hook and nothing visible", %{view: view} do
       html = render(view)

@@ -21,11 +21,13 @@ import {WorkspaceDropzone} from "./workspace_dropzone.js"
 import {NotifySound, SoundPreview} from "./notify_sound.js"
 import {PortfolioChart} from "./portfolio_chart.js"
 import {MusicPlayer} from "./music_player.js"
+import {Dtmf} from "./dtmf.js"
 import {ChatWindow} from "./chat_window.js"
 
 export const Hooks = {
   PortfolioChart,
   MusicPlayer,
+  Dtmf,
   CornerWidget,
   Clock,
   DockClock,

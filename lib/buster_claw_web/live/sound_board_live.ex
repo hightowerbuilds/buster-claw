@@ -39,9 +39,32 @@ defmodule BusterClawWeb.SoundBoardLive do
       Telephony.subscribe()
       AgentMode.subscribe_runs()
       SoundBoard.subscribe()
+      maybe_boot_chime()
     end
 
     {:ok, assign(socket, :last_rung, %{}), layout: false}
+  end
+
+  # The boot chime (Phase 3): once per BEAM boot, not per page load — the flag
+  # is a :persistent_term, so navigation and reconnects never re-ring. Rung
+  # through the normal bus so it passes the same enabled/cooldown/resolution
+  # gates as everything else. Two windows racing the flag both ring at worst,
+  # which is two windows each greeting once. Config-gated off in tests (a
+  # global term would make the first root-layout test of every run special).
+  #
+  # Known, accepted: at real boot the webview has seen no user gesture yet, so
+  # the browser may refuse playback and the chime lands silent (roadmap Risk
+  # 2). The flag is still set — boot happened, whether or not it was audible.
+  defp maybe_boot_chime do
+    flag = {BusterClaw.Notifications.SoundBoard, :boot_rung}
+
+    if Application.get_env(:buster_claw, :boot_chime_enabled, true) and
+         not :persistent_term.get(flag, false) do
+      :persistent_term.put(flag, true)
+      SoundBoard.ring("boot")
+    end
+
+    :ok
   end
 
   @impl true

@@ -621,6 +621,11 @@ defmodule BusterClawWeb.TradingLive do
   defp maybe_propose_order(socket, conv, :assistant, text) do
     case BusterClaw.TradingOrder.parse(text) do
       {:ok, order} ->
+        # A money moment waiting on the operator gets a sound (SOUND_ROADMAP
+        # group A, the one key with no broadcast of its own). Through the
+        # SoundBoard's direct lane, so it passes the same master-switch /
+        # cooldown / routing gates as every other chime.
+        BusterClaw.Notifications.SoundBoard.ring("order")
         put_chat(socket, conv, &%{&1 | pending_order: {:proposed, order}})
 
       :none ->

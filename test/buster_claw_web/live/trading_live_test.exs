@@ -138,11 +138,17 @@ defmodule BusterClawWeb.TradingLiveTest do
       # Nothing pinned until there is something to answer.
       refute html =~ "trading-order-confirm"
 
+      # The pin also rings the "order" chime through the SoundBoard's direct
+      # lane — the money moment must be audible (SOUND_ROADMAP group A).
+      BusterClaw.Notifications.SoundBoard.subscribe()
+
       propose(
         view,
         ~s({"side":"buy","symbol":"AAPL","quantity":2,"order_type":"limit",) <>
           ~s("limit_price":199.25,"time_in_force":"day","account_last4":"6587"})
       )
+
+      assert_receive {:sound_ring, "order"}
 
       html = render(view)
       assert html =~ "trading-order-confirm"

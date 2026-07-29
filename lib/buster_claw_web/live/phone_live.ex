@@ -787,6 +787,8 @@ defmodule BusterClawWeb.PhoneLive do
 
                 <div
                   id="phone-keypad-controls"
+                  phx-hook="Dtmf"
+                  data-sound-on={to_string(BusterClaw.Notifications.Sound.enabled?())}
                   class="absolute bottom-[4%] left-1/2 z-10 grid h-[66%] max-w-[86%] -translate-x-1/2 grid-cols-3 grid-rows-4 aspect-[0.78]"
                   aria-label="Contact number search keypad"
                 >
