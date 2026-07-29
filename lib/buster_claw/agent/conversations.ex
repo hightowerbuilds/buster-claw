@@ -19,14 +19,53 @@ defmodule BusterClaw.Agent.Conversations do
   @doc "Title given to a fresh chat until its first message renames it."
   def default_title, do: @default_title
 
-  @doc "Open (non-archived) conversations, in stable creation order (left-to-right tabs)."
+  @doc """
+  Open (non-archived) Home conversations, in stable creation order.
+
+  Home only — a Trading tab must never appear in Home's chat strip, which is the
+  whole reason `kind` exists. Use `list_kinds/1` for the Trading page.
+  """
   def list do
     ensure_seeded()
+    query_kinds(["home"])
+  end
 
+  @doc """
+  Open conversations of the given kinds, in stable creation order.
+
+  The Trading page passes `["robinhood", "research"]` and gets its tab strip,
+  left to right, with the pinned Robinhood conversation first because it was
+  seeded first.
+  """
+  def list_kinds(kinds) when is_list(kinds), do: query_kinds(kinds)
+
+  defp query_kinds(kinds) do
     Conversation
-    |> where([c], is_nil(c.archived_at))
+    |> where([c], is_nil(c.archived_at) and c.kind in ^kinds)
     |> order_by(asc: :inserted_at, asc: :id)
     |> Repo.all()
+  end
+
+  @doc """
+  Ensure a specific conversation row exists, without resurrecting a closed one.
+
+  Used for the first Robinhood tab: its transcript already lives under the
+  `"trading"` conv_id from when the conversation was deliberately DB-less, so
+  seeding that exact id adopts the existing history rather than starting over.
+
+  Never resurrects: a row the operator closed stays closed (it comes back
+  archived, and `list_kinds/1` still omits it). Keeping at least one tab on
+  screen is the caller's job, exactly as it is for Home.
+  """
+  def ensure(id, attrs) when is_binary(id) do
+    case get(id) do
+      nil ->
+        {:ok, conv} = create(Map.merge(Map.new(attrs), %{id: id}))
+        conv
+
+      conv ->
+        conv
+    end
   end
 
   def get(id), do: Repo.get(Conversation, id)

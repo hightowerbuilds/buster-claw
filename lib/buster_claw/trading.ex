@@ -36,12 +36,15 @@ defmodule BusterClaw.Trading do
   strip, while the transcript still persists via `Agent.Transcript`.
   """
 
+  alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.AgentRunner
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.Research
   alias BusterClaw.Settings
 
   @conv_id "trading"
+  @tab_kinds ~w(robinhood research)
   @mcp_url "https://agent.robinhood.com/mcp/trading"
   @read_tools ~w(
     mcp__robinhood__get_accounts
@@ -163,6 +166,45 @@ defmodule BusterClaw.Trading do
   """
 
   def conv_id, do: @conv_id
+
+  @doc """
+  The Trading page's open tabs, guaranteeing at least one.
+
+  The first Robinhood tab is seeded at the historical `"trading"` id so the
+  transcript written while that conversation was DB-less becomes this tab's
+  history instead of being orphaned.
+  """
+  def tabs do
+    _seeded = Conversations.ensure(@conv_id, title: "Robinhood", kind: "robinhood")
+
+    case Conversations.list_kinds(@tab_kinds) do
+      [] ->
+        {:ok, conv} = Conversations.create(%{title: "Robinhood", kind: "robinhood"})
+        [conv]
+
+      tabs ->
+        tabs
+    end
+  end
+
+  @doc "The conversation kinds that live on the Trading page, in tab order."
+  def tab_kinds, do: @tab_kinds
+
+  @doc """
+  `Chat.ensure_started/2` options for a tab, by kind.
+
+  The two kinds differ in exactly the way that matters: a `robinhood` chat can
+  read the broker and nothing else; a `research` chat can read public market
+  data and can never see the broker at all. Neither can place an order — the
+  write tool lives only in `TradingOrder.submit_cli_args/0`, behind a confirm
+  click.
+  """
+  def chat_opts_for("research"), do: Research.chat_opts()
+  def chat_opts_for(_robinhood), do: chat_opts()
+
+  @doc "Human label for a kind, used when titling a new tab."
+  def kind_label("research"), do: "Research"
+  def kind_label(_robinhood), do: "Robinhood"
 
   @doc "The stage-1 (balances for every account) prompt. Exposed for tests."
   def accounts_prompt, do: @accounts_prompt
