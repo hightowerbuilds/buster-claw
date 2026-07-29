@@ -1,6 +1,6 @@
 # Sound in Buster Claw — Roadmap V.2
 
-**Date:** 2026-07-28 · **Status:** ACTIVE — Phase 0 shipped (`2faa436`); Phase 1 (SoundBoard) next ·
+**Date:** 2026-07-28 · **Status:** ACTIVE — Phases 0–1 shipped; next: Phase 2 (routing UI). Open: the `order` ring call site in TradingLive; the operator audition ·
 **Scope:** sound effects for app events — the second half of the "music and sound
 effects" ask that `MUSIC_ROADMAP.md` deliberately scoped out. Music is built;
 this is everything else that rings.
@@ -138,7 +138,27 @@ switch setting.
 generator is deterministic (same script → byte-identical WAVs); every new key
 resolves; master switch off → total silence including notifications.
 
-### Phase 1 — The SoundBoard
+### Phase 1 — The SoundBoard — **SHIPPED 07-28** (`dfa2c55`)
+
+> All four acceptance criteria pinned by test: a 5-event burst collapses to one
+> chime; a `:warning` security event is provably silent; the board reuses the
+> `NotifySound` hook (zero new JS) and mounts sticky in the ROOT layout, so it
+> rings from `/browse` and over playing music by construction. The `chat` ring
+> wires at `Chat.dispatch_next`'s empty-queue clause — the single
+> settle-into-idle point every run ending funnels through, so answer-ready
+> cannot drift from run-ended.
+>
+> **One deviation:** the `order` key's call site is NOT wired — `TradingLive`
+> was another session's open file throughout. One `SoundBoard.ring("order")`
+> call belongs where the card pins (`assign(:pending_order, ...)`); the lane,
+> validation, and chime all exist and are tested.
+>
+> A subtlety worth keeping: gate order is mapping → master switch → cooldown,
+> and a test pins why — an event silenced by the switch must not consume the
+> cooldown and eat the first audible chime after re-enabling. Known accepted
+> wart: a voicemail's transcript-update rebroadcast can re-ring past the
+> cooldown window; distinguishing insert from update isn't carried by the
+> message today, and "your message is now readable" is defensible.
 
 `SoundBoardLive`, sticky in the dock: subscribes to the Part II topics, maps
 event → key → URL, pushes to a hook holding a small pooled `Audio` set.
