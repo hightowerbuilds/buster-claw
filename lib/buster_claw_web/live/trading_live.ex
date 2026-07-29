@@ -71,9 +71,12 @@ defmodule BusterClawWeb.TradingLive do
       |> assign(:research, %{})
       |> assign(:research_query, "")
       |> assign(:research_matches, [])
-      |> assign(:chat_running, Chat.running?(active.id))
-      |> assign(:chat_thinking, if(Chat.running?(active.id), do: :running, else: nil))
-      |> assign(:chat_queue, Chat.queue(active.id))
+      # One state map per conversation. Several windows render at once, so there
+      # is no single "the chat" to hold running/queue/transcript for any more.
+      |> assign(:chats, Map.new(tabs, &{&1.id, initial_chat_state(&1.id)}))
+      # Render order, and focus order: the last entry is the focused window.
+      |> assign(:open_chats, [active.id])
+      |> assign(:minimized, MapSet.new())
       # Accounts panel: nil | {:loading, prev} | {:ok, snap} |
       # {:error, reason, prev} — prev = last good snapshot (or nil), kept visible
       # under the spinner/error line instead of blanking real data.
@@ -106,12 +109,6 @@ defmodule BusterClawWeb.TradingLive do
       # nil | {symbol, interval, requested_from}. Keeping the request identity
       # prevents an obsolete completion from clearing a newer loading state.
       |> assign(:symbol_bars_request, nil)
-      # nil | {:proposed, order} | {:submitting, order} | {:settled, order, result}.
-      # Deliberately NOT persisted: a proposal that outlives the tab it was made
-      # in is a proposal nobody is looking at any more.
-      |> assign(:pending_order, nil)
-      |> stream_configure(:chat_messages, dom_id: &"chat-msg-#{&1.id}")
-      |> load_chat_history()
 
     # The static (disconnected) render must not spend agent runs: show whatever
     # is cached; fetches start once the socket is live.
@@ -128,27 +125,32 @@ defmodule BusterClawWeb.TradingLive do
   # ---------------------------------------------------------------------------
 
   @impl true
-  def handle_event("chat_send", %{"message" => text}, socket) do
+  # The window's composer names its conversation in a hidden field: with several
+  # open at once, "the chat" is no longer a thing the server can infer.
+  def handle_event("chat_send", %{"message" => text} = params, socket) do
     # Sending barges in on any reply still being spoken.
     socket = push_event(socket, "bc:stop_speak", %{})
+    conv = params["conv"] || socket.assigns.active_tab
 
-    case String.trim(text) do
-      "" -> {:noreply, socket}
-      trimmed -> {:noreply, dispatch_chat(socket, trimmed)}
+    case {known_tab?(socket, conv), String.trim(text)} do
+      {true, trimmed} when trimmed != "" -> {:noreply, dispatch_chat(socket, conv, trimmed)}
+      _ -> {:noreply, socket}
     end
   end
 
-  def handle_event("cancel_queued", %{"id" => id}, socket) do
-    case Integer.parse(id) do
-      {qid, ""} -> Chat.remove_queued(socket.assigns.active_tab, qid)
-      _ -> :ok
+  def handle_event("cancel_queued", %{"id" => id} = params, socket) do
+    conv = params["conv"] || socket.assigns.active_tab
+
+    with true <- known_tab?(socket, conv), {qid, ""} <- Integer.parse(id) do
+      Chat.remove_queued(conv, qid)
     end
 
     {:noreply, socket}
   end
 
-  def handle_event("cut_run", _params, socket) do
-    Chat.interrupt(socket.assigns.active_tab)
+  def handle_event("cut_run", params, socket) do
+    conv = params["conv"] || socket.assigns.active_tab
+    if known_tab?(socket, conv), do: Chat.interrupt(conv)
     {:noreply, push_event(socket, "bc:stop_speak", %{})}
   end
 
@@ -169,10 +171,14 @@ defmodule BusterClawWeb.TradingLive do
     {:ok, conv} = Conversations.create(%{title: Trading.kind_label(kind), kind: kind})
     if connected?(socket), do: Chat.subscribe(conv.id)
 
+    # A tab you just made is one you want to talk to, so its window opens with
+    # it — and appended, so it is the focused one. Selecting an EXISTING tab
+    # deliberately does not do this: a window the operator closed stays closed.
     {:noreply,
      socket
      |> assign(:tabs, socket.assigns.tabs ++ [to_tab(conv)])
      |> assign(:new_tab_open, false)
+     |> assign(:open_chats, socket.assigns.open_chats ++ [conv.id])
      |> activate_tab(conv.id)}
   end
 
@@ -181,6 +187,50 @@ defmodule BusterClawWeb.TradingLive do
 
   def handle_event("trading_close_tab", %{"id" => id}, socket) do
     if known_tab?(socket, id), do: {:noreply, close_tab(socket, id)}, else: {:noreply, socket}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Chat windows — floating, and independent of which panel is showing
+  # ---------------------------------------------------------------------------
+
+  def handle_event("trading_toggle_chat", %{"id" => id}, socket) do
+    cond do
+      not known_tab?(socket, id) ->
+        {:noreply, socket}
+
+      id in socket.assigns.open_chats ->
+        {:noreply,
+         socket
+         |> assign(:open_chats, List.delete(socket.assigns.open_chats, id))
+         |> update(:minimized, &MapSet.delete(&1, id))}
+
+      true ->
+        # Appended, so a newly opened window is the focused one.
+        {:noreply,
+         socket
+         |> assign(:open_chats, socket.assigns.open_chats ++ [id])
+         |> update_tab(id, &%{&1 | unread: false})}
+    end
+  end
+
+  def handle_event("trading_minimize_chat", %{"id" => id}, socket) do
+    {:noreply,
+     update(socket, :minimized, fn mins ->
+       if MapSet.member?(mins, id), do: MapSet.delete(mins, id), else: MapSet.put(mins, id)
+     end)}
+  end
+
+  def handle_event("trading_focus_chat", %{"id" => id}, socket) do
+    # Focus is render order: move this window to the end so it draws last, is
+    # the opaque one, and takes the keyboard.
+    if id in socket.assigns.open_chats do
+      {:noreply,
+       socket
+       |> assign(:open_chats, List.delete(socket.assigns.open_chats, id) ++ [id])
+       |> update_tab(id, &%{&1 | unread: false})}
+    else
+      {:noreply, socket}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -216,39 +266,43 @@ defmodule BusterClawWeb.TradingLive do
   # The order confirmation — the only path from this tab to the broker
   # ---------------------------------------------------------------------------
 
-  # Matches ONLY on {:proposed, order} in the socket. The order that gets placed
-  # is the one the app parsed and rendered, never anything carried by the click:
-  # the event takes no parameters at all, so there is nothing in it to forge.
-  def handle_event(
-        "trading_order_confirm",
-        _params,
-        %{assigns: %{pending_order: {:proposed, order}}} = socket
-      ) do
-    BusterClaw.Sentinel.observe(:outbound_send, "Trading order confirmed by operator", %{
-      source: "trading_chat_order",
-      order: BusterClaw.TradingOrder.summary(order)
-    })
+  # The click names WHICH card was pressed and nothing else. The order that gets
+  # placed is still the one the app parsed and holds in that conversation's
+  # state — a forged conv id can only reach a conversation whose own pending
+  # order is already {:proposed, …}, and it cannot alter a single parameter.
+  def handle_event("trading_order_confirm", params, socket) do
+    conv = params["conv"] || socket.assigns.active_tab
 
-    {:noreply,
-     socket
-     |> assign(:pending_order, {:submitting, order})
-     |> start_async(:trading_order, fn -> BusterClaw.TradingOrder.submit(order) end)}
+    case chat_state(socket.assigns, conv) do
+      %{pending_order: {:proposed, order}} ->
+        BusterClaw.Sentinel.observe(:outbound_send, "Trading order confirmed by operator", %{
+          source: "trading_chat_order",
+          conv_id: conv,
+          order: BusterClaw.TradingOrder.summary(order)
+        })
+
+        {:noreply,
+         socket
+         |> put_chat(conv, &%{&1 | pending_order: {:submitting, order}})
+         |> start_async({:trading_order, conv}, fn -> BusterClaw.TradingOrder.submit(order) end)}
+
+      _other ->
+        {:noreply, socket}
+    end
   end
 
-  def handle_event("trading_order_confirm", _params, socket), do: {:noreply, socket}
+  def handle_event("trading_order_dismiss", params, socket) do
+    conv = params["conv"] || socket.assigns.active_tab
 
-  def handle_event(
-        "trading_order_dismiss",
-        _params,
-        %{assigns: %{pending_order: {:submitting, _order}}} = socket
-      ) do
-    # Refuse to clear a card whose run is still out: the operator would be left
-    # believing nothing happened while a place call is in flight.
-    {:noreply, socket}
-  end
+    case chat_state(socket.assigns, conv) do
+      # Refuse to clear a card whose run is still out: the operator would be left
+      # believing nothing happened while a place call is in flight.
+      %{pending_order: {:submitting, _order}} ->
+        {:noreply, socket}
 
-  def handle_event("trading_order_dismiss", _params, socket) do
-    {:noreply, assign(socket, :pending_order, nil)}
+      _other ->
+        {:noreply, put_chat(socket, conv, &%{&1 | pending_order: nil})}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -431,59 +485,78 @@ defmodule BusterClawWeb.TradingLive do
   # Chat stream (from the conversation's PubSub broadcasts)
   # ---------------------------------------------------------------------------
 
-  # Broadcasts arrive from every open tab, not only the visible one. The active
-  # tab's events are applied; a background tab's only get far enough to raise its
-  # unread dot, because rendering another conversation's messages into the
-  # transcript on screen would be worse than missing them.
+  # Every conversation keeps its own state whether or not its window is open, so
+  # a run started and then closed still has its transcript waiting when the
+  # window comes back. Broadcasts are applied by conversation, never by "the
+  # active one".
   @impl true
   def handle_info({:agent_chat, conv_id, payload}, socket) do
-    cond do
-      conv_id == socket.assigns.active_tab -> {:noreply, apply_chat(socket, payload)}
-      known_tab?(socket, conv_id) -> {:noreply, note_background(socket, conv_id, payload)}
-      true -> {:noreply, socket}
-    end
+    if known_tab?(socket, conv_id),
+      do: {:noreply, apply_chat(socket, conv_id, payload)},
+      else: {:noreply, socket}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  defp apply_chat(socket, {:status, status}) do
+  defp apply_chat(socket, conv, {:status, status}) do
     socket =
       socket
-      |> assign(:chat_running, status == :running)
-      |> assign(:chat_thinking, if(status == :running, do: :running, else: nil))
+      |> put_chat(conv, fn c ->
+        %{
+          c
+          | running: status == :running,
+            thinking: if(status == :running, do: :running, else: nil)
+        }
+      end)
+      |> update_tab(conv, &%{&1 | running: status == :running})
 
     # A finished trading run may have moved money — re-snapshot the accounts
     # while the operator is looking at them.
     if status == :idle, do: maybe_refresh_account(socket), else: socket
   end
 
-  defp apply_chat(socket, {:thinking, ms}), do: assign(socket, :chat_thinking, {:done, ms})
-  defp apply_chat(socket, {:queue, items}), do: assign(socket, :chat_queue, items)
+  defp apply_chat(socket, conv, {:thinking, ms}),
+    do: put_chat(socket, conv, &%{&1 | thinking: {:done, ms}})
 
-  defp apply_chat(socket, {:message, %{role: role, text: text}}) do
+  defp apply_chat(socket, conv, {:queue, items}),
+    do: put_chat(socket, conv, &%{&1 | queue: items})
+
+  defp apply_chat(socket, conv, {:message, %{role: role, text: text}}) do
     socket
-    |> maybe_speak(role, text)
-    |> push_msg(role, text)
-    |> maybe_propose_order(role, text)
+    |> maybe_speak(conv, role, text)
+    |> push_msg_to(conv, role, text)
+    |> maybe_propose_order(conv, role, text)
+    |> maybe_flag_unread(conv, role)
   end
 
-  defp apply_chat(socket, _other), do: socket
+  defp apply_chat(socket, _conv, _other), do: socket
+
+  # A window that is closed or collapsed cannot be read, so its tab carries the
+  # dot instead. An open, expanded window is already showing the message.
+  defp maybe_flag_unread(socket, _conv, :user), do: socket
+
+  defp maybe_flag_unread(socket, conv, _role) do
+    if conv in socket.assigns.open_chats and not MapSet.member?(socket.assigns.minimized, conv),
+      do: socket,
+      else: update_tab(socket, conv, &%{&1 | unread: true})
+  end
 
   # An assistant turn carrying a fenced ```order block arms the confirm card.
   # Only the assistant's own turns are read: echoing the operator's text back
   # through the parser would let a pasted block arm the card without the model —
   # and without the parameter-gathering that is the point of asking it.
-  defp maybe_propose_order(socket, :assistant, text) do
+  defp maybe_propose_order(socket, conv, :assistant, text) do
     case BusterClaw.TradingOrder.parse(text) do
       {:ok, order} ->
-        assign(socket, :pending_order, {:proposed, order})
+        put_chat(socket, conv, &%{&1 | pending_order: {:proposed, order}})
 
       :none ->
         socket
 
       {:error, reason} ->
-        push_msg(
+        push_msg_to(
           socket,
+          conv,
           :error,
           "The assistant proposed an order Buster Claw would not read: #{order_error(reason)}. " <>
             "Nothing was sent. Ask it to restate the order."
@@ -491,16 +564,21 @@ defmodule BusterClawWeb.TradingLive do
     end
   end
 
-  defp maybe_propose_order(socket, _role, _text), do: socket
+  defp maybe_propose_order(socket, _conv, _role, _text), do: socket
 
   # Speak the model's replies aloud (client gates on the Voice toggle + desktop
   # app). Only `:assistant` text — never tool/meta/error lines.
-  defp maybe_speak(socket, :assistant, text), do: push_event(socket, "bc:speak", %{text: text})
-  defp maybe_speak(socket, _role, _text), do: socket
+  # Only the focused window speaks. Three conversations narrating at once over
+  # each other is worse than silence from two of them.
+  defp maybe_speak(socket, conv, :assistant, text) do
+    if conv == List.last(socket.assigns.open_chats),
+      do: push_event(socket, "bc:speak", %{text: text}),
+      else: socket
+  end
 
-  defp dispatch_chat(socket, text) do
-    conv_id = socket.assigns.active_tab
+  defp maybe_speak(socket, _conv, _role, _text), do: socket
 
+  defp dispatch_chat(socket, conv_id, text) do
     # Trading requires the Claude CLI specifically: the MCP flags in
     # Trading.chat_opts/0 are Claude's, and codex would choke on them.
     case BusterClaw.AgentRunner.detect() do
@@ -513,35 +591,82 @@ defmodule BusterClawWeb.TradingLive do
           chars: String.length(text)
         })
 
-        Chat.ensure_started(conv_id, Trading.chat_opts())
+        # The kind decides the toolset: a research window must never be started
+        # with the broker's options just because it shares this dispatcher.
+        Chat.ensure_started(conv_id, Trading.chat_opts_for(tab_kind(socket, conv_id)))
         do_send(socket, conv_id, text)
 
       _other ->
-        push_msg(socket, :error, "Trading requires the Claude Code CLI.")
+        push_msg_to(socket, conv_id, :error, "Trading requires the Claude Code CLI.")
     end
   catch
     :exit, _reason ->
-      push_msg(socket, :error, "Chat backend isn't running — restart the server.")
+      push_msg_to(socket, conv_id, :error, "Chat backend isn't running — restart the server.")
   end
 
   # While a run is in flight send_message/2 queues the text (returns :ok) rather
   # than rejecting it; the queued item arrives back over PubSub as {:queue, …}.
   defp do_send(socket, conv_id, text) do
     case Chat.send_message(conv_id, text) do
-      :ok -> socket
-      {:error, :no_agent_cli} -> socket
-      {:error, reason} -> push_msg(socket, :error, "Could not start the run: #{inspect(reason)}")
+      :ok ->
+        socket
+
+      {:error, :no_agent_cli} ->
+        socket
+
+      {:error, reason} ->
+        push_msg_to(socket, conv_id, :error, "Could not start the run: #{inspect(reason)}")
     end
   end
 
-  defp push_msg(socket, role, text) do
-    seq = socket.assigns.chat_seq + 1
-    msg = %{id: seq, role: role, text: text, svg_ids: []}
+  # Panel-side errors (a failed cost fetch, a crashed bar run) belong to whichever
+  # conversation the operator is looking at, which is the active tab's.
+  defp push_msg(socket, role, text),
+    do: push_msg_to(socket, socket.assigns.active_tab, role, text)
 
-    socket
-    |> assign(:chat_seq, seq)
-    |> stream_insert(:chat_messages, msg, limit: -@max_chat_messages)
+  defp push_msg_to(socket, conv, role, text) do
+    put_chat(socket, conv, fn c ->
+      seq = c.seq + 1
+      msg = %{id: seq, role: role, text: text, svg_ids: []}
+
+      %{
+        c
+        | seq: seq,
+          messages:
+            Enum.take(c.messages ++ [{"chat-msg-#{conv}-#{seq}", msg}], -@max_chat_messages)
+      }
+    end)
   end
+
+  # --- Per-conversation chat state ---
+
+  defp initial_chat_state(conv_id) do
+    messages = load_history(conv_id)
+
+    %{
+      messages: messages,
+      seq: length(messages),
+      running: Chat.running?(conv_id),
+      thinking: if(Chat.running?(conv_id), do: :running, else: nil),
+      queue: Chat.queue(conv_id),
+      pending_order: nil
+    }
+  end
+
+  defp chat_state(assigns_or_socket, conv) do
+    Map.get(assigns_or_socket.chats, conv) || empty_chat_state()
+  end
+
+  defp empty_chat_state,
+    do: %{messages: [], seq: 0, running: false, thinking: nil, queue: [], pending_order: nil}
+
+  defp put_chat(socket, conv, fun) do
+    update(socket, :chats, fn chats ->
+      Map.put(chats, conv, fun.(Map.get(chats, conv) || empty_chat_state()))
+    end)
+  end
+
+  defp tab_kind(socket, conv), do: tab_kind_of(socket.assigns.tabs, conv)
 
   @history_roles %{
     "user" => :user,
@@ -562,6 +687,20 @@ defmodule BusterClawWeb.TradingLive do
 
   defp known_tab?(socket, id), do: Enum.any?(socket.assigns.tabs, &(&1.id == id))
 
+  defp tab_title(tabs, conv) do
+    case Enum.find(tabs, &(&1.id == conv)) do
+      nil -> "Chat"
+      tab -> tab.title
+    end
+  end
+
+  defp tab_kind_of(tabs, conv) do
+    case Enum.find(tabs, &(&1.id == conv)) do
+      nil -> "robinhood"
+      tab -> tab.kind
+    end
+  end
+
   defp active_tab_kind(socket) do
     case Enum.find(socket.assigns.tabs, &(&1.id == socket.assigns.active_tab)) do
       nil -> "robinhood"
@@ -569,20 +708,18 @@ defmodule BusterClawWeb.TradingLive do
     end
   end
 
+  # Switching tabs swaps the PANEL and nothing else. Open chat windows are
+  # deliberately untouched: they float above whichever panel is showing, and a
+  # run in one conversation is not interrupted by looking at another's data.
   defp activate_tab(socket, id) do
     Conversations.touch(id)
 
     socket
     |> assign(:active_tab, id)
-    |> assign(:chat_running, Chat.running?(id))
-    |> assign(:chat_thinking, if(Chat.running?(id), do: :running, else: nil))
-    |> assign(:chat_queue, Chat.queue(id))
-    # A proposal belongs to the conversation that made it; carrying it across a
-    # tab switch would put a BUY card above someone else's transcript.
-    |> assign(:pending_order, nil)
-    |> update_tab(id, &%{&1 | unread: false})
+    |> update(:chats, fn chats ->
+      Map.put_new_lazy(chats, id, fn -> initial_chat_state(id) end)
+    end)
     |> then(&assign(&1, :active_kind, active_tab_kind(&1)))
-    |> load_chat_history()
   end
 
   defp update_tab(socket, id, fun) do
@@ -596,7 +733,13 @@ defmodule BusterClawWeb.TradingLive do
     if connected?(socket), do: Phoenix.PubSub.unsubscribe(BusterClaw.PubSub, Chat.topic(id))
 
     remaining = Enum.reject(socket.assigns.tabs, &(&1.id == id))
-    socket = update(socket, :research, &Map.delete(&1, id))
+
+    socket =
+      socket
+      |> update(:research, &Map.delete(&1, id))
+      |> update(:chats, &Map.delete(&1, id))
+      |> assign(:open_chats, List.delete(socket.assigns.open_chats, id))
+      |> update(:minimized, &MapSet.delete(&1, id))
 
     cond do
       # The page is a tab strip; an empty one has nothing to render into.
@@ -613,18 +756,6 @@ defmodule BusterClawWeb.TradingLive do
     end
   end
 
-  # A background tab's traffic never enters the visible transcript — only its
-  # dot and its running state, which is everything the strip needs to show.
-  defp note_background(socket, conv_id, {:status, status}) do
-    update_tab(socket, conv_id, &%{&1 | running: status == :running})
-  end
-
-  defp note_background(socket, conv_id, {:message, %{role: role}}) when role != :user do
-    update_tab(socket, conv_id, &%{&1 | unread: true})
-  end
-
-  defp note_background(socket, _conv_id, _payload), do: socket
-
   # --- Research helpers ---
 
   defp put_research(socket, panel),
@@ -634,18 +765,14 @@ defmodule BusterClawWeb.TradingLive do
     Map.get(socket_or_assigns.research, socket_or_assigns.active_tab) || Research.blank()
   end
 
-  defp load_chat_history(socket) do
-    messages =
-      socket.assigns.active_tab
-      |> AgentTranscript.recent(limit: 200)
-      |> Enum.with_index(1)
-      |> Enum.map(fn {row, i} ->
-        %{id: i, role: history_role(row.role), text: row.content, svg_ids: []}
-      end)
-
-    socket
-    |> stream(:chat_messages, messages, reset: true)
-    |> assign(:chat_seq, length(messages))
+  defp load_history(conv_id) do
+    conv_id
+    |> AgentTranscript.recent(limit: 200)
+    |> Enum.with_index(1)
+    |> Enum.map(fn {row, i} ->
+      {"chat-msg-#{conv_id}-#{i}",
+       %{id: i, role: history_role(row.role), text: row.content, svg_ids: []}}
+    end)
   end
 
   # ---------------------------------------------------------------------------
@@ -749,14 +876,14 @@ defmodule BusterClawWeb.TradingLive do
 
   # The submit run came back. Whatever it says, the card settles here and offers
   # no retry — see the double-submission note in BusterClaw.TradingOrder.
-  def handle_async(:trading_order, {:ok, result}, socket) do
-    {:noreply, settle_order(socket, result)}
+  def handle_async({:trading_order, conv}, {:ok, result}, socket) do
+    {:noreply, settle_order(socket, conv, result)}
   end
 
   # A crashed submit is exactly the unknown case: the run died, and nothing here
   # can tell whether the broker took the order before it did.
-  def handle_async(:trading_order, {:exit, _reason}, socket) do
-    {:noreply, settle_order(socket, {:error, :unknown})}
+  def handle_async({:trading_order, conv}, {:exit, _reason}, socket) do
+    {:noreply, settle_order(socket, conv, {:error, :unknown})}
   end
 
   # Stage 2 lands. The id is carried through the result rather than read off the
@@ -1596,6 +1723,7 @@ defmodule BusterClawWeb.TradingLive do
   attr :tabs, :list, required: true
   attr :active, :string, required: true
   attr :menu_open, :boolean, required: true
+  attr :open_chats, :list, required: true
 
   defp trading_tabs(assigns) do
     ~H"""
@@ -1639,6 +1767,23 @@ defmodule BusterClawWeb.TradingLive do
         >
         </span>
         <span class="max-w-[10rem] truncate font-medium">{tab.title}</span>
+        <%!-- Opening a chat is separate from selecting a tab, because the two are
+              now separate things: the tab decides the panel, the window decides
+              which conversation you are talking to. --%>
+        <span
+          phx-click="trading_toggle_chat"
+          phx-value-id={tab.id}
+          title={if tab.id in @open_chats, do: "Close this chat window", else: "Open this chat"}
+          class={[
+            "grid size-4 shrink-0 place-items-center rounded-sm transition hover:bg-base-content/15",
+            if(tab.id in @open_chats,
+              do: "text-primary",
+              else: "text-base-content/40 hover:text-base-content"
+            )
+          ]}
+        >
+          <.icon name="hero-chat-bubble-left" class="size-3.5" />
+        </span>
         <span
           phx-click="trading_close_tab"
           phx-value-id={tab.id}
@@ -1713,16 +1858,17 @@ defmodule BusterClawWeb.TradingLive do
   # sends it. Everything shown here comes from the `TradingOrder` struct, not from
   # the model's prose — so what the operator reads is exactly what gets placed.
   attr :pending, :any, required: true
+  attr :conv, :string, required: true
 
   defp order_confirm(assigns) do
     ~H"""
-    <div id="trading-order-confirm" class="space-y-2 p-4 font-mono text-xs">
+    <div id={"trading-order-confirm-#{@conv}"} class="space-y-2 p-4 font-mono text-xs">
       <%= case @pending do %>
         <% {:proposed, order} -> %>
           <p class="text-[0.62rem] font-bold uppercase tracking-[0.2em] text-base-content/50">
             Confirm to send
           </p>
-          <p id="trading-order-summary" class="text-sm font-black tracking-wide">
+          <p id={"trading-order-summary-#{@conv}"} class="text-sm font-black tracking-wide">
             {BusterClaw.TradingOrder.summary(order)}
           </p>
           <p class="text-base-content/60">
@@ -1730,9 +1876,10 @@ defmodule BusterClawWeb.TradingLive do
           </p>
           <div class="flex gap-2 pt-1">
             <button
-              id="trading-order-confirm-button"
+              id={"trading-order-confirm-button-#{@conv}"}
               type="button"
               phx-click="trading_order_confirm"
+              phx-value-conv={@conv}
               class="border-2 border-error bg-error/10 px-3 py-2 font-black uppercase tracking-wide text-error transition hover:bg-error hover:text-error-content"
             >
               Place this order
@@ -1740,6 +1887,8 @@ defmodule BusterClawWeb.TradingLive do
             <button
               type="button"
               phx-click="trading_order_dismiss"
+              phx-value-conv={@conv}
+              phx-value-conv={@conv}
               class="border-2 border-base-content/25 px-3 py-2 font-bold uppercase tracking-wide transition hover:border-base-content/50"
             >
               Discard
@@ -1752,7 +1901,7 @@ defmodule BusterClawWeb.TradingLive do
           <p class="text-sm font-black tracking-wide">
             {BusterClaw.TradingOrder.summary(order)}
           </p>
-          <p id="trading-order-submitting" class="text-base-content/60">
+          <p id={"trading-order-submitting-#{@conv}"} class="text-base-content/60">
             Placing the order… don't close this tab.
           </p>
         <% {:settled, order, result} -> %>
@@ -1768,7 +1917,7 @@ defmodule BusterClawWeb.TradingLive do
           <%!-- No retry button, on purpose. A submission that did not return a
                 verdict may already be live at the broker; the only safe next
                 step is for a human to go look. --%>
-          <p id="trading-order-result" class={["text-xs", order_result_class(result)]}>
+          <p id={"trading-order-result-#{@conv}"} class={["text-xs", order_result_class(result)]}>
             {order_result_detail(result)}
           </p>
           <button
@@ -1812,7 +1961,14 @@ defmodule BusterClawWeb.TradingLive do
   # Order confirmation helpers
   # ---------------------------------------------------------------------------
 
-  defp settle_order(%{assigns: %{pending_order: {:submitting, order}}} = socket, result) do
+  defp settle_order(socket, conv, result) do
+    case chat_state(socket.assigns, conv) do
+      %{pending_order: {:submitting, order}} -> do_settle_order(socket, conv, order, result)
+      _other -> socket
+    end
+  end
+
+  defp do_settle_order(socket, conv, order, result) do
     summary = BusterClaw.TradingOrder.summary(order)
 
     # Every outcome — including the unknown one — lands on the audit feed and in
@@ -1824,11 +1980,9 @@ defmodule BusterClawWeb.TradingLive do
     })
 
     socket
-    |> assign(:pending_order, {:settled, order, result})
-    |> push_msg(:meta, order_transcript_line(summary, result))
+    |> put_chat(conv, &%{&1 | pending_order: {:settled, order, result}})
+    |> push_msg_to(conv, :meta, order_transcript_line(summary, result))
   end
-
-  defp settle_order(socket, _result), do: socket
 
   defp order_outcome_tag({:ok, _id}), do: "accepted"
   defp order_outcome_tag({:error, {:refused, _reason}}), do: "refused"
@@ -1859,110 +2013,110 @@ defmodule BusterClawWeb.TradingLive do
     ~H"""
     <Layouts.app flash={@flash} socket={@socket} fit_viewport>
       <section class="flex min-h-0 flex-1 flex-col gap-2 p-4">
-        <.trading_tabs tabs={@tabs} active={@active_tab} menu_open={@new_tab_open} />
-        <div
-          id="trading-split"
-          phx-hook="SplitResizer"
-          data-resize-var="--trading-left"
-          data-resize-key="bc:trading-split-ratio"
-          data-resize-default="0.3"
-          class="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-0"
-        >
-          <div class="bc-trading-left flex min-h-0 flex-col gap-2">
-            <div
-              :if={@active_kind == "robinhood"}
-              id="trading-read-only-banner"
-              class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-success"
-            >
-              Read-only mode — Buster Claw cannot place, amend, or cancel Robinhood orders
-            </div>
-            <%!-- Research states the stronger fact: the broker isn't restricted
-                  here, it's absent. This chat has no Robinhood tool to deny. --%>
-            <div
-              :if={@active_kind == "research"}
-              id="trading-research-banner"
-              class="border-2 border-info/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-info"
-            >
-              Public data only — this chat cannot see your accounts
-            </div>
-            <%!-- First-run setup: the OAuth handshake is interactive by nature
-                  (a browser window), so it happens once in a terminal — the
-                  keychain tokens are then reused by every headless turn. --%>
-            <div
-              :if={@chat_seq == 0 and @active_kind == "robinhood"}
-              class="space-y-2 border-2 border-base-content/20 p-4 font-mono text-xs"
-            >
-              <p class="font-bold uppercase tracking-wide">One-time setup (in a terminal)</p>
-              <pre class="overflow-x-auto bg-base-200 p-2">claude mcp add --transport http --scope user robinhood https://agent.robinhood.com/mcp/trading</pre>
-              <pre class="overflow-x-auto bg-base-200 p-2">claude mcp login robinhood</pre>
-              <p class="text-base-content/70">
-                The login opens Robinhood's OAuth page in your browser; tokens land in the
-                macOS Keychain and every trading turn here reuses them. Known issue
-                (claude-code #65895): if the tools still report unavailable after logging
-                in, run <code class="font-bold">claude mcp logout robinhood</code> and log in again.
-              </p>
-            </div>
-            <BusterClawWeb.ChatPanel.chat_panel
-              messages={@streams.chat_messages}
-              seq={@chat_seq}
-              running={@chat_running}
-              thinking={@chat_thinking}
-              queue={@chat_queue}
-              agent_cli_missing={@agent_cli_missing}
-              empty_message={chat_empty_message(@active_kind)}
-              placeholder={chat_placeholder(@active_kind)}
-            >
-              <:pinned :if={@pending_order}>
-                <.order_confirm pending={@pending_order} />
-              </:pinned>
-            </BusterClawWeb.ChatPanel.chat_panel>
-          </div>
-
+        <.trading_tabs
+          tabs={@tabs}
+          active={@active_tab}
+          menu_open={@new_tab_open}
+          open_chats={@open_chats}
+        />
+        <%!-- The panel owns the whole tab. Chat is not beside it any more but on
+              top of it, in windows the operator places — which is why the panel
+              gets to be this wide and why those windows are translucent. --%>
+        <div :if={@active_kind == "robinhood"} class="flex min-h-0 flex-1 flex-col gap-2">
           <div
-            data-split-divider
-            title="Drag to resize"
-            class="group relative hidden shrink-0 cursor-col-resize items-center justify-center lg:flex lg:w-3"
+            id="trading-read-only-banner"
+            class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-success"
           >
-            <span class="h-full w-px bg-base-content/15 transition group-hover:bg-primary"></span>
+            Read-only mode — Buster Claw cannot place, amend, or cancel Robinhood orders
           </div>
+          <%!-- First-run setup: the OAuth handshake is interactive by nature
+                (a browser window), so it happens once in a terminal — the
+                keychain tokens are then reused by every headless turn. --%>
+          <div
+            :if={chat_state(assigns, @active_tab).seq == 0}
+            class="space-y-2 border-2 border-base-content/20 p-4 font-mono text-xs"
+          >
+            <p class="font-bold uppercase tracking-wide">One-time setup (in a terminal)</p>
+            <pre class="overflow-x-auto bg-base-200 p-2">claude mcp add --transport http --scope user robinhood https://agent.robinhood.com/mcp/trading</pre>
+            <pre class="overflow-x-auto bg-base-200 p-2">claude mcp login robinhood</pre>
+            <p class="text-base-content/70">
+              The login opens Robinhood's OAuth page in your browser; tokens land in the
+              macOS Keychain and every trading turn here reuses them. Known issue
+              (claude-code #65895): if the tools still report unavailable after logging
+              in, run <code class="font-bold">claude mcp logout robinhood</code> and log in again.
+            </p>
+          </div>
+          <.trading_account_card
+            account={@trading_account}
+            selected_id={@trading_account_sel}
+            detail={@trading_detail}
+            anomaly={@trading_anomaly}
+            series={@trading_series}
+            performance_state={@trading_performance_state}
+            range={@trading_range}
+            coverage={@trading_coverage}
+            backfilling={@trading_backfilling}
+            table={@trading_table}
+            day_change={@trading_day_change}
+            indexes_state={@market_indexes_state}
+            positions={@trading_positions}
+            positions_state={@trading_positions_state}
+            costs_missing={@trading_costs_missing}
+            costs_loading={@trading_costs_loading}
+            prices_state={@prices_state}
+            chart_view={@trading_chart_view}
+            symbol_bars={@symbol_bars}
+            symbol_range={@symbol_range}
+            symbol_mode={@symbol_mode}
+            symbol_state={@symbol_bars_state}
+            earnings={@trading_earnings}
+            earnings_state={@trading_earnings_state}
+          />
+        </div>
 
-          <div class="bc-trading-right flex min-h-0">
-            <.research_card
-              :if={@active_kind == "research"}
-              panel={research_panel(assigns)}
-              query={@research_query}
-              matches={@research_matches}
-            />
-            <.trading_account_card
-              :if={@active_kind == "robinhood"}
-              account={@trading_account}
-              selected_id={@trading_account_sel}
-              detail={@trading_detail}
-              anomaly={@trading_anomaly}
-              series={@trading_series}
-              performance_state={@trading_performance_state}
-              range={@trading_range}
-              coverage={@trading_coverage}
-              backfilling={@trading_backfilling}
-              table={@trading_table}
-              day_change={@trading_day_change}
-              indexes_state={@market_indexes_state}
-              positions={@trading_positions}
-              positions_state={@trading_positions_state}
-              costs_missing={@trading_costs_missing}
-              costs_loading={@trading_costs_loading}
-              prices_state={@prices_state}
-              chart_view={@trading_chart_view}
-              symbol_bars={@symbol_bars}
-              symbol_range={@symbol_range}
-              symbol_mode={@symbol_mode}
-              symbol_state={@symbol_bars_state}
-              earnings={@trading_earnings}
-              earnings_state={@trading_earnings_state}
-            />
+        <div :if={@active_kind == "research"} class="flex min-h-0 flex-1 flex-col gap-2">
+          <%!-- Research states the stronger fact: the broker isn't restricted
+                here, it's absent. This chat has no Robinhood tool to deny. --%>
+          <div
+            id="trading-research-banner"
+            class="border-2 border-info/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-info"
+          >
+            Public data only — this chat cannot see your accounts
           </div>
+          <.research_card
+            panel={research_panel(assigns)}
+            query={@research_query}
+            matches={@research_matches}
+          />
         </div>
       </section>
+
+      <%!-- Rendered outside the section, and outside the tab switch: a window
+            stays exactly where it is when the panel underneath it changes. Order
+            is focus order — the last one drawn is the opaque, keyboard-owning
+            one. --%>
+      <BusterClawWeb.ChatPanel.chat_window
+        :for={{conv, i} <- Enum.with_index(@open_chats)}
+        id={"trading-chat-#{conv}"}
+        conv={conv}
+        index={i}
+        title={tab_title(@tabs, conv)}
+        kind={tab_kind_of(@tabs, conv)}
+        messages={chat_state(assigns, conv).messages}
+        seq={chat_state(assigns, conv).seq}
+        running={chat_state(assigns, conv).running}
+        thinking={chat_state(assigns, conv).thinking}
+        queue={chat_state(assigns, conv).queue}
+        minimized={MapSet.member?(@minimized, conv)}
+        focused={conv == List.last(@open_chats)}
+        agent_cli_missing={@agent_cli_missing}
+        empty_message={chat_empty_message(tab_kind_of(@tabs, conv))}
+        placeholder={chat_placeholder(tab_kind_of(@tabs, conv))}
+      >
+        <:pinned :if={chat_state(assigns, conv).pending_order}>
+          <.order_confirm conv={conv} pending={chat_state(assigns, conv).pending_order} />
+        </:pinned>
+      </BusterClawWeb.ChatPanel.chat_window>
     </Layouts.app>
     """
   end

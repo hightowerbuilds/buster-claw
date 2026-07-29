@@ -162,13 +162,9 @@
   .bc-split-right { flex: 1 1 0; }
 }
 
-/* Trading tab: chat rail | draggable divider | account panel (SplitResizer
-   with data-resize-var="--trading-left"). */
-.bc-trading-left, .bc-trading-right { min-width: 0; }
-@media (min-width: 1024px) {
-  .bc-trading-left { flex: 0 0 var(--trading-left, 30%); }
-  .bc-trading-right { flex: 1 1 0; }
-}
+/* The Trading tab's split is gone: the panel owns the full width and the chats
+   float over it as ChatWindow instances, positioned from localStorage. Nothing
+   sizes a rail here any more. */
 
 /* ============================================================
    INDUSTRIAL CLAW — type system + identity layer

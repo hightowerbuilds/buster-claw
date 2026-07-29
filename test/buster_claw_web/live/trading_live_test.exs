@@ -60,25 +60,67 @@ defmodule BusterClawWeb.TradingLiveTest do
   end
 
   describe "the trading dashboard" do
-    test "renders the banner, the split, and first-run setup", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/trading")
+    test "the panel owns the tab and the chat floats above it", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/trading")
 
       assert html =~ "trading-read-only-banner"
       assert html =~ "Buster Claw cannot place, amend, or cancel Robinhood orders"
-      assert html =~ "Portfolio assistant"
-      assert html =~ "put the order up for your confirmation"
-      assert html =~ "Ask about your portfolio"
-      refute html =~ "check your mail"
       assert html =~ "claude mcp login robinhood"
       assert html =~ "#65895"
-      # The chat surface renders without the conversation strip.
-      assert html =~ ~s(id="home-agent-chat")
+      refute html =~ "check your mail"
+
+      # The dashboard is no longer sharing the width with a docked chat, so the
+      # split and its resizer are gone entirely.
+      refute html =~ ~s(id="trading-split")
+      refute html =~ ~s(phx-hook="SplitResizer")
+      refute html =~ "data-split-divider"
+      refute html =~ ~s(id="home-agent-chat")
       refute html =~ ~s(phx-click="select_chat")
-      # The chat/account partition is draggable (parameterized SplitResizer).
-      assert html =~ ~s(id="trading-split")
-      assert html =~ ~s(phx-hook="SplitResizer")
-      assert html =~ ~s(data-resize-var="--trading-left")
-      assert html =~ "data-split-divider"
+
+      # The chat is a floating window instead, translucent so the numbers
+      # underneath stay readable while a run is going.
+      assert has_element?(view, "#trading-chat-trading")
+      assert html =~ ~s(phx-hook="ChatWindow")
+      assert html =~ "backdrop-blur"
+      assert html =~ "bg-base-100/95"
+      assert html =~ "Ask about your portfolio"
+    end
+
+    test "a chat window survives switching tabs, and can be closed and reopened",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      assert has_element?(view, "#trading-chat-trading")
+
+      # The requirement: the panel underneath changes, the window does not.
+      render_click(view, "trading_new_tab", %{"kind" => "research"})
+      assert has_element?(view, "#trading-chat-trading")
+      assert has_element?(view, "#trading-research-card")
+
+      # Both conversations' windows are on screen at once.
+      research = Enum.find(Conversations.list_kinds(["research"]), & &1)
+      assert has_element?(view, "#trading-chat-#{research.id}")
+
+      # Closing a window leaves its TAB alone — they are different things now.
+      render_click(view, "trading_toggle_chat", %{"id" => "trading"})
+      refute has_element?(view, "#trading-chat-trading")
+      assert has_element?(view, "#trading-tab-trading")
+
+      render_click(view, "trading_toggle_chat", %{"id" => "trading"})
+      assert has_element?(view, "#trading-chat-trading")
+    end
+
+    test "minimising collapses a window to its title bar without closing it",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      assert has_element?(view, "#trading-chat-trading [data-chat-input]")
+
+      render_click(view, "trading_minimize_chat", %{"id" => "trading"})
+      assert has_element?(view, "#trading-chat-trading")
+      refute has_element?(view, "#trading-chat-trading [data-chat-input]")
+
+      render_click(view, "trading_minimize_chat", %{"id" => "trading"})
+      assert has_element?(view, "#trading-chat-trading [data-chat-input]")
     end
 
     test "an assistant order proposal arms a confirm card, and the click sends it",
@@ -228,7 +270,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert Enum.any?(tabs, &(&1.kind == "research"))
     end
 
-    test "switching tabs swaps the panel and never carries a proposal across",
+    test "a proposal belongs to its own window, not to whichever panel is showing",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")
 
@@ -238,14 +280,20 @@ defmodule BusterClawWeb.TradingLiveTest do
           ~s("time_in_force":"day","account_last4":"6587"})
       )
 
-      assert render(view) =~ "trading-order-confirm"
+      assert has_element?(view, "#trading-order-confirm-trading")
 
       render_click(view, "trading_new_tab", %{"kind" => "research"})
+      research = Enum.find(Conversations.list_kinds(["research"]), & &1)
 
-      # A BUY card floating above a different conversation's transcript would be
-      # the worst possible carry-over on this surface.
-      refute render(view) =~ "trading-order-confirm"
+      # The card stays with the conversation that proposed it — visible because
+      # that window is still open, and absent from the research window, which is
+      # what "belongs to its own window" has to mean.
+      assert has_element?(view, "#trading-order-confirm-trading")
+      refute has_element?(view, "#trading-order-confirm-#{research.id}")
+
+      # And the panel underneath did switch.
       assert has_element?(view, "#trading-research-card")
+      refute has_element?(view, "#trading-account-card")
 
       render_click(view, "trading_select_tab", %{"id" => "trading"})
       assert has_element?(view, "#trading-account-card")

@@ -1,11 +1,18 @@
 defmodule BusterClawWeb.ChatPanel do
   @moduledoc """
-  Home chat surface: the conversation tabs and the chat panel (transcript,
-  thinking timer, on-deck queue rail, and the composer).
+  Chat rendering: the conversation tabs, Home's docked chat panel, and Trading's
+  floating chat windows — plus the pieces all three share (transcript bubbles,
+  thinking timer, on-deck queue rail, composer).
 
-  Presentation only — all events (`select_chat`, `close_chat`, `new_chat`,
-  `chat_send`, `cut_run`, `cancel_queued`, …) are handled by the parent
-  LiveView (`StatusLive`), which owns the conversation state.
+  Presentation only — every event (`select_chat`, `close_chat`, `new_chat`,
+  `chat_send`, `cut_run`, `cancel_queued`, …) is handled by the parent LiveView,
+  which owns the conversation state. `StatusLive` owns Home's; `TradingLive`
+  owns the Trading page's.
+
+  The two surfaces differ in one way that shapes everything here: Home has
+  exactly one chat on screen and Trading can have several. So the shared pieces
+  take an explicit DOM id and, where they push an event, an explicit
+  conversation — both defaulted for Home, where there is nothing to disambiguate.
   """
   use BusterClawWeb, :html
 
@@ -61,6 +68,178 @@ defmodule BusterClawWeb.ChatPanel do
         +
       </button>
     </div>
+    """
+  end
+
+  attr :id, :string, required: true, doc: "unique DOM id — several windows are on screen at once"
+
+  attr :conv, :string,
+    required: true,
+    doc: "conversation id; every event this window pushes names it"
+
+  attr :title, :string, required: true
+  attr :kind, :string, required: true, doc: "robinhood | research — drives the badge"
+  attr :index, :integer, default: 0, doc: "render order, used to cascade default positions"
+  attr :messages, :list, required: true, doc: "[{dom_id, msg}] — a plain list, not a stream"
+  attr :seq, :integer, required: true
+  attr :running, :boolean, required: true
+  attr :thinking, :any, required: true
+  attr :queue, :list, required: true
+  attr :minimized, :boolean, default: false
+  attr :focused, :boolean, default: false
+  attr :agent_cli_missing, :boolean, default: false
+  attr :empty_message, :string, required: true
+  attr :placeholder, :string, required: true
+  slot :pinned
+
+  @doc """
+  A floating, translucent chat window.
+
+  Unlike `chat_panel/1` there can be several of these on screen at once, so
+  everything that was implicit there is explicit here: the DOM id, the queue
+  rail's id, the thinking chip's id, and — most importantly — the conversation
+  on every event. A `cut_run` with no conversation is unambiguous when one chat
+  exists and actively dangerous when three do.
+
+  Translucency is the point of the window rather than decoration: these sit on
+  top of a full-tab dashboard, and the operator needs to keep reading the
+  numbers underneath while a run is going. The focused window is more opaque
+  than the ones behind it, which is what makes a stack of them legible.
+
+  It renders a plain list rather than a LiveView stream. Streams are keyed per
+  name and there is no clean way to have one per conversation; transcripts are
+  capped at 200 messages and only a few windows are ever open, so the parent
+  holds them in assigns and hands them over already paired with their dom ids.
+  """
+  def chat_window(assigns) do
+    ~H"""
+    <section
+      id={@id}
+      phx-hook="ChatWindow"
+      data-conv={@conv}
+      data-index={@index}
+      data-running={to_string(@running)}
+      data-minimized={to_string(@minimized)}
+      data-seq={@seq}
+      phx-click="trading_focus_chat"
+      phx-value-id={@conv}
+      class={[
+        "ic-panel fixed z-30 flex flex-col overflow-hidden border-2 backdrop-blur-md transition-colors",
+        if(@focused,
+          do: "border-primary/60 bg-base-100/95 shadow-[4px_4px_0_0_oklch(var(--bc)/0.25)]",
+          else: "border-base-content/25 bg-base-100/75 shadow-[3px_3px_0_0_oklch(var(--bc)/0.12)]"
+        )
+      ]}
+    >
+      <header
+        data-window-drag
+        class="flex shrink-0 cursor-grab items-center gap-2 border-b-2 border-base-content/20 bg-base-200/60 px-2 py-1.5 active:cursor-grabbing"
+      >
+        <span class={[
+          "shrink-0 border px-1 font-mono text-[0.55rem] font-black uppercase tracking-wider",
+          if(@kind == "research",
+            do: "border-info/50 text-info",
+            else: "border-success/50 text-success"
+          )
+        ]}>
+          {if @kind == "research", do: "RES", else: "RH"}
+        </span>
+        <span class="min-w-0 flex-1 truncate font-mono text-xs font-bold">{@title}</span>
+
+        <.thinking_chip thinking={@thinking} id={"#{@id}-thinking"} />
+
+        <button
+          :if={@running}
+          type="button"
+          phx-click="cut_run"
+          phx-value-conv={@conv}
+          title="Stop the model"
+          class="shrink-0 rounded border-2 border-error/50 px-1.5 py-0.5 font-mono text-[0.55rem] uppercase tracking-wide text-error transition hover:bg-error/10"
+        >
+          Stop
+        </button>
+        <button
+          type="button"
+          phx-click="trading_minimize_chat"
+          phx-value-id={@conv}
+          title={if @minimized, do: "Expand", else: "Minimise"}
+          class="grid size-5 shrink-0 place-items-center rounded-sm font-mono text-base-content/50 hover:bg-base-content/15 hover:text-base-content"
+        >
+          {if @minimized, do: "▢", else: "—"}
+        </button>
+        <button
+          type="button"
+          phx-click="trading_toggle_chat"
+          phx-value-id={@conv}
+          title="Close this chat window"
+          class="grid size-5 shrink-0 place-items-center rounded-sm font-mono text-base-content/50 hover:bg-base-content/15 hover:text-primary"
+        >
+          ×
+        </button>
+      </header>
+
+      <div :if={not @minimized} class="flex min-h-0 flex-1 flex-col">
+        <div
+          id={"#{@id}-log"}
+          data-chat-log
+          class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4"
+        >
+          <div
+            :if={@messages == []}
+            class="m-auto max-w-xs text-center text-[15px] text-base-content/55"
+          >
+            {@empty_message}
+          </div>
+          <.chat_bubble :for={{dom_id, msg} <- @messages} id={dom_id} msg={msg} />
+        </div>
+
+        <.queue_strip queue={@queue} id={"#{@id}-queue"} conv={@conv} />
+
+        <div :if={@pinned != []} class="border-t-2 border-base-content/20">
+          {render_slot(@pinned)}
+        </div>
+
+        <div
+          :if={@agent_cli_missing}
+          class="border-t-2 border-warning/60 bg-warning/10 px-3 py-2 text-[13px]"
+        >
+          <span class="font-semibold">No agent CLI found.</span>
+          Install Claude Code and run <code class="font-mono">claude login</code>.
+        </div>
+
+        <form
+          phx-submit="chat_send"
+          data-chat-form
+          class="flex shrink-0 items-end gap-2 border-t-2 border-base-content/20 p-2"
+        >
+          <input type="hidden" name="conv" value={@conv} />
+          <textarea
+            name="message"
+            data-chat-input
+            rows="2"
+            disabled={@agent_cli_missing}
+            placeholder={if @agent_cli_missing, do: "Install Claude Code to chat", else: @placeholder}
+            class="min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100/80 px-2 py-1.5 text-[15px] focus:border-primary focus:outline-none disabled:opacity-50"
+          ></textarea>
+          <button
+            type="submit"
+            disabled={@agent_cli_missing}
+            class="shrink-0 rounded bg-primary px-3 py-2 text-xs font-semibold text-primary-content transition hover:opacity-85 disabled:opacity-40"
+          >
+            Send
+          </button>
+        </form>
+
+        <div
+          data-window-resize
+          title="Drag to resize"
+          class="absolute bottom-0 right-0 size-4 cursor-nwse-resize"
+        >
+          <span class="absolute bottom-1 right-1 size-2 border-b-2 border-r-2 border-base-content/40">
+          </span>
+        </div>
+      </div>
+    </section>
     """
   end
 
@@ -281,13 +460,14 @@ defmodule BusterClawWeb.ChatPanel do
   # Live "thinking" timer in the chat header. `ThinkingTimer` (app.js) ticks the
   # label client-side from data-state/data-ms — no server round-trips per second.
   attr :thinking, :any, required: true
+  attr :id, :string, default: "chat-thinking"
 
   defp thinking_chip(%{thinking: nil} = assigns), do: ~H""
 
   defp thinking_chip(assigns) do
     ~H"""
     <span
-      id="chat-thinking"
+      id={@id}
       phx-hook="ThinkingTimer"
       data-state={if(match?({:done, _}, @thinking), do: "done", else: "running")}
       data-ms={with({:done, ms} <- @thinking, do: ms, else: (_ -> nil))}
@@ -304,6 +484,10 @@ defmodule BusterClawWeb.ChatPanel do
   # front piece is "armed" (hazard border + NEXT tag); pieces are drag-reorderable
   # (QueueRail hook), cancellable, and animate in/out (.ic-piece / phx-remove).
   attr :queue, :list, required: true
+  attr :id, :string, default: "chat-queue-rail"
+  # nil on Home, where there is one chat and `cancel_queued` needs no scope. The
+  # Trading windows pass theirs, because several queues can be on screen at once.
+  attr :conv, :string, default: nil
 
   defp queue_strip(%{queue: []} = assigns), do: ~H""
 
@@ -311,7 +495,7 @@ defmodule BusterClawWeb.ChatPanel do
     ~H"""
     <div class="flex flex-col gap-1.5 border-t-2 border-base-content/20 bg-base-200/40 px-3 py-2">
       <p class="ic-eyebrow text-base-content/55">On deck · {length(@queue)}</p>
-      <ul id="chat-queue-rail" phx-hook="QueueRail" phx-update="replace" class="flex flex-col gap-1">
+      <ul id={@id} phx-hook="QueueRail" phx-update="replace" class="flex flex-col gap-1">
         <li
           :for={{item, idx} <- Enum.with_index(@queue)}
           id={"queue-#{item.id}"}
@@ -345,6 +529,7 @@ defmodule BusterClawWeb.ChatPanel do
             type="button"
             phx-click="cancel_queued"
             phx-value-id={item.id}
+            phx-value-conv={@conv}
             title="Remove from queue"
             class="shrink-0 text-base-content/40 opacity-0 transition hover:text-error group-hover:opacity-100"
           >

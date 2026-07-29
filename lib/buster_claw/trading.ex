@@ -31,9 +31,12 @@ defmodule BusterClaw.Trading do
   returns), and payloads stay bounded — every number transits a language model,
   so transcription size is a correctness parameter.
 
-  The conversation is DB-less on purpose: `"trading"` never gets a
-  `Conversations` row, so it can't appear in (or be closed from) Home's chat
-  strip, while the transcript still persists via `Agent.Transcript`.
+  The Trading page is a strip of typed conversations (`tabs/0`): `robinhood`
+  tabs get the reads above, `research` tabs get `BusterClaw.Research` and no
+  broker surface at all. `"trading"` — which used to be DB-less so it could not
+  appear in Home's chat strip — is now a real row seeded at that same id, so its
+  existing `Agent.Transcript` history carries straight over. `kind` is what
+  keeps it out of Home's list now.
   """
 
   alias BusterClaw.Agent.Conversations
@@ -183,7 +186,12 @@ defmodule BusterClaw.Trading do
         [conv]
 
       tabs ->
-        tabs
+        # The seeded tab leads regardless of insertion order. `inserted_at` is
+        # second-precision, so a conversation created in the same second as the
+        # seed ties and falls back to sorting by id — where "conv-…" beats
+        # "trading" and the page would open on someone's research tab.
+        {pinned, rest} = Enum.split_with(tabs, &(&1.id == @conv_id))
+        pinned ++ rest
     end
   end
 
