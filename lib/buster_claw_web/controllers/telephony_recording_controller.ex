@@ -10,6 +10,7 @@ defmodule BusterClawWeb.TelephonyRecordingController do
 
   alias BusterClaw.FileManager
   alias BusterClaw.Library.Artifact
+  alias BusterClawWeb.RangeResponse
 
   @audio_types %{
     ".mp3" => "audio/mpeg",
@@ -25,10 +26,15 @@ defmodule BusterClawWeb.TelephonyRecordingController do
     content_type = @audio_types[String.downcase(Path.extname(path))]
 
     if content_type && FileManager.within?(path, root) && File.regular?(path) do
-      conn
-      |> put_resp_header("content-type", content_type)
-      |> put_resp_header("cache-control", "private, max-age=31536000, immutable")
-      |> send_file(200, path)
+      # Byte ranges via the shared helper (MUSIC_ROADMAP Phase 1). Voicemails
+      # are short enough that a whole-file 200 mostly worked, but scrubbing one
+      # had the same re-download-from-zero behavior a track does, so the
+      # migration fixes it here for free. `immutable` still holds: a recording's
+      # path is written once and never rewritten.
+      RangeResponse.serve(conn, path,
+        content_type: content_type,
+        cache_control: "private, max-age=31536000, immutable"
+      )
     else
       send_resp(conn, 404, "")
     end

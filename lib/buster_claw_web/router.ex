@@ -62,6 +62,15 @@ defmodule BusterClawWeb.Router do
     get "/recording", TelephonyRecordingController, :show
   end
 
+  # Music library audio for the dock player. No pipeline (media element
+  # requests, not HTML); the name is resolved by Music.path_for/1 against the
+  # library listing, never joined from raw input; loopback-only. Unlike the
+  # routes around it this one honors byte ranges — a track is long enough to
+  # seek through. See BusterClawWeb.RangeResponse.
+  scope "/music", BusterClawWeb do
+    get "/track/:name", MusicController, :show
+  end
+
   # Workspace notification sounds, played by the NotifySound hook when a
   # notification fires and auditioned from Settings → Notify. `:show` is the
   # fixed-path fallback chime; `:named` only resolves names that are real
