@@ -1,6 +1,6 @@
 # Music in Buster Claw — Roadmap V.1
 
-**Date:** 2026-07-28 · **Status:** ACTIVE — **Phases 0–4 landed; the scope in the title is built.** Phase 5 (polish) and three browser walks remain ·
+**Date:** 2026-07-28 · **Status:** BUILD COMPLETE 07-28 — **all six phases landed.** What remains is verification: the three browser walks (packaged-app ranges, codec probe, playback-across-navigation) ·
 **Scope of this document:** upload music into the DataZone and play it from a new
 home tab beside Chat, Calendar, and Notes. Nothing further.
 
@@ -290,7 +290,19 @@ upload affordance, delete, empty state that says how to add music.
 player, the tab reflects transport state it does not own, and an empty library
 reads as an invitation rather than a bug.
 
-### Phase 5 — Waveform and polish
+### Phase 5 — Waveform and polish — **SHIPPED 07-28** (`2dbf7ed`)
+
+> The clipwave renderer was reused wholesale, and the one integration wrinkle is
+> pinned by a test: `AudioClip` decodes its `data-src` once, at mount, so the
+> container id is keyed by the track name — a fixed id would freeze the wave on
+> the first track forever. Both acceptance criteria hold: the CSS fallback is
+> inherited from the hook's own failure path, and a corrupt file fails to one
+> track *with a message* via `Player.fail_current/1`, which also strips the bad
+> track from history so `previous/1` can't bounce back onto it. The message
+> deliberately survives the next track starting (auto-advance would erase it
+> unread) and clears on the next deliberate play. Keyboard: Space/media keys,
+> triple-guarded (idle player, typing contexts incl. xterm's helper textarea,
+> key repeat). The `/split` note is in the strip.
 
 Reuse `AudioClip`/`clipwave.js` for a now-playing waveform, with the existing CSS
 fallback when WebGPU is absent. Keyboard control, the `/split` limitation noted in
