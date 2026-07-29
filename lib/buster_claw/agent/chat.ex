@@ -427,6 +427,11 @@ defmodule BusterClaw.Agent.Chat do
   # an item whose spawn fails so one bad message can't wedge the whole queue.
   defp dispatch_next(%{queue: []} = state) do
     broadcast(state, {:status, :idle})
+    # The one settle-into-idle point — every run ending (success, error,
+    # timeout, interrupt) funnels here with nothing left queued, which is
+    # exactly "the agent went quiet, come look" (SOUND_ROADMAP group A). While
+    # the queue still holds work the agent is not done, so no ring above.
+    BusterClaw.Notifications.SoundBoard.ring("chat")
     state
   end
 

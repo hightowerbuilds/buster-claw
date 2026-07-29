@@ -53,5 +53,8 @@
     {@inner_content}
     <%!-- App-wide fired-notification modal, sticky so it persists across page nav. --%>
     {live_render(@conn, BusterClawWeb.NotifyLive, sticky: true, id: "notify-global")}
+    <%!-- App-wide sound effects (SOUND_ROADMAP Phase 1): event chimes ring on
+          whatever page is showing. Renders nothing visible. --%>
+    {live_render(@conn, BusterClawWeb.SoundBoardLive, sticky: true, id: "sound-board-global")}
   </body>
 </html>

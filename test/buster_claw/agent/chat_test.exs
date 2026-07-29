@@ -59,6 +59,7 @@ defmodule BusterClaw.Agent.ChatTest do
       end)
 
     conv = start_chat(scripting_spawner(self(), scripts))
+    BusterClaw.Notifications.SoundBoard.subscribe()
 
     assert :ok = Chat.send_message(conv, "work the queue")
 
@@ -75,6 +76,11 @@ defmodule BusterClaw.Agent.ChatTest do
     assert_receive {:agent_chat, ^conv, {:message, %{role: :meta, text: meta}}}
     assert meta =~ ~r/^thought [\d.]+s · 3 turns · \$0\.012$/
     assert_receive {:agent_chat, ^conv, {:status, :idle}}
+
+    # Settling into idle rings the answer-ready chime (SOUND_ROADMAP group A):
+    # every run ending funnels through dispatch_next's empty-queue clause, so
+    # this one assertion covers success, error, and timeout endings alike.
+    assert_receive {:sound_ring, "chat"}
   end
 
   test "queues a second message while a run is in flight instead of rejecting it" do
