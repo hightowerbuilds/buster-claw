@@ -2,6 +2,7 @@ defmodule BusterClaw.MarketDataTest do
   # async: false — stubs the market-data fetcher seam in the global app env.
   use BusterClaw.DataCase, async: false
 
+  alias BusterClaw.DataState
   alias BusterClaw.MarketData
   alias BusterClaw.MarketData.Bar
 
@@ -19,7 +20,7 @@ defmodule BusterClaw.MarketDataTest do
     end)
   end
 
-  defp parsed(closes_map, extra \\ %{}) do
+  defp parsed(closes_map, extra) do
     Map.merge(
       %{closes: closes(closes_map), quotes: [], indexes: [], skipped: [], errors: []},
       extra
@@ -163,8 +164,13 @@ defmodule BusterClaw.MarketDataTest do
 
     test ":none without a blob or without indexes" do
       assert MarketData.index_summary() == :none
+      assert %DataState{status: :unavailable} = MarketData.index_state()
+
       store_indexes([])
       assert MarketData.index_summary() == :none
+
+      assert %DataState{status: :confirmed_empty, as_of: %DateTime{}} =
+               MarketData.index_state()
     end
 
     test "a given change_pct is passed through untouched" do
@@ -179,6 +185,10 @@ defmodule BusterClaw.MarketDataTest do
       ])
 
       assert {:ok, %{indexes: [chip], stale?: false}} = MarketData.index_summary()
+
+      assert %DataState{status: :fresh, data: [_], as_of: %DateTime{}} =
+               MarketData.index_state()
+
       assert chip.label == "S&P 500"
       assert chip.change_pct == 0.5
     end
@@ -306,25 +316,50 @@ defmodule BusterClaw.MarketDataTest do
       assert googl.price == 325.13
       assert_in_delta googl.change_pct, 1.603, 0.001
 
+      assert %DataState{
+               status: :fresh,
+               source: :quotes,
+               data: %{price_cents: 32_513}
+             } = MarketData.price_state_for("GOOGL")
+
       assert MarketData.quote_for("QXO").change_pct == 0.14
       assert MarketData.quote_for("MISSING") == nil
+      assert %DataState{status: :unavailable} = MarketData.price_state_for("MISSING")
     end
 
     test "latest_close returns the newest cached bar" do
       MarketData.store_bars(closes(%{"GOOGL" => [{"2026-07-23", 1.0}, {"2026-07-24", 319.74}]}))
 
       assert %{bar_on: ~D[2026-07-24], close_cents: 31_974} = MarketData.latest_close("GOOGL")
+
+      assert %DataState{
+               status: :stale,
+               source: :daily_close,
+               as_of: ~D[2026-07-24],
+               data: %{price_cents: 31_974}
+             } = MarketData.price_state_for("GOOGL")
+
       assert MarketData.latest_close("MISSING") == nil
     end
 
     test "prices_as_of prefers the quotes blob, falls back to bars, admits :none" do
       assert MarketData.prices_as_of() == :none
+      assert %DataState{status: :unavailable} = MarketData.prices_state()
 
       MarketData.store_bars(closes(%{"GOOGL" => [{"2026-07-24", 1.0}]}))
       assert {:bars, ~D[2026-07-24]} = MarketData.prices_as_of()
+      assert %DataState{status: :stale, source: :daily_close} = MarketData.prices_state()
 
       MarketData.store_quotes(%{quotes: [], indexes: []})
       assert {:quotes, %DateTime{}} = MarketData.prices_as_of()
+
+      MarketData.store_quotes(%{
+        quotes: [%{"symbol" => "GOOGL", "price" => 2.0}],
+        indexes: []
+      })
+
+      assert %DataState{status: :fresh, source: :quotes, as_of: %DateTime{}} =
+               MarketData.prices_state()
     end
   end
 
@@ -358,11 +393,15 @@ defmodule BusterClaw.MarketDataTest do
 
     test "summary distinguishes unavailable from a confirmed empty calendar" do
       assert MarketData.earnings_summary(~D[2026-07-28]) == :none
+      assert %DataState{status: :unavailable} = MarketData.earnings_state(~D[2026-07-28])
 
       MarketData.store_quotes(%{quotes: [], indexes: [], earnings: []})
 
       assert {:ok, %{earnings: [], fetched_at: %DateTime{}, stale?: false}} =
                MarketData.earnings_summary(~D[2026-07-28])
+
+      assert %DataState{status: :confirmed_empty, data: [], as_of: %DateTime{}} =
+               MarketData.earnings_state(~D[2026-07-28])
     end
   end
 
@@ -377,6 +416,27 @@ defmodule BusterClaw.MarketDataTest do
       old = Map.put(blob, "fetched_at", "2020-01-01T00:00:00Z")
       assert MarketData.quotes_stale?(old)
       assert MarketData.quotes_stale?(%{})
+    end
+
+    test "every quotes-backed dataset reports stale from the same governing timestamp" do
+      MarketData.store_quotes(%{
+        quotes: [%{"symbol" => "GOOGL", "price" => 2.0}],
+        indexes: [%{"symbol" => "SPX", "price" => 7_000.0}],
+        earnings: [%{"symbol" => "GOOGL", "date" => "2099-01-01", "timing" => "pm"}]
+      })
+
+      {:ok, blob} = MarketData.cached_quotes()
+      old = Map.put(blob, "fetched_at", "2020-01-01T00:00:00Z")
+      BusterClaw.Settings.put("market_quotes_snapshot", Jason.encode!(old))
+
+      assert %DataState{status: :stale, as_of: ~U[2020-01-01 00:00:00Z]} =
+               MarketData.index_state()
+
+      assert %DataState{status: :stale, as_of: ~U[2020-01-01 00:00:00Z]} =
+               MarketData.prices_state()
+
+      assert %DataState{status: :stale, as_of: ~U[2020-01-01 00:00:00Z]} =
+               MarketData.earnings_state(~D[2026-07-28])
     end
   end
 end

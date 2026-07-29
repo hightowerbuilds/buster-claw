@@ -80,6 +80,20 @@ defmodule BusterClaw.AgentRunnerTest do
     assert status != 0
   end
 
+  test "child stdin is explicit EOF instead of an open silent pipe" do
+    started = System.monotonic_time(:millisecond)
+
+    assert {:ok, %{exit_status: 0, output: ""}} =
+             AgentRunner.run("ignored",
+               agent_binary: "/bin/cat",
+               argv: [],
+               cwd: @tmp,
+               timeout_ms: 500
+             )
+
+    assert System.monotonic_time(:millisecond) - started < 500
+  end
+
   test "kills a run that exceeds the wall-clock deadline" do
     started = System.monotonic_time(:millisecond)
 

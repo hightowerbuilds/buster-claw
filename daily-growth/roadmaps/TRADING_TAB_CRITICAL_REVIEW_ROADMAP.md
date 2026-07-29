@@ -435,7 +435,57 @@ The first safety/correctness slice is implemented:
 - Earnings now distinguish unavailable data from a confirmed empty calendar.
 - Trading uses context-specific read-only chat copy and correctly requires Claude,
   not merely any agent CLI.
+- LiveView events now authorize account IDs, exclusion keys, portfolio ranges,
+  symbols, symbol ranges, symbol modes, and transfer identity against server
+  state before changing financial UI or persistence.
+- A selected account that disappears during refresh now returns to the explicit
+  combined view rather than silently substituting another account.
+- Symbol-bar loading carries the exact symbol, interval, and requested range, so
+  an obsolete completion cannot clear a different request's loading state.
+- The Trading banner documents that Stop interrupts the local run only and
+  cannot reverse a broker action performed elsewhere.
+- `BusterClaw.DataState` now carries `loading | fresh | stale | unavailable |
+  confirmed_empty`, the governing timestamp, source, reason, and payload.
+- Account balances, portfolio performance, indexes, holdings/cost basis, each
+  symbol price, symbol history, earnings, order history, and the manual-transfer
+  ledger now render through explicit dataset states.
+- Successful empty positions responses now persist refresh evidence, so an empty
+  brokerage response survives remounts as `confirmed_empty` instead of reverting
+  to “not loaded.”
+- Price freshness is evaluated per symbol (quote versus daily-close fallback);
+  the section reports the worst row state and each displayed price names its own
+  source and timestamp.
+- The product is explicitly labeled an end-of-day portfolio monitor. Live order
+  execution remains disabled, so no daily close is presented as an execution
+  quote.
+- Activity now separates non-filled orders, filled-order status, manual transfer
+  reconciliations, unavailable dividend data, and market movement.
 - Focused runner/chat/trading/market-data/LiveView regressions pass.
+
+### Direct broker progress — 2026-07-28
+
+- A first-party Robinhood Trading MCP connection now performs protected-resource
+  and authorization-server discovery, dynamic public-client registration, OAuth
+  authorization-code exchange with PKCE, refresh-token rotation, and strict
+  endpoint validation.
+- Access tokens, refresh tokens, and broker account identifiers are encrypted at
+  rest. Durable broker account relationships use a namespaced HMAC key instead
+  of an account number or last four.
+- The direct Streamable HTTP MCP client negotiates a pinned protocol version,
+  maintains server sessions, accepts structured JSON or SSE results, paginates
+  tool discovery, and rejects every tool outside an explicit read/review
+  allowlist before a network call.
+- Trading now exposes real connection health and Agentic-account discovery in
+  the deterministic order lane. The OAuth callback verifies signed, short-lived
+  state and keeps the PKCE verifier encrypted.
+- `review_equity_order` is required during health checks, but production review
+  mapping now uses Robinhood's live-advertised schema together with structured
+  portfolio and position reads. It derives current quote freshness, authoritative
+  buying power, estimated notional, and post-trade concentration without model
+  transcription.
+- The Trading lane can render live review facts, the broker's verbatim market-data
+  disclosure, and open-ended order alerts. Confirmation and submission controls
+  remain absent because order placement is still unreachable.
 
 ### Stage 0 — Stop expanding the unsafe surface
 
@@ -443,13 +493,14 @@ The first safety/correctness slice is implemented:
 - [x] Remove or disable order-writing tools until an application-owned gate exists.
 - [x] Change the banner to state the current enforcement mode, not merely describe
       Robinhood account capabilities.
-- [ ] Document that Stop cannot reverse an accepted remote action.
+- [x] Document that Stop cannot reverse an accepted remote action.
 
 **Done when:** No free-form model turn can place, amend, or cancel an order.
 
 ### Stage 1 — Establish trustworthy identity and data lineage
 
-- [ ] Introduce a stable opaque account key or HMAC-based identity.
+- [x] Introduce a stable opaque account key or HMAC-based identity for the new
+      direct broker boundary.
 - [ ] Migrate snapshots, flows, exclusions, realized P&L, and cost basis away from
       last-four keys.
 - [x] Detect collisions and refuse ambiguous association. Migration to a stable
@@ -465,18 +516,24 @@ text is parsed into the permanent financial ledger.
 
 ### Stage 2 — Build a deterministic order workflow
 
-- [ ] Parse chat requests into a non-executable draft order.
-- [ ] Resolve account, symbol, side, quantity/notional, order type, limit price, and
+- [x] Parse explicit `/order` chat requests into a non-executable draft order.
+- [x] Resolve account, symbol, side, quantity/notional, order type, limit price, and
       time-in-force in deterministic code.
-- [ ] Fetch a current quote and buying power immediately before preview.
-- [ ] Apply configurable notional, concentration, symbol, and market-hours rules.
-- [ ] Show a structured order preview separate from the transcript.
-- [ ] Require explicit confirmation tied to the exact preview payload.
-- [ ] Attach an idempotency key and expire stale confirmations.
+- [x] Fetch a current quote and buying power immediately before preview through
+      direct structured Robinhood MCP calls, then bind them to the expiring
+      preview digest.
+- [x] Apply configurable notional, concentration, symbol, and market-hours rules.
+- [x] Show a structured order preview separate from the transcript.
+- [x] Require explicit confirmation tied to the exact preview payload, including
+      the broker review and warnings.
+- [x] Attach an idempotency key and expire stale confirmations.
 - [ ] Submit through an application-controlled broker adapter.
-- [ ] Persist the exact request, confirmation, broker identifier, response, and
-      subsequent status transitions.
-- [ ] Reconcile accepted orders until terminal state.
+      The adapter behaviour, fail-closed default, and tested submission boundary
+      exist; a production Robinhood MCP implementation is still required.
+- [x] Persist the exact request, confirmation digest, broker identifier, response,
+      and subsequent status transitions in an append-only event trail.
+- [x] Reconcile accepted and unknown-outcome orders until terminal state through
+      a supervised, bounded recovery loop keyed by the durable client order id.
 
 **Done when:** The model can propose an order but cannot execute one; only a
 validated, confirmed, audited application transaction can do so.
@@ -486,13 +543,13 @@ validated, confirmed, audited application transaction can do so.
 - [x] Remove inappropriate `phx-update="ignore"` usage or make the hook fully own
       and redraw the SVG DOM.
 - [x] Rebind all hook element references after patches.
-- [ ] Key account-detail loading state by account.
-- [ ] Key symbol-bar loading state by symbol, interval, and range.
+- [x] Key account-detail loading state by account.
+- [x] Key symbol-bar loading state by symbol, interval, and range.
 - [x] Hand off from obsolete fetches to the current selection. Fully parallel keyed
       fetches remain a later optimization.
 - [x] On completion, reconcile against the current selection and launch any still
       missing current request.
-- [ ] Validate all LiveView event values, including portfolio ranges and symbols.
+- [x] Validate all LiveView event values, including portfolio ranges and symbols.
 - [x] Reject partially parsed transfer amounts such as `500abc`.
 
 **Done when:** Rapidly switching accounts, symbols, modes, and ranges cannot
@@ -500,15 +557,16 @@ display stale data or leave a phantom loading state.
 
 ### Stage 4 — Make freshness and uncertainty explicit
 
-- [ ] Introduce `loading | fresh | stale | unavailable | confirmed_empty` states for
+- [x] Introduce `loading | fresh | stale | unavailable | confirmed_empty` states for
       every dashboard dataset.
 - [x] Stop translating earnings-cache failure into definitive empty-state copy.
       Apply the same state model to the remaining datasets.
-- [ ] Display data timestamps beside the values they govern.
-- [ ] Define whether the product is end-of-day portfolio monitoring or live trading.
-- [ ] If live trading remains a goal, use an appropriately current quote path rather
-      than the daily post-close sweep.
-- [ ] Separate orders, fills, transfers, dividends, and market movement in activity.
+- [x] Display data timestamps beside the values they govern.
+- [x] Define whether the product is end-of-day portfolio monitoring or live trading.
+- [x] Resolve the live-quote requirement: the current product is explicitly
+      end-of-day and order writes are disabled. Any future executable-order stage
+      must add an appropriately current quote path before preview.
+- [x] Separate orders, fills, transfers, dividends, and market movement in activity.
 
 **Done when:** The UI never claims “none,” “zero,” or “current” when the real state
 is unknown, missing, or stale.
@@ -533,10 +591,11 @@ cannot confuse read-only portfolio data with an executable order surface.
 - [x] LiveView test: switch symbols/ranges while a bar fetch is in flight.
 - [x] Persistence test: two accounts with identical last four fail closed rather
       than sharing a ledger identity.
-- [ ] Security test: an unconfirmed order can never reach a write tool.
-- [ ] Security test: a confirmed payload cannot be altered or replayed.
-- [ ] Audit test: every submitted order can be reconstructed from durable records.
-- [ ] Recovery test: stopping after remote acceptance still reconciles the order.
+- [x] Security test: an unconfirmed order can never reach a write tool.
+- [x] Security test: a confirmed payload cannot be altered or replayed.
+- [x] Audit test: every submitted order can be reconstructed from durable records.
+- [x] Recovery test: an accepted or unknown-outcome order still reconciles to a
+      terminal broker state through the supervised recovery pump.
 
 **Done when:** The dangerous paths are tested through the same browser, process,
 and persistence boundaries used in production.

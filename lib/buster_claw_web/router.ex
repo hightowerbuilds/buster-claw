@@ -45,6 +45,7 @@ defmodule BusterClawWeb.Router do
     end
 
     get "/google/oauth/callback", GoogleOAuthController, :callback
+    get "/trading/broker/oauth/callback", TradingBrokerOAuthController, :callback
   end
 
   # Uploaded appearance asset served from the writable workspace dir. No pipeline

@@ -35,7 +35,7 @@ defmodule BusterClaw.TradingTest do
     assert File.read!(path) =~ "custom"
   end
 
-  test "chat_opts deny by default and allow only Robinhood read tools" do
+  test "unconfirmed or free-form turns cannot reach a Robinhood write tool" do
     opts = Trading.chat_opts()
     extra = Keyword.fetch!(opts, :extra_cli_args)
 
@@ -48,6 +48,9 @@ defmodule BusterClaw.TradingTest do
     assert Enum.any?(extra, &String.ends_with?(&1, "mcp/robinhood.json"))
 
     allowed = Enum.at(extra, Enum.find_index(extra, &(&1 == "--allowedTools")) + 1)
+    allowed_tools = String.split(allowed, ",", trim: true)
+
+    assert Enum.all?(allowed_tools, &String.starts_with?(&1, "mcp__robinhood__get_"))
     assert allowed =~ "mcp__robinhood__get_accounts"
     assert allowed =~ "mcp__robinhood__get_equity_orders"
     refute allowed =~ "place"

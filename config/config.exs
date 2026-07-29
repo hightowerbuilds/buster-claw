@@ -34,6 +34,21 @@ config :buster_claw,
   # Record each chat run on the Sentinel audit feed (also feeds the Activity
   # "runs" metric). Chat spawns headless Claude, so the run belongs on the trail.
   agent_chat_audit: true,
+  # Equity writes are sealed by default. Enabling the deterministic order lane
+  # requires both a structured broker implementation and an opaque Agentic
+  # account id; the free-form assistant is never a valid broker adapter.
+  trading_order_review_broker: BusterClaw.TradingOrders.Broker.RobinhoodMCP,
+  trading_order_broker: BusterClaw.TradingOrders.Broker.Disabled,
+  trading_order_account: nil,
+  trading_order_policy: [
+    max_notional_cents: 100_000,
+    max_concentration_bps: 2_500,
+    max_quote_age_seconds: 30,
+    blocked_symbols: [],
+    allow_market_orders_outside_hours: false
+  ],
+  trading_order_reconciler_enabled: true,
+  trading_order_reconciliation_interval_ms: 15_000,
   orchestrator_tick_ms: 30_000,
   # Crash-loop brake for the unattended shift: this many consecutive raising
   # ticks stops the shift outright.

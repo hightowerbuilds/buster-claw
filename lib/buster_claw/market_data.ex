@@ -27,6 +27,7 @@ defmodule BusterClaw.MarketData do
 
   require Logger
 
+  alias BusterClaw.DataState
   alias BusterClaw.MarketCalendar
   alias BusterClaw.MarketData.Bar
   alias BusterClaw.Repo
@@ -304,13 +305,8 @@ defmodule BusterClaw.MarketData do
     end
   end
 
-  @doc """
-  Upcoming earnings plus the cache state that makes an empty list meaningful.
-
-  `:none` means the sweep has never produced a readable earnings payload.
-  `{:ok, ...}` means the list is known (possibly empty) and carries its age.
-  """
-  def earnings_summary(%Date{} = today) do
+  @doc "Explicit freshness/availability state for the cached earnings calendar."
+  def earnings_state(%Date{} = today) do
     with {:ok, blob} <- cached_quotes(),
          rows when is_list(rows) <- blob["earnings"],
          {:ok, fetched_at, _} <- DateTime.from_iso8601(blob["fetched_at"] || "") do
@@ -327,9 +323,26 @@ defmodule BusterClaw.MarketData do
         |> Enum.filter(&(Date.compare(&1.date, today) != :lt))
         |> Enum.sort_by(& &1.date, Date)
 
-      {:ok, %{earnings: earnings, fetched_at: fetched_at, stale?: quotes_stale?(blob)}}
+      cached_list_state(earnings, quotes_stale?(blob), fetched_at, :earnings)
     else
-      _ -> :none
+      _ -> DataState.unavailable(:unreadable_cache, source: :earnings)
+    end
+  end
+
+  @doc """
+  Upcoming earnings plus the cache state that makes an empty list meaningful.
+
+  `:none` means the sweep has never produced a readable earnings payload.
+  `{:ok, ...}` means the list is known (possibly empty) and carries its age.
+  """
+  def earnings_summary(%Date{} = today) do
+    case earnings_state(today) do
+      %DataState{status: status, data: earnings, as_of: fetched_at}
+      when status in [:fresh, :stale, :confirmed_empty] ->
+        {:ok, %{earnings: earnings, fetched_at: fetched_at, stale?: status == :stale}}
+
+      %DataState{} ->
+        :none
     end
   end
 
@@ -365,6 +378,20 @@ defmodule BusterClaw.MarketData do
        }}
     else
       _ -> :none
+    end
+  end
+
+  @doc "Explicit freshness/availability state for the cached market indexes."
+  def index_state do
+    with {:ok, blob} <- cached_quotes(),
+         indexes when is_list(indexes) <- blob["indexes"],
+         {:ok, fetched_at, _} <- DateTime.from_iso8601(blob["fetched_at"] || "") do
+      indexes
+      |> Enum.filter(&is_map/1)
+      |> Enum.map(&index_chip/1)
+      |> cached_list_state(quotes_stale?(blob), fetched_at, :indexes)
+    else
+      _ -> DataState.unavailable(:unreadable_cache, source: :indexes)
     end
   end
 
@@ -409,6 +436,38 @@ defmodule BusterClaw.MarketData do
     end
   end
 
+  @doc "One symbol's display price with explicit freshness and source."
+  def price_state_for(symbol) when is_binary(symbol) do
+    with {:ok, blob} <- cached_quotes(),
+         %{} = row <- Enum.find(List.wrap(blob["quotes"]), &(&1["symbol"] == symbol)),
+         price when is_number(price) <- row["price"],
+         {:ok, at, _} <- DateTime.from_iso8601(blob["fetched_at"] || "") do
+      DataState.cached(
+        %{price_cents: round(price * 100), change_pct: change_pct_of(row)},
+        quotes_stale?(blob),
+        as_of: at,
+        source: :quotes
+      )
+    else
+      _ ->
+        case latest_close(symbol) do
+          nil ->
+            DataState.unavailable(:no_price, source: :daily_close)
+
+          close ->
+            DataState.cached(
+              %{price_cents: close.close_cents, change_pct: nil},
+              Date.compare(
+                close.bar_on,
+                MarketCalendar.latest_trading_day(MarketCalendar.today())
+              ) == :lt,
+              as_of: close.bar_on,
+              source: :daily_close
+            )
+        end
+    end
+  end
+
   @doc "A symbol's newest cached close, `%{bar_on: Date, close_cents: integer}` or nil."
   def latest_close(symbol) when is_binary(symbol) do
     Bar
@@ -441,6 +500,29 @@ defmodule BusterClaw.MarketData do
     end
   end
 
+  @doc "Explicit freshness/availability state for prices used by the positions panel."
+  def prices_state do
+    with {:ok, blob} <- cached_quotes(),
+         [_ | _] <- List.wrap(blob["quotes"]),
+         {:ok, at, _} <- DateTime.from_iso8601(blob["fetched_at"] || "") do
+      DataState.cached({:quotes, at}, quotes_stale?(blob), as_of: at, source: :quotes)
+    else
+      _ ->
+        case latest_bar_on() do
+          nil ->
+            DataState.unavailable(:no_prices, source: :daily_close)
+
+          day ->
+            DataState.cached(
+              {:bars, day},
+              not fresh?(MarketCalendar.today()),
+              as_of: day,
+              source: :daily_close
+            )
+        end
+    end
+  end
+
   @doc "True when the quotes blob is missing a stamp or older than #{@quotes_stale_min} minutes."
   def quotes_stale?(%{"fetched_at" => stamp}) when is_binary(stamp) do
     case DateTime.from_iso8601(stamp) do
@@ -450,4 +532,10 @@ defmodule BusterClaw.MarketData do
   end
 
   def quotes_stale?(_blob), do: true
+
+  defp cached_list_state([], false, fetched_at, source),
+    do: DataState.confirmed_empty(as_of: fetched_at, source: source)
+
+  defp cached_list_state(rows, stale?, fetched_at, source),
+    do: DataState.cached(rows, stale?, as_of: fetched_at, source: source)
 end

@@ -264,6 +264,17 @@ defmodule BusterClaw.PortfolioTest do
     end
   end
 
+  describe "position-cost refresh evidence" do
+    test "a successful empty response is confirmed rather than treated as never loaded" do
+      assert Portfolio.accounts_missing_costs(["6587"]) == ["6587"]
+
+      assert Portfolio.store_costs("6587", []) == 0
+      assert %DateTime{} = Portfolio.costs_refreshed_at("6587")
+      assert Portfolio.accounts_missing_costs(["6587"]) == []
+      assert Portfolio.position_rows() == []
+    end
+  end
+
   test "the changeset refuses a negative value even if the gate is bypassed" do
     changeset =
       Snapshot.changeset(%Snapshot{}, %{

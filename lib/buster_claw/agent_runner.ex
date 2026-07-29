@@ -16,6 +16,9 @@ defmodule BusterClaw.AgentRunner do
     (a) merges stderr into stdout for a single captured stream and (b) passes the
     binary + args through `"$@"` with **no shell-escaping of the prompt** — the
     prompt is a discrete `args` element, never interpolated into a command string.
+    Stdin is attached to `/dev/null`: prompts are positional arguments and this
+    runner never streams input to the child. An explicit EOF also prevents recent
+    Claude Code releases from waiting three seconds for nonexistent piped context.
   - The spawned process inherits the BEAM's environment (HOME/PATH), which is how
     it reaches the agent's *persisted* login — headless auth needs no TTY. Tests
     override `:agent_binary`/`:argv`/`:env` to stay hermetic.
@@ -193,9 +196,11 @@ defmodule BusterClaw.AgentRunner do
       {:error, {:spawn_failed, Exception.message(error)}}
   end
 
-  # `<shell> -c '…perl… exec @ARGV… 2>&1' sh <binary> <args...>` — `$@` starts
-  # after the `sh` placeholder (arg0), so the binary and prompt pass through
-  # untouched and stderr is merged into stdout.
+  # `<shell> -c '…perl… exec @ARGV… </dev/null 2>&1' sh <binary> <args...>` —
+  # `$@` starts after the `sh` placeholder (arg0), so the binary and prompt pass
+  # through untouched and stderr is merged into stdout. Stdin is explicitly EOF:
+  # AgentRunner has no stdin API, and Claude Code 2.1.220 otherwise waits three
+  # seconds for piped context before warning and proceeding.
   #
   # We `exec perl -e 'setpgrp(0,0); exec @ARGV'` so the run becomes its own
   # process-group leader (pgid == os_pid, preserved across the final `exec` into
@@ -211,7 +216,7 @@ defmodule BusterClaw.AgentRunner do
   defp open_port(binary, args, cwd, opts) do
     shell = Keyword.get(opts, :shell) || "/bin/sh"
     flag = if Keyword.get(opts, :login, false), do: "-lc", else: "-c"
-    cmd = ~s|exec perl -e 'setpgrp(0,0); exec @ARGV or exit 127' "$@" 2>&1|
+    cmd = ~s|exec perl -e 'setpgrp(0,0); exec @ARGV or exit 127' "$@" </dev/null 2>&1|
     shell_args = [flag, cmd, "sh", binary | args]
 
     port_opts =

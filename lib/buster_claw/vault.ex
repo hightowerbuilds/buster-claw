@@ -79,8 +79,22 @@ defmodule BusterClaw.Vault do
 
   def ciphertext?(_value), do: false
 
+  @doc """
+  Stable, non-reversible identifier for a secret provider value.
+
+  The namespace prevents the same source value from correlating across domains.
+  """
+  def fingerprint(namespace, value) when is_binary(namespace) and is_binary(value) do
+    :crypto.mac(:hmac, :sha256, fingerprint_key(namespace), value)
+    |> Base.url_encode64(padding: false)
+  end
+
   defp key do
     :crypto.hash(:sha256, "vault:v1:" <> secret_key_base())
+  end
+
+  defp fingerprint_key(namespace) do
+    :crypto.hash(:sha256, "fingerprint:v1:" <> namespace <> ":" <> secret_key_base())
   end
 
   defp secret_key_base do

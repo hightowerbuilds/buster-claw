@@ -26,12 +26,22 @@ defmodule BusterClawWeb.TradingLive do
 
   alias BusterClaw.Agent.Chat
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
+  alias BusterClaw.DataState
   alias BusterClaw.Portfolio
+  alias BusterClaw.SystemBrowser
   alias BusterClaw.Trading
+  alias BusterClaw.TradingBroker
+  alias BusterClaw.TradingBroker.MCPClient
+  alias BusterClaw.TradingOrders
+  alias BusterClawWeb.TradingBrokerOAuth
 
   # The combined-total chip. A sentinel rather than nil so the selection is
   # always an explicit choice, and so it round-trips through phx-value-id.
   @all_accounts "__all__"
+  @portfolio_ranges ~w(1W 1M 3M 1Y ALL)
+  @symbol_ranges ~w(1M 3M 1Y 5Y)
+  @symbol_modes ~w(line candles)
+  @detail_stale_min 15
 
   # Cap the retained in-memory transcript on a long-lived tab; the persisted
   # transcript is the source of truth and is re-read on mount.
@@ -40,6 +50,10 @@ defmodule BusterClawWeb.TradingLive do
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: Chat.subscribe(Trading.conv_id())
+
+    order_ready = TradingOrders.review_ready?()
+    submission_ready = TradingOrders.execution_ready?()
+    order_account = order_account()
 
     socket =
       socket
@@ -76,7 +90,20 @@ defmodule BusterClawWeb.TradingLive do
       |> assign(:symbol_range, "3M")
       |> assign(:symbol_mode, :line)
       |> assign(:symbol_bars, [])
-      |> assign(:symbol_bars_loading, false)
+      |> assign(:symbol_bars_state, DataState.unavailable(:not_loaded, source: :price_history))
+      # nil | {symbol, interval, requested_from}. Keeping the request identity
+      # prevents an obsolete completion from clearing a newer loading state.
+      |> assign(:symbol_bars_request, nil)
+      |> assign(:order_lane_ready, order_ready)
+      |> assign(:order_submission_ready, submission_ready)
+      |> assign(:order_account, order_account)
+      |> assign(:order_form, order_form())
+      |> assign(:order_confirmation_form, confirmation_form())
+      |> assign(:order_workflow, :idle)
+      |> assign(:broker_connection, TradingBroker.connection())
+      |> assign(:broker_account, TradingBroker.agentic_account())
+      |> assign(:broker_auth_url, nil)
+      |> assign(:broker_note, nil)
       |> stream_configure(:chat_messages, dom_id: &"chat-msg-#{&1.id}")
       |> load_chat_history()
 
@@ -101,6 +128,7 @@ defmodule BusterClawWeb.TradingLive do
 
     case String.trim(text) do
       "" -> {:noreply, socket}
+      "/order " <> _rest = command -> {:noreply, preview_chat_order(socket, command)}
       trimmed -> {:noreply, dispatch_chat(socket, trimmed)}
     end
   end
@@ -120,6 +148,107 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   # ---------------------------------------------------------------------------
+  # Deterministic order lane events
+  # ---------------------------------------------------------------------------
+
+  def handle_event("trading_order_preview", %{"order" => params}, socket) do
+    {:noreply, preview_structured_order(socket, params)}
+  end
+
+  def handle_event(
+        "trading_order_confirm",
+        %{"confirmation" => %{"phrase" => phrase}},
+        %{
+          assigns: %{
+            order_submission_ready: true,
+            order_workflow: {:preview, preview}
+          }
+        } = socket
+      ) do
+    intent = preview.intent
+
+    case TradingOrders.confirm_and_submit(intent.public_id, intent.preview_digest, phrase) do
+      {:ok, submitted} ->
+        {:noreply,
+         socket
+         |> assign(:order_workflow, {:result, submitted})
+         |> assign(:order_confirmation_form, confirmation_form())}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:order_confirmation_form, confirmation_form())
+         |> push_msg(:error, "Order confirmation refused: #{order_error(reason)}.")}
+    end
+  end
+
+  def handle_event("trading_order_confirm", _params, socket) do
+    {:noreply, assign(socket, :order_workflow, {:error, :preview_not_active})}
+  end
+
+  def handle_event(
+        "trading_order_cancel",
+        _params,
+        %{assigns: %{order_workflow: {:preview, preview}}} = socket
+      ) do
+    _result = TradingOrders.cancel_preview(preview.intent.public_id)
+
+    {:noreply,
+     socket
+     |> assign(:order_workflow, :idle)
+     |> assign(:order_confirmation_form, confirmation_form())}
+  end
+
+  def handle_event("trading_order_cancel", _params, socket), do: {:noreply, socket}
+
+  def handle_event("trading_broker_connect", _params, socket) do
+    case TradingBrokerOAuth.authorization_url() do
+      {:ok, url} ->
+        note =
+          case SystemBrowser.open(url) do
+            {:ok, :opened} ->
+              "Continue in Robinhood, approve access, then return here and select Check."
+
+            {:error, _reason} ->
+              "Could not open the system browser. Use the manual authorization link below."
+          end
+
+        {:noreply,
+         socket
+         |> assign(:broker_auth_url, url)
+         |> assign(:broker_note, note)
+         |> refresh_broker_connection()}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(
+           socket,
+           :broker_note,
+           "Could not begin direct authorization: #{broker_error(reason)}."
+         )}
+    end
+  end
+
+  def handle_event("trading_broker_check", _params, socket) do
+    case MCPClient.health() do
+      {:ok, _health} ->
+        {:noreply,
+         socket
+         |> assign(
+           :broker_note,
+           "Direct MCP authentication, tools, and account identity verified."
+         )
+         |> refresh_broker_connection()}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:broker_note, "Direct connection check failed: #{broker_error(reason)}.")
+         |> refresh_broker_connection()}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Dashboard events
   # ---------------------------------------------------------------------------
 
@@ -131,8 +260,12 @@ defmodule BusterClawWeb.TradingLive do
   # whether the amount is money in, money out, or nothing at all; the amount
   # itself is always the day's raw change, which is what the user is looking at.
   def handle_event("trading_mark_flow", %{"kind" => kind, "day" => day} = params, socket) do
-    with {:ok, day} <- Date.from_iso8601(day),
+    with %{account_key: expected_key, day: expected_day} <- socket.assigns.trading_anomaly,
+         {:ok, day} <- Date.from_iso8601(day),
          account_key when is_binary(account_key) <- params["account_key"],
+         true <- day == expected_day,
+         true <- account_key == expected_key,
+         true <- account_key in ledger_keys(socket),
          {:ok, cents} <- flow_cents(kind, params["amount"]) do
       attrs = %{
         account_key: account_key,
@@ -159,9 +292,11 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   def handle_event("trading_toggle_excluded", %{"id" => key}, socket) do
-    if Portfolio.excluded?(key),
-      do: Portfolio.include_account(key),
-      else: Portfolio.exclude_account(key)
+    if key in ledger_keys(socket) do
+      if Portfolio.excluded?(key),
+        do: Portfolio.include_account(key),
+        else: Portfolio.exclude_account(key)
+    end
 
     {:noreply, load_chart(socket)}
   end
@@ -171,10 +306,14 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   def handle_event("trading_select_range", %{"range" => range}, socket) do
-    {:noreply,
-     socket
-     |> assign(:trading_range, range)
-     |> assign(:trading_range_pinned, true)}
+    if range in @portfolio_ranges do
+      {:noreply,
+       socket
+       |> assign(:trading_range, range)
+       |> assign(:trading_range_pinned, true)}
+    else
+      {:noreply, socket}
+    end
   end
 
   # Only ever fills accounts that are missing history — a repair, not a refresh;
@@ -197,11 +336,17 @@ defmodule BusterClawWeb.TradingLive do
   # --- Symbol chart (Phase 4) ---
 
   def handle_event("trading_view_symbol", %{"symbol" => symbol}, socket) do
-    {:noreply,
-     socket
-     |> assign(:trading_chart_view, {:symbol, symbol})
-     |> load_symbol_bars()
-     |> maybe_fetch_symbol_bars()}
+    symbol = symbol |> String.trim() |> String.upcase()
+
+    if symbol in allowed_symbols(socket) do
+      {:noreply,
+       socket
+       |> assign(:trading_chart_view, {:symbol, symbol})
+       |> load_symbol_bars()
+       |> maybe_fetch_symbol_bars()}
+    else
+      {:noreply, socket}
+    end
   end
 
   # The done-when: "Portfolio" returns to the gain/loss line.
@@ -210,7 +355,7 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   def handle_event("trading_symbol_range", %{"range" => range}, socket)
-      when range in ["1M", "3M", "1Y", "5Y"] do
+      when range in @symbol_ranges do
     {:noreply,
      socket
      |> assign(:symbol_range, range)
@@ -218,14 +363,18 @@ defmodule BusterClawWeb.TradingLive do
      |> maybe_fetch_symbol_bars()}
   end
 
+  def handle_event("trading_symbol_range", _params, socket), do: {:noreply, socket}
+
   def handle_event("trading_symbol_mode", %{"mode" => mode}, socket)
-      when mode in ["line", "candles"] do
+      when mode in @symbol_modes do
     {:noreply,
      socket
      |> assign(:symbol_mode, String.to_existing_atom(mode))
      |> load_symbol_bars()
      |> maybe_fetch_symbol_bars()}
   end
+
+  def handle_event("trading_symbol_mode", _params, socket), do: {:noreply, socket}
 
   # Load/refresh cost basis: one agent run per named account, exactly like the
   # backfill. "Load" spends runs only on accounts with nothing; "Refresh"
@@ -243,6 +392,13 @@ defmodule BusterClawWeb.TradingLive do
       {:noreply,
        socket
        |> assign(:trading_costs_loading, true)
+       |> assign(
+         :trading_positions_state,
+         DataState.loading(socket.assigns.trading_positions,
+           as_of: socket.assigns.trading_positions_state.as_of,
+           source: :tax_lots
+         )
+       )
        |> start_async(:trading_costs, fn ->
          Enum.map(keys, &{&1, Portfolio.refresh_costs(&1)})
        end)}
@@ -256,12 +412,16 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   def handle_event("trading_select_account", %{"id" => id}, socket) do
-    {:noreply,
-     socket
-     |> assign(:trading_account_sel, id)
-     |> maybe_load_detail()
-     |> load_anomaly()
-     |> load_chart()}
+    if valid_account_selection?(socket, id) do
+      {:noreply,
+       socket
+       |> assign(:trading_account_sel, id)
+       |> maybe_load_detail()
+       |> load_anomaly()
+       |> load_chart()}
+    else
+      {:noreply, socket}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -393,6 +553,7 @@ defmodule BusterClawWeb.TradingLive do
         {:noreply,
          socket
          |> assign(:trading_account, {:ok, snap})
+         |> reconcile_account_selection()
          |> maybe_load_detail()
          |> load_anomaly()
          |> load_chart()}
@@ -440,11 +601,14 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   def handle_async({:symbol_bars, symbol, interval, requested_from}, {:exit, _reason}, socket) do
+    request = {symbol, interval, requested_from}
+
     {:noreply,
      socket
-     |> assign(:symbol_bars_loading, false)
+     |> finish_symbol_request(request)
+     |> mark_symbol_failure(request, :task_exit)
      |> push_msg(:error, "The #{symbol} bar fetch crashed.")
-     |> maybe_fetch_current_symbol_after({symbol, interval, requested_from})}
+     |> maybe_fetch_current_symbol_after(request)}
   end
 
   def handle_async(:trading_costs, {:ok, results}, socket) do
@@ -497,7 +661,8 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   defp handle_symbol_bars_result(symbol, interval, requested_from, result, socket) do
-    socket = assign(socket, :symbol_bars_loading, false)
+    request = {symbol, interval, requested_from}
+    socket = finish_symbol_request(socket, request)
 
     case result do
       {:ok, rows} ->
@@ -506,13 +671,15 @@ defmodule BusterClawWeb.TradingLive do
         {:noreply,
          socket
          |> load_symbol_bars()
-         |> maybe_fetch_current_symbol_after({symbol, interval, requested_from})}
+         |> mark_symbol_empty(request, rows)
+         |> maybe_fetch_current_symbol_after(request)}
 
       {:error, reason} ->
         {:noreply,
          socket
+         |> mark_symbol_failure(request, reason)
          |> push_msg(:error, "Couldn't fetch #{symbol} bars: #{bars_error(reason)}")
-         |> maybe_fetch_current_symbol_after({symbol, interval, requested_from})}
+         |> maybe_fetch_current_symbol_after(request)}
     end
   end
 
@@ -617,6 +784,17 @@ defmodule BusterClawWeb.TradingLive do
     |> Enum.reject(&is_nil/1)
   end
 
+  defp valid_account_selection?(_socket, @all_accounts), do: true
+
+  defp valid_account_selection?(socket, id) when is_binary(id) do
+    socket.assigns.trading_account
+    |> last_snapshot()
+    |> Trading.accounts()
+    |> Enum.any?(&(&1["id"] == id))
+  end
+
+  defp valid_account_selection?(_socket, _id), do: false
+
   # The chart's series follows the chip: the combined total, or one account.
   defp load_chart(socket) do
     series =
@@ -628,13 +806,31 @@ defmodule BusterClawWeb.TradingLive do
 
     socket
     |> assign(:trading_series, series)
+    |> assign(:trading_performance_state, performance_state(series))
     |> assign(:trading_coverage, Portfolio.backfill_coverage())
     # The hero recomputes with the chart: both read the ledger, and a flow or
     # exclusion that moves one must move the other in the same render.
     |> assign(:trading_day_change, Portfolio.total_day_change())
-    |> assign(:market_indexes, BusterClaw.MarketData.index_summary())
+    |> assign(:market_indexes_state, BusterClaw.MarketData.index_state())
     |> load_positions()
     |> maybe_default_range(series)
+  end
+
+  defp performance_state([]),
+    do: DataState.unavailable(:no_readings, source: :portfolio_ledger)
+
+  defp performance_state(series) do
+    as_of = series |> List.last() |> Map.fetch!(:day)
+
+    latest_market_day =
+      BusterClaw.MarketCalendar.latest_trading_day(BusterClaw.MarketCalendar.today())
+
+    DataState.cached(
+      series,
+      Date.compare(as_of, latest_market_day) == :lt,
+      as_of: as_of,
+      source: :portfolio_ledger
+    )
   end
 
   # The positions panel (Phase 3): cost rows joined with cached prices and
@@ -643,35 +839,80 @@ defmodule BusterClawWeb.TradingLive do
   @spark_lookback_days 30
 
   defp load_positions(socket) do
-    earnings_summary =
-      BusterClaw.MarketData.earnings_summary(BusterClaw.MarketCalendar.today())
+    earnings_state =
+      BusterClaw.MarketData.earnings_state(BusterClaw.MarketCalendar.today())
 
     rows =
       Portfolio.position_rows()
       |> Enum.map(&display_position/1)
       |> Enum.sort_by(&(-(&1.value_cents || 0)))
 
+    candidates = all_cost_candidates(socket)
+    missing = costs_missing(socket)
+
     socket
     |> assign(:trading_positions, rows)
-    |> assign(:trading_costs_missing, costs_missing(socket))
-    |> assign(:prices_as_of, BusterClaw.MarketData.prices_as_of())
-    |> assign(:trading_earnings_summary, earnings_summary)
-    |> assign(:trading_earnings, earnings_from_summary(earnings_summary))
+    |> assign(:trading_positions_state, positions_state(rows, candidates, missing))
+    |> assign(:trading_costs_missing, missing)
+    |> assign(:prices_state, aggregate_price_state(rows))
+    |> assign(:trading_earnings_state, earnings_state)
+    |> assign(:trading_earnings, state_data(earnings_state))
   end
 
-  defp earnings_from_summary({:ok, %{earnings: earnings}}), do: earnings
-  defp earnings_from_summary(:none), do: []
+  defp state_data(%DataState{data: data}) when is_list(data), do: data
+  defp state_data(%DataState{}), do: []
+
+  defp positions_state(rows, _candidates, [_ | _] = missing) do
+    DataState.unavailable(:partial,
+      data: rows,
+      as_of: oldest_position_at(rows),
+      source: :tax_lots,
+      reason: {:missing_accounts, missing}
+    )
+  end
+
+  defp positions_state([], [], []),
+    do: DataState.unavailable(:no_supported_accounts, source: :tax_lots)
+
+  defp positions_state([], candidates, []) do
+    as_of =
+      candidates
+      |> Enum.map(&Portfolio.costs_refreshed_at/1)
+      |> Enum.reject(&is_nil/1)
+      |> case do
+        [] -> nil
+        dates -> Enum.min(dates, DateTime)
+      end
+
+    if datetime_stale?(as_of) do
+      DataState.stale([], as_of: as_of, source: :tax_lots)
+    else
+      DataState.confirmed_empty(as_of: as_of, source: :tax_lots)
+    end
+  end
+
+  defp positions_state(rows, _candidates, []) do
+    as_of = oldest_position_at(rows)
+
+    DataState.cached(rows, datetime_stale?(as_of),
+      as_of: as_of,
+      source: :tax_lots
+    )
+  end
+
+  defp oldest_position_at([]), do: nil
+  defp oldest_position_at(rows), do: rows |> Enum.map(& &1.as_of) |> Enum.min(DateTime)
+
+  defp allowed_symbols(socket) do
+    position_symbols = Enum.map(socket.assigns.trading_positions, & &1.symbol)
+    earnings_symbols = Enum.map(socket.assigns.trading_earnings, & &1.symbol)
+    position_symbols ++ earnings_symbols
+  end
 
   defp display_position(row) do
-    quote_info = BusterClaw.MarketData.quote_for(row.symbol)
-    latest = BusterClaw.MarketData.latest_close(row.symbol)
-
-    price_cents =
-      cond do
-        quote_info -> round(quote_info.price * 100)
-        latest -> latest.close_cents
-        true -> nil
-      end
+    price_state = BusterClaw.MarketData.price_state_for(row.symbol)
+    price_info = price_state.data || %{}
+    price_cents = price_info[:price_cents]
 
     value_cents = price_cents && round(row.quantity * price_cents)
 
@@ -680,8 +921,9 @@ defmodule BusterClawWeb.TradingLive do
 
     row
     |> Map.merge(%{
+      price_state: price_state,
       price_cents: price_cents,
-      day_change_pct: quote_info && quote_info.change_pct,
+      day_change_pct: price_info[:change_pct],
       value_cents: value_cents,
       unrealized_cents: unrealized_cents,
       unrealized_pct:
@@ -692,6 +934,49 @@ defmodule BusterClawWeb.TradingLive do
         BusterClaw.MarketData.bars(row.symbol, @spark_lookback_days)
         |> Enum.map(& &1.close_cents)
     })
+  end
+
+  defp aggregate_price_state([]),
+    do: DataState.unavailable(:no_positions, source: :position_prices)
+
+  defp aggregate_price_state(rows) do
+    states = Enum.map(rows, & &1.price_state)
+    as_of = oldest_price_at(states)
+
+    cond do
+      Enum.any?(states, &(&1.status == :unavailable)) ->
+        DataState.unavailable(:partial,
+          data: states,
+          as_of: as_of,
+          source: :position_prices
+        )
+
+      Enum.any?(states, &(&1.status == :stale)) ->
+        DataState.stale(states, as_of: as_of, source: :position_prices)
+
+      true ->
+        DataState.fresh(states, as_of: as_of, source: :position_prices)
+    end
+  end
+
+  defp oldest_price_at(states) do
+    dates = states |> Enum.map(& &1.as_of) |> Enum.reject(&is_nil/1)
+
+    cond do
+      dates == [] ->
+        nil
+
+      Enum.any?(dates, &match?(%Date{}, &1)) ->
+        dates
+        |> Enum.map(fn
+          %DateTime{} = at -> DateTime.to_date(at)
+          %Date{} = day -> day
+        end)
+        |> Enum.min(Date)
+
+      true ->
+        Enum.min(dates, DateTime)
+    end
   end
 
   # Included, holdings-capable accounts with no cost rows yet — what the Load
@@ -718,10 +1003,21 @@ defmodule BusterClawWeb.TradingLive do
   defp load_symbol_bars(%{assigns: %{trading_chart_view: {:symbol, symbol}}} = socket) do
     {days, interval} = symbol_window(socket.assigns.symbol_range)
     from = Date.add(BusterClaw.MarketCalendar.today(), -days)
-    assign(socket, :symbol_bars, BusterClaw.MarketData.chart_bars(symbol, interval, from))
+    rows = BusterClaw.MarketData.chart_bars(symbol, interval, from)
+
+    socket
+    |> assign(:symbol_bars, rows)
+    |> assign(:symbol_bars_state, symbol_bars_state(rows, interval))
   end
 
-  defp load_symbol_bars(socket), do: assign(socket, :symbol_bars, [])
+  defp load_symbol_bars(socket) do
+    socket
+    |> assign(:symbol_bars, [])
+    |> assign(
+      :symbol_bars_state,
+      DataState.unavailable(:not_selected, source: :price_history)
+    )
+  end
 
   # Fetch only when the cache can't already answer. Line mode over the short
   # ranges rides the sweep's closes for free; candles (any range) and the deep
@@ -737,15 +1033,32 @@ defmodule BusterClawWeb.TradingLive do
       not needs_full? ->
         socket
 
-      a.symbol_bars_loading ->
-        socket
+      not is_nil(a.symbol_bars_request) ->
+        assign(
+          socket,
+          :symbol_bars_state,
+          DataState.loading(a.symbol_bars,
+            as_of: socket.assigns.symbol_bars_state.as_of,
+            reason: :waiting_for_active_request,
+            source: :price_history
+          )
+        )
 
       BusterClaw.MarketData.chart_coverage?(symbol, interval, from, today) ->
         socket
 
       true ->
+        request = {symbol, interval, from}
+
         socket
-        |> assign(:symbol_bars_loading, true)
+        |> assign(:symbol_bars_request, request)
+        |> assign(
+          :symbol_bars_state,
+          DataState.loading(a.symbol_bars,
+            as_of: socket.assigns.symbol_bars_state.as_of,
+            source: :price_history
+          )
+        )
         |> start_async({:symbol_bars, symbol, interval, from}, fn ->
           Trading.fetch_symbol_bars(symbol, from, interval)
         end)
@@ -760,6 +1073,63 @@ defmodule BusterClawWeb.TradingLive do
       ^completed_request -> socket
       _current_request -> maybe_fetch_symbol_bars(socket)
     end
+  end
+
+  defp finish_symbol_request(socket, request) do
+    if socket.assigns.symbol_bars_request == request,
+      do: assign(socket, :symbol_bars_request, nil),
+      else: socket
+  end
+
+  defp mark_symbol_empty(socket, request, []) do
+    if current_symbol_request(socket) == request and socket.assigns.symbol_bars == [] do
+      assign(
+        socket,
+        :symbol_bars_state,
+        DataState.confirmed_empty(as_of: DateTime.utc_now(), source: :price_history)
+      )
+    else
+      socket
+    end
+  end
+
+  defp mark_symbol_empty(socket, _request, _rows), do: socket
+
+  defp mark_symbol_failure(socket, request, reason) do
+    if current_symbol_request(socket) == request do
+      state =
+        case socket.assigns.symbol_bars do
+          [] ->
+            DataState.unavailable(reason, source: :price_history)
+
+          rows ->
+            DataState.stale(rows,
+              as_of: socket.assigns.symbol_bars_state.as_of,
+              reason: reason,
+              source: :price_history
+            )
+        end
+
+      assign(socket, :symbol_bars_state, state)
+    else
+      socket
+    end
+  end
+
+  defp symbol_bars_state([], _interval),
+    do: DataState.unavailable(:not_cached, source: :price_history)
+
+  defp symbol_bars_state(rows, interval) do
+    as_of = rows |> List.last() |> Map.fetch!(:bar_on)
+    latest = BusterClaw.MarketCalendar.latest_trading_day(BusterClaw.MarketCalendar.today())
+
+    stale? =
+      case interval do
+        "day" -> Date.compare(as_of, latest) == :lt
+        "week" -> Date.compare(as_of, Date.add(latest, -7)) == :lt
+      end
+
+    DataState.cached(rows, stale?, as_of: as_of, source: :price_history)
   end
 
   defp current_symbol_request(%{
@@ -809,6 +1179,16 @@ defmodule BusterClawWeb.TradingLive do
   defp last_snapshot({:loading, prev}), do: prev
   defp last_snapshot({:error, _reason, prev}), do: prev
   defp last_snapshot(_), do: nil
+
+  defp reconcile_account_selection(socket) do
+    if valid_account_selection?(socket, socket.assigns.trading_account_sel) do
+      socket
+    else
+      socket
+      |> assign(:trading_account_sel, @all_accounts)
+      |> assign(:trading_detail, nil)
+    end
+  end
 
   # Stage 2, on demand: fetch the selected account's holdings only if they
   # aren't already loaded, the account can be read at all (crypto can't), and
@@ -889,6 +1269,108 @@ defmodule BusterClawWeb.TradingLive do
   defp put_snapshot(_other, snap), do: {:ok, snap}
 
   # ---------------------------------------------------------------------------
+  # Deterministic order lane
+  # ---------------------------------------------------------------------------
+
+  defp preview_chat_order(socket, command) do
+    with true <- socket.assigns.order_lane_ready,
+         %{id: account_id} <- socket.assigns.order_account,
+         command <- ensure_command_account(command, account_id),
+         {:ok, params} <- TradingOrders.parse_command(command) do
+      preview_structured_order(socket, params)
+    else
+      false ->
+        assign(socket, :order_workflow, {:error, :structured_broker_adapter_not_configured})
+
+      _error ->
+        assign(socket, :order_workflow, {:error, :invalid_order_command})
+    end
+  end
+
+  defp preview_structured_order(socket, params) when is_map(params) do
+    socket = assign(socket, :order_form, to_form(params, as: :order))
+
+    with true <- socket.assigns.order_lane_ready,
+         %{id: account_id, label: account_label} <- socket.assigns.order_account,
+         attrs <-
+           params
+           |> Map.put("account_id", account_id)
+           |> Map.put("account_label", account_label),
+         {:ok, draft} <- TradingOrders.create_draft(attrs),
+         {:ok, preview} <- TradingOrders.preview(draft.public_id) do
+      socket
+      |> assign(:order_workflow, {:preview, preview})
+      |> assign(:order_confirmation_form, confirmation_form())
+    else
+      false ->
+        assign(socket, :order_workflow, {:error, :structured_broker_adapter_not_configured})
+
+      {:error, reason} ->
+        assign(socket, :order_workflow, {:error, reason})
+
+      _error ->
+        assign(socket, :order_workflow, {:error, :invalid_order})
+    end
+  end
+
+  defp preview_structured_order(socket, _params),
+    do: assign(socket, :order_workflow, {:error, :invalid_order})
+
+  defp ensure_command_account(command, account_id) do
+    if String.contains?(command, " account="),
+      do: command,
+      else: command <> " account=" <> account_id
+  end
+
+  defp order_account do
+    case TradingOrders.configured_account() do
+      {:ok, account} -> account
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp order_form(params \\ %{}) do
+    defaults = %{
+      "side" => "buy",
+      "symbol" => "",
+      "amount_type" => "quantity",
+      "amount" => "",
+      "order_type" => "limit",
+      "limit_price" => "",
+      "time_in_force" => "day"
+    }
+
+    to_form(Map.merge(defaults, params), as: :order)
+  end
+
+  defp confirmation_form, do: to_form(%{"phrase" => ""}, as: :confirmation)
+
+  defp order_error(reason) when is_atom(reason),
+    do: reason |> Atom.to_string() |> String.replace("_", " ")
+
+  defp order_error(_reason), do: "invalid order confirmation"
+
+  defp refresh_broker_connection(socket) do
+    socket
+    |> assign(:broker_connection, TradingBroker.connection())
+    |> assign(:broker_account, TradingBroker.agentic_account())
+    |> assign(:order_lane_ready, TradingOrders.review_ready?())
+    |> assign(:order_submission_ready, TradingOrders.execution_ready?())
+    |> assign(:order_account, order_account())
+  end
+
+  defp broker_error(reason) when is_atom(reason),
+    do: reason |> Atom.to_string() |> String.replace("_", " ")
+
+  defp broker_error({:broker_oauth_http, status, _error}) when is_integer(status),
+    do: "Robinhood OAuth HTTP #{status}"
+
+  defp broker_error({:broker_mcp_http, status}) when is_integer(status),
+    do: "Robinhood MCP HTTP #{status}"
+
+  defp broker_error(_reason), do: "connection could not be verified"
+
+  # ---------------------------------------------------------------------------
   # Render
   # ---------------------------------------------------------------------------
 
@@ -908,10 +1390,35 @@ defmodule BusterClawWeb.TradingLive do
           <div class="bc-trading-left flex min-h-0 flex-col gap-2">
             <div
               id="trading-read-only-banner"
-              class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-success"
+              class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs text-success"
             >
-              Read-only mode — Buster Claw cannot place, amend, or cancel Robinhood orders
+              <p class="font-bold uppercase tracking-wide">
+                <%= cond do %>
+                  <% @order_submission_ready -> %>
+                    AI chat is read-only — only the confirmed structured lane can place an order
+                  <% @order_lane_ready -> %>
+                    Review-only mode — direct broker previews work; submission remains sealed
+                  <% true -> %>
+                    Read-only mode — Buster Claw cannot place, amend, or cancel Robinhood orders
+                <% end %>
+              </p>
+              <p class="pt-0.5 text-[0.68rem] text-base-content/60">
+                Stop interrupts the local assistant run only; it cannot reverse a broker action
+                performed elsewhere.
+              </p>
             </div>
+            <BusterClawWeb.TradingOrderComponents.order_lane
+              ready={@order_lane_ready}
+              submission_ready={@order_submission_ready}
+              account_label={@order_account && @order_account.label}
+              order_form={@order_form}
+              confirmation_form={@order_confirmation_form}
+              workflow={@order_workflow}
+              broker_connection={@broker_connection}
+              broker_account={@broker_account}
+              broker_auth_url={@broker_auth_url}
+              broker_note={@broker_note}
+            />
             <%!-- First-run setup: the OAuth handshake is interactive by nature
                   (a browser window), so it happens once in a terminal — the
                   keychain tokens are then reused by every headless turn. --%>
@@ -956,23 +1463,25 @@ defmodule BusterClawWeb.TradingLive do
               detail={@trading_detail}
               anomaly={@trading_anomaly}
               series={@trading_series}
+              performance_state={@trading_performance_state}
               range={@trading_range}
               coverage={@trading_coverage}
               backfilling={@trading_backfilling}
               table={@trading_table}
               day_change={@trading_day_change}
-              indexes={@market_indexes}
+              indexes_state={@market_indexes_state}
               positions={@trading_positions}
+              positions_state={@trading_positions_state}
               costs_missing={@trading_costs_missing}
               costs_loading={@trading_costs_loading}
-              prices_as_of={@prices_as_of}
+              prices_state={@prices_state}
               chart_view={@trading_chart_view}
               symbol_bars={@symbol_bars}
               symbol_range={@symbol_range}
               symbol_mode={@symbol_mode}
-              symbol_loading={@symbol_bars_loading}
+              symbol_state={@symbol_bars_state}
               earnings={@trading_earnings}
-              earnings_summary={@trading_earnings_summary}
+              earnings_state={@trading_earnings_state}
             />
           </div>
         </div>
@@ -993,23 +1502,25 @@ defmodule BusterClawWeb.TradingLive do
   attr :detail, :any, required: true
   attr :anomaly, :any, required: true
   attr :series, :list, required: true
+  attr :performance_state, :any, required: true
   attr :range, :string, required: true
   attr :coverage, :any, required: true
   attr :backfilling, :boolean, required: true
   attr :table, :boolean, required: true
   attr :day_change, :any, required: true
-  attr :indexes, :any, required: true
+  attr :indexes_state, :any, required: true
   attr :positions, :list, required: true
+  attr :positions_state, :any, required: true
   attr :costs_missing, :list, required: true
   attr :costs_loading, :boolean, required: true
-  attr :prices_as_of, :any, required: true
+  attr :prices_state, :any, required: true
   attr :chart_view, :any, required: true
   attr :symbol_bars, :list, required: true
   attr :symbol_range, :string, required: true
   attr :symbol_mode, :atom, required: true
-  attr :symbol_loading, :boolean, required: true
+  attr :symbol_state, :any, required: true
   attr :earnings, :list, required: true
-  attr :earnings_summary, :any, required: true
+  attr :earnings_state, :any, required: true
 
   defp trading_account_card(assigns) do
     snap = last_snapshot(assigns.account)
@@ -1024,7 +1535,15 @@ defmodule BusterClawWeb.TradingLive do
       |> assign(:all?, all?)
       |> assign(:all_accounts, @all_accounts)
       |> assign(:excluded, (assigns.coverage && assigns.coverage[:excluded]) || [])
+      |> assign(:account_state, account_dataset_state(assigns.account))
       |> assign(:detail_state, detail_state(selected, assigns.detail))
+
+    assigns =
+      assign(
+        assigns,
+        :detail_dataset_state,
+        detail_dataset_state(assigns.selected, assigns.detail_state)
+      )
 
     assigns =
       assign(
@@ -1033,11 +1552,25 @@ defmodule BusterClawWeb.TradingLive do
         activity_rows(assigns.accounts, assigns.excluded, selected, assigns.detail_state)
       )
 
+    assigns =
+      assign(
+        assigns,
+        :transfer_activity,
+        transfer_activity(assigns.accounts, assigns.excluded, selected)
+      )
+
     ~H"""
     <aside
       id="trading-account-card"
       class="ic-panel flex min-h-0 w-full flex-col overflow-y-auto p-4 font-mono text-xs"
     >
+      <div
+        id="trading-monitoring-mode"
+        class="mb-2 flex flex-wrap items-center justify-between gap-2 border border-base-content/20 px-2 py-1 text-[0.68rem] uppercase tracking-wide text-base-content/60"
+      >
+        <span class="font-bold">End-of-day portfolio monitor</span>
+        <span>Quotes may be intraday; holdings and performance are cached snapshots</span>
+      </div>
       <%!-- The hero row (Phase 2): the five-second test. Total value and its
             day change first, market context beside them. The change comes from
             the LEDGER's two most recent readings with flows netted — the same
@@ -1079,8 +1612,11 @@ defmodule BusterClawWeb.TradingLive do
           <%!-- "Was that me or the market": index chips from the daily sweep,
                 with an as-of because cached context must say its age. A chip
                 with no derivable change writes a dash, never a zero. --%>
-          <div :if={match?({:ok, _}, @indexes)} class="text-right">
-            <div :for={chip <- elem(@indexes, 1).indexes} class="flex justify-end gap-2">
+          <div id="trading-index-state" class="text-right">
+            <div
+              :for={chip <- state_data(@indexes_state)}
+              class="flex justify-end gap-2"
+            >
               <span class="font-bold text-base-content/70">{chip.label}</span>
               <span class="text-base-content/80">{index_price(chip.price)}</span>
               <span class={index_change_class(chip.change_pct)}>
@@ -1088,7 +1624,7 @@ defmodule BusterClawWeb.TradingLive do
               </span>
             </div>
             <p class="pt-0.5 text-base-content/40">
-              as of {relative_time(elem(@indexes, 1).fetched_at)}
+              {dataset_label(@indexes_state, "Market indexes")}
             </p>
           </div>
         </div>
@@ -1178,6 +1714,9 @@ defmodule BusterClawWeb.TradingLive do
       </div>
 
       <div :if={@chart_view == :portfolio} class="pt-3">
+        <p id="trading-performance-state" class="pb-1 text-right text-base-content/40">
+          {dataset_label(@performance_state, "Performance")}
+        </p>
         <BusterClawWeb.PortfolioChart.portfolio_chart
           series={@series}
           range={@range}
@@ -1245,11 +1784,14 @@ defmodule BusterClawWeb.TradingLive do
               {range}
             </button>
           </div>
-          <span class="text-base-content/50">
+          <span id="trading-symbol-state" class="text-right text-base-content/50">
             {if elem(symbol_window(@symbol_range), 1) == "week", do: "weekly", else: "daily"} · {length(
               @symbol_bars
-            )} bars{if @symbol_loading,
-              do: " · fetching full bars (one agent run)…"}
+            )} bars · {if @symbol_state.status == :loading,
+              do: "fetching full bars (one agent run) · "}{dataset_label(
+              @symbol_state,
+              "Price history"
+            )}
           </span>
         </div>
 
@@ -1268,8 +1810,11 @@ defmodule BusterClawWeb.TradingLive do
         <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
           <p class="uppercase tracking-wide text-base-content/60">Positions</p>
           <div class="flex items-center gap-2">
-            <span :if={@positions != []} class="text-base-content/40">
-              {prices_as_of_label(@prices_as_of)}
+            <span id="trading-positions-state" class="text-right text-base-content/40">
+              {dataset_label(@positions_state, "Holdings")} · {dataset_label(
+                @prices_state,
+                "Prices"
+              )}
             </span>
             <button
               :if={@positions != [] or @costs_missing != []}
@@ -1287,14 +1832,36 @@ defmodule BusterClawWeb.TradingLive do
           </div>
         </div>
 
-        <p :if={@positions == [] and @costs_missing == []} class="pt-2 text-base-content/50">
-          No positions loaded yet — they appear once an account snapshot exists.
+        <p
+          :if={@positions_state.status == :loading and @positions == []}
+          class="pt-2 text-base-content/50"
+        >
+          Loading holdings and cost basis…
         </p>
-        <p :if={@positions == [] and @costs_missing != []} class="pt-2 text-base-content/50">
+        <p
+          :if={@positions_state.status == :unavailable and @costs_missing != []}
+          class="pt-2 text-base-content/50"
+        >
           Cost basis not loaded for {length(@costs_missing)} account{if length(@costs_missing) == 1,
             do: "",
             else: "s"} — Load fetches the
           tax lots (one agent run per account) so gains show what you actually paid.
+        </p>
+        <p
+          :if={@positions_state.status == :unavailable and @costs_missing == []}
+          class="pt-2 text-base-content/50"
+        >
+          Holdings unavailable — no included account currently has a confirmed positions snapshot.
+        </p>
+        <p :if={@positions_state.status == :confirmed_empty} class="pt-2 text-base-content/50">
+          No open positions in the confirmed brokerage response {dataset_time_suffix(@positions_state)}.
+        </p>
+        <p
+          :if={@positions_state.status == :stale and @positions == []}
+          class="pt-2 text-base-content/50"
+        >
+          The stale positions response is empty; refresh before treating every included account
+          as all cash.
         </p>
 
         <div :if={@positions != []} class="divide-y divide-base-content/10">
@@ -1322,6 +1889,9 @@ defmodule BusterClawWeb.TradingLive do
               <p class="text-base-content/80">{money_cents(pos.price_cents)}</p>
               <p class={position_day_class(pos.day_change_pct)}>
                 {if pos.day_change_pct, do: signed_pct(pos.day_change_pct), else: "—"}
+              </p>
+              <p class="text-[0.65rem] text-base-content/40">
+                {row_price_label(pos.price_state)}
               </p>
             </div>
             <p class="text-right text-base-content/80">{money_cents(pos.value_cents)}</p>
@@ -1352,16 +1922,25 @@ defmodule BusterClawWeb.TradingLive do
             see BEFORE it moves you. Scoped by the sweep to what you hold; an
             empty window says so in words — silence would read as "not built". --%>
       <div :if={@all?} class="pt-3">
-        <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
-          Upcoming earnings
+        <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
+          <p class="uppercase tracking-wide text-base-content/60">Upcoming earnings</p>
+          <span id="trading-earnings-state" class="text-base-content/40">
+            {dataset_label(@earnings_state, "Calendar")}
+          </span>
+        </div>
+        <p :if={@earnings_state.status == :unavailable} class="pt-2 text-base-content/50">
+          Earnings unavailable — the market-data sweep has not produced a readable calendar yet.
         </p>
-        <p :if={@earnings == []} class="pt-2 text-base-content/50">
-          <%= if @earnings_summary == :none do %>
-            Earnings unavailable — the market-data sweep has not produced a readable calendar yet.
-          <% else %>
-            No earnings scheduled for your holdings in the next month.
-            <span class="text-base-content/40">{earnings_asof(@earnings_summary)}</span>
-          <% end %>
+        <p :if={@earnings_state.status == :confirmed_empty} class="pt-2 text-base-content/50">
+          No earnings scheduled for your holdings in the next month {dataset_time_suffix(
+            @earnings_state
+          )}.
+        </p>
+        <p
+          :if={@earnings_state.status == :stale and @earnings == []}
+          class="pt-2 text-base-content/50"
+        >
+          The stale calendar contains no upcoming reports; refresh before treating that as current.
         </p>
         <div :if={@earnings != []} class="flex flex-wrap gap-x-4 gap-y-1 pt-2">
           <p :for={report <- @earnings} class="whitespace-nowrap">
@@ -1379,9 +1958,6 @@ defmodule BusterClawWeb.TradingLive do
             </span>
           </p>
         </div>
-        <p :if={@earnings != []} class="pt-1 text-base-content/40">
-          {earnings_asof(@earnings_summary)}
-        </p>
       </div>
 
       <%!-- The combined view has no single account to detail, so it lists them
@@ -1474,9 +2050,12 @@ defmodule BusterClawWeb.TradingLive do
         <%!-- Allocation: one measure (value) per symbol — single-hue thin bars,
               direct labels in text tokens, no legend (single series). --%>
         <div>
-          <p class="border-b border-base-content/15 pb-1 uppercase tracking-wide text-base-content/60">
-            Positions
-          </p>
+          <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
+            <p class="uppercase tracking-wide text-base-content/60">Positions</p>
+            <span id="trading-detail-state" class="text-base-content/40">
+              {dataset_label(@detail_dataset_state, "Holdings")}
+            </span>
+          </div>
           <%!-- Distinct facts get distinct lines. "Can't read it",
                 "haven't asked yet", "asked and it failed", and "there is
                 nothing to read" must never share wording — the whole reason
@@ -1508,8 +2087,20 @@ defmodule BusterClawWeb.TradingLive do
               Retry
             </button>
           </div>
-          <p :if={@detail_state == :empty} class="pt-2 text-base-content/50">
-            No positions — the account is all cash.
+          <p
+            :if={@detail_state == :empty and @detail_dataset_state.status == :confirmed_empty}
+            class="pt-2 text-base-content/50"
+          >
+            No positions in the confirmed brokerage response {dataset_time_suffix(
+              @detail_dataset_state
+            )}.
+          </p>
+          <p
+            :if={@detail_state == :empty and @detail_dataset_state.status == :stale}
+            class="pt-2 text-base-content/50"
+          >
+            The stale brokerage response contains no positions; refresh before treating the
+            account as all cash.
           </p>
           <div :if={@detail_state == :loaded} class="space-y-2 pt-2">
             <div
@@ -1536,37 +2127,93 @@ defmodule BusterClawWeb.TradingLive do
             holdings are loaded and SAYS when that is only some of them — a
             partial merge presented as the whole would hide trades by omission.
             Side is written (BUY/SELL), never carried by color alone. --%>
-      <div :if={@activity != :hidden} class="pt-3">
+      <div :if={@snap} class="pt-3">
         <div class="flex items-center justify-between border-b border-base-content/15 pb-1">
           <p class="uppercase tracking-wide text-base-content/60">Recent activity</p>
-          <span :if={@activity.note} class="text-base-content/40">{@activity.note}</span>
+          <div class="text-right text-base-content/40">
+            <p id="trading-activity-state">{dataset_label(@activity.state, "Orders")}</p>
+            <p :if={@activity.note}>{@activity.note}</p>
+          </div>
         </div>
-        <p :if={@activity.orders == []} class="pt-2 text-base-content/50">
-          No trades yet.
+        <p
+          :if={@activity.state.status == :unavailable and @activity.orders == []}
+          class="pt-2 text-base-content/50"
+        >
+          Trade history unavailable — load an account's holdings to request its order history.
         </p>
-        <div :if={@activity.orders != []} class="divide-y divide-base-content/10">
-          <div
-            :for={{order, account_label} <- @activity.orders}
-            class="grid grid-cols-[3.5rem_4.5rem_minmax(0,1fr)_auto] items-center gap-2 py-1.5"
+        <p :if={@activity.state.status == :confirmed_empty} class="pt-2 text-base-content/50">
+          No trades in the confirmed brokerage response {dataset_time_suffix(@activity.state)}.
+        </p>
+        <p
+          :if={@activity.state.status == :stale and @activity.orders == []}
+          class="pt-2 text-base-content/50"
+        >
+          The stale brokerage response contains no trades; it is not a current confirmation.
+        </p>
+        <%= for {section, rows} <- activity_order_sections(@activity.orders) do %>
+          <div :if={rows != []} class="pt-2">
+            <p class="pb-1 font-bold uppercase tracking-wide text-base-content/50">{section}</p>
+            <div class="divide-y divide-base-content/10">
+              <div
+                :for={{order, account_label} <- rows}
+                class="grid grid-cols-[3.5rem_4.5rem_minmax(0,1fr)_auto] items-center gap-2 py-1.5"
+              >
+                <span class={[
+                  "border px-1.5 py-0.5 text-center font-bold uppercase",
+                  order_side_class(order["side"])
+                ]}>
+                  {order["side"] || "?"}
+                </span>
+                <span class="font-bold">{order["symbol"]}</span>
+                <span class="truncate text-base-content/70">
+                  {order["quantity"]} @ {money(order["price"])}
+                  <span class="text-base-content/50">· {order["state"]} · {account_label}</span>
+                </span>
+                <span class="text-right text-base-content/50">{order_when(order)}</span>
+              </div>
+            </div>
+          </div>
+        <% end %>
+
+        <div class="border-t border-base-content/10 pt-2">
+          <div class="flex items-center justify-between">
+            <p class="font-bold uppercase tracking-wide text-base-content/50">
+              Manual transfer reconciliations
+            </p>
+            <span class="text-base-content/40">
+              {dataset_label(@transfer_activity.state, "Transfers")}
+            </span>
+          </div>
+          <p :if={@transfer_activity.rows == []} class="pt-1 text-base-content/50">
+            No manual transfer reconciliations recorded in the local ledger.
+          </p>
+          <p
+            :for={flow <- @transfer_activity.rows}
+            class="flex items-center justify-between gap-3 py-1 text-base-content/70"
           >
-            <span class={[
-              "border px-1.5 py-0.5 text-center font-bold uppercase",
-              order_side_class(order["side"])
-            ]}>
-              {order["side"] || "?"}
-            </span>
-            <span class="font-bold">{order["symbol"]}</span>
-            <span class="truncate text-base-content/70">
-              {order["quantity"]} @ {money(order["price"])}
-              <span class="text-base-content/50">· {order["state"]} · {account_label}</span>
-            </span>
-            <span class="text-right text-base-content/50">{order_when(order)}</span>
+            <span>{flow.kind} · account {flow.account_key}</span>
+            <span>{signed_money(flow.amount_cents)} · {Date.to_iso8601(flow.occurred_on)}</span>
+          </p>
+        </div>
+
+        <div class="grid gap-2 border-t border-base-content/10 pt-2 sm:grid-cols-2">
+          <div>
+            <p class="font-bold uppercase tracking-wide text-base-content/50">Dividends</p>
+            <p class="text-base-content/50">
+              Unavailable — the current broker read surface provides no dividend-events dataset.
+            </p>
+          </div>
+          <div>
+            <p class="font-bold uppercase tracking-wide text-base-content/50">Market movement</p>
+            <p class="text-base-content/50">
+              Shown in the gain/loss chart; manual transfers are netted separately.
+            </p>
           </div>
         </div>
       </div>
 
       <p :if={is_nil(@snap) and not match?({:loading, _}, @account)} class="pt-3 text-base-content/60">
-        No snapshot yet — refresh to load your accounts.
+        Account balances unavailable — refresh to request a brokerage snapshot.
       </p>
       <p :if={is_nil(@snap) and match?({:loading, _}, @account)} class="pt-3 text-base-content/60">
         Loading accounts…
@@ -1576,7 +2223,9 @@ defmodule BusterClawWeb.TradingLive do
       </p>
 
       <div class="mt-auto flex items-center justify-between gap-2 border-t-2 border-base-content/20 pt-2">
-        <span class="text-base-content/50">{card_asof(@snap)}</span>
+        <span id="trading-account-state" class="text-base-content/50">
+          {dataset_label(@account_state, "Account balances")}
+        </span>
         <button
           type="button"
           phx-click="trading_refresh"
@@ -1616,6 +2265,75 @@ defmodule BusterClawWeb.TradingLive do
         end
     end
   end
+
+  defp account_dataset_state(nil),
+    do: DataState.unavailable(:not_loaded, source: :brokerage_accounts)
+
+  defp account_dataset_state({:loading, prev}) do
+    DataState.loading(prev,
+      as_of: snapshot_fetched_at(prev),
+      source: :brokerage_accounts
+    )
+  end
+
+  defp account_dataset_state({:ok, snap}) do
+    DataState.cached(snap, Trading.snapshot_stale?(snap),
+      as_of: snapshot_fetched_at(snap),
+      source: :brokerage_accounts
+    )
+  end
+
+  defp account_dataset_state({:error, reason, nil}),
+    do: DataState.unavailable(reason, source: :brokerage_accounts)
+
+  defp account_dataset_state({:error, reason, prev}) do
+    DataState.stale(prev,
+      as_of: snapshot_fetched_at(prev),
+      reason: reason,
+      source: :brokerage_accounts
+    )
+  end
+
+  defp detail_dataset_state(_account, :unsupported),
+    do: DataState.unavailable(:unsupported, source: :brokerage_positions)
+
+  defp detail_dataset_state(_account, :ambiguous),
+    do: DataState.unavailable(:ambiguous_identity, source: :brokerage_positions)
+
+  defp detail_dataset_state(account, :loading) do
+    DataState.loading(nil,
+      as_of: detail_fetched_at(account),
+      source: :brokerage_positions
+    )
+  end
+
+  defp detail_dataset_state(_account, {:error, reason}),
+    do: DataState.unavailable(reason, source: :brokerage_positions)
+
+  defp detail_dataset_state(account, state) when state in [:empty, :loaded] do
+    rows = sorted_positions(account)
+    as_of = detail_fetched_at(account)
+    stale? = datetime_stale?(as_of)
+
+    if state == :empty and not stale? do
+      DataState.confirmed_empty(as_of: as_of, source: :brokerage_positions)
+    else
+      DataState.cached(rows, stale?,
+        as_of: as_of,
+        source: :brokerage_positions
+      )
+    end
+  end
+
+  defp snapshot_fetched_at(%{"fetched_at" => stamp}) when is_binary(stamp),
+    do: parse_datetime(stamp)
+
+  defp snapshot_fetched_at(_snap), do: nil
+
+  defp detail_fetched_at(%{"detail_at" => stamp}) when is_binary(stamp),
+    do: parse_datetime(stamp)
+
+  defp detail_fetched_at(_account), do: nil
 
   defp detail_error({:error, {:robinhood, msg}}), do: msg
   defp detail_error({:error, :bad_snapshot}), do: "unreadable response"
@@ -1684,27 +2402,131 @@ defmodule BusterClawWeb.TradingLive do
 
     cond do
       eligible == [] ->
-        :hidden
+        %{
+          orders: [],
+          note: "no supported included accounts",
+          state: DataState.unavailable(:no_supported_accounts, source: :brokerage_orders)
+        }
 
       loaded == [] ->
-        %{orders: [], note: "open an account chip to load its trades"}
+        %{
+          orders: [],
+          note: "0 of #{length(eligible)} accounts loaded",
+          state: DataState.unavailable(:not_loaded, source: :brokerage_orders)
+        }
 
       length(loaded) < length(eligible) ->
-        %{orders: orders, note: "from #{length(loaded)} of #{length(eligible)} accounts"}
+        %{
+          orders: orders,
+          note: "partial · #{length(loaded)} of #{length(eligible)} accounts",
+          state:
+            DataState.unavailable(:partial,
+              data: orders,
+              as_of: oldest_detail_at(loaded),
+              source: :brokerage_orders
+            )
+        }
 
       true ->
-        %{orders: orders, note: nil}
+        %{orders: orders, note: nil, state: activity_dataset_state(orders, loaded)}
     end
   end
 
   defp activity_rows(_accounts, _excluded, selected, detail_state) do
-    if detail_state in [:unsupported, :loading] or match?({:error, _}, detail_state) do
-      :hidden
+    cond do
+      detail_state == :loading ->
+        %{
+          orders: [],
+          note: "loading selected account",
+          state: DataState.loading(nil, source: :brokerage_orders)
+        }
+
+      detail_state in [:unsupported, :ambiguous] or match?({:error, _}, detail_state) ->
+        %{
+          orders: [],
+          note: "selected account order history unavailable",
+          state: DataState.unavailable(:not_readable, source: :brokerage_orders)
+        }
+
+      true ->
+        orders = selected["orders"] |> List.wrap() |> Enum.map(&{&1, selected["label"]})
+
+        %{
+          orders: orders,
+          note: nil,
+          state: activity_dataset_state(orders, [selected])
+        }
+    end
+  end
+
+  defp activity_dataset_state(orders, accounts) do
+    as_of = oldest_detail_at(accounts)
+    stale? = datetime_stale?(as_of)
+
+    if orders == [] and not stale? do
+      DataState.confirmed_empty(as_of: as_of, source: :brokerage_orders)
     else
+      DataState.cached(orders, stale?, as_of: as_of, source: :brokerage_orders)
+    end
+  end
+
+  defp oldest_detail_at(accounts) do
+    accounts
+    |> Enum.map(&detail_fetched_at/1)
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      dates -> Enum.min(dates, DateTime)
+    end
+  end
+
+  defp activity_order_sections(orders) do
+    {fills, other} =
+      Enum.split_with(orders, fn {order, _account_label} -> order["state"] == "filled" end)
+
+    [
+      {"Orders (not filled)", other},
+      {"Fills (from filled-order status)", fills}
+    ]
+  end
+
+  defp transfer_activity(accounts, excluded, selected) do
+    keys =
+      case selected do
+        nil ->
+          accounts
+          |> Enum.map(&Trading.account_key/1)
+          |> Enum.reject(&(is_nil(&1) or &1 in excluded))
+
+        account ->
+          List.wrap(Trading.account_key(account))
+      end
+
+    if keys == [] do
       %{
-        orders: selected["orders"] |> List.wrap() |> Enum.map(&{&1, selected["label"]}),
-        note: nil
+        rows: [],
+        state: DataState.unavailable(:no_identifiable_accounts, source: :manual_transfer_ledger)
       }
+    else
+      rows =
+        Portfolio.all_flows()
+        |> Enum.filter(&(&1.account_key in keys))
+        |> Enum.sort_by(& &1.occurred_on, {:desc, Date})
+        |> Enum.take(8)
+
+      state =
+        case rows do
+          [] ->
+            DataState.confirmed_empty(source: :manual_transfer_ledger)
+
+          [latest | _] ->
+            DataState.fresh(rows,
+              as_of: latest.occurred_on,
+              source: :manual_transfer_ledger
+            )
+        end
+
+      %{rows: rows, state: state}
     end
   end
 
@@ -1717,13 +2539,6 @@ defmodule BusterClawWeb.TradingLive do
       _ -> Elixir.Calendar.strftime(date, "%a %b %-d")
     end
   end
-
-  defp earnings_asof({:ok, %{fetched_at: at, stale?: stale?}}) do
-    prefix = if stale?, do: "stale · ", else: ""
-    "#{prefix}as of #{relative_time(at)}"
-  end
-
-  defp earnings_asof(_summary), do: ""
 
   defp money_cents(cents) when is_integer(cents), do: money(cents / 100)
   defp money_cents(_cents), do: "—"
@@ -1741,10 +2556,6 @@ defmodule BusterClawWeb.TradingLive do
   defp position_day_class(nil), do: "text-base-content/40"
   defp position_day_class(pct) when pct < 0, do: "text-error"
   defp position_day_class(_pct), do: "text-success"
-
-  defp prices_as_of_label({:quotes, at}), do: "prices as of #{relative_time(at)}"
-  defp prices_as_of_label({:bars, day}), do: "prices from #{Date.to_iso8601(day)} close"
-  defp prices_as_of_label(_other), do: ""
 
   # An index level, not a dollar amount — no currency mark.
   defp index_price(price) when is_number(price),
@@ -1796,20 +2607,55 @@ defmodule BusterClawWeb.TradingLive do
 
   defp order_when(_order), do: ""
 
-  defp card_asof(%{"fetched_at" => stamp}) when is_binary(stamp) do
-    case DateTime.from_iso8601(stamp) do
-      {:ok, at, _} -> "as of #{relative_time(at)}"
-      _ -> ""
-    end
-  end
-
-  defp card_asof(_snap), do: ""
-
   defp card_error({:error, {:robinhood, msg}, _prev}), do: msg
   defp card_error({:error, :bad_snapshot, _prev}), do: "unreadable snapshot"
   defp card_error({:error, {:agent_exit, status}, _prev}), do: "agent exited #{status}"
   defp card_error({:error, :no_agent_cli, _prev}), do: "Claude Code CLI not found"
   defp card_error({:error, _reason, _prev}), do: "agent run failed"
+
+  defp dataset_label(%DataState{status: :loading, as_of: nil}, label),
+    do: "#{label}: loading"
+
+  defp dataset_label(%DataState{status: :loading, as_of: as_of}, label),
+    do: "#{label}: loading · showing #{format_data_time(as_of)}"
+
+  defp dataset_label(%DataState{status: :fresh, as_of: as_of}, label),
+    do: "#{label}: fresh#{data_time_label(as_of)}"
+
+  defp dataset_label(%DataState{status: :stale, as_of: as_of}, label),
+    do: "#{label}: stale#{data_time_label(as_of)}"
+
+  defp dataset_label(%DataState{status: :unavailable}, label),
+    do: "#{label}: unavailable"
+
+  defp dataset_label(%DataState{status: :confirmed_empty, as_of: as_of}, label),
+    do: "#{label}: confirmed empty#{data_time_label(as_of)}"
+
+  defp dataset_time_suffix(%DataState{as_of: nil}), do: ""
+  defp dataset_time_suffix(%DataState{as_of: as_of}), do: "as of #{format_data_time(as_of)}"
+
+  defp row_price_label(%DataState{status: status, source: source, as_of: as_of}) do
+    source_label = if source == :quotes, do: "quote", else: "close"
+    "#{status} #{source_label}#{data_time_label(as_of)}"
+  end
+
+  defp data_time_label(nil), do: ""
+  defp data_time_label(as_of), do: " · as of #{format_data_time(as_of)}"
+
+  defp format_data_time(%DateTime{} = at), do: relative_time(at)
+  defp format_data_time(%Date{} = day), do: Date.to_iso8601(day)
+
+  defp parse_datetime(stamp) do
+    case DateTime.from_iso8601(stamp) do
+      {:ok, at, _} -> at
+      _ -> nil
+    end
+  end
+
+  defp datetime_stale?(nil), do: true
+
+  defp datetime_stale?(%DateTime{} = at),
+    do: DateTime.diff(DateTime.utc_now(), at, :minute) >= @detail_stale_min
 
   # A coarse relative timestamp ("3m", "2h", "5d"); older than a week falls back
   # to a short date. Stamps are UTC; so is utc_now.

@@ -733,6 +733,8 @@ defmodule BusterClaw.Portfolio do
   # Position costs (TRADING_TAB_ROADMAP Phase 3)
   # ---------------------------------------------------------------------------
 
+  @costs_refresh_key "portfolio_costs_refreshed_at"
+
   @doc """
   Fetch and store one account's positions-with-cost-basis, replacing whatever
   was stored for it. Returns `{:ok, count}` or `{:error, reason}`.
@@ -774,8 +776,12 @@ defmodule BusterClaw.Portfolio do
       end)
     end)
     |> case do
-      {:ok, count} -> count
-      {:error, _reason} -> 0
+      {:ok, count} ->
+        mark_costs_refreshed(account_key, now)
+        count
+
+      {:error, _reason} ->
+        0
     end
   end
 
@@ -834,9 +840,40 @@ defmodule BusterClaw.Portfolio do
       |> Repo.all()
       |> MapSet.new()
 
+    confirmed = costs_refreshes() |> Map.keys() |> MapSet.new()
     excluded = excluded_accounts()
 
-    Enum.reject(candidate_keys, &(&1 in excluded or MapSet.member?(have, &1)))
+    Enum.reject(
+      candidate_keys,
+      &(&1 in excluded or MapSet.member?(have, &1) or MapSet.member?(confirmed, &1))
+    )
+  end
+
+  @doc "When an account's positions/cost basis was last successfully refreshed."
+  def costs_refreshed_at(account_key) when is_binary(account_key) do
+    with stamp when is_binary(stamp) <- Map.get(costs_refreshes(), account_key),
+         {:ok, at, _} <- DateTime.from_iso8601(stamp) do
+      at
+    else
+      _ -> nil
+    end
+  end
+
+  defp mark_costs_refreshed(account_key, %DateTime{} = at) do
+    refreshed =
+      costs_refreshes()
+      |> Map.put(account_key, DateTime.to_iso8601(at))
+
+    Settings.put(@costs_refresh_key, Jason.encode!(refreshed))
+  end
+
+  defp costs_refreshes do
+    with raw when is_binary(raw) <- Settings.get(@costs_refresh_key),
+         {:ok, refreshed} when is_map(refreshed) <- Jason.decode(raw) do
+      Map.filter(refreshed, fn {key, stamp} -> is_binary(key) and is_binary(stamp) end)
+    else
+      _ -> %{}
+    end
   end
 
   # ---------------------------------------------------------------------------

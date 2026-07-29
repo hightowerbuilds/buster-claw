@@ -22,6 +22,10 @@ defmodule BusterClawWeb.TradingLiveTest do
     # renders honestly; individual tests override with richer fetchers.
     prev_fetcher = Application.get_env(:buster_claw, :trading_snapshot_fetcher)
     prev_detail = Application.get_env(:buster_claw, :trading_detail_fetcher)
+    prev_review_broker = Application.get_env(:buster_claw, :trading_order_review_broker)
+    prev_order_broker = Application.get_env(:buster_claw, :trading_order_broker)
+    prev_order_account = Application.get_env(:buster_claw, :trading_order_account)
+    prev_order_policy = Application.get_env(:buster_claw, :trading_order_policy)
 
     Application.put_env(:buster_claw, :trading_snapshot_fetcher, fn ->
       {:error, {:robinhood, "disabled in test"}}
@@ -36,6 +40,10 @@ defmodule BusterClawWeb.TradingLiveTest do
       Application.put_env(:buster_claw, :agent_cli, prev_cli)
       Application.put_env(:buster_claw, :trading_snapshot_fetcher, prev_fetcher)
       Application.put_env(:buster_claw, :trading_detail_fetcher, prev_detail)
+      restore_env(:trading_order_review_broker, prev_review_broker)
+      restore_env(:trading_order_broker, prev_order_broker)
+      restore_env(:trading_order_account, prev_order_account)
+      restore_env(:trading_order_policy, prev_order_policy)
       File.rm_rf(root)
     end)
 
@@ -48,6 +56,11 @@ defmodule BusterClawWeb.TradingLiveTest do
 
       assert html =~ "trading-read-only-banner"
       assert html =~ "Buster Claw cannot place, amend, or cancel Robinhood orders"
+      assert html =~ "Stop interrupts the local assistant run only"
+      assert html =~ ~s(id="trading-order-lane")
+      assert html =~ ~s(id="trading-order-sealed")
+      assert html =~ "Writes remain sealed"
+      assert html =~ "End-of-day portfolio monitor"
       assert html =~ "Read-only portfolio assistant"
       assert html =~ "Ask about your portfolio"
       refute html =~ "check your mail"
@@ -61,6 +74,147 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ ~s(phx-hook="SplitResizer")
       assert html =~ ~s(data-resize-var="--trading-left")
       assert html =~ "data-split-divider"
+    end
+
+    test "structured order lane binds exact confirmation and records submission", %{conn: conn} do
+      Application.put_env(
+        :buster_claw,
+        :trading_order_broker,
+        BusterClaw.TradingOrderBrokerFake
+      )
+
+      Application.put_env(:buster_claw, :trading_order_account, %{
+        id: "agentic-account-opaque",
+        label: "Agentic Investing"
+      })
+
+      Application.put_env(:buster_claw, :trading_order_policy,
+        max_notional_cents: 100_000,
+        max_concentration_bps: 2_500,
+        max_quote_age_seconds: 30,
+        blocked_symbols: [],
+        allow_market_orders_outside_hours: true
+      )
+
+      {:ok, view, html} = live(conn, ~p"/trading")
+
+      assert html =~ "only the confirmed structured lane can place an order"
+      assert has_element?(view, "#trading-order-form")
+      assert has_element?(view, "#trading-order-account", "Agentic Investing")
+
+      html =
+        view
+        |> form("#trading-order-form", %{
+          "order" => %{
+            "side" => "buy",
+            "symbol" => "AAPL",
+            "amount_type" => "quantity",
+            "amount" => "2",
+            "order_type" => "limit",
+            "limit_price" => "199.25",
+            "time_in_force" => "day"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ ~s(id="trading-order-preview")
+      assert html =~ "Exact broker-reviewed payload"
+      assert html =~ "$398.50"
+
+      [intent | _rest] = BusterClaw.TradingOrders.recent()
+      phrase = BusterClaw.TradingOrders.confirmation_phrase(intent)
+      assert html =~ phrase
+
+      view
+      |> form("#trading-order-confirmation-form", %{
+        "confirmation" => %{"phrase" => phrase <> " altered"}
+      })
+      |> render_submit()
+
+      assert has_element?(view, "#trading-order-preview")
+      assert BusterClaw.TradingOrders.get(intent.public_id).status == "previewed"
+
+      html =
+        view
+        |> form("#trading-order-confirmation-form", %{
+          "confirmation" => %{"phrase" => phrase}
+        })
+        |> render_submit()
+
+      assert html =~ ~s(id="trading-order-result")
+      assert html =~ "Submission recorded"
+      assert BusterClaw.TradingOrders.get(intent.public_id).status == "accepted"
+    end
+
+    test "review-only lane shows broker facts but cannot submit through a forged event", %{
+      conn: conn
+    } do
+      Application.put_env(
+        :buster_claw,
+        :trading_order_review_broker,
+        BusterClaw.TradingOrderBrokerFake
+      )
+
+      Application.put_env(
+        :buster_claw,
+        :trading_order_broker,
+        BusterClaw.TradingOrders.Broker.Disabled
+      )
+
+      previous_observer =
+        Application.get_env(:buster_claw, :trading_order_broker_observer)
+
+      Application.put_env(:buster_claw, :trading_order_broker_observer, self())
+
+      on_exit(fn ->
+        restore_env(:trading_order_broker_observer, previous_observer)
+      end)
+
+      Application.put_env(:buster_claw, :trading_order_account, %{
+        id: "agentic-account-opaque",
+        label: "Agentic Investing"
+      })
+
+      Application.put_env(:buster_claw, :trading_order_policy,
+        max_notional_cents: 100_000,
+        max_concentration_bps: 2_500,
+        max_quote_age_seconds: 30,
+        blocked_symbols: [],
+        allow_market_orders_outside_hours: true
+      )
+
+      {:ok, view, html} = live(conn, ~p"/trading")
+
+      assert html =~ "Review-only mode"
+      assert html =~ "Review ready"
+      refute has_element?(view, "#trading-order-submit-button")
+
+      view
+      |> form("#trading-order-form", %{
+        "order" => %{
+          "side" => "buy",
+          "symbol" => "AAPL",
+          "amount_type" => "quantity",
+          "amount" => "2",
+          "order_type" => "limit",
+          "limit_price" => "199.25",
+          "time_in_force" => "day"
+        }
+      })
+      |> render_submit()
+
+      assert_received {:broker_reviewed, _request}
+      assert has_element?(view, "#trading-order-review-only")
+      assert has_element?(view, "#trading-order-cancel-button")
+      refute has_element?(view, "#trading-order-confirmation-form")
+      refute has_element?(view, "#trading-order-submit-button")
+
+      render_submit(view, "trading_order_confirm", %{
+        "confirmation" => %{"phrase" => "forged"}
+      })
+
+      refute_received {:broker_submitted, _public_id, _client_order_id}
+      assert has_element?(view, "#trading-order-error")
     end
 
     test "a broadcast message renders live, and the transcript survives a remount",
@@ -112,6 +266,8 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "Crypto"
       assert html =~ "$915.88"
       assert html =~ "$3.38"
+      assert html =~ "Account balances: fresh"
+      assert html =~ "Performance: fresh"
       refute html =~ "VOO"
 
       # Selecting an account is what starts its holdings fetch, and until it
@@ -154,6 +310,32 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert {:ok, %{"accounts" => accounts}} = BusterClaw.Trading.cached_snapshot()
       assert length(accounts) == 3
       assert Enum.any?(accounts, &BusterClaw.Trading.detail_loaded?/1)
+    end
+
+    test "forged dashboard values cannot change account, exclusion, range, or symbol state",
+         %{conn: conn} do
+      stub_trading_fetchers()
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_async(view)
+
+      render_click(view, "trading_select_account", %{"id" => "deleted-or-forged"})
+
+      assert has_element?(view, "button.border-primary", "All")
+
+      render_click(view, "trading_toggle_excluded", %{"id" => "not-an-account"})
+      assert BusterClaw.Portfolio.excluded_accounts() == []
+
+      render_click(view, "trading_select_range", %{"range" => "1Y"})
+      render_click(view, "trading_select_range", %{"range" => "DROP TABLE"})
+
+      assert has_element?(view, "button.border-primary", "1Y")
+
+      render_click(view, "trading_view_symbol", %{"symbol" => "NOTHELD"})
+      render_click(view, "trading_symbol_range", %{"range" => "FOREVER"})
+      render_click(view, "trading_symbol_mode", %{"mode" => "execute"})
+
+      refute has_element?(view, ~s([id^="symbol-plot-"]))
     end
 
     test "an unexplained jump prompts, and marking it as a deposit clears it", %{conn: conn} do
@@ -199,6 +381,21 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "trading-anomaly-prompt"
       assert Portfolio.flows("6587") == []
 
+      # Hidden fields are client input too. A forged account key must not move
+      # the prompt's flow into a different account ledger.
+      html =
+        view
+        |> element("#trading-anomaly-prompt form")
+        |> render_submit(%{
+          "kind" => "deposit",
+          "amount" => "500.00",
+          "account_key" => "4821"
+        })
+
+      assert html =~ "trading-anomaly-prompt"
+      assert Portfolio.flows("6587") == []
+      assert Portfolio.flows("4821") == []
+
       # Answer it: a $500 deposit.
       html =
         view
@@ -206,6 +403,8 @@ defmodule BusterClawWeb.TradingLiveTest do
         |> render_submit(%{"kind" => "deposit", "amount" => "500.00"})
 
       refute html =~ "trading-anomaly-prompt"
+      assert html =~ "Manual transfer reconciliations"
+      assert html =~ "deposit · account 6587"
 
       # The gain is now the $0 that was actually earned, while the value stands.
       assert [_yesterday, today] = Portfolio.gain_series("6587")
@@ -439,6 +638,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       # No prev_close and no given change: a written dash, never a zero.
       assert html =~ "NDX"
       assert html =~ "as of"
+      assert html =~ "Market indexes: fresh"
     end
 
     test "positions render from the cache with real unrealized P&L and no fetch",
@@ -486,7 +686,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "+1.60%"
       # The sparkline drew from cached closes.
       assert html =~ "<polyline"
-      assert html =~ "prices as of"
+      assert html =~ "Prices: fresh"
     end
 
     test "a missing cost basis says so — never $0", %{conn: conn} do
@@ -518,8 +718,24 @@ defmodule BusterClawWeb.TradingLiveTest do
       # HEEx wraps between the count interpolation and its noun.
       assert html =~ "Cost basis not loaded for 2"
       assert html =~ ~r/2\s+accounts/
+      assert html =~ "Holdings: unavailable"
       assert html =~ "one agent run per account"
       assert html =~ ~r/>\s*Load\s*</
+    end
+
+    test "a successful empty positions response is confirmed and timestamped", %{conn: conn} do
+      alias BusterClaw.Portfolio
+
+      Portfolio.store_costs("6587", [])
+      Portfolio.store_costs("4821", [])
+      stub_trading_fetchers()
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      html = render_async(view)
+
+      assert html =~ "Holdings: confirmed empty"
+      assert html =~ "No open positions in the confirmed brokerage response"
+      refute html =~ "Cost basis not loaded"
     end
 
     test "Load fetches costs for exactly the missing, eligible accounts", %{conn: conn} do
@@ -648,6 +864,11 @@ defmodule BusterClawWeb.TradingLiveTest do
 
     test "switching symbols during a bar fetch hands off to the current symbol",
          %{conn: conn} do
+      BusterClaw.Portfolio.store_costs("6587", [
+        %{symbol: "AAAA", quantity: 1.0, lots: 1, cost_basis: 10.0},
+        %{symbol: "BBBB", quantity: 1.0, lots: 1, cost_basis: 10.0}
+      ])
+
       test_pid = self()
 
       Application.put_env(:buster_claw, :trading_bars_fetcher, fn symbol, start, _interval ->
@@ -751,17 +972,20 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "GOOGL"
       assert html =~ "reports"
       assert html =~ "after close"
+      assert html =~ "Calendar: fresh"
 
       # And the empty state is worded, not silent (the done-when).
       BusterClaw.MarketData.store_quotes(%{quotes: [], indexes: [], earnings: []})
       {:ok, view2, _html} = live(conn, ~p"/trading")
       html = render_async(view2)
       assert html =~ "No earnings scheduled for your holdings"
+      assert html =~ "Calendar: confirmed empty"
 
       BusterClaw.Settings.put("market_quotes_snapshot", nil)
       {:ok, view3, _html} = live(conn, ~p"/trading")
       html = render_async(view3)
       assert html =~ "Earnings unavailable"
+      assert html =~ "Calendar: unavailable"
     end
 
     test "the activity panel merges loaded accounts and names the gap", %{conn: conn} do
@@ -779,6 +1003,10 @@ defmodule BusterClawWeb.TradingLiveTest do
         {:ok, %{snap | "accounts" => accounts}}
       end)
 
+      Application.put_env(:buster_claw, :trading_detail_fetcher, fn last4 ->
+        {:ok, detail_for(last4)}
+      end)
+
       {:ok, view, _html} = live(conn, ~p"/trading")
       html = render_async(view)
 
@@ -786,8 +1014,19 @@ defmodule BusterClawWeb.TradingLiveTest do
       # The loaded account's order, tagged with its label.
       assert html =~ "VOO"
       assert html =~ "Investing"
+      assert html =~ "Fills (from filled-order status)"
+      assert html =~ "Manual transfer reconciliations"
+      assert html =~ "Dividends"
+      assert html =~ "Market movement"
       # The gap is named: one of two holdings-capable accounts is loaded.
-      assert html =~ ~r/from 1 of 2\s+accounts/
+      assert html =~ ~r/partial · 1 of 2\s+accounts/
+      refute html =~ "No trades yet"
+
+      render_click(view, "trading_select_account", %{"id" => "••••4821"})
+      html = render_async(view)
+
+      assert html =~ "Orders: confirmed empty"
+      assert html =~ "No trades in the confirmed brokerage response"
     end
 
     test "a stage-1 reading lands in the portfolio ledger", %{conn: conn} do
@@ -1043,9 +1282,12 @@ defmodule BusterClawWeb.TradingLiveTest do
       render_click(view, "trading_refresh", %{})
       html = render_async(view)
 
-      # Falls back to the agentic account rather than rendering an empty detail.
-      assert html =~ "Agentic account · writes disabled"
-      assert html =~ "$3.38"
+      # A vanished selection returns to the explicit combined view. It must not
+      # quietly substitute a different account and make that account look chosen.
+      assert has_element?(view, "button.border-primary", "All")
+
+      assert html =~ "$903.38"
+      refute html =~ "Agentic account · writes disabled"
       refute html =~ "Holdings unavailable"
     end
 
@@ -1077,6 +1319,7 @@ defmodule BusterClawWeb.TradingLiveTest do
 
       assert html =~ "Refresh failed: disabled in test"
       assert html =~ "$42.00"
+      assert html =~ "Account balances: stale"
     end
   end
 
@@ -1162,4 +1405,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       {:ok, detail_for(last4)}
     end)
   end
+
+  defp restore_env(key, nil), do: Application.delete_env(:buster_claw, key)
+  defp restore_env(key, value), do: Application.put_env(:buster_claw, key, value)
 end
