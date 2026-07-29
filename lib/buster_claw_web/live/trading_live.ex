@@ -28,12 +28,7 @@ defmodule BusterClawWeb.TradingLive do
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
   alias BusterClaw.DataState
   alias BusterClaw.Portfolio
-  alias BusterClaw.SystemBrowser
   alias BusterClaw.Trading
-  alias BusterClaw.TradingBroker
-  alias BusterClaw.TradingBroker.MCPClient
-  alias BusterClaw.TradingOrders
-  alias BusterClawWeb.TradingBrokerOAuth
 
   # The combined-total chip. A sentinel rather than nil so the selection is
   # always an explicit choice, and so it round-trips through phx-value-id.
@@ -50,10 +45,6 @@ defmodule BusterClawWeb.TradingLive do
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: Chat.subscribe(Trading.conv_id())
-
-    order_ready = TradingOrders.review_ready?()
-    submission_ready = TradingOrders.execution_ready?()
-    order_account = order_account()
 
     socket =
       socket
@@ -94,16 +85,6 @@ defmodule BusterClawWeb.TradingLive do
       # nil | {symbol, interval, requested_from}. Keeping the request identity
       # prevents an obsolete completion from clearing a newer loading state.
       |> assign(:symbol_bars_request, nil)
-      |> assign(:order_lane_ready, order_ready)
-      |> assign(:order_submission_ready, submission_ready)
-      |> assign(:order_account, order_account)
-      |> assign(:order_form, order_form())
-      |> assign(:order_confirmation_form, confirmation_form())
-      |> assign(:order_workflow, :idle)
-      |> assign(:broker_connection, TradingBroker.connection())
-      |> assign(:broker_account, TradingBroker.agentic_account())
-      |> assign(:broker_auth_url, nil)
-      |> assign(:broker_note, nil)
       |> stream_configure(:chat_messages, dom_id: &"chat-msg-#{&1.id}")
       |> load_chat_history()
 
@@ -128,7 +109,6 @@ defmodule BusterClawWeb.TradingLive do
 
     case String.trim(text) do
       "" -> {:noreply, socket}
-      "/order " <> _rest = command -> {:noreply, preview_chat_order(socket, command)}
       trimmed -> {:noreply, dispatch_chat(socket, trimmed)}
     end
   end
@@ -145,107 +125,6 @@ defmodule BusterClawWeb.TradingLive do
   def handle_event("cut_run", _params, socket) do
     Chat.interrupt(Trading.conv_id())
     {:noreply, push_event(socket, "bc:stop_speak", %{})}
-  end
-
-  # ---------------------------------------------------------------------------
-  # Deterministic order lane events
-  # ---------------------------------------------------------------------------
-
-  def handle_event("trading_order_preview", %{"order" => params}, socket) do
-    {:noreply, preview_structured_order(socket, params)}
-  end
-
-  def handle_event(
-        "trading_order_confirm",
-        %{"confirmation" => %{"phrase" => phrase}},
-        %{
-          assigns: %{
-            order_submission_ready: true,
-            order_workflow: {:preview, preview}
-          }
-        } = socket
-      ) do
-    intent = preview.intent
-
-    case TradingOrders.confirm_and_submit(intent.public_id, intent.preview_digest, phrase) do
-      {:ok, submitted} ->
-        {:noreply,
-         socket
-         |> assign(:order_workflow, {:result, submitted})
-         |> assign(:order_confirmation_form, confirmation_form())}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> assign(:order_confirmation_form, confirmation_form())
-         |> push_msg(:error, "Order confirmation refused: #{order_error(reason)}.")}
-    end
-  end
-
-  def handle_event("trading_order_confirm", _params, socket) do
-    {:noreply, assign(socket, :order_workflow, {:error, :preview_not_active})}
-  end
-
-  def handle_event(
-        "trading_order_cancel",
-        _params,
-        %{assigns: %{order_workflow: {:preview, preview}}} = socket
-      ) do
-    _result = TradingOrders.cancel_preview(preview.intent.public_id)
-
-    {:noreply,
-     socket
-     |> assign(:order_workflow, :idle)
-     |> assign(:order_confirmation_form, confirmation_form())}
-  end
-
-  def handle_event("trading_order_cancel", _params, socket), do: {:noreply, socket}
-
-  def handle_event("trading_broker_connect", _params, socket) do
-    case TradingBrokerOAuth.authorization_url() do
-      {:ok, url} ->
-        note =
-          case SystemBrowser.open(url) do
-            {:ok, :opened} ->
-              "Continue in Robinhood, approve access, then return here and select Check."
-
-            {:error, _reason} ->
-              "Could not open the system browser. Use the manual authorization link below."
-          end
-
-        {:noreply,
-         socket
-         |> assign(:broker_auth_url, url)
-         |> assign(:broker_note, note)
-         |> refresh_broker_connection()}
-
-      {:error, reason} ->
-        {:noreply,
-         assign(
-           socket,
-           :broker_note,
-           "Could not begin direct authorization: #{broker_error(reason)}."
-         )}
-    end
-  end
-
-  def handle_event("trading_broker_check", _params, socket) do
-    case MCPClient.health() do
-      {:ok, _health} ->
-        {:noreply,
-         socket
-         |> assign(
-           :broker_note,
-           "Direct MCP authentication, tools, and account identity verified."
-         )
-         |> refresh_broker_connection()}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> assign(:broker_note, "Direct connection check failed: #{broker_error(reason)}.")
-         |> refresh_broker_connection()}
-    end
   end
 
   # ---------------------------------------------------------------------------
@@ -1269,108 +1148,6 @@ defmodule BusterClawWeb.TradingLive do
   defp put_snapshot(_other, snap), do: {:ok, snap}
 
   # ---------------------------------------------------------------------------
-  # Deterministic order lane
-  # ---------------------------------------------------------------------------
-
-  defp preview_chat_order(socket, command) do
-    with true <- socket.assigns.order_lane_ready,
-         %{id: account_id} <- socket.assigns.order_account,
-         command <- ensure_command_account(command, account_id),
-         {:ok, params} <- TradingOrders.parse_command(command) do
-      preview_structured_order(socket, params)
-    else
-      false ->
-        assign(socket, :order_workflow, {:error, :structured_broker_adapter_not_configured})
-
-      _error ->
-        assign(socket, :order_workflow, {:error, :invalid_order_command})
-    end
-  end
-
-  defp preview_structured_order(socket, params) when is_map(params) do
-    socket = assign(socket, :order_form, to_form(params, as: :order))
-
-    with true <- socket.assigns.order_lane_ready,
-         %{id: account_id, label: account_label} <- socket.assigns.order_account,
-         attrs <-
-           params
-           |> Map.put("account_id", account_id)
-           |> Map.put("account_label", account_label),
-         {:ok, draft} <- TradingOrders.create_draft(attrs),
-         {:ok, preview} <- TradingOrders.preview(draft.public_id) do
-      socket
-      |> assign(:order_workflow, {:preview, preview})
-      |> assign(:order_confirmation_form, confirmation_form())
-    else
-      false ->
-        assign(socket, :order_workflow, {:error, :structured_broker_adapter_not_configured})
-
-      {:error, reason} ->
-        assign(socket, :order_workflow, {:error, reason})
-
-      _error ->
-        assign(socket, :order_workflow, {:error, :invalid_order})
-    end
-  end
-
-  defp preview_structured_order(socket, _params),
-    do: assign(socket, :order_workflow, {:error, :invalid_order})
-
-  defp ensure_command_account(command, account_id) do
-    if String.contains?(command, " account="),
-      do: command,
-      else: command <> " account=" <> account_id
-  end
-
-  defp order_account do
-    case TradingOrders.configured_account() do
-      {:ok, account} -> account
-      {:error, _reason} -> nil
-    end
-  end
-
-  defp order_form(params \\ %{}) do
-    defaults = %{
-      "side" => "buy",
-      "symbol" => "",
-      "amount_type" => "quantity",
-      "amount" => "",
-      "order_type" => "limit",
-      "limit_price" => "",
-      "time_in_force" => "day"
-    }
-
-    to_form(Map.merge(defaults, params), as: :order)
-  end
-
-  defp confirmation_form, do: to_form(%{"phrase" => ""}, as: :confirmation)
-
-  defp order_error(reason) when is_atom(reason),
-    do: reason |> Atom.to_string() |> String.replace("_", " ")
-
-  defp order_error(_reason), do: "invalid order confirmation"
-
-  defp refresh_broker_connection(socket) do
-    socket
-    |> assign(:broker_connection, TradingBroker.connection())
-    |> assign(:broker_account, TradingBroker.agentic_account())
-    |> assign(:order_lane_ready, TradingOrders.review_ready?())
-    |> assign(:order_submission_ready, TradingOrders.execution_ready?())
-    |> assign(:order_account, order_account())
-  end
-
-  defp broker_error(reason) when is_atom(reason),
-    do: reason |> Atom.to_string() |> String.replace("_", " ")
-
-  defp broker_error({:broker_oauth_http, status, _error}) when is_integer(status),
-    do: "Robinhood OAuth HTTP #{status}"
-
-  defp broker_error({:broker_mcp_http, status}) when is_integer(status),
-    do: "Robinhood MCP HTTP #{status}"
-
-  defp broker_error(_reason), do: "connection could not be verified"
-
-  # ---------------------------------------------------------------------------
   # Render
   # ---------------------------------------------------------------------------
 
@@ -1390,35 +1167,10 @@ defmodule BusterClawWeb.TradingLive do
           <div class="bc-trading-left flex min-h-0 flex-col gap-2">
             <div
               id="trading-read-only-banner"
-              class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs text-success"
+              class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-success"
             >
-              <p class="font-bold uppercase tracking-wide">
-                <%= cond do %>
-                  <% @order_submission_ready -> %>
-                    AI chat is read-only — only the confirmed structured lane can place an order
-                  <% @order_lane_ready -> %>
-                    Review-only mode — direct broker previews work; submission remains sealed
-                  <% true -> %>
-                    Read-only mode — Buster Claw cannot place, amend, or cancel Robinhood orders
-                <% end %>
-              </p>
-              <p class="pt-0.5 text-[0.68rem] text-base-content/60">
-                Stop interrupts the local assistant run only; it cannot reverse a broker action
-                performed elsewhere.
-              </p>
+              Read-only mode — Buster Claw cannot place, amend, or cancel Robinhood orders
             </div>
-            <BusterClawWeb.TradingOrderComponents.order_lane
-              ready={@order_lane_ready}
-              submission_ready={@order_submission_ready}
-              account_label={@order_account && @order_account.label}
-              order_form={@order_form}
-              confirmation_form={@order_confirmation_form}
-              workflow={@order_workflow}
-              broker_connection={@broker_connection}
-              broker_account={@broker_account}
-              broker_auth_url={@broker_auth_url}
-              broker_note={@broker_note}
-            />
             <%!-- First-run setup: the OAuth handshake is interactive by nature
                   (a browser window), so it happens once in a terminal — the
                   keychain tokens are then reused by every headless turn. --%>

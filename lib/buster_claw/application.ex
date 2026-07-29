@@ -41,7 +41,6 @@ defmodule BusterClaw.Application do
         telephony_drain_child(),
         notifications_scheduler_child(),
         portfolio_recorder_child(),
-        trading_order_reconciler_child(),
         # Per-conversation chat: a Registry for {:via} lookup by conv_id and a
         # DynamicSupervisor that starts one Chat process per open conversation,
         # lazily on the first message. Always on (cheap; tests use them too).
@@ -187,15 +186,6 @@ defmodule BusterClaw.Application do
   defp portfolio_recorder_child do
     if Application.get_env(:buster_claw, :portfolio_recorder_enabled, true) do
       BusterClaw.Portfolio.Recorder
-    end
-  end
-
-  # The structured equity-order recovery pump. It remains inert while the
-  # fail-closed broker adapter is configured, and is disabled in tests unless a
-  # suite starts an instance deliberately.
-  defp trading_order_reconciler_child do
-    if Application.get_env(:buster_claw, :trading_order_reconciler_enabled, true) do
-      BusterClaw.TradingOrders.Reconciler
     end
   end
 

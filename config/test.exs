@@ -36,7 +36,6 @@ config :buster_claw, BusterClawWeb.Endpoint,
 
 config :buster_claw, :search_req_options, plug: {Req.Test, BusterClaw.SearchHTTP}
 config :buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHTTP}
-config :buster_claw, :trading_broker_req_options, plug: {Req.Test, BusterClaw.TradingBrokerHTTP}
 
 config :buster_claw, :favicons,
   req_options: [plug: {Req.Test, BusterClaw.FaviconHTTP}],
@@ -62,9 +61,6 @@ config :buster_claw, :notifications_scheduler_enabled, false
 # REAL stage-1 agent run on boot. The Recorder suite starts its own with a
 # stubbed fetcher and drives it via tick_now/1.
 config :buster_claw, :portfolio_recorder_enabled, false
-# The order reconciler is off by default; its suite starts one deliberately
-# against a structured fake broker and drives it with tick_now/1.
-config :buster_claw, :trading_order_reconciler_enabled, false
 config :buster_claw, :telephony_relay_url, "http://relay.test"
 config :buster_claw, :telephony_relay_key, "test-service-role-key"
 # Call-rate limiting is off in tests so command-heavy suites aren't throttled; the

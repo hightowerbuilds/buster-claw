@@ -22,10 +22,6 @@ defmodule BusterClawWeb.TradingLiveTest do
     # renders honestly; individual tests override with richer fetchers.
     prev_fetcher = Application.get_env(:buster_claw, :trading_snapshot_fetcher)
     prev_detail = Application.get_env(:buster_claw, :trading_detail_fetcher)
-    prev_review_broker = Application.get_env(:buster_claw, :trading_order_review_broker)
-    prev_order_broker = Application.get_env(:buster_claw, :trading_order_broker)
-    prev_order_account = Application.get_env(:buster_claw, :trading_order_account)
-    prev_order_policy = Application.get_env(:buster_claw, :trading_order_policy)
 
     Application.put_env(:buster_claw, :trading_snapshot_fetcher, fn ->
       {:error, {:robinhood, "disabled in test"}}
@@ -40,10 +36,6 @@ defmodule BusterClawWeb.TradingLiveTest do
       Application.put_env(:buster_claw, :agent_cli, prev_cli)
       Application.put_env(:buster_claw, :trading_snapshot_fetcher, prev_fetcher)
       Application.put_env(:buster_claw, :trading_detail_fetcher, prev_detail)
-      restore_env(:trading_order_review_broker, prev_review_broker)
-      restore_env(:trading_order_broker, prev_order_broker)
-      restore_env(:trading_order_account, prev_order_account)
-      restore_env(:trading_order_policy, prev_order_policy)
       File.rm_rf(root)
     end)
 
@@ -56,11 +48,6 @@ defmodule BusterClawWeb.TradingLiveTest do
 
       assert html =~ "trading-read-only-banner"
       assert html =~ "Buster Claw cannot place, amend, or cancel Robinhood orders"
-      assert html =~ "Stop interrupts the local assistant run only"
-      assert html =~ ~s(id="trading-order-lane")
-      assert html =~ ~s(id="trading-order-sealed")
-      assert html =~ "Writes remain sealed"
-      assert html =~ "End-of-day portfolio monitor"
       assert html =~ "Read-only portfolio assistant"
       assert html =~ "Ask about your portfolio"
       refute html =~ "check your mail"
@@ -74,147 +61,6 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ ~s(phx-hook="SplitResizer")
       assert html =~ ~s(data-resize-var="--trading-left")
       assert html =~ "data-split-divider"
-    end
-
-    test "structured order lane binds exact confirmation and records submission", %{conn: conn} do
-      Application.put_env(
-        :buster_claw,
-        :trading_order_broker,
-        BusterClaw.TradingOrderBrokerFake
-      )
-
-      Application.put_env(:buster_claw, :trading_order_account, %{
-        id: "agentic-account-opaque",
-        label: "Agentic Investing"
-      })
-
-      Application.put_env(:buster_claw, :trading_order_policy,
-        max_notional_cents: 100_000,
-        max_concentration_bps: 2_500,
-        max_quote_age_seconds: 30,
-        blocked_symbols: [],
-        allow_market_orders_outside_hours: true
-      )
-
-      {:ok, view, html} = live(conn, ~p"/trading")
-
-      assert html =~ "only the confirmed structured lane can place an order"
-      assert has_element?(view, "#trading-order-form")
-      assert has_element?(view, "#trading-order-account", "Agentic Investing")
-
-      html =
-        view
-        |> form("#trading-order-form", %{
-          "order" => %{
-            "side" => "buy",
-            "symbol" => "AAPL",
-            "amount_type" => "quantity",
-            "amount" => "2",
-            "order_type" => "limit",
-            "limit_price" => "199.25",
-            "time_in_force" => "day"
-          }
-        })
-        |> render_submit()
-
-      assert html =~ ~s(id="trading-order-preview")
-      assert html =~ "Exact broker-reviewed payload"
-      assert html =~ "$398.50"
-
-      [intent | _rest] = BusterClaw.TradingOrders.recent()
-      phrase = BusterClaw.TradingOrders.confirmation_phrase(intent)
-      assert html =~ phrase
-
-      view
-      |> form("#trading-order-confirmation-form", %{
-        "confirmation" => %{"phrase" => phrase <> " altered"}
-      })
-      |> render_submit()
-
-      assert has_element?(view, "#trading-order-preview")
-      assert BusterClaw.TradingOrders.get(intent.public_id).status == "previewed"
-
-      html =
-        view
-        |> form("#trading-order-confirmation-form", %{
-          "confirmation" => %{"phrase" => phrase}
-        })
-        |> render_submit()
-
-      assert html =~ ~s(id="trading-order-result")
-      assert html =~ "Submission recorded"
-      assert BusterClaw.TradingOrders.get(intent.public_id).status == "accepted"
-    end
-
-    test "review-only lane shows broker facts but cannot submit through a forged event", %{
-      conn: conn
-    } do
-      Application.put_env(
-        :buster_claw,
-        :trading_order_review_broker,
-        BusterClaw.TradingOrderBrokerFake
-      )
-
-      Application.put_env(
-        :buster_claw,
-        :trading_order_broker,
-        BusterClaw.TradingOrders.Broker.Disabled
-      )
-
-      previous_observer =
-        Application.get_env(:buster_claw, :trading_order_broker_observer)
-
-      Application.put_env(:buster_claw, :trading_order_broker_observer, self())
-
-      on_exit(fn ->
-        restore_env(:trading_order_broker_observer, previous_observer)
-      end)
-
-      Application.put_env(:buster_claw, :trading_order_account, %{
-        id: "agentic-account-opaque",
-        label: "Agentic Investing"
-      })
-
-      Application.put_env(:buster_claw, :trading_order_policy,
-        max_notional_cents: 100_000,
-        max_concentration_bps: 2_500,
-        max_quote_age_seconds: 30,
-        blocked_symbols: [],
-        allow_market_orders_outside_hours: true
-      )
-
-      {:ok, view, html} = live(conn, ~p"/trading")
-
-      assert html =~ "Review-only mode"
-      assert html =~ "Review ready"
-      refute has_element?(view, "#trading-order-submit-button")
-
-      view
-      |> form("#trading-order-form", %{
-        "order" => %{
-          "side" => "buy",
-          "symbol" => "AAPL",
-          "amount_type" => "quantity",
-          "amount" => "2",
-          "order_type" => "limit",
-          "limit_price" => "199.25",
-          "time_in_force" => "day"
-        }
-      })
-      |> render_submit()
-
-      assert_received {:broker_reviewed, _request}
-      assert has_element?(view, "#trading-order-review-only")
-      assert has_element?(view, "#trading-order-cancel-button")
-      refute has_element?(view, "#trading-order-confirmation-form")
-      refute has_element?(view, "#trading-order-submit-button")
-
-      render_submit(view, "trading_order_confirm", %{
-        "confirmation" => %{"phrase" => "forged"}
-      })
-
-      refute_received {:broker_submitted, _public_id, _client_order_id}
-      assert has_element?(view, "#trading-order-error")
     end
 
     test "a broadcast message renders live, and the transcript survives a remount",
@@ -1406,6 +1252,4 @@ defmodule BusterClawWeb.TradingLiveTest do
     end)
   end
 
-  defp restore_env(key, nil), do: Application.delete_env(:buster_claw, key)
-  defp restore_env(key, value), do: Application.put_env(:buster_claw, key, value)
 end
