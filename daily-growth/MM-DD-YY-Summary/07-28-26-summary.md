@@ -171,7 +171,8 @@ what follows share this file. Three minutes after that commit the wallets
 subsystem came out (`db10a58`) — the whole context, its four tables, and the
 journal/introduction/chat tightening that fell out of it. Then the evening's own
 arc, which is a build-and-delete: `5ee249f..a8a20e3`, four commits, and the net
-line count is **negative**.
+line count is **negative**. Two more followed once the tab was pointed at the
+real broker (`c52c6f1`, `268ca28`), the second of which corrects the first.
 
 ## 10. The order lane, built and then removed
 
@@ -283,11 +284,107 @@ directory (the exact 07-22 state: exit 1, named cause) and against a real staged
 release (exit 0, `staged 50M release + erts-16.3.1`). A hollow bundle can still
 be built by some path nobody has thought of; it can no longer be built *quietly*.
 
+## 14. Every number on the Trading tab was invented
+
+The operator opened the tab and said none of the accounts were accurate. They
+were not inaccurate. They were fiction.
+
+The cached snapshot held **five accounts; three exist**, totalling **$69,322
+against a real $118**. Four of the five last-fours matched no account at all —
+a Traditional IRA, a Crypto account, and a Margin account that have never
+existed, each with a tidy round cash balance. The real accounts carry *negative*
+cash (−$93.38, −$94.62, unsettled deposits); nothing invented ever does.
+
+Worse than clean fabrication: it was **partly real**. `position_costs` held
+GOOGL 0.25 @ $327.16 and 0.2014 @ $347.57 — exact matches to the broker, to the
+cent — filed under account keys that do not exist, and 6587's QXO position filed
+under a fabricated `4930`. Real tool output wearing an invented identity is far
+harder to spot than a wholly made-up row, because every number you spot-check
+is right.
+
+### The first diagnosis was wrong, and stated as fact
+
+I attributed it to `--strict-mcp-config --mcp-config` shadowing the
+OAuth-bearing registration, ran a two-run A/B that appeared to confirm it,
+removed those flags, and shipped `c52c6f1` describing the cause as verified.
+
+**The A/B changed two flags at once**, against a failure mode that is a coin
+flip. Two runs of a ~50% process is not evidence of anything. The operator's
+next refresh showed no accounts at all, which is what sent me back to measure
+properly:
+
+| flags | model | broker tool calls |
+|---|---|---|
+| `--tools ""` (± strict mcp) | haiku | **0 of 2** |
+| `--tools ""` | default | **0 of 2** |
+| no `--tools`, strict mcp | default | 1 of 1 |
+| no `--tools` | haiku | 1 of 2 |
+
+`--tools ""` does not merely empty the built-in set — it takes the MCP tools
+with it. The init event reports `tools:[]` and no server tool is ever callable.
+Server scoping was never the bug; it is restored.
+
+### The confinement §10 celebrated did not exist
+
+§10 retired the order lane on the grounds that `--tools ""` plus `--allowedTools`
+was already deny-by-default. Half right, and the wrong half matters:
+**`--allowedTools` is an approval list, not a deny list.** Under `dontAsk` a
+built-in merely *absent* from it still runs. Probed directly: asked for `Bash`
+with only the Robinhood tool allowed, got a clean execution and an empty
+`permission_denials`.
+
+So the door was held shut by `--tools ""` alone — the same flag that was
+breaking every read. Removing it to fix the data would have opened the shell to
+the trading surface, and my own previous commit did exactly that for one hour.
+`--disallowedTools` refuses the built-ins by name (same probe: 0 Bash calls) and
+leaves MCP working. Three flags, three distinct jobs: `--mcp-config` scopes which
+servers exist, `--disallowedTools` refuses the built-ins, `--allowedTools`
+pre-approves the reads.
+
+Also retired: `model: "haiku"` on broker reads. It invoked the tool in 1 of 2
+runs and **invented the answer on the miss** rather than reporting a failure.
+
+### What actually saved this
+
+`Trading.verified_result/1`: reads run `--output-format stream-json` and are
+refused unless the stream contains a real `mcp__robinhood__*` tool-use event.
+The stage-1 prompt had *always* said to emit `{"error": ...}` when the tools are
+unavailable. The model ignored it and `parse_snapshot/1` cached well-formed
+fiction, because **no property of a model's text distinguishes a real number
+from an invented one.** A tool-use event does.
+
+That gate is why the operator saw an empty tab instead of a fourth set of
+convincing balances — and it caught *my own bad fix* one commit later. The
+submit path got the same treatment with a distinction that matters more there:
+no `place_equity_order` call means **nothing was sent** (safe to retry, and the
+card says "Not sent"); a call with no verdict stays the UNKNOWN that forbids one.
+
+The ledger was purged — seven fabricated account keys, the misfiled cost rows,
+the poisoned snapshot cache, and on the operator's call the surviving real
+readings too, since they came from the same broken path. Verified end-to-end
+after the fix: **4 tool calls, three real accounts, negative cash reported
+negative** — Agentic $3.65, Roth IRA $115.03, Individual $0.00. Suite at close:
+1763 tests, 0 failures, credo clean.
+
+**The lesson, stated plainly:** §9 was about not skimming a document before
+telling the operator it was complete. This is the same error one layer down —
+I changed two variables, got the result I expected, and wrote the explanation
+into a commit message as though it were measured. A confident wrong diagnosis
+is more expensive than no diagnosis, because it ends the investigation. Change
+one thing. Run it more than twice when the failure is stochastic. And when the
+fix is to *remove* a flag, ask what else that flag was holding up.
+
 ## The evening, compressed
 
 Two designs were deleted today and the app got safer for it — the order lane
 because one allowlist already did its job, and DataState's vocabulary because
 the user does not speak enum. What survived the deletions is smaller and says
-less. Meanwhile the one thing nobody was watching, the build, had been failing
+less. Then the tab was finally pointed at the real broker and every number on
+it turned out to be invented — including, for one commit, by me: §14 corrects a
+cause I had already written down as verified.
+
+Meanwhile the one thing nobody was watching, the build, had been failing
 silently since the 22nd behind a green exit code. **Green means the checks you
-wrote passed. It has never meant the artifact works.**
+wrote passed. It has never meant the artifact works** — and the same is true of
+a number on a screen. Neither the suite nor the model can tell you a balance is
+real. Only the tool call behind it can.
