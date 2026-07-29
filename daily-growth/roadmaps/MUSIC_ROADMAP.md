@@ -1,6 +1,6 @@
 # Music in Buster Claw — Roadmap V.1
 
-**Date:** 2026-07-28 · **Status:** ACTIVE — Phases 0–3 landed; Phase 4 (the tab) is next. Three walks owed: packaged-app ranges, codec probe, playback-across-navigation ·
+**Date:** 2026-07-28 · **Status:** ACTIVE — **Phases 0–4 landed; the scope in the title is built.** Phase 5 (polish) and three browser walks remain ·
 **Scope of this document:** upload music into the DataZone and play it from a new
 home tab beside Chat, Calendar, and Notes. Nothing further.
 
@@ -259,7 +259,26 @@ hook bridges element events to the server on a throttle.
 **still playing, position intact.** Ending a track advances the queue. No audio
 present → the dock shows nothing rather than a dead player.
 
-### Phase 4 — The Music tab
+### Phase 4 — The Music tab — **SHIPPED 07-28** (`0aa2d93`)
+
+> The tab landed with 18 tests, and with it Phase 2's deferred picker — so the
+> whole line from *choose a file* to *hear it while using another tab* is now
+> connected.
+>
+> **The guard warning in this phase was worth writing down.** `select_home_tab`
+> matches on a whitelist, so a button without a matching guard clause is a
+> silent no-op. The test opens the tab with a real click rather than asserting
+> the button exists, which is the difference between testing the wiring and
+> testing the markup.
+>
+> **An environment trap, now commented in place:** LiveView's `allow_upload`
+> `:accept` only takes extensions the `mime` package has a registered type for.
+> `.m4a` has none, so passing `Music.accepted_extensions/0` raises **on mount** —
+> the tab did not render at all. The picker takes `audio/*` instead (the same
+> call `notify_settings_live` already made) and `Music.store/2` stays the real
+> gate. Wider at the picker is the correct shape anyway: a file the picker lets
+> through gets a reason from the server, while a file it blocks is one the user
+> cannot even try.
 
 Add `"music"` to the tab list (`status_live.ex:1055`) and to the `select_home_tab`
 guard (`status_live.ex:317`) — note that guard is a whitelist, so **missing it is
