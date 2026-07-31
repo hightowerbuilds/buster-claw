@@ -16,8 +16,8 @@ defmodule BusterClaw.Commands do
 
   ## Dispatch
 
-  - `list_commands/0` returns the catalog (used by MCP `tools/list` and CLI `--help`).
-  - `call/2` dispatches by string command name (used by HTTP and MCP frontends).
+  - `list_commands/0` returns the catalog (used by `GET /api/commands` and CLI `--help`).
+  - `call/2` dispatches by string command name (used by the HTTP and CLI frontends).
   - Direct calls (`Commands.document_list(%{})`) work for internal callers.
   """
 
