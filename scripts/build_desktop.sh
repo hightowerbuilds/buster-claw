@@ -77,6 +77,16 @@ rm -rf desktop/tauri/resources/release
 mkdir -p desktop/tauri/resources
 cp -R "$REPO_ROOT/_build/prod/rel/buster_claw" desktop/tauri/resources/release
 
+# ERTS ships 65 binaries mode 555 (r-xr-xr-x), and `cp -R` preserves that.
+# tauri-build's copy_resources copies them into target/<profile>/release with
+# the mode intact, so the NEXT build-script rerun (any edit to build.rs,
+# tauri.conf.json, capabilities/, or permissions/) fails overwriting a
+# read-only destination: "failed to run tauri-build: Permission denied
+# (os error 13)". The build script's fingerprint rarely invalidates, so this
+# stays hidden until it isn't — then it looks like a broken toolchain.
+# Owner-writable staging costs nothing; signing and bundling ignore the bit.
+chmod -R u+w desktop/tauri/resources/release
+
 # Assert the artifact, not the exit code. `cp` into an empty destination is not
 # an error and cargo tauri will happily bundle an empty resources dir, so a
 # broken staging step produces a .dmg that installs, launches, and never starts
