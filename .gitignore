@@ -19,7 +19,6 @@ buster_claw-*.tar
 # recipe, the repo holds the dish); digest's hashed duplicates are not.
 /priv/static/sounds/*-*.wav
 /assets/node_modules/
-/priv/playwright_sidecar/node_modules/
 npm-debug.log
 *.db
 *.db-*
