@@ -6,7 +6,7 @@ import {ScreenshotBridge, EmbeddedBrowser} from "./browser.js"
 import {VoiceBridge, VoiceToggle} from "./voice.js"
 import {AgentChat, ThinkingTimer, QueueRail} from "./chat.js"
 import {CrtAberration} from "./crt.js"
-import {CalendarDrag, CalendarPopover} from "./calendar.js"
+import {CalendarDrag} from "./calendar.js"
 import {TabStrip} from "./tab_strip.js"
 import {SplitResizer} from "./split.js"
 import {TerminalView, TermThemePicker} from "./terminal.js"
@@ -41,7 +41,6 @@ export const Hooks = {
   CrtAberration,
   EmbeddedBrowser,
   CalendarDrag,
-  CalendarPopover,
   TabStrip,
   SplitResizer,
   TerminalView,
