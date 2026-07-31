@@ -15,6 +15,9 @@ buster_claw-*.tar
 /priv/static/*-*.ico
 /priv/static/*-*.txt
 /priv/static/*.gz
+# The bundled chimes are committed unhashed (scripts/gen_sounds.exs is the
+# recipe, the repo holds the dish); digest's hashed duplicates are not.
+/priv/static/sounds/*-*.wav
 /assets/node_modules/
 /priv/playwright_sidecar/node_modules/
 npm-debug.log
