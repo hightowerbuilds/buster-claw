@@ -347,6 +347,61 @@ instrument. `dtmf.js` is the precedent.
 no routing change (basename override); reopening the design restores the spec;
 a spec that would clip is refused or auto-attenuated, not written.
 
+### Phase 6 — The multi-lane arranger — **SHIPPED 07-31**
+
+> **Operator scope, 07-31:** create a track, add clips to it, move them around.
+> Several stacked lanes; free positioning on a time ruler; no trimming inside a
+> track yet.
+>
+> `Notifications.StudioTrack` — lanes, clips, and one JSON file per track under
+> `<workspace>/studio/tracks/`. `SoundStudio.mixdown/1` places clips at
+> millisecond offsets and **sums** them, which is the difference between an
+> arrangement and `concat/1`: two clips at the same offset are heard together,
+> which is the entire reason lanes exist. 19 track tests, 8 mixdown tests, 13
+> component tests, 12 JS tests. **Full suite 2018 green.**
+>
+> **Decisions that carry weight:**
+>
+> - **A clip stores a catalog id, never a path or bytes.** An arrangement stays
+>   small and diffable, survives its sources being re-edited, and a source that
+>   *vanished* is a clip reporting itself missing rather than a track that will
+>   not open. `duration_ms` is cached for layout only — a render re-reads the
+>   real file, so a stale cache changes how wide a block draws, never what you
+>   hear.
+> - **A missing source fails the whole render, loudly.** Quietly dropping the
+>   clip would produce a mix that sounds finished while missing a layer, and
+>   nobody would know what was lost.
+> - **A cross-lane move is a pop and a re-add**, not an in-place mutation —
+>   doing it as one operation is how a clip ends up on two lanes at once.
+>   Pinned by a test asserting exactly one copy survives.
+> - **The open track is read from disk, and every mutation writes straight
+>   back.** That makes Part V landmine 2 a non-issue here *for free*: the
+>   component being discarded on a tab switch costs nothing, because the
+>   arrangement was never only in memory.
+> - **Layout maths lives in Elixir, pointer maths in JS**, with no overlap. The
+>   ruler length, tick marks, and every clip position are server-rendered; the
+>   hook is told only the ruler length. The first cut of `arrange.js` had
+>   `viewMs`/`positionPct`/`ticks` too — the same formulas in two languages,
+>   free to drift — and they were deleted before they could.
+> - **The mix clamps.** Four sounds at −6 dBFS on the same beat sum past full
+>   scale; `normalize/2` afterwards is the honest fix, which is why the arranger
+>   offers Render and not silent attenuation. Pinned by a test that would catch
+>   a wrap as a full-scale sign flip.
+> - **A five-minute ceiling** on a render: the mix is assembled as integer
+>   lists, so length is memory, and a clip dragged to the far end of a ruler
+>   should report rather than swap the machine to death.
+>
+> **A real bug the tests caught:** a hook's `pushEvent` goes to the parent
+> LiveView, not the live_component that rendered it — so `move_clip` would have
+> crashed `StatusLive` with a `FunctionClauseError` on the first real drag.
+> Fixed with `phx-target` plus `pushEventTo`. (`WaveTrim` pushes to `StatusLive`
+> *by design*, because the trim state lives there — the two hooks differ on
+> purpose, not by accident.)
+>
+> **Not built, deliberately:** trimming inside a track (operator deferred), clip
+> gain, and drag-from-the-sidebar. Adding a clip is a plain form, because one
+> control that always works beats a gesture that only works from certain rows.
+
 ### Phase 5 — The packaged-app walk *(inherited, still open)*
 
 `SOUND_ROADMAP` Risk 2: confirm the Tauri webview's actual autoplay posture, and

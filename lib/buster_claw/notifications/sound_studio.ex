@@ -55,6 +55,10 @@ defmodule BusterClaw.Notifications.SoundStudio do
 
   @decoder "/usr/bin/afconvert"
 
+  # Ceiling on a mixdown, in ms. The mix is assembled as integer lists, so
+  # length is memory; five minutes of sound effects is already generous.
+  @max_mix_ms 300_000
+
   # The studio's own workspace folder, and what it accepts into it.
   @subdir "studio"
   @import_exts ~w(.mp3 .m4a .aac .wav .ogg .flac)
@@ -300,6 +304,66 @@ defmodule BusterClaw.Notifications.SoundStudio do
     case peak(clip) do
       p when p <= 0.0 -> clip
       p -> map_samples(clip, fn s, _i -> s * (target / p) end)
+    end
+  end
+
+  @doc """
+  Place clips at millisecond offsets and sum them into one clip — the render
+  behind a multi-lane arrangement.
+
+  Takes `[{clip, start_ms}, ...]`. Gaps become silence, overlaps **add**, and
+  the result runs from 0 to the furthest clip's end. Unlike `concat/1` this is
+  a mix, not a join: two clips at the same offset are heard together, which is
+  the entire point of stacked lanes.
+
+  Summing is where an arrangement clips. Four sounds at -6 dBFS landing on the
+  same beat sum past full scale, so every sample goes through the same clamp as
+  everything else here — and `normalize/2` afterwards is the honest fix, which
+  is why the arranger offers it rather than silently attenuating.
+
+  Refuses a render longer than #{div(@max_mix_ms, 1000)} seconds: the mix is
+  built as integer lists, so length is memory, and a stray clip dragged to the
+  far end of a ruler should report rather than swap the machine to death.
+  """
+  def mixdown([]), do: {:error, :empty_selection}
+
+  def mixdown(placements) when is_list(placements) do
+    clips = Enum.map(placements, fn {clip, _at} -> clip end)
+
+    cond do
+      not Enum.all?(clips, &match?(%__MODULE__{bits: 16}, &1)) ->
+        {:error, :format_mismatch}
+
+      not Enum.all?(clips, &same_format?(&1, hd(clips))) ->
+        {:error, :format_mismatch}
+
+      true ->
+        do_mixdown(placements, hd(clips))
+    end
+  end
+
+  defp do_mixdown(placements, %__MODULE__{sample_rate: rate} = first) do
+    placed =
+      Enum.map(placements, fn {clip, at} ->
+        {samples(clip.data), max(0, ms_to_samples(at, rate))}
+      end)
+
+    total = placed |> Enum.map(fn {s, off} -> off + length(s) end) |> Enum.max()
+
+    if total > ms_to_samples(@max_mix_ms, rate) do
+      {:error, :too_long}
+    else
+      lanes =
+        Enum.map(placed, fn {s, off} ->
+          List.duplicate(0, off) ++ s ++ List.duplicate(0, total - off - length(s))
+        end)
+
+      data =
+        lanes
+        |> Enum.zip_with(&Enum.sum/1)
+        |> Enum.reduce(<<>>, fn sum, acc -> <<acc::binary, clamp16(sum)::little-signed-16>> end)
+
+      {:ok, %{first | data: data}}
     end
   end
 

@@ -173,6 +173,71 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
     end
   end
 
+  describe "mixdown/1 — the arrangement render" do
+    test "places a clip at its offset, padding the gap with silence" do
+      one = clip([9_000, 9_000])
+      # 22050 samples == 1000 ms, so a 1000 ms offset is exactly 22050 zeros.
+      assert {:ok, mixed} = SoundStudio.mixdown([{one, 1_000}])
+
+      got = samples(mixed)
+      assert length(got) == 22_052
+      assert Enum.take(got, 22_050) |> Enum.all?(&(&1 == 0))
+      assert Enum.drop(got, 22_050) == [9_000, 9_000]
+    end
+
+    test "overlapping clips ADD — this is a mix, not a join" do
+      a = clip([1_000, 1_000, 1_000])
+      b = clip([500, 500, 500])
+
+      assert {:ok, mixed} = SoundStudio.mixdown([{a, 0}, {b, 0}])
+      assert samples(mixed) == [1_500, 1_500, 1_500]
+    end
+
+    test "the result runs from zero to the furthest clip's end" do
+      short = clip(List.duplicate(100, 10))
+      assert {:ok, mixed} = SoundStudio.mixdown([{short, 500}, {short, 0}])
+
+      # Furthest edge is 500 ms + 10 samples.
+      assert SoundStudio.sample_count(mixed) == 11_025 + 10
+    end
+
+    test "a summed overload clamps instead of wrapping" do
+      # Four loud clips on the same beat is exactly how an arrangement clips.
+      hot = clip([30_000, -30_000])
+      placements = for _ <- 1..4, do: {hot, 0}
+
+      assert {:ok, mixed} = SoundStudio.mixdown(placements)
+      # Wrapping would turn +120000 into a large NEGATIVE sample: a full-scale
+      # sign flip, the loudest artifact possible.
+      assert samples(mixed) == [32_767, -32_768]
+    end
+
+    test "a negative offset is treated as the start of the ruler" do
+      one = clip([7, 7])
+      assert {:ok, mixed} = SoundStudio.mixdown([{one, -5_000}])
+      assert samples(mixed) == [7, 7]
+    end
+
+    test "refuses an empty arrangement and a format mismatch" do
+      assert {:error, :empty_selection} = SoundStudio.mixdown([])
+
+      wide = %{clip([1, 2]) | sample_rate: 44_100}
+      assert {:error, :format_mismatch} = SoundStudio.mixdown([{clip([1, 2]), 0}, {wide, 0}])
+    end
+
+    test "refuses a render longer than the ceiling rather than eating the machine" do
+      # A clip dragged to the far end of a ruler should report, not allocate
+      # minutes of integer lists.
+      assert {:error, :too_long} = SoundStudio.mixdown([{clip([1]), 400_000}])
+    end
+
+    test "a mixdown is a normal clip — renderable, measurable, saveable" do
+      assert {:ok, mixed} = SoundStudio.mixdown([{clip(List.duplicate(1_000, 100)), 50}])
+      assert SoundStudio.internal?(mixed)
+      assert {:ok, ^mixed} = SoundStudio.parse(SoundStudio.render(mixed))
+    end
+  end
+
   describe "concat/1" do
     test "refuses clips whose formats disagree" do
       a = clip([1, 2])

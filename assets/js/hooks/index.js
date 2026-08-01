@@ -14,6 +14,7 @@ import {DockNewTerminal} from "./dock_terminal.js"
 import {SmokeBackground} from "./smoke_background.js"
 import {AudioClip} from "./audio_clip.js"
 import {WaveTrim} from "./wave_trim.js"
+import {TrackArrange} from "./track_arrange.js"
 import {ShaderFace} from "./shader_face.js"
 import {ShaderPreview} from "./shader_preview.js"
 import {ShaderTimer} from "./shader_timer.js"
@@ -50,6 +51,7 @@ export const Hooks = {
   SmokeBackground,
   AudioClip,
   WaveTrim,
+  TrackArrange,
   ShaderFace,
   ShaderPreview,
   ShaderTimer,

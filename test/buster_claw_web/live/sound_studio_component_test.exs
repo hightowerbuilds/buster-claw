@@ -376,6 +376,195 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
   end
 
+  describe "tracks" do
+    defp new_track(view, name) do
+      view |> element("#studio-new-track") |> render_submit(%{"name" => name})
+      # The component asks the parent to open the new track via a message, so
+      # the selection lands one render after the submit returns.
+      render(view)
+    end
+
+    defp open_track(view, name) do
+      select(view, "track:" <> name)
+    end
+
+    defp add_clip(view, source, lane_index \\ 0) do
+      lane = view |> render() |> lane_ids() |> Enum.at(lane_index)
+
+      view
+      |> element("form[phx-submit='add_clip']")
+      |> render_submit(%{"source" => source, "lane" => lane})
+    end
+
+    defp lane_ids(html) do
+      Regex.scan(~r/data-lane-id="([^"]+)"/, html) |> Enum.map(&Enum.at(&1, 1)) |> Enum.uniq()
+    end
+
+    defp clip_ids(html) do
+      Regex.scan(~r/data-clip-id="([^"]+)"/, html) |> Enum.map(&Enum.at(&1, 1)) |> Enum.uniq()
+    end
+
+    test "a new track is created, saved, and opened", %{conn: conn, root: root} do
+      {view, _html} = open_studio(conn)
+
+      html = new_track(view, "doorbell idea")
+
+      assert File.regular?(Path.join([root, "studio", "tracks", "doorbell idea.track.json"]))
+      # Opened straight away — a track you have to go find is a track you made
+      # by accident.
+      assert html =~ "doorbell idea"
+      assert html =~ "Add clip"
+      assert length(lane_ids(html)) == 1
+    end
+
+    test "a nameless track is refused", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+
+      html = new_track(view, "   ")
+
+      assert html =~ "Give the track a name"
+      assert BusterClaw.Notifications.StudioTrack.list() == []
+    end
+
+    test "clips are added to a chosen lane and queue up rather than stacking", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      new_track(view, "queue")
+
+      add_clip(view, "sound:alarm.wav")
+      html = add_clip(view, "sound:boot.wav")
+
+      assert length(clip_ids(html)) == 2
+      # alarm is 1.32 s, so boot lands after it rather than on top of it.
+      assert html =~ "starts 0 ms"
+      assert html =~ "starts 1.32 s"
+    end
+
+    test "lanes can be added and removed, and the last one stays", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      new_track(view, "lanes")
+
+      html = view |> element("button[phx-click='add_lane']") |> render_click()
+      assert length(lane_ids(html)) == 2
+      assert html =~ "2 lanes"
+
+      [_first, second] = lane_ids(html)
+
+      html =
+        view
+        |> element("button[phx-value-id='#{second}'][phx-click='remove_lane']")
+        |> render_click()
+
+      assert length(lane_ids(html)) == 1
+
+      # A track with no lanes has nothing to drop onto, so the button is gone.
+      refute html =~ "phx-click=\"remove_lane\""
+    end
+
+    test "a clip moves along its lane and across lanes, staying ONE clip", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      new_track(view, "move")
+      view |> element("button[phx-click='add_lane']") |> render_click()
+      add_clip(view, "sound:boot.wav")
+
+      html = render(view)
+      [clip] = clip_ids(html)
+      [_lane_a, lane_b] = lane_ids(html)
+
+      html =
+        view
+        |> element("[phx-hook='TrackArrange']")
+        |> render_hook("move_clip", %{
+          "clip_id" => clip,
+          "lane_id" => lane_b,
+          "start_ms" => 2_500
+        })
+
+      assert clip_ids(html) == [clip]
+      assert html =~ "starts 2.5 s"
+    end
+
+    test "an arrangement survives leaving the tab — it was never only in memory", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      new_track(view, "durable")
+      add_clip(view, "sound:alarm.wav")
+
+      view |> element("button[phx-value-tab='chat']") |> render_click()
+      view |> element("button[phx-value-tab='studio']") |> render_click()
+      html = open_track(view, "durable")
+
+      assert length(clip_ids(html)) == 1
+    end
+
+    test "rendering mixes every lane into one file and opens it", %{conn: conn, root: root} do
+      {view, _html} = open_studio(conn)
+      new_track(view, "mix me")
+      view |> element("button[phx-click='add_lane']") |> render_click()
+      add_clip(view, "sound:alarm.wav", 0)
+      add_clip(view, "sound:boot.wav", 1)
+
+      html = view |> element("button[phx-click='render_track']") |> render_click()
+
+      assert html =~ "Rendered mix me-mix.wav"
+      mixed = Path.join([root, "studio", "mix me-mix.wav"])
+      assert File.regular?(mixed)
+
+      # Lanes SUM: both clips start at 0 on their own lanes, so the render is as
+      # long as the longer one, not the two end to end.
+      {:ok, clip} = SoundStudio.import_source(mixed)
+      assert_in_delta SoundStudio.duration_ms(clip), 1_320.0, 20.0
+
+      # And the result is opened, so you can hear what you just made.
+      assert render(view) =~ ~s(phx-value-id="import:mix me-mix.wav")
+    end
+
+    test "rendering an empty track says so instead of writing silence", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      new_track(view, "empty")
+
+      html = view |> element("button[phx-click='render_track']") |> render_click()
+      assert html =~ "Add a clip before rendering"
+    end
+
+    test "a clip whose source vanished fails the whole render, loudly", %{conn: conn, root: root} do
+      {view, _html} = open_studio(conn)
+      new_track(view, "orphan")
+
+      File.write!(Path.join([root, "sounds", "temp.wav"]), SoundGen.render("chat"))
+      add_clip(view, "sound:temp.wav")
+      File.rm!(Path.join([root, "sounds", "temp.wav"]))
+
+      html = view |> element("button[phx-click='render_track']") |> render_click()
+
+      # A mix missing one layer still sounds finished — you would never know.
+      assert html =~ "source is missing"
+      refute File.regular?(Path.join([root, "studio", "orphan-mix.wav"]))
+    end
+
+    test "deleting a track leaves the clips it used alone", %{conn: conn, root: root} do
+      keeper = Path.join([root, "sounds", "keeper.wav"])
+      File.write!(keeper, SoundGen.render("chat"))
+
+      {view, _html} = open_studio(conn)
+      new_track(view, "doomed")
+      add_clip(view, "sound:keeper.wav")
+
+      view |> element("button[phx-click='delete_track']") |> render_click()
+
+      refute File.exists?(Path.join([root, "studio", "tracks", "doomed.track.json"]))
+      # A track is an arrangement OF clips, not a container holding them.
+      assert File.regular?(keeper)
+    end
+
+    test "a track cannot be added to a track", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      new_track(view, "outer")
+      html = render(view)
+
+      # The source picker offers material, not arrangements.
+      refute html =~ ~s(<option value="track:outer")
+    end
+  end
+
   describe "the music library manager" do
     test "keeps a home inside the Studio", %{conn: conn} do
       {view, _html} = open_studio(conn)

@@ -30,6 +30,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   alias BusterClaw.Music
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Notifications.StudioTrack
   alias BusterClaw.Telephony
   alias BusterClawWeb.MusicComponent
 
@@ -82,8 +83,25 @@ defmodule BusterClawWeb.SoundStudioComponent do
      |> assign(:groups, groups)
      |> assign(:selected, selected)
      |> assign(:missing_bundled, length(Sound.missing_from_workspace()))
-     |> assign(:facts, analyze(selected))}
+     |> assign(:facts, analyze(selected))
+     |> load_track(selected)}
   end
+
+  # The open arrangement is read from disk rather than held in the socket, and
+  # every mutation writes straight back. That makes Part V landmine 2 a
+  # non-issue here for free: a tab switch discards this component, and the track
+  # is exactly where it was because it was never only in memory.
+  defp load_track(socket, %{kind: :track, name: name}) do
+    case StudioTrack.load(name) do
+      {:ok, track} -> assign(socket, :track, track)
+      {:error, _reason} -> assign(socket, :track, nil)
+    end
+  end
+
+  defp load_track(socket, _selected), do: assign(socket, :track, nil)
+
+  @doc "Public for `StatusLive`, which selects the track a render came from."
+  def resolve_source(id), do: find_source(groups(), id)
 
   # ---------------------------------------------------------------------------
   # The catalog
@@ -92,13 +110,30 @@ defmodule BusterClawWeb.SoundStudioComponent do
   @doc "Every source the studio can open, grouped for the sidebar."
   def groups do
     [
-      # Imports lead: this is the working material, and it is the one group the
-      # operator fills themselves.
+      %{key: "tracks", label: "Tracks", items: track_items()},
+      # Imports lead the material groups: this is the working audio, and the one
+      # the operator fills themselves.
       %{key: "imports", label: "Imports", items: import_items()},
       %{key: "sounds", label: "Sounds", items: sound_items()},
       %{key: "recordings", label: "Recordings", items: recording_items()},
       %{key: "music", label: "Music", items: music_items()}
     ]
+  end
+
+  defp track_items do
+    Enum.map(StudioTrack.list(), fn name ->
+      %{
+        id: "track:" <> name,
+        kind: :track,
+        name: name,
+        label: name,
+        sub: "arrangement",
+        # A track is not a file the browser can play; it has to be rendered
+        # first, which is what the arranger's Render button is for.
+        url: nil,
+        path: nil
+      }
+    end)
   end
 
   defp import_items do
@@ -209,10 +244,84 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # ---------------------------------------------------------------------------
 
   # ---------------------------------------------------------------------------
-  # Trim
+  # Tracks
   # ---------------------------------------------------------------------------
 
   @impl true
+  def handle_event("new_track", %{"name" => name}, socket) do
+    case StudioTrack.create(name) do
+      {:ok, created} ->
+        send(self(), {:studio_select, "track:" <> created})
+        {:noreply, socket |> assign(:groups, groups()) |> assign(:note, {:info, "New track."})}
+
+      {:error, :invalid_name} ->
+        {:noreply, assign(socket, :note, {:error, "Give the track a name."})}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :note, {:error, "Couldn't create that track."})}
+    end
+  end
+
+  def handle_event("add_lane", _params, socket) do
+    {:noreply, save_track(socket, StudioTrack.add_lane(socket.assigns.track))}
+  end
+
+  def handle_event("remove_lane", %{"id" => lane_id}, socket) do
+    {:noreply, save_track(socket, StudioTrack.remove_lane(socket.assigns.track, lane_id))}
+  end
+
+  def handle_event("add_clip", %{"source" => source, "lane" => lane_id}, socket) do
+    track = socket.assigns.track
+
+    case clip_duration(source) do
+      {:ok, duration} ->
+        # Land it after whatever is already on that lane, so successive adds
+        # queue up instead of stacking invisibly at zero.
+        at = lane_end_ms(track, lane_id)
+        {:noreply, save_track(socket, StudioTrack.add_clip(track, lane_id, source, at, duration))}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :note, {:error, trim_error(reason)})}
+    end
+  end
+
+  def handle_event("remove_clip", %{"id" => clip_id}, socket) do
+    {:noreply, save_track(socket, StudioTrack.remove_clip(socket.assigns.track, clip_id))}
+  end
+
+  # Pushed by the TrackArrange hook on drop.
+  def handle_event("move_clip", %{"clip_id" => id, "lane_id" => lane, "start_ms" => at}, socket)
+      when is_binary(id) and is_binary(lane) and is_number(at) do
+    {:noreply, save_track(socket, StudioTrack.move_clip(socket.assigns.track, id, lane, at))}
+  end
+
+  def handle_event("move_clip", _params, socket), do: {:noreply, socket}
+
+  def handle_event("delete_track", _params, socket) do
+    StudioTrack.delete(socket.assigns.track.name)
+    send(self(), {:studio_select, nil})
+    {:noreply, socket |> assign(:groups, groups()) |> assign(:note, {:info, "Track deleted."})}
+  end
+
+  def handle_event("render_track", _params, socket) do
+    track = socket.assigns.track
+
+    case render_track(track) do
+      {:ok, name} ->
+        send(self(), {:studio_select, "import:" <> name})
+
+        {:noreply,
+         socket |> assign(:groups, groups()) |> assign(:note, {:info, "Rendered #{name}."})}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :note, {:error, render_error(reason)})}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Trim
+  # ---------------------------------------------------------------------------
+
   def handle_event("preview_selection", _params, socket) do
     case socket.assigns.studio_trim do
       nil ->
@@ -276,6 +385,69 @@ defmodule BusterClawWeb.SoundStudioComponent do
     # and a successful import that does not appear in the list reads as a failure.
     {:noreply, socket |> assign(:groups, groups()) |> assign(:note, summarize(results))}
   end
+
+  defp save_track(socket, %StudioTrack{} = track) do
+    StudioTrack.save(track)
+    socket |> assign(:track, track) |> assign(:groups, groups())
+  end
+
+  defp save_track(socket, _track), do: socket
+
+  defp lane_end_ms(%StudioTrack{} = track, lane_id) do
+    track.lanes
+    |> Enum.find(%{clips: []}, &(&1.id == lane_id))
+    |> Map.fetch!(:clips)
+    |> Enum.map(&(&1.start_ms + &1.duration_ms))
+    |> Enum.max(fn -> 0.0 end)
+  end
+
+  # A clip caches its source's length for layout. The render re-reads the real
+  # file, so a stale cache changes how wide a block draws, never what you hear.
+  defp clip_duration(source) do
+    with %{path: path} when is_binary(path) <- resolve_source(source),
+         {:ok, clip} <- SoundStudio.import_source(path) do
+      {:ok, SoundStudio.duration_ms(clip)}
+    else
+      %{path: nil} -> {:error, :enoent}
+      nil -> {:error, :enoent}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp render_track(%StudioTrack{} = track) do
+    placements = track |> StudioTrack.clips() |> Enum.map(fn {_lane, clip} -> placement(clip) end)
+
+    cond do
+      placements == [] ->
+        {:error, :empty_track}
+
+      # A clip whose source was deleted or renamed since it was placed. Refuse
+      # the whole render rather than quietly dropping it: a mix missing one
+      # layer still sounds finished, and you would never know what was lost.
+      Enum.any?(placements, &match?({:error, _}, &1)) ->
+        {:error, :missing_source}
+
+      true ->
+        with {:ok, mixed} <- SoundStudio.mixdown(Enum.map(placements, fn {:ok, p} -> p end)) do
+          SoundStudio.save(mixed, track.name <> "-mix")
+        end
+    end
+  end
+
+  defp placement(clip) do
+    with %{path: path} when is_binary(path) <- resolve_source(clip.source),
+         {:ok, audio} <- SoundStudio.import_source(path) do
+      {:ok, {audio, clip.start_ms}}
+    else
+      _ -> {:error, clip.source}
+    end
+  end
+
+  defp render_error(:empty_track), do: "Add a clip before rendering."
+  defp render_error(:missing_source), do: "A clip's source is missing — nothing was rendered."
+  defp render_error(:too_long), do: "That arrangement is longer than five minutes."
+  defp render_error(:format_mismatch), do: "Those clips don't share a format."
+  defp render_error(_other), do: "Couldn't render that track."
 
   defp apply_trim(nil, _trim), do: {:error, :no_selection}
   defp apply_trim(_selected, nil), do: {:error, :no_selection}
@@ -365,6 +537,27 @@ defmodule BusterClawWeb.SoundStudioComponent do
   defp analysis_note(:enoent), do: "That file is gone from disk."
   defp analysis_note(_other), do: "Couldn't read this file."
 
+  # The catalog minus tracks themselves: a track cannot contain a track, and
+  # the library manager is not audio at all.
+  defp addable_groups(groups) do
+    groups
+    |> Enum.reject(&(&1.key == "tracks"))
+    |> Enum.map(fn group ->
+      %{group | items: Enum.reject(group.items, &(&1.kind == :library))}
+    end)
+    |> Enum.reject(&(&1.items == []))
+  end
+
+  # A clip carries only a source id, so its label is derived rather than stored
+  # — renaming nothing, and staying correct if the catalog changes underneath.
+  defp clip_label(%{source: source}) do
+    source |> String.split(":", parts: 2) |> List.last() |> Path.rootname()
+  end
+
+  defp clip_title(%{source: source, start_ms: at, duration_ms: dur}) do
+    "#{source} · starts #{ms(at)} · #{ms(dur)} long"
+  end
+
   defp ms(nil), do: "—"
   defp ms(value) when value < 1_000, do: "#{round(value)} ms"
   defp ms(value), do: "#{Float.round(value / 1000, 2)} s"
@@ -427,14 +620,30 @@ defmodule BusterClawWeb.SoundStudioComponent do
           </button>
         </div>
 
-        <%!-- The way in. Pinned to the bottom of the sidebar so it stays put as
-              the lists above grow. --%>
+        <%!-- The ways in. Pinned to the bottom of the sidebar so they stay put
+              as the lists above grow. --%>
+        <form
+          id="studio-new-track"
+          phx-submit="new_track"
+          phx-target={@myself}
+          class="mt-auto flex gap-1 border-t-2 border-base-content/20 pt-2"
+        >
+          <input
+            type="text"
+            name="name"
+            placeholder="New track…"
+            autocomplete="off"
+            class="input input-bordered input-xs min-w-0 flex-1 font-mono text-[11px]"
+          />
+          <button type="submit" class="btn btn-ghost btn-xs font-mono uppercase">+</button>
+        </form>
+
         <form
           id="studio-import"
           phx-submit="import"
           phx-change="validate_import"
           phx-target={@myself}
-          class="sticky bottom-0 mt-auto flex flex-col gap-1.5 border-t-2 border-base-content/20 bg-base-100/80 pt-2 backdrop-blur"
+          class="sticky bottom-0 flex flex-col gap-1.5 border-t-2 border-base-content/20 bg-base-100/80 pt-2 backdrop-blur"
         >
           <.live_file_input
             upload={@uploads.import}
@@ -533,7 +742,147 @@ defmodule BusterClawWeb.SoundStudioComponent do
           player={@player}
         />
 
-        <div :if={@selected && @selected.kind != :library} class="flex min-h-0 flex-1 flex-col gap-3">
+        <%!-- The arranger. Lanes sum, so a bed on one and hits on another are
+              heard together — that is the whole reason lanes exist rather than
+              one long row. --%>
+        <div
+          :if={@selected && @selected.kind == :track && @track}
+          class="flex min-h-0 flex-1 flex-col gap-3"
+        >
+          <header class="flex flex-wrap items-baseline justify-between gap-2">
+            <div class="min-w-0">
+              <h2 class="truncate text-lg font-bold tracking-tight">{@track.name}</h2>
+              <p class="font-mono text-xs text-base-content/50">
+                {length(@track.lanes)} {if length(@track.lanes) == 1, do: "lane", else: "lanes"} · {length(
+                  StudioTrack.clips(@track)
+                )} clips · {ms(StudioTrack.duration_ms(@track))}
+              </p>
+            </div>
+            <div class="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                phx-click="add_lane"
+                phx-target={@myself}
+                class="btn btn-ghost btn-xs font-mono uppercase"
+              >
+                + Lane
+              </button>
+              <button
+                type="button"
+                phx-click="render_track"
+                phx-target={@myself}
+                class="btn btn-primary btn-xs font-mono uppercase"
+              >
+                Render
+              </button>
+              <button
+                type="button"
+                phx-click="delete_track"
+                phx-target={@myself}
+                data-claw-confirm={"Delete the track #{@track.name}? The clips it uses are not touched."}
+                class="btn btn-ghost btn-xs font-mono uppercase text-base-content/40 hover:text-error"
+              >
+                Delete
+              </button>
+            </div>
+          </header>
+
+          <%!-- Ruler. Positions are computed server-side; the hook is told only
+                the ruler's length, so the geometry lives in one language. --%>
+          <div class="relative h-4 border-b border-base-content/20">
+            <span
+              :for={tick <- StudioTrack.ticks(StudioTrack.view_ms(@track))}
+              style={"left: #{tick.pct}%"}
+              class="absolute top-0 -translate-x-1/2 font-mono text-[9px] text-base-content/35"
+            >
+              {tick.label}
+            </span>
+          </div>
+
+          <div
+            id={"studio-arranger-#{:erlang.phash2(@track.name)}"}
+            phx-hook="TrackArrange"
+            phx-target={@myself}
+            data-view-ms={StudioTrack.view_ms(@track)}
+            class="flex select-none flex-col gap-1"
+          >
+            <div
+              :for={lane <- @track.lanes}
+              data-lane
+              data-lane-id={lane.id}
+              class="group/lane relative h-14 border-2 border-base-content/15 bg-base-content/[0.03] data-[lane-target]:border-primary/60"
+            >
+              <span class="pointer-events-none absolute left-1 top-0.5 z-10 font-mono text-[9px] font-bold text-base-content/30">
+                {lane.label}
+              </span>
+
+              <button
+                :if={length(@track.lanes) > 1}
+                type="button"
+                phx-click="remove_lane"
+                phx-value-id={lane.id}
+                phx-target={@myself}
+                class="absolute right-1 top-0.5 z-10 font-mono text-[9px] text-base-content/20 opacity-0 transition group-hover/lane:opacity-100 hover:text-error"
+                aria-label={"Remove lane #{lane.label}"}
+              >
+                ✕
+              </button>
+
+              <div
+                :for={clip <- lane.clips}
+                data-clip
+                data-clip-id={clip.id}
+                data-start-ms={clip.start_ms}
+                style={"left: #{StudioTrack.position_pct(clip.start_ms, StudioTrack.view_ms(@track))}%; width: #{StudioTrack.width_pct(clip.duration_ms, StudioTrack.view_ms(@track))}%"}
+                class="absolute inset-y-2 cursor-grab overflow-hidden rounded-xs border border-primary/70 bg-primary/25 px-1 active:cursor-grabbing"
+                title={clip_title(clip)}
+              >
+                <span class="pointer-events-none block truncate font-mono text-[9px] leading-4 text-base-content/80">
+                  {clip_label(clip)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <%!-- Add a clip. A plain form rather than drag-from-the-sidebar: the
+                sidebar's job is selection, and one control that always works
+                beats a gesture that only works from certain rows. --%>
+          <form phx-submit="add_clip" phx-target={@myself} class="flex flex-wrap items-center gap-2">
+            <select
+              name="source"
+              class="select select-bordered select-xs min-w-0 flex-1 font-mono text-[11px]"
+            >
+              <optgroup :for={group <- addable_groups(@groups)} label={group.label}>
+                <option :for={item <- group.items} value={item.id}>{item.label}</option>
+              </optgroup>
+            </select>
+            <select name="lane" class="select select-bordered select-xs font-mono text-[11px]">
+              <option :for={lane <- @track.lanes} value={lane.id}>Lane {lane.label}</option>
+            </select>
+            <button type="submit" class="btn btn-ghost btn-xs font-mono uppercase">Add clip</button>
+          </form>
+
+          <p class="font-mono text-[10px] text-base-content/40">
+            Drag clips along a lane or between lanes · Render mixes every lane into
+            one file in <code>studio/</code>
+          </p>
+
+          <p
+            :if={@note}
+            class={[
+              "font-mono text-xs",
+              elem(@note, 0) == :error && "text-error",
+              elem(@note, 0) == :info && "text-base-content/60"
+            ]}
+          >
+            {elem(@note, 1)}
+          </p>
+        </div>
+
+        <div
+          :if={@selected && @selected.kind not in [:library, :track]}
+          class="flex min-h-0 flex-1 flex-col gap-3"
+        >
           <header class="flex flex-wrap items-baseline justify-between gap-2">
             <div class="min-w-0">
               <h2 class="truncate text-lg font-bold tracking-tight">{@selected.label}</h2>
