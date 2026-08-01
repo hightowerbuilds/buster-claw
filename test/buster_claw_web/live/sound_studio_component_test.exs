@@ -3,8 +3,10 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
   import Phoenix.LiveViewTest
 
+  alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundGen
   alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Notifications.StudioTrack
   alias BusterClawWeb.SoundStudioComponent
 
   setup do
@@ -121,7 +123,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     test "is never automatic — ensure/0 must not seed the folder", %{root: root} do
       # SOUND_ROADMAP Part III rule 1: a boot-time copy resurrects files the
       # operator deleted, which is how "delete that sound" becomes a bug report.
-      BusterClaw.Notifications.Sound.ensure()
+      Sound.ensure()
 
       assert File.dir?(Path.join(root, "sounds"))
       refute File.exists?(Path.join([root, "sounds", "alarm.wav"]))
@@ -423,7 +425,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       html = new_track(view, "   ")
 
       assert html =~ "Give the track a name"
-      assert BusterClaw.Notifications.StudioTrack.list() == []
+      assert StudioTrack.list() == []
     end
 
     test "clips are added to a chosen lane and queue up rather than stacking", %{conn: conn} do
@@ -562,6 +564,174 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       # The source picker offers material, not arrangements.
       refute html =~ ~s(<option value="track:outer")
+    end
+  end
+
+  describe "arranger keyboard actions" do
+    defp start_track(conn, name) do
+      {view, _html} = open_studio(conn)
+      view |> element("#studio-new-track") |> render_submit(%{"name" => name})
+      render(view)
+      {view, name}
+    end
+
+    defp add(view, source) do
+      lane = view |> render() |> lane_ids() |> hd()
+
+      view
+      |> element("form[phx-submit='add_clip']")
+      |> render_submit(%{"source" => source, "lane" => lane})
+    end
+
+    defp keys(view), do: view |> element("#studio-keys")
+
+    test "clicking a clip selects it", %{conn: conn} do
+      {view, _name} = start_track(conn, "select")
+      add(view, "sound:boot.wav")
+      [clip] = view |> render() |> clip_ids()
+
+      html = render_hook(view, "select_clip", %{"id" => clip})
+
+      # The selected clip is the subject copy, paste, and delete act on, so it
+      # has to be visibly distinct.
+      assert html =~ "ring-2 ring-primary"
+      assert keys(view) |> render() =~ ~s(data-clip-selected="true")
+    end
+
+    test "copy then paste duplicates a clip as its own clip", %{conn: conn} do
+      {view, _name} = start_track(conn, "dupe")
+      add(view, "sound:boot.wav")
+      [clip] = view |> render() |> clip_ids()
+
+      render_hook(view, "select_clip", %{"id" => clip})
+      render_hook(view, "studio_copy", %{})
+      html = render_hook(view, "studio_paste", %{})
+
+      ids = clip_ids(html)
+      assert length(ids) == 2
+      # A NEW id, not a second reference — a pasted copy must be movable and
+      # deletable on its own.
+      assert clip in ids
+      assert html =~ "copied: boot.wav"
+    end
+
+    test "paste with an empty clipboard does nothing", %{conn: conn} do
+      {view, _name} = start_track(conn, "nothing")
+      add(view, "sound:boot.wav")
+
+      html = render_hook(view, "studio_paste", %{})
+      assert length(clip_ids(html)) == 1
+    end
+
+    test "delete removes the selected clip — the only way to, until now", %{conn: conn} do
+      {view, _name} = start_track(conn, "cull")
+      add(view, "sound:boot.wav")
+      [clip] = view |> render() |> clip_ids()
+
+      render_hook(view, "select_clip", %{"id" => clip})
+      html = render_hook(view, "studio_delete_clip", %{})
+
+      assert clip_ids(html) == []
+      # Selection is dropped with it; a stale id would let the next delete act
+      # on nothing.
+      assert keys(view) |> render() =~ ~s(data-clip-selected="false")
+    end
+
+    test "undo walks back an add, and redo walks it forward", %{conn: conn, root: root} do
+      {view, name} = start_track(conn, "history")
+      add(view, "sound:boot.wav")
+      add(view, "sound:alarm.wav")
+      assert length(clip_ids(render(view))) == 2
+
+      html = render_hook(view, "studio_undo", %{})
+      assert length(clip_ids(html)) == 1
+
+      html = render_hook(view, "studio_undo", %{})
+      assert clip_ids(html) == []
+
+      html = render_hook(view, "studio_redo", %{})
+      assert length(clip_ids(html)) == 1
+
+      # Undo rewrites the file, not just the screen — the arrangement on disk is
+      # the arrangement.
+      {:ok, track} = StudioTrack.load(name)
+      assert length(StudioTrack.clips(track)) == 1
+      assert File.regular?(Path.join([root, "studio", "tracks", name <> ".track.json"]))
+    end
+
+    test "undo covers moves and lanes, not just clips", %{conn: conn} do
+      {view, _name} = start_track(conn, "moves")
+      view |> element("button[phx-click='add_lane']") |> render_click()
+      add(view, "sound:boot.wav")
+
+      html = render(view)
+      [clip] = clip_ids(html)
+      [_a, lane_b] = lane_ids(html)
+
+      view
+      |> element("[phx-hook='TrackArrange']")
+      |> render_hook("move_clip", %{"clip_id" => clip, "lane_id" => lane_b, "start_ms" => 3_000})
+
+      assert render(view) =~ "starts 3.0 s"
+      html = render_hook(view, "studio_undo", %{})
+      assert html =~ "starts 0 ms"
+    end
+
+    test "undo and redo are disabled when there is nowhere to go", %{conn: conn} do
+      {view, _name} = start_track(conn, "edges")
+      html = render(view)
+
+      assert html =~ ~r/phx-click="studio_undo" disabled/
+      assert html =~ ~r/phx-click="studio_redo" disabled/
+
+      add(view, "sound:boot.wav")
+      html = render(view)
+      refute html =~ ~r/phx-click="studio_undo" disabled/
+    end
+
+    test "a new edit after undoing abandons the redo branch", %{conn: conn} do
+      {view, _name} = start_track(conn, "branch")
+      add(view, "sound:boot.wav")
+      render_hook(view, "studio_undo", %{})
+
+      html = render(view)
+      refute html =~ ~r/phx-click="studio_redo" disabled/
+
+      add(view, "sound:alarm.wav")
+      html = render(view)
+
+      # The standard contract: keeping the branch would let redo overwrite work
+      # done since the undo.
+      assert html =~ ~r/phx-click="studio_redo" disabled/
+    end
+
+    test "history and clipboard survive leaving the tab", %{conn: conn} do
+      {view, _name} = start_track(conn, "durable keys")
+      add(view, "sound:boot.wav")
+      [clip] = view |> render() |> clip_ids()
+      render_hook(view, "select_clip", %{"id" => clip})
+      render_hook(view, "studio_copy", %{})
+
+      view |> element("button[phx-value-tab='chat']") |> render_click()
+      view |> element("button[phx-value-tab='studio']") |> render_click()
+      html = select(view, "track:durable keys")
+
+      # An undo stack that evaporates on a glance at Chat reads as the feature
+      # being broken — which is why it lives in StatusLive, not the component.
+      assert html =~ "copied: boot.wav"
+      refute html =~ ~r/phx-click="studio_undo" disabled/
+    end
+
+    test "switching tracks drops the history rather than undoing into the wrong one",
+         %{conn: conn} do
+      {view, _name} = start_track(conn, "first")
+      add(view, "sound:boot.wav")
+
+      view |> element("#studio-new-track") |> render_submit(%{"name" => "second"})
+      html = render(view)
+
+      # Undoing into an arrangement you are no longer looking at is not undo.
+      assert html =~ ~r/phx-click="studio_undo" disabled/
     end
   end
 

@@ -10,6 +10,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
   alias BusterClaw.Notifications
+  alias BusterClaw.Notifications.StudioTrack
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
   alias BusterClaw.SvgViewer
@@ -70,6 +71,15 @@ defmodule BusterClawWeb.StatusLive do
      # The in-progress trim, in milliseconds. Same ownership reasoning as
      # :studio_source — an edit must outlive a glance at Chat.
      |> assign(:studio_trim, nil)
+     # Arranger keyboard state: which clip is selected, what was copied, and the
+     # undo/redo stacks. Held here rather than in the component for the usual
+     # reason — `:if` discards the component — and because losing an undo stack
+     # on a tab switch is the kind of thing that reads as the feature being
+     # broken.
+     |> assign(:studio_clip, nil)
+     |> assign(:studio_clipboard, nil)
+     |> assign(:studio_undo, [])
+     |> assign(:studio_redo, [])
      # Header widget: which sub-tab is showing. Order is Time & Place / Contacts /
      # Notify, and Time & Place leads (its analog clock renders instantly, and
      # `mount_weather/1` fills conditions on connect).
@@ -334,10 +344,81 @@ defmodule BusterClawWeb.StatusLive do
   # The Studio's selection is owned HERE, not by the component: home tabs render
   # behind `:if`, which removes the DOM and discards the live_component with it,
   # so a selection held in the component would not survive a glance at Chat.
+  # Re-selecting what is already open is a no-op. Without this guard, clicking
+  # the open track in the sidebar — or landing back on it after a tab switch —
+  # would silently throw away its undo stack and any trim in progress.
+  def handle_event("select_studio_source", %{"id" => id}, socket)
+      when id == :erlang.map_get(:studio_source, socket.assigns) do
+    {:noreply, socket}
+  end
+
   def handle_event("select_studio_source", %{"id" => id}, socket) do
-    # A trim belongs to the file it was drawn on. Carrying it across a source
-    # change would apply one file's in/out points to another's waveform.
-    {:noreply, socket |> assign(:studio_source, id) |> assign(:studio_trim, nil)}
+    # A trim belongs to the file it was drawn on. Carrying it to another source
+    # would apply one file's in/out points to another's waveform. The undo stack
+    # goes with it for the same reason: undoing into an arrangement you are no
+    # longer looking at is not undo, it is vandalism.
+    {:noreply,
+     socket
+     |> assign(:studio_source, id)
+     |> assign(:studio_trim, nil)
+     |> reset_studio_history()}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Arranger: selection, clipboard, undo/redo
+  # ---------------------------------------------------------------------------
+
+  def handle_event("select_clip", %{"id" => id}, socket) do
+    {:noreply, assign(socket, :studio_clip, id)}
+  end
+
+  def handle_event("studio_copy", _params, socket) do
+    case selected_clip(socket) do
+      nil ->
+        {:noreply, socket}
+
+      clip ->
+        # The clipboard holds a spec, not the clip: pasting makes a NEW clip
+        # with its own id, so a pasted copy can be moved and deleted on its own.
+        {:noreply,
+         assign(socket, :studio_clipboard, %{
+           source: clip.source,
+           duration_ms: clip.duration_ms
+         })}
+    end
+  end
+
+  def handle_event("studio_paste", _params, socket) do
+    case socket.assigns.studio_clipboard do
+      nil ->
+        {:noreply, socket}
+
+      %{source: source, duration_ms: duration} ->
+        {:noreply,
+         mutate_open_track(socket, fn track ->
+           lane = paste_lane(track, socket.assigns.studio_clip)
+           StudioTrack.add_clip(track, lane.id, source, lane_end(lane), duration)
+         end)}
+    end
+  end
+
+  def handle_event("studio_delete_clip", _params, socket) do
+    case socket.assigns.studio_clip do
+      nil ->
+        {:noreply, socket}
+
+      id ->
+        socket = mutate_open_track(socket, &StudioTrack.remove_clip(&1, id))
+        {:noreply, assign(socket, :studio_clip, nil)}
+    end
+  end
+
+  def handle_event("studio_undo", _params, socket) do
+    {:noreply, step_history(socket, :studio_undo, :studio_redo)}
+  end
+
+  def handle_event("studio_redo", _params, socket) do
+    {:noreply, step_history(socket, :studio_redo, :studio_undo)}
   end
 
   # Pushed by the WaveTrim hook on pointerup. Held here, not in the component,
@@ -665,7 +746,16 @@ defmodule BusterClawWeb.StatusLive do
      socket
      |> assign(:studio_source, id)
      |> assign(:studio_trim, nil)
+     |> reset_studio_history()
      |> push_event("studio:trim", %{from_ms: nil, to_ms: nil})}
+  end
+
+  # The component mutates the open arrangement itself (buttons and forms); it
+  # hands the PREVIOUS state up so undo has something to go back to. Sending the
+  # old state rather than having the parent re-read it avoids a race where the
+  # component has already written the new one to disk.
+  def handle_info({:studio_history, %StudioTrack{} = previous}, socket) do
+    {:noreply, push_studio_history(socket, previous)}
   end
 
   # journal component so an open Notes tab re-reads the document.
@@ -857,6 +947,101 @@ defmodule BusterClawWeb.StatusLive do
   # `:assistant` message per text block; each is enqueued and spoken in order.
   defp maybe_speak(socket, :assistant, text), do: push_event(socket, "bc:speak", %{text: text})
   defp maybe_speak(socket, _role, _text), do: socket
+
+  # ---------------------------------------------------------------------------
+  # Arranger history
+  # ---------------------------------------------------------------------------
+
+  # Deep enough for a working session, bounded because these are whole
+  # arrangements and this LiveView is long-lived.
+  @studio_history_limit 50
+
+  defp reset_studio_history(socket) do
+    socket
+    |> assign(:studio_clip, nil)
+    |> assign(:studio_undo, [])
+    |> assign(:studio_redo, [])
+  end
+
+  defp push_studio_history(socket, %StudioTrack{} = previous) do
+    socket
+    |> assign(
+      :studio_undo,
+      Enum.take([previous | socket.assigns.studio_undo], @studio_history_limit)
+    )
+    # A new edit after undoing abandons the redo branch — the standard contract,
+    # and the alternative (keeping it) lets redo overwrite work done since.
+    |> assign(:studio_redo, [])
+  end
+
+  # Undo and redo are the same move in opposite directions: pop the source
+  # stack, put the CURRENT state on the other one, write the popped state back.
+  defp step_history(socket, from_key, to_key) do
+    with [previous | rest] <- socket.assigns[from_key],
+         {:ok, current} <- open_track(socket) do
+      StudioTrack.save(previous)
+      send_update(BusterClawWeb.SoundStudioComponent, id: "home-studio")
+
+      socket
+      |> assign(from_key, rest)
+      |> assign(to_key, Enum.take([current | socket.assigns[to_key]], @studio_history_limit))
+      # The selected clip may not exist in the state just restored.
+      |> assign(:studio_clip, nil)
+    else
+      _ -> socket
+    end
+  end
+
+  defp open_track(socket) do
+    case socket.assigns.studio_source do
+      "track:" <> name -> StudioTrack.load(name)
+      _ -> {:error, :no_track}
+    end
+  end
+
+  # Load, apply, save, and record the previous state for undo — the one path
+  # every keyboard-driven arrangement change goes through.
+  defp mutate_open_track(socket, fun) do
+    case open_track(socket) do
+      {:ok, track} ->
+        updated = fun.(track)
+
+        if updated == track do
+          socket
+        else
+          StudioTrack.save(updated)
+          send_update(BusterClawWeb.SoundStudioComponent, id: "home-studio")
+          push_studio_history(socket, track)
+        end
+
+      {:error, _reason} ->
+        socket
+    end
+  end
+
+  defp selected_clip(socket) do
+    with id when is_binary(id) <- socket.assigns.studio_clip,
+         {:ok, track} <- open_track(socket) do
+      track |> StudioTrack.clips() |> Enum.find_value(fn {_l, c} -> if c.id == id, do: c end)
+    else
+      _ -> nil
+    end
+  end
+
+  # Paste lands on the selected clip's lane, so a copy sits beside its original;
+  # with nothing selected it falls to the first lane rather than refusing.
+  defp paste_lane(%StudioTrack{lanes: lanes} = track, clip_id) do
+    holder =
+      track
+      |> StudioTrack.clips()
+      |> Enum.find_value(fn {lane, clip} -> if clip.id == clip_id, do: lane end)
+
+    holder || hd(lanes)
+  end
+
+  defp lane_end(lane) do
+    lane.clips |> Enum.map(&(&1.start_ms + &1.duration_ms)) |> Enum.max(fn -> 0.0 end)
+  end
 
   defp switch_home_tab(socket, tab), do: assign(socket, :home_tab, tab)
 
@@ -1167,6 +1352,10 @@ defmodule BusterClawWeb.StatusLive do
                 player={@music_player}
                 studio_source={@studio_source}
                 studio_trim={@studio_trim}
+                studio_clip={@studio_clip}
+                studio_clipboard={@studio_clipboard}
+                studio_undo={@studio_undo}
+                studio_redo={@studio_redo}
               />
             </div>
           </div>

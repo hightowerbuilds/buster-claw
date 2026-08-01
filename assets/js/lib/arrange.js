@@ -15,6 +15,17 @@ export function msAtRatio(ratio, viewMs) {
   return Math.min(1, Math.max(0, ratio)) * viewMs
 }
 
+// A press that barely moved is a click, not a drag — it selects the clip so
+// copy, paste, and delete have something to act on. The slop is generous
+// because a pointer wobbles by a pixel or two on the way up, and a selection
+// that only works when you hold perfectly still is a selection that feels
+// broken.
+const CLICK_SLOP_PX = 4
+
+export function isClick(dx, dy) {
+  return Math.abs(dx) < CLICK_SLOP_PX && Math.abs(dy) < CLICK_SLOP_PX
+}
+
 // Where a dragged clip starts. The grab offset is the distance from the clip's
 // start to where the pointer took hold, so a block grabbed by its middle does
 // not snap its left edge to the cursor.

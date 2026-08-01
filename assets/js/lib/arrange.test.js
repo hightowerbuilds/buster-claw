@@ -1,5 +1,21 @@
 import {expect, test, describe} from "bun:test"
-import {msAtRatio, dropStartMs, laneIndexAt} from "./arrange.js"
+import {msAtRatio, dropStartMs, laneIndexAt, isClick} from "./arrange.js"
+
+describe("isClick", () => {
+  test("a press that barely moved selects rather than drags", () => {
+    expect(isClick(0, 0)).toBe(true)
+    expect(isClick(3, -3)).toBe(true)
+  })
+
+  test("real movement is a drag", () => {
+    expect(isClick(12, 0)).toBe(false)
+    expect(isClick(0, -30)).toBe(false)
+  })
+
+  test("the slop is symmetric — direction does not decide intent", () => {
+    expect(isClick(-3, 3)).toBe(isClick(3, -3))
+  })
+})
 
 describe("msAtRatio", () => {
   test("maps a ratio along the ruler", () => {

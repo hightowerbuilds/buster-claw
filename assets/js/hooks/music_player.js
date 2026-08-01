@@ -8,6 +8,8 @@
 //
 // Direction of truth: the server decides WHAT should play; the element decides
 // what IS playing, and reports back (playing/paused/ended/position/duration).
+import {isTypingContext} from "../lib/keys.js"
+
 export const MusicPlayer = {
   mounted() {
     this.audio = this.el.querySelector("#bc-music-audio")
@@ -44,16 +46,7 @@ export const MusicPlayer = {
     // dropped so holding Space doesn't strobe play/pause.
     this.onKey = (e) => {
       if (!this.currentSrc || e.repeat) return
-      const t = e.target
-      if (
-        t &&
-        (t.tagName === "INPUT" ||
-          t.tagName === "TEXTAREA" ||
-          t.tagName === "SELECT" ||
-          t.isContentEditable)
-      ) {
-        return
-      }
+      if (isTypingContext(e.target)) return
       if (e.code === "Space" || e.code === "MediaPlayPause") {
         e.preventDefault()
         this.pushEvent("toggle", {})

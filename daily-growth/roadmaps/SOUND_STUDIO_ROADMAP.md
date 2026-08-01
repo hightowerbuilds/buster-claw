@@ -402,6 +402,52 @@ a spec that would clip is refused or auto-attenuated, not written.
 > gain, and drag-from-the-sidebar. Adding a clip is a plain form, because one
 > control that always works beats a gesture that only works from certain rows.
 
+### Phase 7 — Arranger keybindings: copy, paste, undo — **SHIPPED 07-31**
+
+> **Operator scope, 07-31:** copy/paste and undo. Undo covers arranger actions
+> only; copy/paste acts on clips, which required a selection model first.
+>
+> `⌘Z` / `⇧⌘Z` (and `⌃Y`) undo and redo · `⌘C` / `⌘V` copy and paste a clip ·
+> `⌫` removes the selected one. Undo and redo are buttons too, because a
+> keyboard-only feature is an invisible one and the stack depth needs somewhere
+> to show. 10 component tests, 8 JS tests. **Full suite 2028 green.**
+>
+> **Selection had to exist first.** Clips were draggable but not selectable —
+> `pointerdown` started a drag, full stop. Now a press that moves less than 4 px
+> is a *click* and selects; anything more is a drag. That threshold is in
+> `arrange.js` with the rest of the pointer maths, because a selection that only
+> works if you hold perfectly still feels broken.
+>
+> **This also fixed a gap:** `remove_clip` had existed since Phase 6 with **no
+> UI trigger at all** — a clip could be added and moved but never removed.
+> Selection plus `⌫` is its first reachable caller.
+>
+> **Scoping the chords is the whole difficulty.** These are OS-level bindings,
+> so two guards keep them from stealing anything: the hook is mounted *inside*
+> the arranger, so nothing binds `⌘Z` anywhere else in the app; and typing
+> contexts are excluded, because `⌘Z` in the "New track…" field must undo your
+> typing. That predicate was already written for the music player's Space
+> handling and is now shared as `lib/keys.js` rather than copied — two copies of
+> "is the user typing?" drift, and the failure is quiet.
+>
+> **Undo rewrites the file, not the screen.** Every arranger mutation already
+> writes straight to disk, so undo restores a previous arrangement *and saves
+> it*. The stacks live in `StatusLive` (bounded at 50) because an undo history
+> that evaporates when you glance at Chat reads as the feature being broken. A
+> new edit after undoing abandons the redo branch — the standard contract, and
+> the alternative lets redo overwrite work done since.
+>
+> **Two behaviours worth keeping:** the clipboard holds a *spec*, not the clip,
+> so a paste is a genuinely new clip with its own id that can be moved and
+> deleted independently; and re-selecting the already-open source is now a
+> no-op, because without that guard clicking the open track threw away its undo
+> stack.
+>
+> **A test bug worth recording:** `~r/phx-click="studio_undo"[^>]*disabled/`
+> matched the Tailwind class `disabled:opacity-30`, which is on the button in
+> *both* states — so the assertion could never fail correctly. Match the bare
+> attribute, not a substring that a class name also contains.
+
 ### Phase 5 — The packaged-app walk *(inherited, still open)*
 
 `SOUND_ROADMAP` Risk 2: confirm the Tauri webview's actual autoplay posture, and

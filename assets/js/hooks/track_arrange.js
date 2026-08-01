@@ -9,7 +9,7 @@
 // so the position you end up seeing is always the one the server stored — never
 // a client-side guess that quietly disagrees.
 
-import {msAtRatio, dropStartMs, laneIndexAt} from "../lib/arrange.js"
+import {msAtRatio, dropStartMs, laneIndexAt, isClick} from "../lib/arrange.js"
 
 export const TrackArrange = {
   mounted() {
@@ -64,6 +64,7 @@ export const TrackArrange = {
       // middle does not snap its left edge to the cursor on the first move.
       grabOffsetMs: this.msAtX(event.clientX, laneEl) - startMs,
       originX: event.clientX,
+      originY: event.clientY,
       laneEl,
     }
 
@@ -85,7 +86,7 @@ export const TrackArrange = {
 
   onUp(event) {
     if (!this.drag) return
-    const {block, clipId, grabOffsetMs, laneEl} = this.drag
+    const {block, clipId, grabOffsetMs, laneEl, originX, originY} = this.drag
     this.drag = null
 
     block.style.transform = ""
@@ -93,6 +94,18 @@ export const TrackArrange = {
 
     const lanes = this.lanes()
     lanes.forEach((lane) => lane.removeAttribute("data-lane-target"))
+
+    // A press that barely moved is a click, not a drag: it selects the clip so
+    // copy, paste, and delete have something to act on. Without this, clips
+    // could be moved but never picked.
+    if (isClick(event.clientX - originX, event.clientY - originY)) {
+      // pushEvent, not pushEventTo: selection lives in StatusLive beside the
+      // clipboard and undo stacks that consume it. The MOVE below targets the
+      // component instead, because the arrangement lives there — the two
+      // differ on purpose.
+      this.pushEvent("select_clip", {id: clipId})
+      return
+    }
 
     const index = laneIndexAt(event.clientY, lanes.map((l) => l.getBoundingClientRect()))
     const targetLane = index >= 0 ? lanes[index] : laneEl

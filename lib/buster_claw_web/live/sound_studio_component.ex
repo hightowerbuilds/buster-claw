@@ -387,6 +387,11 @@ defmodule BusterClawWeb.SoundStudioComponent do
   end
 
   defp save_track(socket, %StudioTrack{} = track) do
+    # Hand the PREVIOUS state up before overwriting it, so undo has somewhere to
+    # go. Sending the old state rather than letting the parent re-read it avoids
+    # a race where this write has already landed on disk.
+    if socket.assigns[:track], do: send(self(), {:studio_history, socket.assigns.track})
+
     StudioTrack.save(track)
     socket |> assign(:track, track) |> assign(:groups, groups())
   end
@@ -745,8 +750,17 @@ defmodule BusterClawWeb.SoundStudioComponent do
         <%!-- The arranger. Lanes sum, so a bed on one and hits on another are
               heard together — that is the whole reason lanes exist rather than
               one long row. --%>
+        <%!-- The shortcut hook lives HERE, inside the arranger, so the chords
+              exist only while a track is open — nothing binds ⌘Z or ⌘C anywhere
+              else in the app. It reads what is actionable off these two data
+              attributes rather than guessing, so ⌘C over ordinary page text
+              still does what the browser does. --%>
         <div
           :if={@selected && @selected.kind == :track && @track}
+          id="studio-keys"
+          phx-hook="StudioKeys"
+          data-clip-selected={to_string(not is_nil(@studio_clip))}
+          data-clipboard={to_string(not is_nil(@studio_clipboard))}
           class="flex min-h-0 flex-1 flex-col gap-3"
         >
           <header class="flex flex-wrap items-baseline justify-between gap-2">
@@ -759,6 +773,27 @@ defmodule BusterClawWeb.SoundStudioComponent do
               </p>
             </div>
             <div class="flex shrink-0 items-center gap-1">
+              <%!-- Undo and redo are buttons as well as shortcuts: a
+                    keyboard-only feature is an invisible one, and these also
+                    give the state (how deep the stack goes) somewhere to show. --%>
+              <button
+                type="button"
+                phx-click="studio_undo"
+                disabled={@studio_undo == []}
+                class="btn btn-ghost btn-xs font-mono uppercase disabled:opacity-30"
+                title="Undo (⌘Z)"
+              >
+                ↶ Undo
+              </button>
+              <button
+                type="button"
+                phx-click="studio_redo"
+                disabled={@studio_redo == []}
+                class="btn btn-ghost btn-xs font-mono uppercase disabled:opacity-30"
+                title="Redo (⇧⌘Z)"
+              >
+                ↷ Redo
+              </button>
               <button
                 type="button"
                 phx-click="add_lane"
@@ -834,7 +869,13 @@ defmodule BusterClawWeb.SoundStudioComponent do
                 data-clip-id={clip.id}
                 data-start-ms={clip.start_ms}
                 style={"left: #{StudioTrack.position_pct(clip.start_ms, StudioTrack.view_ms(@track))}%; width: #{StudioTrack.width_pct(clip.duration_ms, StudioTrack.view_ms(@track))}%"}
-                class="absolute inset-y-2 cursor-grab overflow-hidden rounded-xs border border-primary/70 bg-primary/25 px-1 active:cursor-grabbing"
+                class={[
+                  "absolute inset-y-2 cursor-grab overflow-hidden rounded-xs border px-1 active:cursor-grabbing",
+                  if(@studio_clip == clip.id,
+                    do: "border-primary bg-primary/50 ring-2 ring-primary",
+                    else: "border-primary/70 bg-primary/25"
+                  )
+                ]}
                 title={clip_title(clip)}
               >
                 <span class="pointer-events-none block truncate font-mono text-[9px] leading-4 text-base-content/80">
@@ -863,8 +904,13 @@ defmodule BusterClawWeb.SoundStudioComponent do
           </form>
 
           <p class="font-mono text-[10px] text-base-content/40">
-            Drag clips along a lane or between lanes · Render mixes every lane into
-            one file in <code>studio/</code>
+            Drag clips along a lane or between lanes · click one to select it · <kbd>⌘C</kbd>/<kbd>⌘V</kbd> copy and paste ·
+            <kbd>⌫</kbd>
+            removes · <kbd>⌘Z</kbd>
+            undoes
+            <span :if={@studio_clipboard} class="text-primary">
+              · copied: {@studio_clipboard.source |> String.split(":", parts: 2) |> List.last()}
+            </span>
           </p>
 
           <p
