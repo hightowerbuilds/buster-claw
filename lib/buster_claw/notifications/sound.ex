@@ -125,7 +125,19 @@ defmodule BusterClaw.Notifications.Sound do
 
   def path_for(_), do: nil
 
-  @doc "Sorted basenames of the bundled default set."
+  @doc """
+  Sorted basenames of the bundled default set — the sixteen synthesized chimes,
+  and nothing else.
+
+  **Digest artifacts are excluded.** `mix phx.digest` writes a content-hashed
+  copy of every static asset beside the original (`alarm.wav` →
+  `alarm-85cf46bf....wav`), so after a release build this directory holds each
+  chime twice. Listing both doubled the routing menu in Settings → Notify and
+  filled the Studio's sidebar with what reads as system junk. The hash suffix is
+  only ever a build product here — this directory ships with exactly what
+  `SoundGen` wrote — so recognizing it is safe, and the alternative (a hardcoded
+  list of sixteen names) would silently drop the seventeenth chime.
+  """
   def bundled_list do
     case File.ls(bundled_dir()) do
       {:ok, entries} ->
@@ -133,6 +145,7 @@ defmodule BusterClaw.Notifications.Sound do
         |> Enum.sort()
         |> Enum.filter(fn name ->
           String.downcase(Path.extname(name)) in @exts and
+            not digest_artifact?(name) and
             File.regular?(Path.join(bundled_dir(), name))
         end)
 
@@ -141,12 +154,58 @@ defmodule BusterClaw.Notifications.Sound do
     end
   end
 
+  # `<stem>-<32 hex>.<ext>`, the shape phx.digest appends. Only applied to the
+  # bundled directory, whose entire contents we author.
+  defp digest_artifact?(name) do
+    name |> Path.rootname() |> String.match?(~r/-[0-9a-f]{32}$/)
+  end
+
   @doc "Absolute path for a bundled default by basename — same allowlist posture as `path_for/1`."
   def bundled_path_for(name) when is_binary(name) do
     if name in bundled_list(), do: Path.join(bundled_dir(), name)
   end
 
   def bundled_path_for(_), do: nil
+
+  @doc """
+  Copy the bundled chimes into `<workspace>/sounds/` so the set is real files on
+  disk — editable in the Studio, visible in Finder.
+
+  **Never called at boot.** SOUND_ROADMAP Part III rule 1 forbids *seeding*, and
+  the reason still holds: an automatic copy would resurrect files the operator
+  deleted, which is how "delete that sound" becomes a bug report. This is the
+  operator asking, once, on purpose — a different act from the app deciding.
+
+  **Never overwrites.** A name already present is skipped, because that file is
+  either the operator's edit or their replacement, and neither should be
+  clobbered by a restore. Returns `%{copied: [...], skipped: [...]}`.
+
+  Note the consequence, which is a feature: once a chime exists in the
+  workspace, deleting it there falls back to the bundled copy rather than
+  removing the sound. That makes "delete my edit" a restore-to-default.
+  """
+  def install_bundled do
+    File.mkdir_p(dir())
+
+    result =
+      Enum.reduce(bundled_list(), %{copied: [], skipped: []}, fn name, acc ->
+        target = Path.join(dir(), name)
+
+        cond do
+          File.exists?(target) -> %{acc | skipped: [name | acc.skipped]}
+          File.cp(bundled_path_for(name), target) == :ok -> %{acc | copied: [name | acc.copied]}
+          true -> %{acc | skipped: [name | acc.skipped]}
+        end
+      end)
+
+    %{copied: Enum.reverse(result.copied), skipped: Enum.reverse(result.skipped)}
+  end
+
+  @doc "Bundled chimes not yet present in the workspace folder."
+  def missing_from_workspace do
+    present = MapSet.new(list())
+    Enum.reject(bundled_list(), &MapSet.member?(present, &1))
+  end
 
   @doc """
   Two-layer resolution for serving: the workspace wins, the bundled set is the

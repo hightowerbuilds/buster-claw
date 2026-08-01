@@ -5,6 +5,7 @@ defmodule BusterClawWeb.MusicComponentTest do
 
   alias BusterClaw.Music
   alias BusterClaw.Music.Player
+  alias BusterClawWeb.SoundStudioComponent
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_musictab_#{System.unique_integer([:positive])}")
@@ -25,18 +26,28 @@ defmodule BusterClawWeb.MusicComponentTest do
     File.write!(Path.join([root, "music", name]), contents)
   end
 
+  # The Music tab became the Studio (SOUND_STUDIO_ROADMAP Phase 3). The library
+  # manager kept every affordance it had, one level in: open the Studio, then
+  # pick the manager entry at the top of the Music group.
   defp open_music(conn) do
     {:ok, view, _html} = live(conn, ~p"/")
-    html = view |> element("button[phx-value-tab='music']") |> render_click()
+    view |> element("button[phx-value-tab='studio']") |> render_click()
+
+    html =
+      view
+      |> element("button[phx-value-id='#{SoundStudioComponent.music_library_id()}']")
+      |> render_click()
+
     {view, html}
   end
 
   describe "the tab itself" do
-    test "is offered on the homepage", %{conn: conn} do
+    test "is offered on the homepage as the Studio", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/")
 
-      assert html =~ "Music"
-      assert html =~ ~s(phx-value-tab="music")
+      assert html =~ "Studio"
+      assert html =~ ~s(phx-value-tab="studio")
+      refute html =~ ~s(phx-value-tab="music")
     end
 
     test "opens — the select_home_tab guard is a whitelist, so this is not a formality",

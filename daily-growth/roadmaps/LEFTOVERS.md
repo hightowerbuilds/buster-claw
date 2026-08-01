@@ -130,6 +130,55 @@ DB password and a reset stays a two-minute dashboard job. Pure bookkeeping.
 
 ---
 
+### Send `nosniff` on the four pipeline-less media routes — **HIGH**
+
+**What.** Inherited 07-30 when `MUSIC_ROADMAP` was archived (its Part VII, the
+only item that roadmap left open). `X-Content-Type-Options` appears **nowhere**
+in the codebase. `RangeResponse` now sends it, which covers music and voicemail;
+these four still serve workspace bytes without it, and — being intentionally
+pipeline-less — without `put_secure_browser_headers` or **any CSP header**
+either:
+
+- `WorkspaceFileController` (`/ws/file`) — **start here; it renders workspace
+  `.html` as-is**
+- `NotifySoundController` (`/notify/sound`, `/notify/sound/:name`)
+- `AppearanceController` (`/appearance/*` — user-uploaded images)
+- `ShaderController` (`/shaders/:name` — user-authored WGSL)
+
+**Why deferred.** It was found during the music build and belongs to the
+security surface, not to a music roadmap. Nobody has owned it since.
+
+**What makes it expensive later.** What these serve is a *workspace file* —
+bytes a user uploaded or an agent wrote. Without `nosniff` a browser may sniff a
+file named `.mp3` whose content is HTML, render it, and run its inline script
+from our own origin, with no CSP on that response to stop it. That is the
+`window.__TAURI__` → `terminal_*` → shell chain `ContentSecurityPolicy`'s
+moduledoc exists to break, reached by a route that never gets the header. One
+header each.
+
+---
+
+### Walk byte ranges and probe codecs in a packaged build
+
+**What.** The two acceptance criteria `MUSIC_ROADMAP` could never close (Phases
+1 and 2 of its risk list), inherited 07-30 on archive. In the **packaged** app,
+not a browser tab: confirm `RangeResponse` satisfies WKWebView's media stack
+(seek a long track, check duration reports), and confirm which of the six
+accepted formats actually play — then shrink `Music.accepted_extensions/0` to
+match.
+
+**Why deferred.** Both need a packaged build, and the operator's walk. The unit
+side is done: `RangeResponse` has 33 tests.
+
+**What makes it expensive later.** This is the exact failure class the range
+work existed to prevent — it looks correct in dev and misbehaves only in the
+shipped webview. Shipping an accepted format that will not play is worse than
+never having accepted it. Pair this with `SOUND_STUDIO_ROADMAP` Phase 5, which
+needs a packaged walk for the same reason (autoplay posture, `afconvert` under
+the sandbox) — one build, three answers.
+
+---
+
 ## Rules of engagement
 
 - An item leaves this file by being **done** or by being **promoted** to a real

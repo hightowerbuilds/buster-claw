@@ -90,6 +90,9 @@ defmodule BusterClaw.Application do
         # Create <workspace>/music/ + README so the music library is reachable
         # from the filesystem, not only from the Music tab (best-effort).
         BusterClaw.Music.ensure()
+        # Create <workspace>/studio/ + README — the Studio tab's working folder,
+        # visible in the Workspace tab and in Finder (best-effort).
+        BusterClaw.Notifications.SoundStudio.ensure()
         # Create <workspace>/journal/ so the Home "Notes" record has a home on disk.
         BusterClaw.Journal.ensure()
         ok

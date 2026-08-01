@@ -60,9 +60,16 @@ defmodule BusterClawWeb.StatusLive do
      # Home main view: "chat" (default) or "calendar". The sub-tab toggle swaps
      # the whole panel — the chat is hidden while the calendar is showing.
      |> assign(:home_tab, "chat")
-     # Transport for the Music tab. nil until the dock player announces —
-     # the tab renders a library with no transport rather than guessing.
+     # Transport for the Studio's music library. nil until the dock player
+     # announces — it renders a library with no transport rather than guessing.
      |> assign(:music_player, nil)
+     # Which source the Studio has open. Owned here rather than in the component
+     # because the tab's `:if` discards the component (and its state) on every
+     # tab switch; an in-progress selection must outlive that.
+     |> assign(:studio_source, nil)
+     # The in-progress trim, in milliseconds. Same ownership reasoning as
+     # :studio_source — an edit must outlive a glance at Chat.
+     |> assign(:studio_trim, nil)
      # Header widget: which sub-tab is showing. Order is Time & Place / Contacts /
      # Notify, and Time & Place leads (its analog clock renders instantly, and
      # `mount_weather/1` fills conditions on connect).
@@ -320,8 +327,35 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("select_home_tab", %{"tab" => tab}, socket)
-      when tab in ["chat", "calendar", "notes", "music"] do
+      when tab in ["chat", "calendar", "notes", "studio"] do
     {:noreply, switch_home_tab(socket, tab)}
+  end
+
+  # The Studio's selection is owned HERE, not by the component: home tabs render
+  # behind `:if`, which removes the DOM and discards the live_component with it,
+  # so a selection held in the component would not survive a glance at Chat.
+  def handle_event("select_studio_source", %{"id" => id}, socket) do
+    # A trim belongs to the file it was drawn on. Carrying it across a source
+    # change would apply one file's in/out points to another's waveform.
+    {:noreply, socket |> assign(:studio_source, id) |> assign(:studio_trim, nil)}
+  end
+
+  # Pushed by the WaveTrim hook on pointerup. Held here, not in the component,
+  # for the same reason the source selection is: `:if` discards the component.
+  def handle_event("trim_select", %{"from_ms" => from, "to_ms" => to}, socket)
+      when is_number(from) and is_number(to) and to > from do
+    {:noreply, assign(socket, :studio_trim, %{from_ms: from * 1.0, to_ms: to * 1.0})}
+  end
+
+  def handle_event("trim_select", _params, socket), do: {:noreply, socket}
+
+  def handle_event("trim_clear", _params, socket) do
+    # The hook clears its own overlay on a click; this also answers the Clear
+    # button, whose overlay has not been touched yet.
+    {:noreply,
+     socket
+     |> assign(:studio_trim, nil)
+     |> push_event("studio:trim", %{from_ms: nil, to_ms: nil})}
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
@@ -620,6 +654,18 @@ defmodule BusterClawWeb.StatusLive do
   # The dock player announced new transport state; the Music tab renders it.
   def handle_info({:music_state, player}, socket) do
     {:noreply, assign(socket, :music_player, player)}
+  end
+
+  # The Studio finished an edit and wants the result opened. The component does
+  # the work; only the parent can change the selection, because only the parent
+  # holds it. The trim clears with it — its in/out points describe the source,
+  # not the file just made from it.
+  def handle_info({:studio_select, id}, socket) do
+    {:noreply,
+     socket
+     |> assign(:studio_source, id)
+     |> assign(:studio_trim, nil)
+     |> push_event("studio:trim", %{from_ms: nil, to_ms: nil})}
   end
 
   # journal component so an open Notes tab re-reads the document.
@@ -1067,7 +1113,7 @@ defmodule BusterClawWeb.StatusLive do
                     {"chat", "Chat"},
                     {"calendar", "Calendar"},
                     {"notes", "Notes"},
-                    {"music", "Music"}
+                    {"studio", "Studio"}
                   ]
                 }
                 type="button"
@@ -1114,11 +1160,13 @@ defmodule BusterClawWeb.StatusLive do
               <.live_component module={BusterClawWeb.JournalComponent} id="home-notes" />
             </div>
 
-            <div :if={@home_tab == "music"} class="flex min-h-0 flex-1 flex-col">
+            <div :if={@home_tab == "studio"} class="flex min-h-0 flex-1 flex-col">
               <.live_component
-                module={BusterClawWeb.MusicComponent}
-                id="home-music"
+                module={BusterClawWeb.SoundStudioComponent}
+                id="home-studio"
                 player={@music_player}
+                studio_source={@studio_source}
+                studio_trim={@studio_trim}
               />
             </div>
           </div>
