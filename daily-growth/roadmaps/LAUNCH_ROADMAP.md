@@ -4,18 +4,36 @@
 everything that waits behind it — one file, because the last time this was four files
 they disagreed with each other and with the code.
 
-**Rewritten 2026-08-01 · App version 0.1.0 · Status: ACTIVE — this is the live map.**
+**Rewritten 2026-08-01 · Re-scoped 2026-08-01 (evening) · App version 0.1.0 · Status: ACTIVE.**
 
-> **The target, stated once, precisely.** A stranger visits **busterclaw.lol**, downloads
-> a DMG, double-clicks it, and the app opens with **no dialog of any kind** — on **Apple
-> Silicon and on Intel**. That is the definition of done for this document. Everything
-> here either serves that sentence or is explicitly marked as not blocking it.
+> ### Two releases, not one
 >
-> **What changed on 2026-08-01.** The previous revision (07-27) was written when the build
-> was broken and nothing was signed. Both of those are now false. Most of the Apple
-> engineering is **written and committed**; none of it has ever **run against a real
-> certificate**. This rewrite exists to make that distinction the spine of the document,
-> because it is now the only thing that matters.
+> **Release 1 — target: roughly one week.** A signed, notarized, stapled DMG for **both
+> architectures**, handed directly to a handful of people we can email. It proves the entire
+> Apple path on real hardware with real stakes and no strangers. **The updater does not
+> block this** — a new link is an email.
+>
+> **Release 2 — public download.** A stranger visits **busterclaw.lol**, downloads a DMG,
+> double-clicks it, and the app opens with **no dialog of any kind**. This is where the
+> updater, telemetry, the download page, and the privacy policy become mandatory, because
+> "please re-download" stops being a message you can send to everyone affected.
+>
+> Every gate item below is tagged **[R1]** or **[R2]**. The split exists because the two
+> have genuinely different risk: R1's audience can be told things, and R2's cannot.
+
+> **Enrollment cleared 2026-08-01.** The Apple Developer membership is live and the account
+> is at the certificates page. That was the gate on all of Part III, and it is now open —
+> the constraint has moved from *waiting on Apple* to *doing the work*.
+
+> **We are not freezing the tree.** Feature work continues on `main` and the release gate
+> runs against whatever is there at release time (operator call, 08-01). That is a real
+> trade: every merge after a manual QA pass silently invalidates it.
+>
+> **So the gate is built to be cheap to re-run.** Prefer an assertion in CI over a paragraph
+> in a checklist — an automated gate survives a merge and a manual one does not. Where a
+> check can only be human (first launch on a clean machine, the III.J walk), **run it against
+> the artifact you are actually shipping, as late as possible.** Testing a build you will not
+> ship is the specific waste this choice creates, and the only defence is timing.
 
 > **Stable anchors — do not renumber.** `III.E`, `III.F`, `III.G`, and `III.J` are cited by
 > name in code comments (`desktop/tauri/Entitlements.plist`, `scripts/codesign_release.sh`,
@@ -46,44 +64,50 @@ they disagreed with each other and with the code.
 
 ## Part 0 — The short version
 
-**The code is written. The certificate does not exist.**
+**The code is written. Enrollment has cleared. The certificate is the next click.**
 
-Between HEAD and a stranger downloading a working app there are exactly four things:
+**The one thing to do next: create the Developer ID Application certificate (G-2).** Nothing
+else in Part III can start, and it is minutes of work.
 
-1. **Nothing has ever been signed.** Not because the signing path is missing — it is
-   committed, guarded, and reviewed — but because there is no Apple Developer membership.
-   **$99 and one to two days of Apple's queue.** Every other Apple item on this page waits
-   on this one, and it is the cheapest item here. **Start it first, today.**
+Between HEAD and **Release 1** — a signed DMG in a few known hands — there are three things:
+
+1. **The certificate does not exist yet.** The account is at the certificates page. Pick
+   *Developer ID Application*, not *Installer*; generate the CSR locally so the private key
+   stays on a machine you keep; export the `.p12` **with its private key**; back it up
+   offline. Then two GitHub secrets and CI starts producing signed builds with no workflow
+   edit. See **III.D**.
 2. **Nothing has ever been notarized, stapled, or opened on a machine that didn't build
-   it.** The pipeline is written against Apple's documented behaviour and Livebook's
-   working implementation. That is a strong prior, not evidence. It will be wrong
-   somewhere; budget rejection rounds (**III.H**).
-3. **There is no updater.** For a private beta this is survivable — you can email fifteen
-   people a link. For a **public download it is not**: an agentic app that reads email and
-   drives a browser *will* need a fix shipped fast, and "please re-download" is not a patch
-   channel. The updater is a **P0 for this target and was not one for the last** (**III.I**).
-4. **The download page does not exist.** busterclaw.lol is live and serving, but `/download`,
-   `/privacy`, and `/terms` all return 404, and the homepage leads with the runtime
-   paragraph that Part VI exists to replace.
+   it.** The pipeline is written against Apple's documented behaviour and Livebook's working
+   implementation. That is a strong prior, not evidence. It will be wrong somewhere; budget
+   rejection rounds (**III.H**).
+3. **First launch on a clean machine is untested.** The TCC prompt, no-`claude`, no-Homebrew,
+   and offline paths have never been watched by anyone (**G-9**–**G-15**).
+
+**Deferred to Release 2, deliberately:** the updater, telemetry, the download page, and the
+privacy policy. All are mandatory for strangers and none of them are for a group you can
+email — which is exactly why Release 1 exists.
 
 **What is no longer in the way.** The build blocker is fixed. Entitlements are correct and
-asserted. Every Mach-O in the OTP tree is signed by a script that finds them by content.
-CI imports a throwaway keychain, notarizes, staples, verifies all of **III.J**, and tears
-the keychain down on failure. Two native architectures, no lipo. This was "the bulk of the
-week" in the previous revision and it is **done and committed**.
+asserted. Every Mach-O in the OTP tree is signed by a script that finds them by content. CI
+imports a throwaway keychain, notarizes, staples, verifies all of **III.J**, and tears the
+keychain down on failure. Two native architectures, no lipo. **The packaged app is verified
+working end to end** — it boots, authenticates, and drives a real browser from inside the
+artifact. **CI now proves the artifact, not just the source** (**G-5**), and **the advertised
+macOS floor can no longer be a lie** (**G-16**). All of that was "the bulk of the week" in
+the previous revision.
 
-**Ordering principle, unchanged and still right:** start the slow clocks you don't control
-on day one, do the free high-leverage work while they tick, then spend real engineering on
-the things that gate the download.
+**Ordering principle, updated for where we actually are:** the slow external clock (Apple)
+has already started and cleared. What remains is ordered by *what fails on someone else's
+Mac* — sign it, notarize it, then watch a real person open it on hardware that has never
+seen the repo.
 
-**The honest estimate:** **$99** and **~2 focused weeks** gets a signed, notarized,
-self-updating pair of DMGs behind a download page. The largest single unknown is not
-engineering — it is how many notarization rejection rounds Apple hands back, and that
-clock does not start until enrollment clears.
+**The honest estimate:** **Release 1 in about a week** is achievable, and the largest unknown
+is not engineering — it is how many notarization rejection rounds Apple hands back. **Release
+2 is a further week or so**, dominated by the updater, whose subtlety is the BEAM swap
+described in **III.I**, not the plumbing.
 
 **Money is deliberately not on this path.** The locked decision is *free beta first, charge
-later*. Nobody needs to be able to pay for the first public download to be a success. See
-**Part VII**.
+later*. Nobody needs to be able to pay for either release to be a success. See **Part VII**.
 
 ---
 
@@ -563,19 +587,43 @@ the machine-checkable ones already; the rest are human.
 
 ## Part IV — The release gate
 
-**This is the ordered, checkable list that blocks a public download.** Everything here
-blocks; everything that doesn't block is in Part V. If an item can't be judged pass/fail by
-a person with the app in front of them, it's written wrong.
+**The ordered, checkable list that blocks a release.** Everything here blocks *something*;
+everything that blocks nothing is in Part V. If an item can't be judged pass/fail by a person
+with the app in front of them, it's written wrong.
 
-### G-0 — Apple (blocks everything)
+**Tags.** **[R1]** blocks the signed build going to a handful of known people. **[R2]** blocks
+the public download. `G-n` numbers are stable and cited from commit messages — items get
+re-tagged and re-ordered, never renumbered.
 
-- [ ] **G-1.** Enroll in the Apple Developer Program. **$99, ~1–2 days.** *Do this first.*
-- [ ] **G-2.** Create + export the Developer ID Application certificate; back up the `.p12`
-      offline; add the GitHub secrets.
+> **Because there is no feature freeze, prefer automation.** An item asserted in CI survives
+> every merge between now and release. An item written as a manual checklist step is only
+> true for the commit it was run against. Where both are possible, make it CI. Where it must
+> be human, do it **last**, against the artifact actually being shipped.
+
+### G-0 — Apple **[R1]** (blocks everything)
+
+- [x] **G-1. DONE 08-01.** Enrolled in the Apple Developer Program. *This was the gate on all
+      of Part III; the constraint is now doing the work, not waiting for Apple.*
+- [ ] **G-2. ← THE NEXT ACTION.** Create + export the Developer ID Application certificate.
+      **Pick `Developer ID Application`**, not `Developer ID Installer` (that signs `.pkg`;
+      we ship `.dmg`) and not `Apple Development` (cannot be distributed).
+      **Generate the CSR locally** — Keychain Access → Certificate Assistant → *Request a
+      Certificate From a Certificate Authority* → Saved to disk. The private key is created
+      on that Mac and never leaves it; Apple only holds the public half. Lose it and the
+      certificate is dead weight and you have burned one of five.
+      **Export the `.p12` with the private key selected, not the certificate alone** — the
+      cert-only export imports cleanly and signs nothing.
+      Then `base64 -i Certificates.p12` → `APPLE_CERTIFICATE`, plus
+      `APPLE_CERTIFICATE_PASSWORD`. **Back the `.p12` and its password up offline.**
+- [ ] **G-2b.** Create the **App Store Connect API key** for notarization: App Store Connect
+      → Users and Access → Integrations → Team Keys. → `APPLE_API_KEY_P8` (base64),
+      `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`.
+      **The `.p8` can be downloaded exactly once.** Preferred over the Apple-ID + app-specific
+      password path because it is revocable and scoped, and keeps an account password out of CI.
 - [ ] **G-3.** Run the signing pipeline for the first time. Expect rejection rounds (III.H).
 - [ ] **G-4.** Pass every **III.J** exit test — **on both architectures, on real hardware.**
 
-### G-5 — Prove the artifact, not the source
+### G-5 — Prove the artifact, not the source **[R1]**
 
 The lesson of BLOCKER-1: five green CI jobs on a tree that could not produce a working DMG.
 
@@ -617,7 +665,7 @@ The lesson of BLOCKER-1: five green CI jobs on a tree that could not produce a w
       this is a size question, not a disclosure one; the assertion should be written to
       distinguish the two rather than banning `*.map` outright.
 
-### G-9 — First launch on a machine that has never seen it
+### G-9 — First launch on a machine that has never seen it **[R1]**
 
 *A VM snapshot you can roll back is worth an hour of setup.*
 
@@ -635,7 +683,7 @@ The lesson of BLOCKER-1: five green CI jobs on a tree that could not produce a w
 - [ ] **G-15.** All five onboarding steps complete; each can be backed out of and re-entered;
       quitting mid-wizard and relaunching resumes sanely.
 
-### G-16 — The macOS floor (you are currently guessing)
+### G-16 — The macOS floor **[R1]** *(measured 08-01 — no longer a guess)*
 
 > ### Measured 2026-08-01 — the declared floor was wrong by three major versions
 >
@@ -681,7 +729,7 @@ The lesson of BLOCKER-1: five green CI jobs on a tree that could not produce a w
 **A wrong floor is the most expensive cheap mistake here** — it is discovered by strangers,
 one refund at a time, and it was an hour's work to measure.
 
-### G-18 — Updatable (III.I)
+### G-18 — Updatable (III.I) **[R2]**
 
 - [ ] **G-18.** `tauri-plugin-updater` wired, minisign keypair generated, **private key
       backed up offline**, `latest.json` published and **per-architecture**.
@@ -690,7 +738,7 @@ one refund at a time, and it was an hour's work to measure.
 - [ ] **G-20.** An actual 0.1.0 → 0.1.1 update tested end to end, preserving workspace,
       settings, database, and Google connection. **Tested, not assumed.**
 
-### G-21 — Findable and trustworthy
+### G-21 — Findable and trustworthy **[R2]**
 
 - [ ] **G-21.** A **download page** on busterclaw.lol offering both DMGs, with the
       architecture explained in a sentence a non-expert can act on ("Apple Silicon — most
@@ -702,7 +750,7 @@ one refund at a time, and it was an hour's work to measure.
 - [ ] **G-24.** The communicated macOS floor and the "you need your own Claude subscription"
       requirement are both stated **before** the download button, not after.
 
-### G-25 — Survivable in the wild
+### G-25 — Survivable in the wild **[R2]**
 
 You cannot support what you cannot see, and a public download means strangers.
 
@@ -715,10 +763,17 @@ You cannot support what you cannot see, and a public download means strangers.
       WebKit cache.
 - [ ] **G-28.** A one-command diagnostic bundle for support (versions, log tail, no secrets).
 
-### G-29 — Trust claims must be true
+### G-29 — Trust claims must be true **[R2, except G-34/G-35]**
 
 The product is sold on auditability. Shipping to strangers with the claim unbacked is the
 one reputational risk that compounds.
+
+> **Why most of this is R2 but two items are not.** The presentation items — an unbuilt
+> approval gate, a buried Security tab, an undisclosed `bypassPermissions` — are about what a
+> stranger can *infer* without being told, and an R1 audience can simply be told. **G-34 and
+> G-35 are different: they are safety, not presentation, and a bug does not care whether it
+> was briefed.** An agent that walks through a real payment page does that to a friend just
+> as readily. Both are cheap; do them for R1.
 
 - [ ] **G-29.** **Build the approval gate or stop implying it exists.** `Sentinel.Pending` is
       an in-memory stub whose own moduledoc says approve/deny is Phase 2, while the README
@@ -737,7 +792,7 @@ one reputational risk that compounds.
       payment gate fires. The failure mode is an agent proceeding through a real payment page.
 - [ ] **G-35.** **`LEFTOVERS.md` HIGH #2:** send `nosniff` on the four pipeline-less media routes.
 
-### G-36 — The dock must be the product, not the roadmap
+### G-36 — The dock must be the product, not the roadmap **[R2]**
 
 A stranger judges maturity by the weakest surface they click.
 
@@ -749,7 +804,7 @@ A stranger judges maturity by the weakest surface they click.
       is open (**R9**). Read-only today; a stranger finding an unsafe path in a financial
       surface will not care that it was labelled a prototype.
 
-### G-39 — The repeatable release checklist
+### G-39 — The repeatable release checklist **[R1 + R2 — runs every release]**
 
 Everything above is one-time. This runs every release, forever.
 
@@ -1082,59 +1137,48 @@ question before building provisioning.**
 
 ## Part X — The order to do it in, and the bill
 
-### Stage 0 — Start the clocks you don't control (today)
+### Stage 0 — Done, and what it unblocked
+
+| # | Task | State |
+|---|---|---|
+| 0a | Enroll in the Apple Developer Program | **DONE 08-01.** This was the gate on all of Part III |
+| 0e | **Identify the Intel Mac** you will run III.J on | **Still owed**, and it is a scheduling dependency, not an engineering one. Every III.J test runs twice |
+
+### Stage 1 — Release 1: get it signed (this week)
+
+*The critical path. Everything else in this document waits behind 1a.*
 
 | # | Task | Cost |
 |---|---|---|
-| 0a | **Enroll in the Apple Developer Program** (individual, no D-U-N-S) | **$99/yr**, ~1–2 days. **Everything waits on this** |
-| 0b | **Decide:** does the public download need restricted Gmail scopes? | Free. Determines whether CASA exists at all |
-| 0c | Stand up `/privacy` + `/terms` on busterclaw.lol (**G-22**) | Hours. **Blocks 0d and Google both** |
-| 0d | If yes to 0b — start Google OAuth verification | $0 for basic; weeks to months |
-| 0e | **Identify the Intel Mac** you will run III.J on | Free, and it is a scheduling dependency |
+| **1a** | **G-2: create + export the Developer ID Application certificate**, back it up offline, add the GitHub secrets | **Minutes. THE NEXT ACTION** |
+| 1b | G-2b: App Store Connect API key for notarization (`.p8` downloads once) | Minutes |
+| 1c | **G-3: first real signed build.** Expect rejection rounds | Hours to days — the largest unknown here |
+| 1d | **G-4: III.J exit tests, both arches, on real hardware** | A day, plus Intel-Mac scheduling |
+| 1e | **G-9–G-15: first launch on a clean machine.** TCC prompt, no-`claude`, no-Homebrew, offline | A day. **Run this LAST, against the artifact you ship** |
+| 1f | G-34/G-35: the two `LEFTOVERS` HIGH items — payment gate walk, `nosniff` | Hours. Safety, not presentation |
+| 1g | **G-7: the clean-clone build.** Local end-to-end passed; a cold clone has not | Hours plus surprises |
 
-### Stage 1 — Free work while Apple's queue runs (same week)
-
-| # | Task | Cost |
-|---|---|---|
-| 1a | **VI-a: pick one front door**; make README, site, wizard, and home agree | Hours. Highest leverage here |
-| 1b | **Run the one-sentence test** (IX.1) before and after 1a | An afternoon |
-| 1c | VI-b/VI-c: delete retired features from the user guide, fix the wizard docs | Hours |
-| 1d | **G-5: packaged-app boot test in CI** | Half a day. Highest-value test in the document |
-| 1e | **G-6: wire the smoke scripts into the release workflow** | Hours |
-| 1f | **G-7: clean clone → DMG, end to end, once** | Hours plus surprises |
-| 1g | **G-16: measure the real macOS floor** | A morning |
-| 1h | G-36/G-37: move Voice and Phone out of main navigation | Small diffs |
-
-### Stage 2 — Make it openable (gated on 0a)
+### Stage 2 — Free work, any time (does not block Release 1)
 
 | # | Task | Cost |
 |---|---|---|
-| 2a | G-2: certificate, `.p12` backup, GitHub secrets | An hour |
-| 2b | **G-3: first real signed build.** Expect rejection rounds | Hours to days |
-| 2c | **G-4: III.J exit tests, both arches, real hardware** | A day, plus Intel-Mac scheduling |
+| 2a | **VI-a: pick one front door**; make README, site, wizard, and home agree | Hours. Highest leverage in the document |
+| 2b | **Run the one-sentence test** (IX.1) before and after 2a | An afternoon |
+| 2c | VI-b/VI-c: delete retired features from the user guide, fix the wizard docs | Hours |
+| 2d | G-17/G-17b: the WebGPU feature floor, and stating the floor in the README | A morning |
+| 2e | G-36/G-37: move Voice and Phone out of main navigation | Small diffs |
 
-*The engineering behind 2b is already written and committed. This stage is running it and
-fixing what Apple objects to.*
-
-### Stage 3 — Make it updatable (parallel with Stage 2)
+### Stage 3 — Release 2: the public download (the week after)
 
 | # | Task | Cost |
 |---|---|---|
-| 3a | G-18: updater plugin, minisign keypair, **offline key backup**, per-arch `latest.json` | Days |
-| 3b | G-19: the BEAM-safe update sequence | Days — this is the subtle part |
-| 3c | G-20: a real 0.1.0 → 0.1.1 update, tested | A day |
+| 3a | **G-18–G-20: the updater.** Minisign keypair, **offline key backup**, per-arch `latest.json`, the BEAM-safe swap | **Days. The subtle part is III.I, not the plumbing** |
+| 3b | G-21–G-24: download page, `/privacy`, `/terms`, the stated floor and Claude requirement | Hours to a day |
+| 3c | G-25–G-28: telemetry, user-facing error surface, uninstall, diagnostic bundle | Days |
+| 3d | G-29–G-33: the trust claims — approval gate, kill switch, disclosure, Security tab | Days |
+| 3e | 0b/0c/0d: decide on restricted Gmail scopes; start Google verification if yes | Free to decide; weeks to months if yes |
 
-### Stage 4 — Make it survivable and honest
-
-G-9 through G-15 (first launch on a clean machine) · G-25 through G-28 (telemetry, error
-surface, uninstall, diagnostics) · G-29 through G-35 (the trust claims, both HIGH leftovers).
-
-### Stage 5 — Make it findable
-
-G-21 through G-24: the download page, the architecture explanation, the stated floor and Claude
-requirement.
-
-### Stage 6 — Ship, then watch
+### Stage 4 — Ship, then watch
 
 IX.3 sessions on the real signed DMG · publish · one question by email each week to whoever
 shows up: *"What did you use it for this week?"* The answers are the roadmap.
