@@ -95,6 +95,9 @@ defmodule BusterClaw.Application do
         BusterClaw.Notifications.SoundStudio.ensure()
         # Create <workspace>/journal/ so the Home "Notes" record has a home on disk.
         BusterClaw.Journal.ensure()
+        # Fold the pre-pool background layout (per-surface image slots) into the
+        # one shared image pool. Idempotent; rewrites settings, not files.
+        BusterClaw.Appearance.ensure()
         ok
 
       other ->

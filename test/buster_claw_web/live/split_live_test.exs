@@ -221,9 +221,9 @@ defmodule BusterClawWeb.SplitLiveTest do
       File.rm_rf(root)
     end)
 
-    Settings.put("terminal_background_1_path", "appearance/test.png")
-    Settings.put("terminal_background_1_updated_at", "123")
-    Settings.put("terminal_background_active", "1")
+    Settings.put("background_image_1_path", "appearance/test.png")
+    Settings.put("background_image_1_updated_at", "123")
+    Settings.put("terminal_background_mode", "image:1")
   end
 
   defp occurrences(haystack, needle), do: length(String.split(haystack, needle)) - 1

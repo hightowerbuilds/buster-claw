@@ -49,10 +49,11 @@ defmodule BusterClawWeb.Router do
 
   # Uploaded appearance asset served from the writable workspace dir. No pipeline
   # so it isn't constrained to a single `accepts` format (the webview requests it
-  # as an image via CSS `url()`); loopback-only and non-sensitive.
+  # as an image via CSS `url()`); loopback-only and non-sensitive. One shared
+  # image pool backs both the homepage and the terminal, so the slot is the whole
+  # address — there is no per-surface route.
   scope "/appearance", BusterClawWeb do
-    get "/terminal-background/:slot", AppearanceController, :terminal_background
-    get "/home-background", AppearanceController, :home_background
+    get "/image/:slot", AppearanceController, :image
   end
 
   # Voicemail audio for the Message Machine panel's <audio> player. No pipeline

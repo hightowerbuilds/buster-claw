@@ -1,8 +1,11 @@
 defmodule BusterClawWeb.AppearanceController do
   @moduledoc """
-  Serves a user-uploaded background image (terminal slot or homepage) from the
+  Serves a user-uploaded background image from the shared image pool in the
   writable workspace directory. The bundled `Plug.Static` only serves the
   read-only `priv/static` allowlist, so uploaded assets need their own route.
+
+  One route for one pool: a slot is not owned by a surface, so the same URL backs
+  the homepage, the terminal, or both at once.
 
   Caching is revalidation-based (`no-cache` + an ETag from mtime+size), NOT a
   long immutable max-age: the workspace files are shared by every instance and
@@ -16,18 +19,11 @@ defmodule BusterClawWeb.AppearanceController do
 
   alias BusterClaw.Appearance
 
-  def terminal_background(conn, %{"slot" => slot}) do
+  def image(conn, %{"slot" => slot}) do
     with {n, ""} <- Integer.parse(slot),
-         path when is_binary(path) <- Appearance.slot_image(n) do
+         path when is_binary(path) <- Appearance.image_path(n) do
       serve(conn, path)
     else
-      _ -> send_resp(conn, 404, "")
-    end
-  end
-
-  def home_background(conn, _params) do
-    case Appearance.home_background_image() do
-      path when is_binary(path) -> serve(conn, path)
       _ -> send_resp(conn, 404, "")
     end
   end
