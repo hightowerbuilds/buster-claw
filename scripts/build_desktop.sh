@@ -107,6 +107,16 @@ if [ ! -x "$STAGED_REL/bin/buster_claw" ] || ! compgen -G "$STAGED_REL/erts-*" >
 fi
 echo "    staged $(du -sh "$STAGED_REL" | cut -f1) release + $(basename "$(echo "$STAGED_REL"/erts-*)")"
 
+# Sign the OTP tree BEFORE Tauri bundles it. Tauri signs the shell, frameworks,
+# and sidecars, but it only *copies* resources — its signer never descends into
+# Resources/, where the entire Erlang VM lives. Doing it here, on the staged
+# tree, is the last moment the binaries are ours to touch: anything signed after
+# bundling invalidates the enclosing signature instead.
+#
+# No-op when APPLE_SIGNING_IDENTITY is unset, so unsigned local builds are
+# unchanged. See scripts/codesign_release.sh and LAUNCH_ROADMAP.md III.F.
+"$REPO_ROOT/scripts/codesign_release.sh" "$STAGED_REL"
+
 echo "==> Building Tauri bundle"
 # tauri-build's copy_resources overwrites with fs::copy without removing first;
 # the staged erts binaries are mode 0555, so a prior copy left read-only files

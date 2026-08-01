@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged into the Info.plist that Tauri generates at bundle time. Only the keys
+  Tauri does not already set belong here; everything about the window, version,
+  and identifier is generated from tauri.conf.json and must not be duplicated.
+
+  These are TCC usage descriptions. Under the hardened runtime they are not
+  cosmetic: they are the sentence the operating system shows a stranger the
+  first time the app reaches for their files, and that prompt is roughly the
+  fourth thing that happens after a download. A missing string means macOS
+  supplies a generic one that explains nothing, on a security-positioned product
+  whose entire pitch is that you can see what it does.
+
+  WHAT IS DELIBERATELY ABSENT, and why, so nobody adds it back on a hunch:
+
+    NSMicrophoneUsageDescription / NSCameraUsageDescription
+      Nothing captures. Voice is `say(1)`, which is output only (see
+      desktop/tauri/src/voice.rs), and there is no getUserMedia anywhere in
+      assets/js. The embedded webview browses arbitrary pages, but Tauri's
+      WKUIDelegate does not implement requestMediaCapturePermissionFor, so a
+      page's capture request is denied before TCC is ever consulted. Declaring a
+      permission we never exercise is its own small breach of the trust story.
+
+    NSAppleEventsUsageDescription
+      The app scripts nothing. `osascript` appears only under scripts/, which
+      runs outside the bundle and therefore outside this entitlement's reach.
+-->
+<plist version="1.0">
+<dict>
+  <!-- The default workspace for a fresh install is ~/Desktop/BusterClawCLI
+       (desktop/tauri/src/workspace.rs). macOS gates the Desktop folder, so this
+       prompt fires on first run for essentially every new user. It is the first
+       thing the app ever asks for. -->
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Buster Claw keeps your workspace — the notes, documents, and shift logs your agent reads and writes — in a folder on your Desktop. It only touches that folder.</string>
+
+  <!-- The workspace root is user-choosable, so the same prompt can arrive for
+       either of these instead. Same sentence, same promise. -->
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Buster Claw keeps your workspace — the notes, documents, and shift logs your agent reads and writes — in the folder you chose. It only touches that folder.</string>
+
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Buster Claw saves files your agent downloads to this folder, and reads the ones you point it at.</string>
+</dict>
+</plist>

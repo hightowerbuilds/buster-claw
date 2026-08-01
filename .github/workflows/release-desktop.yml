@@ -3,10 +3,24 @@
 # native ERTS. Never lipo the Erlang tree — a universal ERTS kills the JIT on
 # the Intel slice (daily-growth/roadmaps/LAUNCH_ROADMAP.md §III.G).
 #
-# Until the Apple Developer secrets exist, artifacts are UNSIGNED — fine for
-# CI verification, not for distribution. When enrollment lands, add the
-# cert-import + notarization steps at the TODO(payday) marker; nothing else
-# here should need to change.
+# Signing and notarization are wired but SECRET-GATED. With no APPLE_CERTIFICATE
+# secret the whole path is skipped and this job produces unsigned artifacts —
+# fine for CI verification, not for distribution. Add the secrets and the same
+# job starts producing signed, notarized, stapled DMGs with no edit here.
+#
+# The secrets, all base64 where noted:
+#   APPLE_CERTIFICATE           Developer ID Application .p12, base64
+#   APPLE_CERTIFICATE_PASSWORD  the .p12 export password
+#   then EITHER (preferred, revocable):
+#     APPLE_API_KEY_P8          App Store Connect .p8 key, base64
+#     APPLE_API_KEY_ID          the key's ID
+#     APPLE_API_ISSUER_ID       the issuer UUID
+#   OR:
+#     APPLE_ID / APPLE_PASSWORD (app-specific) / APPLE_TEAM_ID
+#
+# Deliberately absent: any step that signs the OTP tree. That lives in
+# scripts/codesign_release.sh, called by build_desktop.sh, so local and CI
+# builds sign identically rather than CI keeping a second copy that drifts.
 name: Release Desktop
 
 on:
@@ -79,25 +93,150 @@ jobs:
             cargo install tauri-cli --version "=2.8.0" --locked
           fi
 
-      # TODO(payday): before the build —
-      #   1. Import the Developer ID cert (APPLE_CERTIFICATE P12 + password)
-      #      into a throwaway keychain.
-      #   2. Add the mix-release codesign pass over every Mach-O in the OTP
-      #      tree (ElixirKit Release.codesign pattern: --options runtime
-      #      --timestamp --entitlements on EVERY binary incl. beam.smp),
-      #      BEFORE tauri bundles resources.
-      #   3. Export APPLE_SIGNING_IDENTITY / APPLE_ID / APPLE_PASSWORD /
-      #      APPLE_TEAM_ID so tauri signs, notarizes, and staples on its own.
-      # Gate each step on env.HAVE_APPLE_CERT == 'true'.
+      # Import the Developer ID cert into a throwaway keychain that lives only
+      # for this job. Never the default login keychain: a hosted runner is
+      # shared infrastructure, and a keychain that outlives the job is a private
+      # key someone else's workflow could reach.
+      #
+      # The signing pass over the OTP tree is NOT here — it lives inside
+      # build_desktop.sh (scripts/codesign_release.sh), which runs it between
+      # staging the release and bundling. That keeps local and CI builds signing
+      # identically instead of CI having a second, drifting implementation.
+      - name: Import Developer ID certificate
+        if: env.HAVE_APPLE_CERT == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/busterclaw-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # Auto-lock after an hour so a hung job cannot leave it open forever.
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" \
+            -k "$KEYCHAIN" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          # Without this, codesign blocks on a GUI authorization prompt that no
+          # runner can answer, and the job hangs until it times out rather than
+          # failing with anything readable.
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+
+          # PREPEND to the search list, never replace it. The system keychains
+          # hold the Apple intermediate and root certs; drop them and every
+          # signature fails to build a chain to a trusted anchor.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+
+          if [ -z "$IDENTITY" ]; then
+            echo "FATAL: no Developer ID Application identity in the imported cert." >&2
+            echo "       Found instead:" >&2
+            security find-identity -v -p codesigning "$KEYCHAIN" >&2
+            echo "       A Developer ID APPLICATION cert signs the .app and .dmg." >&2
+            echo "       A Developer ID INSTALLER cert signs .pkg files and is not it." >&2
+            exit 1
+          fi
+
+          # The identity name is the public seller string, not a secret.
+          echo "Signing identity: $IDENTITY"
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      # Tauri notarizes and staples on its own when these are present during
+      # `tauri build`. Two credential shapes are accepted; the App Store Connect
+      # API key is preferred (revocable, scoped, no Apple ID password in CI) and
+      # the Apple ID + app-specific password path is the fallback.
+      - name: Stage notarization credentials
+        if: env.HAVE_APPLE_CERT == 'true'
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [ -n "$APPLE_API_KEY_P8" ]; then
+            KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+            echo "$APPLE_API_KEY_P8" | base64 --decode > "$KEY_PATH"
+            chmod 600 "$KEY_PATH"
+            echo "APPLE_API_KEY=$APPLE_API_KEY_ID" >> "$GITHUB_ENV"
+            echo "APPLE_API_ISSUER=$APPLE_API_ISSUER_ID" >> "$GITHUB_ENV"
+            echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+            echo "Notarization: App Store Connect API key"
+          elif [ -n "$APPLE_ID" ]; then
+            echo "APPLE_ID=$APPLE_ID" >> "$GITHUB_ENV"
+            echo "APPLE_PASSWORD=$APPLE_PASSWORD" >> "$GITHUB_ENV"
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+            echo "Notarization: Apple ID + app-specific password"
+          else
+            # Signed but un-notarized is worse than unsigned: it looks finished
+            # and still refuses to open on a stranger's Mac, because Gatekeeper
+            # wants the notary ticket, not merely a valid signature.
+            echo "FATAL: a signing cert is present but no notarization credentials are." >&2
+            echo "       Set either APPLE_API_KEY_P8 + APPLE_API_KEY_ID + APPLE_API_ISSUER_ID," >&2
+            echo "       or APPLE_ID + APPLE_PASSWORD + APPLE_TEAM_ID." >&2
+            exit 1
+          fi
 
       - name: Build DMG
         run: ./scripts/build_desktop.sh
 
-      # Meaningful only once signing lands; a hard failure here then means a
-      # broken signature, which must never ship.
-      - name: Gatekeeper assessment
+      # The definition of "Apple is done" (LAUNCH_ROADMAP III.J), asserted in CI
+      # rather than trusted. Each check below has failed for somebody, and every
+      # one of them fails silently at build time and loudly on a user's Mac.
+      - name: Verify signature, notarization, and staple
         if: env.HAVE_APPLE_CERT == 'true'
-        run: spctl -a -t exec -vvv "desktop/tauri/target/release/bundle/macos/Buster Claw.app"
+        run: |
+          set -euo pipefail
+          APP="desktop/tauri/target/release/bundle/macos/Buster Claw.app"
+
+          echo "==> Signature is structurally valid"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          echo "==> Signed by Developer ID, with the hardened runtime"
+          codesign -dv --verbose=4 "$APP" 2>&1 | tee /tmp/cs.txt
+          grep -q 'Authority=Developer ID Application' /tmp/cs.txt
+          grep -q 'flags=.*runtime' /tmp/cs.txt
+
+          # The one that actually predicts whether a stranger can open it.
+          # "accepted" alone is not enough: an unnotarized build can still be
+          # accepted locally because this machine signed it.
+          echo "==> Gatekeeper accepts it as notarized"
+          spctl -a -t exec -vvv "$APP" 2>&1 | tee /tmp/spctl.txt
+          grep -q 'source=Notarized Developer ID' /tmp/spctl.txt
+
+          # Stapling is what makes a first launch work with no network. Without
+          # it the app is notarized on Apple's servers and unopenable on a plane.
+          echo "==> Ticket is stapled to the .app and the .dmg"
+          xcrun stapler validate "$APP"
+          for dmg in desktop/tauri/target/release/bundle/dmg/*.dmg; do
+            xcrun stapler validate "$dmg"
+          done
+
+          # beam.smp is spawned as its own process and does not inherit the
+          # shell's entitlements. If this is missing, everything above still
+          # passes and the VM dies at launch on the user's machine.
+          echo "==> beam.smp carries its own allow-jit"
+          BEAM="$(find "$APP/Contents/Resources/release" -name beam.smp -print -quit)"
+          codesign -d --entitlements - --xml "$BEAM" 2>/dev/null \
+            | grep -q 'com.apple.security.cs.allow-jit'
+
+          # A "universal" Tauri shell wrapping an x86_64 ERTS is an Intel app
+          # with extra steps. Check the VM, not the shell binary.
+          echo "==> The bundled VM is genuinely ${{ matrix.arch }}"
+          lipo -archs "$BEAM"
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
@@ -105,3 +244,11 @@ jobs:
           name: buster-claw-dmg-${{ matrix.arch }}
           if-no-files-found: error
           path: desktop/tauri/target/release/bundle/dmg/*.dmg
+
+      # always(): a failed build must not leave a private key sitting on shared
+      # infrastructure. This is the step whose absence nobody notices.
+      - name: Tear down the signing keychain
+        if: always() && env.HAVE_APPLE_CERT == 'true'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/busterclaw-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/cert.p12" || true

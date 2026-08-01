@@ -69,6 +69,36 @@ if [ ! -f "$ENTITLEMENTS" ]; then
   exit 1
 fi
 
+# A double hyphen is illegal inside the BODY of an XML comment. `plutil -lint`
+# accepts it anyway, but codesign's stricter AMFI parser rejects the entire file
+# with "AMFIUnserializeXML: syntax error near line N" and signs nothing — a
+# message that names a line and never mentions hyphens. Cost of learning this the
+# hard way: one confusing build. Cost of this check: nothing. It is easy to
+# reland by writing a command flag into a comment, which is exactly what happened.
+#
+# Strip the comment delimiters BEFORE scanning. `<!--` and `-->` each contain a
+# double hyphen themselves, so searching the raw file flags every well-formed
+# comment in it — a guard that can never pass, failing on the two lines that are
+# correct. sed substitutes in place and deletes no lines, so the numbering below
+# still refers to the real file.
+#
+# The `|| true` is load-bearing under `set -euo pipefail`: a clean file means
+# grep matches nothing and exits 1, which pipefail propagates to the assignment
+# and `set -e` turns into a silent exit 1 — the guard killing the build precisely
+# when it has nothing to complain about, with no message at all.
+OFFENDING_LINES="$(sed -e 's/<!--//g' -e 's/-->//g' "$ENTITLEMENTS" | grep -n -- '--' | cut -d: -f1 || true)"
+if [ -n "$OFFENDING_LINES" ]; then
+  echo "FATAL: $ENTITLEMENTS has a double hyphen inside a comment body." >&2
+  echo "       That is illegal in XML. plutil accepts it; the AMFI parser" >&2
+  echo "       codesign uses does not, and rejects the whole file." >&2
+  # Print the original line, not the stripped one, so the text shown is the text
+  # to edit.
+  while IFS= read -r lineno; do
+    printf '       %s:%s\n' "$lineno" "$(sed -n "${lineno}p" "$ENTITLEMENTS")" >&2
+  done <<<"$OFFENDING_LINES"
+  exit 1
+fi
+
 # An empty entitlements file is the trap this whole path exists to avoid: it
 # signs and notarizes clean, then the BEAM dies on the user's machine because
 # `beam.smp` has no allow-jit of its own. Refuse rather than ship that.
@@ -159,6 +189,12 @@ echo "==> Verifying $COUNT signatures"
 # Verify every object rather than spot-checking. This loop is cheap and it is
 # the only thing standing between a silently-unsigned NIF and a notarization
 # rejection round measured in hours.
+#
+# Expect the .so files to verify but to carry NO entitlements when inspected:
+# macOS honours entitlements only on main executables, so the flag is a no-op
+# for a loadable bundle. That is fine and is not worth working around. What the
+# NIFs need from us is a signature (so the notary accepts them); what lets the
+# VM load them is disable-library-validation on beam.smp, asserted below.
 for object in "${OBJECTS[@]}"; do
   if ! codesign --verify --strict "$object" 2>/tmp/verify_err.$$; then
     echo "FATAL: signature did not verify for $object" >&2
