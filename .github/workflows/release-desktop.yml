@@ -210,6 +210,24 @@ jobs:
       - name: Build DMG
         run: ./scripts/build_desktop.sh
 
+      # Prove the ARTIFACT, not the source (LAUNCH_ROADMAP G-5). Every other gate
+      # in this repo tests the tree; this is the only one that tests what we
+      # actually ship. BLOCKER-1 — a truncated edit that left Resources/release
+      # empty — sailed through five green jobs for six days because the only
+      # thing asserted about the DMG was that the file existed.
+      #
+      # Deliberately BEFORE the signature and upload steps: a bundle that cannot
+      # boot must fail the job rather than get signed, notarized, and published.
+      # Deliberately NOT gated on HAVE_APPLE_CERT either — an unsigned CI build
+      # still has to be a working one.
+      #
+      # This drives the bundled release directly rather than launching the .app:
+      # no window server, no Keychain, no Chromium, no network. scripts/
+      # smoke_desktop.sh covers the GUI and native-bridge half and stays a manual
+      # pre-release step until it has been validated on a hosted runner.
+      - name: Boot the packaged release
+        run: ./scripts/smoke_release_boot.sh
+
       # The definition of "Apple is done" (LAUNCH_ROADMAP III.J), asserted in CI
       # rather than trusted. Each check below has failed for somebody, and every
       # one of them fails silently at build time and loudly on a user's Mac.

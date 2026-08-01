@@ -168,7 +168,7 @@ certificate or real hardware, it says so rather than guessing.
 | **No telemetry, no crash reporting** | The only Sentry code is the *integration* that reads the user's own project. Nothing reports our own crashes |
 | **`minimumSystemVersion` claims macOS 11.0** | `tauri.conf.json:38`, never measured. WebGPU-in-WKWebView sets the true floor. Almost certainly wrong |
 | **No download page, no privacy policy, no terms** | busterclaw.lol serves 200 from Vercel (separate repo), but `/download`, `/privacy`, `/terms` are all **404**. The homepage leads with the runtime paragraph VI-a exists to replace |
-| **Nothing proves the packaged app boots** | `smoke_desktop.sh` and `smoke_command_surface.sh` exist and are **not referenced by any workflow**. CI asserts the DMG file exists. This is the exact gap BLOCKER-1 walked through |
+| ~~Nothing proves the packaged app boots~~ | **Closed 08-01.** `smoke_release_boot.sh` is wired into `release-desktop.yml` ahead of signing and upload (**G-5**). The GUI-side `smoke_desktop.sh` is still manual and unvalidated on a hosted runner (**G-6**) |
 | **Approval gate is a stub** | `lib/buster_claw/sentinel/pending.ex` — its own moduledoc: *"Approve/deny actions are Phase 2."* |
 | **No kill-switch UI** | **Zero** occurrences of `STOP` or `kill_switch` anywhere in `lib/buster_claw_web/` |
 | **Security is the last settings tab** | `settings_tabs.ex` — 8th of 8, after Get Started, Appearance, Voice, Notify, Integrations, Configuration, Cmd List |
@@ -176,7 +176,8 @@ certificate or real hardware, it says so rather than guessing.
 | **Phone tab is in the dock, unbuilt for a new user** | `phone_live.ex` is 1,275 lines; a new user has no number to give out |
 | **Bundle size unmeasured post-cleanup** | Playwright and the PLTs are gone; nobody has measured what the DMG now weighs |
 | **Two HIGH items in `LEFTOVERS.md`** | Walk a live signed-in checkout and confirm the payment gate fires; send `nosniff` on four pipeline-less media routes |
-| **Full clone-to-DMG never run end to end** | Still true |
+| **Full clone-to-DMG never run end to end** | **Half closed 08-01.** `build_desktop.sh` ran end to end locally and produced a working `.app` + DMG that passes both smokes. Never yet run from a *clean clone* — the run reused warm caches, which is the difference that hid BLOCKER-1 for six days (**G-7**) |
+| **The packaged app is verified working** | **New, positive, 08-01.** `smoke_desktop.sh` PASSED against the real bundle: boots, authenticates, completes a full native-bridge round-trip (Phoenix → PubSub → LiveView → JS → Tauri invoke → POST back), renders a live page through the hidden webview, and drives a headless Chrome over CDP from inside the artifact. The Info.plist TCC strings were confirmed **present in the built bundle**, so Tauri's auto-merge works as documented |
 
 ---
 
@@ -578,17 +579,43 @@ a person with the app in front of them, it's written wrong.
 
 The lesson of BLOCKER-1: five green CI jobs on a tree that could not produce a working DMG.
 
-- [ ] **G-5.** **A packaged-app boot test in CI.** After `build_desktop.sh`, launch the
-      `.app`, poll `/_health`, assert 200, assert the catalog returns its full command set,
-      quit. *This would have caught BLOCKER-1 in the commit that introduced it.* **Half a
-      day, and the highest-value test in this document.**
-- [ ] **G-6.** Wire `smoke_desktop.sh` and `smoke_command_surface.sh` into the release
-      workflow. They exist, they are the only checks that exercise production ACL
-      resolution end to end, and **no workflow references either of them.**
-- [ ] **G-7.** Clean clone → DMG, once, end to end, on a machine with no `_build`, no
-      `deps`, no `node_modules`. **Never been done. Schedule real time, not an afternoon.**
+- [x] **G-5. DONE 08-01.** **A packaged-release boot test in CI.** `scripts/
+      smoke_release_boot.sh`, wired into `release-desktop.yml` between the build and the
+      signature/upload steps, so a bundle that cannot boot fails the job instead of being
+      signed and published. It asserts the bundle carries an executable release, an `erts-*`,
+      and a `beam.smp`; boots that release exactly as `main.rs` spawns it; polls `/_health`;
+      asserts the catalog; and asserts a bad token 401s.
+      **Verified in both directions** — passes against a real bundle, and against a bundle
+      with an empty `Resources/release` (BLOCKER-1's exact shape) it exits 1 naming the
+      missing VM. Leaves no orphaned `beam.smp`.
+      *It drives the release directly rather than launching the `.app`: no window server, no
+      Keychain, no Chromium, no network — none of which BLOCKER-1 involved, and all of which
+      a runner may lack.*
+- [ ] **G-6.** **Half done.** The headless gate above is in CI. **`smoke_desktop.sh` is still
+      manual** — it needs a window server, a Keychain, an installed Chromium, and the
+      network, and none of that has been validated on a *hosted runner*. It passes locally
+      against the packaged app (verified 08-01). Wiring it in needs one throwaway CI run to
+      find out what a runner actually provides; adding it blind risks wedging every release
+      on an unrelated failure.
+      *Fixed along the way:* `smoke_command_surface.sh` read its token from a plaintext file
+      **first**, but the shell adopts that file into the Keychain and deletes it on first
+      launch — so the documented fallback could never fire and the script failed with "no API
+      token" on a healthy install. It now tries env → Keychain → legacy file.
+- [x] **G-7. Substantially done 08-01.** `build_desktop.sh` ran end to end and produced a
+      working `.app` **and** DMG, and the resulting bundle passes both smokes.
+      **Still owed:** the same run from a *clean clone* with no `_build`, no `deps`, no
+      `node_modules` — the local run reused warm caches, which is exactly the difference
+      that hid BLOCKER-1 on the operator's machine for six days.
 - [ ] **G-8.** Assert the bundle contains no `.env`, no dev database, no PLT, no source
-      maps. Measure the DMG size, record it, and fail the build on a >10% regression.
+      maps. Fail the build on a >10% size regression.
+      **Baseline measured 08-01:** `.app` **76 MB**, `.dmg` **29 MB** (well under the old
+      88 MB, post-Playwright and post-PLT) · **24 Mach-O objects** in the bundled OTP tree ·
+      **157 commands** in the catalog · `beam.smp` `x86_64` on this Intel machine.
+      **Clean of** `.env`, dev databases, PLTs, and `.d.ts`. **Four `.map` files remain** —
+      all upstream `phoenix` and `phoenix_live_view` `priv/static` maps (~1.1 MB), shipped
+      because `mix release` copies each dependency's `priv/`. No app source is leaked, so
+      this is a size question, not a disclosure one; the assertion should be written to
+      distinguish the two rather than banning `*.map` outright.
 
 ### G-9 — First launch on a machine that has never seen it
 

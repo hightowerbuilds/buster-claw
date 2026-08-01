@@ -10,15 +10,30 @@ cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
 
 URL="${BUSTER_CLAW_URL:-http://127.0.0.1:4000}"
-TOKEN_FILE="$HOME/Library/Application Support/BusterClaw/api_token"
 TOKEN="${BUSTER_CLAW_API_TOKEN:-}"
+
+# Token resolution order: env, then the Keychain, then the legacy plaintext file.
+#
+# The file is LAST and is nearly always absent, which is the opposite of what it
+# looks like. The Tauri shell's `ensure_secret` adopts that file into the
+# Keychain on first launch and then DELETES it (desktop/tauri/src/main.rs), so on
+# any machine that has ever run the app it does not exist. Reading it first — as
+# this script used to — meant the documented fallback could never fire and the
+# script failed with "no API token" on a perfectly healthy install.
+TOKEN_FILE="$HOME/Library/Application Support/BusterClaw/api_token"
+
+if [[ -z "$TOKEN" ]]; then
+  TOKEN="$(security find-generic-password -s BusterClaw -a api_token -w 2>/dev/null || true)"
+fi
 
 if [[ -z "$TOKEN" && -f "$TOKEN_FILE" ]]; then
   TOKEN="$(cat "$TOKEN_FILE")"
 fi
 
 if [[ -z "$TOKEN" ]]; then
-  echo "error: no API token (set BUSTER_CLAW_API_TOKEN or create $TOKEN_FILE)" >&2
+  echo "error: no API token." >&2
+  echo "  Set BUSTER_CLAW_API_TOKEN, or allow Keychain access when prompted" >&2
+  echo "  (service BusterClaw, account api_token)." >&2
   exit 1
 fi
 
