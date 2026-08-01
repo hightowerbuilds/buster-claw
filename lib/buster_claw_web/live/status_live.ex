@@ -1290,36 +1290,42 @@ defmodule BusterClawWeb.StatusLive do
 
           <div class="flex min-h-0 flex-1 flex-col gap-2">
             <%!-- Home sub-tabs: Chat | Calendar. Switching to Calendar hides the
-                  chat entirely and mounts the full calendar in its place. --%>
-            <div
-              class="flex gap-0.5 self-start border-2 border-base-content/20 p-0.5"
-              role="tablist"
-              aria-label="Home view"
-            >
-              <button
-                :for={
-                  {key, label} <- [
-                    {"chat", "Chat"},
-                    {"calendar", "Calendar"},
-                    {"notes", "Notes"},
-                    {"studio", "Studio"}
-                  ]
-                }
-                type="button"
-                role="tab"
-                aria-selected={@home_tab == key}
-                phx-click="select_home_tab"
-                phx-value-tab={key}
-                class={[
-                  "rounded-xs px-4 py-1.5 font-mono text-xs font-bold uppercase tracking-wide transition",
-                  if(@home_tab == key,
-                    do: "bg-primary text-primary-content",
-                    else: "text-base-content/60 hover:bg-base-content/10"
-                  )
-                ]}
+                  chat entirely and mounts the full calendar in its place. The
+                  right side of this row is the active tab's action slot —
+                  today only the Studio claims it. --%>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div
+                class="flex gap-0.5 border-2 border-base-content/20 p-0.5"
+                role="tablist"
+                aria-label="Home view"
               >
-                {label}
-              </button>
+                <button
+                  :for={
+                    {key, label} <- [
+                      {"chat", "Chat"},
+                      {"calendar", "Calendar"},
+                      {"notes", "Notes"},
+                      {"studio", "Studio"}
+                    ]
+                  }
+                  type="button"
+                  role="tab"
+                  aria-selected={@home_tab == key}
+                  phx-click="select_home_tab"
+                  phx-value-tab={key}
+                  class={[
+                    "rounded-xs px-4 py-1.5 font-mono text-xs font-bold uppercase tracking-wide transition",
+                    if(@home_tab == key,
+                      do: "bg-primary text-primary-content",
+                      else: "text-base-content/60 hover:bg-base-content/10"
+                    )
+                  ]}
+                >
+                  {label}
+                </button>
+              </div>
+
+              <BusterClawWeb.SoundStudioComponent.toolbar :if={@home_tab == "studio"} />
             </div>
 
             <div :if={@home_tab == "chat"} class="flex min-h-0 flex-1 flex-col gap-2">

@@ -69,9 +69,16 @@ defmodule BusterClawWeb.SoundStudioComponent do
        # Wider here is also the right shape: `SoundStudio.store/2` is the gate,
        # and it gates by DECODING. A file the picker allows and the server
        # refuses gets a reason; a file the picker blocks cannot even be tried.
+       #
+       # auto_upload: the Import button lives in the home tab bar (`toolbar/1`)
+       # and opens the OS picker directly, so choosing files is the whole
+       # gesture — each file lands as its upload completes, with no second
+       # submit click hidden away in the sidebar.
        accept: ~w(audio/*),
        max_entries: @max_import_entries,
-       max_file_size: @max_import_bytes
+       max_file_size: @max_import_bytes,
+       auto_upload: true,
+       progress: &handle_import_progress/3
      )}
   end
 
@@ -397,15 +404,30 @@ defmodule BusterClawWeb.SoundStudioComponent do
     {:noreply, cancel_upload(socket, :import, ref)}
   end
 
-  def handle_event("import", _params, socket) do
-    results =
-      consume_uploaded_entries(socket, :import, fn %{path: path}, entry ->
-        {:ok, SoundStudio.store(path, entry.client_name)}
-      end)
+  # Each file is consumed the moment ITS upload completes — auto_upload has no
+  # submit event to batch on. The folder is re-read immediately for the same
+  # reason the old batch handler did it: `update/2` will not fire again on its
+  # own, and a successful import that does not appear in the list reads as a
+  # failure.
+  defp handle_import_progress(:import, entry, socket) do
+    if entry.done? do
+      result =
+        consume_uploaded_entry(socket, entry, fn %{path: path} ->
+          {:ok, SoundStudio.store(path, entry.client_name)}
+        end)
 
-    # Re-read the folder immediately: `update/2` will not fire again on its own,
-    # and a successful import that does not appear in the list reads as a failure.
-    {:noreply, socket |> assign(:groups, groups()) |> assign(:note, summarize(results))}
+      case result do
+        {:ok, name} ->
+          {:noreply,
+           socket |> assign(:groups, groups()) |> assign(:note, {:info, "Imported #{name}."})}
+
+        {:error, reason} ->
+          {:noreply,
+           assign(socket, :note, {:error, "#{entry.client_name}: #{import_error(reason)}"})}
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   defp save_audio(socket, %StudioAudio{} = audio) do
@@ -500,21 +522,8 @@ defmodule BusterClawWeb.SoundStudioComponent do
   defp trim_error(:no_decoder), do: "The system decoder is unavailable."
   defp trim_error(_other), do: "Couldn't save the trim."
 
-  # Report per-outcome. A rejected file that does not say WHY is a support
-  # question, and "we tried to decode it and could not" is a real answer.
-  defp summarize([]), do: {:error, "Choose an audio file first."}
-
-  defp summarize(results) do
-    imported = Enum.count(results, &match?({:ok, _}, &1))
-    failures = Enum.reject(results, &match?({:ok, _}, &1))
-
-    case {imported, failures} do
-      {n, []} -> {:info, "Imported #{n} #{if n == 1, do: "file", else: "files"}."}
-      {0, [{:error, reason} | _]} -> {:error, import_error(reason)}
-      {n, [_ | _] = all} -> {:error, "Imported #{n}; skipped #{length(all)}."}
-    end
-  end
-
+  # A rejected file that does not say WHY is a support question, and "we tried
+  # to decode it and could not" is a real answer.
   defp import_error(:unsupported_format), do: "Audio files only (MP3, M4A, AAC, WAV, OGG, FLAC)."
   defp import_error(:not_audio), do: "That file couldn't be decoded, whatever it is named."
   defp import_error(:enoent), do: "The upload didn't arrive."
@@ -598,6 +607,51 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # Render
   # ---------------------------------------------------------------------------
 
+  @doc """
+  The Studio's actions, rendered by `StatusLive` INTO the home tab bar row —
+  inline with the tabs, on the right, the way a DAW puts transport controls in
+  the chrome rather than the document.
+
+  This is a function component on purpose: it holds no state, so it can live
+  outside the live_component while still driving it. The new-audio form
+  addresses the component through a `phx-target` SELECTOR (`#studio-panel`),
+  and Import opens the component's hidden file input with a client-side
+  `JS.dispatch` — no server round trip, and the picker opens inside the
+  user's click gesture, which is what browsers require of it.
+  """
+  def toolbar(assigns) do
+    ~H"""
+    <div id="studio-toolbar" class="flex items-center gap-1.5">
+      <form
+        id="studio-new-audio"
+        phx-submit="new_audio"
+        phx-target="#studio-panel"
+        class="flex items-center gap-1"
+      >
+        <input
+          type="text"
+          name="name"
+          placeholder="name"
+          autocomplete="off"
+          aria-label="Name for the new audio"
+          class="input input-bordered input-xs w-28 font-mono text-[11px]"
+        />
+        <button type="submit" class="btn btn-primary btn-xs font-mono uppercase">
+          + New audio
+        </button>
+      </form>
+
+      <button
+        type="button"
+        phx-click={JS.dispatch("click", to: "#studio-import input[type=file]")}
+        class="btn btn-ghost btn-xs border-2 border-base-content/20 font-mono uppercase"
+      >
+        Import audio
+      </button>
+    </div>
+    """
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -605,7 +659,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
           (`.ic-home .ic-panel`) it goes translucent with a 10px backdrop blur —
           the same frosted treatment the chat panel gets, so the smoke shader
           reads through the Studio the way it reads through everything else. --%>
-    <div class="ic-panel flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
+    <div id="studio-panel" class="ic-panel flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
       <%!-- Sidebar: everything the studio can open, and the way in. --%>
       <nav
         class="flex w-56 shrink-0 flex-col gap-3 overflow-y-auto border-r-2 border-base-content/20 pr-2"
@@ -648,42 +702,23 @@ defmodule BusterClawWeb.SoundStudioComponent do
           </button>
         </div>
 
-        <%!-- The ways in. Pinned to the bottom of the sidebar so they stay put
-              as the lists above grow. --%>
-        <form
-          id="studio-new-audio"
-          phx-submit="new_audio"
-          phx-target={@myself}
-          class="mt-auto flex gap-1 border-t-2 border-base-content/20 pt-2"
-        >
-          <input
-            type="text"
-            name="name"
-            placeholder="New audio…"
-            autocomplete="off"
-            class="input input-bordered input-xs min-w-0 flex-1 font-mono text-[11px]"
-          />
-          <button type="submit" class="btn btn-ghost btn-xs font-mono uppercase">+</button>
-        </form>
-
+        <%!-- The ways in moved up to the tab bar (`toolbar/1`); what remains
+              pinned here is the import machinery and its feedback. The file
+              input must stay RENDERED for LiveView uploads to work, so it is
+              hidden rather than removed — the toolbar's Import button clicks
+              it by selector. No phx-submit: auto_upload consumes each file as
+              it completes. --%>
         <form
           id="studio-import"
-          phx-submit="import"
           phx-change="validate_import"
           phx-target={@myself}
           class="sticky bottom-0 flex flex-col gap-1.5 border-t-2 border-base-content/20 bg-base-100/80 pt-2 backdrop-blur"
         >
-          <.live_file_input
-            upload={@uploads.import}
-            class="file-input file-input-bordered file-input-xs w-full"
-          />
-          <button type="submit" class="btn btn-primary btn-xs w-full font-mono uppercase">
-            Import audio
-          </button>
+          <.live_file_input upload={@uploads.import} class="hidden" />
 
           <p class="font-mono text-[10px] leading-tight text-base-content/40">
-            Lands in <code>studio/</code> in your workspace — you can also drop files
-            there in Finder.
+            Imports land in <code>studio/</code> in your workspace — you can also
+            drop files there in Finder.
           </p>
 
           <%!-- Offered, never automatic: SOUND_ROADMAP forbids seeding the

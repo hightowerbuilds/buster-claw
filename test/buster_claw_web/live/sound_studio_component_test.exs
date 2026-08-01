@@ -196,6 +196,40 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
   end
 
+  describe "the tab bar toolbar" do
+    test "New audio and Import audio ride the tab bar, only while the Studio is open",
+         %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/")
+
+      # On Chat there is no Studio toolbar — the action slot belongs to the
+      # active tab.
+      refute html =~ "studio-toolbar"
+
+      html = view |> element("button[phx-value-tab='studio']") |> render_click()
+      assert html =~ "studio-toolbar"
+      assert html =~ "New audio"
+      assert html =~ "Import audio"
+    end
+
+    test "the toolbar's create form reaches the component through its selector target",
+         %{conn: conn, root: root} do
+      {view, _html} = open_studio(conn)
+
+      # The form lives OUTSIDE the live_component (in the tab bar row) and
+      # addresses it via phx-target="#studio-panel". If that selector breaks,
+      # submits raise instead of creating.
+      view |> element("#studio-new-audio") |> render_submit(%{"name" => "from the bar"})
+      html = render(view)
+
+      assert File.regular?(
+               Path.join([root, "sounds", "studio", "tracks", "from the bar.track.json"])
+             )
+
+      assert html =~ "from the bar"
+      assert html =~ "Add clip"
+    end
+  end
+
   describe "importing" do
     test "offers a way in, and names where files land", %{conn: conn} do
       {_view, html} = open_studio(conn)
@@ -205,7 +239,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert html =~ "Imports"
     end
 
-    test "an imported file lands in studio/ and appears in the sidebar", %{
+    test "a chosen file lands in studio/ with no second submit click", %{
       conn: conn,
       root: root
     } do
@@ -216,11 +250,13 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
           %{name: "clip.wav", content: SoundGen.render("chat"), type: "audio/wav"}
         ])
 
+      # auto_upload: true — picking the file IS the import. The toolbar button
+      # only opens the OS picker; there is nothing else to press.
       render_upload(file, "clip.wav")
-      html = view |> element("#studio-import") |> render_submit()
+      html = render(view)
 
       assert File.regular?(Path.join([root, "sounds", "studio", "clip.wav"]))
-      assert html =~ "Imported 1 file"
+      assert html =~ "Imported clip.wav"
       assert html =~ ~s(phx-value-id="import:clip.wav")
     end
 
@@ -233,10 +269,11 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
         ])
 
       render_upload(file, "prose.wav")
-      html = view |> element("#studio-import") |> render_submit()
+      html = render(view)
 
       # The gate is a decode, not an extension — and it says so rather than
-      # failing silently.
+      # failing silently, naming the file since nothing else on screen does.
+      assert html =~ "prose.wav"
       assert html =~ "couldn&#39;t be decoded" or html =~ "couldn't be decoded"
       refute File.regular?(Path.join([root, "sounds", "studio", "prose.wav"]))
     end
@@ -250,7 +287,6 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
         ])
 
       render_upload(file, "cut.wav")
-      view |> element("#studio-import") |> render_submit()
 
       html = select(view, "import:cut.wav")
 
