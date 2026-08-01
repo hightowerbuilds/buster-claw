@@ -46,7 +46,42 @@ defmodule BusterClaw.WorkspaceCLITest do
 
     content = File.read!(path)
     assert content =~ "BUSTER_CLAW_GENERATED_CLI_LAUNCHER=1"
-    assert content =~ "exec '#{real_cli}' \"$@\""
+    assert content =~ "BC_CLI='#{real_cli}'"
+    assert content =~ ~s(exec "$BC_CLI" "$@")
+  end
+
+  test "a working launcher delegates to the CLI it names", %{real_cli: real_cli} do
+    File.write!(real_cli, "#!/bin/sh\necho \"delegated:$*\"\n")
+    File.chmod!(real_cli, 0o755)
+
+    assert {:ok, path} = WorkspaceCLI.ensure()
+    assert {out, 0} = System.cmd(path, ["on-duty"])
+    assert out =~ "delegated:on-duty"
+  end
+
+  test "a launcher whose target has vanished explains itself instead of dying in sh",
+       %{real_cli: real_cli} do
+    assert {:ok, path} = WorkspaceCLI.ensure()
+
+    # The exact 07-30 failure: the launcher is generated against a real binary,
+    # then that binary goes away (app uninstalled/moved) while the server that
+    # would rewrite the launcher keeps running.
+    File.rm!(real_cli)
+
+    assert {out, 127} = System.cmd(path, ["on-duty"], stderr_to_stdout: true)
+    assert out =~ "the Buster Claw CLI this launcher points at is missing"
+    assert out =~ real_cli
+    # It must say what to DO, not just what broke.
+    assert out =~ "regenerate this launcher"
+    refute out =~ "No such file or directory"
+  end
+
+  test "a target that exists but is not executable is caught too", %{real_cli: real_cli} do
+    assert {:ok, path} = WorkspaceCLI.ensure()
+    File.chmod!(real_cli, 0o644)
+
+    assert {out, 127} = System.cmd(path, ["commands"], stderr_to_stdout: true)
+    assert out =~ "is missing"
   end
 
   test "updates a prior generated launcher", %{root: root} do
