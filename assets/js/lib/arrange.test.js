@@ -1,5 +1,5 @@
 import {expect, test, describe} from "bun:test"
-import {msAtRatio, dropStartMs, laneIndexAt, isClick} from "./arrange.js"
+import {msAtRatio, dropStartMs, trackIndexAt, isClick} from "./arrange.js"
 
 describe("isClick", () => {
   test("a press that barely moved selects rather than drags", () => {
@@ -54,7 +54,7 @@ describe("dropStartMs", () => {
   })
 })
 
-describe("laneIndexAt", () => {
+describe("trackIndexAt", () => {
   const rects = [
     {top: 0, bottom: 50},
     {top: 60, bottom: 110},
@@ -62,23 +62,23 @@ describe("laneIndexAt", () => {
   ]
 
   test("finds the row under the pointer", () => {
-    expect(laneIndexAt(25, rects)).toBe(0)
-    expect(laneIndexAt(80, rects)).toBe(1)
-    expect(laneIndexAt(150, rects)).toBe(2)
+    expect(trackIndexAt(25, rects)).toBe(0)
+    expect(trackIndexAt(80, rects)).toBe(1)
+    expect(trackIndexAt(150, rects)).toBe(2)
   })
 
   test("a pointer in the gap between rows still chooses one", () => {
     // Landing on a border or a 10px gutter must not cancel the drag.
-    expect(laneIndexAt(55, rects)).toBe(2)
+    expect(trackIndexAt(55, rects)).toBe(2)
   })
 
-  test("past either end, clamps to the nearest lane", () => {
-    expect(laneIndexAt(-999, rects)).toBe(0)
-    expect(laneIndexAt(9_999, rects)).toBe(2)
+  test("past either end, clamps to the nearest track", () => {
+    expect(trackIndexAt(-999, rects)).toBe(0)
+    expect(trackIndexAt(9_999, rects)).toBe(2)
   })
 
-  test("no lanes is a non-answer, not a crash", () => {
-    expect(laneIndexAt(10, [])).toBe(-1)
-    expect(laneIndexAt(10, null)).toBe(-1)
+  test("no tracks is a non-answer, not a crash", () => {
+    expect(trackIndexAt(10, [])).toBe(-1)
+    expect(trackIndexAt(10, null)).toBe(-1)
   })
 })

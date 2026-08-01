@@ -6,13 +6,13 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundGen
   alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.StudioTrack
+  alias BusterClaw.Notifications.StudioAudio
   alias BusterClawWeb.SoundStudioComponent
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_studio_#{System.unique_integer([:positive])}")
     File.mkdir_p!(Path.join(root, "sounds"))
-    File.mkdir_p!(Path.join(root, "music"))
+    File.mkdir_p!(Path.join([root, "sounds", "music"]))
 
     prev = Application.get_env(:buster_claw, :workspace_root)
     Application.put_env(:buster_claw, :workspace_root, root)
@@ -219,7 +219,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       render_upload(file, "clip.wav")
       html = view |> element("#studio-import") |> render_submit()
 
-      assert File.regular?(Path.join([root, "studio", "clip.wav"]))
+      assert File.regular?(Path.join([root, "sounds", "studio", "clip.wav"]))
       assert html =~ "Imported 1 file"
       assert html =~ ~s(phx-value-id="import:clip.wav")
     end
@@ -238,7 +238,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       # The gate is a decode, not an extension — and it says so rather than
       # failing silently.
       assert html =~ "couldn&#39;t be decoded" or html =~ "couldn't be decoded"
-      refute File.regular?(Path.join([root, "studio", "prose.wav"]))
+      refute File.regular?(Path.join([root, "sounds", "studio", "prose.wav"]))
     end
 
     test "an imported file is selectable and served from its own route", %{conn: conn} do
@@ -294,7 +294,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       # Design rule 2: read-only in, new file out. An edit never touches its source.
       assert html =~ "Saved alarm-trim.wav"
-      trimmed = Path.join([root, "studio", "alarm-trim.wav"])
+      trimmed = Path.join([root, "sounds", "studio", "alarm-trim.wav"])
       assert File.regular?(trimmed)
       if before, do: assert(File.read!(original) == before)
 
@@ -327,8 +327,8 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
         view |> element("button[phx-click='apply_trim']") |> render_click()
       end
 
-      assert File.regular?(Path.join([root, "studio", "alarm-trim.wav"]))
-      assert File.regular?(Path.join([root, "studio", "alarm-trim-2.wav"]))
+      assert File.regular?(Path.join([root, "sounds", "studio", "alarm-trim.wav"]))
+      assert File.regular?(Path.join([root, "sounds", "studio", "alarm-trim-2.wav"]))
     end
 
     test "a trim does not survive changing the source", %{conn: conn} do
@@ -378,59 +378,65 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
   end
 
-  describe "tracks" do
-    defp new_track(view, name) do
-      view |> element("#studio-new-track") |> render_submit(%{"name" => name})
-      # The component asks the parent to open the new track via a message, so
+  describe "audio arrangements" do
+    defp new_audio(view, name) do
+      view |> element("#studio-new-audio") |> render_submit(%{"name" => name})
+      # The component asks the parent to open the new audio via a message, so
       # the selection lands one render after the submit returns.
       render(view)
     end
 
-    defp open_track(view, name) do
-      select(view, "track:" <> name)
+    defp open_audio(view, name) do
+      select(view, "audio:" <> name)
     end
 
-    defp add_clip(view, source, lane_index \\ 0) do
-      lane = view |> render() |> lane_ids() |> Enum.at(lane_index)
+    defp add_clip(view, source, track_index \\ 0) do
+      track = view |> render() |> track_ids() |> Enum.at(track_index)
 
       view
       |> element("form[phx-submit='add_clip']")
-      |> render_submit(%{"source" => source, "lane" => lane})
+      |> render_submit(%{"source" => source, "track" => track})
     end
 
-    defp lane_ids(html) do
-      Regex.scan(~r/data-lane-id="([^"]+)"/, html) |> Enum.map(&Enum.at(&1, 1)) |> Enum.uniq()
+    defp track_ids(html) do
+      Regex.scan(~r/data-track-id="([^"]+)"/, html) |> Enum.map(&Enum.at(&1, 1)) |> Enum.uniq()
     end
 
     defp clip_ids(html) do
       Regex.scan(~r/data-clip-id="([^"]+)"/, html) |> Enum.map(&Enum.at(&1, 1)) |> Enum.uniq()
     end
 
-    test "a new track is created, saved, and opened", %{conn: conn, root: root} do
+    test "a new audio is created, saved, and opened", %{conn: conn, root: root} do
       {view, _html} = open_studio(conn)
 
-      html = new_track(view, "doorbell idea")
+      html = new_audio(view, "doorbell idea")
 
-      assert File.regular?(Path.join([root, "studio", "tracks", "doorbell idea.track.json"]))
-      # Opened straight away — a track you have to go find is a track you made
-      # by accident.
+      assert File.regular?(
+               Path.join([root, "sounds", "studio", "tracks", "doorbell idea.track.json"])
+             )
+
+      # Opened straight away — an audio you have to go find is an audio you
+      # made by accident.
       assert html =~ "doorbell idea"
       assert html =~ "Add clip"
-      assert length(lane_ids(html)) == 1
+      assert length(track_ids(html)) == 1
+      # The control cluster sits to the LEFT of the clip region, Pro Tools
+      # style — the label lives there, not overlaid on the clips.
+      assert html =~ "Track A"
     end
 
-    test "a nameless track is refused", %{conn: conn} do
+    test "a nameless audio is refused", %{conn: conn} do
       {view, _html} = open_studio(conn)
 
-      html = new_track(view, "   ")
+      html = new_audio(view, "   ")
 
-      assert html =~ "Give the track a name"
-      assert StudioTrack.list() == []
+      assert html =~ "Give the audio a name"
+      assert StudioAudio.list() == []
     end
 
-    test "clips are added to a chosen lane and queue up rather than stacking", %{conn: conn} do
+    test "clips are added to a chosen track and queue up rather than stacking", %{conn: conn} do
       {view, _html} = open_studio(conn)
-      new_track(view, "queue")
+      new_audio(view, "queue")
 
       add_clip(view, "sound:alarm.wav")
       html = add_clip(view, "sound:boot.wav")
@@ -441,43 +447,43 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert html =~ "starts 1.32 s"
     end
 
-    test "lanes can be added and removed, and the last one stays", %{conn: conn} do
+    test "tracks can be added and removed, and the last one stays", %{conn: conn} do
       {view, _html} = open_studio(conn)
-      new_track(view, "lanes")
+      new_audio(view, "rows")
 
-      html = view |> element("button[phx-click='add_lane']") |> render_click()
-      assert length(lane_ids(html)) == 2
-      assert html =~ "2 lanes"
+      html = view |> element("button[phx-click='add_track']") |> render_click()
+      assert length(track_ids(html)) == 2
+      assert html =~ "2 tracks"
 
-      [_first, second] = lane_ids(html)
+      [_first, second] = track_ids(html)
 
       html =
         view
-        |> element("button[phx-value-id='#{second}'][phx-click='remove_lane']")
+        |> element("button[phx-value-id='#{second}'][phx-click='remove_track']")
         |> render_click()
 
-      assert length(lane_ids(html)) == 1
+      assert length(track_ids(html)) == 1
 
-      # A track with no lanes has nothing to drop onto, so the button is gone.
-      refute html =~ "phx-click=\"remove_lane\""
+      # An audio with no tracks has nothing to drop onto, so the button is gone.
+      refute html =~ "phx-click=\"remove_track\""
     end
 
-    test "a clip moves along its lane and across lanes, staying ONE clip", %{conn: conn} do
+    test "a clip moves along its track and across tracks, staying ONE clip", %{conn: conn} do
       {view, _html} = open_studio(conn)
-      new_track(view, "move")
-      view |> element("button[phx-click='add_lane']") |> render_click()
+      new_audio(view, "move")
+      view |> element("button[phx-click='add_track']") |> render_click()
       add_clip(view, "sound:boot.wav")
 
       html = render(view)
       [clip] = clip_ids(html)
-      [_lane_a, lane_b] = lane_ids(html)
+      [_track_a, track_b] = track_ids(html)
 
       html =
         view
         |> element("[phx-hook='TrackArrange']")
         |> render_hook("move_clip", %{
           "clip_id" => clip,
-          "lane_id" => lane_b,
+          "track_id" => track_b,
           "start_ms" => 2_500
         })
 
@@ -487,31 +493,31 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
     test "an arrangement survives leaving the tab — it was never only in memory", %{conn: conn} do
       {view, _html} = open_studio(conn)
-      new_track(view, "durable")
+      new_audio(view, "durable")
       add_clip(view, "sound:alarm.wav")
 
       view |> element("button[phx-value-tab='chat']") |> render_click()
       view |> element("button[phx-value-tab='studio']") |> render_click()
-      html = open_track(view, "durable")
+      html = open_audio(view, "durable")
 
       assert length(clip_ids(html)) == 1
     end
 
-    test "rendering mixes every lane into one file and opens it", %{conn: conn, root: root} do
+    test "rendering mixes every track into one file and opens it", %{conn: conn, root: root} do
       {view, _html} = open_studio(conn)
-      new_track(view, "mix me")
-      view |> element("button[phx-click='add_lane']") |> render_click()
+      new_audio(view, "mix me")
+      view |> element("button[phx-click='add_track']") |> render_click()
       add_clip(view, "sound:alarm.wav", 0)
       add_clip(view, "sound:boot.wav", 1)
 
-      html = view |> element("button[phx-click='render_track']") |> render_click()
+      html = view |> element("button[phx-click='render_audio']") |> render_click()
 
       assert html =~ "Rendered mix me-mix.wav"
-      mixed = Path.join([root, "studio", "mix me-mix.wav"])
+      mixed = Path.join([root, "sounds", "studio", "mix me-mix.wav"])
       assert File.regular?(mixed)
 
-      # Lanes SUM: both clips start at 0 on their own lanes, so the render is as
-      # long as the longer one, not the two end to end.
+      # Tracks SUM: both clips start at 0 on their own tracks, so the render is
+      # as long as the longer one, not the two end to end.
       {:ok, clip} = SoundStudio.import_source(mixed)
       assert_in_delta SoundStudio.duration_ms(clip), 1_320.0, 20.0
 
@@ -519,68 +525,68 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert render(view) =~ ~s(phx-value-id="import:mix me-mix.wav")
     end
 
-    test "rendering an empty track says so instead of writing silence", %{conn: conn} do
+    test "rendering an empty audio says so instead of writing silence", %{conn: conn} do
       {view, _html} = open_studio(conn)
-      new_track(view, "empty")
+      new_audio(view, "empty")
 
-      html = view |> element("button[phx-click='render_track']") |> render_click()
+      html = view |> element("button[phx-click='render_audio']") |> render_click()
       assert html =~ "Add a clip before rendering"
     end
 
     test "a clip whose source vanished fails the whole render, loudly", %{conn: conn, root: root} do
       {view, _html} = open_studio(conn)
-      new_track(view, "orphan")
+      new_audio(view, "orphan")
 
       File.write!(Path.join([root, "sounds", "temp.wav"]), SoundGen.render("chat"))
       add_clip(view, "sound:temp.wav")
       File.rm!(Path.join([root, "sounds", "temp.wav"]))
 
-      html = view |> element("button[phx-click='render_track']") |> render_click()
+      html = view |> element("button[phx-click='render_audio']") |> render_click()
 
       # A mix missing one layer still sounds finished — you would never know.
       assert html =~ "source is missing"
-      refute File.regular?(Path.join([root, "studio", "orphan-mix.wav"]))
+      refute File.regular?(Path.join([root, "sounds", "studio", "orphan-mix.wav"]))
     end
 
-    test "deleting a track leaves the clips it used alone", %{conn: conn, root: root} do
+    test "deleting an audio leaves the clips it used alone", %{conn: conn, root: root} do
       keeper = Path.join([root, "sounds", "keeper.wav"])
       File.write!(keeper, SoundGen.render("chat"))
 
       {view, _html} = open_studio(conn)
-      new_track(view, "doomed")
+      new_audio(view, "doomed")
       add_clip(view, "sound:keeper.wav")
 
-      view |> element("button[phx-click='delete_track']") |> render_click()
+      view |> element("button[phx-click='delete_audio']") |> render_click()
 
-      refute File.exists?(Path.join([root, "studio", "tracks", "doomed.track.json"]))
-      # A track is an arrangement OF clips, not a container holding them.
+      refute File.exists?(Path.join([root, "sounds", "studio", "tracks", "doomed.track.json"]))
+      # An audio is an arrangement OF clips, not a container holding them.
       assert File.regular?(keeper)
     end
 
-    test "a track cannot be added to a track", %{conn: conn} do
+    test "an audio cannot be added to an audio", %{conn: conn} do
       {view, _html} = open_studio(conn)
-      new_track(view, "outer")
+      new_audio(view, "outer")
       html = render(view)
 
       # The source picker offers material, not arrangements.
-      refute html =~ ~s(<option value="track:outer")
+      refute html =~ ~s(<option value="audio:outer")
     end
   end
 
   describe "arranger keyboard actions" do
-    defp start_track(conn, name) do
+    defp start_audio(conn, name) do
       {view, _html} = open_studio(conn)
-      view |> element("#studio-new-track") |> render_submit(%{"name" => name})
+      view |> element("#studio-new-audio") |> render_submit(%{"name" => name})
       render(view)
       {view, name}
     end
 
     defp add(view, source) do
-      lane = view |> render() |> lane_ids() |> hd()
+      track = view |> render() |> track_ids() |> hd()
 
       view
       |> element("form[phx-submit='add_clip']")
-      |> render_submit(%{"source" => source, "lane" => lane})
+      |> render_submit(%{"source" => source, "track" => track})
     end
 
     defp keys(view), do: view |> element("#studio-keys")
@@ -598,7 +604,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
 
     test "clicking a clip selects it", %{conn: conn} do
-      {view, _name} = start_track(conn, "select")
+      {view, _name} = start_audio(conn, "select")
       add(view, "sound:boot.wav")
       [clip] = view |> render() |> clip_ids()
 
@@ -611,7 +617,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
 
     test "copy then paste duplicates a clip as its own clip", %{conn: conn} do
-      {view, _name} = start_track(conn, "dupe")
+      {view, _name} = start_audio(conn, "dupe")
       add(view, "sound:boot.wav")
       [clip] = view |> render() |> clip_ids()
 
@@ -628,7 +634,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
 
     test "paste with an empty clipboard does nothing", %{conn: conn} do
-      {view, _name} = start_track(conn, "nothing")
+      {view, _name} = start_audio(conn, "nothing")
       add(view, "sound:boot.wav")
 
       html = render_hook(view, "studio_paste", %{})
@@ -636,7 +642,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
 
     test "delete removes the selected clip — the only way to, until now", %{conn: conn} do
-      {view, _name} = start_track(conn, "cull")
+      {view, _name} = start_audio(conn, "cull")
       add(view, "sound:boot.wav")
       [clip] = view |> render() |> clip_ids()
 
@@ -650,7 +656,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
 
     test "undo walks back an add, and redo walks it forward", %{conn: conn, root: root} do
-      {view, name} = start_track(conn, "history")
+      {view, name} = start_audio(conn, "history")
       add(view, "sound:boot.wav")
       add(view, "sound:alarm.wav")
       assert length(clip_ids(render(view))) == 2
@@ -666,23 +672,24 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       # Undo rewrites the file, not just the screen — the arrangement on disk is
       # the arrangement.
-      {:ok, track} = StudioTrack.load(name)
-      assert length(StudioTrack.clips(track)) == 1
-      assert File.regular?(Path.join([root, "studio", "tracks", name <> ".track.json"]))
+      {:ok, audio} = StudioAudio.load(name)
+      assert length(StudioAudio.clips(audio)) == 1
+
+      assert File.regular?(Path.join([root, "sounds", "studio", "tracks", name <> ".track.json"]))
     end
 
-    test "undo covers moves and lanes, not just clips", %{conn: conn} do
-      {view, _name} = start_track(conn, "moves")
-      view |> element("button[phx-click='add_lane']") |> render_click()
+    test "undo covers moves and tracks, not just clips", %{conn: conn} do
+      {view, _name} = start_audio(conn, "moves")
+      view |> element("button[phx-click='add_track']") |> render_click()
       add(view, "sound:boot.wav")
 
       html = render(view)
       [clip] = clip_ids(html)
-      [_a, lane_b] = lane_ids(html)
+      [_a, track_b] = track_ids(html)
 
       view
       |> element("[phx-hook='TrackArrange']")
-      |> render_hook("move_clip", %{"clip_id" => clip, "lane_id" => lane_b, "start_ms" => 3_000})
+      |> render_hook("move_clip", %{"clip_id" => clip, "track_id" => track_b, "start_ms" => 3_000})
 
       assert render(view) =~ "starts 3.0 s"
       html = render_hook(view, "studio_undo", %{})
@@ -690,7 +697,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
 
     test "undo and redo are disabled when there is nowhere to go", %{conn: conn} do
-      {view, _name} = start_track(conn, "edges")
+      {view, _name} = start_audio(conn, "edges")
       html = render(view)
 
       assert html =~ ~r/phx-click="studio_undo" disabled/
@@ -702,7 +709,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
 
     test "a new edit after undoing abandons the redo branch", %{conn: conn} do
-      {view, _name} = start_track(conn, "branch")
+      {view, _name} = start_audio(conn, "branch")
       add(view, "sound:boot.wav")
       render_hook(view, "studio_undo", %{})
 
@@ -718,7 +725,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
 
     test "history and clipboard survive leaving the tab", %{conn: conn} do
-      {view, _name} = start_track(conn, "durable keys")
+      {view, _name} = start_audio(conn, "durable keys")
       add(view, "sound:boot.wav")
       [clip] = view |> render() |> clip_ids()
       click_clip(view, clip)
@@ -726,7 +733,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       view |> element("button[phx-value-tab='chat']") |> render_click()
       view |> element("button[phx-value-tab='studio']") |> render_click()
-      html = select(view, "track:durable keys")
+      html = select(view, "audio:durable keys")
 
       # An undo stack that evaporates on a glance at Chat reads as the feature
       # being broken — which is why it lives in StatusLive, not the component.
@@ -734,12 +741,12 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       refute html =~ ~r/phx-click="studio_undo" disabled/
     end
 
-    test "switching tracks drops the history rather than undoing into the wrong one",
+    test "switching audios drops the history rather than undoing into the wrong one",
          %{conn: conn} do
-      {view, _name} = start_track(conn, "first")
+      {view, _name} = start_audio(conn, "first")
       add(view, "sound:boot.wav")
 
-      view |> element("#studio-new-track") |> render_submit(%{"name" => "second"})
+      view |> element("#studio-new-audio") |> render_submit(%{"name" => "second"})
       html = render(view)
 
       # Undoing into an arrangement you are no longer looking at is not undo.

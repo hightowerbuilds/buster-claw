@@ -12,7 +12,7 @@
 //
 //   1. The hook is mounted inside the Studio panel, which only exists while
 //      that tab is open — so nothing is bound anywhere else in the app.
-//   2. Typing contexts are excluded. ⌘Z inside the "New track…" field must undo
+//   2. Typing contexts are excluded. ⌘Z inside the "New audio…" field must undo
 //      your typing, not your arrangement; ⌘C in the source picker must copy
 //      text. The music player's Space handling makes the same exclusion for the
 //      same reason, including xterm's helper textarea.
