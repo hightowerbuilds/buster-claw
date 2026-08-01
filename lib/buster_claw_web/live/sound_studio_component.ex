@@ -610,6 +610,24 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # an unknown one gets the house color rather than a crash.
   defp track_color(_track), do: hd(@track_palette)
 
+  # The detail pane's waveform takes its color from the source's KIND, using
+  # the same triad the tracks cycle — so one glance at a blue wave says
+  # "import" before the header is read. Each pair is {face, shade}; the shade
+  # is the face at ~40%, matching the original hazard pairing.
+  #
+  # Recordings keep the house color rather than growing a fourth hue: the
+  # palette is three on purpose, and a voicemail is raw material the way a
+  # chime is. If recordings ever earn their own identity, add the pair here —
+  # this map is the entire mechanism.
+  @kind_waveform %{
+    sound: {"#FF4D1C", "#66210E"},
+    recording: {"#FF4D1C", "#66210E"},
+    import: {"#1C9BFF", "#0B3E66"},
+    music: {"#2FD068", "#135329"}
+  }
+
+  defp waveform_colors(kind), do: Map.get(@kind_waveform, kind, {"#FF4D1C", "#66210E"})
+
   # A clip carries only a source id, so its label is derived rather than stored
   # — renaming nothing, and staying correct if the catalog changes underneath.
   defp clip_label(%{source: source}) do
@@ -1055,7 +1073,13 @@ defmodule BusterClawWeb.SoundStudioComponent do
               <h2 class="truncate text-lg font-bold tracking-tight">{@selected.label}</h2>
               <p class="truncate font-mono text-xs text-base-content/50">{@selected.name}</p>
             </div>
-            <span class="shrink-0 border border-base-content/20 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-base-content/60">
+            <%!-- Tinted with the kind's waveform color, so the badge is the
+                  legend: a blue wave and a blue "import" badge explain each
+                  other. --%>
+            <span
+              style={"color: #{elem(waveform_colors(@selected.kind), 0)}; border-color: #{elem(waveform_colors(@selected.kind), 0)}66"}
+              class="shrink-0 border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest"
+            >
               {@selected.kind}{if @selected.sub && @selected.kind == :sound, do: " · #{@selected.sub}"}
             </span>
           </header>
@@ -1077,8 +1101,8 @@ defmodule BusterClawWeb.SoundStudioComponent do
               phx-hook="AudioClip"
               phx-update="ignore"
               data-src={@selected.url}
-              data-color-a="#ff4d1c"
-              data-color-b="#66210e"
+              data-color-a={elem(waveform_colors(@selected.kind), 0)}
+              data-color-b={elem(waveform_colors(@selected.kind), 1)}
               class="pointer-events-none absolute inset-0"
             >
               <canvas data-clip-canvas class="absolute inset-0 h-full w-full"></canvas>

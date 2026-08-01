@@ -153,6 +153,31 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       refute html =~ "blob:"
     end
 
+    test "the waveform wears its source kind's color", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+
+      # A chime is house hazard…
+      html = select(view, "sound:boot.wav")
+      assert html =~ ~s(data-color-a="#FF4D1C")
+      assert html =~ ~s(data-color-b="#66210E")
+
+      # …and an import is signal blue. The wave div is keyed by selection and
+      # AudioClip reads its colors once at mount, so the remount IS the recolor
+      # — same mechanism that keeps stale waveforms off screen.
+      file =
+        file_input(view, "#studio-import", :import, [
+          %{name: "tint.wav", content: SoundGen.render("chat"), type: "audio/wav"}
+        ])
+
+      render_upload(file, "tint.wav")
+      html = select(view, "import:tint.wav")
+
+      assert html =~ ~s(data-color-a="#1C9BFF")
+      assert html =~ ~s(data-color-b="#0B3E66")
+      # The badge is the legend: the kind label wears the same color.
+      assert html =~ ~s(color: #1C9BFF)
+    end
+
     test "the waveform id is keyed by source, so switching files remounts the hook",
          %{conn: conn} do
       {view, _html} = open_studio(conn)
