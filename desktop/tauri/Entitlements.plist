@@ -1,11 +1,58 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Hardened-runtime entitlements. Referenced from tauri.conf.json ->
-  bundle.macOS.entitlements. Currently empty; add entitlements here as the
-  Apple-signing critical path comes online.
+  Hardened-runtime entitlements. Notarization rejects any build without the
+  hardened runtime (`codesign --options runtime`), and the hardened runtime then
+  denies the four things the BEAM cannot run without. Each one below is a hole
+  punched back through it on purpose.
+
+  This file is referenced from TWO places, deliberately pointed at the same path
+  so they can never drift:
+
+    - tauri.conf.json -> bundle.macOS.entitlements  (the .app itself)
+    - scripts/codesign_release.sh                   (every Mach-O in the OTP tree)
+
+  The second one is the whole reason this file is not just the shell's business.
+  **Entitlements do not inherit across process boundaries.** `beam.smp` is
+  spawned as a separate process out of Contents/Resources/ (see
+  desktop/tauri/src/main.rs, resolve_release_binary) and does NOT inherit the
+  shell's entitlements — it must carry these on its own signature. Sign the ERTS
+  without them and the failure is the worst shape available: notarization
+  passes, the DMG ships, and the VM dies at launch on the user's machine. It
+  fails nowhere in our pipeline and everywhere in theirs.
+
+  Set matched to Livebook's — a Tauri v2 app shipping an Elixir/OTP release,
+  i.e. the same architecture, already notarized and in the wild. See
+  daily-growth/roadmaps/LAUNCH_ROADMAP.md section III.E.
+
+  NOTHING ELSE BELONGS HERE. In particular `com.apple.security.get-task-allow`
+  (the debug entitlement) is a hard notary failure; it must never appear.
 -->
 <plist version="1.0">
 <dict>
+  <!-- BEAM has had a real JIT (BeamAsm) since OTP 24. It needs W^X executable
+       mappings, which the hardened runtime refuses by default. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+
+  <!-- Required in practice alongside allow-jit for BEAM's code allocation.
+       BeamAsm's allocator does not confine itself to the MAP_JIT regions
+       allow-jit alone permits. -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!-- Load-bearing, and the one most likely to be dropped as redundant. The
+       BEAM dlopen()s its NIFs at runtime — crypto.so, sqlite3_nif.so,
+       asn1rt_nif.so and the rest. To the loader a NIF is a plug-in from another
+       team, and library validation rejects it. Seven of those .so files do not
+       even carry an execute bit, which is why codesign_release.sh finds Mach-O
+       by content rather than by mode. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+
+  <!-- OTP's launcher scripts rely on DYLD_*-driven dyld behaviour, which the
+       hardened runtime scrubs from the environment unless this is set. -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
 </dict>
 </plist>

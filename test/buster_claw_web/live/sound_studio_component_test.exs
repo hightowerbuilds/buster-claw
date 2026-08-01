@@ -585,12 +585,24 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
     defp keys(view), do: view |> element("#studio-keys")
 
+    # A real click reaches the COMPONENT, because the arranger hook's element
+    # carries phx-target — LiveView resolves a hook's pushEvent against it.
+    # Addressing the LiveView directly (render_hook/3 on the view) skips that
+    # and is exactly how "clicking a clip never selected it" went unnoticed.
+    defp click_clip(view, clip_id) do
+      view
+      |> element("[phx-hook='TrackArrange']")
+      |> render_hook("select_clip", %{"id" => clip_id})
+
+      render(view)
+    end
+
     test "clicking a clip selects it", %{conn: conn} do
       {view, _name} = start_track(conn, "select")
       add(view, "sound:boot.wav")
       [clip] = view |> render() |> clip_ids()
 
-      html = render_hook(view, "select_clip", %{"id" => clip})
+      html = click_clip(view, clip)
 
       # The selected clip is the subject copy, paste, and delete act on, so it
       # has to be visibly distinct.
@@ -603,7 +615,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       add(view, "sound:boot.wav")
       [clip] = view |> render() |> clip_ids()
 
-      render_hook(view, "select_clip", %{"id" => clip})
+      click_clip(view, clip)
       render_hook(view, "studio_copy", %{})
       html = render_hook(view, "studio_paste", %{})
 
@@ -628,7 +640,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       add(view, "sound:boot.wav")
       [clip] = view |> render() |> clip_ids()
 
-      render_hook(view, "select_clip", %{"id" => clip})
+      click_clip(view, clip)
       html = render_hook(view, "studio_delete_clip", %{})
 
       assert clip_ids(html) == []
@@ -709,7 +721,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       {view, _name} = start_track(conn, "durable keys")
       add(view, "sound:boot.wav")
       [clip] = view |> render() |> clip_ids()
-      render_hook(view, "select_clip", %{"id" => clip})
+      click_clip(view, clip)
       render_hook(view, "studio_copy", %{})
 
       view |> element("button[phx-value-tab='chat']") |> render_click()

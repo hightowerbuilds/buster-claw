@@ -368,10 +368,6 @@ defmodule BusterClawWeb.StatusLive do
   # Arranger: selection, clipboard, undo/redo
   # ---------------------------------------------------------------------------
 
-  def handle_event("select_clip", %{"id" => id}, socket) do
-    {:noreply, assign(socket, :studio_clip, id)}
-  end
-
   def handle_event("studio_copy", _params, socket) do
     case selected_clip(socket) do
       nil ->
@@ -756,6 +752,13 @@ defmodule BusterClawWeb.StatusLive do
   # component has already written the new one to disk.
   def handle_info({:studio_history, %StudioTrack{} = previous}, socket) do
     {:noreply, push_studio_history(socket, previous)}
+  end
+
+  # Forwarded by the component, which receives the click because the arranger
+  # hook is `phx-target`-bound to it. The selection belongs here, beside the
+  # clipboard and undo stacks that consume it.
+  def handle_info({:studio_select_clip, id}, socket) do
+    {:noreply, assign(socket, :studio_clip, id)}
   end
 
   # journal component so an open Notes tab re-reads the document.

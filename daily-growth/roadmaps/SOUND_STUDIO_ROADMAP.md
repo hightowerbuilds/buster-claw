@@ -443,6 +443,24 @@ a spec that would clip is refused or auto-attenuated, not written.
 > no-op, because without that guard clicking the open track threw away its undo
 > stack.
 >
+> **The bug this shipped with, found by the operator within the hour — and the
+> testing lesson under it.** Clicking a clip never selected it in a browser, so
+> copy and paste did nothing while undo worked fine. Cause:
+> **LiveView resolves a hook's `pushEvent` against the `phx-target` on the
+> hook's own element.** The arranger carries one so `move_clip` reaches the
+> component — which makes *every* event from that hook component-bound, whether
+> or not it wants to be. `select_clip` was handled only in `StatusLive`, so each
+> click hit a `FunctionClauseError`. The fix is to receive it in the component
+> and forward it up.
+>
+> The tests missed it because **`render_hook(view, ...)` addresses the LiveView
+> directly and skips `phx-target` resolution entirely** — it cannot see this
+> class of bug by construction. Worse, the honest failures were there first: the
+> original tests crashed with exactly this error, and switching them to
+> `render_hook(view, ...)` "fixed" them by making them stop testing the real
+> path. **Drive a hook event through `element(...) |> render_hook(...)`**, which
+> resolves the target the way a browser does. The tests now do.
+>
 > **A test bug worth recording:** `~r/phx-click="studio_undo"[^>]*disabled/`
 > matched the Tailwind class `disabled:opacity-30`, which is on the button in
 > *both* states — so the assertion could never fail correctly. Match the bare

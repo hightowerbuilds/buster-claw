@@ -285,6 +285,23 @@ defmodule BusterClawWeb.SoundStudioComponent do
     end
   end
 
+  # Clicking a clip lands HERE, not in `StatusLive`, even though the selection
+  # lives there. LiveView resolves a hook's `pushEvent` against the `phx-target`
+  # on the hook's own element, and this arranger carries one so `move_clip`
+  # reaches the component — which means every event from that hook is
+  # component-bound, whether or not it wants to be. So take it and pass it up.
+  #
+  # This cost a real bug: `select_clip` was originally handled only in
+  # `StatusLive`, so in a browser every click on a clip hit a
+  # FunctionClauseError and nothing was ever selected — which made copy and
+  # paste look broken while undo worked fine. The tests missed it because
+  # `render_hook(view, ...)` addresses the LiveView directly and skips the
+  # `phx-target` resolution a real click goes through.
+  def handle_event("select_clip", %{"id" => id}, socket) do
+    send(self(), {:studio_select_clip, id})
+    {:noreply, socket}
+  end
+
   def handle_event("remove_clip", %{"id" => clip_id}, socket) do
     {:noreply, save_track(socket, StudioTrack.remove_clip(socket.assigns.track, clip_id))}
   end
