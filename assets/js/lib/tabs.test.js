@@ -9,6 +9,7 @@ describe("canonicalGroupKey", () => {
       "/settings",
       "/appearance",
       "/voice",
+      "/notify-settings",
       "/integrations",
       "/security",
       "/get-started",

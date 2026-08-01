@@ -1,13 +1,17 @@
 // Tab-strip model: client-side persistence of open routes plus the path/label
 // helpers shared by the TabStrip, SplitResizer, and TerminalView hooks.
 
-// The Settings section presents several routes behind one in-page tab bar
-// (Get Started, Appearance, Voice, Integrations, Configuration, cmd-list,
-// Security). In the top browser-style tab strip those routes collapse into a
-// single "Settings" tab keyed by the group's canonical path, so traversing the
-// sub-tabs only moves the in-page highlight — it never spawns new top-level
-// tabs. The strip remembers the last sub-route visited (see the TabStrip hook's
-// `sync`) so returning to the Settings tab reopens where you left off.
+// The Settings section presents several routes behind one in-page tab bar. In
+// the top browser-style tab strip those routes collapse into a single "Settings"
+// tab keyed by the group's canonical path, so traversing the sub-tabs only moves
+// the in-page highlight — it never spawns new top-level tabs. The strip
+// remembers the last sub-route visited (see the TabStrip hook's `sync`) so
+// returning to the Settings tab reopens where you left off.
+//
+// This list MUST match `BusterClawWeb.SettingsTabs`'s tab paths exactly. A
+// sub-tab missing here gets no group, so it opens its own top-level tab labelled
+// with its raw path — which is precisely what /notify-settings did until it was
+// added. `BusterClawWeb.SettingsTabsTest` fails the build if the two drift again.
 const TAB_GROUPS = [
   {
     key: "/settings",
@@ -15,6 +19,7 @@ const TAB_GROUPS = [
       "/settings",
       "/appearance",
       "/voice",
+      "/notify-settings",
       "/integrations",
       "/security",
       "/get-started",

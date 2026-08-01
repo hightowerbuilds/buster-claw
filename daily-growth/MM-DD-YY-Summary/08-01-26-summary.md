@@ -7,7 +7,11 @@ It is now **one catalog, shown once**, with a shared image pool either surface
 can point at — and the two surfaces sit beside it as live previews of what they
 are actually running.
 
-One commit on main. Suite at close: 2052 tests, 110 JS, 34 Rust, credo strict
+Then a small bug with a bigger lesson: the Notify sub-tab was escaping Settings
+and opening its own top-level tab, because the sub-tab list is declared twice
+and one copy drifted (§8).
+
+Two commits on main. Suite at close: 2055 tests, 110 JS, 34 Rust, credo strict
 clean, `mix precommit` green. Five iterations on the layout, one feature built
 and then deleted on operator testing.
 
@@ -142,7 +146,42 @@ migration test started life already migrated. The fix is a `setup` that deletes
 the marker inside the test's transaction. Any future boot-time `ensure` with a
 persisted guard will hit this.
 
-## 8. Open
+## 8. A settings sub-tab that escaped its group
+
+Clicking **Notify** in Settings opened a new tab in the top browser-style strip,
+labelled with the bare string `/notify-settings`. It should have stayed inside
+the Settings tab like every other sub-tab.
+
+Not a logic error — a drift. The Settings sub-tabs are declared **twice**: in
+`BusterClawWeb.SettingsTabs` (Elixir, 8 paths) and in `TAB_GROUPS` in
+`assets/js/lib/tabs.js` (JS, 7 paths). Notify was added to the nav and never
+added to the JS group. So `canonicalGroupKey("/notify-settings")` returned null,
+`currentKey()` fell through to the raw path instead of collapsing to
+`/settings`, `sync()` found no matching tab and made one — and the label was the
+path itself, because `labelForPath` falls back to the path when the route isn't
+in `@tab_labels` either.
+
+The fix is one line. Two things came free with it: Notify now inherits the
+group's `href` memory, so leaving Settings and returning reopens Notify rather
+than the canonical default; and the bug **self-heals** for anyone who already
+tripped it, because `sync()` prunes any tab whose path belongs to a group but
+isn't the group key — a stray `/notify-settings` tab in localStorage is dropped
+on next load, no migration needed.
+
+The one-liner was not the whole job. Two hand-maintained lists that must agree
+will drift again the next time a sub-tab is added, so `SettingsTabs.paths/0` is
+now public and `BusterClawWeb.SettingsTabsTest` reads `tabs.js`, extracts the
+group's Set, and diffs it **both ways** — missing entries and stale ones — in
+the same spirit as the Rust `acl_lockstep` suite. The guard was verified by
+reverting the fix and watching it go red with the path named in the message.
+
+That is the second cross-language mirror this session (the first being the
+shader palettes in §5, which got deleted rather than guarded). The pattern to
+watch for: a list that exists in both Elixir and JS and is kept in step by
+memory. Either delete one copy or hold them in lockstep with a test — never
+leave it to a comment.
+
+## 9. Open
 
 **No visual pass was done.** Everything here is verified by the suite and by
 reading the generated CSS (the arbitrary `calc()` normalization, and that

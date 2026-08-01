@@ -17,6 +17,15 @@ defmodule BusterClawWeb.SettingsTabs do
     %{key: :security, label: "Security", path: "/security"}
   ]
 
+  @doc """
+  Every settings sub-tab path, in display order.
+
+  The tab strip's JS has to know this same set — a sub-tab it doesn't recognize
+  opens its own top-level tab instead of staying inside Settings. Exposed so
+  `BusterClawWeb.SettingsTabsTest` can hold the two in lockstep.
+  """
+  def paths, do: Enum.map(@tabs, & &1.path)
+
   attr :active, :atom, required: true
 
   def tabs(assigns) do
