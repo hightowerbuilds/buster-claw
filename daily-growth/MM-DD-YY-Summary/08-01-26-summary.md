@@ -317,3 +317,72 @@ launch should look at those two things.
   a *packaged* install and count what a new user actually sees. Every phase
   above is judged by that one number and it has never been observed on a real
   install.
+
+---
+
+# Also 08-01, from the release-and-studio session
+
+Two workstreams, one keyboard: the morning readied Apple distribution, the
+afternoon turned the Studio's arranger into a small DAW.
+
+## A. Apple: enrollment cleared, and the gate split in two
+
+Enrollment cleared today — the constraint moved from *waiting on Apple* to
+*doing the work*, and the next action is the Developer ID certificate (the
+account sits at the certificates page; `~/Desktop/apple-dev-skills/` now holds
+the walkthrough, including the CSR steps and the export-with-private-key trap).
+
+- **`LAUNCH_ROADMAP.md` re-scoped around two releases** (operator call): R1 = a
+  signed, notarized DMG for both arches handed to people we can email, ~1 week;
+  R2 = the public download, where the updater, telemetry, download page, and
+  privacy policy become mandatory. Every gate item tagged [R1]/[R2]. No feature
+  freeze — so the gate prefers CI assertions, which survive merges, over manual
+  checklists, which are only true for the commit they ran against.
+- **CI now proves the artifact, not just the source.** `smoke_release_boot.sh`
+  boots the bundled release headlessly (no GUI, Keychain, Chromium, or network)
+  before signing and upload — verified to catch BLOCKER-1's exact shape. The
+  full GUI smoke passed against a real 76 MB bundle: native bridge round trip,
+  live render, headless Chrome over CDP, 157 commands.
+- **The advertised macOS floor was a three-version lie** — declared 11.0 while
+  all 24 OTP binaries require 14.0, so macOS 11–13 got a shell that launches
+  and a VM dyld refuses. Corrected to 14.0 and asserted on every build
+  (`check_macos_floor.sh`), because the floor is inherited from whichever
+  Erlang built the release and moves silently with the toolchain.
+- Also: tauri-cli aligned to 2.11.4 after finding the CI pin *could not take
+  effect* (existence-guarded install + persistent cache), and the
+  entitlements double-hyphen guard fixed — it matched `<!--` itself, so it
+  could never pass. Every guard needs a passing input tested.
+
+Pushed through `76c5ac4` this morning.
+
+## B. The Studio's DAW day
+
+Six commits, `0e1cf1a` → `208f7c9`, full detail in
+`SOUND_STUDIO_ROADMAP.md` Phase 8. The shape of it:
+
+- **Vocabulary swapped to DAW terms** through the whole stack — you create an
+  **audio** and add **tracks** to it (`StudioTrack` → `StudioAudio`); the v1
+  disk format keeps the old words on purpose, files being hand-editable.
+- **Pro Tools clusters** left of each track (label, M, S, delete), with the
+  geometry rule that `[data-track]` is only the clip region — a row-wide rect
+  would land every drop early by one cluster width.
+- **New audio / Import audio ride the home tab bar**, the row's right side now
+  being the active tab's action slot; imports went `auto_upload` so choosing
+  files IS the import.
+- **Color became a language:** a three-color track palette (hazard / `#1C9BFF`
+  / `#2FD068`) hanging off the label letter so a color survives its neighbor's
+  deletion; waveforms colored by source kind with the kind badge as legend;
+  hazard alone still means attention.
+- **Mute and solo** with the exact DAW contract (solo beats mute, any-solo
+  isolates), rendered honest: the mix uses `audible_clips/1`, silenced regions
+  dim, and all-silenced earns its own refusal.
+- **A transport.** Play performs the timeline the way Pro Tools does on the
+  spacebar — WebAudio schedules the same routes the sidebar plays, at the
+  offsets the server rendered, playhead swept by rAF; Render stays the bounce.
+  Needs a human ear pass, and the packaged walk (Phase 5) now owes the
+  WKWebView-autoplay check one more clause.
+
+At close: 54 component / 27 schema / 120 JS tests green, credo strict clean.
+The studio commits were held locally until the workspace relocation landed —
+the import tests assert `sounds/studio/` paths that only exist with both
+sessions' work in the tree.

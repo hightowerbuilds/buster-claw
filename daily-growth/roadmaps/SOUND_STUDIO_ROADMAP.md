@@ -17,6 +17,15 @@ Part V below, because five of them are traps this build walks straight into.
 - **Placement: a Home sub-tab**, in the strip beside Music — not a dock tab,
   not buried in Settings. Sound authoring sits where music playback sits.
 
+> **Vocabulary swapped 08-01 (operator call).** What this document's history
+> calls a *track* is now an **audio**; what it calls a *lane* is now a
+> **track** — operators expect DAW terms, where you add tracks to an audio.
+> The code renamed with it (`StudioTrack` → `StudioAudio`), the phase records
+> below stay as written (they are history), and the **v1 disk format keeps
+> the old words on purpose** (`studio/tracks/`, `.track.json`, `"lanes"` key)
+> because those files are hand-editable and may already exist. `to_map`/
+> `from_map` are the entire translation layer.
+
 ---
 
 ## Part I — What exists, and why this is mostly assembly
@@ -465,6 +474,83 @@ a spec that would clip is refused or auto-attenuated, not written.
 > matched the Tailwind class `disabled:opacity-30`, which is on the button in
 > *both* states — so the assertion could never fail correctly. Match the bare
 > attribute, not a substring that a class name also contains.
+
+### Phase 8 — The DAW day: identity, color, and a transport — **SHIPPED 08-01**
+
+> **Operator scope, 08-01, arriving in six pulls over one session:** rename to
+> DAW vocabulary; Pro Tools-style control clusters left of each track; New
+> audio / Import audio inline with the home tab bar; blue and green joining
+> the hazard orange; mute and solo; and a way to hear the edit before
+> rendering it.
+>
+> Six commits, `0e1cf1a` → `208f7c9`. 54 component tests, 27 schema tests, 120
+> JS tests across 11 suites at close.
+>
+> **The vocabulary swap ran through the whole stack** — module, struct,
+> events, hook params, tests — with the v1 disk format as the one deliberate
+> exception (see the banner at the top). Leaving code where "track" meant the
+> opposite of what the UI says would have made every future Studio session
+> start with a translation table.
+>
+> **The Pro Tools shape, and the geometry rule under it.** Each track is a
+> left control cluster (label, M, S, delete — the color strip too) beside a
+> clip region. `[data-track]` is ONLY the region, never the row: the drag
+> hook divides pointer X by that rect, and a row-wide rect would land every
+> drop early by exactly one cluster width. The ruler gained a matching spacer
+> for the same reason. "+ Track" sits under the stack — where the new row
+> appears is where the button is — and disables at the cap instead of
+> silently no-opping.
+>
+> **The tab bar's right side is an action slot.** New audio and Import audio
+> render there (a stateless `toolbar/1` function component in `StatusLive`'s
+> row), reaching the live_component via a `phx-target` **selector**
+> (`#studio-panel`) and a client-side `JS.dispatch` click on the hidden file
+> input. Imports switched to `auto_upload` to make the button honest:
+> choosing files IS the import — a second submit hidden in a sidebar would
+> have been a trap from a toolbar.
+>
+> **Color is a language with two axes.** Tracks cycle a three-color palette
+> (`#FF4D1C` / `#1C9BFF` / `#2FD068`) as *identity* — cluster strip, label,
+> clips — hanging off the **label letter**, not the list position, so a color
+> survives its neighbor's deletion (pinned by test). The detail pane's
+> waveform takes the same triad by source *kind* (sounds hazard, imports
+> blue, music green; recordings deliberately share hazard), with the kind
+> badge tinted to be its own legend. **Hazard alone still means attention**:
+> selection ring, drag target, trim edges. Logged in the design-identity
+> memory as a scoped exception to the single-accent rule.
+>
+> **Mute and solo are the DAW contract, exactly:** any solo → only soloed
+> tracks sound; otherwise everything unmuted sounds; **solo beats mute on the
+> same track** (the Pro Tools/Logic resolution, pinned by a test named for
+> it). The render mixes `audible_clips/1`, silenced regions dim to 40%, and
+> all-clips-silenced gets its own refusal — "unmute or solo something first"
+> — because "add a clip" would be a wrong diagnosis. Flags persist as
+> `"muted"`/`"soloed"` in the v1 entries, read with `== true` so a
+> hand-edited `"muted": "yes"` is ignored rather than honored.
+>
+> **The transport (Play) is the Pro Tools model:** press Play and the
+> timeline sounds; Render stays the bounce. The DOM is the score — the server
+> renders each clip's `data-src` (the same route the sidebar plays) and each
+> region's `data-audible` (carrying `audible?/2`, so mute/solo are read by
+> JS, never recomputed) — and the `StudioAudition` hook schedules decoded
+> buffers on one AudioContext clock, sweeping a playhead by rAF. Stopping
+> closes the context, which silences everything with zero node bookkeeping;
+> the hook is keyed by the open audio so switching arrangements can never
+> leave a stale score sounding. Two divergences from Render, both toward
+> usefulness: a vanished source is *skipped* by Play but still *refuses*
+> Render, and WebAudio sums floats where the render saturates int16 — audible
+> only in a mix already clipping. Scheduling maths is pure (`lib/audition.js`,
+> 10 tests), per the house split.
+>
+> **Testing lessons paid for today:** a page-wide `=~ "opacity-40"` assertion
+> can never fail — that class styles disabled buttons all over the app; scope
+> to `[data-track].opacity-40`. And the double-hyphen guard pattern from the
+> morning repeated its lesson here in miniature: every guard needs a passing
+> input tested, not only a failing one.
+>
+> **Phase 5's packaged walk grew a clause:** the transport is a
+> click-initiated AudioContext, which should pass WKWebView's autoplay
+> policy — but "should" is exactly what that walk exists to verify.
 
 ### Phase 5 — The packaged-app walk *(inherited, still open)*
 
