@@ -599,6 +599,35 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert File.regular?(keeper)
     end
 
+    test "tracks carry their own colors, and a color survives its neighbor's death",
+         %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      new_audio(view, "painted")
+
+      view |> element("button[phx-click='add_track']") |> render_click()
+      html = view |> element("button[phx-click='add_track']") |> render_click()
+
+      # A (hazard), B (blue), C (green) — the eye follows material by color,
+      # so siblings on one track must share one.
+      assert html =~ "#FF4D1C"
+      assert html =~ "#1C9BFF"
+      assert html =~ "#2FD068"
+
+      [_a, b, _c] = track_ids(html)
+
+      html =
+        view
+        |> element("button[phx-value-id='#{b}'][phx-click='remove_track']")
+        |> render_click()
+
+      # Color hangs off the label letter, not the list position: deleting B
+      # must NOT turn C blue. A track that changes color because a neighbor
+      # died breaks exactly the visual memory the palette exists to serve.
+      assert html =~ "Track C"
+      assert html =~ "#2FD068"
+      refute html =~ "#1C9BFF"
+    end
+
     test "an audio cannot be added to an audio", %{conn: conn} do
       {view, _html} = open_studio(conn)
       new_audio(view, "outer")

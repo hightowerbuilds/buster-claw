@@ -585,6 +585,31 @@ defmodule BusterClawWeb.SoundStudioComponent do
     |> Enum.reject(&(&1.items == []))
   end
 
+  # The Studio's track palette: hazard orange stays first, joined by a signal
+  # blue and a green in the same saturation family. Three, cycling, for up to
+  # eight tracks — a DAW colors tracks so the eye can follow material across
+  # the arrangement, and two clips from the same track must read as siblings.
+  #
+  # The color hangs off the track's LABEL LETTER, not its list position:
+  # positions renumber when a middle track is deleted, and a track that
+  # changes color because a NEIGHBOR died would break exactly the visual
+  # memory the palette exists to serve. Labels are assigned once at creation
+  # and never reused while the track lives, so A is always hazard, B always
+  # blue, C always green, D hazard again.
+  #
+  # Inline styles rather than Tailwind classes, deliberately: the clip blocks
+  # already carry style= for their geometry, so this adds no new CSP surface,
+  # and it spares the JIT-safelist dance that dynamic class names would need.
+  @track_palette ["#FF4D1C", "#1C9BFF", "#2FD068"]
+
+  defp track_color(%{label: <<c>>}) when c in ?A..?Z do
+    Enum.at(@track_palette, rem(c - ?A, length(@track_palette)))
+  end
+
+  # A hand-edited file can carry any label ("?" is the parser's fallback);
+  # an unknown one gets the house color rather than a crash.
+  defp track_color(_track), do: hd(@track_palette)
+
   # A clip carries only a source id, so its label is derived rather than stored
   # — renaming nothing, and staying correct if the catalog changes underneath.
   defp clip_label(%{source: source}) do
@@ -903,8 +928,14 @@ defmodule BusterClawWeb.SoundStudioComponent do
             class="flex select-none flex-col gap-1"
           >
             <div :for={track <- @audio.tracks} class="flex items-stretch">
-              <div class="flex w-28 shrink-0 flex-col justify-between border-2 border-r-0 border-base-content/15 bg-base-content/[0.06] px-2 py-1">
-                <span class="truncate font-mono text-[10px] font-bold uppercase tracking-wider text-base-content/60">
+              <div
+                style={"border-left-color: #{track_color(track)}"}
+                class="flex w-28 shrink-0 flex-col justify-between border-2 border-l-4 border-r-0 border-base-content/15 bg-base-content/[0.06] px-2 py-1"
+              >
+                <span
+                  style={"color: #{track_color(track)}"}
+                  class="truncate font-mono text-[10px] font-bold uppercase tracking-wider"
+                >
                   Track {track.label}
                 </span>
                 <div class="flex items-center gap-1.5">
@@ -932,18 +963,20 @@ defmodule BusterClawWeb.SoundStudioComponent do
                 data-track-id={track.id}
                 class="relative h-14 min-w-0 flex-1 border-2 border-base-content/15 bg-base-content/[0.03] data-[track-target]:border-primary/60"
               >
+                <%!-- Fill and border come from the TRACK (siblings must read
+                      as siblings); selection stays the hazard ring, one color
+                      for "you are holding this" no matter what it is. The
+                      8-digit hex suffixes are alpha: B3 ≈ 70%, 80 = 50%,
+                      40 = 25%. --%>
                 <div
                   :for={clip <- track.clips}
                   data-clip
                   data-clip-id={clip.id}
                   data-start-ms={clip.start_ms}
-                  style={"left: #{StudioAudio.position_pct(clip.start_ms, StudioAudio.view_ms(@audio))}%; width: #{StudioAudio.width_pct(clip.duration_ms, StudioAudio.view_ms(@audio))}%"}
+                  style={"left: #{StudioAudio.position_pct(clip.start_ms, StudioAudio.view_ms(@audio))}%; width: #{StudioAudio.width_pct(clip.duration_ms, StudioAudio.view_ms(@audio))}%; border-color: #{track_color(track)}B3; background-color: #{track_color(track)}#{if @studio_clip == clip.id, do: "80", else: "40"}"}
                   class={[
                     "absolute inset-y-2 cursor-grab overflow-hidden rounded-xs border px-1 active:cursor-grabbing",
-                    if(@studio_clip == clip.id,
-                      do: "border-primary bg-primary/50 ring-2 ring-primary",
-                      else: "border-primary/70 bg-primary/25"
-                    )
+                    @studio_clip == clip.id && "ring-2 ring-primary"
                   ]}
                   title={clip_title(clip)}
                 >
