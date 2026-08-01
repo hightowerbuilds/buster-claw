@@ -280,6 +280,17 @@ defmodule BusterClawWeb.SoundStudioComponent do
     {:noreply, save_audio(socket, StudioAudio.remove_track(socket.assigns.audio, track_id))}
   end
 
+  # Mute and solo ride the same save path as every other edit, so they land in
+  # the undo history and survive a tab switch like anything else that changes
+  # what a render will contain.
+  def handle_event("toggle_mute", %{"id" => track_id}, socket) do
+    {:noreply, save_audio(socket, StudioAudio.toggle_mute(socket.assigns.audio, track_id))}
+  end
+
+  def handle_event("toggle_solo", %{"id" => track_id}, socket) do
+    {:noreply, save_audio(socket, StudioAudio.toggle_solo(socket.assigns.audio, track_id))}
+  end
+
   def handle_event("add_clip", %{"source" => source, "track" => track_id}, socket) do
     audio = socket.assigns.audio
 
@@ -464,12 +475,21 @@ defmodule BusterClawWeb.SoundStudioComponent do
   end
 
   defp render_audio(%StudioAudio{} = audio) do
+    # Audible clips only: the mix must be what the arranger SHOWS it will be,
+    # and a muted track that still rendered would make M a lie with a UI.
     placements =
-      audio |> StudioAudio.clips() |> Enum.map(fn {_track, clip} -> placement(clip) end)
+      audio
+      |> StudioAudio.audible_clips()
+      |> Enum.map(fn {_track, clip} -> placement(clip) end)
 
     cond do
-      placements == [] ->
+      StudioAudio.clips(audio) == [] ->
         {:error, :empty_audio}
+
+      # Clips exist but mute/solo silenced every one — a different mistake
+      # than an empty arrangement, deserving a different sentence.
+      placements == [] ->
+        {:error, :all_silenced}
 
       # A clip whose source was deleted or renamed since it was placed. Refuse
       # the whole render rather than quietly dropping it: a mix missing one
@@ -494,6 +514,10 @@ defmodule BusterClawWeb.SoundStudioComponent do
   end
 
   defp render_error(:empty_audio), do: "Add a clip before rendering."
+
+  defp render_error(:all_silenced),
+    do: "Every clip is muted — unmute or solo something first."
+
   defp render_error(:missing_source), do: "A clip's source is missing — nothing was rendered."
   defp render_error(:too_long), do: "That arrangement is longer than five minutes."
   defp render_error(:format_mismatch), do: "Those clips don't share a format."
@@ -956,7 +980,52 @@ defmodule BusterClawWeb.SoundStudioComponent do
                 >
                   Track {track.label}
                 </span>
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center justify-between gap-1.5">
+                  <div class="flex items-center gap-1">
+                    <%!-- The DAW pair. M fills neutral (silenced is an absence,
+                          not an alarm); S fills the palette green — the one
+                          hue that already means "this one sounds". aria-pressed
+                          because these are toggles, not actions. --%>
+                    <button
+                      type="button"
+                      phx-click="toggle_mute"
+                      phx-value-id={track.id}
+                      phx-target={@myself}
+                      aria-pressed={to_string(track.muted)}
+                      aria-label={"Mute track #{track.label}"}
+                      title={"Mute track #{track.label}"}
+                      class={[
+                        "h-4 w-4 border font-mono text-[9px] font-bold leading-none transition",
+                        if(track.muted,
+                          do: "border-base-content/60 bg-base-content/70 text-base-100",
+                          else:
+                            "border-base-content/25 text-base-content/40 hover:border-base-content/50"
+                        )
+                      ]}
+                    >
+                      M
+                    </button>
+                    <button
+                      type="button"
+                      phx-click="toggle_solo"
+                      phx-value-id={track.id}
+                      phx-target={@myself}
+                      aria-pressed={to_string(track.soloed)}
+                      aria-label={"Solo track #{track.label}"}
+                      title={"Solo track #{track.label}"}
+                      class={[
+                        "h-4 w-4 border font-mono text-[9px] font-bold leading-none transition",
+                        if(track.soloed,
+                          do: "border-[#2FD068] bg-[#2FD068] text-base-100",
+                          else:
+                            "border-base-content/25 text-base-content/40 hover:border-base-content/50"
+                        )
+                      ]}
+                    >
+                      S
+                    </button>
+                  </div>
+
                   <button
                     :if={length(@audio.tracks) > 1}
                     type="button"
@@ -976,10 +1045,16 @@ defmodule BusterClawWeb.SoundStudioComponent do
                 </div>
               </div>
 
+              <%!-- A silenced region dims: the arrangement always shows what
+                    the mix will contain, whether the silence came from this
+                    track's own M or from someone else's S. --%>
               <div
                 data-track
                 data-track-id={track.id}
-                class="relative h-14 min-w-0 flex-1 border-2 border-base-content/15 bg-base-content/[0.03] data-[track-target]:border-primary/60"
+                class={[
+                  "relative h-14 min-w-0 flex-1 border-2 border-base-content/15 bg-base-content/[0.03] data-[track-target]:border-primary/60",
+                  not StudioAudio.audible?(@audio, track) && "opacity-40"
+                ]}
               >
                 <%!-- Fill and border come from the TRACK (siblings must read
                       as siblings); selection stays the hazard ring, one color

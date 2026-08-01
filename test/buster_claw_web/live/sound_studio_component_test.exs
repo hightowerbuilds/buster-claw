@@ -624,6 +624,92 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert File.regular?(keeper)
     end
 
+    test "mute silences a track: the region dims and the render leaves it out",
+         %{conn: conn, root: root} do
+      {view, _html} = open_studio(conn)
+      new_audio(view, "muted mix")
+      view |> element("button[phx-click='add_track']") |> render_click()
+      add_clip(view, "sound:boot.wav", 0)
+      add_clip(view, "sound:alarm.wav", 1)
+
+      [_a, track_b] = view |> render() |> track_ids()
+
+      view
+      |> element("button[phx-value-id='#{track_b}'][phx-click='toggle_mute']")
+      |> render_click()
+
+      # The arrangement shows what the mix will contain. Scoped to the track
+      # REGION: "opacity-40" also styles disabled buttons all over the app, so
+      # a page-wide match would pass no matter what the arranger did.
+      assert has_element?(view, "[data-track].opacity-40")
+      assert has_element?(view, "button[phx-click='toggle_mute'][aria-pressed='true']")
+
+      view |> element("button[phx-click='render_audio']") |> render_click()
+      mixed = Path.join([root, "sounds", "studio", "muted mix-mix.wav"])
+      assert File.regular?(mixed)
+
+      # alarm (1.32 s) was on the muted track; boot alone is ~0.7 s. A mix as
+      # long as alarm would mean M rendered anyway — the lie this exists to
+      # prevent.
+      {:ok, boot} =
+        SoundStudio.import_source(BusterClaw.Notifications.Sound.resolve_path("boot.wav"))
+
+      {:ok, clip} = SoundStudio.import_source(mixed)
+      assert_in_delta SoundStudio.duration_ms(clip), SoundStudio.duration_ms(boot), 20.0
+    end
+
+    test "solo isolates: every unsoloed region dims and stays out of the mix",
+         %{conn: conn, root: root} do
+      {view, _html} = open_studio(conn)
+      new_audio(view, "solo mix")
+      view |> element("button[phx-click='add_track']") |> render_click()
+      add_clip(view, "sound:boot.wav", 0)
+      add_clip(view, "sound:alarm.wav", 1)
+
+      [track_a, _b] = view |> render() |> track_ids()
+
+      view
+      |> element("button[phx-value-id='#{track_a}'][phx-click='toggle_solo']")
+      |> render_click()
+
+      # B never touched its own buttons and dims anyway — silence caused by
+      # someone else's S must be as visible as your own M.
+      assert has_element?(view, "[data-track].opacity-40")
+
+      view |> element("button[phx-click='render_audio']") |> render_click()
+
+      {:ok, boot} =
+        SoundStudio.import_source(BusterClaw.Notifications.Sound.resolve_path("boot.wav"))
+
+      {:ok, clip} =
+        SoundStudio.import_source(Path.join([root, "sounds", "studio", "solo mix-mix.wav"]))
+
+      assert_in_delta SoundStudio.duration_ms(clip), SoundStudio.duration_ms(boot), 20.0
+    end
+
+    test "muting everything refuses the render with its own sentence, and undo reaches it",
+         %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      new_audio(view, "all quiet")
+      add_clip(view, "sound:boot.wav")
+
+      [track_a] = view |> render() |> track_ids()
+
+      view
+      |> element("button[phx-value-id='#{track_a}'][phx-click='toggle_mute']")
+      |> render_click()
+
+      html = view |> element("button[phx-click='render_audio']") |> render_click()
+
+      # Clips exist; mute silenced them. "Add a clip" would be a wrong
+      # diagnosis pointing at a fix the user does not need.
+      assert html =~ "unmute or solo something"
+
+      # Mute rides the same save path as every other edit, so ⌘Z takes it back.
+      render_hook(view, "studio_undo", %{})
+      refute has_element?(view, "[data-track].opacity-40")
+    end
+
     test "tracks carry their own colors, and a color survives its neighbor's death",
          %{conn: conn} do
       {view, _html} = open_studio(conn)

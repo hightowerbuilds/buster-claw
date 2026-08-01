@@ -62,7 +62,13 @@ defmodule BusterClaw.Notifications.StudioAudio do
           start_ms: number(),
           duration_ms: number()
         }
-  @type track :: %{id: binary(), label: binary(), clips: [clip()]}
+  @type track :: %{
+          id: binary(),
+          label: binary(),
+          muted: boolean(),
+          soloed: boolean(),
+          clips: [clip()]
+        }
   @type t :: %__MODULE__{name: binary() | nil, tracks: [track()]}
 
   # ---------------------------------------------------------------------------
@@ -78,7 +84,7 @@ defmodule BusterClaw.Notifications.StudioAudio do
   def max_tracks, do: @max_tracks
 
   defp track(index) do
-    %{id: new_id(), label: <<?A + rem(index, 26)>>, clips: []}
+    %{id: new_id(), label: <<?A + rem(index, 26)>>, muted: false, soloed: false, clips: []}
   end
 
   # Random rather than a counter: ids are persisted, and a counter restarting at
@@ -101,6 +107,34 @@ defmodule BusterClaw.Notifications.StudioAudio do
 
   def remove_track(%__MODULE__{} = audio, track_id) do
     %{audio | tracks: Enum.reject(audio.tracks, &(&1.id == track_id))}
+  end
+
+  @doc "Flip a track's mute. Muting is per-track state, not a clip edit."
+  def toggle_mute(%__MODULE__{} = audio, track_id) do
+    update_track(audio, track_id, fn track -> %{track | muted: not track.muted} end)
+  end
+
+  @doc "Flip a track's solo."
+  def toggle_solo(%__MODULE__{} = audio, track_id) do
+    update_track(audio, track_id, fn track -> %{track | soloed: not track.soloed} end)
+  end
+
+  @doc """
+  Whether a track sounds in the mix. The DAW contract: if ANY track is
+  soloed, only soloed tracks sound; otherwise everything not muted sounds.
+  Solo beats mute on the same track: engaging solo is the stronger, more
+  recent statement of intent, and it is how Pro Tools and Logic both resolve
+  the conflict, so it is what a DAW hand's fingers already expect.
+  """
+  def audible?(%__MODULE__{tracks: tracks}, %{} = track) do
+    if Enum.any?(tracks, & &1.soloed), do: track.soloed, else: not track.muted
+  end
+
+  @doc "Every clip on every AUDIBLE track — what a render actually mixes."
+  def audible_clips(%__MODULE__{} = audio) do
+    audio
+    |> clips()
+    |> Enum.filter(fn {track, _clip} -> audible?(audio, track) end)
   end
 
   # ---------------------------------------------------------------------------
@@ -352,6 +386,8 @@ defmodule BusterClaw.Notifications.StudioAudio do
           %{
             "id" => track.id,
             "label" => track.label,
+            "muted" => track.muted,
+            "soloed" => track.soloed,
             "clips" =>
               Enum.map(track.clips, fn clip ->
                 %{
@@ -381,6 +417,11 @@ defmodule BusterClaw.Notifications.StudioAudio do
     %{
       id: id,
       label: Map.get(track, "label", "?"),
+      # `== true`, not truthiness: this file is hand-editable, and a helpful
+      # human writing "muted": "yes" should get an ignored key, not a track
+      # that cannot be unmuted from the UI's boolean flip.
+      muted: Map.get(track, "muted") == true,
+      soloed: Map.get(track, "soloed") == true,
       clips: clips |> Enum.map(&parse_clip/1) |> Enum.reject(&is_nil/1)
     }
   end

@@ -121,6 +121,99 @@ defmodule BusterClaw.Notifications.StudioAudioTest do
     end
   end
 
+  describe "mute and solo" do
+    setup do
+      audio = StudioAudio.new("mix") |> StudioAudio.add_track()
+      {:ok, audio: audio}
+    end
+
+    test "a fresh track is neither muted nor soloed", %{audio: audio} do
+      assert Enum.all?(audio.tracks, &(not &1.muted and not &1.soloed))
+    end
+
+    test "toggles flip and flip back", %{audio: audio} do
+      id = track_id(audio, 0)
+
+      muted = StudioAudio.toggle_mute(audio, id)
+      assert hd(muted.tracks).muted
+      refute hd(StudioAudio.toggle_mute(muted, id).tracks).muted
+
+      soloed = StudioAudio.toggle_solo(audio, id)
+      assert hd(soloed.tracks).soloed
+    end
+
+    test "with no solo anywhere, mute is the whole story", %{audio: audio} do
+      muted = StudioAudio.toggle_mute(audio, track_id(audio, 0))
+
+      refute StudioAudio.audible?(muted, Enum.at(muted.tracks, 0))
+      assert StudioAudio.audible?(muted, Enum.at(muted.tracks, 1))
+    end
+
+    test "one solo silences every unsoloed track", %{audio: audio} do
+      soloed = StudioAudio.toggle_solo(audio, track_id(audio, 0))
+
+      assert StudioAudio.audible?(soloed, Enum.at(soloed.tracks, 0))
+      refute StudioAudio.audible?(soloed, Enum.at(soloed.tracks, 1))
+    end
+
+    test "solo beats mute on the same track", %{audio: audio} do
+      id = track_id(audio, 0)
+      both = audio |> StudioAudio.toggle_mute(id) |> StudioAudio.toggle_solo(id)
+
+      # Engaging solo is the stronger, more recent statement of intent —
+      # the Pro Tools and Logic resolution, i.e. what DAW fingers expect.
+      assert StudioAudio.audible?(both, Enum.at(both.tracks, 0))
+    end
+
+    test "audible_clips is what a render mixes", %{audio: audio} do
+      audio =
+        audio
+        |> StudioAudio.add_clip(track_id(audio, 0), "sound:a.wav", 0, 100)
+        |> StudioAudio.add_clip(track_id(audio, 1), "sound:b.wav", 0, 100)
+
+      muted = StudioAudio.toggle_mute(audio, track_id(audio, 1))
+
+      assert [{_track, clip}] = StudioAudio.audible_clips(muted)
+      assert clip.source == "sound:a.wav"
+    end
+
+    test "mute and solo survive the round trip to disk" do
+      {:ok, name} = StudioAudio.create("flags")
+      {:ok, audio} = StudioAudio.load(name)
+      audio = StudioAudio.add_track(audio)
+
+      audio =
+        audio
+        |> StudioAudio.toggle_mute(track_id(audio, 0))
+        |> StudioAudio.toggle_solo(track_id(audio, 1))
+
+      :ok = StudioAudio.save(audio)
+      {:ok, reloaded} = StudioAudio.load(name)
+
+      assert Enum.at(reloaded.tracks, 0).muted
+      assert Enum.at(reloaded.tracks, 1).soloed
+    end
+
+    test "a hand-edited non-boolean flag is ignored, not honored", %{root: root} do
+      {:ok, name} = StudioAudio.create("edited-flags")
+      path = Path.join([root, "sounds", "studio", "tracks", name <> ".track.json"])
+
+      # "yes" is a helpful human's boolean. Honoring truthiness would produce
+      # a track the UI's boolean flip can never seem to unmute.
+      File.write!(
+        path,
+        Jason.encode!(%{
+          "version" => 1,
+          "name" => name,
+          "lanes" => [%{"id" => "L1", "label" => "A", "muted" => "yes", "clips" => []}]
+        })
+      )
+
+      assert {:ok, audio} = StudioAudio.load(name)
+      refute hd(audio.tracks).muted
+    end
+  end
+
   describe "storage" do
     test "create/1 sanitizes the name and never collides" do
       assert {:ok, "my idea"} = StudioAudio.create("  my idea  ")
