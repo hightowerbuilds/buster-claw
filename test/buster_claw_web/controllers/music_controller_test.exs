@@ -7,7 +7,7 @@ defmodule BusterClawWeb.MusicControllerTest do
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_musicctl_#{System.unique_integer([:positive])}")
-    File.mkdir_p!(Path.join(root, "music"))
+    File.mkdir_p!(Path.join([root, "sounds", "music"]))
 
     prev = Application.get_env(:buster_claw, :workspace_root)
     Application.put_env(:buster_claw, :workspace_root, root)
@@ -17,7 +17,7 @@ defmodule BusterClawWeb.MusicControllerTest do
       File.rm_rf(root)
     end)
 
-    File.write!(Path.join([root, "music", "song.mp3"]), @body)
+    File.write!(Path.join([root, "sounds", "music", "song.mp3"]), @body)
 
     {:ok, root: root}
   end
@@ -44,7 +44,10 @@ defmodule BusterClawWeb.MusicControllerTest do
       # workspace file, which a user upload or an agent can write. Without
       # nosniff, a file named .mp3 whose content is HTML could be rendered and
       # its inline script run from our own origin with nothing to stop it.
-      File.write!(Path.join([root, "music", "sneaky.mp3"]), "<html><script>x</script></html>")
+      File.write!(
+        Path.join([root, "sounds", "music", "sneaky.mp3"]),
+        "<html><script>x</script></html>"
+      )
 
       conn = get(conn, ~p"/music/track/sneaky.mp3")
 
@@ -221,7 +224,7 @@ defmodule BusterClawWeb.MusicControllerTest do
       conn: conn,
       root: root
     } do
-      File.write!(Path.join([root, "music", "empty.mp3"]), "")
+      File.write!(Path.join([root, "sounds", "music", "empty.mp3"]), "")
 
       plain = get(conn, ~p"/music/track/empty.mp3")
       assert plain.status == 200
@@ -238,7 +241,7 @@ defmodule BusterClawWeb.MusicControllerTest do
 
     test "a name with spaces and punctuation round-trips", %{conn: conn, root: root} do
       name = "Miles Davis - So What (Take 1).mp3"
-      File.write!(Path.join([root, "music", name]), @body)
+      File.write!(Path.join([root, "sounds", "music", name]), @body)
 
       conn = get(conn, ~p"/music/track/#{name}")
 
@@ -247,7 +250,7 @@ defmodule BusterClawWeb.MusicControllerTest do
     end
 
     test "content-type follows the extension", %{conn: conn, root: root} do
-      File.write!(Path.join([root, "music", "track.flac"]), @body)
+      File.write!(Path.join([root, "sounds", "music", "track.flac"]), @body)
 
       conn = get(conn, ~p"/music/track/track.flac")
 
@@ -261,7 +264,7 @@ defmodule BusterClawWeb.MusicControllerTest do
     end
 
     test "a non-audio file that really is in the folder", %{conn: conn, root: root} do
-      File.write!(Path.join([root, "music", "notes.txt"]), "secret")
+      File.write!(Path.join([root, "sounds", "music", "notes.txt"]), "secret")
 
       assert get(conn, ~p"/music/track/notes.txt").status == 404
     end

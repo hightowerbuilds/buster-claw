@@ -7,7 +7,7 @@ defmodule BusterClawWeb.MusicPlayerLiveTest do
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_mplive_#{System.unique_integer([:positive])}")
-    File.mkdir_p!(Path.join(root, "music"))
+    File.mkdir_p!(Path.join([root, "sounds", "music"]))
 
     prev = Application.get_env(:buster_claw, :workspace_root)
     Application.put_env(:buster_claw, :workspace_root, root)
@@ -18,7 +18,7 @@ defmodule BusterClawWeb.MusicPlayerLiveTest do
     end)
 
     for name <- ["Artist - One.mp3", "Artist - Two.mp3", "Three.mp3"] do
-      File.write!(Path.join([root, "music", name]), "ID3fake")
+      File.write!(Path.join([root, "sounds", "music", name]), "ID3fake")
     end
 
     {:ok, root: root}
@@ -176,7 +176,7 @@ defmodule BusterClawWeb.MusicPlayerLiveTest do
       Player.request_enqueue("Artist - Two.mp3")
 
       # The user deletes it in Finder mid-session.
-      File.rm!(Path.join([root, "music", "Artist - Two.mp3"]))
+      File.rm!(Path.join([root, "sounds", "music", "Artist - Two.mp3"]))
 
       html = render_hook(view, "ended", %{})
 

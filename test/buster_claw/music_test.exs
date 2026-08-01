@@ -5,7 +5,7 @@ defmodule BusterClaw.MusicTest do
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_music_#{System.unique_integer([:positive])}")
-    File.mkdir_p!(Path.join(root, "music"))
+    File.mkdir_p!(Path.join([root, "sounds", "music"]))
 
     prev = Application.get_env(:buster_claw, :workspace_root)
     Application.put_env(:buster_claw, :workspace_root, root)
@@ -19,7 +19,7 @@ defmodule BusterClaw.MusicTest do
   end
 
   defp track(root, name, contents \\ "x") do
-    path = Path.join([root, "music", name])
+    path = Path.join([root, "sounds", "music", name])
     File.write!(path, contents)
     path
   end
@@ -33,7 +33,7 @@ defmodule BusterClaw.MusicTest do
     end
 
     test "survives the folder not existing at all", %{root: root} do
-      File.rm_rf!(Path.join(root, "music"))
+      File.rm_rf!(Path.join([root, "sounds", "music"]))
 
       # File.ls/1 errors here; the library reports empty rather than raising,
       # because the user can delete this folder in Finder at any time.
@@ -77,7 +77,7 @@ defmodule BusterClaw.MusicTest do
     end
 
     test "ignores a directory that happens to be named like a track", %{root: root} do
-      File.mkdir_p!(Path.join([root, "music", "album.mp3"]))
+      File.mkdir_p!(Path.join([root, "sounds", "music", "album.mp3"]))
       track(root, "real.mp3")
 
       assert Music.list() == ["real.mp3"]
@@ -122,7 +122,7 @@ defmodule BusterClaw.MusicTest do
 
       # Present on disk, absent from list/0 — so it is not reachable. The
       # allowlist gates the extension check too, not just traversal.
-      assert File.exists?(Path.join([root, "music", "notes.txt"]))
+      assert File.exists?(Path.join([root, "sounds", "music", "notes.txt"]))
       assert Music.path_for("notes.txt") == nil
     end
   end
@@ -330,7 +330,7 @@ defmodule BusterClaw.MusicTest do
       assert {:ok, name} = Music.store(source, "../../etc/passwd.mp3")
 
       assert name == "passwd.mp3"
-      assert Path.dirname(Music.path_for(name)) == Path.join(root, "music")
+      assert Path.dirname(Music.path_for(name)) == Path.join([root, "sounds", "music"])
       # Nothing was written outside the library.
       refute File.exists?(Path.join(Path.dirname(root), "passwd.mp3"))
     end
@@ -344,10 +344,10 @@ defmodule BusterClaw.MusicTest do
     end
 
     test "an existing track is never overwritten", %{source: source, root: root} do
-      File.write!(Path.join([root, "music", "song.mp3"]), "the original")
+      File.write!(Path.join([root, "sounds", "music", "song.mp3"]), "the original")
 
       assert {:ok, "song-2.mp3"} = Music.store(source, "song.mp3")
-      assert File.read!(Path.join([root, "music", "song.mp3"])) == "the original"
+      assert File.read!(Path.join([root, "sounds", "music", "song.mp3"])) == "the original"
     end
 
     test "rejects an extension the library does not accept", %{source: source} do
@@ -417,7 +417,7 @@ defmodule BusterClaw.MusicTest do
     end
 
     test "creates the library folder if it is missing", %{source: source, root: root} do
-      File.rm_rf!(Path.join(root, "music"))
+      File.rm_rf!(Path.join([root, "sounds", "music"]))
 
       assert {:ok, "song.mp3"} = Music.store(source, "song.mp3")
       assert Music.list() == ["song.mp3"]
@@ -466,7 +466,7 @@ defmodule BusterClaw.MusicTest do
 
   describe "ensure/0" do
     test "creates the folder and a README", %{root: root} do
-      File.rm_rf!(Path.join(root, "music"))
+      File.rm_rf!(Path.join([root, "sounds", "music"]))
 
       assert Music.ensure() == :ok
       assert File.dir?(Music.dir())
@@ -474,7 +474,7 @@ defmodule BusterClaw.MusicTest do
     end
 
     test "does not overwrite an existing README", %{root: root} do
-      readme = Path.join([root, "music", "README.md"])
+      readme = Path.join([root, "sounds", "music", "README.md"])
       File.write!(readme, "mine")
 
       assert Music.ensure() == :ok
@@ -490,7 +490,7 @@ defmodule BusterClaw.MusicTest do
     end
 
     test "the README is not itself a track", %{root: root} do
-      File.rm_rf!(Path.join(root, "music"))
+      File.rm_rf!(Path.join([root, "sounds", "music"]))
       Music.ensure()
 
       assert Music.list() == []

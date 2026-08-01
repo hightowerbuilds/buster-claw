@@ -11,7 +11,11 @@ Then a small bug with a bigger lesson: the Notify sub-tab was escaping Settings
 and opening its own top-level tab, because the sub-tab list is declared twice
 and one copy drifted (§8).
 
-Two commits on main. Suite at close: 2055 tests, 110 JS, 34 Rust, credo strict
+Then the workspace itself: a review found a folder nobody had ever described,
+and the first three phases of the rebuild cut a fresh install from **sixteen
+top-level entries to eight**, with all audio consolidated under `sounds/` (§9).
+
+Three commits on main. Suite at close: 2078 tests, 110 JS, 34 Rust, credo strict
 clean, `mix precommit` green. Five iterations on the layout, one feature built
 and then deleted on operator testing.
 
@@ -181,7 +185,112 @@ watch for: a list that exists in both Elixir and JS and is kept in step by
 memory. Either delete one copy or hold them in lockstep with a test — never
 leave it to a comment.
 
-## 9. Open
+## 9. The workspace: sixteen entries, seven of them empty
+
+The workspace is the product's one durable promise — *everything is markdown on
+your disk, `grep` works*. It is also the first thing a new user sees, and what
+they saw was a filing cabinet of empty labelled drawers. Full write-up in
+`roadmaps/WORKSPACE_REVIEW_ROADMAP.md`; the short version:
+
+**Nothing declared the layout.** Creation was scattered across four trigger
+contexts — nine calls in `application.ex`, **three more hidden inside
+`Jobs.ensure/0`** (skills, shaders, cmd-list), a *different and smaller* set of
+four in `WorkspaceLive.set_workspace_root/1`, and the rest lazily on first use.
+Tracing every `workspace_path/1` call found **twenty** possible top-level
+entries, not the thirteen visible on this machine. That is the finding: no two
+installs had the same layout, and which one you got depended on which features
+you happened to use.
+
+Downstream of that, a real bug nobody had noticed: **moving your workspace
+folder gave you a broken one.** `set_workspace_root/1` created four things; jobs,
+skills, sounds, music, studio, journal, shaders, cmd-list and the trusted-sender
+policy template did not exist until the next app restart. Boot papered over it.
+
+Also found: `sources/` and `analysis/`, scaffolding the code's own comment admits
+is dead ("reserved for file exports" — since the rewrite); `notes/`, an orphan
+**no code in `lib/` creates**, superseded by `journal/` and never swept; and
+`INTRODUCTION.md`, 861 lines and 57 KB, regenerated each launch, self-described
+read-only — the largest, loudest thing in the user's folder and not for them.
+
+### What shipped
+
+**Phase 0.** `BusterClaw.Workspace` declares all twenty entries — name, kind,
+tier, owner, seeder, and a plain-language note. Boot and `set_workspace_root/1`
+now call the same `ensure/0`, so that bug is gone by construction. A lockstep
+guard walks `lib/` and fails the build on any undeclared top-level path; it found
+two things on its first run (a real undeclared legacy file, and a doc example
+naming a file that doesn't exist).
+
+**Phase 1.** Dropped the dead scaffolding, plus a sweep for leftovers that
+removes them **only when empty** — a non-empty one is kept and logged, because
+decluttering does not outrank not destroying someone's files.
+
+**Phase 2.** Tiered the registry. `ensure/0` seeds `:core` only; every
+`:on_demand` folder is created by the surface that owns it — opening the Music
+tab makes `music/`, Settings → Appearance makes `shaders/`, Settings → Notify
+makes `sounds/`. That is "create at the point of use" with no new UI: the folder
+exists the moment the app is telling you what to put in it, and never before. A
+generated `README.md` replaces four scattered stub READMEs, built *from the
+registry* so its folder list cannot drift from what the app creates.
+
+**Phase 2b — audio is one folder.** Operator call: consolidate to `sounds/` and
+`shaders/`. `music/` and `studio/` are no longer top-level; they are
+`sounds/music/` and `sounds/studio/`, with the chimes at `sounds/` and track
+JSONs at `sounds/studio/tracks/`. Checked before moving anything that
+`Sound.list/0` filters on `File.regular?`, so the nested directories can't
+pollute the chime picker — a flat merge would have made the notification
+dropdown list your entire music library.
+
+The migration moves an existing install's folders and **merges rather than
+clobbers**: a name collision leaves both copies in place and logs it, because we
+do not get to pick which of a user's two files survives. Six test files had
+fixture paths rewritten; the migration's own tests deliberately still write the
+old layout.
+
+**Measured, not asserted:**
+
+| | before | after |
+|---|---|---|
+| fresh install | 16 entries, 7 of them empty | **8**, none empty |
+| after using every feature | 16 | **12**, audio in one folder |
+
+### Two lessons
+
+The suite caught a wiring mistake that was a genuine design error, not a typo. I
+had made *opening* the Cmd List editor write `catalog.json` — but the terminal
+falls back to built-ins when the file is absent, and the save path already
+`mkdir_p`s, so the folder should appear when you customize, not when you browse.
+Five tests asserting "a rejected save persists nothing" failed and were right to.
+Reverted; `cmd-list` now has no seeder at all.
+
+And a test-hygiene one, paid for twice today: `WorkspaceTest` ran `async: true`
+while mutating the global `:workspace_root`, and handed its temp folder to two
+unrelated suites mid-run. Every other workspace-touching test in this repo is
+already `async: false` with a comment saying why. Read the neighbours first.
+
+### The shared working tree bit back
+
+Mid-way through the audio consolidation the tree stopped compiling, and it was
+not mine: **another session was live in the same checkout**, running a
+lane→track rename (`StudioTrack` → `StudioAudio`, file renamed and staged) with
+four consumers not yet updated.
+
+Two things worth recording. First, their file replacement **silently reverted a
+one-line edit of mine** — the `sounds/studio/tracks` nesting — which would have
+resurrected a top-level `studio/` that the registry no longer declares. The
+layout guard from Phase 0 would have caught that on the next run, which is the
+first time one of today's guards paid for itself against something no human
+would have noticed. Second, the right move was to *wait*, not to fix their
+half-done refactor: two agents editing the same lines is worse than a few
+minutes of idling. I re-applied only my own line and armed a poll.
+
+The poll condition was wrong the first time — it watched `lib/` only, fired
+while two test files still referenced the old module, and had to be re-armed
+against `lib/` **and** `test/`. When waiting on someone else's refactor, the
+condition is "the whole tree is consistent", not "the part I happened to look
+at."
+
+## 10. Open
 
 **No visual pass was done.** Everything here is verified by the suite and by
 reading the generated CSS (the arbitrary `calc()` normalization, and that
@@ -190,3 +299,21 @@ was never opened in a browser — the dev server is operator-run. The equal-heig
 grid behavior and the two live WebGPU previews sitting side by side are exactly
 the kind of thing that reads fine in markup and surprises you on screen. First
 launch should look at those two things.
+
+**The workspace rebuild is 3 phases of 5.** Remaining, in
+`roadmaps/WORKSPACE_REVIEW_ROADMAP.md`:
+
+- **Phase 3 (naming/grouping)** was deliberately deferred until the real list was
+  visible. At eight entries it is now visible, and the recommendation is to
+  *decline* the nesting option — grouping under `media/` buys tidiness at the
+  cost of the flat, greppable folder that makes this thing worth having. Worth a
+  decision, not more work.
+- **Phase 4** moves `INTRODUCTION.md` out of the user's eyeline. Cheap, but easy
+  to do incompletely: the guide, the skills and the job descriptions all name
+  that path, and models orient by it.
+- **Phase 5** is the acceptance test for all of it — point dev's
+  `workspace_root` somewhere that is not the repo's parent (today it resolves to
+  `~/Developer`, so we develop against a layout we would never ship), then walk
+  a *packaged* install and count what a new user actually sees. Every phase
+  above is judged by that one number and it has never been observed on a real
+  install.

@@ -9,7 +9,7 @@ defmodule BusterClawWeb.MusicComponentTest do
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_musictab_#{System.unique_integer([:positive])}")
-    File.mkdir_p!(Path.join(root, "music"))
+    File.mkdir_p!(Path.join([root, "sounds", "music"]))
 
     prev = Application.get_env(:buster_claw, :workspace_root)
     Application.put_env(:buster_claw, :workspace_root, root)
@@ -23,7 +23,7 @@ defmodule BusterClawWeb.MusicComponentTest do
   end
 
   defp add(root, name, contents \\ "ID3fake-payload") do
-    File.write!(Path.join([root, "music", name]), contents)
+    File.write!(Path.join([root, "sounds", "music", name]), contents)
   end
 
   # The Music tab became the Studio (SOUND_STUDIO_ROADMAP Phase 3). The library
@@ -85,7 +85,7 @@ defmodule BusterClawWeb.MusicComponentTest do
 
     test "ignores non-audio sitting in the folder", %{conn: conn, root: root} do
       add(root, "song.mp3")
-      File.write!(Path.join([root, "music", "README.md"]), "# Music")
+      File.write!(Path.join([root, "sounds", "music", "README.md"]), "# Music")
 
       {_view, html} = open_music(conn)
 

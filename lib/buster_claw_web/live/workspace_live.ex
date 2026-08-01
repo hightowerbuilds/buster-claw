@@ -406,10 +406,10 @@ defmodule BusterClawWeb.WorkspaceLive do
          :ok <- write_boot_file(path) do
       Application.put_env(:buster_claw, :workspace_root, path)
       Application.put_env(:buster_claw, :library_root, Path.join(path, "library"))
-      Artifact.ensure_workspace_dirs()
-      BusterClaw.Introduction.ensure()
-      BusterClaw.Pages.ensure()
-      BusterClaw.WorkspaceCLI.ensure()
+      # The SAME scaffolding boot runs. This used to be a hand-picked subset of
+      # four, so moving your workspace produced a folder missing its jobs,
+      # skills, policy template and the rest until the next app restart.
+      BusterClaw.Workspace.ensure()
       Setup.confirm_workspace()
       :ok
     else

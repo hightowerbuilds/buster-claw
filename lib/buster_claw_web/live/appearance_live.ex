@@ -44,6 +44,10 @@ defmodule BusterClawWeb.AppearanceLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    # This page is where the app tells you a `.wgsl` file can go in `shaders/`,
+    # so this is where that folder should come into existence.
+    BusterClaw.Workspace.ensure_entry("shaders")
+
     {:ok,
      socket
      |> assign(:page_title, "Appearance")

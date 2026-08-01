@@ -55,6 +55,10 @@ defmodule BusterClawWeb.NotifySettingsLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    # `sounds/` is a drop zone — create it when the user is looking at the
+    # setting that tells them what to drop in.
+    BusterClaw.Workspace.ensure_entry("sounds")
+
     Sound.ensure()
 
     {:ok,

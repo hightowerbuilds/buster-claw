@@ -38,7 +38,8 @@ defmodule BusterClaw.Music do
 
   alias BusterClaw.Library.Artifact
 
-  @subdir "music"
+  # Nested under `sounds/` — one audio folder in the workspace, not three.
+  @subdir Path.join("sounds", "music")
 
   # FLAC joins the Sound list because people who keep music files keep FLACs.
   # Whether the webview will actually PLAY each of these is a separate question

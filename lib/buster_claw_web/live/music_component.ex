@@ -33,6 +33,12 @@ defmodule BusterClawWeb.MusicComponent do
 
   @impl true
   def mount(socket) do
+    # `sounds/music/` is a drop zone — it appears when you open the tab that
+    # tells you to drop things in it, not at install. Seeded directly rather than
+    # via Workspace: it lives *inside* the declared `sounds/` entry, and opening
+    # the Music tab shouldn't conjure the Studio's folder too.
+    BusterClaw.Music.ensure()
+
     {:ok,
      socket
      |> assign(:tracks, [])

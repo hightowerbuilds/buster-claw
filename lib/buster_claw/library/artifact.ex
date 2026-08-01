@@ -8,7 +8,12 @@ defmodule BusterClaw.Library.Artifact do
   @reports_dir "reports"
   @max_excerpt 280
 
-  @workspace_subdirs ~w(sources analysis memory)
+  # `sources` and `analysis` used to live here too — scaffolding reserved for a
+  # file-export path that was never built (both domains are DB-backed). They
+  # were empty in every install for the life of the Phoenix rewrite; Workspace
+  # sweeps the leftovers. `memory` stays: it holds the standing policy and the
+  # trusted sender/number lists a shift actually reads.
+  @workspace_subdirs ~w(memory)
 
   def root do
     Application.fetch_env!(:buster_claw, :library_root)
@@ -30,9 +35,13 @@ defmodule BusterClaw.Library.Artifact do
   @doc """
   Build an absolute path inside the workspace from one or more segments.
 
-  Accepts a single segment or a list, so both `workspace_path("bookmarks.json")`
-  and `workspace_path(["memory", "policy.md"])` work. The single source of truth
-  for "this file/dir lives under the workspace root".
+  Accepts a single segment or a list, so both `workspace_path("skills")` and
+  `workspace_path(["memory", "policy.md"])` work. The single source of truth for
+  "this file/dir lives under the workspace root".
+
+  For a **top-level** entry prefer `BusterClaw.Workspace.path/1`, which refuses
+  anything the layout doesn't declare. This function stays unguarded because it
+  also resolves paths *within* an entry, and paths read back from stored data.
   """
   def workspace_path(segments), do: Path.join([workspace_root() | List.wrap(segments)])
 
@@ -46,10 +55,11 @@ defmodule BusterClaw.Library.Artifact do
   end
 
   @doc """
-  Create the full workspace layout: the library tree (`raw/`, `reports/`) plus
-  the `sources/`, `analysis/`, and `memory/` sibling directories. The latter
-  three are organizational scaffolding today (those domains are DB-backed) and
-  are reserved for file exports.
+  Create the library tree (`raw/`, `reports/`) plus the `memory/` sibling.
+
+  Prefer `BusterClaw.Workspace.ensure/0`, which calls this as its first step and
+  then seeds the rest of the layout. This function only knows about the library's
+  own corner of it.
   """
   def ensure_workspace_dirs do
     ensure_directories()

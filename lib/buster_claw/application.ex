@@ -75,28 +75,15 @@ defmodule BusterClaw.Application do
 
     case Supervisor.start_link(children, opts) do
       {:ok, _pid} = ok ->
-        # Install the model-facing workspace guide (best-effort).
-        BusterClaw.Introduction.ensure()
-        # Install the bundled HTML pages (Manual, Financial Informant) into
-        # <workspace>/pages/ (best-effort).
-        BusterClaw.Pages.ensure()
-        # Install the DataZone-local CLI launcher used by terminal role commands.
-        BusterClaw.WorkspaceCLI.ensure()
-        # Seed job descriptions + the trusted-sender policy template (best-effort).
-        BusterClaw.Jobs.ensure()
-        # Create <workspace>/sounds/ + README so the notification chime is
-        # discoverable (operator drops an audio file in; best-effort).
-        BusterClaw.Notifications.Sound.ensure()
-        # Create <workspace>/music/ + README so the music library is reachable
-        # from the filesystem, not only from the Music tab (best-effort).
-        BusterClaw.Music.ensure()
-        # Create <workspace>/studio/ + README — the Studio tab's working folder,
-        # visible in the Workspace tab and in Finder (best-effort).
-        BusterClaw.Notifications.SoundStudio.ensure()
-        # Create <workspace>/journal/ so the Home "Notes" record has a home on disk.
-        BusterClaw.Journal.ensure()
+        # Scaffold the workspace: the guide, the CLI launcher, and every seeded
+        # directory. BusterClaw.Workspace declares the whole layout and owns the
+        # order; this used to be nine calls here plus three more hidden inside
+        # Jobs.ensure/0, which is how nobody could say what the folder contained.
+        # Best-effort per entry (see Workspace.ensure/0).
+        BusterClaw.Workspace.ensure()
         # Fold the pre-pool background layout (per-surface image slots) into the
-        # one shared image pool. Idempotent; rewrites settings, not files.
+        # one shared image pool. A settings migration, not workspace scaffolding.
+        # Idempotent; rewrites settings, not files.
         BusterClaw.Appearance.ensure()
         ok
 

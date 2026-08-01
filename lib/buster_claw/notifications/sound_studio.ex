@@ -60,7 +60,8 @@ defmodule BusterClaw.Notifications.SoundStudio do
   @max_mix_ms 300_000
 
   # The studio's own workspace folder, and what it accepts into it.
-  @subdir "studio"
+  # Nested under `sounds/` — one audio folder in the workspace, not three.
+  @subdir Path.join("sounds", "studio")
   @import_exts ~w(.mp3 .m4a .aac .wav .ogg .flac)
   @content_types %{
     ".mp3" => "audio/mpeg",

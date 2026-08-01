@@ -58,9 +58,6 @@ defmodule BusterClaw.Jobs do
     maybe_write(roster_path(), default_roster())
     seed_trusted_senders()
     seed_agent_settings()
-    BusterClaw.Skills.ensure()
-    BusterClaw.Shaders.ensure()
-    BusterClaw.TerminalCommands.ensure()
     :ok
   rescue
     error ->

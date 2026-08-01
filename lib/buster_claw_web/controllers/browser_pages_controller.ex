@@ -12,6 +12,10 @@ defmodule BusterClawWeb.BrowserPagesController do
   alias BusterClaw.Pages
 
   def show(conn, _params) do
+    # Opening the Pages index is what installs the bundled pages — they are not
+    # laid down at install time (see BusterClaw.Workspace on-demand entries).
+    BusterClaw.Workspace.ensure_entry("pages")
+
     conn
     |> put_resp_content_type("text/html")
     |> send_resp(200, page(Pages.list()))
