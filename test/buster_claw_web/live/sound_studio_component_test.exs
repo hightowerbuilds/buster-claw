@@ -624,6 +624,43 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert File.regular?(keeper)
     end
 
+    test "the transport renders a complete score the audition hook can perform",
+         %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      new_audio(view, "performable")
+      view |> element("button[phx-click='add_track']") |> render_click()
+      add_clip(view, "sound:boot.wav", 0)
+
+      html = render(view)
+
+      # The Play button points at the arranger by data attribute — the hook
+      # reads the score out of that element's subtree.
+      [arranger_id] = Regex.run(~r/id="(studio-arranger-[^"]+)"/, html, capture: :all_but_first)
+      assert html =~ ~s(phx-hook="StudioAudition")
+      assert html =~ ~s(data-arranger="#{arranger_id}")
+      assert html =~ "▶ Play"
+
+      # The score: each clip declares the URL the transport fetches — the SAME
+      # route the sidebar plays, so what auditions is what you placed — and
+      # each region declares its audibility, so mute/solo semantics are read,
+      # never recomputed in JS.
+      assert html =~ ~s(data-src="/notify/sound/boot.wav")
+      assert html =~ ~s(data-audible="true")
+
+      # The playhead the transport sweeps.
+      assert html =~ "data-playhead"
+
+      # Muting flips the declared audibility — the transport obeys the same
+      # attribute the dimming does.
+      [track_a, _b] = track_ids(html)
+
+      view
+      |> element("button[phx-value-id='#{track_a}'][phx-click='toggle_mute']")
+      |> render_click()
+
+      assert has_element?(view, ~s([data-track][data-audible="false"]))
+    end
+
     test "mute silences a track: the region dims and the render leaves it out",
          %{conn: conn, root: root} do
       {view, _html} = open_studio(conn)

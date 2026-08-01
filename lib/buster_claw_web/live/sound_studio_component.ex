@@ -652,6 +652,21 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   defp waveform_colors(kind), do: Map.get(@kind_waveform, kind, {"#FF4D1C", "#66210E"})
 
+  # One place computes the arranger's DOM id: the container carries it, and
+  # the transport button points at it by data attribute.
+  defp arranger_dom_id(%StudioAudio{name: name}), do: "studio-arranger-#{:erlang.phash2(name)}"
+
+  # A clip's playable URL, resolved from the catalog at render time — the
+  # audition hook fetches THIS, so what it performs is exactly what the
+  # sidebar would play. A vanished source resolves to nil and the attribute
+  # is simply absent; the transport skips it while Render still refuses.
+  defp clip_src(groups, %{source: source}) do
+    case find_source(groups, source) do
+      %{url: url} -> url
+      _ -> nil
+    end
+  end
+
   # A clip carries only a source id, so its label is derived rather than stored
   # — renaming nothing, and staying correct if the catalog changes underneath.
   defp clip_label(%{source: source}) do
@@ -919,6 +934,21 @@ defmodule BusterClawWeb.SoundStudioComponent do
               >
                 ↷ Redo
               </button>
+              <%!-- The transport. Keyed by the open audio so switching
+                    remounts the hook — destroyed() closes the AudioContext,
+                    and a stale score can never keep sounding over a new
+                    arrangement. Play is instant and file-less; Render stays
+                    the bounce. --%>
+              <button
+                type="button"
+                id={"studio-audition-#{:erlang.phash2(@audio.name)}"}
+                phx-hook="StudioAudition"
+                data-arranger={arranger_dom_id(@audio)}
+                class="btn btn-ghost btn-xs font-mono uppercase"
+                title="Hear the arrangement without rendering it"
+              >
+                ▶ Play
+              </button>
               <button
                 type="button"
                 phx-click="render_audio"
@@ -963,12 +993,20 @@ defmodule BusterClawWeb.SoundStudioComponent do
                 the drag hook divides pointer X by that rect's width, and a
                 row-wide rect would land every drop early by a cluster. --%>
           <div
-            id={"studio-arranger-#{:erlang.phash2(@audio.name)}"}
+            id={arranger_dom_id(@audio)}
             phx-hook="TrackArrange"
             phx-target={@myself}
             data-view-ms={StudioAudio.view_ms(@audio)}
-            class="flex select-none flex-col gap-1"
+            class="relative flex select-none flex-col gap-1"
           >
+            <%!-- The playhead. Hidden until the transport runs; the hook owns
+                  its position outright and re-asserts every frame, so a patch
+                  that re-hides it mid-play loses within 16ms. --%>
+            <div
+              data-playhead
+              class="pointer-events-none absolute z-10 hidden w-px bg-base-content/80"
+            >
+            </div>
             <div :for={track <- @audio.tracks} class="flex items-stretch">
               <div
                 style={"border-left-color: #{track_color(track)}"}
@@ -1051,6 +1089,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
               <div
                 data-track
                 data-track-id={track.id}
+                data-audible={to_string(StudioAudio.audible?(@audio, track))}
                 class={[
                   "relative h-14 min-w-0 flex-1 border-2 border-base-content/15 bg-base-content/[0.03] data-[track-target]:border-primary/60",
                   not StudioAudio.audible?(@audio, track) && "opacity-40"
@@ -1066,6 +1105,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
                   data-clip
                   data-clip-id={clip.id}
                   data-start-ms={clip.start_ms}
+                  data-src={clip_src(@groups, clip)}
                   style={"left: #{StudioAudio.position_pct(clip.start_ms, StudioAudio.view_ms(@audio))}%; width: #{StudioAudio.width_pct(clip.duration_ms, StudioAudio.view_ms(@audio))}%; border-color: #{track_color(track)}B3; background-color: #{track_color(track)}#{if @studio_clip == clip.id, do: "80", else: "40"}"}
                   class={[
                     "absolute inset-y-2 cursor-grab overflow-hidden rounded-xs border px-1 active:cursor-grabbing",
