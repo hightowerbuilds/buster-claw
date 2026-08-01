@@ -85,13 +85,30 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.arch }}-mix-prod-${{ hashFiles('**/mix.lock') }}
           restore-keys: ${{ runner.os }}-${{ matrix.arch }}-mix-prod-
 
-      # cargo install is slow but rust-cache keeps the binary across runs;
-      # the guard makes warm runs a no-op (Livebook's exact pattern).
+      # Keep this in the same 2.x minor series as the `tauri` crate in
+      # desktop/tauri/Cargo.lock. The CLI is what bundles, signs, notarizes, and
+      # staples what the crate builds, so a CLI three minor versions behind the
+      # crate means shipping a signing path nobody has ever run locally.
+      #
+      # cargo install is slow but rust-cache keeps the binary across runs, so
+      # compare the VERSION rather than merely checking the binary exists: the
+      # cache persists ~/.cargo/bin, and an existence check would pin CI to
+      # whatever was installed the first time this workflow ever ran. Bumping the
+      # version below would then be a silent no-op on every warm run, which is
+      # exactly how this drifted to 2.8.0 while the crate moved to 2.11.
       - name: Install tauri-cli
+        env:
+          TAURI_CLI_VERSION: "2.11.4"
         run: |
-          if ! command -v cargo-tauri >/dev/null 2>&1; then
-            cargo install tauri-cli --version "=2.8.0" --locked
+          set -euo pipefail
+          have="$(cargo-tauri --version 2>/dev/null | awk '{print $2}' || true)"
+          if [ "$have" != "$TAURI_CLI_VERSION" ]; then
+            echo "tauri-cli: have '${have:-none}', want $TAURI_CLI_VERSION"
+            cargo install tauri-cli --version "=$TAURI_CLI_VERSION" --locked --force
+          else
+            echo "tauri-cli $TAURI_CLI_VERSION already installed"
           fi
+          cargo-tauri --version
 
       # Import the Developer ID cert into a throwaway keychain that lives only
       # for this job. Never the default login keychain: a hosted runner is
