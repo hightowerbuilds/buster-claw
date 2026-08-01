@@ -228,6 +228,19 @@ jobs:
       - name: Boot the packaged release
         run: ./scripts/smoke_release_boot.sh
 
+      # The macOS floor we advertise must be one the bundle can actually meet
+      # (LAUNCH_ROADMAP G-16). Measured 08-01: the shell was built for 11.0 while
+      # every one of the 24 OTP binaries required 14.0, and the bundle advertised
+      # 11.0 — so on macOS 11 through 13 it would install, pass Gatekeeper, launch
+      # the shell, and then have dyld reject beam.smp.
+      #
+      # This runs on EVERY build rather than being a one-time correction, because
+      # the VM's floor is inherited from whichever Erlang built the release. A new
+      # runner image or a bumped OTP silently moves it, and the symptom appears
+      # only on machines older than any we build on.
+      - name: Verify the advertised macOS floor
+        run: ./scripts/check_macos_floor.sh
+
       # The definition of "Apple is done" (LAUNCH_ROADMAP III.J), asserted in CI
       # rather than trusted. Each check below has failed for somebody, and every
       # one of them fails silently at build time and loudly on a user's Mac.

@@ -166,7 +166,7 @@ certificate or real hardware, it says so rather than guessing.
 | **Nothing has been signed, notarized, or stapled — ever** | The entire path is written and unexercised. See the banner in III.0 |
 | **No updater** | Zero references to `tauri-plugin-updater` in `desktop/tauri/Cargo.toml`. No minisign key exists. **Now P0** (III.I) |
 | **No telemetry, no crash reporting** | The only Sentry code is the *integration* that reads the user's own project. Nothing reports our own crashes |
-| **`minimumSystemVersion` claims macOS 11.0** | `tauri.conf.json:38`, never measured. WebGPU-in-WKWebView sets the true floor. Almost certainly wrong |
+| ~~`minimumSystemVersion` claims macOS 11.0~~ | **Measured and corrected 08-01 → 14.0.** It was wrong by three major versions: the bundled OTP requires 14.0 while the bundle advertised 11.0, so macOS 11–13 got a launch that dies at dyld. Now asserted on every build (**G-16**). The *feature* floor (WebGPU) is still unmeasured — **G-17** |
 | **No download page, no privacy policy, no terms** | busterclaw.lol serves 200 from Vercel (separate repo), but `/download`, `/privacy`, `/terms` are all **404**. The homepage leads with the runtime paragraph VI-a exists to replace |
 | ~~Nothing proves the packaged app boots~~ | **Closed 08-01.** `smoke_release_boot.sh` is wired into `release-desktop.yml` ahead of signing and upload (**G-5**). The GUI-side `smoke_desktop.sh` is still manual and unvalidated on a hosted runner (**G-6**) |
 | **Approval gate is a stub** | `lib/buster_claw/sentinel/pending.ex` — its own moduledoc: *"Approve/deny actions are Phase 2."* |
@@ -637,14 +637,49 @@ The lesson of BLOCKER-1: five green CI jobs on a tree that could not produce a w
 
 ### G-16 — The macOS floor (you are currently guessing)
 
-- [ ] **G-16.** **Determine the real floor empirically.** `minimumSystemVersion` claims 11.0
-      and has never been measured; WebGPU-in-WKWebView sets the true floor. Put the answer
-      in `tauri.conf.json`, the README, and the download page.
-- [ ] **G-17.** Test on a machine where **WebGPU is unavailable**: confirm the shader
-      degrades to a blank canvas with a user-visible explanation, not an error.
+> ### Measured 2026-08-01 — the declared floor was wrong by three major versions
+>
+> `vtool -show-build` over every Mach-O in a real bundle:
+>
+> | `minos` | Objects |
+> |---|---|
+> | 11.0 | 1 — the Tauri shell |
+> | **14.0** | **24 — the entire Erlang VM**, incl. `beam.smp` and `erl_child_setup` |
+>
+> The bundle advertised **11.0**. macOS refuses to load a Mach-O whose minimum-OS load
+> command is newer than the running system, so **on macOS 11, 12, and 13 that build
+> installs, passes Gatekeeper, launches the shell — and then dyld rejects the VM and
+> Phoenix never starts.** A window that never becomes an app, with nothing in our
+> pipeline able to notice, because every machine we build on is new enough.
+>
+> **The floor was never a decision.** It is inherited from whichever Erlang built the
+> release, so a different build machine, a fresh asdf install, or a bumped CI runner
+> image moves it silently. Correcting the number fixes one build and nothing else.
+
+- [x] **G-16. DONE 08-01.** Floor measured, corrected to **14.0** in `tauri.conf.json`, and
+      **asserted on every build** by `scripts/check_macos_floor.sh` (wired into
+      `release-desktop.yml`). The check reads `LSMinimumSystemVersion` from the *built*
+      bundle, takes the maximum `minos` across every Mach-O, and fails if the advertised
+      floor is below it. Verified in both directions: it fails on the mis-declared bundle
+      naming `erl_child_setup`, and passes once the declaration is honest.
+      *Raising the floor excludes nobody — macOS 11–13 users could not run the old build
+      either. It replaces a broken install with an honest refusal.*
+- [ ] **G-16b.** **Decide whether 14.0 is the floor we want.** It is currently an accident of
+      the build toolchain, not a choice. Lowering it means building the OTP release against
+      an older `MACOSX_DEPLOYMENT_TARGET` — real work for a shrinking audience, given macOS
+      14 shipped Sept 2023 and Apple supports roughly three versions. **Probably accept
+      14.0; just accept it deliberately.**
+- [ ] **G-17.** **The feature floor is a separate, unmeasured number.** 14.0 is the *hard*
+      floor (dyld). WebGPU-in-WKWebView sets a higher *feature* floor, and it only matters
+      if the shader fails to degrade. Test on a machine where WebGPU is unavailable and
+      confirm a blank canvas with a user-visible explanation, not an error. **Verify the
+      WebGPU-by-default Safari/macOS version against Apple's live docs — do not take a
+      remembered version number into a download page.**
+- [ ] **G-17b.** Put the confirmed floor in the **README** and the **download page**, not
+      just the config. A floor the buyer discovers after downloading is not a floor.
 
 **A wrong floor is the most expensive cheap mistake here** — it is discovered by strangers,
-one refund at a time, and it is a morning's work to measure.
+one refund at a time, and it was an hour's work to measure.
 
 ### G-18 — Updatable (III.I)
 
