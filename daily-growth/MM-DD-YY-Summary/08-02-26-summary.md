@@ -279,3 +279,43 @@ for the seventeen routing keys used to live inside `NotifySettingsLive`, and now
 that two surfaces offer routing, a label defined twice is a label that drifts.
 The settings screen keeps its richer rows (group, and the kind/source a Test
 fire needs) and derives its labels from `Sound`.
+
+## Renders land in the library, and a latent crasher fell out of it
+
+A rendered mix now writes to `sounds/` — the folder Settings → Notify lists —
+rather than `sounds/studio/`. That is the whole ask: a mix becomes a choosable
+notification sound with no export step and no second gesture. It also settles
+which folder a render belongs in, and the answer was always the library:
+`studio/` is what you are working ON, `sounds/` is what the app will play.
+Nothing is lost by not keeping a studio/ copy, because library sounds are
+addable as clips — a render can still be a layer in the next mix. The assign
+modal shrank accordingly: the file is already there, so it only routes.
+
+**Then the suite started failing intermittently, and it was worth chasing.**
+`mix test` passed; `mix precommit` failed with 76 failures, then 467. Stashing
+the change made it green, which pointed the finger at the change — wrongly, as
+it turned out. Running the suite in a loop and reading the *first* failure
+rather than the count found the real thing:
+
+    [error] GenServer BusterClaw.RateLimiter terminating
+    ** (ArgumentError) :erlang.send_after(nil, #PID<...>, :sweep)
+
+`RateLimiterTest`'s teardown restored each config key by writing back whatever
+it read at setup — and three of those four keys are **not set in
+`config/test.exs`**, so it read `nil` and wrote `nil` back. `get_env/3`'s
+default does not apply to a key explicitly set to nil, so from that moment
+`window_ms()` was nil. The supervised sweeper then raised on its next tick,
+restarted, raised again, and its supervisor gave up — **taking the Repo with
+it**, which is why hundreds of unrelated tests failed with "could not lookup
+Ecto repo". Intermittent because it needed the sweep timer to fire inside the
+same run; my change was only slow enough to make that likely.
+
+Fixed at both ends. The teardown now **deletes** keys that were absent instead
+of writing nil. And `window_ms/0` treats nil as absent, because this process is
+supervised and no config mistake should be able to take the application down —
+with a test that sends `:sweep` with a nil window and asserts the same pid is
+still alive afterwards. Five consecutive suite runs and two precommits green.
+
+**The lesson worth keeping:** a failure count is not a diagnosis. Reading the
+first failure and what logged just before it found in minutes what stash-and-
+bisect was actively pointing away from.

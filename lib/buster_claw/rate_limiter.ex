@@ -57,7 +57,14 @@ defmodule BusterClaw.RateLimiter do
   # --- config ------------------------------------------------------------
 
   defp enabled?, do: Application.get_env(:buster_claw, :rate_limit_enabled, true)
-  defp window_ms, do: Application.get_env(:buster_claw, :rate_limit_window_ms, 60_000)
+  # `||` rather than `get_env/3`'s default: a default only applies when the key
+  # is ABSENT, and a key explicitly set to nil sails past it. That is not
+  # hypothetical — it took the whole application down. This process is
+  # supervised and sweeps on a timer, so a nil window means
+  # `Process.send_after(self(), :sweep, nil)`, which raises, which restarts, which
+  # raises again, until the supervisor gives up and takes the Repo with it.
+  # Whatever is wrong with the config, it must not be able to do that.
+  defp window_ms, do: Application.get_env(:buster_claw, :rate_limit_window_ms) || 60_000
   defp default_limit, do: Application.get_env(:buster_claw, :rate_limit_default, 120)
 
   defp limit_for(command) do

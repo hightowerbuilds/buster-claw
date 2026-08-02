@@ -474,7 +474,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
     case render_mix(mix) do
       {:ok, name} ->
-        send(self(), {:studio_select, "import:" <> name})
+        send(self(), {:studio_select, "sound:" <> name})
 
         {:noreply,
          socket
@@ -493,25 +493,24 @@ defmodule BusterClawWeb.SoundStudioComponent do
   def handle_event("close_assign", _params, socket),
     do: {:noreply, assign(socket, :assign_render, nil)}
 
-  # Route the freshly rendered mix to a notification. Two steps, both needed:
-  # the file is copied out of `sounds/studio/` (working material) into `sounds/`
-  # (what the app plays unattended), and the key is pointed at it.
+  # Point a notification at the freshly rendered mix. The file is already in the
+  # library — the render put it there — so this is only the routing.
   #
-  # Routing by NAME rather than installing it as `alarm.wav`: this layer
-  # overrides bundled chimes by basename, so the second would silently replace
-  # the built-in alarm for good, and un-assigning later would not bring it back.
+  # Routed by NAME rather than installed as `alarm.wav`: this layer shadows
+  # bundled chimes by basename, so the second would silently replace the
+  # built-in alarm for good, and un-assigning later would not bring it back.
   def handle_event("assign_render", %{"key" => key, "name" => name}, socket)
       when is_binary(key) and is_binary(name) do
-    with path when is_binary(path) <- SoundStudio.path_for(name),
-         {:ok, installed} <- Sound.install_file(path, name),
-         :ok <- assign_route(key, installed) do
-      {:noreply,
-       socket
-       |> assign(:assign_render, nil)
-       |> assign(:groups, groups())
-       |> assign(:note, {:info, "#{Sound.route_label(key)} now plays #{installed}."})}
-    else
-      _ -> {:noreply, assign(socket, :note, {:error, "Couldn't assign that sound."})}
+    case assign_route(key, name) do
+      :ok ->
+        {:noreply,
+         socket
+         |> assign(:assign_render, nil)
+         |> assign(:groups, groups())
+         |> assign(:note, {:info, "#{Sound.route_label(key)} now plays #{name}."})}
+
+      _error ->
+        {:noreply, assign(socket, :note, {:error, "Couldn't assign that sound."})}
     end
   end
 
@@ -673,8 +672,33 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
       true ->
         with {:ok, mixed} <- SoundStudio.mixdown(Enum.map(placements, fn {:ok, p} -> p end)) do
-          SoundStudio.save(mixed, mix.name <> "-mix")
+          install_render(mixed, mix.name <> "-mix")
         end
+    end
+  end
+
+  # A render lands in `sounds/` — the library — not in `sounds/studio/`.
+  #
+  # The two folders mean different things: studio/ is what you are working ON,
+  # sounds/ is what the app will play. A render is the finished thing, so this
+  # is where it belongs, and putting it here is what makes it appear in
+  # Settings → Notify's list with no further step. Nothing is lost by not also
+  # keeping a studio/ copy: library sounds are addable as clips, so a render can
+  # still be a layer in the next mix.
+  #
+  # Via a temp file so `Sound.install_file/2` stays the single door into the
+  # library — it owns the never-overwrite rule, which matters here because this
+  # layer shadows bundled chimes by basename.
+  defp install_render(clip, suggested) do
+    tmp =
+      Path.join(System.tmp_dir!(), "bc-render-#{:erlang.unique_integer([:positive])}.wav")
+
+    try do
+      with :ok <- File.write(tmp, SoundStudio.render(clip)) do
+        Sound.install_file(tmp, Path.rootname(suggested) <> ".wav")
+      end
+    after
+      File.rm(tmp)
     end
   end
 
@@ -1277,9 +1301,9 @@ defmodule BusterClawWeb.SoundStudioComponent do
         />
       </div>
 
-      <%!-- Assign-on-render. Offered rather than imposed: a rendered mix is a
-            finished sound whether or not it becomes a notification, so "Not
-            now" is a real answer and the file is already saved either way. --%>
+      <%!-- Assign-on-render. Offered rather than imposed: the render is already
+            in the library either way, so "Not now" costs nothing — it just
+            means "not routed yet", and Settings → Notify can do it later. --%>
       <div
         :if={@assign_render}
         class="fixed inset-0 z-50"
@@ -1324,9 +1348,9 @@ defmodule BusterClawWeb.SoundStudioComponent do
               </div>
 
               <p class="font-mono text-[10px] leading-relaxed text-base-content/40">
-                Copies it into <code>sounds/</code> and points that notification at it.
-                The built-in chime is left alone, so you can change your mind in
-                Settings → Notify.
+                It is already in your sound library — this just points a
+                notification at it. The built-in chime is left alone, so you can
+                change your mind any time in Settings → Notify.
               </p>
 
               <div class="flex flex-wrap gap-2">

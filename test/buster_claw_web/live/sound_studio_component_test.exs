@@ -618,7 +618,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       html = view |> element("button[phx-click='render_mix']") |> render_click()
 
       assert html =~ "Rendered mix me-mix.wav"
-      mixed = Path.join([root, "sounds", "studio", "mix me-mix.wav"])
+      mixed = Path.join([root, "sounds", "mix me-mix.wav"])
       assert File.regular?(mixed)
 
       # Tracks SUM: both clips start at 0 on their own tracks, so the render is
@@ -627,7 +627,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert_in_delta SoundStudio.duration_ms(clip), 1_320.0, 20.0
 
       # And the result is opened, so you can hear what you just made.
-      assert render(view) =~ ~s(phx-value-id="import:mix me-mix.wav")
+      assert render(view) =~ ~s(phx-value-id="sound:mix me-mix.wav")
     end
 
     test "rendering offers to assign the result to a notification", %{conn: conn, root: root} do
@@ -651,10 +651,10 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
         |> render_submit()
 
       assert html =~ "Alarms now plays doorbell-mix.wav."
-      # Copied OUT of the studio's working folder and into the library the app
-      # plays from — the two folders mean different things.
+      # The render already lives in the library the app plays from, which is
+      # what puts it in Settings → Notify's list without any further step.
       assert File.regular?(Path.join([root, "sounds", "doorbell-mix.wav"]))
-      assert File.regular?(Path.join([root, "sounds", "studio", "doorbell-mix.wav"]))
+      assert "doorbell-mix.wav" in Sound.list()
       assert Sound.sound_map()["alarm"] == "doorbell-mix.wav"
 
       # Routed BY NAME, so the built-in alarm is untouched and Settings → Notify
@@ -662,6 +662,21 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert "alarm.wav" in Sound.bundled_list()
       refute File.exists?(Path.join([root, "sounds", "alarm.wav"]))
       refute html =~ "Play it for"
+    end
+
+    # The whole reason a render goes to `sounds/` rather than `sounds/studio/`:
+    # Settings → Notify lists that folder, so a mix becomes a choosable
+    # notification sound with no export step and no second gesture.
+    test "a rendered mix shows up on the Settings page by itself", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      new_audio(view, "chime idea")
+      add_clip(view, "sound:boot.wav", 0)
+      view |> element("button[phx-click='render_mix']") |> render_click()
+
+      {:ok, _settings, html} = live(conn, ~p"/notify-settings")
+
+      assert html =~ "chime idea-mix"
+      assert "chime idea-mix.wav" in Sound.list()
     end
 
     test "assigning is offered, not imposed — Not now keeps the render", %{
@@ -678,7 +693,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       refute html =~ "Play it for"
       assert Sound.sound_map() == %{}
       # The render is a finished sound whether or not it becomes a notification.
-      assert File.regular?(Path.join([root, "sounds", "studio", "sketch-mix.wav"]))
+      assert File.regular?(Path.join([root, "sounds", "sketch-mix.wav"]))
     end
 
     test "rendering an empty mix says so instead of writing silence", %{conn: conn} do
@@ -701,7 +716,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       # A mix missing one layer still sounds finished — you would never know.
       assert html =~ "source is missing"
-      refute File.regular?(Path.join([root, "sounds", "studio", "orphan-mix.wav"]))
+      refute File.regular?(Path.join([root, "sounds", "orphan-mix.wav"]))
     end
 
     test "deleting a mix leaves the clips it used alone", %{conn: conn, root: root} do
@@ -777,7 +792,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert has_element?(view, "button[phx-click='toggle_mute'][aria-pressed='true']")
 
       view |> element("button[phx-click='render_mix']") |> render_click()
-      mixed = Path.join([root, "sounds", "studio", "muted mix-mix.wav"])
+      mixed = Path.join([root, "sounds", "muted mix-mix.wav"])
       assert File.regular?(mixed)
 
       # alarm (1.32 s) was on the muted track; boot alone is ~0.7 s. A mix as
@@ -814,7 +829,7 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
         SoundStudio.import_source(BusterClaw.Notifications.Sound.resolve_path("boot.wav"))
 
       {:ok, clip} =
-        SoundStudio.import_source(Path.join([root, "sounds", "studio", "solo mix-mix.wav"]))
+        SoundStudio.import_source(Path.join([root, "sounds", "solo mix-mix.wav"]))
 
       assert_in_delta SoundStudio.duration_ms(clip), SoundStudio.duration_ms(boot), 20.0
     end

@@ -20,14 +20,39 @@ defmodule BusterClaw.RateLimiterTest do
     RateLimiter.reset()
 
     on_exit(fn ->
-      Application.put_env(:buster_claw, :rate_limit_enabled, prev.enabled)
-      Application.put_env(:buster_claw, :rate_limit_default, prev.default)
-      Application.put_env(:buster_claw, :rate_limit_window_ms, prev.window)
-      Application.put_env(:buster_claw, :rate_limit_overrides, prev.overrides)
+      # DELETE what was absent rather than writing nil back. Only
+      # `:rate_limit_enabled` is set in config/test.exs; the other three read
+      # back as nil, and putting nil is NOT the same as leaving them unset —
+      # `get_env/3`'s default does not apply to a key explicitly set to nil. A
+      # nil window made the supervised sweeper raise on its next tick, and its
+      # restarts took the Repo down with them: hundreds of unrelated tests
+      # failing, intermittently, long after this file finished.
+      restore(:rate_limit_enabled, prev.enabled)
+      restore(:rate_limit_default, prev.default)
+      restore(:rate_limit_window_ms, prev.window)
+      restore(:rate_limit_overrides, prev.overrides)
       RateLimiter.reset()
     end)
 
     :ok
+  end
+
+  defp restore(key, nil), do: Application.delete_env(:buster_claw, key)
+  defp restore(key, value), do: Application.put_env(:buster_claw, key, value)
+
+  # The guard for the class of bug, not just the instance: whatever is wrong
+  # with the config, the sweeper is supervised and must not be able to take the
+  # application down on its next tick.
+  test "a nil window does not kill the supervised sweeper" do
+    Application.put_env(:buster_claw, :rate_limit_window_ms, nil)
+    pid = Process.whereis(RateLimiter)
+
+    send(pid, :sweep)
+
+    # Still the same process, still answering — not restarted, not dead.
+    assert Process.alive?(pid)
+    assert RateLimiter.reset() == :ok
+    assert Process.whereis(RateLimiter) == pid
   end
 
   test "allows up to the limit, then rate-limits" do
