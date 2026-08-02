@@ -322,26 +322,151 @@ bisect was actively pointing away from.
 
 ---
 
+## A code-quality roadmap, read with a compiler instead of a nod
+
+A second model wrote `CODE_QUALITY_REFACTOR_ROADMAP.md` — a whole-codebase
+review. Rather than start executing it, I re-measured it.
+
+**Every structural number held exactly.** The module line counts match to the
+line. `mix xref graph --format cycles` really does report five cycles and a
+105-file compile-connected component. Dialyzer really does emit 253 findings,
+and `--format short` really does crash with `{:error, :unknown_warning,
+:exact_compare}`. Whoever wrote it did the work.
+
+**Three of the five findings I checked contained a material error anyway**, and
+the pattern is worth naming: every one came from measuring the right thing and
+then reasoning one step too far from it.
+
+**Finding 1 said the trading guide contradicts the product** — that
+`INTRODUCTION.md` forbids placing orders while `TradingOrder` supports a
+confirmed submission, and "those two truths cannot coexist." They do. There are
+*two* Robinhood prompts. `INTRODUCTION.md` is the workspace guide for the
+operator's own terminal `claude` session; the Trading chat gets
+`Trading.@system_prompt` at `trading.ex:125`, which the reviewer never found —
+and which is already completely current, fence format and all. Worse,
+implementing the fix literally would have been a **security regression**: the
+terminal session runs unconfined, `--disallowedTools` is applied only to
+app-spawned runs, and that prohibition is the only thing between it and
+`place_equity_order`. The actual defect was two sentences of stale *referral*.
+
+**Finding 4 sized `TradingLive` by responsibility count rather than by lines per
+responsibility**, and prescribed splitting out `ChatState` / `TabState` /
+`ResearchState` / `OrderState` — sections that turn out to be 34, 48, 29 and 43
+lines. It also prescribed async-key staleness guards that `trading_live.ex:1458`
+has had all along.
+
+**Finding 2 was right, and much smaller than it looked — and it was sitting on a
+live bug.** The 253 findings bucket as 232 `unmatched_return` (92%, spread thin
+across ~60 files) and about twenty of everything else. So: a day of reading, not
+an epic. Two corrections fell out immediately — dialyxir 1.4.7 *is* the latest
+release, so "upgrade Dialyxir" has no upgrade to make, and `--format github`
+crashes identically, leaving the default formatter as the only one that works.
+
+Then the twenty. `cli.ex:214` calls `System.trap_signal(:sigint, …)`. OTP
+reserves SIGINT for the BREAK handler and will not trap it — confirmed directly,
+`no function clause matching in System.trap_signal/3`. The call raises, and the
+`rescue _ -> :ok` fifteen lines down swallows it. Meanwhile `cli.ex:161`
+promises: *"Closing is one keystroke: Ctrl-C stops polling **and** stops the
+shift."* It never has. Ctrl-C during `on-duty` kills the CLI and **leaves the
+shift running server-side** — the autonomous mail loop keeps going after the
+operator believes they stood it down.
+
+2,143 tests were green over that. A static analyser we had switched off found it
+in one run.
+
+**The plan inverted as a result.** The roadmap said triage all 253, *then* make
+the job blocking — which leaves the gate off for as long as the burn-down takes,
+which in practice means forever. Baseline today's 253 into
+`.dialyzer_ignore.exs`, flip `continue-on-error: false` now, and burn down
+behind a gate that already catches anything new. Not yet done; it is the next
+thing.
+
+---
+
+## TradingLive, split along the grain rather than across it
+
+The file had maintained section banners, so its seams were already legible.
+Mapping them first changed the whole approach:
+
+| Section | Lines |
+|---|---:|
+| Chat events / Tabs / Research / Order confirm | 34 / 48 / 29 / 43 |
+| Chat windows, Dashboard events, Account asyncs, Chat stream | 104–370 each |
+| **Snapshot / chart / detail helpers** | **1,051** |
+| **Render** | **1,318** |
+
+Two sections were **68% of the file**. And inside "Render," only ~880 lines were
+the two templates — the remaining ~430 were functions that never touch `socket`
+at all: `money`, `signed_money`, `signed_pct`, `qty`, `detail_state`,
+`account_dataset_state`, `activity_rows`, `included_total`.
+
+So the fracture line was **purity, not feature**. Extracting that way touches no
+`handle_event`, no `assign`, no async key, no subscription — none of the places
+where a LiveView actually breaks.
+
+**`BusterClawWeb.TradingView`** (474 lines) took the view model: the state
+classifiers that decide what a panel is *allowed to claim* about its data, and
+the formatters that decide how it reads. `TradingLive` **imports** it, which is
+the detail that made this safe — every template call site stayed byte-identical,
+so the move could not break a template by construction. A call-graph scan, not a
+guess, decided which 27 functions had to become public and which 8 stayed
+private.
+
+**`BusterClawWeb.TradingAccountCard`** (731 lines) took the accounts panel whole.
+Its one real coupling was `@all_accounts` — a module attribute used in pattern
+matches, so it cannot become a function — now passed as an explicit `attr`.
+Three pure helpers it depended on (`last_snapshot`, `state_data`,
+`symbol_window`) moved into `TradingView`, where they belonged.
+
+`TradingLive`: **3,503 → 2,346 lines, −33%.**
+
+**The payoff is the test file, not the line count.** 37 new tests in **0.2
+seconds**, against 3.8 seconds for the 58 LiveView tests. The empty-vs-stale
+distinction, the "name the gap" activity notes, the rule that the headline total
+must agree with the chart it sits above — all of it asserted directly now
+instead of through a rendered page. My first four tests failed, which was the
+right kind of failure: my fixtures used `"account_number"` and the real key is
+`"last4"`. The code was fine; my model of it wasn't.
+
+**What deliberately did not happen:** the stateful `ChatState`/`TabState`/
+`OrderState` slicing. Those sections are 34–48 lines and sit exactly where the
+lifecycle risk lives. The roadmap now says to re-measure before scheduling any
+of it.
+
+---
+
 ## At close
 
-**Suite: 2,143 tests, 0 failures**, credo strict clean, Rust 29 + 5 lockstep
-green — verified across five consecutive runs and two precommits, because the
-day ended on an intermittent failure and one green run would not have meant
-anything.
+**Suite: 2,180 tests, 0 failures** (2,143 + 37 new), credo strict clean, format
+clean, Rust 29 + 5 lockstep green.
 
-**Two roadmaps archived, one written.** `roadmaps/` now holds four live
+**The day's last lesson is about reading.** A roadmap arrived with every number
+correct and three conclusions wrong, and the only way to tell was to run the
+commands it cited. One of those conclusions would have widened an agent's
+permissions on an unconfined session. Another would have spent a week splitting
+40-line sections. The third pointed at a static analyser we had turned off,
+which — once turned back on for a single run — reported that Ctrl-C has never
+stopped a shift.
+
+Earlier in the day the suite sat at 2,143 — verified across five consecutive
+runs and two precommits, because that stretch ended on an intermittent failure
+and one green run would not have meant anything. The 37 added since are the
+Trading extraction's.
+
+**Two roadmaps archived, two written.** `roadmaps/` now holds five live
 documents — `LAUNCH_ROADMAP`, `BROWSER_CLOSEOUT_ROADMAP`,
-`TRADING_TAB_CRITICAL_REVIEW_ROADMAP`, `phone-maps/BUSTERPHONE_ROADMAP` — plus
-`LEFTOVERS`, which grew by four browser items and the Sound Studio's two unbuilt
-phases, and shrank by none.
+`TRADING_TAB_CRITICAL_REVIEW_ROADMAP`, `CODE_QUALITY_REFACTOR_ROADMAP`,
+`phone-maps/BUSTERPHONE_ROADMAP` — plus `LEFTOVERS`, which grew by four browser
+items and the Sound Studio's two unbuilt phases, and shrank by none.
 
 **The one decision waiting on the operator** is `BROWSER_CLOSEOUT_ROADMAP`
 Part I: may the agent confirm a purchase, and what should a confirmation even
 produce now that the wallets ledger is deleted? Everything else in flight is
 work, not a question.
 
-**Three things caught by looking rather than by testing**, worth naming together
+**Four things caught by looking rather than by testing**, worth naming together
 because they are the same lesson: the right-click menu that a rename killed
-silently, the header-probe bug found by importing a real 20-minute file, and the
-RateLimiter crasher that a failure *count* actively pointed away from. The suite
-is 2,143 tests strong and none of the three was its idea.
+silently, the header-probe bug found by importing a real 20-minute file, the
+RateLimiter crasher that a failure *count* actively pointed away from, and a
+Ctrl-C handler that has never once fired. The suite is 2,180 tests strong and
+none of the four was its idea.
