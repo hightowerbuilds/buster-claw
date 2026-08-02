@@ -10,7 +10,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
   alias BusterClaw.Notifications
-  alias BusterClaw.Notifications.StudioAudio
+  alias BusterClaw.Notifications.StudioMix
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
   alias BusterClaw.SvgViewer
@@ -345,7 +345,7 @@ defmodule BusterClawWeb.StatusLive do
   # behind `:if`, which removes the DOM and discards the live_component with it,
   # so a selection held in the component would not survive a glance at Chat.
   # Re-selecting what is already open is a no-op. Without this guard, clicking
-  # the open audio in the sidebar — or landing back on it after a tab switch —
+  # the open mix in the sidebar — or landing back on it after a tab switch —
   # would silently throw away its undo stack and any trim in progress.
   def handle_event("select_studio_source", %{"id" => id}, socket)
       when id == :erlang.map_get(:studio_source, socket.assigns) do
@@ -391,9 +391,9 @@ defmodule BusterClawWeb.StatusLive do
 
       %{source: source, duration_ms: duration} ->
         {:noreply,
-         mutate_open_audio(socket, fn audio ->
-           track = paste_track(audio, socket.assigns.studio_clip)
-           StudioAudio.add_clip(audio, track.id, source, track_end(track), duration)
+         mutate_open_mix(socket, fn mix ->
+           track = paste_track(mix, socket.assigns.studio_clip)
+           StudioMix.add_clip(mix, track.id, source, track_end(track), duration)
          end)}
     end
   end
@@ -404,7 +404,7 @@ defmodule BusterClawWeb.StatusLive do
         {:noreply, socket}
 
       id ->
-        socket = mutate_open_audio(socket, &StudioAudio.remove_clip(&1, id))
+        socket = mutate_open_mix(socket, &StudioMix.remove_clip(&1, id))
         {:noreply, assign(socket, :studio_clip, nil)}
     end
   end
@@ -750,7 +750,7 @@ defmodule BusterClawWeb.StatusLive do
   # hands the PREVIOUS state up so undo has something to go back to. Sending the
   # old state rather than having the parent re-read it avoids a race where the
   # component has already written the new one to disk.
-  def handle_info({:studio_history, %StudioAudio{} = previous}, socket) do
+  def handle_info({:studio_history, %StudioMix{} = previous}, socket) do
     {:noreply, push_studio_history(socket, previous)}
   end
 
@@ -966,7 +966,7 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:studio_redo, [])
   end
 
-  defp push_studio_history(socket, %StudioAudio{} = previous) do
+  defp push_studio_history(socket, %StudioMix{} = previous) do
     socket
     |> assign(
       :studio_undo,
@@ -981,8 +981,8 @@ defmodule BusterClawWeb.StatusLive do
   # stack, put the CURRENT state on the other one, write the popped state back.
   defp step_history(socket, from_key, to_key) do
     with [previous | rest] <- socket.assigns[from_key],
-         {:ok, current} <- open_audio(socket) do
-      StudioAudio.save(previous)
+         {:ok, current} <- open_mix(socket) do
+      StudioMix.save(previous)
       send_update(BusterClawWeb.SoundStudioComponent, id: "home-studio")
 
       socket
@@ -995,26 +995,26 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
-  defp open_audio(socket) do
+  defp open_mix(socket) do
     case socket.assigns.studio_source do
-      "audio:" <> name -> StudioAudio.load(name)
-      _ -> {:error, :no_audio}
+      "mix:" <> name -> StudioMix.load(name)
+      _ -> {:error, :no_mix}
     end
   end
 
   # Load, apply, save, and record the previous state for undo — the one path
   # every keyboard-driven arrangement change goes through.
-  defp mutate_open_audio(socket, fun) do
-    case open_audio(socket) do
-      {:ok, audio} ->
-        updated = fun.(audio)
+  defp mutate_open_mix(socket, fun) do
+    case open_mix(socket) do
+      {:ok, mix} ->
+        updated = fun.(mix)
 
-        if updated == audio do
+        if updated == mix do
           socket
         else
-          StudioAudio.save(updated)
+          StudioMix.save(updated)
           send_update(BusterClawWeb.SoundStudioComponent, id: "home-studio")
-          push_studio_history(socket, audio)
+          push_studio_history(socket, mix)
         end
 
       {:error, _reason} ->
@@ -1024,8 +1024,8 @@ defmodule BusterClawWeb.StatusLive do
 
   defp selected_clip(socket) do
     with id when is_binary(id) <- socket.assigns.studio_clip,
-         {:ok, audio} <- open_audio(socket) do
-      audio |> StudioAudio.clips() |> Enum.find_value(fn {_t, c} -> if c.id == id, do: c end)
+         {:ok, mix} <- open_mix(socket) do
+      mix |> StudioMix.clips() |> Enum.find_value(fn {_t, c} -> if c.id == id, do: c end)
     else
       _ -> nil
     end
@@ -1034,10 +1034,10 @@ defmodule BusterClawWeb.StatusLive do
   # Paste lands on the selected clip's track, so a copy sits beside its
   # original; with nothing selected it falls to the first track rather than
   # refusing.
-  defp paste_track(%StudioAudio{tracks: tracks} = audio, clip_id) do
+  defp paste_track(%StudioMix{tracks: tracks} = mix, clip_id) do
     holder =
-      audio
-      |> StudioAudio.clips()
+      mix
+      |> StudioMix.clips()
       |> Enum.find_value(fn {track, clip} -> if clip.id == clip_id, do: track end)
 
     holder || hd(tracks)

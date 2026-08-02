@@ -1,6 +1,6 @@
-defmodule BusterClaw.Notifications.StudioAudio do
+defmodule BusterClaw.Notifications.StudioMix do
   @moduledoc """
-  An **audio** — the Studio's arrangement: several stacked tracks, each holding
+  A **mix** — the Studio's arrangement: several stacked tracks, each holding
   clips placed at millisecond offsets, summed into one sound
   (SOUND_STUDIO_ROADMAP Phase 6).
 
@@ -10,34 +10,42 @@ defmodule BusterClaw.Notifications.StudioAudio do
   heard together — that is the whole reason tracks exist rather than one long
   row.
 
-  ## Vocabulary, because it swapped once (2026-08-01)
+  ## Vocabulary, which has now settled (2026-08-02)
 
-  The UI originally called the arrangement a *track* and the rows *lanes*.
-  Operators expect DAW terms — you add **tracks** to an **audio** — so the
-  code now says what the UI says. The disk format below predates the swap and
-  deliberately did not move with it.
+  This has been renamed twice. The UI first called the arrangement a *track*
+  and its rows *lanes*; on 08-01 that became an *audio* holding *tracks*; on
+  08-02 the arrangement became a **mix**, because "audio" was doing two jobs at
+  once — an imported `.wav` is audio too, so "add this audio to that audio"
+  was a sentence the UI could not say clearly. A **mix** holds **tracks**, each
+  holding **clips**. One word per thing.
 
   ## A clip stores a reference, not audio
 
   `source` is a catalog id (`"sound:alarm.wav"`, `"import:cut.wav"`), never a
-  path and never bytes. An arrangement is therefore small, diffable, and
-  survives its sources being re-edited — and a source that has *vanished* is a
-  clip that reports itself missing rather than an audio that will not open.
-  `duration_ms` is cached alongside for layout, but a render re-reads the real
-  file: the cache decides how wide a block draws, never what you hear.
+  path and never bytes. A mix is therefore small, diffable, and survives its
+  sources being re-edited — and a source that has *vanished* is a clip that
+  reports itself missing rather than a mix that will not open. `duration_ms` is
+  cached alongside for layout, but a render re-reads the real file: the cache
+  decides how wide a block draws, never what you hear.
 
-  ## Persistence — the v1 format is stable, and older-named on purpose
+  ## Persistence — v2, and it reads v1
 
-  One JSON file per audio under `<workspace>/sounds/studio/tracks/`, extension
-  `.track.json`, rows under the key `"lanes"`. Those names are the v1
-  serialization, written before the vocabulary swap, and they stay: the files
-  live in the operator's workspace, are invited to be hand-edited, and may
-  already exist. Renaming keys or extensions would orphan every saved
-  arrangement to fix a label nobody sees in the app. `to_map/1` and
-  `from_map/2` are the entire translation layer.
+  One JSON file per mix under `<workspace>/sounds/studio/mixes/`, extension
+  `.mix.json`, rows under `"tracks"`.
 
-  The audio extension filter in `SoundStudio.list/0` means these never show up
-  as importable clips.
+  The v1 format said `tracks/`, `.track.json` and `"lanes"` — the words of the
+  *first* naming. It was deliberately left alone through the 08-01 rename on
+  the grounds that these files are hand-editable and may already exist. A
+  second rename changed that calculus: the cost of keeping v1 was no longer one
+  stale word but **three vocabularies in one system** — disk saying `lanes`,
+  code saying `tracks`, UI saying `mix` — which is how a hand-editable format
+  stops being hand-editable. So v2 moves, and the promise is kept a different
+  way: `migrate_v1/0` renames the directory and files on boot, `from_map/2`
+  still accepts `"lanes"`, and no arrangement is orphaned. `to_map/1` and
+  `from_map/2` remain the entire translation layer.
+
+  The mix extension filter in `SoundStudio.list/0` means these never show up as
+  importable clips.
   """
 
   require Logger
@@ -45,11 +53,15 @@ defmodule BusterClaw.Notifications.StudioAudio do
   alias BusterClaw.Library.Artifact
   alias BusterClaw.Music
 
-  # v1 disk layout — see the moduledoc before renaming either of these.
-  @subdir Path.join(["sounds", "studio", "tracks"])
-  @ext ".track.json"
+  # v2 disk layout. See the moduledoc: v1 (`tracks/`, `.track.json`, `"lanes"`)
+  # is migrated on boot and still readable, so nothing is orphaned.
+  @subdir Path.join(["sounds", "studio", "mixes"])
+  @ext ".mix.json"
 
-  # A fresh audio opens with one track, because zero tracks is a surface with
+  @v1_subdir Path.join(["sounds", "studio", "tracks"])
+  @v1_ext ".track.json"
+
+  # A fresh mix opens with one track, because zero tracks is a surface with
   # nothing to drop onto and "add a track" as the only available move.
   @default_tracks 1
   @max_tracks 8
@@ -75,12 +87,12 @@ defmodule BusterClaw.Notifications.StudioAudio do
   # Shape
   # ---------------------------------------------------------------------------
 
-  @doc "A new audio with one empty track."
+  @doc "A new mix with one empty track."
   def new(name) when is_binary(name) do
     %__MODULE__{name: name, tracks: Enum.map(1..@default_tracks, &track(&1 - 1))}
   end
 
-  @doc "The most tracks an audio may hold."
+  @doc "The most tracks a mix may hold."
   def max_tracks, do: @max_tracks
 
   defp track(index) do
@@ -92,31 +104,31 @@ defmodule BusterClaw.Notifications.StudioAudio do
   defp new_id, do: 6 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
 
   @doc "Append a track, up to `max_tracks/0`."
-  def add_track(%__MODULE__{tracks: tracks} = audio) when length(tracks) < @max_tracks do
-    %{audio | tracks: tracks ++ [track(length(tracks))]}
+  def add_track(%__MODULE__{tracks: tracks} = mix) when length(tracks) < @max_tracks do
+    %{mix | tracks: tracks ++ [track(length(tracks))]}
   end
 
-  def add_track(%__MODULE__{} = audio), do: audio
+  def add_track(%__MODULE__{} = mix), do: mix
 
   @doc """
   Remove a track and everything on it. The last track is never removed — an
-  audio with no tracks cannot be added to.
+  mix with no tracks cannot be added to.
   """
-  def remove_track(%__MODULE__{tracks: tracks} = audio, _track_id) when length(tracks) <= 1,
-    do: audio
+  def remove_track(%__MODULE__{tracks: tracks} = mix, _track_id) when length(tracks) <= 1,
+    do: mix
 
-  def remove_track(%__MODULE__{} = audio, track_id) do
-    %{audio | tracks: Enum.reject(audio.tracks, &(&1.id == track_id))}
+  def remove_track(%__MODULE__{} = mix, track_id) do
+    %{mix | tracks: Enum.reject(mix.tracks, &(&1.id == track_id))}
   end
 
   @doc "Flip a track's mute. Muting is per-track state, not a clip edit."
-  def toggle_mute(%__MODULE__{} = audio, track_id) do
-    update_track(audio, track_id, fn track -> %{track | muted: not track.muted} end)
+  def toggle_mute(%__MODULE__{} = mix, track_id) do
+    update_track(mix, track_id, fn track -> %{track | muted: not track.muted} end)
   end
 
   @doc "Flip a track's solo."
-  def toggle_solo(%__MODULE__{} = audio, track_id) do
-    update_track(audio, track_id, fn track -> %{track | soloed: not track.soloed} end)
+  def toggle_solo(%__MODULE__{} = mix, track_id) do
+    update_track(mix, track_id, fn track -> %{track | soloed: not track.soloed} end)
   end
 
   @doc """
@@ -131,10 +143,10 @@ defmodule BusterClaw.Notifications.StudioAudio do
   end
 
   @doc "Every clip on every AUDIBLE track — what a render actually mixes."
-  def audible_clips(%__MODULE__{} = audio) do
-    audio
+  def audible_clips(%__MODULE__{} = mix) do
+    mix
     |> clips()
-    |> Enum.filter(fn {track, _clip} -> audible?(audio, track) end)
+    |> Enum.filter(fn {track, _clip} -> audible?(mix, track) end)
   end
 
   # ---------------------------------------------------------------------------
@@ -145,7 +157,7 @@ defmodule BusterClaw.Notifications.StudioAudio do
   Place a clip on a track. Negative offsets clamp to zero — the ruler starts at
   the beginning and there is no audio before it.
   """
-  def add_clip(%__MODULE__{} = audio, track_id, source, start_ms, duration_ms)
+  def add_clip(%__MODULE__{} = mix, track_id, source, start_ms, duration_ms)
       when is_binary(source) and is_number(start_ms) and is_number(duration_ms) do
     clip = %{
       id: new_id(),
@@ -154,7 +166,7 @@ defmodule BusterClaw.Notifications.StudioAudio do
       duration_ms: max(0.0, duration_ms * 1.0)
     }
 
-    update_track(audio, track_id, fn track -> %{track | clips: track.clips ++ [clip]} end)
+    update_track(mix, track_id, fn track -> %{track | clips: track.clips ++ [clip]} end)
   end
 
   @doc """
@@ -164,10 +176,10 @@ defmodule BusterClaw.Notifications.StudioAudio do
   crosses tracks is a removal and an insertion, and doing it as one operation is
   how a clip ends up existing on two tracks at once.
   """
-  def move_clip(%__MODULE__{} = audio, clip_id, to_track_id, start_ms) when is_number(start_ms) do
-    case pop_clip(audio, clip_id) do
-      {nil, _audio} ->
-        audio
+  def move_clip(%__MODULE__{} = mix, clip_id, to_track_id, start_ms) when is_number(start_ms) do
+    case pop_clip(mix, clip_id) do
+      {nil, _mix} ->
+        mix
 
       {clip, stripped} ->
         moved = %{clip | start_ms: max(0.0, start_ms * 1.0)}
@@ -179,38 +191,38 @@ defmodule BusterClaw.Notifications.StudioAudio do
         else
           # An unknown target track puts the clip back where it was rather than
           # dropping it on the floor.
-          audio
+          mix
         end
     end
   end
 
   @doc "Remove a clip from wherever it sits."
-  def remove_clip(%__MODULE__{} = audio, clip_id) do
-    {_clip, stripped} = pop_clip(audio, clip_id)
+  def remove_clip(%__MODULE__{} = mix, clip_id) do
+    {_clip, stripped} = pop_clip(mix, clip_id)
     stripped
   end
 
-  @doc "Every clip in the audio, paired with the track holding it."
+  @doc "Every clip in the mix, paired with the track holding it."
   def clips(%__MODULE__{tracks: tracks}) do
     Enum.flat_map(tracks, fn track -> Enum.map(track.clips, &{track, &1}) end)
   end
 
   @doc "Where the arrangement ends, in ms — the furthest clip's far edge."
-  def duration_ms(%__MODULE__{} = audio) do
-    audio
+  def duration_ms(%__MODULE__{} = mix) do
+    mix
     |> clips()
     |> Enum.map(fn {_track, clip} -> clip.start_ms + clip.duration_ms end)
     |> Enum.max(fn -> 0.0 end)
   end
 
-  defp pop_clip(%__MODULE__{} = audio, clip_id) do
-    found = audio |> clips() |> Enum.find_value(fn {_t, c} -> if c.id == clip_id, do: c end)
+  defp pop_clip(%__MODULE__{} = mix, clip_id) do
+    found = mix |> clips() |> Enum.find_value(fn {_t, c} -> if c.id == clip_id, do: c end)
 
     stripped = %{
-      audio
+      mix
       | tracks:
           Enum.map(
-            audio.tracks,
+            mix.tracks,
             &%{&1 | clips: Enum.reject(&1.clips, fn c -> c.id == clip_id end)}
           )
     }
@@ -218,10 +230,10 @@ defmodule BusterClaw.Notifications.StudioAudio do
     {found, stripped}
   end
 
-  defp update_track(%__MODULE__{} = audio, track_id, fun) do
+  defp update_track(%__MODULE__{} = mix, track_id, fun) do
     %{
-      audio
-      | tracks: Enum.map(audio.tracks, fn t -> if t.id == track_id, do: fun.(t), else: t end)
+      mix
+      | tracks: Enum.map(mix.tracks, fn t -> if t.id == track_id, do: fun.(t), else: t end)
     }
   end
 
@@ -235,13 +247,13 @@ defmodule BusterClaw.Notifications.StudioAudio do
   # same formula in Elixir and JavaScript, free to drift.
 
   # The ruler always shows more than the arrangement uses, so there is somewhere
-  # to drag a clip TO — an audio that exactly fits its content has no room to grow.
+  # to drag a clip TO — an mix that exactly fits its content has no room to grow.
   @headroom 1.25
   @min_view_ms 10_000
 
   @doc "How long a ruler to draw, rounded up to a whole second for clean ticks."
-  def view_ms(%__MODULE__{} = audio) do
-    wanted = max(duration_ms(audio) * @headroom, @min_view_ms)
+  def view_ms(%__MODULE__{} = mix) do
+    wanted = max(duration_ms(mix) * @headroom, @min_view_ms)
     ceil(wanted / 1000) * 1000
   end
 
@@ -281,10 +293,54 @@ defmodule BusterClaw.Notifications.StudioAudio do
   # Storage
   # ---------------------------------------------------------------------------
 
-  @doc "Absolute path to `<workspace>/sounds/studio/tracks/` (v1 layout — moduledoc)."
+  @doc "Absolute path to `<workspace>/sounds/studio/mixes/`."
   def dir, do: Artifact.workspace_path(@subdir)
 
-  @doc "Sorted names of every saved audio."
+  @doc """
+  Fold a v1 layout (`tracks/`, `.track.json`) into v2 (`mixes/`, `.mix.json`).
+
+  Idempotent by shape: once the old directory is gone there is nothing to do.
+  A name that already exists at the destination is **left alone and logged** —
+  the same posture as every other migration in this app, because we do not get
+  to pick which of a user's two files survives. The `"lanes"` key needs no
+  migration at all: `from_map/2` still reads it, and the next save writes v2.
+  """
+  def migrate_v1 do
+    old = Artifact.workspace_path(@v1_subdir)
+
+    if File.dir?(old) do
+      File.mkdir_p!(dir())
+      kept = old |> File.ls!() |> Enum.reject(&move_v1_file(old, &1))
+
+      case kept do
+        [] ->
+          File.rmdir(old)
+          Logger.info("StudioMix: migrated studio/tracks/ to studio/mixes/")
+
+        names ->
+          Logger.warning(
+            "StudioMix: kept studio/tracks/ — #{length(names)} item(s) already exist " <>
+              "under studio/mixes/ and were not overwritten: #{Enum.join(names, ", ")}"
+          )
+      end
+    end
+
+    :ok
+  rescue
+    error -> Logger.warning("StudioMix: v1 migration failed: #{Exception.message(error)}")
+  end
+
+  # True when the entry is dealt with (moved, or not ours to move).
+  defp move_v1_file(old_dir, name) do
+    if String.ends_with?(name, @v1_ext) do
+      dest = Path.join(dir(), String.replace_suffix(name, @v1_ext, @ext))
+      not File.exists?(dest) and File.rename(Path.join(old_dir, name), dest) == :ok
+    else
+      false
+    end
+  end
+
+  @doc "Sorted names of every saved mix."
   def list do
     case File.ls(dir()) do
       {:ok, entries} ->
@@ -298,11 +354,11 @@ defmodule BusterClaw.Notifications.StudioAudio do
     end
   end
 
-  @doc "Whether an audio by this name exists."
+  @doc "Whether a mix by this name exists."
   def exists?(name) when is_binary(name), do: name in list()
 
   @doc """
-  Create and save a new audio under a safe, collision-free name. Returns the
+  Create and save a new mix under a safe, collision-free name. Returns the
   name actually used, which may carry a `-2` suffix.
   """
   def create(requested) when is_binary(requested) do
@@ -320,7 +376,7 @@ defmodule BusterClaw.Notifications.StudioAudio do
     end
   end
 
-  @doc "Read an audio by name."
+  @doc "Read a mix by name."
   def load(name) when is_binary(name) do
     with true <- exists?(name),
          {:ok, body} <- File.read(path_for(name)),
@@ -332,27 +388,27 @@ defmodule BusterClaw.Notifications.StudioAudio do
     end
   end
 
-  @doc "Write an audio to disk."
-  def save(%__MODULE__{name: name} = audio) when is_binary(name) do
+  @doc "Write an mix to disk."
+  def save(%__MODULE__{name: name} = mix) when is_binary(name) do
     File.mkdir_p(dir())
 
-    case File.write(path_for(name), Jason.encode!(to_map(audio), pretty: true)) do
+    case File.write(path_for(name), Jason.encode!(to_map(mix), pretty: true)) do
       :ok -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
 
-  @doc "Delete a saved audio. The clips it referenced are untouched."
+  @doc "Delete a saved mix. The clips it referenced are untouched."
   def delete(name) when is_binary(name) do
     if exists?(name), do: File.rm(path_for(name)), else: {:error, :not_found}
   end
 
   defp path_for(name), do: Path.join(dir(), name <> @ext)
 
-  # An audio name must carry at least one letter or digit. The check is on the
+  # An mix name must carry at least one letter or digit. The check is on the
   # REQUEST, not on the sanitized result, because `Music.safe_name/1`
   # substitutes "track" for anything that reduces to nothing — so a check on its
-  # output could never fire, and `"   "` would quietly become an audio called
+  # output could never fire, and `"   "` would quietly become a mix called
   # "track". Reusing that sanitizer is still right for everything after: it is
   # the one that already knows how to reduce `../../etc/evil` to a basename.
   defp safe_audio_name(requested) do
@@ -373,16 +429,16 @@ defmodule BusterClaw.Notifications.StudioAudio do
   end
 
   # ---------------------------------------------------------------------------
-  # JSON — the v1 format speaks the OLD vocabulary ("lanes"), on purpose.
-  # These two functions are the entire translation layer; see the moduledoc.
+  # JSON. Writes v2 ("tracks"); reads v2 and v1 ("lanes"). These functions are
+  # the entire translation layer; see the moduledoc.
   # ---------------------------------------------------------------------------
 
-  defp to_map(%__MODULE__{} = audio) do
+  defp to_map(%__MODULE__{} = mix) do
     %{
-      "version" => 1,
-      "name" => audio.name,
-      "lanes" =>
-        Enum.map(audio.tracks, fn track ->
+      "version" => 2,
+      "name" => mix.name,
+      "tracks" =>
+        Enum.map(mix.tracks, fn track ->
           %{
             "id" => track.id,
             "label" => track.label,
@@ -404,13 +460,19 @@ defmodule BusterClaw.Notifications.StudioAudio do
 
   # Tolerant by design: this file is in the operator's workspace and they are
   # invited to edit it. A malformed track is dropped, not a parse error that
-  # makes the whole audio unopenable.
-  defp from_map(name, %{"lanes" => lanes}) when is_list(lanes) do
-    parsed = lanes |> Enum.map(&parse_track/1) |> Enum.reject(&is_nil/1)
-    %__MODULE__{name: name, tracks: if(parsed == [], do: [track(0)], else: parsed)}
-  end
+  # makes the whole mix unopenable.
+  defp from_map(name, %{"tracks" => rows}) when is_list(rows), do: build(name, rows)
+
+  # v1 said "lanes". Still read, so a hand-copied old file opens; the next save
+  # writes it back as v2.
+  defp from_map(name, %{"lanes" => rows}) when is_list(rows), do: build(name, rows)
 
   defp from_map(name, _other), do: new(name)
+
+  defp build(name, rows) do
+    parsed = rows |> Enum.map(&parse_track/1) |> Enum.reject(&is_nil/1)
+    %__MODULE__{name: name, tracks: if(parsed == [], do: [track(0)], else: parsed)}
+  end
 
   defp parse_track(%{"id" => id, "clips" => clips} = track)
        when is_binary(id) and is_list(clips) do

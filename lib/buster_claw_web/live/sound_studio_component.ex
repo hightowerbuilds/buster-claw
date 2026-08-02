@@ -1,7 +1,7 @@
 defmodule BusterClawWeb.SoundStudioComponent do
   @moduledoc """
   The homepage **Studio** sub-tab (SOUND_STUDIO_ROADMAP Phase 3) — every piece
-  of audio in the workspace down the left, the selected one open on the right.
+  of mix in the workspace down the left, the selected one open on the right.
 
   This is the surface the editing core (`Notifications.SoundStudio`) was built
   under. The facts shown for a selection — duration, peak, format, which layer
@@ -30,7 +30,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   alias BusterClaw.Music
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
-  alias BusterClaw.Notifications.StudioAudio
+  alias BusterClaw.Notifications.StudioMix
   alias BusterClaw.Telephony
   alias BusterClawWeb.MusicComponent
 
@@ -95,23 +95,23 @@ defmodule BusterClawWeb.SoundStudioComponent do
      |> assign(:selected, selected)
      |> assign(:missing_bundled, length(Sound.missing_from_workspace()))
      |> assign(:facts, analyze(selected))
-     |> load_audio(selected)}
+     |> load_mix(selected)}
   end
 
   # The open arrangement is read from disk rather than held in the socket, and
   # every mutation writes straight back. That makes Part V landmine 2 a
-  # non-issue here for free: a tab switch discards this component, and the audio
+  # non-issue here for free: a tab switch discards this component, and the mix
   # is exactly where it was because it was never only in memory.
-  defp load_audio(socket, %{kind: :audio, name: name}) do
-    case StudioAudio.load(name) do
-      {:ok, audio} -> assign(socket, :audio, audio)
-      {:error, _reason} -> assign(socket, :audio, nil)
+  defp load_mix(socket, %{kind: :mix, name: name}) do
+    case StudioMix.load(name) do
+      {:ok, mix} -> assign(socket, :mix, mix)
+      {:error, _reason} -> assign(socket, :mix, nil)
     end
   end
 
-  defp load_audio(socket, _selected), do: assign(socket, :audio, nil)
+  defp load_mix(socket, _selected), do: assign(socket, :mix, nil)
 
-  @doc "Public for `StatusLive`, which selects the audio a render came from."
+  @doc "Public for `StatusLive`, which selects the mix a render came from."
   def resolve_source(id), do: find_source(groups(), id)
 
   # ---------------------------------------------------------------------------
@@ -121,8 +121,8 @@ defmodule BusterClawWeb.SoundStudioComponent do
   @doc "Every source the studio can open, grouped for the sidebar."
   def groups do
     [
-      %{key: "audio", label: "Audio", items: audio_items()},
-      # Imports lead the material groups: this is the working audio, and the one
+      %{key: "mix", label: "Mixes", items: mix_items()},
+      # Imports lead the material groups: this is the working mix, and the one
       # the operator fills themselves.
       %{key: "imports", label: "Imports", items: import_items()},
       %{key: "sounds", label: "Sounds", items: sound_items()},
@@ -131,15 +131,15 @@ defmodule BusterClawWeb.SoundStudioComponent do
     ]
   end
 
-  defp audio_items do
-    Enum.map(StudioAudio.list(), fn name ->
+  defp mix_items do
+    Enum.map(StudioMix.list(), fn name ->
       %{
-        id: "audio:" <> name,
-        kind: :audio,
+        id: "mix:" <> name,
+        kind: :mix,
         name: name,
         label: name,
         sub: "arrangement",
-        # An audio is not a file the browser can play; it has to be rendered
+        # A mix is not a file the browser can play; it has to be rendered
         # first, which is what the arranger's Render button is for.
         url: nil,
         path: nil
@@ -259,50 +259,49 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # ---------------------------------------------------------------------------
 
   @impl true
-  def handle_event("new_audio", %{"name" => name}, socket) do
-    case StudioAudio.create(name) do
+  def handle_event("new_mix", %{"name" => name}, socket) do
+    case StudioMix.create(name) do
       {:ok, created} ->
-        send(self(), {:studio_select, "audio:" <> created})
-        {:noreply, socket |> assign(:groups, groups()) |> assign(:note, {:info, "New audio."})}
+        send(self(), {:studio_select, "mix:" <> created})
+        {:noreply, socket |> assign(:groups, groups()) |> assign(:note, {:info, "New mix."})}
 
       {:error, :invalid_name} ->
-        {:noreply, assign(socket, :note, {:error, "Give the audio a name."})}
+        {:noreply, assign(socket, :note, {:error, "Give the mix a name."})}
 
       {:error, _reason} ->
-        {:noreply, assign(socket, :note, {:error, "Couldn't create that audio."})}
+        {:noreply, assign(socket, :note, {:error, "Couldn't create that mix."})}
     end
   end
 
   def handle_event("add_track", _params, socket) do
-    {:noreply, save_audio(socket, StudioAudio.add_track(socket.assigns.audio))}
+    {:noreply, save_mix(socket, StudioMix.add_track(socket.assigns.mix))}
   end
 
   def handle_event("remove_track", %{"id" => track_id}, socket) do
-    {:noreply, save_audio(socket, StudioAudio.remove_track(socket.assigns.audio, track_id))}
+    {:noreply, save_mix(socket, StudioMix.remove_track(socket.assigns.mix, track_id))}
   end
 
   # Mute and solo ride the same save path as every other edit, so they land in
   # the undo history and survive a tab switch like anything else that changes
   # what a render will contain.
   def handle_event("toggle_mute", %{"id" => track_id}, socket) do
-    {:noreply, save_audio(socket, StudioAudio.toggle_mute(socket.assigns.audio, track_id))}
+    {:noreply, save_mix(socket, StudioMix.toggle_mute(socket.assigns.mix, track_id))}
   end
 
   def handle_event("toggle_solo", %{"id" => track_id}, socket) do
-    {:noreply, save_audio(socket, StudioAudio.toggle_solo(socket.assigns.audio, track_id))}
+    {:noreply, save_mix(socket, StudioMix.toggle_solo(socket.assigns.mix, track_id))}
   end
 
   def handle_event("add_clip", %{"source" => source, "track" => track_id}, socket) do
-    audio = socket.assigns.audio
+    mix = socket.assigns.mix
 
     case clip_duration(source) do
       {:ok, duration} ->
         # Land it after whatever is already on that track, so successive adds
         # queue up instead of stacking invisibly at zero.
-        at = track_end_ms(audio, track_id)
+        at = track_end_ms(mix, track_id)
 
-        {:noreply,
-         save_audio(socket, StudioAudio.add_clip(audio, track_id, source, at, duration))}
+        {:noreply, save_mix(socket, StudioMix.add_clip(mix, track_id, source, at, duration))}
 
       {:error, reason} ->
         {:noreply, assign(socket, :note, {:error, trim_error(reason)})}
@@ -327,19 +326,19 @@ defmodule BusterClawWeb.SoundStudioComponent do
   end
 
   def handle_event("remove_clip", %{"id" => clip_id}, socket) do
-    {:noreply, save_audio(socket, StudioAudio.remove_clip(socket.assigns.audio, clip_id))}
+    {:noreply, save_mix(socket, StudioMix.remove_clip(socket.assigns.mix, clip_id))}
   end
 
   # Pushed by the TrackArrange hook on drop.
   def handle_event("move_clip", %{"clip_id" => id, "track_id" => track, "start_ms" => at}, socket)
       when is_binary(id) and is_binary(track) and is_number(at) do
-    {:noreply, save_audio(socket, StudioAudio.move_clip(socket.assigns.audio, id, track, at))}
+    {:noreply, save_mix(socket, StudioMix.move_clip(socket.assigns.mix, id, track, at))}
   end
 
   def handle_event("move_clip", _params, socket), do: {:noreply, socket}
 
-  def handle_event("delete_audio", _params, socket) do
-    StudioAudio.delete(socket.assigns.audio.name)
+  def handle_event("delete_mix", _params, socket) do
+    StudioMix.delete(socket.assigns.mix.name)
     send(self(), {:studio_select, nil})
     {:noreply, socket |> assign(:groups, groups()) |> assign(:note, {:info, "Audio deleted."})}
   end
@@ -384,37 +383,37 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   def handle_event("close_info", _params, socket), do: {:noreply, assign(socket, :info, nil)}
 
-  # "Add to new audio": the whole gesture in one click — a new arrangement named
+  # "Add to new mix": the whole gesture in one click — a new arrangement named
   # after the source, with the source already on its first track. Landing in an
   # empty arrangement you then have to fill is the version nobody uses.
-  def handle_event("new_audio_from_source", %{"id" => id}, socket) when is_binary(id) do
+  def handle_event("new_mix_from_source", %{"id" => id}, socket) when is_binary(id) do
     with %{label: label} <- find_source(socket.assigns.groups, id),
          {:ok, duration} <- clip_duration(id),
-         {:ok, name} <- StudioAudio.create(label),
-         {:ok, audio} <- StudioAudio.load(name) do
-      track = hd(audio.tracks)
-      audio = StudioAudio.add_clip(audio, track.id, id, 0, duration)
-      StudioAudio.save(audio)
+         {:ok, name} <- StudioMix.create(label),
+         {:ok, mix} <- StudioMix.load(name) do
+      track = hd(mix.tracks)
+      mix = StudioMix.add_clip(mix, track.id, id, 0, duration)
+      StudioMix.save(mix)
 
       # Selection lives in StatusLive; opening the new arrangement is the point.
-      send(self(), {:studio_select, "audio:" <> name})
+      send(self(), {:studio_select, "mix:" <> name})
 
       {:noreply,
        socket
        |> assign(:groups, groups())
-       |> assign(:note, {:info, "New audio “#{name}” from #{label}."})}
+       |> assign(:note, {:info, "New mix “#{name}” from #{label}."})}
     else
-      {:error, reason} -> {:noreply, assign(socket, :note, {:error, new_audio_error(reason)})}
+      {:error, reason} -> {:noreply, assign(socket, :note, {:error, new_mix_error(reason)})}
       _other -> {:noreply, socket}
     end
   end
 
-  def handle_event("new_audio_from_source", _params, socket), do: {:noreply, socket}
+  def handle_event("new_mix_from_source", _params, socket), do: {:noreply, socket}
 
-  def handle_event("render_audio", _params, socket) do
-    audio = socket.assigns.audio
+  def handle_event("render_mix", _params, socket) do
+    mix = socket.assigns.mix
 
-    case render_audio(audio) do
+    case render_mix(mix) do
       {:ok, name} ->
         send(self(), {:studio_select, "import:" <> name})
 
@@ -509,20 +508,20 @@ defmodule BusterClawWeb.SoundStudioComponent do
     end
   end
 
-  defp save_audio(socket, %StudioAudio{} = audio) do
+  defp save_mix(socket, %StudioMix{} = mix) do
     # Hand the PREVIOUS state up before overwriting it, so undo has somewhere to
     # go. Sending the old state rather than letting the parent re-read it avoids
     # a race where this write has already landed on disk.
-    if socket.assigns[:audio], do: send(self(), {:studio_history, socket.assigns.audio})
+    if socket.assigns[:mix], do: send(self(), {:studio_history, socket.assigns.mix})
 
-    StudioAudio.save(audio)
-    socket |> assign(:audio, audio) |> assign(:groups, groups())
+    StudioMix.save(mix)
+    socket |> assign(:mix, mix) |> assign(:groups, groups())
   end
 
-  defp save_audio(socket, _audio), do: socket
+  defp save_mix(socket, _mix), do: socket
 
-  defp track_end_ms(%StudioAudio{} = audio, track_id) do
-    audio.tracks
+  defp track_end_ms(%StudioMix{} = mix, track_id) do
+    mix.tracks
     |> Enum.find(%{clips: []}, &(&1.id == track_id))
     |> Map.fetch!(:clips)
     |> Enum.map(&(&1.start_ms + &1.duration_ms))
@@ -557,17 +556,17 @@ defmodule BusterClawWeb.SoundStudioComponent do
     end
   end
 
-  defp render_audio(%StudioAudio{} = audio) do
+  defp render_mix(%StudioMix{} = mix) do
     # Audible clips only: the mix must be what the arranger SHOWS it will be,
     # and a muted track that still rendered would make M a lie with a UI.
     placements =
-      audio
-      |> StudioAudio.audible_clips()
+      mix
+      |> StudioMix.audible_clips()
       |> Enum.map(fn {_track, clip} -> placement(clip) end)
 
     cond do
-      StudioAudio.clips(audio) == [] ->
-        {:error, :empty_audio}
+      StudioMix.clips(mix) == [] ->
+        {:error, :empty_mix}
 
       # Clips exist but mute/solo silenced every one — a different mistake
       # than an empty arrangement, deserving a different sentence.
@@ -582,21 +581,21 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
       true ->
         with {:ok, mixed} <- SoundStudio.mixdown(Enum.map(placements, fn {:ok, p} -> p end)) do
-          SoundStudio.save(mixed, audio.name <> "-mix")
+          SoundStudio.save(mixed, mix.name <> "-mix")
         end
     end
   end
 
   defp placement(clip) do
     with %{path: path} when is_binary(path) <- resolve_source(clip.source),
-         {:ok, audio} <- SoundStudio.import_source(path) do
-      {:ok, {audio, clip.start_ms}}
+         {:ok, decoded} <- SoundStudio.import_source(path) do
+      {:ok, {decoded, clip.start_ms}}
     else
       _ -> {:error, clip.source}
     end
   end
 
-  defp render_error(:empty_audio), do: "Add a clip before rendering."
+  defp render_error(:empty_mix), do: "Add a clip before rendering."
 
   defp render_error(:all_silenced),
     do: "Every clip is muted — unmute or solo something first."
@@ -604,7 +603,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   defp render_error(:missing_source), do: "A clip's source is missing — nothing was rendered."
   defp render_error(:too_long), do: "That arrangement is longer than five minutes."
   defp render_error(:format_mismatch), do: "Those clips don't share a format."
-  defp render_error(_other), do: "Couldn't render that audio."
+  defp render_error(_other), do: "Couldn't render that mix."
 
   defp apply_trim(nil, _trim), do: {:error, :no_selection}
   defp apply_trim(_selected, nil), do: {:error, :no_selection}
@@ -649,9 +648,9 @@ defmodule BusterClawWeb.SoundStudioComponent do
     do:
       "block w-full whitespace-nowrap px-3 py-1.5 text-left font-mono text-xs hover:bg-base-content/10"
 
-  # A real audio file on disk: it has facts worth showing and can become a clip.
+  # A real mix file on disk: it has facts worth showing and can become a clip.
   # An arrangement is neither — it is a list of references to these — and the
-  # music library manager is not audio at all.
+  # music library manager is not mix at all.
   defp sourceable?(%{path: path}) when is_binary(path), do: true
   defp sourceable?(_item), do: false
 
@@ -683,7 +682,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
         %{base | note: "This file is gone from disk."}
 
       {:error, _reason} ->
-        %{base | note: "Couldn't read this file's audio header."}
+        %{base | note: "Couldn't read this file's mix header."}
     end
   end
 
@@ -694,9 +693,9 @@ defmodule BusterClawWeb.SoundStudioComponent do
     end
   end
 
-  defp new_audio_error(:invalid_name), do: "That source's name can't become an audio name."
-  defp new_audio_error(:enoent), do: "That file is gone from disk."
-  defp new_audio_error(reason), do: trim_error(reason)
+  defp new_mix_error(:invalid_name), do: "That source's name can't become a mix name."
+  defp new_mix_error(:enoent), do: "That file is gone from disk."
+  defp new_mix_error(reason), do: trim_error(reason)
 
   # ---------------------------------------------------------------------------
   # Deletion
@@ -707,7 +706,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # back), and a voicemail recording belongs to the Phone surface — deleting
   # its file here would orphan the telephony record that points at it.
   defp deletable?(%{kind: :import}), do: true
-  defp deletable?(%{kind: :audio}), do: true
+  defp deletable?(%{kind: :mix}), do: true
   defp deletable?(%{kind: :music}), do: true
   defp deletable?(%{kind: :sound, sub: "yours"}), do: true
   defp deletable?(_item), do: false
@@ -715,7 +714,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   # `Sound.delete/1` only ever removes the workspace layer, so a "built-in"
   # id sent here anyway returns :not_found — the fail-closed the handler wants.
   defp delete_source("import:" <> name), do: SoundStudio.delete(name)
-  defp delete_source("audio:" <> name), do: StudioAudio.delete(name)
+  defp delete_source("mix:" <> name), do: StudioMix.delete(name)
   defp delete_source("music:" <> name), do: Music.delete(name)
   defp delete_source("sound:" <> name), do: Sound.delete(name)
   defp delete_source(_id), do: {:error, :not_found}
@@ -799,11 +798,11 @@ defmodule BusterClawWeb.SoundStudioComponent do
   defp analysis_note(:enoent), do: "That file is gone from disk."
   defp analysis_note(_other), do: "Couldn't read this file."
 
-  # The catalog minus arrangements themselves: an audio cannot contain an
-  # audio, and the library manager is not audio at all.
+  # The catalog minus mixes themselves: a mix cannot contain a mix, and the
+  # library manager is not mix at all.
   defp addable_groups(groups) do
     groups
-    |> Enum.reject(&(&1.key == "audio"))
+    |> Enum.reject(&(&1.key == "mix"))
     |> Enum.map(fn group ->
       %{group | items: Enum.reject(group.items, &(&1.kind == :library))}
     end)
@@ -855,7 +854,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   # One place computes the arranger's DOM id: the container carries it, and
   # the transport button points at it by data attribute.
-  defp arranger_dom_id(%StudioAudio{name: name}), do: "studio-arranger-#{:erlang.phash2(name)}"
+  defp arranger_dom_id(%StudioMix{name: name}), do: "studio-arranger-#{:erlang.phash2(name)}"
 
   # A clip's playable URL, resolved from the catalog at render time — the
   # audition hook fetches THIS, so what it performs is exactly what the
@@ -896,7 +895,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
   the chrome rather than the document.
 
   This is a function component on purpose: it holds no state, so it can live
-  outside the live_component while still driving it. The new-audio form
+  outside the live_component while still driving it. The new-mix form
   addresses the component through a `phx-target` SELECTOR (`#studio-panel`),
   and Import opens the component's hidden file input with a client-side
   `JS.dispatch` — no server round trip, and the picker opens inside the
@@ -906,8 +905,8 @@ defmodule BusterClawWeb.SoundStudioComponent do
     ~H"""
     <div id="studio-toolbar" class="flex items-center gap-1.5">
       <form
-        id="studio-new-audio"
-        phx-submit="new_audio"
+        id="studio-new-mix"
+        phx-submit="new_mix"
         phx-target="#studio-panel"
         class="flex items-center gap-1"
       >
@@ -916,11 +915,11 @@ defmodule BusterClawWeb.SoundStudioComponent do
           name="name"
           placeholder="name"
           autocomplete="off"
-          aria-label="Name for the new audio"
+          aria-label="Name for the new mix"
           class="input input-bordered input-xs w-28 font-mono text-[11px]"
         />
         <button type="submit" class="btn btn-primary btn-xs font-mono uppercase">
-          + New audio
+          + New mix
         </button>
       </form>
 
@@ -1089,8 +1088,8 @@ defmodule BusterClawWeb.SoundStudioComponent do
         <button type="button" data-ctx-info hidden class={menu_item_class()}>
           Info
         </button>
-        <button type="button" data-ctx-new-audio hidden class={menu_item_class()}>
-          Add to new audio
+        <button type="button" data-ctx-new-mix hidden class={menu_item_class()}>
+          Add to new mix
         </button>
         <button type="button" data-ctx-delete hidden class={menu_item_class()}>
           Delete
@@ -1171,7 +1170,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
         >
           <p class="max-w-prose text-center text-sm text-base-content/60">
             Pick something on the left to open it. Chimes, voicemails, and music
-            are all just audio here — anything you select can be trimmed and
+            are all just mix here — anything you select can be trimmed and
             saved back as a sound effect.
           </p>
         </div>
@@ -1189,12 +1188,12 @@ defmodule BusterClawWeb.SoundStudioComponent do
               heard together — that is the whole reason tracks exist rather than
               one long row. --%>
         <%!-- The shortcut hook lives HERE, inside the arranger, so the chords
-              exist only while an audio is open — nothing binds ⌘Z or ⌘C anywhere
+              exist only while an mix is open — nothing binds ⌘Z or ⌘C anywhere
               else in the app. It reads what is actionable off these two data
               attributes rather than guessing, so ⌘C over ordinary page text
               still does what the browser does. --%>
         <div
-          :if={@selected && @selected.kind == :audio && @audio}
+          :if={@selected && @selected.kind == :mix && @mix}
           id="studio-keys"
           phx-hook="StudioKeys"
           data-clip-selected={to_string(not is_nil(@studio_clip))}
@@ -1203,11 +1202,11 @@ defmodule BusterClawWeb.SoundStudioComponent do
         >
           <header class="flex flex-wrap items-baseline justify-between gap-2">
             <div class="min-w-0">
-              <h2 class="truncate text-lg font-bold tracking-tight">{@audio.name}</h2>
+              <h2 class="truncate text-lg font-bold tracking-tight">{@mix.name}</h2>
               <p class="font-mono text-xs text-base-content/50">
-                {length(@audio.tracks)} {if length(@audio.tracks) == 1, do: "track", else: "tracks"} · {length(
-                  StudioAudio.clips(@audio)
-                )} clips · {ms(StudioAudio.duration_ms(@audio))}
+                {length(@mix.tracks)} {if length(@mix.tracks) == 1, do: "track", else: "tracks"} · {length(
+                  StudioMix.clips(@mix)
+                )} clips · {ms(StudioMix.duration_ms(@mix))}
               </p>
             </div>
             <div class="flex shrink-0 items-center gap-1">
@@ -1232,16 +1231,16 @@ defmodule BusterClawWeb.SoundStudioComponent do
               >
                 ↷ Redo
               </button>
-              <%!-- The transport. Keyed by the open audio so switching
+              <%!-- The transport. Keyed by the open mix so switching
                     remounts the hook — destroyed() closes the AudioContext,
                     and a stale score can never keep sounding over a new
                     arrangement. Play is instant and file-less; Render stays
                     the bounce. --%>
               <button
                 type="button"
-                id={"studio-audition-#{:erlang.phash2(@audio.name)}"}
+                id={"studio-audition-#{:erlang.phash2(@mix.name)}"}
                 phx-hook="StudioAudition"
-                data-arranger={arranger_dom_id(@audio)}
+                data-arranger={arranger_dom_id(@mix)}
                 class="btn btn-ghost btn-xs font-mono uppercase"
                 title="Hear the arrangement without rendering it"
               >
@@ -1249,7 +1248,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
               </button>
               <button
                 type="button"
-                phx-click="render_audio"
+                phx-click="render_mix"
                 phx-target={@myself}
                 class="btn btn-primary btn-xs font-mono uppercase"
               >
@@ -1257,15 +1256,51 @@ defmodule BusterClawWeb.SoundStudioComponent do
               </button>
               <button
                 type="button"
-                phx-click="delete_audio"
+                phx-click="delete_mix"
                 phx-target={@myself}
-                data-claw-confirm={"Delete the audio #{@audio.name}? The clips it uses are not touched."}
+                data-claw-confirm={"Delete the mix #{@mix.name}? The clips it uses are not touched."}
                 class="btn btn-ghost btn-xs font-mono uppercase text-base-content/40 hover:text-error"
               >
                 Delete
               </button>
             </div>
           </header>
+
+          <%!-- Add a clip — at the TOP, because it is how a mix starts.
+                Everything below it (ruler, tracks, clips) is the result of
+                using it, and a control you need first should not be the last
+                thing on the page. A plain form rather than drag-from-the-
+                sidebar: the sidebar's job is selection, and one control that
+                always works beats a gesture that only works from certain
+                rows. --%>
+          <form
+            phx-submit="add_clip"
+            phx-target={@myself}
+            class="flex flex-wrap items-center gap-2 border-b-2 border-base-content/15 pb-3"
+          >
+            <label class="font-mono text-[10px] font-bold uppercase tracking-widest text-base-content/40">
+              Add clip
+            </label>
+            <select
+              name="source"
+              aria-label="Clip source"
+              class="select select-bordered select-xs min-w-0 flex-1 font-mono text-[11px]"
+            >
+              <optgroup :for={group <- addable_groups(@groups)} label={group.label}>
+                <option :for={item <- group.items} value={item.id}>{item.label}</option>
+              </optgroup>
+            </select>
+            <select
+              name="track"
+              aria-label="Destination track"
+              class="select select-bordered select-xs font-mono text-[11px]"
+            >
+              <option :for={track <- @mix.tracks} value={track.id}>Track {track.label}</option>
+            </select>
+            <button type="submit" class="btn btn-primary btn-xs font-mono uppercase">
+              Add
+            </button>
+          </form>
 
           <%!-- Ruler. Positions are computed server-side; the hook is told only
                 the ruler's length, so the geometry lives in one language. The
@@ -1275,7 +1310,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
             <div class="w-28 shrink-0"></div>
             <div class="relative h-4 min-w-0 flex-1 border-b border-base-content/20">
               <span
-                :for={tick <- StudioAudio.ticks(StudioAudio.view_ms(@audio))}
+                :for={tick <- StudioMix.ticks(StudioMix.view_ms(@mix))}
                 style={"left: #{tick.pct}%"}
                 class="absolute top-0 -translate-x-1/2 font-mono text-[9px] text-base-content/35"
               >
@@ -1291,10 +1326,10 @@ defmodule BusterClawWeb.SoundStudioComponent do
                 the drag hook divides pointer X by that rect's width, and a
                 row-wide rect would land every drop early by a cluster. --%>
           <div
-            id={arranger_dom_id(@audio)}
+            id={arranger_dom_id(@mix)}
             phx-hook="TrackArrange"
             phx-target={@myself}
-            data-view-ms={StudioAudio.view_ms(@audio)}
+            data-view-ms={StudioMix.view_ms(@mix)}
             class="relative flex select-none flex-col gap-1"
           >
             <%!-- The playhead. Hidden until the transport runs; the hook owns
@@ -1305,7 +1340,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
               class="pointer-events-none absolute z-10 hidden w-px bg-base-content/80"
             >
             </div>
-            <div :for={track <- @audio.tracks} class="flex items-stretch">
+            <div :for={track <- @mix.tracks} class="flex items-stretch">
               <div
                 style={"border-left-color: #{track_color(track)}"}
                 class="flex w-28 shrink-0 flex-col justify-between border-2 border-l-4 border-r-0 border-base-content/15 bg-base-content/[0.06] px-2 py-1"
@@ -1363,7 +1398,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
                   </div>
 
                   <button
-                    :if={length(@audio.tracks) > 1}
+                    :if={length(@mix.tracks) > 1}
                     type="button"
                     phx-click="remove_track"
                     phx-value-id={track.id}
@@ -1387,10 +1422,10 @@ defmodule BusterClawWeb.SoundStudioComponent do
               <div
                 data-track
                 data-track-id={track.id}
-                data-audible={to_string(StudioAudio.audible?(@audio, track))}
+                data-audible={to_string(StudioMix.audible?(@mix, track))}
                 class={[
                   "relative h-14 min-w-0 flex-1 border-2 border-base-content/15 bg-base-content/[0.03] data-[track-target]:border-primary/60",
-                  not StudioAudio.audible?(@audio, track) && "opacity-40"
+                  not StudioMix.audible?(@mix, track) && "opacity-40"
                 ]}
               >
                 <%!-- Fill and border come from the TRACK (siblings must read
@@ -1404,7 +1439,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
                   data-clip-id={clip.id}
                   data-start-ms={clip.start_ms}
                   data-src={clip_src(@groups, clip)}
-                  style={"left: #{StudioAudio.position_pct(clip.start_ms, StudioAudio.view_ms(@audio))}%; width: #{StudioAudio.width_pct(clip.duration_ms, StudioAudio.view_ms(@audio))}%; border-color: #{track_color(track)}B3; background-color: #{track_color(track)}#{if @studio_clip == clip.id, do: "80", else: "40"}"}
+                  style={"left: #{StudioMix.position_pct(clip.start_ms, StudioMix.view_ms(@mix))}%; width: #{StudioMix.width_pct(clip.duration_ms, StudioMix.view_ms(@mix))}%; border-color: #{track_color(track)}B3; background-color: #{track_color(track)}#{if @studio_clip == clip.id, do: "80", else: "40"}"}
                   class={[
                     "absolute inset-y-2 cursor-grab overflow-hidden rounded-xs border px-1 active:cursor-grabbing",
                     @studio_clip == clip.id && "ring-2 ring-primary"
@@ -1425,10 +1460,10 @@ defmodule BusterClawWeb.SoundStudioComponent do
               type="button"
               phx-click="add_track"
               phx-target={@myself}
-              disabled={length(@audio.tracks) >= StudioAudio.max_tracks()}
+              disabled={length(@mix.tracks) >= StudioMix.max_tracks()}
               title={
-                if length(@audio.tracks) >= StudioAudio.max_tracks(),
-                  do: "An audio holds at most #{StudioAudio.max_tracks()} tracks",
+                if length(@mix.tracks) >= StudioMix.max_tracks(),
+                  do: "An mix holds at most #{StudioMix.max_tracks()} tracks",
                   else: "Add a track"
               }
               class="btn btn-ghost btn-xs w-28 justify-start font-mono uppercase disabled:opacity-30"
@@ -1436,24 +1471,6 @@ defmodule BusterClawWeb.SoundStudioComponent do
               + Track
             </button>
           </div>
-
-          <%!-- Add a clip. A plain form rather than drag-from-the-sidebar: the
-                sidebar's job is selection, and one control that always works
-                beats a gesture that only works from certain rows. --%>
-          <form phx-submit="add_clip" phx-target={@myself} class="flex flex-wrap items-center gap-2">
-            <select
-              name="source"
-              class="select select-bordered select-xs min-w-0 flex-1 font-mono text-[11px]"
-            >
-              <optgroup :for={group <- addable_groups(@groups)} label={group.label}>
-                <option :for={item <- group.items} value={item.id}>{item.label}</option>
-              </optgroup>
-            </select>
-            <select name="track" class="select select-bordered select-xs font-mono text-[11px]">
-              <option :for={track <- @audio.tracks} value={track.id}>Track {track.label}</option>
-            </select>
-            <button type="submit" class="btn btn-ghost btn-xs font-mono uppercase">Add clip</button>
-          </form>
 
           <p class="font-mono text-[10px] text-base-content/40">
             Drag clips along a track or between tracks · click one to select it · <kbd>⌘C</kbd>/<kbd>⌘V</kbd> copy and paste ·
@@ -1478,7 +1495,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
         </div>
 
         <div
-          :if={@selected && @selected.kind not in [:library, :audio]}
+          :if={@selected && @selected.kind not in [:library, :mix]}
           class="flex min-h-0 flex-1 flex-col gap-3"
         >
           <header class="flex flex-wrap items-baseline justify-between gap-2">
