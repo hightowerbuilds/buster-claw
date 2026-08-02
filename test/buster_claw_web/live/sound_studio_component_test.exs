@@ -1094,4 +1094,92 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert delete_via_menu(view, "nonsense") =~ "Nothing of yours to delete there."
     end
   end
+
+  describe "the sidebar menu's other two verbs" do
+    defp menu_hook(view, event, id) do
+      view |> element("#studio-ctx") |> render_hook(event, %{"id" => id})
+    end
+
+    defp import!(root, name, key \\ "chat") do
+      dir = Path.join([root, "sounds", "studio"])
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, name), SoundGen.render(key))
+    end
+
+    test "the menu offers Info and New audio only for real files", %{conn: conn, root: root} do
+      import!(root, "clip.wav")
+      {:ok, name} = StudioAudio.create("arrangement")
+
+      {_view, html} = open_studio(conn)
+
+      # A file on disk has facts and can become a clip; an arrangement is a list
+      # of references to files, so it is neither.
+      assert html =~
+               ~s(data-studio-source="import:clip.wav" data-source-label="clip") <>
+                 ~s( data-deletable="true" data-sourceable="true")
+
+      refute html =~ ~s(data-studio-source="audio:#{name}") <> ~s([^>]*data-sourceable)
+    end
+
+    test "Info reports the path, size, and header facts without decoding", %{
+      conn: conn,
+      root: root
+    } do
+      import!(root, "long.wav")
+      {view, _html} = open_studio(conn)
+
+      html = menu_hook(view, "source_info", "import:long.wav")
+
+      assert html =~ Path.join([root, "sounds", "studio", "long.wav"])
+      assert html =~ "22050 Hz · 1 ch"
+      assert html =~ "On disk"
+
+      html = view |> element("button[phx-click='close_info']", "×") |> render_click()
+      refute html =~ "On disk"
+    end
+
+    test "Info on a file whose bytes are gone says so rather than lying", %{
+      conn: conn,
+      root: root
+    } do
+      import!(root, "ghost.wav")
+      {view, _html} = open_studio(conn)
+      File.rm!(Path.join([root, "sounds", "studio", "ghost.wav"]))
+
+      html = menu_hook(view, "source_info", "import:ghost.wav")
+      assert html =~ "This file is gone from disk."
+    end
+
+    test "New audio creates an arrangement with the source already on it", %{
+      conn: conn,
+      root: root
+    } do
+      import!(root, "bells.wav")
+      {view, _html} = open_studio(conn)
+
+      html = menu_hook(view, "new_audio_from_source", "import:bells.wav")
+
+      assert html =~ "New audio “bells” from bells."
+      assert {:ok, audio} = StudioAudio.load("bells")
+
+      # On the first track, at the top of the ruler, with a real length — an
+      # empty arrangement you then have to fill is the version nobody uses.
+      assert [%{clips: [clip]} | _rest] = audio.tracks
+      assert clip.source == "import:bells.wav"
+      assert clip.start_ms == 0.0
+      assert clip.duration_ms > 0
+
+      # And it opens, because making it and then hiding it is not the gesture.
+      assert render(view) =~ ~s(phx-value-id="audio:bells")
+    end
+
+    test "New audio refuses an id with no file behind it", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+
+      html = menu_hook(view, "new_audio_from_source", "nonsense")
+      # "New audio" alone is the toolbar's own button; the note is the tell.
+      refute html =~ "New audio “"
+      assert StudioAudio.list() == []
+    end
+  end
 end

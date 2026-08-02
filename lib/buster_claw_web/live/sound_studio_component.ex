@@ -58,6 +58,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
      |> assign(:groups, [])
      |> assign(:selected, nil)
      |> assign(:facts, nil)
+     |> assign(:info, nil)
      |> assign(:note, nil)
      |> allow_upload(:import,
        # A MIME wildcard, NOT `SoundStudio.accepted_extensions/0`. LiveView's
@@ -366,6 +367,50 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   def handle_event("delete_source", _params, socket), do: {:noreply, socket}
 
+  # Info: where the file actually is, how big, and what is in it. The length and
+  # format come from the header probe rather than a decode, so this answers just
+  # as fast for a 40-minute recording as for a chime.
+  def handle_event("source_info", %{"id" => id}, socket) when is_binary(id) do
+    case find_source(socket.assigns.groups, id) do
+      %{path: path} = item when is_binary(path) ->
+        {:noreply, assign(socket, :info, describe(item))}
+
+      _other ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("source_info", _params, socket), do: {:noreply, socket}
+
+  def handle_event("close_info", _params, socket), do: {:noreply, assign(socket, :info, nil)}
+
+  # "Add to new audio": the whole gesture in one click — a new arrangement named
+  # after the source, with the source already on its first track. Landing in an
+  # empty arrangement you then have to fill is the version nobody uses.
+  def handle_event("new_audio_from_source", %{"id" => id}, socket) when is_binary(id) do
+    with %{label: label} <- find_source(socket.assigns.groups, id),
+         {:ok, duration} <- clip_duration(id),
+         {:ok, name} <- StudioAudio.create(label),
+         {:ok, audio} <- StudioAudio.load(name) do
+      track = hd(audio.tracks)
+      audio = StudioAudio.add_clip(audio, track.id, id, 0, duration)
+      StudioAudio.save(audio)
+
+      # Selection lives in StatusLive; opening the new arrangement is the point.
+      send(self(), {:studio_select, "audio:" <> name})
+
+      {:noreply,
+       socket
+       |> assign(:groups, groups())
+       |> assign(:note, {:info, "New audio “#{name}” from #{label}."})}
+    else
+      {:error, reason} -> {:noreply, assign(socket, :note, {:error, new_audio_error(reason)})}
+      _other -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("new_audio_from_source", _params, socket), do: {:noreply, socket}
+
   def handle_event("render_audio", _params, socket) do
     audio = socket.assigns.audio
 
@@ -486,13 +531,28 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   # A clip caches its source's length for layout. The render re-reads the real
   # file, so a stale cache changes how wide a block draws, never what you hear.
+  #
+  # The header probe answers first because it is O(header): adding a 40-minute
+  # recording to an arrangement should not decode 100 MB to learn how wide to
+  # draw a rectangle. Decoding stays the fallback for anything `afinfo` cannot
+  # read, which is also the path every bundled chime takes in tests.
   defp clip_duration(source) do
-    with %{path: path} when is_binary(path) <- resolve_source(source),
-         {:ok, clip} <- SoundStudio.import_source(path) do
-      {:ok, SoundStudio.duration_ms(clip)}
-    else
-      %{path: nil} -> {:error, :enoent}
-      nil -> {:error, :enoent}
+    case resolve_source(source) do
+      %{path: path} when is_binary(path) ->
+        case SoundStudio.probe(path) do
+          {:ok, %{duration_ms: ms}} -> {:ok, ms}
+          {:error, _reason} -> decoded_duration(path)
+        end
+
+      # No source, or one with no file behind it (an arrangement).
+      _other ->
+        {:error, :enoent}
+    end
+  end
+
+  defp decoded_duration(path) do
+    case SoundStudio.import_source(path) do
+      {:ok, clip} -> {:ok, SoundStudio.duration_ms(clip)}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -582,7 +642,64 @@ defmodule BusterClawWeb.SoundStudioComponent do
   defp upload_error(_other), do: "Upload failed."
 
   # ---------------------------------------------------------------------------
-  # Deletion — the sidebar's right-click menu
+  # The sidebar's right-click menu
+  # ---------------------------------------------------------------------------
+
+  defp menu_item_class,
+    do:
+      "block w-full whitespace-nowrap px-3 py-1.5 text-left font-mono text-xs hover:bg-base-content/10"
+
+  # A real audio file on disk: it has facts worth showing and can become a clip.
+  # An arrangement is neither — it is a list of references to these — and the
+  # music library manager is not audio at all.
+  defp sourceable?(%{path: path}) when is_binary(path), do: true
+  defp sourceable?(_item), do: false
+
+  # What Info shows. Length and format come from the header probe, not a decode:
+  # O(header) at any file size, so a 40-minute recording answers as fast as a
+  # chime. Peak is deliberately absent — that one genuinely needs every sample.
+  defp describe(%{path: path} = item) do
+    base = %{
+      label: item.label,
+      kind: item.kind,
+      path: path,
+      size: file_size(path),
+      duration_ms: nil,
+      rate: nil,
+      channels: nil,
+      note: nil
+    }
+
+    case SoundStudio.probe(path) do
+      {:ok, probed} ->
+        %{
+          base
+          | duration_ms: probed.duration_ms,
+            rate: probed.sample_rate,
+            channels: probed.channels
+        }
+
+      {:error, :not_found} ->
+        %{base | note: "This file is gone from disk."}
+
+      {:error, _reason} ->
+        %{base | note: "Couldn't read this file's audio header."}
+    end
+  end
+
+  defp file_size(path) do
+    case File.stat(path) do
+      {:ok, %{size: size}} -> size
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp new_audio_error(:invalid_name), do: "That source's name can't become an audio name."
+  defp new_audio_error(:enoent), do: "That file is gone from disk."
+  defp new_audio_error(reason), do: trim_error(reason)
+
+  # ---------------------------------------------------------------------------
+  # Deletion
   # ---------------------------------------------------------------------------
 
   # What the menu may touch: files that are YOURS. A built-in chime has no
@@ -855,6 +972,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
             data-studio-source={item.id}
             data-source-label={item.label}
             data-deletable={deletable?(item) && "true"}
+            data-sourceable={sourceable?(item) && "true"}
             aria-current={(@selected && @selected.id == item.id && "true") || nil}
             class={[
               "group flex flex-col items-start gap-0 border-l-2 px-2 py-1 text-left transition",
@@ -966,15 +1084,83 @@ defmodule BusterClawWeb.SoundStudioComponent do
         phx-target={@myself}
         phx-update="ignore"
         hidden
-        class="fixed z-50 border-2 border-base-content/30 bg-base-100 shadow-lg"
+        class="fixed z-50 min-w-40 border-2 border-base-content/30 bg-base-100 shadow-lg"
+      >
+        <button type="button" data-ctx-info hidden class={menu_item_class()}>
+          Info
+        </button>
+        <button type="button" data-ctx-new-audio hidden class={menu_item_class()}>
+          Add to new audio
+        </button>
+        <button type="button" data-ctx-delete hidden class={menu_item_class()}>
+          Delete
+        </button>
+      </div>
+
+      <%!-- Info. A modal rather than a bigger menu: a path is long, and the
+            point of it is being able to read (and select) the whole thing. --%>
+      <div
+        :if={@info}
+        class="fixed inset-0 z-50"
+        phx-window-keydown="close_info"
+        phx-key="escape"
+        phx-target={@myself}
       >
         <button
           type="button"
-          data-ctx-delete
-          class="block w-full whitespace-nowrap px-3 py-1.5 text-left font-mono text-xs hover:bg-base-content/10"
+          phx-click="close_info"
+          phx-target={@myself}
+          aria-label="Close info"
+          class="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
         >
-          Delete
         </button>
+        <div class="pointer-events-none absolute inset-0 grid place-items-center p-4">
+          <div class="pointer-events-auto w-full max-w-lg border-2 border-base-content/30 bg-base-100 shadow-2xl">
+            <header class="ic-scanlines relative flex items-center justify-between border-b-2 border-base-content/20 px-5 py-3">
+              <div class="relative z-[2] min-w-0">
+                <p class="ic-eyebrow">{@info.kind}</p>
+                <h3 class="truncate font-display text-lg font-black uppercase tracking-tight">
+                  {@info.label}
+                </h3>
+              </div>
+              <button
+                type="button"
+                phx-click="close_info"
+                phx-target={@myself}
+                aria-label="Close info"
+                class="relative z-[2] grid size-8 shrink-0 place-items-center border-2 border-base-content/30 text-lg leading-none transition hover:border-primary hover:text-primary"
+              >
+                ×
+              </button>
+            </header>
+
+            <dl class="space-y-3 p-5 font-mono text-xs">
+              <div>
+                <dt class="text-base-content/40">On disk</dt>
+                <%!-- `select-all` so one click grabs the whole path; `break-all`
+                      because a deep workspace path has no spaces to wrap on. --%>
+                <dd class="mt-0.5 select-all break-all text-base-content/80">{@info.path}</dd>
+              </div>
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <dt class="text-base-content/40">Size</dt>
+                  <dd class="mt-0.5">{MusicComponent.humanize_bytes(@info.size)}</dd>
+                </div>
+                <div>
+                  <dt class="text-base-content/40">Length</dt>
+                  <dd class="mt-0.5">{ms(@info.duration_ms)}</dd>
+                </div>
+                <div>
+                  <dt class="text-base-content/40">Format</dt>
+                  <dd class="mt-0.5">
+                    {if @info.rate, do: "#{@info.rate} Hz · #{@info.channels} ch", else: "—"}
+                  </dd>
+                </div>
+              </div>
+              <p :if={@info.note} class="text-warning">{@info.note}</p>
+            </dl>
+          </div>
+        </div>
       </div>
 
       <%!-- Detail: the selected file. --%>
