@@ -178,6 +178,30 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert html =~ ~s(color: #1C9BFF)
     end
 
+    test "a file over the decode cap still shows length and format, via the header probe",
+         %{conn: conn, root: root} do
+      # ~3.4 minutes of internal-format silence — over the 8 MB inline-decode
+      # cap, exactly the shape of the packaged-walk report: a 20-minute import
+      # whose facts came back all-nil. Only peak may go unmeasured; length and
+      # format read from the header, and the trim tool keeps its duration.
+      data_bytes = 9_000_000
+      big = %SoundStudio{data: <<0::size(data_bytes * 8)>>}
+      studio_dir = Path.join([root, "sounds", "studio"])
+      File.mkdir_p!(studio_dir)
+      File.write!(Path.join(studio_dir, "long.wav"), SoundStudio.render(big))
+
+      {view, _html} = open_studio(conn)
+      html = select(view, "import:long.wav")
+
+      expected_ms = data_bytes / 2 / 22_050 * 1000
+
+      assert [duration] = Regex.run(~r/data-duration-ms="([\d.]+)"/, html, capture: :all_but_first)
+      assert_in_delta String.to_float(duration), expected_ms, 100.0
+
+      assert html =~ "Too large to decode inline — peak unmeasured."
+      refute html =~ "This file&#39;s length is unknown"
+    end
+
     test "the waveform id is keyed by source, so switching files remounts the hook",
          %{conn: conn} do
       {view, _html} = open_studio(conn)

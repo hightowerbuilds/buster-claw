@@ -431,4 +431,37 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
       end
     end
   end
+
+  describe "probe/1" do
+    test "reads duration and format from the header without decoding" do
+      path =
+        Path.join(System.tmp_dir!(), "studio-probe-#{System.unique_integer([:positive])}.wav")
+
+      File.write!(path, SoundGen.render("confirm"))
+      on_exit(fn -> File.rm(path) end)
+
+      {:ok, clip} = SoundStudio.import_source(path)
+
+      assert {:ok, probed} = SoundStudio.probe(path)
+      # afinfo's header estimate must agree with the decoded truth.
+      assert_in_delta probed.duration_ms, SoundStudio.duration_ms(clip), 5.0
+      assert probed.sample_rate == clip.sample_rate
+      assert probed.channels == clip.channels
+    end
+
+    test "a missing file reports rather than raises" do
+      assert {:error, :not_found} = SoundStudio.probe("/no/such/file.wav")
+      assert {:error, :not_found} = SoundStudio.probe(nil)
+    end
+
+    test "a text file fails cleanly" do
+      path =
+        Path.join(System.tmp_dir!(), "studio-probe-text-#{System.unique_integer([:positive])}.wav")
+
+      File.write!(path, "I am prose wearing a .wav extension")
+      on_exit(fn -> File.rm(path) end)
+
+      assert {:error, :unsupported_source} = SoundStudio.probe(path)
+    end
+  end
 end

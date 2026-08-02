@@ -552,7 +552,7 @@ a spec that would clip is refused or auto-attenuated, not written.
 > click-initiated AudioContext, which should pass WKWebView's autoplay
 > policy — but "should" is exactly what that walk exists to verify.
 
-### Phase 5 — The packaged-app walk *(inherited, still open)*
+### Phase 5 — The packaged-app walk — **acceptance MET 08-01; autoplay note open**
 
 `SOUND_ROADMAP` Risk 2: confirm the Tauri webview's actual autoplay posture, and
 confirm the studio's `afconvert` shell-out works inside the sandboxed packaged
@@ -561,6 +561,16 @@ may execute it. **This is the phase most likely to surprise us**, which is why
 it is named rather than assumed.
 *Acceptance:* import works in a packaged build, or the entitlement gap is
 documented with a decision.
+
+> **08-01, operator walk of the packaged 0.1.0 bundle: "import audio works
+> great" — `afconvert` executes under the packaged app.** The acceptance
+> criterion is met; the phase's scary half is dead. What the walk surfaced
+> instead: a 20-minute import showed *length unknown / too large to analyse* —
+> the 8 MB inline-decode cap nulled every fact. Fixed same day: facts over the
+> cap now header-probe via `/usr/bin/afinfo` (afconvert's O(header) sibling),
+> so length and format always render and trim keeps its duration; only peak
+> stays unmeasured. Still to observe, with the R1 QA pass: the autoplay
+> posture note, and a seek test on a long track (the byte-range LEFTOVER).
 
 ---
 

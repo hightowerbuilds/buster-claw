@@ -419,6 +419,61 @@ defmodule BusterClaw.Notifications.SoundStudio do
   @doc "True when the system decoder is available. Phase 5's question, asked cheaply."
   def decoder_available?, do: File.regular?(@decoder)
 
+  @prober "/usr/bin/afinfo"
+
+  @doc """
+  Header-read facts about an audio file — duration, sample rate, channels —
+  without decoding a byte of audio.
+
+  `/usr/bin/afinfo` is `afconvert`'s sibling: the same licensing-free system
+  toolbox, and O(header) regardless of file size. That is the point: inline
+  decodes are capped at a few MB because they materialize the whole file as
+  PCM, but a twenty-minute recording still deserves a length. Returns
+  `{:ok, %{duration_ms: float, sample_rate: int, channels: int}}`, or
+  `{:error, :not_found | :no_prober | :unsupported_source}`.
+  """
+  def probe(path) when is_binary(path) do
+    cond do
+      not File.regular?(path) -> {:error, :not_found}
+      not File.regular?(@prober) -> {:error, :no_prober}
+      true -> run_probe(path)
+    end
+  end
+
+  def probe(_path), do: {:error, :not_found}
+
+  defp run_probe(path) do
+    # A list of args, so this never reaches a shell (same rule as decode/1).
+    case System.cmd(@prober, [path], stderr_to_stdout: true) do
+      {output, 0} -> parse_probe(output)
+      {_output, _status} -> {:error, :unsupported_source}
+    end
+  rescue
+    _error -> {:error, :no_prober}
+  end
+
+  # afinfo prints, for every format it understands:
+  #
+  #     Data format:     2 ch,  44100 Hz, ...
+  #     estimated duration: 0.809977 sec
+  #
+  # ("estimated" is afinfo's word even when the header is exact.)
+  defp parse_probe(output) do
+    with [_, secs] <- Regex.run(~r/estimated duration:\s*([\d.]+)\s*sec/, output),
+         [_, ch, hz] <- Regex.run(~r/Data format:\s*(\d+)\s+ch,\s*([\d.]+)\s*Hz/, output),
+         {duration, _} <- Float.parse(secs),
+         {rate, _} <- Float.parse(hz) do
+      {:ok,
+       %{
+         duration_ms: duration * 1000.0,
+         sample_rate: trunc(rate),
+         channels: String.to_integer(ch)
+       }}
+    else
+      _ -> {:error, :unsupported_source}
+    end
+  end
+
   defp decode(path) do
     if decoder_available?() do
       tmp = Path.join(System.tmp_dir!(), "bcstudio-#{:erlang.unique_integer([:positive])}.wav")

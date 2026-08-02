@@ -585,14 +585,32 @@ defmodule BusterClawWeb.SoundStudioComponent do
         end
 
       {:ok, %{size: size}} ->
-        %{size: size, duration_ms: nil, peak: nil, rate: nil, channels: nil, error: :too_large}
+        # Above the decode cap the header is still cheap to read: afinfo gives
+        # length and format in O(header), so a twenty-minute recording shows a
+        # real Length (and the trim tool keeps working — WaveTrim maps drags
+        # through duration_ms). Only peak stays unmeasured, because peak
+        # genuinely needs the decoded samples.
+        case SoundStudio.probe(path) do
+          {:ok, probed} ->
+            %{
+              size: size,
+              duration_ms: probed.duration_ms,
+              peak: nil,
+              rate: probed.sample_rate,
+              channels: probed.channels,
+              error: :too_large
+            }
+
+          {:error, _reason} ->
+            %{size: size, duration_ms: nil, peak: nil, rate: nil, channels: nil, error: :too_large}
+        end
 
       {:error, reason} ->
         %{size: nil, duration_ms: nil, peak: nil, rate: nil, channels: nil, error: reason}
     end
   end
 
-  defp analysis_note(:too_large), do: "Too large to analyse inline."
+  defp analysis_note(:too_large), do: "Too large to decode inline — peak unmeasured."
   defp analysis_note(:no_decoder), do: "The system decoder is unavailable."
   defp analysis_note(:unsupported_source), do: "Couldn't decode this file."
   defp analysis_note(:enoent), do: "That file is gone from disk."
