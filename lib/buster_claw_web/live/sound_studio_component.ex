@@ -670,6 +670,13 @@ defmodule BusterClawWeb.SoundStudioComponent do
     do:
       "block w-full whitespace-nowrap px-3 py-1.5 text-left font-mono text-xs hover:bg-base-content/10"
 
+  # A folded group renders no rows at all rather than hiding them with CSS: the
+  # rows carry the right-click menu's data attributes, and a hidden row is still
+  # a row the menu could open for something you cannot see.
+  defp visible_items(group, collapsed) do
+    if group.key in collapsed, do: [], else: group.items
+  end
+
   # A real mix file on disk: it has facts worth showing and can become a clip.
   # An arrangement is neither — it is a list of references to these — and the
   # music library manager is not mix at all.
@@ -1007,13 +1014,32 @@ defmodule BusterClawWeb.SoundStudioComponent do
         aria-label="Audio sources"
       >
         <div :for={group <- @groups} class="flex flex-col">
-          <h3 class="sticky top-0 bg-base-100 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-base-content/40">
-            {group.label}
-            <span class="text-base-content/25">{length(group.items)}</span>
+          <%!-- The whole heading is the hinge, so the hit target is the width of
+                the sidebar rather than a caret. The count stays visible while
+                folded — collapsed, it IS the summary: "Music 47". Handled by
+                StatusLive (no phx-target), because the collapsed set lives
+                there for the same reason the selection does. --%>
+          <h3 class="sticky top-0 z-[1] bg-base-100">
+            <button
+              type="button"
+              phx-click="toggle_studio_group"
+              phx-value-key={group.key}
+              aria-expanded={to_string(group.key not in @studio_collapsed)}
+              class="flex w-full items-center gap-1 py-1 text-left font-mono text-[10px] font-bold uppercase tracking-widest text-base-content/40 transition hover:text-base-content/70"
+            >
+              <span class={[
+                "inline-block transition-transform",
+                group.key in @studio_collapsed && "-rotate-90"
+              ]}>
+                ▾
+              </span>
+              {group.label}
+              <span class="text-base-content/25">{length(group.items)}</span>
+            </button>
           </h3>
 
           <p
-            :if={group.items == []}
+            :if={group.items == [] and group.key not in @studio_collapsed}
             class="px-1 py-1 font-mono text-[11px] text-base-content/30"
           >
             none yet
@@ -1023,7 +1049,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
                 renders `={true}` as a BARE attribute, which is invalid ARIA and
                 announces nothing. The explicit string is the contract. --%>
           <button
-            :for={item <- group.items}
+            :for={item <- visible_items(group, @studio_collapsed)}
             type="button"
             phx-click="select_studio_source"
             phx-value-id={item.id}

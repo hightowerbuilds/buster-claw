@@ -1102,6 +1102,66 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   # querying the old name, `querySelector` returned null, and the TypeError in
   # `mounted()` killed the WHOLE hook — right-click stopped working entirely,
   # with a green suite. Same lockstep idiom as the workspace registry guard.
+  describe "collapsing sidebar groups" do
+    defp toggle(view, key) do
+      view |> element("button[phx-value-key='#{key}']") |> render_click()
+    end
+
+    test "a group folds shut and opens again, keeping its count visible", %{conn: conn} do
+      {view, html} = open_studio(conn)
+      assert html =~ ~s(phx-value-id="sound:boot.wav")
+
+      html = toggle(view, "sounds")
+
+      refute html =~ ~s(phx-value-id="sound:boot.wav")
+      # The heading survives — collapsed, the count IS the summary.
+      assert html =~ "Sounds"
+      assert html =~ ~s(aria-expanded="false")
+
+      html = toggle(view, "sounds")
+      assert html =~ ~s(phx-value-id="sound:boot.wav")
+    end
+
+    test "folding one group leaves the others alone", %{conn: conn, root: root} do
+      dir = Path.join([root, "sounds", "studio"])
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "kept.wav"), SoundGen.render("chat"))
+
+      {view, _html} = open_studio(conn)
+      html = toggle(view, "sounds")
+
+      refute html =~ ~s(phx-value-id="sound:boot.wav")
+      assert html =~ ~s(phx-value-id="import:kept.wav")
+    end
+
+    test "a folded group's rows are gone, not merely hidden", %{conn: conn, root: root} do
+      dir = Path.join([root, "sounds", "studio"])
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "hidden.wav"), SoundGen.render("chat"))
+
+      {view, _html} = open_studio(conn)
+      html = toggle(view, "imports")
+
+      # The rows carry the right-click menu's data attributes. A row hidden by
+      # CSS is still a row the menu could open for something you cannot see.
+      refute html =~ ~s(data-studio-source="import:hidden.wav")
+    end
+
+    # SOUND_STUDIO_ROADMAP Part V landmine 2: the sub-tab's `:if` REMOVES the
+    # component, so anything it owned is lost. A sidebar that re-expands on
+    # every glance at Chat is not collapsible, it is briefly tidy.
+    test "a fold survives leaving the tab", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      toggle(view, "sounds")
+
+      render_click(view, "select_home_tab", %{"tab" => "chat"})
+      html = render_click(view, "select_home_tab", %{"tab" => "studio"})
+
+      refute html =~ ~s(phx-value-id="sound:boot.wav")
+      assert html =~ ~s(aria-expanded="false")
+    end
+  end
+
   describe "the menu's JS contract" do
     @hook_js "assets/js/hooks/studio_context_menu.js"
     @component_ex "lib/buster_claw_web/live/sound_studio_component.ex"

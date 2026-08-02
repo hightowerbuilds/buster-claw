@@ -80,6 +80,10 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:studio_clipboard, nil)
      |> assign(:studio_undo, [])
      |> assign(:studio_redo, [])
+     # Which sidebar groups are folded shut, by group key. Here for the same
+     # reason as everything above it: a sidebar that re-expands every time you
+     # glance at Chat is not collapsible, it is briefly tidy.
+     |> assign(:studio_collapsed, [])
      # Header widget: which sub-tab is showing. Order is Time & Place / Contacts /
      # Notify, and Time & Place leads (its analog clock renders instantly, and
      # `mount_weather/1` fills conditions on connect).
@@ -362,6 +366,20 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:studio_source, id)
      |> assign(:studio_trim, nil)
      |> reset_studio_history()}
+  end
+
+  # Fold a sidebar group shut, or open it. The list is the collapsed set, so a
+  # group the app adds later starts open — the right default for something new
+  # appearing, and it means this never needs to know the full group roster.
+  def handle_event("toggle_studio_group", %{"key" => key}, socket) when is_binary(key) do
+    collapsed = socket.assigns.studio_collapsed
+
+    {:noreply,
+     assign(
+       socket,
+       :studio_collapsed,
+       if(key in collapsed, do: List.delete(collapsed, key), else: [key | collapsed])
+     )}
   end
 
   # ---------------------------------------------------------------------------
@@ -1366,6 +1384,7 @@ defmodule BusterClawWeb.StatusLive do
                 studio_clipboard={@studio_clipboard}
                 studio_undo={@studio_undo}
                 studio_redo={@studio_redo}
+                studio_collapsed={@studio_collapsed}
               />
             </div>
           </div>
