@@ -14,6 +14,11 @@ defmodule BusterClawWeb.CalendarLiveTest do
     month_name = Elixir.Calendar.strftime(today, "%B %Y")
     assert html =~ month_name
 
+    # The form lives in a modal now: absent until Add Events opens it.
+    refute html =~ "event-form"
+    html = view |> element("#calendar-add-events") |> render_click()
+    assert html =~ "Add Event"
+
     # Create
     html =
       view
@@ -28,6 +33,8 @@ defmodule BusterClawWeb.CalendarLiveTest do
 
     assert html =~ "Event saved."
     assert html =~ "Rewrite planning"
+    # Saving closes the modal.
+    refute html =~ "event-form"
     assert [event] = Calendar.list_events()
 
     # Click event chip → opens detail view
@@ -35,10 +42,13 @@ defmodule BusterClawWeb.CalendarLiveTest do
     |> element("li[phx-click='inspect'][phx-value-id='#{event.id}']")
     |> render_click()
 
-    # Click Edit button in detail view → opens form
-    view
-    |> element("button[phx-click='edit'][phx-value-id='#{event.id}']")
-    |> render_click()
+    # Click Edit button in detail view → opens the modal in edit mode
+    html =
+      view
+      |> element("button[phx-click='edit'][phx-value-id='#{event.id}']")
+      |> render_click()
+
+    assert html =~ "Edit Event"
 
     html =
       view
@@ -66,6 +76,24 @@ defmodule BusterClawWeb.CalendarLiveTest do
 
     assert html =~ "Event deleted."
     assert [] = Calendar.list_events()
+  end
+
+  test "the modal opens from a day cell with the date filled, and closes clean", %{conn: conn} do
+    {:ok, view, html} = live_isolated(conn, BusterClawWeb.CalendarLive)
+    refute html =~ "event-form"
+
+    # Clicking a day is the "add something on this date" gesture.
+    today = LocalTime.today()
+    date = Date.to_iso8601(Date.beginning_of_month(today))
+    html = view |> element("button[phx-value-date='#{date}']") |> render_click()
+
+    assert html =~ "Add Event"
+    assert html =~ ~s(value="#{date}")
+
+    # Cancel closes and abandons the draft; a later open starts clean.
+    html = view |> element("#event-form button", "Cancel") |> render_click()
+    refute html =~ "event-form"
+    assert Calendar.list_events() == []
   end
 
   test "a crafted non-integer event id does not crash the LiveView", %{conn: conn} do

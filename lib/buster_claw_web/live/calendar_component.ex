@@ -58,6 +58,7 @@ defmodule BusterClawWeb.CalendarComponent do
      |> assign(:editing_event, nil)
      |> assign(:viewing_event, nil)
      |> assign(:result, nil)
+     |> assign(:form_open, false)
      |> assign(:view, :month)
      |> assign(:weekday_labels, @weekday_labels)
      |> assign(:color_options, @color_options)
@@ -113,6 +114,7 @@ defmodule BusterClawWeb.CalendarComponent do
          socket
          |> assign(:editing_event, nil)
          |> assign(:viewing_event, nil)
+         |> assign(:form_open, false)
          |> assign(:result, "Event saved.")
          |> assign_form(Event.changeset(%Event{}, default_attrs(socket.assigns.today)))
          |> rebuild_view()}
@@ -120,6 +122,27 @@ defmodule BusterClawWeb.CalendarComponent do
       {:error, changeset} ->
         {:noreply, assign_form(socket, changeset)}
     end
+  end
+
+  # The Add Events button: a fresh form in the modal, anchored to today.
+  def handle_event("open_form", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:editing_event, nil)
+     |> assign(:viewing_event, nil)
+     |> assign(:result, nil)
+     |> assign(:form_open, true)
+     |> assign_form(Event.changeset(%Event{}, default_attrs(socket.assigns.today)))}
+  end
+
+  # Backdrop, ×, Cancel, and Escape all land here. Closing also abandons an
+  # in-progress edit — the form resets so a later open starts clean.
+  def handle_event("close_form", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:editing_event, nil)
+     |> assign(:form_open, false)
+     |> assign_form(Event.changeset(%Event{}, default_attrs(socket.assigns.today)))}
   end
 
   def handle_event("inspect", %{"id" => id}, socket) do
@@ -140,20 +163,13 @@ defmodule BusterClawWeb.CalendarComponent do
          |> assign(:editing_event, event)
          |> assign(:viewing_event, nil)
          |> assign(:result, nil)
+         |> assign(:form_open, true)
          |> assign_form(Event.changeset(event, %{}))}
     end
   end
 
   def handle_event("close_inspect", _params, socket) do
     {:noreply, assign(socket, :viewing_event, nil)}
-  end
-
-  def handle_event("cancel", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:editing_event, nil)
-     |> assign(:result, nil)
-     |> assign_form(Event.changeset(%Event{}, default_attrs(socket.assigns.today)))}
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
@@ -168,6 +184,7 @@ defmodule BusterClawWeb.CalendarComponent do
          socket
          |> assign(:editing_event, nil)
          |> assign(:viewing_event, nil)
+         |> assign(:form_open, false)
          |> assign(:result, "Event deleted.")
          |> assign_form(Event.changeset(%Event{}, default_attrs(socket.assigns.today)))
          |> rebuild_view()}
@@ -202,6 +219,8 @@ defmodule BusterClawWeb.CalendarComponent do
      |> rebuild_view()}
   end
 
+  # Clicking a day cell is the "add something on this date" gesture: the modal
+  # opens with that date already filled in.
   def handle_event("select_date", %{"date" => date_str}, socket) do
     case Date.from_iso8601(date_str) do
       {:ok, date} ->
@@ -217,6 +236,7 @@ defmodule BusterClawWeb.CalendarComponent do
          |> assign(:editing_event, nil)
          |> assign(:viewing_event, nil)
          |> assign(:result, nil)
+         |> assign(:form_open, true)
          |> assign_form(changeset)}
 
       _ ->
@@ -270,7 +290,16 @@ defmodule BusterClawWeb.CalendarComponent do
                 {header_label(@view, @anchor)}
               </h2>
             </div>
-            <div class="relative z-[2] flex gap-2">
+            <div class="relative z-[2] flex flex-wrap gap-2">
+              <button
+                id="calendar-add-events"
+                type="button"
+                phx-click="open_form"
+                phx-target={@myself}
+                class="rounded-xs bg-primary px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85"
+              >
+                Add Events
+              </button>
               <div class="flex gap-0.5 border-2 border-base-content/20 p-0.5">
                 <button
                   :for={view <- [:month, :week, :day]}
@@ -396,55 +425,99 @@ defmodule BusterClawWeb.CalendarComponent do
           </div>
         </div>
 
-        <.form
-          for={@form}
-          id="event-form"
-          phx-change="validate"
-          phx-submit="save"
+        <%!-- The event form, in a modal (was pinned to the bottom of the tab).
+              Same idiom as the chat SVG viewer: backdrop button closes, the
+              panel sits above it, Escape closes via phx-window-keydown. The
+              form itself is unchanged — Repeat + Repeat until is what makes an
+              event recurring, so one simple form covers single and recurring. --%>
+        <div
+          :if={@form_open}
+          class="fixed inset-0 z-50"
+          phx-window-keydown="close_form"
+          phx-key="escape"
           phx-target={@myself}
-          class="ic-panel grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-[1.2fr_2fr_1fr_1fr_1fr_auto] lg:items-end"
         >
-          <.input field={@form[:date]} label="Date" type="date" />
-          <.input field={@form[:title]} label="Title" />
-          <.input field={@form[:start_time]} label="Start" type="time" />
-          <.input field={@form[:end_time]} label="End" type="time" />
-          <.input field={@form[:color]} label="Color" type="select" options={@color_options} />
-          <div class="flex flex-wrap gap-2">
-            <button class="rounded-xs bg-primary px-4 py-2 font-display text-sm font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85">
-              {if @editing_event, do: "Update", else: "Add"}
-            </button>
-            <button
-              :if={@editing_event}
-              type="button"
-              class="rounded-xs border-2 border-base-content/20 px-4 py-2 font-mono text-sm transition hover:border-base-content/40"
-              phx-click="cancel"
-              phx-target={@myself}
-            >
-              Cancel
-            </button>
-            <button
-              :if={@editing_event}
-              type="button"
-              class="rounded-xs border-2 border-error/40 px-4 py-2 font-mono text-sm text-error transition hover:border-error"
-              phx-click="delete"
-              phx-value-id={@editing_event.id}
-              phx-target={@myself}
-              data-claw-confirm={"Delete \"#{@editing_event.title}\"?"}
-            >
-              Delete
-            </button>
+          <button
+            type="button"
+            phx-click="close_form"
+            phx-target={@myself}
+            aria-label="Close event form"
+            class="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+          >
+          </button>
+          <div class="pointer-events-none absolute inset-0 grid place-items-center overflow-y-auto p-4">
+            <div class="pointer-events-auto w-full max-w-xl border-2 border-base-content/30 bg-base-100 shadow-2xl">
+              <header class="ic-scanlines relative flex items-center justify-between border-b-2 border-base-content/20 px-5 py-3">
+                <div class="relative z-[2]">
+                  <p class="ic-eyebrow">Calendar</p>
+                  <h3 class="font-display text-lg font-black uppercase tracking-tight">
+                    {if @editing_event, do: "Edit Event", else: "Add Event"}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  phx-click="close_form"
+                  phx-target={@myself}
+                  aria-label="Close event form"
+                  class="relative z-[2] grid size-8 place-items-center border-2 border-base-content/30 text-lg leading-none transition hover:border-primary hover:text-primary"
+                >
+                  ×
+                </button>
+              </header>
+
+              <.form
+                for={@form}
+                id="event-form"
+                phx-change="validate"
+                phx-submit="save"
+                phx-target={@myself}
+                class="grid gap-3 p-5 sm:grid-cols-2"
+              >
+                <div class="sm:col-span-2">
+                  <.input field={@form[:title]} label="Title" />
+                </div>
+                <.input field={@form[:date]} label="Date" type="date" />
+                <.input field={@form[:color]} label="Color" type="select" options={@color_options} />
+                <.input field={@form[:start_time]} label="Start" type="time" />
+                <.input field={@form[:end_time]} label="End" type="time" />
+                <.input
+                  field={@form[:frequency]}
+                  label="Repeat"
+                  type="select"
+                  options={@frequency_options}
+                />
+                <.input field={@form[:recur_until]} label="Repeat until" type="date" />
+                <div class="sm:col-span-2">
+                  <.input field={@form[:notes]} label="Notes" type="textarea" />
+                </div>
+                <div class="flex flex-wrap gap-2 sm:col-span-2">
+                  <button class="rounded-xs bg-primary px-4 py-2 font-display text-sm font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85">
+                    {if @editing_event, do: "Update", else: "Add"}
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-xs border-2 border-base-content/20 px-4 py-2 font-mono text-sm transition hover:border-base-content/40"
+                    phx-click="close_form"
+                    phx-target={@myself}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    :if={@editing_event}
+                    type="button"
+                    class="rounded-xs border-2 border-error/40 px-4 py-2 font-mono text-sm text-error transition hover:border-error"
+                    phx-click="delete"
+                    phx-value-id={@editing_event.id}
+                    phx-target={@myself}
+                    data-claw-confirm={"Delete \"#{@editing_event.title}\"?"}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </.form>
+            </div>
           </div>
-          <.input
-            field={@form[:frequency]}
-            label="Repeat"
-            type="select"
-            options={@frequency_options}
-          />
-          <.input field={@form[:recur_until]} label="Repeat until" type="date" />
-          <div class="lg:col-span-4">
-            <.input field={@form[:notes]} label="Notes" type="textarea" />
-          </div>
-        </.form>
+        </div>
       </section>
     </div>
     """

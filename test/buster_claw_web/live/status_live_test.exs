@@ -713,7 +713,9 @@ defmodule BusterClawWeb.StatusLiveTest do
       render_click(view, "select_home_tab", %{"tab" => "calendar"})
 
       assert has_element?(view, "#calendar-grid")
-      assert has_element?(view, "#event-form")
+      # The event form lives in a modal now — closed until Add Events opens it.
+      assert has_element?(view, "#calendar-add-events")
+      refute has_element?(view, "#event-form")
       assert has_element?(view, "button[phx-value-tab='calendar'].bg-primary")
 
       # ...and switching back to Chat hides the calendar again.
