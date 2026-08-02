@@ -22,7 +22,7 @@ defmodule BusterClawWeb.GetStartedLiveTest do
 
     assert html =~ "Quick chat"
     assert html =~ ~s(phx-click="quick_chat")
-    assert html =~ "Please read through the introduction and BusterClawWorkspace"
+    assert html =~ "Please read through the introduction (.buster-claw/INTRODUCTION.md)"
     assert html =~ "Sentinel security layer"
     assert html =~ "overview of everything you can do across my Google Workspace"
   end

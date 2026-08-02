@@ -1,5 +1,5 @@
 defmodule BusterClaw.JobsTest do
-  # async: false — points the global :workspace_root at a tmp job-descriptions dir.
+  # async: false — points the global :workspace_root at a tmp jobs dir.
   use ExUnit.Case, async: false
 
   alias BusterClaw.{Commands, Jobs, TrustedSenders}
@@ -22,9 +22,9 @@ defmodule BusterClaw.JobsTest do
   test "ensure seeds a starter job, roster, and trusted-sender template", %{root: root} do
     assert :ok = Jobs.ensure()
 
-    assert File.exists?(Path.join(root, "job-descriptions/mail-triage.md"))
-    assert File.exists?(Path.join(root, "job-descriptions/sms-triage.md"))
-    assert File.exists?(Path.join(root, "job-descriptions/README.md"))
+    assert File.exists?(Path.join(root, "jobs/mail-triage.md"))
+    assert File.exists?(Path.join(root, "jobs/sms-triage.md"))
+    assert File.exists?(Path.join(root, "jobs/README.md"))
     assert File.exists?(Path.join(root, "memory/trusted-email-senders.md"))
 
     # The seeded policy trusts nobody by default (placeholders don't parse).
@@ -122,8 +122,8 @@ defmodule BusterClaw.JobsTest do
   end
 
   test "get derives name/summary from frontmatter or falls back to the key/body", %{root: root} do
-    File.mkdir_p!(Path.join(root, "job-descriptions"))
-    File.write!(Path.join(root, "job-descriptions/ci-fix.md"), "# CI Fix\n\nKeep CI green.\n")
+    File.mkdir_p!(Path.join(root, "jobs"))
+    File.write!(Path.join(root, "jobs/ci-fix.md"), "# CI Fix\n\nKeep CI green.\n")
 
     job = Jobs.get("ci-fix")
     assert job.name == "Ci Fix"
@@ -136,7 +136,7 @@ defmodule BusterClaw.JobsTest do
     refute Jobs.exists?("nope")
   end
 
-  test "job_list and job_show commands resolve against job-descriptions", %{root: _root} do
+  test "job_list and job_show commands resolve against the jobs dir", %{root: _root} do
     Jobs.ensure()
 
     assert {:ok, jobs} = Commands.call("job_list")

@@ -3,12 +3,13 @@ defmodule BusterClaw.DispatchProjector do
   Projects the Dispatch queue to the workspace on every `"dispatch"` event, in
   two views (see `daily-growth/roadmaps/06-09-26-terminal-pull-queue-roadmap.md`):
 
-  - **Fridge** — `shift/Dispatch.md`: a full overwrite of the currently-open
-    items (queued/claimed/running), grouped by job. The agent's primary read —
-    "what's on my plate right now."
-  - **Diary** — `shift/<date>/Dispatch.md` + `Dispatch.jsonl`: the dated record.
-    The `.jsonl` is append-only (one line per primary event); the `.md` is a
-    readable render of that day's events.
+  - **Fridge** — `Dispatch.md` at the workspace root: a full overwrite of the
+    currently-open items (queued/claimed/running), grouped by job. The agent's
+    primary read — "what's on my plate right now."
+  - **Diary** — `.buster-claw/dispatch/<date>/Dispatch.md` + `Dispatch.jsonl`:
+    the dated record. The `.jsonl` is append-only (one line per primary event);
+    the `.md` is a readable render of that day's events. Machine bookkeeping,
+    so it lives in the machine-files dir, not the user's eyeline.
 
   Coherence: SQLite is the source of truth. The fridge `.md` is a full overwrite
   (so it never accumulates stale items) and carries no wall-clock, so re-rendering
@@ -85,7 +86,7 @@ defmodule BusterClaw.DispatchProjector do
     # render (event == nil) always refreshes it; bare `:dispatch_item_updated`
     # heartbeats leave the open set untouched and would only rewrite
     # byte-identical output, so they skip the (otherwise per-event) full
-    # `list_open()` + overwrite of `shift/Dispatch.md`.
+    # `list_open()` + overwrite of the fridge.
     if is_nil(event) or event in @fridge_events, do: write_fridge()
     # The initial boot render (event == nil) only refreshes the fridge; dated
     # diary files appear lazily once the first real event arrives.
@@ -233,7 +234,8 @@ defmodule BusterClaw.DispatchProjector do
     value |> to_string() |> String.replace(~r/\s+/, " ") |> String.trim()
   end
 
-  defp shift_root, do: Artifact.workspace_path("shift")
-  defp fridge_path, do: Path.join(shift_root(), "Dispatch.md")
-  defp diary_dir(date), do: Path.join(shift_root(), Date.to_iso8601(date))
+  defp fridge_path, do: Artifact.workspace_path("Dispatch.md")
+
+  defp diary_dir(date),
+    do: Path.join(Artifact.workspace_path(".buster-claw/dispatch"), Date.to_iso8601(date))
 end

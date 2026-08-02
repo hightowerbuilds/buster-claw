@@ -479,7 +479,7 @@ defmodule BusterClaw.CLI do
   def format_job_list(jobs) when is_list(jobs) do
     case jobs do
       [] ->
-        "No jobs defined. Drop a `<key>.md` in job-descriptions/."
+        "No jobs defined. Drop a `<key>.md` in jobs/."
 
       _ ->
         "#{length(jobs)} #{plural(length(jobs), "job")}:\n" <>

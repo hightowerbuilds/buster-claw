@@ -45,8 +45,10 @@ defmodule BusterClaw.DispatchProjectorTest do
     item
   end
 
-  defp fridge(tmp), do: File.read!(Path.join(tmp, "shift/Dispatch.md"))
-  defp jsonl(tmp), do: File.read!(Path.join(tmp, "shift/2026-06-09/Dispatch.jsonl"))
+  defp fridge(tmp), do: File.read!(Path.join(tmp, "Dispatch.md"))
+
+  defp jsonl(tmp),
+    do: File.read!(Path.join(tmp, ".buster-claw/dispatch/2026-06-09/Dispatch.jsonl"))
 
   test "enqueue lands on the fridge and opens the dated diary", %{tmp: tmp} do
     enqueue!(%{
@@ -63,7 +65,7 @@ defmodule BusterClaw.DispatchProjectorTest do
     assert fridge =~ "    please reset my password"
 
     assert jsonl(tmp) =~ ~s("event":"queued")
-    assert File.exists?(Path.join(tmp, "shift/2026-06-09/Dispatch.md"))
+    assert File.exists?(Path.join(tmp, ".buster-claw/dispatch/2026-06-09/Dispatch.md"))
   end
 
   test "finishing an item drops it from the fridge but keeps the diary", %{tmp: tmp} do
@@ -119,7 +121,7 @@ defmodule BusterClaw.DispatchProjectorTest do
   test "a bare heartbeat does not rewrite the fridge", %{tmp: tmp} do
     item = enqueue!(%{subject: "Heartbeat me", dedupe_key: "hb-1"})
 
-    fridge_file = Path.join(tmp, "shift/Dispatch.md")
+    fridge_file = Path.join(tmp, "Dispatch.md")
     before_mtime = File.stat!(fridge_file, time: :posix).mtime
     before_content = File.read!(fridge_file)
 
@@ -146,7 +148,7 @@ defmodule BusterClaw.DispatchProjectorTest do
     {:ok, _} = Dispatch.finish(item, "done")
     sync()
 
-    md = File.read!(Path.join(tmp, "shift/2026-06-09/Dispatch.md"))
+    md = File.read!(Path.join(tmp, ".buster-claw/dispatch/2026-06-09/Dispatch.md"))
     # Append-only: one header for the day, one row per logged event.
     headers = md |> String.split("\n") |> Enum.count(&String.starts_with?(&1, "# Dispatch"))
     assert headers == 1

@@ -1,9 +1,8 @@
 defmodule BusterClaw.Jobs do
   @moduledoc """
   Job descriptions — the single definition of the specialist roles Buster Claw
-  runs. Each job is one markdown file at `<workspace>/job-descriptions/<key>.md`,
-  optionally with `name:` / `summary:` frontmatter; `README.md` is the human
-  roster.
+  runs. Each job is one markdown file at `<workspace>/jobs/<key>.md`, optionally
+  with `name:` / `summary:` frontmatter; `README.md` is the human roster.
 
   The job `key` (the filename) is the canonical role identifier across the app:
   the Gmail poller tags trusted mail with it (`recommended_role_key`), the
@@ -14,7 +13,7 @@ defmodule BusterClaw.Jobs do
 
   alias BusterClaw.Library.{Artifact, Frontmatter}
 
-  @subdir "job-descriptions"
+  @subdir "jobs"
   @roster "README.md"
 
   def dir, do: Artifact.workspace_path(@subdir)
@@ -45,7 +44,7 @@ defmodule BusterClaw.Jobs do
   def exists?(key), do: get(key) != nil
 
   @doc """
-  Best-effort seed: create `job-descriptions/` with channel-triage jobs + roster,
+  Best-effort seed: create `jobs/` with channel-triage jobs + roster,
   a `memory/trusted-email-senders.md` template, and the agent's
   `.claude/settings.json` (autonomous — see `seed_agent_settings/0`). Never
   overwrites an existing operator-authored file.
@@ -178,7 +177,7 @@ defmodule BusterClaw.Jobs do
 
     ## Your worklist
 
-    - Read your queue on the fridge: `shift/Dispatch.md` (open items, grouped by job).
+    - Read your queue on the fridge: `Dispatch.md` at the workspace root (open items, grouped by job).
     - Pull the next item for this job:
 
           ./buster-claw dispatch claim --job mail-triage
@@ -257,7 +256,7 @@ defmodule BusterClaw.Jobs do
 
     ## Your worklist
 
-    - Read your queue on the fridge: `shift/Dispatch.md` (open items, grouped by job).
+    - Read your queue on the fridge: `Dispatch.md` at the workspace root (open items, grouped by job).
     - Pull the next item for this job:
 
           ./buster-claw dispatch claim --job voicemail-triage
@@ -346,7 +345,7 @@ defmodule BusterClaw.Jobs do
 
   defp default_roster do
     """
-    # Job Descriptions
+    # Jobs
 
     These are the specialist **jobs** Buster Claw runs. Each job is one file in
     this folder (`<job-key>.md`); the filename is the job key used across the app —

@@ -335,8 +335,8 @@ defmodule BusterClaw.Dispatcher do
     """
     You are working an unattended Buster Claw shift (job: #{shift.job_name}).
 
-    Read shift/Dispatch.md for the current open items, then work them with the
-    ./buster-claw CLI:
+    Read Dispatch.md (at the workspace root) for the current open items, then
+    work them with the ./buster-claw CLI:
 
         ./buster-claw dispatch list
         ./buster-claw dispatch claim --job <job-key>

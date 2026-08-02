@@ -4,7 +4,7 @@ defmodule BusterClaw.Journal do
   rolling markdown document per calendar day under `<workspace>/journal/`,
   named `YYYY-MM-DD.md`, surfaced as the homepage **Notes** tab.
 
-  There is deliberately no second activity log. `shift/<date>/Dispatch.*` is a
+  There is deliberately no second activity log. `.buster-claw/dispatch/<date>/Dispatch.*` is a
   machine projection of queue events, `analysis/` holds per-request findings,
   and `activity_report` is computed from dispatch rows — none of them is where
   "what happened today" is written. This is.

@@ -59,11 +59,16 @@ defmodule BusterClaw.IntroductionTest do
   test "documents the workspace layout, role model, and corrected summary convention" do
     md = Introduction.markdown()
 
-    # Workspace layout covers the real top-level folders, not just library/memory.
-    assert md =~ "`job-descriptions/`"
-    assert md =~ "`analysis/`"
-    assert md =~ "`shift/`"
+    # Workspace layout covers the real top-level entries, not just library/memory
+    # — and only declared ones: no dead scaffolding (`analysis/`, `projects/`),
+    # no pre-rename names.
+    assert md =~ "`jobs/`"
+    assert md =~ "`Dispatch.md`"
     assert md =~ "`journal/`"
+    refute md =~ "`analysis/`"
+    refute md =~ "`projects/`"
+    refute md =~ "job-descriptions"
+    refute md =~ "shift/Dispatch.md"
 
     # The Notes record: one journal document per day, appended through the command
     # surface (NOT hand-written files — the old mm-dd-yy-summary/ convention).
@@ -90,11 +95,10 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "notesthatfloat.com"
     assert md =~ "not part of Buster Claw"
 
-    # Jobs & the pull queue: points at the job-descriptions roster as the source
-    # of truth and describes pulling work from the dispatch queue via the CLI.
+    # Jobs & the pull queue: points at the jobs roster as the source of truth
+    # and describes pulling work from the dispatch queue via the CLI.
     assert md =~ "Jobs & the pull queue"
-    assert md =~ "job-descriptions/README.md"
-    assert md =~ "shift/Dispatch.md"
+    assert md =~ "jobs/README.md"
     assert md =~ "dispatch claim"
   end
 
@@ -110,9 +114,9 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "`mailman`"
   end
 
-  test "install! writes INTRODUCTION.md into the workspace root", %{root: root} do
+  test "install! writes INTRODUCTION.md into the machine-files dir", %{root: root} do
     assert {:ok, path} = Introduction.install!()
-    assert path == Path.join(root, "INTRODUCTION.md")
+    assert path == Path.join(root, ".buster-claw/INTRODUCTION.md")
     assert File.exists?(path)
     assert File.read!(path) =~ "Operating Guide"
   end
@@ -136,8 +140,8 @@ defmodule BusterClaw.IntroductionTest do
     assert Introduction.read() =~ "Operating Guide"
 
     # Installed → reads the file (here, a sentinel we wrote ourselves).
-    File.mkdir_p!(root)
-    File.write!(Path.join(root, "INTRODUCTION.md"), "CUSTOM GUIDE")
+    File.mkdir_p!(Path.join(root, ".buster-claw"))
+    File.write!(Path.join(root, ".buster-claw/INTRODUCTION.md"), "CUSTOM GUIDE")
     assert Introduction.read() == "CUSTOM GUIDE"
   end
 end

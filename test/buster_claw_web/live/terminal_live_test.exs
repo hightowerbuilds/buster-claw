@@ -134,8 +134,8 @@ defmodule BusterClawWeb.TerminalLiveTest do
     # A real file in a tmp workspace: slot URLs are stamped from the file's
     # mtime (and require it to exist) since the shared-DataZone cache fix.
     root = Path.join(System.tmp_dir!(), "bc_termbg_#{System.unique_integer([:positive])}")
-    File.mkdir_p!(Path.join(root, "appearance"))
-    File.write!(Path.join(root, "appearance/test.png"), "png-bytes")
+    File.mkdir_p!(Path.join(root, "backgrounds"))
+    File.write!(Path.join(root, "backgrounds/test.png"), "png-bytes")
     prev = Application.get_env(:buster_claw, :workspace_root)
     Application.put_env(:buster_claw, :workspace_root, root)
 
@@ -144,7 +144,7 @@ defmodule BusterClawWeb.TerminalLiveTest do
       File.rm_rf(root)
     end)
 
-    Settings.put("background_image_1_path", "appearance/test.png")
+    Settings.put("background_image_1_path", "backgrounds/test.png")
     Settings.put("background_image_1_updated_at", "123")
     Settings.put("terminal_background_mode", "image:1")
   end

@@ -4,9 +4,12 @@ defmodule BusterClaw.Introduction do
   Buster Claw is, the workspace layout, working conventions (chiefly that the
   Notes record is the *one* activity log), and the full CLI command surface.
 
-  The document is installed into the workspace root (regenerated on launch and
-  whenever the workspace changes) so the terminal agent reads it directly for
-  orientation and the full command list.
+  The document is installed at `.buster-claw/INTRODUCTION.md` (regenerated on
+  launch and whenever the workspace changes) so the terminal agent reads it for
+  orientation and the full command list. It lives in the machine-files dir, not
+  the workspace root: it is a prompt for the model, and it should not be the
+  loudest file in the user's personal folder — the workspace `README.md` is the
+  one document addressed to the human.
   """
 
   require Logger
@@ -15,12 +18,16 @@ defmodule BusterClaw.Introduction do
   alias BusterClaw.Library.Artifact
 
   @filename "INTRODUCTION.md"
+  @rel Path.join(".buster-claw", @filename)
 
   @doc "The introduction file name."
   def filename, do: @filename
 
+  @doc "Workspace-relative path of the introduction (`.buster-claw/INTRODUCTION.md`)."
+  def rel_path, do: @rel
+
   @doc "Absolute path of the installed introduction in the current workspace."
-  def path, do: Artifact.workspace_path(@filename)
+  def path, do: Artifact.workspace_path(@rel)
 
   @doc """
   Write the freshly generated introduction to the workspace root, skipping the
@@ -28,8 +35,8 @@ defmodule BusterClaw.Introduction do
   file on every boot and workspace switch).
   """
   def install! do
-    File.mkdir_p!(Artifact.workspace_root())
     path = path()
+    File.mkdir_p!(Path.dirname(path))
     content = markdown()
 
     case File.read(path) do
@@ -110,17 +117,19 @@ defmodule BusterClaw.Introduction do
     - `memory/` — durable notes/context, including the two trusted-source policies:
       `memory/trusted-email-senders.md` (who may drive work by mail) and its exact
       phone-side twin `memory/trusted-phone-numbers.md` (who may drive work by phone).
-    - `job-descriptions/` — the jobs you can run, one `<key>.md` each; see `job-descriptions/README.md` for the roster.
-    - `analysis/` — per-request findings, one job = one file. The substance of a job, **not** the activity log (that's Notes).
-    - `shift/` — your worklist: `shift/Dispatch.md` is the **dispatch queue** (all currently-open queue items, grouped by job). `shift/<date>/Dispatch.{md,jsonl}` is a machine-written projection of queue events — read it, never author it.
+    - `jobs/` — the jobs you can run, one `<key>.md` each; see `jobs/README.md` for the roster.
+    - `Dispatch.md` — your worklist: the **dispatch queue** (all currently-open queue items, grouped by job), at the workspace root. `.buster-claw/dispatch/<date>/Dispatch.{md,jsonl}` is a machine-written projection of queue events — read it, never author it.
     - `skills/` — composition & reference skills, one `.md` each (see **Skills** below).
     - `shaders/` — custom homepage shader patterns, one `.wgsl` each (see **Homepage shader patterns** below).
     - `pages/` — HTML pages you build for the user. Save any page you create as a
       single self-contained `.html` file (inline CSS/JS, real `<title>`) here —
       the in-app browser's **Pages** button lists this folder, so this is how the
       user finds your pages again.
-    - `projects/` — working folders for ongoing projects.
     - `journal/` — **the Notes record**: the one activity log, one `YYYY-MM-DD.md` per day, shown on the homepage Notes tab (see below).
+
+    Do not invent new top-level folders; the layout above is the declared one.
+    Findings and reports go to the Library (`document_save`), never to ad-hoc
+    directories.
 
     ## The Notes record — the one place activity is logged
 
@@ -151,8 +160,7 @@ defmodule BusterClaw.Introduction do
 
     | | What it actually is |
     |---|---|
-    | `shift/<date>/Dispatch.{md,jsonl}` | A **machine projection** of queue events, written automatically. Never hand-authored. |
-    | `analysis/` | **Findings** for one request — the substance of a job, not the log of it. |
+    | `.buster-claw/dispatch/<date>/Dispatch.{md,jsonl}` | A **machine projection** of queue events, written automatically. Never hand-authored. |
     | `activity_report` | A **computed read** over dispatch rows. It reports; it doesn't record. |
     | Run summaries (`memory_search`) | Captured **automatically** per run. You never write these. |
     | The Library (`document_save`) | **Artifacts** — reports, captured pages, research. Not a diary. |
@@ -177,8 +185,8 @@ defmodule BusterClaw.Introduction do
     ## Jobs & the pull queue
 
     You work specialist **jobs**, each defined by a markdown file in
-    `job-descriptions/` (the filename is the job key). Read your job's
-    `job-descriptions/<key>.md` for its mandate, and `job-descriptions/README.md`
+    `jobs/` (the filename is the job key). Read your job's
+    `jobs/<key>.md` for its mandate, and `jobs/README.md`
     for the roster — don't assume a fixed set.
 
     Work is **pulled, not pushed**. Three inbound channels fill the queue
@@ -186,7 +194,7 @@ defmodule BusterClaw.Introduction do
     and trusted-caller **voicemail** (`source: "voicemail"`, job
     `voicemail-triage`), plus trusted-number **SMS** (`source: "sms"`, job
     `sms-triage`). All land in the same queue; your live worklist is the
-    dispatch queue, `shift/Dispatch.md`. Take the next item and close it out
+    dispatch queue, `Dispatch.md` at the workspace root. Take the next item and close it out
     through the CLI:
 
         ./buster-claw dispatch list                  # what's open, by job
@@ -237,7 +245,7 @@ defmodule BusterClaw.Introduction do
 
     A queued voicemail carries `recommended_role_key: "voicemail-triage"`, is
     deduped on `voicemail:<RecordingSid>`, and carries its `telephony_event_id`
-    in metadata. Read `job-descriptions/voicemail-triage.md` before working one —
+    in metadata. Read `jobs/voicemail-triage.md` before working one —
     that is the mandate, this is the orientation. Three things are not true of
     mail:
 
@@ -296,7 +304,7 @@ defmodule BusterClaw.Introduction do
 
     1. **Verify the runtime** — confirm the API is reachable and a shift is active
        (`shift_status`); start one if it is expected and missing.
-    2. **Read the mail** — check the dispatch queue (`shift/Dispatch.md`) and the inbox for
+    2. **Read the mail** — check the dispatch queue (`Dispatch.md`) and the inbox for
        queued trusted-sender items, and read each one fully (`gmail_read`).
     3. **Comb the voicemail** — the phone is a second inbox and it is easy to
        forget. Run `phone_stats`, then `phone_list` with `unheard_only` set, then

@@ -386,3 +386,36 @@ At close: 54 component / 27 schema / 120 JS tests green, credo strict clean.
 The studio commits were held locally until the workspace relocation landed —
 the import tests assert `sounds/studio/` paths that only exist with both
 sessions' work in the tree.
+
+## Session three — the workspace gets its names (Phases 3–5a)
+
+The morning's registry work turned out to have quietly shipped Phases 0–2;
+this session closed the rest of the roadmap on top of it.
+
+- **Phase 3 decided (operator: option A, flat renames) and shipped.**
+  `job-descriptions/` → `jobs/`, `appearance/` → `backgrounds/`,
+  `shift/Dispatch.md` → a top-level `Dispatch.md`. The dated dispatch diary is
+  machine bookkeeping, so it moved to `.buster-claw/dispatch/<date>/` rather
+  than keeping a `shift/` folder alive for it.
+- **Phase 4 shipped.** `INTRODUCTION.md` installs at
+  `.buster-claw/INTRODUCTION.md`; the stale root copy is deleted by the layout
+  migration, the onboarding prompts state the new path, and `README.md` is now
+  the loudest file in the folder — which is the point.
+- **Existing installs relocate safely.** The audio-consolidation `relocate`
+  generalized into one `@relocations` table (merge-don't-clobber, keep-and-log
+  on collision); machine-regenerated files (`INTRODUCTION.md`, the old fridge)
+  are deleted rather than carried.
+- **One real bug caught by its own test:** Appearance's workspace-relative
+  Settings pointers must be prefix-rewritten *before* the image-pool migration
+  runs — `next_empty_slot` trusts those pointers, and a stale `appearance/`
+  prefix made a filled slot read as empty, landing the migrated home image on
+  top of a terminal slot.
+- **Phase 5a shipped.** Dev's `workspace_root` is `tmp/dev-workspace`
+  (repo-local, gitignored, deletable-to-rescaffold) instead of `~/Developer` —
+  we can finally look at what we ship. The packaged first-open walk remains,
+  pinned to the R1 QA pass with the other packaged-build leftovers.
+- The introduction's layout section stopped advertising `analysis/` and
+  `projects/`, and now tells the agent not to invent top-level folders.
+
+At close: full suite 2,095 tests, 0 failures. The workspace roadmap is done
+except for the packaged walk.

@@ -162,7 +162,8 @@ defmodule BusterClaw.TerminalCommands do
       commands: [
         %{
           key: "welcome-introduction",
-          command: "Welcome to Buster Claw. Please read the introduction.",
+          command:
+            "Welcome to Buster Claw. Please read the introduction at .buster-claw/INTRODUCTION.md.",
           kind: :prompt,
           default?: true
         }

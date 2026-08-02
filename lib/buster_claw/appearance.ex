@@ -5,7 +5,7 @@ defmodule BusterClaw.Appearance do
 
   There is one pool of options (`options/0`): `off`, the built-in WebGPU shader
   designs, any workspace `shaders/*.wgsl` the user has written, and up to
-  `max_images/0` uploaded images living in `<workspace>/appearance/` (writable in
+  `max_images/0` uploaded images living in `<workspace>/backgrounds/` (writable in
   both dev and the packaged release, unlike the read-only `priv/static` bundle).
   Each surface independently points at one option. In Settings → Appearance the
   catalog is shown **once** and the user drags an option onto the Homepage or
@@ -36,7 +36,7 @@ defmodule BusterClaw.Appearance do
   alias BusterClaw.Shaders
 
   @max_images 8
-  @subdir "appearance"
+  @subdir "backgrounds"
   @image_basename "background"
 
   @builtin_shaders ~w(smoke waves mandel weather)
@@ -462,6 +462,8 @@ defmodule BusterClaw.Appearance do
   simply answers to a pool slot now.
   """
   def ensure do
+    rewrite_renamed_dir()
+
     if Settings.get(@migrated_key) in [nil, ""] do
       migrate_terminal_slots()
       migrate_home_image()
@@ -473,6 +475,29 @@ defmodule BusterClaw.Appearance do
     error ->
       Logger.warning("Appearance.ensure failed: #{Exception.message(error)}")
       :error
+  end
+
+  # The directory was `appearance/` before it was content-named `backgrounds/`.
+  # `Workspace.ensure/0` moves the files (it boots before this); the stored
+  # pointers are workspace-relative and fenced to `dir()`, so any still carrying
+  # the old prefix would fail the fence and its slot would read as empty. That
+  # must happen BEFORE the pool migration: `next_empty_slot/0` trusts those
+  # pointers, and a slot misread as empty gets a second image landed on it. The
+  # legacy pre-pool keys are rewritten too, for an install crossing both
+  # migrations in one launch. Cheap and idempotent: a pointer without the old
+  # prefix is left alone.
+  defp rewrite_renamed_dir do
+    pool_keys = Enum.map(1..@max_images, &path_key/1)
+    legacy_keys = Enum.map(1..5, &"terminal_background_#{&1}_path")
+
+    Enum.each(pool_keys ++ legacy_keys ++ ["home_background_image_path"], fn key ->
+      with rel when is_binary(rel) <- present(Settings.get(key)),
+           "appearance/" <> rest <- rel do
+        Settings.put(key, Path.join(@subdir, rest))
+      else
+        _ -> :ok
+      end
+    end)
   end
 
   # Terminal slots 1..5 keep their numbers in the pool — the mode becomes an

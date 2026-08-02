@@ -152,10 +152,13 @@ defmodule BusterClaw.WorkspaceTest do
       first = root |> File.ls!() |> Enum.sort()
 
       refute first == []
-      assert "INTRODUCTION.md" in first
+      assert ".buster-claw" in first
       assert "skills" in first
-      assert "job-descriptions" in first
+      assert "jobs" in first
       assert "README.md" in first
+      # The machine file lives out of the user's eyeline, not at the root.
+      refute "INTRODUCTION.md" in first
+      assert File.exists?(Path.join(root, ".buster-claw/INTRODUCTION.md"))
 
       assert :ok = Workspace.ensure()
       assert root |> File.ls!() |> Enum.sort() == first
@@ -236,9 +239,41 @@ defmodule BusterClaw.WorkspaceTest do
       :ok = Workspace.ensure()
       moved = root |> File.ls!() |> Enum.sort()
 
-      for entry <- ~w(INTRODUCTION.md buster-claw job-descriptions skills memory) do
+      for entry <- ~w(.buster-claw buster-claw jobs skills memory) do
         assert entry in moved, "a moved workspace is missing #{entry}"
       end
+    end
+
+    # Phase 3A: feature-named entries became content-named, and the machine
+    # bookkeeping moved into `.buster-claw/`. An existing install's files must
+    # arrive at the new names with nothing lost.
+    test "relocates the pre-rename layout: jobs, backgrounds, dispatch", %{root: root} do
+      File.mkdir_p!(Path.join(root, "job-descriptions"))
+      File.write!(Path.join(root, "job-descriptions/custom.md"), "# Custom\n")
+      File.mkdir_p!(Path.join(root, "appearance"))
+      File.write!(Path.join(root, "appearance/background-1.png"), "bytes")
+      File.mkdir_p!(Path.join(root, "shift/2026-07-31"))
+      File.write!(Path.join(root, "shift/Dispatch.md"), "stale fridge")
+      File.write!(Path.join(root, "shift/2026-07-31/Dispatch.jsonl"), ~s({"event":"queued"}\n))
+      File.write!(Path.join(root, "INTRODUCTION.md"), "stale machine copy")
+
+      assert :ok = Workspace.ensure()
+      listing = File.ls!(root)
+
+      refute "job-descriptions" in listing
+      refute "appearance" in listing
+      refute "shift" in listing
+
+      # User content arrived intact at the new names.
+      assert File.read!(Path.join(root, "jobs/custom.md")) == "# Custom\n"
+      assert File.read!(Path.join(root, "backgrounds/background-1.png")) == "bytes"
+
+      assert File.read!(Path.join(root, ".buster-claw/dispatch/2026-07-31/Dispatch.jsonl")) ==
+               ~s({"event":"queued"}\n)
+
+      # Machine-regenerated files are deleted at the old home, not carried along.
+      refute File.exists?(Path.join(root, "INTRODUCTION.md"))
+      refute File.exists?(Path.join(root, ".buster-claw/dispatch/Dispatch.md"))
     end
 
     test "audio is one folder: no top-level music/ or studio/", %{root: root} do

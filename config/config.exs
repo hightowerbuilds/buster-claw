@@ -10,8 +10,14 @@ import Config
 config :buster_claw,
   ecto_repos: [BusterClaw.Repo],
   generators: [timestamp_type: :utc_datetime],
-  workspace_root: Path.expand("../..", __DIR__),
-  library_root: Path.expand("../../Library", __DIR__),
+  # A disposable, repo-local (gitignored) workspace — NOT the repo's parent.
+  # Pointing dev at ~/Developer meant the assistant's workspace was the folder
+  # holding the source checkouts, so the first-open experience we actually ship
+  # was invisible during development. Delete tmp/dev-workspace any time to see
+  # exactly what a fresh install lays down. (runtime.exs env/data-dir overrides
+  # still win, as ever.)
+  workspace_root: Path.expand("../tmp/dev-workspace", __DIR__),
+  library_root: Path.expand("../tmp/dev-workspace/library", __DIR__),
   # Bundled Google OAuth app verification status: "testing" (unverified beta —
   # tester-list gate + weekly refresh-token expiry, and the UI says so) or
   # "verified" (the beta copy disappears). Flip when Google verification clears.

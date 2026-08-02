@@ -179,7 +179,7 @@ Appearance image-pool migration (rewrite pointers, leave bytes alone).
 
 ---
 
-## Phase 0 — One module owns the layout
+## Phase 0 — One module owns the layout — **SHIPPED 08-01** (`16c8213`)
 
 **What.** A `BusterClaw.Workspace` module that *declares* every top-level entry:
 name, owning module, tier, purpose, and whether it is seeded. Every existing
@@ -203,7 +203,7 @@ passes, and moving the workspace root produces a layout identical to a fresh boo
 
 ---
 
-## Phase 1 — Delete what is dead
+## Phase 1 — Delete what is dead — **SHIPPED 08-01** (`16c8213`)
 
 **What.** Remove `sources/` and `analysis/` (§4) and `notes/` (§5) from the code,
 plus a one-time sweep that deletes each **only if empty**. A non-empty one is left
@@ -215,7 +215,12 @@ required.
 
 ---
 
-## Phase 2 — Stop materializing empty directories
+## Phase 2 — Stop materializing empty directories — **SHIPPED 08-01** (`16c8213`)
+
+> **The drop-zone question resolved as (a)**: the owning surfaces call
+> `Workspace.ensure_entry/1` at the point of use (Settings → Appearance for
+> `shaders/`, Notify for `sounds/`, the Pages button for `pages/`), so a folder
+> appears exactly when the user opens the feature that explains it.
 
 **What.** Tier the registry:
 
@@ -243,7 +248,16 @@ content**, down from thirteen-plus.
 
 ---
 
-## Phase 3 — Naming and grouping — **OPERATOR DECISION REQUIRED**
+## Phase 3 — Naming and grouping — **DECIDED A (operator, 08-01) + SHIPPED 08-01**
+
+> Shipped as: `job-descriptions/` → `jobs/`, `appearance/` → `backgrounds/`,
+> `shift/Dispatch.md` → top-level `Dispatch.md`. The dated dispatch diary
+> (`shift/<date>/`) is machine bookkeeping, so it moved to
+> `.buster-claw/dispatch/<date>/` — Phase 4's register, same commit. Existing
+> installs relocate via the same merge-don't-clobber migration as the audio
+> consolidation; Appearance's workspace-relative Settings pointers are rewritten
+> **before** its pool migration reads them (order matters — a stale prefix made
+> `next_empty_slot` misread filled slots).
 
 **What.** Fix §7. Two candidate shapes:
 
@@ -266,7 +280,13 @@ be able to *see* rather than guess.
 
 ---
 
-## Phase 4 — The machine file stops being the loudest thing in the room
+## Phase 4 — The machine file stops being the loudest thing in the room — **SHIPPED 08-01**
+
+> `INTRODUCTION.md` now installs at `.buster-claw/INTRODUCTION.md`; the stale
+> root copy is deleted by the layout migration (machine-generated, regenerated
+> at the new home every boot). The onboarding prompts (Get Started quick-chat,
+> the terminal welcome) state the new path, and the workspace `README.md` holds
+> the top slot.
 
 **What.** `INTRODUCTION.md` (§6) moves out of the user's eyeline — a dotfile
 (`.buster-claw/INTRODUCTION.md`) or a clearly-marked subdirectory — and the
@@ -280,7 +300,14 @@ the skills that reference it, and any job description that points at it — and 
 
 ---
 
-## Phase 5 — Look at what we ship
+## Phase 5 — Look at what we ship — **HALF SHIPPED 08-01; packaged walk OPEN**
+
+> Dev's `workspace_root` now points at `tmp/dev-workspace` (repo-local,
+> gitignored, deletable) instead of `~/Developer` — delete it any time to watch
+> a fresh scaffold. **Still open:** the packaged-install walk (fresh folder →
+> setup wizard → open in Finder → count). Pair it with the R1 QA pass, alongside
+> LEFTOVERS' byte-range walk and `SOUND_STUDIO_ROADMAP` Phase 5 — one build,
+> four answers.
 
 **What.** Point dev's `workspace_root` somewhere that is not the repo's parent
 (§8), and walk a **packaged** install end to end: fresh folder → setup wizard →

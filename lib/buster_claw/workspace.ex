@@ -61,12 +61,14 @@ defmodule BusterClaw.Workspace do
       note: "What this folder is and what you can put in it. Written for you."
     },
     %{
-      name: "INTRODUCTION.md",
-      kind: :file,
+      name: ".buster-claw",
+      kind: :dir,
       tier: :core,
       owner: BusterClaw.Introduction,
       seed: {BusterClaw.Introduction, :ensure},
-      note: "The operating guide the agent reads. Regenerated every launch."
+      note:
+        "The app's machine files: INTRODUCTION.md (the agent's operating guide, " <>
+          "regenerated every launch) and dispatch/ (the dated queue diary)."
     },
     %{
       name: "buster-claw",
@@ -94,7 +96,7 @@ defmodule BusterClaw.Workspace do
       note: "Standing policy and trusted senders/numbers."
     },
     %{
-      name: "job-descriptions",
+      name: "jobs",
       kind: :dir,
       tier: :core,
       owner: BusterClaw.Jobs,
@@ -119,13 +121,13 @@ defmodule BusterClaw.Workspace do
       note: "settings.json for the Claude Code session a shift runs."
     },
     %{
-      name: "shift",
-      kind: :dir,
+      name: "Dispatch.md",
+      kind: :file,
       tier: :core,
       owner: BusterClaw.DispatchProjector,
-      # The projector writes Dispatch.md on its first pass at boot.
+      # The projector writes it on its first pass at boot.
       seed: nil,
-      note: "Dispatch.md — the work queue, projected for the agent to read."
+      note: "The work queue — every open item, projected for the agent to read."
     },
 
     # --- on demand: real features, but nothing until you use them ----------
@@ -173,7 +175,7 @@ defmodule BusterClaw.Workspace do
       note: "MCP server configs (e.g. the brokerage connection)."
     },
     %{
-      name: "appearance",
+      name: "backgrounds",
       kind: :dir,
       tier: :on_demand,
       owner: BusterClaw.Appearance,
@@ -310,7 +312,7 @@ defmodule BusterClaw.Workspace do
   stop the rest of the workspace being built.
   """
   def ensure do
-    migrate_audio_layout()
+    migrate_layout()
 
     :core
     |> entries()
@@ -320,22 +322,47 @@ defmodule BusterClaw.Workspace do
     :ok
   end
 
-  # Audio used to sprawl across three top-level folders — `music/`, `sounds/` and
-  # `studio/`. It is one now: chimes at `sounds/`, the library at `sounds/music/`,
-  # the Studio's working files at `sounds/studio/`.
+  # Old layouts fold into the current one before anything seeds:
+  #
+  #   - Audio used to sprawl across three top-level folders (`music/`, `sounds/`,
+  #     `studio/`); it is one now, with the library and the Studio inside it.
+  #   - `job-descriptions/` and `appearance/` were feature-named; they are
+  #     content-named now (`jobs/`, `backgrounds/`). Appearance's Settings
+  #     pointers are rewritten by `Appearance.ensure/0`, which boots after this.
+  #   - `shift/` held the fridge (`Dispatch.md`, now top-level — a full-overwrite
+  #     file the projector rewrites at boot, so the old copy is just deleted) and
+  #     the dated diary (machine bookkeeping, now under `.buster-claw/dispatch/`).
   #
   # Runs before the seeders so an existing install's files are in place before
-  # anything writes a README next to them. Idempotent by shape rather than by a
-  # marker: once the old directory is gone there is nothing left to do.
-  @audio_moves [{"music", "sounds/music"}, {"studio", "sounds/studio"}]
+  # anything writes next to them. Idempotent by shape rather than by a marker:
+  # once the old entry is gone there is nothing left to do.
+  @relocations [
+    {"music", "sounds/music"},
+    {"studio", "sounds/studio"},
+    {"job-descriptions", "jobs"},
+    {"appearance", "backgrounds"},
+    {"shift", ".buster-claw/dispatch"}
+  ]
 
-  defp migrate_audio_layout do
-    Enum.each(@audio_moves, fn {old_name, new_rel} ->
-      relocate(Artifact.workspace_path(old_name), Artifact.workspace_path(new_rel), old_name)
+  # Machine-written files stranded by a move. Each is regenerated at its new home
+  # every boot, so the old copy holds nothing of the user's.
+  @stale_machine_files ["INTRODUCTION.md", "shift/Dispatch.md"]
+
+  defp migrate_layout do
+    Enum.each(@stale_machine_files, fn rel ->
+      File.rm(Artifact.workspace_path(rel))
+    end)
+
+    Enum.each(@relocations, fn {old_name, new_rel} ->
+      relocate(
+        Artifact.workspace_path(old_name),
+        Artifact.workspace_path(new_rel),
+        {old_name, new_rel}
+      )
     end)
   end
 
-  defp relocate(old, new, label) do
+  defp relocate(old, new, {from, to} = label) do
     if File.dir?(old) do
       File.mkdir_p!(Path.dirname(new))
 
@@ -344,13 +371,15 @@ defmodule BusterClaw.Workspace do
     end
   rescue
     error ->
-      Logger.warning("Workspace: couldn't relocate #{label}/: #{Exception.message(error)}")
+      Logger.warning(
+        "Workspace: couldn't relocate #{from}/ to #{to}/: #{Exception.message(error)}"
+      )
   end
 
-  defp rename_into(old, new, label) do
+  defp rename_into(old, new, {from, to} = label) do
     case File.rename(old, new) do
       :ok ->
-        Logger.info("Workspace: moved #{label}/ into sounds/")
+        Logger.info("Workspace: moved #{from}/ to #{to}/")
 
       # Across filesystems rename fails; fall back to a copy-then-verify.
       {:error, _reason} ->
@@ -362,7 +391,7 @@ defmodule BusterClaw.Workspace do
   # the old directory only if it ended up empty. A name collision leaves the
   # original in place and says so — we do not get to pick which of a user's two
   # files survives.
-  defp merge_into(old, new, label) do
+  defp merge_into(old, new, {from, to}) do
     File.mkdir_p!(new)
 
     kept =
@@ -381,12 +410,12 @@ defmodule BusterClaw.Workspace do
     case kept do
       [] ->
         File.rmdir(old)
-        Logger.info("Workspace: merged #{label}/ into sounds/")
+        Logger.info("Workspace: merged #{from}/ into #{to}/")
 
       names ->
         Logger.warning(
-          "Workspace: kept #{label}/ — #{length(names)} item(s) already exist under " <>
-            "sounds/#{label}/ and were not overwritten: #{Enum.join(names, ", ")}"
+          "Workspace: kept #{from}/ — #{length(names)} item(s) already exist under " <>
+            "#{to}/ and were not overwritten: #{Enum.join(names, ", ")}"
         )
     end
   end
@@ -505,13 +534,15 @@ defmodule BusterClaw.Workspace do
     #{listing(:on_demand)}
     ## Adding your own
 
-    The drop zones above (`music/`, `sounds/`, `shaders/`) are yours to fill —
-    put a file in and the app picks it up on the next look. You can safely edit
-    anything in `job-descriptions/`, `skills/` and `memory/`; those are read by
-    the agent and are meant to be changed by you.
+    The drop zones above (`sounds/`, `shaders/`) are yours to fill — put a file
+    in and the app picks it up on the next look. You can safely edit anything in
+    `jobs/`, `skills/` and `memory/`; those are read by the agent and are meant
+    to be changed by you.
 
-    `INTRODUCTION.md` is written for the AI, not for you, and is regenerated on
-    every launch — read it if you're curious, but edits there won't survive.
+    The app's own machine files live out of the way in `.buster-claw/` — the
+    agent's operating guide (`INTRODUCTION.md`, regenerated on every launch) and
+    the dated dispatch diary. Read them if you're curious; they aren't yours to
+    edit.
     """
   end
 
