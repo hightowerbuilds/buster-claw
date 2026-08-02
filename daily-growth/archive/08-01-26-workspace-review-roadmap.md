@@ -1,9 +1,21 @@
 # The workspace — critical review + rebuild roadmap
 
-**Scoped 08-01-26 · COMPLETE 08-01-26** — all six phases shipped or verified in
-one day (Phase 0–2 in `16c8213`, Phase 3A/4/5a in `8f563ed`, Phase 5's count
-measured against the packaged bundle the same evening). Only a thin GUI
-formality rides with the R1 QA pass; see Phase 5.
+**Scoped 08-01-26 · COMPLETE 08-01-26 · ARCHIVED 08-02-26** — all six phases
+shipped or verified in one day (Phase 0–2 in `16c8213`, Phase 3A/4/5a in
+`8f563ed`, Phase 5's count measured against the packaged bundle the same
+evening). Archived the next morning after re-running the guard suite (24 tests
+green, registry names confirmed on disk — no overnight drift).
+
+> **The one item that outlived this document** — repeating the first-open look
+> through the in-app **setup wizard + Finder**, since the verification walk set
+> the workspace by env var — moved to `roadmaps/LEFTOVERS.md`, pinned to the R1
+> QA pass. Nothing else here is open.
+>
+> **Worth re-reading before touching workspace layout again:** Phase 3's
+> migration-order gotcha (Appearance's Settings pointers must be rewritten
+> *before* its pool migration reads them), and the `Workspace` registry's
+> lockstep guard, which is what stops the next feature from quietly adding a
+> twenty-fifth top-level entry.
 
 The workspace is the product's one durable promise: *"everything
 is markdown on your disk. No lock-in; `grep` works."* It is also the first thing a

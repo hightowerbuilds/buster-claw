@@ -190,7 +190,7 @@ leave it to a comment.
 The workspace is the product's one durable promise — *everything is markdown on
 your disk, `grep` works*. It is also the first thing a new user sees, and what
 they saw was a filing cabinet of empty labelled drawers. Full write-up in
-`roadmaps/WORKSPACE_REVIEW_ROADMAP.md`; the short version:
+`archive/08-01-26-workspace-review-roadmap.md`; the short version:
 
 **Nothing declared the layout.** Creation was scattered across four trigger
 contexts — nine calls in `application.ex`, **three more hidden inside
@@ -300,8 +300,10 @@ grid behavior and the two live WebGPU previews sitting side by side are exactly
 the kind of thing that reads fine in markup and surprises you on screen. First
 launch should look at those two things.
 
-**The workspace rebuild is 3 phases of 5.** Remaining, in
-`roadmaps/WORKSPACE_REVIEW_ROADMAP.md`:
+**The workspace rebuild is 3 phases of 5.** *(Written mid-day; the later
+sessions below closed all five — the roadmap was archived 08-02. Kept as
+written, because what the remaining phases looked like from here is the record.)*
+Remaining, in `archive/08-01-26-workspace-review-roadmap.md`:
 
 - **Phase 3 (naming/grouping)** was deliberately deferred until the real list was
   visible. At eight entries it is now visible, and the recommendation is to

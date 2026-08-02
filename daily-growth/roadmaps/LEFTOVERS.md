@@ -158,6 +158,26 @@ header each.
 
 ---
 
+### Look at a first-open workspace through the setup wizard
+
+**What.** Inherited 08-02 when `WORKSPACE_REVIEW_ROADMAP` was archived — the only
+item it left open. Its Phase 5 count *was* measured against the packaged bundle
+(fresh folder → **seven visible entries, all with content**), but by setting
+`BUSTER_CLAW_WORKSPACE_ROOT` and listing the result. Do the same look the way a
+new user gets there: packaged app → **setup wizard picks the folder** → open it
+in **Finder** → count.
+
+**Why deferred.** The scaffolding code is identical either way and is guarded by
+24 tests; what's unverified is the wizard's own path into it (and how the folder
+*reads* to a human, which is the thing no test asserts).
+
+**What makes it expensive later.** It doesn't get expensive — it gets skipped.
+This is the acceptance criterion the entire workspace rebuild was judged by, and
+the roadmap's own Phase 5 note says we had never once looked at what we ship.
+Pair it with the two packaged walks below: one build, three answers.
+
+---
+
 ### Walk byte ranges and probe codecs in a packaged build
 
 **What.** The two acceptance criteria `MUSIC_ROADMAP` could never close (Phases
@@ -173,9 +193,14 @@ side is done: `RangeResponse` has 33 tests.
 **What makes it expensive later.** This is the exact failure class the range
 work existed to prevent — it looks correct in dev and misbehaves only in the
 shipped webview. Shipping an accepted format that will not play is worse than
-never having accepted it. Pair this with `SOUND_STUDIO_ROADMAP` Phase 5, which
-needs a packaged walk for the same reason (autoplay posture, `afconvert` under
-the sandbox) — one build, three answers.
+never having accepted it. Pair this with `SOUND_STUDIO_ROADMAP` Phase 5 and the
+workspace first-open look above — one build, three answers.
+
+> **08-01 update:** the packaged walk answered Sound Studio Phase 5's harder
+> half — **`afconvert` executes under the sandbox; import works.** It also found
+> what this item is about: a 20-minute file reported *length unknown*. Fixed
+> (header-probe via `afinfo`, `eee2be3`). Still unwalked here: **seeking** a long
+> track in the packaged webview, and the autoplay posture.
 
 ---
 
