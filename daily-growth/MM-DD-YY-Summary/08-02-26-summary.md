@@ -1,5 +1,26 @@
 # 08-02-26
 
+## The calendar's form stops living at the bottom of the tab
+
+The manual date/event form was pinned under the month grid — always rendered,
+mostly ignored, and a long reach from the month it describes. It is a modal now,
+opened by an **Add Events** button riding inline with the month/week/day toggle.
+
+Two things fell out of the move for free. Clicking a day cell was *already* the
+"add something on this date" gesture, but it only silently prefilled a form
+sixty percent of the way down the page; it now opens the modal with that date
+filled in, so the gesture finishes what it starts. And Edit from an event's
+inspect panel opens the same modal in edit mode, which means one form serves
+create and edit instead of two surfaces drifting apart.
+
+The form itself is unchanged — Repeat plus Repeat-until is what makes an event
+recurring, so one simple form still covers single and recurring without a mode
+to pick. House modal idiom throughout (backdrop, ×, Cancel, Escape); saving and
+deleting close it; an abandoned draft resets so the next open starts clean.
+
+All three calendar surfaces got it at once — `/calendar`, the split pane, and
+the homepage sub-tab — because they have always shared one component.
+
 ## The workspace roadmap closes the file
 
 Scoped, built, verified, and archived inside about eighteen hours. The document
@@ -102,3 +123,72 @@ locked scope from a leftover line is how it would get done badly.
 Phase 5's remainder folded into the byte-range walk already parked there: the
 packaged webview's autoplay posture and seeking a long track. Its harder half —
 does `afconvert` run inside the sandbox — was answered yes on 08-01.
+
+## …and then we kept building on it, which is the point of archiving honestly
+
+Archiving a roadmap closes a plan, not the code. Three studio changes landed
+after the file was archived, and none of them wanted a roadmap.
+
+**The sidebar's right-click menu was opening near the middle of the window.**
+The cause is worth writing down because it will recur: `.ic-home .ic-panel`
+carries `backdrop-filter: blur(10px)` — the frosted treatment the smoke shader
+reads through — and **`backdrop-filter` makes an element a containing block for
+`position: fixed` descendants**. So the menu's viewport coordinates were being
+resolved against the Studio panel's box instead of the window. Rather than
+hardcode "subtract the panel", which breaks the moment a transform appears
+anywhere in the tree, the hook now parks itself at 0,0, measures where that
+actually lands, and works from the delta — correct whichever ancestor wins. It
+anchors to the row now: top-aligned, just off the right edge, flipping left at
+the window edge and closing on scroll rather than pointing at the wrong file.
+
+**Two verbs joined Delete.** *Info* — a modal with the path on disk (rendered
+`select-all`, since the path is the useful part), size, length and format, all
+from the `afinfo` header probe so a 40-minute recording answers as fast as a
+chime. *Add to new mix* — one gesture: a new arrangement named after the source,
+the source already on its first track, opened. What appears is decided
+server-side per row, so an arrangement (a list of references, not audio) offers
+only Delete, and a built-in chime is the mirror case.
+
+## "Audio" was doing two jobs, so the arrangement became a mix
+
+An imported `.wav` is audio too, which made "add this audio to that audio" a
+sentence the UI could not say. A **mix** holds **tracks**, each holding
+**clips** — one word per thing. `StudioAudio` → `StudioMix`, the `:audio` kind
+and `"audio:"` ids with it, and **Add clip moved to the top** of the mix panel,
+because it is how a mix starts and everything below it is the result of using
+it. *Import audio* kept its name: that one really is audio.
+
+**The disk format moved too, reversing 08-01's call.** v1 said `tracks/`,
+`.track.json`, `"lanes"` — the words of the *first* naming — and was left alone
+in the previous rename on the grounds that these files are hand-editable and may
+already exist. A second rename changed the calculus: the cost was no longer one
+stale word but **three vocabularies in one system** (disk saying lanes, code
+saying tracks, UI saying mix), which is how a hand-editable format stops being
+hand-editable. So v2 is `mixes/.mix.json/"tracks"`, and the original promise is
+kept a different way — `migrate_v1/0` folds the old directory in with the house
+merge-don't-clobber posture, `from_map/2` reads `"lanes"` forever, and the next
+save rewrites as v2. Nothing is orphaned.
+
+## The rename killed the right-click menu, and the suite did not notice
+
+The sweep covered the `.ex` files and not the JavaScript. It renamed
+`data-ctx-new-audio` to `data-ctx-new-mix` in the markup while the hook kept
+querying the old name — `querySelector` returned null, and the TypeError thrown
+in `mounted()` took down the **whole hook**, `contextmenu` listener included. Not
+one broken item: no menu at all.
+
+**The suite stayed green through it**, because every menu test drives the server
+half via `render_hook`, which fabricates the event and never touches the JS. The
+markup-to-JS contract had no test, so a rename could sever it silently.
+
+Guarded two ways. The hook degrades now — a missing node becomes an inert
+stand-in, so the next mismatch costs one item rather than the feature. And a
+lockstep test reads the hook and asserts every `data-ctx` selector it queries
+exists in the rendered markup, and every event it pushes has a `handle_event` on
+the component — the same idiom as the workspace registry guard. Verified by
+breaking it on purpose; it fails naming the offending selector.
+
+**Worth recording plainly:** the operator caught this, not the tests, and it is
+the second JS/server boundary to slip through in two days (the `phx-target`
+crash was the other, though that one at least failed loudly). Anything changed
+by sweep deserves a look in the real app before it is called done.
