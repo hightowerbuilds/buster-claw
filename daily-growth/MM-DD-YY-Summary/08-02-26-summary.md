@@ -192,3 +192,67 @@ breaking it on purpose; it fails naming the offending selector.
 the second JS/server boundary to slip through in two days (the `phx-target`
 crash was the other, though that one at least failed loudly). Anything changed
 by sweep deserves a look in the real app before it is called done.
+
+## Rename, and the things that have to move with a file
+
+Rename joined the right-click menu on the same permission as delete: it is your
+file or it isn't. The menu becomes the field in place, Finder-style — Enter
+commits, Escape abandons, and commit is on **keydown rather than blur**, because
+renaming on a stray click somewhere else is a destructive thing to do by
+accident. No `prompt()`, for the same reason there is no `confirm()`: it would
+block the webview's event loop.
+
+**The interesting half is not the rename, it is everything pointing at the
+file.** A mix clip stores a catalog id (`"import:cut.wav"`), never a path —
+which is exactly what lets a mix survive its sources being re-edited, and
+exactly what a rename could orphan. So `StudioMix.retarget/2` repoints every
+clip across every saved mix and the note says how many followed;
+`Sound.rename/2` repoints event routing the way `delete/1` prunes it, because a
+rename must not silently unhook a notification; and a mix's name — which lives
+in the filename *and* inside the file — moves in both places.
+
+One consequence is the point rather than a side effect: workspace sounds
+override bundled chimes **by basename**, so renaming your `confirm.wav` to
+`doorbell.wav` stops it overriding confirm and the built-in comes back. Pinned
+by test, because it will read as a bug to whoever meets it first.
+
+**Two guardrails the existing code taught us.** The extension is never the
+user's to change — typing `sneaky.txt` over a `.wav` yields `sneaky.wav` — so a
+rename cannot change what kind of file something is. And the emptiness check has
+to be on the **request**, not the sanitized result: `Music.safe_name/1`
+substitutes `"track"` for anything that reduces to nothing, so a check on its
+output can never fire. `StudioMix.safe_mix_name/1` documents that exact trap in
+a comment, and the test caught this session walking into it anyway.
+
+## The sidebar folds, and remembers
+
+Five groups down the left and usually one of them matters. Each heading is the
+hinge — the whole width, not a caret — with a rotating marker and a count that
+stays visible, because collapsed, the count *is* the summary: "Music 47".
+
+**Where the state lives was the only real decision.** Part V landmine 2: the
+Home sub-tab renders behind an `:if`, which REMOVES the component and everything
+it owns. So the collapsed set sits in `StatusLive` beside the selection, the
+trim, and the undo stacks — a sidebar that re-expands on every glance at Chat is
+not collapsible, it is briefly tidy. Then it is persisted to Settings as well,
+because one that re-expands on restart is a preference the app keeps forgetting.
+There is a test for each: switch tabs and come back, and mount fresh.
+
+Three smaller calls, each borrowed from something that solved the problem first:
+
+- The stored state is the **collapsed** set, so a group added later starts open
+  and this code never needs the full roster.
+- The list is **filtered against the roster on read** — `Sound.sound_map/0`'s
+  posture — so a group we stop shipping cannot leave a key behind forever, and a
+  hand-edited settings row cannot introduce one. An empty set deletes the row
+  rather than storing `"[]"`.
+- A folded group renders **no rows at all** rather than hiding them with CSS.
+  The rows carry the right-click menu's data attributes, and a hidden row is
+  still a row the menu could open for a file you cannot see.
+
+`group_keys/0` is new and deliberately cheap, because `groups/0` reads four
+directories and the telephony table — far too much work to answer "is this a
+real group?". A lockstep test asserts the two agree, since they are two
+statements of one fact.
+
+At close: 2,139 tests green, credo strict clean, everything on `main`.
