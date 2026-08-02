@@ -181,6 +181,67 @@ defmodule BusterClaw.Commands.AgentRuns do
 
   def agent_run_stop(_args), do: {:error, :missing_id}
 
+  @doc """
+  Finish a run **successfully**: `agent_working → done`, and shut its browser
+  window down the way `agent_run_stop` does.
+
+  This is the verb an agent needs to end its own errand. Without it the only
+  terminal state reachable from this surface was `stopped` — a halt — so a run
+  that had actually completed its task either sat in `agent_working` forever
+  (holding its leased Chromium session open, and the browse tab's banner with
+  it) or got recorded as interrupted. The 07-25 field test hit exactly this:
+  *"Final mode: `stopped` — not `done`."*
+
+  Also legal from `awaiting_human`, which the `Mode` machine allows for the
+  case the handoff was the last step — the human did the manual part and the
+  errand is over without the agent taking the wheel back. Finishing is a
+  *mode* transition and nothing more: it writes no ledger entry and claims no
+  purchase. A commerce run whose cart should be receipted goes through
+  `Commerce.confirm_purchase/2` instead, which captures the confirmation page
+  and returns a receipt (and then completes the run itself).
+  """
+  def agent_run_finish(%{"id" => id}) when is_binary(id) and id != "" do
+    with {:ok, run} <- lookup(id) do
+      case AgentMode.complete(run) do
+        {:ok, mode} ->
+          stop_session(AgentMode.session(run))
+          {:ok, %{run_id: id, mode: mode}}
+
+        # Already terminal, or still idle. Naming the mode is the useful reply:
+        # the caller's next move differs for `done` (nothing to do) and
+        # `stopped` (it was halted out from under you).
+        {:error, :invalid_transition} ->
+          {:error, {:not_finishable, safe_mode(run)}}
+
+        other ->
+          other
+      end
+    end
+  end
+
+  def agent_run_finish(_args), do: {:error, :missing_id}
+
+  @doc """
+  Take the wheel back after a handoff: `awaiting_human → agent_working`.
+
+  The payment handoff (and the human's own "take the wheel") was a one-way
+  door from this surface — the GUI had a Resume button, the command surface
+  had nothing — so an agent that handed off could only sit there or stop.
+  Since `agent_working` is the *only* mode that permits acting, that left the
+  run unable to do anything at all.
+  """
+  def agent_run_resume(%{"id" => id}) when is_binary(id) and id != "" do
+    with {:ok, run} <- lookup(id) do
+      case AgentMode.resume(run) do
+        {:ok, mode} -> {:ok, %{run_id: id, mode: mode}}
+        {:error, :invalid_transition} -> {:error, {:not_resumable, safe_mode(run)}}
+        other -> other
+      end
+    end
+  end
+
+  def agent_run_resume(_args), do: {:error, :missing_id}
+
   # ── internals ───────────────────────────────────────────────────────────────
 
   defp lookup(id) do

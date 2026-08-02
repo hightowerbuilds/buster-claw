@@ -27,6 +27,7 @@ defmodule BusterClawWeb.BrowseLive do
   use BusterClawWeb, :live_view
 
   alias BusterClaw.BrowserControl.AgentMode
+  alias BusterClaw.BrowserControl.AgentMode.Mode
   alias BusterClaw.BrowserControl.AgentMode.Trajectory
   alias BusterClaw.BrowserControl.Commerce
   alias BusterClaw.BrowserControl.Commerce.Cart
@@ -53,6 +54,7 @@ defmodule BusterClawWeb.BrowseLive do
      |> assign(:initial_url, initial_url || "")
      |> assign(:surface_id, surface_id)
      |> assign(:confirmation, "")
+     |> assign(:agent_dismissed, nil)
      |> load_agent()}
   end
 
@@ -67,6 +69,23 @@ defmodule BusterClawWeb.BrowseLive do
 
   def handle_event("agent_resume", _params, socket), do: run_call(socket, &AgentMode.resume/1)
   def handle_event("agent_stop", _params, socket), do: run_call(socket, &AgentMode.stop_run/1)
+
+  # The human's own "that's finished". `Mode` has always allowed
+  # `awaiting_human → done`, for the case where the handoff WAS the last step —
+  # they paid, or they decided not to, and either way the errand is over. Until
+  # now nothing called it: the only human exit from a handoff was Stop, which
+  # records a completed errand as halted.
+  def handle_event("agent_finish", _params, socket), do: run_call(socket, &AgentMode.complete/1)
+
+  # Clear a finished run's banner. The run stays registered (its trajectory is
+  # the receipt); this is a view-level dismissal, so a NEW run — a different
+  # run_id — shows up regardless of what was dismissed before.
+  def handle_event("agent_dismiss", _params, socket) do
+    case socket.assigns.agent_run do
+      %{run_id: run_id} -> {:noreply, socket |> assign(:agent_dismissed, run_id) |> load_agent()}
+      _none -> {:noreply, socket}
+    end
+  end
 
   # Raises the engine's own window. Deliberately not a mode change: the mirror
   # cannot show native dialogs and must not take payment details, so "go look at
@@ -116,7 +135,15 @@ defmodule BusterClawWeb.BrowseLive do
   # Project the newest registered run into assigns. Every read is exit-safe:
   # a run dying between the registry read and the call is "no run", not a crash.
   defp load_agent(socket) do
-    run = AgentMode.list_runs() |> Enum.reject(&(&1.mode == :gone)) |> List.first()
+    # A live run always outranks a finished one. Runs stay registered after they
+    # terminate (the trajectory is the receipt), and taking the newest
+    # unconditionally meant one dead run pinned the tab in Agent Mode forever —
+    # with its own Stop button hidden, because that only renders while the run
+    # is still live. Prefer something actually running; fall back to the newest
+    # terminal run so the outcome is visible until dismissed.
+    runs = AgentMode.list_runs() |> Enum.reject(&(&1.mode == :gone))
+    live = Enum.find(runs, &(not Mode.terminal?(&1.mode)))
+    run = live || Enum.find(runs, &(&1.run_id != socket.assigns[:agent_dismissed]))
 
     if run do
       steps = safe(fn -> run.pid |> AgentMode.trajectory() |> Trajectory.steps() end) || []
@@ -217,6 +244,17 @@ defmodule BusterClawWeb.BrowseLive do
             >
               Resume agent
             </button>
+            <%!-- The human's "that's finished" — the handoff was the last step.
+                 Without it, Stop was the only way out of a handoff, and a
+                 completed errand got recorded as halted. --%>
+            <button
+              :if={@agent_run.mode == :awaiting_human}
+              type="button"
+              phx-click="agent_finish"
+              class="rounded-xs border-2 border-success/50 px-2 py-0.5 font-mono text-[11px] font-bold uppercase text-success transition hover:border-success"
+            >
+              Done
+            </button>
             <button
               :if={@agent_run.mode in [:idle, :agent_working, :awaiting_human]}
               type="button"
@@ -224,6 +262,16 @@ defmodule BusterClawWeb.BrowseLive do
               class="rounded-xs border-2 border-error/50 px-2 py-0.5 font-mono text-[11px] font-bold uppercase text-error transition hover:border-error"
             >
               Stop
+            </button>
+            <%!-- A terminal run has no controls left, so without this the banner
+                 is a dead end that holds the tab in Agent Mode. --%>
+            <button
+              :if={Mode.terminal?(@agent_run.mode)}
+              type="button"
+              phx-click="agent_dismiss"
+              class="rounded-xs border-2 border-base-content/30 px-2 py-0.5 font-mono text-[11px] font-bold uppercase transition hover:border-primary"
+            >
+              Dismiss
             </button>
           </div>
         </div>

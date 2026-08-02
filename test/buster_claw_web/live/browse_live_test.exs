@@ -79,6 +79,45 @@ defmodule BusterClawWeb.BrowseLiveTest do
       refute html =~ "agent-mode-rail"
     end
 
+    # A terminal run used to pin the tab in Agent Mode forever: the banner took
+    # the newest registered run unconditionally, runs stay registered after they
+    # end, and every control hides itself once terminal — a dead end with no way
+    # out but a restart.
+    test "a finished run can be dismissed, and never outranks a live one", %{conn: conn} do
+      done = start_run()
+      {:ok, view, _html} = live(conn, "/browse")
+
+      html = render_click(view, "agent_stop", %{})
+      assert html =~ "STOPPED"
+
+      html = render_click(view, "agent_dismiss", %{})
+      refute html =~ "agent-mode-banner"
+      # Dismissing is a view concern — the trajectory is still there to inspect.
+      assert AgentMode.mode(done) == :stopped
+
+      # And a live run always wins over a terminal one, dismissed or not.
+      live_run = start_run()
+      _ = :sys.get_state(view.pid)
+      html = render(view)
+      assert html =~ "agent-mode-banner"
+      assert html =~ "AGENT WORKING"
+      assert AgentMode.mode(live_run) == :agent_working
+    end
+
+    test "the human can mark a handoff done without resuming the agent", %{conn: conn} do
+      pid = start_run(true)
+      {:ok, view, _html} = live(conn, "/browse")
+
+      {:handoff, :payment, _meta} = AgentMode.navigate(pid, "https://shop.com/checkout")
+      _ = :sys.get_state(view.pid)
+
+      # Stop was the only exit from a handoff, so an errand the human finished
+      # themselves got recorded as halted.
+      html = render_click(view, "agent_finish", %{})
+      assert html =~ "DONE"
+      assert AgentMode.mode(pid) == :done
+    end
+
     test "an active run switches the tab: banner, mode, live trajectory", %{conn: conn} do
       pid = start_run()
       {:ok, view, html} = live(conn, "/browse")

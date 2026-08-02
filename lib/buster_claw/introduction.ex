@@ -382,8 +382,19 @@ defmodule BusterClaw.Introduction do
     agent_run_act      {"id": "...", "action": "click|fill|extract|read|find_elements|wait", ...}
     agent_run_cart     {"id": "...", "items": [{"name","unit_cents","qty"}]}
     agent_run_status   {"id": "..."}          # safe tier — check it freely
-    agent_run_stop     {"id": "..."}
+    agent_run_resume   {"id": "..."}          # take the wheel back after a handoff
+    agent_run_finish   {"id": "..."}          # the errand succeeded — END HERE
+    agent_run_stop     {"id": "..."}          # abandon it: halted, not finished
     ```
+
+    **Every run you start, you must end.** `agent_run_finish` when the errand is
+    done, `agent_run_stop` when you are giving up on it. They are not
+    interchangeable: `stop` records the run as halted, which is a lie if the task
+    actually succeeded. A run you simply stop calling stays in `agent_working`
+    forever — holding a real Chromium window open and the browse tab pinned in
+    Agent Mode — because nothing else can decide on your behalf that you are
+    finished. Finish it even when the answer is "the thing I was sent for isn't
+    there"; that errand is complete, it just found nothing.
 
     What the guardrails actually do, so you can work with them instead of
     against them:
@@ -397,6 +408,11 @@ defmodule BusterClaw.Introduction do
       becomes `result: "handoff"` carrying the frozen cart, the run waits in
       `awaiting_human`, and **the user pays in the real window and confirms in
       the app**. You cannot confirm a purchase; do not try, and do not offer to.
+    - **While the run waits in `awaiting_human`, your hands are off.** Acting is
+      legal in exactly one mode, so every `act`/`navigate` comes back
+      `not_acting` until either the human confirms in the app or you call
+      `agent_run_resume` — which you should only do when the errand genuinely has
+      more agent work after the manual step, not to hurry a human along.
     - **Build the cart with `agent_run_cart` as you shop.** What the human is
       shown at the handoff is exactly what the ledger may bill, so the cart must
       match the site's subtotal to the cent before you hand off.

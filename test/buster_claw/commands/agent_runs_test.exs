@@ -244,6 +244,77 @@ defmodule BusterClaw.Commands.AgentRunsTest do
     assert Commands.command_tier("agent_run_start") == :restricted
     assert Commands.command_tier("agent_run_status") == :safe
     assert Commands.command_tier("agent_run_stop") == :restricted
+    assert Commands.command_tier("agent_run_finish") == :restricted
+    assert Commands.command_tier("agent_run_resume") == :restricted
     refute Commands.command_gated?("agent_run_start")
+  end
+
+  # The 07-25 field test's "Final mode: stopped — not done": there was no verb
+  # for finishing, so a completed errand could only be halted, and a run that
+  # simply stopped calling sat in agent_working forever holding its session.
+  describe "finishing a run" do
+    test "finish ends the run as done and shuts its session down", %{session: session} do
+      started = start!()
+      run = AgentMode.whereis(started.run_id)
+
+      assert {:ok, %{mode: :done}} = Commands.agent_run_finish(%{"id" => started.run_id})
+      assert AgentMode.mode(run) == :done
+
+      # Done is terminal and non-acting, exactly like stopped — and the browser
+      # window does not outlive the errand.
+      assert {:error, {:not_acting, :done}} = AgentMode.navigate(run, "https://example.com/")
+      refute Process.alive?(session)
+    end
+
+    test "a handoff can be finished by the human's side without resuming" do
+      started = start!(%{"commerce" => true, "domains" => ["shop.com"]})
+      run = AgentMode.whereis(started.run_id)
+      {:ok, :awaiting_human} = AgentMode.request_human(run, "pay")
+
+      assert {:ok, %{mode: :done}} = Commands.agent_run_finish(%{"id" => started.run_id})
+    end
+
+    test "finishing twice names the mode rather than pretending" do
+      started = start!()
+      assert {:ok, %{mode: :done}} = Commands.agent_run_finish(%{"id" => started.run_id})
+
+      assert {:error, {:not_finishable, :done}} =
+               Commands.agent_run_finish(%{"id" => started.run_id})
+    end
+
+    test "typed refusals" do
+      assert {:error, :missing_id} = Commands.agent_run_finish(%{})
+      assert {:error, :run_not_found} = Commands.agent_run_finish(%{"id" => "nope"})
+    end
+  end
+
+  describe "resuming after a handoff" do
+    test "resume returns the wheel to the agent, which can then act again" do
+      started = start!(%{"commerce" => true, "domains" => ["shop.com"]})
+      run = AgentMode.whereis(started.run_id)
+      {:ok, :awaiting_human} = AgentMode.request_human(run, "pay")
+
+      # Only agent_working acts, so a handoff with no resume verb was a run that
+      # could do nothing at all from this surface.
+      assert {:error, {:not_acting, :awaiting_human}} = AgentMode.act(run, :read, %{})
+
+      assert {:ok, %{mode: :agent_working}} =
+               Commands.agent_run_resume(%{"id" => started.run_id})
+
+      assert {:ok, _result} =
+               Commands.agent_run_act(%{"id" => started.run_id, "action" => "read"})
+    end
+
+    test "resume refuses when the run was not awaiting anyone" do
+      started = start!()
+
+      assert {:error, {:not_resumable, :agent_working}} =
+               Commands.agent_run_resume(%{"id" => started.run_id})
+    end
+
+    test "typed refusals" do
+      assert {:error, :missing_id} = Commands.agent_run_resume(%{})
+      assert {:error, :run_not_found} = Commands.agent_run_resume(%{"id" => "nope"})
+    end
   end
 end

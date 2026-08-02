@@ -401,6 +401,22 @@ defmodule BusterClaw.Commands.Catalog.Web do
         args: %{"id" => %{type: :string, required: true}}
       },
       %{
+        name: "agent_run_finish",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Finish an Agent Mode run successfully (mode becomes \"done\") and shut down its browser window. This is how a run ENDS when the task is complete — agent_run_stop means halted, not finished. Call it when the errand is done; a commerce run needing a receipt uses the purchase confirmation instead.",
+        args: %{"id" => %{type: :string, required: true}}
+      },
+      %{
+        name: "agent_run_resume",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Take the wheel back after a handoff: an Agent Mode run waiting on the human returns to \"agent_working\", the only mode in which the agent may act.",
+        args: %{"id" => %{type: :string, required: true}}
+      },
+      %{
         name: "browser_check_run",
         type: :mutate,
         tier: :restricted,
