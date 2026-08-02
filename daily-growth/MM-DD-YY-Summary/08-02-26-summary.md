@@ -435,10 +435,54 @@ of it.
 
 ---
 
+## The same cut, applied to the money math
+
+The next target by size was `SoundStudioComponent` at 1,933 lines. I measured it
+and picked something smaller instead: 826 of those lines are a *single template*,
+so extracting there buys legibility and no correctness. `Portfolio` is 1,023
+lines, and what is tangled inside it is the arithmetic that decides what your
+account is worth.
+
+Classifying every function as I/O-touching or not made the seam obvious —
+`gain_series/1` turns out to be four lines of fetch wrapped around pure math:
+
+```elixir
+account_key
+|> series()
+|> Enum.map(&%{day: &1.captured_on, value_cents: &1.value_cents})
+|> build_gain_series(flows_by_day(flows(account_key)))
+```
+
+About 110 lines of that math were pure, all `defp`, all with **zero external
+callers** — so the move cost nothing at the boundary. `BusterClaw.Portfolio.Returns`
+now owns three pieces of arithmetic, each of which exists because a naive
+version would quietly lie: gain measured *around* flows so a deposit never reads
+as a return; the ratio-and-floor test that flags a day that moved like a
+transfer; and the splice that joins the broker's realized history to our own
+recording without counting the overlap twice.
+
+**21 tests, 0.2 seconds** — and every one of them was previously reachable only
+by writing snapshot rows first. A $50 deposit that must net to zero gain. A
+withdrawal added back rather than counted as a loss. A flow landing inside a
+*recording gap* subtracted exactly once. The half-open window, where a flow
+dated on the previous reading belongs to that reading and not the next one. The
+documented limit — $1,000 into a $200,000 account is 0.5% and will never be
+flagged. And a seam between the two measures that is continuous rather than a
+cliff.
+
+One deliberate difference from the Trading extraction: there the new module is
+`import`ed, so template call sites stay byte-identical. Here the calls are
+written out — `Returns.build_gain_series(…)` — because in a domain module the
+whole point is that the dependency direction is *visible*.
+
+`portfolio.ex`: **1,023 → 918 lines.**
+
+---
+
 ## At close
 
-**Suite: 2,180 tests, 0 failures** (2,143 + 37 new), credo strict clean, format
-clean, Rust 29 + 5 lockstep green.
+**Suite: 2,201 tests, 0 failures** (2,143 + 37 + 21 new), credo strict clean,
+format clean, Rust 29 + 5 lockstep green.
 
 **The day's last lesson is about reading.** A roadmap arrived with every number
 correct and three conclusions wrong, and the only way to tell was to run the
@@ -450,8 +494,8 @@ stopped a shift.
 
 Earlier in the day the suite sat at 2,143 — verified across five consecutive
 runs and two precommits, because that stretch ended on an intermittent failure
-and one green run would not have meant anything. The 37 added since are the
-Trading extraction's.
+and one green run would not have meant anything. The 58 added since are the two
+purity extractions'.
 
 **Two roadmaps archived, two written.** `roadmaps/` now holds five live
 documents — `LAUNCH_ROADMAP`, `BROWSER_CLOSEOUT_ROADMAP`,
@@ -468,5 +512,5 @@ work, not a question.
 because they are the same lesson: the right-click menu that a rename killed
 silently, the header-probe bug found by importing a real 20-minute file, the
 RateLimiter crasher that a failure *count* actively pointed away from, and a
-Ctrl-C handler that has never once fired. The suite is 2,180 tests strong and
+Ctrl-C handler that has never once fired. The suite is 2,201 tests strong and
 none of the four was its idea.

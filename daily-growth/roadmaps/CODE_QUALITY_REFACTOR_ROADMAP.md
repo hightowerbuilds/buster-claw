@@ -581,8 +581,41 @@ domain modules.
 > Re-measure before scheduling any of it; after this pass the file may not
 > warrant it.
 >
-> Untouched and still open: `BusterClaw.Trading` (1,270) and `BusterClaw.Portfolio`
-> (1,023). The same purity-first question should be asked of each before
+> ### ALSO SHIPPED 08-02 — `BusterClaw.Portfolio`, same method. **Done; skip it.**
+>
+> Chosen over the larger `SoundStudioComponent` (1,933) deliberately: 826 of that
+> file's lines are a *single template*, so extracting it buys legibility and no
+> correctness. Portfolio is the money math.
+>
+> The seam was already there and visible once measured — `gain_series/1` is a
+> four-line fetch-then-compute wrapper over pure arithmetic. Classifying every
+> function as I/O-touching or not found ~110 lines of pure math, **all `defp`,
+> all with zero external callers**, so the move cost nothing at the boundary.
+>
+> - **`BusterClaw.Portfolio.Returns`** (new, 157 lines) — `build_gain_series/2`
+>   (gain measured *around* flows, so a deposit never reads as a return),
+>   `anomalous?/1` (the ratio-and-floor transfer test), `join_series/2` (splices
+>   the broker's realized history onto our own recording without double-counting
+>   the overlap, and offsets the recorded segment so the seam is continuous),
+>   plus `flows_by_day/1` and the private helpers each depends on.
+> - **`test/buster_claw/portfolio/returns_test.exs`** (new) — **21 tests in 0.2s**,
+>   previously reachable only by writing snapshot rows first. Covers the cases
+>   that would be silent lies if wrong: a deposit netted to zero gain, a
+>   withdrawal added back, a flow landing inside a recording *gap* subtracted
+>   exactly once, the half-open window at the previous reading, the documented
+>   $1,000-into-$200,000 detection limit, and a seam that is continuous rather
+>   than a cliff.
+>
+> `portfolio.ex`: **1,023 → 918 lines.** Call sites are explicitly qualified
+> (`Returns.build_gain_series(…)`) rather than imported — unlike the LiveView
+> case, here the point is that the dependency direction is *visible*.
+>
+> Verified: format clean, credo strict clean, **2,201 tests / 0 failures**.
+>
+> Untouched and still open: `BusterClaw.Trading` (1,270 — two big prompt heredocs
+> plus parsers over untrusted model output; `Prompts` and `Parsers` are the
+> obvious cheap extractions) and `SoundStudioComponent` (1,933 — a template
+> decomposition job, not a purity one). Ask the purity question of each before
 > accepting the module trees below.
 
 Recommended extraction:
@@ -826,7 +859,10 @@ complexity without reducing it.
 
 - **Phase 3A, `TradingLive` purity pass** — see the SHIPPED block in 3A.
   3,503 → 2,346 lines; `TradingView` + `TradingAccountCard` extracted; 37 new
-  unit tests. Suite 2,180/0.
+  unit tests.
+- **Phase 3A, `Portfolio` purity pass** — 1,023 → 918 lines;
+  `Portfolio.Returns` extracted (the gain arithmetic); 21 new unit tests.
+  Suite 2,201/0.
 
 **Verified-and-dismissed** (do not spend time here):
 

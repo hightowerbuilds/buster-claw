@@ -57,6 +57,7 @@ defmodule BusterClaw.Portfolio do
   alias BusterClaw.Portfolio.Flow
   alias BusterClaw.Portfolio.PositionCost
   alias BusterClaw.Portfolio.RealizedPoint
+  alias BusterClaw.Portfolio.Returns
   alias BusterClaw.Portfolio.Snapshot
   alias BusterClaw.Repo
   alias BusterClaw.Settings
@@ -423,7 +424,7 @@ defmodule BusterClaw.Portfolio do
     account_key
     |> series()
     |> Enum.map(&%{day: &1.captured_on, value_cents: &1.value_cents})
-    |> build_gain_series(flows_by_day(flows(account_key)))
+    |> Returns.build_gain_series(Returns.flows_by_day(flows(account_key)))
   end
 
   @doc """
@@ -447,58 +448,12 @@ defmodule BusterClaw.Portfolio do
 
     flows =
       all_flows()
-      |> flows_by_day()
+      |> Returns.flows_by_day()
       |> Map.merge(entering, fn _day, flow, entering -> flow + entering end)
 
     points
     |> Enum.map(&%{day: &1.day, value_cents: &1.value_cents})
-    |> build_gain_series(flows)
-  end
-
-  defp flows_by_day(flows) do
-    Enum.reduce(flows, %{}, fn flow, acc ->
-      Map.update(acc, flow.occurred_on, flow.amount_cents, &(&1 + flow.amount_cents))
-    end)
-  end
-
-  defp build_gain_series([], _flows), do: []
-
-  defp build_gain_series([first | rest], flows) do
-    initial = %{
-      day: first.day,
-      value_cents: first.value_cents,
-      gain_cents: nil,
-      flow_cents: Map.get(flows, first.day, 0),
-      cumulative_cents: 0
-    }
-
-    {points, _} =
-      Enum.map_reduce(rest, initial, fn point, prev ->
-        flow_cents = flow_between(flows, prev.day, point.day)
-        gain = point.value_cents - prev.value_cents - flow_cents
-
-        current = %{
-          day: point.day,
-          value_cents: point.value_cents,
-          gain_cents: gain,
-          flow_cents: flow_cents,
-          cumulative_cents: prev.cumulative_cents + gain
-        }
-
-        {current, current}
-      end)
-
-    [initial | points]
-  end
-
-  # Flows in (prev, day] — see gain_series/1 for why the window is half-open.
-  defp flow_between(flows, prev_day, day) do
-    flows
-    |> Enum.filter(fn {flow_day, _cents} ->
-      Date.compare(flow_day, prev_day) == :gt and Date.compare(flow_day, day) != :gt
-    end)
-    |> Enum.map(fn {_day, cents} -> cents end)
-    |> Enum.sum()
+    |> Returns.build_gain_series(flows)
   end
 
   # ---------------------------------------------------------------------------
@@ -509,10 +464,9 @@ defmodule BusterClaw.Portfolio do
   Days whose value moved enough to look like a transfer and that haven't been
   accounted for yet — the input to the panel's "was that a transfer?" prompt.
 
-  A day is flagged when its raw change is at least `@anomaly_ratio` of the
-  previous value **and** at least `@anomaly_floor_cents` in absolute terms. The
-  floor exists because a percentage alone would flag every ordinary wobble in a
-  small account.
+  The ratio-and-floor test itself is `Returns.anomalous?/1`; this function is
+  the query around it — which days are already accounted for by a marked flow,
+  and therefore are not worth asking about again.
 
   ## The honest limit
 
@@ -530,19 +484,8 @@ defmodule BusterClaw.Portfolio do
     |> Enum.filter(fn point ->
       not is_nil(point.gain_cents) and
         not MapSet.member?(accounted, point.day) and
-        anomalous?(point)
+        Returns.anomalous?(point)
     end)
-  end
-
-  @anomaly_ratio 0.2
-  @anomaly_floor_cents 10_000
-
-  defp anomalous?(%{gain_cents: gain, value_cents: value}) do
-    magnitude = abs(gain)
-    previous = value - gain
-
-    magnitude >= @anomaly_floor_cents and previous > 0 and
-      magnitude / previous >= @anomaly_ratio
   end
 
   @doc """
@@ -906,7 +849,7 @@ defmodule BusterClaw.Portfolio do
   """
   def cumulative_series(account_key) when is_binary(account_key) do
     recorded = gain_series(account_key)
-    join_series(realized_points(account_key), recorded)
+    Returns.join_series(realized_points(account_key), recorded)
   end
 
   @doc """
@@ -918,60 +861,8 @@ defmodule BusterClaw.Portfolio do
   buckets, so accounts whose months don't align still add up correctly.
   """
   def total_cumulative_series do
-    join_series(merged_realized_points(), total_gain_series())
+    Returns.join_series(merged_realized_points(), total_gain_series())
   end
-
-  defp join_series(points, recorded) do
-    seam = recorded |> List.first() |> then(&(&1 && &1.day))
-
-    realized =
-      points
-      |> drop_from_seam(seam)
-      |> Enum.scan(0, fn point, running -> running + realized_cents_of(point) end)
-      |> Enum.zip(drop_from_seam(points, seam))
-      |> Enum.map(fn {cumulative, point} ->
-        %{
-          day: bucket_day(point),
-          cumulative_cents: cumulative,
-          measure: :realized,
-          gain_cents: realized_cents_of(point),
-          value_cents: nil,
-          flow_cents: 0
-        }
-      end)
-
-    offset = realized |> List.last() |> then(&((&1 && &1.cumulative_cents) || 0))
-
-    recorded_points =
-      Enum.map(recorded, fn point ->
-        %{
-          day: point.day,
-          cumulative_cents: offset + point.cumulative_cents,
-          measure: :recorded,
-          gain_cents: point.gain_cents,
-          value_cents: point.value_cents,
-          # Carried through so the chart can MARK the day. A deposit that was
-          # netted out of the gain is invisible in the line by design; a reader
-          # who can't see it was there has no way to check the arithmetic.
-          flow_cents: Map.get(point, :flow_cents, 0)
-        }
-      end)
-
-    realized ++ recorded_points
-  end
-
-  # Buckets starting on or after the seam belong to the recorded segment's
-  # window; keeping them would count the same days twice.
-  defp drop_from_seam(points, nil), do: points
-
-  defp drop_from_seam(points, seam),
-    do: Enum.filter(points, &(Date.compare(bucket_day(&1), seam) == :lt))
-
-  defp bucket_day(%RealizedPoint{bucket_on: day}), do: day
-  defp bucket_day(%{day: day}), do: day
-
-  defp realized_cents_of(%RealizedPoint{realized_cents: cents}), do: cents
-  defp realized_cents_of(%{realized_cents: cents}), do: cents
 
   # Every account's realized history merged onto one timeline. At each date the
   # total is the sum of each account's most recent cumulative — a step function,
