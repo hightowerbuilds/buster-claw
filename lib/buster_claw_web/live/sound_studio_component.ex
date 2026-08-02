@@ -410,6 +410,28 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   def handle_event("new_mix_from_source", _params, socket), do: {:noreply, socket}
 
+  # Rename. The file moves and everything pointing at it moves with it: mix
+  # clips are retargeted, and a sound's event routing is repointed by
+  # `Sound.rename/2`. Renaming something a mix uses must not be a way to break
+  # that mix quietly.
+  def handle_event("rename_source", %{"id" => id, "name" => name}, socket)
+      when is_binary(id) and is_binary(name) do
+    case rename_source(id, name) do
+      {:ok, new_id, note} ->
+        # Follow the thing you renamed — losing your selection to a rename
+        # reads as the app having lost the file.
+        if socket.assigns.selected && socket.assigns.selected.id == id,
+          do: send(self(), {:studio_select, new_id})
+
+        {:noreply, socket |> assign(:groups, groups()) |> assign(:note, {:info, note})}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :note, {:error, rename_error(reason)})}
+    end
+  end
+
+  def handle_event("rename_source", _params, socket), do: {:noreply, socket}
+
   def handle_event("render_mix", _params, socket) do
     mix = socket.assigns.mix
 
@@ -692,6 +714,43 @@ defmodule BusterClawWeb.SoundStudioComponent do
       {:error, _reason} -> nil
     end
   end
+
+  # Each rename returns the new catalog id and the sentence to show. A file
+  # rename also retargets every mix clip that pointed at the old id — the clip
+  # stores a reference, which is what lets a mix survive its sources being
+  # edited and exactly what a rename could otherwise orphan.
+  defp rename_source("import:" <> old, stem), do: retargeting("import:", old, stem, SoundStudio)
+  defp rename_source("music:" <> old, stem), do: retargeting("music:", old, stem, Music)
+  defp rename_source("sound:" <> old, stem), do: retargeting("sound:", old, stem, Sound)
+
+  defp rename_source("mix:" <> old, requested) do
+    case StudioMix.rename(old, requested) do
+      {:ok, new} -> {:ok, "mix:" <> new, "Renamed to #{new}."}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp rename_source(_id, _name), do: {:error, :not_found}
+
+  defp retargeting(prefix, old, stem, module) do
+    case module.rename(old, stem) do
+      {:ok, new} ->
+        moved = StudioMix.retarget(prefix <> old, prefix <> new)
+        {:ok, prefix <> new, "Renamed to #{Path.rootname(new)}." <> mixes_note(moved)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp mixes_note(0), do: ""
+  defp mixes_note(1), do: " One mix follows it."
+  defp mixes_note(n), do: " #{n} mixes follow it."
+
+  defp rename_error(:name_taken), do: "Something is already called that."
+  defp rename_error(:invalid_name), do: "That name has nothing in it."
+  defp rename_error(:not_found), do: "Nothing of yours to rename there."
+  defp rename_error(_other), do: "Couldn't rename that."
 
   defp new_mix_error(:invalid_name), do: "That source's name can't become a mix name."
   defp new_mix_error(:enoent), do: "That file is gone from disk."
@@ -1088,12 +1147,29 @@ defmodule BusterClawWeb.SoundStudioComponent do
         <button type="button" data-ctx-info hidden class={menu_item_class()}>
           Info
         </button>
+        <button type="button" data-ctx-rename hidden class={menu_item_class()}>
+          Rename
+        </button>
         <button type="button" data-ctx-new-mix hidden class={menu_item_class()}>
           Add to new mix
         </button>
         <button type="button" data-ctx-delete hidden class={menu_item_class()}>
           Delete
         </button>
+        <%!-- Rename happens in place: the menu becomes the field, Finder-style.
+              A modal would be a heavier gesture than the edit deserves, and a
+              native prompt() would block the webview's event loop the same way
+              confirm() would. The extension is not shown because it is not
+              editable — renaming must not be able to turn a .wav into a .txt. --%>
+        <input
+          type="text"
+          data-ctx-rename-input
+          hidden
+          aria-label="New name"
+          autocomplete="off"
+          spellcheck="false"
+          class="w-full border-0 bg-base-200 px-3 py-1.5 font-mono text-xs focus:outline-none"
+        />
       </div>
 
       <%!-- Info. A modal rather than a bigger menu: a path is long, and the

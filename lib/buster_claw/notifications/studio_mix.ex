@@ -362,7 +362,7 @@ defmodule BusterClaw.Notifications.StudioMix do
   name actually used, which may carry a `-2` suffix.
   """
   def create(requested) when is_binary(requested) do
-    case safe_audio_name(requested) do
+    case safe_mix_name(requested) do
       {:error, reason} ->
         {:error, reason}
 
@@ -398,6 +398,64 @@ defmodule BusterClaw.Notifications.StudioMix do
     end
   end
 
+  @doc """
+  Rename a saved mix. The name lives in two places — the filename and the
+  `"name"` inside — and both move, because a file whose contents disagree with
+  it is the kind of thing that only surfaces months later.
+  """
+  def rename(name, requested) when is_binary(name) and is_binary(requested) do
+    with true <- exists?(name),
+         {:ok, base} <- safe_mix_name(requested),
+         false <- exists?(base),
+         {:ok, mix} <- load(name),
+         :ok <- save(%{mix | name: base}),
+         :ok <- File.rm(path_for(name)) do
+      {:ok, base}
+    else
+      false -> {:error, :not_found}
+      true -> {:error, :name_taken}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def rename(_name, _requested), do: {:error, :not_found}
+
+  @doc """
+  Repoint every clip that referenced `old_source` at `new_source`, across every
+  saved mix. Returns the number of mixes actually rewritten.
+
+  This is the other half of renaming a *file*. A clip stores a catalog id
+  (`"import:cut.wav"`), never a path — which is what makes a mix survive its
+  sources being re-edited, and exactly what makes a rename able to orphan one.
+  A missing source fails a render loudly and by design; a rename is not a
+  disappearance, so it must not look like one.
+  """
+  def retarget(old_source, new_source) when is_binary(old_source) and is_binary(new_source) do
+    Enum.count(list(), fn name ->
+      with {:ok, mix} <- load(name),
+           true <- Enum.any?(clips(mix), fn {_track, clip} -> clip.source == old_source end) do
+        mix |> replace_source(old_source, new_source) |> save() == :ok
+      else
+        _ -> false
+      end
+    end)
+  end
+
+  defp replace_source(%__MODULE__{tracks: tracks} = mix, old, new) do
+    retargeted =
+      Enum.map(tracks, fn track ->
+        %{
+          track
+          | clips:
+              Enum.map(track.clips, fn clip ->
+                if clip.source == old, do: %{clip | source: new}, else: clip
+              end)
+        }
+      end)
+
+    %{mix | tracks: retargeted}
+  end
+
   @doc "Delete a saved mix. The clips it referenced are untouched."
   def delete(name) when is_binary(name) do
     if exists?(name), do: File.rm(path_for(name)), else: {:error, :not_found}
@@ -411,7 +469,7 @@ defmodule BusterClaw.Notifications.StudioMix do
   # output could never fire, and `"   "` would quietly become a mix called
   # "track". Reusing that sanitizer is still right for everything after: it is
   # the one that already knows how to reduce `../../etc/evil` to a basename.
-  defp safe_audio_name(requested) do
+  defp safe_mix_name(requested) do
     trimmed = String.trim(requested)
 
     if String.match?(trimmed, ~r/[\p{L}\p{N}]/u) do

@@ -21,6 +21,7 @@ defmodule BusterClaw.Notifications.Sound do
   require Logger
 
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.Music
   alias BusterClaw.Settings
 
   @subdir "sounds"
@@ -214,6 +215,70 @@ defmodule BusterClaw.Notifications.Sound do
   all — drop-a-file-in-Finder is a complete customization story.
   """
   def resolve_path(name), do: path_for(name) || bundled_path_for(name)
+
+  @doc """
+  Rename a workspace sound, carrying its routing with it.
+
+  `stem` is the new name without extension; the original extension is kept, so
+  a rename cannot change what kind of file this is. Only the workspace layer is
+  renameable — `path_for/1` returns nil for a bundled-only chime, which is the
+  refusal.
+
+  Two consequences worth knowing, both of them the point rather than side
+  effects. Any event routed to the old name is **repointed** (the mirror of
+  `delete/1`'s prune — a rename should not silently unhook a notification). And
+  because this layer overrides the bundled set **by basename**, renaming
+  `confirm.wav` to `doorbell.wav` stops it overriding `confirm` and makes it a
+  standalone sound: the built-in comes back. That is what renaming an override
+  *means*.
+  """
+  def rename(name, stem) when is_binary(name) and is_binary(stem) do
+    with path when is_binary(path) <- path_for(name),
+         {:ok, new_name} <- renamed(name, stem),
+         :ok <- refuse_taken(new_name),
+         :ok <- File.rename(path, Path.join(dir(), new_name)) do
+      repoint_map_value(name, new_name)
+      {:ok, new_name}
+    else
+      nil -> {:error, :not_found}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def rename(_name, _stem), do: {:error, :not_found}
+
+  # A stem sanitized by Music's sanitizer (shared across every renameable
+  # surface), with the ORIGINAL extension reattached — so a rename can never
+  # change what kind of file this is, and typing "x.txt" over a .wav yields
+  # "x.wav".
+  #
+  # The emptiness check is on the REQUEST, not the sanitized result:
+  # `Music.safe_name/1` substitutes "track" for anything that reduces to
+  # nothing, so a check on its output could never fire and "   " would quietly
+  # become a sound called "track". Same reasoning as `StudioMix.safe_mix_name/1`.
+  def renamed_to(name, stem) do
+    if String.match?(stem, ~r/[\p{L}\p{N}]/u) do
+      ext = Path.extname(name)
+      clean = stem |> String.trim() |> Music.safe_name() |> Path.rootname() |> String.trim()
+      {:ok, clean <> ext}
+    else
+      {:error, :invalid_name}
+    end
+  end
+
+  defp renamed(name, stem), do: renamed_to(name, stem)
+
+  # Collisions refuse rather than auto-suffix: a rename is the user naming a
+  # thing, and quietly handing back `bongos-2.wav` is not what they asked for.
+  defp refuse_taken(new_name) do
+    if new_name in list(), do: {:error, :name_taken}, else: :ok
+  end
+
+  defp repoint_map_value(old, new) do
+    sound_map()
+    |> Map.new(fn {key, value} -> {key, if(value == old, do: new, else: value)} end)
+    |> persist_map()
+  end
 
   @doc "Remove a sound file and any map entries routing to it."
   def delete(name) when is_binary(name) do

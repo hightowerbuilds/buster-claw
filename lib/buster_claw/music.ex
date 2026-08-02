@@ -176,6 +176,29 @@ defmodule BusterClaw.Music do
 
   def path_for(_), do: nil
 
+  @doc """
+  Rename a track, keeping its extension.
+
+  `safe_name/1` is deliberately permissive here (spaces, parentheses,
+  apostrophes survive) because `track_info/1` reads "Artist - Title" out of the
+  filename — so renaming is also how you *fix* a track's displayed artist and
+  title, and a sanitizer that ate the separator would take that away.
+  """
+  def rename(name, stem) when is_binary(name) and is_binary(stem) do
+    with path when is_binary(path) <- path_for(name),
+         {:ok, new_name} <- BusterClaw.Notifications.Sound.renamed_to(name, stem),
+         false <- new_name in list(),
+         :ok <- File.rename(path, Path.join(dir(), new_name)) do
+      {:ok, new_name}
+    else
+      nil -> {:error, :not_found}
+      true -> {:error, :name_taken}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def rename(_name, _stem), do: {:error, :not_found}
+
   @doc "Remove a track from the library."
   def delete(name) when is_binary(name) do
     case path_for(name) do

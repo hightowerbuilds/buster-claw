@@ -27,9 +27,11 @@ export const StudioContextMenu = {
 
     this.items = {
       info: item("[data-ctx-info]"),
+      rename: item("[data-ctx-rename]"),
       newMix: item("[data-ctx-new-mix]"),
       delete: item("[data-ctx-delete]"),
     }
+    this.renameInput = item("[data-ctx-rename-input]")
 
     this.targetId = null
     this.armed = false
@@ -61,8 +63,27 @@ export const StudioContextMenu = {
     window.addEventListener("resize", this.onScroll)
 
     this.items.info.addEventListener("click", () => this.push("source_info"))
+    this.items.rename.addEventListener("click", () => this.startRename())
     this.items.newMix.addEventListener("click", () => this.push("new_mix_from_source"))
     this.items.delete.addEventListener("click", (e) => this.onDelete(e))
+
+    // Enter commits, Escape abandons. Keydown rather than change/blur: a blur
+    // commit renames on a stray click somewhere else, which is a destructive
+    // thing to do by accident.
+    this.renameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault()
+        const value = this.renameInput.value.trim()
+        if (value && value !== this.renameFrom) {
+          this.pushEventTo(this.el, "rename_source", {id: this.targetId, name: value})
+        }
+        this.hide()
+      } else if (e.key === "Escape") {
+        e.preventDefault()
+        e.stopPropagation()
+        this.hide()
+      }
+    })
   },
 
   destroyed() {
@@ -77,20 +98,36 @@ export const StudioContextMenu = {
     this.targetId = row.dataset.studioSource
     const label = row.dataset.sourceLabel || this.targetId
     const sourceable = !!row.dataset.sourceable
+    const owned = !!row.dataset.deletable
 
+    this.renameFrom = label
+    this.renameInput.hidden = true
     this.items.info.hidden = !sourceable
     this.items.newMix.hidden = !sourceable
-    this.items.delete.hidden = !row.dataset.deletable
+    // Renaming and deleting are the same permission: it is your file or it
+    // isn't. A built-in chime has nothing of yours to rename either.
+    this.items.rename.hidden = !owned
+    this.items.delete.hidden = !owned
     this.disarm(label)
 
     // Nothing this row can offer — don't flash an empty box at the user.
-    if (this.items.info.hidden && this.items.newMix.hidden && this.items.delete.hidden) {
+    if (Object.values(this.items).every((el) => el.hidden)) {
       this.hide()
       return
     }
 
     this.el.hidden = false
     this.place(row.getBoundingClientRect())
+  },
+
+  // The menu becomes the field. Measuring happens before the swap so the box
+  // does not jump under the cursor as items disappear.
+  startRename() {
+    Object.values(this.items).forEach((el) => (el.hidden = true))
+    this.renameInput.hidden = false
+    this.renameInput.value = this.renameFrom
+    this.renameInput.focus()
+    this.renameInput.select()
   },
 
   // Anchored to the row: top-aligned, just off its right edge.
@@ -140,7 +177,9 @@ export const StudioContextMenu = {
 
   hide() {
     this.el.hidden = true
+    this.renameInput.hidden = true
     this.targetId = null
+    this.renameFrom = null
     this.armed = false
   },
 

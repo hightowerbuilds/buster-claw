@@ -1144,9 +1144,11 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
   end
 
   describe "the sidebar menu's other two verbs" do
-    defp menu_hook(view, event, id) do
-      view |> element("#studio-ctx") |> render_hook(event, %{"id" => id})
+    defp menu_hook(view, event, params) when is_map(params) do
+      view |> element("#studio-ctx") |> render_hook(event, params)
     end
+
+    defp menu_hook(view, event, id), do: menu_hook(view, event, %{"id" => id})
 
     defp import!(root, name, key \\ "chat") do
       dir = Path.join([root, "sounds", "studio"])
@@ -1219,6 +1221,102 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       # And it opens, because making it and then hiding it is not the gesture.
       assert render(view) =~ ~s(phx-value-id="mix:bells")
+    end
+
+    test "renaming an import carries every mix clip with it", %{conn: conn, root: root} do
+      import!(root, "rough.wav")
+      {view, _html} = open_studio(conn)
+
+      # A mix that uses it. The clip stores "import:rough.wav" — a reference,
+      # which is what a rename could orphan.
+      menu_hook(view, "new_mix_from_source", "import:rough.wav")
+
+      html = menu_hook(view, "rename_source", %{"id" => "import:rough.wav", "name" => "polished"})
+
+      assert html =~ "Renamed to polished."
+      assert html =~ "One mix follows it."
+      assert File.regular?(Path.join([root, "sounds", "studio", "polished.wav"]))
+      refute File.regular?(Path.join([root, "sounds", "studio", "rough.wav"]))
+
+      # The clip points at the new name, so the mix still renders.
+      assert {:ok, mix} = StudioMix.load("rough")
+      assert [{_track, %{source: "import:polished.wav"}}] = StudioMix.clips(mix)
+    end
+
+    test "the extension is not the user's to change", %{conn: conn, root: root} do
+      import!(root, "keep.wav")
+      {view, _html} = open_studio(conn)
+
+      menu_hook(view, "rename_source", %{"id" => "import:keep.wav", "name" => "sneaky.txt"})
+
+      # Renaming must not be able to turn a .wav into something else: the typed
+      # extension is dropped and the real one kept.
+      assert File.regular?(Path.join([root, "sounds", "studio", "sneaky.wav"]))
+      refute File.exists?(Path.join([root, "sounds", "studio", "sneaky.txt"]))
+    end
+
+    test "a taken name is refused rather than silently suffixed", %{conn: conn, root: root} do
+      import!(root, "one.wav")
+      import!(root, "two.wav")
+      {view, _html} = open_studio(conn)
+
+      html = menu_hook(view, "rename_source", %{"id" => "import:one.wav", "name" => "two"})
+
+      assert html =~ "Something is already called that."
+      assert File.regular?(Path.join([root, "sounds", "studio", "one.wav"]))
+    end
+
+    test "an empty name is refused", %{conn: conn, root: root} do
+      import!(root, "named.wav")
+      {view, _html} = open_studio(conn)
+
+      html = menu_hook(view, "rename_source", %{"id" => "import:named.wav", "name" => "   "})
+
+      assert html =~ "That name has nothing in it."
+      assert File.regular?(Path.join([root, "sounds", "studio", "named.wav"]))
+    end
+
+    test "renaming a sound repoints its routing, and un-overrides the built-in", %{
+      conn: conn,
+      root: root
+    } do
+      File.write!(Path.join([root, "sounds", "confirm.wav"]), SoundGen.render("chat"))
+      Sound.assign("chat", "confirm.wav")
+
+      {view, _html} = open_studio(conn)
+
+      html =
+        menu_hook(view, "rename_source", %{"id" => "sound:confirm.wav", "name" => "doorbell"})
+
+      assert html =~ "Renamed to doorbell."
+      # The route follows the file — a rename must not silently unhook a chime.
+      assert Sound.sound_map()["chat"] == "doorbell.wav"
+      # And confirm is no longer overridden, so the built-in answers again.
+      refute File.exists?(Path.join([root, "sounds", "confirm.wav"]))
+      assert Sound.resolve_path("confirm.wav")
+    end
+
+    test "a built-in chime and a recording refuse to be renamed", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+
+      assert menu_hook(view, "rename_source", %{"id" => "sound:alarm.wav", "name" => "nope"}) =~
+               "Nothing of yours to rename there."
+
+      assert menu_hook(view, "rename_source", %{"id" => "recording:1", "name" => "nope"}) =~
+               "Nothing of yours to rename there."
+    end
+
+    test "renaming a mix moves the name inside the file too", %{conn: conn} do
+      {:ok, _name} = StudioMix.create("draft")
+      {view, _html} = open_studio(conn)
+
+      html = menu_hook(view, "rename_source", %{"id" => "mix:draft", "name" => "final cut"})
+
+      assert html =~ "Renamed to final cut."
+      assert StudioMix.list() == ["final cut"]
+      assert {:ok, mix} = StudioMix.load("final cut")
+      # A file whose contents disagree with its name surfaces months later.
+      assert mix.name == "final cut"
     end
 
     test "New mix refuses an id with no file behind it", %{conn: conn} do

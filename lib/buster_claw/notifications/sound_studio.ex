@@ -627,6 +627,28 @@ defmodule BusterClaw.Notifications.SoundStudio do
     end
   end
 
+  @doc """
+  Rename an imported file, keeping its extension.
+
+  Callers must retarget any mix clip that referenced it — a clip stores
+  `"import:<name>"`, so the rename would otherwise leave it pointing at nothing.
+  `StudioMix.retarget/2` is that step; `SoundStudioComponent` does both together.
+  """
+  def rename(name, stem) when is_binary(name) and is_binary(stem) do
+    with path when is_binary(path) <- path_for(name),
+         {:ok, new_name} <- BusterClaw.Notifications.Sound.renamed_to(name, stem),
+         false <- new_name in list(),
+         :ok <- File.rename(path, Path.join(dir(), new_name)) do
+      {:ok, new_name}
+    else
+      nil -> {:error, :not_found}
+      true -> {:error, :name_taken}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def rename(_name, _stem), do: {:error, :not_found}
+
   @doc "Remove a file from the studio folder."
   def delete(name) when is_binary(name) do
     case path_for(name) do
