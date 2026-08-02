@@ -1095,6 +1095,54 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
     end
   end
 
+  # These tests drive the menu through `render_hook`, which is the server half
+  # of a contract whose other half is JavaScript — so a rename that breaks the
+  # markup/JS side is invisible to every test above. It happened on 08-02:
+  # `data-ctx-new-audio` became `data-ctx-new-mix` in the markup, the hook kept
+  # querying the old name, `querySelector` returned null, and the TypeError in
+  # `mounted()` killed the WHOLE hook — right-click stopped working entirely,
+  # with a green suite. Same lockstep idiom as the workspace registry guard.
+  describe "the menu's JS contract" do
+    @hook_js "assets/js/hooks/studio_context_menu.js"
+    @component_ex "lib/buster_claw_web/live/sound_studio_component.ex"
+
+    test "every data-ctx attribute the hook queries exists in the markup", %{conn: conn} do
+      {_view, html} = open_studio(conn)
+
+      selectors =
+        @hook_js
+        |> File.read!()
+        |> then(&Regex.scan(~r/\[(data-ctx-[a-z-]+)\]/, &1, capture: :all_but_first))
+        |> List.flatten()
+        |> Enum.uniq()
+
+      assert selectors != [], "no data-ctx selectors found — did the hook move?"
+
+      for selector <- selectors do
+        assert html =~ selector,
+               "the hook queries [#{selector}], and the menu markup has no such attribute"
+      end
+    end
+
+    test "every event the hook pushes has a handler on the component" do
+      source = File.read!(@component_ex)
+
+      events =
+        @hook_js
+        |> File.read!()
+        |> then(&Regex.scan(~r/this\.push\("([a-z_]+)"\)/, &1, capture: :all_but_first))
+        |> List.flatten()
+        |> Enum.uniq()
+
+      assert events != [], "no pushed events found — did the hook move?"
+
+      for event <- events do
+        assert source =~ ~s(handle_event("#{event}"),
+               "the hook pushes #{event}, and the component has no handle_event for it"
+      end
+    end
+  end
+
   describe "the sidebar menu's other two verbs" do
     defp menu_hook(view, event, id) do
       view |> element("#studio-ctx") |> render_hook(event, %{"id" => id})

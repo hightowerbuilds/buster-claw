@@ -19,10 +19,16 @@
 
 export const StudioContextMenu = {
   mounted() {
+    // Missing nodes become inert stand-ins rather than nulls. A renamed data
+    // attribute once made one of these null, and the TypeError thrown here in
+    // mounted() killed the WHOLE hook — contextmenu listener included — so the
+    // menu silently stopped existing rather than losing one item. Degrade.
+    const item = (sel) => this.el.querySelector(sel) || document.createElement("button")
+
     this.items = {
-      info: this.el.querySelector("[data-ctx-info]"),
-      newAudio: this.el.querySelector("[data-ctx-new-audio]"),
-      delete: this.el.querySelector("[data-ctx-delete]"),
+      info: item("[data-ctx-info]"),
+      newMix: item("[data-ctx-new-mix]"),
+      delete: item("[data-ctx-delete]"),
     }
 
     this.targetId = null
@@ -55,7 +61,7 @@ export const StudioContextMenu = {
     window.addEventListener("resize", this.onScroll)
 
     this.items.info.addEventListener("click", () => this.push("source_info"))
-    this.items.newAudio.addEventListener("click", () => this.push("new_audio_from_source"))
+    this.items.newMix.addEventListener("click", () => this.push("new_mix_from_source"))
     this.items.delete.addEventListener("click", (e) => this.onDelete(e))
   },
 
@@ -73,12 +79,12 @@ export const StudioContextMenu = {
     const sourceable = !!row.dataset.sourceable
 
     this.items.info.hidden = !sourceable
-    this.items.newAudio.hidden = !sourceable
+    this.items.newMix.hidden = !sourceable
     this.items.delete.hidden = !row.dataset.deletable
     this.disarm(label)
 
     // Nothing this row can offer — don't flash an empty box at the user.
-    if (this.items.info.hidden && this.items.newAudio.hidden && this.items.delete.hidden) {
+    if (this.items.info.hidden && this.items.newMix.hidden && this.items.delete.hidden) {
       this.hide()
       return
     }
