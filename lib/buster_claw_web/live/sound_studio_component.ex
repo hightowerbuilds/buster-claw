@@ -343,6 +343,29 @@ defmodule BusterClawWeb.SoundStudioComponent do
     {:noreply, socket |> assign(:groups, groups()) |> assign(:note, {:info, "Audio deleted."})}
   end
 
+  # Pushed by the StudioContextMenu hook after its two-step confirm. The hook
+  # only offers the menu on items the markup flagged deletable, but the server
+  # is the gate: an id the dispatch below doesn't cover fails closed.
+  def handle_event("delete_source", %{"id" => id}, socket) when is_binary(id) do
+    case delete_source(id) do
+      :ok ->
+        # Clearing a deleted selection goes through the parent — selection is
+        # StatusLive's state, and its update pass re-derives everything else.
+        if socket.assigns.selected && socket.assigns.selected.id == id,
+          do: send(self(), {:studio_select, nil})
+
+        {:noreply, socket |> assign(:groups, groups()) |> assign(:note, delete_note(id))}
+
+      {:error, :not_found} ->
+        {:noreply, assign(socket, :note, {:error, "Nothing of yours to delete there."})}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :note, {:error, "Couldn't delete that file."})}
+    end
+  end
+
+  def handle_event("delete_source", _params, socket), do: {:noreply, socket}
+
   def handle_event("render_audio", _params, socket) do
     audio = socket.assigns.audio
 
@@ -559,6 +582,42 @@ defmodule BusterClawWeb.SoundStudioComponent do
   defp upload_error(_other), do: "Upload failed."
 
   # ---------------------------------------------------------------------------
+  # Deletion — the sidebar's right-click menu
+  # ---------------------------------------------------------------------------
+
+  # What the menu may touch: files that are YOURS. A built-in chime has no
+  # workspace file (deleting the override of one is how you get the built-in
+  # back), and a voicemail recording belongs to the Phone surface — deleting
+  # its file here would orphan the telephony record that points at it.
+  defp deletable?(%{kind: :import}), do: true
+  defp deletable?(%{kind: :audio}), do: true
+  defp deletable?(%{kind: :music}), do: true
+  defp deletable?(%{kind: :sound, sub: "yours"}), do: true
+  defp deletable?(_item), do: false
+
+  # `Sound.delete/1` only ever removes the workspace layer, so a "built-in"
+  # id sent here anyway returns :not_found — the fail-closed the handler wants.
+  defp delete_source("import:" <> name), do: SoundStudio.delete(name)
+  defp delete_source("audio:" <> name), do: StudioAudio.delete(name)
+  defp delete_source("music:" <> name), do: Music.delete(name)
+  defp delete_source("sound:" <> name), do: Sound.delete(name)
+  defp delete_source(_id), do: {:error, :not_found}
+
+  # Deleting a sound override isn't loss, it's reversion — say so. But only
+  # when a bundled copy actually stands behind it; a sound only you had is
+  # simply gone.
+  defp delete_note("sound:" <> name) do
+    if name in Sound.bundled_list() do
+      {:info, "Removed your #{Path.rootname(name)} — the built-in is back."}
+    else
+      {:info, "Deleted #{Path.rootname(name)}."}
+    end
+  end
+
+  defp delete_note(id),
+    do: {:info, "Deleted #{id |> String.split(":", parts: 2) |> List.last() |> Path.rootname()}."}
+
+  # ---------------------------------------------------------------------------
   # Analysis — the Phase 1 core, put to work
   # ---------------------------------------------------------------------------
 
@@ -602,7 +661,14 @@ defmodule BusterClawWeb.SoundStudioComponent do
             }
 
           {:error, _reason} ->
-            %{size: size, duration_ms: nil, peak: nil, rate: nil, channels: nil, error: :too_large}
+            %{
+              size: size,
+              duration_ms: nil,
+              peak: nil,
+              rate: nil,
+              channels: nil,
+              error: :too_large
+            }
         end
 
       {:error, reason} ->
@@ -786,6 +852,9 @@ defmodule BusterClawWeb.SoundStudioComponent do
             type="button"
             phx-click="select_studio_source"
             phx-value-id={item.id}
+            data-studio-source={item.id}
+            data-source-label={item.label}
+            data-deletable={deletable?(item) && "true"}
             aria-current={(@selected && @selected.id == item.id && "true") || nil}
             class={[
               "group flex flex-col items-start gap-0 border-l-2 px-2 py-1 text-left transition",
@@ -882,6 +951,31 @@ defmodule BusterClawWeb.SoundStudioComponent do
           </p>
         </form>
       </nav>
+
+      <%!-- The sidebar's right-click menu. Rendered once, positioned and shown
+            by the hook, and under `phx-update="ignore"` because the hook owns
+            its text (the armed "Really delete?" state must survive a patch).
+            `phx-target` + `pushEventTo(el)` routes delete_source to THIS
+            component — Part V landmine 1; without the target it lands on
+            StatusLive and crashes. Only sidebar items carrying data-deletable
+            summon the menu — the server decides deletability, the hook only
+            reads the marker. --%>
+      <div
+        id="studio-ctx"
+        phx-hook="StudioContextMenu"
+        phx-target={@myself}
+        phx-update="ignore"
+        hidden
+        class="fixed z-50 border-2 border-base-content/30 bg-base-100 shadow-lg"
+      >
+        <button
+          type="button"
+          data-ctx-delete
+          class="block w-full whitespace-nowrap px-3 py-1.5 text-left font-mono text-xs hover:bg-base-content/10"
+        >
+          Delete
+        </button>
+      </div>
 
       <%!-- Detail: the selected file. --%>
       <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto">

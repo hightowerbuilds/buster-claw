@@ -178,6 +178,24 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert html =~ ~s(color: #1C9BFF)
     end
 
+    test "marks only the operator's own files deletable for the context menu",
+         %{conn: conn, root: root} do
+      studio_dir = Path.join([root, "sounds", "studio"])
+      File.mkdir_p!(studio_dir)
+      File.write!(Path.join(studio_dir, "mine.wav"), SoundGen.render("chat"))
+
+      {_view, html} = open_studio(conn)
+
+      # An import is yours; a bundled chime has no workspace file to delete.
+      assert html =~
+               ~s(data-studio-source="import:mine.wav" data-source-label="mine" data-deletable)
+
+      assert html =~ ~s(data-studio-source="sound:confirm.wav")
+
+      refute html =~
+               ~s(data-studio-source="sound:confirm.wav" data-source-label="confirm" data-deletable)
+    end
+
     test "a file over the decode cap still shows length and format, via the header probe",
          %{conn: conn, root: root} do
       # ~3.4 minutes of internal-format silence — over the 8 MB inline-decode
@@ -195,7 +213,9 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       expected_ms = data_bytes / 2 / 22_050 * 1000
 
-      assert [duration] = Regex.run(~r/data-duration-ms="([\d.]+)"/, html, capture: :all_but_first)
+      assert [duration] =
+               Regex.run(~r/data-duration-ms="([\d.]+)"/, html, capture: :all_but_first)
+
       assert_in_delta String.to_float(duration), expected_ms, 100.0
 
       assert html =~ "Too large to decode inline — peak unmeasured."
@@ -998,6 +1018,80 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
 
       # Upload/queue/delete did not disappear with the tab rename.
       assert html =~ "Add music"
+    end
+  end
+
+  describe "deleting from the sidebar (right-click menu)" do
+    # The hook's two-step confirm is client-side; the server contract it lands
+    # on is this event, routed to the component by pushEventTo(el).
+    defp delete_via_menu(view, id) do
+      view |> element("#studio-ctx") |> render_hook("delete_source", %{"id" => id})
+    end
+
+    test "deletes an import and drops its row", %{conn: conn, root: root} do
+      dir = Path.join([root, "sounds", "studio"])
+      File.mkdir_p!(dir)
+      path = Path.join(dir, "scrap.wav")
+      File.write!(path, SoundGen.render("chat"))
+
+      {view, html} = open_studio(conn)
+      assert html =~ ~s(phx-value-id="import:scrap.wav")
+
+      html = delete_via_menu(view, "import:scrap.wav")
+
+      refute File.exists?(path)
+      refute html =~ ~s(phx-value-id="import:scrap.wav")
+      assert html =~ "Deleted scrap."
+    end
+
+    test "deleting the selected source clears the selection", %{conn: conn, root: root} do
+      dir = Path.join([root, "sounds", "studio"])
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "scrap.wav"), SoundGen.render("chat"))
+
+      {view, _html} = open_studio(conn)
+      select(view, "import:scrap.wav")
+      delete_via_menu(view, "import:scrap.wav")
+
+      # Selection lives in StatusLive; the clear arrives as a message, so the
+      # settled truth is the next full render.
+      assert render(view) =~ "Pick something on the left"
+    end
+
+    test "a bundled chime fails closed and keeps resolving", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+
+      html = delete_via_menu(view, "sound:confirm.wav")
+
+      assert html =~ "Nothing of yours to delete there."
+      assert Sound.resolve_path("confirm.wav")
+    end
+
+    test "deleting a sound override is reversion: the built-in comes back", %{
+      conn: conn,
+      root: root
+    } do
+      sounds = Path.join(root, "sounds")
+      File.mkdir_p!(sounds)
+      override = Path.join(sounds, "confirm.wav")
+      File.write!(override, SoundGen.render("chat"))
+
+      {view, html} = open_studio(conn)
+      assert html =~ "yours"
+
+      html = delete_via_menu(view, "sound:confirm.wav")
+
+      refute File.exists?(override)
+      assert html =~ "Removed your confirm — the built-in is back."
+      # The row survives, now resolving to the shipped copy.
+      assert html =~ ~s(phx-value-id="sound:confirm.wav")
+    end
+
+    test "recordings and unknown ids fail closed", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+
+      assert delete_via_menu(view, "recording:123") =~ "Nothing of yours to delete there."
+      assert delete_via_menu(view, "nonsense") =~ "Nothing of yours to delete there."
     end
   end
 end

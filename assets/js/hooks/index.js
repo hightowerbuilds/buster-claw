@@ -17,6 +17,7 @@ import {WaveTrim} from "./wave_trim.js"
 import {TrackArrange} from "./track_arrange.js"
 import {StudioKeys} from "./studio_keys.js"
 import {StudioAudition} from "./studio_audition.js"
+import {StudioContextMenu} from "./studio_context_menu.js"
 import {ShaderFace} from "./shader_face.js"
 import {ShaderPreview} from "./shader_preview.js"
 import {ShaderTimer} from "./shader_timer.js"
@@ -56,6 +57,7 @@ export const Hooks = {
   TrackArrange,
   StudioKeys,
   StudioAudition,
+  StudioContextMenu,
   ShaderFace,
   ShaderPreview,
   ShaderTimer,

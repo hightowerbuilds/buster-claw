@@ -456,7 +456,10 @@ defmodule BusterClaw.Notifications.SoundStudioTest do
 
     test "a text file fails cleanly" do
       path =
-        Path.join(System.tmp_dir!(), "studio-probe-text-#{System.unique_integer([:positive])}.wav")
+        Path.join(
+          System.tmp_dir!(),
+          "studio-probe-text-#{System.unique_integer([:positive])}.wav"
+        )
 
       File.write!(path, "I am prose wearing a .wav extension")
       on_exit(fn -> File.rm(path) end)
