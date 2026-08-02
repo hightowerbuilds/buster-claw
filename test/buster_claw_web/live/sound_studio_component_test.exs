@@ -1160,6 +1160,41 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       refute html =~ ~s(phx-value-id="sound:boot.wav")
       assert html =~ ~s(aria-expanded="false")
     end
+
+    # …and a fold that survives a tab switch but not a restart is a preference
+    # the app keeps forgetting. A fresh mount is this test's restart.
+    test "a fold survives a restart", %{conn: conn} do
+      {view, _html} = open_studio(conn)
+      toggle(view, "sounds")
+      assert SoundStudioComponent.collapsed_groups() == ["sounds"]
+
+      {_fresh, html} = open_studio(conn)
+      refute html =~ ~s(phx-value-id="sound:boot.wav")
+
+      # Unfolding clears the stored row rather than leaving an empty list.
+      toggle(view, "sounds")
+      assert SoundStudioComponent.collapsed_groups() == []
+      assert BusterClaw.Settings.get("studio_collapsed_groups") == nil
+    end
+
+    test "a stored key the app no longer ships is dropped on read" do
+      BusterClaw.Settings.put(
+        "studio_collapsed_groups",
+        Jason.encode!(["sounds", "podcasts", "mix"])
+      )
+
+      # Same posture as Sound.sound_map/0: a group that stops existing must not
+      # leave a key behind forever, and a hand-edited row cannot introduce one.
+      assert SoundStudioComponent.collapsed_groups() == ["sounds", "mix"]
+    end
+
+    # The roster and the cheap key list are two statements of the same fact.
+    # `group_keys/0` exists because `groups/0` reads four directories and the
+    # telephony table just to answer "is this a real group?".
+    test "group_keys/0 agrees with the real roster" do
+      assert Enum.map(SoundStudioComponent.groups(), & &1.key) ==
+               SoundStudioComponent.group_keys()
+    end
   end
 
   describe "the menu's JS contract" do
