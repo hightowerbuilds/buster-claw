@@ -630,6 +630,57 @@ defmodule BusterClawWeb.SoundStudioComponentTest do
       assert render(view) =~ ~s(phx-value-id="import:mix me-mix.wav")
     end
 
+    test "rendering offers to assign the result to a notification", %{conn: conn, root: root} do
+      {view, _html} = open_studio(conn)
+      new_audio(view, "doorbell")
+      add_clip(view, "sound:alarm.wav", 0)
+
+      html = view |> element("button[phx-click='render_mix']") |> render_click()
+
+      # The render is the moment a mix becomes a sound, which is when "what is
+      # it FOR?" is worth asking. Asking later means never asking.
+      assert html =~ "Play it for"
+      assert html =~ ~s(<option value="alarm">Alarms</option>)
+
+      html =
+        view
+        |> form("form[phx-submit='assign_render']", %{
+          "key" => "alarm",
+          "name" => "doorbell-mix.wav"
+        })
+        |> render_submit()
+
+      assert html =~ "Alarms now plays doorbell-mix.wav."
+      # Copied OUT of the studio's working folder and into the library the app
+      # plays from — the two folders mean different things.
+      assert File.regular?(Path.join([root, "sounds", "doorbell-mix.wav"]))
+      assert File.regular?(Path.join([root, "sounds", "studio", "doorbell-mix.wav"]))
+      assert Sound.sound_map()["alarm"] == "doorbell-mix.wav"
+
+      # Routed BY NAME, so the built-in alarm is untouched and Settings → Notify
+      # can still change its mind.
+      assert "alarm.wav" in Sound.bundled_list()
+      refute File.exists?(Path.join([root, "sounds", "alarm.wav"]))
+      refute html =~ "Play it for"
+    end
+
+    test "assigning is offered, not imposed — Not now keeps the render", %{
+      conn: conn,
+      root: root
+    } do
+      {view, _html} = open_studio(conn)
+      new_audio(view, "sketch")
+      add_clip(view, "sound:boot.wav", 0)
+      view |> element("button[phx-click='render_mix']") |> render_click()
+
+      html = view |> element("button[phx-click='close_assign']", "Not now") |> render_click()
+
+      refute html =~ "Play it for"
+      assert Sound.sound_map() == %{}
+      # The render is a finished sound whether or not it becomes a notification.
+      assert File.regular?(Path.join([root, "sounds", "studio", "sketch-mix.wav"]))
+    end
+
     test "rendering an empty mix says so instead of writing silence", %{conn: conn} do
       {view, _html} = open_studio(conn)
       new_audio(view, "empty")

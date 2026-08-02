@@ -49,6 +49,31 @@ defmodule BusterClaw.Notifications.Sound do
   @route_keys ~w(chat terminal email voicemail manual timer alarm reminder default) ++
                 ~w(confirm order shift blocked web sms security boot)
 
+  # Human labels for the routing keys, in the order a person should meet them:
+  # the catch-all, then the kinds you set alarms with, then where a thing came
+  # from, then the agent's own noises. Here rather than in a LiveView because
+  # two surfaces now offer routing — Settings → Notify and the Studio's
+  # assign-on-render — and a label defined twice is a label that drifts.
+  @route_labels [
+    {"default", "Default"},
+    {"timer", "Timers"},
+    {"alarm", "Alarms"},
+    {"reminder", "Reminders"},
+    {"chat", "Chat"},
+    {"terminal", "Terminal"},
+    {"email", "Email"},
+    {"voicemail", "Voicemail"},
+    {"manual", "Manual"},
+    {"confirm", "Confirm"},
+    {"shift", "Shift end"},
+    {"blocked", "Blocked"},
+    {"web", "Browser"},
+    {"order", "Order"},
+    {"sms", "SMS"},
+    {"security", "Security"},
+    {"boot", "Boot"}
+  ]
+
   @doc "Absolute path to the `sounds/` folder in the active workspace."
   def dir, do: Artifact.workspace_path(@subdir)
 
@@ -94,6 +119,17 @@ defmodule BusterClaw.Notifications.Sound do
 
   @doc "Routing keys the sound map accepts."
   def route_keys, do: @route_keys
+
+  @doc """
+  Routing keys as `{label, key}` in display order — ready for a `select`'s
+  `options`, which is how both routing surfaces present them.
+  """
+  def route_options, do: Enum.map(@route_labels, fn {key, label} -> {label, key} end)
+
+  @doc "Human label for a routing key, or the key itself if it somehow has none."
+  def route_label(key) when is_binary(key) do
+    Enum.find_value(@route_labels, key, fn {k, label} -> if k == key, do: label end)
+  end
 
   # ---------------------------------------------------------------------------
   # Library
@@ -215,6 +251,48 @@ defmodule BusterClaw.Notifications.Sound do
   all — drop-a-file-in-Finder is a complete customization story.
   """
   def resolve_path(name), do: path_for(name) || bundled_path_for(name)
+
+  @doc """
+  Copy a file into the sound library under a free name, returning that name.
+
+  The deliberate step that moves audio from working material to a finished
+  effect — `sounds/studio/` holds what you are editing, `sounds/` holds what the
+  app will play unattended, and this is the door between them.
+
+  **Never overwrites**, because this layer overrides bundled chimes by basename:
+  installing something called `alarm.wav` would silently replace the built-in
+  alarm for good. A taken name gets a `-2`, and the caller is told the name it
+  actually got.
+  """
+  def install_file(src_path, suggested_name)
+      when is_binary(src_path) and is_binary(suggested_name) do
+    ext = suggested_name |> Path.extname() |> String.downcase()
+
+    cond do
+      not File.regular?(src_path) -> {:error, :not_found}
+      ext not in @exts -> {:error, :unsupported_format}
+      true -> copy_in(src_path, Music.safe_name(suggested_name))
+    end
+  end
+
+  defp copy_in(src_path, name) do
+    File.mkdir_p!(dir())
+    free = available_name(name)
+
+    case File.cp(src_path, Path.join(dir(), free)) do
+      :ok -> {:ok, free}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp available_name(name) do
+    if name in list(), do: next_free(Path.rootname(name), Path.extname(name), 2), else: name
+  end
+
+  defp next_free(stem, ext, n) do
+    candidate = "#{stem}-#{n}#{ext}"
+    if candidate in list(), do: next_free(stem, ext, n + 1), else: candidate
+  end
 
   @doc """
   Rename a workspace sound, carrying its routing with it.

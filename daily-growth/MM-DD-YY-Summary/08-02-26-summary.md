@@ -256,3 +256,26 @@ real group?". A lockstep test asserts the two agree, since they are two
 statements of one fact.
 
 At close: 2,139 tests green, credo strict clean, everything on `main`.
+
+## A rendered mix can become a notification without leaving the Studio
+
+Rendering is the moment a mix stops being an arrangement and becomes a sound,
+which is exactly when *"and what is it for?"* is worth asking — ask later and you
+never ask. So Render now opens a small modal: pick a notification, or **Not
+now**, which is a real answer since the render is saved either way.
+
+Assigning does two things, and both are the point. The file is copied out of
+`sounds/studio/` (working material) into `sounds/` (what the app plays
+unattended) — the roadmap always described that as *"the deliberate step"*, and
+this is it. Then the key is pointed at the file **by name**, not installed as
+`alarm.wav`: this layer overrides bundled chimes by basename, so the second
+would silently replace the built-in alarm for good and un-assigning could not
+bring it back. Settings → Notify can still change its mind about any of it.
+
+Two things were missing underneath and are now real API. `Sound.install_file/2`
+— the door between the two folders, never overwriting, telling the caller the
+name it actually got. And `Sound.route_options/0` + `route_label/1`: the labels
+for the seventeen routing keys used to live inside `NotifySettingsLive`, and now
+that two surfaces offer routing, a label defined twice is a label that drifts.
+The settings screen keeps its richer rows (group, and the kind/source a Test
+fire needs) and derives its labels from `Sound`.

@@ -60,6 +60,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
      |> assign(:selected, nil)
      |> assign(:facts, nil)
      |> assign(:info, nil)
+     |> assign(:assign_render, nil)
      |> assign(:note, nil)
      |> allow_upload(:import,
        # A MIME wildcard, NOT `SoundStudio.accepted_extensions/0`. LiveView's
@@ -476,12 +477,45 @@ defmodule BusterClawWeb.SoundStudioComponent do
         send(self(), {:studio_select, "import:" <> name})
 
         {:noreply,
-         socket |> assign(:groups, groups()) |> assign(:note, {:info, "Rendered #{name}."})}
+         socket
+         |> assign(:groups, groups())
+         # A render is the moment a mix stops being an arrangement and becomes a
+         # sound — which is exactly when "and what is it FOR?" is worth asking.
+         # Asking later means never asking.
+         |> assign(:assign_render, name)
+         |> assign(:note, {:info, "Rendered #{name}."})}
 
       {:error, reason} ->
         {:noreply, assign(socket, :note, {:error, render_error(reason)})}
     end
   end
+
+  def handle_event("close_assign", _params, socket),
+    do: {:noreply, assign(socket, :assign_render, nil)}
+
+  # Route the freshly rendered mix to a notification. Two steps, both needed:
+  # the file is copied out of `sounds/studio/` (working material) into `sounds/`
+  # (what the app plays unattended), and the key is pointed at it.
+  #
+  # Routing by NAME rather than installing it as `alarm.wav`: this layer
+  # overrides bundled chimes by basename, so the second would silently replace
+  # the built-in alarm for good, and un-assigning later would not bring it back.
+  def handle_event("assign_render", %{"key" => key, "name" => name}, socket)
+      when is_binary(key) and is_binary(name) do
+    with path when is_binary(path) <- SoundStudio.path_for(name),
+         {:ok, installed} <- Sound.install_file(path, name),
+         :ok <- assign_route(key, installed) do
+      {:noreply,
+       socket
+       |> assign(:assign_render, nil)
+       |> assign(:groups, groups())
+       |> assign(:note, {:info, "#{Sound.route_label(key)} now plays #{installed}."})}
+    else
+      _ -> {:noreply, assign(socket, :note, {:error, "Couldn't assign that sound."})}
+    end
+  end
+
+  def handle_event("assign_render", _params, socket), do: {:noreply, socket}
 
   # ---------------------------------------------------------------------------
   # Trim
@@ -705,6 +739,15 @@ defmodule BusterClawWeb.SoundStudioComponent do
   defp menu_item_class,
     do:
       "block w-full whitespace-nowrap px-3 py-1.5 text-left font-mono text-xs hover:bg-base-content/10"
+
+  # `Sound.assign/2` answers `{:ok, _}` / `:ok` depending on the Settings write;
+  # only the refusal matters here.
+  defp assign_route(key, name) do
+    case Sound.assign(key, name) do
+      {:error, reason} -> {:error, reason}
+      _ok -> :ok
+    end
+  end
 
   # A folded group renders no rows at all rather than hiding them with CSS: the
   # rows carry the right-click menu's data attributes, and a hidden row is still
@@ -1232,6 +1275,76 @@ defmodule BusterClawWeb.SoundStudioComponent do
           spellcheck="false"
           class="w-full border-0 bg-base-200 px-3 py-1.5 font-mono text-xs focus:outline-none"
         />
+      </div>
+
+      <%!-- Assign-on-render. Offered rather than imposed: a rendered mix is a
+            finished sound whether or not it becomes a notification, so "Not
+            now" is a real answer and the file is already saved either way. --%>
+      <div
+        :if={@assign_render}
+        class="fixed inset-0 z-50"
+        phx-window-keydown="close_assign"
+        phx-key="escape"
+        phx-target={@myself}
+      >
+        <button
+          type="button"
+          phx-click="close_assign"
+          phx-target={@myself}
+          aria-label="Close"
+          class="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+        >
+        </button>
+        <div class="pointer-events-none absolute inset-0 grid place-items-center p-4">
+          <div class="pointer-events-auto w-full max-w-md border-2 border-base-content/30 bg-base-100 shadow-2xl">
+            <header class="ic-scanlines relative border-b-2 border-base-content/20 px-5 py-3">
+              <p class="ic-eyebrow">Rendered</p>
+              <h3 class="truncate font-display text-lg font-black uppercase tracking-tight">
+                {Path.rootname(@assign_render)}
+              </h3>
+            </header>
+
+            <form phx-submit="assign_render" phx-target={@myself} class="space-y-4 p-5">
+              <input type="hidden" name="name" value={@assign_render} />
+
+              <div>
+                <label
+                  for="assign-render-key"
+                  class="font-mono text-[10px] font-bold uppercase tracking-widest text-base-content/40"
+                >
+                  Play it for
+                </label>
+                <select
+                  id="assign-render-key"
+                  name="key"
+                  class="select select-bordered mt-1 w-full font-mono text-xs"
+                >
+                  <option :for={{label, key} <- Sound.route_options()} value={key}>{label}</option>
+                </select>
+              </div>
+
+              <p class="font-mono text-[10px] leading-relaxed text-base-content/40">
+                Copies it into <code>sounds/</code> and points that notification at it.
+                The built-in chime is left alone, so you can change your mind in
+                Settings → Notify.
+              </p>
+
+              <div class="flex flex-wrap gap-2">
+                <button class="rounded-xs bg-primary px-4 py-2 font-display text-sm font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85">
+                  Assign
+                </button>
+                <button
+                  type="button"
+                  phx-click="close_assign"
+                  phx-target={@myself}
+                  class="rounded-xs border-2 border-base-content/20 px-4 py-2 font-mono text-sm transition hover:border-base-content/40"
+                >
+                  Not now
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
 
       <%!-- Info. A modal rather than a bigger menu: a path is long, and the

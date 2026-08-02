@@ -21,36 +21,37 @@ defmodule BusterClawWeb.NotifySettingsLive do
   @max_upload_bytes 20 * 1_024 * 1_024
 
   # Each routing row: the map key, its section, and the kind/source a Test fire
-  # uses so the routed path is genuinely exercised.
+  # uses so the routed path is genuinely exercised. Labels are NOT here — they
+  # live in `Sound.route_label/1`, because the Studio's assign-on-render offers
+  # the same keys and a label defined twice is a label that drifts.
   @rows [
-    %{key: "default", label: "Default", group: :base, kind: "reminder", source: "manual"},
-    %{key: "timer", label: "Timers", group: :kind, kind: "timer", source: "manual"},
-    %{key: "alarm", label: "Alarms", group: :kind, kind: "alarm", source: "manual"},
-    %{key: "reminder", label: "Reminders", group: :kind, kind: "reminder", source: "manual"},
-    %{key: "chat", label: "Chat", group: :source, kind: "reminder", source: "chat"},
-    %{key: "terminal", label: "Terminal", group: :source, kind: "reminder", source: "terminal"},
-    %{key: "email", label: "Email", group: :source, kind: "reminder", source: "email"},
+    %{key: "default", group: :base, kind: "reminder", source: "manual"},
+    %{key: "timer", group: :kind, kind: "timer", source: "manual"},
+    %{key: "alarm", group: :kind, kind: "alarm", source: "manual"},
+    %{key: "reminder", group: :kind, kind: "reminder", source: "manual"},
+    %{key: "chat", group: :source, kind: "reminder", source: "chat"},
+    %{key: "terminal", group: :source, kind: "reminder", source: "terminal"},
+    %{key: "email", group: :source, kind: "reminder", source: "email"},
     %{
       key: "voicemail",
-      label: "Voicemail",
       group: :source,
       kind: "reminder",
       source: "voicemail"
     },
-    %{key: "manual", label: "Manual", group: :source, kind: "reminder", source: "manual"},
+    %{key: "manual", group: :source, kind: "reminder", source: "manual"},
     # SOUND_ROADMAP Part II — SoundBoard keys. Their Test goes through
     # SoundBoard.ring/1, not a fabricated notification: these keys never fire
     # the notification pipeline in real life, so a Test that did would pass on
     # a path production never takes. The board's cooldown applies to Test too —
     # that IS the pipeline, so two rapid Tests ringing once is honest.
-    %{key: "confirm", label: "Confirm", group: :agent, test: :ring},
-    %{key: "shift", label: "Shift end", group: :agent, test: :ring},
-    %{key: "blocked", label: "Blocked", group: :agent, test: :ring},
-    %{key: "web", label: "Browser", group: :agent, test: :ring},
-    %{key: "order", label: "Order", group: :agent, test: :ring},
-    %{key: "sms", label: "SMS", group: :comms, test: :ring},
-    %{key: "security", label: "Security", group: :security, test: :ring},
-    %{key: "boot", label: "Boot", group: :playful, test: :ring}
+    %{key: "confirm", group: :agent, test: :ring},
+    %{key: "shift", group: :agent, test: :ring},
+    %{key: "blocked", group: :agent, test: :ring},
+    %{key: "web", group: :agent, test: :ring},
+    %{key: "order", group: :agent, test: :ring},
+    %{key: "sms", group: :comms, test: :ring},
+    %{key: "security", group: :security, test: :ring},
+    %{key: "boot", group: :playful, test: :ring}
   ]
 
   @impl true
@@ -146,7 +147,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
     attrs = %{
       kind: row.kind,
       source: row.source,
-      label: "Notify test — #{row.label}",
+      label: "Notify test — #{Sound.route_label(row.key)}",
       fire_at: DateTime.utc_now() |> DateTime.truncate(:second)
     }
 
@@ -247,14 +248,16 @@ defmodule BusterClawWeb.NotifySettingsLive do
                     :for={row <- Enum.filter(@rows, &(&1.group == group))}
                     class="flex flex-wrap items-center gap-3"
                   >
-                    <span class="w-24 shrink-0 text-sm font-semibold">{row.label}</span>
+                    <span class="w-24 shrink-0 text-sm font-semibold">
+                      {Sound.route_label(row.key)}
+                    </span>
 
                     <form id={"assign-#{row.key}"} phx-change="assign" class="contents">
                       <input type="hidden" name="key" value={row.key} />
                       <select
                         name="sound"
                         class="min-w-44 rounded border-2 border-base-300 bg-base-100 px-2 py-1 text-sm"
-                        aria-label={"Sound for #{row.label}"}
+                        aria-label={"Sound for #{Sound.route_label(row.key)}"}
                       >
                         <option value="" selected={is_nil(@map[row.key])}>
                           {if row.key == "default",
@@ -293,7 +296,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
                       type="button"
                       data-preview-url={~p"/notify/sound/#{@resolved[row.key]}"}
                       class="btn btn-ghost btn-xs"
-                      aria-label={"Preview the #{row.label} sound"}
+                      aria-label={"Preview the #{Sound.route_label(row.key)} sound"}
                     >
                       <.icon name="hero-play" class="size-4" /> Preview
                     </button>
@@ -303,7 +306,7 @@ defmodule BusterClawWeb.NotifySettingsLive do
                       phx-click="test"
                       phx-value-key={row.key}
                       class="btn btn-outline btn-xs"
-                      aria-label={"Fire a test #{row.label} notification"}
+                      aria-label={"Fire a test #{Sound.route_label(row.key)} notification"}
                     >
                       <.icon name="hero-bell-alert" class="size-4" /> Test
                     </button>
