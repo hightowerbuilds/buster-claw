@@ -30,3 +30,50 @@ and editing it to match the outcome would be tidying away the honest version.
 
 `roadmaps/` now holds four live documents: `LAUNCH_ROADMAP`, `SOUND_STUDIO`,
 `TRADING_TAB_CRITICAL_REVIEW`, and `phone-maps/BUSTERPHONE`, plus `LEFTOVERS`.
+*(Five by the end of the day — see the browser work below.)*
+
+## Agent Mode was a one-way door
+
+Read the 07-25 browser field test again and found the defect it described
+without naming. Its last line of telemetry — *"Final mode: `stopped` — not
+`done`"* — was filed as a consequence of Finding 2. It was its own bug.
+
+`AgentMode.complete/1` exists, and `Mode` has always allowed
+`agent_working → done`. It had **one caller in the codebase**:
+`Commerce.confirm_purchase`, which needs `awaiting_human`, a non-empty cart, and
+the GUI form. So a non-commerce run — research, a price check, a form fill — had
+no path to `done` at all. It sat in `agent_working` indefinitely, holding a
+leased Chromium window open and the browse tab pinned in Agent Mode, until
+someone stopped it, and then went into the record as halted. Every successful
+errand ended as a lie.
+
+Two things compounded it. The command surface had no `resume`, so the payment
+handoff was a one-way door: `agent_working` is the only mode that acts, and the
+GUI had a Resume button the API didn't. And the banner took the newest
+registered run unconditionally while runs *stay* registered after they end
+(the trajectory is the receipt) — so one dead run pinned the tab with every
+control hidden, since they all render only while the run is live.
+
+Three fixes, one per surface: `agent_run_finish`, `agent_run_resume`, and a
+banner where a live run outranks a terminal one, terminal runs can be dismissed,
+and `awaiting_human` gets the human's own **Done** — a transition `Mode` always
+allowed and nothing ever called. The introduction now says every run you start
+you must end, and that stop and finish are not interchangeable; a verb the model
+doesn't know about would not have fixed anything.
+
+## A roadmap for the question underneath it
+
+`BROWSER_CLOSEOUT_ROADMAP.md` — small, and mostly one question: **may the agent
+confirm a purchase?** The field test asked for `agent_run_confirm_purchase`; we
+did the opposite in passing and told the model it may never confirm. That call
+deserves to be made deliberately, and two things have changed since. The
+stuck-run fix removed the pressure — a commerce run can now be marked `done` with
+no capture and no receipt, and nothing complains. And the ledger the receipt was
+meant to reach **no longer exists**: the wallets subsystem was deleted in
+`db10a58`, so confirming today writes a PNG and returns a map.
+
+So it is really two questions, in order: *what should a confirmation produce* (a
+durable greppable record in the workspace is the recommendation — not a rebuilt
+ledger), and *who may make one* (agent proposes, human attests). Four mechanical
+items came along from `LEFTOVERS` so they stop living in a file whose own rule
+says a thing needing a design does not belong there.

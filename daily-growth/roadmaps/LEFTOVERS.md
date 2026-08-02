@@ -23,61 +23,15 @@ PNG). Operator confirmed GUI side: co-presence badge flashed on every call,
 7-tab eviction, sidebar bumper/⌘B, zoom, ⌘F count, popup-as-tab, download +
 reveal, menu accelerators, and the double-launch single-instance check. -->
 
-### Walk a live signed-in checkout and confirm the payment gate fires — **HIGH**
+### Promoted 08-02 → `BROWSER_CLOSEOUT_ROADMAP.md`
 
-**What.** Browser-engine repair item 3, left PARTIAL on 07-25. After the
-07-25 gate rewrite, Amazon's live entry point is confirmed gated and the
-`/gp/buy/` funnel is confirmed gated *by test* — but never *by walk*, because
-that funnel is only reachable from a logged-in session. Drive one real
-Agent-Mode commerce run to a signed-in checkout and confirm the run halts.
-
-**Why deferred.** Needs the operator's own signed-in Amazon session; nothing in
-the repo can do it.
-
-**What makes it expensive later.** This is the one item here that is
-safety-adjacent rather than tidy. The field test found the gate failing OPEN on
-exactly this funnel; the fix is tested but unwalked, and the cost of being wrong
-is an agent proceeding through a real payment page. Cheap now, and the only way
-to buy certainty.
-
----
-
-### Give `find_elements` a real `selector` parameter
-
-**What.** Browser-engine repair item 4. `page.ex:61` — `find_elements` has no
-selector parameter, so callers filter client-side.
-
-**Why deferred.** Low priority; the workaround costs a round trip, not
-correctness.
-
-**What makes it expensive later.** It doesn't — small, local, and additive.
-
----
-
-### Keychain-backed `secret_resolver` wired into `agent_run_start`
-
-**What.** Browser-engine repair item 5, in `commands/agent_runs.ex`. Secrets for
-Agent-Mode fills currently resolve from the process environment; the design
-calls for macOS Keychain.
-
-**Why deferred.** Medium size, and the Egress `$secret.<name>` masking that
-makes it safe already shipped — this is the storage half.
-
-**What makes it expensive later.** The longer env-var resolution is the only
-path, the more prompts and docs quietly assume it.
-
----
-
-### Per-host egress levels with a config surface
-
-**What.** Browser-engine repair item 6, `egress.ex:51` — per-host redaction
-levels (e.g. `amazon.com` → `:structure_only`) exist in the code's shape but
-have no operator-facing config.
-
-**Why deferred.** Low priority; the global default is the safe one.
-
-**What makes it expensive later.** Cheap to add whenever a host actually needs
-a different level.
+Four browser items left this file together: the **signed-in checkout walk**
+(HIGH), `find_elements`' **selector**, the **Keychain-backed `secret_resolver`**,
+and **per-host egress levels**. They went to a real roadmap because the biggest
+open browser question — *may the agent confirm a purchase, and what should a
+confirmation even produce now that the wallets ledger is deleted?* — needs a
+design, and this file's own rule says a thing needing a design does not belong
+here. Their detail travelled with them; nothing was lost.
 
 ---
 
@@ -91,9 +45,12 @@ the screencast metadata scale, then `Input.dispatchMouseEvent` /
 **Why deferred.** It is blocked on a real prerequisite, not on effort: the run
 must carry an `awaiting_reason` so the mirror knows *when* human input is
 legitimate. Taking the wheel at an arbitrary moment races the agent's own
-actions. Inherited here 07-28 when BROWSER_ENGINE_ROADMAP closed, alongside its four
-unfinished field-test repairs above. Everything in that roadmap's *Deferred*
-list was ruled out on the merits; these five were not.
+actions. Inherited here 07-28 when BROWSER_ENGINE_ROADMAP closed, alongside its
+four unfinished field-test repairs — which moved on to
+`BROWSER_CLOSEOUT_ROADMAP.md` 08-02, leaving this one behind precisely because
+it is the only one of the five that needs a *prerequisite* rather than a
+decision. Everything in that roadmap's *Deferred* list was ruled out on the
+merits; these five were not.
 
 **What makes it expensive later.** Nothing structural — the transport and the
 scale metadata already exist. It gets expensive only if `awaiting_reason` is
