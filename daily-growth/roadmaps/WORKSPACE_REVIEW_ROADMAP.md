@@ -1,8 +1,13 @@
 # The workspace — critical review + rebuild roadmap
 
-**Scoped 08-01-26.** The workspace is the product's one durable promise: *"everything
+**Scoped 08-01-26 · COMPLETE 08-01-26** — all six phases shipped or verified in
+one day (Phase 0–2 in `16c8213`, Phase 3A/4/5a in `8f563ed`, Phase 5's count
+measured against the packaged bundle the same evening). Only a thin GUI
+formality rides with the R1 QA pass; see Phase 5.
+
+The workspace is the product's one durable promise: *"everything
 is markdown on your disk. No lock-in; `grep` works."* It is also the first thing a
-new user sees after setup, and right now what they see is a filing cabinet of
+new user sees after setup, and until today what they saw was a filing cabinet of
 empty labelled drawers.
 
 This document is in two parts. **Part I** is the review — what is actually wrong,
@@ -300,12 +305,22 @@ the skills that reference it, and any job description that points at it — and 
 
 ---
 
-## Phase 5 — Look at what we ship — **HALF SHIPPED 08-01; packaged walk OPEN**
+## Phase 5 — Look at what we ship — **VERIFIED 08-01 (packaged, headless)**
 
 > Dev's `workspace_root` now points at `tmp/dev-workspace` (repo-local,
 > gitignored, deletable) instead of `~/Developer` — delete it any time to watch
-> a fresh scaffold. **Still open:** the packaged-install walk (fresh folder →
-> setup wizard → open in Finder → count). Pair it with the R1 QA pass, alongside
+> a fresh scaffold.
+>
+> **The count, measured against the real bundle** (built 08-01, unsigned;
+> `smoke_release_boot.sh` PASS first): booting the packaged release against an
+> empty folder scaffolds **seven visible entries, every one with content** —
+> `README.md`, `buster-claw`, `Dispatch.md`, `jobs/` (3 jobs + roster),
+> `library/`, `memory/` (3 policy files), `skills/` — plus hidden `.buster-claw/`
+> (INTRODUCTION.md) and `.claude/` (settings.json). Down from sixteen entries,
+> seven of which held nothing. The judged number hit its target.
+>
+> **Thin remainder, folded into the R1 QA pass:** the same look via the in-app
+> setup wizard + Finder (this walk set the workspace by env var), alongside
 > LEFTOVERS' byte-range walk and `SOUND_STUDIO_ROADMAP` Phase 5 — one build,
 > four answers.
 

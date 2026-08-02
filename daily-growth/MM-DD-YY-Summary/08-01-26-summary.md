@@ -419,3 +419,14 @@ this session closed the rest of the roadmap on top of it.
 
 At close: full suite 2,095 tests, 0 failures. The workspace roadmap is done
 except for the packaged walk.
+
+### Addendum — the build, and the count
+
+`build_desktop.sh` produced the unsigned 0.1.0 bundle + DMG (signing waits on
+G-2, the Developer ID cert). `smoke_release_boot.sh` PASS — the bundle boots,
+serves 157 commands, 401s a bad token. Then the walk the whole roadmap was
+judged by: booting the packaged release against an empty folder scaffolds
+**seven visible entries, every one with content** — README.md, buster-claw,
+Dispatch.md, jobs/, library/, memory/, skills/ — machine files hidden in
+.buster-claw/ and .claude/. Down from sixteen with seven empty. The workspace
+roadmap is COMPLETE; only the setup-wizard/Finder formality rides with R1 QA.
