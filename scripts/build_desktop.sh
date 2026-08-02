@@ -130,6 +130,27 @@ cargo tauri build
 
 BUNDLE_DIR="$REPO_ROOT/desktop/tauri/target/release/bundle/macos"
 
+# Assert the BUNDLE carries the release, not just that staging did. The staging
+# check above passes and then the staging dir stays live for the whole cargo
+# build — and scripts/dev.sh deliberately empties it (down to .gitkeep) whenever
+# a dev shell starts, because dev doesn't use the bundled release. Start dev.sh
+# during this script's bundling window and Tauri bundles a hollowed-out dir:
+# exactly that happened on 08-01 — the staging assert passed, the .app shipped
+# with lib/tzdata-1.1.4 and nothing else, and only smoke_release_boot.sh
+# caught it. Same rule as above: assert the artifact, at the last artifact.
+BUNDLED_REL="$BUNDLE_DIR/Buster Claw.app/Contents/Resources/release"
+if [ ! -x "$BUNDLED_REL/bin/buster_claw" ] || ! compgen -G "$BUNDLED_REL/erts-*" >/dev/null; then
+  echo "" >&2
+  echo "FATAL: the bundled .app does not carry a runnable release." >&2
+  echo "       expected: .../Resources/release/bin/buster_claw (executable) + erts-*" >&2
+  echo "       found:    $(ls -A "$BUNDLED_REL" 2>/dev/null | tr '\n' ' ' || echo '<missing>')" >&2
+  echo "" >&2
+  echo "Most likely a dev shell (scripts/dev.sh) started mid-build and emptied" >&2
+  echo "desktop/tauri/resources/release while cargo was bundling. Close it (or" >&2
+  echo "let it run — it only cleans at startup) and re-run this script." >&2
+  exit 1
+fi
+
 # Restore the dev-mode placeholder so `cargo tauri dev` keeps working without the
 # full bundled release present.
 touch "$REPO_ROOT/desktop/tauri/resources/release/.gitkeep"
