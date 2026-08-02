@@ -1,5 +1,36 @@
 # The Sound Studio — Roadmap V.1
 
+> ## ARCHIVED 08-02-26 — shipped as a cutting and arranging tool
+>
+> **Built, over four days:** the pure editing core (`Notifications.SoundStudio`
+> — splice, fade, normalize, mixdown, WAV parse/render), the Studio surface as a
+> Home sub-tab with every audio source down the left, drag-to-trim on the
+> waveform, the multi-lane arranger, copy/paste/undo keybindings, track identity
+> and colour, a transport that performs the timeline, import through
+> `/usr/bin/afconvert`, and right-click delete (08-01).
+>
+> **Deliberately not built — two of the three halves the 07-30 scoping locked:**
+>
+> - **Phase 2, the `sound` command surface.** The studio is GUI-only; no agent
+>   or CLI can reach it. The gap is real and the spec below is complete.
+> - **Phase 4, the chime designer.** The tone-spec editor was the third half of
+>   the original scope. The 16 bundled chimes remain fixed; you can cut and
+>   arrange audio, but you cannot *tune* a chime.
+>
+> Both moved to `roadmaps/LEFTOVERS.md` rather than dying with this document —
+> their designs are Phases 2 and 4 below, still good, and either one that
+> genuinely gets wanted should be **promoted back out to its own roadmap**
+> rather than done from a leftover line.
+>
+> **Phase 5's remainder** (the packaged webview's autoplay posture, and seeking a
+> long track) rides with the byte-range walk already in `LEFTOVERS`. Its harder
+> half was answered on 08-01: **`afconvert` executes under the packaged
+> sandbox** — import works in a real build.
+>
+> **Still worth re-reading before touching audio:** Part V's landmines. Three of
+> them bit during this build exactly as written, and one of them (`phx-target`
+> on a component-owned hook) bit again on 08-01 during the delete-menu work.
+
 **Date:** 2026-07-30 · **Status:** SCOPED — plan first, per the operator's 07-28
 call on `SOUND_ROADMAP.md` Part V ·
 **Scope:** the docketed audio editor, plus the surface and the designer around

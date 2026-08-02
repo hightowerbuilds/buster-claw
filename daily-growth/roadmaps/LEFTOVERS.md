@@ -35,6 +35,55 @@ here. Their detail travelled with them; nothing was lost.
 
 ---
 
+### The `sound` command surface — the Studio has no CLI
+
+**What.** Inherited 08-02 when `SOUND_STUDIO_ROADMAP` was archived (its Phase 2,
+never built). New `commands/catalog/sound.ex`: `sound_list` (both layers,
+showing which wins), `sound_import`, `sound_trim`, `sound_apply` (write into the
+library and route a key to it), `sound_delete`. Read verbs `:safe`; anything
+writing the library `:restricted`, because a sound effect is a file the app will
+later play unattended. `Sound.route_keys/0` is the validation source, so a
+typo'd key is refused at the verb.
+
+*Acceptance, from the archived roadmap:* a voicemail becomes a routed sound
+effect end to end, from the CLI alone, with no UI involved.
+
+**Why deferred.** The GUI got built first and covers the operator's own use, so
+nothing stopped. Fully specified — no design needed, just the writing.
+
+**What makes it expensive later.** It doesn't get expensive; it stays *absent*,
+which is the actual cost. Every other authoring surface in this product is
+reachable by the agent, and this one is a room the agent cannot enter — so
+"turn that voicemail into my notification chime" is a thing the app can do and
+the assistant cannot.
+
+---
+
+### The chime designer — the third half that never shipped
+
+**What.** Inherited 08-02 when `SOUND_STUDIO_ROADMAP` was archived (its Phase 4,
+never built). `SoundGen`'s tone-spec language as an editor: frequency, onset,
+duration, amplitude, octave partial — the five fields `tone/5` already takes.
+Live render on change, preview, save to `<workspace>/sounds/` plus the spec
+JSON, with the shipped 16 loading as starting points so *tuning* is the common
+path rather than starting from a blank canvas.
+
+**Preview must go through WebAudio, not a `blob:` URL** — CSP declares no
+`media-src`, so media falls back to `default-src 'self'`, which excludes
+`blob:`. A blob preview works in dev and fails only in the packaged app.
+`dtmf.js` is the precedent.
+
+**Why deferred.** The 07-30 scoping locked three halves — editor, surface,
+designer — and the first two consumed the four days. This is the third.
+
+**What makes it expensive later.** Nothing structural: `SoundGen` already speaks
+the spec language and the surface it would live in is built. But this is the
+largest unbuilt thing in this file, and per the rules above it should be
+**promoted back to its own roadmap** if it is genuinely wanted rather than
+picked up as a leftover.
+
+---
+
 ### Mirror input forwarding (click/type into the Agent Mode mirror)
 
 **What.** The Phase 7 mirror renders a run's viewport as MJPEG but is
@@ -150,14 +199,16 @@ side is done: `RangeResponse` has 33 tests.
 **What makes it expensive later.** This is the exact failure class the range
 work existed to prevent — it looks correct in dev and misbehaves only in the
 shipped webview. Shipping an accepted format that will not play is worse than
-never having accepted it. Pair this with `SOUND_STUDIO_ROADMAP` Phase 5 and the
-workspace first-open look above — one build, three answers.
+never having accepted it. Pair it with the workspace first-open look above —
+one build, two answers.
 
-> **08-01 update:** the packaged walk answered Sound Studio Phase 5's harder
-> half — **`afconvert` executes under the sandbox; import works.** It also found
-> what this item is about: a 20-minute file reported *length unknown*. Fixed
-> (header-probe via `afinfo`, `eee2be3`). Still unwalked here: **seeking** a long
-> track in the packaged webview, and the autoplay posture.
+> **08-01 update:** the packaged walk answered the Sound Studio's Phase 5
+> question — **`afconvert` executes under the sandbox; import works.** It also
+> found what this item is about: a 20-minute file reported *length unknown*.
+> Fixed (header-probe via `afinfo`, `eee2be3`). **This item now also carries
+> what Phase 5 had left over** when `SOUND_STUDIO_ROADMAP` was archived 08-02:
+> the packaged webview's **autoplay posture**, and **seeking** a long track.
+> Same build, same walk.
 
 ---
 

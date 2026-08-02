@@ -30,7 +30,8 @@ and editing it to match the outcome would be tidying away the honest version.
 
 `roadmaps/` now holds four live documents: `LAUNCH_ROADMAP`, `SOUND_STUDIO`,
 `TRADING_TAB_CRITICAL_REVIEW`, and `phone-maps/BUSTERPHONE`, plus `LEFTOVERS`.
-*(Five by the end of the day — see the browser work below.)*
+*(By the end of the day: still four — the browser gained one and the Sound
+Studio was archived. See both below.)*
 
 ## Agent Mode was a one-way door
 
@@ -77,3 +78,27 @@ durable greppable record in the workspace is the recommendation — not a rebuil
 ledger), and *who may make one* (agent proposes, human attests). Four mechanical
 items came along from `LEFTOVERS` so they stop living in a file whose own rule
 says a thing needing a design does not belong there.
+
+## The Sound Studio ships as two-thirds of what it set out to be
+
+Archived to `archive/07-30-26-sound-studio-roadmap.md`. Four days of build, and
+the honest header says what shipped and what did not, because the 07-30 scoping
+locked **three halves** and only two got built.
+
+**Built:** the pure editing core — splice, fade, normalize, mixdown, WAV
+parse/render — plus the Studio as a Home sub-tab, drag-to-trim on the waveform,
+the multi-lane arranger, copy/paste/undo, track identity and colour, a transport
+that performs the timeline, `afconvert` import, and right-click delete.
+
+**Not built:** the `sound` CLI verbs (Phase 2) and the chime designer (Phase 4).
+So the Studio is a cutting-and-arranging tool: you can take a voicemail apart and
+lay it out, but you cannot *tune a chime*, and **no agent can reach any of it**.
+
+Both went to `LEFTOVERS` rather than dying with the document, with a note that
+the designer is the largest unbuilt thing in that file and should be **promoted
+back to its own roadmap** if it is genuinely wanted — picking up a third of a
+locked scope from a leftover line is how it would get done badly.
+
+Phase 5's remainder folded into the byte-range walk already parked there: the
+packaged webview's autoplay posture and seeking a long track. Its harder half —
+does `afconvert` run inside the sandbox — was answered yes on 08-01.
