@@ -319,3 +319,29 @@ still alive afterwards. Five consecutive suite runs and two precommits green.
 **The lesson worth keeping:** a failure count is not a diagnosis. Reading the
 first failure and what logged just before it found in minutes what stash-and-
 bisect was actively pointing away from.
+
+---
+
+## At close
+
+**Suite: 2,143 tests, 0 failures**, credo strict clean, Rust 29 + 5 lockstep
+green — verified across five consecutive runs and two precommits, because the
+day ended on an intermittent failure and one green run would not have meant
+anything.
+
+**Two roadmaps archived, one written.** `roadmaps/` now holds four live
+documents — `LAUNCH_ROADMAP`, `BROWSER_CLOSEOUT_ROADMAP`,
+`TRADING_TAB_CRITICAL_REVIEW_ROADMAP`, `phone-maps/BUSTERPHONE_ROADMAP` — plus
+`LEFTOVERS`, which grew by four browser items and the Sound Studio's two unbuilt
+phases, and shrank by none.
+
+**The one decision waiting on the operator** is `BROWSER_CLOSEOUT_ROADMAP`
+Part I: may the agent confirm a purchase, and what should a confirmation even
+produce now that the wallets ledger is deleted? Everything else in flight is
+work, not a question.
+
+**Three things caught by looking rather than by testing**, worth naming together
+because they are the same lesson: the right-click menu that a rename killed
+silently, the header-probe bug found by importing a real 20-minute file, and the
+RateLimiter crasher that a failure *count* actively pointed away from. The suite
+is 2,143 tests strong and none of the three was its idea.
