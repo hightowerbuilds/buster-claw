@@ -208,12 +208,18 @@ defmodule BusterClaw.ModelPolicyWiringTest do
       put_env(:agent_cli, {:claude, fake_cli!(tmp, argv_file)})
 
       conv_id = "mpw-#{System.unique_integer([:positive])}"
-      {:ok, _pid} = Chat.start_link(conv_id: conv_id, persist: false, audit: false)
+      {:ok, pid} = Chat.start_link(conv_id: conv_id, persist: false, audit: false)
 
       :ok = Chat.send_message(conv_id, "hello")
 
       wait_until(fn -> File.exists?(argv_file) end)
       assert File.read!(argv_file) =~ "--model claude-opus-5"
+
+      # Stop it here rather than leaving it to the test process's link: a linked
+      # Chat dies only once this test returns, so its in-flight DB work races the
+      # sandbox owner's exit and logs a "client exited" disconnect. Deterministic
+      # teardown, not a correctness fix.
+      :ok = GenServer.stop(pid)
     end
   end
 

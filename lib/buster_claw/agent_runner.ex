@@ -44,6 +44,7 @@ defmodule BusterClaw.AgentRunner do
 
   require Logger
 
+  alias BusterClaw.AgentBackend
   alias BusterClaw.Library.Artifact
 
   # 10-minute default wall-clock cap. The Phase 2 governor will set this per-run
@@ -65,22 +66,26 @@ defmodule BusterClaw.AgentRunner do
 
   Returns `{:ok, run_result}` on a clean exit (any exit status — a non-zero
   status is reported, not treated as a crash), or `{:error, reason}` where reason
-  is `:no_agent_cli` or `{:timeout, partial}`.
+  is `:no_agent_cli`, `{:timeout, partial}`, or `{:unconfined, run_result}` — the
+  last when the backend silently discarded the confinement we asked for (see
+  `AgentBackend.fallback_warning?/2`; only opencode can do this).
 
   ## Options
 
     * `:agent` / `:agent_binary` — override detection (mostly for tests).
     * `:argv` — fully override the agent's argument vector (tests).
-    * `:model` — passed to `claude` as `--model`.
+    * `:model` — the model ID, translated per backend by `AgentBackend.argv/3`.
+      Unset omits the flag entirely, leaving the CLI's own default in charge.
     * `:cwd` — working directory (default: the workspace root).
     * `:timeout_ms` — wall-clock cap (default: #{@default_timeout_ms}).
     * `:env` — extra `{name, value}` string pairs layered on the inherited env.
     * `:shell` — shell to spawn through (default `/bin/sh`).
     * `:login` — run the shell as a login shell so it sources the user's profile
       (PATH/auth). Default `false`; the Dispatcher sets it for real runs.
-    * `:permission_mode` — Claude permission mode (default `"bypassPermissions"`).
-      Use `"dontAsk"` with an explicit `--allowedTools` list for a deny-by-default
-      tool surface.
+    * `:permission_mode` — Claude's permission-mode vocabulary (default
+      `"bypassPermissions"`), translated to each other backend's equivalent by
+      `AgentBackend.permission_args/2`. Use `"dontAsk"` with an explicit
+      `--allowedTools` list for a deny-by-default tool surface.
   """
   @spec run(String.t(), keyword()) :: {:ok, run_result()} | {:error, term()}
   def run(prompt, opts \\ []) when is_binary(prompt) do
@@ -111,13 +116,25 @@ defmodule BusterClaw.AgentRunner do
         {:error, :no_agent_cli}
 
       _ ->
-        cond do
-          path = claude_path() -> {:ok, {:claude, path}}
-          path = codex_path() -> {:ok, {:codex, path}}
-          true -> {:error, :no_agent_cli}
-        end
+        detect_on_path()
     end
   end
+
+  # `AgentBackend.order/0` IS this fallback order, so adding a harness is a
+  # one-line change there rather than another `cond` clause here. opencode is
+  # last on purpose: a machine that already had claude or codex must resolve to
+  # the same backend it did before opencode was supported.
+  defp detect_on_path do
+    Enum.find_value(AgentBackend.order(), {:error, :no_agent_cli}, fn backend ->
+      case backend_path(backend) do
+        path when is_binary(path) -> {:ok, {backend, path}}
+        _ -> nil
+      end
+    end)
+  end
+
+  defp backend_path(:claude), do: claude_path()
+  defp backend_path(backend), do: System.find_executable(AgentBackend.executable(backend))
 
   defp resolve_agent(opts) do
     case Keyword.get(opts, :agent_binary) do
@@ -131,8 +148,6 @@ defmodule BusterClaw.AgentRunner do
       nil
   end
 
-  defp codex_path, do: System.find_executable("codex")
-
   @doc """
   Open a **streaming** Port running the agent, non-blocking. The caller owns the
   receive loop (`{port, {:data, _}}` / `{port, {:exit_status, _}}`) and any
@@ -145,6 +160,12 @@ defmodule BusterClaw.AgentRunner do
 
   Returns `{:ok, %{port: port, agent: agent, binary: binary}}` or
   `{:error, :no_agent_cli}`.
+
+  **Unlike `run/2`, this cannot refuse an unconfined run for you.** The output is
+  the caller's, so a streaming caller that named an `:agent` must run its own
+  accumulated output past `AgentBackend.fallback_warning?/2` and abandon the run
+  if it fires — opencode exits 0 after silently dropping the confinement, so the
+  exit status will look clean.
   """
   @spec open(String.t(), keyword()) ::
           {:ok, %{port: port(), agent: atom(), binary: String.t()}} | {:error, term()}
@@ -171,25 +192,20 @@ defmodule BusterClaw.AgentRunner do
     end
   end
 
-  defp default_args(:claude, prompt, opts),
-    do: ["-p", prompt, "--permission-mode", permission_mode(opts)] ++ model_args(opts)
-
-  defp default_args(:codex, prompt, _opts), do: ["exec", prompt]
-  defp default_args(_other, prompt, _opts), do: [prompt]
-
-  defp model_args(opts) do
-    case Keyword.get(opts, :model) do
-      model when is_binary(model) -> ["--model", model]
-      _ -> []
-    end
-  end
-
-  defp permission_mode(opts), do: Keyword.get(opts, :permission_mode, "bypassPermissions")
+  # Each harness's non-interactive invocation lives in `AgentBackend` — the flag
+  # vocabulary differs per CLI (model, sandbox/permission, streaming) and the
+  # table there was measured from `--help` rather than recalled. The claude shape
+  # is unchanged by that move; codex gained the flags it always supported and
+  # never received.
+  defp default_args(agent, prompt, opts), do: AgentBackend.argv(agent, prompt, opts)
 
   defp exec(agent, binary, args, cwd, opts, timeout) do
     start = now_ms()
     port = open_port(binary, args, cwd, opts)
-    collect(port, "", start + timeout, agent, binary, start)
+
+    port
+    |> collect("", start + timeout, agent, binary, start)
+    |> refuse_unconfined(agent)
   rescue
     error ->
       Logger.error("AgentRunner failed to spawn #{agent}: #{Exception.message(error)}")
@@ -259,6 +275,29 @@ defmodule BusterClaw.AgentRunner do
         {:error, {:timeout, %{agent: agent, output: acc, duration_ms: now_ms() - start}}}
     end
   end
+
+  # opencode does not fail when `--agent` names a file it cannot find: it prints
+  # a line on stderr, falls back to its default `build` agent — whose permission
+  # is `{"*", allow, "*"}` — and exits 0. So a caller that checked only the exit
+  # status would accept a completely unconfined run as a clean one.
+  #
+  # The warning can only appear when we named an agent, which we only do to
+  # confine the run. Its presence therefore means the confinement we asked for
+  # was silently discarded, and that is a failed run, not a warning. The output
+  # rides along so a caller can still show what happened.
+  defp refuse_unconfined({:ok, %{output: output} = result}, agent) do
+    if AgentBackend.fallback_warning?(agent, output) do
+      Logger.error(
+        "AgentRunner: #{agent} ignored --agent and ran unconfined; refusing the result"
+      )
+
+      {:error, {:unconfined, result}}
+    else
+      {:ok, result}
+    end
+  end
+
+  defp refuse_unconfined(other, _agent), do: other
 
   @doc """
   Kill the underlying OS process group (the run is its own group leader via

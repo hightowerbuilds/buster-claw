@@ -222,6 +222,19 @@ defmodule BusterClaw.ModelPolicy do
     end
   end
 
+  # Every surface lives in ONE JSON row, so setting one is a read-modify-write.
+  # Two concurrent `put/2` calls can therefore lose an update: the second read
+  # can happen before the first write lands, and one surface's change is dropped.
+  #
+  # Deliberately NOT wrapped in `Repo.transaction/1`. That was tried on 08-03 and
+  # reverted, measured: it takes a write lock on the single pooled SQLite
+  # connection (`pool_size: 1`, see `config/test.exs`) and starves every other
+  # writer — 2 suite failures became 83, in modules that never touch this one.
+  #
+  # The race is real but narrow: `put/2` is driven by a human in Settings or by
+  # the `model_policy` command, never concurrently in normal use. Recorded rather
+  # than papered over — if this ever needs to be atomic, the fix is a
+  # compare-and-swap on the row's value, not a transaction.
   defp write(surface, model) do
     entries =
       stored()

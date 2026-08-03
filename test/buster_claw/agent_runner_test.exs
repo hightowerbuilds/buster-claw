@@ -80,6 +80,53 @@ defmodule BusterClaw.AgentRunnerTest do
     assert status != 0
   end
 
+  # opencode answers a missing `--agent` file by running UNCONFINED under its
+  # default agent and exiting 0. Checking the exit status alone would accept
+  # that run, which is why the runner reads the output too.
+  describe "an opencode run that lost its confinement" do
+    @fallback ~s|agent "buster-trading" not found. Falling back to default agent|
+
+    test "is an error, not a clean run, even though the CLI exits 0" do
+      assert {:error, {:unconfined, result}} =
+               AgentRunner.run("ignored",
+                 agent: :opencode,
+                 agent_binary: "/bin/sh",
+                 argv: ["-c", "echo '#{@fallback}' 1>&2; exit 0"],
+                 cwd: @tmp
+               )
+
+      # The output rides along so a caller can still show what happened.
+      assert result.exit_status == 0
+      assert result.output =~ "Falling back to default agent"
+    end
+
+    test "a clean opencode run is untouched" do
+      assert {:ok, %{exit_status: 0, output: out}} =
+               AgentRunner.run("ignored",
+                 agent: :opencode,
+                 agent_binary: "/bin/echo",
+                 argv: ["all-good"],
+                 cwd: @tmp
+               )
+
+      assert out =~ "all-good"
+    end
+
+    # The check is scoped to the one backend that can fail this way. A claude run
+    # that happens to print the same words — quoting this very roadmap, say — is
+    # not a confinement failure, and refusing it would be a false alarm on the
+    # backend every real run currently uses.
+    test "the same words from claude are not a confinement failure" do
+      assert {:ok, %{exit_status: 0}} =
+               AgentRunner.run("ignored",
+                 agent: :claude,
+                 agent_binary: "/bin/echo",
+                 argv: [@fallback],
+                 cwd: @tmp
+               )
+    end
+  end
+
   test "child stdin is explicit EOF instead of an open silent pipe" do
     started = System.monotonic_time(:millisecond)
 
