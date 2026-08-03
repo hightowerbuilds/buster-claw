@@ -935,9 +935,39 @@ Rules:
 > Extracting it would move orchestration into a module that then needs the
 > socket passed to it — indirection, not separation.
 >
-> **`SoundStudioComponent` is 1,926 and is a different job.** It is template
-> decomposition, not purity extraction — the roadmap says so — and it wants a
-> pass of its own rather than being tacked onto this one.
+> **`SoundStudioComponent`: 1,926 → 1,250, and `render/1` 826 → 224.**
+> Done as its own pass (08-03), because it is template decomposition rather
+> than purity extraction. `render/1` was 43% of the module; it is now 18%.
+>
+> Five modules under `BusterClawWeb.SoundStudio.`, each taken out in
+> dependency order so the next one was always the easiest remaining block:
+>
+> | Module | Lines | What it is |
+> |---|---|---|
+> | `Format` | 50 | `ms/1`, `dbfs/1`, clip labels, menu class — ~25 call sites |
+> | `Catalog` | 46 | `find_source/2`, `addable_groups/1`, `clip_src/2` |
+> | `Overlays` | 230 | context menu, assign-on-render, info modal |
+> | `Sidebar` | 202 | the source rail, its fold, the import dropzone |
+> | `Arranger` | 379 | toolbar, transport, ruler, track stack, clips |
+>
+> **The order was the method.** `Format` first because it was called from
+> everywhere and blocked nothing; then the overlays (three assigns between
+> them); then the sidebar; then the arranger, which was the most entangled and
+> became tractable only once `Catalog` existed to hold what it shared with the
+> component. Each extraction carried its own private helpers — `visible_items/2`
+> and `upload_error/2` went with the sidebar, `track_color/1` and the palette
+> with the arranger — because none of them had a second caller.
+>
+> **What the attrs bought.** Reading `Arranger`'s nine `attr` declarations now
+> tells you what an arrangement is made of. Reading the same markup inside the
+> old `render/1` told you nothing, because every assign in the Studio was in
+> scope. That is the actual product of this pass; the line count is a
+> side-effect.
+>
+> Two small contract fixes fell out: `upload_error/2` takes the limit rather
+> than reading a module attribute (a second copy of a number could disagree with
+> the `allow_upload` enforcing it), and `@max_import_entries` is exposed through
+> a function because `@name` inside `~H` is an assign, never a module attribute.
 >
 > **The lesson this phase has to carry:** `TradingLive` was cut 46% and regrew
 > past its own starting complaint within a week. A split buys a rate, not a
