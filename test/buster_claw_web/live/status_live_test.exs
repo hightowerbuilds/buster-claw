@@ -776,6 +776,21 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       assert html =~ "Learn the machine."
 
+      # The 3-step onboarding moved here from the retired Settings Get Started
+      # tab (08-02) — steps only, no quick-chat starters. It's a native
+      # <details> collapsible, CLOSED by default (no `open` attribute).
+      assert has_element?(view, "details#explore-get-started")
+      refute has_element?(view, "details#explore-get-started[open]")
+
+      # Step order (operator, 08-02): install Claude Code → chat → comms.
+      assert [_, one, two, three] =
+               String.split(html, ~r/<h3[^>]*>/) |> Enum.take(4)
+
+      assert one =~ "Download &amp; install Claude Code"
+      assert two =~ "Chat with Buster Claw"
+      assert three =~ "Set up communications"
+      refute html =~ "Quick chat"
+
       # Every non-Intro sub-tab has a launcher tile (rail button + grid tile
       # both carry phx-value-tab, so each key appears at least twice).
       for key <- BusterClawWeb.ExplorePanel.tab_keys(), key != "intro" do
@@ -926,6 +941,32 @@ defmodule BusterClawWeb.StatusLiveTest do
         assert BusterClaw.Commands.command_type(cmd) != nil,
                "tutorial names #{cmd}, which is not in the command catalog"
       end
+
+      refute html =~ "Tutorial in the works"
+    end
+
+    test "the Trading tab teaches connect-once and the can/can't split",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      html = render_click(view, "select_explore_tab", %{"tab" => "trading"})
+
+      # The connect block mirrors the Trading tab's own first-run commands,
+      # wraps instead of scrolling (no <pre>/overflow-x here — operator, 08-02),
+      # and each command carries a copy button.
+      assert html =~ "claude mcp add --transport http --scope user robinhood"
+      assert html =~ "claude mcp login robinhood"
+      assert html =~ "logout robinhood"
+      refute html =~ "<pre"
+      assert html =~ ~s(data-terminal-command-copy="claude mcp login robinhood")
+
+      # The split, and its load-bearing claims.
+      assert html =~ "What it can do"
+      assert html =~ "What it can&#39;t do"
+      assert html =~ "read-only by construction"
+      assert html =~ "never re-sends an order"
+      assert html =~ ~s(href="/trading")
 
       refute html =~ "Tutorial in the works"
     end

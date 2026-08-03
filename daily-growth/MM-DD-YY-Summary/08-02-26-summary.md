@@ -881,3 +881,51 @@ silently, the header-probe bug found by importing a real 20-minute file, the
 RateLimiter crasher that a failure *count* actively pointed away from, and a
 Ctrl-C handler that has never once fired. The suite is 2,216 tests strong and
 none of the four was its idea.
+
+## The homepage learns to teach: the Explore tab
+
+A fifth home sub-tab landed next to Chat / Calendar / Notes / Studio, and it is
+the app explaining itself. The Intro is a launcher — a grid of square tiles,
+one per sub-tab — and the rail behind it holds site tabs for **busterclaw.lol**
+(framed around the asset model: the phone number is the one thing you buy) and
+**Notes That Float**, plus a tutorial roster the operator set: Gmail/GWS,
+Command List, BrowserControl, Trading built today; BusterPhone and Shaders &
+Backgrounds still honest stubs that say a true paragraph, deep-link the real
+surface, and admit the walkthrough isn't written yet.
+
+**The tutorials teach by prompt, not by reference.** Each one shows what a user
+would literally type, then unfolds it command-by-command: six Gmail/Calendar
+cycles ending in the unattended on-duty email loop; the Command List atlas with
+its read/mutate/gated anatomy and a funnel SVG (every caller → one command
+surface → policy gates → Sentinel feed); BrowserControl's three-surfaces map
+(your live tab / the sandbox that forgets / the Agent window) closing on the
+payment gate stated verbatim — *the agent cannot pay and cannot confirm a
+purchase*; and Trading kept deliberately simple: the two connect commands the
+tab itself shows, then a plain can/can't split, with propose-only orders and
+the Agentic account as the quiet risk cap.
+
+**The load-bearing invention is a test shape, not a component.** Every command
+a tutorial names is asserted to exist in the catalog — 60-odd commands across
+four tutorials are now pinned so a rename turns stale documentation into a red
+test instead of a silent lie. The sweep-renames lesson from July, applied to
+prose this time.
+
+**Get Started retired into the Intro.** The 3-step onboarding moved out of
+Settings (quick-chat starters dropped, not moved), became a native `<details>`
+collapsible closed by default, and had its steps reordered to the operator's
+sequence: install Claude Code → chat → set up communications. The retirement
+touched the tab-strip JS's settings group, and the JS↔Elixir lockstep test
+caught the pairing exactly as designed. User-facing copy says "your phone
+line", never "Twilio" — the retailer model holds in the docs too.
+
+**The shared-tree lesson fired again, on schedule.** Mid-gate, detached `mix
+test` processes from a parallel session turned the SQLite test DB into
+"Database busy" carnage across seventeen unrelated suites — the same failure
+the 07-28 ops note describes. No code was changed in response; the runs were
+waited out and the identical suite passed clean. The lesson stays: two suites,
+one file, no arbitration.
+
+The roadmap lives at `roadmaps/EXPLORE_TAB_ROADMAP.md` — phases 0/0.5 done,
+four of six roster tutorials built, and the one open design question (Explore
+vs the Manual) deliberately deferred until the overlap is visible. Suite ends
+the day at 2,218.

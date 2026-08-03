@@ -12,15 +12,15 @@ describe("canonicalGroupKey", () => {
       "/notify-settings",
       "/integrations",
       "/security",
-      "/get-started",
       "/cmd-list"
     ]) {
       expect(canonicalGroupKey(p)).toBe("/settings")
     }
   })
 
-  test("the removed /gws route no longer groups", () => {
+  test("the removed /gws and /get-started routes no longer group", () => {
     expect(canonicalGroupKey("/gws")).toBeNull()
+    expect(canonicalGroupKey("/get-started")).toBeNull()
   })
 
   test("ungrouped routes return null", () => {

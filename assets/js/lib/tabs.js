@@ -22,7 +22,6 @@ const TAB_GROUPS = [
       "/notify-settings",
       "/integrations",
       "/security",
-      "/get-started",
       "/cmd-list"
     ])
   }

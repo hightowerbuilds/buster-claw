@@ -124,6 +124,15 @@ that Phases 2–3 carried below:
 **Done when:** every square opens a tab that says something true, and nothing
 claims to be a tutorial that isn't one yet.
 
+*Addendum (operator, 08-02):*
+- [x] DONE 08-02 — Get Started's **3-step onboarding moved from Settings into the Intro**
+  (above the tile grid — setup before sightseeing). The quick-chat starters
+  are dropped, not moved; `/get-started`, `GetStartedLive`, and its Settings
+  sub-tab entry retire with the move. The copy-command button markup works
+  as-is (global listener in `globals.js`). Rendered as a native `<details>`
+  collapsible, closed by default (operator, same day) — returning users see
+  one quiet row; the `.ic-collapse-summary` CSS finally has a consumer again.
+
 # Phase 1 — The content pipeline
 
 *How tutorials get written, before any are.*
@@ -193,6 +202,20 @@ Replace each Phase 0.5 stub with an actual tutorial. One tutorial per commit.
   commerce errand (scope halt, cart freeze, payment handoff — *the human
   pays; the agent cannot pay and cannot confirm*, per the closeout
   roadmap's current posture; finish ≠ stop). Same command-contract test.
+
+- [x] **Trading** — BUILT 08-02, added to the roster (operator, same day). Deliberately the
+  *simple* one: no cycles, just (1) how to connect Robinhood — the two
+  terminal commands the Trading tab itself shows (`claude mcp add …` +
+  `claude mcp login robinhood`, OAuth → Keychain, the #65895 logout/login
+  workaround), with the app-holds-no-credentials point up front — and (2) a
+  plain can/can't split. CAN: read balances, positions with cost basis,
+  charts, earnings (accounts masked to last-4, never persisted); answer
+  market questions in the trading chat; *propose* an order as a typed
+  confirm card. CAN'T: place/amend/cancel on its own (read-only tool
+  allowlist by construction — only the operator's click submits, and only
+  to the one account Robinhood marks Agentic); never auto-retries an
+  uncertain submit; never sees the password. Source of truth:
+  `Trading`/`TradingOrder` moduledocs + trading-tab memory.
 
 Remaining after that: **BusterPhone** → **Shaders & Backgrounds**.
 

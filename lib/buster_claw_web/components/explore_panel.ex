@@ -86,11 +86,23 @@ defmodule BusterClawWeb.ExplorePanel do
           "the agent just by emailing you.",
       path: "/settings",
       path_label: "Open Configuration"
+    },
+    %{
+      key: "trading",
+      label: "Trading",
+      eyebrow: "The desk",
+      blurb: "Robinhood, read-first: connect once, confirm every order yourself.",
+      body:
+        "The Trading tab is a market desk run through your own Claude CLI — " <>
+          "balances, cost-basis P&L, charts, earnings. The app never holds " <>
+          "your broker credentials, and nothing trades without your click.",
+      path: "/trading",
+      path_label: "Open the Trading tab"
     }
   ]
 
   # Feature tabs whose tutorial panel exists — everything else stubs.
-  @built ~w(gws cmd browser)
+  @built ~w(gws cmd browser trading)
 
   # {key, rail label}, in rail order. Intro leads, the two site tabs follow,
   # then the feature tabs in @features order.
@@ -158,6 +170,7 @@ defmodule BusterClawWeb.ExplorePanel do
         <.gws_panel :if={@tab == "gws"} />
         <.cmd_panel :if={@tab == "cmd"} />
         <.browser_panel :if={@tab == "browser"} />
+        <.trading_panel :if={@tab == "trading"} />
         <.stub_panel :for={stub <- @stubs} :if={@tab == stub.key} stub={stub} />
       </div>
     </section>
@@ -186,6 +199,79 @@ defmodule BusterClawWeb.ExplorePanel do
         opens a short tour of one of them: what it does, how to drive it yourself,
         and how to hand it to the agent. The grid grows as tutorials are written.
       </p>
+
+      <%!-- The 3-step onboarding, moved here from the Settings Get Started tab
+            (08-02) — setup before sightseeing. A native <details>, closed by
+            default: returning users see one quiet row, first-run users open it
+            once. State is the browser's, not LiveView's — a re-render that
+            collapses it just restores the default. --%>
+      <details id="explore-get-started" class="group ic-panel overflow-hidden">
+        <summary class="ic-collapse-summary">
+          <div>
+            <p class="ic-eyebrow">Get started</p>
+            <p class="mt-1 text-sm text-base-content/65">
+              Three steps and you're talking to Buster Claw.
+            </p>
+          </div>
+          <.icon
+            name="hero-chevron-down"
+            class="size-4 shrink-0 text-base-content/50 transition group-open:rotate-180"
+          />
+        </summary>
+
+        <ol class="flex flex-col gap-4 border-t-2 border-base-content/20 px-5 py-5">
+          <li class="flex gap-3">
+            <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
+              1
+            </span>
+            <div class="min-w-0">
+              <h3 class="font-semibold">Download &amp; install Claude Code</h3>
+              <p class="mt-0.5 text-sm text-base-content/65">
+                Buster Claw has no built-in AI — it drives your own Claude Code CLI
+                headlessly. Install it once with
+                <.copy_command command="brew install --cask claude-code" />, then
+                sign in (<span class="font-mono">claude</span> in a terminal).
+              </p>
+            </div>
+          </li>
+
+          <li class="flex gap-3">
+            <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
+              2
+            </span>
+            <div class="min-w-0">
+              <h3 class="font-semibold">Chat with Buster Claw</h3>
+              <p class="mt-0.5 text-sm text-base-content/65">
+                Use the Chat sub-tab, right next to this one. Ask it to triage your
+                inbox, draft a reply, or look something up — it runs headless Claude
+                for you, no terminal needed.
+              </p>
+            </div>
+          </li>
+
+          <li class="flex gap-3">
+            <span class="flex size-6 shrink-0 items-center justify-center rounded bg-primary font-mono text-xs font-bold text-primary-content">
+              3
+            </span>
+            <div class="min-w-0">
+              <h3 class="font-semibold">Set up communications</h3>
+              <p class="mt-0.5 text-sm text-base-content/65">
+                Connect Google Workspace in
+                <.link navigate="/settings" class="font-semibold text-primary hover:opacity-80">
+                  Configuration
+                </.link>
+                (one click), then list your trusted senders in Contacts — the corner
+                widget on this screen; mail from anyone else is ignored. When you're
+                ready, give your agent its own phone line on the
+                <.link navigate="/phone" class="font-semibold text-primary hover:opacity-80">
+                  Phone
+                </.link>
+                tab.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </details>
 
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <button
@@ -1112,6 +1198,114 @@ defmodule BusterClawWeb.ExplorePanel do
     """
   end
 
+  # The Trading tutorial — deliberately the simple one: how to connect
+  # Robinhood, then a plain can/can't split. Source of truth is the
+  # `Trading`/`TradingOrder` moduledocs; the connect commands mirror what the
+  # Trading tab itself shows on first run. No cycles here — the surface's
+  # whole pitch is restraint, and the page should read that way too.
+  defp trading_panel(assigns) do
+    ~H"""
+    <div class="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-8">
+      <div>
+        <p class="ic-eyebrow">The desk</p>
+        <h2 class="mt-2 font-display text-2xl font-black tracking-tight">
+          Trading — Robinhood, read-first
+        </h2>
+      </div>
+
+      <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
+        <p>
+          The
+          <.link navigate="/trading" class="font-semibold text-primary hover:opacity-80">
+            Trading tab
+          </.link>
+          is a market desk: balances across your accounts, positions with real
+          cost-basis P&amp;L, charts, earnings, and a chat that can talk it all
+          through. Everything runs through
+          <span class="font-semibold text-base-content">your own Claude CLI</span>
+          —
+          Buster Claw never holds your Robinhood credentials, and account numbers
+          are masked to their last four digits and never stored.
+        </p>
+      </div>
+
+      <div class="ic-panel flex flex-col gap-3 p-4">
+        <p class="ic-eyebrow">Connect — once, in a terminal</p>
+        <div class="flex flex-col gap-2">
+          <.command_block command="claude mcp add --transport http --scope user robinhood https://agent.robinhood.com/mcp/trading" />
+          <.command_block command="claude mcp login robinhood" />
+        </div>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          The login opens Robinhood's own OAuth page in your browser; the tokens
+          land in your Mac's Keychain and every trading turn reuses them silently
+          after that. If the tools still report unavailable after logging in, run
+          <code class="font-semibold">claude mcp logout robinhood</code>
+          and log in
+          again — a known Claude Code quirk, not a Buster Claw setting.
+        </p>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div class="ic-panel flex flex-col gap-2 p-4">
+          <p class="ic-eyebrow">What it can do</p>
+          <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
+            <li>
+              Read your accounts: balances, positions with tax-lot cost basis,
+              order history, quotes, charts, and the earnings calendar — the
+              dashboard is built from these reads.
+            </li>
+            <li>
+              Talk markets in the trading chat: "how has my cost basis on AAPL
+              changed this year?" is a question, not a risk.
+            </li>
+            <li>
+              <span class="font-semibold text-base-content">Propose</span> an
+              order: ask it to buy or sell and it gathers side, symbol, quantity,
+              and price into a typed confirm card — showing you exactly what
+              would be submitted.
+            </li>
+          </ul>
+        </div>
+
+        <div class="ic-panel flex flex-col gap-2 p-4">
+          <p class="ic-eyebrow">What it can't do</p>
+          <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
+            <li>
+              Place, amend, or cancel an order on its own. The chat's tool list
+              is read-only by construction — an order submits only when
+              <span class="font-semibold text-base-content">you</span>
+              click the
+              confirm card, and only to the one account Robinhood marks as
+              Agentic. Every other account stays read-only.
+            </li>
+            <li>
+              Retry an uncertain submit. If a run dies before the broker's answer
+              arrives, it reports unknown and tells you to check Robinhood — it
+              never re-sends an order.
+            </li>
+            <li>
+              See your password. The OAuth handshake is between you and
+              Robinhood; Buster Claw only ever borrows the Keychain tokens.
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="text-sm leading-relaxed text-base-content/70">
+        The quiet risk cap: only the Agentic account can ever transact, so what
+        you fund it with is the most an order can touch.
+      </p>
+
+      <.link
+        navigate="/trading"
+        class="inline-flex w-fit items-center gap-2 rounded-xs bg-primary px-4 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85"
+      >
+        <.icon name="hero-arrow-right" class="size-3.5" /> Open the Trading tab
+      </.link>
+    </div>
+    """
+  end
+
   attr :n, :integer, required: true
   attr :title, :string, required: true
   attr :want, :string, required: true
@@ -1146,6 +1340,55 @@ defmodule BusterClawWeb.ExplorePanel do
       <figcaption class="ic-eyebrow">{@label}</figcaption>
       <blockquote class="font-mono text-sm leading-relaxed">“{@text}”</blockquote>
     </figure>
+    """
+  end
+
+  attr :command, :string, required: true
+
+  # Block-level shell command: wraps rather than scrolling (long commands must
+  # never demand horizontal scrolling — operator, 08-02), full-contrast mono on
+  # a bordered field, copy button via the global data-terminal-command-copy
+  # listener in globals.js.
+  defp command_block(assigns) do
+    ~H"""
+    <div class="flex items-start gap-2 rounded-xs border-2 border-base-content/25 bg-base-200 p-3">
+      <code class="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-[0.8rem] font-semibold leading-relaxed">
+        {@command}
+      </code>
+      <button
+        type="button"
+        data-terminal-command-copy={@command}
+        aria-label={"Copy command: #{@command}"}
+        title="Copy"
+        class="inline-flex shrink-0 items-center gap-1 rounded-sm border border-base-content/20 px-1.5 py-0.5 font-mono text-[0.62rem] font-semibold uppercase tracking-wide text-base-content/60 transition hover:border-primary hover:text-primary"
+      >
+        <.icon name="hero-clipboard-document" class="size-3" />
+        <span data-terminal-command-copy-label>Copy</span>
+      </button>
+    </div>
+    """
+  end
+
+  attr :command, :string, required: true
+
+  # Inline shell command with a copy button (the click handler is the global
+  # data-terminal-command-copy listener in globals.js). Moved here with the
+  # 3-step onboarding when GetStartedLive retired (08-02).
+  defp copy_command(assigns) do
+    ~H"""
+    <span class="inline-flex items-center gap-1 align-middle">
+      <code class="rounded bg-base-200 px-1.5 py-0.5 font-mono text-[0.8rem]">{@command}</code>
+      <button
+        type="button"
+        data-terminal-command-copy={@command}
+        aria-label={"Copy command: #{@command}"}
+        title="Copy"
+        class="inline-flex shrink-0 items-center gap-1 rounded-sm border border-base-content/20 px-1.5 py-0.5 font-mono text-[0.62rem] font-semibold uppercase tracking-wide text-base-content/60 transition hover:border-primary hover:text-primary"
+      >
+        <.icon name="hero-clipboard-document" class="size-3" />
+        <span data-terminal-command-copy-label>Copy</span>
+      </button>
+    </span>
     """
   end
 
