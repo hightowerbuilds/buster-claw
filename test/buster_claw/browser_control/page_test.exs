@@ -29,6 +29,49 @@ defmodule BusterClaw.BrowserControl.PageTest do
     assert {:ok, %{"text" => "hi"}} = Page.read(session, opts())
   end
 
+  # The 07-25 field test passed "input,form" and "#variation_size_name li" to
+  # find_elements and got the same nav links both times: the option was accepted
+  # and dropped.
+  test "find_elements filters on selector, and indices still mean the whole page" do
+    session = fn "Runtime.evaluate", %{"expression" => js} ->
+      assert js =~ ~s|.filter(({el}) => el.matches("input,form"))|
+
+      # The index is assigned from the FULL enumeration before filtering, so a
+      # filtered row still carries the index `click index:` resolves against.
+      assert js =~ ".map((el, index) => ({el: el, index: index}))"
+      assert String.contains?(js, ".map((el, index)") and String.contains?(js, ".filter(({el})")
+
+      index_at = :binary.match(js, ".map((el, index)") |> elem(0)
+      filter_at = :binary.match(js, ".filter(({el})") |> elem(0)
+      assert index_at < filter_at, "indices must be assigned before the selector filter"
+
+      {:ok, %{"result" => %{"value" => [%{"index" => 7, "tag" => "input"}]}}}
+    end
+
+    assert {:ok, [%{"index" => 7}]} =
+             Page.find_elements(session, [selector: "input,form"] ++ opts())
+  end
+
+  test "find_elements without a selector enumerates unfiltered" do
+    session = fn "Runtime.evaluate", %{"expression" => js} ->
+      refute js =~ "el.matches("
+      {:ok, %{"result" => %{"value" => []}}}
+    end
+
+    assert {:ok, []} = Page.find_elements(session, opts())
+    assert {:ok, []} = Page.find_elements(session, [selector: nil] ++ opts())
+    assert {:ok, []} = Page.find_elements(session, [selector: ""] ++ opts())
+  end
+
+  test "a malformed selector surfaces as a typed js exception, like extract" do
+    session = fn "Runtime.evaluate", _params ->
+      {:ok, %{"exceptionDetails" => %{"text" => "not a valid selector"}}}
+    end
+
+    assert {:error, {:js_exception, "not a valid selector"}} =
+             Page.find_elements(session, [selector: "!!"] ++ opts())
+  end
+
   test "click by selector embeds the selector and strips the matched flag" do
     session = fn "Runtime.evaluate", %{"expression" => js} ->
       assert js =~ ~s|document.querySelector("#go")|

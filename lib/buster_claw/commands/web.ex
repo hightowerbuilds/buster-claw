@@ -5,6 +5,7 @@ defmodule BusterClaw.Commands.Web do
 
   alias BusterClaw.{Browser, BrowserHistory, Search}
   alias BusterClaw.Browser.{Bridge, Capture, Checks, FlowRunner}
+  alias BusterClaw.BrowserControl.Egress.Policy
 
   def web_search(%{"query" => query} = args) do
     limit = Map.get(args, "limit", 10)
@@ -654,6 +655,45 @@ defmodule BusterClaw.Commands.Web do
   def browser_check_save(_args), do: {:error, :missing_name_or_steps}
 
   def browser_check_list(_args \\ %{}), do: {:ok, %{checks: Checks.list()}}
+
+  @doc """
+  Read or set how much page content may leave the machine, per host.
+
+  With no `host`, lists the levels in force — shipped defaults plus the
+  operator's entries layered over them. With `host` and `level`, records one
+  (`full` | `structure_only` | `never`); `level: null` removes it and returns
+  the host to the default.
+
+  This exists because the mechanism was unreachable: `Policy.level_for/2` has
+  always taken `:overrides`, and `AgentMode` called `Egress.prepare/2` with no
+  opts, so nothing could ever feed it. The 07-25 field test measured 89.8 KB
+  leaving over 41 steps, every one at `:full` with zero redactions.
+
+  A level applies to the host **and its subdomains**, most specific wins, and
+  ties break toward the stricter level. Runs freeze these at start, so a change
+  takes effect on the next run rather than mid-errand.
+  """
+  def browser_egress_level(args \\ %{})
+
+  def browser_egress_level(%{"host" => host} = args) when is_binary(host) and host != "" do
+    with {:ok, entries} <- Policy.put_override(host, Map.get(args, "level")) do
+      {:ok, %{host: host, level: Map.get(args, "level"), overrides: shape_levels(entries)}}
+    end
+  end
+
+  def browser_egress_level(_args) do
+    {:ok,
+     %{
+       in_force: shape_levels(Policy.overrides()),
+       operator_set: shape_levels(Policy.stored_overrides()),
+       default: "full",
+       levels: Enum.map(Policy.levels(), &Atom.to_string/1)
+     }}
+  end
+
+  defp shape_levels(entries) do
+    Enum.map(entries, fn {host, level} -> %{host: host, level: Atom.to_string(level)} end)
+  end
 
   @doc """
   Run a saved check as a browser flow on its saved engine (live tab or the

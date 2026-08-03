@@ -178,6 +178,25 @@ defmodule BusterClaw.BrowserControl.AgentModeTest do
     assert AgentMode.summary(pid).egress.bytes_out >= bytes
   end
 
+  # Until 08-03 `Egress.prepare/2` was called with no opts, so Policy's
+  # `:overrides` existed and was tested but could never be fed. Frozen at start
+  # like the scope, so a mid-errand change cannot alter what a run has been
+  # sending.
+  test "a run applies its frozen per-host egress overrides" do
+    {pid, _} = start(egress_overrides: [{"example.com", :structure_only}])
+    AgentMode.start_run(pid)
+    {:ok, _} = AgentMode.navigate(pid, "https://example.com/account")
+
+    assert {:ok, payload} = AgentMode.act(pid, :extract, %{})
+
+    step = AgentMode.trajectory(pid) |> Trajectory.last()
+    assert step.egress.level == :structure_only
+
+    # structure_only is the point: the page's free text does not leave.
+    refute inspect(payload) =~ "4111111111111111"
+    assert step.egress.bytes_out < step.egress.bytes_in
+  end
+
   # A session module with no CDP surface at all.
   defmodule NoCommandSession do
   end

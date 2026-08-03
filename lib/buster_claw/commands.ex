@@ -564,6 +564,7 @@ defmodule BusterClaw.Commands do
   defdelegate browser_check_list(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_control_probe(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_check_run(args), to: BusterClaw.Commands.Web
+  defdelegate browser_egress_level(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_tabs(args \\ %{}), to: BusterClaw.Commands.Web
   defdelegate browser_navigate(args), to: BusterClaw.Commands.Web
   # Agent Mode runs (browser-engine UI slice)

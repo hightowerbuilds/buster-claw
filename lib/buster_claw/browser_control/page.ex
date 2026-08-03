@@ -57,12 +57,31 @@ defmodule BusterClaw.BrowserControl.Page do
     eval(session, js, opts)
   end
 
-  @doc ~S|Indexed interactive elements: `[%{"index", "tag", "label", "selector_hint"}]`.|
+  @doc ~S"""
+  Indexed interactive elements: `[%{"index", "tag", "label", "selector_hint"}]`.
+
+  `:selector` narrows the list to elements matching a CSS selector. The 07-25
+  field test passed `"input,form"` and `"#variation_size_name li"` here and got
+  the same nav links both times — the option was accepted and ignored, costing
+  several round trips on a page with far more than 100 interactive elements.
+
+  **Each returned element keeps its index from the full enumeration, not its
+  position in the filtered list.** `click index:` resolves against the same
+  unfiltered `@enumerate_js`, so renumbering a filtered result would hand back
+  indices that `click` cannot honour — a quieter and worse bug than the one
+  being fixed. Filtering therefore changes *which* rows come back and never what
+  an index means.
+
+  A malformed selector throws in the page and surfaces as
+  `{:error, {:js_exception, _}}`, the same as `extract/3`.
+  """
   def find_elements(session, opts \\ []) do
     js = """
     #{@enumerate_js}
+      .map((el, index) => ({el: el, index: index}))
+      #{selector_filter(Keyword.get(opts, :selector))}
       .slice(0, 100)
-      .map((el, index) => ({
+      .map(({el, index}) => ({
         index: index,
         tag: el.tagName.toLowerCase(),
         label: (el.innerText || el.value || el.getAttribute('aria-label') || el.placeholder || '').trim().slice(0, 120),
@@ -72,6 +91,11 @@ defmodule BusterClaw.BrowserControl.Page do
 
     eval(session, js, opts)
   end
+
+  defp selector_filter(selector) when is_binary(selector) and selector != "",
+    do: ".filter(({el}) => el.matches(#{Jason.encode!(selector)}))"
+
+  defp selector_filter(_selector), do: ""
 
   @doc """
   Click an element by `%{"selector" => css}`, `%{"text" => visible}`, or

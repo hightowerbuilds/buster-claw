@@ -357,7 +357,7 @@ defmodule BusterClaw.Commands.Catalog.Web do
         type: :mutate,
         tier: :restricted,
         description:
-          "One page action in an Agent Mode run: click | fill | extract | read | find_elements | wait. Target by selector/text/index; fill takes value ($secret.<name> resolves in the executor and never enters the record); wait takes until/timeout_ms. Content-returning actions come back egress-prepared (policy + redaction), never raw page text.",
+          "One page action in an Agent Mode run: click | fill | extract | read | find_elements | wait. Target by selector/text/index; fill takes value ($secret.<name> resolves in the executor and never enters the record); wait takes until/timeout_ms. find_elements and extract both narrow on selector — on a busy page, pass one rather than paging through the first 100 elements; a find_elements index still refers to the whole page, so it stays valid for click. Content-returning actions come back egress-prepared (policy + redaction), never raw page text.",
         args: %{
           "id" => %{type: :string, required: true},
           "action" => %{type: :string, required: true},
@@ -415,6 +415,21 @@ defmodule BusterClaw.Commands.Catalog.Web do
         description:
           "Take the wheel back after a handoff: an Agent Mode run waiting on the human returns to \"agent_working\", the only mode in which the agent may act.",
         args: %{"id" => %{type: :string, required: true}}
+      },
+      %{
+        name: "browser_egress_level",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Read or set how much page content may leave the machine for a host during Agent Mode runs. With no args, lists the levels in force. With \"host\" and \"level\" (full | structure_only | never), records one; level null removes it. Applies to the host and its subdomains; most specific wins and ties break stricter. Runs freeze these at start, so a change applies to the next run.",
+        args: %{
+          "host" => %{type: :string, required: false},
+          "level" => %{
+            type: :string,
+            required: false,
+            description: "full | structure_only | never, or null to clear the host's entry."
+          }
+        }
       },
       %{
         name: "agent_run_confirm_purchase",

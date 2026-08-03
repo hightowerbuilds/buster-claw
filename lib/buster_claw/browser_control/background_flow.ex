@@ -114,8 +114,10 @@ defmodule BusterClaw.BrowserControl.BackgroundFlow do
       "extract", args ->
         Page.extract(session, Map.get(args, "selector"), page_opts)
 
-      "find_elements", _args ->
-        case Page.find_elements(session, page_opts) do
+      "find_elements", args ->
+        opts = Keyword.put(page_opts, :selector, Map.get(args, "selector"))
+
+        case Page.find_elements(session, opts) do
           {:ok, elements} -> {:ok, %{elements: elements}}
           other -> other
         end

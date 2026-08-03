@@ -1,7 +1,9 @@
 # Browser control — closing out the field test
 
-**Scoped 08-02-26 · Status: ACTIVE — Part I DECIDED and BUILT 08-03-26; the four
-Part II items remain.**
+**Scoped 08-02-26 · Status: ACTIVE — Part I DECIDED and BUILT 08-03-26; Part II
+items 2 and 4 DONE 08-03-26. Two remain, and neither is an agent's to close:
+item 1 needs the operator's own signed-in session, and item 3 needs a decision
+before it needs code.**
 
 The 07-25 field test (`~/Desktop/browser-control-field-test-2026-07-25.md`) ran the
 whole Agent Mode stack at a real, logged-in, adversarial commercial site and came
@@ -163,13 +165,35 @@ tested but unwalked, and the cost of being wrong is an agent standing on a live
 payment page in the only mode that permits acting. Needs the operator's own
 signed-in session; nothing in the repo can do it.
 
-## 2. `find_elements` takes a selector
+## 2. `find_elements` takes a selector — **DONE 08-03**
 
-`page.ex:61` — it enumerates the page and slices the first 100 interactive elements,
+`page.ex:61` — it enumerated the page and sliced the first 100 interactive elements,
 ignoring any selector the caller passes. The field test passed `"input,form"` and
 `"#variation_size_name li"` and got the same nav links both times, costing several
 wasted round trips. `extract` honors selectors correctly, so the need is covered;
 the command is simply misleading as documented.
+
+**Fixed, and it was not the one-line change it looks like.** `Page.find_elements`
+now takes `:selector`, and the selector was being dropped in *three* places, not
+one: the option never existed on `Page`, and both callers threw their args away —
+`agent_mode.ex` (`page_read(session, :find_elements, _args, opts)`) and
+`background_flow.ex` (`"find_elements", _args ->`). All three are wired.
+
+**The trap worth recording.** The moduledoc states that `@enumerate_js` is kept
+identical between `find_elements` and index targeting *"so an index means the
+same element in both"* — `click index: n` resolves `@enumerate_js[n]` against the
+**unfiltered** list. So filtering and renumbering would have handed back indices
+`click` could not honour: a quieter and worse bug than the one being fixed.
+Indices are therefore assigned from the full enumeration **before** the filter
+runs, and a test asserts that ordering in the generated JS. Filtering changes
+which rows come back, never what an index means.
+
+A malformed selector throws in the page and surfaces as
+`{:error, {:js_exception, _}}`, same as `extract/3`.
+
+**Not a bug, for the record:** the live-tab `browser_find_elements` takes
+`query`, a case-insensitive *label substring*, and always honoured it. The field
+test passed CSS to it, which is a naming trap but not a defect.
 
 ## 3. Wire a Keychain-backed `secret_resolver`
 
@@ -185,7 +209,24 @@ shell already owns a Keychain-stored key and injects it into Elixir
 (`recovery.ex:6`) — the Rust side holding Keychain access is the established shape,
 not a new one to invent.
 
-## 4. Per-host egress levels, with a surface
+> **Left deliberately unbuilt 08-03. This is a decision before it is a build,
+> and the decision has not been made.**
+>
+> Items 2 and 4 were defects — a mechanism that existed and could not be reached.
+> This one is not: everything here works exactly as designed, and the "fix" is to
+> *remove a safety ceiling*. Building it means unattended runs can sign in to
+> sites as the user, which is a different product posture, not a repair.
+>
+> It also lands differently now than when it was written. As of 08-03 the agent
+> can file a purchase receipt, and item 1 — the only test of the payment gate
+> under a real signed-in session — is still unwalked. Handing unattended runs the
+> ability to *reach* signed-in sites, before walking the gate that stands between
+> them and a payment page, is the wrong order.
+>
+> **Ask before building:** should an unattended run be able to sign in at all? If
+> yes, do item 1 first.
+
+## 4. Per-host egress levels, with a surface — **DONE 08-03**
 
 `Policy.level_for/2` already takes `:overrides` (`policy.ex:46-53`) — the mechanism
 exists and is tested. But `AgentMode` calls `Egress.prepare(host, snapshot)` with no
@@ -196,6 +237,29 @@ including order history went to the model.
 
 Two halves: pass overrides through from the run, and give them somewhere to come
 from. `amazon.com → :structure_only` is the first entry.
+
+**Both halves built, plus the surface.**
+
+- **Through the run.** `AgentMode` freezes `egress_overrides` at start, exactly
+  like the scope, and passes them to every `Egress.prepare/3`. Frozen means a
+  change cannot alter what a run in flight has been sending.
+- **Somewhere to come from.** `Settings`, not a workspace file — a seeded file
+  could never be improved on an install that already had one (**V.8**), and this
+  is a list we expect to grow. `amazon.com → :structure_only` ships as a **code**
+  default so new entries reach every install on upgrade; the operator's stored
+  entries layer over them and win, and clearing one returns the host to the
+  shipped default rather than to `:full`.
+- **The surface.** `browser_egress_level` (`:restricted`) — no args lists what is
+  in force and what the operator set; `host` + `level` records one; `level: null`
+  clears it. A bad level is refused rather than silently stored as no rule.
+
+**One design correction made mid-build.** The first cut had `AgentMode.init/1`
+call `Policy.overrides()`, which put a **database read in run startup** — it
+broke every async AgentMode test, and worse, it would have meant a run that
+cannot boot when the repo is unavailable. `AgentMode` reads nothing from the
+database and should not start now. The lookup moved to `agent_run_start`, which
+already runs in a DB context; `AgentMode` falls back to
+`Policy.default_overrides/0`, which is pure.
 
 ---
 
@@ -208,7 +272,14 @@ receipt; a signed-in checkout walk is the only thing that has ever tested the
 gate that stands between it and a live payment page, and it is still untested by
 walk. Do it before the next commerce change, not after.
 
-Then **1** (it needs the operator, and it is the one with a safety cost), then
-**4** (small, and the only item that changes what leaves the machine), then **2**
-and **3** whenever they are convenient. 3 is the largest thing here and the least
-urgent: the ceiling it removes is one we are currently happy to have.
+**2 and 4 are done (08-03).** What is left is exactly the two an agent should not
+close on its own:
+
+- **1 — walk a live signed-in checkout.** Needs the operator's own session;
+  nothing in the repo can do it. It is now the only unverified thing standing
+  between an agent that can file receipts and a live payment page.
+- **3 — the Keychain `secret_resolver`.** Needs an answer to *"may an unattended
+  run sign in as the user?"* before it needs code. See the note under item 3.
+
+Do **1** first regardless of how 3 is answered: it is the acceptance test for a
+gate that already ships, and every later commerce change rests on it.

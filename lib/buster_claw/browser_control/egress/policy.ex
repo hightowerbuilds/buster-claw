@@ -38,6 +38,94 @@ defmodule BusterClaw.BrowserControl.Egress.Policy do
   @doc "The three valid levels, most-open first."
   def levels, do: @levels
 
+  # The operator's per-host levels live in `Settings` under this key as a JSON
+  # object, `{"host": "level"}`. Settings rather than a workspace file on
+  # purpose: a seeded file could never be improved on an install that already
+  # had one (see LAUNCH_ROADMAP V.8), and this list is one we expect to grow.
+  @overrides_key "browser_egress_overrides"
+
+  # Shipped defaults. These stay in CODE so a new entry reaches every install on
+  # upgrade; the operator's own entries are layered on top and win. The 07-25
+  # field test measured 89.8 KB leaving the machine over 41 steps, all at
+  # `:full` with zero redactions — correct per the documented default, and it
+  # meant complete Amazon pages, order history included, went to the model.
+  @default_overrides [{"amazon.com", :structure_only}]
+
+  @doc """
+  The shipped defaults alone — no database read. `AgentMode` falls back to these
+  when a caller supplies nothing, so a run never depends on the repo to boot.
+  """
+  def default_overrides, do: @default_overrides
+
+  @doc """
+  Per-host levels: the shipped defaults with the operator's entries layered over
+  them. Reads `Settings`, so callers are the command surface, not `AgentMode`.
+  """
+  def overrides do
+    stored = stored_overrides()
+    # Host strings come from the operator, so they stay strings — interning them
+    # as atoms to use map merging would be an unbounded atom table.
+    claimed = MapSet.new(stored, fn {host, _level} -> normalize(host) end)
+
+    Enum.reject(@default_overrides, fn {host, _level} -> normalize(host) in claimed end) ++
+      stored
+  end
+
+  @doc "The operator's stored entries alone, as `[{host, level}]`."
+  def stored_overrides do
+    with raw when is_binary(raw) <- BusterClaw.Settings.get(@overrides_key),
+         {:ok, %{} = decoded} <- Jason.decode(raw) do
+      for {host, level} <- decoded,
+          parsed = parse_level(level),
+          parsed != nil,
+          do: {host, parsed}
+    else
+      _ -> []
+    end
+  end
+
+  @doc """
+  Set one host's level, or remove it with `nil`. Returns the stored entries.
+  Refuses an unknown level rather than silently recording a typo as no rule.
+  """
+  def put_override(host, level) when is_binary(host) and host != "" do
+    with {:ok, level} <- validate_level(level) do
+      entries =
+        stored_overrides()
+        |> Map.new()
+        |> then(fn m ->
+          if level, do: Map.put(m, normalize(host), level), else: Map.delete(m, normalize(host))
+        end)
+
+      BusterClaw.Settings.put(
+        @overrides_key,
+        Jason.encode!(Map.new(entries, fn {h, l} -> {h, Atom.to_string(l)} end))
+      )
+
+      {:ok, Enum.sort(entries)}
+    end
+  end
+
+  defp validate_level(nil), do: {:ok, nil}
+  defp validate_level(level) when level in @levels, do: {:ok, level}
+
+  defp validate_level(level) when is_binary(level) do
+    case parse_level(level) do
+      nil -> {:error, {:bad_level, level}}
+      parsed -> {:ok, parsed}
+    end
+  end
+
+  defp validate_level(level), do: {:error, {:bad_level, level}}
+
+  defp parse_level(level) when level in @levels, do: level
+
+  defp parse_level(level) when is_binary(level) do
+    Enum.find(@levels, &(Atom.to_string(&1) == level))
+  end
+
+  defp parse_level(_level), do: nil
+
   @doc """
   Resolve the egress level for `host`. `opts[:overrides]` is a list of
   `{pattern, level}` (host or parent domain → level); the most specific match

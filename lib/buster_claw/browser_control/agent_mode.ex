@@ -226,6 +226,16 @@ defmodule BusterClaw.BrowserControl.AgentMode do
        # Host of the last successful navigation — the egress policy key for
        # content-returning acts on the current page.
        current_host: nil,
+       # Per-host egress levels, frozen at start like the scope. Until 08-03
+       # `Egress.prepare/3` was called with no opts, so `Policy`'s `:overrides`
+       # mechanism existed, was tested, and could never be fed by anything.
+       #
+       # The caller supplies them — `AgentRuns` reads the operator's stored
+       # entries and passes them in. This module reads nothing from the database
+       # and should not start now: a run that cannot boot because the repo is
+       # unavailable is a worse failure than one running on shipped defaults.
+       egress_overrides:
+         Keyword.get(opts, :egress_overrides) || Egress.Policy.default_overrides(),
        mode: :idle,
        trajectory: Trajectory.new()
      }}
@@ -455,7 +465,8 @@ defmodule BusterClaw.BrowserControl.AgentMode do
   defp do_act(s, action, args) when action in [:extract, :read, :find_elements] do
     case page(s, fn opts -> page_read(s.session, action, args, opts) end) do
       {:ok, {snapshot, detail}} ->
-        {payload, report} = Egress.prepare(s.current_host || "unknown", snapshot)
+        {payload, report} =
+          Egress.prepare(s.current_host || "unknown", snapshot, overrides: s.egress_overrides)
 
         s =
           record(s, %{
@@ -511,7 +522,11 @@ defmodule BusterClaw.BrowserControl.AgentMode do
     end
   end
 
-  defp page_read(session, :find_elements, _args, opts) do
+  defp page_read(session, :find_elements, args, opts) do
+    # The selector used to stop here: `_args` was discarded, so every find
+    # returned the same first 100 elements no matter what was asked for.
+    opts = Keyword.put(opts, :selector, Map.get(args, "selector"))
+
     with {:ok, elements} <- Page.find_elements(session, opts) do
       shaped =
         for %{} = el <- List.wrap(elements),

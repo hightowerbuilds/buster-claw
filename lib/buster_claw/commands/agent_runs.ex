@@ -16,6 +16,7 @@ defmodule BusterClaw.Commands.AgentRuns do
   alias BusterClaw.BrowserControl.AgentMode.Trajectory
   alias BusterClaw.BrowserControl.Commerce
   alias BusterClaw.BrowserControl.Commerce.Cart
+  alias BusterClaw.BrowserControl.Egress.Policy
 
   @doc """
   Start a supervised Agent Mode run. Args: `intent` (the task, verbatim —
@@ -28,7 +29,9 @@ defmodule BusterClaw.Commands.AgentRuns do
     scope = Scope.new(intent, domains)
     on_payment = if Map.get(args, "commerce") == true, do: :handoff, else: :halt
 
-    run_opts = [scope: scope, on_payment: on_payment]
+    # The operator's per-host egress levels are read HERE and frozen into the
+    # run, alongside the scope. `AgentMode` reads no database of its own.
+    run_opts = [scope: scope, on_payment: on_payment, egress_overrides: Policy.overrides()]
 
     # Test seam (like the session starter): a scripted CDP surface for the run.
     run_opts =
