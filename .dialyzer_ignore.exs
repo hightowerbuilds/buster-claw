@@ -106,13 +106,17 @@
   # 2. Real findings — BURN THESE DOWN. Not accepted, just not yet fixed.
   # -------------------------------------------------------------------------
   #
-  # Four are confirmed defects, diagnosed 08-02:
+  # Four were confirmed defects, diagnosed 08-02. One is FIXED — its entry came
+  # out of this file the same day, which is what the burn-down is supposed to
+  # look like:
   #
-  #   * cli.ex :call + :no_return — `System.trap_signal(:sigint, ...)`. OTP
-  #     reserves SIGINT for the BREAK handler and will not trap it; the call
-  #     raises and the `rescue _ -> :ok` below swallows it. Ctrl-C during
-  #     `on-duty` has therefore NEVER stopped the shift, contrary to the promise
-  #     at cli.ex:161.
+  #   * ~~cli.ex :call~~ — FIXED 08-02. `System.trap_signal(:sigint, ...)` raised
+  #     on every `on-duty` and the rescue swallowed it, so Ctrl-C left the shift
+  #     running server-side while the banner said otherwise. SIGINT is reserved
+  #     by the BEAM's break handler and cannot be trapped at all, so the fix was
+  #     to trap SIGTERM/SIGHUP instead and stop claiming Ctrl-C stands down.
+  #     `{cli.ex, :no_return}` below is still required: `stand_down/2` and its
+  #     closure legitimately never return, and `die/2` never did either.
   #   * cli.ex :pattern_match — the `{:failed_connect, _}` clause is dead
   #     httpc-era shape. Under Req, connection-refused falls through to the
   #     generic message, so "is `mix phx.server` running?" never renders.
@@ -135,7 +139,6 @@
   {"lib/buster_claw/browser.ex", :pattern_match_cov},
   {"lib/buster_claw/browser.ex", :pattern_match},
   {"lib/buster_claw/browser_control.ex", :pattern_match},
-  {"lib/buster_claw/cli.ex", :call},
   {"lib/buster_claw/cli.ex", :no_return},
   {"lib/buster_claw/cli.ex", :pattern_match},
   {"lib/buster_claw/google/client.ex", :pattern_match_cov},

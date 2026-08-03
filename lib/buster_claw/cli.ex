@@ -158,7 +158,9 @@ defmodule BusterClaw.CLI do
   # is what wakes the app-side Dispatcher, which engages the agent on each queued
   # request — then poll trusted mail in the foreground until the operator stands
   # down. Trusted-sender mail auto-enqueues; the agent works it and replies.
-  # Closing is one keystroke: Ctrl-C stops polling *and* stops the shift.
+  #
+  # Standing down is `off-duty`, and only `off-duty`. Ctrl-C cannot do it — see
+  # `trap_off_duty/2` for why the BEAM makes that impossible.
   defp on_duty(opts) do
     shift_args =
       %{"unattended" => true}
@@ -185,8 +187,9 @@ defmodule BusterClaw.CLI do
     end
   end
 
-  # Explicit stand-down (and the fallback when Ctrl-C can't be trapped, e.g. a
-  # SIGTERM/kill or a remote close): stop the active shift.
+  # The stand-down. This is the ONLY thing that reliably stops a shift: Ctrl-C
+  # cannot (see `trap_off_duty/2`), and a signal handler only fires for the
+  # endings the OS lets us see.
   defp off_duty(opts) do
     args = maybe_put(%{}, "reason", Keyword.get(opts, :note) || "off duty")
 
@@ -205,32 +208,56 @@ defmodule BusterClaw.CLI do
     end
   end
 
-  # Stop the shift when the operator presses Ctrl-C, so a single keystroke closes
-  # the whole loop. Best-effort: if signal trapping isn't available in this
-  # runtime, `off-duty` is the documented fallback.
+  # Stand the shift down when this process is asked to go away.
+  #
+  # ## Ctrl-C is not one of those times, and cannot be
+  #
+  # SIGINT is reserved by the BEAM for its BREAK handler. `:os.set_signal/2`
+  # rejects `:sigint` as an invalid signal name outright, so there is no handler
+  # to install — and nothing else runs either: `System.at_exit/1` does not fire,
+  # because the emulator is not shutting down cleanly, it is being interrupted.
+  #
+  # A `System.trap_signal(:sigint, ...)` call sat here until 2026-08-02. It
+  # raised a FunctionClauseError on every `on-duty`, the `rescue` below swallowed
+  # it, and the banner went on promising that Ctrl-C stopped the shift. It never
+  # did once: Ctrl-C killed the CLI and left the shift running server-side, so
+  # the mail loop kept working while the operator believed they had stood it
+  # down. Dialyzer had been reporting the dead call the whole time, in a job that
+  # was configured not to block.
+  #
+  # ## What we CAN catch
+  #
+  # SIGTERM and SIGHUP are trappable, and they cover the endings that are not a
+  # keystroke: a `kill`, a closed terminal window, a packaged shell being torn
+  # down. Those stand the shift down properly. Ctrl-C does not, which is why the
+  # banner now says so and points at `off-duty`.
   defp trap_off_duty(opts, result) do
     shift_id = if is_map(result), do: result["shift_id"]
 
-    System.trap_signal(:sigint, fn ->
-      IO.puts(
-        "\nStanding down#{if shift_id, do: " (shift ##{shift_id})", else: ""} — stopping shift…"
-      )
-
-      _ =
-        http_post(
-          "/api/run",
-          %{"command" => "shift_stop", "args" => %{"reason" => "off duty (Ctrl-C)"}},
-          auth: true,
-          opts: opts
-        )
-
-      System.halt(0)
+    Enum.each([:sigterm, :sighup], fn signal ->
+      _ = System.trap_signal(signal, fn -> stand_down(opts, shift_id) end)
     end)
   rescue
     _ -> :ok
   end
 
-  defp format_on_duty(result) when is_map(result) do
+  defp stand_down(opts, shift_id) do
+    IO.puts(
+      "\nStanding down#{if shift_id, do: " (shift ##{shift_id})", else: ""} — stopping shift…"
+    )
+
+    _ =
+      http_post(
+        "/api/run",
+        %{"command" => "shift_stop", "args" => %{"reason" => "off duty (signal)"}},
+        auth: true,
+        opts: opts
+      )
+
+    System.halt(0)
+  end
+
+  def format_on_duty(result) when is_map(result) do
     job = result["job_name"] || result["job_key"] || "lookout"
     id = result["shift_id"]
 
@@ -238,12 +265,13 @@ defmodule BusterClaw.CLI do
     On duty#{if id, do: " (shift ##{id})", else: ""} — #{job}, unattended.
     Trusted-sender mail is worked end to end: the agent reads each request, does
     the work with Buster Claw's command surface, and replies in-thread.
-    Polling Gmail below. Press Ctrl-C to go off duty (stops the shift).
+    Polling Gmail below. Ctrl-C stops the polling only — the shift keeps
+    running. Run `./buster-claw off-duty` to stand down.
     """
     |> String.trim_trailing()
   end
 
-  defp format_on_duty(result), do: pretty(result)
+  def format_on_duty(result), do: pretty(result)
 
   defp format_off_duty(%{"shift_id" => id}), do: "Off duty — shift ##{id} stopped."
   defp format_off_duty(result), do: pretty(result)
@@ -768,8 +796,9 @@ defmodule BusterClaw.CLI do
       <noun> <verb> [opts]   Shorthand for `run <noun>_<verb>`.
       terminal open [role]   Open a role-labeled terminal tab inside Buster Claw.
       on-duty                Go on duty: watch Gmail and let the agent work and
-                             reply to trusted-sender requests until Ctrl-C.
-      off-duty               Stand down — stop the active shift.
+                             reply to trusted-sender requests until you stand
+                             down with `off-duty`.
+      off-duty               Stand down — stop the active shift. Ctrl-C does not.
       dispatch add <summary> Enqueue a manual item (--swarm, --subject, --source, --untrusted).
       dispatch list          List open queue items (--status, --job, --limit).
       dispatch show <id>     Show one queue item.

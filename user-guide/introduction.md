@@ -23,7 +23,8 @@ run a single command:
 That puts you **on duty**: it watches Gmail, and as trusted-sender email arrives,
 your agent reads each request, does the work through Buster Claw's command
 surface, and **replies in-thread** — every step on the audit feed. It stays open
-until you stand down: press **Ctrl-C** (or run `./buster-claw off-duty`) to stop.
+until you stand down, which means running **`./buster-claw off-duty`**. Ctrl-C
+stops the polling you can see; it does not end the shift.
 
 > `on-duty` is the consolidated front door — it replaced the older
 > `mailman poll` and `shift run` commands, which no longer exist.

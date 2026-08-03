@@ -10,7 +10,8 @@
        ./buster-claw on-duty
 
    This opens a shift, syncs Gmail on an interval, and drops **trusted-sender**
-   mail onto the queue. Ctrl-C (or `./buster-claw off-duty`) stands down.
+   mail onto the queue. `./buster-claw off-duty` stands down — Ctrl-C only stops
+   the polling in front of you; the shift keeps running.
 3. **The agent reads its worklist** — the "fridge": `shift/Dispatch.md`. A live,
    always-current list of open items grouped by job. Tell your agent to read it.
 4. **The agent pulls and acts:**

@@ -23,6 +23,34 @@ defmodule BusterClaw.CLITest do
     assert output =~ "on-duty"
   end
 
+  # Regression, 2026-08-02. `System.trap_signal(:sigint, ...)` raised on every
+  # `on-duty` and the rescue swallowed it, so Ctrl-C killed the CLI and left the
+  # shift running server-side — while this banner told the operator it had
+  # stopped. SIGINT is reserved by the BEAM's break handler and cannot be
+  # trapped, so the only fix available is to stop claiming otherwise.
+  describe "the on-duty banner tells the truth about standing down" do
+    test "it names off-duty as the way to stop" do
+      banner = CLI.format_on_duty(%{"shift_id" => 7, "job_name" => "lookout"})
+
+      assert banner =~ "off-duty"
+      assert banner =~ "shift #7"
+    end
+
+    test "it never claims Ctrl-C stops the shift" do
+      banner = CLI.format_on_duty(%{"shift_id" => 7, "job_name" => "lookout"})
+
+      refute banner =~ ~r/Ctrl-C[^.]*(go off duty|stops the shift|stands down)/i
+      assert banner =~ ~r/Ctrl-C stops the polling only/i
+    end
+
+    test "help says the same thing, so the two cannot drift apart" do
+      output = capture_io(fn -> CLI.main(["help"]) end)
+
+      assert output =~ "Ctrl-C does not"
+      refute output =~ "until Ctrl-C"
+    end
+  end
+
   test "formats Mailman poll results for terminal reading" do
     output =
       CLI.format_mailman_result(%{

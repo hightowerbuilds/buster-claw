@@ -951,11 +951,24 @@ complexity without reducing it.
   `:exact_compare` crash was a code defect, not a tooling one; fixing the source
   un-crashed every formatter and CI keeps `--format short`.
 
+- **The `sigint` bug — FIXED 08-02.** Not fixable as designed: SIGINT is
+  reserved by the BEAM's break handler, `:os.set_signal/2` rejects `:sigint` as
+  an invalid signal name, and nothing runs on arrival — not a handler, not
+  `System.at_exit/1` (verified empirically: SIGINT drops into the BREAK menu and
+  the process survives). So the dead trap was replaced with SIGTERM/SIGHUP
+  handling — the endings that *are* catchable, i.e. a `kill`, a closed terminal,
+  a torn-down packaged shell — and the six places that promised Ctrl-C stands
+  down were corrected, including the banner printed on every `on-duty`. Three
+  regression tests pin the banner and the help text together. `{cli.ex, :call}`
+  pruned from the Dialyzer baseline; back to `Unnecessary Skips: 0`.
+
 **Next, in order:**
 
-1. **The `sigint` bug** (`cli.ex:214`) — Ctrl-C does not stop the shift. Real,
-   user-facing, and now sitting in the baseline's burn-down section.
-2. **README credential path** (Finding 1, P1) — the one doc drift that strands a user.
+1. **README credential path** (Finding 1, P1) — the one doc drift that strands a user.
+2. **The remaining three confirmed Dialyzer defects** — `cli.ex`'s dead
+   `{:failed_connect, _}` clause, `finance_api_controller.ex`'s unreachable
+   `:missing_symbol`, and `integrations/service.ex`'s three vacuous specs. All
+   small, all named in `.dialyzer_ignore.exs`.
 3. Findings 3 and 5 — **not yet re-verified by the second reader.** Given that
    three of the five findings examined so far contained a material error, measure
    before executing either.

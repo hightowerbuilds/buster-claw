@@ -71,7 +71,9 @@ The `mailman`, `mail-triage`, and `gmail-poller` roles map to the fixed
 ```
 
 That visible loop starts an unattended shift and calls `gmail_sync` through the
-local command API on an interval; Ctrl-C stands down (stops the shift). Agents
+local command API on an interval; `off-duty` stands down. Ctrl-C stops only the
+polling loop — SIGINT is reserved by the BEAM's break handler and cannot be
+trapped, so the shift survives it. Agents
 cannot pass arbitrary shell text through this safe command.
 
 ## Current Cuts

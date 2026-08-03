@@ -584,9 +584,58 @@ anything.
 
 ---
 
+## Ctrl-C never stopped the shift, and never could
+
+The first finding the newly-blocking Dialyzer paid for. `cli.ex` called
+`System.trap_signal(:sigint, ...)` to stand the shift down on Ctrl-C. It raised
+a FunctionClauseError on every single `on-duty`, the `rescue _ -> :ok` fifteen
+lines below swallowed it, and the banner went on printing:
+
+> Polling Gmail below. Press Ctrl-C to go off duty (stops the shift).
+
+What actually happened: Ctrl-C killed the CLI and **left the shift running
+server-side.** The autonomous mail loop kept working — reading trusted-sender
+mail, engaging the agent, replying in-thread — while the operator believed they
+had stood it down. Only an explicit `off-duty` ever stopped anything.
+
+Three checks before writing a line of fix, because the obvious move ("trap it
+properly") is wrong:
+
+1. `System.trap_signal(:sigint, ...)` → `no function clause matching`. Elixir's
+   own guard rejects it.
+2. `:os.set_signal(:sigint, :handle)` → `invalid signal name`. So it is not an
+   Elixir wrapper being conservative; **Erlang refuses too.** SIGINT is reserved
+   for the BEAM's break handler.
+3. Could anything else run? Sent a real SIGINT to a live BEAM: it dropped into
+   the `BREAK: (a)bort (A)bort with dump (c)ontinue` menu, the process **stayed
+   alive**, and `System.at_exit/1` never fired. There is no callback of any kind.
+
+And `buster-claw` is a raw escript, not a shell wrapper, so there is nowhere to
+hang a `trap INT` either. The feature is unimplementable as designed.
+
+So the fix is the honest one, in two halves. **Trap what is actually
+trappable** — SIGTERM and SIGHUP, which cover a `kill`, a closed terminal
+window, a packaged shell torn down — and stand the shift down properly there.
+Then **stop lying about the rest**: the banner, the help text, `daily-loop.md`,
+`introduction.md`, `COMMAND_SURFACE.md`, and two source comments all said Ctrl-C
+stands down. Six places, one wrong belief. Three regression tests now pin the
+banner and the help text to each other so they cannot drift apart again.
+
+The burn-down worked exactly as designed on the way out: with the dead call
+gone, `mix dialyzer --list-unused-filters` reported
+`{"lib/buster_claw/cli.ex", :call}` as an unused filter. Removed it from
+`.dialyzer_ignore.exs`, back to `Unnecessary Skips: 0`. The baseline shrank by
+one on the first day it existed, which is the only thing that makes a baseline
+different from a suppression.
+
+`{cli.ex, :no_return}` stays, and honestly: `stand_down/2` and its closure never
+return, because they end in `System.halt(0)`. That is the point of them.
+
+---
+
 ## At close
 
-**Suite: 2,201 tests, 0 failures** (2,143 + 37 + 21 new), credo strict clean,
+**Suite: 2,204 tests, 0 failures** (2,143 + 37 + 21 + 3 new), credo strict clean,
 format clean, Rust 29 + 5 lockstep green.
 
 **The day's last lesson is about reading.** A roadmap arrived with every number
@@ -599,8 +648,8 @@ stopped a shift.
 
 Earlier in the day the suite sat at 2,143 — verified across five consecutive
 runs and two precommits, because that stretch ended on an intermittent failure
-and one green run would not have meant anything. The 58 added since are the two
-purity extractions'.
+and one green run would not have meant anything. The 61 added since are the two
+purity extractions' and the Ctrl-C regression.
 
 **Two roadmaps archived, two written.** `roadmaps/` now holds five live
 documents — `LAUNCH_ROADMAP`, `BROWSER_CLOSEOUT_ROADMAP`,
@@ -617,5 +666,5 @@ work, not a question.
 because they are the same lesson: the right-click menu that a rename killed
 silently, the header-probe bug found by importing a real 20-minute file, the
 RateLimiter crasher that a failure *count* actively pointed away from, and a
-Ctrl-C handler that has never once fired. The suite is 2,201 tests strong and
+Ctrl-C handler that has never once fired. The suite is 2,204 tests strong and
 none of the four was its idea.
