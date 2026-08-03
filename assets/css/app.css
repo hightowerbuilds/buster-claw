@@ -508,6 +508,12 @@ body { background-color: var(--color-base-100); }
   height: auto;
   max-height: 220px;
 }
+.chartbuild-svg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 42vh;
+}
 /* Fill the modal: explicit box + the SVG's own preserveAspectRatio (meet)
    letterboxes the drawing inside it — always whole, as large as fits. width/
    height:auto sized viewBox-only SVGs at the 300×150 replaced-element default

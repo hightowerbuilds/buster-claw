@@ -176,6 +176,7 @@ defmodule BusterClaw.Skills do
     maybe_write(roster_path(), default_roster())
     maybe_write(skill_path("save-note"), default_save_note())
     maybe_write(skill_path("shader-designer"), default_shader_designer())
+    maybe_write(skill_path("chart-builder"), default_chart_builder())
     :ok
   rescue
     error ->
@@ -486,6 +487,254 @@ defmodule BusterClaw.Skills do
     `data-preview` attribute (`data-smoke` on the homepage) and the console. To
     iterate, edit the file and re-select the pattern — the WGSL is re-fetched
     fresh every time (served no-store).
+    """
+  end
+
+  defp default_chart_builder do
+    """
+    ---
+    name: chart-builder
+    description: Playbook for authoring honest, self-contained SVG charts in Chart Build using Buster Claw's house visual language and cached data.
+    tier: safe
+    enabled: true
+    handler_kind: reference
+    ---
+
+    # chart-builder
+
+    A **reference** skill for Chart Build. Read this before drawing a chart. The
+    app renders one fenced `svg` block above the conversation and keeps every
+    revision in its transcript. This first renderer is deliberately freehand:
+    the app sanitizes the markup, but it cannot verify your arithmetic, so every
+    result is visibly labelled **Drawn by AI · not computed**.
+
+    ## Output contract
+
+    Emit exactly one complete chart in this form when creating or revising:
+
+        ```svg
+        <svg viewBox="0 0 1200 640" xmlns="http://www.w3.org/2000/svg">
+          ...
+        </svg>
+        ```
+
+    Hard constraints:
+
+    - One self-contained `<svg>` with a `viewBox`; target `1200 640` unless the
+      chart genuinely needs another aspect ratio.
+    - Maximum 100 KB after trimming.
+    - No scripts, event handlers, `<foreignObject>`, external references,
+      external images, web fonts, `javascript:`, or `data:` URLs.
+    - Declarative SVG only: paths, lines, rects, circles, text, gradients and
+      same-document `#fragment` references.
+    - Put prose outside the SVG fence. Never paste the markup into prose.
+
+    ## Honesty rules
+
+    These are correctness requirements, not stylistic preferences:
+
+    1. Plot only values present in the supplied cache or operator-provided data.
+       Never invent, interpolate, forward-fill, or smooth a missing observation.
+    2. **Zero is in frame for quantitative bars.** A bar length or height is
+       measured from the zero baseline; negative values extend across it.
+    3. **Gaps are gaps.** Use a real date scale and break a line into separate
+       paths when observations are missing. Do not connect across an unmeasured
+       interval as though the path were observed.
+    4. Derive axis labels from the values actually plotted. Never assert a tick
+       whose geometry uses a different scale.
+    5. Label units, measure, time range, observation count, and data freshness.
+       If only 4 of 30 requested days exist, say "4 cached observations".
+    6. Do not imply that a freehand chart is independently computed or verified.
+       If exact geometry matters, provide the underlying values in prose too.
+    7. Do not use a log scale for zero or negative values. If a log scale is
+       requested and the data contains either, explain why it cannot be applied
+       honestly without changing the dataset.
+    8. **One y-axis. Never two scales on one plot.** Two measures of different
+       magnitude — price and volume, dollars and percent — read as correlated
+       only because you chose where to align their scales, and that correlation
+       is not in the data. Draw two stacked plots sharing one x-axis, or index
+       both series to 100 at the first observation and plot them on one axis.
+
+    ## Pick the form before the colours
+
+    Ask what the data's job is, and accept that sometimes the answer is not a
+    chart. One number with no history is a **stat tile** — a large value, a
+    label, and an as-of line — not a one-bar bar chart and not a two-slice pie.
+    Magnitude across categories is bars; change over a real time axis is a line;
+    part-to-whole at a glance is a pie only at six segments or fewer, and never
+    for comparing close values (use bars). Past roughly seven colour classes
+    carrying meaning, ship a table instead.
+
+    ## House visual language
+
+    The UI is industrial, high-contrast and restrained. The chart carries its own
+    dark canvas, so it does not respond to a light theme; every value below was
+    validated against that canvas, not eyeballed.
+
+    Chrome and ink:
+
+    - canvas: `#111315`
+    - gridline (hairline): `#24282d`
+    - baseline / axis rule: `#3a4047`
+    - primary text: `#f2efe8`
+    - secondary text: `#a8adb4`
+    - muted text (axis ticks): `#7f858c`
+
+    Series colours — a fixed order. Assign slot 1, then 2, then 3, in sequence.
+    **Never cycle, and never invent a sixth hue**: a sixth series folds into
+    "Other", or the chart becomes small multiples.
+
+    | slot | hue | hex |
+    |------|--------|-----------|
+    | 1 | hazard | `#ff4407` |
+    | 2 | cyan | `#00a1ce` |
+    | 3 | violet | `#9417ff` |
+    | 4 | magenta | `#e10095` |
+    | 5 | yellow | `#ac9000` |
+
+    This order clears every gate on the dark canvas: worst adjacent CVD ΔE 16.0
+    (target ≥ 8) and worst adjacent normal-vision ΔE 23.4 (floor ≥ 15), with all
+    five slots at or above 3:1 contrast. The **order is the colourblind-safety
+    mechanism, not decoration** — do not reorder it, and do not assign colour by
+    a series' rank or size, or a filter that drops a series would repaint the
+    survivors. Scatter and bubble charts, where any two marks can end up
+    adjacent, are capped at **the first four slots**; past four, facet.
+
+    Direction colours are reserved and mean only up/down — never "series 4":
+
+    - positive / up: `#43d17a`
+    - negative / down: `#ff5c70`
+
+    **A chart that encodes direction does not use slot 1.** The hazard orange
+    sits ΔE 8.2 from the down-red — close enough to confuse a down candle with a
+    price line — so on any chart carrying the direction pair, start series
+    assignment at slot 2. Slot 4 magenta sits at the ΔE 15.0 floor against the
+    down-red; if a directional chart needs a fourth series, fold or facet rather
+    than reaching for it.
+
+    Sequential magnitude (a heatmap, a density) is **one hue, light to dark** —
+    never a rainbow. Polarity around a baseline is two opposite hues with a
+    **neutral grey midpoint** (`#3a4047`); a hue at the midpoint destroys the
+    "nothing happening here" reading.
+
+    Type is one sans stack everywhere, including the title:
+    `ui-sans-serif, system-ui, sans-serif`. Axis ticks and any column of numbers
+    take `font-variant-numeric: tabular-nums` so digits align; a large standalone
+    figure does not — equal-width digits make it look loose.
+
+    ## Marks and chrome
+
+    The data is the only thing allowed to be loud.
+
+    - Bars: **at most 24px thick** — never fill the band; leave the remainder as
+      air. Round the data-end by 4px and keep the baseline end square.
+    - Lines: **2px**, round join and cap. Markers and end-dots at least 8px
+      across (r ≥ 4).
+    - Area fills: the series hue at about **10% opacity**. A saturated block of
+      colour is never correct at this size.
+    - Gridlines and axis rules: **1px, solid, one step off the canvas**. Never
+      dashed — dashing reads as "projection" or "threshold" when it is just a
+      grid.
+    - Separate touching marks with a **2px gap in the canvas colour**, and ring
+      overlapping dots with 2px of canvas. Never draw a border around a mark to
+      separate it; that adds ink that is not data.
+    - No 3D, no drop shadows, no gradient that encodes nothing, no animation.
+
+    ## Labels and the legend
+
+    - **Two or more series always get a legend**, so identity never rests on
+      colour-matching alone. A single series gets none — the title already names
+      it, and a one-swatch box just restates it.
+    - **Label selectively. Never put a number on every point.** Label the
+      endpoint, the extreme, or the one series the chart is about, and let the
+      axis carry the rest. Flood the chart and the labels stop being read.
+    - **Text never wears the series colour.** Values, labels, legend text and
+      ticks use the ink tokens above; the colour lives in the mark beside them.
+      The one exception is a label set inside a filled shape, where you pick ink
+      or white by the fill's luminance.
+    - Only put a label inside a bar when it fits with padding on both sides.
+      Otherwise move it past the bar's end. Never clip a label to make it fit.
+    - **You have no hover layer.** The SVG is sanitized: no scripts, no event
+      handlers, so there are no tooltips and nothing can be revealed on demand.
+      Every value a reader needs must be visible in the chart or written in the
+      prose beside it. This is the reason the direct-label and prose-values rules
+      above are not optional here.
+
+    Keep a dependable plot box inside the viewBox:
+
+        left = 110, right = 1140, top = 100, bottom = 550
+        plot_width = 1030, plot_height = 450
+
+    Title belongs near `(60, 48)`, subtitle near `(60, 74)`, and source/as-of
+    copy below the plot. Do not let marks or labels clip the viewBox.
+
+    ## Arithmetic: line and scatter charts
+
+    For values `v` in `[v_min, v_max]` and plot bounds above:
+
+        y(v) = bottom - ((v - v_min) / (v_max - v_min)) * plot_height
+
+    For real dates `d` between `d_min` and `d_max`, first convert them to elapsed
+    days from `d_min`:
+
+        x(d) = left + (days(d_min, d) / days(d_min, d_max)) * plot_width
+
+    Example: values 20, 50, 35 over day offsets 0, 2, 5. With a zero-inclusive
+    domain `[0, 50]`, their y coordinates are 370, 100, 235. Their x coordinates
+    are 110, 522, 1140. The two-day and three-day intervals are visibly
+    different widths. If day offsets 3 and 4 were expected but absent, do not
+    manufacture points; label the coverage and break the path if the absence is
+    a true measurement gap.
+
+    A flat series (`v_min == v_max`) needs a deliberate padded domain; never
+    divide by zero. State the constant value directly.
+
+    ## Arithmetic: bar charts
+
+    Use a domain that includes zero:
+
+        domain_min = min(0, smallest_value)
+        domain_max = max(0, largest_value)
+
+    For a vertical bar, `zero_y = y(0)`, `value_y = y(v)`, then:
+
+        rect_y = min(zero_y, value_y)
+        rect_height = abs(zero_y - value_y)
+
+    Example: values `-20, 40, 80` use `[-20, 80]`, not `[40, 80]`. With the
+    standard 450px plot height, zero is y=460; the bars are respectively 90px
+    below zero, 180px above it, and 360px above it. Label exact values at their
+    ends so geometry and numbers can be checked against each other.
+
+    Horizontal bars use the same rule on x. Sort only when the operator asks or
+    when category order carries no meaning; never reorder dates.
+
+    ## Arithmetic: candlesticks
+
+    A candle requires all four OHLC values for the same interval. Do not derive a
+    candle from closes alone.
+
+    - wick: vertical line from `y(high)` to `y(low)`
+    - body top: `min(y(open), y(close))`
+    - body height: `max(2, abs(y(open) - y(close)))`
+    - rising (`close >= open`): positive colour
+    - falling (`close < open`): negative colour
+
+    Example OHLC `open=100, high=110, low=95, close=105` on domain `[90, 115]`
+    maps to y values 370, 190, 460, 280. The wick spans 190→460; the body spans
+    280→370 and is positive. Show the interval and do not mix daily and weekly
+    candles on one axis.
+
+    If cached rows carry only `close`, say that candlesticks are unavailable and
+    offer an honest line chart. Never synthesize open/high/low from a close.
+
+    ## Iteration
+
+    Treat the newest chart as a revision of the previous one unless the operator
+    asks for a separate view. Preserve the underlying values while changing
+    presentation. If a request such as "make the bars horizontal" changes only
+    orientation, recompute the geometry from the same values; do not copy pixel
+    lengths by eye. Briefly name any data or coverage limitation outside the SVG.
     """
   end
 end

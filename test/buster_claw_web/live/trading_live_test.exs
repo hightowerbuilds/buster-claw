@@ -436,6 +436,76 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert has_element?(view, "#trading-chat-#{research.id}")
     end
 
+    test "Chart Build opens as one panel with preview above its embedded chat", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+
+      refute chart.docked
+      assert has_element?(view, "#trading-tab-#{chart.id}", "CHART")
+      assert has_element?(view, "#chartbuild-panel")
+      assert has_element?(view, "#chartbuild-preview")
+      assert has_element?(view, "#chartbuild-empty")
+      assert has_element?(view, "#chartbuild-chat-#{chart.id} [data-chat-input]")
+      refute has_element?(view, "#trading-chat-#{chart.id}")
+      assert render(view) =~ "Drawn by AI · not computed"
+    end
+
+    test "an SVG reply becomes the newest sanitized chart and leaves the bubble clean",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+
+      send(
+        view.pid,
+        {:agent_chat, chart.id,
+         {:message,
+          %{
+            role: :assistant,
+            text:
+              "Here is the revision.\n```svg\n" <>
+                ~s|<svg viewBox="0 0 100 50" onload="steal()"><script>bad()</script><rect id="honest-bar" width="40" height="20"/></svg>| <>
+                "\n```"
+          }}}
+      )
+
+      _ = :sys.get_state(view.pid)
+      html = render(view)
+
+      assert has_element?(view, "#chartbuild-latest")
+      assert html =~ "honest-bar"
+      assert html =~ "Here is the revision."
+      refute html =~ "```svg"
+      refute html =~ "steal()"
+      refute html =~ "bad()"
+
+      render_click(view, "zoom_svg", %{"id" => "1"})
+      assert has_element?(view, ".ic-svg-modal")
+    end
+
+    test "Chart Build restores its preview from the persisted transcript", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+
+      Transcript.record(
+        chart.id,
+        :assistant,
+        "Saved revision\n```svg\n<svg viewBox=\"0 0 20 20\"><circle id=\"saved-dot\" r=\"4\"/></svg>\n```"
+      )
+
+      {:ok, view2, _html} = live(conn, ~p"/trading")
+      render_click(view2, "trading_select_tab", %{"id" => chart.id})
+      html = render(view2)
+
+      assert has_element?(view2, "#chartbuild-latest")
+      assert html =~ "saved-dot"
+      assert html =~ "Saved revision"
+      refute html =~ "```svg"
+    end
+
     test "a floating Chat tab explains itself instead of rendering a blank pane",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")

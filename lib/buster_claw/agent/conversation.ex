@@ -4,10 +4,10 @@ defmodule BusterClaw.Agent.Conversation do
   import Ecto.Changeset
 
   # `chat` is the neutral Trading kind: a conversation the operator has not
-  # pointed at anything yet. It can be retyped to robinhood or research from
-  # inside the chat itself, which is why kind is a plain field rather than
-  # something baked in at creation.
-  @kinds ~w(home chat robinhood research)
+  # pointed at anything yet. It can be retyped to robinhood, research, or
+  # chartbuild from inside the chat itself, which is why kind is a plain field
+  # rather than something baked in at creation.
+  @kinds ~w(home chat robinhood research chartbuild)
 
   @primary_key {:id, :string, autogenerate: false}
   schema "agent_conversations" do

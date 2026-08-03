@@ -49,10 +49,7 @@ defmodule BusterClawWeb.TradingTabStrip do
               reach is the single most important thing about it. --%>
         <span class={[
           "shrink-0 border px-1 text-[0.55rem] font-black uppercase tracking-wider",
-          if(tab.kind == "research",
-            do: "border-info/50 text-info",
-            else: "border-success/50 text-success"
-          )
+          badge_class(tab.kind)
         ]}>
           {Trading.kind_badge(tab.kind)}
         </span>
@@ -80,6 +77,7 @@ defmodule BusterClawWeb.TradingTabStrip do
               now separate things: the tab decides the panel, the window decides
               which conversation you are talking to. --%>
         <span
+          :if={tab.kind != "chartbuild"}
           phx-click="trading_toggle_chat"
           phx-value-id={tab.id}
           title={if tab.id in @open_chats, do: "Close this chat window", else: "Open this chat"}
@@ -155,8 +153,25 @@ defmodule BusterClawWeb.TradingTabStrip do
             Public quotes and filings — no account access
           </span>
         </button>
+        <button
+          id="trading-new-chartbuild"
+          type="button"
+          phx-click="trading_new_tab"
+          phx-value-kind="chartbuild"
+          class="block w-full border-t-2 border-base-content/15 px-3 py-2 text-left transition hover:bg-base-content/10"
+        >
+          <span class="font-black uppercase tracking-wide text-warning">Chart Build</span>
+          <span class="block text-[0.68rem] text-base-content/60">
+            Describe, preview and refine a chart
+          </span>
+        </button>
       </div>
     </div>
     """
   end
+
+  defp badge_class("research"), do: "border-info/50 text-info"
+  defp badge_class("chartbuild"), do: "border-secondary/60 text-secondary"
+  defp badge_class("chat"), do: "border-base-content/40 text-base-content/70"
+  defp badge_class(_robinhood), do: "border-success/50 text-success"
 end

@@ -32,11 +32,13 @@ defmodule BusterClaw.Trading do
   so transcription size is a correctness parameter.
 
   The Trading page is a strip of typed conversations (`tabs/0`): `robinhood`
-  tabs get the reads above, `research` tabs get `BusterClaw.Research` and no
-  broker surface at all. `"trading"` — which used to be DB-less so it could not
-  appear in Home's chat strip — is now a real row seeded at that same id, so its
-  existing `Agent.Transcript` history carries straight over. `kind` is what
-  keeps it out of Home's list now.
+  tabs get the reads above, `research` tabs get `BusterClaw.Research`, and
+  `chartbuild` tabs get `BusterClaw.ChartBuilder`. The latter two have no broker
+  surface; Chart Build receives only a bounded snapshot of already-cached data.
+  `"trading"` — which used to be DB-less so it could not appear in Home's chat
+  strip — is now a real row seeded at that same id, so its existing
+  `Agent.Transcript` history carries straight over. `kind` is what keeps it out
+  of Home's list now.
   """
 
   alias BusterClaw.Agent.Conversations
@@ -48,7 +50,7 @@ defmodule BusterClaw.Trading do
   alias BusterClaw.SvgViewer
 
   @conv_id "trading"
-  @tab_kinds ~w(chat robinhood research)
+  @tab_kinds ~w(chat robinhood research chartbuild)
   @mcp_url "https://agent.robinhood.com/mcp/trading"
   @read_tools ~w(
     mcp__robinhood__get_accounts
@@ -203,6 +205,7 @@ defmodule BusterClaw.Trading do
   click.
   """
   def chat_opts_for("research"), do: Research.chat_opts()
+  def chat_opts_for("chartbuild"), do: BusterClaw.ChartBuilder.chat_opts()
   # A neutral chat is Home's chat, on this page: the full Buster Claw toolset,
   # deliberately broader than the two confined kinds. Retyping it narrows it.
   def chat_opts_for("chat"), do: [append_system_prompt: SvgViewer.guide()]
@@ -210,11 +213,13 @@ defmodule BusterClaw.Trading do
 
   @doc "Human label for a kind, used when titling a new tab."
   def kind_label("research"), do: "Research"
+  def kind_label("chartbuild"), do: "Chart Build"
   def kind_label("chat"), do: "Chat"
   def kind_label(_robinhood), do: "Robinhood"
 
   @doc "Short badge for a kind, written on tabs and window title bars."
   def kind_badge("research"), do: "RES"
+  def kind_badge("chartbuild"), do: "CHART"
   def kind_badge("chat"), do: "CHAT"
   def kind_badge(_robinhood), do: "RH"
 

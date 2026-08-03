@@ -78,7 +78,7 @@ defmodule BusterClawWeb.ChatPanel do
     doc: "conversation id; every event this window pushes names it"
 
   attr :title, :string, required: true
-  attr :kind, :string, required: true, doc: "robinhood | research — drives the badge"
+  attr :kind, :string, required: true, doc: "typed Trading conversation kind"
   attr :index, :integer, default: 0, doc: "render order, used to cascade default positions"
   attr :messages, :list, required: true, doc: "[{dom_id, msg}] — a plain list, not a stream"
   attr :seq, :integer, required: true
@@ -91,6 +91,10 @@ defmodule BusterClawWeb.ChatPanel do
   attr :docked, :boolean,
     default: false,
     doc: "docked windows sit in the tab's flow instead of floating over it"
+
+  attr :embedded, :boolean,
+    default: false,
+    doc: "panel-owned chats sit in flow without changing the persisted dock state"
 
   attr :agent_cli_missing, :boolean, default: false
   attr :empty_message, :string, required: true
@@ -117,6 +121,8 @@ defmodule BusterClawWeb.ChatPanel do
   holds them in assigns and hands them over already paired with their dom ids.
   """
   def chat_window(assigns) do
+    assigns = assign(assigns, :flow, assigns.docked or assigns.embedded)
+
     ~H"""
     <section
       id={@id}
@@ -125,20 +131,20 @@ defmodule BusterClawWeb.ChatPanel do
       data-index={@index}
       data-running={to_string(@running)}
       data-minimized={to_string(@minimized)}
-      data-docked={to_string(@docked)}
+      data-docked={to_string(@flow)}
       data-seq={@seq}
-      phx-click={not @docked && "trading_focus_chat"}
+      phx-click={not @flow && "trading_focus_chat"}
       phx-value-id={@conv}
       class={
         [
           "ic-panel flex flex-col overflow-hidden border-2",
           # Docked: it IS the tab, so it takes the flow and drops the translucency
           # that only earned its place over a dashboard.
-          if(@docked,
+          if(@flow,
             do: "min-h-0 flex-1 border-base-content/25 bg-base-100",
             else: "fixed z-30 backdrop-blur-md transition-colors"
           ),
-          not @docked and
+          not @flow and
             if(@focused,
               do: "border-primary/60 bg-base-100/95 shadow-[4px_4px_0_0_oklch(var(--bc)/0.25)]",
               else: "border-base-content/25 bg-base-100/75 shadow-[3px_3px_0_0_oklch(var(--bc)/0.12)]"
@@ -147,10 +153,10 @@ defmodule BusterClawWeb.ChatPanel do
       }
     >
       <header
-        data-window-drag={not @docked}
+        data-window-drag={not @flow}
         class={[
           "flex shrink-0 items-center gap-2 border-b-2 border-base-content/20 bg-base-200/60 px-2 py-1.5",
-          not @docked and "cursor-grab active:cursor-grabbing"
+          not @flow and "cursor-grab active:cursor-grabbing"
         ]}
       >
         <span class="min-w-0 flex-1 truncate font-mono text-xs font-bold">{@title}</span>
@@ -160,7 +166,14 @@ defmodule BusterClawWeb.ChatPanel do
               which is why the current one is written, not just highlighted. --%>
         <div class="flex shrink-0 items-center gap-px" role="group" aria-label="Chat kind">
           <button
-            :for={{k, badge} <- [{"chat", "CHAT"}, {"robinhood", "RH"}, {"research", "RES"}]}
+            :for={
+              {k, badge} <- [
+                {"chat", "CHAT"},
+                {"robinhood", "RH"},
+                {"research", "RES"},
+                {"chartbuild", "CHART"}
+              ]
+            }
             type="button"
             phx-click="trading_set_kind"
             phx-value-id={@conv}
@@ -169,12 +182,7 @@ defmodule BusterClawWeb.ChatPanel do
             aria-pressed={to_string(@kind == k)}
             class={[
               "border px-1 font-mono text-[0.55rem] font-black uppercase tracking-wider transition",
-              cond do
-                @kind != k -> "border-base-content/20 text-base-content/35 hover:text-base-content"
-                k == "research" -> "border-info/60 bg-info/10 text-info"
-                k == "chat" -> "border-base-content/50 bg-base-content/10 text-base-content"
-                true -> "border-success/60 bg-success/10 text-success"
-              end
+              kind_button_class(@kind, k)
             ]}
           >
             {badge}
@@ -194,7 +202,7 @@ defmodule BusterClawWeb.ChatPanel do
           Stop
         </button>
         <button
-          :if={@docked}
+          :if={@docked and not @embedded}
           type="button"
           phx-click="trading_float_chat"
           phx-value-id={@conv}
@@ -204,7 +212,7 @@ defmodule BusterClawWeb.ChatPanel do
           ⇱
         </button>
         <button
-          :if={not @docked}
+          :if={not @flow}
           type="button"
           phx-click="trading_minimize_chat"
           phx-value-id={@conv}
@@ -214,7 +222,7 @@ defmodule BusterClawWeb.ChatPanel do
           {if @minimized, do: "▢", else: "—"}
         </button>
         <button
-          :if={not @docked}
+          :if={not @flow}
           type="button"
           phx-click="trading_toggle_chat"
           phx-value-id={@conv}
@@ -278,7 +286,7 @@ defmodule BusterClawWeb.ChatPanel do
         </form>
 
         <div
-          :if={not @docked}
+          :if={not @flow}
           data-window-resize
           title="Drag to resize"
           class="absolute bottom-0 right-0 size-4 cursor-nwse-resize"
@@ -290,6 +298,21 @@ defmodule BusterClawWeb.ChatPanel do
     </section>
     """
   end
+
+  defp kind_button_class(kind, option) when kind != option,
+    do: "border-base-content/20 text-base-content/35 hover:text-base-content"
+
+  defp kind_button_class(_kind, "research"),
+    do: "border-info/60 bg-info/10 text-info"
+
+  defp kind_button_class(_kind, "chartbuild"),
+    do: "border-secondary/60 bg-secondary/10 text-secondary"
+
+  defp kind_button_class(_kind, "chat"),
+    do: "border-base-content/50 bg-base-content/10 text-base-content"
+
+  defp kind_button_class(_kind, _robinhood),
+    do: "border-success/60 bg-success/10 text-success"
 
   attr :messages, :any, required: true, doc: "the parent LiveView's chat_messages stream"
   attr :seq, :integer, required: true, doc: "message counter — see data-seq below"

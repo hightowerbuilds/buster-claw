@@ -20,6 +20,15 @@ defmodule BusterClaw.TradingTest do
     {:ok, root: root}
   end
 
+  test "the typed-tab contract includes Chart Build everywhere" do
+    assert Trading.tab_kinds() == ["chat", "robinhood", "research", "chartbuild"]
+    assert Trading.kind_label("chartbuild") == "Chart Build"
+    assert Trading.kind_badge("chartbuild") == "CHART"
+
+    opts = Trading.chat_opts_for("chartbuild")
+    assert Keyword.fetch!(opts, :append_system_prompt) =~ "CACHED_DATA (JSON)"
+  end
+
   test "the read args never empty the tool set — that silences MCP too" do
     extra = Trading.read_only_cli_args()
 

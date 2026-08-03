@@ -1,24 +1,21 @@
 defmodule BusterClawWeb.TradingLive do
   @moduledoc """
-  The Trading tab (TRADING_TAB_ROADMAP Phase 0): the pinned agent conversation
-  beside the accounts dashboard, moved wholesale out of the Home page's sub-tab
-  into a top-level routed surface.
+  The top-level Trading workspace: an accounts dashboard plus a strip of typed
+  Robinhood, Research, and Chart Build conversations.
 
   ## The chat
 
-  One conversation, always `Trading.conv_id()` — DB-less on purpose (no
-  `Conversations` row, so it can't appear in or be closed from Home's chat
-  strip) while the transcript persists via `Agent.Transcript`. This view owns
-  the whole chat surface for it: no tab strip, no autotitle, no SVG sketchpad
-  (the trading agent quotes prices; it does not draw). Every send lands a
+  Each typed conversation keeps independent transcript, run, window, and unread
+  state. Robinhood chat uses the broker read allowlist; Research has no broker
+  surface; Chart Build is a confined, cached-data-only authoring mode whose
+  sanitized SVG output is previewed above its embedded chat. Every send lands a
   Sentinel `:outbound_send` line — the audit posture for money-adjacent turns.
 
   ## The dashboard
 
-  Stage-1 balances (all accounts), stage-2 holdings on demand, the cumulative
-  gain/loss chart, the transfer prompt, exclusions, and the backfill control —
-  verbatim from the Home sub-tab. Later phases replace pieces of this column
-  with the hero row / positions / symbol charts; Phase 0 only relocates.
+  Stage-1 balances (all accounts), stage-2 holdings on demand, cumulative
+  gain/loss, positions, symbol charts, transfer state, exclusions, and backfill
+  controls are backed by the existing Trading and Portfolio contexts.
   """
   use BusterClawWeb, :live_view
 
@@ -26,6 +23,7 @@ defmodule BusterClawWeb.TradingLive do
   # rather than aliased so the templates keep calling them by bare name.
   import BusterClawWeb.TradingView
   import BusterClawWeb.TradingAccountCard, only: [trading_account_card: 1]
+  import BusterClawWeb.ChartBuilderPanel, only: [chart_preview: 1]
   import BusterClawWeb.TradingResearchPanel, only: [research_card: 1]
   import BusterClawWeb.TradingTabStrip, only: [trading_tabs: 1]
   import BusterClawWeb.TradingOrderCard, only: [order_confirm: 1]
@@ -38,6 +36,7 @@ defmodule BusterClawWeb.TradingLive do
   alias BusterClaw.DataState
   alias BusterClaw.Portfolio
   alias BusterClaw.Research
+  alias BusterClaw.SvgViewer
   alias BusterClaw.Trading
 
   # The combined-total chip. A sentinel rather than nil so the selection is
@@ -50,6 +49,7 @@ defmodule BusterClawWeb.TradingLive do
   # Cap the retained in-memory transcript on a long-lived tab; the persisted
   # transcript is the source of truth and is re-read on mount.
   @max_chat_messages 200
+  @max_chat_svgs 200
 
   @impl true
   def mount(_params, _session, socket) do
@@ -74,7 +74,7 @@ defmodule BusterClawWeb.TradingLive do
       |> assign(:research_matches, [])
       # One state map per conversation. Several windows render at once, so there
       # is no single "the chat" to hold running/queue/transcript for any more.
-      |> assign(:chats, Map.new(tabs, &{&1.id, initial_chat_state(&1.id)}))
+      |> assign(:chats, Map.new(tabs, &{&1.id, initial_chat_state(&1.id, &1.kind)}))
       # Render order, and focus order: the last entry is the focused window.
       |> assign(:open_chats, [active.id])
       |> assign(:minimized, MapSet.new())
@@ -171,7 +171,7 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   def handle_event("trading_new_tab", %{"kind" => kind}, socket)
-      when kind in ["chat", "robinhood", "research"] do
+      when kind in ["chat", "robinhood", "research", "chartbuild"] do
     # A new tab starts docked — it opens as a sub-tab rather than a window the
     # operator has to place. The exception is a kind that HAS a data panel:
     # docking a Robinhood or Research tab hides the very dashboard you just
@@ -189,7 +189,9 @@ defmodule BusterClawWeb.TradingLive do
     # tab deliberately does not do this: a window the operator closed stays
     # closed. A docked tab needs no window; it is already the tab.
     open_chats =
-      if docked, do: socket.assigns.open_chats, else: socket.assigns.open_chats ++ [conv.id]
+      if docked or kind == "chartbuild",
+        do: socket.assigns.open_chats,
+        else: socket.assigns.open_chats ++ [conv.id]
 
     {:noreply,
      socket
@@ -287,15 +289,27 @@ defmodule BusterClawWeb.TradingLive do
   # `--resume` into a context full of account balances that the research toolset
   # is specifically supposed to have no way of seeing.
   def handle_event("trading_set_kind", %{"id" => id, "kind" => kind}, socket)
-      when kind in ["chat", "robinhood", "research"] do
+      when kind in ["chat", "robinhood", "research", "chartbuild"] do
     if known_tab?(socket, id) and tab_kind(socket, id) != kind do
+      previous_kind = tab_kind(socket, id)
       {:ok, _conv} = Conversations.set_kind(id, kind)
       Chat.stop(id)
 
+      socket =
+        socket
+        |> update_tab(id, &%{&1 | kind: kind, running: false})
+        |> put_chat(id, fn chat ->
+          if kind == "chartbuild" do
+            chart_state = initial_chat_state(id, kind)
+            %{chart_state | running: false, thinking: nil, queue: []}
+          else
+            %{chat | running: false, thinking: nil, queue: [], pending_order: nil}
+          end
+        end)
+        |> transition_chartbuild_layout(id, previous_kind, kind)
+
       {:noreply,
        socket
-       |> update_tab(id, &%{&1 | kind: kind, running: false})
-       |> put_chat(id, &%{&1 | running: false, thinking: nil, queue: [], pending_order: nil})
        |> push_msg_to(
          id,
          :meta,
@@ -309,6 +323,34 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   def handle_event("trading_set_kind", _params, socket), do: {:noreply, socket}
+
+  # Chart Build reuses Home's hardened SVG viewer. The preview shows the newest
+  # chart; these events open and page through the whole active conversation.
+  def handle_event("zoom_svg", %{"id" => id}, socket) do
+    with {chart_id, ""} <- Integer.parse(id),
+         true <- Enum.any?(active_charts(socket.assigns), &(&1.id == chart_id)) do
+      {:noreply, put_chat(socket, socket.assigns.active_tab, &%{&1 | zoomed_id: chart_id})}
+    else
+      _other -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_zoom", _params, socket),
+    do: {:noreply, put_chat(socket, socket.assigns.active_tab, &%{&1 | zoomed_id: nil})}
+
+  def handle_event("zoom_nav", %{"dir" => dir}, socket),
+    do: {:noreply, chart_zoom_step(socket, dir)}
+
+  def handle_event("zoom_key", %{"key" => "Escape"}, socket),
+    do: {:noreply, put_chat(socket, socket.assigns.active_tab, &%{&1 | zoomed_id: nil})}
+
+  def handle_event("zoom_key", %{"key" => "ArrowLeft"}, socket),
+    do: {:noreply, chart_zoom_step(socket, "prev")}
+
+  def handle_event("zoom_key", %{"key" => "ArrowRight"}, socket),
+    do: {:noreply, chart_zoom_step(socket, "next")}
+
+  def handle_event("zoom_key", _params, socket), do: {:noreply, socket}
 
   # ---------------------------------------------------------------------------
   # Research panel
@@ -587,9 +629,11 @@ defmodule BusterClawWeb.TradingLive do
       end)
       |> update_tab(conv, &%{&1 | running: status == :running})
 
-    # A finished trading run may have moved money — re-snapshot the accounts
-    # while the operator is looking at them.
-    if status == :idle, do: maybe_refresh_account(socket), else: socket
+    # Only a Robinhood run may have moved money. Research and Chart Build must
+    # remain zero-broker-run surfaces when their conversations finish.
+    if status == :idle and tab_kind(socket, conv) == "robinhood",
+      do: maybe_refresh_account(socket),
+      else: socket
   end
 
   defp apply_chat(socket, conv, {:thinking, ms}),
@@ -597,6 +641,39 @@ defmodule BusterClawWeb.TradingLive do
 
   defp apply_chat(socket, conv, {:queue, items}),
     do: put_chat(socket, conv, &%{&1 | queue: items})
+
+  defp apply_chat(socket, conv, {:message, %{role: :assistant, text: text}})
+       when is_binary(text) do
+    if tab_kind(socket, conv) == "chartbuild" do
+      {clean, svgs} = SvgViewer.extract(text)
+      base = chat_state(socket.assigns, conv).svg_seq
+
+      socket = collect_chart_svgs(socket, conv, svgs)
+      svg_ids = svg_ids_for(base, svgs)
+
+      socket =
+        cond do
+          clean != "" ->
+            socket
+            |> maybe_speak(conv, :assistant, clean)
+            |> push_msg_to(conv, :assistant, clean, svg_ids)
+
+          svgs != [] ->
+            push_msg_to(socket, conv, :assistant, "", svg_ids)
+
+          true ->
+            socket
+        end
+
+      maybe_flag_unread(socket, conv, :assistant)
+    else
+      socket
+      |> maybe_speak(conv, :assistant, text)
+      |> push_msg_to(conv, :assistant, text)
+      |> maybe_propose_order(conv, :assistant, text)
+      |> maybe_flag_unread(conv, :assistant)
+    end
+  end
 
   defp apply_chat(socket, conv, {:message, %{role: role, text: text}}) do
     socket
@@ -613,9 +690,13 @@ defmodule BusterClawWeb.TradingLive do
   defp maybe_flag_unread(socket, _conv, :user), do: socket
 
   defp maybe_flag_unread(socket, conv, _role) do
-    if conv in socket.assigns.open_chats and not MapSet.member?(socket.assigns.minimized, conv),
-      do: socket,
-      else: update_tab(socket, conv, &%{&1 | unread: true})
+    visible_chart? =
+      conv == socket.assigns.active_tab and tab_kind(socket, conv) == "chartbuild"
+
+    if visible_chart? or
+         (conv in socket.assigns.open_chats and not MapSet.member?(socket.assigns.minimized, conv)),
+       do: socket,
+       else: update_tab(socket, conv, &%{&1 | unread: true})
   end
 
   # An assistant turn carrying a fenced ```order block arms the confirm card.
@@ -763,10 +844,10 @@ defmodule BusterClawWeb.TradingLive do
   defp push_msg(socket, role, text),
     do: push_msg_to(socket, socket.assigns.active_tab, role, text)
 
-  defp push_msg_to(socket, conv, role, text) do
+  defp push_msg_to(socket, conv, role, text, svg_ids \\ []) do
     put_chat(socket, conv, fn c ->
       seq = c.seq + 1
-      msg = %{id: seq, role: role, text: text, svg_ids: []}
+      msg = %{id: seq, role: role, text: text, svg_ids: svg_ids}
 
       %{
         c
@@ -779,8 +860,8 @@ defmodule BusterClawWeb.TradingLive do
 
   # --- Per-conversation chat state ---
 
-  defp initial_chat_state(conv_id) do
-    messages = load_history(conv_id)
+  defp initial_chat_state(conv_id, kind) do
+    {messages, svgs} = load_history(conv_id, kind)
 
     %{
       messages: messages,
@@ -788,7 +869,10 @@ defmodule BusterClawWeb.TradingLive do
       running: Chat.running?(conv_id),
       thinking: if(Chat.running?(conv_id), do: :running, else: nil),
       queue: Chat.queue(conv_id),
-      pending_order: nil
+      pending_order: nil,
+      svgs: svgs,
+      svg_seq: length(svgs),
+      zoomed_id: nil
     }
   end
 
@@ -797,7 +881,17 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   defp empty_chat_state,
-    do: %{messages: [], seq: 0, running: false, thinking: nil, queue: [], pending_order: nil}
+    do: %{
+      messages: [],
+      seq: 0,
+      running: false,
+      thinking: nil,
+      queue: [],
+      pending_order: nil,
+      svgs: [],
+      svg_seq: 0,
+      zoomed_id: nil
+    }
 
   defp put_chat(socket, conv, fun) do
     update(socket, :chats, fn chats ->
@@ -816,9 +910,9 @@ defmodule BusterClawWeb.TradingLive do
   }
   defp history_role(role), do: Map.get(@history_roles, role, :assistant)
 
-  # Restore the transcript from the conversation's persisted history. Unlike the
-  # Home chat there is no SVG extraction: the trading agent quotes numbers, and
-  # a sketchpad here would be a second surface to keep honest for no benefit.
+  # Restore the transcript from persisted history. Chart Build extracts and
+  # sanitizes its SVG blocks back into the preview bank; every other kind keeps
+  # the historical trading behavior and renders plain text.
   # --- Tab helpers ---
 
   defp to_tab(conv),
@@ -866,11 +960,12 @@ defmodule BusterClawWeb.TradingLive do
   # run in one conversation is not interrupted by looking at another's data.
   defp activate_tab(socket, id) do
     Conversations.touch(id)
+    kind = tab_kind(socket, id)
 
     socket
     |> assign(:active_tab, id)
     |> update(:chats, fn chats ->
-      Map.put_new_lazy(chats, id, fn -> initial_chat_state(id) end)
+      Map.put_new_lazy(chats, id, fn -> initial_chat_state(id, kind) end)
     end)
     |> then(&assign(&1, :active_kind, active_tab_kind(&1)))
   end
@@ -918,15 +1013,131 @@ defmodule BusterClawWeb.TradingLive do
     Map.get(socket_or_assigns.research, socket_or_assigns.active_tab) || Research.blank()
   end
 
-  defp load_history(conv_id) do
-    conv_id
-    |> AgentTranscript.recent(limit: 200)
-    |> Enum.with_index(1)
-    |> Enum.map(fn {row, i} ->
-      {"chat-msg-#{conv_id}-#{i}",
-       %{id: i, role: history_role(row.role), text: row.content, svg_ids: []}}
+  defp load_history(conv_id, "chartbuild") do
+    {messages_rev, charts_rev, _next_chart} =
+      conv_id
+      |> AgentTranscript.recent(limit: 200)
+      |> Enum.reduce({[], [], 1}, fn row, {messages, charts, next_chart} ->
+        role = history_role(row.role)
+        {text, drawings} = chart_history_content(role, row.content)
+        ids = chart_ids(next_chart, length(drawings))
+
+        charts =
+          Enum.reduce(Enum.zip(ids, drawings), charts, fn {id, svg}, acc ->
+            [%{id: id, svg: svg} | acc]
+          end)
+
+        if text == "" and drawings == [] do
+          {messages, charts, next_chart}
+        else
+          {[%{role: role, text: text, svg_ids: ids} | messages], charts,
+           next_chart + length(drawings)}
+        end
+      end)
+
+    messages =
+      messages_rev
+      |> Enum.reverse()
+      |> Enum.with_index(1)
+      |> Enum.map(fn {message, i} ->
+        {"chat-msg-#{conv_id}-#{i}", Map.put(message, :id, i)}
+      end)
+
+    {messages, charts_rev |> Enum.reverse() |> Enum.take(-@max_chat_svgs)}
+  end
+
+  defp load_history(conv_id, _kind) do
+    messages =
+      conv_id
+      |> AgentTranscript.recent(limit: 200)
+      |> Enum.with_index(1)
+      |> Enum.map(fn {row, i} ->
+        {"chat-msg-#{conv_id}-#{i}",
+         %{id: i, role: history_role(row.role), text: row.content, svg_ids: []}}
+      end)
+
+    {messages, []}
+  end
+
+  defp chart_history_content(:assistant, content) do
+    {clean, svgs} = SvgViewer.extract(content)
+    {clean, Enum.map(svgs, &sanitize_chart/1)}
+  end
+
+  defp chart_history_content(_role, content), do: {content, []}
+
+  defp chart_ids(_next, 0), do: []
+  defp chart_ids(next, count), do: Enum.to_list(next..(next + count - 1))
+
+  defp svg_ids_for(_base, []), do: []
+  defp svg_ids_for(base, svgs), do: Enum.to_list((base + 1)..(base + length(svgs)))
+
+  defp collect_chart_svgs(socket, _conv, []), do: socket
+
+  defp collect_chart_svgs(socket, conv, svgs) do
+    put_chat(socket, conv, fn chat ->
+      new =
+        svgs
+        |> Enum.with_index(chat.svg_seq + 1)
+        |> Enum.map(fn {svg, id} -> %{id: id, svg: sanitize_chart(svg)} end)
+
+      %{
+        chat
+        | svgs: Enum.take(chat.svgs ++ new, -@max_chat_svgs),
+          svg_seq: chat.svg_seq + length(svgs)
+      }
     end)
   end
+
+  defp sanitize_chart(svg), do: svg |> SvgViewer.sanitize() |> SvgViewer.normalize()
+
+  defp active_charts(assigns), do: chat_state(assigns, assigns.active_tab).svgs
+
+  defp chart_zoom_step(socket, dir) do
+    conv = socket.assigns.active_tab
+
+    put_chat(socket, conv, fn chat ->
+      case Enum.find_index(chat.svgs, &(&1.id == chat.zoomed_id)) do
+        nil ->
+          chat
+
+        index ->
+          next =
+            case dir do
+              "prev" -> max(index - 1, 0)
+              "next" -> min(index + 1, length(chat.svgs) - 1)
+              _other -> index
+            end
+
+          %{chat | zoomed_id: Enum.at(chat.svgs, next).id}
+      end
+    end)
+  end
+
+  defp transition_chartbuild_layout(socket, id, _previous, "chartbuild") do
+    {:ok, _conv} = Conversations.set_docked(id, false)
+
+    socket
+    |> update_tab(id, &%{&1 | docked: false})
+    |> assign(:open_chats, List.delete(socket.assigns.open_chats, id))
+    |> update(:minimized, &MapSet.delete(&1, id))
+  end
+
+  defp transition_chartbuild_layout(socket, id, "chartbuild", kind) do
+    docked = kind == "chat"
+    {:ok, _conv} = Conversations.set_docked(id, docked)
+
+    open_chats =
+      if docked,
+        do: List.delete(socket.assigns.open_chats, id),
+        else: Enum.uniq(socket.assigns.open_chats ++ [id])
+
+    socket
+    |> update_tab(id, &%{&1 | docked: docked})
+    |> assign(:open_chats, open_chats)
+  end
+
+  defp transition_chartbuild_layout(socket, _id, _previous, _kind), do: socket
 
   # ---------------------------------------------------------------------------
   # Account snapshot / chart / detail asyncs
@@ -1664,6 +1875,11 @@ defmodule BusterClawWeb.TradingLive do
       "Public-market research. Look up a symbol on the right, then ask about the filings, " <>
         "the fundamentals, or what the numbers mean. This chat cannot see your accounts."
 
+  defp chat_empty_message("chartbuild"),
+    do:
+      "Describe the chart you want. Use pasted figures or ask for your cached portfolio " <>
+        "history and held-symbol closes; revisions appear in the preview above."
+
   defp chat_empty_message(_robinhood),
     do:
       "Portfolio assistant. Ask about balances, positions, order history, or market data — " <>
@@ -1671,6 +1887,9 @@ defmodule BusterClawWeb.TradingLive do
 
   defp chat_placeholder("research"),
     do: "Ask about a company…  (Enter to send, Shift+Enter for a new line)"
+
+  defp chat_placeholder("chartbuild"),
+    do: "Describe or revise the chart…  (Enter to send, Shift+Enter for a new line)"
 
   defp chat_placeholder(_robinhood),
     do: "Ask about your portfolio…  (Enter to send, Shift+Enter for a new line)"
@@ -1820,6 +2039,37 @@ defmodule BusterClawWeb.TradingLive do
             matches={@research_matches}
           />
         </div>
+
+        <%!-- Chart Build owns both halves of its tab: the newest sanitized SVG
+              above and its typed conversation below. Its persisted dock flag
+              stays false because this is a data-panel kind, not a docked window. --%>
+        <div
+          :if={@active_kind == "chartbuild"}
+          id="chartbuild-panel"
+          class="flex min-h-0 flex-1 flex-col gap-2"
+        >
+          <.chart_preview
+            charts={chat_state(assigns, @active_tab).svgs}
+            zoomed={chat_state(assigns, @active_tab).zoomed_id}
+          />
+          <BusterClawWeb.ChatPanel.chat_window
+            id={"chartbuild-chat-#{@active_tab}"}
+            conv={@active_tab}
+            embedded
+            index={0}
+            title={tab_title(@tabs, @active_tab)}
+            kind={@active_kind}
+            messages={chat_state(assigns, @active_tab).messages}
+            seq={chat_state(assigns, @active_tab).seq}
+            running={chat_state(assigns, @active_tab).running}
+            thinking={chat_state(assigns, @active_tab).thinking}
+            queue={chat_state(assigns, @active_tab).queue}
+            focused
+            agent_cli_missing={@agent_cli_missing}
+            empty_message={chat_empty_message(@active_kind)}
+            placeholder={chat_placeholder(@active_kind)}
+          />
+        </div>
         <%!-- A docked chat IS the tab's content: same component, positioned in
               flow instead of fixed. Its panel is hidden while it is docked, and
               floating it again brings the panel straight back. --%>
@@ -1869,7 +2119,15 @@ defmodule BusterClawWeb.TradingLive do
             is focus order — the last one drawn is the opaque, keyboard-owning
             one. --%>
       <BusterClawWeb.ChatPanel.chat_window
-        :for={{conv, i} <- Enum.with_index(Enum.reject(@open_chats, &docked?(@tabs, &1)))}
+        :for={
+          {conv, i} <-
+            Enum.with_index(
+              Enum.reject(
+                @open_chats,
+                &(docked?(@tabs, &1) or tab_kind_of(@tabs, &1) == "chartbuild")
+              )
+            )
+        }
         id={"trading-chat-#{conv}"}
         conv={conv}
         index={i}
@@ -1890,6 +2148,12 @@ defmodule BusterClawWeb.TradingLive do
           <.order_confirm conv={conv} pending={chat_state(assigns, conv).pending_order} />
         </:pinned>
       </BusterClawWeb.ChatPanel.chat_window>
+
+      <BusterClawWeb.ChatPanel.svg_modal
+        :if={@active_kind == "chartbuild"}
+        svgs={active_charts(assigns)}
+        zoomed={chat_state(assigns, @active_tab).zoomed_id}
+      />
     </Layouts.app>
     """
   end

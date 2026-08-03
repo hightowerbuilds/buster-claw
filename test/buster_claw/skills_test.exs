@@ -123,6 +123,18 @@ defmodule BusterClaw.SkillsTest do
     assert {:error, :empty_reference} = Skills.load("hollow")
   end
 
+  test "ensure ships the enabled chart-builder reference playbook", %{root: root} do
+    assert :ok = Skills.ensure()
+
+    assert {:ok, skill} = Skills.load("chart-builder")
+    assert skill.enabled
+    assert skill.handler_kind == :reference
+    assert skill.body =~ "Zero is in frame"
+    assert skill.body =~ "Gaps are gaps"
+    assert skill.body =~ "Arithmetic: candlesticks"
+    assert File.exists?(Path.join([root, "skills", "chart-builder.md"]))
+  end
+
   test "a skill exceeding max_steps is rejected", %{root: root} do
     steps = List.duplicate(%{"command" => "document_list"}, 21) |> Jason.encode!()
 
