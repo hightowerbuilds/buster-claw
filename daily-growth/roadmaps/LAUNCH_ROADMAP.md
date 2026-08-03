@@ -961,6 +961,71 @@ communicated by colour alone · `prefers-reduced-motion` disables the shader.
 
 Also: a non-admin user account, and a non-English locale with a non-US date format.
 
+### V.8 — Seeded defaults have no upgrade path
+
+**Status: open, needs a design. Inherited 08-03 from `CHART_BUILDER_ROADMAP.md`
+(archived) — the operator flagged it as app-wide work coming soon.**
+
+`maybe_write` — `File.exists?` → skip — is the house seeding idiom, and it is
+used far more widely than the skill that surfaced it. Every one of these is
+frozen at whatever version first touched that install; improving a default
+reaches new installs only:
+
+| Seeder | Files |
+|---|---|
+| `Skills.ensure/0` | `save-note`, `shader-designer`, `chart-builder`, roster |
+| `Jobs.ensure/0` | `mail-triage`, `voicemail-triage`, `sms-triage`, roster |
+| `Jobs.seed_trusted_senders/0` | **`memory/policy.md`**, `trusted-email-senders.md`, `trusted-phone-numbers.md` |
+| `Jobs.seed_agent_settings/0` | agent settings |
+| `TerminalCommands.ensure/0` | roster, command catalog |
+| `Trading.ensure_mcp_config/0` | `mcp/robinhood.json` |
+
+**Note what is on that list.** `memory/policy.md` is the operator's security
+policy, and `trusted-email-senders.md` / `trusted-phone-numbers.md` gate the
+autonomous email and phone loops. If a *default* in any of those turns out to be
+too permissive, **no shipped install ever receives the tightening.** That moves
+this from a polish item to something V.5 has an interest in: it is the delivery
+half of every default protection we ship. The command catalog has the same
+shape — a newly gated command added to the default catalog does not reach an
+install that already seeded one.
+
+**Why this belongs in a release document even though it blocks nothing.**
+III.I ships a patch channel for the *binary*. This is its content twin, and the
+two have opposite defaults: code is replaced on update, workspace files never
+are. So **whatever seeded defaults go out in R1 are what that cohort keeps
+permanently**, and R1's cohort is the handful of people whose experience we most
+want to be able to fix. The cost is asymmetric in time — cheap to design now,
+and after R1 it means asking real users to delete files by hand.
+
+**This is not hypothetical.** Caught 08-03 while reconciling the `chart-builder`
+palette against the `dataviz` method: the shipped-by-default palette contained
+colours that *failed* the OKLCH lightness band for a dark surface. Had that skill
+gone out a day earlier, every install would have kept the failing palette
+forever. The fix on this machine was `rm` on the dev-workspace copy — which is
+exactly the manual step that does not scale past one machine.
+
+**Why it is a design and not a chore.** Never overwriting is *correct* for
+operator-edited files — file-first, git-diffable, operator-owned is the whole
+point of the skills layer — and *wrong* for an untouched default. Those two
+cases are currently indistinguishable, and that is the actual problem. The
+design has to answer:
+
+- How do you tell an operator's edit from an untouched default? Checksum the
+  body we seeded, or carry a version in the frontmatter?
+- Does an upgrade replace, merge, or write a `.new` beside the file and *say so*?
+- Does a skill carry a version at all, and who bumps it?
+
+**The one outcome worse than staleness is silently clobbering an operator's
+edited file.** Design against that first — and note the security files raise the
+stakes on the opposite side too: leaving a too-permissive `policy.md` in place
+because the operator once touched it is its own failure. A baseline that
+tightens may need to be enforced in code rather than seeded as text, which is a
+real answer this design is allowed to reach.
+
+Whatever the mechanism, apply it once across the whole table above rather than
+per-seeder — six `ensure/0` functions drifting apart is how this became invisible
+in the first place.
+
 ---
 
 ## Part VI — Focus: the product story

@@ -164,6 +164,31 @@ header each.
 
 ---
 
+### Open a Chart Build tab and actually look at a chart
+
+**What.** Inherited 08-03 when `CHART_BUILDER_ROADMAP` was archived — the only
+item it left open. Make a Chart Build tab in a running app, ask for a line chart
+and a bar chart off the cached data, and *look*: does the preview render above
+the chat, does the ```` ```svg ```` fence get stripped from the bubble, does the
+drawn-not-computed label show, does the newest chart replace the previous one,
+and does the zoom modal open. Then check the model actually follows the
+palette — slot 1 hazard `#ff4407` first, and no invented sixth hue.
+
+**Why deferred.** The feature is covered by tests and the full suite is green at
+2,226, but `render_hook` never touches JS, so nothing in the suite proves the
+panel *looks* right — the same gap that once let a rename sever a hook↔markup
+contract with the suite still passing. Deferred only because it needs a human at
+a running app, which is the operator's call, not an agent task.
+
+**What makes it expensive later.** It doesn't get expensive — it gets skipped,
+and this is the one claim the roadmap explicitly could not make when it closed.
+Cheap now: it is two prompts in one tab. A second, softer reason to do it early:
+this is the first real use of the `chart-builder` skill, and Phase 4 was
+deliberately gated on "which charts do people actually ask for" — the answer only
+starts existing once someone uses it.
+
+---
+
 ### Look at a first-open workspace through the setup wizard
 
 **What.** Inherited 08-02 when `WORKSPACE_REVIEW_ROADMAP` was archived — the only

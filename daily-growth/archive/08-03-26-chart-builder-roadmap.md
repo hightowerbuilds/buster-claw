@@ -1,7 +1,26 @@
 # Chart Builder — a fourth kind of trading tab
 
-**Scoped 08-02-26 · Status: ACTIVE — Phases 0–3 complete (built 08-02-26;
-palette reconciled against the `dataviz` method 08-03-26). Phase 4 unstarted.**
+**Scoped 08-02-26 · Status: CLOSED + ARCHIVED 08-03-26.**
+
+Phases 0–3 shipped (built 08-02, palette reconciled against the `dataviz` method
+08-03, committed `9c12d24`). **Phase 4 was never started and is not inherited by
+anything** — it was always gated on "re-justify when reached," and no real
+sessions have happened yet to justify it. If the spec-rendered path is wanted
+later, promote Phase 4 back into its own roadmap rather than treating it as
+leftover work; the argument for it needs to be made fresh from actual use.
+
+**Two things left this file rather than closing with it:**
+
+- The **seeded-defaults upgrade path** → `LAUNCH_ROADMAP.md` **V.8**. Surfaced
+  here, but app-wide (six `ensure/0` seeders, including `memory/policy.md`).
+- The **real-app visual walk** → `LEFTOVERS.md`. The suite is green at 2,226
+  tests, but `render_hook` never touches JS and no one has yet opened a Chart
+  Build tab in a running app and looked at a chart. That is the one claim this
+  roadmap cannot make.
+
+**What this feature is, in one line:** a fourth Trading tab kind where the model
+draws a chart in sanitized SVG from a cached-data snapshot, labelled
+drawn-not-computed because the app can verify its safety but not its arithmetic.
 
 A new Trading tab kind, **Chart Build**, alongside Chat / Robinhood / Research.
 It opens with a **chart preview above a chat**: you describe the chart you want,
@@ -272,12 +291,13 @@ real sessions, so it teaches what actually goes wrong.*
         appear **in slot order** (the order is the CVD mechanism), seeding into
         a scratch workspace because `Skills.ensure/0` never overwrites.
 
-- [ ] **Carry-over from the above:** `Skills.ensure/0` deliberately never
-      overwrites, so any install that already seeded `chart-builder.md` keeps
-      the unvalidated palette forever. The stale dev-workspace copy was deleted
-      so it re-seeds. Not a problem yet — the skill has never shipped — but
-      **a skill worth updating after release has no upgrade path**, and that is
-      a question for the whole skills layer, not just this file.
+- [x] **Promoted 08-03 → `LAUNCH_ROADMAP.md` V.8.** This roadmap surfaced the
+      fact that seeded defaults have **no upgrade path** (`maybe_write` never
+      overwrites), so the pre-`dataviz` palette would have been permanent on any
+      install that had already seeded the skill. Chasing it down showed the
+      pattern is app-wide — six `ensure/0` seeders, including `memory/policy.md`
+      and the trusted-sender lists — so it moved to the launch document, where
+      the R1 timing argument lives. Nothing about it is chart-specific.
 
 # Phase 4 — The rigorous path (option B) and the extras
 
