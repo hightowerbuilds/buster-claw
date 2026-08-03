@@ -1118,9 +1118,44 @@ complexity without reducing it.
   Phase 2's IPC half shipped (bridge lockstep test). See the blocks under each
   finding.
 
+- **Evening batch (08-02): Phase 0 items 1–3 and ALL of Phase 1 closed.**
+  - The guide's trading referral corrected (`introduction.ex`) with a contract
+    test pinning the posture: the prohibition must survive every rewrite,
+    "execution is disabled" may never return, and the guide must agree with
+    `Trading.@system_prompt` about whose click reaches the broker.
+  - All 12 remaining baseline entries diagnosed: 3 dead (deleted — probe_steps'
+    leftover launch clause, a pre-0.5-Req header shape, a backoff-masking
+    fallback), 9 deliberate (justified in the baseline by name: corrupt-data
+    degradation ×3, fail-closed webhook compare, unknown-OS error, a macro
+    artifact, LiveView crash guards ×2, an honest no_return). 247 → 244.
+  - `polling_interval_minutes` removed end to end with a forward migration —
+    the roadmap's own recommendation, executed. Text/Call controls verified
+    already gone.
+  - **Cycles: 6 → 2, and both survivors are accepted with reasons.**
+    `AgentToolPolicy` and `AudioName` leaves broke Trading↔Research and
+    Music↔Sound; `Portfolio.Series` took the windowing math out of the chart
+    (the last core→web edge — **no `lib/buster_claw` file participates in any
+    cross-layer cycle now**); FlowRunner's default executor moved to its one
+    caller (the named acceptance "FlowRunner must not call back into
+    Commands.Web" holds); `TerminalCommands.Builtins` took the shipped catalog
+    and protection model. Remaining: the 68-file web cycle (Phoenix-inherent
+    router↔LiveView↔verified-routes) and the Google 4-ring (OAuth persisting
+    through its parent context — idiomatic, runtime-only, and breaking it would
+    relocate a PubSub topic for a number's sake).
+
 **Next, in order:**
 
-1. **The 12 remaining baseline entries** — eight `:pattern_match_cov`, three
+1. **Phase 3B/3C** — `SoundStudioComponent` (1,933, template decomposition),
+   `StatusLive` (1,400), then CLI / Commands.Web / Gmail / TerminalCommands /
+   PortfolioChart. Purity-first each time; measure before cutting.
+2. **Phase 4** — nested-modules extraction (4 files), inline theme JS, the
+   daisyUI decision (recommend the `AGENTS.md` route), browser-page
+   consolidation. Skip the 260-comment archaeology sweep (cut with reason).
+3. **Phase 0 items 8–9** — voice edge-function tests; a scheduled
+   `:browser_engine` lane (ubuntu-latest + chromium is plausible without new
+   hardware).
+4. **UML sections 3–5** and the payload-key lockstep.
+5. ~~The 12 remaining baseline entries~~ **done, see above.** — eight `:pattern_match_cov`, three
    `:pattern_match`, one `:no_return` (that last one honest: `stand_down/2`,
    its closure, and `die/2` all end in `System.halt/1`). These have been
    *classified*, not *diagnosed* — none is known to be a defect and none is

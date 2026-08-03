@@ -845,6 +845,63 @@ normal 41 seconds. A failure count still isn't a diagnosis.
 
 ---
 
+## The evening run: Phase 1 closes, and the cycle count stops mattering
+
+The operator asked for the entire rest of the roadmap, so the evening went
+batch by batch.
+
+**The guide got its referral** — the two sentences found at noon and left
+undone. `introduction.ex` no longer says "execution is disabled"; it says the
+Trading tab can place the order and whose click reaches the broker, while the
+prohibition survives verbatim. A contract test now pins all three facts, so
+neither the security posture nor the referral can drift alone.
+
+**All twelve remaining baseline entries got diagnosed** — the treatment the
+first four got, applied to the rest. Three were dead: a leftover launch clause
+in a function that never launches, a pre-0.5-Req header shape, and a fallback
+that would have silently skipped the Google rate-limit backoff. Nine are
+deliberate and now say so in the baseline by name — corrupt-persisted-data
+degradation, a fail-closed webhook signature compare, an unknown-OS error in a
+function that shells out, two LiveView crash guards, one honest `no_return`.
+The distinction that matters: none of the nine is "suppressed"; each has a
+sentence explaining why Dialyzer is wrong about it.
+
+**`polling_interval_minutes` is gone end to end** — schema, changeset, both
+command arg maps, the Settings form, four test assertions, and a forward
+migration. The roadmap's own words: a setting that knowingly does nothing is
+worse than an absent setting. The Text/Call controls turned out to be already
+gone.
+
+**And the cycles: six at dusk, two at close — with the two survivors accepted
+for stated reasons rather than left as debt.** Each break was measured before
+cutting, and each was one seam:
+
+- Trading↔Research existed for a word list; Music↔Sound for a sanitizer. Two
+  leaves (`AgentToolPolicy`, `AudioName`), four rewired call sites.
+- The 72-file cycle's last core→web edge was the `portfolio_history` command
+  calling *chart* functions for its math — right requirement ("the two surfaces
+  must not disagree"), wrong direction. `Portfolio.Series` owns the windowing
+  now, and **no core file participates in any cross-layer cycle**. What
+  remains is 68 web files: router → LiveViews → verified routes, which is
+  Phoenix, not debt.
+- FlowRunner already supported injected executors — BackgroundFlow used one —
+  while carrying the live-tab executor as a default, which was the whole
+  callback edge. The default moved to its one caller; `exec:` is required.
+- The terminal catalog submodules reached back into the facade for
+  `protected?/1`; the shipped catalog and protection model now live in
+  `TerminalCommands.Builtins`. (First attempt at that extraction chopped the
+  file at the wrong bracket and got caught by `mix format` immediately — the
+  second used asserted line boundaries. Cheap lesson, cheap catch.)
+- The Google 4-ring stays: OAuth persisting refreshed tokens through its
+  parent context is idiomatic facade-owns-persistence, and breaking it would
+  relocate a PubSub topic to please a metric — the exact thing Part IV says
+  not to do.
+
+Checkpoint: **2,218 tests, 0 failures**, Dialyzer 244/244 with zero unnecessary
+skips, credo strict clean, format clean. Phases 3B/3C and 4 are what remain.
+
+---
+
 ## At close
 
 **Suite: 2,216 tests, 0 failures** — 70 of those added by the refactor/Dialyzer
