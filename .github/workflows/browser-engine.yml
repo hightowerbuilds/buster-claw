@@ -1,0 +1,69 @@
+name: Browser engine
+
+# The 22 `:browser_engine` tests drive a REAL Chromium over CDP. They have been
+# excluded by tag since they were written and, until 08-03, ran nowhere at all —
+# coverage written and never collected. Measured locally against Chrome on
+# 08-03: 22 tests, 0 failures, 58s. This is where that stops depending on
+# someone remembering to pass `--only browser_engine`.
+#
+# Its own workflow rather than a job in ci.yml, because adding `schedule:` there
+# would run the whole of CI daily; only this lane wants that trigger.
+#
+# Scheduled + manual rather than on every push: launching a browser is slower
+# and flakier than the rest of the suite, and a red run here means "the engine
+# path broke," which is worth knowing daily rather than blocking every commit.
+# Promote to `push` if it proves stable.
+on:
+  schedule:
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: browser-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  browser-engine:
+    name: Real Chromium over CDP
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to match .tool-versions, same as ci.yml.
+      - name: Set up Elixir/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28.4.2"
+          elixir-version: "1.19.5"
+
+      - name: Cache deps and _build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-engine-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-engine-
+
+      # `BrowserControl.Detect` only knows macOS `.app` paths, so on Linux the
+      # binary has to be pinned explicitly. `config/runtime.exs` reads
+      # BUSTER_CLAW_BROWSER_BINARY into `:browser_control_binary`, which
+      # `Detect.find/1` prefers over its candidate list.
+      - name: Install Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Run the browser-engine tests
+        env:
+          BUSTER_CLAW_BROWSER_BINARY: ${{ steps.chrome.outputs.chrome-path }}
+        run: mix test --only browser_engine

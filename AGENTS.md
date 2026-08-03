@@ -30,7 +30,15 @@ custom classes must fully style the input
 
 - **Always use and maintain this import syntax** in the app.css file for projects generated with `phx.new`
 - **Never** use `@apply` when writing raw css
-- **Always** manually write your own tailwind-based components instead of using daisyUI for a unique, world-class design
+- **daisyUI is the base layer; `ic-` is the house layer.** Corrected 08-03: this
+  line used to forbid daisyUI outright while `app.css` imported the plugin, so
+  the rule described neither the code nor any destination anyone was walking
+  toward. The real convention is two layers — daisyUI supplies the primitives and
+  the theme tokens (`base-100`, `primary`, `secondary`, …), and the **Industrial
+  Claw** identity rides on top as `ic-` utilities and hand-written Tailwind.
+  **Reach for an `ic-` utility or write your own component before you reach for a
+  daisyUI component class**, and never let a stock daisyUI look ship as the final
+  design — that instinct is what the old rule was protecting, and it still holds.
 - Out of the box **only the app.js and app.css bundles are supported**
   - You cannot reference an external vendor'd script `src` or link `href` in the layouts
   - You must import the vendor deps into app.js and app.css to use them

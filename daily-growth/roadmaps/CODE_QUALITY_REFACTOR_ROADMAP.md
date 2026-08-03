@@ -43,14 +43,37 @@
 > | `TerminalCommands` (3C) | — | 795 |
 > | `Gmail` (3C) | — | 739 |
 >
-> **Still unstarted:** all of **3B/3C**, all of **Phase 4**, **Phase 0 items
-> 8–9** (voice edge-function tests, a scheduled `:browser_engine` lane), **UML
-> sections 3–5**, and the **payload-key lockstep** (the bridge test compares
-> action *names*, so renaming `"wait_ms"` on one side is still silent).
+> ### Scope decided 08-03 — what is actually left
+>
+> The remaining work was read for whether we would defend it, not just listed.
+>
+> **Doing:** the **payload-key lockstep** (the bridge test compares action
+> *names*, so renaming `"wait_ms"` on one side is still silent), a scheduled
+> **`:browser_engine` lane** (those 22 tests appear nowhere in
+> `.github/workflows/` — coverage written and never collected), and **3B**
+> (`SoundStudioComponent` 1,933 and `StatusLive` 1,420 genuinely do several jobs
+> each).
+>
+> **Cut, with reasons recorded in place:** **3C** — dropped by this document's
+> own argument, since its scorecard already says Finding 4 used the wrong axis
+> and 3C listed five coherent mid-sized modules on it. The **daisyUI
+> contradiction** — resolved by correcting `AGENTS.md`, which was describing
+> neither the code nor a destination. **Source archaeology** was already cut.
+>
+> **Still open, unranked:** Phase 4's remaining items (nested-module extraction,
+> inline theme JS, browser-page consolidation), Phase 0 item 8 (voice
+> edge-function tests), and **UML sections 3–5** — docs that have certainly
+> drifted, since sections 1–2 had; worth fixing only if someone reads them, and
+> worth marking dated if not.
+>
+> **The lesson 3B has to carry.** `TradingLive` was cut 46% and regrew to 2,174
+> within a week. Splitting a module buys a rate, not a destination, unless
+> something makes the regrowth visible — the way `scripts/check_cycles.sh` now
+> does for cycles.
 >
 > Do not archive this document on the strength of its Progress section: that
-> section is accurate about 08-02 and says nothing about the four phases that
-> were never begun.
+> section is accurate about 08-02 and says nothing about the phases that were
+> never begun.
 
 > **Verification pass, 2026-08-02 (second reader).** Every structural number in
 > this document was re-measured and holds exactly: the module line counts, the
@@ -898,7 +921,26 @@ undo/redo, arrangement edits, and trim state. Separate:
 implement Studio editing, notification parsing, contacts policy, weather
 formatting, and chat projection in the same module.
 
-### 3C. Remaining service and adapter hotspots
+### 3C. Remaining service and adapter hotspots — **CUT 08-03, with reason**
+
+> **Dropped by the roadmap's own argument.** Its verification scorecard records
+> Finding 4 as *"right diagnosis, **wrong axis** — sized by responsibility count,
+> not lines per responsibility."* Every module below was listed on the wrong
+> axis: measured 08-03 they are `PortfolioChart` 996, `Commands.Web` 894, `CLI`
+> 867, `TerminalCommands` 795, `Gmail` 739 — mid-sized Elixir modules with
+> coherent single jobs, not feature containers. Splitting them buys smaller
+> numbers and more indirection, which this document elsewhere explicitly forbids
+> ("Do not optimize for line count alone", "No extracted module exists solely to
+> reduce line count").
+>
+> **What would put one back on the list:** a *responsibility* count, not a line
+> count. If `Commands.Web` grows a fifth unrelated job, or `CLI` starts holding
+> transport policy as well as parsing, split it then — and say which
+> responsibility moved, not how many lines did.
+>
+> The original prescriptions are kept below for whoever makes that case later.
+
+*Cut — retained as reference, not as work:*
 
 - Split `CLI` into parser, shorthand translator, HTTP transport, renderer, and
   process/signal handling.
@@ -962,7 +1004,14 @@ content, and Tauri child webviews.
 
 Make explicit decisions for each contradiction:
 
-- daisyUI is imported and used despite the repository rule forbidding it
+- ~~daisyUI is imported and used despite the repository rule forbidding it~~
+  **RESOLVED 08-03 — the rule changed, not the code.** `AGENTS.md` now states the
+  convention that was actually in force: daisyUI supplies the primitives and
+  theme tokens, the `ic-` utilities and hand-written Tailwind carry the
+  Industrial Claw identity on top, and a stock daisyUI look never ships as the
+  final design. Migrating off the plugin was the alternative and was declined —
+  it is a UI-wide refactor whose only failure mode is visual, which no test can
+  guard. The recommendation below (option 1) is superseded.
 - production and test files contain nested modules despite the no-nesting rule
 - the root template contains inline theme JavaScript
 - several templates use raw inputs where the core input component is available

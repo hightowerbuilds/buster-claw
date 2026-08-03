@@ -76,6 +76,24 @@ config :buster_claw,
 # RLS project-wide — never commit it, never ship it in a build. Guarded out of
 # :test entirely so a developer's shell env can't overwrite the test stubs
 # (runtime.exs runs AFTER config/test.exs and would clobber them with nil).
+# The Chromium-family binary BrowserControl drives. `Detect` finds it from
+# standard macOS install paths; this override is how a machine with the browser
+# somewhere else — notably CI on Linux, where none of those paths exist — points
+# at it.
+#
+# Deliberately NOT inside the `!= :test` guard below, because the tests that
+# need it are the `:browser_engine` ones, which only run in :test. The reason
+# for that guard does not apply here: this only ever *sets* config when the
+# variable is present, so an unset shell writes nothing and detection is
+# unchanged. It cannot clobber a test stub with nil.
+case System.get_env("BUSTER_CLAW_BROWSER_BINARY") do
+  binary when is_binary(binary) and binary != "" ->
+    config :buster_claw, browser_control_binary: binary
+
+  _absent ->
+    :ok
+end
+
 if config_env() != :test do
   telephony_relay_url = System.get_env("SUPABASE_URL")
   telephony_relay_key = System.get_env("SUPABASE_SERVICE_ROLE_KEY")

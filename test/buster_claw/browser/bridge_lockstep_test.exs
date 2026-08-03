@@ -20,6 +20,8 @@ defmodule BusterClaw.Browser.BridgeLockstepTest do
   """
   use ExUnit.Case, async: true
 
+  alias BusterClaw.Browser.Bridge
+
   @bridge_path "lib/buster_claw/browser/bridge.ex"
   @hook_path "assets/js/hooks/browser.js"
 
@@ -43,6 +45,22 @@ defmodule BusterClaw.Browser.BridgeLockstepTest do
     |> File.read!()
     |> then(&Regex.scan(~r/action\s*===\s*"([a-z_]+)"/, &1))
     |> Enum.map(&Enum.at(&1, 1))
+    |> MapSet.new()
+  end
+
+  # `payload.wait_ms`, `payload.selector`, …
+  defp js_payload_keys do
+    @hook_path
+    |> File.read!()
+    |> then(&Regex.scan(~r/payload\.([a-zA-Z_]+)/, &1))
+    |> Enum.map(&Enum.at(&1, 1))
+    |> MapSet.new()
+  end
+
+  defp declared_payload_keys do
+    Bridge.payload_contract()
+    |> Map.values()
+    |> List.flatten()
     |> MapSet.new()
   end
 
@@ -83,6 +101,82 @@ defmodule BusterClaw.Browser.BridgeLockstepTest do
              Dead branches are how a reader concludes a feature exists. Remove
              them, or add the action to @actions.
              """
+    end
+  end
+
+  # The action half of this contract has been checked since 07-28; the ARGUMENT
+  # half was the gap the refactor roadmap named and nobody closed — "the bridge
+  # test compares action NAMES; a rename of `wait_ms` on either side is still
+  # silent." It is silent in the worst way: the hook reads `undefined`, the
+  # command runs, and the result looks like a page that simply did not match.
+  describe "the two sides agree on the payload keys, not just the verbs" do
+    test "neither parser silently matched nothing" do
+      assert MapSet.size(declared_payload_keys()) > 5
+      assert MapSet.size(js_payload_keys()) > 5
+    end
+
+    test "every key Elixir declares, the hook reads" do
+      missing = MapSet.difference(declared_payload_keys(), js_payload_keys())
+
+      assert MapSet.equal?(missing, MapSet.new()),
+             """
+             Bridge declares #{inspect(MapSet.to_list(missing))} in @payload_keys,
+             but #{@hook_path} never reads `payload.<key>` for it.
+
+             The command would run with that argument dropped on the floor.
+             """
+    end
+
+    test "every key the hook reads, Elixir declares" do
+      orphaned = MapSet.difference(js_payload_keys(), declared_payload_keys())
+
+      assert MapSet.equal?(orphaned, MapSet.new()),
+             """
+             #{@hook_path} reads #{inspect(MapSet.to_list(orphaned))}, which
+             Bridge's @payload_keys never declares — so `request/3` now REFUSES
+             a payload carrying it, and the hook reads undefined.
+
+             Add it to @payload_keys, or stop reading it in the hook.
+             """
+    end
+
+    test "the contract covers every action, so a new one cannot skip it" do
+      actions = elixir_actions() |> MapSet.new()
+
+      declared =
+        Bridge.payload_contract() |> Map.keys() |> MapSet.new(&to_string/1)
+
+      assert MapSet.equal?(actions, declared),
+             """
+             @actions and @payload_keys disagree:
+               actions without a payload declaration: #{inspect(MapSet.to_list(MapSet.difference(actions, declared)))}
+               declarations without an action:        #{inspect(MapSet.to_list(MapSet.difference(declared, actions)))}
+
+             An action with no entry cannot be called at all — `payload_keys/1`
+             does a Map.fetch!/2 — so this fails loudly rather than at runtime.
+             """
+    end
+  end
+
+  describe "request/3 refuses a payload key the hook cannot read" do
+    test "an unknown key raises rather than vanishing" do
+      assert_raise ArgumentError, ~r/waitMs/, fn ->
+        Bridge.request(:render, %{"url" => "https://e.com/", "waitMs" => 1})
+      end
+    end
+
+    test "a declared key gets past validation" do
+      # The claim is only that validation lets it through; what happens after
+      # depends on whether a desktop is attached, so both outcomes pass. A tiny
+      # timeout keeps this from waiting out the real 8s budget.
+      assert {:error, reason} =
+               Bridge.request(
+                 :render,
+                 %{"url" => "https://e.com/", "wait_ms" => 1},
+                 timeout_ms: 1
+               )
+
+      assert reason in [:browser_unavailable, :browser_timeout]
     end
   end
 end

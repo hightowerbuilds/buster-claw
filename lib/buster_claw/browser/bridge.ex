@@ -25,6 +25,36 @@ defmodule BusterClaw.Browser.Bridge do
   @default_timeout_ms 8_000
   @actions ~w(current read find_elements click fill navigate open_tab render wait extract)a
 
+  # The payload keys each action may carry, and the other half of the JS
+  # contract. `@actions` kept the two sides agreeing on the verb; nothing kept
+  # them agreeing on the arguments, so renaming `"wait_ms"` on either side
+  # produced no error anywhere — the hook would read `undefined` and the command
+  # would quietly do the wrong thing.
+  #
+  # Declared here rather than inferred from callers, because payloads are built
+  # in several modules (`Commands.Web` and `Browser` both do) and a regex over
+  # call sites cannot tell a request key from a response key. `payload_keys/1`
+  # is what `BridgeLockstepTest` compares against the hook's `payload.<key>`
+  # reads, so this attribute is the contract, not a description of one.
+  @payload_keys %{
+    current: [],
+    read: [],
+    find_elements: ["query"],
+    click: ["index", "selector", "text"],
+    fill: ["index", "selector", "text", "value"],
+    navigate: ["url"],
+    open_tab: ["url", "session"],
+    render: ["url", "wait_ms"],
+    wait: ["condition", "value", "timeout_ms"],
+    extract: ["selector", "attr"]
+  }
+
+  @doc "Payload keys `action` may carry — the Elixir half of the JS contract."
+  def payload_keys(action) when action in @actions, do: Map.fetch!(@payload_keys, action)
+
+  @doc "Every action with its declared payload keys."
+  def payload_contract, do: @payload_keys
+
   # The internal expiry; overridable in tests via :browser_bridge_timeout_ms.
   defp timeout_ms,
     do: Application.get_env(:buster_claw, :browser_bridge_timeout_ms, @default_timeout_ms)
@@ -77,6 +107,14 @@ defmodule BusterClaw.Browser.Bridge do
       when action in @actions and is_map(payload) and is_list(opts) do
     timeout = Keyword.get(opts, :timeout_ms, timeout_ms())
 
+    # A key the hook does not read is a caller bug that used to be invisible:
+    # the command ran, the argument vanished, and the result looked like a page
+    # that simply did not match. Refuse it here instead.
+    case Map.keys(payload) -- payload_keys(action) do
+      [] -> :ok
+      unknown -> raise ArgumentError, bad_payload_message(action, unknown)
+    end
+
     case Process.whereis(__MODULE__) do
       nil ->
         {:error, :browser_unavailable}
@@ -88,6 +126,18 @@ defmodule BusterClaw.Browser.Bridge do
           :exit, _ -> {:error, :browser_timeout}
         end
     end
+  end
+
+  defp bad_payload_message(action, unknown) do
+    """
+    Bridge.request(#{inspect(action)}, …) was given #{inspect(unknown)}, which \
+    the browser hook never reads.
+
+    Declared keys for #{inspect(action)}: #{inspect(payload_keys(action))}.
+
+    Either the key is a typo, or the contract moved and both @payload_keys here \
+    and assets/js/hooks/browser.js need it.\
+    """
   end
 
   @doc "Deliver a command result for `ref` (called by the browser command controller)."
