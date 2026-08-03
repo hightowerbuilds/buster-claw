@@ -212,6 +212,29 @@ body { background-color: var(--color-base-100); }
   color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
 }
 
+/* "How it unfolds" step list in Explore tutorials: numbered in hazard-orange
+   mono, command names in <code> picked out the same way. */
+.ic-unfold {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  list-style: decimal;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+  line-height: 1.625;
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+}
+.ic-unfold li::marker {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-primary);
+}
+.ic-unfold code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-primary);
+}
+
 /* Clickable header for a native <details> collapsible. Hides the default
    disclosure triangle (we render our own chevron) and lays the label out
    opposite it. */

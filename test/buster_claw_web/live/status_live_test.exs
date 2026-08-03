@@ -759,5 +759,207 @@ defmodule BusterClawWeb.StatusLiveTest do
       html = render(view)
       assert html =~ "Handled dispatch #7."
     end
+
+    test "the Explore sub-tab opens on Intro with a launcher tile per sub-tab",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      html = render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      assert has_element?(view, "button[phx-value-tab='explore'].bg-primary")
+      assert has_element?(view, "#home-explore")
+      # Intro is the default sub-tab and carries the what-this-is copy.
+      assert has_element?(
+               view,
+               "#home-explore button[phx-value-tab='intro'][aria-selected='true']"
+             )
+
+      assert html =~ "Learn the machine."
+
+      # Every non-Intro sub-tab has a launcher tile (rail button + grid tile
+      # both carry phx-value-tab, so each key appears at least twice).
+      for key <- BusterClawWeb.ExplorePanel.tab_keys(), key != "intro" do
+        tiles =
+          view
+          |> render()
+          |> then(&Regex.scan(~r/phx-value-tab="#{key}"/, &1))
+
+        assert length(tiles) >= 2, "expected a rail button AND a tile for #{key}"
+      end
+    end
+
+    test "the site tiles open tabs that carry the copy and the external link",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      # busterclaw.lol: asset-model copy + link through the app's own browser.
+      html = render_click(view, "select_explore_tab", %{"tab" => "site"})
+      assert html =~ "one thing you buy"
+      assert html =~ "/browse?url=https%3A%2F%2Fbusterclaw.lol"
+
+      html = render_click(view, "select_explore_tab", %{"tab" => "ntf"})
+      assert html =~ "Notes That Float"
+      assert html =~ "/browse?url=https%3A%2F%2Fnotesthatfloat.com"
+    end
+
+    test "a feature stub tab says something true and deep-links the real surface",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      html = render_click(view, "select_explore_tab", %{"tab" => "phone"})
+      assert html =~ "BusterPhone"
+      assert html =~ ~s(href="/phone")
+      assert html =~ "Tutorial in the works"
+    end
+
+    test "the Gmail/GWS tab is a real tutorial: prompts, real commands, no stub line",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      html = render_click(view, "select_explore_tab", %{"tab" => "gws"})
+
+      # The six cycles, prompt-first.
+      assert html =~ "The morning brief"
+      assert html =~ "Draft, don&#39;t send"
+      assert html =~ "Remember the schedule"
+      assert html =~ "The unattended cycle"
+      assert html =~ "Make the files, not just the mail"
+      assert html =~ "Send the file, not a link"
+      assert html =~ "You type"
+
+      # Every command the copy names must exist in the catalog — the tutorial
+      # is a contract with the command surface, enforced here so a rename
+      # can't silently strand the docs.
+      for cmd <- ~w(gmail_sync gmail_search gmail_read gmail_draft_create gmail_send
+                    google_calendar_sync notify_create dispatch_reply
+                    sheets_create sheets_append_values docs_create slides_create
+                    slides_batch_update drive_folder_create drive_update drive_upload
+                    drive_share drive_export) do
+        assert html =~ "<code>#{cmd}</code>"
+
+        assert BusterClaw.Commands.command_type(cmd) != nil,
+               "tutorial names #{cmd}, which is not in the command catalog"
+      end
+
+      # Graduated from stub status: no placeholder line.
+      refute html =~ "Tutorial in the works"
+    end
+
+    test "the Command List tab is the atlas: renamed, diagrammed, real commands",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      html = render_click(view, "select_explore_tab", %{"tab" => "cmd"})
+
+      # Renamed from "Cmd & Promptship" (operator, 08-02).
+      assert html =~ "Command List"
+      refute html =~ "Promptship"
+
+      # The anatomy legend and the funnel SVG.
+      assert html =~ "gated"
+      assert html =~ "SENTINEL AUDIT FEED"
+      assert html =~ ~s(role="img")
+
+      # The six examples.
+      assert html =~ "Capture the day"
+      assert html =~ "The market at a glance"
+      assert html =~ "The phone desk"
+      assert html =~ "Web errands, hands off the wheel"
+      assert html =~ "The queue is the desk"
+      assert html =~ "It learns your routines"
+
+      # Same contract as the GWS tutorial: every named command must exist.
+      for cmd <- ~w(document_save journal_append notify_create
+                    finance_quote finance_news portfolio_history
+                    finance_fundamentals finance_filings
+                    phone_list phone_mark_heard sms_send
+                    web_search browser_fetch bookmark_add
+                    dispatch_enqueue dispatch_list dispatch_claim dispatch_done
+                    memory_search
+                    skill_analyze skill_suggestions skill_suggestion_approve) do
+        assert html =~ "<code>#{cmd}</code>"
+
+        assert BusterClaw.Commands.command_type(cmd) != nil,
+               "tutorial names #{cmd}, which is not in the command catalog"
+      end
+
+      refute html =~ "Tutorial in the works"
+    end
+
+    test "the BrowserControl tab teaches the three surfaces and the payment gate",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      html = render_click(view, "select_explore_tab", %{"tab" => "browser"})
+
+      # The three-surfaces diagram and its load-bearing labels.
+      assert html =~ "YOUR LIVE TAB"
+      assert html =~ "SANDBOX TAB"
+      assert html =~ "AGENT WINDOW"
+
+      # The five cycles.
+      assert html =~ "Read over my shoulder"
+      assert html =~ "Do the clicking"
+      assert html =~ "A fresh tab that forgets"
+      assert html =~ "Turn a routine into a check"
+      assert html =~ "The long errand — Agent Mode"
+
+      # The posture the closeout roadmap owns: stated, verbatim enough to find.
+      assert html =~ "The agent cannot pay and cannot confirm a purchase."
+
+      # Same contract as the other tutorials: every named command must exist.
+      for cmd <- ~w(browser_current browser_read browser_capture_page
+                    browser_screenshot browser_find_elements browser_click
+                    browser_fill browser_open_tab browser_wait browser_extract
+                    browser_flow browser_check_save browser_check_run
+                    browser_check_list browser_control_probe
+                    agent_run_start agent_run_navigate agent_run_act
+                    agent_run_cart agent_run_resume agent_run_finish
+                    agent_run_stop) do
+        assert html =~ "<code>#{cmd}</code>"
+
+        assert BusterClaw.Commands.command_type(cmd) != nil,
+               "tutorial names #{cmd}, which is not in the command catalog"
+      end
+
+      refute html =~ "Tutorial in the works"
+    end
+
+    test "an unknown Explore sub-tab key is refused, not crashed on", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      # The rail's whitelist is ExplorePanel.tab_keys/0; a forged key leaves the
+      # current sub-tab in place.
+      render_click(view, "select_explore_tab", %{"tab" => "../../etc"})
+
+      assert has_element?(
+               view,
+               "#home-explore button[phx-value-tab='intro'][aria-selected='true']"
+             )
+    end
+
+    test "the Explore sub-tab selection survives a glance at Chat", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # The assign lives in StatusLive, not the `:if`-discarded panel — so an
+      # open tutorial must still be open after a round-trip through Chat.
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_explore_tab", %{"tab" => "browser"})
+      render_click(view, "select_home_tab", %{"tab" => "chat"})
+      refute has_element?(view, "#home-explore")
+
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      assert has_element?(
+               view,
+               "#home-explore button[phx-value-tab='browser'][aria-selected='true']"
+             )
+    end
   end
 end
