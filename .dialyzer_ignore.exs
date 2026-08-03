@@ -103,7 +103,7 @@
   {"lib/buster_claw_web/terminal_workspace_hook.ex", :unmatched_return},
 
   # -------------------------------------------------------------------------
-  # 2. Everything that is not `unmatched_return` — 16 entries on 08-02, 12 now.
+  # 2. Everything that is not `unmatched_return` — 16 entries on 08-02, 10 now.
   # -------------------------------------------------------------------------
   #
   # All four confirmed defects diagnosed on 08-02 are now FIXED, and their
@@ -131,27 +131,45 @@
   #     exist, so three callback specs checked nothing. Ecto does not generate
   #     it; the schema declares it now.
   #
-  # What is LEFT here has not been diagnosed, only classified. Eight
-  # `:pattern_match_cov`, three `:pattern_match`, one `:no_return`. Each
-  # deserves the same treatment the four above got: read the code, decide
-  # whether Dialyzer is right, fix or justify. None has been shown to be a
-  # defect, and none has been shown not to be.
+  # ALL TWELVE DIAGNOSED 08-02 (second pass). Three were dead code and are now
+  # deleted from source — their entries are pruned (the browser.ex :pattern_match entry remains LIVE —
+  # its :1 macro-artifact finding shares the {file, type} key with the deleted :148):
   #
-  # The `:pattern_match_cov` entries are over-covered clauses. Mostly harmless,
-  # but each is a clause someone believed was reachable — read before deleting.
-  # A defensive branch against untrusted input can land here when the upstream
-  # guard is simply narrower than the author assumed. (The one that WAS safe to
-  # delete, sound_studio.ex's `frame == 0`, is already gone: `parse_fmt/1`
-  # guards `channels > 0` and `bits in [8, 16, 24, 32]`, so the product is
-  # always at least 1. Removing it also cleared the `:exact_compare` warning
-  # that was crashing every non-default formatter, including this file's own
-  # generator.)
+  #   * browser_control.ex :pattern_match — probe_steps' else carried an
+  #     {:error, :launch, _} clause, but run_probe launches and handles that
+  #     error itself before calling probe_steps. Leftover from before the split.
+  #   * browser.ex :pattern_match (the :148 half) — a tuple-list header_value
+  #     clause for pre-0.5 Req; Req now always normalizes headers to a map.
+  #   * google/client.ex :pattern_match_cov — retry_after_seconds' fallback
+  #     returned nil for a non-response, which would silently SKIP the rate-limit
+  #     backoff; the only caller passes the response it just received, so an
+  #     upstream bug should crash loudly instead.
+  #
+  # The other NINE are deliberate and stay, each for a stated reason:
+  #
+  #   * appearance.ex, terminal_commands.ex, browser_home_controller.ex —
+  #     corrupt-persisted-data degradation. Each catch-all turns a corrupt
+  #     stored value (background mode, catalog field, bookmark tags) into a
+  #     harmless default instead of a crash, matching each module's documented
+  #     posture. Dialyzer sees only today's callers, not tomorrow's bad row.
+  #   * integrations/github.ex — secure_compare's non-binary fallback returns
+  #     false: FAIL-CLOSED signature verification. Never delete a fail-closed
+  #     clause in webhook auth to please a linter.
+  #   * system_browser.ex — unknown :os.type() returns {:error, :unsupported_os}
+  #     rather than a FunctionClauseError in a function that shells out.
+  #   * browser.ex :pattern_match (the :1 half) — a line-1-attributed macro
+  #     artifact: `is_binary(html) and ...` inside thin_page?, where Dialyzer
+  #     proves html is currently always binary. The guard is defense against a
+  #     malformed page map; the finding is noise from the `and` expansion.
+  #   * sound_studio_component.ex, trading_live.ex — LiveView catch-alls. A new
+  #     error atom from an upstream contract (TradingOrder.parse, StudioMix)
+  #     renders a generic message instead of crashing the whole page.
+  #   * cli.ex :no_return — simply true: stand_down/2, its trap closure, and
+  #     die/2 all end in System.halt/1.
   {"lib/buster_claw/appearance.ex", :pattern_match_cov},
   {"lib/buster_claw/browser.ex", :pattern_match_cov},
   {"lib/buster_claw/browser.ex", :pattern_match},
-  {"lib/buster_claw/browser_control.ex", :pattern_match},
   {"lib/buster_claw/cli.ex", :no_return},
-  {"lib/buster_claw/google/client.ex", :pattern_match_cov},
   {"lib/buster_claw/integrations/github.ex", :pattern_match_cov},
   {"lib/buster_claw/system_browser.ex", :pattern_match_cov},
   {"lib/buster_claw/terminal_commands.ex", :pattern_match_cov},

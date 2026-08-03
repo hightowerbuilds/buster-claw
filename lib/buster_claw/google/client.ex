@@ -194,14 +194,16 @@ defmodule BusterClaw.Google.Client do
   # header (delta-seconds or an HTTP-date). Surface the delay when present so a
   # caller can back off; the distinct `:google_api_rate_limited` error already
   # signals that the request is retryable (unlike the generic api error).
+  # No fallback clause on purpose (one sat here until 08-02, provably dead): the
+  # only caller passes the %Req.Response{} it just received, and a non-response
+  # reaching this point is an upstream bug that should crash loudly rather than
+  # silently skip the backoff.
   defp retry_after_seconds(%Req.Response{} = response) do
     response
     |> Req.Response.get_header("retry-after")
     |> List.first()
     |> parse_retry_after()
   end
-
-  defp retry_after_seconds(_response), do: nil
 
   defp parse_retry_after(value) when is_binary(value) do
     case Integer.parse(value) do

@@ -142,12 +142,10 @@ defmodule BusterClaw.Browser do
     end
   end
 
+  # Req ≥0.5 always normalizes headers to a map of lowercase name => [values];
+  # a tuple-list clause for the older shape sat here until 08-02, provably dead.
   defp header_value(headers, key) when is_map(headers),
     do: headers |> Map.get(key, []) |> List.first()
-
-  defp header_value(headers, key) when is_list(headers) do
-    Enum.find_value(headers, fn {k, v} -> if String.downcase(k) == key, do: v end)
-  end
 
   # Prefer the server-declared filename (Content-Disposition), else the URL's last
   # path segment, else a generic name.

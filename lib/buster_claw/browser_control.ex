@@ -265,7 +265,9 @@ defmodule BusterClaw.BrowserControl do
          exit_status: status
        }}
     else
-      {:error, :launch, reason} -> {:error, :launch, reason}
+      # Launch never happens in this function — `run_probe` launches and handles
+      # its own `{:error, :launch, reason}` before calling here. A launch clause
+      # sat in this else until 08-02; Dialyzer proved it unreachable.
       {step, {:error, reason}} -> {:error, step, reason}
     end
   end
