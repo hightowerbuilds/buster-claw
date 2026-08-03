@@ -581,6 +581,37 @@ domain modules.
 > Re-measure before scheduling any of it; after this pass the file may not
 > warrant it.
 >
+> ### ALSO SHIPPED 08-02 — three more components out of `TradingLive`.
+>
+> A second pass after re-measuring the file. Three function components were still
+> living in the "helpers" block, each already carrying its own `attr` block —
+> components in everything but file placement. A dependency scan confirmed each
+> was **fully self-contained**: every private helper it called was defined inside
+> its own span, so all three were clean lifts.
+>
+> - **`BusterClawWeb.TradingResearchPanel`** (218) — `research_card/1` plus its
+>   eight pure formatters. Imports `TradingView` for `signed_money`/`as_of_label`.
+> - **`BusterClawWeb.TradingTabStrip`** (162) — `trading_tabs/1`, which doubles as
+>   the drag-dock target for floating chat windows.
+> - **`BusterClawWeb.TradingOrderCard`** (118) — `order_confirm/1` plus the
+>   `order_result_*` copy. `settle_order/3` and the transcript helpers stayed in
+>   the LiveView: they mutate the socket and write the transcript, which is not
+>   the card's job.
+>
+> `trading_live.ex`: **2,346 → 1,900.** Cumulative for the day: **3,503 → 1,900,
+> −46%.**
+>
+> **Honest note:** unlike the first pass, this one adds no test coverage — these
+> are templates, already covered by the 58 LiveView tests. The win is legibility
+> and a named boundary per surface, not testability.
+>
+> **The floor is near.** What remains is the LiveView's actual job: 35
+> `handle_event` clauses, 12 async handlers, the PubSub chat stream (370), and
+> the symbol-chart fetch orchestration with its staleness guards. Going below
+> ~1,700 means splitting the page into two LiveViews, which costs the shared
+> state they currently pass for free. **Do not schedule that without a reason
+> beyond line count.**
+>
 > ### ALSO SHIPPED 08-02 — `BusterClaw.Portfolio`, same method. **Done; skip it.**
 >
 > Chosen over the larger `SoundStudioComponent` (1,933) deliberately: 826 of that
@@ -857,9 +888,10 @@ complexity without reducing it.
 
 **Done:**
 
-- **Phase 3A, `TradingLive` purity pass** — see the SHIPPED block in 3A.
-  3,503 → 2,346 lines; `TradingView` + `TradingAccountCard` extracted; 37 new
-  unit tests.
+- **Phase 3A, `TradingLive`** — see the SHIPPED blocks in 3A. **3,503 → 1,900
+  (−46%)** across two passes: `TradingView` + `TradingAccountCard` (purity), then
+  `TradingResearchPanel` + `TradingTabStrip` + `TradingOrderCard` (components).
+  37 new unit tests. Near its floor — see the note there before going further.
 - **Phase 3A, `Portfolio` purity pass** — 1,023 → 918 lines;
   `Portfolio.Returns` extracted (the gain arithmetic); 21 new unit tests.
   Suite 2,201/0.

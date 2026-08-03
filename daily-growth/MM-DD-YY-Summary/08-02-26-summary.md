@@ -479,6 +479,57 @@ whole point is that the dependency direction is *visible*.
 
 ---
 
+## Three more out, and finding the floor
+
+2,346 still reads as a lot, so I asked whether a charting library would help —
+and the first thing measuring turned up is that **the chart was never in that
+file.** `PortfolioChart` has been its own 1,047-line module all along. The two
+questions were unrelated; a library swap would not have removed one line from
+`TradingLive`.
+
+What *was* still in there: three function components, each already carrying its
+own `attr` block — components in everything but file placement. A dependency
+scan settled it in one pass: every private helper each of them called was
+defined inside its own span, so all three were self-contained lifts.
+`TradingResearchPanel` (the quote/fundamentals/filings panel, which renders only
+what the app fetched and never what the model typed), `TradingTabStrip` (which
+doubles as the drag-dock target for floating chat windows), and
+`TradingOrderCard` (the confirmation card — the only path from this tab to the
+broker).
+
+`settle_order/3` and the transcript helpers deliberately stayed behind: they
+mutate the socket and write the transcript, which is not the card's job.
+
+**2,346 → 1,900. Across the day: 3,503 → 1,900, −46%.**
+
+Worth saying plainly — unlike the morning's pass, this one adds **no test
+coverage**. These are templates, already covered by the 58 LiveView tests. The
+win is legibility and a named boundary per surface, and pretending otherwise
+would be the same overclaiming the roadmap got caught doing.
+
+**And the floor is close.** What's left is the LiveView's actual job: 35
+`handle_event` clauses, 12 async handlers, the PubSub chat stream, and the
+symbol-chart fetch orchestration with its staleness guards. Below about 1,700
+you are splitting the page into two LiveViews and paying for state they
+currently share for free. The roadmap now says not to schedule that without a
+reason beyond line count.
+
+**On the chart library**, for the record, since the answer was not the expected
+one. A library would replace maybe 550 of `PortfolioChart`'s 1,047 lines —
+scales, paths, geometry, the SVG markup — and none of the other 450: the gap
+rule that refuses to connect a line across unrecorded days is *correctness*, not
+rendering, and the text readouts (twelve `aria-`/`role=`/`sr-only` hits in that
+file) are something no charting library hands you. It would add a hook, a
+serialization layer, a bundled dependency, and it would take the chart out of
+reach of a 2,201-test suite that can currently assert on rendered SVG. One
+correction to our own docstring though: it claims "the CSP forbids fetching a
+library anyway," which is only true of CDN loading — `script-src 'self'` permits
+anything bundled through esbuild. The real reason to reach for one is
+**interaction** — crosshair, pan, zoom on the candle chart — and that is a
+feature decision, not a refactor.
+
+---
+
 ## At close
 
 **Suite: 2,201 tests, 0 failures** (2,143 + 37 + 21 new), credo strict clean,
