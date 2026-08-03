@@ -26,11 +26,12 @@ defmodule BusterClawWeb.TradingLiveTest do
     prev_fetcher = Application.get_env(:buster_claw, :trading_snapshot_fetcher)
     prev_detail = Application.get_env(:buster_claw, :trading_detail_fetcher)
 
-    # Without this the Research panel makes three real HTTP calls (SEC + Finnhub)
-    # from a test. The real fetch path is covered in BusterClaw.ResearchTest.
-    prev_research = Application.get_env(:buster_claw, :research_loader)
+    # Without this the lookup panel makes three real HTTP calls (SEC + Finnhub)
+    # from a test. The real fetch path is covered in
+    # BusterClaw.ChartBuilder.FetchTest.
+    prev_lookup = Application.get_env(:buster_claw, :chart_builder_loader)
 
-    Application.put_env(:buster_claw, :research_loader, fn symbol ->
+    Application.put_env(:buster_claw, :chart_builder_loader, fn symbol ->
       %{
         symbol: symbol,
         quote: BusterClaw.DataState.unavailable(:not_configured, source: :finnhub),
@@ -52,7 +53,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       Application.put_env(:buster_claw, :agent_cli, prev_cli)
       Application.put_env(:buster_claw, :trading_snapshot_fetcher, prev_fetcher)
       Application.put_env(:buster_claw, :trading_detail_fetcher, prev_detail)
-      Application.put_env(:buster_claw, :research_loader, prev_research)
+      Application.put_env(:buster_claw, :chart_builder_loader, prev_lookup)
       File.rm_rf(root)
     end)
 
@@ -91,13 +92,17 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert has_element?(view, "#trading-chat-trading")
 
       # The requirement: the panel underneath changes, the window does not.
-      render_click(view, "trading_new_tab", %{"kind" => "research"})
+      # This used `research` until 08-03; Chart Build inherited both the panel
+      # and the job, so it is the kind that still exercises the switch.
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
       assert has_element?(view, "#trading-chat-trading")
-      assert has_element?(view, "#trading-research-card")
+      assert has_element?(view, "#trading-lookup-card")
 
-      # Both conversations' windows are on screen at once.
-      research = Enum.find(Conversations.list_kinds(["research"]), & &1)
-      assert has_element?(view, "#trading-chat-#{research.id}")
+      # Both conversations are on screen at once — the seeded tab as a floating
+      # window, Chart Build as its embedded chat. Different elements on purpose:
+      # Chart Build owns its whole tab rather than floating over a panel.
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+      assert has_element?(view, "#chartbuild-chat-#{chart.id}")
 
       # Closing a window leaves its TAB alone — they are different things now.
       render_click(view, "trading_toggle_chat", %{"id" => "trading"})
@@ -317,27 +322,6 @@ defmodule BusterClawWeb.TradingLiveTest do
       refute Enum.any?(Conversations.list(), &(&1.id == "trading"))
     end
 
-    test "a Research tab has its own chat, its own panel, and no broker surface",
-         %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/trading")
-
-      render_click(view, "trading_new_tab", %{"kind" => "research"})
-      html = render(view)
-
-      # The banner states the stronger fact: absent, not restricted.
-      assert html =~ "trading-research-banner"
-      assert html =~ "cannot see your accounts"
-      assert has_element?(view, "#trading-research-card")
-      # The broker dashboard and its order card are not on this tab at all.
-      refute has_element?(view, "#trading-account-card")
-      refute html =~ "trading-read-only-banner"
-
-      # Two tabs now, and the new one is a distinct conversation.
-      tabs = Conversations.list_kinds(["robinhood", "research"])
-      assert length(tabs) == 2
-      assert Enum.any?(tabs, &(&1.kind == "research"))
-    end
-
     test "a proposal belongs to its own window, not to whichever panel is showing",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")
@@ -350,28 +334,28 @@ defmodule BusterClawWeb.TradingLiveTest do
 
       assert has_element?(view, "#trading-order-confirm-trading")
 
-      render_click(view, "trading_new_tab", %{"kind" => "research"})
-      research = Enum.find(Conversations.list_kinds(["research"]), & &1)
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
 
       # The card stays with the conversation that proposed it — visible because
-      # that window is still open, and absent from the research window, which is
-      # what "belongs to its own window" has to mean.
+      # that window is still open, and absent from the Chart Build window, which
+      # is what "belongs to its own window" has to mean.
       assert has_element?(view, "#trading-order-confirm-trading")
-      refute has_element?(view, "#trading-order-confirm-#{research.id}")
+      refute has_element?(view, "#trading-order-confirm-#{chart.id}")
 
       # And the panel underneath did switch.
-      assert has_element?(view, "#trading-research-card")
+      assert has_element?(view, "#trading-lookup-card")
       refute has_element?(view, "#trading-account-card")
 
       render_click(view, "trading_select_tab", %{"id" => "trading"})
       assert has_element?(view, "#trading-account-card")
-      refute has_element?(view, "#trading-research-card")
+      refute has_element?(view, "#trading-lookup-card")
     end
 
-    test "the research panel renders app-fetched figures, and says when it cannot",
+    test "the lookup panel renders app-fetched figures, and says when it cannot",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")
-      render_click(view, "trading_new_tab", %{"kind" => "research"})
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
 
       # No symbol chosen: an instruction, never zeros.
       html = render(view)
@@ -379,7 +363,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       refute html =~ "$0.00"
 
       # A symbol EDGAR cannot resolve is named, not blanked.
-      html = render_click(view, "research_open", %{"symbol" => "NOTAREALTICKER"})
+      html = render_click(view, "lookup_open", %{"symbol" => "NOTAREALTICKER"})
       assert html =~ "NOTAREALTICKER"
       assert html =~ "no company matching"
     end
@@ -393,7 +377,7 @@ defmodule BusterClawWeb.TradingLiveTest do
 
       # The page IS the tab strip; an empty one has nothing to render into.
       assert html =~ "trading-read-only-banner"
-      assert [_one] = Conversations.list_kinds(["robinhood", "research"])
+      assert [_one] = Conversations.list_kinds(["robinhood", "chartbuild"])
     end
 
     test "a forged tab id cannot select or close anything", %{conn: conn} do
@@ -404,7 +388,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       render_click(view, "trading_new_tab", %{"kind" => "sudo"})
 
       assert [%{id: "trading"}] =
-               Conversations.list_kinds(["robinhood", "research"])
+               Conversations.list_kinds(["robinhood", "chartbuild"])
 
       assert has_element?(view, "#trading-account-card")
     end
@@ -427,13 +411,17 @@ defmodule BusterClawWeb.TradingLiveTest do
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")
 
-      render_click(view, "trading_new_tab", %{"kind" => "research"})
-      research = Enum.find(Conversations.list_kinds(["research"]), & &1)
+      # Robinhood is the remaining floating-chat-over-a-panel kind. This used to
+      # be asserted through `research`, which was deleted 08-03; Chart Build
+      # cannot stand in for it because Chart Build EMBEDS its chat rather than
+      # floating one, which is a different layout contract (asserted separately).
+      render_click(view, "trading_new_tab", %{"kind" => "robinhood"})
+      second = Enum.find(Conversations.list_kinds(["robinhood"]), &(&1.id != "trading"))
 
       # Docking these on creation would hide the dashboard the tab exists for.
-      refute research.docked
-      assert has_element?(view, "#trading-research-card")
-      assert has_element?(view, "#trading-chat-#{research.id}")
+      refute second.docked
+      assert has_element?(view, "#trading-account-card")
+      assert has_element?(view, "#trading-chat-#{second.id}")
     end
 
     test "Chart Build opens as one panel with preview above its embedded chat", %{conn: conn} do
@@ -449,7 +437,22 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert has_element?(view, "#chartbuild-empty")
       assert has_element?(view, "#chartbuild-chat-#{chart.id} [data-chat-input]")
       refute has_element?(view, "#trading-chat-#{chart.id}")
-      assert render(view) =~ "Drawn by AI · not computed"
+
+      html = render(view)
+      assert html =~ "Drawn by AI · not computed"
+
+      # Inherited 08-03 from the deleted Research tab's test, because Chart Build
+      # inherited the job. The lookup panel is the one region of this tab whose
+      # figures demonstrably came from our own fetch rather than from the model —
+      # which matters more now that this chat can search the web.
+      assert has_element?(view, "#trading-lookup-card")
+      assert html =~ "trading-lookup-banner"
+      assert html =~ "cannot see your accounts"
+
+      # The banner states the stronger fact: the broker is absent here, not
+      # merely restricted. No dashboard, no order card, on this tab at all.
+      refute has_element?(view, "#trading-account-card")
+      refute html =~ "trading-read-only-banner"
     end
 
     test "an SVG reply becomes the newest sanitized chart and leaves the bubble clean",
@@ -539,8 +542,8 @@ defmodule BusterClawWeb.TradingLiveTest do
       {:ok, view, _html} = live(conn, ~p"/trading")
       render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
       chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
-      render_click(view, "trading_new_tab", %{"kind" => "research"})
-      other = Enum.find(Conversations.list_kinds(["research"]), & &1)
+      render_click(view, "trading_new_tab", %{"kind" => "chat"})
+      other = Enum.find(Conversations.list_kinds(["chat"]), & &1)
 
       # The dot is suppressed on the active tab, so the flag is only observable
       # from somewhere else — which is exactly when it matters.
@@ -576,7 +579,7 @@ defmodule BusterClawWeb.TradingLiveTest do
 
       # `minimized` is shared with the floating windows: a collapse left behind
       # here would reopen as a minimised window with no visible composer.
-      render_click(view, "trading_set_kind", %{"id" => chart.id, "kind" => "research"})
+      render_click(view, "trading_set_kind", %{"id" => chart.id, "kind" => "robinhood"})
 
       assert has_element?(view, "#trading-chat-#{chart.id} [data-chat-input]")
       refute has_element?(view, "#chartbuild-panel")
@@ -637,13 +640,13 @@ defmodule BusterClawWeb.TradingLiveTest do
       render_click(view, "trading_new_tab", %{"kind" => "chat"})
       chat = Enum.find(Conversations.list_kinds(["chat"]), & &1)
 
-      render_click(view, "trading_set_kind", %{"id" => chat.id, "kind" => "research"})
+      render_click(view, "trading_set_kind", %{"id" => chat.id, "kind" => "chartbuild"})
 
-      assert Conversations.get(chat.id).kind == "research"
+      assert Conversations.get(chat.id).kind == "chartbuild"
       # The operator is told, in the transcript, that the model's context was
       # dropped — otherwise a retyped chat looks like it still remembers.
       html = render(view)
-      assert html =~ "Switched to Research"
+      assert html =~ "Switched to Chart Build"
       assert html =~ "will not see anything above this line"
 
       # And back again, with the tab's badge following.
@@ -656,7 +659,7 @@ defmodule BusterClawWeb.TradingLiveTest do
       {:ok, view, _html} = live(conn, ~p"/trading")
 
       render_click(view, "trading_set_kind", %{"id" => "trading", "kind" => "home"})
-      render_click(view, "trading_set_kind", %{"id" => "not-a-tab", "kind" => "research"})
+      render_click(view, "trading_set_kind", %{"id" => "not-a-tab", "kind" => "chartbuild"})
       render_click(view, "trading_dock_chat", %{"id" => "not-a-tab"})
 
       # "home" would hide the tab from this page entirely by putting it in Home's

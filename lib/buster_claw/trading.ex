@@ -32,9 +32,11 @@ defmodule BusterClaw.Trading do
   so transcription size is a correctness parameter.
 
   The Trading page is a strip of typed conversations (`tabs/0`): `robinhood`
-  tabs get the reads above, `research` tabs get `BusterClaw.Research`, and
-  `chartbuild` tabs get `BusterClaw.ChartBuilder`. The latter two have no broker
-  surface; Chart Build receives only a bounded snapshot of already-cached data.
+  tabs get the reads above, and `chartbuild` tabs get `BusterClaw.ChartBuilder`.
+  Chart Build has no broker surface — it gets a bounded snapshot of already-cached
+  data, web *search* for discovery, and `ChartBuilder.Fetch` for any public figure
+  it needs to plot. (A `research` kind sat between them until 08-03; Chart Build
+  absorbed its job and its fetchers.)
   `"trading"` — which used to be DB-less so it could not appear in Home's chat
   strip — is now a real row seeded at that same id, so its existing
   `Agent.Transcript` history carries straight over. `kind` is what keeps it out
@@ -48,7 +50,7 @@ defmodule BusterClaw.Trading do
   alias BusterClaw.Settings
 
   @conv_id "trading"
-  @tab_kinds ~w(chat robinhood research chartbuild)
+  @tab_kinds ~w(chat robinhood chartbuild)
   @mcp_url "https://agent.robinhood.com/mcp/trading"
   @read_tools ~w(
     mcp__robinhood__get_accounts
@@ -184,7 +186,7 @@ defmodule BusterClaw.Trading do
         # The seeded tab leads regardless of insertion order. `inserted_at` is
         # second-precision, so a conversation created in the same second as the
         # seed ties and falls back to sorting by id — where "conv-…" beats
-        # "trading" and the page would open on someone's research tab.
+        # "trading" and the page would open on someone's Chart Build tab.
         {pinned, rest} = Enum.split_with(tabs, &(&1.id == @conv_id))
         pinned ++ rest
     end
@@ -200,13 +202,11 @@ defmodule BusterClaw.Trading do
   # is a leaf its caller reaches directly; see that module's moduledoc.
 
   @doc "Human label for a kind, used when titling a new tab."
-  def kind_label("research"), do: "Research"
   def kind_label("chartbuild"), do: "Chart Build"
   def kind_label("chat"), do: "Chat"
   def kind_label(_robinhood), do: "Robinhood"
 
   @doc "Short badge for a kind, written on tabs and window title bars."
-  def kind_badge("research"), do: "RES"
   def kind_badge("chartbuild"), do: "CHART"
   def kind_badge("chat"), do: "CHAT"
   def kind_badge(_robinhood), do: "RH"

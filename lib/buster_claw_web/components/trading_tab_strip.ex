@@ -143,17 +143,6 @@ defmodule BusterClawWeb.TradingTabStrip do
           </span>
         </button>
         <button
-          type="button"
-          phx-click="trading_new_tab"
-          phx-value-kind="research"
-          class="block w-full border-t-2 border-base-content/15 px-3 py-2 text-left transition hover:bg-base-content/10"
-        >
-          <span class="font-black uppercase tracking-wide text-info">Research</span>
-          <span class="block text-[0.68rem] text-base-content/60">
-            Public quotes and filings — no account access
-          </span>
-        </button>
-        <button
           id="trading-new-chartbuild"
           type="button"
           phx-click="trading_new_tab"
@@ -170,7 +159,6 @@ defmodule BusterClawWeb.TradingTabStrip do
     """
   end
 
-  defp badge_class("research"), do: "border-info/50 text-info"
   defp badge_class("chartbuild"), do: "border-secondary/60 text-secondary"
   defp badge_class("chat"), do: "border-base-content/40 text-base-content/70"
   defp badge_class(_robinhood), do: "border-success/50 text-success"

@@ -1,10 +1,10 @@
-defmodule BusterClaw.ResearchTest do
+defmodule BusterClaw.ChartBuilder.FetchTest do
   use ExUnit.Case, async: false
 
+  alias BusterClaw.ChartBuilder.Fetch
   alias BusterClaw.DataState
-  alias BusterClaw.Research
 
-  @stub BusterClaw.ResearchHTTP
+  @stub BusterClaw.ChartBuilderFetchHTTP
   @opts [req_options: [plug: {Req.Test, @stub}]]
 
   setup do
@@ -14,7 +14,7 @@ defmodule BusterClaw.ResearchTest do
     :ok
   end
 
-  # One stub for all three upstreams — Research fans out to Finnhub and two
+  # One stub for all three upstreams — Fetch fans out to Finnhub and two
   # EDGAR endpoints, and the point of most of these tests is what happens when
   # they DISAGREE about whether they can answer.
   defp stub(fun), do: Req.Test.stub(@stub, fun)
@@ -34,35 +34,6 @@ defmodule BusterClaw.ResearchTest do
   defp tickers_body,
     do: %{"0" => %{"cik_str" => 320_193, "ticker" => "AAPL", "title" => "Apple Inc."}}
 
-  describe "the broker boundary" do
-    test "a research chat carries no Robinhood tools and no MCP config at all" do
-      args = Enum.join(Keyword.fetch!(Research.chat_opts(), :extra_cli_args), " ")
-
-      # Not "denied" — absent. There is no broker surface in this run to confine,
-      # which is a stronger property than an allowlist that happens to omit it.
-      refute args =~ "robinhood"
-      refute args =~ "--mcp-config"
-      refute args =~ "--allowedTools"
-
-      # The shell and filesystem stay shut, same as the trading side.
-      assert args =~ "--disallowedTools"
-      assert args =~ "Bash"
-      assert args =~ "Write"
-    end
-
-    test "the prompt tells the model the account data is not merely forbidden but absent" do
-      prompt = Research.system_prompt()
-
-      assert prompt =~ "NO access to the operator's brokerage accounts"
-      assert prompt =~ "there is no tool"
-      assert prompt =~ "Robinhood tab is where account data lives"
-      assert prompt =~ "cannot place, amend, or cancel"
-      # The delay is a correctness claim, not a footnote.
-      assert prompt =~ "delayed roughly 15 minutes"
-      assert prompt =~ "Never describe one as live"
-    end
-  end
-
   describe "load/2" do
     test "a symbol every upstream knows comes back fresh, with sources" do
       stub(fn conn ->
@@ -73,7 +44,7 @@ defmodule BusterClaw.ResearchTest do
         end
       end)
 
-      result = Research.load("aapl", @opts)
+      result = Fetch.load("aapl", @opts)
 
       # Normalized app-side: the panel and both upstreams want it upper case.
       assert result.symbol == "AAPL"
@@ -93,7 +64,7 @@ defmodule BusterClaw.ResearchTest do
         end
       end)
 
-      result = Research.load("AAPL", @opts)
+      result = Fetch.load("AAPL", @opts)
 
       # The whole reason each dataset carries its own state: one key-gated
       # upstream being unconfigured must not blank the two keyless ones.
@@ -111,7 +82,7 @@ defmodule BusterClaw.ResearchTest do
         end
       end)
 
-      result = Research.load("NOTAREALTICKER", @opts)
+      result = Fetch.load("NOTAREALTICKER", @opts)
 
       # "We looked and there is nothing" would be a lie; EDGAR could not resolve
       # the symbol at all.
@@ -123,7 +94,7 @@ defmodule BusterClaw.ResearchTest do
     test "an upstream error is unavailable and keeps its reason" do
       stub(fn conn -> Plug.Conn.send_resp(conn, 503, "down") end)
 
-      result = Research.load("AAPL", @opts)
+      result = Fetch.load("AAPL", @opts)
 
       assert result.quote.status == :unavailable
       assert result.fundamentals.status == :unavailable
@@ -133,7 +104,7 @@ defmodule BusterClaw.ResearchTest do
 
   describe "blank/0 and search/2" do
     test "a tab with no symbol says so rather than showing zeros" do
-      blank = Research.blank()
+      blank = Fetch.blank()
 
       assert is_nil(blank.symbol)
 
@@ -149,8 +120,8 @@ defmodule BusterClaw.ResearchTest do
     test "search returns matches, and a miss is an empty list rather than an error" do
       stub(fn conn -> Req.Test.json(conn, tickers_body()) end)
 
-      assert [%{symbol: "AAPL"} | _rest] = Research.search("apple", @opts)
-      assert Research.search("nothing-matches-this", @opts) == []
+      assert [%{symbol: "AAPL"} | _rest] = Fetch.search("apple", @opts)
+      assert Fetch.search("nothing-matches-this", @opts) == []
     end
 
     test "an upstream failure degrades search to an empty list" do
@@ -159,7 +130,7 @@ defmodule BusterClaw.ResearchTest do
       :persistent_term.erase({BusterClaw.Finance.Edgar, :ticker_map})
       stub(fn conn -> Plug.Conn.send_resp(conn, 500, "boom") end)
 
-      assert Research.search("apple", @opts) == []
+      assert Fetch.search("apple", @opts) == []
     end
   end
 end

@@ -1,11 +1,11 @@
 defmodule BusterClaw.AgentToolPolicy do
   @moduledoc """
   The built-in tools a confined agent run is refused — the one list `Trading`,
-  `Research`, and `TradingOrder` all deny from.
+  `ChartBuilder`, and `TradingOrder` all deny from.
 
-  A leaf on purpose (CODE_QUALITY_REFACTOR_ROADMAP Phase 1): `Trading` and
-  `Research` used to share this by calling each other, which made them a
-  dependency cycle for the sake of a word list.
+  A leaf on purpose (CODE_QUALITY_REFACTOR_ROADMAP Phase 1): `Trading` and the
+  since-deleted `Research` used to share this by calling each other, which made
+  them a dependency cycle for the sake of a word list.
 
   Named explicitly rather than emptied with `--tools ""`, which also silences
   MCP (measured 07-28: `--tools ""` produced 0 broker tool calls in 4 runs).

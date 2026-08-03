@@ -174,7 +174,6 @@ defmodule BusterClawWeb.ChatPanel do
               {k, badge} <- [
                 {"chat", "CHAT"},
                 {"robinhood", "RH"},
-                {"research", "RES"},
                 {"chartbuild", "CHART"}
               ]
             }
@@ -323,9 +322,6 @@ defmodule BusterClawWeb.ChatPanel do
 
   defp kind_button_class(kind, option) when kind != option,
     do: "border-base-content/20 text-base-content/35 hover:text-base-content"
-
-  defp kind_button_class(_kind, "research"),
-    do: "border-info/60 bg-info/10 text-info"
 
   defp kind_button_class(_kind, "chartbuild"),
     do: "border-secondary/60 bg-secondary/10 text-secondary"

@@ -1,15 +1,20 @@
 defmodule BusterClawWeb.TradingLive do
   @moduledoc """
   The top-level Trading workspace: an accounts dashboard plus a strip of typed
-  Robinhood, Research, and Chart Build conversations.
+  Robinhood and Chart Build conversations.
 
   ## The chat
 
   Each typed conversation keeps independent transcript, run, window, and unread
-  state. Robinhood chat uses the broker read allowlist; Research has no broker
-  surface; Chart Build is a confined, cached-data-only authoring mode whose
-  sanitized SVG output is previewed above its embedded chat. Every send lands a
-  Sentinel `:outbound_send` line — the audit posture for money-adjacent turns.
+  state. Robinhood chat uses the broker read allowlist; Chart Build is a confined
+  authoring *and* data-research mode — cached snapshot plus web search, no broker
+  tool at all — whose sanitized SVG output is previewed above its embedded chat
+  and whose app-fetched figures render in the lookup panel beside it. Every send
+  lands a Sentinel `:outbound_send` line — the audit posture for money-adjacent
+  turns.
+
+  A `research` kind sat between the two until 08-03; Chart Build absorbed its job
+  and its fetchers (`daily-growth/roadmaps/CHART_BUILD_WEB_DATA_ROADMAP.md`).
 
   ## The dashboard
 
@@ -24,7 +29,7 @@ defmodule BusterClawWeb.TradingLive do
   import BusterClawWeb.TradingView
   import BusterClawWeb.TradingAccountCard, only: [trading_account_card: 1]
   import BusterClawWeb.ChartBuilderPanel, only: [chart_preview: 1]
-  import BusterClawWeb.TradingResearchPanel, only: [research_card: 1]
+  import BusterClawWeb.TradingLookupPanel, only: [lookup_card: 1]
   import BusterClawWeb.TradingTabStrip, only: [trading_tabs: 1]
   import BusterClawWeb.TradingOrderCard, only: [order_confirm: 1]
 
@@ -33,9 +38,9 @@ defmodule BusterClawWeb.TradingLive do
   alias BusterClaw.Agent.Chat
   alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
+  alias BusterClaw.ChartBuilder.Fetch
   alias BusterClaw.DataState
   alias BusterClaw.Portfolio
-  alias BusterClaw.Research
   alias BusterClaw.SvgViewer
   alias BusterClaw.Trading
 
@@ -67,11 +72,11 @@ defmodule BusterClawWeb.TradingLive do
       |> assign(:active_tab, active.id)
       |> assign(:active_kind, active.kind)
       |> assign(:new_tab_open, false)
-      # Research panel state per conversation, so switching tabs doesn't lose
+      # Lookup panel state per conversation, so switching tabs doesn't lose
       # the symbol a tab was looking at.
-      |> assign(:research, %{})
-      |> assign(:research_query, "")
-      |> assign(:research_matches, [])
+      |> assign(:lookup, %{})
+      |> assign(:lookup_query, "")
+      |> assign(:lookup_matches, [])
       # One state map per conversation. Several windows render at once, so there
       # is no single "the chat" to hold running/queue/transcript for any more.
       |> assign(:chats, Map.new(tabs, &{&1.id, initial_chat_state(&1.id, &1.kind)}))
@@ -171,12 +176,13 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   def handle_event("trading_new_tab", %{"kind" => kind}, socket)
-      when kind in ["chat", "robinhood", "research", "chartbuild"] do
+      when kind in ["chat", "robinhood", "chartbuild"] do
     # A new tab starts docked — it opens as a sub-tab rather than a window the
     # operator has to place. The exception is a kind that HAS a data panel:
-    # docking a Robinhood or Research tab hides the very dashboard you just
-    # asked for, so those start with the panel showing and the chat floating
-    # over it. Either can be dragged or buttoned into the other state after.
+    # docking a Robinhood tab hides the very dashboard you just asked for, so it
+    # starts with the panel showing and the chat floating over it. Either can be
+    # dragged or buttoned into the other state after. (Chart Build owns both
+    # halves of its tab, so its dock flag stays false for a different reason.)
     docked = kind == "chat"
 
     {:ok, conv} =
@@ -285,11 +291,12 @@ defmodule BusterClawWeb.TradingLive do
 
   # Retyping a conversation changes what it can reach, so the running process is
   # stopped: its session id dies with it and the next message starts a FRESH
-  # claude session. Without that, a Robinhood chat retyped to Research would
-  # `--resume` into a context full of account balances that the research toolset
-  # is specifically supposed to have no way of seeing.
+  # claude session. Without that, a Robinhood chat retyped to Chart Build would
+  # `--resume` into a context full of account balances that the Chart Build
+  # toolset is specifically supposed to have no way of seeing — and Chart Build
+  # can now search the web, which makes the leak worse than it used to be.
   def handle_event("trading_set_kind", %{"id" => id, "kind" => kind}, socket)
-      when kind in ["chat", "robinhood", "research", "chartbuild"] do
+      when kind in ["chat", "robinhood", "chartbuild"] do
     if known_tab?(socket, id) and tab_kind(socket, id) != kind do
       previous_kind = tab_kind(socket, id)
       {:ok, _conv} = Conversations.set_kind(id, kind)
@@ -353,32 +360,32 @@ defmodule BusterClawWeb.TradingLive do
   def handle_event("zoom_key", _params, socket), do: {:noreply, socket}
 
   # ---------------------------------------------------------------------------
-  # Research panel
+  # Symbol lookup panel
   # ---------------------------------------------------------------------------
 
-  def handle_event("research_search", %{"query" => query}, socket) do
+  def handle_event("lookup_search", %{"query" => query}, socket) do
     {:noreply,
      socket
-     |> assign(:research_query, query)
-     |> assign(:research_matches, Research.search(query))}
+     |> assign(:lookup_query, query)
+     |> assign(:lookup_matches, Fetch.search(query))}
   end
 
-  def handle_event("research_open", %{"symbol" => symbol}, socket) do
+  def handle_event("lookup_open", %{"symbol" => symbol}, socket) do
     # Loaded synchronously: three small HTTP GETs against free endpoints, not an
     # agent run. There is no token cost to defer and no model to wait for.
     {:noreply,
      socket
-     |> put_research(Research.load(symbol))
-     |> assign(:research_query, "")
-     |> assign(:research_matches, [])}
+     |> put_lookup(Fetch.load(symbol))
+     |> assign(:lookup_query, "")
+     |> assign(:lookup_matches, [])}
   end
 
-  def handle_event("research_clear", _params, socket) do
+  def handle_event("lookup_clear", _params, socket) do
     {:noreply,
      socket
-     |> put_research(Research.blank())
-     |> assign(:research_query, "")
-     |> assign(:research_matches, [])}
+     |> put_lookup(Fetch.blank())
+     |> assign(:lookup_query, "")
+     |> assign(:lookup_matches, [])}
   end
 
   # ---------------------------------------------------------------------------
@@ -629,8 +636,8 @@ defmodule BusterClawWeb.TradingLive do
       end)
       |> update_tab(conv, &%{&1 | running: status == :running})
 
-    # Only a Robinhood run may have moved money. Research and Chart Build must
-    # remain zero-broker-run surfaces when their conversations finish.
+    # Only a Robinhood run may have moved money. Chart Build must remain a
+    # zero-broker-run surface when its conversations finish.
     if status == :idle and tab_kind(socket, conv) == "robinhood",
       do: maybe_refresh_account(socket),
       else: socket
@@ -816,8 +823,9 @@ defmodule BusterClawWeb.TradingLive do
           chars: String.length(text)
         })
 
-        # The kind decides the toolset: a research window must never be started
-        # with the broker's options just because it shares this dispatcher.
+        # The kind decides the toolset: a Chart Build window must never be
+        # started with the broker's options just because it shares this
+        # dispatcher.
         Chat.ensure_started(
           conv_id,
           BusterClaw.Trading.ChatProfile.for_kind(tab_kind(socket, conv_id))
@@ -993,7 +1001,7 @@ defmodule BusterClawWeb.TradingLive do
 
     socket =
       socket
-      |> update(:research, &Map.delete(&1, id))
+      |> update(:lookup, &Map.delete(&1, id))
       |> update(:chats, &Map.delete(&1, id))
       |> assign(:open_chats, List.delete(socket.assigns.open_chats, id))
       |> update(:minimized, &MapSet.delete(&1, id))
@@ -1013,13 +1021,13 @@ defmodule BusterClawWeb.TradingLive do
     end
   end
 
-  # --- Research helpers ---
+  # --- Lookup helpers ---
 
-  defp put_research(socket, panel),
-    do: update(socket, :research, &Map.put(&1, socket.assigns.active_tab, panel))
+  defp put_lookup(socket, panel),
+    do: update(socket, :lookup, &Map.put(&1, socket.assigns.active_tab, panel))
 
-  defp research_panel(socket_or_assigns) do
-    Map.get(socket_or_assigns.research, socket_or_assigns.active_tab) || Research.blank()
+  defp lookup_panel(socket_or_assigns) do
+    Map.get(socket_or_assigns.lookup, socket_or_assigns.active_tab) || Fetch.blank()
   end
 
   defp load_history(conv_id, "chartbuild") do
@@ -1883,11 +1891,6 @@ defmodule BusterClawWeb.TradingLive do
   defp put_snapshot({:error, reason, _prev}, snap), do: {:error, reason, snap}
   defp put_snapshot(_other, snap), do: {:ok, snap}
 
-  defp chat_empty_message("research"),
-    do:
-      "Public-market research. Look up a symbol on the right, then ask about the filings, " <>
-        "the fundamentals, or what the numbers mean. This chat cannot see your accounts."
-
   defp chat_empty_message("chartbuild"),
     do:
       "Describe the chart you want. Use pasted figures or ask for your cached portfolio " <>
@@ -1897,9 +1900,6 @@ defmodule BusterClawWeb.TradingLive do
     do:
       "Portfolio assistant. Ask about balances, positions, order history, or market data — " <>
         "or ask it to buy or sell, and it will put the order up for your confirmation."
-
-  defp chat_placeholder("research"),
-    do: "Ask about a company…  (Enter to send, Shift+Enter for a new line)"
 
   defp chat_placeholder("chartbuild"),
     do: "Describe or revise the chart…  (Enter to send, Shift+Enter for a new line)"
@@ -2034,55 +2034,60 @@ defmodule BusterClawWeb.TradingLive do
           />
         </div>
 
-        <div
-          :if={@active_kind == "research" and not docked?(@tabs, @active_tab)}
-          class="flex min-h-0 flex-1 flex-col gap-2"
-        >
-          <%!-- Research states the stronger fact: the broker isn't restricted
-                here, it's absent. This chat has no Robinhood tool to deny. --%>
-          <div
-            id="trading-research-banner"
-            class="border-2 border-info/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-info"
-          >
-            Public data only — this chat cannot see your accounts
-          </div>
-          <.research_card
-            panel={research_panel(assigns)}
-            query={@research_query}
-            matches={@research_matches}
-          />
-        </div>
+        <%!-- Chart Build owns its whole tab: the newest sanitized SVG above its
+              typed conversation, with the symbol lookup beside them. Its
+              persisted dock flag stays false because this is a data-panel kind,
+              not a docked window.
 
-        <%!-- Chart Build owns both halves of its tab: the newest sanitized SVG
-              above and its typed conversation below. Its persisted dock flag
-              stays false because this is a data-panel kind, not a docked window. --%>
+              The lookup sits in its own column on purpose. Chart Build can
+              search the web now, so the operator needs one region of this tab
+              where every figure demonstrably came from our own fetch rather than
+              from the model — and "beside the chart" is the only placement where
+              you can read the two against each other. --%>
         <div
           :if={@active_kind == "chartbuild"}
           id="chartbuild-panel"
-          class="flex min-h-0 flex-1 flex-col gap-2"
+          class="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row"
         >
-          <.chart_preview
-            charts={chat_state(assigns, @active_tab).svgs}
-            zoomed={chat_state(assigns, @active_tab).zoomed_id}
-          />
-          <BusterClawWeb.ChatPanel.chat_window
-            id={"chartbuild-chat-#{@active_tab}"}
-            conv={@active_tab}
-            embedded
-            index={0}
-            title={tab_title(@tabs, @active_tab)}
-            kind={@active_kind}
-            messages={chat_state(assigns, @active_tab).messages}
-            seq={chat_state(assigns, @active_tab).seq}
-            running={chat_state(assigns, @active_tab).running}
-            thinking={chat_state(assigns, @active_tab).thinking}
-            queue={chat_state(assigns, @active_tab).queue}
-            minimized={MapSet.member?(@minimized, @active_tab)}
-            focused
-            agent_cli_missing={@agent_cli_missing}
-            empty_message={chat_empty_message(@active_kind)}
-            placeholder={chat_placeholder(@active_kind)}
-          />
+          <div class="flex min-h-0 flex-1 flex-col gap-2">
+            <.chart_preview
+              charts={chat_state(assigns, @active_tab).svgs}
+              zoomed={chat_state(assigns, @active_tab).zoomed_id}
+            />
+            <BusterClawWeb.ChatPanel.chat_window
+              id={"chartbuild-chat-#{@active_tab}"}
+              conv={@active_tab}
+              embedded
+              index={0}
+              title={tab_title(@tabs, @active_tab)}
+              kind={@active_kind}
+              messages={chat_state(assigns, @active_tab).messages}
+              seq={chat_state(assigns, @active_tab).seq}
+              running={chat_state(assigns, @active_tab).running}
+              thinking={chat_state(assigns, @active_tab).thinking}
+              queue={chat_state(assigns, @active_tab).queue}
+              minimized={MapSet.member?(@minimized, @active_tab)}
+              focused
+              agent_cli_missing={@agent_cli_missing}
+              empty_message={chat_empty_message(@active_kind)}
+              placeholder={chat_placeholder(@active_kind)}
+            />
+          </div>
+          <div class="flex min-h-0 shrink-0 flex-col gap-2 lg:w-80 xl:w-96">
+            <%!-- States the stronger fact: the broker isn't restricted here,
+                  it's absent. This chat has no Robinhood tool to deny. --%>
+            <div
+              id="trading-lookup-banner"
+              class="border-2 border-info/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-info"
+            >
+              Public data only — this chat cannot see your accounts
+            </div>
+            <.lookup_card
+              panel={lookup_panel(assigns)}
+              query={@lookup_query}
+              matches={@lookup_matches}
+            />
+          </div>
         </div>
         <%!-- A docked chat IS the tab's content: same component, positioned in
               flow instead of fixed. Its panel is hidden while it is docked, and
@@ -2123,7 +2128,7 @@ defmodule BusterClawWeb.TradingLive do
           <p class="font-bold uppercase tracking-wide">This chat is floating</p>
           <p class="pt-2 leading-relaxed">
             Drag its window back onto the tab bar to dock it here again, or point
-            it at Robinhood or Research from the selector in its title bar.
+            it at Robinhood or Chart Build from the selector in its title bar.
           </p>
         </div>
       </section>

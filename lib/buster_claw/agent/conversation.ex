@@ -4,10 +4,16 @@ defmodule BusterClaw.Agent.Conversation do
   import Ecto.Changeset
 
   # `chat` is the neutral Trading kind: a conversation the operator has not
-  # pointed at anything yet. It can be retyped to robinhood, research, or
-  # chartbuild from inside the chat itself, which is why kind is a plain field
-  # rather than something baked in at creation.
-  @kinds ~w(home chat robinhood research chartbuild)
+  # pointed at anything yet. It can be retyped to robinhood or chartbuild from
+  # inside the chat itself, which is why kind is a plain field rather than
+  # something baked in at creation.
+  #
+  # `research` was removed 08-03 when Chart Build absorbed the data-research job.
+  # Existing rows were retyped to `chartbuild` by
+  # `20260803210122_retype_research_conversations_to_chartbuild` — which had to
+  # run BEFORE the value left this list, because `validate_inclusion` below is
+  # what would otherwise strand them.
+  @kinds ~w(home chat robinhood chartbuild)
 
   @primary_key {:id, :string, autogenerate: false}
   schema "agent_conversations" do
@@ -28,7 +34,7 @@ defmodule BusterClaw.Agent.Conversation do
     |> validate_required([:id, :title, :kind])
     |> validate_length(:id, min: 1, max: 128)
     # Validated rather than free-text: `kind` decides which surface a tab shows
-    # on AND which tools its runs get, so a typo would put a research chat on
+    # on AND which tools its runs get, so a typo would put a cached-only chat on
     # the broker's toolset or hide a tab from every list.
     |> validate_inclusion(:kind, @kinds)
   end

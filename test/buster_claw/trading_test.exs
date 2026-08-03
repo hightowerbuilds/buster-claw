@@ -21,7 +21,11 @@ defmodule BusterClaw.TradingTest do
   end
 
   test "the typed-tab contract includes Chart Build everywhere" do
-    assert Trading.tab_kinds() == ["chat", "robinhood", "research", "chartbuild"]
+    # `research` was the fourth kind until 08-03, when Chart Build absorbed the
+    # data-research job and its chat was deleted as redundant. Existing rows were
+    # retyped by 20260803210122; asserting the list here is what would catch the
+    # value being reintroduced without one.
+    assert Trading.tab_kinds() == ["chat", "robinhood", "chartbuild"]
     assert Trading.kind_label("chartbuild") == "Chart Build"
     assert Trading.kind_badge("chartbuild") == "CHART"
 

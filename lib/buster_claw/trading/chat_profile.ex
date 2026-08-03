@@ -17,18 +17,21 @@ defmodule BusterClaw.Trading.ChatProfile do
   the core points back at it, and its one caller is the LiveView.
 
   The mapping itself is the interesting part, so it is worth reading in one
-  place: `robinhood` may read the broker and nothing else, `research` may read
-  public market data and can never see the broker, `chartbuild` sees only a
-  cached snapshot and no tools at all, and a neutral `chat` is Home's full
-  toolset — deliberately the broadest of the four, which is why retyping a tab
-  *narrows* it. **None of them can place an order**: the write tool lives only
-  in `TradingOrder.submit_cli_args/0`, behind a confirm click.
+  place: `robinhood` may read the broker and nothing else, `chartbuild` may
+  search the web and read app-fetched public market data but can never see the
+  broker, and a neutral `chat` is Home's full toolset — deliberately the
+  broadest of the three, which is why retyping a tab *narrows* it. **None of
+  them can place an order**: the write tool lives only in
+  `TradingOrder.submit_cli_args/0`, behind a confirm click.
+
+  `research` was the fourth kind until 08-03, when Chart Build absorbed the
+  data-research job and its chat was deleted as redundant. Its fetchers live on
+  as `BusterClaw.ChartBuilder.Fetch`.
   """
 
-  alias BusterClaw.{ChartBuilder, Research, SvgViewer, Trading}
+  alias BusterClaw.{ChartBuilder, SvgViewer, Trading}
 
   @doc "Claude options for a Trading tab kind."
-  def for_kind("research"), do: Research.chat_opts()
   def for_kind("chartbuild"), do: ChartBuilder.chat_opts()
   def for_kind("chat"), do: [append_system_prompt: SvgViewer.guide()]
   def for_kind(_robinhood), do: Trading.chat_opts()

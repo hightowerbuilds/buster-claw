@@ -33,7 +33,7 @@ defmodule BusterClaw.Agent.Conversations do
   @doc """
   Open conversations of the given kinds, in stable creation order.
 
-  The Trading page passes `["robinhood", "research"]` and gets its tab strip,
+  The Trading page passes `Trading.tab_kinds/0` and gets its tab strip,
   left to right, with the pinned Robinhood conversation first because it was
   seeded first.
   """
@@ -90,8 +90,9 @@ defmodule BusterClaw.Agent.Conversations do
   afterwards. That is not incidental: the session id lives in that process, so
   stopping it means the next message starts a FRESH claude session instead of
   `--resume`-ing one whose context was gathered under the old kind. Retyping a
-  Robinhood chat to Research would otherwise hand account balances to a run that
-  is supposed to have no account access at all.
+  Robinhood chat to Chart Build would otherwise hand account balances to a run
+  that is supposed to have no account access at all — and which can reach the
+  web.
   """
   def set_kind(id, kind) when is_binary(kind) do
     case get(id) do
