@@ -1,14 +1,33 @@
 # Browser control — closing out the field test
 
-**Scoped 08-02-26 · Status: ACTIVE — Part I and Part II items 2, 3, 4 all
-DECIDED and BUILT 08-03-26.**
+**Scoped 08-02-26 · Status: CLOSED + ARCHIVED 08-03-26.**
 
-**One item remains, and no agent can close it: item 1, the live signed-in
-checkout walk.** It needs the operator's own session. Everything built on 08-03
-raised its stakes rather than lowering them — the agent can now file a purchase
-receipt *and* sign in to a site, and the payment gate standing between those two
-capabilities and a live payment page has still only ever been tested, never
-walked.
+Everything this document existed to settle is settled. Part I's design question
+was **decided by the operator and built the same day**; Part II items **2, 3 and
+4 are built**; and item **1 — the live signed-in checkout walk — moved to
+`LAUNCH_ROADMAP.md` G-40**, because it was never an item an agent could close.
+It needs a packaged build and the operator's own session, so it belongs with the
+other things that need exactly that, as one sitting rather than four errands.
+
+**The five findings this roadmap inherited from the 07-25 field test are now all
+resolved:** the payment gate failing open (fixed 07-25), `text` targeting nearly
+buying the wrong size (fixed, `ambiguous_text`), the unnamed stuck-run defect
+(fixed 08-02, `f979afd`), `confirm_purchase` having no command surface (shipped
+08-03), and `find_elements` ignoring its selector (fixed 08-03).
+
+**Read the decision blocks below before changing this surface** — Part I records
+a posture chosen with its cost stated, and items 2, 3 and 4 each record a trap
+that was not visible from the item's one-line description.
+
+> ### The one thing to carry forward
+>
+> **G-40's checkout walk is not optional bookkeeping.** Three capabilities
+> shipped on 08-03 that all terminate at the same gate: the agent can file a
+> purchase receipt, it can reach signed-in sites unattended, and its egress on
+> those sites is newly bounded but unobserved. The gate between them and a live
+> payment page is **tested and never walked**, and the field test that started
+> this roadmap found that exact gate failing **open**. Nothing further should be
+> built on the browser commerce surface until it passes.
 
 The 07-25 field test (`~/Desktop/browser-control-field-test-2026-07-25.md`) ran the
 whole Agent Mode stack at a real, logged-in, adversarial commercial site and came
@@ -156,7 +175,9 @@ is worse than no decision.
 Inherited from `LEFTOVERS.md` on 08-02; deleted from that file, because two
 documents tracking one item is how they start disagreeing.
 
-## 1. Walk a live signed-in checkout — **HIGH**
+## 1. Walk a live signed-in checkout — **MOVED 08-03 → `LAUNCH_ROADMAP.md` G-40**
+
+*Kept here for its reasoning; the live item is G-40's first line.*
 
 The acceptance test for the payment gate, left PARTIAL on 07-25. After the gate
 rewrite, Amazon's live entry point is confirmed gated and the `/gp/buy/` funnel is
@@ -297,14 +318,13 @@ receipt; a signed-in checkout walk is the only thing that has ever tested the
 gate that stands between it and a live payment page, and it is still untested by
 walk. Do it before the next commerce change, not after.
 
-**Everything except item 1 is done (08-03).**
+**Everything here is done or moved (08-03).** Part I decided and built; items 2,
+3 and 4 built; item 1 → `LAUNCH_ROADMAP.md` **G-40**, where it leads a
+consolidated human walkthrough alongside the Chart Build look, the first-open
+workspace, and the packaged media walk — one build, every answer.
 
-**Item 1 — walk a live signed-in checkout — is the whole remaining roadmap**, and
-it needs the operator's own session; nothing in the repo can do it. Its urgency
-went up three times in one day: the agent can now file a purchase receipt (Part
-I), reach signed-in sites unattended (item 3), and its egress on those sites is
-newly bounded but unobserved in the wild (item 4). The gate between all of that
-and a live payment page is tested and unwalked, and the field test found this
-exact gate failing *open*.
-
-Nothing further should be built on this surface before that walk happens.
+The order that mattered, in hindsight: **the decision first** (Part I gated
+everything and cost one conversation), then the two items that turned out to be
+unreachable mechanisms rather than missing features (2 and 4), then the one that
+was a posture question wearing a bug's clothes (3). The walk was always last and
+always the operator's.

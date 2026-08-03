@@ -804,6 +804,61 @@ A stranger judges maturity by the weakest surface they click.
       is open (**R9**). Read-only today; a stranger finding an unsafe path in a financial
       surface will not care that it was labelled a prototype.
 
+### G-40 — The human walkthrough: one build, every answer **[R1]**
+
+**Consolidated 08-03** from `BROWSER_CLOSEOUT_ROADMAP.md` (archived) and
+`LEFTOVERS.md`, where these had been accumulating separately for weeks. They are
+one gate because they are one *sitting*: a packaged build, a signed-in session,
+and a person looking. Splitting them across documents is why none of them
+happened.
+
+**Why this is a gate and not backlog.** Part IV's own rule is that an item
+belongs here if a person with the app in front of them can judge it pass/fail.
+Every line below is that, and each one covers a claim nothing in CI can reach —
+`render_hook` never touches JS, and no test in the suite has ever driven a real
+logged-in checkout.
+
+- [ ] **The signed-in checkout walk — do this one first.** Drive one real
+      Agent-Mode commerce run to a **logged-in** checkout and confirm the run
+      halts at the payment gate. The 07-25 field test found this exact gate
+      failing **open** on Amazon's `/gp/buy/` funnel; the fix is tested but has
+      **never been walked**, because that funnel is only reachable from a
+      signed-in session. Nothing in the repo can do this — it needs the
+      operator's own account.
+
+      **Its stakes rose three times on 08-03**, which is why it leads: the agent
+      can now file a purchase receipt (`agent_run_confirm_purchase`), reach
+      signed-in sites unattended (`$secret.<name>` resolves against a real
+      store), and its egress on those sites is newly bounded but unobserved in
+      the wild. This gate is what stands between all of that and a live payment
+      page. **Nothing further should be built on the browser commerce surface
+      until it passes.**
+- [ ] **Per-host egress, observed rather than asserted.** During the same run,
+      confirm `amazon.com` actually resolves to `structure_only` and the step
+      receipts show free text withheld. Shipped 08-03 with the default in code;
+      the field test measured 89.8 KB leaving at `:full` with zero redactions.
+- [ ] **Chart Build, looked at.** Open a Chart Build tab, ask for a line chart
+      and a bar chart off cached data: the preview renders above the chat, the
+      ```` ```svg ```` fence is stripped from the bubble, the drawn-not-computed
+      label shows, the newest chart replaces the previous, and the zoom modal
+      opens. Then collapse the chat with **▾** — it should drop to a header-only
+      strip and hand its height to the preview. Tests assert the flex classes
+      swap; only a person can say the chart is easier to read.
+- [ ] **The model actually follows the chart palette** — slot 1 hazard
+      `#ff4407` first, no invented sixth hue. The palette is validated; whether
+      a model obeys it is not something a validator can answer.
+- [ ] **A first-open workspace, through the setup wizard.** Packaged app →
+      wizard picks the folder → open it in **Finder** → count. The scaffolding
+      is guarded by 24 tests and its count was measured by setting
+      `BUSTER_CLAW_WORKSPACE_ROOT` and listing — never by the path a new user
+      actually takes, and never for how the folder *reads* to a human.
+- [ ] **Byte ranges and codecs in the packaged app**, not a browser tab: confirm
+      `RangeResponse` satisfies WKWebView's media stack and the probed codecs
+      play. The two acceptance criteria `MUSIC_ROADMAP` could never close.
+
+> **If the checkout walk fails, stop and fix before the rest.** The others are
+> quality; that one is money.
+
 ### G-39 — The repeatable release checklist **[R1 + R2 — runs every release]**
 
 Everything above is one-time. This runs every release, forever.

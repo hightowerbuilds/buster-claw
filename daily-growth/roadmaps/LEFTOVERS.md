@@ -35,6 +35,22 @@ here. Their detail travelled with them; nothing was lost.
 
 ---
 
+### Promoted 08-03 → `LAUNCH_ROADMAP.md` **G-40**
+
+Every item that needed *a person looking at a packaged build* left this file
+together and became one release gate: the **Chart Build look**, the
+**first-open workspace through the setup wizard**, and the **packaged byte-range
+and codec walk** — joined there by the **signed-in checkout walk** inherited
+from `BROWSER_CLOSEOUT_ROADMAP.md` on its archive.
+
+They went because they are one sitting, not four errands, and because splitting
+them across two documents is why none of them had happened. The detail travelled
+with them; nothing was lost. This file's rule still holds — they needed no
+design, only a build and an afternoon — but they blocked a release, and this
+file is explicitly for things that block nothing.
+
+---
+
 ### The `sound` command surface — the Studio has no CLI
 
 **What.** Inherited 08-02 when `SOUND_STUDIO_ROADMAP` was archived (its Phase 2,
@@ -202,84 +218,8 @@ while a roadmap item said to fix it.
 
 ---
 
-### Open a Chart Build tab and actually look at a chart
 
-**What.** Inherited 08-03 when `CHART_BUILDER_ROADMAP` was archived — the only
-item it left open. Make a Chart Build tab in a running app, ask for a line chart
-and a bar chart off the cached data, and *look*: does the preview render above
-the chat, does the ```` ```svg ```` fence get stripped from the bubble, does the
-drawn-not-computed label show, does the newest chart replace the previous one,
-and does the zoom modal open. Then check the model actually follows the
-palette — slot 1 hazard `#ff4407` first, and no invented sixth hue.
 
-Added 08-03: also collapse the chat with the **▾** in its header. It should drop
-to a header-only strip at the bottom and hand its height to the preview — the
-tests assert the flex classes swap, but only a human can say whether the chart
-is actually *easier to read* at that size, which is the whole reason the gesture
-exists. Check the composer is gone while collapsed and comes back on **▴**.
-
-**Why deferred.** The feature is covered by tests and the full suite is green at
-2,226, but `render_hook` never touches JS, so nothing in the suite proves the
-panel *looks* right — the same gap that once let a rename sever a hook↔markup
-contract with the suite still passing. Deferred only because it needs a human at
-a running app, which is the operator's call, not an agent task.
-
-**What makes it expensive later.** It doesn't get expensive — it gets skipped,
-and this is the one claim the roadmap explicitly could not make when it closed.
-Cheap now: it is two prompts in one tab. A second, softer reason to do it early:
-this is the first real use of the `chart-builder` skill, and Phase 4 was
-deliberately gated on "which charts do people actually ask for" — the answer only
-starts existing once someone uses it.
-
----
-
-### Look at a first-open workspace through the setup wizard
-
-**What.** Inherited 08-02 when `WORKSPACE_REVIEW_ROADMAP` was archived — the only
-item it left open. Its Phase 5 count *was* measured against the packaged bundle
-(fresh folder → **seven visible entries, all with content**), but by setting
-`BUSTER_CLAW_WORKSPACE_ROOT` and listing the result. Do the same look the way a
-new user gets there: packaged app → **setup wizard picks the folder** → open it
-in **Finder** → count.
-
-**Why deferred.** The scaffolding code is identical either way and is guarded by
-24 tests; what's unverified is the wizard's own path into it (and how the folder
-*reads* to a human, which is the thing no test asserts).
-
-**What makes it expensive later.** It doesn't get expensive — it gets skipped.
-This is the acceptance criterion the entire workspace rebuild was judged by, and
-the roadmap's own Phase 5 note says we had never once looked at what we ship.
-Pair it with the two packaged walks below: one build, three answers.
-
----
-
-### Walk byte ranges and probe codecs in a packaged build
-
-**What.** The two acceptance criteria `MUSIC_ROADMAP` could never close (Phases
-1 and 2 of its risk list), inherited 07-30 on archive. In the **packaged** app,
-not a browser tab: confirm `RangeResponse` satisfies WKWebView's media stack
-(seek a long track, check duration reports), and confirm which of the six
-accepted formats actually play — then shrink `Music.accepted_extensions/0` to
-match.
-
-**Why deferred.** Both need a packaged build, and the operator's walk. The unit
-side is done: `RangeResponse` has 33 tests.
-
-**What makes it expensive later.** This is the exact failure class the range
-work existed to prevent — it looks correct in dev and misbehaves only in the
-shipped webview. Shipping an accepted format that will not play is worse than
-never having accepted it. Pair it with the workspace first-open look above —
-one build, two answers.
-
-> **08-01 update:** the packaged walk answered the Sound Studio's Phase 5
-> question — **`afconvert` executes under the sandbox; import works.** It also
-> found what this item is about: a 20-minute file reported *length unknown*.
-> Fixed (header-probe via `afinfo`, `eee2be3`). **This item now also carries
-> what Phase 5 had left over** when `SOUND_STUDIO_ROADMAP` was archived 08-02:
-> the packaged webview's **autoplay posture**, and **seeking** a long track.
-> Same build, same walk.
-
----
 
 ## Rules of engagement
 
