@@ -633,15 +633,20 @@ defmodule BusterClaw.CLI do
     end
   end
 
-  defp connection_message({:failed_connect, _}) do
+  # `:econnrefused`, not `{:failed_connect, _}`. The tuple is httpc's shape and
+  # was left behind when this client moved to Req, so from that day until
+  # 2026-08-02 the most common failure the CLI has — the app simply isn't
+  # running — fell through to "request failed: %Req.TransportError{...}" instead
+  # of the one line that says what to do about it.
+  def connection_message(%Req.TransportError{reason: :econnrefused}) do
     "could not connect to Buster Claw at #{base_url()} — is `mix phx.server` running?"
   end
 
-  defp connection_message(%Req.TransportError{reason: :timeout}) do
+  def connection_message(%Req.TransportError{reason: :timeout}) do
     "request timed out while waiting for Buster Claw; try a larger --timeout <seconds> for long-running commands"
   end
 
-  defp connection_message(reason), do: "request failed: #{inspect(reason)}"
+  def connection_message(reason), do: "request failed: #{inspect(reason)}"
 
   # ---- Token / URL ----
 

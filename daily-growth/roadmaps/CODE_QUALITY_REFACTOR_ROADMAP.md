@@ -962,13 +962,27 @@ complexity without reducing it.
   regression tests pin the banner and the help text together. `{cli.ex, :call}`
   pruned from the Dialyzer baseline; back to `Unnecessary Skips: 0`.
 
+- **All four confirmed Dialyzer defects — FIXED 08-02.** Beyond the `sigint`
+  one: `cli.ex`'s refused-connection clause matched httpc's `{:failed_connect,
+  _}` and now matches `%Req.TransportError{reason: :econnrefused}` (shape
+  verified against a real refused connection), restoring the *"is `mix
+  phx.server` running?"* line that had been silently lost since the move to Req;
+  `finance_api_controller.ex`'s unreachable `:missing_symbol` clause deleted
+  (`lookup/2` already answers an empty query, with better copy); and
+  `integrations/service.ex`'s three vacuous specs made real by declaring
+  `@type t` on the Integration schema, which Ecto does not generate. Baseline:
+  **252 → 247 findings, 16 → 12 non-noise entries**, `Unnecessary Skips: 0`
+  throughout. Six new regression tests.
+
 **Next, in order:**
 
 1. **README credential path** (Finding 1, P1) — the one doc drift that strands a user.
-2. **The remaining three confirmed Dialyzer defects** — `cli.ex`'s dead
-   `{:failed_connect, _}` clause, `finance_api_controller.ex`'s unreachable
-   `:missing_symbol`, and `integrations/service.ex`'s three vacuous specs. All
-   small, all named in `.dialyzer_ignore.exs`.
+2. **The 12 remaining baseline entries** — eight `:pattern_match_cov`, three
+   `:pattern_match`, one `:no_return` (that last one honest: `stand_down/2`,
+   its closure, and `die/2` all end in `System.halt/1`). These have been
+   *classified*, not *diagnosed* — none is known to be a defect and none is
+   known not to be. Same treatment as the four above: read the code, decide
+   whether Dialyzer is right, fix or justify.
 3. Findings 3 and 5 — **not yet re-verified by the second reader.** Given that
    three of the five findings examined so far contained a material error, measure
    before executing either.

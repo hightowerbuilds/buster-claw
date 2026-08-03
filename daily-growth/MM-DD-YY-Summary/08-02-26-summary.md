@@ -633,9 +633,55 @@ return, because they end in `System.halt(0)`. That is the point of them.
 
 ---
 
+## The other three, and what a baseline is for
+
+The remaining confirmed defects from the Dialyzer triage. Each one had been
+sitting in a job configured not to block.
+
+**`cli.ex` had lost its most useful error message.** The refused-connection
+clause matched `{:failed_connect, _}` — httpc's shape, left behind when this
+client moved to Req. So the CLI's most common failure by an enormous margin,
+*the app isn't running*, rendered as `request failed:
+%Req.TransportError{reason: :econnrefused}` instead of *"could not connect to
+Buster Claw at … — is `mix phx.server` running?"* Nobody noticed because the
+generic fallback is plausible enough to read past.
+
+The fix is a restoration, not a deletion — and the replacement shape was
+verified rather than assumed: a probe against a closed port returns
+`%Req.TransportError{reason: :econnrefused}`, so that is what the clause now
+matches. Three tests pin all three branches.
+
+**`finance_api_controller.ex` had genuinely dead copy.** `error_message(:missing_symbol)`
+could never fire: `lookup/2` answers an empty query before any section runs, and
+`Finance.resolve/1` guarantees a symbol after that. Deleted — with a note that
+the atom is still live on the *command* surface, which does not come through
+that controller, because the next reader will grep for it and find it.
+
+**`integrations/service.ex` had three specs that checked nothing.** All three
+callbacks reference `Integration.t()`. Ecto does not generate that type, and
+nobody had declared it, so Dialyzer had been reporting `unknown_type` since the
+behaviour was written. One line on the schema turned three decorative specs into
+three real ones.
+
+**252 → 247 findings; the non-noise section went 16 → 12.** And the burn-down
+loop closed properly each time: fix, then `--list-unused-filters`, then remove
+exactly the entries it names, then confirm `Unnecessary Skips: 0`. That last
+check is the one that matters — it proves the baseline still describes the code
+and hasn't quietly become a place where findings go to be forgotten.
+
+What is left is honest about itself. The section header no longer says "burn
+these down", because the twelve survivors have been *classified*, not
+*diagnosed*: eight `:pattern_match_cov`, three `:pattern_match`, one
+`:no_return`. None is known to be a defect and none is known not to be, and the
+file now says exactly that. The one `:no_return` is simply true — `stand_down/2`,
+its closure, and `die/2` all end in `System.halt/1`.
+
+---
+
 ## At close
 
-**Suite: 2,204 tests, 0 failures** (2,143 + 37 + 21 + 3 new), credo strict clean,
+**Suite: 2,210 tests, 0 failures** — 64 of those added by the refactor/Dialyzer
+thread below, the rest by a parallel session's Explore-tab work. Credo strict clean,
 format clean, Rust 29 + 5 lockstep green.
 
 **The day's last lesson is about reading.** A roadmap arrived with every number
@@ -648,8 +694,8 @@ stopped a shift.
 
 Earlier in the day the suite sat at 2,143 — verified across five consecutive
 runs and two precommits, because that stretch ended on an intermittent failure
-and one green run would not have meant anything. The 61 added since are the two
-purity extractions' and the Ctrl-C regression.
+and one green run would not have meant anything. The 64 added since are the two
+purity extractions and the CLI regressions.
 
 **Two roadmaps archived, two written.** `roadmaps/` now holds five live
 documents — `LAUNCH_ROADMAP`, `BROWSER_CLOSEOUT_ROADMAP`,
@@ -666,5 +712,5 @@ work, not a question.
 because they are the same lesson: the right-click menu that a rename killed
 silently, the header-probe bug found by importing a real 20-minute file, the
 RateLimiter crasher that a failure *count* actively pointed away from, and a
-Ctrl-C handler that has never once fired. The suite is 2,204 tests strong and
+Ctrl-C handler that has never once fired. The suite is 2,210 tests strong and
 none of the four was its idea.

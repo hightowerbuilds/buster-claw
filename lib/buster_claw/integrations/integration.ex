@@ -13,6 +13,12 @@ defmodule BusterClaw.Integrations.Integration do
 
   import Ecto.Changeset
 
+  # Ecto does not generate this, and `Integrations.Service`'s three callbacks
+  # have referenced `Integration.t()` since they were written — so until
+  # 2026-08-02 those specs checked nothing at all, which Dialyzer reported as
+  # `unknown_type` in a job configured not to block.
+  @type t :: %__MODULE__{}
+
   @service_types ~w(sentry github umami)
   @statuses ~w(never_run ok error disabled)
 

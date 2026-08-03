@@ -71,8 +71,11 @@ defmodule BusterClawWeb.FinanceApiController do
   defp section({:error, :not_configured}), do: %{ok: false, not_configured: true, error: nil}
   defp section({:error, reason}), do: %{ok: false, error: error_message(reason)}
 
+  # No `:missing_symbol` clause: `lookup/2` answers an empty query before any
+  # section runs, and `Finance.resolve/1` guarantees a symbol after that, so it
+  # was unreachable. `commands/finance.ex` still returns that atom — but on the
+  # command surface, which does not come through here.
   defp error_message({:unknown_symbol, sym}), do: "No match for #{sym} in the SEC ticker list."
-  defp error_message(:missing_symbol), do: "Enter a ticker symbol."
   defp error_message({:http_error, status, _body}), do: "Source returned HTTP #{status}."
   defp error_message(reason), do: "Couldn't fetch: #{inspect(reason)}"
 end

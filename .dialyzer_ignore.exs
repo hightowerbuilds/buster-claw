@@ -103,28 +103,39 @@
   {"lib/buster_claw_web/terminal_workspace_hook.ex", :unmatched_return},
 
   # -------------------------------------------------------------------------
-  # 2. Real findings — BURN THESE DOWN. Not accepted, just not yet fixed.
+  # 2. Everything that is not `unmatched_return` — 16 entries on 08-02, 12 now.
   # -------------------------------------------------------------------------
   #
-  # Four were confirmed defects, diagnosed 08-02. One is FIXED — its entry came
-  # out of this file the same day, which is what the burn-down is supposed to
-  # look like:
+  # All four confirmed defects diagnosed on 08-02 are now FIXED, and their
+  # entries came out of this file the same day. That is the whole difference
+  # between a baseline and a suppression, so the record stays:
   #
-  #   * ~~cli.ex :call~~ — FIXED 08-02. `System.trap_signal(:sigint, ...)` raised
-  #     on every `on-duty` and the rescue swallowed it, so Ctrl-C left the shift
-  #     running server-side while the banner said otherwise. SIGINT is reserved
-  #     by the BEAM's break handler and cannot be trapped at all, so the fix was
-  #     to trap SIGTERM/SIGHUP instead and stop claiming Ctrl-C stands down.
-  #     `{cli.ex, :no_return}` below is still required: `stand_down/2` and its
-  #     closure legitimately never return, and `die/2` never did either.
-  #   * cli.ex :pattern_match — the `{:failed_connect, _}` clause is dead
-  #     httpc-era shape. Under Req, connection-refused falls through to the
-  #     generic message, so "is `mix phx.server` running?" never renders.
-  #   * finance_api_controller.ex :pattern_match — `:missing_symbol` can never
-  #     match, so "Enter a ticker symbol." is unreachable.
-  #   * integrations/service.ex :unknown_type — three specs reference
-  #     `Integration.t/0`, which the schema never defines. Those specs check
-  #     nothing.
+  #   * ~~cli.ex :call~~ — `System.trap_signal(:sigint, ...)` raised on every
+  #     `on-duty` and the rescue swallowed it, so Ctrl-C left the shift running
+  #     server-side while the banner said otherwise. SIGINT is reserved by the
+  #     BEAM's break handler and cannot be trapped at all; the fix was to trap
+  #     SIGTERM/SIGHUP instead and stop claiming Ctrl-C stands down.
+  #     `{cli.ex, :no_return}` below is still required and honest:
+  #     `stand_down/2` and its closure end in `System.halt/1`, and so does
+  #     `die/2`.
+  #   * ~~cli.ex :pattern_match~~ — the `{:failed_connect, _}` clause was
+  #     httpc-era shape left behind by the move to Req, so the most common
+  #     failure the CLI has (the app isn't running) never rendered its one
+  #     useful line. Now matches `%Req.TransportError{reason: :econnrefused}`,
+  #     verified against a real refused connection.
+  #   * ~~finance_api_controller.ex :pattern_match~~ — `:missing_symbol` was
+  #     unreachable: `lookup/2` answers an empty query before any section runs.
+  #     Clause deleted; the atom is still live on the command surface, which
+  #     does not come through that controller.
+  #   * ~~integrations/service.ex :unknown_type~~ — `Integration.t/0` did not
+  #     exist, so three callback specs checked nothing. Ecto does not generate
+  #     it; the schema declares it now.
+  #
+  # What is LEFT here has not been diagnosed, only classified. Eight
+  # `:pattern_match_cov`, three `:pattern_match`, one `:no_return`. Each
+  # deserves the same treatment the four above got: read the code, decide
+  # whether Dialyzer is right, fix or justify. None has been shown to be a
+  # defect, and none has been shown not to be.
   #
   # The `:pattern_match_cov` entries are over-covered clauses. Mostly harmless,
   # but each is a clause someone believed was reachable — read before deleting.
@@ -140,14 +151,11 @@
   {"lib/buster_claw/browser.ex", :pattern_match},
   {"lib/buster_claw/browser_control.ex", :pattern_match},
   {"lib/buster_claw/cli.ex", :no_return},
-  {"lib/buster_claw/cli.ex", :pattern_match},
   {"lib/buster_claw/google/client.ex", :pattern_match_cov},
   {"lib/buster_claw/integrations/github.ex", :pattern_match_cov},
-  {"lib/buster_claw/integrations/service.ex", :unknown_type},
   {"lib/buster_claw/system_browser.ex", :pattern_match_cov},
   {"lib/buster_claw/terminal_commands.ex", :pattern_match_cov},
   {"lib/buster_claw_web/controllers/browser_home_controller.ex", :pattern_match},
-  {"lib/buster_claw_web/controllers/finance_api_controller.ex", :pattern_match},
   {"lib/buster_claw_web/live/sound_studio_component.ex", :pattern_match_cov},
   {"lib/buster_claw_web/live/trading_live.ex", :pattern_match_cov}
 ]
