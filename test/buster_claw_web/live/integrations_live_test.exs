@@ -37,7 +37,6 @@ defmodule BusterClawWeb.IntegrationsLiveTest do
           base_url: "https://umami.example.com",
           token: "secret",
           config_text: ~s({"website_id":"site-id"}),
-          polling_interval_minutes: "30",
           enabled: "true"
         }
       })
@@ -65,15 +64,13 @@ defmodule BusterClawWeb.IntegrationsLiveTest do
           base_url: "https://umami.example.com",
           token: "secret",
           config_text: ~s({"website_id":"prod-site"}),
-          polling_interval_minutes: "15",
           enabled: "true"
         }
       })
       |> render_submit()
 
     assert html =~ "Traffic Prod"
-    [integration] = Integrations.list_integrations()
-    assert integration.polling_interval_minutes == 15
+    [_integration] = Integrations.list_integrations()
 
     html =
       view

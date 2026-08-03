@@ -9,9 +9,9 @@ defmodule BusterClaw.Integrations do
   **Nothing here is scheduled.** There is no integration poller. `poll_integration/2`
   and `poll_all/1` run only when something calls them — the two buttons in
   `IntegrationsLive`, or the `integration_poll` / `integration_poll_all` agent
-  commands. `Integration.polling_interval_minutes` is stored, validated, and shown
-  in the settings form, but **no scheduler reads it**. Don't infer a background
-  cadence from that field.
+  commands. (A `polling_interval_minutes` field used to be stored and shown in
+  Settings while no scheduler read it; it was removed 08-02 rather than left as
+  a promise the app doesn't keep.)
 
   **Integrations never enqueue Dispatch work.** A poll or a verified webhook writes
   documents and broadcasts `{:integration_run, run}` on the `"integrations"` topic

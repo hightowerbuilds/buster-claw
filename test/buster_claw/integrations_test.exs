@@ -38,13 +38,9 @@ defmodule BusterClaw.IntegrationsTest do
     assert listed.id == integration.id
 
     assert {:ok, integration} =
-             Integrations.update_integration(integration, %{
-               enabled: false,
-               polling_interval_minutes: 15
-             })
+             Integrations.update_integration(integration, %{enabled: false})
 
     refute integration.enabled
-    assert integration.polling_interval_minutes == 15
 
     assert {:ok, _integration} = Integrations.delete_integration(integration)
     assert [] = Integrations.list_integrations()
@@ -52,13 +48,9 @@ defmodule BusterClaw.IntegrationsTest do
 
   test "validates service type, unique name, polling interval, and config json" do
     assert {:error, changeset} =
-             Integrations.create_integration(%{
-               name: "bad",
-               service_type: "bad",
-               polling_interval_minutes: 0
-             })
+             Integrations.create_integration(%{name: "bad", service_type: "bad"})
 
-    assert %{service_type: [_], polling_interval_minutes: [_]} = errors_on(changeset)
+    assert %{service_type: [_]} = errors_on(changeset)
 
     assert {:error, changeset} =
              Integrations.create_integration(%{

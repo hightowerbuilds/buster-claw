@@ -21,8 +21,7 @@ defmodule BusterClaw.Commands.Catalog.Integrations do
           "token" => %{type: :string, required: false},
           "webhook_secret" => %{type: :string, required: false},
           "config" => %{type: :map, required: false},
-          "enabled" => %{type: :boolean, required: false, default: true},
-          "polling_interval_minutes" => %{type: :integer, required: false, default: 60}
+          "enabled" => %{type: :boolean, required: false, default: true}
         }
       },
       %{
@@ -38,8 +37,7 @@ defmodule BusterClaw.Commands.Catalog.Integrations do
           "token" => %{type: :string, required: false},
           "webhook_secret" => %{type: :string, required: false},
           "config" => %{type: :map, required: false},
-          "enabled" => %{type: :boolean, required: false},
-          "polling_interval_minutes" => %{type: :integer, required: false}
+          "enabled" => %{type: :boolean, required: false}
         }
       },
       Helpers.delete_entry("integration_delete", "Delete an integration."),

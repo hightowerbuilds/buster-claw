@@ -3,9 +3,9 @@ defmodule BusterClaw.Integrations.Integration do
   A configured GitHub / Sentry / Umami integration. `token` and `webhook_secret`
   are encrypted at rest (`BusterClaw.Encrypted`).
 
-  Note `polling_interval_minutes`: it is persisted and validated, but **inert** —
-  no scheduler reads it, because there is no integration poller. Polls happen only
-  when a human clicks Poll or an agent runs `integration_poll`. See
+  There is deliberately no polling-interval field: polling is on demand only (a
+  human clicks Poll, or an agent runs `integration_poll`), so a stored interval
+  was a setting that knowingly did nothing. It was removed 08-02 — see
   `BusterClaw.Integrations`.
   """
 
@@ -31,7 +31,6 @@ defmodule BusterClaw.Integrations.Integration do
     field :config, :map, default: %{}
     field :config_text, :string, virtual: true
     field :enabled, :boolean, default: true
-    field :polling_interval_minutes, :integer, default: 60
     field :last_run_at, :utc_datetime
     field :last_status, :string, default: "never_run"
     field :last_error, :string
@@ -53,7 +52,6 @@ defmodule BusterClaw.Integrations.Integration do
       :config,
       :config_text,
       :enabled,
-      :polling_interval_minutes,
       :last_run_at,
       :last_status,
       :last_error
@@ -64,12 +62,10 @@ defmodule BusterClaw.Integrations.Integration do
       :name,
       :service_type,
       :enabled,
-      :polling_interval_minutes,
       :last_status
     ])
     |> validate_inclusion(:service_type, @service_types)
     |> validate_inclusion(:last_status, @statuses)
-    |> validate_number(:polling_interval_minutes, greater_than: 0)
     |> unique_constraint(:name)
   end
 

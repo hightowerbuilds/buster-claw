@@ -193,12 +193,6 @@ defmodule BusterClawWeb.IntegrationsLive do
                 placeholder={config_placeholder(@form[:service_type].value)}
                 class="w-full rounded border border-base-300 bg-base-100 px-3 py-2 font-mono text-sm"
               />
-              <.input
-                field={@form[:polling_interval_minutes]}
-                label="Polling Interval Minutes"
-                type="number"
-                min="1"
-              />
               <.input field={@form[:enabled]} label="Enabled" type="checkbox" />
 
               <button class="rounded bg-base-content px-4 py-2 text-sm font-semibold text-base-100 transition hover:opacity-85">
