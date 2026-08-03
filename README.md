@@ -14,7 +14,7 @@ It's an Elixir/Phoenix + LiveView application wrapped in a Tauri desktop shell �
 
 The agent doesn't call a chat API. It works a **queue**.
 
-Trusted inbound requests land in a durable SQLite **Dispatch queue** — today that means mail from a sender on your trusted-senders list, or anything you (or an agent) enqueue by hand. Buster Claw projects that queue into workspace markdown the agent already reads (`shift/Dispatch.md`). The agent pulls an item, does the work, and writes the result back through the `./buster-claw` CLI. The desktop UI gives you the command surface, the audit feed, and the results.
+Trusted inbound requests land in a durable SQLite **Dispatch queue** — today that means mail from a sender on your trusted-senders list, or anything you (or an agent) enqueue by hand. Buster Claw projects that queue into workspace markdown the agent already reads (`Dispatch.md`). The agent pulls an item, does the work, and writes the result back through the `./buster-claw` CLI. The desktop UI gives you the command surface, the audit feed, and the results.
 
 (Integration webhooks do *not* enqueue work — a verified GitHub or Sentry event becomes a Library snapshot, not an agent task.)
 

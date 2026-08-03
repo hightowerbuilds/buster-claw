@@ -8,7 +8,7 @@ defmodule BusterClaw.Commands.Google.Docs do
   `BusterClaw.Commands.Google.Accounts`; the Sheets range validators are private
   here since only this module needs them. The `BusterClaw.Commands.Google` facade
   delegates to these functions so dispatch, policy, and rate-limiting still funnel
-  through the single `Commands.call/2` choke point.
+  through the single `Commands.call/3` choke point.
   """
 
   import BusterClaw.Commands.Google.Accounts,

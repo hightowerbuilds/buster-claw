@@ -7,7 +7,7 @@ defmodule BusterClaw.Commands.Google.Contacts do
   `BusterClaw.Commands.Google.Accounts`; the `Person` resource builders are
   private here since only this module assembles contact payloads. The
   `BusterClaw.Commands.Google` facade delegates to these functions so dispatch
-  still funnels through the single `Commands.call/2` choke point.
+  still funnels through the single `Commands.call/3` choke point.
   """
 
   import BusterClaw.Commands.Google.Accounts,

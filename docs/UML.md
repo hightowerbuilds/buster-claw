@@ -4,8 +4,13 @@ Mermaid diagrams describing both the **structure** (modules, schemas, supervisio
 **functionality** (request flows) of the codebase. Rendered automatically by GitHub and most
 Markdown viewers.
 
-> Source of truth: re-derived from `lib/` on 2026-06-14 (post pull-queue cut and the
-> Delivery / Hooks / Webhooks / Scheduler / Memory retirement). Re-derive after large refactors.
+> Source of truth: sections **1 and 2 re-derived from `lib/` on 2026-08-02** — the
+> supervision tree had drifted badly (fifteen children missing, and a `DNSCluster`
+> that no longer exists), and the domain list predated Trading, Portfolio,
+> Telephony, Music and BrowserControl. Sections 3–5 still date from 2026-06-14
+> (post pull-queue cut and the Delivery / Hooks / Webhooks / Scheduler / Memory
+> retirement) and have **not** been re-checked. Re-derive after large refactors,
+> and move this note when you do.
 
 ---
 
@@ -26,14 +31,16 @@ flowchart TB
     end
 
     subgraph Surface["Unified Command Surface"]
-        Commands["Commands.call/2<br/>(tier-gated)"]
+        Commands["Commands.call/3<br/>(tier-gated, rate-limited, audited)"]
         Schema["Commands.Schema"]
         Result["Commands.Result"]
     end
 
     subgraph Contexts["Domain Contexts"]
-        Library & Browser & Search & Calendar & Finance
-        Google & Integrations & Dispatch
+        Library & Browser & BrowserControl & Search & Calendar
+        Google & Integrations & Dispatch & Workspace & Jobs
+        Trading & Portfolio & Finance & Research & MarketData
+        Telephony & Notifications & Music & Contacts
         Orchestration & Sentinel & Settings
     end
 
@@ -75,7 +82,12 @@ flowchart TB
 
 ## 2. Supervision tree (runtime processes)
 
-From `lib/buster_claw/application.ex`. `one_for_one` strategy; `*` entries are env-gated.
+From `lib/buster_claw/application.ex`, in start order. `one_for_one`; `*` marks
+an env-gated child (the gate defaults to **on** except `telephony_drain`, and a
+gated-off child is rejected from the list rather than started idle).
+
+The registries and dynamic supervisors are all free at rest — no chat process,
+browser engine, or screencast encoder exists until something asks for one.
 
 ```mermaid
 flowchart TD
@@ -84,14 +96,45 @@ flowchart TD
     Sup --> Telemetry["BusterClawWeb.Telemetry"]
     Sup --> Repo["BusterClaw.Repo"]
     Sup --> Migrator["Ecto.Migrator"]
-    Sup --> DNS["DNSCluster"]
     Sup --> PubSub["Phoenix.PubSub"]
     Sup --> Projector["DispatchProjector *<br/>(dispatch_projector_enabled)"]
     Sup --> TermWS["TerminalWorkspace"]
+    Sup --> Capture["Browser.Capture"]
+    Sup --> Bridge["Browser.Bridge"]
     Sup --> SentinelPending["Sentinel.Pending"]
+    Sup --> RateLimiter["RateLimiter"]
     Sup --> Orchestrator["Orchestrator *<br/>(orchestrator_enabled)"]
     Sup --> Uptime["Orchestration.Uptime *<br/>(orchestrator_enabled)"]
-    Sup --> Endpoint["BusterClawWeb.Endpoint"]
+    Sup --> Dispatcher["Dispatcher *<br/>(dispatcher_enabled)"]
+    Sup --> Analyzer["Analyzer.Server *<br/>(analyzer_enabled)"]
+    Sup --> Drain["Telephony.Drain *<br/>(telephony_drain_enabled — OFF by default)"]
+    Sup --> NotifSched["Notifications.Scheduler *<br/>(notifications_scheduler_enabled)"]
+    Sup --> Recorder["Portfolio recorder *<br/>(portfolio_recorder_enabled)"]
+
+    subgraph Chat["Per-conversation chat"]
+        ChatReg["Agent.ChatRegistry"]
+        ChatSup["Agent.ChatSupervisor<br/>(one Chat per open conversation, lazily)"]
+    end
+
+    subgraph BrowserCtl["BrowserControl"]
+        SessionSup["SessionSupervisor"]
+        Pool["Pool<br/>(no engine until first checkout)"]
+        RunReg["RunRegistry"]
+        RunSup["RunSupervisor<br/>(Agent Mode runs outlive their command call)"]
+        ScreenReg["ScreencastRegistry"]
+        ScreenSup["ScreencastSupervisor<br/>(a caster only while something watches)"]
+    end
+
+    Sup --> ChatReg
+    Sup --> ChatSup
+    Sup --> SwarmTasks["Task.Supervisor<br/>(SwarmTaskSupervisor — bounded fan-out)"]
+    Sup --> SessionSup
+    Sup --> Pool
+    Sup --> RunReg
+    Sup --> RunSup
+    Sup --> ScreenReg
+    Sup --> ScreenSup
+    Sup --> Endpoint["BusterClawWeb.Endpoint<br/>(last: starts serving)"]
 ```
 
 ---
@@ -246,7 +289,7 @@ How a single command request is authorized, dispatched, and audited.
 ```mermaid
 sequenceDiagram
     participant Caller as CLI / HTTP
-    participant Commands as Commands.call/2
+    participant Commands as Commands.call/3
     participant Sentinel
     participant Context as Domain context
     participant Repo
@@ -280,7 +323,7 @@ sequenceDiagram
     participant Poller as Gmail poll (mailman)
     participant Dispatch as Dispatch queue (SQLite)
     participant Projector as DispatchProjector
-    participant Fridge as shift/Dispatch.md
+    participant Fridge as Dispatch.md
     participant Agent as Terminal agent (Claude Code / Codex)
     participant Sentinel
 

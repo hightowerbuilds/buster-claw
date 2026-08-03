@@ -989,6 +989,25 @@ complexity without reducing it.
   README escaped the space (`Application\ Support`); caught by probing it with
   the actual bad line rather than trusting it.
 
+- **Finding 1's P2 prose drift — FIXED 08-02, and it was more than prose.**
+  `shift/Dispatch.md` corrected in four docs (the projection is top-level
+  `Dispatch.md`; the dated diary moved to `.buster-claw/dispatch/<date>/`), plus
+  two references the finding never listed. The voice edge function's header
+  claimed the Mac "subscribes via Realtime" — it polls PostgREST, and
+  `Telephony.Relay`'s own moduledoc explains why (a subscription can't replay
+  rows that arrived while the laptop slept). Playwright removed from the
+  packaging doc's deferred list.
+
+  The UML section was the real find: the supervision diagram was missing
+  **fifteen children** (Browser.Capture/Bridge, RateLimiter, Dispatcher,
+  Analyzer, Telephony.Drain, the schedulers, both chat processes, the four
+  BrowserControl supervisors/registries, the screencast pair) and still showed a
+  `DNSCluster` that no longer exists; the domain list predated Trading,
+  Portfolio, Telephony, Music and BrowserControl; and `Commands.call/2` is
+  `call/3` — wrong in the diagram and in three moduledocs. Sections 1 and 2
+  re-derived from `lib/`; the header now says which sections were re-checked and
+  which still date from 06-14, rather than implying the whole file is current.
+
 **Next, in order:**
 
 1. **The 12 remaining baseline entries** — eight `:pattern_match_cov`, three
@@ -997,9 +1016,9 @@ complexity without reducing it.
    *classified*, not *diagnosed* — none is known to be a defect and none is
    known not to be. Same treatment as the four above: read the code, decide
    whether Dialyzer is right, fix or justify.
-2. **The rest of Finding 1's P2 drift** — `shift/Dispatch.md` in four files, the
-   voice edge-function's Realtime comment, Playwright in the packaging doc, the
-   UML supervision tree. Prose only; gates nothing.
+2. **UML sections 3–5** — the Ecto schema diagrams and the remaining flows still
+   date from 06-14 and were not re-checked. Given how far sections 1 and 2 had
+   drifted, assume these have too.
 3. Findings 3 and 5 — **not yet re-verified by the second reader.** Given that
    three of the five findings examined so far contained a material error, measure
    before executing either.

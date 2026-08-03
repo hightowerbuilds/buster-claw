@@ -12,7 +12,7 @@
    This opens a shift, syncs Gmail on an interval, and drops **trusted-sender**
    mail onto the queue. `./buster-claw off-duty` stands down — Ctrl-C only stops
    the polling in front of you; the shift keeps running.
-3. **The agent reads its worklist** — the "fridge": `shift/Dispatch.md`. A live,
+3. **The agent reads its worklist** — the "fridge": `Dispatch.md`. A live,
    always-current list of open items grouped by job. Tell your agent to read it.
 4. **The agent pulls and acts:**
 
@@ -23,7 +23,7 @@
        #   or:  ./buster-claw dispatch block <id> --note "why it's stuck"
 
 Finished items drop off the fridge; the day's record is kept in
-`shift/<date>/Dispatch.md` + `Dispatch.jsonl`.
+`.buster-claw/dispatch/<date>/Dispatch.{md,jsonl}`.
 
 The whole loop: **trusted email → queue → fridge → agent claims → does it →
 marks done.**
@@ -32,7 +32,7 @@ marks done.**
 
 1. Connect Gmail and add yourself to `memory/trusted-email-senders.md`.
 2. Send yourself a test email from that address.
-3. `./buster-claw on-duty --once` → open `shift/Dispatch.md` in the
+3. `./buster-claw on-duty --once` → open `Dispatch.md` in the
    Workspace tab and watch your email appear as a queued item. (Stand down
    afterwards with `./buster-claw off-duty`.)
 4. `./buster-claw dispatch claim` → `./buster-claw dispatch done <id> --note
@@ -53,7 +53,7 @@ work the queue for you — no terminal to babysit.
   automatically. A per-shift **run cap** stops the shift if it loops, and the
   **STOP kill switch** (a `STOP` file in the workspace) halts it immediately.
 - **See what it did.** Every run, command, and reply lands on the **Security**
-  audit feed; the day's record is kept in `shift/<date>/Dispatch.md`.
+  audit feed; the day's record is kept in `.buster-claw/dispatch/<date>/Dispatch.md`.
 
 > Needs your agent CLI (`claude`/`codex`) installed and logged in, since the
 > headless runs use your own subscription — same as the attended loop.

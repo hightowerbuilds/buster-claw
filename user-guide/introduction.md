@@ -46,5 +46,6 @@ The dock at the bottom switches surfaces:
 - **Settings** — profile, Google Workspace, appearance.
 
 Everything the agent creates lives under your **workspace folder**: `library/`
-(archived docs), `memory/`, `job-descriptions/`, `shift/` (your live worklist),
-and dated daily-summary folders.
+(archived docs), `memory/`, `jobs/` (the jobs it can run), and `Dispatch.md` —
+your live worklist, at the workspace root. Machine bookkeeping lives out of the
+way in `.buster-claw/`.

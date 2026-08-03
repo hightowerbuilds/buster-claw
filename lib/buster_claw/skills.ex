@@ -7,7 +7,7 @@ defmodule BusterClaw.Skills do
 
   - **composition** — its `steps` are an ordered list of *existing native
     commands*; it owns no new capability, only new sequencing, and every step is
-    re-authorised through `Commands.call/2` so a skill can never exceed its
+    re-authorised through `Commands.call/3` so a skill can never exceed its
     caller's trust.
   - **reference** — a playbook the agent *reads* (no steps; the markdown body is
     the payload) to do an authoring task the command surface doesn't cover, e.g.
@@ -20,7 +20,7 @@ defmodule BusterClaw.Skills do
 
   This module only *loads and validates* skill files. Resolution, per-step
   authorization, and execution live in `BusterClaw.Commands` (the single dispatch
-  choke point): every step is dispatched back through `Commands.call/2` as the
+  choke point): every step is dispatched back through `Commands.call/3` as the
   same caller, so the catalog's tier/gated rules apply per step and a skill can
   never exceed its invoker's trust.
 

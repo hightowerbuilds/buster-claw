@@ -724,6 +724,47 @@ have not watched fail is not a gate.
 
 ---
 
+## The "prose only" item was not prose only
+
+Last of the roadmap's Finding 1 — filed as P2 cosmetic drift. Most of it was.
+`shift/Dispatch.md` in four docs, when the projection has been top-level
+`Dispatch.md` for a while and the dated diary moved to
+`.buster-claw/dispatch/<date>/`; two more references the finding hadn't listed
+turned up in the same sweep. Playwright still sitting in the packaging doc's
+deferred list, months after the sidecar was deleted.
+
+The voice edge function's header was the interesting one. It said *"The Mac is
+never in this path. It subscribes to telephony_events via Realtime."* It polls
+PostgREST — and `Telephony.Relay`'s own moduledoc, thirty lines away in another
+language, already explains exactly why: a Realtime subscription cannot replay
+rows that arrived while the laptop slept, so a catch-up read has to exist
+anyway, and at answering-machine latency that read is the whole drain. Two files
+describing the same design, one of them describing a design we deliberately
+rejected. The comment now points at the module that gets it right.
+
+**Then the UML, which was not cosmetic at all.** The supervision diagram was
+missing **fifteen children** — Browser.Capture and Bridge, RateLimiter,
+Dispatcher, Analyzer, Telephony.Drain, both schedulers, the chat registry and
+supervisor, all four BrowserControl supervisors and registries, the screencast
+pair — and still drew a `DNSCluster` that no longer exists. Anyone reading it to
+understand what runs at boot would have got a picture from another era. The
+domain list predated Trading, Portfolio, Telephony, Music and BrowserControl.
+And `Commands.call/2` is `call/3`, wrong in the diagram and in three moduledocs
+that call it "the single choke point" — the one function every command in the
+app passes through, cited with the wrong arity in four places.
+
+Sections 1 and 2 re-derived from `lib/`. The header now says **which** sections
+were re-checked and which still date from 06-14, instead of a single line
+implying the whole file is current. That distinction is the actual fix: a doc
+that admits what it hasn't verified is worth more than one that quietly claims
+everything.
+
+Sections 3–5 go on the list rather than getting a hand-wave. Given how far the
+first two had drifted, assuming the rest is fine would be the same mistake in a
+new place.
+
+---
+
 ## At close
 
 **Suite: 2,210 tests, 0 failures** — 64 of those added by the refactor/Dialyzer

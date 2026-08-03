@@ -6,8 +6,12 @@
 //                         insert telephony_events row (the row the Mac drains)
 //   ?event=transcription  Twilio transcription ready → update the row
 //
-// The Mac is never in this path. It subscribes to telephony_events via
-// Realtime (outbound websocket only) and drains rows on its own schedule.
+// The Mac is never in this path. It POLLS telephony_events over PostgREST on
+// its own schedule and marks rows synced once they are in local SQLite — see
+// BusterClaw.Telephony.Relay, which explains why: a Realtime subscription
+// cannot replay rows that arrived while the laptop slept, so a catch-up read
+// has to exist anyway, and at answering-machine latency that read is the whole
+// drain. The `realtime` publication on this table is vestigial.
 //
 // Env (set via `supabase secrets set`):
 //   TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN — verify signatures + fetch media

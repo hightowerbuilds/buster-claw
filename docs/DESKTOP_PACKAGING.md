@@ -73,7 +73,6 @@ unrecoverable — back the key up from **Settings → Recovery key**.
 
 - macOS code signing and notarization — planned for the website download channel (see the distribution roadmap, Channel B).
 - Windows and Linux installers (the runtime and Tauri config support them; only build/test paths are missing).
-- Bundled Playwright browser dependencies.
 - Log rotation and crash report collection.
 - Auto-update mechanism — intentionally out of scope for v1 (users re-download the latest `.dmg`).
 - Dock/app menu customization.
