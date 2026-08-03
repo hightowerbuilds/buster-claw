@@ -161,7 +161,7 @@ defmodule BusterClaw.ChartBuilder do
   defp fetchable_sources do
     lines =
       Enum.map_join(DataReq.sources(), "\n", fn {key, meta} ->
-        "  - #{key} — #{meta.label}. #{meta.answers}. Series: #{meta.series_hint}."
+        "  - #{key} — #{meta.name}. #{meta.answers}. Series: #{meta.series_hint}."
       end)
 
     """

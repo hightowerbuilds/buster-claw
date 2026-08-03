@@ -159,6 +159,27 @@ defmodule BusterClaw.Workspace do
       note: "Notes written from the Home tab."
     },
     %{
+      name: "sources",
+      kind: :dir,
+      tier: :on_demand,
+      owner: BusterClaw.Finance.Sources,
+      # No seeder, and that is the design rather than an omission. The shipped
+      # catalogue lives in code so it can be CORRECTED by a new build; seeding it
+      # here would put it behind `maybe_write`, which never overwrites, and a
+      # registry of third-party APIs is the last thing that should be frozen at
+      # install time. This folder holds only what an operator writes.
+      #
+      # NAME RECLAIMED 08-03. `sources/` was previously declared `:deprecated`
+      # ("reserved for file exports that were never built"), which meant
+      # `sweep_deprecated/0` DELETED it whenever it was empty. Leaving that entry
+      # in place beside this one would have quietly removed an operator's
+      # override folder the first time they emptied it. The deprecated entry is
+      # gone; a stray directory from an old build is empty by construction (that
+      # feature was never written), so nothing of anyone's is reinterpreted.
+      seed: nil,
+      note: "Your corrections and additions to the financial-data source registry."
+    },
+    %{
       name: "checks",
       kind: :dir,
       tier: :on_demand,
@@ -234,14 +255,6 @@ defmodule BusterClaw.Workspace do
     },
 
     # --- deprecated: swept when empty --------------------------------------
-    %{
-      name: "sources",
-      kind: :dir,
-      tier: :deprecated,
-      owner: BusterClaw.Library.Artifact,
-      seed: nil,
-      note: "Unused. Reserved for file exports that were never built."
-    },
     %{
       name: "analysis",
       kind: :dir,

@@ -339,14 +339,27 @@ defmodule BusterClaw.WorkspaceTest do
     end
 
     test "sweeps empty deprecated directories away", %{root: root} do
-      for dead <- ~w(sources analysis notes), do: File.mkdir_p!(Path.join(root, dead))
+      for dead <- ~w(analysis notes), do: File.mkdir_p!(Path.join(root, dead))
 
       :ok = Workspace.ensure()
 
       listing = File.ls!(root)
-      refute "sources" in listing
       refute "analysis" in listing
       refute "notes" in listing
+    end
+
+    # `sources/` was deprecated (a file-export feature nobody built) until 08-03,
+    # when the source registry reclaimed the name for operator overrides. The
+    # sweep must NOT touch it any more: an operator who empties their override
+    # folder would otherwise find it deleted, and the next override they write
+    # would land in a directory the app had decided was rubbish.
+    test "the reclaimed sources/ directory survives the sweep", %{root: root} do
+      File.mkdir_p!(Path.join(root, "sources"))
+
+      :ok = Workspace.ensure()
+
+      assert "sources" in File.ls!(root)
+      refute "sources" in Workspace.sweep_deprecated()
     end
 
     # Decluttering never outranks not destroying someone's files.
@@ -361,14 +374,13 @@ defmodule BusterClaw.WorkspaceTest do
     end
 
     test "sweep_deprecated/0 reports what it removed", %{root: root} do
-      File.mkdir_p!(Path.join(root, "sources"))
       File.mkdir_p!(Path.join(root, "analysis"))
       File.mkdir_p!(Path.join(root, "notes"))
       File.write!(Path.join([root, "notes", "keep.md"]), "x")
 
       removed = Workspace.sweep_deprecated()
 
-      assert Enum.sort(removed) == ["analysis", "sources"]
+      assert Enum.sort(removed) == ["analysis"]
       assert Workspace.sweep_deprecated() == []
     end
 

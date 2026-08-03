@@ -9,6 +9,16 @@ defmodule BusterClaw.Commands.Catalog.Finance do
     do: [
       # Finance (read-only research; every result carries source + as-of)
       %{
+        name: "finance_sources",
+        type: :read,
+        tier: :safe,
+        description:
+          "The financial-data source registry: what this app can reach, its terms, and how " <>
+            "far each one has been verified. Optional `status` filters to verified/candidate/" <>
+            "blocked/unsanctioned/dead.",
+        args: %{"status" => %{type: :string, required: false}}
+      },
+      %{
         name: "finance_filings",
         type: :read,
         tier: :safe,

@@ -42,31 +42,34 @@ defmodule BusterClaw.ChartBuilder.DataReq do
   """
 
   alias BusterClaw.Finance.BLS
+  alias BusterClaw.Finance.Sources
 
   @fence ~r/```datareq\s*(.*?)```/s
   @max_observations 400
 
-  # The registry. One entry today; Phase 3 grows it, and its `status` field is
-  # what keeps an unverified source from being fetchable rather than merely
-  # documented. FRED is deliberately absent — its terms prohibit use "in
-  # connection with … large language models" and prohibit caching, which is
-  # exactly what this channel does. BLS publishes the same numbers as a US
-  # federal government work.
-  @sources %{
-    "bls" => %{
-      label: "U.S. Bureau of Labor Statistics",
-      status: :verified,
-      keyless: true,
-      answers: "CPI, unemployment, PPI, employment, earnings — monthly",
-      series_hint: "a BLS series id, e.g. CUUR0000SA0 (CPI-U) or LNS14000000 (unemployment)"
-    }
-  }
+  # Which registry keys this channel can actually FETCH. Two conditions, and
+  # both matter: the source needs an adapter here, and `Sources` must call it
+  # `:verified`. The registry lists far more than this — candidates nobody has
+  # called, a `:blocked` FRED, an `:unsanctioned` Yahoo — and listing is not
+  # permission. A source becomes fetchable by someone writing an adapter and
+  # adding a line here, never by being described.
+  @adapters %{"bls" => BLS}
 
-  @doc "The fetchable sources, by key."
-  def sources, do: @sources
+  @doc """
+  The fetchable sources, keyed, joined to their registry entry.
+
+  Derived from `Sources` rather than duplicated, so a source cannot be
+  documented one way here and another way there.
+  """
+  def sources do
+    for %{key: key} = source <- Sources.verified(),
+        Map.has_key?(@adapters, key),
+        into: %{},
+        do: {key, source}
+  end
 
   @doc "Source keys a request may name."
-  def source_keys, do: @sources |> Map.keys() |> Enum.sort()
+  def source_keys, do: sources() |> Map.keys() |> Enum.sort()
 
   @doc "Max observations a single delivery carries."
   def max_observations, do: @max_observations
@@ -114,7 +117,7 @@ defmodule BusterClaw.ChartBuilder.DataReq do
     series = json |> Map.get("series") |> to_string() |> String.trim()
 
     cond do
-      not Map.has_key?(@sources, source) -> {:invalid, {:unknown_source, source}}
+      not Map.has_key?(sources(), source) -> {:invalid, unfetchable(source)}
       series == "" -> {:invalid, :missing_series}
       true -> {:ok_request, source, series, json}
     end
@@ -129,6 +132,20 @@ defmodule BusterClaw.ChartBuilder.DataReq do
 
       invalid ->
         invalid
+    end
+  end
+
+  # "In the registry but not fetchable" and "never heard of it" are different
+  # answers and deserve different refusals. A model told only "unknown source"
+  # after naming `bea` reasonably concludes it got the spelling wrong and tries
+  # again; told the entry exists and why it is not fetchable, it stops guessing
+  # and reports the real limit to the operator. The registry documents far more
+  # than this channel can reach, on purpose — that is what makes it a record of
+  # decisions rather than a to-do list.
+  defp unfetchable(name) do
+    case Sources.get(name) do
+      %{status: status} -> {:unfetchable_source, name, status}
+      nil -> {:unknown_source, name}
     end
   end
 
@@ -214,6 +231,23 @@ defmodule BusterClaw.ChartBuilder.DataReq do
     #{source_lines()}
     Ask again naming one of those, or tell the operator plainly that the data
     they want has no source wired up yet.
+    """
+    |> String.trim()
+  end
+
+  def refuse({:invalid, {:unfetchable_source, name, status}}) do
+    """
+    [buster-claw data delivery — refused]
+
+    "#{name}" is a source this application knows about, but it is
+    #{status_reason(status)} Nothing was requested, and nothing will be until
+    that changes — this is not something you can retry into working.
+
+    Available sources: #{Enum.join(source_keys(), ", ")}.
+    #{source_lines()}
+    Either ask again naming one of those, or tell the operator that the numbers
+    they want come from #{name} and that we cannot fetch it. Naming the reason is
+    more useful to them than a chart drawn from somewhere else.
     """
     |> String.trim()
   end
@@ -309,8 +343,26 @@ defmodule BusterClaw.ChartBuilder.DataReq do
   defp aggregate_line(%{note: note}), do: "\n#{note}\n"
   defp aggregate_line(_payload), do: ""
 
+  # Each of these is a recorded decision, not a stage in a pipeline. `Sources`'
+  # moduledoc is the long form.
+  defp status_reason(:candidate),
+    do: "documented but never actually called, so nothing here knows the shape of its answer."
+
+  defp status_reason(:blocked),
+    do: "blocked: its terms forbid the way this application would use it."
+
+  defp status_reason(:unsanctioned),
+    do: "unsanctioned: there is no licence permitting us to use it."
+
+  defp status_reason(:dead), do: "dead: it used to work and no longer does."
+
+  # `:verified` reaching here means the registry trusts it and no adapter has
+  # been written yet — a gap in this module, not in the source.
+  defp status_reason(:verified), do: "verified, but no adapter has been written for it yet."
+  defp status_reason(other), do: "marked #{other}, which is not a fetchable state."
+
   defp source_lines do
-    Enum.map_join(@sources, "", fn {key, meta} ->
+    Enum.map_join(sources(), "", fn {key, meta} ->
       "\n  - #{key}: #{meta.answers}. Series is #{meta.series_hint}.\n"
     end)
   end

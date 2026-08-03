@@ -52,8 +52,20 @@ defmodule BusterClaw.ChartBuilder.DataReqTest do
     end
 
     test "an unknown source is refused at parse time, never fetched" do
+      {_clean, [invalid]} = DataReq.extract(fence(~s({"source":"nonesuch","series":"X"})))
+      assert invalid == {:invalid, {:unknown_source, "nonesuch"}}
+    end
+
+    # A source the registry DOCUMENTS but this channel cannot reach is a
+    # different answer from a name nobody recognises, and the model needs the
+    # difference: one means "you got the spelling wrong", the other means "stop
+    # asking, and tell the operator why".
+    test "a documented-but-unfetchable source is refused as itself, carrying its status" do
       {_clean, [invalid]} = DataReq.extract(fence(~s({"source":"fred","series":"CPIAUCSL"})))
-      assert invalid == {:invalid, {:unknown_source, "fred"}}
+      assert invalid == {:invalid, {:unfetchable_source, "fred", :blocked}}
+
+      {_clean, [candidate]} = DataReq.extract(fence(~s({"source":"bea","series":"NIPA/T10101"})))
+      assert candidate == {:invalid, {:unfetchable_source, "bea", :candidate}}
     end
 
     test "a request with no series is refused" do
@@ -179,13 +191,28 @@ defmodule BusterClaw.ChartBuilder.DataReqTest do
 
   describe "refusals" do
     test "an unknown source is told what the real ones are" do
-      text = DataReq.refuse({:invalid, {:unknown_source, "fred"}})
+      text = DataReq.refuse({:invalid, {:unknown_source, "nonesuch"}})
 
-      assert text =~ ~s("fred" is not a source)
+      assert text =~ ~s("nonesuch" is not a source)
       assert text =~ "bls"
       assert text =~ "CUUR0000SA0"
       # A dead end for the model is a dead end for the operator unless it says so.
       assert text =~ "tell the operator"
+    end
+
+    test "an unfetchable source is told WHY, and told not to retry into it" do
+      blocked = DataReq.refuse({:invalid, {:unfetchable_source, "fred", :blocked}})
+      assert blocked =~ "knows about"
+      assert blocked =~ "terms forbid"
+      # The whole point of naming the status: retrying cannot change any of these.
+      assert blocked =~ "not something you can retry into working"
+      assert blocked =~ "tell the operator"
+
+      candidate = DataReq.refuse({:invalid, {:unfetchable_source, "bea", :candidate}})
+      assert candidate =~ "never actually called"
+
+      assert DataReq.refuse({:invalid, {:unfetchable_source, "yahoo_unofficial", :unsanctioned}}) =~
+               "no licence"
     end
 
     test "the loop brake tells it to stop rather than rephrase" do

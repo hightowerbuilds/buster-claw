@@ -163,6 +163,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       finance_fundamentals
       finance_news
       finance_quote
+      finance_sources
       gmail_label_list
       gmail_read
       gmail_search
@@ -205,6 +206,14 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       terminal_tab_open
       web_search
     )
+
+    # `finance_sources` reviewed and added 08-03: a pure read of a static,
+    # code-shipped catalogue of public API metadata. No outbound call, no user
+    # data, no secret, nothing irreversible — it answers "where could financial
+    # data come from", which is the same answer for every caller.
+    # (Note lives out here because ~w() has no comment syntax; putting it inside
+    # the sigil turns every word into a command name, which this very test
+    # caught.)
 
     test "the safe tier is exactly the reviewed snapshot" do
       actual =
