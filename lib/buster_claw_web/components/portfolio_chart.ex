@@ -48,15 +48,14 @@ defmodule BusterClawWeb.PortfolioChart do
   # Beyond this many points, marks stop being individually legible.
   @max_dots 60
 
-  @ranges [
-    {"1W", 7},
-    {"1M", 31},
-    {"3M", 93},
-    {"1Y", 366},
-    {"ALL", nil}
-  ]
-
-  def ranges, do: @ranges
+  # The range set, windowing, and re-zeroing moved to BusterClaw.Portfolio.Series
+  # on 08-02: the portfolio_history command shares them, and a command depending
+  # on a web component was the last core->web edge in the big cycle. The chart
+  # and the CLI must agree on what a number means, so there is exactly one
+  # implementation and it lives in core.
+  defdelegate ranges, to: BusterClaw.Portfolio.Series
+  defdelegate window(series, range), to: BusterClaw.Portfolio.Series
+  defdelegate rebase(windowed, series), to: BusterClaw.Portfolio.Series
 
   attr :series, :list, required: true
   attr :range, :string, required: true
@@ -349,27 +348,6 @@ defmodule BusterClawWeb.PortfolioChart do
   # Pure helpers — public so they can be tested without rendering
   # ---------------------------------------------------------------------------
 
-  @doc "Trim a series to the selected range, counting back from its last point."
-  def window(series, range) do
-    case Enum.find(@ranges, fn {name, _days} -> name == range end) do
-      {_name, nil} ->
-        series
-
-      {_name, days} ->
-        case List.last(series) do
-          nil ->
-            series
-
-          last ->
-            cutoff = Date.add(last.day, -days)
-            Enum.filter(series, &(Date.compare(&1.day, cutoff) != :lt))
-        end
-
-      nil ->
-        series
-    end
-  end
-
   @doc """
   The granularity to plot at, chosen from the window's span rather than its
   point count — the span is what determines whether daily marks can be told
@@ -529,40 +507,11 @@ defmodule BusterClawWeb.PortfolioChart do
     end)
   end
 
-  @doc """
-  Re-zero a window so the line measures change *across the readings shown*.
-
-  Without this the line always read cumulative-since-inception, so selecting
-  "1M" still showed a figure accumulated over two and a half years — dominated,
-  in the operator's own data, by an account that now holds $0 and did its
-  trading in early 2025. Both numbers were true; together they were unreadable,
-  and the range control looked broken (reported 07-28).
-
-  The baseline is the **first visible point**, not the last one before the
-  window. That distinction only bites while the data is sparse, and then it
-  bites hard: with monthly backfill buckets and a single recorded day, measuring
-  from the previous point credited sixteen months of recovery to "past month".
-  Measuring across what is actually on screen cannot do that. Once daily
-  recording accumulates the two converge, because the previous point is
-  yesterday.
-
-  "ALL" is left alone — nothing precedes it, and its first point already steps
-  from an implicit zero, so re-zeroing would erase that first bucket's result.
-  """
-  def rebase([], _series), do: []
-
-  def rebase([first | _] = windowed, series) do
-    baseline = if windowed_from?(series, first.day), do: first.cumulative_cents, else: 0
-    Enum.map(windowed, &Map.update!(&1, :cumulative_cents, fn cents -> cents - baseline end))
-  end
-
-  # True when the series carries history the window is cutting away.
-  defp windowed_from?(series, first_day),
-    do: Enum.any?(series, &(Date.compare(&1.day, first_day) == :lt))
-
   @doc "How many points each range would plot — drives the range buttons' state."
   def range_counts(series) do
-    Map.new(@ranges, fn {name, _days} -> {name, series |> window(name) |> length()} end)
+    Map.new(BusterClaw.Portfolio.Series.ranges(), fn {name, _days} ->
+      {name, series |> window(name) |> length()}
+    end)
   end
 
   @doc """
@@ -582,7 +531,7 @@ defmodule BusterClawWeb.PortfolioChart do
   with nothing to see while a populated one exists.
   """
   def default_range(series) do
-    Enum.find_value(@ranges, "ALL", fn {name, _days} ->
+    Enum.find_value(BusterClaw.Portfolio.Series.ranges(), "ALL", fn {name, _days} ->
       windowed = series |> window(name) |> rebase(series)
       if match?([_, _ | _], windowed) and not flat?(windowed), do: name
     end)

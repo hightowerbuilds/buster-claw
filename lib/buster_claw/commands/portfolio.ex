@@ -18,7 +18,7 @@ defmodule BusterClaw.Commands.Portfolio do
 
   alias BusterClaw.MarketCalendar
   alias BusterClaw.Portfolio
-  alias BusterClawWeb.PortfolioChart
+  alias BusterClaw.Portfolio.Series
 
   @doc """
   The cumulative gain/loss series, optionally windowed and scoped to one account.
@@ -44,7 +44,7 @@ defmodule BusterClaw.Commands.Portfolio do
     # chart does — `cumulative` is change across the requested range, not since
     # inception. The two surfaces read the same ledger and must not disagree
     # about what the number means.
-    series = full |> PortfolioChart.window(range) |> PortfolioChart.rebase(full)
+    series = full |> Series.window(range) |> Series.rebase(full)
 
     {:ok,
      %{
