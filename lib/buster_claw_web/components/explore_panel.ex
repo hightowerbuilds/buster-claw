@@ -8,12 +8,15 @@ defmodule BusterClawWeb.ExplorePanel do
   at Chat.
 
   The Intro is a launcher: a grid of square tiles, one per sub-tab. Adding a
-  tab is one edit in this file — a `@stubs` entry (or a bespoke panel function
-  plus a `@tabs` line for the two site tabs). The rail, the Intro grid, the
-  parent's event whitelist (via `tab_keys/0`), and the panel dispatch all read
-  from the same registries.
+  tab is one edit in this file — a `@features` entry, which stubs until its key
+  is listed in `@built` and a panel function plus a dispatch line exist (the two
+  site tabs are the exception: their own `@tabs` entries). The rail, the Intro
+  grid, the parent's event whitelist (via `tab_keys/0`), and the panel dispatch
+  all read from the same registries.
   """
   use BusterClawWeb, :html
+
+  alias BusterClaw.ModelPolicy
 
   @site_url "https://busterclaw.lol"
   @ntf_url "https://notesthatfloat.com"
@@ -23,6 +26,18 @@ defmodule BusterClawWeb.ExplorePanel do
   # (a true paragraph, a deep link, an honest "tutorial in the works" line)
   # until Phase 2 replaces them, one tab at a time.
   @features [
+    %{
+      key: "models",
+      label: "Models",
+      eyebrow: "The engine",
+      blurb: "Which Claude model runs each surface — your CLI, your model, your bill.",
+      body:
+        "Buster Claw has no AI of its own; every run shells out to the claude " <>
+          "CLI you installed. The app can name a model per surface — chat, the " <>
+          "dispatcher, the money surfaces — and unset means your CLI decides.",
+      path: "/settings",
+      path_label: "Open Configuration"
+    },
     %{
       key: "shaders",
       label: "Shaders & Backgrounds",
@@ -102,7 +117,7 @@ defmodule BusterClawWeb.ExplorePanel do
   ]
 
   # Feature tabs whose tutorial panel exists — everything else stubs.
-  @built ~w(gws cmd browser trading)
+  @built ~w(models gws cmd browser trading)
 
   # {key, rail label}, in rail order. Intro leads, the two site tabs follow,
   # then the feature tabs in @features order.
@@ -167,6 +182,7 @@ defmodule BusterClawWeb.ExplorePanel do
         <.intro_panel :if={@tab == "intro"} />
         <.site_panel :if={@tab == "site"} />
         <.ntf_panel :if={@tab == "ntf"} />
+        <.models_panel :if={@tab == "models"} />
         <.gws_panel :if={@tab == "gws"} />
         <.cmd_panel :if={@tab == "cmd"} />
         <.browser_panel :if={@tab == "browser"} />
@@ -380,6 +396,307 @@ defmodule BusterClawWeb.ExplorePanel do
       </p>
     </div>
     """
+  end
+
+  # The Models tutorial — the original ask behind the model-versatility work.
+  # It teaches the *shape* before the setting: the CLI is the operator's, so the
+  # model and the bill are theirs; the surfaces have different stakes; and unset
+  # is a real state, not a blank to fill in.
+  #
+  # The surface list and the floor model are READ FROM `ModelPolicy` rather than
+  # retyped, so this page cannot drift from the policy it describes — the copy
+  # in the other tutorials is guarded by a test, this one by construction.
+  #
+  # Nothing here promises a per-chat picker or a spend report: both are Phase 4
+  # of the roadmap and neither exists.
+  defp models_panel(assigns) do
+    assigns =
+      assign(assigns,
+        surfaces: surface_rows(),
+        floor_model: ModelPolicy.floors() |> Map.values() |> Enum.uniq() |> Enum.join(" / ")
+      )
+
+    ~H"""
+    <div class="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-8">
+      <div>
+        <p class="ic-eyebrow">The engine</p>
+        <h2 class="mt-2 font-display text-2xl font-black tracking-tight">
+          Models — whose model, whose bill, and which surface
+        </h2>
+      </div>
+
+      <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
+        <p>
+          Buster Claw has no AI inside it. Every run — this chat, a trading read,
+          an unattended shift at three in the morning — shells out to the <span class="font-semibold text-base-content">
+            <code>claude</code> CLI you installed and signed in to</span>. The app
+          holds no Claude API key and bills you nothing for tokens: the model is
+          yours, and so is the invoice.
+        </p>
+        <p>
+          Out of the box the app says nothing about which model to use. It passes
+          no <code>--model</code> at all, and your CLI decides — exactly what happens
+          when you type <code>claude</code> in a terminal. That is not a blank waiting
+          to be filled in. It is a real, sane setting, and it is what a fresh
+          install does.
+        </p>
+        <p>
+          What the app adds is the ability to <span class="font-semibold text-base-content">name a model per surface</span>,
+          because the surfaces are not alike. A chat you are sitting in front of, a
+          dispatcher grinding through a queue while you sleep, and a run that reads
+          your real brokerage balance are not the same job, and the cheapest model
+          that is fine for one is not automatically fine for the next.
+        </p>
+      </div>
+
+      <figure class="flex flex-col gap-2">
+        <svg
+          viewBox="0 0 560 250"
+          role="img"
+          aria-label="How the model for a surface is decided, first match wins: the surface's own model wins outright; otherwise the global default applies; on the two money surfaces a default below the floor is raised to the floor; and if nothing is set, no model flag is passed and your CLI decides."
+          class="w-full text-base-content/70"
+        >
+          <defs>
+            <marker
+              id="mp-arrow"
+              viewBox="0 0 8 8"
+              refX="7"
+              refY="4"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M0,0 L8,4 L0,8 z" fill="currentColor" />
+            </marker>
+          </defs>
+
+          <text
+            x="14"
+            y="20"
+            class="font-mono"
+            fill="currentColor"
+            font-size="9"
+            font-weight="bold"
+          >
+            ASKED PER SURFACE, FIRST MATCH WINS
+          </text>
+
+          <line
+            x1="24"
+            y1="34"
+            x2="24"
+            y2="236"
+            stroke="currentColor"
+            stroke-width="1.5"
+            marker-end="url(#mp-arrow)"
+          />
+
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="40" y="34" width="250" height="38" />
+            <rect x="40" y="86" width="250" height="38" />
+            <rect x="40" y="190" width="250" height="38" />
+          </g>
+          <rect
+            x="40"
+            y="138"
+            width="250"
+            height="38"
+            fill="none"
+            stroke="var(--color-primary)"
+            stroke-width="2"
+          />
+
+          <g class="font-mono" fill="currentColor" font-size="10">
+            <text x="54" y="58" font-weight="bold">THIS SURFACE'S OWN MODEL</text>
+            <text x="54" y="110" font-weight="bold">THE GLOBAL DEFAULT</text>
+            <text x="54" y="162" font-weight="bold">RAISED TO THE FLOOR</text>
+            <text x="54" y="214" font-weight="bold">NOTHING SET</text>
+          </g>
+
+          <g class="font-mono" fill="currentColor" font-size="8">
+            <text x="302" y="52">honoured as-is —</text>
+            <text x="302" y="63">below the floor included</text>
+            <text x="302" y="104">applies to every surface</text>
+            <text x="302" y="115">you did not name</text>
+            <text x="302" y="208">no --model is passed;</text>
+            <text x="302" y="219">your CLI decides</text>
+          </g>
+          <g class="font-mono" fill="var(--color-primary)" font-size="8">
+            <text x="302" y="156">money surfaces only, and</text>
+            <text x="302" y="167">only the GLOBAL default</text>
+          </g>
+        </svg>
+        <figcaption class="text-xs leading-relaxed text-base-content/60">
+          The middle rung is the whole argument of this page — read on.
+        </figcaption>
+      </figure>
+
+      <section class="flex flex-col gap-3">
+        <h3 class="font-display text-base font-black uppercase tracking-wide">
+          The surfaces
+        </h3>
+        <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
+          <li :for={surface <- @surfaces}>
+            <span class="font-mono font-bold text-base-content">{surface.name}</span>
+            — {surface.description}
+            <span
+              :if={surface.floor}
+              class="ml-1 whitespace-nowrap font-mono text-[0.62rem] font-bold uppercase tracking-wide text-primary"
+            >
+              floor: {surface.floor}
+            </span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="ic-panel flex flex-col gap-3 p-4">
+        <p class="ic-eyebrow">Why two of them have a floor</p>
+        <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
+          <p>
+            On 07-28 the trading reads were running on the cheapest model in the
+            list, chosen back when they were assumed to fail loudly if they failed
+            at all. Measured over two runs, it called the broker tool <span class="font-semibold text-base-content">once</span>. On the run it
+            skipped, it did not report a problem — <span class="font-semibold text-base-content">it invented the answer</span>.
+          </p>
+          <p>
+            A read that silently fabricates half the time is worse than a read that
+            costs more. So the two money surfaces carry a floor of <code class="font-semibold">{@floor_model}</code>, and lowering the
+            global default cannot reach them: a default below the floor comes back
+            up to the floor, and the listing says so rather than quietly complying.
+          </p>
+          <p>
+            You can still go lower there — but only by <span class="font-semibold text-base-content">naming that surface</span>.
+            Trimming your bill and putting a cheap model on the path to your
+            brokerage account are two different decisions, and the app declines to
+            let one gesture be both.
+          </p>
+          <p class="text-base-content/70">
+            One sharp edge, stated plainly: floors are enforced by comparing known
+            models. If you type in a model the app has never heard of — a new
+            release, an alias of your own — it is passed through untouched,
+            including as a global default on a floored surface. Refusing to run a
+            string we simply do not recognise would be worse, but it means the
+            floor protects you only from models the app knows are cheaper.
+          </p>
+        </div>
+      </section>
+
+      <.example
+        n={1}
+        title="What am I actually running?"
+        want="Before you change anything, find out what is in force."
+      >
+        <.prompt text="Which model is each part of Buster Claw running right now — and if I set one default, where would it not apply?" />
+        <ol class="ic-unfold">
+          <li>
+            <code>model_policy</code> with no arguments lists every surface: the model
+            in force, where that came from — the surface's own setting, the global
+            default, a floor, or your CLI — and the floor if it has one.
+          </li>
+          <li>
+            On a fresh install the answer is "your CLI" six times over, because
+            nothing is set and no <code>--model</code> is passed. That is the
+            shipped state, not a gap.
+          </li>
+          <li>
+            The same list, with pickers, is in the model section of <.link
+              navigate="/settings"
+              class="font-semibold text-primary hover:opacity-80"
+            >
+              Configuration
+            </.link>. Reading it there and reading it in chat give the same answer.
+          </li>
+        </ol>
+      </.example>
+
+      <.example
+        n={2}
+        title="Spend less, everywhere"
+        want="One knob for the whole app — with two surfaces that decline to follow."
+      >
+        <.prompt text="I'm doing a lot of small errands today. Put everything on a cheaper model." />
+        <ol class="ic-unfold">
+          <li>
+            One global default does it — the model section in Settings, or <code>model_policy</code>
+            naming the default and the model. Every surface
+            you have not named individually follows it from the next run onward.
+          </li>
+          <li>
+            Every surface except the two with a floor. Ask again what is in force
+            and those two read <span class="font-mono font-bold text-primary">floor</span>, not
+            <span class="font-mono font-bold text-base-content">default</span>
+            — the
+            app tells you it overrode you instead of pretending it didn't.
+          </li>
+          <li>
+            Clearing the default puts you back to unset, which means back to no <code>--model</code>
+            at all. Nothing is sticky that you can't undo.
+          </li>
+        </ol>
+      </.example>
+
+      <.example
+        n={3}
+        title="No — I meant trading too"
+        want="The floor is a speed bump, not a lock. It just wants you to mean it."
+      >
+        <.prompt text="I've read why the floor is there and I still want it. Put the trading reads on the cheap model." />
+        <ol class="ic-unfold">
+          <li>
+            Name the surface: set <code>trading_read</code> itself, in Settings or
+            with <code>model_policy</code>. A surface you name explicitly is
+            honoured exactly as typed — below the floor included.
+          </li>
+          <li>
+            That is the only way down there, by design. Re-read the section above
+            first; the failure mode you are opting into is not an error message.
+          </li>
+          <li>
+            To undo it, clear that surface and it falls back to the global default,
+            floor and all.
+          </li>
+        </ol>
+      </.example>
+
+      <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/70">
+        <p>
+          <span class="font-semibold text-base-content">What this doesn't do yet.</span>
+          There is no per-conversation model picker — the choice is per surface, so
+          every chat runs on the chat surface's model. And Buster Claw cannot tell
+          you what any of this cost: the CLI does not report spend back to the app,
+          so your bill is between you and your Claude subscription.
+        </p>
+        <p>
+          One more: the selector is <code>claude</code>-only. If you have pointed the
+          app at <code>codex</code> instead, that path never took a model flag and
+          this setting does not apply to it at all.
+        </p>
+      </div>
+
+      <.link
+        navigate="/settings"
+        class="inline-flex w-fit items-center gap-2 rounded-xs bg-primary px-4 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85"
+      >
+        <.icon name="hero-arrow-right" class="size-3.5" /> Open Configuration
+      </.link>
+    </div>
+    """
+  end
+
+  # The six surfaces exactly as `ModelPolicy` defines them — descriptions and
+  # floors come from the policy module so the tutorial cannot describe a surface
+  # set that no longer exists.
+  defp surface_rows do
+    descriptions = ModelPolicy.surfaces()
+    floors = ModelPolicy.floors()
+
+    Enum.map(ModelPolicy.surface_keys(), fn key ->
+      %{
+        name: Atom.to_string(key),
+        description: Map.fetch!(descriptions, key),
+        floor: Map.get(floors, key)
+      }
+    end)
   end
 
   # The Gmail/GWS tutorial: four prompt-your-way cycles, each showing what the

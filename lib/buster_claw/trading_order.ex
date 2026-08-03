@@ -34,6 +34,7 @@ defmodule BusterClaw.TradingOrder do
 
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.AgentRunner
+  alias BusterClaw.ModelPolicy
   alias BusterClaw.Trading
 
   # get_accounts is here because placing needs a real account number and we
@@ -245,17 +246,29 @@ defmodule BusterClaw.TradingOrder do
   defp run_submit(order) do
     opts = [
       extra_args: submit_cli_args() ++ ~w(--output-format stream-json --verbose),
+      # The only path that moves money, and irreversible once the broker takes
+      # it. `:order_submit` carries a `ModelPolicy` floor for the same reason
+      # `:trading_read` does — on 07-28 a cheaper model on a money surface did
+      # not error, it fabricated — so lowering the global default cannot reach
+      # here. `nil` means nothing is set and the CLI decides, as it always has.
+      model: ModelPolicy.for_surface(:order_submit),
       permission_mode: "dontAsk",
       timeout_ms: @submit_timeout_ms,
       login: true
     ]
 
-    case AgentRunner.run(submit_prompt(order), opts) do
+    case agent_runner().(submit_prompt(order), opts) do
       {:ok, %{exit_status: 0, output: output}} -> verdict(output)
       {:ok, %{exit_status: _status}} -> {:error, :unknown}
       {:error, _reason} -> {:error, :unknown}
     end
   end
+
+  # Test seam: `:trading_submit_runner` app env. The `:trading_order_submitter`
+  # seam above replaces `run_submit/1` entirely, so it can't show a test the opts
+  # this function builds — the floor being one of them.
+  defp agent_runner,
+    do: Application.get_env(:buster_claw, :trading_submit_runner, &AgentRunner.run/2)
 
   @doc """
   Read a submit run's stream, distinguishing "never sent" from "outcome unknown".

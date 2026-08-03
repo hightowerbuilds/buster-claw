@@ -19,6 +19,7 @@ defmodule BusterClaw.Swarm.Coordinator do
   """
   require Logger
 
+  alias BusterClaw.ModelPolicy
   alias BusterClaw.Swarm
 
   @type subtask :: %{role: String.t(), prompt: String.t()}
@@ -47,8 +48,16 @@ defmodule BusterClaw.Swarm.Coordinator do
   @spec plan(String.t(), keyword()) :: {:ok, [subtask]} | {:error, :unplannable | term()}
   def plan(goal, opts \\ []) when is_binary(goal) do
     runner = Keyword.get(opts, :planner_runner, &BusterClaw.AgentRunner.run/2)
-    run_opts = Keyword.get(opts, :planner_run_opts, Keyword.get(opts, :run_opts, []))
     max = Keyword.get(opts, :max_subtasks, config(:swarm_max_subtasks, 6))
+
+    # The planner is its own surface: one serial run that shapes everything the
+    # fan-out then does, so it is worth spending on independently of the
+    # sub-runs. Resolved here, at the call, not held anywhere. `put_new` leaves a
+    # caller-supplied `:model` alone; `nil` means unset — no `--model` at all.
+    run_opts =
+      opts
+      |> Keyword.get(:planner_run_opts, Keyword.get(opts, :run_opts, []))
+      |> Keyword.put_new(:model, ModelPolicy.for_surface(:swarm_planner))
 
     case runner.(planner_prompt(goal, max), run_opts) do
       {:ok, %{exit_status: 0, output: output}} -> parse_plan(output, max)

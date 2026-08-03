@@ -36,6 +36,7 @@ defmodule BusterClaw.Agent.Chat do
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.Agent.Transcript
   alias BusterClaw.AgentRunner
+  alias BusterClaw.ModelPolicy
   alias BusterClaw.Sentinel
   alias Phoenix.PubSub
 
@@ -657,7 +658,15 @@ defmodule BusterClaw.Agent.Chat do
 
   # The real spawner: open a streaming Port through AgentRunner (login shell, so a
   # packaged-app/daemon run reaches the user's PATH + agent auth).
+  #
+  # The `:chat` model is resolved HERE, not in `start_run/2`, for two reasons:
+  # this is the last moment before the spawn (a run must never inherit a model
+  # read at process start — see the AgentMode init regression of 08-03), and the
+  # injected-spawner seam that the chat tests use stays free of any DB read.
+  # `put_new` so a caller that passed its own `:model` keeps it.
   defp default_spawner(prompt, opts) do
+    opts = Keyword.put_new(opts, :model, ModelPolicy.for_surface(:chat))
+
     case AgentRunner.open(prompt, opts) do
       {:ok, %{port: port}} -> {:ok, port}
       {:error, _reason} = error -> error

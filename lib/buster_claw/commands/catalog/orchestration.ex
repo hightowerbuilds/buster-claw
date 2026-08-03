@@ -1,7 +1,8 @@
 defmodule BusterClaw.Commands.Catalog.Orchestration do
-  @moduledoc "Catalog entries: runtime, terminal workspace, shifts, jobs, dispatch, memory, and skills."
+  @moduledoc "Catalog entries: runtime, model policy, terminal workspace, shifts, jobs, dispatch, memory, and skills."
 
   alias BusterClaw.Commands.Catalog.Helpers
+  alias BusterClaw.ModelPolicy
 
   @doc "Runtime + terminal + shift + jobs + dispatch + memory + self-improvement catalog entries."
   def entries,
@@ -15,6 +16,44 @@ defmodule BusterClaw.Commands.Catalog.Orchestration do
         description:
           "Summary of work Buster Claw handled over a recent window: requests done/blocked/failed, currently open, and unattended runs.",
         args: %{"days" => %{type: :integer, required: false, default: 7}}
+      },
+
+      # Which model each agent surface runs on. Restricted AND gated, neither of
+      # them a style choice: this command can lower `order_submit`, the one path
+      # that moves money, and the 07-28 measurement is that a cheaper model on a
+      # money surface did not error — it invented the answer. `:restricted`
+      # keeps MCP/agent tokens out; `gated` also keeps out an unattended run
+      # working untrusted content, which is exactly the caller an injected page
+      # would use to downgrade the money path quietly (threat model T5).
+      %{
+        name: "model_policy",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Read or set which Claude model each agent surface runs on. With no args, lists what is in force for every surface: the model, the source that decided it (surface | floor | default | cli), and the surface's floor — that is the answer to \"I set a default, so why is trading on something else?\". With \"surface\" and \"model\", records one; surface \"default\" sets the global default, and \"clear\": true removes an entry so the surface inherits again (an empty model is refused, never stored). With nothing stored no --model flag is passed at all and the CLI decides, which is the shipped state. trading_read and order_submit carry a capability floor the global default cannot lower — a cheap model on a money surface was measured inventing an answer rather than reporting a problem — so going below it there means naming that surface explicitly.",
+        args: %{
+          "surface" => %{
+            type: :string,
+            required: false,
+            enum: model_surface_names(),
+            description:
+              "The surface to set, or \"default\" for the global default. Omit to list."
+          },
+          "model" => %{
+            type: :string,
+            required: false,
+            description:
+              "The model to run there, e.g. claude-opus-5. Unlisted models are accepted — the CLI takes aliases we do not control. Required unless clearing."
+          },
+          "clear" => %{
+            type: :boolean,
+            required: false,
+            default: false,
+            description:
+              "Remove this surface's entry instead of setting one. This is how you unset: \"\" is refused."
+          }
+        }
       },
 
       # Visible terminal workspace
@@ -270,4 +309,9 @@ defmodule BusterClaw.Commands.Catalog.Orchestration do
         args: %{"id" => %{type: :integer, required: true}}
       }
     ]
+
+  # Read from `ModelPolicy` rather than retyped here, so the surfaces the agent
+  # is offered cannot drift from the surfaces that actually exist.
+  defp model_surface_names,
+    do: Enum.map([:default | ModelPolicy.surface_keys()], &Atom.to_string/1)
 end

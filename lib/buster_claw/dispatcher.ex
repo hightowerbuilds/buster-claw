@@ -33,7 +33,7 @@ defmodule BusterClaw.Dispatcher do
 
   require Logger
 
-  alias BusterClaw.{Dispatch, Memory, Orchestration, Sentinel}
+  alias BusterClaw.{Dispatch, Memory, ModelPolicy, Orchestration, Sentinel}
   alias BusterClaw.Orchestration.Shift
 
   @default_interval_ms 15_000
@@ -215,7 +215,16 @@ defmodule BusterClaw.Dispatcher do
 
     provenance = queue_provenance()
     prompt = work_prompt(shift, state.batch)
-    run_opts = run_opts(state, provenance)
+
+    # The model is resolved HERE, one line before the spawn — never in `init/1`.
+    # A pump that read the policy once at boot would need a restart to honour a
+    # change, and a Settings read in `init/1` is what broke AgentMode's whole
+    # async suite on 08-03. `nil` means unset, and the CLI decides as before.
+    run_opts =
+      state
+      |> run_opts(provenance)
+      |> Keyword.put_new(:model, ModelPolicy.for_surface(:dispatcher))
+
     runner = state.runner
     parent = self()
 
@@ -241,6 +250,11 @@ defmodule BusterClaw.Dispatcher do
     # Capture provenance BEFORE claiming — once the item is marked running it
     # leaves the queued pool that `queue_provenance/0` inspects.
     provenance = queue_provenance()
+
+    # Deliberately NO `:model` here: these opts become the planner's and every
+    # sub-run's, and those are their own surfaces (`:swarm_planner`,
+    # `:swarm_run`). Coordinator and Swarm each resolve their own; setting the
+    # dispatcher's model here would silently win over both.
     run_opts = run_opts(state, provenance)
 
     case Dispatch.mark_running(item, %{claimed_by: "coordinator"}) do

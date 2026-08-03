@@ -47,6 +47,7 @@ defmodule BusterClaw.Trading do
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.AgentRunner
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.ModelPolicy
   alias BusterClaw.Settings
 
   @conv_id "trading"
@@ -67,8 +68,8 @@ defmodule BusterClaw.Trading do
   )
 
   # The account panel's cached snapshot (JSON blob in Settings — the
-  # browser_tabs precedent). Every refresh is a real (cheap, haiku) agent run,
-  # so staleness is tolerated rather than polled away.
+  # browser_tabs precedent). Every refresh is a real agent run, so staleness is
+  # tolerated rather than polled away.
   @snapshot_key "trading_account_snapshot"
   @stale_after_min 15
 
@@ -394,9 +395,10 @@ defmodule BusterClaw.Trading do
   @symbol_bars_timeout_ms 300_000
 
   @doc """
-  Stage 1: fetch balances for every account through the operator's own `claude`
-  (haiku — a refresh costs cents, not dollars). Blocking; callers run it under
-  `start_async`. Test seam: `:trading_snapshot_fetcher` app env.
+  Stage 1: fetch balances for every account through the operator's own `claude`,
+  on the `:trading_read` model (`run_agent/3` — a floor keeps this off haiku).
+  Blocking; callers run it under `start_async`. Test seam:
+  `:trading_snapshot_fetcher` app env.
   """
   def fetch_account_snapshot do
     case Application.get_env(:buster_claw, :trading_snapshot_fetcher) do
@@ -880,18 +882,22 @@ defmodule BusterClaw.Trading do
   defp run_agent(prompt, timeout_ms, parser) do
     opts = [
       extra_args: read_only_cli_args() ++ ~w(--output-format stream-json --verbose),
-      # NOT haiku. It was chosen when these reads were cheap and their failure
-      # mode was assumed to be an error; measured on 07-28 it invoked the broker
-      # tool in only 1 of 2 runs, and on the miss it invented the answer rather
-      # than reporting a problem. A read that silently fabricates half the time
-      # is worse than a read that costs more, so this inherits the operator's
-      # default model.
+      # NOT haiku — and since 08-03 a floor enforces that rather than a comment
+      # asserting it. Haiku was chosen when these reads were cheap and their
+      # failure mode was assumed to be an error; measured on 07-28 it invoked the
+      # broker tool in only 1 of 2 runs, and on the miss it invented the answer
+      # rather than reporting a problem. A read that silently fabricates half the
+      # time is worse than a read that costs more, so `ModelPolicy` gives
+      # `:trading_read` a floor the global default cannot lower — only naming
+      # this surface explicitly can. `nil` means the operator set nothing and the
+      # CLI keeps deciding, exactly as before.
+      model: ModelPolicy.for_surface(:trading_read),
       permission_mode: "dontAsk",
       timeout_ms: timeout_ms,
       login: true
     ]
 
-    case AgentRunner.run(prompt, opts) do
+    case agent_runner().(prompt, opts) do
       {:ok, %{exit_status: 0, output: output}} ->
         with {:ok, text} <- verified_result(output), do: parser.(text)
 
@@ -902,6 +908,12 @@ defmodule BusterClaw.Trading do
         {:error, reason}
     end
   end
+
+  # Test seam: `:trading_agent_runner` app env. The per-read `:trading_*_fetcher`
+  # seams replace this function wholesale, so they can't show a test what opts it
+  # builds — and the model floor above is exactly the thing worth asserting on.
+  defp agent_runner,
+    do: Application.get_env(:buster_claw, :trading_agent_runner, &AgentRunner.run/2)
 
   @doc """
   Take a run's final answer, but ONLY if it is backed by a real broker tool call.

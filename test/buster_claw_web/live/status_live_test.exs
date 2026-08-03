@@ -7,6 +7,7 @@ defmodule BusterClawWeb.StatusLiveTest do
   alias BusterClaw.Calendar
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
+  alias BusterClaw.ModelPolicy
   alias BusterClaw.Telephony
 
   setup do
@@ -827,6 +828,55 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "BusterPhone"
       assert html =~ ~s(href="/phone")
       assert html =~ "Tutorial in the works"
+    end
+
+    test "the Models tab teaches the shape: unset, per surface, and the floor",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      html = render_click(view, "select_explore_tab", %{"tab" => "models"})
+
+      assert html =~ "Models — whose model, whose bill, and which surface"
+      assert html =~ "ASKED PER SURFACE, FIRST MATCH WINS"
+
+      # Fact 1: the CLI is the operator's, and so is the bill.
+      assert html =~ "holds no Claude API key"
+
+      # Fact 2: unset means the flag is omitted, not that a default is missing.
+      assert html =~ "--model"
+
+      # Fact 3: the surface list is rendered FROM `ModelPolicy`, so it cannot
+      # describe a surface set the policy no longer has. Assert every key lands
+      # as its own token rather than as prose that happens to contain the word.
+      for surface <- ModelPolicy.surface_keys() do
+        assert html =~ ">#{surface}</span>",
+               "the Models tutorial does not render the #{surface} surface"
+      end
+
+      # Fact 4: the floors, and the 07-28 finding that is the reason for them.
+      # This paragraph is the point of the whole page — if it ever goes missing,
+      # the tutorial has stopped explaining why an operator gets overridden.
+      for {_surface, floor} <- ModelPolicy.floors() do
+        assert html =~ "floor: #{floor}"
+      end
+
+      assert html =~ "it invented the answer"
+      assert html =~ "naming that surface"
+
+      # Fact 5: where to change it — Settings, and the command.
+      assert html =~ ~s(href="/settings")
+      assert html =~ "<code>model_policy</code>"
+
+      assert BusterClaw.Commands.command_type("model_policy") != nil,
+             "the Models tutorial names model_policy, which is not in the command catalog"
+
+      # The deferred Phase 4 items are named as absent, not implied as present.
+      assert html =~ "no per-conversation model picker"
+      assert html =~ "does not report spend back to the app"
+      assert html =~ "<code>codex</code>"
+
+      refute html =~ "Tutorial in the works"
     end
 
     test "the Gmail/GWS tab is a real tutorial: prompts, real commands, no stub line",

@@ -1,6 +1,9 @@
 # Model versatility — choosing the model, and saying so
 
-**Scoped 08-03-26 · Status: SCOPED, nothing built.**
+**Scoped 08-03-26 · Status: Phases 0–3 SHIPPED 08-03. Phase 4 deferred.**
+**Successor scope: `AGENT_BACKEND_ROADMAP.md`** — this roadmap chose the *model*;
+that one chooses the *runner the model runs in*, and it corrects one claim made
+here (see the note on codex under Phase 0).
 
 Buster Claw runs every agent through the operator's own `claude` CLI, and today
 it never tells the CLI which model to use. Every run — the homepage chat, a
@@ -28,11 +31,16 @@ two: `Egress.prepare`'s `:overrides`, and `secret_resolver`).
 chat's streaming path) both go through `build_args/3 → default_args/3 →
 model_args/1`. There is no second place to wire.
 
-**`--model` is claude-only by construction.** `default_args(:codex, ...)`
-ignores `:model` entirely. That is correct and should stay: the app already
-treats codex as a degraded path (it chokes on the MCP flags), and a model
-selector that silently does nothing on codex would be worse than one that
-visibly does not apply.
+**`--model` reaches claude only.** `default_args(:codex, ...)` ignores `:model`
+entirely, so a model set here does nothing on a codex run.
+
+> **Corrected 08-03, after this shipped.** The original wording said this was
+> "claude-only *by construction*" — that the flag had nowhere to go on codex.
+> Wrong about the reason: `codex-cli` 0.146.0 takes `-m, --model` and always has;
+> we simply never passed it. The behaviour described above is still what the code
+> does, but it is an *omission*, not a constraint. `AGENT_BACKEND_ROADMAP.md`
+> measures all three CLIs from `--help` rather than from memory, and fixing this
+> is its Phase 1.
 
 **The setting belongs in `Settings`, not a workspace file.** Same reasoning as
 the egress overrides on 08-03: a seeded workspace file could never be improved
@@ -70,66 +78,105 @@ cheap/capable divide in the app, and it argues against a single global knob.
 
 ---
 
-# Phase 0 — Decide (a conversation, not a build)
+# Phase 0 — Decide (a conversation, not a build) — **LOCKED 08-03**
 
-- [ ] **The model list.** Which models the picker offers, and whether it is a
-      fixed list or free text. Current set: `claude-opus-5`, `claude-sonnet-5`,
-      `claude-haiku-4-5`, plus `claude-fable-5` at the top end. **Recommend a
-      fixed list plus a free-text escape hatch** — a fixed list goes stale (this
-      set has changed repeatedly), and the CLI accepts aliases we do not control.
-- [ ] **What "unset" means.** Recommend: unset = **pass no `--model` at all**,
-      inheriting the CLI's own default. That keeps today's behavior as the
-      default and makes the feature purely additive. The alternative — defaulting
-      to a named model — silently changes what every existing install does on
-      upgrade.
-- [ ] **Which surfaces get a floor rather than a preference.** Recommend
-      **trading reads and order submission** are floored: an operator lowering
-      the global default must not be able to reach them. This is the 07-28
-      finding expressed as a constraint rather than a comment.
-- [ ] **Whether a floor is overridable at all.** Recommend **yes, but
-      explicitly** — a per-surface override can raise or lower it, but lowering
-      the money surfaces requires setting *that surface*, never the global.
+All four decided as recommended, and all four are now enforced by
+`model_policy_test.exs` rather than by this document.
+
+- [x] **The model list.** A fixed list (`claude-fable-5`, `claude-opus-5`,
+      `claude-sonnet-5`, `claude-haiku-4-5`) **plus a free-text escape hatch** —
+      `valid_model?/1` accepts any non-blank string. The picker's list is a
+      convenience, not a gate: this set has changed repeatedly and the CLI
+      accepts aliases we do not control.
+- [x] **"Unset" = pass no `--model` at all.** `for_surface/1` returns `nil` and
+      callers omit the flag; `AgentRunner.model_args/1` already produces `[]` for
+      a non-binary. The feature is purely additive — an install that upgrades
+      into it behaves exactly as it did the day before.
+- [x] **Floored surfaces: trading reads and order submission**, at
+      `claude-sonnet-5`. A lowered *global* default cannot reach them.
+- [x] **A floor is overridable, but only by naming that surface.** The
+      cost-saving gesture and the money-touching consequence are deliberately not
+      the same gesture.
+
+Two implementation notes worth carrying:
+
+- **The rank map is not the picker list.** Floors are evaluated on a capability
+  rank, and an *unranked* model — a new release, an alias, an operator's own
+  string — passes a floor untouched. Refusing to run a string we simply do not
+  recognise would break the escape hatch the whole picker depends on. The cost is
+  that a floor is unenforced for models we have never heard of; that is the right
+  trade, but it means **adding a cheap model to the picker without ranking it
+  silently exempts it from the floor.** `model_policy_test.exs` asserts every
+  floor model is ranked; it cannot assert that about a model nobody added yet.
+- **`ModelPolicy` is a leaf on purpose.** Nothing in it calls a surface; every
+  surface calls in. Hanging it off `Trading` or `AgentRunner` for convenience is
+  exactly the placement that produced the `Trading → ChartBuilder → Portfolio`
+  cycle earlier the same day.
 
 # Phase 1 — The setting and the wiring
 
-- [ ] `BusterClaw.ModelPolicy` (a leaf): `for_surface/1` returning the model
+- [x] `BusterClaw.ModelPolicy` (a leaf): `for_surface/1` returning the model
       string or `nil`, shipped defaults in code, operator entries in `Settings`.
       **Leaf, not a function on an existing module** — every surface calls it,
       and this week's `Trading → ChartBuilder → Portfolio` cycle came from
       exactly this kind of convenience placement.
-- [ ] Pass `model:` at the six call sites above. `nil` must mean *omit the flag*,
-      not `--model ""`.
-- [ ] **A test per money surface** asserting the floor holds when the global
+      **Built 08-03**, with `in_force/0` (resolved model + `source` +
+      `floor` per surface) for the UI, and 20 tests.
+- [x] Pass `model:` at the six call sites above. `nil` must mean *omit the flag*,
+      not `--model ""`. **Done 08-03** — `chat.ex:668`, `trading.ex:894`,
+      `trading_order.ex:254`, `dispatcher.ex:226`, `swarm/coordinator.ex:60`,
+      `swarm.ex:71`. The four `Keyword.put_new` sites leave an explicit caller
+      opt in charge; the two money surfaces resolve unconditionally.
+- [x] **A test per money surface** asserting the floor holds when the global
       default is set below it. This is the regression guard for the 07-28
-      finding; without it the floor is a comment.
-- [ ] A test that an unset policy produces **no `--model` argument** — the
-      "purely additive" promise, in the suite.
+      finding; without it the floor is a comment. **Done** —
+      `model_policy_wiring_test.exs`, which asserts on the opts the *production*
+      code hands its runner, never on `for_surface/1`. Re-asserting the
+      resolution here would pass whether or not the wiring existed.
+      `trading.ex` grew a `:trading_agent_runner` seam for this, because the
+      per-read `:trading_*_fetcher` seams replace the function wholesale and so
+      can never show a test what opts it built.
+- [x] A test that an unset policy produces **no `--model` argument** — the
+      "purely additive" promise, in the suite. **Done**, and at two depths: the
+      surfaces pass `nil`, and a real `AgentRunner.run/2` against a stand-in CLI
+      proves `--model` is absent from the argv rather than present-and-empty.
 
-# Phase 2 — The surface
+# Phase 2 — The surface — **DONE 08-03**
 
-- [ ] Where the setting lives in the UI. **Recommend Settings**, next to the
-      other agent configuration, not a new tab.
-- [ ] Show what is *in force* per surface, not just what the operator typed —
+- [x] Where the setting lives in the UI. **Settings**, next to the other agent
+      configuration, not a new tab.
+- [x] Show what is *in force* per surface, not just what the operator typed —
       the same lesson as `browser_egress_level`'s `in_force` vs `operator_set`.
-      An operator who set a global default and is silently overridden on trading
-      should be able to see that.
-- [ ] `model_policy` command surface, mirroring `browser_egress_level`: no args
-      lists what is in force, `surface` + `model` sets one. Tier `:restricted`.
+      `ModelPolicy.in_force/0` returns the resolved model plus the `source` that
+      decided it (`:surface | :floor | :default | :cli`) and the surface's floor,
+      so an operator who set a global default and is overridden on trading can
+      see *which* rule did it.
+- [x] `model_policy` command surface, mirroring `browser_egress_level`: no args
+      lists what is in force, `surface` + `model` sets one, `clear` unsets.
+      Tier `:restricted`, **and `gated: true`** — `gated` also keeps out an
+      unattended run working untrusted content, which is exactly the caller an
+      injected page would use to downgrade the money path quietly (T5).
+      The command's `surface` enum is read from `ModelPolicy.surface_keys/0`
+      rather than retyped, so it cannot drift from the policy.
 
-# Phase 3 — The explanation (the original ask)
+# Phase 3 — The explanation (the original ask) — **DONE 08-03**
 
-- [ ] A **Models** tutorial in Explore. The tab system makes this one
-      `@features` entry plus a panel function (`explore_panel.ex` moduledoc).
-- [ ] It has to teach the *shape*, not just the setting: Buster Claw drives your
-      own `claude` CLI, so the model is yours and the cost is yours; the app
-      names a model per surface; and unset means the CLI decides.
-- [ ] **Say the quiet part.** The tutorial should carry the 07-28 finding in
-      plain language — a cheaper model on the trading surface fabricated an
-      answer rather than erroring, which is why the money surfaces have a floor.
-      An operator who understands *why* the floor exists will not fight it.
-- [ ] Cross-check: `introduction.ex` currently says nothing about models. If the
-      agent should know which model it is (it usually should not), that is a
-      separate decision — do not add it by reflex.
+- [x] A **Models** tutorial in Explore — one `@features` entry plus
+      `models_panel/1` (`explore_panel.ex:401-...`), the 5th built tutorial.
+- [x] It teaches the *shape*, not just the setting: the app holds no Claude API
+      key, so the model is yours and so is the bill; the surface list is asked
+      first-match-wins; unset means the flag is omitted and the CLI decides.
+- [x] **Say the quiet part.** The 07-28 finding is on the page in plain language
+      — "it invented the answer" — as the reason the money surfaces have a floor,
+      and it says the floor is escapable only by naming that surface.
+- [x] The surface rows and floor models are **rendered from `ModelPolicy`**, not
+      retyped, and `status_live_test.exs` walks every `surface_keys/0` entry and
+      every `floors/0` value through the rendered HTML. A tutorial that describes
+      a surface set the policy no longer has is the failure mode that test exists
+      to prevent.
+- [x] Cross-check: `introduction.ex` says nothing about models — **checked and
+      deliberately left alone.** The agent knowing which model it is buys
+      nothing here, and adding it would be reflex rather than a decision.
 
 # Phase 4 — Optional, re-justify when reached
 

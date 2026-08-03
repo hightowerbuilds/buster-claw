@@ -2,7 +2,14 @@ defmodule BusterClawWeb.SettingsLive do
   @moduledoc """
   Settings → Configuration sub-tab. The single home for account-level
   configuration: **Google Workspace** (connect, accounts, per-surface health,
-  Gmail/Calendar tools), the profile, onboarding progress, and the recovery key.
+  Gmail/Calendar tools), **agent models**, the profile, onboarding progress, and
+  the recovery key.
+
+  The model picker sits here rather than on a tab of its own — it is agent
+  configuration, and its whole value is being read next to the rest of it. It
+  renders `ModelPolicy.in_force/0` per surface, so an operator who set a global
+  default and is silently held at the money-surface floor can see that, with the
+  reason, on the row where it bites.
 
   Google Workspace used to live on its own `/gws` sub-tab; it was folded in here
   so "Configuration" owns everything that isn't Appearance / Integrations /
@@ -16,6 +23,7 @@ defmodule BusterClawWeb.SettingsLive do
   alias BusterClaw.Google.CalendarSync
   alias BusterClaw.Google.Gmail
   alias BusterClaw.Google.GmailSync
+  alias BusterClaw.ModelPolicy
   alias BusterClaw.Recovery
   alias BusterClaw.Setup
   alias BusterClaw.SystemBrowser
@@ -42,6 +50,10 @@ defmodule BusterClawWeb.SettingsLive do
      |> load_accounts()
      |> assign_gmail_forms()
      |> assign_calendar_form()
+     # --- agent models ---
+     |> assign(:model_choices, ModelPolicy.known_models())
+     |> assign(:model_note, nil)
+     |> assign_model_policy()
      # --- profile / onboarding / recovery ---
      |> assign(:profile_name, Setup.profile_name())
      |> assign(:profile_org, Setup.profile_org())
@@ -255,6 +267,26 @@ defmodule BusterClawWeb.SettingsLive do
     end
   end
 
+  # --- Agent model events ------------------------------------------------
+
+  # The pickers: an empty selection clears back to unset/inherit, which is the
+  # shipped state — no `--model` flag reaches the CLI at all.
+  def handle_event("model_default", %{"model" => model}, socket) do
+    {:noreply, put_model(socket, :default, blank_to_nil(model))}
+  end
+
+  def handle_event("model_surface", %{"surface" => surface, "model" => model}, socket) do
+    {:noreply, put_model(socket, model_target(surface), blank_to_nil(model))}
+  end
+
+  # The escape hatch. The CLI takes aliases and models newer than our list, so a
+  # typed string goes straight to `ModelPolicy.put/2` — which validates it, and
+  # refuses blank rather than reading it as "clear" (clearing is the picker's
+  # job, and a blank that silently unset the default would be a nasty surprise).
+  def handle_event("model_custom", %{"target" => target, "model" => model}, socket) do
+    {:noreply, put_model(socket, model_target(target), String.trim(model))}
+  end
+
   # --- Profile / onboarding / recovery events ----------------------------
 
   def handle_event("save_profile", %{"name" => name, "org" => org}, socket) do
@@ -386,6 +418,136 @@ defmodule BusterClawWeb.SettingsLive do
             calendar_sync_form={@calendar_sync_form}
             calendar_sync={@calendar_sync}
           />
+        </section>
+
+        <section class="ic-panel space-y-4 p-6">
+          <h2 class="ic-eyebrow">Agent models</h2>
+          <p class="max-w-2xl text-sm text-base-content/70">
+            Buster Claw drives your own <code class="font-mono">claude</code>
+            CLI. Left unset it passes no <code class="font-mono">--model</code>
+            flag at all and the CLI keeps deciding, exactly as it always has. Set a
+            default here to pick for every surface, or set one surface on its own.
+          </p>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <form id="model-default-form" phx-change="model_default">
+              <label class="block">
+                <span class="ic-eyebrow">Global default</span>
+                <select
+                  name="model"
+                  aria-label="Global default model"
+                  class="select select-bordered mt-1 w-full font-mono text-xs"
+                >
+                  <option value="" selected={is_nil(@model_default)}>
+                    Unset — your claude CLI decides
+                  </option>
+                  <option
+                    :for={model <- @model_choices}
+                    value={model}
+                    selected={@model_default == model}
+                  >
+                    {model}
+                  </option>
+                  <option
+                    :if={@model_default && @model_default not in @model_choices}
+                    value={@model_default}
+                    selected
+                  >
+                    {@model_default}
+                  </option>
+                </select>
+              </label>
+            </form>
+
+            <form id="model-custom-form" phx-submit="model_custom" class="space-y-2">
+              <label class="block">
+                <span class="ic-eyebrow">Any other model</span>
+                <input
+                  type="text"
+                  name="model"
+                  value=""
+                  autocomplete="off"
+                  placeholder="claude-sonnet-4-6"
+                  class="input mt-1 w-full font-mono text-xs"
+                />
+              </label>
+              <div class="flex flex-wrap items-center gap-2">
+                <select
+                  name="target"
+                  aria-label="Where the typed model applies"
+                  class="select select-bordered select-sm min-w-0 flex-1 text-xs"
+                >
+                  <option value="default">Global default</option>
+                  <option :for={{surface, _entry} <- @model_rows} value={surface}>
+                    {surface_label(surface)}
+                  </option>
+                </select>
+                <button type="submit" class={button_outline()}>Set</button>
+              </div>
+              <p class="text-xs leading-5 text-base-content/60">
+                The CLI accepts aliases and models newer than the list above, so
+                anything non-blank is accepted here.
+              </p>
+            </form>
+          </div>
+
+          <p
+            :if={@model_note}
+            id="model-note"
+            class="rounded-sm border-2 border-primary/40 bg-primary/10 px-3 py-2 text-sm"
+          >
+            {@model_note}
+          </p>
+
+          <div class="border-t-2 border-base-content/20 pt-2">
+            <p class="ic-eyebrow py-2">In force, per surface</p>
+            <div class="divide-y divide-base-300">
+              <div
+                :for={{surface, entry} <- @model_rows}
+                class="flex flex-wrap items-start justify-between gap-4 py-4"
+              >
+                <div class="max-w-md min-w-0 space-y-1">
+                  <p class="text-sm font-semibold">{entry.description}</p>
+                  <p class="font-mono text-xs text-base-content/70">
+                    {model_display(entry.model)} · {source_note(entry.source)}
+                  </p>
+                  <p
+                    :if={entry.floor}
+                    class="border-l-2 border-primary/60 pl-3 text-xs leading-5 text-base-content/60"
+                  >
+                    Floor: {entry.floor}. A cheaper model on this surface was measured
+                    inventing a financial answer instead of reporting a problem, so the
+                    global default cannot lower it. Naming this surface here still can.
+                  </p>
+                </div>
+
+                <form id={"model-surface-#{surface}"} phx-change="model_surface" class="shrink-0">
+                  <input type="hidden" name="surface" value={surface} />
+                  <select
+                    name="model"
+                    aria-label={"Model for #{surface_label(surface)}"}
+                    class="select select-bordered select-sm min-w-56 font-mono text-xs"
+                  >
+                    <option value="" selected={entry.source != :surface}>— inherit —</option>
+                    <option
+                      :for={model <- @model_choices}
+                      value={model}
+                      selected={entry.source == :surface and entry.model == model}
+                    >
+                      {model}
+                    </option>
+                    <option
+                      :if={entry.source == :surface and entry.model not in @model_choices}
+                      value={entry.model}
+                      selected
+                    >
+                      {entry.model}
+                    </option>
+                  </select>
+                </form>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="ic-panel space-y-4 p-6">
@@ -566,6 +728,87 @@ defmodule BusterClawWeb.SettingsLive do
   defp gws_tab("sync_mail"), do: :sync_mail
   defp gws_tab("calendar"), do: :calendar
   defp gws_tab(_), do: :accounts
+
+  # --- Agent model helpers -----------------------------------------------
+
+  # `in_force/0` is a map; the rows are materialized in `surface_keys/0` order
+  # so the list is stable between renders instead of following map term order.
+  defp assign_model_policy(socket) do
+    in_force = ModelPolicy.in_force()
+
+    socket
+    |> assign(:model_rows, Enum.map(ModelPolicy.surface_keys(), &{&1, Map.fetch!(in_force, &1)}))
+    |> assign(:model_default, Map.get(ModelPolicy.stored(), :default))
+  end
+
+  defp put_model(socket, target, model) do
+    case ModelPolicy.put(target, model) do
+      {:ok, in_force} ->
+        socket
+        |> assign_model_policy()
+        |> assign(:model_note, model_note(target, model, in_force))
+
+      {:error, reason} ->
+        assign(socket, :model_note, model_error(reason))
+    end
+  end
+
+  defp model_note(:default, nil, _in_force),
+    do: "Cleared. Every surface without a model of its own lets your claude CLI decide again."
+
+  defp model_note(:default, model, in_force) do
+    held = for {surface, entry} <- in_force, entry.source == :floor, do: surface_label(surface)
+
+    case Enum.sort(held) do
+      [] -> "Global default set to #{model}."
+      names -> "Global default set to #{model}. Held at the floor: #{Enum.join(names, ", ")}."
+    end
+  end
+
+  defp model_note(surface, nil, _in_force),
+    do: "#{surface_label(surface)} inherits the global default again."
+
+  defp model_note(surface, model, _in_force), do: "#{surface_label(surface)} set to #{model}."
+
+  defp model_error(:blank_model),
+    do: "Type a model name — the picker is how you clear one back to unset."
+
+  defp model_error({:unknown_surface, _surface}), do: "That is not a surface Buster Claw runs."
+  defp model_error(_reason), do: "Could not save that model."
+
+  defp model_display(nil), do: "Your claude CLI decides"
+  defp model_display(model), do: model
+
+  # Why the row resolved the way it did. `:cli` has to read as an answer, not as
+  # a blank — "nothing is set" is a real, and shipped, state.
+  defp source_note(:cli), do: "your claude CLI decides"
+  defp source_note(:default), do: "from the global default"
+  defp source_note(:surface), do: "set for this surface"
+  defp source_note(:floor), do: "held at the floor — the global default is lower"
+
+  # The short head of the surface description, for notes and labels.
+  defp surface_label(:default), do: "The global default"
+
+  defp surface_label(surface) do
+    ModelPolicy.surfaces() |> Map.fetch!(surface) |> String.split(" — ") |> List.first()
+  end
+
+  # Never `String.to_atom/1` a form value: resolve it against the known keys.
+  # An unrecognised target stays a string, and `ModelPolicy.put/2` rejects it.
+  defp model_target("default"), do: :default
+
+  defp model_target(target) when is_binary(target) do
+    Enum.find(ModelPolicy.surface_keys(), target, &(Atom.to_string(&1) == target))
+  end
+
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(_value), do: nil
 
   # --- shared ------------------------------------------------------------
 

@@ -25,6 +25,7 @@ defmodule BusterClaw.Swarm do
   """
   require Logger
 
+  alias BusterClaw.ModelPolicy
   alias BusterClaw.Sentinel
 
   @supervisor BusterClaw.SwarmTaskSupervisor
@@ -58,8 +59,16 @@ defmodule BusterClaw.Swarm do
     cap = Keyword.get(opts, :max_concurrency, config(:swarm_max_concurrency, 3))
     timeout = Keyword.get(opts, :timeout_ms, config(:swarm_timeout_ms, 300_000))
     runner = Keyword.get(opts, :runner, &BusterClaw.AgentRunner.run/2)
-    run_opts = Keyword.get(opts, :run_opts, [])
     quorum = Keyword.get(opts, :quorum, majority(length(plan)))
+
+    # One resolution for the whole fan-out, taken here rather than per sub-run:
+    # every sub-run of a swarm should be on the same model, and a Settings read
+    # inside `run_one/4` would be one read per concurrent task. `put_new` leaves
+    # a caller-supplied `:model` alone; `nil` means unset — no `--model` at all.
+    run_opts =
+      opts
+      |> Keyword.get(:run_opts, [])
+      |> Keyword.put_new(:model, ModelPolicy.for_surface(:swarm_run))
 
     results =
       plan

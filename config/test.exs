@@ -2,11 +2,20 @@ import Config
 
 # Configure your database
 #
-# The MIX_TEST_PARTITION environment variable can be used
-# to provide built-in test partitioning in CI environment.
-# Run `mix help test` for more information.
+# `MIX_TEST_PARTITION` gives each run its own database FILE. Unset — the normal
+# case, and CI — the path is exactly what it has always been, so this is inert.
+#
+# It is not really about partitioning here. The single-connection design below
+# only serializes writers *within one BEAM*; two `mix test` processes in the same
+# checkout open two connections to the same file and defeat it entirely, and the
+# symptom is a flood of "Database busy" in tests that have nothing to do with
+# each other or with whatever is being changed. That is not hypothetical: this
+# repo is routinely worked by more than one agent session at once, and a suite
+# run against a contended file reports failure counts that swing by 100 between
+# runs of identical code — a signal worth nothing at all. Set the variable to
+# anything (`MIX_TEST_PARTITION=b mix test`) to get an isolated lane.
 config :buster_claw, BusterClaw.Repo,
-  database: Path.expand("../buster_claw_test.db", __DIR__),
+  database: Path.expand("../buster_claw_test#{System.get_env("MIX_TEST_PARTITION")}.db", __DIR__),
   # SQLite is single-writer at the file level, so multiple pooled connections only
   # race each other: a read-then-write transaction (common via *_seeded/0 helpers)
   # upgrades from a shared to a write lock and, if another connection holds it, gets

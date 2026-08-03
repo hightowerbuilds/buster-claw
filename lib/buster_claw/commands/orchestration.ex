@@ -1,7 +1,7 @@
 defmodule BusterClaw.Commands.Orchestration do
-  @moduledoc "Runtime status, activity report, terminal workspace, and orchestration-shift commands. Delegated to from `BusterClaw.Commands`."
+  @moduledoc "Runtime status, activity report, model policy, terminal workspace, and orchestration-shift commands. Delegated to from `BusterClaw.Commands`."
 
-  alias BusterClaw.{Orchestration, TerminalCommands, TerminalWorkspace}
+  alias BusterClaw.{ModelPolicy, Orchestration, TerminalCommands, TerminalWorkspace}
   alias BusterClaw.Runtime.Status
 
   def runtime_status(_args \\ %{}), do: {:ok, Status.snapshot()}
@@ -14,6 +14,110 @@ defmodule BusterClaw.Commands.Orchestration do
       end
 
     {:ok, BusterClaw.ActivityReport.summary(days: days)}
+  end
+
+  # -----------------------------------------------------------------------
+  # Model policy — which model each agent surface runs on
+  # -----------------------------------------------------------------------
+
+  @doc """
+  Read or set the model each agent surface runs on.
+
+  With no `surface`, lists what is in force everywhere: the model, the `source`
+  that decided it (`surface` | `floor` | `default` | `cli`), and the surface's
+  floor where it has one. That triple is the answer to "I set a default, so why
+  is trading on something else?" — printing the model alone would not be.
+
+  With `surface` and `model`, records one; `surface: "default"` sets the global
+  default. `clear: true` removes an entry so the surface inherits again; a blank
+  `model` is refused rather than stored, because a blank would silently never
+  apply. Nothing stored means no `--model` flag is passed at all.
+
+  `trading_read` and `order_submit` carry a floor the global default cannot
+  lower — see `BusterClaw.ModelPolicy` for the 07-28 measurement behind it.
+  """
+  def model_policy(args \\ %{})
+
+  def model_policy(%{"surface" => surface} = args) when is_binary(surface) and surface != "" do
+    with {:ok, key} <- parse_surface(surface),
+         {:ok, model} <- parse_model(args) do
+      write_policy(surface, key, model)
+    end
+  end
+
+  def model_policy(_args) do
+    {:ok,
+     %{
+       in_force: shape_policy(ModelPolicy.in_force()),
+       operator_set: shape_stored(ModelPolicy.stored()),
+       surfaces: surface_names(),
+       known_models: ModelPolicy.known_models()
+     }}
+  end
+
+  defp write_policy(surface, key, model) do
+    case ModelPolicy.put(key, model) do
+      {:ok, in_force} ->
+        {:ok, %{surface: surface, model: model, in_force: shape_policy(in_force)}}
+
+      {:error, {:unknown_surface, _key}} ->
+        unknown_surface(surface)
+
+      {:error, :blank_model} ->
+        blank_model()
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Never `String.to_atom/1` here: the surface name arrives from an operator or
+  # a model. Matching against the known keys keeps the atom table bounded.
+  defp parse_surface(given) do
+    case Enum.find([:default | ModelPolicy.surface_keys()], &(Atom.to_string(&1) == given)) do
+      nil -> unknown_surface(given)
+      key -> {:ok, key}
+    end
+  end
+
+  # `clear` is the honest way to unset: `ModelPolicy.put/2` refuses "" rather
+  # than storing a value that could never apply, so an empty string is not it.
+  defp parse_model(%{"clear" => true}), do: {:ok, nil}
+
+  defp parse_model(%{"model" => model}) when is_binary(model) do
+    if ModelPolicy.valid_model?(model), do: {:ok, model}, else: blank_model()
+  end
+
+  defp parse_model(_args) do
+    {:error, {:missing_model, "pass \"model\", or \"clear\": true to unset this surface"}}
+  end
+
+  defp unknown_surface(given), do: {:error, {:unknown_surface, given, surface_names()}}
+
+  defp blank_model do
+    {:error, {:blank_model, "a model must be a non-blank string; \"clear\": true unsets it"}}
+  end
+
+  defp surface_names, do: Enum.map([:default | ModelPolicy.surface_keys()], &Atom.to_string/1)
+
+  defp shape_policy(in_force) do
+    Enum.map(ModelPolicy.surface_keys(), fn surface ->
+      entry = Map.fetch!(in_force, surface)
+
+      %{
+        surface: Atom.to_string(surface),
+        model: entry.model,
+        source: Atom.to_string(entry.source),
+        floor: entry.floor,
+        description: entry.description
+      }
+    end)
+  end
+
+  defp shape_stored(stored) do
+    stored
+    |> Enum.map(fn {surface, model} -> %{surface: Atom.to_string(surface), model: model} end)
+    |> Enum.sort_by(& &1.surface)
   end
 
   # -----------------------------------------------------------------------
