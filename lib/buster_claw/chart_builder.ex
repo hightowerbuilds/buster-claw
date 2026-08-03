@@ -8,6 +8,33 @@ defmodule BusterClaw.ChartBuilder do
   daily closes when its conversation process starts, then returns a fenced SVG.
   This keeps an iteration to one chat run and makes a live broker read impossible
   by construction.
+
+  ## The one thing it *does* get: web search
+
+  Added 08-03 (`CHART_BUILD_WEB_DATA_ROADMAP` Phase 1). Chart Build is the app's
+  data-research surface now, so it can look things up — but under a rule that is
+  the whole reason the capability is shippable here:
+
+  > **The model may look things up. It may not transcribe what it finds onto a
+  > chart.**
+
+  Search is for *discovery*: what a series is called, who publishes it, what
+  units it is in, whether it exists at all. Numbers that get **plotted** come
+  from `CACHED_DATA` or from `ChartBuilder.Fetch` — fetched by us, from a named
+  source, with an `as_of`.
+
+  That split is not fussiness. This renderer is freehand: the model emits SVG
+  coordinates directly and nothing verifies the arithmetic, which is why every
+  result already ships labelled *Drawn by AI · not computed*. That label honestly
+  covers one failure mode — mis-plotting numbers it was given. A model
+  transcribing figures off a web page adds a second, independent one, and the
+  label does not cover it. Two uncorrelated ways to be wrong, one warning, on a
+  chart about money.
+
+  `WebFetch` is denied (it reaches loopback — see `AgentToolPolicy`), so the
+  model sees search results rather than whole pages. That shrinks the honesty
+  risk for free: a snippet is a much weaker thing to transcribe a series off
+  than a fetched page.
   """
 
   alias BusterClaw.{AgentToolPolicy, MarketData, Portfolio, Skills}
@@ -33,8 +60,9 @@ defmodule BusterClaw.ChartBuilder do
   Truthfulness rules:
   - This first renderer is freehand. The app labels every result "Drawn by AI —
     not computed". Never describe the geometry as independently verified.
-  - Plot only numbers present in CACHED_DATA below or supplied by the operator.
-    Never invent, interpolate, forward-fill, or silently smooth missing values.
+  - Plot only numbers present in CACHED_DATA below, delivered to you by the app,
+    or supplied by the operator. Never invent, interpolate, forward-fill, or
+    silently smooth missing values.
   - Include zero for quantitative bar axes. For line/scatter charts, label the
     actual domain and never imply an omitted baseline.
   - Dates use their real spacing. Missing dates are gaps: break a line rather
@@ -45,19 +73,53 @@ defmodule BusterClaw.ChartBuilder do
     example, "4 cached observations"). A smaller honest chart beats a confident
     fictional one.
 
-  Data boundary:
-  - You have no broker, web, shell, or filesystem tools in this conversation.
+  Data boundary — read this twice; it is the rule that makes your web access
+  safe to have:
+
+    You may LOOK THINGS UP. You may not TRANSCRIBE what you find onto a chart.
+
+  - You have web SEARCH. Use it to find out what a series is called, who
+    publishes it, what units it is in, how often it is measured, and whether it
+    exists at all. That is research, and it is what you are for.
+  - You may NOT plot a number you read in a search result. Not "prefer not to" —
+    may not. A figure you transcribed has not been through the app's fetch path,
+    carries no source and no as-of, and this chart is already labelled "Drawn by
+    AI — not computed". One unverified layer is the honest cost of a freehand
+    renderer. Two is a chart that lies twice and warns once.
+  - You do NOT have web fetch. You cannot open a page; you see search results.
+    Say that plainly rather than promising to go and read something.
+  - You have no broker, shell, or filesystem tools, and no way to place an order.
+  - When you need numbers the app does not already have, ASK FOR THEM: name the
+    series and the source you believe publishes it, and say what window you want.
+    Then stop and wait. Do not draw a placeholder in the meantime.
   - CACHED_DATA is a point-in-time local snapshot. If it cannot answer the
-    request, say what is missing and ask the operator to provide it or refresh
-    the relevant Trading data explicitly. Do not claim to fetch fresh data.
+    request and nothing has been delivered to you, say what is missing and name
+    what you would need. A smaller honest chart beats a confident fictional one,
+    and refusing to draw is a complete, correct answer here.
+  - Any figures the app delivers to you arrive with a source and an as-of.
+    Put both in the chart's subtitle. If a delivered series covers a shorter
+    span than the operator asked for, say so in the subtitle too — never label a
+    chart with the range that was requested rather than the one you plotted.
   """
 
-  @doc "Claude chat options for a cached-only Chart Build conversation."
+  @doc """
+  Claude chat options for a Chart Build conversation.
+
+  `--disallowedTools` is what actually refuses a built-in under `dontAsk`
+  (measured 07-28; see `Trading.read_only_cli_args/0`), so the web capability is
+  granted by *subtracting* from that list. The paired `--allowedTools` only
+  stops `WebSearch` prompting — on its own it would confine nothing.
+  """
   def chat_opts do
     [
       append_system_prompt: system_prompt(),
       permission_mode: "dontAsk",
-      extra_cli_args: ["--disallowedTools", Enum.join(AgentToolPolicy.denied_builtins(), ",")]
+      extra_cli_args: [
+        "--disallowedTools",
+        Enum.join(AgentToolPolicy.denied_builtins(:chartbuild), ","),
+        "--allowedTools",
+        Enum.join(AgentToolPolicy.web_capable_builtins(), ",")
+      ]
     ]
   end
 

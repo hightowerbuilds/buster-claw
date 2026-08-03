@@ -3,7 +3,7 @@ defmodule BusterClaw.ChartBuilderTest do
 
   alias BusterClaw.{ChartBuilder, MarketData, Skills}
 
-  test "the chat profile is cached-only and carries the honesty contract" do
+  test "the chat profile is confined to search, and carries the honesty contract" do
     opts = ChartBuilder.chat_opts()
     prompt = Keyword.fetch!(opts, :append_system_prompt)
     extra = Keyword.fetch!(opts, :extra_cli_args)
@@ -13,14 +13,32 @@ defmodule BusterClaw.ChartBuilderTest do
 
     denied = Enum.at(extra, Enum.find_index(extra, &(&1 == "--disallowedTools")) + 1)
     assert denied =~ "Bash"
-    assert denied =~ "WebFetch"
     assert denied =~ "Read"
-    refute "--allowedTools" in extra
+    assert denied =~ "Task"
+
+    # WebFetch stays denied even though this profile is the web-capable one. It
+    # reaches loopback — see AgentToolPolicy's moduledoc for the 08-03 probe.
+    # Deleting this line is how the SSRF path gets re-opened by someone tidying
+    # up what looks like an inconsistency.
+    assert denied =~ "WebFetch"
+    refute denied =~ "WebSearch"
+
+    # The allowlist only stops WebSearch prompting under dontAsk. It confines
+    # nothing on its own — the deny list above is the control.
+    allowed = Enum.at(extra, Enum.find_index(extra, &(&1 == "--allowedTools")) + 1)
+    assert allowed == "WebSearch"
 
     assert prompt =~ "Drawn by AI"
     assert prompt =~ "Missing dates are gaps"
     assert prompt =~ "CACHED_DATA (JSON)"
-    assert prompt =~ "no broker, web, shell, or filesystem tools"
+
+    # The prompt used to promise "no broker, web, shell, or filesystem tools",
+    # which became false the moment search was granted. The replacement states
+    # the split as a rule, and these are the load-bearing halves of it.
+    refute prompt =~ "no broker, web, shell, or filesystem tools"
+    assert prompt =~ "may not TRANSCRIBE"
+    assert prompt =~ "You do NOT have web fetch"
+    assert prompt =~ "no broker, shell, or filesystem tools"
   end
 
   test "cached daily closes are included without a broker read" do

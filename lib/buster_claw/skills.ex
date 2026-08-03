@@ -533,8 +533,16 @@ defmodule BusterClaw.Skills do
 
     These are correctness requirements, not stylistic preferences:
 
-    1. Plot only values present in the supplied cache or operator-provided data.
-       Never invent, interpolate, forward-fill, or smooth a missing observation.
+    1. Plot only values present in the supplied cache, delivered to you by the
+       app, or given to you by the operator. Never invent, interpolate,
+       forward-fill, or smooth a missing observation.
+    1b. **Never plot a number you read in a search result.** You have web search
+       so you can find out what a series is called, who publishes it and what
+       units it uses — not so you can copy figures off a page. A transcribed
+       number has no source and no as-of attached, and this renderer is already
+       freehand: one unverified layer is the honest cost of drawing by hand, two
+       is a chart that lies twice and warns once. When you need numbers, name the
+       series and the source and ask for them.
     2. **Zero is in frame for quantitative bars.** A bar length or height is
        measured from the zero baseline; negative values extend across it.
     3. **Gaps are gaps.** Use a real date scale and break a line into separate
@@ -543,7 +551,11 @@ defmodule BusterClaw.Skills do
     4. Derive axis labels from the values actually plotted. Never assert a tick
        whose geometry uses a different scale.
     5. Label units, measure, time range, observation count, and data freshness.
-       If only 4 of 30 requested days exist, say "4 cached observations".
+       If only 4 of 30 requested days exist, say "4 cached observations". When
+       the app delivers a series it comes with a source and an as-of — put both
+       in the subtitle, and if the delivered span is shorter than the one asked
+       for, say that too. Never label a chart with the range that was requested
+       rather than the range you actually plotted.
     6. Do not imply that a freehand chart is independently computed or verified.
        If exact geometry matters, provide the underlying values in prose too.
     7. Do not use a log scale for zero or negative values. If a log scale is

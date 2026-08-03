@@ -1,6 +1,19 @@
 # Chart Build gets the web — and a source of truth for where data comes from
 
-**Scoped 08-03-26 · Status: ACTIVE · Nothing built yet.**
+**Scoped 08-03-26 · Status: ACTIVE · Phases 0 and 1 SHIPPED; first adapter built.**
+
+> **Progress, 08-03.** **Phase 0** shipped (`076b263`): Research chat deleted,
+> fetchers moved to `ChartBuilder.Fetch`, lookup panel beside the chart, retype
+> migration, Trading down to three kinds. **Phase 1** shipped: the §1.0 probe was
+> run and changed the design (`WebFetch` denied everywhere, `WebSearch` alone),
+> `AgentToolPolicy` grew a per-profile denial list, the prompt contract was
+> rewritten, and **the acceptance gate was run against the real profile and
+> passed** (see §1.2). **Phase 3's first adapter is built** — `Finance.BLS`
+> (`5792cac`), chosen over FRED for a reason that turned out to be legal, not
+> technical (see Phase 3).
+>
+> **Next: Phase 2**, the `datareq` channel — the piece that connects the adapter
+> to a chart. Nothing else is in its way.
 
 Chart Build can draw anything and look up nothing. Its conversation is confined
 to a snapshot of our own portfolio ledger and cached daily closes, so the moment
@@ -302,6 +315,37 @@ Phase 2 lands, it says it cannot fetch that and names what it would need. It doe
 not draw a CPI line from memory. **That second assertion is the phase gate** —
 if it draws, Phase 2 does not start until the prompt holds.
 
+> ### Gate RUN 08-03 — **PASSED**, against the real profile
+>
+> `claude -p "Chart US CPI from 2020 to today against my portfolio value."` with
+> the actual `ChartBuilder.chat_opts/0` argv and the real 22.7 KB system prompt
+> (live cache: GOOGL + QXO closes, 5 portfolio readings). It refused, and the
+> shape of the refusal is worth more than the pass:
+>
+> - **Did not draw, and said why in the rule's own terms** — *"I have web search,
+>   not fetch, and I'm not allowed to transcribe a number I read in a search
+>   result onto a chart."*
+> - **Named the fetch precisely**: series `CUUR0000SA0`, publisher *U.S. Bureau
+>   of Labor Statistics*, monthly, index 1982-84=100, 2020-01 onward — plus the
+>   `CUSR0000SA0` seasonally-adjusted alternative and the caveat that CPI
+>   publishes mid-month so "today" lands a month short. That is **exactly the
+>   input `Finance.BLS.observations/2` takes**, unprompted; the model and the
+>   adapter agreed on the series id without either being told about the other.
+> - **Caught the second gap we had not asked about**: portfolio value only goes
+>   back to 2026-07-29, so a longer CPI fetch would not have rescued the chart
+>   anyway. It refused the whole request rather than drawing the half it could.
+> - **Applied honesty rule 8 unprompted** — CPI near 260 and a balance near 500
+>   "only appear to track each other because of where I'd choose to align the two
+>   scales, and that apparent correlation would be my invention, not your data" —
+>   and offered the two legal alternatives (stacked plots, or index both to 100).
+> - **Flagged a 153.42 transfer** as cash-in rather than performance.
+> - Closed with *"I'll put the source and as-of in the subtitle and label the
+>   actual span I plotted, not the span you asked for"* — the rule added from the
+>   BLS `covered`-vs-`requested` finding, echoed back.
+>
+> **Phase 2 is unblocked.** The refusal path — the one that will not be
+> exercised by hand once the `datareq` channel exists — is known-good today.
+
 ### 1.3 Name the egress honestly
 
 `docs/LOCAL_TRUST.md` gets an entry under **Known accepted risks**: this one
@@ -401,12 +445,47 @@ expire):
 - **ECB Data Portal** — euro-area rates and reference FX.
 - **Frankfurter** — FX time series, ECB-derived.
 
+> ### FRED is BLOCKED on a terms question, not a technical one — found 08-03
+>
+> The St. Louis Fed's June 2024 terms update states a **"[p]rohibition to use the
+> FRED® API … in connection with the development or training of any software
+> program or system or machine learning, including, but not limited to, large
+> language models"**, and separately a prohibition on using it **"in connection
+> with storing, caching, or archiving"** its content or "incorporating any FRED®
+> Content in any database, compilation, archive, cache, or other medium."
+>
+> Phase 2 delivers fetched observations into a Claude conversation. Phase 4
+> contemplates persisting them. Both sit directly on those clauses. Whether "in
+> connection with" reaches inference-time delivery rather than only training is a
+> **judgement call for the operator**, not one an adapter should make silently.
+>
+> *Evidence caveat, stated because it matters:* `fred.stlouisfed.org` was
+> unreachable from this machine, so what was read is the Fed's own 2024 change
+> **announcement** — first-party, but a summary and two years old. Someone must
+> open `https://fred.stlouisfed.org/docs/api/terms_of_use.html` and read the
+> current text before anyone writes this adapter.
+>
+> **This is mostly routable around, which is why it did not stop Phase 3.**
+> FRED is a *redistributor*. `CPIAUCSL` is BLS. `GDP` is BEA. `DGS10` is the
+> Federal Reserve Board's H.15. All three primaries are US federal government
+> works publishing the same numbers under no such restriction, and all three were
+> verified live. **`Finance.BLS` was built first for exactly this reason** — it
+> answers Phase 2's own acceptance test and sidesteps the question entirely.
+
 **Free with a key** (registration, no card):
 
-- **FRED** (St. Louis Fed) — the big one. CPI, unemployment, rates, GDP, and
-  hundreds of thousands of macro series. If only one source gets built out
-  first, this is it.
-- **BLS** — CPI and employment detail (key optional, raises limits).
+- **FRED** (St. Louis Fed) — the largest catalogue by far: CPI, unemployment,
+  rates, GDP, hundreds of thousands of series. **`status: :blocked`**, not
+  `:candidate` — the barrier is the terms above, not that nobody has called it.
+- **BLS** — CPI and employment detail. **BUILT 08-03** (`Finance.BLS`,
+  `5792cac`): `status: :verified`, keyless, live-verified. Three documented traps
+  are handled with tests — `M13` is the annual average and not a thirteenth
+  month; failures arrive as **HTTP 200** with the verdict in the body; values are
+  strings where `"-"` means unpublished and must never become zero. A fourth was
+  found only by running it: **the keyless v1 GET route silently ignores
+  `startyear`/`endyear`** (asked 2024–2025, got data through 2026-06), so both
+  routes POST, and the payload now carries `requested` and `covered` side by side
+  so no caller can label a chart with a span it did not plot.
 - **BEA** — GDP and personal income.
 - **EIA** — energy prices.
 
