@@ -906,7 +906,42 @@ Rules:
 - Avoid new LiveComponents unless a region genuinely needs its own lifecycle;
   prefer pure modules and stateless function components.
 
-### 3B. Studio and Home
+### 3B. Studio and Home — **first pass 08-03**
+
+> **What shipped, and the honest shape of what is left.**
+>
+> `StatusLive` **1,420 → 1,346**. Two extractions, neither chosen by line count:
+>
+> - **`BusterClaw.Notifications.Schedule`** — the timer/alarm/reminder
+>   wall-clock arithmetic, which was pure the whole time and simply lived in a
+>   LiveView. That meant the only way to ask *"what does 11:30pm mean when it is
+>   11:45pm"* was to drive a mount, an event and a form, so nobody had. It now
+>   has **11 tests** covering the cases that were never written, including a
+>   clock injected through `fire_at/3` so a test can stand at a chosen moment.
+> - **`StudioMix.track_end_ms/1,2` and `paste_track/2`** — these existed
+>   **twice**, once in `StatusLive` and once in `SoundStudioComponent`, in
+>   different shapes and unaware of each other. Two implementations of *"where
+>   does this track end"* is one drifting apart later, on a number that decides
+>   where audio lands. Consolidated onto the mix, **9 tests** neither copy had.
+>
+> **The rest of StatusLive's studio cluster was examined and left alone**, which
+> is the finding worth recording. `mutate_open_mix`, `step_history`,
+> `push_studio_history`, `reset_studio_history`, `zoom_step` are assigns plus
+> side effects — undo/redo stack management and `send_update` — which is
+> precisely what a LiveView is for. The roadmap's complaint that *"StatusLive
+> implements Studio editing"* is largely already satisfied: the editing lives in
+> `SoundStudioComponent` and `StudioMix`; what remains here is the state a
+> component cannot hold, because the tab's `:if` discards it on every switch.
+> Extracting it would move orchestration into a module that then needs the
+> socket passed to it — indirection, not separation.
+>
+> **`SoundStudioComponent` is 1,926 and is a different job.** It is template
+> decomposition, not purity extraction — the roadmap says so — and it wants a
+> pass of its own rather than being tacked onto this one.
+>
+> **The lesson this phase has to carry:** `TradingLive` was cut 46% and regrew
+> past its own starting complaint within a week. A split buys a rate, not a
+> destination, unless something makes the regrowth visible.
 
 Extract a pure `StudioSession` state transition layer for selection, clipboard,
 undo/redo, arrangement edits, and trim state. Separate:

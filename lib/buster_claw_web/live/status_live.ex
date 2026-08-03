@@ -10,6 +10,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
   alias BusterClaw.Notifications
+  alias BusterClaw.Notifications.Schedule
   alias BusterClaw.Notifications.StudioMix
   alias BusterClaw.Runtime.Status
   alias BusterClaw.Setup
@@ -234,73 +235,9 @@ defmodule BusterClawWeb.StatusLive do
     assign(socket, :notify_form, to_form(params, as: :notify, errors: [{field, {message, []}}]))
   end
 
-  defp parse_minutes(value) do
-    case value |> to_string() |> String.trim() |> Integer.parse() do
-      {minutes, _rest} when minutes > 0 -> minutes
-      _ -> :error
-    end
-  end
-
-  # An alarm's label is optional — a bedside clock doesn't need naming — so a
-  # blank one becomes "Alarm" (the schema and the list/modal require a label).
-  # Timers and reminders keep theirs: the label IS the message.
-  defp default_notify_label("", "alarm"), do: "Alarm"
-  defp default_notify_label(label, _kind), do: label
-
-  # The moment a widget submission should fire, per kind: a timer counts down;
-  # alarms AND reminders arm the next local wall-clock occurrence of the picked
-  # time. (The `notify_create` command's reminder fires immediately — that's the
-  # agent announcing something now; a human setting a reminder is scheduling
-  # its announcement.)
-  defp notify_fire_at("timer", params) do
-    case params |> Map.get("minutes", "") |> parse_minutes() do
-      :error -> {:error, :minutes, "minutes must be a positive number"}
-      minutes -> {:ok, DateTime.add(now(), minutes * 60, :second)}
-    end
-  end
-
-  defp notify_fire_at(kind, params) when kind in ["alarm", "reminder"] do
-    case parse_wall_time(Map.get(params, "at", "")) do
-      {:ok, time} -> {:ok, next_local_occurrence(time)}
-      :error -> {:error, :at, "pick a time"}
-    end
-  end
-
-  defp notify_fire_at(_kind, _params), do: {:error, :label, "unknown kind"}
-
-  # <input type="time"> submits "HH:MM" (sometimes "HH:MM:SS").
-  defp parse_wall_time(value) do
-    value = String.trim(to_string(value))
-    padded = if String.length(value) == 5, do: value <> ":00", else: value
-
-    case Time.from_iso8601(padded) do
-      {:ok, time} -> {:ok, time}
-      _ -> :error
-    end
-  end
-
-  # The next moment the Mac's local clock reads `time`, as UTC: today if still
-  # ahead, else tomorrow. The offset comes from comparing the OS local clock to
-  # UTC (no tz database in the app); rounded to 15-minute granularity — real
-  # offsets are — so the seconds between the two reads can't skew it. An alarm
-  # set across a DST flip lands an hour off; acceptable for a bedside clock.
-  defp next_local_occurrence(%Time{} = time) do
-    local_now = NaiveDateTime.from_erl!(:calendar.local_time())
-    candidate = NaiveDateTime.new!(NaiveDateTime.to_date(local_now), time)
-
-    candidate =
-      if NaiveDateTime.compare(candidate, local_now) == :gt,
-        do: candidate,
-        else: NaiveDateTime.add(candidate, 86_400, :second)
-
-    utc_now = NaiveDateTime.from_erl!(:calendar.universal_time())
-    offset = round(NaiveDateTime.diff(local_now, utc_now) / 900) * 900
-
-    candidate
-    |> NaiveDateTime.add(-offset, :second)
-    |> DateTime.from_naive!("Etc/UTC")
-    |> DateTime.truncate(:second)
-  end
+  # Timer/alarm/reminder wall-clock arithmetic lives in
+  # `BusterClaw.Notifications.Schedule` — pure, and extracted 08-03 so the
+  # next-occurrence and DST cases can be asserted without driving a mount.
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -426,8 +363,8 @@ defmodule BusterClawWeb.StatusLive do
       %{source: source, duration_ms: duration} ->
         {:noreply,
          mutate_open_mix(socket, fn mix ->
-           track = paste_track(mix, socket.assigns.studio_clip)
-           StudioMix.add_clip(mix, track.id, source, track_end(track), duration)
+           track = StudioMix.paste_track(mix, socket.assigns.studio_clip)
+           StudioMix.add_clip(mix, track.id, source, StudioMix.track_end_ms(track), duration)
          end)}
     end
   end
@@ -509,10 +446,10 @@ defmodule BusterClawWeb.StatusLive do
 
   def handle_event("notify_create", %{"notify" => params}, socket) do
     kind = Map.get(params, "kind", "timer")
-    label = params |> Map.get("label", "") |> String.trim() |> default_notify_label(kind)
+    label = params |> Map.get("label", "") |> String.trim() |> Schedule.default_label(kind)
 
     with :ok <- if(label == "", do: {:error, :label, "add a label"}, else: :ok),
-         {:ok, fire_at} <- notify_fire_at(kind, params) do
+         {:ok, fire_at} <- Schedule.fire_at(kind, params) do
       attrs = %{
         "kind" => kind,
         "label" => label,
@@ -1068,18 +1005,6 @@ defmodule BusterClawWeb.StatusLive do
   # Paste lands on the selected clip's track, so a copy sits beside its
   # original; with nothing selected it falls to the first track rather than
   # refusing.
-  defp paste_track(%StudioMix{tracks: tracks} = mix, clip_id) do
-    holder =
-      mix
-      |> StudioMix.clips()
-      |> Enum.find_value(fn {track, clip} -> if clip.id == clip_id, do: track end)
-
-    holder || hd(tracks)
-  end
-
-  defp track_end(track) do
-    track.clips |> Enum.map(&(&1.start_ms + &1.duration_ms)) |> Enum.max(fn -> 0.0 end)
-  end
 
   defp switch_home_tab(socket, tab), do: assign(socket, :home_tab, tab)
 

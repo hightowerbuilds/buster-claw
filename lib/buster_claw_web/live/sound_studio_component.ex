@@ -336,7 +336,7 @@ defmodule BusterClawWeb.SoundStudioComponent do
       {:ok, duration} ->
         # Land it after whatever is already on that track, so successive adds
         # queue up instead of stacking invisibly at zero.
-        at = track_end_ms(mix, track_id)
+        at = StudioMix.track_end_ms(mix, track_id)
 
         {:noreply, save_mix(socket, StudioMix.add_clip(mix, track_id, source, at, duration))}
 
@@ -610,14 +610,6 @@ defmodule BusterClawWeb.SoundStudioComponent do
   end
 
   defp save_mix(socket, _mix), do: socket
-
-  defp track_end_ms(%StudioMix{} = mix, track_id) do
-    mix.tracks
-    |> Enum.find(%{clips: []}, &(&1.id == track_id))
-    |> Map.fetch!(:clips)
-    |> Enum.map(&(&1.start_ms + &1.duration_ms))
-    |> Enum.max(fn -> 0.0 end)
-  end
 
   # A clip caches its source's length for layout. The render re-reads the real
   # file, so a stale cache changes how wide a block draws, never what you hear.

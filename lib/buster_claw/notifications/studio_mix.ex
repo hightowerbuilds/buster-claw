@@ -202,6 +202,39 @@ defmodule BusterClaw.Notifications.StudioMix do
     stripped
   end
 
+  @doc """
+  Where a track's audio ends — the largest `start_ms + duration_ms` on it, or
+  `0.0` for an empty track. This is where an appended clip goes.
+
+  Consolidated here 08-03: `StatusLive` and `SoundStudioComponent` each carried
+  their own copy, in different shapes (one taking a track, one taking a mix and
+  a track id) and neither aware of the other. Two implementations of "where does
+  this track end" is one drifting apart later, on a number that decides where
+  audio lands.
+  """
+  def track_end_ms(%{clips: clips}) do
+    clips |> Enum.map(&(&1.start_ms + &1.duration_ms)) |> Enum.max(fn -> 0.0 end)
+  end
+
+  def track_end_ms(%__MODULE__{tracks: tracks}, track_id) do
+    tracks
+    |> Enum.find(%{clips: []}, &(&1.id == track_id))
+    |> track_end_ms()
+  end
+
+  @doc """
+  The track a paste should land on: the one already holding `clip_id`, else the
+  first. Pasting near the clip you copied is what the operator means.
+  """
+  def paste_track(%__MODULE__{tracks: tracks} = mix, clip_id) do
+    holder =
+      mix
+      |> clips()
+      |> Enum.find_value(fn {track, clip} -> if clip.id == clip_id, do: track end)
+
+    holder || hd(tracks)
+  end
+
   @doc "Every clip in the mix, paired with the track holding it."
   def clips(%__MODULE__{tracks: tracks}) do
     Enum.flat_map(tracks, fn track -> Enum.map(track.clips, &{track, &1}) end)

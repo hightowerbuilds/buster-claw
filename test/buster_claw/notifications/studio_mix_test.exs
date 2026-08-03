@@ -364,4 +364,56 @@ defmodule BusterClaw.Notifications.StudioMixTest do
       assert BusterClaw.Notifications.SoundStudio.list() == []
     end
   end
+
+  # Both of these used to exist TWICE — one copy in StatusLive, one in
+  # SoundStudioComponent, in different shapes and unaware of each other.
+  # Consolidated here 08-03; these are the tests neither copy had.
+  describe "track_end_ms — where an appended clip lands" do
+    test "an empty track ends at zero, not at nil" do
+      audio = StudioMix.new("idea")
+      assert StudioMix.track_end_ms(audio, track_id(audio, 0)) == 0.0
+      assert StudioMix.track_end_ms(Enum.at(audio.tracks, 0)) == 0.0
+    end
+
+    test "it is the furthest clip END, not the furthest clip START" do
+      audio =
+        StudioMix.new("idea")
+        |> then(&StudioMix.add_clip(&1, track_id(&1, 0), "a", 0, 900))
+        |> then(&StudioMix.add_clip(&1, track_id(&1, 0), "b", 100, 200))
+
+      # A long clip at 0 outreaches a short one starting later; taking the max
+      # start would drop the next clip on top of audio already there.
+      assert StudioMix.track_end_ms(audio, track_id(audio, 0)) == 900
+    end
+
+    test "an unknown track id reads as empty rather than raising" do
+      audio = StudioMix.new("idea")
+      assert StudioMix.track_end_ms(audio, "no-such-track") == 0.0
+    end
+
+    test "tracks are measured independently" do
+      audio = StudioMix.new("idea") |> StudioMix.add_track()
+      audio = StudioMix.add_clip(audio, track_id(audio, 0), "a", 0, 500)
+
+      assert StudioMix.track_end_ms(audio, track_id(audio, 0)) == 500
+      assert StudioMix.track_end_ms(audio, track_id(audio, 1)) == 0.0
+    end
+  end
+
+  describe "paste_track — where a paste lands" do
+    test "it lands on the track already holding the copied clip" do
+      audio = StudioMix.new("idea") |> StudioMix.add_track()
+      audio = StudioMix.add_clip(audio, track_id(audio, 1), "a", 0, 100)
+      [{_track, clip}] = StudioMix.clips(audio)
+
+      assert StudioMix.paste_track(audio, clip.id).id == track_id(audio, 1)
+    end
+
+    test "an unknown or nil clip id falls back to the first track" do
+      audio = StudioMix.new("idea") |> StudioMix.add_track()
+
+      assert StudioMix.paste_track(audio, "gone").id == track_id(audio, 0)
+      assert StudioMix.paste_track(audio, nil).id == track_id(audio, 0)
+    end
+  end
 end
