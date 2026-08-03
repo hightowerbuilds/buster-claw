@@ -581,8 +581,35 @@ defmodule BusterClaw.Commands.Web do
   defp validate_engine(engine) when engine in @flow_engines, do: :ok
   defp validate_engine(_engine), do: {:error, :unknown_engine}
 
-  defp run_flow("tab", steps), do: FlowRunner.run(steps)
+  # The live-tab executor is injected here rather than defaulted inside
+  # FlowRunner — this module owning the mapping is what keeps FlowRunner from
+  # depending back on it (the 08-02 cycle break). Local function calls, never
+  # Commands.call/3: the flow was policy-checked and audited once at the choke
+  # point, and re-entering per step would re-audit and double rate-limit. The
+  # primitives' own Sentinel events still fire per step.
+  defp run_flow("tab", steps),
+    do: FlowRunner.run(steps, exec: &tab_step/2, screenshot: &tab_failure_screenshot/0)
+
   defp run_flow("background", steps), do: background_flow_runner().(steps)
+
+  defp tab_step("navigate", args), do: browser_navigate(args)
+  defp tab_step("wait", args), do: browser_wait(args)
+  defp tab_step("click", args), do: browser_click(args)
+  defp tab_step("fill", args), do: browser_fill(args)
+  defp tab_step("extract", args), do: browser_extract(args)
+  defp tab_step("assert", args), do: browser_assert(args)
+  defp tab_step("find_elements", args), do: browser_find_elements(args)
+
+  # Only worth attempting when a desktop shell is attached — without one the
+  # capture would just burn its timeout on an already-failed flow.
+  defp tab_failure_screenshot do
+    with true <- Bridge.available?(),
+         {:ok, shot} <- browser_screenshot() do
+      Map.take(shot, [:path, :url])
+    else
+      _ -> nil
+    end
+  end
 
   # Test seam: unit tests must never launch a real Chromium.
   defp background_flow_runner do

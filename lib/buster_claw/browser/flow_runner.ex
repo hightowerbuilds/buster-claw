@@ -9,15 +9,14 @@ defmodule BusterClaw.Browser.FlowRunner do
   failure a best-effort screenshot is attached when a desktop shell is
   attached; a screenshot problem never masks the step failure.
 
-  Calls the LOCAL `BusterClaw.Commands.Web` functions, never
-  `Commands.call/3`: the flow was policy-checked and audited once at the choke
-  point, and re-entering per step would re-audit and double rate-limit. The
-  primitives' own Sentinel events still fire per step, so the feed shows each
-  act individually.
+  Owns the flow CONTRACT — validation, ordering, halt-on-failure, the report
+  shape — and none of the execution. Every caller injects `exec:` (and
+  `screenshot:`): `Commands.Web` passes the live-tab primitives,
+  `BackgroundFlow` passes a headless CDP session. Until 08-02 the live-tab
+  executor lived here as a default, which made this module call back into
+  `Commands.Web` while `Commands.Web` called it — a dependency cycle for the
+  sake of a default argument.
   """
-
-  alias BusterClaw.Browser.Bridge
-  alias BusterClaw.Commands.Web
 
   @max_steps 25
   @actions ~w(navigate wait click fill extract assert find_elements)
@@ -33,16 +32,16 @@ defmodule BusterClaw.Browser.FlowRunner do
   steps: [per-step reports], failed_step: nil | n, screenshot: map | nil}}`,
   or `{:error, reason}` for a flow that is invalid before any step runs.
 
-  Options (tests): `exec:` replaces the per-step executor
+  Options: `exec:` (REQUIRED) is the per-step executor
   (`fn action, args -> result end`); `screenshot:` replaces the failure
-  screenshot (`fn -> map | nil end`).
+  screenshot (`fn -> map | nil end`, default none).
   """
   def run(steps, opts \\ [])
 
   def run(steps, opts) when is_list(steps) do
     with :ok <- validate(steps) do
-      exec = Keyword.get(opts, :exec, &execute/2)
-      screenshot = Keyword.get(opts, :screenshot, &failure_screenshot/0)
+      exec = Keyword.fetch!(opts, :exec)
+      screenshot = Keyword.get(opts, :screenshot, fn -> nil end)
 
       results = run_steps(steps, exec)
       failed = Enum.find(results, &(&1.status == "failed"))
@@ -121,23 +120,4 @@ defmodule BusterClaw.Browser.FlowRunner do
 
   defp format_reason(reason) when is_atom(reason), do: to_string(reason)
   defp format_reason(reason), do: inspect(reason)
-
-  defp execute("navigate", args), do: Web.browser_navigate(args)
-  defp execute("wait", args), do: Web.browser_wait(args)
-  defp execute("click", args), do: Web.browser_click(args)
-  defp execute("fill", args), do: Web.browser_fill(args)
-  defp execute("extract", args), do: Web.browser_extract(args)
-  defp execute("assert", args), do: Web.browser_assert(args)
-  defp execute("find_elements", args), do: Web.browser_find_elements(args)
-
-  # Only worth attempting when a desktop shell is attached — without one the
-  # capture would just burn its timeout on an already-failed flow.
-  defp failure_screenshot do
-    with true <- Bridge.available?(),
-         {:ok, shot} <- Web.browser_screenshot() do
-      Map.take(shot, [:path, :url])
-    else
-      _ -> nil
-    end
-  end
 end

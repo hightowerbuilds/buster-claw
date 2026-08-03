@@ -2,7 +2,7 @@ defmodule BusterClaw.TerminalCommands do
   @moduledoc """
   Whitelisted role-specific CLI commands for visible terminal sessions.
 
-  The shipped catalog lives in `@roles`. A user catalog — overrides and
+  The shipped catalog lives in `Builtins`. A user catalog — overrides and
   additions for the non-protected roles — persists as one JSON document in
   `BusterClaw.Settings` (key `"terminal_commands.catalog"`) and is merged over
   the built-ins at read time by `load/1`, so every consumer (the terminal
@@ -41,149 +41,16 @@ defmodule BusterClaw.TerminalCommands do
   # by `ensure/0` to migrate an existing edit, then deleted.
   @legacy_settings_key "terminal_commands.catalog"
   @topic "terminal_commands"
-  @protected_keys ["mailman", "agent-setup"]
-
-  @roles [
-    %{
-      key: "agent-setup",
-      label: "Install Claude Code",
-      aliases: ["claude-setup", "install-claude"],
-      startup_profile: "agent-setup",
-      # Kept resolvable (the Setup wizard's install button + startup-profile
-      # validation rely on it), but hidden from the terminal command menu.
-      hidden: true,
-      commands: [
-        %{
-          key: "install-claude",
-          label: "Install Claude Code",
-          description: "Install the Claude Code CLI with Homebrew.",
-          command: "brew install --cask claude-code",
-          default?: true
-        }
-      ]
-    },
-    %{
-      key: "mailman",
-      label: "On Duty",
-      aliases: ["mail-triage", "gmail-poller", "on-duty", "off-duty", "shift", "on-shift", "duty"],
-      startup_profile: "mailman",
-      commands: [
-        %{
-          key: "on-duty",
-          label: "Go On Duty",
-          description:
-            "Open an unattended shift AND watch Gmail: the agent works the queue and replies in-thread to trusted-sender requests under the per-shift run cap + kill-switch + no-sleep. Ctrl-C stands down.",
-          command: "./buster-claw on-duty",
-          default?: true
-        },
-        %{
-          key: "on-duty-minute",
-          label: "Go On Duty — Poll Every Minute",
-          description: "Same, with a 60-second Gmail poll cadence.",
-          command: "./buster-claw on-duty --interval 60"
-        },
-        %{
-          key: "off-duty",
-          label: "Off Duty",
-          description: "Stand down — end the active shift (the Dispatcher stops pumping).",
-          command: "./buster-claw off-duty"
-        },
-        %{
-          key: "shift-status",
-          label: "Shift Status",
-          description: "Whether a shift is active, its mode, and dispatched/done/failed counts.",
-          command: "./buster-claw shift status"
-        }
-      ]
-    },
-    %{
-      key: "queue",
-      label: "Dispatch Queue",
-      aliases: ["dispatch-queue", "queue"],
-      startup_profile: "queue",
-      commands: [
-        %{
-          key: "dispatch-list",
-          label: "List Queue",
-          description: "Show the open Dispatch items (queued / claimed / running).",
-          command: "./buster-claw dispatch list"
-        },
-        %{
-          key: "dispatch-claim",
-          label: "Claim Next",
-          description: "Claim the oldest single-strategy item to work it.",
-          command: "./buster-claw dispatch claim"
-        },
-        %{
-          key: "dispatch-strategy-swarm",
-          label: "Mark Item → Swarm",
-          description:
-            "Opt a queued item into the parallel coordinator (it decomposes into role-typed sub-runs). Replace <id> with the item id from `dispatch list`.",
-          command: "./buster-claw dispatch strategy <id> swarm"
-        }
-      ]
-    },
-    %{
-      key: "toolbox",
-      label: "Commands",
-      aliases: ["surface", "toolbox"],
-      startup_profile: "toolbox",
-      commands: [
-        %{
-          key: "commands-list",
-          label: "List Commands",
-          description: "Print the full command surface, including runtime skills ([skill]).",
-          command: "./buster-claw commands"
-        },
-        %{
-          key: "runtime-status",
-          label: "Runtime Status",
-          description: "Quick health/status snapshot of the running app.",
-          command: "./buster-claw run runtime_status"
-        },
-        %{
-          key: "memory-search",
-          label: "Search Memory",
-          description:
-            "Recall past run summaries by full-text query. Edit the query text before running.",
-          command: ~s(./buster-claw run memory_search --json '{"query":"shift"}')
-        }
-      ]
-    },
-    %{
-      key: "prompts",
-      label: "Prompts",
-      aliases: ["prompt"],
-      startup_profile: "prompts",
-      # One static default prompt; a prompt per enabled skill is synthesized
-      # from the `skills/` folder at display time (see `skill_prompt_commands/0`
-      # and `with_skill_prompts/1`), so the Prompts flyout tracks the folder
-      # with no recompile and no restated rows here.
-      commands: [
-        %{
-          key: "welcome-introduction",
-          command:
-            "Welcome to Buster Claw. Please read the introduction at .buster-claw/INTRODUCTION.md.",
-          kind: :prompt,
-          default?: true
-        }
-      ]
-    }
-  ]
 
   # ---- Shipped catalog + protection model ---------------------------------
 
-  @doc "The shipped, compile-time catalog (pre-merge)."
-  def builtin_roles, do: @roles
-
-  @doc "Find a shipped role by exact key (aliases don't count here)."
-  def builtin_role(key), do: Enum.find(@roles, &(&1.key == key))
-
-  @doc "Role keys that can never be customized (the shift safety surface)."
-  def protected_keys, do: @protected_keys
-
-  @doc "Whether a role key is protected from customization."
-  def protected?(key), do: key in @protected_keys
+  # The shipped catalog and the protection model live in `Builtins` (a leaf —
+  # extracted 08-02 so the catalog submodules stop reaching back into this
+  # facade, which was a dependency cycle). Delegates keep the public surface.
+  defdelegate builtin_roles, to: BusterClaw.TerminalCommands.Builtins
+  defdelegate builtin_role(key), to: BusterClaw.TerminalCommands.Builtins
+  defdelegate protected_keys, to: BusterClaw.TerminalCommands.Builtins
+  defdelegate protected?(key), to: BusterClaw.TerminalCommands.Builtins
 
   # ---- Merged catalog (what every consumer reads) --------------------------
 
@@ -316,11 +183,11 @@ defmodule BusterClaw.TerminalCommands do
       end
 
     by_key = Map.new(user_roles, &{&1["key"], &1})
-    builtin_keys = Enum.map(@roles, & &1.key)
+    builtin_keys = Enum.map(builtin_roles(), & &1.key)
 
     merged =
-      Enum.map(@roles, fn role ->
-        if role.key in @protected_keys do
+      Enum.map(builtin_roles(), fn role ->
+        if protected?(role.key) do
           normalize_builtin_role(role, true)
         else
           merge_role(role, by_key[role.key])
@@ -412,8 +279,8 @@ defmodule BusterClaw.TerminalCommands do
   # Protected roles are omitted — they are re-injected from code at load time.
   defp default_catalog_doc do
     roles =
-      @roles
-      |> Enum.reject(&(&1.key in @protected_keys))
+      builtin_roles()
+      |> Enum.reject(&protected?(&1.key))
       |> Enum.map(&serialize_builtin_role/1)
 
     %{"version" => Catalog.version(), "roles" => roles}
@@ -454,7 +321,7 @@ defmodule BusterClaw.TerminalCommands do
   defp full_doc_from_roles(runtime_roles) do
     roles =
       runtime_roles
-      |> Enum.reject(&(&1.key in @protected_keys))
+      |> Enum.reject(&protected?(&1.key))
       |> Enum.map(fn role ->
         default_key = Enum.find_value(role.commands, fn c -> if c.default?, do: c.key end)
 

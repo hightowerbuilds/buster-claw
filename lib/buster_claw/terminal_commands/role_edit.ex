@@ -58,7 +58,7 @@ defmodule BusterClaw.TerminalCommands.RoleEdit do
   # its hidden key field) surfaces here as a missing built-in key.
   defp validate_builtin_commands_present(changeset) do
     builtin_keys =
-      case TerminalCommands.builtin_role(changeset.data.key) do
+      case TerminalCommands.Builtins.builtin_role(changeset.data.key) do
         nil -> []
         %{commands: commands} -> Enum.map(commands, & &1.key)
       end

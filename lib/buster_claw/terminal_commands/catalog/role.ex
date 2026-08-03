@@ -42,7 +42,7 @@ defmodule BusterClaw.TerminalCommands.Catalog.Role do
   defp validate_not_protected(changeset) do
     key = get_field(changeset, :key)
 
-    if is_binary(key) and TerminalCommands.protected?(key) do
+    if is_binary(key) and TerminalCommands.Builtins.protected?(key) do
       add_error(changeset, :key, "is protected and cannot be customized")
     else
       changeset
@@ -129,7 +129,7 @@ defmodule BusterClaw.TerminalCommands.Catalog.Role do
   defp validate_user_role_has_commands(changeset) do
     key = get_field(changeset, :key)
 
-    if is_binary(key) and is_nil(TerminalCommands.builtin_role(key)) and
+    if is_binary(key) and is_nil(TerminalCommands.Builtins.builtin_role(key)) and
          get_field(changeset, :commands) in [nil, []] do
       add_error(changeset, :commands, "a custom role needs at least one command")
     else
@@ -138,7 +138,7 @@ defmodule BusterClaw.TerminalCommands.Catalog.Role do
   end
 
   defp builtin_kinds(key) when is_binary(key) do
-    case TerminalCommands.builtin_role(key) do
+    case TerminalCommands.Builtins.builtin_role(key) do
       nil ->
         %{}
 
