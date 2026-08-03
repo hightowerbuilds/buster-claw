@@ -189,6 +189,14 @@ if config_env() == :prod do
     http: [ip: {127, 0, 0, 1}, port: port],
     check_origin: ["//127.0.0.1", "//localhost"],
     secret_key_base: secret_key_base
+
+  # The same two values under our OWN keys, for BusterClaw.RuntimeConfig. Core
+  # modules (the vaults, Recovery, Dispatcher) read them here instead of through
+  # the endpoint's config, which made them depend on the whole web layer — see
+  # that module for the cycle it closed.
+  config :buster_claw,
+    secret_key_base: secret_key_base,
+    local_port: port
 end
 
 # Bundled Google OAuth client (one-click "Connect Google"). Env vars override

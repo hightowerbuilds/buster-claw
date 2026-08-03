@@ -31,6 +31,13 @@ config :buster_claw, BusterClawWeb.Endpoint,
     tailwind: {Tailwind, :install_and_run, [:buster_claw, ~w(--watch)]}
   ]
 
+# Same values under our own keys, for BusterClaw.RuntimeConfig — core modules
+# read these rather than reaching through the endpoint's config. Keep in step
+# with the endpoint block above; dev binds the Phoenix default port.
+config :buster_claw,
+  secret_key_base: "nTd5WuiJVogoqAr1jT6URIYp4BsYSAvl+Ozdr9lJL5ORy5by1QPCFYWanRJfwLWk",
+  local_port: 4000
+
 # ## SSL Support
 #
 # In order to use HTTPS in development, a self-signed

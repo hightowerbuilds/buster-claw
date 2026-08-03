@@ -322,12 +322,9 @@ defmodule BusterClaw.Dispatcher do
   defp token_for(:untrusted), do: BusterClaw.ApiToken.agent_value()
   defp token_for(:trusted), do: BusterClaw.ApiToken.value()
 
-  # The endpoint's real bound port (random in the packaged release), read from
-  # config so the run's CLI calls reach this app, not the :4000 default.
-  defp endpoint_url do
-    http = Application.get_env(:buster_claw, BusterClawWeb.Endpoint, [])[:http] || []
-    "http://127.0.0.1:#{http[:port] || 4000}"
-  end
+  # The real bound port (random in the packaged release), so the run's CLI calls
+  # reach this app rather than the :4000 default.
+  defp endpoint_url, do: BusterClaw.RuntimeConfig.local_url()
 
   defp login_shell, do: System.get_env("SHELL") || "/bin/zsh"
 

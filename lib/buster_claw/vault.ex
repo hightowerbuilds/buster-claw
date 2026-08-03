@@ -83,11 +83,5 @@ defmodule BusterClaw.Vault do
     :crypto.hash(:sha256, "vault:v1:" <> secret_key_base())
   end
 
-  defp secret_key_base do
-    endpoint_config = Application.get_env(:buster_claw, BusterClawWeb.Endpoint, [])
-
-    System.get_env("SECRET_KEY_BASE") ||
-      Keyword.get(endpoint_config, :secret_key_base) ||
-      raise "missing secret_key_base for secret vault"
-  end
+  defp secret_key_base, do: BusterClaw.RuntimeConfig.secret_key_base!("secret vault")
 end

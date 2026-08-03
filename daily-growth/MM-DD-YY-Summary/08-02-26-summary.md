@@ -765,9 +765,89 @@ new place.
 
 ---
 
+## The last two findings were the accurate ones, and one line was the keystone
+
+Findings 3 (dependency direction) and 5 (command contracts) both verified
+**accurate in every particular** — the only two of five that did. Worth noticing
+why: they are the two the reviewer built from tooling output rather than from
+reading prose. It was reliable exactly where it ran something.
+
+### Finding 3, and the edge nobody had identified
+
+Every claim held: five cycles, the compile-time CRUD loop binding `Commands` to
+exactly `Calendar` and `Integrations`, `Integration → Encrypted → Vault`, the
+core-to-web config reads, all four small cycles.
+
+But only **two** compile edges made that 110-file cycle compile-connected, and
+one of them cannot be removed — Ecto resolves schema field types at compile
+time, so `Integration --compile--> Encrypted` is the price of having a custom
+encrypted type at all. So I probed the other, replacing the
+`BusterClawWeb.Endpoint` module alias with the identical literal atom in two
+files:
+
+```
+before:  1 compile-connected cycle · 110 nodes (2 compile, 28 export)
+after:   No cycles found           ·  98 nodes (0 compile, 22 export)
+```
+
+That config-key reference was the **return path** — `Integration → Encrypted →
+Vault → Endpoint → web → … → Integrations → Integration` — and it was what made
+*both* compile edges cyclic. Which means Phase 1's item 3 alone dissolves the
+recompilation cascade, and item 4, "replace the compile-time CRUD loop in
+`Commands`", is optional rather than a prerequisite. That was the most expensive
+item in the phase, and the measurement retired it.
+
+`BusterClaw.RuntimeConfig` shipped it properly: one place for the two runtime
+facts the desktop shell decides — master key and bound port — read without
+touching the web layer. It replaced four reads through the endpoint's config,
+two of which (`Vault` and `Google.Vault`) were byte-identical copies of each
+other. **110 nodes → 72, compile-connected 1 → 0.**
+
+Cycle *count* went 5 → 6, which reads like a regression and isn't: the
+Google-internal cycle was always there, absorbed inside the 110-node blob.
+Breaking the blob revealed its contents.
+
+### Finding 5, and a contract nothing was watching
+
+The numbers reconcile exactly: 158 catalog entries, 148 delegates plus 10
+compile-generated CRUD functions. The invariant test really does catch
+omissions. `acl_lockstep.rs`'s own header really does say it guards three
+surfaces, and names two incidents where an omission survived dev builds.
+
+The gap it names is real. `bridge.ex`'s ten `@actions` and `browser.js`'s ten
+dispatch branches agreed — but nothing checked that they did. `bridge_test.exs`
+has zero references to the JS, and `render_hook` never runs the hook's real
+JavaScript. A mismatch appears only in a live browser, as `{error: "unknown
+browser command"}`, with every Elixir test green. The same shape as the rename
+that severed a hook contract earlier this month.
+
+So the bridge got the same treatment the Rust surfaces already had: parse both
+sources as text, compare the sets. Three tests, including the tripwire that the
+docs-drift guard taught me to write — assert the parser matched *something*,
+because an extraction that silently returns an empty set is a test that passes
+forever. Probed in both directions; an Elixir-only action and a JS-only branch
+each fail it by name.
+
+I did **not** do Phase 2's other half. 158 commands are already covered by an
+invariant test that catches exactly the omission a registry would prevent;
+rewriting the choke point that carries all policy, rate limiting and auditing
+would be the highest-blast-radius change in the document, bought with
+ergonomics.
+
+### A footnote on reading failures
+
+Midway through, the suite came back 75 failures. Then 95. Then 4. Then 72.
+Every single one was `Database busy`, and not one mentioned anything I had
+touched — the other session was running its own tests against the shared SQLite
+test DB, which this repo has recorded twice as producing exactly that
+signature. Waiting for a quiet window gave 2,216 tests, 0 failures, in the
+normal 41 seconds. A failure count still isn't a diagnosis.
+
+---
+
 ## At close
 
-**Suite: 2,210 tests, 0 failures** — 64 of those added by the refactor/Dialyzer
+**Suite: 2,216 tests, 0 failures** — 70 of those added by the refactor/Dialyzer
 thread below, the rest by a parallel session's Explore-tab work. Credo strict clean,
 format clean, Rust 29 + 5 lockstep green.
 
@@ -781,7 +861,7 @@ stopped a shift.
 
 Earlier in the day the suite sat at 2,143 — verified across five consecutive
 runs and two precommits, because that stretch ended on an intermittent failure
-and one green run would not have meant anything. The 64 added since are the two
+and one green run would not have meant anything. The 70 added since are the two
 purity extractions and the CLI regressions.
 
 **Two roadmaps archived, two written.** `roadmaps/` now holds five live
@@ -799,5 +879,5 @@ work, not a question.
 because they are the same lesson: the right-click menu that a rename killed
 silently, the header-probe bug found by importing a real 20-minute file, the
 RateLimiter crasher that a failure *count* actively pointed away from, and a
-Ctrl-C handler that has never once fired. The suite is 2,210 tests strong and
+Ctrl-C handler that has never once fired. The suite is 2,216 tests strong and
 none of the four was its idea.

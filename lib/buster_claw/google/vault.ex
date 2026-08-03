@@ -57,11 +57,6 @@ defmodule BusterClaw.Google.Vault do
     :crypto.hash(:sha256, "google:v1:" <> secret_key_base())
   end
 
-  defp secret_key_base do
-    endpoint_config = Application.get_env(:buster_claw, BusterClawWeb.Endpoint, [])
-
-    System.get_env("SECRET_KEY_BASE") ||
-      Keyword.get(endpoint_config, :secret_key_base) ||
-      raise "missing secret_key_base for Google credential vault"
-  end
+  defp secret_key_base,
+    do: BusterClaw.RuntimeConfig.secret_key_base!("Google credential vault")
 end

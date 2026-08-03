@@ -34,6 +34,12 @@ config :buster_claw, BusterClawWeb.Endpoint,
   secret_key_base: "4b9dJlwt909xaIFH1I1ZBTm3Ge4dBRtl7vhsFySqmKhhmXQt1RElz4HjimLpy/95",
   server: false
 
+# Same values under our own keys, for BusterClaw.RuntimeConfig — core modules
+# read these rather than reaching through the endpoint's config.
+config :buster_claw,
+  secret_key_base: "4b9dJlwt909xaIFH1I1ZBTm3Ge4dBRtl7vhsFySqmKhhmXQt1RElz4HjimLpy/95",
+  local_port: 4002
+
 config :buster_claw, :search_req_options, plug: {Req.Test, BusterClaw.SearchHTTP}
 config :buster_claw, :browser_req_options, plug: {Req.Test, BusterClaw.BrowserHTTP}
 

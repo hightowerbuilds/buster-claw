@@ -296,6 +296,66 @@ back on the web endpoint is not.
 
 **Priority:** P1
 
+> ### VERIFIED 08-02 — **accurate in every particular.** Then mostly fixed.
+>
+> Every claim re-measured and every one held: 5 cycles (the big one now 110, up
+> from 105 — the day's new modules); `Commands` compile-binds exactly `Calendar`
+> and `Integrations` via the CRUD loop; `Integration --compile--> Encrypted -->
+> Vault`; `Vault`/`Recovery` really do read config through
+> `BusterClawWeb.Endpoint`; and the four small cycles are exactly as listed. This
+> is the first finding in the document to survive verification intact.
+>
+> #### What the finding misses: which edge is the keystone
+>
+> Only **two** compile edges made that 110-node cycle compile-connected, and one
+> of them — `Integration --compile--> Encrypted` — **cannot be removed**: Ecto
+> resolves schema field types at compile time, so the custom `Encrypted` type
+> requires it.
+>
+> So the removable one was probed: replacing the `BusterClawWeb.Endpoint` module
+> alias with the identical literal atom in `vault.ex` and `recovery.ex` — same
+> config key, same behaviour, two lines.
+>
+> ```
+> before:  1 compile-connected cycle · 110 nodes (2 compile, 28 export)
+> after:   No cycles found           ·  98 nodes (0 compile, 22 export)
+> ```
+>
+> That config-key reference was the **return path**: `Integration → Encrypted →
+> Vault → Endpoint → web → … → Integrations → Integration`. It is what made BOTH
+> compile edges cyclic. Which means **Phase 1 item 3 alone dissolves the
+> recompilation cascade, and item 4 — "replace the compile-time CRUD loop in
+> `Commands`" — is optional**, not a prerequisite. That was the most expensive
+> item in the phase.
+>
+> #### SHIPPED
+>
+> `BusterClaw.RuntimeConfig` — one place for the two runtime facts the desktop
+> shell decides (master key, bound port), read without touching the web layer.
+> Replaces four reads through the endpoint's config: `Vault`, `Google.Vault`
+> (whose `secret_key_base/0` was a byte-identical duplicate of `Vault`'s),
+> `Recovery`, and `Dispatcher` (the bound port). `config/{dev,test,runtime}.exs`
+> now set `:secret_key_base` and `:local_port` under our own keys alongside the
+> endpoint's.
+>
+> ```
+> compile-connected cycles:  1 → 0
+> largest cycle:           110 → 72 nodes (1 export edge)
+> ```
+>
+> Cycle *count* went 5 → 6, which is not a regression: the Google-internal cycle
+> (`google ↔ client ↔ oauth ↔ self_test`) was always there, absorbed inside the
+> 110-node blob. Breaking the blob revealed it.
+>
+> **Acceptance met:** no module under `lib/buster_claw/` reads configuration
+> through a web module (`application.ex` still starts and reconfigures the
+> endpoint, which is the app supervisor wiring the web layer — correct).
+>
+> **Still open from this finding:** the four small cycles (terminal catalog,
+> browser flows, Trading↔Research, Music↔Sound) and the now-visible Google one.
+> All are export-level, none compile-connected. Phase 1 items 4–6 remain
+> unstarted and item 4 is now optional.
+
 ## 4. A few modules have become feature containers
 
 The largest modules are not merely long templates. They own unrelated state
@@ -308,7 +368,8 @@ locate. The answer is to extract cohesive policy and pure transformations first,
 not to create arbitrary `Part1`/`Part2` modules or a forest of stateful
 LiveComponents.
 
-**Priority:** P1
+**Priority:** P1 — **VERIFIED ACCURATE 08-02, and largely FIXED.** See the block
+under Finding 3 above and Phase 1 below.
 
 > ### CORRECTION (08-02) — right diagnosis, wrong axis. **Extract by purity, not by feature.**
 >
@@ -373,6 +434,48 @@ The Rust ACL test strongly guards the last three. It does not prove that the
 Elixir action, JavaScript mapping, argument names, and Rust handler still agree.
 
 **Priority:** P1
+
+> ### VERIFIED 08-02 — **accurate in every particular.** IPC half fixed.
+>
+> The second finding to survive verification intact, and the numbers reconcile
+> exactly: the catalog carries **158 entries**; `Commands` carries **148
+> `defdelegate`s + 10 compile-generated CRUD functions = 158**. Every entry is
+> checked by `catalog_invariants_test.exs:44` (`function_exported?` per name), so
+> omissions really are caught — and every new command really does need both
+> declarations. `acl_lockstep.rs`'s own header confirms it guards exactly three
+> surfaces ("registered in THREE places in lockstep"), naming two shipped
+> incidents where an omission got past dev builds.
+>
+> The Elixir↔JS gap is real and was unguarded. `bridge.ex:26`'s `@actions` and
+> `assets/js/hooks/browser.js`'s `action === "..."` branches agreed *today* (10
+> vs 10, identical sets, payload keys aligned) — but nothing checked it.
+> `bridge_test.exs` contains zero references to the JS, and `render_hook` never
+> executes the hook's real JavaScript. A mismatch surfaces only in a real browser
+> as `{error: "unknown browser command"}` from the hook's `else` arm, with every
+> Elixir test green. That is the same shape as the rename that severed a hook
+> contract while the suite stayed green.
+>
+> #### SHIPPED
+>
+> `test/buster_claw/browser/bridge_lockstep_test.exs` — parses both sources as
+> text and compares the sets, the same technique `acl_lockstep.rs` uses. Three
+> tests: Elixir⊆JS, JS⊆Elixir, and a tripwire asserting neither parser silently
+> matched nothing (the lesson from the docs-drift guard, which shipped broken
+> because its pattern missed the very line it existed to catch). **Probed in both
+> directions** — an Elixir-only action and a JS-only branch each fail it, naming
+> the offending action.
+>
+> #### Recommendation on the rest
+>
+> **Do not do the native-command registry.** 158 commands, already covered by an
+> invariant test that catches exactly the omission it would prevent. The cost of
+> the status quo is boilerplate per command; the cost of the change is rewriting
+> the single choke point through which all policy, rate limiting and auditing
+> flow. Highest blast radius in the document, sold on ergonomics.
+>
+> The argument-name half of the finding stands unaddressed: the lockstep test
+> compares action NAMES, not payload keys. A rename of `"wait_ms"` on either side
+> is still a silent break. Worth a follow-up, cheaper than it sounds.
 
 ---
 
@@ -1008,6 +1111,13 @@ complexity without reducing it.
   re-derived from `lib/`; the header now says which sections were re-checked and
   which still date from 06-14, rather than implying the whole file is current.
 
+- **Findings 3 and 5 — VERIFIED 08-02, both fully accurate.** The only two that
+  survived verification intact, and notably the two the reviewer built from
+  tooling output rather than prose. Phase 1 item 3 shipped
+  (`BusterClaw.RuntimeConfig`) and took compile-connected cycles **1 → 0**;
+  Phase 2's IPC half shipped (bridge lockstep test). See the blocks under each
+  finding.
+
 **Next, in order:**
 
 1. **The 12 remaining baseline entries** — eight `:pattern_match_cov`, three
@@ -1019,6 +1129,27 @@ complexity without reducing it.
 2. **UML sections 3–5** — the Ecto schema diagrams and the remaining flows still
    date from 06-14 and were not re-checked. Given how far sections 1 and 2 had
    drifted, assume these have too.
-3. Findings 3 and 5 — **not yet re-verified by the second reader.** Given that
-   three of the five findings examined so far contained a material error, measure
-   before executing either.
+3. **The five remaining cycles** — terminal catalog, browser flows,
+   Trading↔Research, Music↔Sound, and the newly-visible Google one. All
+   export-level, none compile-connected, so the recompilation cost is already
+   paid. Phase 1 items 4–6, with item 4 now optional (see Finding 3).
+4. **Payload-key lockstep** — the bridge test compares action NAMES; a rename of
+   `"wait_ms"` on either side is still silent. Cheaper than it sounds.
+
+---
+
+## Verification scorecard (all five findings, 08-02)
+
+| Finding | Numbers | Conclusions |
+|---|---|---|
+| 1 — behavioural docs | exact | **wrong** — two prompts, both correct; the literal fix was a security regression. One real P1 (README credentials), rest P2 |
+| 2 — Dialyzer suppressed | exact | right, **~10× smaller** than implied (232/253 one noise class); hid a live bug |
+| 3 — dependency direction | exact | **fully accurate** |
+| 4 — feature-container modules | exact | right diagnosis, **wrong axis** (sized by responsibility count, not lines per responsibility) |
+| 5 — command contracts | exact | **fully accurate** |
+
+Every structural measurement in the document held. Three of five conclusions did
+not. The two that survived intact — 3 and 5 — are the two derived from tooling
+output (`mix xref`, the ACL test's own header) rather than from reading prose.
+That is the reusable lesson: this reviewer was reliable exactly where it ran
+something, and unreliable exactly where it inferred.

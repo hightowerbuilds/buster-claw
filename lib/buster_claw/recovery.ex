@@ -11,11 +11,7 @@ defmodule BusterClaw.Recovery do
   """
 
   @doc "The current master key — the value a user should back up. `nil` if unset."
-  def recovery_key do
-    :buster_claw
-    |> Application.get_env(BusterClawWeb.Endpoint, [])
-    |> Keyword.get(:secret_key_base)
-  end
+  def recovery_key, do: BusterClaw.RuntimeConfig.secret_key_base()
 
   @doc """
   Per-machine app data directory the Tauri shell uses for app-internal state.
