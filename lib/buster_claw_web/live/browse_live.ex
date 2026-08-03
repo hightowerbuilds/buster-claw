@@ -104,7 +104,12 @@ defmodule BusterClawWeb.BrowseLive do
   def handle_event("agent_confirm_purchase", params, socket) do
     case socket.assigns.agent_run do
       %{pid: pid} ->
-        case Commerce.confirm_purchase(pid, confirmation: presence(params["confirmation"])) do
+        # `:human` is the whole reason this call site still exists separately
+        # from `agent_run_confirm_purchase` — the receipt records which one said
+        # so, and only this one is a person's own word.
+        attrs = [confirmation: presence(params["confirmation"]), confirmed_by: :human]
+
+        case Commerce.confirm_purchase(pid, attrs) do
           {:ok, _receipt} ->
             {:noreply,
              socket

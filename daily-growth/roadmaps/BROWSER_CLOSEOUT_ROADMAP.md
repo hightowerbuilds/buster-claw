@@ -1,6 +1,7 @@
 # Browser control — closing out the field test
 
-**Scoped 08-02-26 · Status: ACTIVE · Small on purpose.**
+**Scoped 08-02-26 · Status: ACTIVE — Part I DECIDED and BUILT 08-03-26; the four
+Part II items remain.**
 
 The 07-25 field test (`~/Desktop/browser-control-field-test-2026-07-25.md`) ran the
 whole Agent Mode stack at a real, logged-in, adversarial commercial site and came
@@ -27,7 +28,45 @@ in `LEFTOVERS.md`, where a thing waiting on a decision does not belong.
 
 # Part I — The question: confirm, or not confirm?
 
-**This is the decision to make. Everything in Part II is smaller than it.**
+> ## DECIDED 08-03-26 — Q1 **(b)**, Q2 **(B)**. Built the same day.
+>
+> **Q1 → (b) a durable workspace record.** Every confirmation appends one JSON
+> object to `<workspace>/browser-control/receipts.jsonl` — run id, cart, total,
+> confirmation id, capture path, timestamp. Greppable, no schema, no subsystem.
+> `Commerce.confirm_purchase/2` returns `recorded: true|false` so a caller is
+> never told a receipt was filed when the write failed.
+>
+> **Q2 → (B) the agent may confirm.** `agent_run_confirm_purchase` ships
+> (`:restricted`, catalog + `Commands` delegate + handler), answering the field
+> test's Finding 2. The operator chose (B) over this document's (C)
+> recommendation with the cost stated: **a receipt filed this way asserts a
+> purchase no human affirmed, and a prompt-injected page can reach the verb.**
+>
+> **What (B) obliged, beyond the verb itself.** Since a receipt is no longer
+> self-evidently a person's word, every receipt records `confirmed_by` —
+> `:human` (the browse tab's form), `:agent` (the new verb), or `:unknown` for
+> an unlabelled caller, which never silently inherits a human's attestation. The
+> record is honest about its own provenance rather than pretending the question
+> does not exist. The existing guards are unchanged and remain the real floor:
+> `awaiting_human` + a non-empty frozen cart, so no agent can conjure a receipt
+> for a run that never reached payment.
+>
+> **A real bug fell out of building it.** `Commerce.capture_confirmation/1`
+> trapped exits so "a post-payment engine death cannot also lose the handoff
+> confirmation" — but the very next line, `AgentMode.complete/1`, was untrapped.
+> A CDP method that *raises* (rather than returning an error) killed the run
+> mid-capture and threw away the receipt for money that had already left,
+> which is precisely what the trap was written to prevent. Now the receipt is
+> built and written **first** and the mode transition is best-effort. Regression
+> test: `ExplodingCaptureSession`.
+>
+> **Both introduction sites were updated**, not one — `introduction.ex` (the
+> model's rules) and `explore_panel.ex` (the Explore tutorial, which told the
+> user "the agent cannot confirm a purchase"). A decision that leaves either
+> stale is worse than no decision.
+
+**The original question and its analysis are kept below, because the reasoning
+is why (b) is small and why (B) has a cost worth remembering.**
 
 ## What confirming is
 
@@ -162,9 +201,12 @@ from. `amazon.com → :structure_only` is the first entry.
 
 ## Order
 
-**Part I first, and it is a conversation, not a build.** Q1 then Q2; both are
-cheap to decide and neither is cheap to get wrong later, because the introduction
-teaches the model whichever answer we pick.
+**Part I is done (08-03).** What remains is Part II, unchanged.
+
+**Item 1 is now more urgent than it was, not less.** The agent can file a
+receipt; a signed-in checkout walk is the only thing that has ever tested the
+gate that stands between it and a live payment page, and it is still untested by
+walk. Do it before the next commerce change, not after.
 
 Then **1** (it needs the operator, and it is the one with a safety cost), then
 **4** (small, and the only item that changes what leaves the machine), then **2**

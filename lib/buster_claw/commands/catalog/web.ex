@@ -417,6 +417,21 @@ defmodule BusterClaw.Commands.Catalog.Web do
         args: %{"id" => %{type: :string, required: true}}
       },
       %{
+        name: "agent_run_confirm_purchase",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Receipt a purchase the human already paid for by hand: capture the confirmation page, append a durable receipt, and finish the run. Spends nothing — the payment already happened in the real window. Only legal for a run in \"awaiting_human\" with a non-empty cart. Read the order number off the confirmation page and pass it as \"confirmation\".",
+        args: %{
+          "id" => %{type: :string, required: true},
+          "confirmation" => %{
+            type: :string,
+            required: false,
+            description: "The order id or confirmation URL shown on the page."
+          }
+        }
+      },
+      %{
         name: "browser_check_run",
         type: :mutate,
         tier: :restricted,

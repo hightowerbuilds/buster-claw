@@ -925,7 +925,12 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "The long errand — Agent Mode"
 
       # The posture the closeout roadmap owns: stated, verbatim enough to find.
-      assert html =~ "The agent cannot pay and cannot confirm a purchase."
+      # Decided 08-03 — the agent may now file the receipt, but still never pays,
+      # and the tutorial must say which of the two of you confirmed.
+      assert html =~ "The agent never pays and never holds a card."
+      refute html =~ "cannot confirm a purchase"
+      assert html =~ "agent_run_confirm_purchase"
+      assert html =~ "which of you said so"
 
       # Same contract as the other tutorials: every named command must exist.
       for cmd <- ~w(browser_current browser_read browser_capture_page

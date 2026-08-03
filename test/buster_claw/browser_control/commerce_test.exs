@@ -35,6 +35,14 @@ defmodule BusterClaw.BrowserControl.CommerceTest do
   defmodule NoCaptureSession do
   end
 
+  # An engine whose capture *raises* rather than returning an error. This kills
+  # the run process mid-capture, which is the case that used to lose the receipt
+  # for a payment that had already gone through.
+  defmodule ExplodingCaptureSession do
+    def command(_session, "Page.captureScreenshot", _params), do: raise("engine died")
+    def command(_session, _method, _params), do: {:error, :stub}
+  end
+
   setup do
     root = Path.join(System.tmp_dir!(), "bc_commerce_#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
@@ -143,6 +151,79 @@ defmodule BusterClaw.BrowserControl.CommerceTest do
 
     # The run is finished.
     assert AgentMode.mode(pid) == :done
+  end
+
+  test "the receipt is durable and names who confirmed it", %{root: root} do
+    pid = run()
+    {:handoff, :payment, _} = shop_to_handoff(pid)
+
+    assert {:ok, receipt} =
+             Commerce.confirm_purchase(pid, confirmation: "ORDER-9", confirmed_by: :agent)
+
+    assert receipt.confirmed_by == :agent
+    assert receipt.recorded == true
+
+    # It landed on disk, greppable, one JSON object per line.
+    line = File.read!(Path.join([root, "browser-control", "receipts.jsonl"])) |> String.trim()
+    assert %{} = decoded = Jason.decode!(line)
+    assert decoded["run_id"] == "buy1"
+    assert decoded["confirmation"] == "ORDER-9"
+    assert decoded["confirmed_by"] == "agent"
+    assert decoded["cart"]["total_cents"] == 3497
+    assert decoded["at"] =~ "T"
+  end
+
+  test "an unlabelled caller records unknown rather than borrowing the human's word" do
+    pid = run()
+    {:handoff, :payment, _} = shop_to_handoff(pid)
+
+    # The operator allowed the agent to confirm (08-03), so a receipt is no
+    # longer self-evidently a person's attestation. Anything that does not say
+    # who it was must not read as `human`.
+    assert {:ok, receipt} = Commerce.confirm_purchase(pid)
+    assert receipt.confirmed_by == :unknown
+
+    # A near-miss value is not quietly accepted either: only the two atoms count,
+    # so a stringly-typed caller records `unknown` instead of claiming a human.
+    other = run(scope: Commerce.scope("buy", ["shop.com"], id: "buy2"))
+    {:handoff, :payment, _} = shop_to_handoff(other)
+
+    assert {:ok, %{confirmed_by: :unknown}} =
+             Commerce.confirm_purchase(other, confirmed_by: "human")
+  end
+
+  test "receipts append rather than overwrite", %{root: root} do
+    for id <- ["buy1", "buy2"] do
+      pid = run(scope: Commerce.scope("buy", ["shop.com"], id: id))
+      {:handoff, :payment, _} = shop_to_handoff(pid)
+      {:ok, _} = Commerce.confirm_purchase(pid, confirmed_by: :human)
+    end
+
+    lines =
+      Path.join([root, "browser-control", "receipts.jsonl"])
+      |> File.read!()
+      |> String.split("\n", trim: true)
+
+    assert length(lines) == 2
+    assert Enum.map(lines, &Jason.decode!(&1)["run_id"]) == ["buy1", "buy2"]
+  end
+
+  test "an engine that dies during capture still leaves a receipt on disk", %{root: root} do
+    # `start_run` links the run to us, and this one is meant to die.
+    Process.flag(:trap_exit, true)
+    pid = run(session_mod: ExplodingCaptureSession)
+    {:handoff, :payment, _} = shop_to_handoff(pid)
+
+    # The money already left by hand. Losing the record because the screenshot
+    # crashed the run is the worst possible outcome, so the receipt is written
+    # first and the mode transition is best-effort.
+    assert {:ok, receipt} = Commerce.confirm_purchase(pid, confirmed_by: :human)
+    assert receipt.confirmation_capture == nil
+    assert receipt.recorded == true
+    assert receipt.cart["total_cents"] == 3497
+
+    line = File.read!(Path.join([root, "browser-control", "receipts.jsonl"])) |> String.trim()
+    assert Jason.decode!(line)["run_id"] == "buy1"
   end
 
   test "a missing capture surface degrades to a receipt without an image" do

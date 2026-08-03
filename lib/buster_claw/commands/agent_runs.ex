@@ -14,6 +14,7 @@ defmodule BusterClaw.Commands.AgentRuns do
   alias BusterClaw.BrowserControl
   alias BusterClaw.BrowserControl.{AgentMode, RunSupervisor, Scope, Session, SessionSupervisor}
   alias BusterClaw.BrowserControl.AgentMode.Trajectory
+  alias BusterClaw.BrowserControl.Commerce
   alias BusterClaw.BrowserControl.Commerce.Cart
 
   @doc """
@@ -222,6 +223,59 @@ defmodule BusterClaw.Commands.AgentRuns do
   def agent_run_finish(_args), do: {:error, :missing_id}
 
   @doc """
+  Receipt a purchase the human already paid for: capture the confirmation page,
+  append a durable receipt line, and complete the run.
+
+  This is the field test's Finding 2 — *"`confirm_purchase` has no command
+  surface"* — answered on 08-03. Until then only the browse tab's form could
+  call it, so an errand driven from the terminal, from on-duty, or from a phone
+  request could finish but could never be receipted.
+
+  ## What this verb does and does not do
+
+  It **spends nothing**. The money already left by hand, in the real window,
+  during the payment handoff; no payment credential ever passes through the
+  agent. All this does is write down what happened, and read the order number
+  off a page the agent is already looking at.
+
+  What it costs is the attestation: a receipt confirmed this way asserts a
+  purchase **no human affirmed**, and a prompt-injected page can talk the agent
+  into filing one. The operator accepted that trade deliberately on 08-03. The
+  mitigation is honesty rather than prevention — every receipt records
+  `confirmed_by`, so `agent` and `human` are never confused when reading the
+  record back, and the confirmation screenshot sits beside it.
+
+  The existing guards still hold and are the real floor: the run must be in
+  `awaiting_human` (a payment handoff actually happened) with a non-empty frozen
+  cart. An agent cannot conjure a receipt for a run that never reached payment.
+  """
+  def agent_run_confirm_purchase(%{"id" => id} = args) when is_binary(id) and id != "" do
+    with {:ok, run} <- lookup(id) do
+      attrs = %{
+        confirmation: presence(Map.get(args, "confirmation")),
+        confirmed_by: :agent
+      }
+
+      # Read the session BEFORE confirming. The confirmation screenshot can kill
+      # the run process (a CDP method that raises rather than erroring), and the
+      # receipt survives that by design — so asking the corpse for its session
+      # afterwards would turn a successful receipt into a crash.
+      session = safe_session(run)
+
+      case Commerce.confirm_purchase(run, attrs) do
+        {:ok, receipt} ->
+          stop_session(session)
+          {:ok, receipt}
+
+        other ->
+          other
+      end
+    end
+  end
+
+  def agent_run_confirm_purchase(_args), do: {:error, :missing_id}
+
+  @doc """
   Take the wheel back after a handoff: `awaiting_human → agent_working`.
 
   The payment handoff (and the human's own "take the wheel") was a one-way
@@ -244,6 +298,15 @@ defmodule BusterClaw.Commands.AgentRuns do
 
   # ── internals ───────────────────────────────────────────────────────────────
 
+  defp presence(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp presence(_value), do: nil
+
   defp lookup(id) do
     case AgentMode.whereis(id) do
       nil -> {:error, :run_not_found}
@@ -255,6 +318,12 @@ defmodule BusterClaw.Commands.AgentRuns do
     AgentMode.mode(run)
   catch
     :exit, _ -> :gone
+  end
+
+  defp safe_session(run) do
+    AgentMode.session(run)
+  catch
+    :exit, _ -> nil
   end
 
   defp build_cart(items) do

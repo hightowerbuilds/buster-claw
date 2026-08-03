@@ -22,6 +22,8 @@ defmodule BusterClaw.BrowserControl.Commerce do
   confirms **that** cart.
   """
 
+  require Logger
+
   alias BusterClaw.BrowserControl.{AgentMode, Scope}
   alias BusterClaw.BrowserControl.Commerce.Cart
 
@@ -46,14 +48,24 @@ defmodule BusterClaw.BrowserControl.Commerce do
 
   @doc """
   Close the loop after the human has paid: capture the confirmation page for the
-  **run's** frozen cart and mark the run `done`.
+  **run's** frozen cart, append a durable receipt line, and mark the run `done`.
 
   Refuses unless the run is in `awaiting_human` (i.e. a handoff actually
   happened) and the run's cart exists and is non-empty. `attrs` may carry
-  `:confirmation` (an order id or URL included in the returned receipt).
+  `:confirmation` (an order id or URL) and `:confirmed_by`.
 
-  Returns `{:ok, receipt}` or `{:error, reason}`. The receipt is returned to the
-  caller and is not persisted as a financial ledger.
+  ## `:confirmed_by` is not decoration
+
+  The operator decided on 08-03 that **the agent may confirm** — so a receipt can
+  no longer be read as a human's attestation that they paid. It records who said
+  so: `:human` (someone clicked the browse tab's form) or `:agent`
+  (`agent_run_confirm_purchase`, which a prompt-injected page can reach). An
+  unlabelled caller records `:unknown` rather than inheriting a human's word.
+
+  Returns `{:ok, receipt}` or `{:error, reason}`. The receipt is appended to
+  `<workspace>/browser-control/receipts.jsonl` — greppable, no schema, and
+  explicitly **not** a financial ledger: it records what was claimed, by whom,
+  with a screenshot beside it, and reconciles nothing.
   """
   def confirm_purchase(run, attrs \\ %{}) do
     attrs = Map.new(attrs)
@@ -67,15 +79,54 @@ defmodule BusterClaw.BrowserControl.Commerce do
         {:error, {:not_awaiting_human, AgentMode.mode(run)}}
 
       true ->
+        # Read everything off the run BEFORE the capture. A CDP screenshot can
+        # take the run process down with it (a real engine can raise on the
+        # method), and past that point the run answers nothing.
+        run_id = AgentMode.run_id(run)
+        metadata = cart_metadata(cart)
+
         receipt = %{
-          run_id: AgentMode.run_id(run),
-          cart: cart_metadata(cart),
+          run_id: run_id,
+          cart: metadata,
           confirmation: Map.get(attrs, :confirmation),
+          confirmed_by: confirmed_by(Map.get(attrs, :confirmed_by)),
           confirmation_capture: capture_confirmation(run)
         }
 
-        AgentMode.complete(run)
+        # The caller is told whether the durable half actually landed. A receipt
+        # whose whole point is being findable later must not report success when
+        # the line never reached disk.
+        receipt = Map.put(receipt, :recorded, record_receipt(receipt))
+
+        complete_run(run)
         {:ok, receipt}
+    end
+  end
+
+  @doc "Path of the append-only receipt record."
+  def receipts_path do
+    BusterClaw.Library.Artifact.workspace_path(["browser-control", "receipts.jsonl"])
+  end
+
+  @confirmers [:human, :agent]
+  defp confirmed_by(value) when value in @confirmers, do: value
+  defp confirmed_by(_other), do: :unknown
+
+  defp record_receipt(receipt) do
+    path = receipts_path()
+
+    line =
+      receipt
+      |> Map.put(:at, DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601())
+      |> Jason.encode!()
+
+    with :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(path, line <> "\n", [:append]) do
+      true
+    else
+      {:error, reason} ->
+        Logger.warning("Commerce: receipt not recorded (#{inspect(reason)})")
+        false
     end
   end
 
@@ -89,6 +140,18 @@ defmodule BusterClaw.BrowserControl.Commerce do
     end
   catch
     :exit, _ -> nil
+  end
+
+  # ...and the same trap has to cover the completion, or the exit merely moves
+  # one line down. A CDP method that *raises* (rather than returning an error)
+  # kills the run mid-capture, and an untrapped `complete/1` then throws away a
+  # receipt for money that has already left. The mode is the least valuable
+  # thing here: the record is the point, so it is written first and the
+  # transition is best-effort.
+  defp complete_run(run) do
+    AgentMode.complete(run)
+  catch
+    :exit, _ -> :ok
   end
 
   defp cart_metadata(%Cart{} = cart) do

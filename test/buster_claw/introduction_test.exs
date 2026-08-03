@@ -46,8 +46,14 @@ defmodule BusterClaw.IntroductionTest do
     # The guardrails the model has to work WITH rather than retry against.
     assert md =~ "scope is frozen at start"
     assert md =~ "Payment pages stop the run"
-    assert md =~ "You cannot confirm a purchase"
     assert md =~ "ambiguous_text"
+
+    # 08-03: the operator allowed the agent to confirm, so the guide teaches the
+    # verb AND the one way it can do damage. The old "you cannot confirm a
+    # purchase" line is gone; a stale rule here is worse than none.
+    refute md =~ "You cannot confirm a purchase"
+    assert md =~ "agent_run_confirm_purchase"
+    assert md =~ "the one way this verb can do damage"
 
     # The 07-25 field-test lesson, in the model's own guide.
     assert md =~ "verify a chosen variant against the cart line"

@@ -1170,7 +1170,11 @@ defmodule BusterClawWeb.ExplorePanel do
             quantity — and the moment a payment page appears, the run hands off:
             cart frozen, agent stopped.
             <span class="font-semibold text-base-content">You pay, in the real
-              window. The agent cannot pay and cannot confirm a purchase.</span>
+              window. The agent never pays and never holds a card.</span>
+            Once you have, either you confirm here or the agent files the receipt
+            with <code>agent_run_confirm_purchase</code>
+            — every receipt records
+            which of you said so.
           </li>
           <li>
             Afterwards: <code>agent_run_resume</code> puts it back to work if

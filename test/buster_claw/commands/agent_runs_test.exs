@@ -7,6 +7,7 @@ defmodule BusterClaw.Commands.AgentRunsTest do
   use BusterClaw.DataCase, async: false
 
   alias BusterClaw.BrowserControl.AgentMode
+  alias BusterClaw.BrowserControl.Commerce.Cart
   alias BusterClaw.Commands
 
   # A "session": a GenServer that tolerates Session.lease's cast, answers
@@ -33,6 +34,11 @@ defmodule BusterClaw.Commands.AgentRunsTest do
   # also flows through this module rather than straight to `Session`.
   defmodule ScriptedSessionMod do
     defdelegate navigate(session, url), to: BusterClaw.BrowserControl.Session
+
+    # The confirmation screenshot. Without this the run process dies mid-capture
+    # and the "happy path" silently stops being happy.
+    def command(_session, "Page.captureScreenshot", _params),
+      do: {:ok, %{"data" => Base.encode64("png-bytes")}}
 
     def command(session, "Runtime.evaluate", %{"expression" => js}) do
       value =
@@ -67,6 +73,18 @@ defmodule BusterClaw.Commands.AgentRunsTest do
     end)
 
     {:ok, session: session}
+  end
+
+  defp paper_cart do
+    {:ok, cart} =
+      Cart.add_item(
+        Cart.new(),
+        "Printer paper",
+        1299,
+        2
+      )
+
+    cart
   end
 
   defp start!(args \\ %{}) do
@@ -124,8 +142,8 @@ defmodule BusterClaw.Commands.AgentRunsTest do
     run = AgentMode.whereis(started.run_id)
 
     {:ok, cart} =
-      BusterClaw.BrowserControl.Commerce.Cart.add_item(
-        BusterClaw.BrowserControl.Commerce.Cart.new(),
+      Cart.add_item(
+        Cart.new(),
         "Desk",
         49_900
       )
@@ -246,7 +264,58 @@ defmodule BusterClaw.Commands.AgentRunsTest do
     assert Commands.command_tier("agent_run_stop") == :restricted
     assert Commands.command_tier("agent_run_finish") == :restricted
     assert Commands.command_tier("agent_run_resume") == :restricted
+    assert Commands.command_tier("agent_run_confirm_purchase") == :restricted
     refute Commands.command_gated?("agent_run_start")
+  end
+
+  # The 07-25 field test's Finding 2 — "confirm_purchase has no command surface"
+  # — answered 08-03 by operator decision: the agent may confirm. It spends
+  # nothing (the human already paid by hand); what it costs is that the receipt
+  # asserts a purchase no human affirmed, which is why provenance is recorded.
+  describe "confirming a purchase from the command surface" do
+    test "an agent confirmation receipts the run and marks who said so" do
+      started = start!(%{"commerce" => true, "domains" => ["shop.com"]})
+      run = AgentMode.whereis(started.run_id)
+
+      {:ok, _} = AgentMode.put_cart(run, paper_cart())
+      {:ok, :awaiting_human} = AgentMode.request_human(run, "pay")
+
+      assert {:ok, receipt} =
+               Commands.agent_run_confirm_purchase(%{
+                 "id" => started.run_id,
+                 "confirmation" => "  ORDER-77  "
+               })
+
+      assert receipt.confirmed_by == :agent
+      assert receipt.confirmation == "ORDER-77"
+      assert receipt.cart["total_cents"] == 2598
+      assert AgentMode.mode(run) == :done
+    end
+
+    # The guards are the real floor: the agent cannot conjure a receipt for a run
+    # that never reached a payment handoff, however it was asked to.
+    test "it refuses a run that never handed off, and one with no cart" do
+      # A cart, but still shopping — no payment handoff ever happened.
+      working = start!(%{"commerce" => true, "domains" => ["shop.com"]})
+      {:ok, _} = AgentMode.put_cart(AgentMode.whereis(working.run_id), paper_cart())
+
+      assert {:error, {:not_awaiting_human, :agent_working}} =
+               Commands.agent_run_confirm_purchase(%{"id" => working.run_id})
+
+      # Waiting on the human, but nothing was ever put in front of them.
+      cartless = start!(%{"commerce" => true, "domains" => ["shop.com"]})
+      {:ok, :awaiting_human} = AgentMode.request_human(AgentMode.whereis(cartless.run_id), "pay")
+
+      assert {:error, :empty_cart} =
+               Commands.agent_run_confirm_purchase(%{"id" => cartless.run_id})
+    end
+
+    test "it names a missing run and a missing id rather than guessing" do
+      assert {:error, :run_not_found} =
+               Commands.agent_run_confirm_purchase(%{"id" => "ghost"})
+
+      assert {:error, :missing_id} = Commands.agent_run_confirm_purchase(%{})
+    end
   end
 
   # The 07-25 field test's "Final mode: stopped — not done": there was no verb
