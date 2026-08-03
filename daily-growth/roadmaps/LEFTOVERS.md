@@ -51,6 +51,36 @@ file is explicitly for things that block nothing.
 
 ---
 
+### The code-quality roadmap's tail — Phase 4 and two odds
+
+**What.** Inherited 08-03 when `CODE_QUALITY_REFACTOR_ROADMAP` was archived. Four
+items, none needing a design:
+
+- **Browser pages built by hand** — seven controllers under `/browser` assemble
+  standalone HTML, CSS and forms as strings, **1,426 lines** of it. Move to HEEx
+  function components and a shared browser-surface layout. While in there:
+  **that scope has no `pipe_through`, so it receives no CSP header at all.** The
+  pages escape every interpolation through `html_escape/1`, so it is
+  defence-in-depth rather than a hole — but it is the one part of the app the
+  08-03 `script-src 'self'` tightening does not reach.
+- **Nested modules in production** — 4 files under `lib/` define a module inside
+  a module, against the repo rule. Extract to their own files.
+- **UML sections 3–5** — the Ecto schema diagrams and remaining flows still date
+  from 06-14. Sections 1 and 2 had drifted badly enough to be re-derived from
+  `lib/`, so assume these have too.
+- **Voice edge-function tests** (Phase 0 item 8) — the Supabase voice function
+  has none.
+
+**Why deferred.** All four are mechanical, and the roadmap they came from closed
+with its five findings resolved. None of them blocks anything.
+
+**What makes it expensive later.** Only the first one really does: 1,426 lines
+of hand-assembled HTML is where the next escaping mistake will live, and it
+grows every time the in-app browser gains a page. The other three are cheap
+forever — which is exactly why they never get done.
+
+---
+
 ### The `sound` command surface — the Studio has no CLI
 
 **What.** Inherited 08-02 when `SOUND_STUDIO_ROADMAP` was archived (its Phase 2,

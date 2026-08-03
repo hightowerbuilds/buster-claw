@@ -1,8 +1,31 @@
 # Code Quality — Refactoring Roadmap
 
-**Reviewed:** 2026-08-02 · **Status:** IN PROGRESS · **Scope:** Maintainability, modularity, dependency direction, dead code, suppressed findings, and testability.
+**Reviewed:** 2026-08-02 · **Status: CLOSED + ARCHIVED 2026-08-03.** · **Scope:** Maintainability, modularity, dependency direction, dead code, suppressed findings, and testability.
 
-> ## Re-measured 08-03 — this roadmap is NOT done
+> # CLOSED + ARCHIVED 08-03-26
+>
+> **All five findings are resolved.** 1 (docs) corrected including a real P1;
+> 2 (Dialyzer) gating CI; 3 (dependency direction) at two accepted cycles, now
+> **guarded** by `scripts/check_cycles.sh`; 4 (module size) done as 3A + 3B with
+> 3C cut by this document's own argument; 5 (command contracts) closed on both
+> halves — the action lockstep on 07-28 and the **payload-key** half on 08-03.
+>
+> **What closed on the last day:** the payload lockstep, a scheduled
+> `:browser_engine` CI lane for 22 tests that ran nowhere, the daisyUI
+> contradiction (the rule changed, not the code), 3B in both halves, and Phase
+> 4's CSP item — `script-src` is now **`'self'` alone**, no nonce.
+>
+> **What left rather than died** → `LEFTOVERS.md`, one entry: the browser pages
+> built by hand (1,426 lines, and the one scope the CSP tightening does not
+> reach), nested modules in 4 files, UML sections 3–5, and the voice
+> edge-function tests. All mechanical, none blocking.
+>
+> **Read the block below before reopening any of this.** It records what was
+> measured on 08-03 versus what the Progress section claimed, and the two
+> results that had silently come undone — because that, not the line counts, is
+> what this roadmap turned out to be about.
+>
+> ## Re-measured 08-03 — the state that produced the close-out
 >
 > Checked against the tree rather than the checkboxes, because two other
 > roadmaps this week asserted things that were not true. **The 08-02 work all
@@ -71,9 +94,9 @@
 > something makes the regrowth visible — the way `scripts/check_cycles.sh` now
 > does for cycles.
 >
-> Do not archive this document on the strength of its Progress section: that
-> section is accurate about 08-02 and says nothing about the phases that were
-> never begun.
+> *(That warning stood until the phases were actually closed — which happened
+> the same day. The close-out block at the top of this file is the authority
+> now; this section is the measurement it rests on.)*
 
 > **Verification pass, 2026-08-02 (second reader).** Every structural number in
 > this document was re-measured and holds exactly: the module line counts, the
