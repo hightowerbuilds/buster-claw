@@ -509,6 +509,179 @@ defmodule BusterClawWeb.TradingLiveTest do
       refute html =~ "```svg"
     end
 
+    test "a datareq is stripped from the chat and answered as a turn", %{conn: conn} do
+      # The Phase 2 channel end to end through the LiveView. The fetch is stubbed
+      # at the Req layer, so this exercises the real DataReq -> BLS parse path.
+      Req.Test.stub(BusterClaw.DataReqLiveHTTP, fn conn ->
+        Req.Test.json(conn, %{
+          "status" => "REQUEST_SUCCEEDED",
+          "message" => [],
+          "Results" => %{
+            "series" => [
+              %{
+                "seriesID" => "CUUR0000SA0",
+                "data" => [
+                  %{
+                    "year" => "2025",
+                    "period" => "M01",
+                    "periodName" => "January",
+                    "value" => "317.671"
+                  }
+                ]
+              }
+            ]
+          }
+        })
+      end)
+
+      Application.put_env(:buster_claw, :datareq_opts,
+        req_options: [plug: {Req.Test, BusterClaw.DataReqLiveHTTP}]
+      )
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :datareq_opts) end)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+
+      send(
+        view.pid,
+        {:agent_chat, chart.id,
+         {:message,
+          %{
+            role: :assistant,
+            text:
+              "I need CPI first.\n\n```datareq\n" <>
+                ~s({"source":"bls","series":"CUUR0000SA0","start_year":2025}) <>
+                "\n```"
+          }}}
+      )
+
+      _ = :sys.get_state(view.pid)
+      html = render(view)
+
+      # The operator reads prose, not the request machinery — same treatment the
+      # ```svg fence already gets.
+      assert html =~ "I need CPI first."
+      refute html =~ "```datareq"
+
+      # And the delivery is visible in the transcript rather than happening
+      # invisibly behind the conversation.
+      assert html =~ "buster-claw data delivery"
+      assert html =~ "U.S. Bureau of Labor Statistics"
+    end
+
+    test "an unknown source is refused without a fetch, and names the real ones",
+         %{conn: conn} do
+      # No stub and no :datareq_opts installed: if this reaches HTTP the test
+      # fails, which is the assertion. FRED is the live example — its terms
+      # forbid this use, so it must never become fetchable by accident.
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+
+      send(
+        view.pid,
+        {:agent_chat, chart.id,
+         {:message,
+          %{
+            role: :assistant,
+            text: "```datareq\n" <> ~s({"source":"fred","series":"CPIAUCSL"}) <> "\n```"
+          }}}
+      )
+
+      _ = :sys.get_state(view.pid)
+      html = render(view)
+
+      assert html =~ "not a source this application can fetch"
+      assert html =~ "bls"
+    end
+
+    test "the delivery budget stops an unwatched loop, and an operator turn refills it",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+
+      # A datareq is a turn that can provoke another datareq. Without a bound, a
+      # model rephrasing an impossible request burns tokens with nobody watching.
+      # Malformed blocks are refused WITHOUT spending budget (nothing is
+      # fetched), so drive the budget down with real requests instead.
+      Application.put_env(:buster_claw, :datareq_opts,
+        req_options: [plug: {Req.Test, BusterClaw.DataReqBudgetHTTP}]
+      )
+
+      Req.Test.stub(BusterClaw.DataReqBudgetHTTP, fn conn ->
+        Req.Test.json(conn, %{"status" => "REQUEST_NOT_PROCESSED", "message" => ["nope"]})
+      end)
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :datareq_opts) end)
+
+      ask = fn n ->
+        send(
+          view.pid,
+          {:agent_chat, chart.id,
+           {:message,
+            %{
+              role: :assistant,
+              text: "```datareq\n" <> ~s({"source":"bls","series":"S#{n}"}) <> "\n```"
+            }}}
+        )
+
+        _ = :sys.get_state(view.pid)
+      end
+
+      # Distinct series ids, so the repeat brake is not what stops it.
+      Enum.each(1..7, ask)
+      assert render(view) =~ "reached its data-request limit"
+
+      # A human typing is the end of "unwatched", so the budget comes back.
+      render_submit(view, "chat_send", %{"message" => "keep going", "conv" => chart.id})
+      ask.(99)
+      html = render(view)
+      refute html |> String.split("keep going") |> List.last() =~ "reached its data-request limit"
+    end
+
+    test "the same failing request twice is refused a third time", %{conn: conn} do
+      Application.put_env(:buster_claw, :datareq_opts,
+        req_options: [plug: {Req.Test, BusterClaw.DataReqRepeatHTTP}]
+      )
+
+      Req.Test.stub(BusterClaw.DataReqRepeatHTTP, fn conn ->
+        Req.Test.json(conn, %{
+          "status" => "REQUEST_NOT_PROCESSED",
+          "message" => ["no such series"]
+        })
+      end)
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :datareq_opts) end)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+
+      same = fn ->
+        send(
+          view.pid,
+          {:agent_chat, chart.id,
+           {:message,
+            %{
+              role: :assistant,
+              text: "```datareq\n" <> ~s({"source":"bls","series":"NOPE"}) <> "\n```"
+            }}}
+        )
+
+        _ = :sys.get_state(view.pid)
+      end
+
+      same.()
+      same.()
+      refute render(view) =~ "Asking a third time"
+
+      same.()
+      assert render(view) =~ "Asking a third time will not change the answer"
+    end
+
     test "collapsing the Chart Build chat drops it to a header and gives the panel the room",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")

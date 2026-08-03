@@ -1,6 +1,6 @@
 # Chart Build gets the web — and a source of truth for where data comes from
 
-**Scoped 08-03-26 · Status: ACTIVE · Phases 0 and 1 SHIPPED; first adapter built.**
+**Scoped 08-03-26 · Status: ACTIVE · Phases 0, 1 and 2 SHIPPED; first adapter built.**
 
 > **Progress, 08-03.** **Phase 0** shipped (`076b263`): Research chat deleted,
 > fetchers moved to `ChartBuilder.Fetch`, lookup panel beside the chart, retype
@@ -403,11 +403,55 @@ therefore the conversation.
   distinction (`:not_configured` vs. confirmed-empty) and should be reused rather
   than re-derived.
 
-**Acceptance:** "chart CPI against my portfolio value since 2022" produces a
-`datareq`, a guarded fetch with a Sentinel line, a chart whose subtitle names FRED
-and an as-of date, and — critically — **a refusal to draw when the fetch fails**.
-Test the failure path first; it is the one that matters and the one that will not
-be exercised by hand.
+**Acceptance:** "chart CPI since 2022" produces a `datareq`, a guarded fetch with
+a Sentinel line, a chart whose subtitle names the source and an as-of date, and —
+critically — **a refusal to draw when the fetch fails**. Test the failure path
+first; it is the one that matters and the one that will not be exercised by hand.
+
+> ### SHIPPED 08-03
+>
+> `ChartBuilder.DataReq` + the `TradingLive` wiring. 19 unit tests and 4 LiveView
+> tests, and the failure paths were written first as the note above asks.
+>
+> **The model half was verified live**, because a prompt that teaches a format is
+> only as good as what the model actually emits. Asked "Chart US CPI since 2022"
+> against the real profile, it produced:
+>
+> ```
+> {"source": "bls", "series": "CUUR0000SA0", "start_year": 2022, "end_year": 2026}
+> ```
+>
+> — which `DataReq.extract/1` parsed to
+> `%{source: "bls", series: "CUUR0000SA0", start_year: 2022, end_year: 2026}`,
+> signature `bls:CUUR0000SA0:2022:2026`, with the fence stripped so the operator
+> reads only *"US CPI isn't in the local cache, but BLS is fetchable…"*. It also
+> declined to assume index-level versus year-over-year, saying that is "a
+> different chart off the same series, and I'd want to draw it deliberately
+> rather than assume."
+>
+> **Bounds that ended up in the code, beyond what was scoped:**
+>
+> - **A delivery budget of 6 per operator turn**, refilled whenever the operator
+>   speaks. A `datareq` is a turn that can provoke another `datareq`, so the real
+>   risk is an unwatched loop — and a human typing is exactly the end of
+>   unwatched, which makes the reset condition the honest one.
+> - **A repeat brake**: the same request failing twice is refused a third time
+>   with an instruction to stop rather than rephrase. Only *failures* count —
+>   re-asking for a series after a success (a wider window) is legitimate.
+> - **Malformed and unauthorised blocks cost no budget.** Nothing was fetched, so
+>   nothing was spent; the model still gets told why, because a silently dropped
+>   block deadlocks the conversation and a deadlocked model invents.
+> - **`FETCHABLE_SOURCES` is rendered from the registry into the system prompt**,
+>   so a source added to `DataReq.sources/0` is one the model immediately knows
+>   how to name. A hand-written list would drift the first time the registry grew.
+> - **Every fetch lands a Sentinel `:untrusted_ingest` line.** Sentinel cannot see
+>   the CLI's own `WebSearch` (see `docs/LOCAL_TRUST.md`), so the path that
+>   produces *plottable* numbers is precisely the one that must be visible.
+>
+> **Still unexercised by a human:** the full round trip in the running app —
+> request, delivery, and a drawn chart whose subtitle names BLS and its as-of.
+> The pieces are each tested; nobody has watched them run together. That belongs
+> with the other Chart Build looking-at-it item in `LAUNCH_ROADMAP` **G-40**.
 
 ---
 

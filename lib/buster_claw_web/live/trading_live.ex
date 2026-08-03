@@ -38,6 +38,7 @@ defmodule BusterClawWeb.TradingLive do
   alias BusterClaw.Agent.Chat
   alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
+  alias BusterClaw.ChartBuilder.DataReq
   alias BusterClaw.ChartBuilder.Fetch
   alias BusterClaw.DataState
   alias BusterClaw.Portfolio
@@ -55,6 +56,14 @@ defmodule BusterClawWeb.TradingLive do
   # transcript is the source of truth and is re-read on mount.
   @max_chat_messages 200
   @max_chat_svgs 200
+
+  # How many app-side data fetches one Chart Build conversation may trigger
+  # before the operator speaks again. The brake exists because a `datareq` is a
+  # turn that can provoke another `datareq`: without a bound, a model that keeps
+  # rephrasing a request it cannot satisfy burns tokens in a loop nobody is
+  # watching. Reset on every operator message — a human in the loop is the
+  # thing the budget stands in for.
+  @datareq_budget 6
 
   @impl true
   def mount(_params, _session, socket) do
@@ -142,8 +151,13 @@ defmodule BusterClawWeb.TradingLive do
     conv = params["conv"] || socket.assigns.active_tab
 
     case {known_tab?(socket, conv), String.trim(text)} do
-      {true, trimmed} when trimmed != "" -> {:noreply, dispatch_chat(socket, conv, trimmed)}
-      _ -> {:noreply, socket}
+      {true, trimmed} when trimmed != "" ->
+        # An operator turn refills the data-request budget: the brake exists to
+        # bound an unwatched loop, and someone typing is the end of unwatched.
+        {:noreply, socket |> reset_datareq_budget(conv) |> dispatch_chat(conv, trimmed)}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -653,6 +667,10 @@ defmodule BusterClawWeb.TradingLive do
        when is_binary(text) do
     if tab_kind(socket, conv) == "chartbuild" do
       {clean, svgs} = SvgViewer.extract(text)
+      # The datareq fence is stripped from the same text the SVG fence was, so
+      # the operator reads prose rather than the request machinery — exactly how
+      # the ```svg channel already behaves.
+      {clean, requests} = DataReq.extract(clean)
       base = chat_state(socket.assigns, conv).svg_seq
 
       socket = collect_chart_svgs(socket, conv, svgs)
@@ -672,7 +690,9 @@ defmodule BusterClawWeb.TradingLive do
             socket
         end
 
-      maybe_flag_unread(socket, conv, :assistant)
+      socket
+      |> serve_datareq(conv, requests)
+      |> maybe_flag_unread(conv, :assistant)
     else
       socket
       |> maybe_speak(conv, :assistant, text)
@@ -889,7 +909,9 @@ defmodule BusterClawWeb.TradingLive do
       pending_order: nil,
       svgs: svgs,
       svg_seq: length(svgs),
-      zoomed_id: nil
+      zoomed_id: nil,
+      datareq_budget: @datareq_budget,
+      datareq_seen: %{}
     }
   end
 
@@ -907,7 +929,9 @@ defmodule BusterClawWeb.TradingLive do
       pending_order: nil,
       svgs: [],
       svg_seq: 0,
-      zoomed_id: nil
+      zoomed_id: nil,
+      datareq_budget: @datareq_budget,
+      datareq_seen: %{}
     }
 
   defp put_chat(socket, conv, fun) do
@@ -1018,6 +1042,107 @@ defmodule BusterClawWeb.TradingLive do
 
       true ->
         assign(socket, :tabs, remaining)
+    end
+  end
+
+  # --- The datareq channel (CHART_BUILD_WEB_DATA_ROADMAP Phase 2) ---
+  #
+  # Chart Build may search the web but may not plot what it reads there. When it
+  # needs figures it emits a ```datareq block; the app fetches them through a
+  # real adapter and delivers them as the NEXT TURN. A turn, not a restarted
+  # process with a fresh system prompt, because `Chat.ensure_started/2` captures
+  # its options once and the --resume session id dies with the process —
+  # re-injecting any other way would discard the conversation that just made the
+  # request.
+
+  defp serve_datareq(socket, _conv, []), do: socket
+
+  defp serve_datareq(socket, conv, [request | extra]) do
+    socket
+    |> deliver_datareq(conv, request)
+    |> note_extra_datareqs(conv, extra)
+  end
+
+  # A request the app will not even attempt — unknown source, no series, bad
+  # JSON. Refused without spending budget: nothing was fetched, so nothing was
+  # spent, and the model still gets told why.
+  defp deliver_datareq(socket, conv, {:invalid, _reason} = invalid),
+    do: send_datareq_turn(socket, conv, DataReq.refuse(invalid))
+
+  defp deliver_datareq(socket, conv, request) do
+    chat = chat_state(socket.assigns, conv)
+    signature = DataReq.signature(request)
+
+    cond do
+      chat.datareq_budget <= 0 ->
+        send_datareq_turn(socket, conv, DataReq.refuse_budget())
+
+      # Asked twice, failed twice, identically. A third attempt cannot succeed,
+      # and the model rephrasing the same impossible request is precisely the
+      # loop the budget is a backstop for.
+      Map.get(chat.datareq_seen, signature, 0) >= 2 ->
+        send_datareq_turn(socket, conv, DataReq.refuse_repeat(signature))
+
+      true ->
+        run_datareq(socket, conv, request, signature)
+    end
+  end
+
+  defp run_datareq(socket, conv, request, signature) do
+    result = DataReq.fulfill(request, datareq_opts())
+
+    # One audit line per fetch. Sentinel cannot see the CLI's own WebSearch (see
+    # docs/LOCAL_TRUST.md), so this path — the one that produces PLOTTABLE
+    # numbers — is the one that must be visible.
+    BusterClaw.Sentinel.observe(:untrusted_ingest, "Chart Build data fetch", %{
+      conv_id: conv,
+      source: request.source,
+      series: request.series,
+      outcome: if(match?({:ok, _payload}, result), do: "ok", else: "error")
+    })
+
+    socket
+    |> put_chat(conv, fn chat ->
+      %{
+        chat
+        | datareq_budget: chat.datareq_budget - 1,
+          datareq_seen: bump_failure(chat.datareq_seen, signature, result)
+      }
+    end)
+    |> send_datareq_turn(conv, DataReq.deliver(result))
+  end
+
+  # Only FAILURES count toward the repeat brake. Asking for the same series
+  # again after a success is a legitimate thing to do (a wider window, say).
+  defp bump_failure(seen, _signature, {:ok, _payload}), do: seen
+
+  defp bump_failure(seen, signature, {:error, _reason}),
+    do: Map.update(seen, signature, 1, &(&1 + 1))
+
+  defp note_extra_datareqs(socket, _conv, []), do: socket
+
+  defp note_extra_datareqs(socket, conv, extra),
+    do: send_datareq_turn(socket, conv, DataReq.refuse_extra(length(extra)))
+
+  # The delivery is a real user-role turn: it goes into the transcript where the
+  # operator can see exactly what the app handed the model. `send_message/2`
+  # queues while the current run is in flight, so this lands as the next turn
+  # rather than racing it.
+  defp send_datareq_turn(socket, conv, text) do
+    Chat.send_message(conv, text)
+    push_msg_to(socket, conv, :user, text)
+  catch
+    :exit, _reason ->
+      push_msg_to(socket, conv, :error, "Data delivery failed — the chat backend isn't running.")
+  end
+
+  defp datareq_opts, do: Application.get_env(:buster_claw, :datareq_opts, [])
+
+  defp reset_datareq_budget(socket, conv) do
+    if tab_kind(socket, conv) == "chartbuild" do
+      put_chat(socket, conv, &%{&1 | datareq_budget: @datareq_budget, datareq_seen: %{}})
+    else
+      socket
     end
   end
 

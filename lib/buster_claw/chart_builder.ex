@@ -38,6 +38,7 @@ defmodule BusterClaw.ChartBuilder do
   """
 
   alias BusterClaw.{AgentToolPolicy, MarketData, Portfolio, Skills}
+  alias BusterClaw.ChartBuilder.DataReq
   alias BusterClaw.Commands.Portfolio, as: PortfolioCommands
 
   @max_portfolio_points 400
@@ -89,9 +90,26 @@ defmodule BusterClaw.ChartBuilder do
   - You do NOT have web fetch. You cannot open a page; you see search results.
     Say that plainly rather than promising to go and read something.
   - You have no broker, shell, or filesystem tools, and no way to place an order.
-  - When you need numbers the app does not already have, ASK FOR THEM: name the
-    series and the source you believe publishes it, and say what window you want.
-    Then stop and wait. Do not draw a placeholder in the meantime.
+  - When you need numbers the app does not already have, ASK THE APP FOR THEM by
+    emitting exactly one fenced block of this form, and then STOP and wait:
+
+    ```datareq
+    {"source": "bls", "series": "CUUR0000SA0", "start_year": 2020, "end_year": 2026}
+    ```
+
+    The app removes the block from the conversation, fetches the series itself,
+    and hands the result back as the next turn with a source and an as-of
+    attached. Those figures ARE plottable — they came through the application,
+    not through you.
+
+    - `source` must be one of the sources listed under FETCHABLE_SOURCES below.
+      Any other name is refused without a fetch.
+    - `series` is the publisher's own series id.
+    - `start_year` / `end_year` are optional.
+    - One block per message. Do not draw a placeholder while you wait, and do
+      not emit a datareq block in the same message as a chart.
+    - If a fetch fails, the reply says why. Do not send the identical request
+      again — the answer will not change. Say what is missing instead.
   - CACHED_DATA is a point-in-time local snapshot. If it cannot answer the
     request and nothing has been delivered to you, say what is missing and name
     what you would need. A smaller honest chart beats a confident fictional one,
@@ -125,9 +143,36 @@ defmodule BusterClaw.ChartBuilder do
 
   @doc "The authoring prompt plus the current bounded cache snapshot."
   def system_prompt do
-    [@system_prompt, reference_playbook(), "CACHED_DATA (JSON):", Jason.encode!(cached_data())]
+    [
+      @system_prompt,
+      fetchable_sources(),
+      reference_playbook(),
+      "CACHED_DATA (JSON):",
+      Jason.encode!(cached_data())
+    ]
     |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join("\n\n")
+  end
+
+  # Rendered from the registry rather than written out here, so a source added
+  # in `DataReq` is one the model immediately knows how to name. A hand-written
+  # list would drift the first time the registry grew, and the failure mode is
+  # the model asking for a source that exists or refusing one that does.
+  defp fetchable_sources do
+    lines =
+      Enum.map_join(DataReq.sources(), "\n", fn {key, meta} ->
+        "  - #{key} — #{meta.label}. #{meta.answers}. Series: #{meta.series_hint}."
+      end)
+
+    """
+    FETCHABLE_SOURCES (valid values for a datareq `source`):
+
+    #{lines}
+
+    Nothing else is fetchable. If what the operator needs is not here, say so
+    plainly and name the publisher you would want — do not substitute a source
+    from this list that publishes something merely similar.
+    """
   end
 
   @doc "Bounded, JSON-safe portfolio and held-symbol data available to Chart Build."
