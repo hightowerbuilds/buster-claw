@@ -530,6 +530,60 @@ feature decision, not a refactor.
 
 ---
 
+## The Dialyzer gate, and the one line of dead code holding it shut
+
+Turning the analyser back on was supposed to mean giving up `--format short`,
+since that formatter crashed on an `:exact_compare` warning and dialyxir 1.4.7
+is the latest release. Reading the source before writing the workaround changed
+the answer entirely.
+
+`Formatter.filter_warnings/3` runs **before** formatting, and `filter_warning/3`
+skips any warning type that isn't in `Dialyxir.Warnings.warnings()`. So
+`:exact_compare` could never be baselined away — it would survive filtering and
+crash the formatter every time. The tooling had no fix.
+
+But the finding itself did. It was `sound_studio.ex:152`:
+
+```elixir
+frame = div(bits, 8) * channels
+if frame == 0 do
+  {:error, :malformed_wav}
+```
+
+`parse_fmt/1` only ever returns a tuple when `channels > 0` and `bits in [8, 16,
+24, 32]`, so that product is at least 1. The guard was genuinely unreachable,
+and a malformed header is already answered by `parse_fmt`'s fallback clause one
+function down. **Deleting one dead branch cleared the unknown warning, and with
+it the crash in every formatter** — `--format short` included. No tooling change
+was needed at all. The correction I had written into the roadmap that morning
+got reversed by lunchtime, which is the right outcome for a correction that was
+based on the tool rather than the code.
+
+Then the gate itself. `.dialyzer_ignore.exs` baselines all 252 pre-existing
+findings as `{file, warning_type}` pairs — coarse rather than line-pinned on
+purpose, because line numbers churn under refactoring and a filter that silently
+stops matching teaches nobody anything. Two sections, separated so nobody
+mistakes one for the other: **accepted noise** (76 files of `:unmatched_return`,
+staying indefinitely — rewriting 232 call sites to `_ = ...` is exactly the
+wide, green-suite sweep that has bitten this repo before) and **burn these
+down**, sixteen entries with the four confirmed defects named in comments.
+`continue-on-error` is gone from `ci.yml` and the job lost its "(non-blocking)"
+suffix.
+
+**The part worth insisting on: I verified it gates, not just that it passes.** A
+green baseline proves nothing — a filter matching everything would look
+identical. So: baseline run gave `Total errors: 252, Skipped: 252, Unnecessary
+Skips: 0`, exit 0, which also confirms no dead entries. Then a deliberately
+unreachable clause went into `portfolio/returns.ex` — a file with no baseline
+entry — and the run came back `Total errors: 253, Skipped: 252`, **exit 2**.
+Probe reverted, back to exit 0.
+
+The order was the whole point. Clearing 232 findings first would have left the
+gate off for months, and it was never the old findings that were going to cost
+anything.
+
+---
+
 ## At close
 
 **Suite: 2,201 tests, 0 failures** (2,143 + 37 + 21 new), credo strict clean,

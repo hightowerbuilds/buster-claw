@@ -115,13 +115,14 @@ jobs:
       - name: Run bun tests
         run: bun test assets/js
 
-  # Dialyzer is currently non-blocking: there are pre-existing :unmatched_return
-  # findings to clear before it can gate merges. Flip continue-on-error to false
-  # once those are resolved.
+  # Dialyzer BLOCKS as of 2026-08-02. The 252 findings that predate the gate are
+  # baselined in `.dialyzer_ignore.exs` with the reasoning; anything new fails
+  # here. Baselining first rather than clearing first was deliberate — clearing
+  # 232 `:unmatched_return` call sites would have left the gate off for months,
+  # and it is the NEW finding that costs you.
   dialyzer:
-    name: Dialyzer (non-blocking)
+    name: Dialyzer
     runs-on: ubuntu-latest
-    continue-on-error: true
     env:
       MIX_ENV: dev
     steps:

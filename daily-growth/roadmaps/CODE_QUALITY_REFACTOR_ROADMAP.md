@@ -227,7 +227,47 @@ static analysis is decorative.
 >    sweep with a green suite the whole way — the exact shape that has bitten this
 >    repo before.
 >
-> Status: **not yet done.** Steps 1–3 are unstarted.
+> #### SHIPPED 08-02 — the gate is on. **Dialyzer blocks CI as of today.**
+>
+> Done differently than planned, and better. While reading dialyxir's source to
+> pick a formatter, the actual mechanism turned up: `Formatter.filter_warnings/3`
+> runs **before** formatting, and `filter_warning/3` skips any warning type not
+> in `Dialyxir.Warnings.warnings()` — so `:exact_compare` could never be
+> baselined away, and every non-default formatter would keep crashing on it.
+>
+> **So the fix was the source, not the formatter.** The `:exact_compare` finding
+> was `sound_studio.ex:152` — `if frame == 0`, where `frame = div(bits, 8) *
+> channels` and `parse_fmt/1` already guards `channels > 0` and `bits in [8, 16,
+> 24, 32]`. Provably unreachable, and the malformed-header case is already
+> answered by `parse_fmt`'s fallback clause. Deleting that branch cleared the
+> unknown warning — and with it the crash in **every** formatter, including
+> `--format short` and `ignore_file_strict`.
+>
+> That reverses the correction above: **CI keeps `--format short`.** No formatter
+> change was needed at all.
+>
+> What landed:
+>
+> 1. `sound_studio.ex` — the dead `frame == 0` branch removed (121 sound tests
+>    green).
+> 2. **`.dialyzer_ignore.exs`** — 92 `{file, warning_type}` entries covering all
+>    252 pre-existing findings, in two clearly separated sections: *accepted
+>    noise* (76 files' worth of `:unmatched_return`) and *burn these down* (16
+>    entries, with the four confirmed defects named in comments). Coarse rather
+>    than line-pinned on purpose — line numbers churn under refactoring, and a
+>    filter that silently stops matching teaches nobody anything.
+> 3. `mix.exs` — `ignore_warnings: ".dialyzer_ignore.exs"`.
+> 4. `ci.yml` — **`continue-on-error` deleted**, job renamed from
+>    "Dialyzer (non-blocking)" to "Dialyzer".
+>
+> **Verified that it actually gates, not just that it passes.** Baseline run:
+> `Total errors: 252, Skipped: 252, Unnecessary Skips: 0`, exit 0 — the baseline
+> is exact, with no dead entries. Then a deliberately unreachable clause was
+> added to `portfolio/returns.ex` (a file with no baseline entry): `Total errors:
+> 253, Skipped: 252`, **exit 2**. Probe reverted; back to exit 0.
+>
+> Steps 4–5 of the plan stand: fix the four real defects and prune their entries.
+> The 232 `:unmatched_return`s stay baselined indefinitely.
 
 ## 3. Dependency direction has broken down
 
@@ -895,6 +935,9 @@ complexity without reducing it.
 - **Phase 3A, `Portfolio` purity pass** — 1,023 → 918 lines;
   `Portfolio.Returns` extracted (the gain arithmetic); 21 new unit tests.
   Suite 2,201/0.
+- **Dialyzer gate** — `.dialyzer_ignore.exs` baseline (252 findings, two
+  sections) + `continue-on-error` deleted. **Dialyzer blocks CI as of 08-02**,
+  verified by probe rather than assumed. See the SHIPPED block under Finding 2.
 
 **Verified-and-dismissed** (do not spend time here):
 
@@ -904,14 +947,15 @@ complexity without reducing it.
 - Phase 0 item 4's "upgrade Dialyxir" — no such upgrade exists.
 - Phase 3's "split the giant test file" as separate work — it is a byproduct of
   the purity extraction.
+- Phase 0 item 4's formatter change — **unnecessary after all.** The
+  `:exact_compare` crash was a code defect, not a tooling one; fixing the source
+  un-crashed every formatter and CI keeps `--format short`.
 
 **Next, in order:**
 
-1. **Dialyzer gating** (Finding 2, steps 1–3) — one `ci.yml` line + a generated
-   baseline + flip `continue-on-error`. Gets the gate live in an afternoon.
-2. **The `sigint` bug** (`cli.ex:214`) — Ctrl-C does not stop the shift. Real,
-   user-facing, independent of everything else here.
-3. **README credential path** (Finding 1, P1) — the one doc drift that strands a user.
-4. Findings 3 and 5 — **not yet re-verified by the second reader.** Given that
+1. **The `sigint` bug** (`cli.ex:214`) — Ctrl-C does not stop the shift. Real,
+   user-facing, and now sitting in the baseline's burn-down section.
+2. **README credential path** (Finding 1, P1) — the one doc drift that strands a user.
+3. Findings 3 and 5 — **not yet re-verified by the second reader.** Given that
    three of the five findings examined so far contained a material error, measure
    before executing either.

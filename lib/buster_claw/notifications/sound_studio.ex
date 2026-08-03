@@ -147,21 +147,21 @@ defmodule BusterClaw.Notifications.SoundStudio do
   defp finish({:error, reason}, _data), do: {:error, reason}
 
   defp finish({rate, channels, bits}, data) do
+    # `frame` cannot be zero here: `parse_fmt/1` only returns a tuple when
+    # `channels > 0` and `bits in [8, 16, 24, 32]`, so the product is at least 1.
+    # A `frame == 0` guard used to sit here; Dialyzer proved it unreachable, and
+    # a malformed header is already answered by parse_fmt's fallback clause.
     frame = div(bits, 8) * channels
 
-    if frame == 0 do
-      {:error, :malformed_wav}
-    else
-      # A trailing partial frame cannot be played and breaks every index
-      # calculation below; drop it rather than carrying a half-sample.
-      {:ok,
-       %__MODULE__{
-         sample_rate: rate,
-         channels: channels,
-         bits: bits,
-         data: binary_part(data, 0, byte_size(data) - rem(byte_size(data), frame))
-       }}
-    end
+    # A trailing partial frame cannot be played and breaks every index
+    # calculation below; drop it rather than carrying a half-sample.
+    {:ok,
+     %__MODULE__{
+       sample_rate: rate,
+       channels: channels,
+       bits: bits,
+       data: binary_part(data, 0, byte_size(data) - rem(byte_size(data), frame))
+     }}
   end
 
   # Format 1 is PCM. 0xFFFE is WAVE_FORMAT_EXTENSIBLE, which for our purposes is

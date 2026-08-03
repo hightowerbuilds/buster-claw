@@ -30,7 +30,11 @@ defmodule BusterClaw.MixProject do
       plt_local_path: "_plts",
       plt_core_path: "_plts",
       plt_add_apps: [:mix, :ex_unit],
-      flags: [:error_handling, :unmatched_returns, :unknown]
+      flags: [:error_handling, :unmatched_returns, :unknown],
+      # The baseline that lets this job GATE merges instead of merely reporting.
+      # Findings present on 2026-08-02 are listed there with the reasoning; a new
+      # one fails the build. See the file's header before adding to it.
+      ignore_warnings: ".dialyzer_ignore.exs"
     ]
   end
 
