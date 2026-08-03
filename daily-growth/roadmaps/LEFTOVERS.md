@@ -164,6 +164,44 @@ header each.
 
 ---
 
+### Two Trading browser tests the LiveView suite cannot stand in for
+
+**What.** Inherited 08-03 from `TRADING_TAB_CRITICAL_REVIEW_ROADMAP` (archived);
+its Stage 6 closed every other test but these. In a real browser: (1) changing
+account and range **redraws the actual SVG path**, and (2) the tooltip,
+accessibility label, headline figure and plotted line **all agree**.
+
+**Why deferred.** The LiveView tests around them are strong — in-flight account
+and symbol switches, fail-closed last-four collisions, unconfirmed orders never
+reaching a write tool, confirmed payloads that cannot be replayed. What none of
+them can see is the rendered DOM, because `render_hook` never touches JS.
+
+**What makes it expensive later.** These two guard the exact defect the review
+opened on: a chart that keeps displaying the previous account's data. That class
+of bug is invisible to every test currently in the suite, and it is a *financial*
+display error — the one kind this codebase has consistently refused to ship.
+Pair with the Chart Build walk below; both need a browser and nothing else.
+
+---
+
+### Decompose TradingLive — it grew back
+
+**What.** Inherited 08-03 from `TRADING_TAB_CRITICAL_REVIEW_ROADMAP` (archived).
+That review flagged a **1,728-line** LiveView. The 08-02 purity extraction cut it
+by a third, and then Chart Build and the rest landed: it is **2,174 lines today**,
+larger than when the complaint was written.
+
+**Why deferred.** Nothing is broken, and the technique is already proven here —
+map lines-per-responsibility, extract, then `import` the module so template call
+sites stay byte-identical. It needs no design, only an afternoon.
+
+**What makes it expensive later.** It is the file every Trading change touches,
+and it grows a little with each one. The extraction gets harder in proportion to
+how long it is left, which is precisely why it regressed past its own baseline
+while a roadmap item said to fix it.
+
+---
+
 ### Open a Chart Build tab and actually look at a chart
 
 **What.** Inherited 08-03 when `CHART_BUILDER_ROADMAP` was archived — the only

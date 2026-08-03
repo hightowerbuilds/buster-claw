@@ -1026,6 +1026,73 @@ Whatever the mechanism, apply it once across the whole table above rather than
 per-seeder — six `ensure/0` functions drifting apart is how this became invisible
 in the first place.
 
+### V.9 — Trading: the model is still in the financial data path
+
+**Status: open, needs a design. Inherited 08-03 from
+`TRADING_TAB_CRITICAL_REVIEW_ROADMAP.md` (archived) — the only findings from that
+review that are still live.**
+
+That review's Stages 0, 3, 4 and 6 closed, and Stage 2 met its bar: **the model
+can propose an order but cannot execute one.** Verified in code 08-03 — the
+conversational run holds eleven `get_*` tools and no write tool, the model
+proposes via a fenced ```` ```order ```` block, the app parses it to a struct,
+renders the *parsed* values for confirmation, and submits from literals in a
+separate one-shot run that never auto-retries. That part is done and should not
+be re-litigated.
+
+Three things did not close.
+
+**1. A model still transcribes money into the permanent ledger.** The account
+snapshot is a Claude turn instructed to emit JSON containing `value`, `cash`, and
+`buying_power`, and `Portfolio.Recorder` files that reading daily into durable
+history. The prompt is careful — *"copy each number from the named field"*,
+*"never invent them"*, *"never clamp to zero"* — but careful prose is not a
+parser, and Robinhood keeps no value history, so **a number that lands wrong is
+permanent.** The original review's Stage 1 bar was *"no model text is parsed into
+the permanent financial ledger"*, and it is not met. `fetched_at` is stamped
+app-side (the model's clock is correctly never trusted), but there is no broker
+timestamp or response identifier on durable records.
+
+**2. Submission travels through a Claude run.** `TradingOrder.submit/1` spawns a
+run allowlisted for `place_equity_order` with the parameters written into the
+prompt. The struct is the source of truth and the operator has already confirmed
+the parsed values, so this is far from the free-form execution the review
+warned about — but the last hop is still a model turn, and the instruction not
+to double-submit is prose in a prompt rather than an idempotency guarantee. A
+direct application-owned broker call would close it.
+
+**3. Last-four is still the account identity, everywhere.** The archived review
+records a `[x]` for *"introduce a stable opaque account key or HMAC-based
+identity for the new direct broker boundary"*, and a whole progress section
+describing a first-party Robinhood MCP client with OAuth, PKCE, refresh-token
+rotation, encrypted tokens and namespaced HMAC account keys.
+
+**None of that is in the code.** Verified 08-03: the only OAuth in the tree is
+Google's; the only HMAC use is webhook signature checks in the Sentry and GitHub
+integrations; and there are **42 `last4`/`last_four` references** across
+`lib/buster_claw/`. Trading reaches Robinhood exclusively through the operator's
+own `claude` CLI via `--mcp-config` — the app holds no broker credentials and no
+MCP client. Whether that lane was descoped or never landed, treat the checkbox
+as **not done**, because the thing it refers to is absent.
+
+Collisions fail closed today, which is why this is not urgent — but "fails
+closed" is a guard, not an identity scheme, and the first task here is deciding
+whether a first-party broker client is wanted at all before designing a key for
+a boundary that may never exist.
+
+**Why it is in the launch document.** Every one of these is a **trust claim**
+(G-29) about real money, and the review's own final recommendation was a launch
+*sequence*: read-only portfolio → trustworthy identity → direct structured data
+→ deterministic drafts → explicit confirmation → audited submission →
+reconciliation. Most of that is built. These are the remaining links, and the
+review's closing warning was specifically not to invert the order by letting
+execution run ahead of the controls.
+
+**Not blocking R1** — orders require deliberate operator confirmation and the
+dashboard is explicitly labelled an end-of-day monitor. But R1 puts real money
+in front of real users, so decide *deliberately* whether the model-transcribed
+ledger ships to them, rather than discovering it after.
+
 ---
 
 ## Part VI — Focus: the product story

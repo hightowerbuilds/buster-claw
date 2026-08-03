@@ -1,6 +1,47 @@
 # Trading Tab — Critical Review and Remediation Roadmap
 
-**Date:** 2026-07-27 · **Status:** ACTIVE BUILD-OUT · **Recommendation:** Do not ship with real-money write access until Stages 0–2 are complete.
+**Date:** 2026-07-27 · **Status: CLOSED + ARCHIVED 2026-08-03.**
+
+> ## Read this before anything below it
+>
+> **The original recommendation — "do not ship with real-money write access
+> until Stages 0–2 are complete" — has been satisfied.** Stage 0 is closed and
+> Stage 2 meets its own bar: the model can propose an order but cannot execute
+> one. Both verified against the code on 08-03, not taken from the checkboxes.
+>
+> **Two corrections are inlined at the "Direct broker progress — 2026-07-28"
+> note, and both matter more than any checkbox below:**
+>
+> 1. It claims order placement is unreachable. **It is reachable.** The design is
+>    sound — see the correction — but do not read the original and conclude
+>    otherwise.
+> 2. The entire direct-broker lane it describes — first-party Robinhood MCP
+>    client, OAuth/PKCE, encrypted tokens, HMAC account keys — **is not in the
+>    code.** Verified by search on 08-03. Trading reaches Robinhood only through
+>    the operator's `claude` CLI, and accounts are keyed by last four digits.
+>
+> **Where the 19 open boxes went.** Checkboxes below are frozen as of 07-28 and
+> were not re-ticked; the code moved past several of them. What is genuinely
+> still open now lives elsewhere:
+>
+> - **The three live safety findings** → `LAUNCH_ROADMAP.md` **V.9**: a model
+>   still transcribes money into the permanent ledger (Stage 1's bar, unmet),
+>   submission still travels through a Claude run (Stage 2's last item), and
+>   last-four identity persists in the order path.
+> - **Two browser tests** and **decomposing TradingLive** → `LEFTOVERS.md`.
+>   Both concrete, neither needing a design. Note the LiveView is **2,174 lines
+>   today** — it grew past the 1,728 this review complained about.
+> - **Stage 5's product-shape items** (split monitoring from execution, one
+>   primary dashboard question, secondary workflows) and **all of Stage 7**
+>   (shader-based financial visualization) close with this document. They need a
+>   design and no one has argued for them since; promote either back to its own
+>   roadmap if wanted, rather than inheriting them by default.
+>
+> **What this review got right, and what to keep:** the execution boundary is now
+> enforced by the agent process rather than a system prompt, identity collisions
+> fail closed, dataset freshness is explicit, and the async races are fixed. The
+> "What should be preserved" section near the end is still an accurate list of
+> this surface's good instincts — read it before changing the Trading tab.
 
 > **Verdict:** The Trading tab contains unusually thoughtful financial-display
 > work, but its execution boundary is unsafe and several correctness defects can
@@ -486,6 +527,64 @@ The first safety/correctness slice is implemented:
 - The Trading lane can render live review facts, the broker's verbatim market-data
   disclosure, and open-ended order alerts. Confirmation and submission controls
   remain absent because order placement is still unreachable.
+
+> ### ⚠ CORRECTION — 2026-08-03, at archive time
+>
+> **The last sentence above is no longer true, and was the reason this document
+> could not be archived as written.** Real equity orders ARE reachable today.
+> Verified in code: `TradingLive` handles `trading_order_confirm`, which calls
+> `BusterClaw.TradingOrder.submit/1`, which spawns a run allowlisted for
+> `mcp__robinhood__place_equity_order`. A confirm card is rendered from the
+> parsed order and the operator's click submits it.
+>
+> This is not a regression in safety — the shipped design is *stronger* than the
+> Stage 2 items describe, and is recorded below. It is a documentation defect:
+> anyone reading this file would have concluded that orders cannot be placed.
+> **Read the corrected picture, not the sentence above.**
+>
+> **The shipped order path (verified 08-03):** the conversational run never holds
+> a write tool — `Trading.read_only_cli_args/0` allowlists eleven `get_*` tools
+> and `--disallowedTools` refuses the built-ins, which is enforced by the agent
+> process rather than by the system prompt. The model proposes by emitting a
+> fenced ```` ```order ```` block; `TradingOrder.parse/1` turns it into a struct;
+> `TradingLive` renders the **parsed** values as a confirm card, so a misread
+> "sell 100" is visible as `SELL 100 AAPL` before anything is sent; the click
+> spawns a **separate one-shot run** whose parameters are literals from the
+> struct. A run that does not return a clean acceptance reports `:unknown` and
+> never offers a retry — re-sending is deliberately not automated.
+>
+> So Stage 2's "Done when" — *the model can propose an order but cannot execute
+> one* — is **met**. What remains is that submission itself still travels through
+> a Claude run calling the write tool, rather than a direct application-owned
+> broker call. That single item moved to `LAUNCH_ROADMAP.md` **V.9**.
+>
+> ### ⚠ SECOND CORRECTION — the direct-broker lane does not exist
+>
+> **Everything in the "Direct broker progress — 2026-07-28" list above describes
+> code that is not in the tree.** Verified 08-03 by search: there is no
+> first-party Robinhood MCP client, no OAuth/PKCE broker flow, no refresh-token
+> rotation, no encrypted broker tokens, and no namespaced HMAC account key. The
+> only OAuth in the codebase is Google's; the only HMAC use is webhook signature
+> verification in the Sentry and GitHub integrations.
+>
+> What actually exists — and what the operator-facing notes have said all along —
+> is that **the app holds no broker credentials and no MCP client**. Trading
+> reaches Robinhood through the operator's own `claude` CLI: `Trading`
+> seeds `<workspace>/mcp/robinhood.json` and passes `--mcp-config` plus
+> `--strict-mcp-config` to each run. Accounts are keyed by **last four digits**
+> everywhere — 42 `last4`/`last_four` references across `lib/buster_claw/`.
+>
+> Consequences for reading this file:
+>
+> - Stage 1's first `[x]` (*"introduce a stable opaque account key or HMAC-based
+>   identity"*) refers to a boundary that is absent. **Treat it as not done.**
+> - The `review_equity_order` health-check and "live review facts" bullets
+>   describe the same absent lane.
+> - Whether that work was descoped, reverted, or never landed is not recorded
+>   anywhere; the roadmap simply asserts it. **This is the failure mode to learn
+>   from — a progress note written as fact, never checked against the tree, and
+>   then trusted for a week.** Every claim in the correction blocks above was
+>   verified by reading code, and nothing else in this file has been.
 
 ### Stage 0 — Stop expanding the unsafe surface
 
