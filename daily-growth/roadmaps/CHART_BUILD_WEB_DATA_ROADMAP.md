@@ -1,6 +1,7 @@
 # Chart Build gets the web — and a source of truth for where data comes from
 
-**Scoped 08-03-26 · Status: ACTIVE · Phases 0, 1 and 2 SHIPPED; first adapter built.**
+**Scoped 08-03-26 · Status: ACTIVE · Phases 0–3 SHIPPED. Only Phase 4 (deferred
+on purpose) and the operator's FRED call remain.**
 
 > **Progress, 08-03.** **Phase 0** shipped (`076b263`): Research chat deleted,
 > fetchers moved to `ChartBuilder.Fetch`, lookup panel beside the chart, retype
@@ -18,11 +19,15 @@
 > guarded adapter, the numbers come back with provenance, and only those are
 > plottable.
 >
-> **Next, in order:** *(a)* watch it run once in the real app — the one thing
-> nobody has done (`LAUNCH_ROADMAP` **G-40**); *(b)* **Phase 3 proper**, the
-> registry as code + workspace overrides and a `finance_sources` command, with
-> six more verified sources ready to add; *(c)* the operator's **FRED** call.
-> Phase 4 stays deferred on purpose.
+> **Phase 3 shipped later the same day** — the registry as code, workspace
+> overrides, the `finance_sources` command, and eight more verified sources. See
+> the box at the end of Phase 3 for what it cost and what it changed.
+>
+> **Next, in order:** *(a)* watch it run once in the real app — still the one
+> thing nobody has done (`LAUNCH_ROADMAP` **G-40**); *(b)* the operator's **FRED**
+> call; *(c)* adapters for the verified-but-unadapted sources, of which the
+> Treasury yield curve is the most chart-worthy. Phase 4 stays deferred on
+> purpose.
 
 Chart Build can draw anything and look up nothing. Its conversation is confined
 to a snapshot of our own portfolio ledger and cached daily closes, so the moment
@@ -566,6 +571,57 @@ recording why we said no is the point of the entry.
 **Acceptance:** `./buster-claw run finance_sources` lists them with status and
 `verified_on`; a `datareq` naming a `:candidate` source is refused with a message
 saying so; adding a source in the workspace makes it available with no recompile.
+
+> ### SHIPPED 08-03 — all three acceptance criteria, the first one run for real
+>
+> `BusterClaw.Finance.Sources` (16 entries), the `finance_sources` command, and
+> `DataReq` rewired to *derive* its fetchable set from the registry instead of
+> keeping a second copy. **`./buster-claw run finance_sources` was run against
+> the live app**, not asserted about: 16 sources, `fetchable: ["bls"]`.
+>
+> **The one thing listing must never become is permission.** Fetchable requires
+> two independent conditions — `:verified` in the registry *and* an adapter in
+> `DataReq.@adapters` — so describing a source can never make it reachable. Of
+> 16 entries exactly one is fetchable, and a test asserts the two conditions
+> separately so neither can quietly start implying the other.
+>
+> **Refusals now name the reason, which was the acceptance criterion and is also
+> the interesting part.** "In the registry but unfetchable" and "never heard of
+> it" were one message; they are now two. A model told *unknown source* after
+> naming `bea` reasonably concludes it misspelled something and tries again — so
+> a `:candidate` is now told it has never been called, a `:blocked` that its
+> terms forbid our use, an `:unsanctioned` that there is no licence, each with
+> *"this is not something you can retry into working"* and an instruction to tell
+> the operator instead. The registry's whole point is that a decision is
+> findable; that is worth nothing if the one caller that hits it says "unknown".
+>
+> **`sources/` had to be reclaimed from the dead.** The name was already declared
+> `:deprecated` for a file-export feature nobody built, which means
+> `sweep_deprecated/0` **deleted it whenever it was empty** — so an operator who
+> emptied their override folder would have had it removed, and their next
+> override would land in a directory the app had decided was rubbish. The
+> deprecated entry is gone and a test now pins that the sweep leaves it alone.
+> Nothing of anyone's is reinterpreted: the old feature never existed, so a stray
+> directory from an old build is empty by construction.
+>
+> **Also: nothing created the folder.** It is `:on_demand` with no seeder, which
+> is right — an empty labelled drawer teaches nothing — but this registry is only
+> ever *read*, so the folder would never have come into existence and the
+> override feature would have been reachable only by an operator who guessed the
+> directory name. `finance_sources` now creates it and returns its path, since
+> asking what sources exist is exactly when you would want somewhere to add one.
+>
+> **Still true and still the gap:** nobody has watched the round trip in the
+> running app (`LAUNCH_ROADMAP` **G-40**). The command was run for real; the
+> chart was not.
+>
+> **Left undone deliberately:** the registry is *not* injected wholesale into
+> Chart Build's system prompt. Only `FETCHABLE_SOURCES` is, which is what the
+> model can act on. Handing it 15 sources it cannot fetch invites exactly the
+> substitution the prompt contract forbids — and the scoped benefit ("checks the
+> list before web-searching blind") is better served by the `finance_sources`
+> command, which any conversation can call and which cannot go stale in a prompt.
+> Revisit if the model is observed searching for something already in the list.
 
 ---
 

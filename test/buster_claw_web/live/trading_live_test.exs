@@ -571,11 +571,15 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert html =~ "U.S. Bureau of Labor Statistics"
     end
 
-    test "an unknown source is refused without a fetch, and names the real ones",
+    test "a blocked source is refused without a fetch, and told why",
          %{conn: conn} do
       # No stub and no :datareq_opts installed: if this reaches HTTP the test
       # fails, which is the assertion. FRED is the live example — its terms
       # forbid this use, so it must never become fetchable by accident.
+      #
+      # It is in the registry, so the refusal names the *reason* rather than
+      # claiming we have never heard of it: a model told "unknown source" tries
+      # a different spelling, and this one cannot be spelled into working.
       {:ok, view, _html} = live(conn, ~p"/trading")
       render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
       chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
@@ -593,7 +597,8 @@ defmodule BusterClawWeb.TradingLiveTest do
       _ = :sys.get_state(view.pid)
       html = render(view)
 
-      assert html =~ "not a source this application can fetch"
+      assert html =~ "terms forbid"
+      assert html =~ "not something you can retry into working"
       assert html =~ "bls"
     end
 
