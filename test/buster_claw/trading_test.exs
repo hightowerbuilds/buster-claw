@@ -25,7 +25,11 @@ defmodule BusterClaw.TradingTest do
     assert Trading.kind_label("chartbuild") == "Chart Build"
     assert Trading.kind_badge("chartbuild") == "CHART"
 
-    opts = Trading.chat_opts_for("chartbuild")
+    # The profile dispatch is a LEAF, deliberately not reachable from `Trading`:
+    # naming ChartBuilder there closed a Trading → ChartBuilder → Portfolio →
+    # Trading cycle. Calling it through `Trading` here would not fail the test,
+    # but it would quietly re-document the edge we just removed.
+    opts = BusterClaw.Trading.ChatProfile.for_kind("chartbuild")
     assert Keyword.fetch!(opts, :append_system_prompt) =~ "CACHED_DATA (JSON)"
   end
 

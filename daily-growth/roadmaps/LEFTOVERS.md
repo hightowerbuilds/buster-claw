@@ -202,19 +202,21 @@ Pair with the Chart Build walk below; both need a browser and nothing else.
 
 ### Decompose TradingLive — it grew back
 
-**What.** Inherited 08-03 from `TRADING_TAB_CRITICAL_REVIEW_ROADMAP` (archived).
-That review flagged a **1,728-line** LiveView. The 08-02 purity extraction cut it
-by a third, and then Chart Build and the rest landed: it is **2,174 lines today**,
-larger than when the complaint was written.
+**What.** The `TRADING_TAB_CRITICAL_REVIEW` flagged a **1,728-line** LiveView.
+`CODE_QUALITY_REFACTOR` Phase 3A then cut it **3,503 → 1,900 (−46%)** across two
+passes. It is **2,174 lines today** — Chart Build and the rest of this week
+landed on top of it.
 
-**Why deferred.** Nothing is broken, and the technique is already proven here —
-map lines-per-responsibility, extract, then `import` the module so template call
-sites stay byte-identical. It needs no design, only an afternoon.
+**Why deferred.** Nothing is broken, and the technique is proven twice here: map
+lines-per-responsibility, extract, then `import` the extracted module so the
+template call sites stay byte-identical. It needs no design, only an afternoon.
 
 **What makes it expensive later.** It is the file every Trading change touches,
-and it grows a little with each one. The extraction gets harder in proportion to
-how long it is left, which is precisely why it regressed past its own baseline
-while a roadmap item said to fix it.
+so it accretes by default. The important part is what the two data points show
+together: **the extraction held and the file still regrew**, so this is a rate
+rather than a one-time job. Either it gets re-cut periodically, or something has
+to make growth visible — the same lesson as the cycle count, which drifted back
+to 3 on 08-03 because nothing asserted it.
 
 ---
 

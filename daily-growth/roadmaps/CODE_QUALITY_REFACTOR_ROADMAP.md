@@ -2,6 +2,56 @@
 
 **Reviewed:** 2026-08-02 · **Status:** IN PROGRESS · **Scope:** Maintainability, modularity, dependency direction, dead code, suppressed findings, and testability.
 
+> ## Re-measured 08-03 — this roadmap is NOT done
+>
+> Checked against the tree rather than the checkboxes, because two other
+> roadmaps this week asserted things that were not true. **The 08-02 work all
+> holds. What it did not do is stay done, and the remaining phases were never
+> started.**
+>
+> **A result silently regressed.** Cycles went 6 → 2 on 08-02 with the note
+> *"no `lib/buster_claw` file participates in any cross-layer cycle now."* On
+> 08-03 there were **3**: `Trading → ChartBuilder → Portfolio → Trading`, closed
+> by one line (`chat_opts_for("chartbuild")`) added with the Chart Build tab
+> that morning. Fixed the same day by extracting
+> `BusterClaw.Trading.ChatProfile` as a leaf — the same technique
+> `AgentToolPolicy` and `AudioName` used.
+>
+> **Nothing was watching, so nothing complained.** `scripts/check_cycles.sh` now
+> asserts the *inventory* — the two accepted cycles by name and reason, anything
+> else fails — and runs in `mix precommit`. Probed by reintroducing the real
+> cycle and confirming it fails, not by trusting it. **A number nobody checks is
+> a number that drifts back**, which is the reusable lesson from this roadmap's
+> own README-guard story.
+>
+> **`TradingLive` grew back.** 3,503 → 1,900 was real (−46%), and it is
+> **2,174** today: Chart Build and the rest landed on top of it. This is not a
+> failed refactor — the extraction held, the file simply kept accreting — but it
+> means Phase 3A's win is a rate, not a destination, and the item is now carried
+> in `LEFTOVERS.md`.
+>
+> **Measured 08-03, all still open:**
+>
+> | Target | 08-02 claim | 08-03 actual |
+> |---|---|---|
+> | `SoundStudioComponent` (3B) | 1,933 | **1,933** — untouched |
+> | `StatusLive` (3B) | 1,400 | **1,420** — untouched |
+> | `TradingLive` (3A, done) | 1,900 | **2,174** — regrew |
+> | `PortfolioChart` (3C) | — | 996 |
+> | `Commands.Web` (3C) | — | 894 |
+> | `CLI` (3C) | — | 867 |
+> | `TerminalCommands` (3C) | — | 795 |
+> | `Gmail` (3C) | — | 739 |
+>
+> **Still unstarted:** all of **3B/3C**, all of **Phase 4**, **Phase 0 items
+> 8–9** (voice edge-function tests, a scheduled `:browser_engine` lane), **UML
+> sections 3–5**, and the **payload-key lockstep** (the bridge test compares
+> action *names*, so renaming `"wait_ms"` on one side is still silent).
+>
+> Do not archive this document on the strength of its Progress section: that
+> section is accurate about 08-02 and says nothing about the four phases that
+> were never begun.
+
 > **Verification pass, 2026-08-02 (second reader).** Every structural number in
 > this document was re-measured and holds exactly: the module line counts, the
 > five xref cycles, the 105-file compile component, the 253 Dialyzer findings,

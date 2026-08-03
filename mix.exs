@@ -144,6 +144,7 @@ defmodule BusterClaw.MixProject do
         "format",
         "credo --strict",
         "test",
+        "cmd scripts/check_cycles.sh",
         "cmd scripts/check_rust.sh"
       ],
       # GHSA-52mm-h59v-f3c7 (earmark stored-XSS via HTML attribute) has no

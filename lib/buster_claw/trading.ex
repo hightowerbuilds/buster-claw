@@ -45,9 +45,7 @@ defmodule BusterClaw.Trading do
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.AgentRunner
   alias BusterClaw.Library.Artifact
-  alias BusterClaw.Research
   alias BusterClaw.Settings
-  alias BusterClaw.SvgViewer
 
   @conv_id "trading"
   @tab_kinds ~w(chat robinhood research chartbuild)
@@ -195,21 +193,11 @@ defmodule BusterClaw.Trading do
   @doc "The conversation kinds that live on the Trading page, in tab order."
   def tab_kinds, do: @tab_kinds
 
-  @doc """
-  `Chat.ensure_started/2` options for a tab, by kind.
-
-  The two kinds differ in exactly the way that matters: a `robinhood` chat can
-  read the broker and nothing else; a `research` chat can read public market
-  data and can never see the broker at all. Neither can place an order — the
-  write tool lives only in `TradingOrder.submit_cli_args/0`, behind a confirm
-  click.
-  """
-  def chat_opts_for("research"), do: Research.chat_opts()
-  def chat_opts_for("chartbuild"), do: BusterClaw.ChartBuilder.chat_opts()
-  # A neutral chat is Home's chat, on this page: the full Buster Claw toolset,
-  # deliberately broader than the two confined kinds. Retyping it narrows it.
-  def chat_opts_for("chat"), do: [append_system_prompt: SvgViewer.guide()]
-  def chat_opts_for(_robinhood), do: chat_opts()
+  # The kind → Claude-profile mapping lives in `BusterClaw.Trading.ChatProfile`,
+  # NOT here and not behind a delegate from here. Naming `ChartBuilder` from this
+  # module — directly or through a defdelegate — is what closed the
+  # `Trading → ChartBuilder → Portfolio → Trading` cycle on 08-03. The dispatcher
+  # is a leaf its caller reaches directly; see that module's moduledoc.
 
   @doc "Human label for a kind, used when titling a new tab."
   def kind_label("research"), do: "Research"

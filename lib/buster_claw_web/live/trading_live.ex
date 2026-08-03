@@ -818,7 +818,11 @@ defmodule BusterClawWeb.TradingLive do
 
         # The kind decides the toolset: a research window must never be started
         # with the broker's options just because it shares this dispatcher.
-        Chat.ensure_started(conv_id, Trading.chat_opts_for(tab_kind(socket, conv_id)))
+        Chat.ensure_started(
+          conv_id,
+          BusterClaw.Trading.ChatProfile.for_kind(tab_kind(socket, conv_id))
+        )
+
         do_send(socket, conv_id, text)
 
       _other ->
