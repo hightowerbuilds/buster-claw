@@ -29,24 +29,11 @@
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
-    <script nonce={assigns[:csp_nonce]}>
-      (() => {
-        const setTheme = (theme) => {
-          if (theme === "system") {
-            localStorage.removeItem("phx:theme");
-            document.documentElement.removeAttribute("data-theme");
-          } else {
-            localStorage.setItem("phx:theme", theme);
-            document.documentElement.setAttribute("data-theme", theme);
-          }
-        };
-        if (!document.documentElement.hasAttribute("data-theme")) {
-          setTheme(localStorage.getItem("phx:theme") || "system");
-        }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-        
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
-      })();
+    <%!-- Render-blocking on purpose: the theme must be on `<html>` before the
+          body paints, or it flashes. That is why this is its own bundle and not
+          part of the deferred app.js — and why it is a file rather than an
+          inline script, which is what let the CSP drop `'nonce-…'`. --%>
+    <script phx-track-static type="text/javascript" src={~p"/assets/js/theme.js"}>
     </script>
   </head>
   <body>

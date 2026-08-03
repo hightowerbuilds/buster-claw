@@ -63,8 +63,12 @@ config :buster_claw, BusterClawWeb.Endpoint,
 config :esbuild,
   version: "0.25.4",
   buster_claw: [
+    # theme.js is a third entry point on purpose: it must run render-blocking
+    # in <head>, before first paint, so the theme cannot flash. app.js is
+    # `defer` and cannot do that. Making it a file rather than an inline
+    # script is what let the CSP drop its nonce (08-03).
     args:
-      ~w(js/app.js js/chrome.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
+      ~w(js/app.js js/chrome.js js/theme.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
   ]

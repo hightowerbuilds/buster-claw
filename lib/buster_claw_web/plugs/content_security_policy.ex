@@ -14,11 +14,26 @@ defmodule BusterClawWeb.ContentSecurityPolicy do
 
   ## script-src is the real control
 
-  `script-src 'self' 'nonce-…'` allows only the bundled `app.js` and our own
-  nonce-tagged inline bootstrap; it blocks injected `<script>` tags and inline
-  event handlers. `connect-src`/`img-src`/`style-src` are intentionally
-  permissive so the LiveView socket, Tauri IPC, reader images, and LiveView
-  inline styles keep working — egress tightening is Phase 4's job (URLGuard).
+  `script-src 'self'` allows only our own bundles and **nothing inline at all** —
+  no injected `<script>` tag, no inline event handler, no nonce to guess or
+  leak. `connect-src`/`img-src`/`style-src` are intentionally permissive so the
+  LiveView socket, Tauri IPC, reader images, and LiveView inline styles keep
+  working — egress tightening is Phase 4's job (URLGuard).
+
+  ## The nonce is gone (08-03)
+
+  This used to be `script-src 'self' 'nonce-…'`, with a per-request nonce
+  assigned to `conn.assigns.csp_nonce`. It had exactly **one** consumer app-wide:
+  the theme bootstrap inline in `root.html.heex`. Moving that to
+  `assets/js/theme.js` — its own render-blocking bundle, so the theme still
+  cannot flash — left the nonce with nothing to authorize, and a policy carrying
+  an unused escape hatch is strictly weaker than one without it.
+
+  This matters more than tidiness. The webview exposes `terminal_*` invoke
+  handlers, and this policy is the backstop the model-authored SVG channel is
+  trusted on (`SvgViewer` sanitizes; the CSP is what catches what sanitizing
+  misses). Its strongest form is the one where no inline script can run, full
+  stop.
 
   ## Report-Only vs enforce
 
@@ -26,9 +41,17 @@ defmodule BusterClawWeb.ContentSecurityPolicy do
   :enforce`) so the shipped desktop app actually blocks injected scripts. Dev and
   test default to **Report-Only** (`:csp_mode` unset) so Phoenix LiveReload's
   injected inline `<script>` keeps working — in dev, violations only surface in
-  the webview console. The per-request nonce is assigned to
-  `conn.assigns.csp_nonce` and consumed by the inline `<script>` in
-  `root.html.heex`.
+  the webview console. LiveReload is not present in prod, which is why dropping
+  the nonce costs nothing there.
+
+  ## What this header does NOT cover
+
+  The `/browser/*` scope (the in-app browser's own chrome, home, pages,
+  workspace and history views) has **no `pipe_through`**, so it receives no CSP
+  header at all. Those pages are built from our own strings and escape every
+  interpolation through `Phoenix.HTML.html_escape/1`, so this is a
+  defence-in-depth gap rather than a live hole — but it is a gap, and it is
+  recorded in `LEFTOVERS.md` rather than left to be rediscovered.
   """
 
   import Plug.Conn
@@ -38,13 +61,7 @@ defmodule BusterClawWeb.ContentSecurityPolicy do
 
   def init(opts), do: opts
 
-  def call(conn, _opts) do
-    nonce = generate_nonce()
-
-    conn
-    |> assign(:csp_nonce, nonce)
-    |> put_resp_header(header_name(), policy(nonce))
-  end
+  def call(conn, _opts), do: put_resp_header(conn, header_name(), policy())
 
   defp header_name do
     case Application.get_env(:buster_claw, :csp_mode, :report_only) do
@@ -53,13 +70,11 @@ defmodule BusterClawWeb.ContentSecurityPolicy do
     end
   end
 
-  defp generate_nonce, do: 16 |> :crypto.strong_rand_bytes() |> Base.encode64()
-
-  defp policy(nonce) do
+  defp policy do
     [
       "default-src 'self'",
-      # The only RCE-relevant directive: own bundle + nonce-tagged inline only.
-      "script-src 'self' 'nonce-#{nonce}'",
+      # The only RCE-relevant directive: our own bundles, nothing inline.
+      "script-src 'self'",
       # LiveView/daisyUI set inline style attributes; allow them.
       "style-src 'self' 'unsafe-inline'",
       # In-app browser pages (home, bookmarks) render remote favicons/images;
