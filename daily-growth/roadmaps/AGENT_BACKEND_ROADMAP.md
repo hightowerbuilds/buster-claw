@@ -1,6 +1,6 @@
 # Agent backends — Codex and OpenCode as first-class runners
 
-**Scoped 08-03-26 · Status: SCOPED, nothing built.**
+**Scoped 08-03-26 · Status: ACTIVE — Phase 0 probed, Phase 1 SHIPPED.**
 **Successor scope to `MODEL_VERSATILITY_ROADMAP.md`** — that roadmap chose the
 *model*; this one chooses the *runner the model runs in*, and the two are not
 separable. A model ID means nothing without a backend to interpret it.
@@ -10,6 +10,24 @@ has only ever really had one. `detect/0` falls back to codex on PATH order, and
 `default_args(:codex, prompt, _opts)` is `["exec", prompt]` — no model, no
 permission mode, no streaming, no MCP. This roadmap makes codex and OpenCode real
 runners and lets the operator pick.
+
+> **Progress, 08-03.** **Phase 0's probes were run** — every ⚠ and every event
+> schema below is a measurement, not a recollection. **Phase 1 shipped**:
+> `BusterClaw.AgentBackend` is the leaf table, `AgentRunner.default_args/3` is a
+> dispatch through it, codex finally receives `--model`, `-s` and `--json`, and
+> opencode joined `detect/0` **last in the order**, so no machine that already
+> resolved to claude or codex resolves anywhere new.
+>
+> One thing arrived beyond the phase list, and it is the important one: the
+> opencode fail-open is now **enforced, not merely documented**. `run/2` returns
+> `{:error, {:unconfined, result}}` when the CLI drops the `--agent` we gave it,
+> because a safety control nothing calls is a comment. The streaming path
+> (`open/2`) cannot do this for its caller and says so in its own docs — that is
+> a real remaining edge, not a covered one.
+>
+> **Next:** Phase 2, `ModelPolicy` keyed on `{backend, surface}`. Nothing in
+> Phase 1 is user-visible yet — the operator still cannot *choose* a backend, and
+> until Phase 2 lands a stored model string is claude's namespace by assumption.
 
 **Decided by the operator 08-03:**
 - **Backend choice: global default plus per-surface override**, mirroring
@@ -188,12 +206,20 @@ stderr, and the exit status is 0.
 This is the exact "silently reaches a money surface" shape the model roadmap
 exists to prevent, arriving by a route no floor would catch. **Therefore:**
 
-- [ ] An OpenCode run on a confined surface must **verify the agent was actually
-      used**, not trust that `--agent` was passed. `AgentRunner` merges stderr
-      into stdout, so the fallback line is detectable — detect it and fail the run.
-- [ ] A test asserts that a run whose agent file is absent is **refused**, not
-      completed. Probe it the way this was probed: point at a name that does not
-      exist and assert failure.
+- [x] **DONE (Phase 1).** An OpenCode run on a confined surface must **verify the
+      agent was actually used**, not trust that `--agent` was passed.
+      `AgentBackend.fallback_warning?/2` detects the line, and `AgentRunner.run/2`
+      turns it into `{:error, {:unconfined, result}}` — a refusal, not a warning.
+      The result rides along so a caller can still show what happened.
+- [x] **DONE (Phase 1).** A test asserts that a run whose agent file is absent is
+      **refused**, not completed — and a companion asserts the same words from
+      claude are *not* a failure, so the check cannot become a false alarm on the
+      backend every real run currently uses.
+- [ ] **STILL OPEN: the streaming path cannot do this.** `AgentRunner.open/2`
+      hands the caller the port, so nobody is reading the output on their behalf.
+      It is documented there, which is not the same as handled. Whatever wires a
+      confined surface to opencode must check `fallback_warning?/2` itself, and
+      chat streams through `open/2`.
 
 ## ⚠ `codex -c` merges; it cannot scope MCP down
 
@@ -253,45 +279,64 @@ token usage** on `turn.completed`, and **OpenCode reports an actual `cost`
 figure** on `step_finish`. Per-backend cost reporting is therefore *cheaper* on
 the two backends we are adding than on the one we have.
 
-- [ ] **Can codex scope MCP per-run?** Try `-c mcp_servers.robinhood.command=…`
-      against `codex exec`. If yes, codex trading confinement is buildable; if no,
-      a codex trading run cannot be limited to the Robinhood server and that
-      surface's warning has to say so specifically.
-- [ ] **What does `codex exec --json` actually emit?** Capture a real run's JSONL
-      against a trivial prompt and write the event shapes down. Same for
-      `opencode run --format json`.
-- [ ] **How fine-grained is an OpenCode agent's permission list?** Hand-write an
-      agent file (do not use `opencode agent create` — it calls an LLM to
-      generate the config and failed on this machine with a provider error, so it
-      is not a dependency we want in a build step). Confirm whether the
-      `{permission, pattern, action}` triples reach individual MCP tool names or
-      only the 11 broad categories. This decides whether an OpenCode trading run
-      can be scoped to Robinhood reads.
-- [ ] **Does OpenCode read a project-local `.opencode/` from `--dir`?** If yes,
-      the workspace is the natural home for a per-run agent file and the pattern
-      matches `ensure_mcp_config/0`. If it only reads
-      `~/.config/opencode/opencode.jsonc`, confinement is global to the machine
-      and a Buster Claw run would be changing the operator's own OpenCode setup —
-      which we must not do silently.
-- [ ] **Does headless OpenCode hang without `--auto`?** Our runner closes stdin at
-      EOF. A backend that waits for an approval it can never receive is a hang, not
-      an error, and the dispatcher would sit on it until the wall-clock cap.
-- [ ] Confirm `--skip-git-repo-check` is sufficient for a codex run rooted in the
-      non-repo workspace.
+**All but one were run on 08-03; the answers are the sections above, not these
+lines.** The one that is still open is the one that gates a codex money surface.
 
-# Phase 1 — The backend abstraction
+- [x] **Can codex scope MCP per-run?** **No.** `-c` merges and cannot remove; see
+      *⚠ `codex -c` merges*.
+- [ ] **Is `codex exec --ignore-user-config` the way to scope it?** Split out of
+      the line above because it is the part that was *not* settled. Until it is
+      probed, a codex trading run cannot be proven scoped to Robinhood alone, and
+      Phase 3's money-surface warning has to say that specifically. **This is the
+      highest-value remaining probe** — it decides whether codex can touch the
+      money surfaces at all.
+- [x] **What does `codex exec --json` actually emit?** Captured; the shapes are in
+      *The event schemas* below, for both codex and opencode.
+- [x] **How fine-grained is an OpenCode agent's permission list?** Hand-written
+      file picked up and used. (`opencode agent create` is unusable as a build
+      dependency — it calls an LLM and failed here.)
+- [x] **Does OpenCode read a project-local `.opencode/` from `--dir`?** **Yes** —
+      so confinement lives in the workspace, per run, and we never touch the
+      operator's global config.
+- [x] **Does headless OpenCode hang without `--auto`?** **No** — because its
+      default agent allows everything, which is the fail-open above wearing
+      another hat, not reassurance.
+- [x] Confirm `--skip-git-repo-check` is sufficient for a codex run rooted in the
+      non-repo workspace. **Yes, and it is mandatory** — it is unconditional in
+      `AgentBackend.argv(:codex, …)` for that reason.
 
-- [ ] A **leaf** `BusterClaw.AgentBackend` behaviour or data module: per backend,
-      the non-interactive argv shape, the model flag, the streaming flag, the cwd
-      flag, the permission/sandbox translation, and the model-ID namespace.
-      Leaf for the same reason `ModelPolicy` is one.
-- [ ] `AgentRunner.default_args/3` becomes a dispatch through it rather than three
+# Phase 1 — The backend abstraction — **SHIPPED 08-03**
+
+- [x] A **leaf** `BusterClaw.AgentBackend` data module: per backend, the
+      non-interactive argv shape, the model flag, the streaming flag, the
+      permission/sandbox translation, and the model-ID namespace. It is a leaf.
+- [x] `AgentRunner.default_args/3` becomes a dispatch through it rather than three
       hand-written clauses. `:argv` stays as the escape hatch.
-- [ ] Codex gets what it has always supported: `-m`, `--json`, `-s`, `-C`, and
-      `--skip-git-repo-check`.
-- [ ] OpenCode joins `detect/0`. **Decide the PATH-order fallback deliberately** —
-      today it is claude-then-codex by accident of two `cond` clauses, and adding a
-      third silently changes what an install with two CLIs does.
+- [x] Codex gets what it has always supported: `--model`, `--json`, `-s`, and
+      `--skip-git-repo-check`. **`-C` was not needed** — `AgentRunner` sets the
+      working directory through the Port's `:cd`, which applies to every backend
+      and does not depend on each CLI having a flag for it.
+- [x] OpenCode joins `detect/0`, **last**, and the order is now
+      `AgentBackend.order/0` — one list that is both the fallback order and the
+      registry, so a fourth backend cannot be added to one and forgotten in the
+      other. A machine with claude or codex already installed resolves exactly as
+      it did before.
+
+**Two judgement calls made while building, both written into the code:**
+
+- **`bypassPermissions` does NOT map to codex's `danger-full-access`.** The
+  literal translation is tempting and wrong: on claude it waives the *prompt*
+  while the tool allowlist still binds; on codex it waives the *sandbox*. Mapping
+  them would silently escalate every existing headless run the moment its backend
+  changed. It maps to `workspace-write`.
+- **`dontAsk` on opencode emits nothing**, rather than `--auto`. opencode has no
+  read-only analogue, and its only run-level knob approves everything — emitting
+  it would turn our most confined mode into our least.
+
+**Not yet true, and worth saying plainly:** none of this is reachable by an
+operator. `detect/0` still picks by PATH order, so on any machine with claude
+installed the new code paths are exercised only by tests. Phase 2 is what makes
+the abstraction do anything.
 
 # Phase 2 — `ModelPolicy` becomes `{backend, model}`
 
