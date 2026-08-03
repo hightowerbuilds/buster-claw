@@ -10,10 +10,19 @@
 > rewritten, and **the acceptance gate was run against the real profile and
 > passed** (see §1.2). **Phase 3's first adapter is built** — `Finance.BLS`
 > (`5792cac`), chosen over FRED for a reason that turned out to be legal, not
-> technical (see Phase 3).
+> technical (see Phase 3). **Phase 2** shipped (`458ef24`): the `datareq`
+> channel, a delivery budget, a repeat brake, and a live check that the model
+> actually emits the format.
 >
-> **Next: Phase 2**, the `datareq` channel — the piece that connects the adapter
-> to a chart. Nothing else is in its way.
+> **The loop is closed end to end** — the model asks, the app fetches through a
+> guarded adapter, the numbers come back with provenance, and only those are
+> plottable.
+>
+> **Next, in order:** *(a)* watch it run once in the real app — the one thing
+> nobody has done (`LAUNCH_ROADMAP` **G-40**); *(b)* **Phase 3 proper**, the
+> registry as code + workspace overrides and a `finance_sources` command, with
+> six more verified sources ready to add; *(c)* the operator's **FRED** call.
+> Phase 4 stays deferred on purpose.
 
 Chart Build can draw anything and look up nothing. Its conversation is confined
 to a snapshot of our own portfolio ledger and cached daily closes, so the moment
