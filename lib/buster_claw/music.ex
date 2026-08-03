@@ -66,12 +66,9 @@ defmodule BusterClaw.Music do
 
   # Characters a stored filename may keep; everything else becomes "-". See
   # `safe_name/1` for why this is wider than Sound's equivalent.
-  @name_allowed ~r/[^\p{L}\p{N} .,\-_()\[\]&'!+#@]/u
 
   # Leaves room under the common 255-byte filename limit for an extension and a
   # "-999" collision suffix.
-  @max_stem_bytes 180
-
   # Leading bytes that identify a container we accept. Checked to *accept*, not
   # to reject — see `plausible_audio?/1`.
   @audio_magic [
@@ -254,42 +251,11 @@ defmodule BusterClaw.Music do
 
   @doc """
   The basename an uploaded file will be stored under, before collision handling.
-
-  `Path.basename/1` first, so a name carrying directories (`../../etc/x.mp3`)
-  reduces to its last segment before anything else looks at it. Then everything
-  outside `@name_allowed` becomes `-`, runs of whitespace collapse, and leading
-  dots go so an upload cannot create a dotfile.
-
-  Deliberately **more permissive than `Sound`'s sanitizer**, which replaces
-  every non-word character including spaces. That is fine for a chime and would
-  be destructive here: `track_info/1` splits on `" - "`, so a sanitizer that
-  turned spaces into dashes would turn "Miles Davis - So What.mp3" into
-  "Miles-Davis---So-What.mp3" and silently destroy the naming convention this
-  library is built around. Spaces, parentheses, and apostrophes are how music
-  files are actually named.
+  The sanitizer itself lives in `BusterClaw.AudioName` (a leaf shared with
+  Sound and the Studio — extracted 08-02 to break the Music<->Sound cycle);
+  this delegate keeps the library's public surface where callers expect it.
   """
-  def safe_name(client_name) when is_binary(client_name) do
-    # The extension comes from the ORIGINAL name, which is the same place
-    # `store/2` reads it for the accept check. Deriving it from a trimmed or
-    # basenamed copy lets the two disagree: `"   .mp3"` trims to `".mp3"`, which
-    # Elixir reads as a dotfile with NO extension, so the upload passed the
-    # `.mp3` gate and then landed as a file called `track` — invisible to
-    # `list/0`, a success message for a track that never appeared.
-    ext = client_name |> Path.extname() |> String.downcase()
-
-    stem =
-      client_name
-      |> Path.basename()
-      |> strip_extension(ext)
-      |> String.replace(@name_allowed, "-")
-      |> String.replace(~r/\s+/u, " ")
-      |> String.replace(~r/^[.\s]+/u, "")
-      |> String.trim()
-      |> truncate_bytes(@max_stem_bytes)
-      |> String.trim()
-
-    if stem == "", do: "track" <> ext, else: stem <> ext
-  end
+  defdelegate safe_name(client_name), to: BusterClaw.AudioName
 
   @doc "True when the library holds at least one playable file."
   def any?, do: list() != []
@@ -392,31 +358,6 @@ defmodule BusterClaw.Music do
   # "SHOUT.MP3" keeps its stem. Byte arithmetic is safe here because an
   # extension in `@exts` is ASCII, so trimming its bytes off the end cannot
   # split a multi-byte character in the stem.
-  defp strip_extension(base, ""), do: base
-
-  defp strip_extension(base, ext) do
-    if String.ends_with?(String.downcase(base), ext) do
-      binary_part(base, 0, byte_size(base) - byte_size(ext))
-    else
-      base
-    end
-  end
-
-  # Truncate to a byte budget without splitting a grapheme — a filename is
-  # bytes to the filesystem but characters to a person.
-  defp truncate_bytes(string, max) when byte_size(string) <= max, do: string
-
-  defp truncate_bytes(string, max) do
-    string
-    |> String.graphemes()
-    |> Enum.reduce_while({[], 0}, fn grapheme, {acc, size} ->
-      next = size + byte_size(grapheme)
-      if next > max, do: {:halt, {acc, size}}, else: {:cont, {[grapheme | acc], next}}
-    end)
-    |> elem(0)
-    |> Enum.reverse()
-    |> Enum.join()
-  end
 
   defp readme_body do
     """

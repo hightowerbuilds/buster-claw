@@ -21,7 +21,6 @@ defmodule BusterClaw.Notifications.Sound do
   require Logger
 
   alias BusterClaw.Library.Artifact
-  alias BusterClaw.Music
   alias BusterClaw.Settings
 
   @subdir "sounds"
@@ -271,7 +270,7 @@ defmodule BusterClaw.Notifications.Sound do
     cond do
       not File.regular?(src_path) -> {:error, :not_found}
       ext not in @exts -> {:error, :unsupported_format}
-      true -> copy_in(src_path, Music.safe_name(suggested_name))
+      true -> copy_in(src_path, BusterClaw.AudioName.safe_name(suggested_name))
     end
   end
 
@@ -337,7 +336,14 @@ defmodule BusterClaw.Notifications.Sound do
   def renamed_to(name, stem) do
     if String.match?(stem, ~r/[\p{L}\p{N}]/u) do
       ext = Path.extname(name)
-      clean = stem |> String.trim() |> Music.safe_name() |> Path.rootname() |> String.trim()
+
+      clean =
+        stem
+        |> String.trim()
+        |> BusterClaw.AudioName.safe_name()
+        |> Path.rootname()
+        |> String.trim()
+
       {:ok, clean <> ext}
     else
       {:error, :invalid_name}

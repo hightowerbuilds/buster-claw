@@ -69,7 +69,7 @@ defmodule BusterClaw.Research do
       permission_mode: "dontAsk",
       extra_cli_args: [
         "--disallowedTools",
-        Enum.join(BusterClaw.Trading.denied_tools(), ",")
+        Enum.join(BusterClaw.AgentToolPolicy.denied_builtins(), ",")
       ]
     ]
   end

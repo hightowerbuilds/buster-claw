@@ -64,17 +64,6 @@ defmodule BusterClaw.Trading do
     mcp__robinhood__get_realized_pnl
   )
 
-  # Named explicitly rather than emptied with `--tools ""`, which also silences
-  # MCP. Shared by the read args and TradingOrder's submit args — a trading run
-  # has no business touching the filesystem, the shell, or the web.
-  @denied_tools ~w(
-    Bash BashOutput KillShell
-    Edit Write NotebookEdit
-    Read Glob Grep
-    Task WebFetch WebSearch
-    TodoWrite SlashCommand ExitPlanMode
-  )
-
   # The account panel's cached snapshot (JSON blob in Settings — the
   # browser_tabs precedent). Every refresh is a real (cheap, haiku) agent run,
   # so staleness is tolerated rather than polled away.
@@ -315,7 +304,7 @@ defmodule BusterClaw.Trading do
   def read_only_cli_args do
     [
       "--disallowedTools",
-      Enum.join(@denied_tools, ","),
+      Enum.join(BusterClaw.AgentToolPolicy.denied_builtins(), ","),
       "--allowedTools",
       Enum.join(@read_tools, ","),
       "--strict-mcp-config",
@@ -325,10 +314,11 @@ defmodule BusterClaw.Trading do
   end
 
   @doc """
-  The built-in tools a trading run is refused. Exposed so `TradingOrder`'s
-  submit args share one list rather than drifting from this one.
+  The built-in tools a trading run is refused. The list itself lives in
+  `BusterClaw.AgentToolPolicy` (a leaf — extracted 08-02 to break the
+  Trading<->Research cycle); this delegate keeps `TradingOrder`'s call site.
   """
-  def denied_tools, do: @denied_tools
+  defdelegate denied_tools, to: BusterClaw.AgentToolPolicy, as: :denied_builtins
 
   @doc """
   Seed `<workspace>/mcp/robinhood.json` and return its path. Never overwrites
