@@ -17,6 +17,7 @@ defmodule BusterClaw.Commands.AgentRuns do
   alias BusterClaw.BrowserControl.Commerce
   alias BusterClaw.BrowserControl.Commerce.Cart
   alias BusterClaw.BrowserControl.Egress.Policy
+  alias BusterClaw.BrowserControl.Secrets
 
   @doc """
   Start a supervised Agent Mode run. Args: `intent` (the task, verbatim —
@@ -31,7 +32,17 @@ defmodule BusterClaw.Commands.AgentRuns do
 
     # The operator's per-host egress levels are read HERE and frozen into the
     # run, alongside the scope. `AgentMode` reads no database of its own.
-    run_opts = [scope: scope, on_payment: on_payment, egress_overrides: Policy.overrides()]
+    #
+    # The secret resolver is a function, not a snapshot: it reads on demand, so
+    # a secret removed mid-run stops resolving and no plaintext sits in the
+    # run's state. Until 08-03 nothing passed one, so every `$secret.<name>`
+    # failed and no unattended run could sign in anywhere.
+    run_opts = [
+      scope: scope,
+      on_payment: on_payment,
+      egress_overrides: Policy.overrides(),
+      secret_resolver: Secrets.resolver()
+    ]
 
     # Test seam (like the session starter): a scripted CDP surface for the run.
     run_opts =

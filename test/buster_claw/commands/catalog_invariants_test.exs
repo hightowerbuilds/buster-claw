@@ -124,6 +124,14 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     # reviewed with exactly that in mind. Regenerate with:
     #
     #   MIX_ENV=test mix run --no-start -e 'BusterClaw.Commands.Catalog.entries() |> Enum.filter(&(&1.tier == :safe)) |> Enum.map(& &1.name) |> Enum.sort() |> Enum.each(&IO.puts("        \"#{&1}\","))'
+    #
+    # Review notes for entries whose safety is not self-evident:
+    #
+    #   browser_secret_list (added 08-03) — returns secret NAMES and notes,
+    #   never a value, and there is deliberately no command that returns one.
+    #   The model needs the names to write `$secret.<name>` in a fill at all, so
+    #   this is the minimum visibility the reference design requires. Read-only;
+    #   nothing outbound, nothing irreversible.
     @safe_tier ~w(
       activity_report
       agent_run_status
@@ -131,6 +139,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       bookmark_list
       browser_check_list
       browser_fetch
+      browser_secret_list
       browser_wait
       contacts_get
       contacts_list

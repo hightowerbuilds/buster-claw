@@ -7,6 +7,7 @@ defmodule BusterClaw.Commands.AgentRunsTest do
   use BusterClaw.DataCase, async: false
 
   alias BusterClaw.BrowserControl.AgentMode
+  alias BusterClaw.BrowserControl.AgentMode.Trajectory
   alias BusterClaw.BrowserControl.Commerce.Cart
   alias BusterClaw.Commands
 
@@ -266,6 +267,45 @@ defmodule BusterClaw.Commands.AgentRunsTest do
     assert Commands.command_tier("agent_run_resume") == :restricted
     assert Commands.command_tier("agent_run_confirm_purchase") == :restricted
     refute Commands.command_gated?("agent_run_start")
+  end
+
+  # Browser closeout Part II item 3: `SecretRef` was pure, correct and tested,
+  # and `agent_run_start` never passed a `:secret_resolver` — so the default
+  # `fn _ -> :error end` stood and EVERY `$secret.<name>` failed. The store
+  # existing is not the same as a run being able to reach it.
+  test "a run started from the command surface can resolve a stored secret" do
+    {:ok, _} = BusterClaw.BrowserControl.Secrets.put("site_password", "hunter2")
+
+    started = start!()
+    id = started.run_id
+    {:ok, _} = Commands.agent_run_navigate(%{"id" => id, "url" => "https://example.com/login"})
+
+    assert {:ok, %{action: "fill"}} =
+             Commands.agent_run_act(%{
+               "id" => id,
+               "action" => "fill",
+               "selector" => "#pw",
+               "value" => "$secret.site_password"
+             })
+
+    # The trajectory keeps the reference, never the expansion.
+    step = AgentMode.whereis(id) |> AgentMode.trajectory() |> Trajectory.last()
+    refute inspect(step) =~ "hunter2"
+    assert inspect(step) =~ "site_password"
+  end
+
+  test "an unstored reference fails the fill instead of typing the literal text" do
+    started = start!()
+    id = started.run_id
+    {:ok, _} = Commands.agent_run_navigate(%{"id" => id, "url" => "https://example.com/login"})
+
+    assert {:error, {:unknown_secret, "never_stored"}} =
+             Commands.agent_run_act(%{
+               "id" => id,
+               "action" => "fill",
+               "selector" => "#pw",
+               "value" => "$secret.never_stored"
+             })
   end
 
   # The 07-25 field test's Finding 2 — "confirm_purchase has no command surface"

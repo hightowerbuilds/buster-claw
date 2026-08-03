@@ -6,6 +6,7 @@ defmodule BusterClaw.Commands.Web do
   alias BusterClaw.{Browser, BrowserHistory, Search}
   alias BusterClaw.Browser.{Bridge, Capture, Checks, FlowRunner}
   alias BusterClaw.BrowserControl.Egress.Policy
+  alias BusterClaw.BrowserControl.Secrets
 
   def web_search(%{"query" => query} = args) do
     limit = Map.get(args, "limit", 10)
@@ -694,6 +695,38 @@ defmodule BusterClaw.Commands.Web do
   defp shape_levels(entries) do
     Enum.map(entries, fn {host, level} -> %{host: host, level: Atom.to_string(level)} end)
   end
+
+  @doc """
+  Store a value an Agent Mode run may type as `$secret.<name>` without ever
+  reading it. Encrypted at rest; replaces an existing name.
+
+  This is the store that never existed behind `SecretRef` — until 08-03 every
+  `$secret.<name>` failed, so no unattended run could sign in anywhere.
+  """
+  def browser_secret_put(%{"name" => name, "value" => value} = args)
+      when is_binary(name) and is_binary(value) do
+    Secrets.put(name, value, Map.get(args, "note"))
+  end
+
+  def browser_secret_put(_args), do: {:error, :missing_name_or_value}
+
+  @doc """
+  The stored secret **names**, with notes and when they changed — never values.
+
+  There is deliberately no command that returns a value, and there must never be
+  one: the reference design exists so a model can drive a form it cannot read.
+  """
+  def browser_secret_list(_args \\ %{}) do
+    secrets = Secrets.names()
+    {:ok, %{secrets: secrets, count: length(secrets)}}
+  end
+
+  @doc "Forget a stored secret. Unknown names say so rather than passing quietly."
+  def browser_secret_delete(%{"name" => name}) when is_binary(name) and name != "" do
+    Secrets.delete(name)
+  end
+
+  def browser_secret_delete(_args), do: {:error, :missing_name}
 
   @doc """
   Run a saved check as a browser flow on its saved engine (live tab or the

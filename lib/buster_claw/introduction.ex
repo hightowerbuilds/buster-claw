@@ -387,6 +387,14 @@ defmodule BusterClaw.Introduction do
     agent_run_stop     {"id": "..."}          # abandon it: halted, not finished
     ```
 
+    - **Signing in: use `$secret.<name>`, never a literal.** `browser_secret_list`
+      (safe) tells you which names exist; put `"value": "$secret.site_password"`
+      in a `fill` and the app swaps in the real value inside the executor, after
+      you are done reasoning. You never see it, and the run record keeps the
+      reference rather than the expansion. A name that is not stored **fails the
+      fill** — it does not type the literal text — so ask the user to add it with
+      `browser_secret_put` rather than guessing a password.
+
     **Every run you start, you must end.** `agent_run_finish` when the errand is
     done, `agent_run_stop` when you are giving up on it. They are not
     interchangeable: `stop` records the run as halted, which is a lie if the task

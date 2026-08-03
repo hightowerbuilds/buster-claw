@@ -432,6 +432,40 @@ defmodule BusterClaw.Commands.Catalog.Web do
         }
       },
       %{
+        name: "browser_secret_put",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Store a value an Agent Mode run can type as $secret.<name> during a fill, without any model ever reading it. Encrypted at rest; storing an existing name replaces it. Names are lowercase letters, digits, _ . and -. There is no command that reads a value back — that is the point.",
+        args: %{
+          "name" => %{type: :string, required: true},
+          "value" => %{type: :string, required: true},
+          "note" => %{
+            type: :string,
+            required: false,
+            description: "What this is, for the names listing. Never put the secret here."
+          }
+        }
+      },
+      %{
+        name: "browser_secret_list",
+        type: :read,
+        tier: :safe,
+        description:
+          "The stored secret NAMES, with notes and when they changed — never values. Call this to learn which $secret.<name> references you may use in a fill.",
+        args: %{}
+      },
+      %{
+        name: "browser_secret_delete",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Forget a stored secret by name. Any $secret.<name> reference to it then fails the fill rather than typing an empty string.",
+        args: %{"name" => %{type: :string, required: true}}
+      },
+      %{
         name: "agent_run_confirm_purchase",
         type: :mutate,
         tier: :restricted,

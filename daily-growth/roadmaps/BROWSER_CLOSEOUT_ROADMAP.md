@@ -1,9 +1,14 @@
 # Browser control — closing out the field test
 
-**Scoped 08-02-26 · Status: ACTIVE — Part I DECIDED and BUILT 08-03-26; Part II
-items 2 and 4 DONE 08-03-26. Two remain, and neither is an agent's to close:
-item 1 needs the operator's own signed-in session, and item 3 needs a decision
-before it needs code.**
+**Scoped 08-02-26 · Status: ACTIVE — Part I and Part II items 2, 3, 4 all
+DECIDED and BUILT 08-03-26.**
+
+**One item remains, and no agent can close it: item 1, the live signed-in
+checkout walk.** It needs the operator's own session. Everything built on 08-03
+raised its stakes rather than lowering them — the agent can now file a purchase
+receipt *and* sign in to a site, and the payment gate standing between those two
+capabilities and a live payment page has still only ever been tested, never
+walked.
 
 The 07-25 field test (`~/Desktop/browser-control-field-test-2026-07-25.md`) ran the
 whole Agent Mode stack at a real, logged-in, adversarial commercial site and came
@@ -195,7 +200,7 @@ A malformed selector throws in the page and surfaces as
 `query`, a case-insensitive *label substring*, and always honoured it. The field
 test passed CSS to it, which is a naming trap but not a defect.
 
-## 3. Wire a Keychain-backed `secret_resolver`
+## 3. Wire a Keychain-backed `secret_resolver` — **DONE 08-03**
 
 `agent_mode.ex:218` defaults to `fn _ -> :error end` and `agent_run_start` never
 passes `:secret_resolver`, so every `$secret.<name>` fails. `SecretRef` is pure,
@@ -209,22 +214,42 @@ shell already owns a Keychain-stored key and injects it into Elixir
 (`recovery.ex:6`) — the Rust side holding Keychain access is the established shape,
 not a new one to invent.
 
-> **Left deliberately unbuilt 08-03. This is a decision before it is a build,
-> and the decision has not been made.**
+> ## DECIDED and BUILT 08-03-26 — yes, unattended runs may sign in.
 >
-> Items 2 and 4 were defects — a mechanism that existed and could not be reached.
-> This one is not: everything here works exactly as designed, and the "fix" is to
-> *remove a safety ceiling*. Building it means unattended runs can sign in to
-> sites as the user, which is a different product posture, not a repair.
+> Asked as a posture question rather than a bug, because everything here worked
+> as designed and the "fix" removes a ceiling. **The operator said yes.**
 >
-> It also lands differently now than when it was written. As of 08-03 the agent
-> can file a purchase receipt, and item 1 — the only test of the payment gate
-> under a real signed-in session — is still unwalked. Handing unattended runs the
-> ability to *reach* signed-in sites, before walking the gate that stands between
-> them and a payment page, is the wrong order.
+> **The store is the database, not a second Keychain integration.** Values live
+> in a `browser_secrets` row typed `BusterClaw.Encrypted` — AES-256-GCM through
+> `Vault`, keyed from `secret_key_base`, which the Tauri shell **already** keeps
+> in the macOS Keychain and injects at boot. So values are Keychain-protected
+> through the one key the app already has. Following this roadmap's stated
+> precedent literally — new Rust commands holding Keychain access — would have
+> added an IPC surface needing `build.rs` registration and ACL lockstep, for no
+> more protection than the existing one-key design gives. (That registration is
+> exactly what left the co-presence commands ACL-dead for weeks.)
 >
-> **Ask before building:** should an unattended run be able to sign in at all? If
-> yes, do item 1 first.
+> `Encrypted` also fails closed: a blob that will not decrypt loads as `nil`, so
+> a rotated key makes a secret *unknown* and fails the resolve rather than typing
+> ciphertext bytes into a form.
+>
+> **The wiring, which is the actual bug.** `agent_run_start` now passes
+> `secret_resolver: Secrets.resolver()`. It is a function, not a snapshot: it
+> reads on demand, so a secret deleted mid-run stops resolving and no plaintext
+> sits in the run's state for the life of the errand.
+>
+> **The surface, and the invariant.** `browser_secret_put` and
+> `browser_secret_delete` are `:restricted` **and `gated`** — an untrusted
+> agent's attempt to write or destroy a credential surfaces for human approval.
+> `browser_secret_list` is `:safe` and returns **names and notes only**.
+> **There is no command that returns a value, and there must never be one** —
+> the whole point is a model that can drive a form it cannot read. A test
+> asserts the absence of `browser_secret_{get,read,show}` so adding one fails
+> there first.
+>
+> **Item 1 is still not done, and this makes it matter more.** Unattended runs
+> can now reach signed-in sites, and the payment gate protecting them has still
+> only been tested, never walked.
 
 ## 4. Per-host egress levels, with a surface — **DONE 08-03**
 
@@ -272,14 +297,14 @@ receipt; a signed-in checkout walk is the only thing that has ever tested the
 gate that stands between it and a live payment page, and it is still untested by
 walk. Do it before the next commerce change, not after.
 
-**2 and 4 are done (08-03).** What is left is exactly the two an agent should not
-close on its own:
+**Everything except item 1 is done (08-03).**
 
-- **1 — walk a live signed-in checkout.** Needs the operator's own session;
-  nothing in the repo can do it. It is now the only unverified thing standing
-  between an agent that can file receipts and a live payment page.
-- **3 — the Keychain `secret_resolver`.** Needs an answer to *"may an unattended
-  run sign in as the user?"* before it needs code. See the note under item 3.
+**Item 1 — walk a live signed-in checkout — is the whole remaining roadmap**, and
+it needs the operator's own session; nothing in the repo can do it. Its urgency
+went up three times in one day: the agent can now file a purchase receipt (Part
+I), reach signed-in sites unattended (item 3), and its egress on those sites is
+newly bounded but unobserved in the wild (item 4). The gate between all of that
+and a live payment page is tested and unwalked, and the field test found this
+exact gate failing *open*.
 
-Do **1** first regardless of how 3 is answered: it is the acceptance test for a
-gate that already ships, and every later commerce change rests on it.
+Nothing further should be built on this surface before that walk happens.
