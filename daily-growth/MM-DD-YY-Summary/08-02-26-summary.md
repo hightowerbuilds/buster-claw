@@ -678,6 +678,52 @@ its closure, and `die/2` all end in `System.halt/1`.
 
 ---
 
+## The front door had a recipe that could not work
+
+The last P1 from the roadmap review: the README told you to get your API token
+with
+
+```bash
+TOKEN=$(cat ~/Library/Application\ Support/BusterClaw/api_token)
+```
+
+It is worse than the finding said. That is wrong in **both** environments, not
+just the packaged one.
+
+`desktop/tauri/src/main.rs` — `ensure_secret` — migrates any plaintext token
+into the macOS Keychain and then *deletes the file*, with the comment "so secret
+material never lingers on disk." So on a packaged install the file is gone after
+first launch. And `config/dev.exs` sets a fixed literal
+(`dev-token-loopback-only`), so dev never writes one either. Grepping for a
+write confirms it: **nothing in the codebase creates that file.** The README has
+been handing out a command that fails on every current install since the move to
+the Keychain.
+
+Replaced with a table, because there genuinely are three answers: inside the
+app's terminal the shell already exports `BUSTER_CLAW_API_TOKEN`
+(`main.rs:575`), so there is nothing to look up; from any other shell it is
+`security find-generic-password -s BusterClaw -a api_token -w`; in dev it is the
+literal. `cli.ex`'s moduledoc said the same wrong thing and now describes the
+real precedence, and its `read_token_file/0` fallback is documented as
+vestigial — kept, because a token from a pre-Keychain data dir beats a confusing
+401, but no longer presented as the normal path.
+
+Then a guard in `scripts/check_docs_drift.sh`, which already gates CI, so no
+live doc can point at a token file again.
+
+**And the guard's first version did not work.** I wrote it to match
+`Application Support/BusterClaw/api_token`, re-added the offending line to the
+README to watch it fail — and it passed. The README's own version escaped the
+space: `Application\ Support`. My pattern sailed straight past the exact line it
+existed to catch. Re-anchored on the trailing segment, re-probed with both the
+escaped and unescaped forms, and both now fail the check.
+
+That is the second time today that testing a guard instead of trusting it found
+the guard was decorative — first the Dialyzer baseline, now this. A gate you
+have not watched fail is not a gate.
+
+---
+
 ## At close
 
 **Suite: 2,210 tests, 0 failures** — 64 of those added by the refactor/Dialyzer

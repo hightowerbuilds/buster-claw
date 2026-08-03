@@ -14,9 +14,15 @@ defmodule BusterClaw.CLI do
 
   - `BUSTER_CLAW_URL` — base URL of the Buster Claw HTTP API. Default
     `http://127.0.0.1:4000`.
-  - `BUSTER_CLAW_API_TOKEN` — token. If unset, falls back to reading
-    the configured app token, then
-    `~/Library/Application Support/BusterClaw/api_token`.
+  - `BUSTER_CLAW_API_TOKEN` — token. Tried in order: `--token`, this variable,
+    the configured app token, then a legacy plaintext file.
+
+    In the packaged app this variable is **already exported** into the terminal
+    by the Tauri shell, which holds the token in the macOS Keychain (service
+    `BusterClaw`, account `api_token`). In dev it is the fixed literal in
+    `config/dev.exs`. The file fallback below it is vestigial: the shell deletes
+    any plaintext copy once it has migrated the value into the Keychain, and dev
+    never writes one — it only fires for a data dir that predates that shell.
   """
 
   @default_url "http://127.0.0.1:4000"
@@ -659,6 +665,11 @@ defmodule BusterClaw.CLI do
     end
   end
 
+  # Legacy, and kept only for a data dir that predates the Keychain shell. The
+  # packaged app deletes this file as soon as it migrates the value (see
+  # `ensure_secret` in desktop/tauri/src/main.rs) and dev never writes one, so on
+  # any current install this returns nil. Documented rather than deleted because
+  # a token arriving from an old data dir is better than a confusing 401.
   defp read_token_file do
     path =
       case :os.type() do

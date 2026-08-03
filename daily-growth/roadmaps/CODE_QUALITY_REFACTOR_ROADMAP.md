@@ -974,15 +974,32 @@ complexity without reducing it.
   **252 → 247 findings, 16 → 12 non-noise entries**, `Unnecessary Skips: 0`
   throughout. Six new regression tests.
 
+- **README credential path — FIXED 08-02** (Finding 1's P1). Worse than the
+  finding described: the README's recipe was wrong in *both* environments, not
+  just the packaged one. `desktop/tauri/src/main.rs` (`ensure_secret`) migrates
+  any plaintext token into the Keychain and then **deletes the file**, so
+  `cat …/api_token` cannot work on a packaged install; and `config/dev.exs`
+  sets a fixed literal, so dev never writes that file either. Nothing in the
+  codebase writes it. Replaced with a three-row table covering in-app terminal
+  (already exported), external shell (`security find-generic-password -s
+  BusterClaw -a api_token -w`), and dev (the literal). `cli.ex`'s moduledoc and
+  the vestigial `read_token_file/0` are now documented as legacy rather than
+  current. `scripts/check_docs_drift.sh` gained a guard so it cannot come back —
+  **and the guard's first version silently missed the real line**, because the
+  README escaped the space (`Application\ Support`); caught by probing it with
+  the actual bad line rather than trusting it.
+
 **Next, in order:**
 
-1. **README credential path** (Finding 1, P1) — the one doc drift that strands a user.
-2. **The 12 remaining baseline entries** — eight `:pattern_match_cov`, three
+1. **The 12 remaining baseline entries** — eight `:pattern_match_cov`, three
    `:pattern_match`, one `:no_return` (that last one honest: `stand_down/2`,
    its closure, and `die/2` all end in `System.halt/1`). These have been
    *classified*, not *diagnosed* — none is known to be a defect and none is
    known not to be. Same treatment as the four above: read the code, decide
    whether Dialyzer is right, fix or justify.
+2. **The rest of Finding 1's P2 drift** — `shift/Dispatch.md` in four files, the
+   voice edge-function's Realtime comment, Playwright in the packaging doc, the
+   UML supervision tree. Prose only; gates nothing.
 3. Findings 3 and 5 — **not yet re-verified by the second reader.** Given that
    three of the five findings examined so far contained a material error, measure
    before executing either.

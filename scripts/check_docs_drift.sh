@@ -74,4 +74,24 @@ if [[ $fail -ne 0 ]]; then
   exit 1
 fi
 
-echo "docs drift check: OK (README, docs/, user-guide against CLI + catalog)"
+# --- source of truth 3: where the API token actually lives -------------------
+# The desktop shell keeps the token in the macOS Keychain and DELETES any
+# plaintext copy once it has migrated the value (`ensure_secret`, main.rs), and
+# dev uses a literal from config/dev.exs. Nothing writes a token file. From the
+# move to the Keychain until 2026-08-02 the README nonetheless told users to
+# `cat` one, which is a recipe that cannot work on any current install — a
+# broken front door that no test could see, because it was prose.
+# Matched on the trailing path segment, not the full path: the README's own
+# version escaped the space (`Application\ Support/...`), so a pattern anchored
+# on "Application Support" sailed straight past the very line it was written to
+# catch. Verified by re-adding that line and watching this fail.
+if grep -rnE 'BusterClaw/api_token|buster_claw/api_token' "${DOCS[@]}" >&2; then
+  echo "" >&2
+  echo "A live doc points at an api_token FILE. There isn't one: the packaged" >&2
+  echo "shell stores the token in the Keychain (service BusterClaw, account" >&2
+  echo "api_token) and deletes any plaintext copy; dev uses the literal in" >&2
+  echo "config/dev.exs. Document one of those instead." >&2
+  exit 1
+fi
+
+echo "docs drift check: OK (README, docs/, user-guide against CLI + catalog + token source)"

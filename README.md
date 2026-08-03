@@ -73,7 +73,17 @@ Phoenix serves at `http://127.0.0.1:4000/`; the Tauri shell opens the same app i
 
 ### Authentication
 
-A loopback API token is generated on first launch at `~/Library/Application Support/BusterClaw/api_token`. The Phoenix endpoint binds to `127.0.0.1` only; the token defends against other local users on a shared machine. Override with `BUSTER_CLAW_API_TOKEN`.
+The Phoenix endpoint binds to `127.0.0.1` only; the API token defends against other local users on a shared machine. Where that token lives depends on how you're running:
+
+| Running | Token | How to get it |
+|---|---|---|
+| **Packaged app**, terminal *inside* the app | macOS Keychain (service `BusterClaw`, account `api_token`) | Already exported as `$BUSTER_CLAW_API_TOKEN` — nothing to look up |
+| **Packaged app**, any other shell | same | `security find-generic-password -s BusterClaw -a api_token -w` |
+| **Dev** (`mix phx.server`) | a fixed literal in `config/dev.exs` | `dev-token-loopback-only` |
+
+`BUSTER_CLAW_API_TOKEN` overrides all of it.
+
+> There is no `api_token` **file** to read. The desktop shell generates the token straight into the Keychain, and if it finds a plaintext file from an older build it migrates the value and **deletes the file** (`desktop/tauri/src/main.rs`), so secret material never lingers on disk. Dev never writes one either — it uses the literal above.
 
 Three tokens exist, and **the trust tier is derived from which one you present** — not from the route:
 
@@ -106,7 +116,8 @@ mix escript.build                                   # build once
 ### HTTP API
 
 ```bash
-TOKEN=$(cat ~/Library/Application\ Support/BusterClaw/api_token)
+# Inside the app's terminal it's already set; elsewhere, read it from the Keychain:
+TOKEN="${BUSTER_CLAW_API_TOKEN:-$(security find-generic-password -s BusterClaw -a api_token -w)}"
 
 curl http://127.0.0.1:4000/api/commands             # catalog (no auth)
 
