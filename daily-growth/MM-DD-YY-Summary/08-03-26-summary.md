@@ -345,3 +345,187 @@ hairlines.
 Three roadmaps archived: Chart Builder, the Trading critical review, and the
 browser closeout. `roadmaps/` is down to two live documents plus LEFTOVERS and
 the launch map.
+
+---
+
+# Later the same day
+
+> The opening line above says nine commits; the day closed at **fourteen** —
+> thirteen here plus `076b263` from a second session working the same tree, and
+> counting the summary commit itself. Left standing rather than corrected in
+> place: what the day looked like from the middle of it is the record, and
+> editing the count to match the ending would tidy away the honest version.
+
+The morning archived three roadmaps. The afternoon went at the one nobody
+believed was still open, and it turned out to be the day's fourth instance of
+the same lesson.
+
+## The code-quality roadmap is not done, and re-measuring found a regression
+
+Asked to look at it on the assumption it was finished, and it is not: **its
+Progress section is accurate about 08-02 and silent about four phases that were
+never begun.** `SoundStudioComponent` was still 1,933 lines, exactly as recorded.
+`StatusLive` 1,420. All of 3B/3C, Phase 4, Phase 0 items 8–9, UML 3–5 and the
+payload-key lockstep untouched.
+
+**And a result had silently come undone.** Cycles went 6 → 2 on 08-02 with the
+note *"no `lib/buster_claw` file participates in any cross-layer cycle now."*
+There were **3**. The new one was mine, from that morning:
+`Trading → ChartBuilder → Portfolio → Trading`, closed by the single
+`chat_opts_for("chartbuild")` line that shipped with the Chart Build tab.
+`Portfolio → Trading` already existed; naming `ChartBuilder` from `Trading`
+completed the loop.
+
+Fixed by extracting `Trading.ChatProfile` as a leaf — the technique
+`AgentToolPolicy` and `AudioName` already used. **A `defdelegate` from `Trading`
+would not have worked**, and the first attempt made exactly that mistake: the
+edge is the *reference*, not the call site.
+
+**The real problem was that nothing was watching.** A structural result got
+measured once, written down, and quietly undone a day later by an unrelated
+feature; it surfaced only because someone re-ran `xref` by hand.
+`scripts/check_cycles.sh` now asserts the **inventory** — both accepted cycles
+by name and by the reason each is accepted, anything else fails — and runs in
+`mix precommit`. Breaking one of the two fails it too, deliberately, so the
+roadmap gets updated in the commit that earns it. Probed by reintroducing the
+real cycle rather than trusting it, which is this roadmap's own lesson: its
+first README drift guard silently missed the line it was written for.
+
+## Reading the remaining work for whether we would defend it
+
+Rather than working the list, the list got read. Three outcomes.
+
+**3C is cut, by the document's own argument.** Its scorecard already records
+Finding 4 as *"right diagnosis, wrong axis — sized by responsibility count, not
+lines per responsibility"*, and 3C then listed five coherent mid-sized modules
+on that wrong axis: `PortfolioChart` 996, `Commands.Web` 894, `CLI` 867,
+`TerminalCommands` 795, `Gmail` 739. Splitting them buys smaller numbers and
+more indirection, which the same document forbids two sections later. What would
+put one back on the list is a *responsibility* count, and that is written down.
+
+**The daisyUI contradiction is resolved by changing the rule, not the code.**
+`AGENTS.md` forbade daisyUI outright while `app.css` imported the plugin, so the
+rule described neither the code nor any destination anyone was walking toward.
+It now states the convention actually in force: daisyUI supplies the primitives
+and theme tokens, the `ic-` utilities and hand-written Tailwind carry the
+Industrial Claw identity, and a stock daisyUI look never ships as the final
+design. Migrating off the plugin was the alternative and was declined — a
+UI-wide refactor whose only failure mode is visual, which no test can guard.
+
+**Two items were kept because something written already existed and was simply
+not protected or not run.**
+
+## The bridge contract only checked half of itself
+
+The Elixir↔JS lockstep has compared action *names* since 07-28. The roadmap
+named the other half and nobody closed it: *"a rename of `wait_ms` on either
+side is still silent."* It is silent in the worst way — the hook reads
+`undefined`, the command runs, and the result looks like a page that simply did
+not match.
+
+Elixir now **declares** payload keys per action in `@payload_keys` rather than
+the test inferring them from call sites. That mattered more than it sounds:
+payloads are built in *both* `Commands.Web` and `Browser`, and a regex over
+callers cannot tell a request key from a response key — an early attempt
+produced a plausible-looking list containing `"matched"` and `"waited_ms"`.
+`request/3` now refuses an undeclared key instead of letting it vanish, and the
+lockstep compares the declaration against the hook's `payload.<key>` reads in
+both directions. Probed by renaming `wait_ms` to `waitMs` and watching it fail.
+
+## 22 tests that had never run anywhere
+
+The `:browser_engine` tests drive a real Chromium over CDP. They appeared
+**nowhere** in `.github/workflows` — excluded by tag since they were written and
+collected by nothing. They pass: **22 tests, 0 failures, 58s** against local
+Chrome, and again through the new `BUSTER_CLAW_BROWSER_BINARY` path.
+
+They now have a scheduled lane, in **its own workflow file**. The first draft
+added `schedule:` to `ci.yml`, which would have run the whole of CI daily while
+carrying a comment claiming the opposite — caught by reading what the trigger
+actually does rather than what the comment said. `Detect` only knows macOS
+`.app` paths, so Linux pins the binary through `config/runtime.exs`,
+deliberately outside the "guarded out of `:test`" rule because the tests that
+need it run in `:test` and it only ever sets config when the variable is present.
+
+## 3B, in two halves
+
+**`StatusLive` 1,420 → 1,346**, and the line count is the least interesting part.
+
+`Notifications.Schedule` took the timer/alarm/reminder wall-clock arithmetic,
+which was pure the whole time and simply lived in a LiveView. That is *why* it
+had no tests: asking "what does 11:30pm mean when it is 11:45pm" meant driving a
+mount, an event and a form. `fire_at/3` now takes the clock, and 11 tests cover
+what was never written — including `next_local_occurrence`'s real contract
+(always ahead, never more than a day out) asserted as a property rather than by
+pinning a timezone.
+
+`track_end_ms` and `paste_track` existed **twice** — once in `StatusLive`, once
+in `SoundStudioComponent`, in different shapes and unaware of each other. Two
+implementations of *"where does this track end"* is one drifting apart later, on
+a number that decides where audio lands. Both moved onto `StudioMix` with 9
+tests neither copy had, including the one that catches the tempting wrong
+version: it is the furthest clip **end**, not the furthest **start**.
+
+**The rest of StatusLive's studio cluster was examined and deliberately left.**
+`mutate_open_mix`, `step_history`, `push_studio_history` and `zoom_step` are
+assigns plus `send_update` — undo/redo state a component cannot hold, because
+the tab's `:if` discards it on every switch. Extracting them would move
+orchestration into a module that then needs the socket passed to it:
+indirection, not separation.
+
+## The Studio template, decomposed
+
+**`SoundStudioComponent` 1,926 → 1,250, and `render/1` 826 → 224.** It was 43%
+of the module; it is 18% now. Five modules under `BusterClawWeb.SoundStudio.`:
+`Format` (50), `Catalog` (46), `Sidebar` (202), `Overlays` (230), `Arranger`
+(379).
+
+**The order was the method rather than an accident.** `Format` first, because it
+was called from ~25 sites and blocked nothing. Then the overlays, which read
+three assigns between them. Then the sidebar. The arranger last: the most
+entangled, and tractable only once `Catalog` existed to hold what it shared with
+the component. Each extraction carried its own private helpers, because none of
+them had a second caller.
+
+**What the attrs bought is the actual product.** Reading `Arranger`'s nine
+`attr` declarations now tells you what an arrangement is made of; the same
+markup inside the old `render/1` told you nothing, because every assign in the
+Studio was in scope. The line count is a side-effect of that, not the goal.
+
+Two contract fixes fell out. `upload_error/2` takes the entry limit rather than
+reading a module attribute, because a second copy of that number could disagree
+with the `allow_upload` enforcing it. And `@max_import_entries` is exposed
+through a function, because **`@name` inside `~H` is an assign and never a
+module attribute** — a mistake that compiles.
+
+## Two sessions, one working tree
+
+The afternoon ran alongside another session rebuilding the Trading page's
+research surface, and the tree showed it: `Research` deleted mid-compile while
+`trading_live.ex` still called it, the build lock held by the other process,
+`ChatProfile` — a module an hour old — rewritten by someone else to drop the
+kind it had just been given.
+
+Nothing was lost, and the reason is procedural rather than lucky. Work stayed on
+files the other session was not touching; `git status` got read before every
+stage; and the Studio commit went in with an **explicit pathspec**
+(`git commit -- <paths>`), so it carried exactly seven files and left the other
+session's staged work staged. The one honest caveat is recorded rather than
+smoothed over: the gate ran against a tree holding both sets of changes, so it
+verified mine-plus-theirs, not mine alone.
+
+Their work landed as `076b263`: Chart Build absorbs data research, the Research
+chat is deleted, `Research.load/search/blank` become `ChartBuilder.Fetch`, the
+panel becomes `TradingLookupPanel`, and a migration retypes existing rows first —
+because `Conversation.@kinds` validates by inclusion, so dropping the value
+without one would have stranded every Research conversation.
+
+## The day in one line
+
+Four separate times, a written claim and the code it described had come apart —
+a palette that failed its own checks, a roadmap saying orders could not be placed
+while the button was wired, an OAuth subsystem described in detail that was never
+in the tree, and a cycle count that drifted back within a day. None was caught by
+reading. Every one was caught by running something. The two guards added today —
+`check_cycles.sh` and the payload lockstep — exist so the next two are caught by
+CI instead of by someone happening to look.
