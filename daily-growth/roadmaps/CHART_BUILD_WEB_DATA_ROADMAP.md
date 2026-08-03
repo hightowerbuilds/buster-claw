@@ -1,7 +1,24 @@
 # Chart Build gets the web — and a source of truth for where data comes from
 
-**Scoped 08-03-26 · Status: ACTIVE · Phases 0–3 SHIPPED. Only Phase 4 (deferred
-on purpose) and the operator's FRED call remain.**
+**Scoped 08-03-26 · Status: ACTIVE · Phases 0–3 SHIPPED. FRED dropped by operator
+decision. Only Phase 4 (deferred on purpose) remains.**
+
+> ### FRED: DROPPED, 08-03 (operator)
+>
+> **Closed, not deferred.** The condition was "drop it if we have reliable,
+> consistent, constant data" — and we do: nine `:verified` sources, of which the
+> three that matter here are the *primary publishers* FRED redistributes. FRED
+> offered convenience and catalogue breadth, never a number we cannot otherwise
+> get.
+>
+> Do not re-open this by writing an adapter. Reopening needs a fresh operator
+> decision; the entry in `Finance.Sources` says so, and the live terms page was
+> never readable from here anyway.
+>
+> **One thing this decision depends on, so it is written down:** BLS keyless is
+> **25 queries/day**. A free key (email, no card, `data.bls.gov/registrationEngine`)
+> takes it to 500 and is set via `:buster_claw, :bls_api_key`. Without it,
+> "constant" is true for a handful of charts a day and not beyond that.
 
 > **Progress, 08-03.** **Phase 0** shipped (`076b263`): Research chat deleted,
 > fetchers moved to `ChartBuilder.Fetch`, lookup panel beside the chart, retype
@@ -24,10 +41,10 @@ on purpose) and the operator's FRED call remain.**
 > the box at the end of Phase 3 for what it cost and what it changed.
 >
 > **Next, in order:** *(a)* watch it run once in the real app — still the one
-> thing nobody has done (`LAUNCH_ROADMAP` **G-40**); *(b)* the operator's **FRED**
-> call; *(c)* adapters for the verified-but-unadapted sources, of which the
-> Treasury yield curve is the most chart-worthy. Phase 4 stays deferred on
-> purpose.
+> thing nobody has done (`LAUNCH_ROADMAP` **G-40**); *(b)* register a free BLS
+> key, which is what makes the daily quota a non-issue; *(c)* adapters for the
+> verified-but-unadapted sources, of which the Treasury yield curve is the most
+> chart-worthy. Phase 4 stays deferred on purpose. FRED is closed.
 
 Chart Build can draw anything and look up nothing. Its conversation is confined
 to a snapshot of our own portfolio ledger and cached daily closes, so the moment

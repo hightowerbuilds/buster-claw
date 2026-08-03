@@ -249,13 +249,18 @@ defmodule BusterClaw.Finance.Sources do
       status: :blocked,
       verified_on: nil,
       note:
-        "Not a to-do. Both clauses land squarely on what this application does. FRED is a " <>
-          "REDISTRIBUTOR: CPIAUCSL is BLS, GDP is BEA, DGS10 is the Fed Board's H.15 — all " <>
-          "three primaries are in this registry with no such restriction. The live terms page " <>
-          "could not be read (the host bot-blocks curl and WebFetch alike); the wording above " <>
-          "is from the Fed's own June 2024 change announcement. An operator must read " <>
-          "https://fred.stlouisfed.org/docs/api/terms_of_use.html in a browser before this " <>
-          "moves."
+        "DROPPED BY OPERATOR DECISION, 08-03. Not a to-do and not a question — do not " <>
+          "re-open it by writing an adapter. Both clauses land squarely on what this " <>
+          "application does, and FRED is a REDISTRIBUTOR: CPIAUCSL is BLS, GDP is BEA, DGS10 " <>
+          "is the Fed Board's H.15 — all three primaries are in this registry, verified, with " <>
+          "no such restriction. What FRED offered was convenience (one API, one auth, one " <>
+          "response shape) and catalogue breadth, not numbers we cannot otherwise get. The " <>
+          "live terms page could not be read (the host bot-blocks curl and WebFetch alike); " <>
+          "the wording above is from the Fed's own June 2024 change announcement. Reopening " <>
+          "this needs a fresh operator decision, not just someone reading " <>
+          "https://fred.stlouisfed.org/docs/api/terms_of_use.html — though anyone doing that " <>
+          "should record what they found here. The decision predates that read and does not " <>
+          "depend on it."
     },
     %{
       key: "alphavantage",
