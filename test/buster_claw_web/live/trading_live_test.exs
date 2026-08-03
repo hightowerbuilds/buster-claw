@@ -506,6 +506,82 @@ defmodule BusterClawWeb.TradingLiveTest do
       refute html =~ "```svg"
     end
 
+    test "collapsing the Chart Build chat drops it to a header and gives the panel the room",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+
+      chat = "#chartbuild-chat-#{chart.id}"
+
+      # Open: the composer is reachable and the chat is the flex child that grows.
+      assert has_element?(view, "#{chat} [data-chat-input]")
+      assert has_element?(view, "#{chat}.flex-1")
+
+      render_click(view, "trading_minimize_chat", %{"id" => chart.id})
+
+      # Collapsed: header only, and — the point of the gesture — it stops growing,
+      # so the preview above it takes the space instead.
+      refute has_element?(view, "#{chat} [data-chat-input]")
+      assert has_element?(view, "#{chat}.shrink-0")
+      refute has_element?(view, "#{chat}.flex-1")
+      assert has_element?(view, "#{chat} [aria-expanded='false']")
+      # The preview is still there — collapsing the chat must not take it down.
+      assert has_element?(view, "#chartbuild-preview")
+
+      render_click(view, "trading_minimize_chat", %{"id" => chart.id})
+      assert has_element?(view, "#{chat} [data-chat-input]")
+      assert has_element?(view, "#{chat}.flex-1")
+    end
+
+    test "a collapsed Chart Build chat flags its tab unread, like any unreadable window",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+      render_click(view, "trading_new_tab", %{"kind" => "research"})
+      other = Enum.find(Conversations.list_kinds(["research"]), & &1)
+
+      # The dot is suppressed on the active tab, so the flag is only observable
+      # from somewhere else — which is exactly when it matters.
+      dot = "#trading-tab-#{chart.id} [title='New messages']"
+
+      reply = fn ->
+        send(view.pid, {:agent_chat, chart.id, {:message, %{role: :assistant, text: "done"}}})
+        _ = :sys.get_state(view.pid)
+      end
+
+      # Open: the reply was on screen as it arrived, so leaving carries no dot.
+      render_click(view, "trading_select_tab", %{"id" => chart.id})
+      reply.()
+      render_click(view, "trading_select_tab", %{"id" => other.id})
+      refute has_element?(view, dot)
+
+      # Collapsed: the body was hidden, so the same reply went unread.
+      render_click(view, "trading_select_tab", %{"id" => chart.id})
+      render_click(view, "trading_minimize_chat", %{"id" => chart.id})
+      reply.()
+      render_click(view, "trading_select_tab", %{"id" => other.id})
+      assert has_element?(view, dot)
+    end
+
+    test "retyping away from Chart Build does not carry a collapse into the new kind",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+
+      render_click(view, "trading_minimize_chat", %{"id" => chart.id})
+      refute has_element?(view, "#chartbuild-chat-#{chart.id} [data-chat-input]")
+
+      # `minimized` is shared with the floating windows: a collapse left behind
+      # here would reopen as a minimised window with no visible composer.
+      render_click(view, "trading_set_kind", %{"id" => chart.id, "kind" => "research"})
+
+      assert has_element?(view, "#trading-chat-#{chart.id} [data-chat-input]")
+      refute has_element?(view, "#chartbuild-panel")
+    end
+
     test "a floating Chat tab explains itself instead of rendering a blank pane",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")

@@ -690,13 +690,18 @@ defmodule BusterClawWeb.TradingLive do
   defp maybe_flag_unread(socket, _conv, :user), do: socket
 
   defp maybe_flag_unread(socket, conv, _role) do
-    visible_chart? =
-      conv == socket.assigns.active_tab and tab_kind(socket, conv) == "chartbuild"
+    # Collapsed cuts both ways: a Chart Build chat is only "already showing the
+    # message" while its body is open. Collapsed, it is as unreadable as a
+    # minimised floating window and earns the same dot.
+    collapsed? = MapSet.member?(socket.assigns.minimized, conv)
 
-    if visible_chart? or
-         (conv in socket.assigns.open_chats and not MapSet.member?(socket.assigns.minimized, conv)),
-       do: socket,
-       else: update_tab(socket, conv, &%{&1 | unread: true})
+    visible_chart? =
+      conv == socket.assigns.active_tab and tab_kind(socket, conv) == "chartbuild" and
+        not collapsed?
+
+    if visible_chart? or (conv in socket.assigns.open_chats and not collapsed?),
+      do: socket,
+      else: update_tab(socket, conv, &%{&1 | unread: true})
   end
 
   # An assistant turn carrying a fenced ```order block arms the confirm card.
@@ -1135,6 +1140,10 @@ defmodule BusterClawWeb.TradingLive do
     socket
     |> update_tab(id, &%{&1 | docked: docked})
     |> assign(:open_chats, open_chats)
+    # Retyping away carries no collapse with it: `minimized` is shared with the
+    # floating windows, so a chat left collapsed here would otherwise re-open
+    # as a minimised window somewhere else on the tab.
+    |> update(:minimized, &MapSet.delete(&1, id))
   end
 
   defp transition_chartbuild_layout(socket, _id, _previous, _kind), do: socket
@@ -2064,6 +2073,7 @@ defmodule BusterClawWeb.TradingLive do
             running={chat_state(assigns, @active_tab).running}
             thinking={chat_state(assigns, @active_tab).thinking}
             queue={chat_state(assigns, @active_tab).queue}
+            minimized={MapSet.member?(@minimized, @active_tab)}
             focused
             agent_cli_missing={@agent_cli_missing}
             empty_message={chat_empty_message(@active_kind)}

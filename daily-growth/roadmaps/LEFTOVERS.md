@@ -174,6 +174,12 @@ drawn-not-computed label show, does the newest chart replace the previous one,
 and does the zoom modal open. Then check the model actually follows the
 palette — slot 1 hazard `#ff4407` first, and no invented sixth hue.
 
+Added 08-03: also collapse the chat with the **▾** in its header. It should drop
+to a header-only strip at the bottom and hand its height to the preview — the
+tests assert the flex classes swap, but only a human can say whether the chart
+is actually *easier to read* at that size, which is the whole reason the gesture
+exists. Check the composer is gone while collapsed and comes back on **▴**.
+
 **Why deferred.** The feature is covered by tests and the full suite is green at
 2,226, but `render_hook` never touches JS, so nothing in the suite proves the
 panel *looks* right — the same gap that once let a rename sever a hook↔markup

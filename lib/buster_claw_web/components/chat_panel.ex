@@ -141,9 +141,13 @@ defmodule BusterClawWeb.ChatPanel do
           # Docked: it IS the tab, so it takes the flow and drops the translucency
           # that only earned its place over a dashboard.
           if(@flow,
-            do: "min-h-0 flex-1 border-base-content/25 bg-base-100",
+            do: "min-h-0 border-base-content/25 bg-base-100",
             else: "fixed z-30 backdrop-blur-md transition-colors"
           ),
+          # Collapsed in flow, the header is the whole window. It has to stop
+          # growing as well as hide its body, or the panel above it gains
+          # nothing — which is the entire point of collapsing it.
+          @flow and if(@minimized, do: "shrink-0", else: "flex-1"),
           not @flow and
             if(@focused,
               do: "border-primary/60 bg-base-100/95 shadow-[4px_4px_0_0_oklch(var(--bc)/0.25)]",
@@ -201,6 +205,24 @@ defmodule BusterClawWeb.ChatPanel do
         >
           Stop
         </button>
+        <%!-- A panel-owned chat cannot be floated, minimised to the desktop, or
+              closed — it is half of its own tab. Collapsing is the one size
+              gesture it can offer, and it reuses the floating window's
+              `minimized` state rather than inventing a second flag. --%>
+        <button
+          :if={@embedded}
+          type="button"
+          phx-click="trading_minimize_chat"
+          phx-value-id={@conv}
+          title={
+            if @minimized, do: "Show the chat", else: "Collapse the chat to give the panel more room"
+          }
+          aria-expanded={to_string(not @minimized)}
+          aria-controls={"#{@id}-body"}
+          class="grid size-5 shrink-0 place-items-center rounded-sm font-mono text-base-content/50 hover:bg-base-content/15 hover:text-base-content"
+        >
+          {if @minimized, do: "▴", else: "▾"}
+        </button>
         <button
           :if={@docked and not @embedded}
           type="button"
@@ -233,7 +255,7 @@ defmodule BusterClawWeb.ChatPanel do
         </button>
       </header>
 
-      <div :if={not @minimized} class="flex min-h-0 flex-1 flex-col">
+      <div :if={not @minimized} id={"#{@id}-body"} class="flex min-h-0 flex-1 flex-col">
         <div
           id={"#{@id}-log"}
           data-chat-log
