@@ -529,3 +529,180 @@ in the tree, and a cycle count that drifted back within a day. None was caught b
 reading. Every one was caught by running something. The two guards added today —
 `check_cycles.sh` and the payload lockstep — exist so the next two are caught by
 CI instead of by someone happening to look.
+
+---
+
+# The other session, same day: Chart Build gets the web
+
+> This is the second session's account of the work the section above refers to as
+> "their work landed as `076b263`". Six more commits followed it: `5792cac`,
+> `50baa84`, `458ef24`, `88e48a0`, `5344c19`, `4b30ee6`. Written separately
+> rather than merged into the account above, because two people describing the
+> same afternoon from opposite ends of a shared tree is worth preserving as two
+> accounts.
+
+The brief was one sentence: Chart Build has no internet, and it needs to search
+the web to build charts — plus, over time, a collection of good sources for free
+financial data. Scoping it produced a rule the rest of the day hung off:
+
+> **The model may look things up. It may not transcribe what it finds onto a
+> chart.**
+
+That is not fussiness. The renderer is freehand — the model emits SVG
+coordinates and nothing checks the arithmetic, which is why every chart already
+ships labelled *Drawn by AI · not computed*. That label honestly covers one
+failure mode. A model reading numbers off a web page adds a second, independent
+one, and the label does not cover it: two uncorrelated ways to be wrong, one
+warning, on a picture of money. So search *informs*, and the app *supplies* —
+plottable numbers come through our own fetch path with a source and an as-of
+attached.
+
+## The gate that changed the design before any of it was built
+
+Phase 1 opened with a probe rather than code, on the theory that whether the
+CLI's `WebFetch` can reach loopback is a question to measure. It can:
+
+| target | result |
+|---|---|
+| `https://example.com` (control) | fetched fine |
+| `127.0.0.1:4000` — BEAM listening | `read ECONNRESET` |
+| `127.0.0.1:4999` — nothing listening | `connect ECONNREFUSED` |
+
+Established-then-reset on one port and refused on the other is a pair only a host
+that sees *this machine's* listening sockets produces. **`WebFetch` connects
+locally**, which makes it an SSRF path into our own command API with `URLGuard`
+nowhere in it. It is now denied to every profile; Chart Build ships with
+`WebSearch` alone.
+
+The near-miss is the part worth keeping. The only reason the probe got a reset
+rather than our `/_health` JSON is that WebFetch force-upgrades `http` to
+`https` while our endpoint is plain HTTP. Two implementation details happening to
+line up — not a control. Serve TLS on loopback, or ship a CLI that drops the
+upgrade, and the hole opens with nothing in this repository changing.
+
+It also cost nothing: shipping search without fetch means the model sees snippets
+rather than whole pages, and a snippet is a far weaker thing to transcribe a
+series off. The security finding and the honesty risk had the same mitigation.
+
+The same probe answered a smaller question nobody asked: `SlashCommand` in the
+denial list *"matches no known tool"*. Kept anyway, with the finding in a
+comment — a dead deny is free, a missing one is not, and a future CLI could
+introduce it.
+
+## FRED was the obvious first source, and its terms forbid us
+
+A parallel agent verified eleven candidate APIs by calling them. The headline
+was not a technical finding: **FRED's terms prohibit use "in connection with …
+large language models" and prohibit "storing, caching, or archiving" its
+content.** Phase 2 delivers observations into a Claude conversation; Phase 4
+would persist them. Both clauses land squarely.
+
+The route around it is that **FRED is a redistributor**. `CPIAUCSL` is BLS.
+`GDP` is BEA. `DGS10` is the Fed Board's H.15. All three primaries are federal
+works with no such restriction — so the first adapter became **BLS**, which also
+happens to answer the roadmap's own acceptance test.
+
+The operator closed it later: *drop it, we have reliable data*. Recorded as
+**DROPPED BY OPERATOR DECISION**, not as an unread terms page, because those two
+read very differently to whoever finds the entry next. One is settled; the other
+is an invitation to go and check. (The page cannot be checked from here anyway —
+it bot-blocks `curl` and WebFetch alike.)
+
+## The fifth time a written claim and the code came apart
+
+The day's through-line held. The BLS adapter passed 17 stubbed tests, so it got
+run against the live API — and the keyless **v1 GET route silently ignores
+`startyear`/`endyear`**. Asked for 2024–2025, it returned data through 2026-06: a
+perfectly well-formed 200 for a window nobody requested, which on a charting
+surface means the chart and its own subtitle disagree.
+
+v1 POST honours the range keylessly (2022–2023 returns exactly 24 rows), so both
+routes POST now. The structural fix matters more than the bug: every payload
+carries `requested` and `covered` side by side, so a caller labelling a chart
+from the span it *asked for* can no longer be wrong without noticing.
+
+Three other traps came from the research and each got a test: `M13` is the annual
+average and not a thirteenth month (plotted naively it is a phantom point at a
+value no month had); failures arrive as **HTTP 200** with the verdict in the body,
+which `Finnhub.get_json/3`'s status-only check would call success; and values are
+strings where `"-"` means unpublished, dropped rather than defaulted to zero.
+
+## The channel, and two brakes that were not in the scope
+
+`datareq` mirrors the ` ```svg ` seam that already existed: the model emits a
+fenced block, the app fetches through a real adapter, and the result returns as
+the **next turn**. A turn specifically — `ensure_started/2` captures its options
+once and the `--resume` session id dies with the process, so re-injecting any
+other way would discard the conversation that just made the request.
+
+Writing it surfaced a hazard the design had not named: **a `datareq` is a turn
+that can provoke another `datareq`.** Hence a delivery budget of six, refilled
+whenever the operator speaks — the risk is an *unwatched* loop, and a human
+typing is precisely the end of unwatched, which makes that the honest reset
+condition rather than an arbitrary timer. And a repeat brake: the same request
+failing twice is refused a third time with an instruction to stop rather than
+rephrase.
+
+Malformed blocks cost no budget but are still answered, because a silently
+dropped block deadlocks the conversation and a deadlocked model invents.
+
+## Listing is not permission
+
+The registry ships **in code** with workspace overrides merged at read time —
+deliberately not a seeded file, because `maybe_write` never overwrites and a list
+of third-party APIs is the most update-prone thing in the app. Sixteen sources,
+nine `:verified`, and **exactly one fetchable**: a source needs `:verified`
+status *and* an adapter. That gap is the whole design. It is what keeps a
+`:blocked` FRED or an `:unsanctioned` Yahoo out of the fetch path even though
+both are described in detail.
+
+The rest are there so the *decision* is discoverable rather than the endpoint
+being rediscovered — which is the entire reason to record a dead source at all.
+
+Two existing guards earned their keep during this. `sources/` was already
+declared `:deprecated`, and `sweep_deprecated/0` **deletes** an empty deprecated
+directory — so the first operator to empty their override folder would have found
+it gone. The registry's uniqueness test caught the collision. Then the safe-tier
+snapshot refused `finance_sources` until it was reviewed by name, and caught the
+follow-up mistake too: the review note went *inside* a `~w()` sigil, which has no
+comment syntax, and the test reported 45 new "commands".
+
+## What was verified, and what still has not been
+
+Both model-facing halves were checked against a live run rather than assumed. The
+Phase 1 gate — asked to chart CPI before the channel existed — refused, cited the
+transcribe rule in its own words, and named series `CUUR0000SA0` from the BLS
+monthly: exactly what `Finance.BLS.observations/2` takes, with neither side told
+about the other. It also caught that portfolio history only reaches 2026-07-29,
+applied the dual-axis honesty rule unprompted, and flagged a transfer as cash-in
+rather than performance. After Phase 2 landed, it emitted a `datareq` block that
+`DataReq.extract/1` parsed cleanly.
+
+**Nobody has watched the whole thing run in the real app.** Request → delivery →
+a drawn chart with BLS and an as-of in its subtitle: every piece is tested, the
+composition is not. It joins the other Chart Build looking-at-it item in G-40.
+
+Two more honest gaps. **BLS keyless is 25 queries/day** — a free key takes it to
+500 and has not been registered, so "constant data" currently means a handful of
+charts a day. And there is **no free keyless source of equity OHLC history**
+anywhere in the registry, so *"chart AAPL over two years"* honestly answers "I
+can't fetch that". Correct behaviour, but better known now than during a demo.
+
+## The shared tree, from the other end
+
+The mirror image of the account above. This session watched `sound_studio/`
+appear mid-run and fail to compile, which made `mix test` impossible for a
+stretch — so Phase 0 was verified in **an isolated `git worktree` at HEAD plus a
+patch of only these changes**, rather than by touching anything of theirs. 2,279
+tests, zero failures, against a tree containing one session's work and nobody
+else's.
+
+Later the contention moved to SQLite: two suites against one test database
+produced 74 then 92 `Database busy` failures, every one of which passed when its
+file was run alone. Waiting for the tree to go quiet gave 2,429 tests and zero
+failures. Worth writing down because the failure count looked alarming and meant
+nothing — and because the fix was patience, not a change.
+
+Files were also edited underneath this session mid-work: an `ensure_dir` call and
+an `{:unfetchable_source, key, status}` case that distinguishes "you misspelled
+it" from "stop asking, and tell the operator why". Both improvements, both kept.
