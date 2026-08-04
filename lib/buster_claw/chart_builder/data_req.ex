@@ -43,6 +43,7 @@ defmodule BusterClaw.ChartBuilder.DataReq do
 
   alias BusterClaw.Finance.BLS
   alias BusterClaw.Finance.Sources
+  alias BusterClaw.MarketData
 
   @fence ~r/```datareq\s*(.*?)```/s
   @max_observations 400
@@ -53,7 +54,7 @@ defmodule BusterClaw.ChartBuilder.DataReq do
   # called, a `:blocked` FRED, an `:unsanctioned` Yahoo — and listing is not
   # permission. A source becomes fetchable by someone writing an adapter and
   # adding a line here, never by being described.
-  @adapters %{"bls" => BLS}
+  @adapters %{"bls" => BLS, "market" => :cache}
 
   @doc """
   The fetchable sources, keyed, joined to their registry entry.
@@ -164,7 +165,26 @@ defmodule BusterClaw.ChartBuilder.DataReq do
 
   `opts` are passed to the adapter (the `:req_options` test seam).
   """
-  def fulfill(%{source: "bls"} = request, opts \\ []) do
+  def fulfill(request, opts \\ [])
+
+  # Our own bar cache. **Reads only** — a request for an uncached symbol is a
+  # clean "not cached", never a broker fetch. That keeps Chart Build's stated
+  # property literally true: there is no code path from this tab to a live
+  # broker read, so an iteration stays one chat run and opening the tab still
+  # costs nothing. What fills the cache is the daily Recorder, out of band.
+  def fulfill(%{source: "market"} = request, _opts) do
+    symbol = String.upcase(request.series)
+
+    case MarketData.bars(symbol) do
+      [] ->
+        {:error, {:not_cached, symbol, MarketData.chartable_symbols()}}
+
+      bars ->
+        {:ok, bound(market_payload(symbol, bars, request))}
+    end
+  end
+
+  def fulfill(%{source: "bls"} = request, opts) do
     fetch_opts =
       opts
       |> maybe_put(:start_year, request.start_year)
@@ -178,6 +198,43 @@ defmodule BusterClaw.ChartBuilder.DataReq do
 
   defp maybe_put(opts, _key, nil), do: opts
   defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
+
+  # Cents → dollars here, at the boundary, exactly once. The ledger stores
+  # integers so nothing accumulates float drift; the model needs a price.
+  defp market_payload(symbol, bars, request) do
+    observations =
+      bars
+      |> Enum.filter(&in_years?(&1.bar_on, request.start_year, request.end_year))
+      |> Enum.map(&%{date: &1.bar_on, value: &1.close_cents / 100, period: nil, aggregate: false})
+
+    %{
+      series_id: symbol,
+      title: "#{symbol} — daily close",
+      units: "USD",
+      frequency: "daily",
+      source: "Buster Claw market cache (via the operator's broker)",
+      source_url: nil,
+      as_of: DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
+      observations: observations,
+      requested: %{from_year: request.start_year, to_year: request.end_year},
+      covered: covered_range(observations),
+      # The cache holds closes, not an official index level, and the delivery
+      # says so rather than letting a chart imply a precision it does not have.
+      note:
+        "Daily CLOSES from this app's own cache, filled by the operator's broker. " <>
+          "Not an official index level and not adjusted for dividends."
+    }
+  end
+
+  defp covered_range([]), do: nil
+
+  defp covered_range(observations),
+    do: %{from: List.first(observations).date, to: List.last(observations).date}
+
+  defp in_years?(_date, nil, nil), do: true
+  defp in_years?(date, from, nil), do: date.year >= from
+  defp in_years?(date, nil, to), do: date.year <= to
+  defp in_years?(date, from, to), do: date.year >= from and date.year <= to
 
   # Keep the TAIL when truncating: a chart of a long series wants the recent end,
   # and silently dropping the recent end would be the wrong half. The count of
@@ -375,6 +432,15 @@ defmodule BusterClaw.ChartBuilder.DataReq do
     "[buster-claw data delivery — failed]\n\nThe source rejected the request: " <>
       "#{detail}. Check the series id, or tell the operator this series is not " <>
       "available. Do not repeat the identical request."
+  end
+
+  defp failure_text({:not_cached, symbol, available}) do
+    "[buster-claw data delivery — failed]\n\n#{symbol} is not in this app's " <>
+      "market cache, and this channel does not trigger a broker fetch. " <>
+      "Cached and drawable right now: #{Enum.join(available, ", ")}. " <>
+      "Either chart one of those, or tell the operator that #{symbol} would have " <>
+      "to be added to the tracked set first. Do not substitute a different " <>
+      "symbol as though it were the one they asked for."
   end
 
   defp failure_text({:invalid_series_id, id}),

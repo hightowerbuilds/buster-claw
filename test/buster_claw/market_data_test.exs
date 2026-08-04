@@ -439,4 +439,97 @@ defmodule BusterClaw.MarketDataTest do
                MarketData.earnings_state(~D[2026-07-28])
     end
   end
+
+  describe "benchmarks — so Chart Build can draw the market itself" do
+    setup do
+      prev = Application.get_env(:buster_claw, :trading_bars_fetcher)
+      on_exit(fn -> Application.put_env(:buster_claw, :trading_bars_fetcher, prev) end)
+      :ok
+    end
+
+    defp ohlc(day, close),
+      do: %{bar_on: d(day), open: close, high: close, low: close, close: close, volume: 1}
+
+    test "SPY is tracked whether or not the operator holds it" do
+      # The whole point: "chart the S&P 500 for a year" must not depend on the
+      # operator happening to own it.
+      assert "SPY" in MarketData.benchmark_symbols()
+    end
+
+    test "an empty cache means every benchmark needs a backfill" do
+      assert MarketData.benchmarks_needing_backfill() == MarketData.benchmark_symbols()
+    end
+
+    test "a backfilled benchmark drops off the list, and stays off with slack" do
+      # 245 sessions: past the 240 threshold but short of a full 252-day year, so
+      # this also asserts the slack that stops a daily refetch forever.
+      bars = for i <- 1..245, do: ohlc(Date.to_iso8601(Date.add(~D[2025-01-01], i)), 400.0 + i)
+
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn _s, _start, _i ->
+        {:ok, %{bars: bars}}
+      end)
+
+      assert {:ok, %{symbol: "SPY", bars: 245}} = MarketData.backfill_benchmark("SPY")
+      refute "SPY" in MarketData.benchmarks_needing_backfill()
+      assert "QQQ" in MarketData.benchmarks_needing_backfill()
+    end
+
+    test "a failed backfill writes nothing and leaves the symbol on the list" do
+      # Same posture as the rest of the pump: no placeholder rows, retry tomorrow.
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn _s, _start, _i ->
+        {:error, :robinhood_unavailable}
+      end)
+
+      assert {:error, :robinhood_unavailable} = MarketData.backfill_benchmark("SPY")
+      assert MarketData.bars("SPY") == []
+      assert "SPY" in MarketData.benchmarks_needing_backfill()
+    end
+
+    test "an empty result is an error, not a silently empty success" do
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn _s, _start, _i ->
+        {:ok, %{bars: []}}
+      end)
+
+      assert {:error, {:no_bars, "SPY"}} = MarketData.backfill_benchmark("SPY")
+    end
+
+    test "backfilling preserves OHLC already on a row" do
+      # The closes-tier upsert replaces close_cents only. A benchmark backfill
+      # coming through that door must not null out chart-tier data.
+      Repo.insert!(
+        Bar.changeset(%Bar{}, %{
+          symbol: "SPY",
+          bar_on: d("2025-06-02"),
+          interval: "day",
+          close_cents: 50_000,
+          open_cents: 49_000,
+          high_cents: 51_000,
+          low_cents: 48_000,
+          volume: 12_345
+        })
+      )
+
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn _s, _start, _i ->
+        {:ok, %{bars: [ohlc("2025-06-02", 505.0)]}}
+      end)
+
+      assert {:ok, _result} = MarketData.backfill_benchmark("SPY")
+
+      [bar] = MarketData.bars("SPY")
+      assert bar.close_cents == 50_500
+      assert bar.open_cents == 49_000
+      assert bar.volume == 12_345
+    end
+
+    test "chartable_symbols puts benchmarks first — they are what people name" do
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn _s, _start, _i ->
+        {:ok, %{bars: [ohlc("2025-06-02", 500.0)]}}
+      end)
+
+      MarketData.store_bars(closes(%{"AAPL" => [{"2025-06-02", 200.0}]}))
+      assert {:ok, _result} = MarketData.backfill_benchmark("SPY")
+
+      assert MarketData.chartable_symbols() == ["SPY", "AAPL"]
+    end
+  end
 end

@@ -90,6 +90,7 @@ defmodule BusterClaw.Portfolio.Recorder do
     if MarketCalendar.trading_day?(today) and past_fire_time?(state, today) do
       unless Portfolio.recorded_on?(today), do: record_today(today)
       unless MarketData.attempted_on?(today), do: sweep_market_data(today)
+      unless MarketData.benchmark_attempted_on?(today), do: backfill_one_benchmark(today)
     end
 
     :ok
@@ -134,6 +135,39 @@ defmodule BusterClaw.Portfolio.Recorder do
         # No placeholder rows. The attempt is latched, so tomorrow retries;
         # today's sparklines simply stay a day older.
         Logger.warning("Portfolio.Recorder: market sweep failed: #{inspect(reason)}")
+    end
+  end
+
+  # ONE benchmark per DAY, on purpose, and latched like the other two duties.
+  #
+  # Four symbols × a year each is four agent runs; doing them together would turn
+  # a routine tick into a multi-minute burst, and each run is independently
+  # ~1-in-6 flaky. Filling over four days costs nothing — nobody is waiting on
+  # it — while a failure simply retries tomorrow.
+  #
+  # The latch is not optional. `benchmarks_needing_backfill/0` reads the shortfall
+  # from the data, which self-limits on *success* but not on *failure*: without
+  # the latch, a benchmark the broker cannot return would re-spend a
+  # minutes-long blocking run on every ~30-minute self-heal tick, all day. Same
+  # reasoning, and the same per-attempt semantics, as the sweep's own latch.
+  defp backfill_one_benchmark(today) do
+    case MarketData.benchmarks_needing_backfill() do
+      [] ->
+        :ok
+
+      [symbol | _rest] ->
+        MarketData.mark_benchmark_attempt(today)
+        Logger.info("Portfolio.Recorder: backfilling benchmark #{symbol}")
+
+        case MarketData.backfill_benchmark(symbol, today) do
+          {:ok, %{bars: bars}} ->
+            Logger.info("Portfolio.Recorder: cached #{bars} bar(s) for #{symbol}")
+
+          {:error, reason} ->
+            Logger.warning(
+              "Portfolio.Recorder: benchmark #{symbol} backfill failed: #{inspect(reason)}"
+            )
+        end
     end
   end
 

@@ -61,6 +61,26 @@ defmodule BusterClaw.Finance.Sources do
           "Period M13 is the annual average, not a thirteenth month; failures arrive as HTTP 200."
     },
     %{
+      key: "market",
+      name: "Buster Claw market cache",
+      base_url: nil,
+      auth: :none,
+      cost: "free — already fetched; reading it costs nothing",
+      answers:
+        "daily closing prices for held symbols and the tracked benchmarks " <>
+          "(SPY, QQQ, DIA, IWM), about a year deep",
+      series_hint: "a ticker already in the cache, e.g. SPY for the S&P 500",
+      rate_limit: "none — it is a local table",
+      terms: "the operator's own data, fetched through their own broker session",
+      status: :verified,
+      verified_on: ~D[2026-08-03],
+      note:
+        "READ-ONLY from Chart Build's side: an uncached symbol returns 'not cached', never a " <>
+          "broker fetch, so this tab still has no code path to a live broker read. The daily " <>
+          "Recorder fills it out of band. Closes, not official index levels, and not " <>
+          "dividend-adjusted — SPY is the S&P 500 as an ETF tracks it."
+    },
+    %{
       key: "edgar",
       name: "SEC EDGAR",
       base_url: "https://data.sec.gov",

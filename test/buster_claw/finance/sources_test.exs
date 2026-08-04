@@ -145,7 +145,7 @@ defmodule BusterClaw.Finance.SourcesTest do
       # — which is what stops a :blocked or :unsanctioned entry being reachable
       # because it happens to be listed.
       fetchable = DataReq.source_keys()
-      assert fetchable == ["bls"]
+      assert fetchable == ["bls", "market"]
 
       for key <- ["fred", "yahoo_unofficial", "nasdaq_datalink", "bea", "coingecko"] do
         refute key in fetchable, "#{key} must not be fetchable"
@@ -155,7 +155,7 @@ defmodule BusterClaw.Finance.SourcesTest do
     test "a source with an adapter but no :verified status is not fetchable", %{root: root} do
       write_override(root, "bls.md", "---\nstatus: candidate\n---\n")
       # The adapter still exists; the status is what withdraws it.
-      assert DataReq.source_keys() == []
+      refute "bls" in DataReq.source_keys()
     end
   end
 end

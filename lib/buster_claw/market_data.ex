@@ -36,11 +36,21 @@ defmodule BusterClaw.MarketData do
 
   @quotes_key "market_quotes_snapshot"
   @attempt_key "market_data_attempted_on"
+  @benchmark_attempt_key "benchmark_backfill_attempted_on"
   @quotes_stale_min 15
   # First fill reaches back ~90 days (the roadmap's closes tier); daily top-ups
   # re-fetch a few days of overlap so a failed day self-heals.
   @first_fill_days 90
   @topup_overlap_days 5
+
+  # Benchmarks cached regardless of what the operator holds, so Chart Build can
+  # draw the market itself. ETFs, not index symbols — see `benchmark_symbols/0`.
+  @benchmark_symbols ~w(SPY QQQ DIA IWM)
+  # A trading year is ~252 sessions. Backfill triggers below this, and the slack
+  # stops a benchmark that is a few sessions short from re-spending a run daily.
+  @benchmark_target_bars 240
+  # How far back a benchmark backfill reaches. Calendar days, so ~252 sessions.
+  @benchmark_backfill_days 370
 
   # ---------------------------------------------------------------------------
   # Refresh (the Recorder's second duty)
@@ -82,6 +92,21 @@ defmodule BusterClaw.MarketData do
 
   @doc "Latch a sweep attempt for `day`."
   def mark_attempt(%Date{} = day), do: Settings.put(@attempt_key, Date.to_iso8601(day))
+
+  @doc "True when a benchmark backfill was already attempted on `day`."
+  def benchmark_attempted_on?(%Date{} = day),
+    do: Settings.get(@benchmark_attempt_key) == Date.to_iso8601(day)
+
+  @doc """
+  Latch a benchmark backfill attempt for `day`.
+
+  Per *attempt*, like the sweep and for the same reason: the Recorder re-ticks
+  roughly every 30 minutes after the close, and a backfill is a real agent run
+  of up to a few minutes. Latching on success alone would re-spend that run on
+  every tick of a day the fetch kept failing.
+  """
+  def mark_benchmark_attempt(%Date{} = day),
+    do: Settings.put(@benchmark_attempt_key, Date.to_iso8601(day))
 
   @doc """
   Where the next fetch should start: ~#{@first_fill_days} days back on an empty
@@ -155,6 +180,75 @@ defmodule BusterClaw.MarketData do
         |> Repo.all()
         |> Enum.reverse()
     end
+  end
+
+  @doc """
+  The benchmark symbols this app keeps a year of history for, whether or not the
+  operator holds them.
+
+  They exist so Chart Build can answer "chart the S&P 500 for a year" from cache
+  instead of not at all. ETFs rather than index symbols on purpose: `SPY` and
+  friends are equities, so they come through `get_equity_historicals`, which is
+  already in the read allowlist — reading the indices themselves would mean
+  adding `get_index_historicals` to that list, which is a broader broker surface
+  bought for a rounding difference in tracking.
+  """
+  def benchmark_symbols, do: @benchmark_symbols
+
+  @doc """
+  Benchmarks missing a usable year of daily bars.
+
+  `@benchmark_target_bars` is deliberately under a full 252-day trading year:
+  a benchmark that is a handful of sessions short is not worth re-spending an
+  agent run on, and without slack this would refetch every single day forever.
+  """
+  def benchmarks_needing_backfill do
+    Enum.filter(@benchmark_symbols, fn symbol ->
+      length(bars(symbol)) < @benchmark_target_bars
+    end)
+  end
+
+  @doc """
+  Fetch and store a year of daily bars for ONE benchmark. Returns
+  `{:ok, %{symbol: s, bars: n}}` or `{:error, reason}`.
+
+  Uses the chart tier (`Trading.fetch_symbol_bars/3`) rather than the sweep,
+  because a year is ~252 rows for a single symbol and that is exactly the
+  payload the chart tier was sized for — the sweep carries every held symbol at
+  once and would blow its transcription budget on a window this wide.
+
+  Writes through the same `store_bars/1` upsert, so a benchmark that later
+  appears in the daily sweep tops up normally rather than forking a second path.
+  """
+  def backfill_benchmark(symbol, day \\ MarketCalendar.today()) when is_binary(symbol) do
+    start = Date.add(day, -@benchmark_backfill_days)
+
+    case Trading.fetch_symbol_bars(symbol, start, "day") do
+      {:ok, %{bars: bars}} when bars != [] ->
+        {written, _symbols} = store_bars(%{symbol => Enum.map(bars, &to_close/1)})
+        {:ok, %{symbol: symbol, bars: written}}
+
+      {:ok, _empty} ->
+        {:error, {:no_bars, symbol}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # The chart tier returns OHLCV; the benchmark cache only needs the close, and
+  # `store_bars/1` is the closes-tier writer. OHLC on an existing row survives
+  # its upsert, so nothing is lost by coming in through this door.
+  defp to_close(%{bar_on: bar_on, close: close}), do: %{bar_on: bar_on, close: close}
+
+  @doc """
+  Symbols Chart Build can actually draw from cache: benchmarks first (they are
+  the ones a person names without checking), then everything else held.
+  """
+  def chartable_symbols do
+    cached = known_symbols()
+    benchmarks = Enum.filter(@benchmark_symbols, &(&1 in cached))
+    benchmarks ++ Enum.sort(cached -- benchmarks)
   end
 
   @doc "Symbols with any cached bars, sorted."

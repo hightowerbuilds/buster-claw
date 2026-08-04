@@ -169,9 +169,17 @@ defmodule BusterClaw.ChartBuilder do
 
     #{lines}
 
+    Drawable from the `market` source right now: #{drawable()}.
+
+    `market` reads this app's own cache and NEVER triggers a broker fetch, so a
+    symbol that is not listed above simply is not available — asking again will
+    not change that. SPY is how to chart the S&P 500 here; it is the ETF's daily
+    close, so say "S&P 500 (SPY)" rather than implying the index level itself.
+
     Nothing else is fetchable. If what the operator needs is not here, say so
     plainly and name the publisher you would want — do not substitute a source
-    from this list that publishes something merely similar.
+    from this list that publishes something merely similar, and never chart a
+    near-enough ticker in place of the one they asked for.
     """
   end
 
@@ -221,6 +229,16 @@ defmodule BusterClaw.ChartBuilder do
         bars_per_symbol: @max_bars_per_symbol
       }
     }
+  end
+
+  # Rendered live rather than described, because "what is cached" changes as the
+  # Recorder backfills. A model told the wrong list either refuses something it
+  # could have drawn or promises something it cannot.
+  defp drawable do
+    case MarketData.chartable_symbols() do
+      [] -> "nothing yet — the daily recorder has not filled the cache"
+      symbols -> Enum.join(symbols, ", ")
+    end
   end
 
   defp reference_playbook do

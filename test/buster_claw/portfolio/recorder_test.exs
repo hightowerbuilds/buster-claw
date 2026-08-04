@@ -16,6 +16,7 @@ defmodule BusterClaw.Portfolio.RecorderTest do
     prev_today = Application.get_env(:buster_claw, :local_today)
     prev_fetcher = Application.get_env(:buster_claw, :trading_snapshot_fetcher)
     prev_market = Application.get_env(:buster_claw, :trading_market_data_fetcher)
+    prev_bars = Application.get_env(:buster_claw, :trading_bars_fetcher)
 
     # The Recorder's second duty (the market sweep) fires on any un-attempted
     # trading day; without a stub every balance test here would spawn a REAL
@@ -24,10 +25,19 @@ defmodule BusterClaw.Portfolio.RecorderTest do
       {:ok, %{closes: %{}, quotes: [], indexes: [], skipped: [], errors: []}}
     end)
 
+    # And its third (the benchmark backfill), for exactly the same reason —
+    # unstubbed it BLOCKS the recorder on a real agent run, so `:sys.get_state`
+    # times out and every test in this file fails on a symptom that names none
+    # of this.
+    Application.put_env(:buster_claw, :trading_bars_fetcher, fn _symbol, _start, _interval ->
+      {:ok, %{bars: []}}
+    end)
+
     on_exit(fn ->
       Application.put_env(:buster_claw, :local_today, prev_today)
       Application.put_env(:buster_claw, :trading_snapshot_fetcher, prev_fetcher)
       Application.put_env(:buster_claw, :trading_market_data_fetcher, prev_market)
+      Application.put_env(:buster_claw, :trading_bars_fetcher, prev_bars)
     end)
 
     :ok
@@ -269,5 +279,83 @@ defmodule BusterClaw.Portfolio.RecorderTest do
     start_supervised!(Recorder)
 
     assert_receive :fetch_called, 1_000
+  end
+
+  describe "the benchmark backfill duty" do
+    test "fills one benchmark, and the latch stops a second attempt the same day" do
+      # The latch is the point. `benchmarks_needing_backfill/0` self-limits on
+      # SUCCESS, but a benchmark the broker cannot return would otherwise
+      # re-spend a minutes-long blocking run on every ~30-minute self-heal tick.
+      test_pid = self()
+
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn symbol, _start, _interval ->
+        send(test_pid, {:bars_called, symbol})
+
+        {:ok,
+         %{
+           bars:
+             for i <- 1..245 do
+               %{
+                 bar_on: Date.add(~D[2025-01-01], i),
+                 open: 400.0,
+                 high: 400.0,
+                 low: 400.0,
+                 close: 400.0 + i,
+                 volume: 1
+               }
+             end
+         }}
+      end)
+
+      Application.put_env(:buster_claw, :local_today, @past_trading_day)
+      stub_fetcher({:error, :nope})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+
+      assert_received {:bars_called, "SPY"}
+      assert length(BusterClaw.MarketData.bars("SPY")) == 245
+
+      # Second tick, same day: no further run, even though QQQ still needs one.
+      tick_and_settle(pid)
+      refute_received {:bars_called, _symbol}
+      assert "QQQ" in BusterClaw.MarketData.benchmarks_needing_backfill()
+    end
+
+    test "a failing backfill still latches, so it cannot burn a run every tick" do
+      test_pid = self()
+
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn symbol, _start, _interval ->
+        send(test_pid, {:bars_called, symbol})
+        {:error, :robinhood_down}
+      end)
+
+      Application.put_env(:buster_claw, :local_today, @past_trading_day)
+      stub_fetcher({:error, :nope})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+      assert_received {:bars_called, "SPY"}
+
+      tick_and_settle(pid)
+      refute_received {:bars_called, _symbol}
+      # Nothing written, so tomorrow tries again — the same posture as a failed
+      # sweep or a failed balance reading.
+      assert BusterClaw.MarketData.bars("SPY") == []
+    end
+
+    test "a failing backfill does not take the recorder down with it" do
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn _s, _start, _i ->
+        raise "kaboom"
+      end)
+
+      Application.put_env(:buster_claw, :local_today, @past_trading_day)
+      stub_fetcher({:error, :nope})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+
+      assert Process.alive?(pid)
+    end
   end
 end

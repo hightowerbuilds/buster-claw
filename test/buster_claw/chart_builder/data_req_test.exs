@@ -250,4 +250,83 @@ defmodule BusterClaw.ChartBuilder.DataReqTest do
       assert DataReq.signature(a) != DataReq.signature(c)
     end
   end
+
+  describe "the market source — cache only, never a broker fetch" do
+    setup do
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(BusterClaw.Repo)
+      :ok
+    end
+
+    defp store(symbol, pairs) do
+      BusterClaw.MarketData.store_bars(%{
+        symbol =>
+          Enum.map(pairs, fn {day, close} ->
+            %{bar_on: Date.from_iso8601!(day), close: close}
+          end)
+      })
+    end
+
+    test "a cached benchmark comes back as plottable closes in dollars" do
+      store("SPY", [{"2025-01-02", 590.5}, {"2025-01-03", 595.25}])
+
+      {_clean, [req]} = DataReq.extract(fence(~s({"source":"market","series":"SPY"})))
+      assert {:ok, payload} = DataReq.fulfill(req)
+
+      assert payload.series_id == "SPY"
+      assert payload.units == "USD"
+      # Cents in the table, dollars at the boundary, converted once.
+      assert Enum.map(payload.observations, & &1.value) == [590.5, 595.25]
+      assert payload.covered == %{from: ~D[2025-01-02], to: ~D[2025-01-03]}
+    end
+
+    test "an uncached symbol is NOT a broker fetch — it is a clean refusal" do
+      # The load-bearing property. Chart Build is cached-only by construction; a
+      # datareq that could trigger a broker run would end that quietly, and this
+      # tab's whole cost model rests on it.
+      store("SPY", [{"2025-01-02", 590.5}])
+
+      {_clean, [req]} = DataReq.extract(fence(~s({"source":"market","series":"NVDA"})))
+      assert {:error, {:not_cached, "NVDA", available}} = DataReq.fulfill(req)
+      assert "SPY" in available
+    end
+
+    test "the refusal names what IS drawable and forbids substituting" do
+      store("SPY", [{"2025-01-02", 590.5}])
+      {_clean, [req]} = DataReq.extract(fence(~s({"source":"market","series":"NVDA"})))
+
+      text = req |> DataReq.fulfill() |> DataReq.deliver()
+
+      assert text =~ "not in this app's market cache"
+      assert text =~ "does not trigger a broker fetch"
+      assert text =~ "SPY"
+      # Charting a near-enough ticker instead would be exactly the class of
+      # quiet wrongness this whole surface refuses.
+      assert text =~ "Do not substitute a different"
+    end
+
+    test "a year filter narrows to the requested years" do
+      store("SPY", [{"2024-06-03", 500.0}, {"2025-01-02", 590.5}])
+
+      {_clean, [req]} =
+        DataReq.extract(fence(~s({"source":"market","series":"SPY","start_year":2025})))
+
+      assert {:ok, payload} = DataReq.fulfill(req)
+      assert Enum.map(payload.observations, & &1.date) == [~D[2025-01-02]]
+    end
+
+    test "the delivery says these are closes, not an official index level" do
+      store("SPY", [{"2025-01-02", 590.5}])
+      {_clean, [req]} = DataReq.extract(fence(~s({"source":"market","series":"SPY"})))
+
+      text = req |> DataReq.fulfill() |> DataReq.deliver()
+      assert text =~ "Not an official index level"
+      assert text =~ "not adjusted for dividends"
+    end
+
+    test "a lowercase ticker still resolves" do
+      store("SPY", [{"2025-01-02", 590.5}])
+      {_clean, [req]} = DataReq.extract(fence(~s({"source":"market","series":"spy"})))
+      assert {:ok, %{series_id: "SPY"}} = DataReq.fulfill(req)
+    end
+  end
 end
