@@ -122,7 +122,8 @@ defmodule BusterClaw.Agent.StreamEvent do
   Normalize a decoded event from `backend`.
 
   Each harness emits a different schema and each was **observed**, not assumed —
-  see `daily-growth/roadmaps/AGENT_BACKEND_ROADMAP.md` for the captured streams.
+  see `daily-growth/archive/08-04-26-agent-backend-roadmap.md`
+  for the captured streams.
   Anything not observed becomes `:unknown` with `raw` intact rather than being
   guessed at: a wrong mapping is worse than an ignored event, because the
   consumer renders it.

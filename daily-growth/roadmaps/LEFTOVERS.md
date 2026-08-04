@@ -250,7 +250,59 @@ to 3 on 08-03 because nothing asserted it.
 
 ---
 
+### Cost aggregation — the totals, not the capture
 
+**From the agent-backend roadmap's Phase 4** (`daily-growth/archive/08-04-26-agent-backend-roadmap.md`). The capture is
+done and shipped: `StreamEvent.usage` normalizes input/output/cache/cost across
+all three harnesses, `run_usage/2` reads it out of a completed blocking run, and
+the Sentinel feed already carries harness, model and cost per run. What does not
+exist is any **total** — per surface, per day, per harness.
+
+**Concrete enough to do today.** The data source is `Sentinel.list_events/1`;
+the shape is a sum grouped by `metadata["agent"]` and surface over a date range,
+rendered wherever Activity already lives.
+
+**Why it was deferred.** It is a display problem, and the capture underneath it
+had only just been proven. Shipping the sum on the same day as the measurement
+would have meant trusting a number nobody had looked at twice.
+
+**Three things that make it harder than a `SUM()`.** Codex reports tokens and
+**no dollars**, and its cost must stay nil rather than be derived — a price table
+this app does not own would make an invented figure look authoritative. So any
+total spanning harnesses is either two columns or an explicit "+ N tokens on
+codex, not priced". Second, the feed is an audit log, not a ledger: it is
+prunable and was never designed as a billing source, so a total read from it is
+"what we observed", not "what you were charged". Third, only chat and the order
+path record usage today — the dispatcher and swarm surfaces run through
+`AgentRunner.run/2` and drop their result event on the floor, so a "per surface"
+total would silently read zero for three of six surfaces. That last one is the
+real prerequisite and is the reason this is not a half-hour job.
+
+**What makes it expensive later.** Nothing breaks by waiting. But the app now
+tells the operator the harness is theirs and the cost is theirs, which invites
+exactly the question this would answer — and an operator who asks "what did
+today cost" and gets nothing will not ask twice.
+
+### `opencode models` is uncached, and must not reach a render path
+
+**From the agent-backend roadmap's Phase 2** (`daily-growth/archive/08-04-26-agent-backend-roadmap.md`).
+`AgentBackend.enumerate_models/1` shells out to `opencode models` with a 15s
+timeout. Its docstring says loudly that it must be resolved in a Task and cached
+— and **nothing calls it yet**, so today that warning is the only protection.
+The Settings harness picker offers free text plus claude's shipped list instead.
+
+**Concrete:** resolve it once per session into a cache (or on an explicit
+refresh), and only then have the picker offer opencode's real list.
+
+**Why deferred.** Wiring it live without a cache would put a subprocess spawn in
+a LiveView render, which is the kind of thing that is fine until the binary is
+slow or missing.
+
+**What makes it expensive later.** The list is per-machine (it reflects the
+operator's authenticated providers), so this is the only honest way to offer
+opencode models at all. Until it exists, opencode users type model IDs by hand.
+
+---
 
 
 ## Rules of engagement

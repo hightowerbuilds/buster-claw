@@ -14,7 +14,7 @@ defmodule BusterClaw.AgentBackend do
   08-03-26 (`claude` 2.1.220, `codex-cli` 0.146.0, `opencode` 1.18.3), because
   the roadmap this replaces asserted "`--model` is claude-only by construction"
   and was wrong — codex has taken `-m` all along. See
-  `daily-growth/roadmaps/AGENT_BACKEND_ROADMAP.md` for the full probe log,
+  `daily-growth/archive/08-04-26-agent-backend-roadmap.md` for the full probe log,
   including the event schemas and the two findings marked ⚠ there.
 
   ## The three ways a harness is confined

@@ -1,6 +1,6 @@
 # Agent backends — Codex and OpenCode as first-class runners
 
-**Scoped 08-03-26 · Status: ACTIVE — Phase 0 probed, Phases 1–3 SHIPPED. Phase 4 deferred.**
+**Scoped 08-03-26 · CLOSED + ARCHIVED 08-04-26.** Phases 0–3 shipped, Phase 4 half shipped and half moved to `LEFTOVERS.md`.
 **Successor scope to `MODEL_VERSATILITY_ROADMAP.md`** — that roadmap chose the
 *model*; this one chooses the *runner the model runs in*, and the two are not
 separable. A model ID means nothing without a backend to interpret it.
@@ -438,22 +438,91 @@ that is Phase 3, and until it lands "choose your harness" is a command, not a UI
 
 **Still open from *The floor problem*:** the Sentinel audit trail does not yet
 record which harness ran a money surface. The two UI warnings landed; this one
-did not.
+did not. The pin makes the answer knowable in advance — it is always claude —
+which is a reason to *record* it, not a reason to skip it: an audit line that can
+only be derived from today's policy proves nothing about a run from last month.
 
-# Phase 4 — Only after measurement
+# Phase 3.5 — Per-backend confinement — **NOT STARTED**
 
-- [ ] **Re-run the 07-28 fabrication probe per backend** before any per-backend
-      floor exists. The probe is on record: run the trading read N times and count
-      how often the broker tool was actually invoked versus the answer invented.
-      Until that number exists for a backend, that backend has no floor and the
-      UI must say so rather than implying one.
-- [ ] Per-backend cost reporting. **All three already report it** — claude
-      `total_cost_usd` on `result`, OpenCode `cost` on `step_finish`, codex token
-      counts on `turn.completed` (see *Unplanned find* above; the "claude does not
-      report spend back to us" that stood here was false). What is missing is the
-      aggregation: three shapes, two currencies-of-account (dollars vs tokens),
-      and no price table in this app to convert the third. Uneven, and bigger than
-      it sounds — but the hard part is presenting it honestly, not obtaining it.
+The pin's exit condition, and the only thing that should lift it. Today
+`AgentBackend` translates a permission *mode* per backend but not a permission
+*list*: the money surfaces hand the CLI `--allowedTools`, `--disallowedTools` and
+`--strict-mcp-config` (all three load-bearing per the probe at `trading.ex:290`),
+and those are claude vocabulary. Codex rejects them; opencode spells confinement
+as an agent file in `.opencode/`.
+
+- [ ] Give `AgentBackend` a **confinement translation** — an allow/deny tool list
+      in, each CLI's own spelling out — with the untranslatable case failing
+      loudly rather than silently running unconfined. A surface that asks for a
+      deny list and gets a run without one is the worst outcome available here,
+      worse than not running.
+- [ ] Only then reopen *Is `codex exec --ignore-user-config` the way to scope it?*
+      — MCP scoping is the second lock, and it matters once the first one has a
+      key.
+- [ ] Lift `ModelPolicy.@claude_only` **only together with** Phase 4's
+      per-backend fabrication measurement. Confinement makes a codex money run
+      *possible*; the measurement is what makes it *allowed*. Shipping the first
+      without the second replaces "cannot run" with "runs unranked", which is the
+      state the floor exists to prevent.
+
+# Phase 4 — Half shipped, half moved out
+
+**Capture SHIPPED 08-04** (`5421a5a`). **Aggregation moved to `LEFTOVERS.md`.**
+
+- [x] Per-backend usage capture. `StreamEvent.usage` normalizes input / output /
+      cache-read / cache-write / cost across all three measured shapes, and
+      `run_usage/2` reads it out of a completed blocking run. **Codex's cost stays
+      nil and must not be derived** — a price table this app does not own would
+      make an invented figure look authoritative.
+- [x] The Sentinel feed records **which harness** ran a money surface (the item
+      left open from *The floor problem*). Order confirmation and settlement
+      carry harness and model as of the moment of the click.
+- [ ] → **LEFTOVERS: "Cost aggregation — the totals, not the capture".** No
+      per-surface or per-day total exists. Its real prerequisite is that the
+      dispatcher and swarm surfaces drop their result event on the floor, so a
+      per-surface total would silently read zero for three of six surfaces.
+- [ ] **Per-backend fabrication probe — now moot in its original form, and that
+      is the honest closing note.** It was the gate on a per-backend floor for the
+      money surfaces. Those surfaces are now **pinned to claude** because the
+      other harnesses reject their confinement flags outright, so there is no
+      non-claude money run to measure. If per-backend confinement is ever built
+      (the lifted pin), this probe becomes the gate again — and it must be run
+      before any per-backend floor is invented. The 07-28 number is claude's, and
+      it was n=2, which was never a measurement either.
+
+---
+
+# Closeout — what this roadmap actually changed
+
+Two backends existed in the code and one existed in practice. Now three do, the
+operator picks, and the picks are honest about their own limits.
+
+**Shipped:** `AgentBackend` (the measured table), harness selection global and
+per-surface, models keyed on `{backend, surface}` so switching is lossless,
+per-backend stream parsers built from captured output, the Settings picker, the
+`model_policy backend` argument, the corrected Explore tutorial, usage capture
+across three shapes, and the harness on the audit trail.
+
+**Reversed, with the reason:** the money surfaces were going to accept any
+harness with a loud warning. Once the confinement flags proved untranslatable —
+codex answers `--disallowedTools` with "unexpected argument" — that would have
+meant offering a choice whose only outcome is a failed run. They are pinned to
+claude instead, and `unfloored_money_surfaces/0` is kept as a live assertion so
+the pin and the floor cannot drift apart.
+
+**The two probes that were never settled**, and would be the first work if this
+reopens: whether `codex exec --ignore-user-config` can scope MCP to Robinhood
+alone (`-c` merges and cannot remove the operator's own servers), and whether an
+OpenCode agent file's permission patterns reach individual MCP tool names or only
+the 11 broad categories. Both decide whether per-backend confinement is buildable
+at all — which is the thing the pin is waiting on.
+
+**The lesson worth carrying out of here:** this roadmap corrected two claims that
+had been written down, repeated, and believed — that `--model` was claude-only by
+construction, and that the CLIs do not report spend. Both were disproved by
+running `--help` and one throwaway prompt. The parsers were then built from
+captured streams rather than remembered ones, and that is why they work. Measure
+the tool; do not quote the last person who did.
 
 ---
 
