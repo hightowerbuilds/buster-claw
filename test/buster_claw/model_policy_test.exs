@@ -146,28 +146,30 @@ defmodule BusterClaw.ModelPolicyTest do
 
   describe "the backend (harness)" do
     test "is unset by default, so AgentRunner keeps detecting exactly as before" do
-      for surface <- ModelPolicy.surface_keys() do
+      # Except the pinned money surfaces, which are claude by capability rather
+      # than by preference — see "the money surfaces are pinned to claude".
+      for surface <- ModelPolicy.surface_keys(), not ModelPolicy.claude_only?(surface) do
         assert ModelPolicy.backend_for(surface) == nil
       end
 
       assert ModelPolicy.in_force()[:chat].backend_source == :auto
     end
 
-    test "a global default reaches every surface" do
+    test "a global default reaches every surface it is allowed to reach" do
       {:ok, _} = ModelPolicy.put_backend(:default, :codex)
 
       assert ModelPolicy.backend_for(:chat) == :codex
-      assert ModelPolicy.backend_for(:order_submit) == :codex
+      assert ModelPolicy.backend_for(:dispatcher) == :codex
       assert ModelPolicy.in_force()[:chat].backend_source == :default
     end
 
     test "a per-surface override wins without touching the others" do
       {:ok, _} = ModelPolicy.put_backend(:default, :codex)
-      {:ok, _} = ModelPolicy.put_backend(:trading_read, :claude)
+      {:ok, _} = ModelPolicy.put_backend(:swarm_planner, :opencode)
 
-      assert ModelPolicy.backend_for(:trading_read) == :claude
+      assert ModelPolicy.backend_for(:swarm_planner) == :opencode
       assert ModelPolicy.backend_for(:chat) == :codex
-      assert ModelPolicy.in_force()[:trading_read].backend_source == :surface
+      assert ModelPolicy.in_force()[:swarm_planner].backend_source == :surface
     end
 
     test "clearing returns a surface to auto-detection" do
@@ -228,39 +230,47 @@ defmodule BusterClaw.ModelPolicyTest do
     end
   end
 
-  # The operator chose (08-03) to let any harness run the money surfaces, with a
-  # loud warning. A warning can only be loud if the code KNOWS the floor stopped
-  # applying — left implicit it would still "work" (an unranked model passes
-  # below_floor?/2 untouched) while looking like protection that isn't there.
-  describe "the floor is claude-only, explicitly" do
-    test "does not apply once a money surface is on another harness" do
-      {:ok, _} = ModelPolicy.put_backend(:trading_read, :codex)
+  # REVERSED 08-03, and the reversal is the interesting part. The operator first
+  # chose to allow any harness on the money surfaces with a loud warning. Then the
+  # flags turned out to be untranslatable — codex answers `--disallowedTools` with
+  # "unexpected argument" — so "allow it and warn" would have meant offering a
+  # choice whose only outcome is a failed run. These surfaces are pinned instead.
+  describe "the money surfaces are pinned to claude" do
+    test "a global default cannot move them" do
+      {:ok, _} = ModelPolicy.put_backend(:default, :codex)
 
-      refute ModelPolicy.floor_applies?(:codex, :trading_read)
-      assert ModelPolicy.in_force()[:trading_read].floor_applies == false
+      assert ModelPolicy.backend_for(:chat) == :codex
+      assert ModelPolicy.backend_for(:trading_read) == :claude
+      assert ModelPolicy.backend_for(:order_submit) == :claude
     end
 
-    test "a cheap model on a non-claude harness is NOT silently raised" do
+    test "naming one is refused, with the reason" do
+      assert {:error, {:claude_only, :order_submit, why}} =
+               ModelPolicy.put_backend(:order_submit, :codex)
+
+      assert why =~ "confinement"
+      assert ModelPolicy.backend_for(:order_submit) == :claude
+    end
+
+    test "claude_only?/1 names exactly the floored surfaces" do
+      assert Enum.sort(Map.keys(ModelPolicy.claude_only())) ==
+               Enum.sort(Map.keys(ModelPolicy.floors()))
+    end
+
+    # The pin and the floor have to move together. If a future change lifts the
+    # pin without giving the floor a per-backend measurement, this fails.
+    test "so the floor always applies, and nothing is ever unfloored" do
       {:ok, _} = ModelPolicy.put_backend(:default, :opencode)
-      {:ok, _} = ModelPolicy.put_model(:opencode, :default, "opencode/deepseek-v4-flash-free")
 
-      assert ModelPolicy.for_surface(:order_submit) == "opencode/deepseek-v4-flash-free"
-    end
-
-    test "names exactly which money surfaces lost their floor" do
       assert ModelPolicy.unfloored_money_surfaces() == []
-
-      {:ok, _} = ModelPolicy.put_backend(:order_submit, :codex)
-      assert ModelPolicy.unfloored_money_surfaces() == [:order_submit]
+      assert ModelPolicy.floor_applies?(ModelPolicy.backend_for(:trading_read), :trading_read)
     end
 
-    test "still applies on claude, and to nothing that has no floor" do
-      {:ok, _} = ModelPolicy.put_backend(:default, :claude)
+    test "the floor still bites through a cheap global default" do
+      {:ok, _} = ModelPolicy.put_backend(:default, :codex)
       {:ok, _} = ModelPolicy.put_model(:claude, :default, "claude-haiku-4-5")
 
       assert ModelPolicy.for_surface(:trading_read) == "claude-sonnet-5"
-      assert ModelPolicy.for_surface(:chat) == "claude-haiku-4-5"
-      refute ModelPolicy.floor_applies?(:claude, :chat)
     end
   end
 

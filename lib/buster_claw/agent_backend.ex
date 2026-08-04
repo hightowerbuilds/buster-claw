@@ -66,8 +66,12 @@ defmodule BusterClaw.AgentBackend do
       confinement: :flags,
       model_namespace: :bare,
       enumerates_models?: false,
-      # Claude reports neither tokens nor cost back to us.
-      reports_usage: :none,
+      # CORRECTED 08-03. Both roadmaps said "the CLI does not report spend back to
+      # us"; the tutorial and the summary repeated it. It was never true —
+      # claude's `result` event carries `total_cost_usd`, `usage`, `num_turns`
+      # and `modelUsage`, and `StreamEvent` has parsed the cost field the whole
+      # time. Measured: `total_cost_usd = 0.0802325` on a one-word prompt.
+      reports_usage: :cost,
       known_models: [
         "claude-fable-5",
         "claude-opus-5",
@@ -81,7 +85,9 @@ defmodule BusterClaw.AgentBackend do
       confinement: :sandbox,
       model_namespace: :bare,
       enumerates_models?: false,
-      # `turn.completed` carries a `usage` object.
+      # `turn.completed` carries a `usage` object but no dollar figure, and this
+      # app owns no price table — a computed cost would be a number the operator
+      # trusts and we invented.
       reports_usage: :tokens,
       known_models: []
     },

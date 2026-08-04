@@ -68,29 +68,23 @@ defmodule BusterClawWeb.SettingsLiveTest do
       assert BusterClaw.ModelPolicy.backend_for(:chat) == nil
     end
 
-    # The operator allowed any harness on the money surfaces provided the warning
-    # is loud. This is that warning, and it is derived from ModelPolicy state
-    # rather than template logic so a refactor cannot quietly drop it.
-    test "a money surface on another harness warns that the floor is off", %{conn: conn} do
+    # The money surfaces have no harness picker at all now — offering one would
+    # offer a choice whose only outcome is a failed run.
+    test "a pinned money surface offers no harness choice, and says why", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings")
-      refute render(view) =~ "No floor here"
-
-      view
-      |> element("#model-backend-order_submit")
-      |> render_change(%{"surface" => "order_submit", "backend" => "codex"})
-
       html = render(view)
-      assert html =~ "No floor here"
-      assert html =~ "running unprotected"
-      assert html =~ "The capability floor is off"
+
+      assert html =~ "Claude only"
+      assert html =~ "which the other harnesses reject"
+      refute has_element?(view, "#model-backend-order_submit")
+      assert has_element?(view, "#model-backend-chat")
     end
 
-    test "the floor explanation stays for a money surface still on claude", %{conn: conn} do
+    test "the floor explanation is shown for the money surfaces", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings")
       html = render(view)
 
       assert html =~ "Floor: claude-sonnet-5"
-      refute html =~ "No floor here"
     end
   end
 

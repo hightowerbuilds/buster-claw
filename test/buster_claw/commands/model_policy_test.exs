@@ -67,14 +67,22 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
       assert Enum.all?(listing.backends_available, &(&1 in listing.backends))
     end
 
-    # False means the harness put the surface beyond what the floor can honestly
-    # enforce. A caller printing `floor` without this would imply protection.
-    test "a money surface on another harness reports floor_applies: false" do
-      {:ok, _} = Commands.model_policy(%{"surface" => "order_submit", "backend" => "codex"})
+    # The money surfaces cannot leave claude, so the command must refuse rather
+    # than store a choice whose only outcome is a failed run.
+    test "refuses a harness for a pinned money surface" do
+      assert {:error, {:claude_only, :order_submit, _why}} =
+               Commands.model_policy(%{"surface" => "order_submit", "backend" => "codex"})
+
+      assert BusterClaw.ModelPolicy.backend_for(:order_submit) == :claude
+    end
+
+    test "the listing shows the money surfaces on claude with the floor applying" do
+      {:ok, _} = Commands.model_policy(%{"surface" => "default", "backend" => "codex"})
       {:ok, listing} = Commands.model_policy()
 
-      assert entry(listing, "order_submit").floor_applies == false
-      assert entry(listing, "trading_read").floor_applies == true
+      assert entry(listing, "order_submit").backend == "claude"
+      assert entry(listing, "order_submit").floor_applies == true
+      assert entry(listing, "chat").backend == "codex"
     end
   end
 

@@ -73,25 +73,32 @@ defmodule BusterClaw.ModelPolicyWiringTest do
   # Phase 2's whole point: an operator can choose the HARNESS, not just the model,
   # and the choice reaches a real run. Before this, `detect/0` picked by PATH
   # order and codex was unreachable on any machine that had claude installed.
+  #
+  # Asserted on the dispatcher rather than a trading surface: the money surfaces
+  # are pinned to claude (their confinement flags are claude-only), so they are
+  # the wrong place to prove a harness choice travels.
   describe "the chosen harness reaches the runner" do
     test "a backend set for a surface is passed as :agent" do
-      {:ok, _} = ModelPolicy.put_backend(:trading_read, :codex)
-      put_env(:trading_agent_runner, capturing_runner(self()))
+      {:ok, _} = ModelPolicy.put_backend(:dispatcher, :codex)
+      {:ok, _shift} = Orchestration.start_shift(unattended: true)
+      {:ok, _item} = Dispatch.enqueue(%{source: "gmail", dedupe_key: "mpw-agent"})
 
-      _ = Trading.fetch_account_snapshot()
+      server =
+        start_supervised!(
+          {Dispatcher,
+           [
+             runner: capturing_runner(self()),
+             autostart: false,
+             subscribe: false,
+             cooldown_ms: 0,
+             interval_ms: 60_000
+           ]}
+        )
 
-      assert_receive {:run_opts, opts}
+      Dispatcher.tick_now(server)
+
+      assert_receive {:run_opts, opts}, 1_000
       assert Keyword.fetch!(opts, :agent) == :codex
-    end
-
-    test "the global backend default reaches a surface that has no override" do
-      {:ok, _} = ModelPolicy.put_backend(:default, :opencode)
-      put_env(:trading_submit_runner, capturing_runner(self()))
-
-      _ = TradingOrder.submit(order!())
-
-      assert_receive {:run_opts, opts}
-      assert Keyword.fetch!(opts, :agent) == :opencode
     end
 
     # The additive promise, for the harness half: unset must reach AgentRunner as
@@ -102,7 +109,21 @@ defmodule BusterClaw.ModelPolicyWiringTest do
       _ = Trading.fetch_account_snapshot()
 
       assert_receive {:run_opts, opts}
-      assert Keyword.get(opts, :agent) == nil
+      # Pinned, so this one is :claude rather than nil — but it is a NAMED
+      # backend either way, never a silent fall-through.
+      assert Keyword.get(opts, :agent) == :claude
+    end
+
+    # The pin, at the call site rather than in the policy: a global default of
+    # codex must not reach the surface that places orders.
+    test "a global codex default still sends the money surfaces to claude" do
+      {:ok, _} = ModelPolicy.put_backend(:default, :codex)
+      put_env(:trading_submit_runner, capturing_runner(self()))
+
+      _ = TradingOrder.submit(order!())
+
+      assert_receive {:run_opts, opts}
+      assert Keyword.fetch!(opts, :agent) == :claude
     end
   end
 

@@ -675,27 +675,23 @@ defmodule BusterClawWeb.ExplorePanel do
         </p>
         <p>
           <span class="font-semibold text-base-content">
-            The floor is Claude-only, and it says so.
+            The money surfaces stay on Claude.
           </span>
-          The 07-28 measurement that justifies the floor was taken on Claude models,
-          and the capability ranking behind it is a list of Claude model names. Put a
-          money surface on <code>codex</code>
-          or <code>opencode</code>
-          and the floor
-          stops applying — it cannot honestly rank a model it has never measured.
-          The app will not pretend otherwise: it marks that surface as unfloored
-          rather than showing a protection that is not there.
+          Trading reads and order submission are pinned, and not as a preference.
+          Their Robinhood confinement is written in Claude's own flags, and the
+          other harnesses reject those outright — so a Codex run on that surface
+          does not run cheaply, or unsafely. It does not run at all. There is no
+          harness to choose there rather than a choice that could only fail, and
+          the Claude-only capability floor keeps applying because of it.
         </p>
         <p>
           <span class="font-semibold text-base-content">What this doesn't do yet.</span>
           There is no per-conversation model picker — the choice is per surface, so
-          every chat runs on the chat surface's model. Buster Claw cannot tell you
-          what a Claude run cost: that CLI
-          does not report spend back to the app.
-          OpenCode does report a cost figure and Codex reports token counts, but
-          nothing in the app surfaces either yet. And a Codex conversation starts
-          fresh each turn rather than resuming, because Codex spells resume as a
-          subcommand rather than a flag.
+          every chat runs on the chat surface's model. Every harness does report
+          what a run cost — Claude and OpenCode in dollars, Codex in tokens —
+          but there is no per-surface or per-day total anywhere yet. And a Codex
+          conversation starts fresh each turn rather than resuming, because Codex
+          spells resume as a subcommand rather than a flag.
         </p>
       </div>
 

@@ -441,20 +441,6 @@ defmodule BusterClawWeb.SettingsLive do
             are remembered per harness, so switching and switching back loses
             nothing.
           </p>
-          <p
-            :if={@model_unfloored != []}
-            class="ic-panel border-primary/70 bg-primary/10 p-4 text-sm"
-          >
-            <span class="font-semibold">
-              The capability floor is off for {unfloored_names(@model_unfloored)}.
-            </span>
-            The floor is a ranking of Claude models, measured on Claude: on 07-28 a
-            cheaper model on a trading read invoked the broker tool in only one run
-            of two, and on the miss it invented the answer rather than reporting a
-            problem. It cannot rank a harness it has never measured, so the floor
-            does not apply there and that surface is unprotected. That is your call
-            to make — this is the app telling you it was made.
-          </p>
 
           <div class="grid gap-4 sm:grid-cols-2">
             <form id="model-default-form" phx-change="model_default">
@@ -549,17 +535,22 @@ defmodule BusterClawWeb.SettingsLive do
                     global default cannot lower it. Naming this surface here still can.
                   </p>
                   <p
-                    :if={entry.floor && !entry.floor_applies}
-                    class="border-l-2 border-primary pl-3 text-xs leading-5 text-base-content/80"
+                    :if={ModelPolicy.claude_only?(surface)}
+                    class="border-l-2 border-base-content/30 pl-3 text-xs leading-5 text-base-content/60"
                   >
-                    <span class="font-semibold">No floor here.</span>
-                    The {entry.floor} floor ranks Claude models and was measured on
-                    Claude, so it cannot apply to {backend_display(entry.backend)}.
-                    This money surface is running unprotected.
+                    Claude only. This surface's Robinhood confinement is written in
+                    Claude's flags, which the other harnesses reject outright — so
+                    there is no harness to choose here rather than a choice that
+                    would fail.
                   </p>
                 </div>
 
-                <form id={"model-backend-#{surface}"} phx-change="model_backend" class="shrink-0">
+                <form
+                  :if={!ModelPolicy.claude_only?(surface)}
+                  id={"model-backend-#{surface}"}
+                  phx-change="model_backend"
+                  class="shrink-0"
+                >
                   <input type="hidden" name="surface" value={surface} />
                   <select
                     name="backend"
@@ -803,11 +794,6 @@ defmodule BusterClawWeb.SettingsLive do
     socket
     |> assign(:model_rows, Enum.map(ModelPolicy.surface_keys(), &{&1, Map.fetch!(in_force, &1)}))
     |> assign(:model_default, ModelPolicy.model_for(default_backend, :default))
-    # A STATE, not a rendering condition. The operator chose to allow any harness
-    # on the money surfaces provided the warning is loud; deriving the banner from
-    # `ModelPolicy` rather than from template logic is what keeps a refactor of
-    # this section from quietly dropping it.
-    |> assign(:model_unfloored, ModelPolicy.unfloored_money_surfaces())
   end
 
   # "auto" is a real choice — it hands the harness back to PATH detection — so it
@@ -822,8 +808,6 @@ defmodule BusterClawWeb.SettingsLive do
 
   defp backend_label(backend, true), do: Atom.to_string(backend)
   defp backend_label(backend, false), do: Atom.to_string(backend) <> " (not installed)"
-
-  defp unfloored_names(surfaces), do: Enum.map_join(surfaces, " and ", &surface_label/1)
 
   defp put_model(socket, target, model) do
     case ModelPolicy.put(target, model) do

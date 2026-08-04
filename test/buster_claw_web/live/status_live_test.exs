@@ -864,6 +864,13 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "it invented the answer"
       assert html =~ "naming that surface"
 
+      # Fact 4b: the money surfaces are PINNED to claude, and the tutorial says
+      # why — a capability fact, not a preference. The paragraph this replaced
+      # taught the opposite (choose freely, get warned), so assert the new claim
+      # rather than trusting that the old one merely went away.
+      assert html =~ "The money surfaces stay on Claude"
+      assert html =~ "It does not run at all"
+
       # Fact 5: where to change it — Settings, and the command.
       assert html =~ ~s(href="/settings")
       assert html =~ "<code>model_policy</code>"
@@ -873,8 +880,14 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       # The deferred Phase 4 items are named as absent, not implied as present.
       assert html =~ "no per-conversation model picker"
-      assert html =~ "does not report spend back to the app"
+      assert html =~ "no per-surface or per-day total"
       assert html =~ "<code>codex</code>"
+
+      # And the claim that replaced a FALSE one must not drift back. Every
+      # harness does report what a run cost — claude's `result` event carries
+      # `total_cost_usd`, measured 08-03. The tutorial said the opposite for
+      # half a day because the roadmap said it and nobody ran the command.
+      refute html =~ "does not report spend"
 
       refute html =~ "Tutorial in the works"
     end

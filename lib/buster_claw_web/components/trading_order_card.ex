@@ -133,8 +133,13 @@ defmodule BusterClawWeb.TradingOrderCard do
 
   # Whether the capability floor is off for `:order_submit` — i.e. this surface is
   # running on a harness the 07-28 measurement never covered. Resolved HERE rather
-  # than passed in, so no call site can forget it: the operator allowed a
-  # non-Claude harness on the money path *provided the warning is loud*, and a
-  # warning that depends on a caller remembering an assign is not loud.
+  # than passed in, so no call site can forget it: a warning that depends on a
+  # caller remembering an assign is not loud.
+  #
+  # **False since 08-03**, when `:order_submit` was pinned to claude — the harness
+  # this warns about can no longer be selected. Kept rather than deleted because
+  # the pin is the only thing holding it: lift `ModelPolicy.@claude_only` without
+  # a per-backend measurement and this speaks up again at the moment of the
+  # decision, which is exactly where it was built to speak.
   defp order_unfloored?, do: :order_submit in BusterClaw.ModelPolicy.unfloored_money_surfaces()
 end

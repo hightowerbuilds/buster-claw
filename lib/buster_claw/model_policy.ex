@@ -109,6 +109,26 @@ defmodule BusterClaw.ModelPolicy do
   # The floor's ranks and its measurement are both claude's. See the moduledoc.
   @floor_backend :claude
 
+  # Surfaces PINNED to claude, whatever the global default says.
+  #
+  # Not a preference and not a floor — a capability fact. Their confinement is
+  # written in claude's flag vocabulary (`--allowedTools` / `--disallowedTools` /
+  # `--strict-mcp-config`, all three load-bearing per the probe at
+  # `trading.ex:290`), and codex rejects those outright: `error: unexpected
+  # argument '--disallowedTools'`, measured 08-03. A codex or opencode run on
+  # these surfaces does not run cheaply, or unsafely — it does not run at all.
+  #
+  # The operator's 08-03 call was to allow any harness here with a loud warning.
+  # That was made before the flags were known to be untranslatable; once they
+  # were, "allow it and warn" would have meant offering a choice whose only
+  # outcome is a failed run. Reversed 08-03 with the reason stated. If per-backend
+  # confinement is ever built (AGENT_BACKEND_ROADMAP Phase 3.5), this pin is what
+  # should be lifted, and only then.
+  @claude_only %{
+    trading_read: "its Robinhood confinement is claude-only",
+    order_submit: "its Robinhood confinement is claude-only"
+  }
+
   # Which bucket an unset backend reads. See the moduledoc.
   @implicit_backend :claude
 
@@ -154,6 +174,21 @@ defmodule BusterClaw.ModelPolicy do
   global default, then unset.
   """
   def backend_for(surface) when is_atom(surface) do
+    if claude_only?(surface), do: @floor_backend, else: resolve_backend(surface)
+  end
+
+  @doc """
+  Surfaces that can only run on claude, and why.
+
+  See `@claude_only` — this is a capability fact, not a preference: the other
+  harnesses reject the confinement flags these surfaces depend on.
+  """
+  def claude_only, do: @claude_only
+
+  @doc "True if `surface` is pinned to claude."
+  def claude_only?(surface), do: Map.has_key?(@claude_only, surface)
+
+  defp resolve_backend(surface) do
     backends = stored_backends()
 
     # `Map.fetch/2`, not `Map.get/2` + an `is_atom/1` guard: `nil` is an atom, so
@@ -174,6 +209,7 @@ defmodule BusterClaw.ModelPolicy do
   def put_backend(surface, backend) when is_atom(surface) do
     cond do
       not known_surface?(surface) -> {:error, {:unknown_surface, surface}}
+      claude_only?(surface) -> {:error, {:claude_only, surface, @claude_only[surface]}}
       is_nil(backend) -> write(&put_in_backends(&1, surface, nil))
       not AgentBackend.known?(backend) -> {:error, {:unknown_backend, backend}}
       true -> write(&put_in_backends(&1, surface, backend))
@@ -280,11 +316,13 @@ defmodule BusterClaw.ModelPolicy do
   end
 
   @doc """
-  Surfaces whose harness has put them beyond the floor's reach.
+  Floored surfaces whose harness has put them beyond the floor's reach.
 
-  The operator chose to allow any backend on the money surfaces provided the
-  warning is loud. This is the list a warning is built from, so that the warning
-  is a *state* rather than a rendering condition.
+  **Always empty since the money surfaces were pinned to claude**, and kept as a
+  live assertion rather than deleted: if a future change lifts the pin (see
+  `@claude_only`) without also giving the floor a per-backend measurement, this
+  starts returning entries and the test guarding it fails. That is the whole
+  point — the pin and the floor have to move together.
   """
   def unfloored_money_surfaces do
     for {surface, _floor} <- @floors,

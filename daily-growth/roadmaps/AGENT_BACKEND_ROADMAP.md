@@ -273,23 +273,34 @@ generally about floors.
 {"type":"step_finish","part":{"reason":"stop","tokens":{"total":…,"input":…,"output":…,"cache":{…}},"cost":0}}
 ```
 
-**Unplanned find, and it inverts a Phase 4 assumption.** The model roadmap says
-"the CLI does not report spend back to us." True of claude — but **codex reports
-token usage** on `turn.completed`, and **OpenCode reports an actual `cost`
-figure** on `step_finish`. Per-backend cost reporting is therefore *cheaper* on
-the two backends we are adding than on the one we have.
+**Unplanned find, and it inverts a Phase 4 assumption — then went further.** The
+model roadmap said "the CLI does not report spend back to us." **That was never
+true of any of the three.** Codex reports token usage on `turn.completed`,
+OpenCode reports an actual `cost` figure on `step_finish`, and claude's `result`
+event carries `total_cost_usd`, `usage`, `num_turns` AND `modelUsage` — measured
+08-03 at `total_cost_usd = 0.0802325` on a one-word prompt. `StreamEvent` has
+parsed claude's cost field the whole time, which is exactly how the contradiction
+was noticed. The claim had been repeated into this roadmap, the Explore tutorial,
+the daily summary and `AgentBackend`'s own descriptor before anyone ran the
+command. Corrected in all five.
 
 **All but one were run on 08-03; the answers are the sections above, not these
-lines.** The one that is still open is the one that gates a codex money surface.
+lines.** The one still open was the one that gated a codex money surface — and
+08-03 answered that question from the other end, one layer down. It no longer
+gates anything.
 
 - [x] **Can codex scope MCP per-run?** **No.** `-c` merges and cannot remove; see
       *⚠ `codex -c` merges*.
 - [ ] **Is `codex exec --ignore-user-config` the way to scope it?** Split out of
-      the line above because it is the part that was *not* settled. Until it is
-      probed, a codex trading run cannot be proven scoped to Robinhood alone, and
-      Phase 3's money-surface warning has to say that specifically. **This is the
-      highest-value remaining probe** — it decides whether codex can touch the
-      money surfaces at all.
+      the line above because it is the part that was *not* settled. **No longer
+      the gate, and no longer worth probing on its own.** It asked whether a codex
+      trading run could be proven scoped to Robinhood alone; 08-03 found that a
+      codex trading run does not start. The confinement those surfaces depend on
+      is written in claude's flags, and codex rejects them outright — `error:
+      unexpected argument '--disallowedTools'`. MCP scoping is the second lock on
+      a door whose first lock has no key. Re-open this only inside **Phase 3.5**,
+      where per-backend confinement would give the flags a translation and make
+      the question live again.
 - [x] **What does `codex exec --json` actually emit?** Captured; the shapes are in
       *The event schemas* below, for both codex and opencode.
 - [x] **How fine-grained is an OpenCode agent's permission list?** Hand-written
@@ -402,7 +413,20 @@ that is Phase 3, and until it lands "choose your harness" is a command, not a UI
       than guessed at, and the tests paste the captured lines verbatim.
 - [x] The floor warning is a **state** (`unfloored_money_surfaces/0`), driving
       both the Settings banner and a warning on the **order confirmation card** —
-      at the moment of the decision, not only in Settings.
+      at the moment of the decision, not only in Settings. **Superseded the same
+      day**; see the pin below.
+- [x] **The money surfaces are pinned to claude** (`ModelPolicy.@claude_only`),
+      which retired the warning above rather than tuning it. The operator's 08-03
+      call had been "allow any harness here, warn loudly" — made before anyone
+      knew the confinement flags were untranslatable. Once they were, a warning
+      would have been decoration on a choice whose only outcome is a failed run,
+      so the choice went away instead: the Settings picker does not render for
+      these surfaces, `put_backend/2` refuses them with `{:claude_only, …}`, and
+      `backend_for/1` answers `:claude` no matter what is stored. Reversed with
+      the reason recorded at the pin. **The two warnings did not get deleted** —
+      `unfloored_money_surfaces/0` and the order card's branch stay as live
+      assertions that must start firing again if the pin is ever lifted without a
+      per-backend measurement to replace it.
 
 **Two schema facts worth keeping:**
 - opencode emits `step_finish` once per **step**, not per run; only
@@ -423,8 +447,13 @@ did not.
       how often the broker tool was actually invoked versus the answer invented.
       Until that number exists for a backend, that backend has no floor and the
       UI must say so rather than implying one.
-- [ ] Per-backend cost reporting. OpenCode has `opencode stats`; claude does not
-      report spend back to us. Attractive, uneven, and much bigger than it sounds.
+- [ ] Per-backend cost reporting. **All three already report it** — claude
+      `total_cost_usd` on `result`, OpenCode `cost` on `step_finish`, codex token
+      counts on `turn.completed` (see *Unplanned find* above; the "claude does not
+      report spend back to us" that stood here was false). What is missing is the
+      aggregation: three shapes, two currencies-of-account (dollars vs tokens),
+      and no price table in this app to convert the third. Uneven, and bigger than
+      it sounds — but the hard part is presenting it honestly, not obtaining it.
 
 ---
 

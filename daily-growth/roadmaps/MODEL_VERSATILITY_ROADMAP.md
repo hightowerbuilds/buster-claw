@@ -184,7 +184,13 @@ Two implementation notes worth carrying:
       works today. Only if real use shows people wanting it per-chat rather than
       per-surface.
 - [ ] Cost reporting per surface. Attractive, and a much bigger build than it
-      sounds — the CLI does not report spend back to us.
+      sounds — but **not for the reason this line gave until 08-03.** It said
+      "the CLI does not report spend back to us." That was never true: claude's
+      `result` event carries `total_cost_usd` (measured 08-03 at `0.0802325` on a
+      one-word prompt), `usage`, `num_turns` and `modelUsage`, and `StreamEvent`
+      has parsed the cost field the whole time. All three harnesses report — two
+      in dollars, codex in tokens. The build is the aggregation (per surface, per
+      day, across three shapes), not the capture.
 
 ---
 
