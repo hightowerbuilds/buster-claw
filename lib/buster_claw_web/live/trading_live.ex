@@ -415,10 +415,16 @@ defmodule BusterClawWeb.TradingLive do
 
     case chat_state(socket.assigns, conv) do
       %{pending_order: {:proposed, order}} ->
+        # The harness and model are on the record at the moment of confirmation,
+        # not inferred later from settings that may have changed since. This is
+        # the money path; "what ran this order" has to be answerable from the
+        # feed alone.
         BusterClaw.Sentinel.observe(:outbound_send, "Trading order confirmed by operator", %{
           source: "trading_chat_order",
           conv_id: conv,
-          order: BusterClaw.TradingOrder.summary(order)
+          order: BusterClaw.TradingOrder.summary(order),
+          agent: BusterClaw.ModelPolicy.backend_for(:order_submit),
+          model: BusterClaw.ModelPolicy.for_surface(:order_submit) || "cli default"
         })
 
         {:noreply,
@@ -2058,7 +2064,9 @@ defmodule BusterClawWeb.TradingLive do
     BusterClaw.Sentinel.observe(:outbound_send, "Trading order submission settled", %{
       source: "trading_chat_order",
       order: summary,
-      outcome: order_outcome_tag(result)
+      outcome: order_outcome_tag(result),
+      agent: BusterClaw.ModelPolicy.backend_for(:order_submit),
+      model: BusterClaw.ModelPolicy.for_surface(:order_submit) || "cli default"
     })
 
     socket

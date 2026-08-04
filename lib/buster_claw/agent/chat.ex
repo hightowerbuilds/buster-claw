@@ -529,7 +529,12 @@ defmodule BusterClaw.Agent.Chat do
   defp mark_first_token(state), do: state
 
   defp stash_result(run, event),
-    do: Map.merge(run || %{}, %{turns: event.num_turns, cost: event.cost_usd})
+    do:
+      Map.merge(run || %{}, %{
+        turns: event.num_turns,
+        cost: event.cost_usd,
+        usage: event.usage
+      })
 
   # End the current run, then hand off to the queue: dispatch_next/1 either starts
   # the next queued turn (staying :running, no idle flicker between turns) or
@@ -565,6 +570,11 @@ defmodule BusterClaw.Agent.Chat do
         session_id: state.session_id,
         num_turns: run[:turns],
         cost_usd: run[:cost],
+        # WHICH harness ran it. Without this the feed cannot answer "what was
+        # this conversation actually running on", and a cost figure without the
+        # harness beside it is not attributable to anything.
+        agent: state.agent || :auto,
+        usage: run[:usage],
         duration_ms: duration
       },
       severity: severity

@@ -2075,4 +2075,29 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert BusterClaw.ModelPolicy.backend_for(:order_submit) == :claude
     end
   end
+
+  # The remaining item from AGENT_BACKEND_ROADMAP's "floor problem": the feed has
+  # to be able to answer "what actually ran this order". A cost or an outcome
+  # without the harness beside it is not attributable to anything.
+  describe "the order audit records which harness ran it" do
+    @order ~s({"side":"buy","symbol":"AAPL","quantity":2,"order_type":"limit",) <>
+             ~s("limit_price":199.25,"time_in_force":"day","account_last4":"6587"})
+
+    test "confirmation lands on the feed with the harness and model", %{conn: conn} do
+      {:ok, _} = BusterClaw.ModelPolicy.put_model(:claude, :order_submit, "claude-opus-5")
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      propose(view, @order)
+      render_click(view, "trading_order_confirm", %{"conv" => "trading"})
+
+      event =
+        [limit: 50]
+        |> BusterClaw.Sentinel.list_events()
+        |> Enum.find(&(&1.message =~ "Trading order confirmed"))
+
+      assert event, "the confirmation did not reach the audit feed"
+      assert to_string(event.metadata["agent"]) == "claude"
+      assert event.metadata["model"] == "claude-opus-5"
+    end
+  end
 end

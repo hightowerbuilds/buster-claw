@@ -51,7 +51,20 @@ defmodule BusterClaw.Agent.StreamEvent do
           session_id: String.t() | nil,
           cost_usd: number() | nil,
           num_turns: integer() | nil,
+          usage: usage() | nil,
           raw: map()
+        }
+
+  @typedoc """
+  Token counts normalized across the three harnesses. `cost_usd` is `nil`
+  wherever the CLI does not state one — see `usage/2`.
+  """
+  @type usage :: %{
+          input_tokens: non_neg_integer() | nil,
+          output_tokens: non_neg_integer() | nil,
+          cache_read_tokens: non_neg_integer() | nil,
+          cache_write_tokens: non_neg_integer() | nil,
+          cost_usd: number() | nil
         }
 
   defstruct kind: :unknown,
@@ -62,6 +75,7 @@ defmodule BusterClaw.Agent.StreamEvent do
             session_id: nil,
             cost_usd: nil,
             num_turns: nil,
+            usage: nil,
             raw: %{}
 
   # --- byte stream → lines ---
@@ -136,7 +150,7 @@ defmodule BusterClaw.Agent.StreamEvent do
     do: %__MODULE__{kind: :system, session_id: m["thread_id"], raw: m}
 
   defp normalize_codex(%{"type" => "turn.completed"} = m),
-    do: %__MODULE__{kind: :result, raw: m}
+    do: %__MODULE__{kind: :result, usage: codex_usage(m["usage"]), raw: m}
 
   defp normalize_codex(
          %{"type" => "item.completed", "item" => %{"type" => "agent_message"} = item} = m
@@ -207,8 +221,8 @@ defmodule BusterClaw.Agent.StreamEvent do
   defp normalize_opencode(%{"type" => "step_finish", "part" => %{"reason" => "stop"} = part} = m),
     do: %__MODULE__{
       kind: :result,
-      # The only harness of the three that reports what a run actually cost.
       cost_usd: part["cost"],
+      usage: opencode_usage(part),
       session_id: m["sessionID"],
       raw: m
     }
@@ -229,6 +243,7 @@ defmodule BusterClaw.Agent.StreamEvent do
       cost_usd: m["total_cost_usd"],
       num_turns: m["num_turns"],
       session_id: m["session_id"],
+      usage: claude_usage(m),
       raw: m
     }
 
@@ -269,6 +284,83 @@ defmodule BusterClaw.Agent.StreamEvent do
 
   defp stringish(s) when is_binary(s), do: s
   defp stringish(_), do: nil
+
+  # --- usage ----------------------------------------------------------------
+  #
+  # Three shapes, all measured 08-03, normalized to one. Every field is optional
+  # because each CLI omits a different one, and a missing count must read as
+  # "not stated" rather than as zero.
+  #
+  #   claude   %{"input_tokens", "output_tokens",
+  #              "cache_read_input_tokens", "cache_creation_input_tokens"}  + total_cost_usd
+  #   codex    %{"input_tokens", "output_tokens",
+  #              "cached_input_tokens", "cache_write_input_tokens"}         (no cost)
+  #   opencode %{"input", "output", "cache" => %{"read", "write"}}          + cost
+  #
+  # **Codex's `cost_usd` stays nil and must not be computed.** Deriving dollars
+  # from tokens needs a price table this app does not own and cannot keep
+  # current; a number the operator reads as "what this cost" should come from the
+  # CLI that billed it, or not appear.
+
+  defp claude_usage(%{"usage" => %{} = u} = m) do
+    %{
+      input_tokens: u["input_tokens"],
+      output_tokens: u["output_tokens"],
+      cache_read_tokens: u["cache_read_input_tokens"],
+      cache_write_tokens: u["cache_creation_input_tokens"],
+      cost_usd: m["total_cost_usd"]
+    }
+  end
+
+  defp claude_usage(_m), do: nil
+
+  defp codex_usage(%{} = u) do
+    %{
+      input_tokens: u["input_tokens"],
+      output_tokens: u["output_tokens"],
+      cache_read_tokens: u["cached_input_tokens"],
+      cache_write_tokens: u["cache_write_input_tokens"],
+      cost_usd: nil
+    }
+  end
+
+  defp codex_usage(_u), do: nil
+
+  defp opencode_usage(%{"tokens" => %{} = t} = part) do
+    cache = Map.get(t, "cache") || %{}
+
+    %{
+      input_tokens: t["input"],
+      output_tokens: t["output"],
+      cache_read_tokens: cache["read"],
+      cache_write_tokens: cache["write"],
+      cost_usd: part["cost"]
+    }
+  end
+
+  defp opencode_usage(_part), do: nil
+
+  @doc """
+  The usage reported by a completed run's captured output, or `nil`.
+
+  For the blocking `AgentRunner.run/2` surfaces, which hold the whole stream as
+  one string rather than seeing events as they arrive. Scans for the LAST
+  `:result` event, because opencode emits one `step_finish` per step and only the
+  final one ends the run.
+  """
+  @spec run_usage(atom(), String.t()) :: usage() | nil
+  def run_usage(backend, output) when is_binary(output) do
+    output
+    |> String.split("\n")
+    |> Enum.reduce(nil, fn line, acc ->
+      case parse(backend, line) do
+        {:ok, %__MODULE__{kind: :result, usage: %{} = usage}} -> usage
+        _ -> acc
+      end
+    end)
+  end
+
+  def run_usage(_backend, _output), do: nil
 
   # --- TUI-facing interpretation (the starfield states) ---
 

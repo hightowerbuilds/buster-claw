@@ -286,4 +286,115 @@ defmodule BusterClaw.Agent.StreamEventTest do
                StreamEvent.parse(:codex, ~s({"type":"system","session_id":"abc"}))
     end
   end
+
+  # Three shapes, one normalized map. Every line pasted below is real output
+  # captured 08-03 — the claude figures come from an actual one-word run.
+  describe "usage, normalized across harnesses" do
+    test "claude reports tokens AND dollars" do
+      line =
+        ~s({"type":"result","result":"OK","session_id":"s","num_turns":1,) <>
+          ~s("total_cost_usd":0.0802325,"usage":{"input_tokens":2,) <>
+          ~s("cache_creation_input_tokens":7191,"cache_read_input_tokens":15273,"output_tokens":4}})
+
+      assert {:ok, event} = StreamEvent.parse(:claude, line)
+
+      assert event.usage == %{
+               input_tokens: 2,
+               output_tokens: 4,
+               cache_read_tokens: 15_273,
+               cache_write_tokens: 7191,
+               cost_usd: 0.0802325
+             }
+    end
+
+    # The claim "the CLI does not report spend back to us" lived in two roadmaps,
+    # the tutorial and the summary until 08-03. It was never true of claude, and
+    # this is the assertion that stops it coming back.
+    test "claude's cost is a real number, not nil" do
+      line = ~s({"type":"result","result":"OK","total_cost_usd":0.0802325,"usage":{"input_tokens":2}})
+      assert {:ok, %{cost_usd: cost}} = StreamEvent.parse(:claude, line)
+      assert is_number(cost) and cost > 0
+    end
+
+    test "codex reports tokens, and its cost stays nil rather than invented" do
+      line =
+        ~s({"type":"turn.completed","usage":{"input_tokens":29205,"cached_input_tokens":22016,) <>
+          ~s("cache_write_input_tokens":0,"output_tokens":128,"reasoning_output_tokens":0}})
+
+      assert {:ok, event} = StreamEvent.parse(:codex, line)
+      assert event.usage.input_tokens == 29_205
+      assert event.usage.output_tokens == 128
+      assert event.usage.cache_read_tokens == 22_016
+
+      # Deriving dollars from tokens needs a price table this app does not own.
+      # A number the operator reads as "what this cost" must come from the CLI
+      # that billed it, or not appear at all.
+      assert event.usage.cost_usd == nil
+    end
+
+    test "opencode reports both, nested differently" do
+      line =
+        ~s({"type":"step_finish","sessionID":"s","part":{"type":"step-finish","reason":"stop",) <>
+          ~s("tokens":{"total":8050,"input":8048,"output":2,"cache":{"write":0,"read":0}},"cost":0.0021}})
+
+      assert {:ok, event} = StreamEvent.parse(:opencode, line)
+      assert event.usage.input_tokens == 8048
+      assert event.usage.output_tokens == 2
+      assert event.usage.cost_usd == 0.0021
+    end
+
+    # A missing count must read as "not stated", never as zero — the difference
+    # between "this run used no cache" and "we don't know".
+    test "an absent field is nil, not zero" do
+      assert {:ok, event} =
+               StreamEvent.parse(:claude, ~s({"type":"result","usage":{"input_tokens":5}}))
+
+      assert event.usage.input_tokens == 5
+      assert event.usage.output_tokens == nil
+      assert event.usage.cache_read_tokens == nil
+    end
+
+    test "a result with no usage block at all is nil, not an empty map" do
+      assert {:ok, %{usage: nil}} = StreamEvent.parse(:claude, ~s({"type":"result","result":"OK"}))
+      assert {:ok, %{usage: nil}} = StreamEvent.parse(:codex, ~s({"type":"turn.completed"}))
+    end
+  end
+
+  describe "run_usage/2 — for the blocking surfaces" do
+    test "finds the result event in a whole captured stream" do
+      output =
+        Enum.join(
+          [
+            ~s({"type":"system","session_id":"s"}),
+            ~s({"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}),
+            ~s({"type":"result","result":"OK","total_cost_usd":0.5,"usage":{"input_tokens":9,"output_tokens":3}})
+          ],
+          "\n"
+        )
+
+      assert %{input_tokens: 9, output_tokens: 3, cost_usd: 0.5} = StreamEvent.run_usage(:claude, output)
+    end
+
+    # opencode emits one step_finish per STEP; only the last ends the run, so the
+    # last result event is the one that carries the run's totals.
+    test "takes the LAST result, which is the one that ends an opencode run" do
+      output =
+        Enum.join(
+          [
+            ~s({"type":"step_finish","part":{"reason":"tool-calls","tokens":{"input":1,"output":1},"cost":0.001}}),
+            ~s({"type":"step_finish","part":{"reason":"stop","tokens":{"input":80,"output":9},"cost":0.02}})
+          ],
+          "\n"
+        )
+
+      assert %{input_tokens: 80, cost_usd: 0.02} = StreamEvent.run_usage(:opencode, output)
+    end
+
+    test "is nil for output that never finished, and for junk" do
+      assert StreamEvent.run_usage(:claude, ~s({"type":"system","session_id":"s"})) == nil
+      assert StreamEvent.run_usage(:claude, "not json at all") == nil
+      assert StreamEvent.run_usage(:claude, nil) == nil
+    end
+  end
+
 end
