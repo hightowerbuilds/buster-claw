@@ -736,9 +736,14 @@ defmodule BusterClawWeb.SettingsLive do
   defp assign_model_policy(socket) do
     in_force = ModelPolicy.in_force()
 
+    # Models are stored per `{backend, surface}` since 08-03, so the global
+    # default shown here is the one for the harness the default surface resolves
+    # to — showing claude's default while running codex would be a lie.
+    default_backend = ModelPolicy.backend_for(:default)
+
     socket
     |> assign(:model_rows, Enum.map(ModelPolicy.surface_keys(), &{&1, Map.fetch!(in_force, &1)}))
-    |> assign(:model_default, Map.get(ModelPolicy.stored(), :default))
+    |> assign(:model_default, ModelPolicy.model_for(default_backend, :default))
   end
 
   defp put_model(socket, target, model) do

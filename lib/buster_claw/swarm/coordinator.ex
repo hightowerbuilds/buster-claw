@@ -58,6 +58,7 @@ defmodule BusterClaw.Swarm.Coordinator do
       opts
       |> Keyword.get(:planner_run_opts, Keyword.get(opts, :run_opts, []))
       |> Keyword.put_new(:model, ModelPolicy.for_surface(:swarm_planner))
+      |> Keyword.put_new(:agent, ModelPolicy.backend_for(:swarm_planner))
 
     case runner.(planner_prompt(goal, max), run_opts) do
       {:ok, %{exit_status: 0, output: output}} -> parse_plan(output, max)

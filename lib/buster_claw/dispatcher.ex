@@ -224,6 +224,7 @@ defmodule BusterClaw.Dispatcher do
       state
       |> run_opts(provenance)
       |> Keyword.put_new(:model, ModelPolicy.for_surface(:dispatcher))
+      |> Keyword.put_new(:agent, ModelPolicy.backend_for(:dispatcher))
 
     runner = state.runner
     parent = self()

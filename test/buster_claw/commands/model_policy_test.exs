@@ -12,6 +12,72 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
 
   defp entry(listing, surface), do: Enum.find(listing.in_force, &(&1.surface == surface))
 
+  describe "choosing a harness" do
+    test "sets a backend on its own, without naming a model" do
+      assert {:ok, result} =
+               Commands.model_policy(%{"surface" => "default", "backend" => "codex"})
+
+      assert result.backend == "codex"
+      assert ModelPolicy.backend_for(:chat) == :codex
+      assert entry(result.in_force, "chat").backend == "codex"
+    end
+
+    # Switching harness must not destroy the models set for the old one, or the
+    # operator loses their whole policy by trying codex for an hour.
+    test "switching harness leaves the other harness's models intact" do
+      {:ok, _} = Commands.model_policy(%{"surface" => "chat", "model" => "claude-opus-5"})
+      {:ok, _} = Commands.model_policy(%{"surface" => "default", "backend" => "opencode"})
+
+      assert ModelPolicy.for_surface(:chat) == nil
+
+      {:ok, _} = Commands.model_policy(%{"surface" => "default", "backend" => "auto"})
+      assert ModelPolicy.for_surface(:chat) == "claude-opus-5"
+    end
+
+    test "backend and model can be set in one call" do
+      assert {:ok, _} =
+               Commands.model_policy(%{
+                 "surface" => "swarm_run",
+                 "backend" => "opencode",
+                 "model" => "opencode-go/kimi-k3"
+               })
+
+      assert ModelPolicy.backend_for(:swarm_run) == :opencode
+      assert ModelPolicy.for_surface(:swarm_run) == "opencode-go/kimi-k3"
+    end
+
+    test "\"auto\" gives the choice back to PATH detection" do
+      {:ok, _} = Commands.model_policy(%{"surface" => "chat", "backend" => "codex"})
+      {:ok, _} = Commands.model_policy(%{"surface" => "chat", "backend" => "auto"})
+
+      assert ModelPolicy.backend_for(:chat) == nil
+    end
+
+    test "an unknown harness names the real ones instead of crashing" do
+      assert {:error, {:unknown_backend, "gemini", names}} =
+               Commands.model_policy(%{"surface" => "chat", "backend" => "gemini"})
+
+      assert "auto" in names and "codex" in names
+      assert ModelPolicy.stored() == %{backends: %{}, models: %{}}
+    end
+
+    # The listing must not offer a harness this machine cannot run.
+    test "the listing reports which harnesses are actually installed" do
+      assert {:ok, listing} = Commands.model_policy()
+      assert Enum.all?(listing.backends_available, &(&1 in listing.backends))
+    end
+
+    # False means the harness put the surface beyond what the floor can honestly
+    # enforce. A caller printing `floor` without this would imply protection.
+    test "a money surface on another harness reports floor_applies: false" do
+      {:ok, _} = Commands.model_policy(%{"surface" => "order_submit", "backend" => "codex"})
+      {:ok, listing} = Commands.model_policy()
+
+      assert entry(listing, "order_submit").floor_applies == false
+      assert entry(listing, "trading_read").floor_applies == true
+    end
+  end
+
   describe "the listing" do
     test "covers every surface, and says nothing is set" do
       assert {:ok, listing} = Commands.model_policy()
@@ -25,7 +91,7 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
         assert surface.source == "cli"
       end
 
-      assert listing.operator_set == []
+      assert listing.operator_set == %{backends: [], models: []}
       assert "default" in listing.surfaces
       assert "claude-opus-5" in listing.known_models
     end
@@ -62,7 +128,8 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
       assert {:ok, listing} = Commands.model_policy()
       assert entry(listing, "swarm_run").model == "claude-opus-5"
       assert entry(listing, "swarm_run").source == "surface"
-      assert %{surface: "swarm_run", model: "claude-opus-5"} in listing.operator_set
+
+      assert %{surface: "swarm_run", backend: "claude", model: "claude-opus-5"} in listing.operator_set.models
     end
 
     # The 07-28 measurement, as a command-level regression guard: a cheaper
@@ -99,7 +166,7 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
 
       assert {:ok, listing} = Commands.model_policy()
       assert Enum.all?(listing.in_force, &(&1.model == nil and &1.source == "cli"))
-      assert listing.operator_set == []
+      assert listing.operator_set == %{backends: [], models: []}
     end
   end
 
@@ -110,7 +177,7 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
 
       assert "trading_read" in valid
       assert "default" in valid
-      assert ModelPolicy.stored() == %{}
+      assert ModelPolicy.stored() == %{backends: %{}, models: %{}}
     end
 
     test "a blank model is refused with the way to unset instead" do
@@ -118,7 +185,7 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
                Commands.model_policy(%{"surface" => "chat", "model" => "   "})
 
       assert hint =~ "clear"
-      assert ModelPolicy.stored() == %{}
+      assert ModelPolicy.stored() == %{backends: %{}, models: %{}}
     end
 
     test "naming a surface with no model at all is an error, not a silent clear" do
@@ -155,7 +222,7 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
                  caller: :agent_untrusted
                )
 
-      assert ModelPolicy.stored() == %{}
+      assert ModelPolicy.stored() == %{backends: %{}, models: %{}}
     end
   end
 

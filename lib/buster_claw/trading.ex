@@ -891,6 +891,7 @@ defmodule BusterClaw.Trading do
       # `:trading_read` a floor the global default cannot lower — only naming
       # this surface explicitly can. `nil` means the operator set nothing and the
       # CLI keeps deciding, exactly as before.
+      agent: ModelPolicy.backend_for(:trading_read),
       model: ModelPolicy.for_surface(:trading_read),
       permission_mode: "dontAsk",
       timeout_ms: timeout_ms,

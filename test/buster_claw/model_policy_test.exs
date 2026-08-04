@@ -133,14 +133,163 @@ defmodule BusterClaw.ModelPolicyTest do
         Jason.encode!(%{"chat" => "claude-opus-5", "not_a_surface" => "x", "" => "y"})
       )
 
-      assert ModelPolicy.stored() == %{chat: "claude-opus-5"}
+      assert ModelPolicy.stored() == %{backends: %{}, models: %{claude: %{chat: "claude-opus-5"}}}
     end
 
     test "survives a corrupt value instead of crashing every run site" do
       BusterClaw.Settings.put("model_policy", "not json at all")
 
-      assert ModelPolicy.stored() == %{}
+      assert ModelPolicy.stored() == %{backends: %{}, models: %{}}
       assert ModelPolicy.for_surface(:chat) == nil
+    end
+  end
+
+  describe "the backend (harness)" do
+    test "is unset by default, so AgentRunner keeps detecting exactly as before" do
+      for surface <- ModelPolicy.surface_keys() do
+        assert ModelPolicy.backend_for(surface) == nil
+      end
+
+      assert ModelPolicy.in_force()[:chat].backend_source == :auto
+    end
+
+    test "a global default reaches every surface" do
+      {:ok, _} = ModelPolicy.put_backend(:default, :codex)
+
+      assert ModelPolicy.backend_for(:chat) == :codex
+      assert ModelPolicy.backend_for(:order_submit) == :codex
+      assert ModelPolicy.in_force()[:chat].backend_source == :default
+    end
+
+    test "a per-surface override wins without touching the others" do
+      {:ok, _} = ModelPolicy.put_backend(:default, :codex)
+      {:ok, _} = ModelPolicy.put_backend(:trading_read, :claude)
+
+      assert ModelPolicy.backend_for(:trading_read) == :claude
+      assert ModelPolicy.backend_for(:chat) == :codex
+      assert ModelPolicy.in_force()[:trading_read].backend_source == :surface
+    end
+
+    test "clearing returns a surface to auto-detection" do
+      {:ok, _} = ModelPolicy.put_backend(:default, :opencode)
+      {:ok, _} = ModelPolicy.put_backend(:default, nil)
+
+      assert ModelPolicy.backend_for(:chat) == nil
+    end
+
+    test "refuses a harness that does not exist" do
+      assert {:error, {:unknown_backend, :gemini}} = ModelPolicy.put_backend(:default, :gemini)
+      assert {:error, {:unknown_surface, :nope}} = ModelPolicy.put_backend(:nope, :codex)
+    end
+  end
+
+  # The reason models are keyed by {backend, surface} rather than by surface. A
+  # model ID means nothing outside its harness, so switching harness must not
+  # destroy the models set for the old one — otherwise trying codex for an hour
+  # silently costs the operator their whole claude policy.
+  describe "models are remembered per harness" do
+    test "switching harness and back is lossless" do
+      {:ok, _} = ModelPolicy.put(:chat, "claude-opus-5")
+
+      {:ok, _} = ModelPolicy.put_backend(:default, :opencode)
+      assert ModelPolicy.for_surface(:chat) == nil, "claude's model must not leak to opencode"
+
+      {:ok, _} = ModelPolicy.put(:chat, "opencode-go/kimi-k3")
+      assert ModelPolicy.for_surface(:chat) == "opencode-go/kimi-k3"
+
+      {:ok, _} = ModelPolicy.put_backend(:default, nil)
+      assert ModelPolicy.for_surface(:chat) == "claude-opus-5"
+    end
+
+    test "each harness keeps its own default" do
+      {:ok, _} = ModelPolicy.put_model(:claude, :default, "claude-opus-5")
+      {:ok, _} = ModelPolicy.put_model(:codex, :default, "gpt-5.1-codex")
+
+      assert ModelPolicy.model_for(:claude, :chat) == "claude-opus-5"
+      assert ModelPolicy.model_for(:codex, :chat) == "gpt-5.1-codex"
+    end
+
+    # Every model stored before harnesses existed was a claude model, and claude
+    # is first in the detection order. Reading a different bucket per machine
+    # would make one stored policy mean different things on different machines.
+    test "an unset backend reads the claude bucket" do
+      {:ok, _} = ModelPolicy.put_model(:claude, :chat, "claude-sonnet-5")
+
+      assert ModelPolicy.backend_for(:chat) == nil
+      assert ModelPolicy.for_surface(:chat) == "claude-sonnet-5"
+    end
+
+    test "put_model refuses an unknown harness or surface" do
+      assert {:error, {:unknown_backend, :gemini}} =
+               ModelPolicy.put_model(:gemini, :chat, "x")
+
+      assert {:error, {:unknown_surface, :nope}} =
+               ModelPolicy.put_model(:claude, :nope, "x")
+    end
+  end
+
+  # The operator chose (08-03) to let any harness run the money surfaces, with a
+  # loud warning. A warning can only be loud if the code KNOWS the floor stopped
+  # applying — left implicit it would still "work" (an unranked model passes
+  # below_floor?/2 untouched) while looking like protection that isn't there.
+  describe "the floor is claude-only, explicitly" do
+    test "does not apply once a money surface is on another harness" do
+      {:ok, _} = ModelPolicy.put_backend(:trading_read, :codex)
+
+      refute ModelPolicy.floor_applies?(:codex, :trading_read)
+      assert ModelPolicy.in_force()[:trading_read].floor_applies == false
+    end
+
+    test "a cheap model on a non-claude harness is NOT silently raised" do
+      {:ok, _} = ModelPolicy.put_backend(:default, :opencode)
+      {:ok, _} = ModelPolicy.put_model(:opencode, :default, "opencode/deepseek-v4-flash-free")
+
+      assert ModelPolicy.for_surface(:order_submit) == "opencode/deepseek-v4-flash-free"
+    end
+
+    test "names exactly which money surfaces lost their floor" do
+      assert ModelPolicy.unfloored_money_surfaces() == []
+
+      {:ok, _} = ModelPolicy.put_backend(:order_submit, :codex)
+      assert ModelPolicy.unfloored_money_surfaces() == [:order_submit]
+    end
+
+    test "still applies on claude, and to nothing that has no floor" do
+      {:ok, _} = ModelPolicy.put_backend(:default, :claude)
+      {:ok, _} = ModelPolicy.put_model(:claude, :default, "claude-haiku-4-5")
+
+      assert ModelPolicy.for_surface(:trading_read) == "claude-sonnet-5"
+      assert ModelPolicy.for_surface(:chat) == "claude-haiku-4-5"
+      refute ModelPolicy.floor_applies?(:claude, :chat)
+    end
+  end
+
+  # An operator who set a policy before harnesses existed keeps it.
+  describe "migration from the pre-backend row" do
+    test "a flat surface => model row is read as claude's models" do
+      BusterClaw.Settings.put(
+        "model_policy",
+        Jason.encode!(%{"default" => "claude-opus-5", "swarm_run" => "claude-haiku-4-5"})
+      )
+
+      assert ModelPolicy.for_surface(:chat) == "claude-opus-5"
+      assert ModelPolicy.for_surface(:swarm_run) == "claude-haiku-4-5"
+      assert ModelPolicy.model_for(:claude, :chat) == "claude-opus-5"
+      assert ModelPolicy.backend_for(:chat) == nil
+    end
+
+    test "the floor still holds across the migration" do
+      BusterClaw.Settings.put("model_policy", Jason.encode!(%{"default" => "claude-haiku-4-5"}))
+
+      assert ModelPolicy.for_surface(:trading_read) == "claude-sonnet-5"
+    end
+
+    test "writing after a migration does not lose the migrated values" do
+      BusterClaw.Settings.put("model_policy", Jason.encode!(%{"default" => "claude-opus-5"}))
+      {:ok, _} = ModelPolicy.put(:chat, "claude-sonnet-5")
+
+      assert ModelPolicy.for_surface(:chat) == "claude-sonnet-5"
+      assert ModelPolicy.for_surface(:dispatcher) == "claude-opus-5"
     end
   end
 

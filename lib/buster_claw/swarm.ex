@@ -69,6 +69,7 @@ defmodule BusterClaw.Swarm do
       opts
       |> Keyword.get(:run_opts, [])
       |> Keyword.put_new(:model, ModelPolicy.for_surface(:swarm_run))
+      |> Keyword.put_new(:agent, ModelPolicy.backend_for(:swarm_run))
 
     results =
       plan

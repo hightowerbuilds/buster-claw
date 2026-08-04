@@ -251,6 +251,7 @@ defmodule BusterClaw.TradingOrder do
       # `:trading_read` does — on 07-28 a cheaper model on a money surface did
       # not error, it fabricated — so lowering the global default cannot reach
       # here. `nil` means nothing is set and the CLI decides, as it always has.
+      agent: ModelPolicy.backend_for(:order_submit),
       model: ModelPolicy.for_surface(:order_submit),
       permission_mode: "dontAsk",
       timeout_ms: @submit_timeout_ms,

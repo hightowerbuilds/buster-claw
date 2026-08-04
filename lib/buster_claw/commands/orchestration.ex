@@ -1,7 +1,7 @@
 defmodule BusterClaw.Commands.Orchestration do
   @moduledoc "Runtime status, activity report, model policy, terminal workspace, and orchestration-shift commands. Delegated to from `BusterClaw.Commands`."
 
-  alias BusterClaw.{ModelPolicy, Orchestration, TerminalCommands, TerminalWorkspace}
+  alias BusterClaw.{AgentBackend, ModelPolicy, Orchestration, TerminalCommands, TerminalWorkspace}
   alias BusterClaw.Runtime.Status
 
   def runtime_status(_args \\ %{}), do: {:ok, Status.snapshot()}
@@ -38,6 +38,21 @@ defmodule BusterClaw.Commands.Orchestration do
   """
   def model_policy(args \\ %{})
 
+  # `backend` and `model` are independent: an operator may switch harness without
+  # naming a model (the new harness's own stored models, if any, apply), or set a
+  # model within the harness already chosen. Requiring both would make switching
+  # harness destructive.
+  def model_policy(%{"surface" => surface, "backend" => backend} = args)
+      when is_binary(surface) and surface != "" and is_binary(backend) and backend != "" do
+    with {:ok, key} <- parse_surface(surface),
+         {:ok, parsed} <- parse_backend(backend),
+         {:ok, _in_force} <- write_backend(surface, key, parsed) do
+      if Map.has_key?(args, "model") or Map.has_key?(args, "clear"),
+        do: model_policy(Map.delete(args, "backend")),
+        else: {:ok, %{surface: surface, backend: backend, in_force: current()}}
+    end
+  end
+
   def model_policy(%{"surface" => surface} = args) when is_binary(surface) and surface != "" do
     with {:ok, key} <- parse_surface(surface),
          {:ok, model} <- parse_model(args) do
@@ -45,15 +60,44 @@ defmodule BusterClaw.Commands.Orchestration do
     end
   end
 
-  def model_policy(_args) do
-    {:ok,
-     %{
-       in_force: shape_policy(ModelPolicy.in_force()),
-       operator_set: shape_stored(ModelPolicy.stored()),
-       surfaces: surface_names(),
-       known_models: ModelPolicy.known_models()
-     }}
+  def model_policy(_args), do: {:ok, current()}
+
+  defp current do
+    %{
+      in_force: shape_policy(ModelPolicy.in_force()),
+      operator_set: shape_stored(ModelPolicy.stored()),
+      surfaces: surface_names(),
+      backends: backend_names(),
+      # Only the installed harnesses can actually run. Listing one that is not
+      # present would offer a choice that fails at the moment a run was expected.
+      backends_available: Enum.map(AgentBackend.installed(), &Atom.to_string/1),
+      known_models: ModelPolicy.known_models()
+    }
   end
+
+  defp write_backend(surface, key, backend) do
+    case ModelPolicy.put_backend(key, backend) do
+      {:ok, in_force} -> {:ok, in_force}
+      {:error, {:unknown_surface, _key}} -> unknown_surface(surface)
+      {:error, {:unknown_backend, _b}} -> unknown_backend(backend)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # "auto" is the honest way to unset a harness: it restores `AgentRunner`'s
+  # PATH detection, which is what an install that never chose one already does.
+  defp parse_backend("auto"), do: {:ok, nil}
+
+  defp parse_backend(given) do
+    case Enum.find(ModelPolicy.backends(), &(Atom.to_string(&1) == given)) do
+      nil -> unknown_backend(given)
+      backend -> {:ok, backend}
+    end
+  end
+
+  defp backend_names, do: ["auto" | Enum.map(ModelPolicy.backends(), &Atom.to_string/1)]
+
+  defp unknown_backend(given), do: {:error, {:unknown_backend, given, backend_names()}}
 
   defp write_policy(surface, key, model) do
     case ModelPolicy.put(key, model) do
@@ -106,18 +150,38 @@ defmodule BusterClaw.Commands.Orchestration do
 
       %{
         surface: Atom.to_string(surface),
+        backend: entry.backend && Atom.to_string(entry.backend),
+        backend_source: Atom.to_string(entry.backend_source),
         model: entry.model,
         source: Atom.to_string(entry.source),
         floor: entry.floor,
+        # False means the chosen harness put this surface beyond what the floor
+        # can honestly enforce — the difference between "protected" and "looks
+        # protected". A caller printing `floor` without this would mislead.
+        floor_applies: entry.floor_applies,
         description: entry.description
       }
     end)
   end
 
-  defp shape_stored(stored) do
-    stored
-    |> Enum.map(fn {surface, model} -> %{surface: Atom.to_string(surface), model: model} end)
-    |> Enum.sort_by(& &1.surface)
+  defp shape_stored(%{backends: backends, models: models}) do
+    %{
+      backends:
+        backends
+        |> Enum.map(fn {surface, backend} ->
+          %{surface: Atom.to_string(surface), backend: Atom.to_string(backend)}
+        end)
+        |> Enum.sort_by(& &1.surface),
+      models:
+        for {backend, entries} <- models, {surface, model} <- entries do
+          %{
+            backend: Atom.to_string(backend),
+            surface: Atom.to_string(surface),
+            model: model
+          }
+        end
+        |> Enum.sort_by(&{&1.backend, &1.surface})
+    }
   end
 
   # -----------------------------------------------------------------------

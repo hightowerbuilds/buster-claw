@@ -40,11 +40,18 @@ defmodule BusterClaw.Commands.Catalog.Orchestration do
             description:
               "The surface to set, or \"default\" for the global default. Omit to list."
           },
+          "backend" => %{
+            type: :string,
+            required: false,
+            enum: model_backend_names(),
+            description:
+              "The harness to run there: claude, codex, opencode, or \"auto\" to go back to detecting whichever is on PATH. May be set on its own — switching harness does not clear the models you set for the old one, or for the new one. A model ID only means something inside its harness (opencode wants provider/model), so models are remembered per harness and switching back restores them."
+          },
           "model" => %{
             type: :string,
             required: false,
             description:
-              "The model to run there, e.g. claude-opus-5. Unlisted models are accepted — the CLI takes aliases we do not control. Required unless clearing."
+              "The model to run there, e.g. claude-opus-5, or opencode-go/glm-5.1 on opencode. Unlisted models are accepted — the CLIs take aliases we do not control. Required unless clearing or setting only the backend."
           },
           "clear" => %{
             type: :boolean,
@@ -314,4 +321,9 @@ defmodule BusterClaw.Commands.Catalog.Orchestration do
   # is offered cannot drift from the surfaces that actually exist.
   defp model_surface_names,
     do: Enum.map([:default | ModelPolicy.surface_keys()], &Atom.to_string/1)
+
+  # Same reasoning, and "auto" is a real value here rather than an absence: it is
+  # how an operator gives the harness choice back to PATH detection.
+  defp model_backend_names,
+    do: ["auto" | Enum.map(ModelPolicy.backends(), &Atom.to_string/1)]
 end

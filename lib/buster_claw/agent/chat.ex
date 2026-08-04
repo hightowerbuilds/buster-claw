@@ -665,7 +665,10 @@ defmodule BusterClaw.Agent.Chat do
   # injected-spawner seam that the chat tests use stays free of any DB read.
   # `put_new` so a caller that passed its own `:model` keeps it.
   defp default_spawner(prompt, opts) do
-    opts = Keyword.put_new(opts, :model, ModelPolicy.for_surface(:chat))
+    opts =
+      opts
+      |> Keyword.put_new(:model, ModelPolicy.for_surface(:chat))
+      |> Keyword.put_new(:agent, ModelPolicy.backend_for(:chat))
 
     case AgentRunner.open(prompt, opts) do
       {:ok, %{port: port}} -> {:ok, port}

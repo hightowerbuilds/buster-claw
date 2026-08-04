@@ -70,6 +70,42 @@ defmodule BusterClaw.ModelPolicyWiringTest do
     end
   end
 
+  # Phase 2's whole point: an operator can choose the HARNESS, not just the model,
+  # and the choice reaches a real run. Before this, `detect/0` picked by PATH
+  # order and codex was unreachable on any machine that had claude installed.
+  describe "the chosen harness reaches the runner" do
+    test "a backend set for a surface is passed as :agent" do
+      {:ok, _} = ModelPolicy.put_backend(:trading_read, :codex)
+      put_env(:trading_agent_runner, capturing_runner(self()))
+
+      _ = Trading.fetch_account_snapshot()
+
+      assert_receive {:run_opts, opts}
+      assert Keyword.fetch!(opts, :agent) == :codex
+    end
+
+    test "the global backend default reaches a surface that has no override" do
+      {:ok, _} = ModelPolicy.put_backend(:default, :opencode)
+      put_env(:trading_submit_runner, capturing_runner(self()))
+
+      _ = TradingOrder.submit(order!())
+
+      assert_receive {:run_opts, opts}
+      assert Keyword.fetch!(opts, :agent) == :opencode
+    end
+
+    # The additive promise, for the harness half: unset must reach AgentRunner as
+    # nil so `detect/0` stays in charge, exactly as before Phase 2.
+    test "an unset backend passes nil, leaving detection alone" do
+      put_env(:trading_agent_runner, capturing_runner(self()))
+
+      _ = Trading.fetch_account_snapshot()
+
+      assert_receive {:run_opts, opts}
+      assert Keyword.get(opts, :agent) == nil
+    end
+  end
+
   describe "the money surfaces, where the floor is the point" do
     # The 07-28 measurement: haiku on a trading read invoked the broker tool in
     # only 1 of 2 runs, and on the miss it INVENTED the answer. An operator

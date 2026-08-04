@@ -146,6 +146,72 @@ defmodule BusterClaw.AgentBackend do
   def known_models(backend), do: fetch(backend, :known_models, [])
 
   @doc """
+  True when `backend`'s executable is on PATH.
+
+  A harness the operator does not have installed must read as *unavailable* in
+  the picker rather than selectable-and-broken — choosing it would otherwise
+  produce `{:error, :agent_unavailable}` at the moment a run was expected.
+  """
+  def available?(backend) do
+    case executable(backend) do
+      name when is_binary(name) -> System.find_executable(name) != nil
+      _ -> false
+    end
+  end
+
+  @doc "The subset of `order/0` actually installed on this machine."
+  def installed, do: Enum.filter(order(), &available?/1)
+
+  @doc """
+  Ask `backend`'s CLI to list its own models.
+
+  Only opencode can (`opencode models`); everything else returns `{:error,
+  :not_enumerable}` and must fall back to `known_models/1` plus free text.
+
+  **This shells out — never call it from a LiveView render or a GenServer's
+  `init/1`.** Resolve it in a Task and cache the result. The list is also
+  *per-machine*: it reflects which providers this operator has authenticated
+  (23 entries on the author's machine), so it can be neither shipped nor shared.
+  """
+  def enumerate_models(backend, opts \\ []) do
+    with true <- enumerates_models?(backend),
+         name when is_binary(name) <- executable(backend),
+         path when is_binary(path) <- System.find_executable(name) do
+      run_enumerate(path, Keyword.get(opts, :timeout_ms, 15_000))
+    else
+      false -> {:error, :not_enumerable}
+      _ -> {:error, :not_installed}
+    end
+  end
+
+  defp run_enumerate(path, timeout_ms) do
+    task =
+      Task.async(fn ->
+        System.cmd(path, ["models"], stderr_to_stdout: true)
+      end)
+
+    case Task.yield(task, timeout_ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {output, 0}} -> {:ok, parse_model_lines(output)}
+      {:ok, {_output, status}} -> {:error, {:exit_status, status}}
+      _ -> {:error, :timeout}
+    end
+  rescue
+    error -> {:error, {:enumerate_failed, Exception.message(error)}}
+  end
+
+  # `opencode models` prints one `provider/model` per line. Anything without a
+  # slash is banner text or a warning, not a model — dropping it is safer than
+  # offering the operator a model string the CLI would reject.
+  defp parse_model_lines(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&String.contains?(&1, "/"))
+    |> Enum.reject(&String.contains?(&1, " "))
+    |> Enum.uniq()
+  end
+
+  @doc """
   A model string plausibly belongs to `backend`'s namespace.
 
   Deliberately permissive — it catches the one mistake that is unambiguous

@@ -134,12 +134,39 @@ defmodule BusterClaw.AgentRunner do
   end
 
   defp backend_path(:claude), do: claude_path()
-  defp backend_path(backend), do: System.find_executable(AgentBackend.executable(backend))
 
+  # An unrecognised backend has no executable name at all. Returning nil lets the
+  # caller answer `{:error, {:agent_unavailable, backend}}`; passing nil to
+  # `System.find_executable/1` would raise a FunctionClauseError instead.
+  defp backend_path(backend) do
+    case AgentBackend.executable(backend) do
+      name when is_binary(name) -> System.find_executable(name)
+      _ -> nil
+    end
+  end
+
+  # Three ways to land on a harness, most explicit first:
+  #
+  #   1. `:agent_binary` — an exact path (tests, or an unusual install).
+  #   2. `:agent` alone — a NAMED backend, resolved to its executable. This is
+  #      what `ModelPolicy.backend_for/1` returns, and before 08-03 passing it
+  #      without a binary did nothing at all: the name was read only as a label
+  #      for an explicit path. A chosen backend that silently ran a different one
+  #      is the worst outcome available here, so an installed-check failure is a
+  #      hard error rather than a fall-through to detection.
+  #   3. Neither — `detect/0` walks PATH, exactly as it always has.
   defp resolve_agent(opts) do
-    case Keyword.get(opts, :agent_binary) do
-      path when is_binary(path) -> {:ok, {Keyword.get(opts, :agent, :custom), path}}
-      _ -> detect()
+    case {Keyword.get(opts, :agent_binary), Keyword.get(opts, :agent)} do
+      {path, agent} when is_binary(path) -> {:ok, {agent || :custom, path}}
+      {_, nil} -> detect()
+      {_, agent} -> resolve_named_agent(agent)
+    end
+  end
+
+  defp resolve_named_agent(agent) do
+    case backend_path(agent) do
+      path when is_binary(path) -> {:ok, {agent, path}}
+      _ -> {:error, {:agent_unavailable, agent}}
     end
   end
 

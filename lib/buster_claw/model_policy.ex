@@ -1,23 +1,42 @@
 defmodule BusterClaw.ModelPolicy do
   @moduledoc """
-  Which model each agent surface runs on.
+  Which **harness** each agent surface runs in, and which **model** inside it.
 
-  Buster Claw drives the operator's own `claude` CLI, and until 08-03 it never
-  told the CLI which model to use — `AgentRunner` accepted `:model` and nothing
-  passed it. Every run inherited whatever that CLI was configured for. This
-  module is what the six run call sites ask.
+  Buster Claw drives the operator's own agent CLI. Until 08-03 it never told that
+  CLI which model to use, and it never let anyone choose the CLI either —
+  `AgentRunner.detect/0` took whichever was first on PATH. This module is what
+  the six run call sites ask for both answers.
 
   ## The shape
 
-  One **global default**, plus **per-surface overrides**. `for_surface/1`
-  resolves them, and returns `nil` when nothing applies.
+  A **global default plus per-surface overrides**, for the backend and the model
+  alike, so there is one mental model rather than two:
 
-  **`nil` means "pass no `--model` at all".** Not an empty string, not a named
-  default. Unset is the shipped state, so installing this changes nothing about
-  what an existing install does — the CLI keeps deciding, exactly as before.
-  Callers must omit the flag rather than send `--model ""`.
+      backend:  default → per-surface override
+      model:    default → per-surface override, WITHIN the chosen backend
 
-  ## Floors, and why two surfaces have one
+  ## Models are keyed by `{backend, surface}`, not by surface
+
+  A model ID is only meaningful inside its harness. `claude-opus-5` means nothing
+  to opencode, which wants `opencode-go/glm-5.1`; codex has its own namespace
+  again. Keying by surface alone would force a choice between showing a stale
+  model as "in force" (a lie) and discarding the operator's choice the moment
+  they switched harness. Keying on the pair makes switching harness — and
+  switching back — **lossless**.
+
+  ## `nil` still means "pass nothing"
+
+  An unset model omits `--model`; an unset backend omits `:agent` and leaves
+  `AgentRunner.detect/0` in charge exactly as before. Both defaults are unset, so
+  installing this changes nothing about what an existing install does.
+
+  **An unset backend reads the `:claude` model bucket.** Every model stored
+  before backends existed was a claude model, claude is first in the detection
+  order, and guessing per-machine at read time would make the same stored policy
+  mean different things on different machines. An operator who wants codex's
+  models chooses codex.
+
+  ## Floors, and why they are claude-only *explicitly*
 
   `trading.ex` records what happened the last time a money surface ran cheap:
 
@@ -26,43 +45,40 @@ defmodule BusterClaw.ModelPolicy do
   > tool in only 1 of 2 runs, and on the miss it invented the answer rather than
   > reporting a problem."*
 
-  It did not error. It **fabricated**, on a surface that reads real balances.
-  So `:trading_read` and `:order_submit` carry a **floor**: lowering the global
-  default cannot reach them. An operator who genuinely wants a cheaper model
-  there must name that surface explicitly — the cost-saving gesture and the
-  money-touching consequence are deliberately not the same gesture.
+  It did not error. It **fabricated**, on a surface that reads real balances. So
+  `:trading_read` and `:order_submit` carry a floor a lowered *global* default
+  cannot reach; naming that surface explicitly still can.
 
-  A floor is a *minimum capability*, not a pin. Setting `:trading_read` to
-  something above the floor is honoured as-is.
+  **The floor is claude-only, and `floor_applies?/2` says so in the data.** The
+  ranks are claude model IDs and the 07-28 measurement was taken on claude, so a
+  floor cannot be honestly enforced against a codex or opencode model. Left
+  implicit it would still "work" — an unranked model passes `below_floor?/2`
+  untouched — but it would look like protection while being a no-op. The
+  operator chose (08-03) to allow any backend on the money surfaces *with a loud
+  warning*; a warning can only be loud if the code knows when the floor stopped
+  applying.
 
   ## Where the values live
 
-  Shipped defaults are in **code** so they can be improved on upgrade; the
-  operator's choices live in `Settings`. A seeded workspace file could never be
-  corrected on an install that already had one — see `LAUNCH_ROADMAP` **V.8**.
+  Shipped defaults are in code so they can be improved on upgrade; the operator's
+  choices live in `Settings`. A seeded workspace file could never be corrected on
+  an install that already had one — see `LAUNCH_ROADMAP` **V.8**.
 
   ## Leaf, deliberately
 
-  Nothing here calls into a surface; every surface calls in. Hanging this off
-  `Trading` or `AgentRunner` for convenience is exactly the placement that
-  produced the `Trading → ChartBuilder → Portfolio` cycle on 08-03.
+  Nothing here calls a surface, and nothing here detects or spawns. Every surface
+  calls in. Hanging this off `Trading` or `AgentRunner` for convenience is
+  exactly the placement that produced the `Trading → ChartBuilder → Portfolio`
+  cycle on 08-03.
   """
+
+  alias BusterClaw.AgentBackend
 
   @settings_key "model_policy"
 
-  # The models the picker offers, most capable first. A fixed list plus a
-  # free-text escape hatch: this set has changed repeatedly, and the CLI accepts
-  # aliases we do not control, so refusing an unlisted string would age badly.
-  @known_models [
-    "claude-fable-5",
-    "claude-opus-5",
-    "claude-sonnet-5",
-    "claude-haiku-4-5"
-  ]
-
-  # Capability order, least capable first. Used ONLY to evaluate floors — an
-  # unranked model (a new release, an alias, an operator's own string) is never
-  # blocked by a floor, because refusing to run something we simply don't
+  # Capability order, least capable first. Used ONLY to evaluate floors, and ONLY
+  # for claude — an unranked model (a new release, an alias, an operator's own
+  # string) is never blocked, because refusing to run something we don't
   # recognise is worse than the floor going unenforced for it.
   @capability_rank %{
     "claude-haiku-4-5" => 1,
@@ -85,12 +101,16 @@ defmodule BusterClaw.ModelPolicy do
     swarm_run: "Swarm sub-runs — the fan-out"
   }
 
-  # Money surfaces may not be dragged below this by the GLOBAL default. Named
-  # explicitly per-surface, an operator can still go lower — see the moduledoc.
   @floors %{
     trading_read: "claude-sonnet-5",
     order_submit: "claude-sonnet-5"
   }
+
+  # The floor's ranks and its measurement are both claude's. See the moduledoc.
+  @floor_backend :claude
+
+  # Which bucket an unset backend reads. See the moduledoc.
+  @implicit_backend :claude
 
   @doc "Every surface key, with a human description."
   def surfaces, do: @surfaces
@@ -98,109 +118,196 @@ defmodule BusterClaw.ModelPolicy do
   @doc "Surface keys only, in a stable order."
   def surface_keys, do: @surfaces |> Map.keys() |> Enum.sort()
 
-  @doc "The models offered in the picker. Not a whitelist — see `valid_model?/1`."
-  def known_models, do: @known_models
-
   @doc "Surfaces carrying a capability floor, and the floor model."
   def floors, do: @floors
 
   @doc """
-  The model for `surface`, or `nil` to let the CLI decide.
+  The models to offer for `backend` without asking its CLI.
 
-  Resolution: the surface's own override wins outright; otherwise the global
-  default applies, raised to the surface's floor if it falls below one.
+  Per backend since 08-03: only claude ships a list. See
+  `AgentBackend.enumerate_models/1` for opencode, which can list its own.
   """
-  def for_surface(surface) when is_atom(surface) do
-    stored = stored()
+  def known_models(backend \\ @implicit_backend), do: AgentBackend.known_models(backend)
 
-    case Map.get(stored, surface) do
-      model when is_binary(model) -> model
-      _ -> apply_floor(surface, Map.get(stored, :default))
+  @doc "Backends the picker may offer, in detection order."
+  def backends, do: AgentBackend.order()
+
+  @doc "Rank for floor comparison, or `nil` when the model is unranked."
+  def capability_rank(model), do: Map.get(@capability_rank, model)
+
+  @doc """
+  Whether a floor can be honestly enforced for `surface` on `backend`.
+
+  False for every backend but claude, and false for a surface with no floor.
+  `nil` (an unset backend) counts as claude — see the moduledoc.
+  """
+  def floor_applies?(backend, surface) do
+    Map.has_key?(@floors, surface) and bucket(backend) == @floor_backend
+  end
+
+  # --- backend ---------------------------------------------------------------
+
+  @doc """
+  The harness for `surface`, or `nil` to let `AgentRunner.detect/0` decide.
+
+  Resolution mirrors the model's: the surface's own override wins, then the
+  global default, then unset.
+  """
+  def backend_for(surface) when is_atom(surface) do
+    backends = stored_backends()
+
+    # `Map.fetch/2`, not `Map.get/2` + an `is_atom/1` guard: `nil` is an atom, so
+    # a guard would match the ABSENT case and return nil instead of falling
+    # through to the global default.
+    case Map.fetch(backends, surface) do
+      {:ok, backend} -> backend
+      :error -> Map.get(backends, :default)
     end
   end
 
   @doc """
-  What is actually in force, per surface — the answer to "I set a default, so
-  why is trading on something else?".
-
-  Each entry carries the resolved `model`, the `source` that decided it
-  (`:surface`, `:floor`, `:default`, or `:cli`), and the surface's `floor`.
+  Set the harness for one surface, or the global default with `:default`.
+  `nil` clears back to auto-detection.
   """
-  def in_force do
-    stored = stored()
+  def put_backend(surface, backend)
 
-    Map.new(surface_keys(), fn surface ->
-      {surface,
-       %{
-         model: for_surface(surface),
-         source: source_for(surface, stored),
-         floor: Map.get(@floors, surface),
-         description: Map.fetch!(@surfaces, surface)
-       }}
-    end)
-  end
-
-  @doc "Only what the operator set, with no resolution applied."
-  def stored do
-    with raw when is_binary(raw) <- BusterClaw.Settings.get(@settings_key),
-         {:ok, %{} = decoded} <- Jason.decode(raw) do
-      for {key, value} <- decoded,
-          surface = parse_surface(key),
-          surface != nil,
-          is_binary(value) and value != "",
-          into: %{},
-          do: {surface, value}
-    else
-      _ -> %{}
-    end
-  end
-
-  @doc """
-  Set one surface's model, or the global default with `:default`. `nil` clears.
-
-  Refuses an unknown surface and a blank model rather than storing something
-  that would silently never apply.
-  """
-  def put(surface, model)
-
-  def put(surface, model) when is_atom(surface) do
+  def put_backend(surface, backend) when is_atom(surface) do
     cond do
-      surface != :default and not Map.has_key?(@surfaces, surface) ->
+      not known_surface?(surface) -> {:error, {:unknown_surface, surface}}
+      is_nil(backend) -> write(&put_in_backends(&1, surface, nil))
+      not AgentBackend.known?(backend) -> {:error, {:unknown_backend, backend}}
+      true -> write(&put_in_backends(&1, surface, backend))
+    end
+  end
+
+  def put_backend(surface, _backend), do: {:error, {:unknown_surface, surface}}
+
+  # --- model -----------------------------------------------------------------
+
+  @doc """
+  The model for `surface` under its resolved backend, or `nil` for the CLI's own
+  default.
+  """
+  def for_surface(surface) when is_atom(surface),
+    do: model_for(backend_for(surface), surface)
+
+  @doc """
+  The model stored for `surface` under a specific `backend`, floor applied.
+
+  Reading an explicit backend is what makes switching harness lossless: the
+  models set for claude are still there after a detour through codex.
+  """
+  def model_for(backend, surface) when is_atom(surface) do
+    models = stored_models(backend)
+
+    case Map.get(models, surface) do
+      model when is_binary(model) -> model
+      _ -> apply_floor(backend, surface, Map.get(models, :default))
+    end
+  end
+
+  @doc """
+  Set a model for `surface` under `backend`. `nil` clears it.
+
+  `backend` may be `nil`, meaning the implicit claude bucket.
+  """
+  def put_model(backend, surface, model) do
+    cond do
+      not known_surface?(surface) ->
         {:error, {:unknown_surface, surface}}
+
+      not is_nil(backend) and not AgentBackend.known?(backend) ->
+        {:error, {:unknown_backend, backend}}
 
       is_binary(model) and String.trim(model) == "" ->
         {:error, :blank_model}
 
       is_binary(model) or is_nil(model) ->
-        write(surface, model)
+        write(&put_in_models(&1, bucket(backend), surface, model))
 
       true ->
         {:error, {:bad_model, model}}
     end
   end
 
+  @doc """
+  Set a model for `surface` under whichever backend that surface resolves to.
+
+  The convenience form the command and Settings use when the operator is editing
+  the harness they are already looking at.
+  """
+  def put(surface, model) when is_atom(surface),
+    do: put_model(backend_for(surface), surface, model)
+
   def put(surface, _model), do: {:error, {:unknown_surface, surface}}
 
   @doc """
   True if `model` looks usable. Deliberately permissive: any non-blank string
-  passes, because the CLI accepts aliases and models we do not know about. The
+  passes, because the CLIs accept aliases and models we do not know about. The
   picker's list is a convenience, not a gate.
   """
   def valid_model?(model), do: is_binary(model) and String.trim(model) != ""
 
-  @doc "Rank for floor comparison, or `nil` when the model is unranked."
-  def capability_rank(model), do: Map.get(@capability_rank, model)
+  # --- reporting -------------------------------------------------------------
+
+  @doc """
+  What is actually in force per surface — the answer to "I set a default, so why
+  is trading on something else?".
+
+  Each entry carries the resolved `backend` and `model`, the `source` that
+  decided each (`:surface`, `:floor`, `:default`, `:cli`/`:auto`), the surface's
+  `floor`, and **`floor_applies`** — false whenever the chosen harness puts the
+  surface beyond what the floor can honestly enforce.
+  """
+  def in_force do
+    backends = stored_backends()
+
+    Map.new(surface_keys(), fn surface ->
+      backend = backend_for(surface)
+      models = stored_models(backend)
+
+      {surface,
+       %{
+         backend: backend,
+         backend_source: backend_source(surface, backends),
+         model: model_for(backend, surface),
+         source: model_source(backend, surface, models),
+         floor: Map.get(@floors, surface),
+         floor_applies: floor_applies?(backend, surface),
+         description: Map.fetch!(@surfaces, surface)
+       }}
+    end)
+  end
+
+  @doc """
+  Surfaces whose harness has put them beyond the floor's reach.
+
+  The operator chose to allow any backend on the money surfaces provided the
+  warning is loud. This is the list a warning is built from, so that the warning
+  is a *state* rather than a rendering condition.
+  """
+  def unfloored_money_surfaces do
+    for {surface, _floor} <- @floors,
+        not floor_applies?(backend_for(surface), surface),
+        do: surface
+  end
+
+  @doc "Only what the operator set, unresolved: `%{backends: …, models: …}`."
+  def stored do
+    %{backends: stored_backends(), models: all_stored_models()}
+  end
 
   # --- internals -------------------------------------------------------------
 
-  # A floor raises the GLOBAL default only. An unranked model passes untouched:
-  # blocking a string we don't recognise would break the escape hatch the whole
-  # picker depends on.
-  defp apply_floor(surface, model) do
+  # A floor raises the GLOBAL default only, and only where it can be honestly
+  # enforced. An unranked claude model passes untouched: blocking a string we
+  # don't recognise would break the escape hatch the picker depends on.
+  defp apply_floor(backend, surface, model) do
     floor = Map.get(@floors, surface)
 
     cond do
       is_nil(model) or is_nil(floor) -> model
+      not floor_applies?(backend, surface) -> model
       below_floor?(model, floor) -> floor
       true -> model
     end
@@ -213,48 +320,147 @@ defmodule BusterClaw.ModelPolicy do
     end
   end
 
-  defp source_for(surface, stored) do
+  defp backend_source(surface, backends) do
     cond do
-      is_binary(Map.get(stored, surface)) -> :surface
-      is_nil(Map.get(stored, :default)) -> :cli
-      apply_floor(surface, Map.get(stored, :default)) != Map.get(stored, :default) -> :floor
+      is_atom(Map.get(backends, surface)) and not is_nil(Map.get(backends, surface)) -> :surface
+      is_nil(Map.get(backends, :default)) -> :auto
       true -> :default
     end
   end
 
+  defp model_source(backend, surface, models) do
+    default = Map.get(models, :default)
+
+    cond do
+      is_binary(Map.get(models, surface)) -> :surface
+      is_nil(default) -> :cli
+      apply_floor(backend, surface, default) != default -> :floor
+      true -> :default
+    end
+  end
+
+  defp known_surface?(surface),
+    do: surface == :default or Map.has_key?(@surfaces, surface)
+
+  # An unset backend reads claude's bucket — see the moduledoc.
+  defp bucket(nil), do: @implicit_backend
+  defp bucket(backend), do: backend
+
+  # --- storage ---------------------------------------------------------------
+  #
+  # One JSON row holds everything:
+  #
+  #     {"backend": {"default": "codex", "chat": "claude"},
+  #      "model":   {"claude": {"default": "claude-opus-5"},
+  #                  "codex":  {"chat": "gpt-5.1-codex"}}}
+  #
+  # Before backends existed the row was flat — `{"default": "claude-opus-5",
+  # "chat": …}` — and `migrate/1` lifts that into the claude bucket, because
+  # every model anyone stored then was a claude model. An operator who set a
+  # policy yesterday keeps it.
+
+  defp raw do
+    with value when is_binary(value) <- BusterClaw.Settings.get(@settings_key),
+         {:ok, %{} = decoded} <- Jason.decode(value) do
+      migrate(decoded)
+    else
+      _ -> %{"backend" => %{}, "model" => %{}}
+    end
+  end
+
+  defp migrate(%{"model" => %{}} = decoded),
+    do: Map.put_new(decoded, "backend", %{})
+
+  # The pre-backend shape: a flat surface => model string map.
+  defp migrate(decoded) do
+    legacy = for {k, v} <- decoded, is_binary(v), into: %{}, do: {k, v}
+    %{"backend" => %{}, "model" => %{Atom.to_string(@implicit_backend) => legacy}}
+  end
+
+  defp stored_backends do
+    for {key, value} <- Map.get(raw(), "backend", %{}),
+        surface = parse_surface(key),
+        surface != nil,
+        backend = parse_backend(value),
+        backend != nil,
+        into: %{},
+        do: {surface, backend}
+  end
+
+  defp all_stored_models do
+    for {name, entries} <- Map.get(raw(), "model", %{}),
+        backend = parse_backend(name),
+        backend != nil,
+        is_map(entries),
+        into: %{},
+        do: {backend, surface_map(entries)}
+  end
+
+  defp stored_models(backend) do
+    raw()
+    |> Map.get("model", %{})
+    |> Map.get(Atom.to_string(bucket(backend)), %{})
+    |> surface_map()
+  end
+
+  defp surface_map(entries) when is_map(entries) do
+    for {key, value} <- entries,
+        surface = parse_surface(key),
+        surface != nil,
+        is_binary(value) and value != "",
+        into: %{},
+        do: {surface, value}
+  end
+
+  defp surface_map(_entries), do: %{}
+
+  defp put_in_backends(row, surface, nil),
+    do: update_in(row, ["backend"], &Map.delete(&1, Atom.to_string(surface)))
+
+  defp put_in_backends(row, surface, backend),
+    do: put_in(row, ["backend", Atom.to_string(surface)], Atom.to_string(backend))
+
+  defp put_in_models(row, backend, surface, model) do
+    name = Atom.to_string(backend)
+    bucket = row |> Map.get("model", %{}) |> Map.get(name, %{})
+
+    bucket =
+      if model,
+        do: Map.put(bucket, Atom.to_string(surface), model),
+        else: Map.delete(bucket, Atom.to_string(surface))
+
+    put_in(row, ["model", name], bucket)
+  end
+
   # Every surface lives in ONE JSON row, so setting one is a read-modify-write.
-  # Two concurrent `put/2` calls can therefore lose an update: the second read
-  # can happen before the first write lands, and one surface's change is dropped.
+  # Two concurrent writes can lose an update: the second read can happen before
+  # the first write lands, and one surface's change is dropped.
   #
   # Deliberately NOT wrapped in `Repo.transaction/1`. That was tried on 08-03 and
   # reverted, measured: it takes a write lock on the single pooled SQLite
   # connection (`pool_size: 1`, see `config/test.exs`) and starves every other
   # writer — 2 suite failures became 83, in modules that never touch this one.
   #
-  # The race is real but narrow: `put/2` is driven by a human in Settings or by
-  # the `model_policy` command, never concurrently in normal use. Recorded rather
-  # than papered over — if this ever needs to be atomic, the fix is a
+  # The race is real but narrow: these setters are driven by a human in Settings
+  # or by the `model_policy` command, never concurrently in normal use. Recorded
+  # rather than papered over — if this ever needs to be atomic, the fix is a
   # compare-and-swap on the row's value, not a transaction.
-  defp write(surface, model) do
-    entries =
-      stored()
-      |> then(fn m -> if model, do: Map.put(m, surface, model), else: Map.delete(m, surface) end)
-
-    BusterClaw.Settings.put(
-      @settings_key,
-      Jason.encode!(Map.new(entries, fn {k, v} -> {Atom.to_string(k), v} end))
-    )
-
+  defp write(update) do
+    BusterClaw.Settings.put(@settings_key, raw() |> update.() |> Jason.encode!())
     {:ok, in_force()}
   end
 
-  # Operator-supplied keys stay out of the atom table unless they name a real
-  # surface — `String.to_atom/1` on stored JSON keys would be unbounded.
+  # Operator-supplied keys stay out of the atom table unless they name something
+  # real — `String.to_atom/1` on stored JSON keys would be unbounded.
   defp parse_surface("default"), do: :default
 
-  defp parse_surface(key) when is_binary(key) do
-    Enum.find(surface_keys(), &(Atom.to_string(&1) == key))
-  end
+  defp parse_surface(key) when is_binary(key),
+    do: Enum.find(surface_keys(), &(Atom.to_string(&1) == key))
 
   defp parse_surface(_key), do: nil
+
+  defp parse_backend(name) when is_binary(name),
+    do: Enum.find(AgentBackend.order(), &(Atom.to_string(&1) == name))
+
+  defp parse_backend(_name), do: nil
 end

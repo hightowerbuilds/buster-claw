@@ -43,7 +43,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
       # Unset is the shipped state, and it has to read as an answer rather than
       # as a blank — every row should say the CLI is deciding.
       assert html =~ "Your claude CLI decides"
-      assert ModelPolicy.stored() == %{}
+      assert ModelPolicy.stored() == %{backends: %{}, models: %{}}
     end
 
     test "a cheap global default shows the money surfaces held at the floor", %{conn: conn} do

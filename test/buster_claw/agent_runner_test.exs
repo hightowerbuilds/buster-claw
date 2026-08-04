@@ -80,6 +80,31 @@ defmodule BusterClaw.AgentRunnerTest do
     assert status != 0
   end
 
+  # Before 08-03 an `:agent` with no `:agent_binary` was read only as a LABEL for
+  # an explicit path — passing a backend name alone silently did nothing and the
+  # run went to whatever PATH detection found. That is the worst outcome here:
+  # the operator picks codex and claude runs.
+  describe "a named backend, with no explicit binary" do
+    test "resolves to that backend's executable" do
+      assert {:ok, %{agent: :custom, binary: "/bin/echo"}} =
+               AgentRunner.run("hi", agent: :custom, agent_binary: "/bin/echo", cwd: @tmp)
+    end
+
+    test "a harness that is not installed is a hard error, not a fall-through" do
+      assert {:error, {:agent_unavailable, :nonesuch}} =
+               AgentRunner.run("hi", agent: :nonesuch, cwd: @tmp)
+    end
+
+    # nil is what `ModelPolicy.backend_for/1` returns when the operator has not
+    # chosen one, and it has to mean "detect", not "a backend called nil".
+    test "a nil backend falls through to detection" do
+      Application.put_env(:buster_claw, :agent_cli, :none)
+      on_exit(fn -> Application.delete_env(:buster_claw, :agent_cli) end)
+
+      assert {:error, :no_agent_cli} = AgentRunner.run("hi", agent: nil, cwd: @tmp)
+    end
+  end
+
   # opencode answers a missing `--agent` file by running UNCONFINED under its
   # default agent and exiting 0. Checking the exit status alone would accept
   # that run, which is why the runner reads the output too.
