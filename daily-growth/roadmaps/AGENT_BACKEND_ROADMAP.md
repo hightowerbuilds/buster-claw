@@ -1,6 +1,6 @@
 # Agent backends — Codex and OpenCode as first-class runners
 
-**Scoped 08-03-26 · Status: ACTIVE — Phase 0 probed, Phase 1 SHIPPED.**
+**Scoped 08-03-26 · Status: ACTIVE — Phase 0 probed, Phases 1 and 2 SHIPPED.**
 **Successor scope to `MODEL_VERSATILITY_ROADMAP.md`** — that roadmap chose the
 *model*; this one chooses the *runner the model runs in*, and the two are not
 separable. A model ID means nothing without a backend to interpret it.
@@ -345,24 +345,44 @@ within it.** claude → opus; codex → its own; opencode → glm, kimi, qwen. T
 model picker is meaningless until the harness is known, so the UI must present
 them in that order and the storage must key on the pair.
 
-- [ ] Per surface: a backend *and* a model, resolved together. **Store the model
-      under `{backend, surface}`, not `surface`.** A stored `claude-opus-5` is
-      meaningless once that surface is on OpenCode; keeping it keyed by surface
-      alone means either showing a lie as in force or silently discarding a
-      choice the operator would get back by switching the harness home again.
-      Keying on the pair makes switching harness and switching back lossless.
-- [ ] `in_force/0` grows a `backend` and reports **why** a model is not applicable
-      when the backend changed underneath it.
-- [ ] `known_models/0` becomes per backend, and **asks the CLI where the CLI will
-      answer**: `opencode models` at runtime (cached — it shells out, so it must
-      not sit in a render path), a shipped list for codex and claude, free text
-      everywhere. Ship no OpenCode list at all; it is operator-specific.
-- [ ] A backend the operator does not have installed must be visibly
-      unavailable rather than selectable-and-broken. `detect/0` already knows;
-      the UI does not ask it.
-- [ ] The floor's Claude-only scope becomes **explicit in the data**, not implicit
-      in an unranked lookup: a floor should know it does not apply to this backend
-      and say so, rather than silently evaluating to no-op.
+**SHIPPED 08-03** (`a8c6c9c`). 2458 tests green.
+
+- [x] Per surface: a backend *and* a model, resolved together, **keyed on
+      `{backend, surface}`**. Switching harness and switching back is lossless,
+      with a test that says so — the failure this prevents is an operator losing
+      their whole claude policy by trying codex for an hour.
+- [x] `in_force/0` grew `backend`, `backend_source`, and `floor_applies`.
+- [x] `known_models/1` is per backend; `AgentBackend.enumerate_models/1` asks
+      `opencode models` at runtime. **Caching is NOT done** — the function
+      documents that it shells out and must not sit in a render path, and the
+      Settings picker in Phase 3 is what has to honour that. Ship no OpenCode
+      list: it is per-machine, reflecting the operator's own authenticated
+      providers.
+- [x] `AgentBackend.available?/1` and `installed/0`; the command reports
+      `backends_available`. The **UI still does not ask** — Phase 3.
+- [x] The floor's claude-only scope is explicit: `floor_applies?/2` and
+      `unfloored_money_surfaces/0`. Left implicit it would still "work" (an
+      unranked model passes `below_floor?/2` untouched) while looking like
+      protection that is not there.
+- [x] Beyond the phase list, because it is what makes any of it reachable:
+      `AgentRunner` honours a **named** backend with no explicit binary, and an
+      uninstalled harness is a hard error rather than a fall-through to
+      detection. Before this, `:agent` was only a label for an explicit path — a
+      chosen harness silently ran whatever PATH found.
+- [x] Rows written before harnesses existed migrate into the claude bucket on
+      read, floors included.
+
+**Two bugs the tests found, both invisible to reading:**
+- `backend_for/1` matched the absent case with an `is_atom/1` guard, and `nil`
+  IS an atom — so a surface with no override returned nil rather than falling
+  through to the global default. The per-surface path worked; the default never
+  did.
+- An unrecognised backend name reached `System.find_executable(nil)` and raised
+  instead of erroring.
+
+**Reachable today** via `model_policy surface: "default", backend: "codex"`
+(`:restricted` + `gated`, so a human runs it). Not yet reachable from Settings —
+that is Phase 3, and until it lands "choose your harness" is a command, not a UI.
 
 # Phase 3 — The surfaces
 
