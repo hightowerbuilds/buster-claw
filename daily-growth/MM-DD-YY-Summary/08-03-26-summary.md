@@ -706,3 +706,192 @@ nothing — and because the fix was patience, not a change.
 Files were also edited underneath this session mid-work: an `ensure_dir` call and
 an `{:unfetchable_source, key, status}` case that distinguishes "you misspelled
 it" from "stop asking, and tell the operator why". Both improvements, both kept.
+
+# Same day, third arc: the app learns to name its model — then its harness
+
+## A flag that existed, was documented, and had never once been passed
+
+`AgentRunner` has accepted `:model` and turned it into `--model` since it was
+written. Nothing in `lib/` passed it. Every run — the homepage chat, a trading
+read, an order submission, the dispatcher, a swarm — inherited whatever the
+operator's `claude` CLI happened to be configured for, and the app had no opinion
+at all.
+
+That is the **third** mechanism this week that existed, was documented, and could
+not be reached, after `Egress.prepare`'s `:overrides` and `secret_resolver`. The
+pattern is now frequent enough to be a lesson rather than a coincidence: a
+parameter with no caller is not a feature, it is a comment with a type signature.
+
+`ModelPolicy` is the leaf every run site now asks — a global default plus
+per-surface overrides — wired at all six. Unset means the flag is **omitted**,
+not `--model ""`, so an install that upgrades into this behaves exactly as it did
+the day before. Two tests hold that promise, one of which drives a real run
+against a stand-in CLI and asserts `--model` is absent from the argv.
+
+Built by eight agents in one workflow: four building disjoint file sets, one
+running the suite alone (the shared SQLite database makes concurrent `mix test`
+impossible), then three adversarial verifiers each trying to refute one property.
+The wiring agent could not use `mix test` at all, so it rsynced the repo to a
+scratch copy with its own database and probed there — including commenting out
+each `model:` it had just added to confirm the test failed without it. That
+instinct was better than the instruction it was given.
+
+## The floor, and the measurement that earns it
+
+`trading.ex` has recorded since 07-28 that haiku on a trading read invoked the
+broker tool in only one run of two, and **on the miss it invented the answer**
+rather than reporting a problem. A cheaper model on a money surface did not
+fail — it fabricated.
+
+That sentence has been a comment for a week. It is now a constraint: trading
+reads and order submission carry a floor the global default cannot lower. Naming
+that surface explicitly still goes below it, because the cost-saving gesture and
+the money-touching consequence should not be the same gesture.
+
+## Then the real question: which CLI?
+
+"We need Codex and OpenCode too." Before answering, all three binaries were
+probed with `--help` rather than recalled — and the roadmap written an hour
+earlier was already wrong. It said `--model` was "claude-only **by
+construction**". Codex has taken `-m, --model` all along; we simply never passed
+one. That is the **sixth** time today a written claim and the tool disagreed, and
+the only reason it was caught is that the tool was on the machine and got run.
+
+The measurements are now a table in `AGENT_BACKEND_ROADMAP.md` and a leaf module,
+`AgentBackend`, rather than prose. Three findings are encoded rather than
+described:
+
+**Codex refuses a non-repo working root.** `--skip-git-repo-check` is mandatory,
+not defensive — the shipped workspace is not a git repository, so without it
+every workspace run fails with a message that does not point at the fix.
+
+**`bypassPermissions` deliberately does NOT become codex's `danger-full-access`.**
+The literal translation is tempting and wrong: Claude's mode waives the approval
+*prompt* while the tool allowlist still binds; codex's waives the *sandbox
+itself*. Mapping one to the other would have silently escalated every headless
+run the moment its backend changed.
+
+**OpenCode fails OPEN, and this is the one that mattered.** A missing or misnamed
+`--agent` file does not fail the run: it warns on stderr, falls back to the
+default agent whose permission is `{*, allow, *}`, runs **unconfined**, and exits
+0. Confinement that evaporates silently is worse than none, so the runner now
+detects that line and refuses the result. Checking the exit status alone would
+have accepted a completely unconfined run as a clean one.
+
+## Harness first, then model — and why the storage keys on the pair
+
+The operator's shape: pick `claude` → opus, `codex` → its own, `opencode` → glm
+or kimi. Which forces a storage decision that looks like bookkeeping and is not.
+
+A model ID is only meaningful inside its harness. Keyed by surface alone,
+switching to codex for an hour would have **silently destroyed the entire claude
+policy** — or, worse, shown a stale claude model as "in force" while codex ran.
+Keyed on `{backend, surface}`, switching harness and switching back is lossless,
+and a test says so. Rows written before harnesses existed migrate into the claude
+bucket, floors included.
+
+Only OpenCode can enumerate its own models (`opencode models` — 23 on this
+machine, reflecting *this operator's* authenticated providers, so per-machine and
+never shippable). Claude and Codex cannot enumerate at all, which is the argument
+for keeping free text on every harness rather than a nicety.
+
+## The floor is Claude-only, and now it admits it
+
+The ranks are Claude model IDs and the 07-28 measurement was taken on Claude, so
+the floor cannot be honestly enforced against kimi or glm. Left implicit it would
+still "work" — an unranked model passes the comparison untouched — while *looking
+like* protection that is not there.
+
+The operator's call was to allow any harness on the money surfaces **provided the
+warning is loud**. So `floor_applies?/2` and `unfloored_money_surfaces/0` make it
+a state rather than an accident, and that state drives two warnings: one in
+Settings, and one on the **order confirmation card** — because loud means at the
+moment of the decision, not on a settings page visited days earlier. The card
+resolves it itself so no call site can forget to pass it.
+
+## Two bugs found by tests, both invisible to reading
+
+`backend_for/1` matched the absent case with an `is_atom/1` guard. **`nil` is an
+atom.** A surface with no override returned nil instead of falling through to the
+global default — so per-surface overrides worked perfectly and the global default
+never did once. Reading the function twice did not reveal it; the test did
+immediately.
+
+An unrecognised backend name reached `System.find_executable(nil)` and raised a
+`FunctionClauseError` where it should have returned `{:error, {:agent_unavailable,
+_}}`.
+
+## Parsers written from captured output, not from imagination
+
+`StreamEvent` was the shared parser for Claude's `stream-json` and nothing else,
+so a codex or opencode chat would have streamed bytes nobody could read. Both
+schemas were captured from the real CLIs using a **tool-using** prompt, because a
+"say hi" run shows almost none of the vocabulary. Two facts only that run
+revealed:
+
+- OpenCode emits `step_finish` once per **step**, not per run; only
+  `reason: "stop"` ends it. Treating every one as the end would have closed the
+  transcript on the first tool the model used.
+- Codex spells resume as a **subcommand** (`exec resume`), not a flag, so it
+  cannot simply be appended. A codex conversation starts fresh each turn rather
+  than being handed a flag codex would reject.
+
+Anything not observed becomes `:unknown` with `raw` intact rather than guessed
+at — a wrong mapping is worse than an ignored event, because the consumer renders
+it. The tests paste the captured lines verbatim.
+
+## A fix that made things eleven times worse, for a problem that did not exist
+
+Worth recording in full because every step was reasonable and the whole thing was
+wrong.
+
+`model_policy_wiring_test.exs` appeared order-dependent: green at `--seed 0`,
+seven failures at other seeds. The diagnosis was a read-modify-write in
+`ModelPolicy.write/2` upgrading a SQLite lock — which `config/test.exs` explicitly
+warns about. The fix was a transaction. It took the suite from **2 failures to 83**,
+in modules that never touch `ModelPolicy`, because a transaction holds the write
+lock on the single pooled connection and starves every other writer.
+
+Reverted. And the flakiness it was meant to fix turned out to be **orphaned test
+VMs from this session's own overlapping `mix test` runs** holding the database —
+killing them made every seed pass. The lost-update race is real but narrow, so it
+is now recorded in place with the fix that would actually work (compare-and-swap,
+not a transaction) rather than papered over.
+
+Two lessons, neither about SQLite: a failure count that varies run to run is
+evidence about the *environment*, not the code; and a fix should be measured
+against the same suite that motivated it.
+
+## Two sessions, one working tree — the third and fourth invoice
+
+The other session's account of this appears above. From this end it cost two more
+things today.
+
+`mix test` became unusable for stretches: 137 failures in one run, every one a
+`Database busy` from a concurrent suite on the same SQLite file, none of them
+real. Verification moved to an rsynced copy with its own database — the same
+answer the workflow's wiring agent had already reached independently.
+
+More expensively, **uncommitted work was discarded by a `git checkout` from the
+other session**: the Settings harness picker and its five tests, gone, with no
+stash to recover from. It was reapplied from the patch still in context, so
+nothing was ultimately lost — but the lesson is to commit far more eagerly on a
+shared tree than is otherwise sensible, and that "I'll commit when the phase is
+done" is a bet on nobody else cleaning up.
+
+## What is deliberately not done
+
+The Sentinel audit trail does **not** record which harness ran a money surface.
+Both UI warnings landed; this one did not, and it is the remaining item from the
+floor problem rather than an oversight.
+
+`opencode models` is not cached — the function documents that it shells out and
+must not sit in a render path, and the Settings picker does not yet honour that.
+
+And Phase 4 is deferred on purpose: **a per-backend floor must not be invented
+before a per-backend measurement exists.** The 07-28 fabrication number is
+Claude's and says nothing about kimi or glm. A floor built on a guessed ranking
+would be worse than no floor, because it reads as protection. Cost reporting is
+the happier half of that phase — OpenCode reports real dollars and Codex reports
+tokens, which makes it *cheaper* on the two new harnesses than on the one we
+started with.
