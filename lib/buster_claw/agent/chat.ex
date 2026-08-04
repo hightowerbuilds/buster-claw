@@ -35,6 +35,7 @@ defmodule BusterClaw.Agent.Chat do
 
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.Agent.Transcript
+  alias BusterClaw.AgentBackend
   alias BusterClaw.AgentRunner
   alias BusterClaw.ModelPolicy
   alias BusterClaw.Sentinel
@@ -247,6 +248,14 @@ defmodule BusterClaw.Agent.Chat do
       # Tool surfaces outside BusterClaw.Commands can choose a deny-by-default
       # Claude mode such as `dontAsk` and pair it with an explicit allowlist.
       permission_mode: Keyword.get(opts, :permission_mode),
+      # Which harness this conversation runs in. Resolved by the CALLER (a
+      # LiveView, which has DB access) rather than read here: `Chat` must stay
+      # usable from `chat_test.exs`, which is async with no sandbox, and a
+      # `Settings` read anywhere in the spawn path would raise there. Captured at
+      # first start like every other opt, so changing the harness mid-conversation
+      # needs a restart — the same contract `append_system_prompt` already has.
+      # nil = whatever `AgentRunner.detect/0` finds, which is the shipped state.
+      agent: Keyword.get(opts, :agent),
       # Injectable for tests: `spawner.(prompt, opts) :: {:ok, port} | {:error, reason}`.
       spawner: Keyword.get(opts, :spawner, &default_spawner/2)
     }
@@ -403,13 +412,13 @@ defmodule BusterClaw.Agent.Chat do
       })
 
     extra =
-      ~w(--output-format stream-json --verbose) ++
-        resume_args(state.session_id) ++
+      AgentBackend.stream_args(state.agent, stream: true) ++
+        resume_args(state.agent, state.session_id) ++
         append_system_prompt_args(state.append_system_prompt) ++
         state.extra_cli_args
 
     spawn_opts =
-      [extra_args: extra, login: true]
+      [extra_args: extra, login: true, agent: state.agent]
       |> maybe_put_permission_mode(state.permission_mode)
 
     case state.spawner.(text, spawn_opts) do
@@ -459,7 +468,7 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   defp apply_line(line, state) do
-    case StreamEvent.parse(line) do
+    case StreamEvent.parse(state.agent, line) do
       {:ok, event} -> state |> capture_session(event) |> project_event(event)
       :error -> remember_raw_line(state, line)
     end
@@ -639,8 +648,16 @@ defmodule BusterClaw.Agent.Chat do
   defp error_text(:no_agent_cli), do: "No agent CLI found. Install Claude Code to chat."
   defp error_text(reason), do: "Run failed: #{inspect(reason)}"
 
-  defp resume_args(nil), do: []
-  defp resume_args(session_id), do: ["--resume", session_id]
+  # Resume is spelled differently per harness, and codex's is not a flag at all:
+  # `codex exec resume <id>` is a SUBCOMMAND, which changes the argv shape rather
+  # than appending to it. `AgentBackend.argv/3` does not model that yet, so a
+  # codex conversation starts fresh each turn instead of silently appending a
+  # flag codex would reject. Recorded in AGENT_BACKEND_ROADMAP.md rather than
+  # faked here.
+  defp resume_args(_agent, nil), do: []
+  defp resume_args(:codex, _session_id), do: []
+  defp resume_args(:opencode, session_id), do: ["--session", session_id]
+  defp resume_args(_claude, session_id), do: ["--resume", session_id]
 
   defp append_system_prompt_args(nil), do: []
   defp append_system_prompt_args(""), do: []
@@ -667,8 +684,11 @@ defmodule BusterClaw.Agent.Chat do
   defp default_spawner(prompt, opts) do
     opts =
       opts
+      # The model is resolved per RUN (it does not change the argv shape). The
+      # harness is NOT resolved here — it arrives on `opts` from the Chat state,
+      # because the stream flags were already built from it and a second
+      # resolution could disagree with them.
       |> Keyword.put_new(:model, ModelPolicy.for_surface(:chat))
-      |> Keyword.put_new(:agent, ModelPolicy.backend_for(:chat))
 
     case AgentRunner.open(prompt, opts) do
       {:ok, %{port: port}} -> {:ok, port}

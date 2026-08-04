@@ -660,16 +660,42 @@ defmodule BusterClawWeb.ExplorePanel do
 
       <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/70">
         <p>
-          <span class="font-semibold text-base-content">What this doesn't do yet.</span>
-          There is no per-conversation model picker — the choice is per surface, so
-          every chat runs on the chat surface's model. And Buster Claw cannot tell
-          you what any of this cost: the CLI does not report spend back to the app,
-          so your bill is between you and your Claude subscription.
+          <span class="font-semibold text-base-content">Three harnesses, not one.</span>
+          Buster Claw can run a surface through <code>claude</code>, <code>codex</code>
+          or <code>opencode</code>
+          — whichever you have installed. Pick the harness
+          first, then the model inside it, because a model name only means something
+          to its own harness: <code>claude-opus-5</code>
+          means nothing to OpenCode,
+          which wants <code>opencode-go/glm-5.1</code>. Your models are remembered
+          per harness, so trying one and going back does not lose the other's
+          settings. Leave it on <code>auto</code>
+          and the app uses whichever CLI it
+          finds — that is the shipped behaviour and it is a perfectly good answer.
         </p>
         <p>
-          One more: the selector is <code>claude</code>-only. If you have pointed the
-          app at <code>codex</code> instead, that path never took a model flag and
-          this setting does not apply to it at all.
+          <span class="font-semibold text-base-content">
+            The floor is Claude-only, and it says so.
+          </span>
+          The 07-28 measurement that justifies the floor was taken on Claude models,
+          and the capability ranking behind it is a list of Claude model names. Put a
+          money surface on <code>codex</code>
+          or <code>opencode</code>
+          and the floor
+          stops applying — it cannot honestly rank a model it has never measured.
+          The app will not pretend otherwise: it marks that surface as unfloored
+          rather than showing a protection that is not there.
+        </p>
+        <p>
+          <span class="font-semibold text-base-content">What this doesn't do yet.</span>
+          There is no per-conversation model picker — the choice is per surface, so
+          every chat runs on the chat surface's model. Buster Claw cannot tell you
+          what a Claude run cost: that CLI
+          does not report spend back to the app.
+          OpenCode does report a cost figure and Codex reports token counts, but
+          nothing in the app surfaces either yet. And a Codex conversation starts
+          fresh each turn rather than resuming, because Codex spells resume as a
+          subcommand rather than a flag.
         </p>
       </div>
 

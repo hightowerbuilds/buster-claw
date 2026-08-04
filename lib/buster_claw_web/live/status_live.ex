@@ -636,7 +636,11 @@ defmodule BusterClawWeb.StatusLive do
 
     # Start the conversation taught the SVG viewer vocabulary (idempotent — the
     # guide is fixed at first start; a no-op once the process exists).
-    Chat.ensure_started(conv_id, append_system_prompt: SvgViewer.guide())
+    Chat.ensure_started(conv_id,
+      append_system_prompt: SvgViewer.guide(),
+      agent: BusterClaw.ModelPolicy.backend_for(:chat)
+    )
+
     do_send(socket, conv_id, text)
   catch
     :exit, _reason ->

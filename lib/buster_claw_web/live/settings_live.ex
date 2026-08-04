@@ -19,6 +19,7 @@ defmodule BusterClawWeb.SettingsLive do
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.AgentBackend
   alias BusterClaw.Google
   alias BusterClaw.Google.CalendarSync
   alias BusterClaw.Google.Gmail
@@ -52,6 +53,11 @@ defmodule BusterClawWeb.SettingsLive do
      |> assign_calendar_form()
      # --- agent models ---
      |> assign(:model_choices, ModelPolicy.known_models())
+     |> assign(:backend_choices, ModelPolicy.backends())
+     # A harness that is not installed is shown DISABLED rather than hidden:
+     # hiding it makes the app look like it does not support codex at all, and
+     # offering it live would fail at the moment a run was expected.
+     |> assign(:backend_installed, AgentBackend.installed())
      |> assign(:model_note, nil)
      |> assign_model_policy()
      # --- profile / onboarding / recovery ---
@@ -275,6 +281,11 @@ defmodule BusterClawWeb.SettingsLive do
     {:noreply, put_model(socket, :default, blank_to_nil(model))}
   end
 
+  def handle_event("model_backend", %{"surface" => surface, "backend" => backend}, socket) do
+    ModelPolicy.put_backend(model_target(surface), parse_backend_choice(backend))
+    {:noreply, assign_model_policy(socket)}
+  end
+
   def handle_event("model_surface", %{"surface" => surface, "model" => model}, socket) do
     {:noreply, put_model(socket, model_target(surface), blank_to_nil(model))}
   end
@@ -421,12 +432,28 @@ defmodule BusterClawWeb.SettingsLive do
         </section>
 
         <section class="ic-panel space-y-4 p-6">
-          <h2 class="ic-eyebrow">Agent models</h2>
+          <h2 class="ic-eyebrow">Agent harness &amp; models</h2>
           <p class="max-w-2xl text-sm text-base-content/70">
-            Buster Claw drives your own <code class="font-mono">claude</code>
-            CLI. Left unset it passes no <code class="font-mono">--model</code>
-            flag at all and the CLI keeps deciding, exactly as it always has. Set a
-            default here to pick for every surface, or set one surface on its own.
+            Buster Claw drives your own agent CLI. Pick the <strong>harness</strong>
+            first — a model name only means something inside its own harness — then
+            the model within it. Left unset it passes no <code class="font-mono">--model</code>
+            flag and detects the CLI itself, exactly as it always has. Your models
+            are remembered per harness, so switching and switching back loses
+            nothing.
+          </p>
+          <p
+            :if={@model_unfloored != []}
+            class="ic-panel border-primary/70 bg-primary/10 p-4 text-sm"
+          >
+            <span class="font-semibold">
+              The capability floor is off for {unfloored_names(@model_unfloored)}.
+            </span>
+            The floor is a ranking of Claude models, measured on Claude: on 07-28 a
+            cheaper model on a trading read invoked the broker tool in only one run
+            of two, and on the miss it invented the answer rather than reporting a
+            problem. It cannot rank a harness it has never measured, so the floor
+            does not apply there and that surface is unprotected. That is your call
+            to make — this is the app telling you it was made.
           </p>
 
           <div class="grid gap-4 sm:grid-cols-2">
@@ -509,17 +536,49 @@ defmodule BusterClawWeb.SettingsLive do
                 <div class="max-w-md min-w-0 space-y-1">
                   <p class="text-sm font-semibold">{entry.description}</p>
                   <p class="font-mono text-xs text-base-content/70">
-                    {model_display(entry.model)} · {source_note(entry.source)}
+                    {backend_display(entry.backend)} · {model_display(entry.model)} · {source_note(
+                      entry.source
+                    )}
                   </p>
                   <p
-                    :if={entry.floor}
+                    :if={entry.floor && entry.floor_applies}
                     class="border-l-2 border-primary/60 pl-3 text-xs leading-5 text-base-content/60"
                   >
                     Floor: {entry.floor}. A cheaper model on this surface was measured
                     inventing a financial answer instead of reporting a problem, so the
                     global default cannot lower it. Naming this surface here still can.
                   </p>
+                  <p
+                    :if={entry.floor && !entry.floor_applies}
+                    class="border-l-2 border-primary pl-3 text-xs leading-5 text-base-content/80"
+                  >
+                    <span class="font-semibold">No floor here.</span>
+                    The {entry.floor} floor ranks Claude models and was measured on
+                    Claude, so it cannot apply to {backend_display(entry.backend)}.
+                    This money surface is running unprotected.
+                  </p>
                 </div>
+
+                <form id={"model-backend-#{surface}"} phx-change="model_backend" class="shrink-0">
+                  <input type="hidden" name="surface" value={surface} />
+                  <select
+                    name="backend"
+                    aria-label={"Harness for #{surface_label(surface)}"}
+                    class="select select-bordered select-sm min-w-40 font-mono text-xs"
+                  >
+                    <option value="auto" selected={entry.backend_source == :auto}>
+                      — auto —
+                    </option>
+                    <option
+                      :for={backend <- @backend_choices}
+                      value={backend}
+                      selected={entry.backend_source != :auto and entry.backend == backend}
+                      disabled={backend not in @backend_installed}
+                    >
+                      {backend_label(backend, backend in @backend_installed)}
+                    </option>
+                  </select>
+                </form>
 
                 <form id={"model-surface-#{surface}"} phx-change="model_surface" class="shrink-0">
                   <input type="hidden" name="surface" value={surface} />
@@ -744,7 +803,27 @@ defmodule BusterClawWeb.SettingsLive do
     socket
     |> assign(:model_rows, Enum.map(ModelPolicy.surface_keys(), &{&1, Map.fetch!(in_force, &1)}))
     |> assign(:model_default, ModelPolicy.model_for(default_backend, :default))
+    # A STATE, not a rendering condition. The operator chose to allow any harness
+    # on the money surfaces provided the warning is loud; deriving the banner from
+    # `ModelPolicy` rather than from template logic is what keeps a refactor of
+    # this section from quietly dropping it.
+    |> assign(:model_unfloored, ModelPolicy.unfloored_money_surfaces())
   end
+
+  # "auto" is a real choice — it hands the harness back to PATH detection — so it
+  # maps to nil rather than being treated as "nothing selected".
+  defp parse_backend_choice("auto"), do: nil
+
+  defp parse_backend_choice(given),
+    do: Enum.find(ModelPolicy.backends(), &(Atom.to_string(&1) == given))
+
+  defp backend_display(nil), do: "auto"
+  defp backend_display(backend), do: Atom.to_string(backend)
+
+  defp backend_label(backend, true), do: Atom.to_string(backend)
+  defp backend_label(backend, false), do: Atom.to_string(backend) <> " (not installed)"
+
+  defp unfloored_names(surfaces), do: Enum.map_join(surfaces, " and ", &surface_label/1)
 
   defp put_model(socket, target, model) do
     case ModelPolicy.put(target, model) do

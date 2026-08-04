@@ -20,6 +20,8 @@ defmodule BusterClawWeb.TradingOrderCard do
   attr :conv, :string, required: true
 
   def order_confirm(assigns) do
+    assigns = assign(assigns, :unfloored, order_unfloored?())
+
     ~H"""
     <div id={"trading-order-confirm-#{@conv}"} class="space-y-2 p-4 font-mono text-xs">
       <%= case @pending do %>
@@ -32,6 +34,19 @@ defmodule BusterClawWeb.TradingOrderCard do
           </p>
           <p class="text-base-content/60">
             This is what Buster Claw will send. Nothing has reached the broker yet.
+          </p>
+          <%!-- The warning belongs HERE, at the moment the decision is made —
+                not only in Settings, where it was made days ago. --%>
+          <p
+            :if={@unfloored}
+            id={"trading-order-unfloored-#{@conv}"}
+            class="border-l-2 border-error bg-error/5 py-2 pl-3 leading-5 text-error"
+          >
+            <span class="font-black uppercase tracking-wide">No model floor on this order.</span>
+            You have this surface on a harness the floor cannot rank. The floor
+            exists because a cheaper model on a trading read was measured inventing
+            an answer rather than reporting a problem — that check is not running
+            for this order.
           </p>
           <div class="flex gap-2 pt-1">
             <button
@@ -115,4 +130,11 @@ defmodule BusterClawWeb.TradingOrderCard do
     do:
       "The submission did not come back with a verdict, so this order may or may not " <>
         "have reached Robinhood. Check your order history there before sending it again."
+
+  # Whether the capability floor is off for `:order_submit` — i.e. this surface is
+  # running on a harness the 07-28 measurement never covered. Resolved HERE rather
+  # than passed in, so no call site can forget it: the operator allowed a
+  # non-Claude harness on the money path *provided the warning is loud*, and a
+  # warning that depends on a caller remembering an assign is not loud.
+  defp order_unfloored?, do: :order_submit in BusterClaw.ModelPolicy.unfloored_money_surfaces()
 end

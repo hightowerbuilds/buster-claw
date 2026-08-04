@@ -31,6 +31,14 @@ defmodule BusterClaw.Agent.StreamEvent do
   @reading ~w(Read Grep Glob LS NotebookRead WebFetch WebSearch)
   @writing ~w(Write Edit NotebookEdit)
 
+  # The shell tool under each harness's own name. codex calls a shell command
+  # `command_execution`; opencode calls it `bash`.
+  @shell ~w(Bash bash command_execution)
+
+  # Downcased, for harnesses that name the same jobs in lower case.
+  @reading_any ~w(read grep glob ls list notebookread webfetch websearch fetch search)
+  @writing_any ~w(write edit patch notebookedit apply_patch)
+
   @type kind ::
           :system | :assistant_text | :tool_use | :tool_result | :user | :result | :unknown
 
@@ -80,12 +88,132 @@ defmodule BusterClaw.Agent.StreamEvent do
 
   @doc "Decode and normalize a line in one step. `{:ok, %StreamEvent{}}` or `:error`."
   @spec parse(String.t()) :: {:ok, t()} | :error
-  def parse(line) do
+  def parse(line), do: parse(:claude, line)
+
+  @doc """
+  Decode and normalize a line emitted by `backend`.
+
+  `nil` and any unrecognised backend are read as claude — every caller predates
+  harness selection, and claude's schema is the one they were written against.
+  """
+  @spec parse(atom(), String.t()) :: {:ok, t()} | :error
+  def parse(backend, line) do
     case decode(line) do
-      {:ok, map} -> {:ok, normalize(map)}
+      {:ok, map} -> {:ok, normalize(backend, map)}
       :error -> :error
     end
   end
+
+  @doc """
+  Normalize a decoded event from `backend`.
+
+  Each harness emits a different schema and each was **observed**, not assumed —
+  see `daily-growth/roadmaps/AGENT_BACKEND_ROADMAP.md` for the captured streams.
+  Anything not observed becomes `:unknown` with `raw` intact rather than being
+  guessed at: a wrong mapping is worse than an ignored event, because the
+  consumer renders it.
+  """
+  @spec normalize(atom(), map()) :: t()
+  def normalize(:codex, map), do: normalize_codex(map)
+  def normalize(:opencode, map), do: normalize_opencode(map)
+  def normalize(_claude_or_unknown, map), do: normalize(map)
+
+  # --- codex ---------------------------------------------------------------
+  #
+  # Observed (codex-cli 0.146.0, `exec --json`):
+  #
+  #   {"type":"thread.started","thread_id":"…"}
+  #   {"type":"turn.started"}
+  #   {"type":"item.started",  "item":{"type":"command_execution","command":…,"status":"in_progress"}}
+  #   {"type":"item.completed","item":{"type":"agent_message","text":…}}
+  #   {"type":"item.completed","item":{"type":"command_execution","aggregated_output":…,"exit_code":…}}
+  #   {"type":"turn.completed","usage":{"input_tokens":…,"output_tokens":…}}
+  #
+  # Codex reports token usage but no dollar cost, so `cost_usd` stays nil rather
+  # than being computed from a price table this app does not own.
+
+  defp normalize_codex(%{"type" => "thread.started"} = m),
+    do: %__MODULE__{kind: :system, session_id: m["thread_id"], raw: m}
+
+  defp normalize_codex(%{"type" => "turn.completed"} = m),
+    do: %__MODULE__{kind: :result, raw: m}
+
+  defp normalize_codex(
+         %{"type" => "item.completed", "item" => %{"type" => "agent_message"} = item} = m
+       ),
+       do: %__MODULE__{kind: :assistant_text, text: stringish(item["text"]), raw: m}
+
+  defp normalize_codex(
+         %{"type" => "item.started", "item" => %{"type" => "command_execution"} = item} = m
+       ) do
+    command = stringish(item["command"]) || ""
+
+    %__MODULE__{
+      kind: :tool_use,
+      tool: "command_execution",
+      tool_input: %{"command" => command},
+      summary: "command_execution: " <> command,
+      raw: m
+    }
+  end
+
+  defp normalize_codex(
+         %{"type" => "item.completed", "item" => %{"type" => "command_execution"}} = m
+       ),
+       do: %__MODULE__{kind: :tool_result, raw: m}
+
+  defp normalize_codex(m), do: %__MODULE__{kind: :unknown, raw: m}
+
+  # --- opencode ------------------------------------------------------------
+  #
+  # Observed (opencode 1.18.3, `run --format json`). Everything of interest is
+  # nested under `part`, and `sessionID` rides on every event:
+  #
+  #   {"type":"step_start", "sessionID":…,"part":{"type":"step-start"}}
+  #   {"type":"tool_use",   "sessionID":…,"part":{"type":"tool","tool":"read","state":{"status":…,"input":…}}}
+  #   {"type":"text",       "sessionID":…,"part":{"type":"text","text":…}}
+  #   {"type":"step_finish","sessionID":…,"part":{"type":"step-finish","reason":…,"tokens":…,"cost":…}}
+  #
+  # `step_finish` fires once per STEP, not once per run — `reason` is
+  # "tool-calls" mid-run and "stop" at the end. Only the latter is a `:result`;
+  # treating every step_finish as the end would close the transcript on the
+  # first tool call.
+
+  defp normalize_opencode(%{"type" => "step_start"} = m),
+    do: %__MODULE__{kind: :system, session_id: m["sessionID"], raw: m}
+
+  defp normalize_opencode(%{"type" => "text", "part" => %{"text" => text}} = m),
+    do: %__MODULE__{
+      kind: :assistant_text,
+      text: stringish(text),
+      session_id: m["sessionID"],
+      raw: m
+    }
+
+  defp normalize_opencode(%{"type" => "tool_use", "part" => %{"tool" => tool} = part} = m) do
+    input = get_in(part, ["state", "input"]) || %{}
+
+    %__MODULE__{
+      kind:
+        if(get_in(part, ["state", "status"]) == "completed", do: :tool_result, else: :tool_use),
+      tool: stringish(tool),
+      tool_input: input,
+      summary: tool_summary(stringish(tool) || "", input),
+      session_id: m["sessionID"],
+      raw: m
+    }
+  end
+
+  defp normalize_opencode(%{"type" => "step_finish", "part" => %{"reason" => "stop"} = part} = m),
+    do: %__MODULE__{
+      kind: :result,
+      # The only harness of the three that reports what a run actually cost.
+      cost_usd: part["cost"],
+      session_id: m["sessionID"],
+      raw: m
+    }
+
+  defp normalize_opencode(m), do: %__MODULE__{kind: :unknown, raw: m}
 
   # --- decoded map → normalized event ---
 
@@ -136,6 +264,7 @@ defmodule BusterClaw.Agent.StreamEvent do
   end
 
   defp tool_summary("Bash", %{"command" => cmd}) when is_binary(cmd), do: "Bash: " <> cmd
+  defp tool_summary("bash", %{"command" => cmd}) when is_binary(cmd), do: "bash: " <> cmd
   defp tool_summary(name, _input), do: name
 
   defp stringish(s) when is_binary(s), do: s
@@ -165,8 +294,25 @@ defmodule BusterClaw.Agent.StreamEvent do
 
   defp tool_state(name, _input) when name in @reading, do: :reading
   defp tool_state(name, _input) when name in @writing, do: :writing
-  defp tool_state("Bash", input), do: bash_state(to_string(input["command"] || ""))
+  defp tool_state(name, input) when name in @shell, do: bash_state(command_of(input))
+
+  # codex and opencode name the same jobs differently (`read` vs `Read`), so the
+  # activity classification is done on a downcased name rather than duplicating
+  # every list. An unrecognised tool stays `:reading` — the existing default.
+  defp tool_state(name, _input) when is_binary(name) do
+    downcased = String.downcase(name)
+
+    cond do
+      downcased in @reading_any -> :reading
+      downcased in @writing_any -> :writing
+      true -> :reading
+    end
+  end
+
   defp tool_state(_name, _input), do: :reading
+
+  defp command_of(input) when is_map(input), do: to_string(input["command"] || "")
+  defp command_of(_input), do: ""
 
   # Order matters: an outbound/irreversible command is "transmitting" even though
   # it mentions gmail; the mail-touching reads are "incoming".
@@ -185,8 +331,8 @@ defmodule BusterClaw.Agent.StreamEvent do
 
   @doc "A short human label for the activity behind an event (for a status line)."
   @spec activity_label(t()) :: String.t() | nil
-  def activity_label(%__MODULE__{kind: :tool_use, tool: "Bash", tool_input: %{"command" => cmd}})
-      when is_binary(cmd),
+  def activity_label(%__MODULE__{kind: :tool_use, tool: tool, tool_input: %{"command" => cmd}})
+      when tool in @shell and is_binary(cmd),
       do: "$ " <> String.slice(cmd, 0, 38)
 
   def activity_label(%__MODULE__{kind: :tool_use, tool: name}), do: name

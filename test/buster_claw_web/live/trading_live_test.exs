@@ -2054,4 +2054,35 @@ defmodule BusterClawWeb.TradingLiveTest do
       {:ok, detail_for(last4)}
     end)
   end
+
+  # The operator's 08-03 call: any harness may run the money surfaces, provided
+  # the warning is loud. Loud means AT THE DECISION — on the confirm card — not
+  # only in Settings, where the choice may have been made days earlier.
+  describe "the order ticket when the floor does not apply" do
+    @order ~s({"side":"buy","symbol":"AAPL","quantity":2,"order_type":"limit",) <>
+             ~s("limit_price":199.25,"time_in_force":"day","account_last4":"6587"})
+
+    test "stays quiet while the floor is live", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      propose(view, @order)
+
+      html = render(view)
+      assert html =~ "trading-order-confirm"
+      refute html =~ "No model floor on this order"
+    end
+
+    test "warns on the confirm card once the harness puts it beyond the floor", %{conn: conn} do
+      {:ok, _} = BusterClaw.ModelPolicy.put_backend(:order_submit, :codex)
+
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      propose(view, @order)
+
+      html = render(view)
+      assert html =~ "No model floor on this order"
+      # NB: assert on text that does not straddle a template line break — HEEx
+      # keeps the source newlines, so "inventing an answer" is not contiguous.
+      assert html =~ "was measured inventing"
+      assert html =~ "trading-order-unfloored-"
+    end
+  end
 end

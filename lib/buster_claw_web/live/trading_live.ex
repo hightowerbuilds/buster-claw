@@ -846,9 +846,16 @@ defmodule BusterClawWeb.TradingLive do
         # The kind decides the toolset: a Chart Build window must never be
         # started with the broker's options just because it shares this
         # dispatcher.
+        # The harness is resolved HERE, not inside Chat: a LiveView has DB
+        # access and `Chat` deliberately does not read Settings (its own tests
+        # run async with no sandbox).
         Chat.ensure_started(
           conv_id,
-          BusterClaw.Trading.ChatProfile.for_kind(tab_kind(socket, conv_id))
+          Keyword.put(
+            BusterClaw.Trading.ChatProfile.for_kind(tab_kind(socket, conv_id)),
+            :agent,
+            BusterClaw.ModelPolicy.backend_for(:chat)
+          )
         )
 
         do_send(socket, conv_id, text)
