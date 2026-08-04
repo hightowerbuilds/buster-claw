@@ -1,6 +1,6 @@
 # Agent backends — Codex and OpenCode as first-class runners
 
-**Scoped 08-03-26 · Status: ACTIVE — Phase 0 probed, Phases 1 and 2 SHIPPED.**
+**Scoped 08-03-26 · Status: ACTIVE — Phase 0 probed, Phases 1–3 SHIPPED. Phase 4 deferred.**
 **Successor scope to `MODEL_VERSATILITY_ROADMAP.md`** — that roadmap chose the
 *model*; this one chooses the *runner the model runs in*, and the two are not
 separable. A model ID means nothing without a backend to interpret it.
@@ -386,16 +386,35 @@ that is Phase 3, and until it lands "choose your harness" is a command, not a UI
 
 # Phase 3 — The surfaces
 
-- [ ] Settings: backend picker beside the model picker, sharing the
-      global-plus-override shape, with the money-surface warning from *The floor
-      problem* above.
-- [ ] `model_policy` command learns `backend`.
-- [ ] Explore "Models" tutorial gains the backend story. **Correct the claim
-      already written** at `explore_panel.ex:671` that codex "never took a model
-      flag" — it does, and has.
-- [ ] Per-backend stream parsers behind `Agent.StreamEvent`, so chat streams from
-      any backend. This is the largest single item and it is what makes codex and
-      OpenCode usable rather than merely launchable.
+**SHIPPED 08-03** (`97e7ff2`). 2494 tests green.
+
+- [x] Settings: a harness picker beside the model picker, same
+      global-plus-override shape. An **uninstalled** harness renders disabled
+      rather than hidden — hiding it makes the app look like it does not support
+      codex at all.
+- [x] `model_policy` learned `backend` (landed early, in Phase 2).
+- [x] The Explore tutorial teaches harness-then-model, and **the false claim is
+      corrected**: it said the codex path "never took a model flag". It always
+      did; we never passed one.
+- [x] **Per-backend stream parsers.** Both schemas were CAPTURED from the real
+      CLIs using a tool-using prompt — a "say hi" run shows almost none of the
+      vocabulary. Unobserved events become `:unknown` with `raw` intact rather
+      than guessed at, and the tests paste the captured lines verbatim.
+- [x] The floor warning is a **state** (`unfloored_money_surfaces/0`), driving
+      both the Settings banner and a warning on the **order confirmation card** —
+      at the moment of the decision, not only in Settings.
+
+**Two schema facts worth keeping:**
+- opencode emits `step_finish` once per **step**, not per run; only
+  `reason: "stop"` ends it. Treating every one as the end would close the
+  transcript on the first tool call.
+- codex spells resume as a **subcommand** (`exec resume`), not a flag, so a codex
+  conversation starts fresh each turn rather than being handed a flag codex would
+  reject. `AgentBackend.argv/3` does not model subcommand-shaped resume.
+
+**Still open from *The floor problem*:** the Sentinel audit trail does not yet
+record which harness ran a money surface. The two UI warnings landed; this one
+did not.
 
 # Phase 4 — Only after measurement
 
