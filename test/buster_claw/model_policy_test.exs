@@ -329,9 +329,13 @@ defmodule BusterClaw.ModelPolicyTest do
       refute ModelPolicy.known_models(nil) == []
     end
 
+    # opencode's list is per-machine and read live, so it ships none — and it must
+    # not silently fall back to claude's, which would offer bare IDs to a harness
+    # that needs provider/model.
     test "a harness with no shipped list offers none rather than claude's" do
       assert ModelPolicy.known_models(:opencode) == []
-      assert ModelPolicy.known_models(:codex) == []
+      refute ModelPolicy.known_models(:codex) == ModelPolicy.known_models(:claude)
+      refute ModelPolicy.known_models(:codex) == []
     end
 
     test "valid_model?/1 rejects blanks and non-strings" do

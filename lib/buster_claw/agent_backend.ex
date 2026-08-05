@@ -49,8 +49,10 @@ defmodule BusterClaw.AgentBackend do
 
   Only opencode will enumerate (`opencode models` — 23 entries on the operator's
   machine, reflecting *their* authenticated providers, so it is per-machine and
-  must be read live rather than shipped). claude and codex cannot enumerate at
-  all, which is why free text stays available on every backend.
+  must be read live rather than shipped). claude and codex cannot enumerate, so
+  they ship a fixed list instead — and free text stays available on every
+  backend, because a shipped list is a convenience that goes stale and never a
+  gate.
   """
 
   # Ordered: this is also the PATH-detection fallback order, so it is
@@ -89,7 +91,26 @@ defmodule BusterClaw.AgentBackend do
       # app owns no price table — a computed cost would be a number the operator
       # trusts and we invented.
       reports_usage: :tokens,
-      known_models: []
+      # Added 08-04 at the operator's request, reversing "ship no list for a
+      # harness that cannot enumerate". The reason for that rule — a fixed list
+      # goes stale — is real but is covered by the free-text field, which stays;
+      # the cost of NO list is that every codex user types an ID by hand.
+      #
+      # Codex does not validate the model up front (a nonsense ID is passed
+      # straight through to the provider), so a wrong entry here fails late and
+      # confusingly. Evidence for each, so the next person can tell what was
+      # measured from what was inferred:
+      #   gpt-5.6-sol   — the operator's own ~/.codex/config.toml
+      #   gpt-5.6-luna  — present in `opencode models` as opencode-go/gpt-5.6-luna
+      #   gpt-5.6-terra — named by the operator; follows the family pattern, NOT
+      #                   independently verified against a catalog
+      # Listed in the order the operator named them, not by capability: nothing
+      # here ranks them, and inventing an order would imply knowledge we lack.
+      known_models: [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna"
+      ]
     },
     opencode: %{
       label: "OpenCode",
@@ -144,10 +165,10 @@ defmodule BusterClaw.AgentBackend do
   @doc """
   The models to offer for `backend` without asking the CLI.
 
-  Empty for codex and opencode on purpose: codex cannot enumerate and we decline
-  to ship a list that goes stale, and opencode's real list is per-machine (it
-  depends on which providers the operator has authenticated) so it is read live.
-  Free text remains available on every backend.
+  Empty for opencode on purpose: its real list is per-machine (it depends on
+  which providers the operator has authenticated), so it is read live via
+  `enumerate_models/1` rather than shipped. claude and codex ship fixed lists
+  because neither can enumerate. Free text remains available on every backend.
   """
   def known_models(backend), do: fetch(backend, :known_models, [])
 

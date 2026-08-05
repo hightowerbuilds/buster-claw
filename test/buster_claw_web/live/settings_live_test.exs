@@ -89,6 +89,25 @@ defmodule BusterClawWeb.SettingsLiveTest do
       assert html =~ "your opencode CLI decides"
     end
 
+    test "codex offers its own models, the way claude does", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> element("#model-default-backend-form")
+      |> render_change(%{"backend" => "codex"})
+
+      html = render(view)
+
+      for model <- BusterClaw.ModelPolicy.known_models(:codex) do
+        assert html =~ model
+      end
+
+      # And claude's models are gone — a bare claude ID is meaningless to codex.
+      refute html =~ "claude-fable-5"
+      # A harness WITH a list must not show the "nothing to pick" note.
+      refute html =~ "cannot list its own models from here"
+    end
+
     test "choosing a harness for one surface stores it and leaves others alone", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings")
 

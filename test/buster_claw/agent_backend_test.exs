@@ -32,13 +32,35 @@ defmodule BusterClaw.AgentBackendTest do
     # Shipping a stale list is worse than shipping none: codex cannot enumerate,
     # and opencode's real list depends on which providers the operator has
     # authenticated, so it is per-machine and must be read live.
-    test "only claude ships a model list" do
+    # The harnesses that cannot enumerate ship a fixed list; the one that can does
+    # not, because its real list is per-machine.
+    test "the non-enumerating harnesses ship a list, and the enumerating one does not" do
       assert AgentBackend.known_models(:claude) != []
-      assert AgentBackend.known_models(:codex) == []
+      assert AgentBackend.known_models(:codex) != []
       assert AgentBackend.known_models(:opencode) == []
       assert AgentBackend.enumerates_models?(:opencode)
       refute AgentBackend.enumerates_models?(:claude)
       refute AgentBackend.enumerates_models?(:codex)
+    end
+
+    # Every shipped ID must be usable as-is. Codex does NOT validate the model up
+    # front — a nonsense string is passed straight to the provider — so a typo
+    # here fails late and confusingly rather than at the picker.
+    test "every shipped model is a plausible ID for its own harness" do
+      for backend <- AgentBackend.order(), model <- AgentBackend.known_models(backend) do
+        assert AgentBackend.plausible_model?(backend, model),
+               "#{model} is not valid in #{backend}'s namespace"
+
+        refute String.contains?(model, " "), "#{model} has whitespace in it"
+      end
+    end
+
+    test "codex's list is the gpt-5.6 family the operator named" do
+      assert AgentBackend.known_models(:codex) == [
+               "gpt-5.6-sol",
+               "gpt-5.6-terra",
+               "gpt-5.6-luna"
+             ]
     end
   end
 
