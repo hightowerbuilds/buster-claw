@@ -29,6 +29,7 @@ defmodule BusterClawWeb.TradingLive do
   import BusterClawWeb.TradingView
   import BusterClawWeb.TradingAccountCard, only: [trading_account_card: 1]
   import BusterClawWeb.ChartBuilderPanel, only: [chart_preview: 1]
+  import BusterClawWeb.WatchlistSidebar, only: [watchlist_sidebar: 1]
   import BusterClawWeb.TradingLookupPanel, only: [lookup_card: 1]
   import BusterClawWeb.TradingTabStrip, only: [trading_tabs: 1]
   import BusterClawWeb.TradingOrderCard, only: [order_confirm: 1]
@@ -41,9 +42,11 @@ defmodule BusterClawWeb.TradingLive do
   alias BusterClaw.ChartBuilder.DataReq
   alias BusterClaw.ChartBuilder.Fetch
   alias BusterClaw.DataState
+  alias BusterClaw.MarketData
   alias BusterClaw.Portfolio
   alias BusterClaw.SvgViewer
   alias BusterClaw.Trading
+  alias BusterClaw.Watchlist
 
   # The combined-total chip. A sentinel rather than nil so the selection is
   # always an explicit choice, and so it round-trips through phx-value-id.
@@ -76,6 +79,15 @@ defmodule BusterClawWeb.TradingLive do
     socket =
       socket
       |> assign(:page_title, "Trading")
+      # The left rail. Collapsed by default, unlike the Workspace tab's: this one
+      # shares a tab that already carries a strip, a data panel and floating
+      # chat windows.
+      |> assign(:watchlist_open, false)
+      |> assign_watchlists()
+      # Joined into a split pane (`SplitLive`), this tab is half a window rather
+      # than a whole one. The only thing that changes is where the floating chat
+      # windows are allowed to go — see `trading-root` in `render/1`.
+      |> assign(:embedded?, BusterClawWeb.ChromeHook.embedded?())
       |> assign(:agent_cli_missing, trading_cli_missing?())
       |> assign(:tabs, Enum.map(tabs, &to_tab/1))
       |> assign(:active_tab, active.id)
@@ -231,6 +243,26 @@ defmodule BusterClawWeb.TradingLive do
   # ---------------------------------------------------------------------------
   # Chat windows — floating, and independent of which panel is showing
   # ---------------------------------------------------------------------------
+
+  def handle_event("watchlist_toggle", _params, socket) do
+    {:noreply, update(socket, :watchlist_open, &(not &1))}
+  end
+
+  def handle_event("watchlist_create", %{"name" => name}, socket) do
+    {:noreply, flash_watchlist(socket, Watchlist.create(name))}
+  end
+
+  def handle_event("watchlist_delete", %{"name" => name}, socket) do
+    {:noreply, flash_watchlist(socket, Watchlist.delete(name))}
+  end
+
+  def handle_event("watchlist_add", %{"name" => name, "symbol" => symbol}, socket) do
+    {:noreply, flash_watchlist(socket, Watchlist.add(name, symbol))}
+  end
+
+  def handle_event("watchlist_remove", %{"name" => name, "symbol" => symbol}, socket) do
+    {:noreply, flash_watchlist(socket, Watchlist.remove(name, symbol))}
+  end
 
   def handle_event("trading_toggle_chat", %{"id" => id}, socket) do
     cond do
@@ -2095,6 +2127,59 @@ defmodule BusterClawWeb.TradingLive do
   defp order_error(_reason), do: "unreadable order"
 
   # ---------------------------------------------------------------------------
+  # Watchlists (left rail)
+  # ---------------------------------------------------------------------------
+
+  # Every one of these re-reads through `assign_watchlists/1` rather than
+  # patching the assign in place: the depth beside each symbol comes from the
+  # market cache, which a background tick can change under us.
+  defp assign_watchlists(socket) do
+    lists = Watchlist.all()
+
+    depths =
+      lists
+      |> Map.values()
+      |> List.flatten()
+      |> Enum.uniq()
+      |> Map.new(&{&1, symbol_depth(&1)})
+
+    socket
+    |> assign(:watchlists, lists)
+    |> assign(:watchlist_depths, depths)
+  end
+
+  # `:deep` / `{:short, n}` / `{:failed, on}` / nil — the three answers to "why
+  # is this chart short?", plus "nothing has happened yet". Reads
+  # `MarketData.backfill_status/1` so the sidebar and the recorder agree.
+  defp symbol_depth(symbol) do
+    case MarketData.backfill_status(symbol) do
+      :deep ->
+        :deep
+
+      {:failed, on, _reason} ->
+        {:failed, on}
+
+      :never_tried ->
+        case length(MarketData.bars(symbol)) do
+          0 -> nil
+          n -> {:short, n}
+        end
+    end
+  end
+
+  defp flash_watchlist(socket, {:ok, _lists}), do: assign_watchlists(socket)
+
+  defp flash_watchlist(socket, {:error, reason}),
+    do: put_flash(socket, :error, watchlist_error(reason))
+
+  defp watchlist_error({:exists, name}), do: "A list called #{name} already exists."
+  defp watchlist_error({:no_such_list, name}), do: "No list called #{name}."
+  defp watchlist_error({:bad_symbol, given}), do: "#{given} does not look like a ticker."
+  defp watchlist_error(:blank_name), do: "Give the list a name."
+  defp watchlist_error(:name_too_long), do: "That name is too long."
+  defp watchlist_error(other), do: "Could not update the watchlist (#{inspect(other)})."
+
+  # ---------------------------------------------------------------------------
   # Render
   # ---------------------------------------------------------------------------
 
@@ -2102,79 +2187,96 @@ defmodule BusterClawWeb.TradingLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} socket={@socket} fit_viewport>
-      <section class="flex min-h-0 flex-1 flex-col gap-2 p-4">
-        <.trading_tabs
-          tabs={@tabs}
-          active={@active_tab}
-          menu_open={@new_tab_open}
-          open_chats={@open_chats}
-        />
-        <%!-- The panel owns the whole tab. Chat is not beside it any more but on
+      <%!-- The box the floating chat windows are allowed to move in. `relative`
+            is inert while they are `fixed` (a positioned ancestor does not form a
+            containing block for fixed), and becomes their whole world the moment
+            this tab is joined into a split pane and they turn `absolute`. --%>
+      <div id="trading-root" class="relative flex min-h-0 flex-1 flex-col">
+        <section class="flex min-h-0 flex-1 flex-col gap-2 p-4">
+          <.trading_tabs
+            tabs={@tabs}
+            active={@active_tab}
+            menu_open={@new_tab_open}
+            open_chats={@open_chats}
+          />
+          <%!-- The left rail. It wraps the tab body rather than replacing any of
+                it, so the three kind-blocks below are untouched — moving the data
+                panels in beside the watchlists is a restructure of all three and
+                belongs in its own change. --%>
+          <div class="flex min-h-0 flex-1 gap-2">
+            <.watchlist_sidebar
+              open={@watchlist_open}
+              lists={@watchlists}
+              depths={@watchlist_depths}
+            />
+            <div class="flex min-h-0 flex-1 flex-col gap-2">
+              <%!-- The panel owns the whole tab. Chat is not beside it any more but on
               top of it, in windows the operator places — which is why the panel
               gets to be this wide and why those windows are translucent. --%>
-        <div
-          :if={@active_kind == "robinhood" and not docked?(@tabs, @active_tab)}
-          class="flex min-h-0 flex-1 flex-col gap-2"
-        >
-          <div
-            id="trading-read-only-banner"
-            class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs text-success"
-          >
-            <p class="font-bold uppercase tracking-wide">
-              Orders leave only from a card you click — the assistant proposes, it never sends
-            </p>
-            <p class="pt-0.5 text-[0.68rem] text-success/70">
-              Ask this chat to buy or sell. It gathers the details, then Buster Claw shows you
-              the exact order to confirm.
-            </p>
-          </div>
-          <%!-- First-run setup: the OAuth handshake is interactive by nature
+              <div
+                :if={@active_kind == "robinhood" and not docked?(@tabs, @active_tab)}
+                class="flex min-h-0 flex-1 flex-col gap-2"
+              >
+                <div
+                  id="trading-read-only-banner"
+                  class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs text-success"
+                >
+                  <p class="font-bold uppercase tracking-wide">
+                    Orders leave only from a card you click — the assistant proposes, it never sends
+                  </p>
+                  <p class="pt-0.5 text-[0.68rem] text-success/70">
+                    Ask this chat to buy or sell. It gathers the details, then Buster Claw shows you
+                    the exact order to confirm.
+                  </p>
+                </div>
+                <%!-- First-run setup: the OAuth handshake is interactive by nature
                 (a browser window), so it happens once in a terminal — the
                 keychain tokens are then reused by every headless turn. --%>
-          <div
-            :if={chat_state(assigns, @active_tab).seq == 0}
-            class="space-y-2 border-2 border-base-content/20 p-4 font-mono text-xs"
-          >
-            <p class="font-bold uppercase tracking-wide">One-time setup (in a terminal)</p>
-            <pre class="overflow-x-auto bg-base-200 p-2">claude mcp add --transport http --scope user robinhood https://agent.robinhood.com/mcp/trading</pre>
-            <pre class="overflow-x-auto bg-base-200 p-2">claude mcp login robinhood</pre>
-            <p class="text-base-content/70">
-              The login opens Robinhood's OAuth page in your browser; tokens land in the
-              macOS Keychain and every trading turn here reuses them. Known issue
-              (claude-code #65895): if the tools still report unavailable after logging
-              in, run <code class="font-bold">claude mcp logout robinhood</code> and log in again.
-            </p>
-          </div>
-          <.trading_account_card
-            account={@trading_account}
-            selected_id={@trading_account_sel}
-            all_accounts={@all_accounts}
-            detail={@trading_detail}
-            anomaly={@trading_anomaly}
-            series={@trading_series}
-            performance_state={@trading_performance_state}
-            range={@trading_range}
-            coverage={@trading_coverage}
-            backfilling={@trading_backfilling}
-            table={@trading_table}
-            day_change={@trading_day_change}
-            indexes_state={@market_indexes_state}
-            positions={@trading_positions}
-            positions_state={@trading_positions_state}
-            costs_missing={@trading_costs_missing}
-            costs_loading={@trading_costs_loading}
-            prices_state={@prices_state}
-            chart_view={@trading_chart_view}
-            symbol_bars={@symbol_bars}
-            symbol_range={@symbol_range}
-            symbol_mode={@symbol_mode}
-            symbol_state={@symbol_bars_state}
-            earnings={@trading_earnings}
-            earnings_state={@trading_earnings_state}
-          />
-        </div>
+                <div
+                  :if={chat_state(assigns, @active_tab).seq == 0}
+                  class="space-y-2 border-2 border-base-content/20 p-4 font-mono text-xs"
+                >
+                  <p class="font-bold uppercase tracking-wide">One-time setup (in a terminal)</p>
+                  <pre class="overflow-x-auto bg-base-200 p-2">claude mcp add --transport http --scope user robinhood https://agent.robinhood.com/mcp/trading</pre>
+                  <pre class="overflow-x-auto bg-base-200 p-2">claude mcp login robinhood</pre>
+                  <p class="text-base-content/70">
+                    The login opens Robinhood's OAuth page in your browser; tokens land in the
+                    macOS Keychain and every trading turn here reuses them. Known issue
+                    (claude-code #65895): if the tools still report unavailable after logging
+                    in, run <code class="font-bold">claude mcp logout robinhood</code>
+                    and log in again.
+                  </p>
+                </div>
+                <.trading_account_card
+                  account={@trading_account}
+                  selected_id={@trading_account_sel}
+                  all_accounts={@all_accounts}
+                  detail={@trading_detail}
+                  anomaly={@trading_anomaly}
+                  series={@trading_series}
+                  performance_state={@trading_performance_state}
+                  range={@trading_range}
+                  coverage={@trading_coverage}
+                  backfilling={@trading_backfilling}
+                  table={@trading_table}
+                  day_change={@trading_day_change}
+                  indexes_state={@market_indexes_state}
+                  positions={@trading_positions}
+                  positions_state={@trading_positions_state}
+                  costs_missing={@trading_costs_missing}
+                  costs_loading={@trading_costs_loading}
+                  prices_state={@prices_state}
+                  chart_view={@trading_chart_view}
+                  symbol_bars={@symbol_bars}
+                  symbol_range={@symbol_range}
+                  symbol_mode={@symbol_mode}
+                  symbol_state={@symbol_bars_state}
+                  earnings={@trading_earnings}
+                  earnings_state={@trading_earnings_state}
+                />
+              </div>
 
-        <%!-- Chart Build owns its whole tab: the newest sanitized SVG above its
+              <%!-- Chart Build owns its whole tab: the newest sanitized SVG above its
               typed conversation, with the symbol lookup beside them. Its
               persisted dock flag stays false because this is a data-panel kind,
               not a docked window.
@@ -2184,135 +2286,141 @@ defmodule BusterClawWeb.TradingLive do
               where every figure demonstrably came from our own fetch rather than
               from the model — and "beside the chart" is the only placement where
               you can read the two against each other. --%>
-        <div
-          :if={@active_kind == "chartbuild"}
-          id="chartbuild-panel"
-          class="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row"
-        >
-          <div class="flex min-h-0 flex-1 flex-col gap-2">
-            <.chart_preview
-              charts={chat_state(assigns, @active_tab).svgs}
-              zoomed={chat_state(assigns, @active_tab).zoomed_id}
-            />
-            <BusterClawWeb.ChatPanel.chat_window
-              id={"chartbuild-chat-#{@active_tab}"}
-              conv={@active_tab}
-              embedded
-              index={0}
-              title={tab_title(@tabs, @active_tab)}
-              kind={@active_kind}
-              messages={chat_state(assigns, @active_tab).messages}
-              seq={chat_state(assigns, @active_tab).seq}
-              running={chat_state(assigns, @active_tab).running}
-              thinking={chat_state(assigns, @active_tab).thinking}
-              queue={chat_state(assigns, @active_tab).queue}
-              minimized={MapSet.member?(@minimized, @active_tab)}
-              focused
-              agent_cli_missing={@agent_cli_missing}
-              empty_message={chat_empty_message(@active_kind)}
-              placeholder={chat_placeholder(@active_kind)}
-            />
-          </div>
-          <div class="flex min-h-0 shrink-0 flex-col gap-2 lg:w-80 xl:w-96">
-            <%!-- States the stronger fact: the broker isn't restricted here,
+              <div
+                :if={@active_kind == "chartbuild"}
+                id="chartbuild-panel"
+                class="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row"
+              >
+                <div class="flex min-h-0 flex-1 flex-col gap-2">
+                  <.chart_preview
+                    charts={chat_state(assigns, @active_tab).svgs}
+                    zoomed={chat_state(assigns, @active_tab).zoomed_id}
+                  />
+                  <BusterClawWeb.ChatPanel.chat_window
+                    id={"chartbuild-chat-#{@active_tab}"}
+                    conv={@active_tab}
+                    embedded
+                    index={0}
+                    title={tab_title(@tabs, @active_tab)}
+                    kind={@active_kind}
+                    messages={chat_state(assigns, @active_tab).messages}
+                    seq={chat_state(assigns, @active_tab).seq}
+                    running={chat_state(assigns, @active_tab).running}
+                    thinking={chat_state(assigns, @active_tab).thinking}
+                    queue={chat_state(assigns, @active_tab).queue}
+                    minimized={MapSet.member?(@minimized, @active_tab)}
+                    focused
+                    agent_cli_missing={@agent_cli_missing}
+                    empty_message={chat_empty_message(@active_kind)}
+                    placeholder={chat_placeholder(@active_kind)}
+                  />
+                </div>
+                <div class="flex min-h-0 shrink-0 flex-col gap-2 lg:w-80 xl:w-96">
+                  <%!-- States the stronger fact: the broker isn't restricted here,
                   it's absent. This chat has no Robinhood tool to deny. --%>
-            <div
-              id="trading-lookup-banner"
-              class="border-2 border-info/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-info"
-            >
-              Public data only — this chat cannot see your accounts
-            </div>
-            <.lookup_card
-              panel={lookup_panel(assigns)}
-              query={@lookup_query}
-              matches={@lookup_matches}
-            />
-          </div>
-        </div>
-        <%!-- A docked chat IS the tab's content: same component, positioned in
+                  <div
+                    id="trading-lookup-banner"
+                    class="border-2 border-info/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-info"
+                  >
+                    Public data only — this chat cannot see your accounts
+                  </div>
+                  <.lookup_card
+                    panel={lookup_panel(assigns)}
+                    query={@lookup_query}
+                    matches={@lookup_matches}
+                  />
+                </div>
+              </div>
+              <%!-- A docked chat IS the tab's content: same component, positioned in
               flow instead of fixed. Its panel is hidden while it is docked, and
               floating it again brings the panel straight back. --%>
-        <BusterClawWeb.ChatPanel.chat_window
-          :if={docked?(@tabs, @active_tab)}
-          id={"trading-dock-#{@active_tab}"}
-          conv={@active_tab}
-          docked
-          index={0}
-          title={tab_title(@tabs, @active_tab)}
-          kind={@active_kind}
-          messages={chat_state(assigns, @active_tab).messages}
-          seq={chat_state(assigns, @active_tab).seq}
-          running={chat_state(assigns, @active_tab).running}
-          thinking={chat_state(assigns, @active_tab).thinking}
-          queue={chat_state(assigns, @active_tab).queue}
-          focused
-          agent_cli_missing={@agent_cli_missing}
-          empty_message={chat_empty_message(@active_kind)}
-          placeholder={chat_placeholder(@active_kind)}
-        >
-          <:pinned :if={chat_state(assigns, @active_tab).pending_order}>
-            <.order_confirm
-              conv={@active_tab}
-              pending={chat_state(assigns, @active_tab).pending_order}
-            />
-          </:pinned>
-        </BusterClawWeb.ChatPanel.chat_window>
+              <BusterClawWeb.ChatPanel.chat_window
+                :if={docked?(@tabs, @active_tab)}
+                id={"trading-dock-#{@active_tab}"}
+                conv={@active_tab}
+                docked
+                index={0}
+                title={tab_title(@tabs, @active_tab)}
+                kind={@active_kind}
+                messages={chat_state(assigns, @active_tab).messages}
+                seq={chat_state(assigns, @active_tab).seq}
+                running={chat_state(assigns, @active_tab).running}
+                thinking={chat_state(assigns, @active_tab).thinking}
+                queue={chat_state(assigns, @active_tab).queue}
+                focused
+                agent_cli_missing={@agent_cli_missing}
+                empty_message={chat_empty_message(@active_kind)}
+                placeholder={chat_placeholder(@active_kind)}
+              >
+                <:pinned :if={chat_state(assigns, @active_tab).pending_order}>
+                  <.order_confirm
+                    conv={@active_tab}
+                    pending={chat_state(assigns, @active_tab).pending_order}
+                  />
+                </:pinned>
+              </BusterClawWeb.ChatPanel.chat_window>
 
-        <%!-- A neutral chat has no data panel of its own, so an undocked one
+              <%!-- A neutral chat has no data panel of its own, so an undocked one
               leaves the tab empty. Say why, and name the gesture that fills it. --%>
-        <div
-          :if={@active_kind == "chat" and not docked?(@tabs, @active_tab)}
-          id="trading-float-hint"
-          class="m-auto max-w-sm text-center font-mono text-xs text-base-content/50"
-        >
-          <p class="font-bold uppercase tracking-wide">This chat is floating</p>
-          <p class="pt-2 leading-relaxed">
-            Drag its window back onto the tab bar to dock it here again, or point
-            it at Robinhood or Chart Build from the selector in its title bar.
-          </p>
-        </div>
-      </section>
+              <div
+                :if={@active_kind == "chat" and not docked?(@tabs, @active_tab)}
+                id="trading-float-hint"
+                class="m-auto max-w-sm text-center font-mono text-xs text-base-content/50"
+              >
+                <p class="font-bold uppercase tracking-wide">This chat is floating</p>
+                <p class="pt-2 leading-relaxed">
+                  Drag its window back onto the tab bar to dock it here again, or point
+                  it at Robinhood or Chart Build from the selector in its title bar.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <%!-- Rendered outside the section, and outside the tab switch: a window
+        <%!-- Rendered outside the section, and outside the tab switch: a window
             stays exactly where it is when the panel underneath it changes. Order
             is focus order — the last one drawn is the opaque, keyboard-owning
             one. --%>
-      <BusterClawWeb.ChatPanel.chat_window
-        :for={
-          {conv, i} <-
-            Enum.with_index(
-              Enum.reject(
-                @open_chats,
-                &(docked?(@tabs, &1) or tab_kind_of(@tabs, &1) == "chartbuild")
+        <BusterClawWeb.ChatPanel.chat_window
+          :for={
+            {conv, i} <-
+              Enum.with_index(
+                Enum.reject(
+                  @open_chats,
+                  &(docked?(@tabs, &1) or tab_kind_of(@tabs, &1) == "chartbuild")
+                )
               )
-            )
-        }
-        id={"trading-chat-#{conv}"}
-        conv={conv}
-        index={i}
-        title={tab_title(@tabs, conv)}
-        kind={tab_kind_of(@tabs, conv)}
-        messages={chat_state(assigns, conv).messages}
-        seq={chat_state(assigns, conv).seq}
-        running={chat_state(assigns, conv).running}
-        thinking={chat_state(assigns, conv).thinking}
-        queue={chat_state(assigns, conv).queue}
-        minimized={MapSet.member?(@minimized, conv)}
-        focused={conv == List.last(@open_chats)}
-        agent_cli_missing={@agent_cli_missing}
-        empty_message={chat_empty_message(tab_kind_of(@tabs, conv))}
-        placeholder={chat_placeholder(tab_kind_of(@tabs, conv))}
-      >
-        <:pinned :if={chat_state(assigns, conv).pending_order}>
-          <.order_confirm conv={conv} pending={chat_state(assigns, conv).pending_order} />
-        </:pinned>
-      </BusterClawWeb.ChatPanel.chat_window>
+          }
+          id={"trading-chat-#{conv}"}
+          conv={conv}
+          in_pane={@embedded?}
+          index={i}
+          title={tab_title(@tabs, conv)}
+          kind={tab_kind_of(@tabs, conv)}
+          messages={chat_state(assigns, conv).messages}
+          seq={chat_state(assigns, conv).seq}
+          running={chat_state(assigns, conv).running}
+          thinking={chat_state(assigns, conv).thinking}
+          queue={chat_state(assigns, conv).queue}
+          minimized={MapSet.member?(@minimized, conv)}
+          focused={conv == List.last(@open_chats)}
+          agent_cli_missing={@agent_cli_missing}
+          empty_message={chat_empty_message(tab_kind_of(@tabs, conv))}
+          placeholder={chat_placeholder(tab_kind_of(@tabs, conv))}
+        >
+          <:pinned :if={chat_state(assigns, conv).pending_order}>
+            <.order_confirm conv={conv} pending={chat_state(assigns, conv).pending_order} />
+          </:pinned>
+        </BusterClawWeb.ChatPanel.chat_window>
 
-      <BusterClawWeb.ChatPanel.svg_modal
-        :if={@active_kind == "chartbuild"}
-        svgs={active_charts(assigns)}
-        zoomed={chat_state(assigns, @active_tab).zoomed_id}
-      />
+        <%!-- Deliberately not pane-bound: a zoomed chart wants the whole window,
+              and a modal that covers everything is what "zoom" means. --%>
+        <BusterClawWeb.ChatPanel.svg_modal
+          :if={@active_kind == "chartbuild"}
+          svgs={active_charts(assigns)}
+          zoomed={chat_state(assigns, @active_tab).zoomed_id}
+        />
+      </div>
     </Layouts.app>
     """
   end
