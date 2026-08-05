@@ -33,6 +33,7 @@ defmodule BusterClaw.MarketData do
   alias BusterClaw.Repo
   alias BusterClaw.Settings
   alias BusterClaw.Trading
+  alias BusterClaw.Watchlist
 
   @quotes_key "market_quotes_snapshot"
   @attempt_key "market_data_attempted_on"
@@ -71,7 +72,7 @@ defmodule BusterClaw.MarketData do
   def refresh(day \\ MarketCalendar.today()) do
     mark_attempt(day)
 
-    case Trading.fetch_market_data(refresh_start(day)) do
+    case Trading.fetch_market_data(refresh_start(day), Watchlist.symbols()) do
       {:ok, parsed} ->
         {bars, symbols} = store_bars(parsed.closes)
         store_quotes(parsed)
@@ -201,12 +202,27 @@ defmodule BusterClaw.MarketData do
   def benchmark_symbols, do: @benchmark_symbols
 
   @doc """
-  Benchmarks missing a usable year of daily bars.
+  Symbols missing a usable year of daily bars: the benchmarks, then whatever the
+  operator tracks.
 
-  `@benchmark_target_bars` is deliberately under a full 252-day trading year:
-  a benchmark that is a handful of sessions short is not worth re-spending an
-  agent run on, and without slack this would refetch every single day forever.
+  `@benchmark_target_bars` is deliberately under a full 252-day trading year: a
+  symbol that is a handful of sessions short is not worth re-spending an agent
+  run on, and without slack this would refetch every single day forever.
+
+  **Benchmarks come first, and that is a spending decision.** Each backfill is
+  one agent run (~$0.57 measured 08-04) and the Recorder does one per day, so the
+  order of this list is the order the operator's money is spent. The benchmarks
+  are what every comparison chart needs; a tracked symbol is one operator's
+  interest. A long watchlist therefore delays itself, never the baseline.
   """
+  def symbols_needing_backfill do
+    (@benchmark_symbols ++ Watchlist.symbols())
+    |> Enum.uniq()
+    |> Enum.filter(fn symbol -> length(bars(symbol)) < @benchmark_target_bars end)
+  end
+
+  @doc false
+  # Kept as the old name for anything that still asks only about benchmarks.
   def benchmarks_needing_backfill do
     Enum.filter(@benchmark_symbols, fn symbol ->
       length(bars(symbol)) < @benchmark_target_bars

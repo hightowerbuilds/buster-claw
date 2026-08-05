@@ -471,6 +471,37 @@ defmodule BusterClaw.Trading do
     """
   end
 
+  # The operator's tracked symbols are NOT discoverable by the agent — they live
+  # in this app, not at the broker — so they are named in the prompt or they do
+  # not happen.
+  defp watched_clause([]), do: ""
+
+  defp watched_clause(watched),
+    do: ", plus the symbols they track (#{Enum.join(watched, ", ")})"
+
+  # The cap is 10 per historicals call, and holdings win it. That is the explicit
+  # answer to "whose symbols lose": money the operator actually has beats
+  # curiosity, every time, and whatever is dropped is named in "skipped" rather
+  # than silently missing.
+  defp cap_rule([]) do
+    """
+    If more than 10 symbols are held,
+       fetch the 10 largest positions by value and list the others in "skipped".
+    """
+    |> String.trim()
+  end
+
+  defp cap_rule(watched) do
+    """
+    Cover the HELD symbols first, largest position by
+       value first; then fill any remaining slots from the tracked list
+       (#{Enum.join(watched, ", ")}), in the order given. List every symbol you
+       could not fit in "skipped" — a tracked symbol that did not fit is not an
+       error, it is a symbol whose turn comes another day.
+    """
+    |> String.trim()
+  end
+
   @doc """
   Extract and validate chart-tier bars. Returns `{:ok, [%{bar_on, open, high,
   low, close, volume}]}` oldest first. A row is dropped when its date is
@@ -617,10 +648,22 @@ defmodule BusterClaw.Trading do
   Test seam: `:trading_market_data_fetcher` app env (an arity-1 function of the
   start `Date`).
   """
-  def fetch_market_data(%Date{} = start) do
+  def fetch_market_data(%Date{} = start, watched \\ []) do
     case Application.get_env(:buster_claw, :trading_market_data_fetcher) do
-      fun when is_function(fun, 1) -> fun.(start)
-      nil -> run_agent(market_data_prompt(start), @market_data_timeout_ms, &parse_market_data/1)
+      # Both arities are honoured: a stub that predates watchlists still works,
+      # and one that wants to assert on the tracked list can take it.
+      fun when is_function(fun, 2) ->
+        fun.(start, watched)
+
+      fun when is_function(fun, 1) ->
+        fun.(start)
+
+      nil ->
+        run_agent(
+          market_data_prompt(start, watched),
+          @market_data_timeout_ms,
+          &parse_market_data/1
+        )
     end
   end
 
@@ -634,22 +677,21 @@ defmodule BusterClaw.Trading do
   silently, and interpolated bars are dropped at the source since they carry no
   information.
   """
-  def market_data_prompt(%Date{} = start) do
+  def market_data_prompt(%Date{} = start, watched \\ []) do
     """
-    Collect market data for the operator's holdings, in ONE pass.
+    Collect market data for the operator's holdings#{watched_clause(watched)}, in ONE pass.
 
     1. Call mcp__robinhood__get_accounts, then mcp__robinhood__get_equity_positions
        for EACH account. Collect the distinct stock symbols held. Skip accounts
        whose positions the tools cannot read.
-    2. Call mcp__robinhood__get_equity_historicals ONCE for ALL held symbols (it
-       accepts up to 10 per call) with interval "day" and start_time
-       "#{Date.to_iso8601(start)}T00:00:00Z". If more than 10 symbols are held,
-       fetch the 10 largest positions by value and list the others in "skipped".
+    2. Call mcp__robinhood__get_equity_historicals ONCE for ALL symbols to cover
+       (it accepts up to 10 per call) with interval "day" and start_time
+       "#{Date.to_iso8601(start)}T00:00:00Z". #{cap_rule(watched)}
     3. Call mcp__robinhood__get_equity_quotes for the same symbols.
     4. Call mcp__robinhood__get_indexes, find the S&P 500 and the Nasdaq
        Composite, and call mcp__robinhood__get_index_quotes for both.
     5. Call mcp__robinhood__get_earnings_calendar once with days: 31, and keep
-       ONLY the entries whose symbol is one of the held symbols from step 1.
+       ONLY the entries whose symbol is one of the symbols you covered in step 2.
 
     Then output ONLY one JSON object — no prose, no code fences:
     {"closes": {"<SYMBOL>": [["YYYY-MM-DD", <close usd number>], ...]},
@@ -670,9 +712,10 @@ defmodule BusterClaw.Trading do
     - Closes are DAILY bars as [date, close] pairs, oldest first, transcribed
       exactly from the tool results — never invented, never averaged. Omit bars
       the tool marks "interpolated": true; they carry no information.
-    - "earnings" holds only HELD symbols' upcoming reports from the calendar
-      tool — an empty list is the correct answer when none report in the
-      window. Dates and timing come from the tool, never inferred.
+    - "earnings" holds only COVERED symbols' upcoming reports from the calendar
+      tool (the same set as step 2 — held, plus any tracked symbols that fit) —
+      an empty list is the correct answer when none report in the window. Dates
+      and timing come from the tool, never inferred.
     - If the operator holds no stocks, output "closes": {}, "quotes": [] and
       "earnings": [] but still fill "indexes".
     - If one tool fails, leave its section empty and add a one-line reason to

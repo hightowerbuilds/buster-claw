@@ -151,7 +151,7 @@ defmodule BusterClaw.Portfolio.Recorder do
   # minutes-long blocking run on every ~30-minute self-heal tick, all day. Same
   # reasoning, and the same per-attempt semantics, as the sweep's own latch.
   defp backfill_one_benchmark(today) do
-    case MarketData.benchmarks_needing_backfill() do
+    case MarketData.symbols_needing_backfill() do
       [] ->
         :ok
 

@@ -525,7 +525,11 @@ defmodule BusterClaw.TradingTest do
       prompt = Trading.market_data_prompt(~D[2026-04-29])
 
       assert prompt =~ "get_earnings_calendar once with days: 31"
-      assert prompt =~ "ONLY the entries whose symbol is one of the held symbols"
+      # Wording changed 08-04 when tracked symbols joined the sweep: the filter
+      # is now the COVERED set (held, plus tracked symbols that fit the cap)
+      # rather than held alone. The property under test is unchanged — the
+      # market-wide calendar is filtered to the operator's own symbols.
+      assert prompt =~ "ONLY the entries whose symbol is one of the symbols you covered"
       assert prompt =~ "an empty list is the correct answer"
     end
 
@@ -562,7 +566,7 @@ defmodule BusterClaw.TradingTest do
     test "the prompt batches, bounds, and stays read-only" do
       prompt = Trading.market_data_prompt(~D[2026-04-29])
 
-      assert prompt =~ "ONCE for ALL held symbols"
+      assert prompt =~ "ONCE for ALL symbols to cover"
       assert prompt =~ "2026-04-29T00:00:00Z"
       assert prompt =~ "[date, close] pairs"
       assert prompt =~ ~s("interpolated": true)
