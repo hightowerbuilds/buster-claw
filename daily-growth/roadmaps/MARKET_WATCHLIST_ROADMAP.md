@@ -75,6 +75,14 @@ than as a diagnosis**:
 unit economics of the whole feature — a 20-symbol watchlist costs ~$11 to seed
 and, at one per day, twenty days to fill.
 
+**With Finnhub ruled out on 08-04, that number is not a placeholder.** Every
+remaining cheap path is worse: Alpha Vantage is 25 requests/day by its own
+registry note "a demo, not a data source", Yahoo's endpoints are `:unsanctioned`,
+and dropping to sonnet saves ~40% on a surface where the only measured failure
+mode is silent fabrication. Deep history costs about half a dollar a symbol, and
+the honest thing is to price it in the UI rather than keep looking for a way out
+of it.
+
 **The sweep has a hard cap of 10 symbols**, and anything past it is skipped BY
 NAME rather than silently (`market_data_prompt/1`, and the `:skipped` warning in
 `refresh/1`). This is the constraint that shapes the whole feature: a watchlist
@@ -122,10 +130,12 @@ never invented". A frontier model as a careful photocopier.
 Three cheaper paths were identified and **all three declined for now (operator,
 08-04): stay on the $0.57 path.**
 
-- **Finnhub candles** — already wired and `:verified`, key present, but it
-  implements only `quote/2` and `news/2`. If its free tier still serves candles
-  this becomes a direct HTTP fetch at zero model cost. **One call would settle
-  it; not made.** This is the first thing to try if the cost ever bites.
+- **Finnhub candles — MEASURED 08-04, and the answer is no.** `/stock/candle`
+  returns **HTTP 403, "You don't have access to this resource"**, with a key
+  whose `/quote` returns 200 in the same minute — so it is a tier restriction,
+  not auth. There is no free OHLC history there, and this was the most promising
+  of the three cheap paths. It is now closed rather than pending, and the
+  registry entry says so.
 - **Sonnet on `:trading_read`** — permitted (it is the floor, not below it), and
   roughly 40% cheaper by arithmetic on the token counts above. Declined because
   the 07-28 fabrication finding measured *haiku*, says nothing about sonnet

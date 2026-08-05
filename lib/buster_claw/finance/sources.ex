@@ -105,8 +105,14 @@ defmodule BusterClaw.Finance.Sources do
       rate_limit: "free-tier limits apply; quotes ~15 minutes delayed",
       terms: "vendor terms; free tier for non-commercial use — review before charging",
       status: :verified,
-      verified_on: ~D[2026-08-03],
-      note: "Wired as `BusterClaw.Finance.Finnhub`. Never describe a free-tier quote as live."
+      verified_on: ~D[2026-08-04],
+      note:
+        "Wired as `BusterClaw.Finance.Finnhub`. Never describe a free-tier quote as live. " <>
+          "NO OHLC HISTORY on the free tier: `/stock/candle` answers HTTP 403 " <>
+          "\"You don't have access to this resource\" with a key whose `/quote` returns 200 " <>
+          "in the same minute (measured 08-04). So this cannot back the market cache, and " <>
+          "the deep backfill stays on the ~$0.57 broker+model path. Recorded so the DECISION " <>
+          "is findable rather than the endpoint being retried."
     },
     %{
       key: "treasury_fiscal",
