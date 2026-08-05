@@ -162,13 +162,41 @@ defmodule BusterClaw.Portfolio.Recorder do
         case MarketData.backfill_benchmark(symbol, today) do
           {:ok, %{bars: bars}} ->
             Logger.info("Portfolio.Recorder: cached #{bars} bar(s) for #{symbol}")
+            MarketData.record_backfill_outcome(symbol, {:ok, bars}, today)
+            observe_backfill(symbol, "cached #{bars} bar(s)", %{bars: bars}, :info)
 
           {:error, reason} ->
             Logger.warning(
               "Portfolio.Recorder: benchmark #{symbol} backfill failed: #{inspect(reason)}"
             )
+
+            MarketData.record_backfill_outcome(symbol, {:error, reason}, today)
+
+            observe_backfill(
+              symbol,
+              "backfill failed",
+              %{reason: inspect(reason)},
+              :warning
+            )
         end
     end
+  end
+
+  # A daily job that fails only into `Logger` is indistinguishable from one that
+  # works — which is exactly what happened on 08-04, when a single failed attempt
+  # was read as a broken feature by three readers at once. Each attempt is worth
+  # ~$0.57 of model time, so its outcome belongs on the durable trail beside
+  # every other run this app spends money on.
+  defp observe_backfill(symbol, message, meta, severity) do
+    BusterClaw.Sentinel.observe(
+      :command_invoke,
+      "Benchmark #{symbol}: #{message}",
+      Map.merge(meta, %{source: "market_data_backfill", symbol: symbol}),
+      severity: severity
+    )
+  rescue
+    # Observability must never be the thing that breaks the recorder's tick.
+    _error -> :ok
   end
 
   defp past_fire_time?(state, today) do

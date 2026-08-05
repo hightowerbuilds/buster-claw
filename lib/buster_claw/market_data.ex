@@ -37,6 +37,11 @@ defmodule BusterClaw.MarketData do
   @quotes_key "market_quotes_snapshot"
   @attempt_key "market_data_attempted_on"
   @benchmark_attempt_key "benchmark_backfill_attempted_on"
+  # Per-symbol outcome of the last deep backfill. The day-latch above says only
+  # that SOMETHING was tried today; this says what happened, to which symbol, and
+  # why — the distinction that made one failed attempt on 08-04 read as a broken
+  # feature to the Chart Build agent, the operator and a roadmap simultaneously.
+  @backfill_outcome_key "benchmark_backfill_outcomes"
   @quotes_stale_min 15
   # First fill reaches back ~90 days (the roadmap's closes tier); daily top-ups
   # re-fetch a few days of overlap so a failed day self-heals.
@@ -240,6 +245,78 @@ defmodule BusterClaw.MarketData do
   # `store_bars/1` is the closes-tier writer. OHLC on an existing row survives
   # its upsert, so nothing is lost by coming in through this door.
   defp to_close(%{bar_on: bar_on, close: close}), do: %{bar_on: bar_on, close: close}
+
+  @doc """
+  Record what the last deep backfill of `symbol` did.
+
+  `outcome` is `{:ok, bars}` or `{:error, reason}`. Kept per symbol rather than
+  as one global latch because "nothing has been tried yet" and "tried and failed"
+  are different answers to the only question anyone asks of this cache — *why is
+  this symbol's history short?*
+  """
+  def record_backfill_outcome(symbol, outcome, day \\ MarketCalendar.today())
+      when is_binary(symbol) do
+    entry =
+      case outcome do
+        {:ok, bars} when is_integer(bars) ->
+          %{"on" => Date.to_iso8601(day), "outcome" => "ok", "bars" => bars}
+
+        {:error, reason} ->
+          %{
+            "on" => Date.to_iso8601(day),
+            "outcome" => "error",
+            # `inspect/1` and then truncate: a reason is for a human reading the
+            # feed, and an unbounded term from a failed agent run has no business
+            # sitting in a settings row.
+            "reason" => reason |> inspect() |> String.slice(0, 300)
+          }
+      end
+
+    Settings.put(
+      @backfill_outcome_key,
+      Jason.encode!(Map.put(backfill_outcomes(), symbol, entry))
+    )
+
+    # `:ok` rather than the Setting struct: this is a side effect the recorder
+    # performs, not a value anyone reads back.
+    :ok
+  end
+
+  @doc "Every recorded backfill outcome, by symbol."
+  def backfill_outcomes do
+    with raw when is_binary(raw) <- Settings.get(@backfill_outcome_key),
+         {:ok, %{} = decoded} <- Jason.decode(raw) do
+      decoded
+    else
+      _ -> %{}
+    end
+  end
+
+  @doc """
+  Why `symbol`'s history is as short as it is.
+
+  `:deep` — it has a usable year and needs nothing.
+  `{:failed, on, reason}` — a backfill was tried and did not work.
+  `:never_tried` — it has never been backfilled, so short simply means new.
+
+  This is the vocabulary the UI needs to stop showing "6 bars" and "6 bars
+  because the fetch died" as the same thing.
+  """
+  def backfill_status(symbol) when is_binary(symbol) do
+    cond do
+      length(bars(symbol)) >= @benchmark_target_bars ->
+        :deep
+
+      true ->
+        case Map.get(backfill_outcomes(), symbol) do
+          %{"outcome" => "error", "on" => on} = entry ->
+            {:failed, on, Map.get(entry, "reason")}
+
+          _ ->
+            :never_tried
+        end
+    end
+  end
 
   @doc """
   Symbols Chart Build can actually draw from cache: benchmarks first (they are
