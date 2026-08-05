@@ -32,10 +32,39 @@ defmodule BusterClawWeb.WatchlistSidebar do
   attr :depths, :map, required: true, doc: "symbol => :deep | {:short, n} | {:failed, on}"
   attr :selected, :string, default: nil
 
+  slot :panel,
+    doc: """
+    The tab's data panel, which shares this rail. Passed in rather than imported
+    here: the panel differs per tab kind and only `TradingLive` knows which one
+    applies, so this component stays a rail and does not learn about accounts or
+    charts.
+    """
+
   def watchlist_sidebar(assigns) do
     ~H"""
     <div class="flex min-h-0 shrink-0">
-      <section :if={@open} class="ic-panel flex min-h-0 w-[17rem] flex-col overflow-hidden p-3">
+      <section
+        :if={@open}
+        class={
+          [
+            "ic-panel flex min-h-0 flex-col overflow-hidden p-3",
+            # Wider when it carries a data panel. The account card was written when
+            # it owned the whole tab ("which is why the panel gets to be this
+            # wide"), so a 17rem rail would squeeze it badly; 26rem is the
+            # compromise, and it is a real cost of moving it here.
+            if(@panel != [], do: "w-[26rem]", else: "w-[17rem]")
+          ]
+        }
+      >
+        <%!-- Two independently scrolling regions in one fixed-height column: the
+              panel takes the room it needs and scrolls, the lists scroll under
+              it. This is the actual layout problem in this rail — not the
+              bumper. --%>
+        <div :if={@panel != []} class="min-h-0 flex-1 overflow-y-auto pb-3">
+          {render_slot(@panel)}
+        </div>
+
+        <div :if={@panel != []} class="shrink-0 border-t-2 border-base-content/20 pt-3"></div>
         <div class="flex shrink-0 items-baseline justify-between gap-2 pb-2">
           <p class="ic-eyebrow">Watchlists</p>
           <span class="font-mono text-[0.6rem] text-base-content/50">
@@ -65,7 +94,14 @@ defmodule BusterClawWeb.WatchlistSidebar do
           does not fetch anything on its own.
         </p>
 
-        <div class="min-h-0 flex-1 space-y-4 overflow-y-auto">
+        <div class={
+          [
+            "space-y-4 overflow-y-auto",
+            # With a panel above, the lists take a bounded share rather than
+            # competing for flex-1 with it.
+            if(@panel != [], do: "max-h-[45%] shrink-0", else: "min-h-0 flex-1")
+          ]
+        }>
           <div :for={{name, symbols} <- Enum.sort(@lists)} class="space-y-1">
             <div class="flex items-baseline justify-between gap-2">
               <p class="truncate font-mono text-xs font-bold uppercase tracking-wide">{name}</p>
