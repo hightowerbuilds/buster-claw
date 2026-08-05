@@ -1,11 +1,17 @@
 # 08-04-26
 
-Nine commits, one roadmap closed and archived. Yesterday's through-line was
-written claims coming apart from code. Today's is the sequel and it is less
-comfortable: **the suite was green through all of it, and an operator using the
-app found three bugs it could never have caught.** Not because the tests were
-bad, but because every one of them assumed the thing that had just stopped being
-true — and the last of the three raised no error at all.
+Twenty-one commits, two roadmaps closed and archived and a third opened.
+Yesterday's through-line was written claims coming apart from code. Today's is
+the sequel and it is less comfortable: **the suite was green through all of it,
+and an operator using the app found three bugs it could never have caught.** Not
+because the tests were bad, but because every one of them assumed the thing that
+had just stopped being true — and the last of the three raised no error at all.
+
+A second thread runs through the afternoon and is worth naming separately: **two
+of the day's documents were wrong within an hour of being committed**, and both
+were corrected by running something rather than by rereading them. One claimed
+the CLIs do not report spend; one called a single failed attempt a structural
+failure. Writing a thing down does not make it measured.
 
 ## Phase 4 was a much smaller build than its own roadmap said, because the roadmap was wrong
 
@@ -205,3 +211,127 @@ The common factor every time was a path never exercised on a non-claude harness.
 That is now a named piece of outstanding work rather than a hope: audit every
 argv- and stream-handling path — dispatcher, swarm, Chart Build — instead of
 waiting for the fourth.
+
+# Later the same day: the market cache learns what you care about
+
+## An agent refused honestly, and was right about nearly all of it
+
+The Chart Build agent was asked for a year of NVDA and SPY beside QXO. It drew
+what it had, said plainly that NVDA and SPY were not in the cache and it would
+not substitute, said the window was three months rather than a year because that
+is all the cache held, and offered to index to 100 so three magnitudes could be
+compared honestly. Asked how to add them, it said it could not do it from there,
+inferred the mechanism from what the cache contained, and flagged one of its own
+inferences as *"a real thing to check rather than assume"*.
+
+Reading the code confirmed the inference and narrowed it: **a symbol enters the
+cache by being HELD and by nothing else** — `MarketData.refresh/1`'s prompt opens
+"Collect market data for the operator's holdings". There is no watchlist because
+there was never a mechanism for one. And the thing it flagged as worth checking
+was the thing that mattered.
+
+## A roadmap written from one sample, corrected by one measurement
+
+The four benchmarks (SPY, QQQ, DIA, IWM) had zero rows while the attempt latch
+read today. The roadmap written in response said the backfill "runs and yields
+nothing" and called the failure durable, citing three structural properties.
+
+Then the recorder's exact chart-tier call was run for real: **a full year of
+clean OHLCV in 111 seconds, 3 turns, `is_error: false`, $0.5667.** Not a span
+refusal, not a timeout against the 300s cap, not auth.
+
+The truth was arithmetic: the feature landed 08-03 at 21:07, after that day's
+fire time; at one benchmark per day **exactly one attempt had ever run**, and it
+fell in the window where the codex harness bug broke every trading-tier run —
+the bug fixed hours later in this same session. A one-sample failure had been
+written up as structural, in a document committed an hour earlier.
+
+The three properties survive as **risks** rather than as a diagnosis: the latch
+spends the day on a failure, one benchmark per day means N symbols is N days, and
+the failure reached `Logger` but never the audit feed. That third one is why a
+single attempt looked like a broken feature to the agent, the operator and the
+roadmap simultaneously.
+
+SPY was then seeded from the probe's own output — 254 bars, validated through the
+app's own tripwire (parseable date, positive prices, high ≥ low), 0 dropped.
+
+## $0.57, and all of it is the model typing
+
+The cost of a deep backfill, measured and broken down: **$0.5659 of $0.5667 is
+Opus**, 8,922 output tokens. Robinhood charges nothing. The money is
+*transcription* — the MCP tool returns bars as JSON and the model retypes them as
+different JSON, under a prompt that says "transcribed exactly — never invented".
+A frontier model as a very careful photocopier.
+
+Three cheaper paths were identified and all three declined for now: Finnhub
+candles (wired and verified, but it implements only `quote/2` and `news/2` — one
+call would settle whether the free tier serves candles, and it is the first thing
+to try if cost ever bites), sonnet on `:trading_read` (~40% cheaper, permitted by
+the floor, declined because the 07-28 finding measured *haiku* and says nothing
+about sonnet on a surface where one wrong digit is silent), and Alpha Vantage,
+whose own registry note calls it "a demo, not a data source".
+
+The framing that follows: the watchlist itself is free — a Settings row — and
+charting anything already cached is free forever. The $0.57 is a per-ticker
+admission price for **new** history, not a subscription.
+
+## Phase 1: the record that was missing
+
+`MarketData.backfill_status/1` now answers the only question anyone asks of that
+cache — *why is this symbol's history short?* — with `:deep`, `{:failed, on,
+reason}`, or `:never_tried`, kept per symbol rather than as one global day-latch.
+Outcomes land on the Sentinel feed, successes included, so the trail shows work
+rather than only breakage.
+
+Not changed, deliberately: the latch still spends the day on a failure. A bounded
+retry doubles worst-case daily spend on a persistently failing symbol, and after
+an explicit decision to accept $0.57 that is the operator's call rather than a
+cleanup to slip in.
+
+## The rail, and a misread that took two rounds and one screenshot
+
+Watchlists landed as named lists in `Settings` — plural, because that was the
+word — with a left rail on the **Workspace tab's** bumper: a `w-2.5` sibling
+button, a flipping chevron, a boolean. No hook, no CSS. (An earlier note in this
+same roadmap claimed the app had "exactly one bumper" and pointed at
+`CornerWidget`; it has three, and the cheapest was the one asked for. Corrected
+in place.)
+
+Then "the data panel and the watchlists share the left sidebar" was read as *the
+Robinhood account UI*, and the whole card was moved into the rail. Wrong — and
+the suite said so immediately for a different reason: the rail defaulted
+collapsed, which was right when it held only watchlists and meant **opening
+Trading to an empty page** the moment the panel moved in. Six tests failed on one
+line whose value never changed, only its meaning.
+
+The move was reverted. One screenshot then resolved in a second what two rounds
+of inference had not: **the ticker lookup**, not the account UI. It now sits in
+the rail above the watchlists, on both Robinhood and Chart Build.
+
+Its banner did not travel with it. *"Public data only — this chat cannot see your
+accounts"* is a claim about the **chat**, not the search: it says Chart Build's
+chat has no Robinhood tool to deny. On the Robinhood tab that sentence is false —
+that chat can see your accounts, which is what it is for. So the lookup shows on
+both kinds and the banner stays on one, with a test asserting its absence rather
+than a comment promising it.
+
+## What the rail says on every row
+
+Each ticker carries `year` / `N bars` / `failed` / `queued`, read from
+`backfill_status/1` so the rail and the recorder cannot disagree. "6 bars" and "6
+bars because the fetch died" were the same observable state this morning. And the
+rail states in as many words that adding a symbol records intent rather than
+spending money — because at $0.57 a ticker, "add to a list" and "spend" must not
+be the same gesture.
+
+Keyboard navigation followed: arrows walk the matches, Enter opens, Escape drops
+the highlight — `phx-keydown` and an index, no hook. The real work was not the
+arrows but resetting the cursor everywhere the matches change, since an index
+pointing at a row that no longer exists is exactly the bug the feature invites.
+
+## Still not wired, and worth saying
+
+**The sweep does not read the watchlist.** A ticker added today shows `queued`
+and stays there. That is the rest of Phase 2 and it is where the decisions are:
+the sweep caps at ten symbols, holdings already consume part of that, and
+somebody has to decide whose symbols lose when the cap binds.
