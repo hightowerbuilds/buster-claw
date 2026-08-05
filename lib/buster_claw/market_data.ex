@@ -303,18 +303,16 @@ defmodule BusterClaw.MarketData do
   because the fetch died" as the same thing.
   """
   def backfill_status(symbol) when is_binary(symbol) do
-    cond do
-      length(bars(symbol)) >= @benchmark_target_bars ->
-        :deep
+    if length(bars(symbol)) >= @benchmark_target_bars do
+      :deep
+    else
+      case Map.get(backfill_outcomes(), symbol) do
+        %{"outcome" => "error", "on" => on} = entry ->
+          {:failed, on, Map.get(entry, "reason")}
 
-      true ->
-        case Map.get(backfill_outcomes(), symbol) do
-          %{"outcome" => "error", "on" => on} = entry ->
-            {:failed, on, Map.get(entry, "reason")}
-
-          _ ->
-            :never_tried
-        end
+        _ ->
+          :never_tried
+      end
     end
   end
 
