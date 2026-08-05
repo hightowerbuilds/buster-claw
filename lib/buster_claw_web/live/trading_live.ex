@@ -99,6 +99,9 @@ defmodule BusterClawWeb.TradingLive do
       |> assign(:lookup, %{})
       |> assign(:lookup_query, "")
       |> assign(:lookup_matches, [])
+      # Which match the keyboard is on. nil = none; the mouse never sets it, so
+      # a hover and an arrow key cannot disagree about what Enter would open.
+      |> assign(:lookup_cursor, nil)
       # One state map per conversation. Several windows render at once, so there
       # is no single "the chat" to hold running/queue/transcript for any more.
       |> assign(:chats, Map.new(tabs, &{&1.id, initial_chat_state(&1.id, &1.kind)}))
@@ -414,7 +417,9 @@ defmodule BusterClawWeb.TradingLive do
     {:noreply,
      socket
      |> assign(:lookup_query, query)
-     |> assign(:lookup_matches, Fetch.search(query))}
+     |> assign(:lookup_matches, Fetch.search(query))
+     # New matches, so the old index means nothing.
+     |> assign(:lookup_cursor, nil)}
   end
 
   def handle_event("lookup_open", %{"symbol" => symbol}, socket) do
@@ -424,7 +429,19 @@ defmodule BusterClawWeb.TradingLive do
      socket
      |> put_lookup(Fetch.load(symbol))
      |> assign(:lookup_query, "")
-     |> assign(:lookup_matches, [])}
+     |> assign(:lookup_matches, [])
+     |> assign(:lookup_cursor, nil)}
+  end
+
+  # Keyboard navigation of the match list. Pure LiveView: `phx-keydown` on the
+  # input and an index in the assigns, the same instinct as the rail's bumper —
+  # a JS hook would be a second way to do a thing this app already does simply.
+  #
+  # The arrow keys are NOT preventDefault'd (no hook, no way to), so Down also
+  # drops the caret to the end of the input. In a single-line search box that is
+  # invisible, and it is the price of not owning a hook.
+  def handle_event("lookup_key", %{"key" => key}, socket) do
+    {:noreply, move_lookup_cursor(socket, key)}
   end
 
   def handle_event("lookup_clear", _params, socket) do
@@ -432,7 +449,8 @@ defmodule BusterClawWeb.TradingLive do
      socket
      |> put_lookup(Fetch.blank())
      |> assign(:lookup_query, "")
-     |> assign(:lookup_matches, [])}
+     |> assign(:lookup_matches, [])
+     |> assign(:lookup_cursor, nil)}
   end
 
   # ---------------------------------------------------------------------------
@@ -2127,6 +2145,59 @@ defmodule BusterClawWeb.TradingLive do
 
   defp order_error(_reason), do: "unreadable order"
 
+  defp move_lookup_cursor(socket, "ArrowDown"), do: nudge_cursor(socket, +1)
+  defp move_lookup_cursor(socket, "ArrowUp"), do: nudge_cursor(socket, -1)
+
+  defp move_lookup_cursor(socket, "Escape"), do: assign(socket, :lookup_cursor, nil)
+
+  defp move_lookup_cursor(socket, "Enter") do
+    matches = socket.assigns.lookup_matches
+
+    case socket.assigns.lookup_cursor do
+      i when is_integer(i) and i >= 0 ->
+        case Enum.at(matches, i) do
+          %{symbol: symbol} ->
+            socket
+            |> put_lookup(Fetch.load(symbol))
+            |> assign(:lookup_query, "")
+            |> assign(:lookup_matches, [])
+            |> assign(:lookup_cursor, nil)
+
+          _ ->
+            socket
+        end
+
+      _ ->
+        socket
+    end
+  end
+
+  # Every other key: typing is handled by the form's own change event.
+  defp move_lookup_cursor(socket, _key), do: socket
+
+  # Clamped rather than wrapping. A list that jumps from the last row back to the
+  # first reads as a glitch in a box this small, and there is no case here where
+  # a long list makes wrapping worth it.
+  defp nudge_cursor(socket, delta) do
+    case socket.assigns.lookup_matches do
+      [] ->
+        socket
+
+      matches ->
+        last = length(matches) - 1
+        current = socket.assigns.lookup_cursor
+
+        next =
+          case current do
+            nil when delta > 0 -> 0
+            nil -> last
+            i -> (i + delta) |> max(0) |> min(last)
+          end
+
+        assign(socket, :lookup_cursor, next)
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Watchlists (left rail)
   # ---------------------------------------------------------------------------
@@ -2234,6 +2305,7 @@ defmodule BusterClawWeb.TradingLive do
                   panel={lookup_panel(assigns)}
                   query={@lookup_query}
                   matches={@lookup_matches}
+                  cursor={@lookup_cursor}
                 />
               </:panel>
             </.watchlist_sidebar>

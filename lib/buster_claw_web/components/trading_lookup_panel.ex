@@ -23,6 +23,7 @@ defmodule BusterClawWeb.TradingLookupPanel do
   attr :panel, :map, required: true
   attr :query, :string, required: true
   attr :matches, :list, required: true
+  attr :cursor, :integer, default: nil, doc: "index of the keyboard-highlighted match"
 
   # Everything here is rendered from what the APP fetched — Finnhub and EDGAR
   # through `BusterClaw.Finance` — never from anything the model typed. Each
@@ -34,10 +35,18 @@ defmodule BusterClawWeb.TradingLookupPanel do
       class="ic-panel flex min-h-0 w-full flex-col overflow-y-auto p-4 font-mono text-xs"
     >
       <form phx-change="lookup_search" phx-submit="lookup_search" autocomplete="off">
+        <%!-- Arrow keys walk the matches, Enter opens the highlighted one, Escape
+              drops the highlight. Handled in the LiveView rather than a JS hook,
+              like the rail's bumper — see `move_lookup_cursor/2`. --%>
         <input
           type="text"
           name="query"
           value={@query}
+          phx-keydown="lookup_key"
+          role="combobox"
+          aria-expanded={@matches != []}
+          aria-controls="trading-lookup-matches"
+          aria-activedescendant={@cursor && "trading-lookup-match-#{@cursor}"}
           placeholder="Search a ticker or company…"
           class="w-full border-2 border-base-content/25 bg-base-100 px-2 py-1.5 focus:border-primary focus:outline-none"
         />
@@ -45,14 +54,22 @@ defmodule BusterClawWeb.TradingLookupPanel do
 
       <div
         :if={@matches != []}
+        id="trading-lookup-matches"
+        role="listbox"
         class="mt-1 divide-y divide-base-content/10 border-2 border-base-content/20"
       >
         <button
-          :for={match <- @matches}
+          :for={{match, index} <- Enum.with_index(@matches)}
           type="button"
+          id={"trading-lookup-match-#{index}"}
+          role="option"
+          aria-selected={index == @cursor}
           phx-click="lookup_open"
           phx-value-symbol={match.symbol}
-          class="flex w-full items-baseline gap-2 px-2 py-1.5 text-left transition hover:bg-base-content/10"
+          class={[
+            "flex w-full items-baseline gap-2 px-2 py-1.5 text-left transition hover:bg-base-content/10",
+            index == @cursor && "bg-primary/20 ring-1 ring-inset ring-primary"
+          ]}
         >
           <span class="font-bold">{match.symbol}</span>
           <span class="truncate text-base-content/60">{match.name}</span>
