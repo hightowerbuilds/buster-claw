@@ -510,4 +510,79 @@ defmodule BusterClaw.Agent.ChatTest do
     assert_receive {:agent_chat, ^conv, {:message, %{role: :error, text: text}}}
     assert text =~ "error_max_turns"
   end
+
+  # Found in the running app on 08-04, not by a test: switching the global
+  # harness to codex made every chat turn exit 2 with
+  # `unexpected argument '--append-system-prompt'`. Claude-only flags had leaked
+  # into a non-claude argv — the same class of thing that pins the money
+  # surfaces, one level up.
+  describe "claude-only flags do not reach another harness" do
+    defp capturing_spawner(test_pid) do
+      fn prompt, opts ->
+        send(test_pid, {:spawned, prompt, opts})
+        {:ok, :fake_port}
+      end
+    end
+
+    defp start_chat!(opts) do
+      conv = "flags-#{System.unique_integer([:positive])}"
+
+      {:ok, pid} =
+        Chat.start_link(
+          [conv_id: conv, persist: false, audit: false, spawner: capturing_spawner(self())] ++
+            opts
+        )
+
+      {conv, pid}
+    end
+
+    test "codex gets no --append-system-prompt; the guide rides in the prompt" do
+      {conv, pid} = start_chat!(agent: :codex, append_system_prompt: "BE A DUCK")
+      :ok = Chat.send_message(conv, "hello")
+
+      assert_receive {:spawned, prompt, opts}
+      refute "--append-system-prompt" in Keyword.fetch!(opts, :extra_args)
+      assert prompt =~ "BE A DUCK"
+      assert prompt =~ "hello"
+
+      GenServer.stop(pid)
+    end
+
+    test "claude keeps the flag, and its prompt is untouched" do
+      {conv, pid} = start_chat!(agent: :claude, append_system_prompt: "BE A DUCK")
+      :ok = Chat.send_message(conv, "hello")
+
+      assert_receive {:spawned, prompt, opts}
+      assert "--append-system-prompt" in Keyword.fetch!(opts, :extra_args)
+      assert prompt == "hello", "claude must not get the guide twice"
+
+      GenServer.stop(pid)
+    end
+
+    # The Trading and Chart Build profiles carry claude's MCP/tool flags. Those
+    # are rejected outright by the other harnesses, so the conversation runs on
+    # claude regardless of the operator's global choice.
+    test "a conversation with claude-only confinement stays on claude" do
+      {conv, pid} =
+        start_chat!(agent: :codex, extra_cli_args: ["--strict-mcp-config", "--mcp-config", "x"])
+
+      :ok = Chat.send_message(conv, "hello")
+
+      assert_receive {:spawned, _prompt, opts}
+      assert Keyword.fetch!(opts, :agent) == :claude
+
+      GenServer.stop(pid)
+    end
+
+    test "a plain conversation honours the chosen harness" do
+      {conv, pid} = start_chat!(agent: :codex)
+      :ok = Chat.send_message(conv, "hello")
+
+      assert_receive {:spawned, _prompt, opts}
+      assert Keyword.fetch!(opts, :agent) == :codex
+      assert "--json" in Keyword.fetch!(opts, :extra_args)
+
+      GenServer.stop(pid)
+    end
+  end
 end

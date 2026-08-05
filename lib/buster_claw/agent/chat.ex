@@ -411,17 +411,19 @@ defmodule BusterClaw.Agent.Chat do
         cost: nil
       })
 
+    agent = effective_agent(state)
+
     extra =
-      AgentBackend.stream_args(state.agent, stream: true) ++
-        resume_args(state.agent, state.session_id) ++
-        append_system_prompt_args(state.append_system_prompt) ++
+      AgentBackend.stream_args(agent, stream: true) ++
+        resume_args(agent, state.session_id) ++
+        append_system_prompt_args(agent, state.append_system_prompt) ++
         state.extra_cli_args
 
     spawn_opts =
-      [extra_args: extra, login: true, agent: state.agent]
+      [extra_args: extra, login: true, agent: agent]
       |> maybe_put_permission_mode(state.permission_mode)
 
-    case state.spawner.(text, spawn_opts) do
+    case state.spawner.(prompt_for(agent, state, text), spawn_opts) do
       {:ok, port} ->
         broadcast(state, {:status, :running})
         timer = Process.send_after(self(), {:run_timeout, token}, state.timeout_ms)
@@ -669,9 +671,34 @@ defmodule BusterClaw.Agent.Chat do
   defp resume_args(:opencode, session_id), do: ["--session", session_id]
   defp resume_args(_claude, session_id), do: ["--resume", session_id]
 
-  defp append_system_prompt_args(nil), do: []
-  defp append_system_prompt_args(""), do: []
-  defp append_system_prompt_args(prompt), do: ["--append-system-prompt", prompt]
+  # `--append-system-prompt` is claude's spelling and claude's alone: codex
+  # answers it with "unexpected argument '--append-system-prompt'" and exits 2,
+  # which is exactly how this was found — in the app, after switching the global
+  # harness. The other harnesses have no equivalent flag, so the guide is
+  # PREPENDED to the prompt instead by `prompt_for/3`. Dropping it silently would
+  # have left the SVG and trading vocabularies quietly missing.
+  defp append_system_prompt_args(_agent, nil), do: []
+  defp append_system_prompt_args(_agent, ""), do: []
+  defp append_system_prompt_args(:claude, prompt), do: ["--append-system-prompt", prompt]
+  defp append_system_prompt_args(_other, _prompt), do: []
+
+  # The same instructions, carried in the prompt for a harness that cannot take
+  # them as a flag. Only ever applied where the flag was NOT emitted, so claude
+  # is untouched and no conversation gets the guide twice.
+  defp prompt_for(:claude, _state, text), do: text
+  defp prompt_for(_agent, %{append_system_prompt: nil}, text), do: text
+  defp prompt_for(_agent, %{append_system_prompt: ""}, text), do: text
+
+  defp prompt_for(_agent, %{append_system_prompt: guide}, text),
+    do: guide <> "\n\n---\n\n" <> text
+
+  # A conversation whose profile carries claude-only confinement — the Trading
+  # chat's `--strict-mcp-config`/`--allowedTools`, Chart Build's — cannot run
+  # anywhere else; those flags are rejected outright, not degraded. Same fact
+  # that pins the money surfaces, applied one level up. Silently honouring a
+  # harness the run cannot use would fail every turn instead.
+  defp effective_agent(%{extra_cli_args: []} = state), do: state.agent
+  defp effective_agent(_state), do: :claude
 
   defp maybe_put_permission_mode(opts, nil), do: opts
 
