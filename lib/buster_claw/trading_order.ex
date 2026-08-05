@@ -33,6 +33,7 @@ defmodule BusterClaw.TradingOrder do
   """
 
   alias BusterClaw.Agent.StreamEvent
+  alias BusterClaw.AgentBackend
   alias BusterClaw.AgentRunner
   alias BusterClaw.ModelPolicy
   alias BusterClaw.Trading
@@ -245,7 +246,9 @@ defmodule BusterClaw.TradingOrder do
 
   defp run_submit(order) do
     opts = [
-      extra_args: submit_cli_args() ++ ~w(--output-format stream-json --verbose),
+      # See `Trading.run_agent/3`: `:order_submit` is pinned to claude, so these
+      # are claude's flags by construction rather than by preference.
+      extra_args: submit_cli_args() ++ AgentBackend.stream_args(:claude, stream: true),
       # The only path that moves money, and irreversible once the broker takes
       # it. `:order_submit` carries a `ModelPolicy` floor for the same reason
       # `:trading_read` does — on 07-28 a cheaper model on a money surface did
@@ -289,7 +292,7 @@ defmodule BusterClaw.TradingOrder do
       output
       |> String.split("\n")
       |> Enum.flat_map(fn line ->
-        case StreamEvent.parse(line) do
+        case StreamEvent.parse(:claude, line) do
           {:ok, event} -> [event]
           :error -> []
         end

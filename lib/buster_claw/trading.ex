@@ -45,6 +45,7 @@ defmodule BusterClaw.Trading do
 
   alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.StreamEvent
+  alias BusterClaw.AgentBackend
   alias BusterClaw.AgentRunner
   alias BusterClaw.Library.Artifact
   alias BusterClaw.ModelPolicy
@@ -881,7 +882,13 @@ defmodule BusterClaw.Trading do
 
   defp run_agent(prompt, timeout_ms, parser) do
     opts = [
-      extra_args: read_only_cli_args() ++ ~w(--output-format stream-json --verbose),
+      # Claude's flags, and claude's stream format, because `:trading_read` is
+      # PINNED to claude (`ModelPolicy.claude_only?/1`) — codex rejects
+      # `--disallowedTools` outright. Sourced from `AgentBackend` rather than
+      # retyped so the harness is named here rather than assumed; if the pin is
+      # ever lifted this line is one of the two that has to change, and
+      # `trading_test.exs` fails until it does.
+      extra_args: read_only_cli_args() ++ AgentBackend.stream_args(:claude, stream: true),
       # NOT haiku — and since 08-03 a floor enforces that rather than a comment
       # asserting it. Haiku was chosen when these reads were cheap and their
       # failure mode was assumed to be an error; measured on 07-28 it invoked the
@@ -936,7 +943,10 @@ defmodule BusterClaw.Trading do
       output
       |> String.split("\n")
       |> Enum.flat_map(fn line ->
-        case StreamEvent.parse(line) do
+        # Explicitly claude: this run is claude by construction (see the pin),
+        # and the arity-1 default silently meaning claude is what let the chat
+        # spawn one harness and parse another on 08-04.
+        case StreamEvent.parse(:claude, line) do
           {:ok, event} -> [event]
           :error -> []
         end
