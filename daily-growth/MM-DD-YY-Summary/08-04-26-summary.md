@@ -1,10 +1,11 @@
 # 08-04-26
 
-Six commits, one roadmap closed and archived. Yesterday's through-line was
+Nine commits, one roadmap closed and archived. Yesterday's through-line was
 written claims coming apart from code. Today's is the sequel and it is less
 comfortable: **the suite was green through all of it, and an operator using the
-app found two bugs it could never have caught.** Not because the tests were bad,
-but because every one of them assumed the thing that had just stopped being true.
+app found three bugs it could never have caught.** Not because the tests were
+bad, but because every one of them assumed the thing that had just stopped being
+true — and the last of the three raised no error at all.
 
 ## Phase 4 was a much smaller build than its own roadmap said, because the roadmap was wrong
 
@@ -62,7 +63,7 @@ fabrication probe was the gate on a per-backend floor — but with no non-Claude
 money run possible, there is nothing left to measure. The closeout says that
 plainly instead of leaving a checkbox that reads as pending.
 
-## Two bugs the operator found, and why the suite could not
+## The first two bugs the operator found, and why the suite could not
 
 **The global harness had no picker.** Every per-surface row got a harness
 dropdown; the global default never did. So the only harness reachable from
@@ -146,10 +147,61 @@ whether an OpenCode agent file's permission patterns reach individual MCP tool
 names. Both decide whether per-backend confinement is buildable at all — which is
 what the pin is waiting on.
 
+## Codex gets a model list, and the provenance goes in the code
+
+Picking codex left the model dropdown empty with only a note pointing at the
+free-text field. It now offers `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`.
+
+This reverses "ship no list for a harness that cannot enumerate". That rule's
+reason — a fixed list goes stale — is real, but the free-text field already
+covers it, and the cost of no list was every codex user typing an ID by hand for
+no benefit. OpenCode still ships none: its list is genuinely per-machine.
+
+The part worth keeping is *how* the IDs are recorded. **Codex does not validate
+the model up front** — `definitely-not-a-model` was accepted and passed straight
+to the provider — so a wrong entry fails late and confusingly rather than at the
+picker. So each ID carries its evidence in the code: `gpt-5.6-sol` from the
+operator's own `~/.codex/config.toml`, `gpt-5.6-luna` from `opencode models`, and
+`gpt-5.6-terra` named by the operator and following the family pattern but **not
+independently verified**. Three IDs that all *look* equally checked would have
+been the more comfortable thing to write and the less useful one.
+
+## The empty Trading chat: one decision held in two places
+
+Then the Trading tab went blank. Not an error — blank.
+
+Two commits earlier, stopping claude-only flags from leaking into a codex argv
+meant `start_run` began spawning with `effective_agent/1`: a conversation
+carrying claude-only confinement runs on claude whatever the operator chose.
+`apply_line` kept parsing with `state.agent`, which said codex.
+
+So the tab spawned claude and read claude's `stream-json` through the **codex**
+normalizer. Every event fell through to `:unknown`. Nothing reached the
+transcript.
+
+**Nothing failed.** The run succeeded, the output was correct, the exit status
+was 0 — the parser simply understood none of it. An empty window was the entire
+symptom, which is why it read as an integration gap rather than a bug.
+
+The general shape deserves the name more than the instance does: **the argv and
+the parser are two halves of one decision**, and holding that decision in two
+places was harmless with one harness and silent with three. They now come from
+one function.
+
+The regression test was probed by reverting the fix, and fails without it. That
+mattered here specifically: the previous version of that same test file passed
+happily while the app rendered nothing.
+
 ## The day in one line
 
 Yesterday's lesson was *measure the tool rather than quoting the last person who
 did*. Today's is its other half: **a green suite is evidence about the questions
-it asks, and a new capability arrives with its own questions unasked.** Both bugs
-that reached the operator were in code paths no test had ever walked, in a suite
-that had grown by two hundred tests that week.
+it asks, and a new capability arrives with its own questions unasked.** All three
+bugs that reached the operator today were in code paths no test had ever walked,
+in a suite that had grown by two hundred tests that week — and the third one
+produced no error at all, just an empty box where the answer should have been.
+
+The common factor every time was a path never exercised on a non-claude harness.
+That is now a named piece of outstanding work rather than a hope: audit every
+argv- and stream-handling path — dispatcher, swarm, Chart Build — instead of
+waiting for the fourth.
