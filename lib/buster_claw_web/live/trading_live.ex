@@ -79,10 +79,11 @@ defmodule BusterClawWeb.TradingLive do
     socket =
       socket
       |> assign(:page_title, "Trading")
-      # The left rail. Collapsed by default, unlike the Workspace tab's: this one
-      # shares a tab that already carries a strip, a data panel and floating
-      # chat windows.
-      |> assign(:watchlist_open, false)
+      # The left rail, open by default like the Workspace tab's: it carries the
+      # symbol lookup on Chart Build, and a search box nobody can see is not a
+      # search box. The account UI still owns the tab — only ticker things live
+      # in here.
+      |> assign(:watchlist_open, true)
       |> assign_watchlists()
       # Joined into a split pane (`SplitLive`), this tab is half a window rather
       # than a whole one. The only thing that changes is where the floating chat
@@ -2208,7 +2209,29 @@ defmodule BusterClawWeb.TradingLive do
               open={@watchlist_open}
               lists={@watchlists}
               depths={@watchlist_depths}
-            />
+            >
+              <%!-- The symbol lookup moved here from a right-hand column inside
+                    the Chart Build panel. Its original comment argued for "beside
+                    the chart", so the operator can read a looked-up figure
+                    against a drawn one — the left rail is still beside it, and
+                    now the tab has ONE place for ticker things: search a symbol,
+                    and the lists you keep. --%>
+              <:panel :if={@active_kind == "chartbuild"}>
+                <%!-- States the stronger fact: the broker isn't restricted here,
+                      it's absent. This chat has no Robinhood tool to deny. --%>
+                <div
+                  id="trading-lookup-banner"
+                  class="border-2 border-info/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-info"
+                >
+                  Public data only — this chat cannot see your accounts
+                </div>
+                <.lookup_card
+                  panel={lookup_panel(assigns)}
+                  query={@lookup_query}
+                  matches={@lookup_matches}
+                />
+              </:panel>
+            </.watchlist_sidebar>
             <div class="flex min-h-0 flex-1 flex-col gap-2">
               <%!-- The panel owns the whole tab. Chat is not beside it any more but on
               top of it, in windows the operator places — which is why the panel
@@ -2313,21 +2336,6 @@ defmodule BusterClawWeb.TradingLive do
                     agent_cli_missing={@agent_cli_missing}
                     empty_message={chat_empty_message(@active_kind)}
                     placeholder={chat_placeholder(@active_kind)}
-                  />
-                </div>
-                <div class="flex min-h-0 shrink-0 flex-col gap-2 lg:w-80 xl:w-96">
-                  <%!-- States the stronger fact: the broker isn't restricted here,
-                  it's absent. This chat has no Robinhood tool to deny. --%>
-                  <div
-                    id="trading-lookup-banner"
-                    class="border-2 border-info/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-info"
-                  >
-                    Public data only — this chat cannot see your accounts
-                  </div>
-                  <.lookup_card
-                    panel={lookup_panel(assigns)}
-                    query={@lookup_query}
-                    matches={@lookup_matches}
                   />
                 </div>
               </div>

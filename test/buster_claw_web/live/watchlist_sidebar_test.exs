@@ -9,10 +9,13 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
 
   alias BusterClaw.Watchlist
 
-  test "starts collapsed, and the bumper opens it", %{conn: conn} do
+  # Open by default: the rail carries the Chart Build symbol lookup, and a search
+  # box nobody can see is not a search box.
+  test "starts open, and the bumper collapses it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/trading")
+    assert render(view) =~ "Watchlists"
 
-    # Collapsed by default: this tab already carries a strip, a panel and chats.
+    render_click(view, "watchlist_toggle", %{})
     refute render(view) =~ "Watchlists"
 
     render_click(view, "watchlist_toggle", %{})
@@ -21,8 +24,6 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
 
   test "creates a list, adds a ticker, and removes it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/trading")
-    render_click(view, "watchlist_toggle", %{})
-
     render_submit(view, "watchlist_create", %{"name" => "Semis"})
     assert Watchlist.names() == ["Semis"]
 
@@ -36,7 +37,6 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
 
   test "a bad ticker flashes instead of storing junk", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/trading")
-    render_click(view, "watchlist_toggle", %{})
     render_submit(view, "watchlist_create", %{"name" => "Semis"})
 
     html = render_submit(view, "watchlist_add", %{"name" => "Semis", "symbol" => "not a ticker"})
@@ -59,7 +59,6 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
     :ok = BusterClaw.MarketData.record_backfill_outcome("QQQ", {:error, :boom}, ~D[2026-08-04])
 
     {:ok, view, _html} = live(conn, ~p"/trading")
-    render_click(view, "watchlist_toggle", %{})
     html = render(view)
 
     assert html =~ "year"
@@ -90,6 +89,43 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
         close_cents: 10_000 + i
       })
       |> BusterClaw.Repo.insert!()
+    end
+  end
+
+  # The operator's actual ask: ticker things in one rail — search a symbol, and
+  # the lists you keep. NOT the Robinhood account UI, which still owns the tab.
+  describe "the symbol lookup shares the rail" do
+    test "Chart Build renders the lookup inside the rail, not in a side column",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab_menu", %{})
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+
+      html = render(view)
+      assert html =~ "Public data only"
+      assert html =~ "Watchlists"
+    end
+
+    test "collapsing the rail takes the lookup with it", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab_menu", %{})
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      assert render(view) =~ "Public data only"
+
+      render_click(view, "watchlist_toggle", %{})
+      refute render(view) =~ "Public data only"
+    end
+
+    # The account UI is emphatically NOT in the rail — that was a misread on
+    # 08-04, moved and reverted the same evening.
+    test "the Robinhood account card still owns the tab", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      assert has_element?(view, "#trading-account-card")
+
+      render_click(view, "watchlist_toggle", %{})
+
+      assert has_element?(view, "#trading-account-card"),
+             "collapsing the rail must not hide the account UI"
     end
   end
 end

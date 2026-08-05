@@ -32,10 +32,29 @@ defmodule BusterClawWeb.WatchlistSidebar do
   attr :depths, :map, required: true, doc: "symbol => :deep | {:short, n} | {:failed, on}"
   attr :selected, :string, default: nil
 
+  slot :panel,
+    doc: """
+    Ticker-shaped content the rail carries above the lists — the Chart Build
+    lookup, for instance. Passed in rather than imported: only `TradingLive`
+    knows which tab kind is showing, and this component stays a rail.
+    """
+
   def watchlist_sidebar(assigns) do
     ~H"""
     <div class="flex min-h-0 shrink-0">
-      <section :if={@open} class="ic-panel flex min-h-0 w-[17rem] flex-col overflow-hidden p-3">
+      <section
+        :if={@open}
+        class={[
+          "ic-panel flex min-h-0 flex-col overflow-hidden p-3",
+          if(@panel != [], do: "w-[21rem]", else: "w-[17rem]")
+        ]}
+      >
+        <%!-- The panel and the lists scroll independently inside one
+              fixed-height column. That, not the bumper, is the layout problem
+              here. --%>
+        <div :if={@panel != []} class="shrink-0 space-y-2 pb-3">
+          {render_slot(@panel)}
+        </div>
         <div class="flex shrink-0 items-baseline justify-between gap-2 pb-2">
           <p class="ic-eyebrow">Watchlists</p>
           <span class="font-mono text-[0.6rem] text-base-content/50">
