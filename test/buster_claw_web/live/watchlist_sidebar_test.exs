@@ -9,13 +9,10 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
 
   alias BusterClaw.Watchlist
 
-  # Open by default since the data panel moved in: the rail carries the tab's
-  # main content, so a collapsed default would open Trading to an empty page.
-  test "starts open, and the bumper collapses it", %{conn: conn} do
+  test "starts collapsed, and the bumper opens it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/trading")
-    assert render(view) =~ "Watchlists"
 
-    render_click(view, "watchlist_toggle", %{})
+    # Collapsed by default: this tab already carries a strip, a panel and chats.
     refute render(view) =~ "Watchlists"
 
     render_click(view, "watchlist_toggle", %{})
@@ -24,6 +21,8 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
 
   test "creates a list, adds a ticker, and removes it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/trading")
+    render_click(view, "watchlist_toggle", %{})
+
     render_submit(view, "watchlist_create", %{"name" => "Semis"})
     assert Watchlist.names() == ["Semis"]
 
@@ -37,6 +36,7 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
 
   test "a bad ticker flashes instead of storing junk", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/trading")
+    render_click(view, "watchlist_toggle", %{})
     render_submit(view, "watchlist_create", %{"name" => "Semis"})
 
     html = render_submit(view, "watchlist_add", %{"name" => "Semis", "symbol" => "not a ticker"})
@@ -59,6 +59,7 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
     :ok = BusterClaw.MarketData.record_backfill_outcome("QQQ", {:error, :boom}, ~D[2026-08-04])
 
     {:ok, view, _html} = live(conn, ~p"/trading")
+    render_click(view, "watchlist_toggle", %{})
     html = render(view)
 
     assert html =~ "year"

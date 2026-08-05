@@ -79,12 +79,10 @@ defmodule BusterClawWeb.TradingLive do
     socket =
       socket
       |> assign(:page_title, "Trading")
-      # The left rail, OPEN by default — the same as the Workspace tab's, and for
-      # the same reason once the data panel moved in: the rail now carries the
-      # tab's main content, so collapsing it by default would open Trading to an
-      # empty page. It was briefly `false`, from when the rail held only
-      # watchlists; the test suite caught the change in meaning immediately.
-      |> assign(:watchlist_open, true)
+      # The left rail. Collapsed by default, unlike the Workspace tab's: this one
+      # shares a tab that already carries a strip, a data panel and floating
+      # chat windows.
+      |> assign(:watchlist_open, false)
       |> assign_watchlists()
       # Joined into a split pane (`SplitLive`), this tab is half a window rather
       # than a whole one. The only thing that changes is where the floating chat
@@ -2210,46 +2208,7 @@ defmodule BusterClawWeb.TradingLive do
               open={@watchlist_open}
               lists={@watchlists}
               depths={@watchlist_depths}
-            >
-              <%!-- The tab's data panel now shares the rail. Each kind brings its
-                    own; a neutral chat brings none, and the rail is then just the
-                    watchlists. --%>
-              <:panel :if={@active_kind == "robinhood" and not docked?(@tabs, @active_tab)}>
-                <.trading_account_card
-                  account={@trading_account}
-                  selected_id={@trading_account_sel}
-                  all_accounts={@all_accounts}
-                  detail={@trading_detail}
-                  anomaly={@trading_anomaly}
-                  series={@trading_series}
-                  performance_state={@trading_performance_state}
-                  range={@trading_range}
-                  coverage={@trading_coverage}
-                  backfilling={@trading_backfilling}
-                  table={@trading_table}
-                  day_change={@trading_day_change}
-                  indexes_state={@market_indexes_state}
-                  positions={@trading_positions}
-                  positions_state={@trading_positions_state}
-                  costs_missing={@trading_costs_missing}
-                  costs_loading={@trading_costs_loading}
-                  prices_state={@prices_state}
-                  chart_view={@trading_chart_view}
-                  symbol_bars={@symbol_bars}
-                  symbol_range={@symbol_range}
-                  symbol_mode={@symbol_mode}
-                  symbol_state={@symbol_bars_state}
-                  earnings={@trading_earnings}
-                  earnings_state={@trading_earnings_state}
-                />
-              </:panel>
-              <:panel :if={@active_kind == "chartbuild"}>
-                <.chart_preview
-                  charts={chat_state(assigns, @active_tab).svgs}
-                  zoomed={chat_state(assigns, @active_tab).zoomed_id}
-                />
-              </:panel>
-            </.watchlist_sidebar>
+            />
             <div class="flex min-h-0 flex-1 flex-col gap-2">
               <%!-- The panel owns the whole tab. Chat is not beside it any more but on
               top of it, in windows the operator places — which is why the panel
@@ -2288,6 +2247,33 @@ defmodule BusterClawWeb.TradingLive do
                     and log in again.
                   </p>
                 </div>
+                <.trading_account_card
+                  account={@trading_account}
+                  selected_id={@trading_account_sel}
+                  all_accounts={@all_accounts}
+                  detail={@trading_detail}
+                  anomaly={@trading_anomaly}
+                  series={@trading_series}
+                  performance_state={@trading_performance_state}
+                  range={@trading_range}
+                  coverage={@trading_coverage}
+                  backfilling={@trading_backfilling}
+                  table={@trading_table}
+                  day_change={@trading_day_change}
+                  indexes_state={@market_indexes_state}
+                  positions={@trading_positions}
+                  positions_state={@trading_positions_state}
+                  costs_missing={@trading_costs_missing}
+                  costs_loading={@trading_costs_loading}
+                  prices_state={@prices_state}
+                  chart_view={@trading_chart_view}
+                  symbol_bars={@symbol_bars}
+                  symbol_range={@symbol_range}
+                  symbol_mode={@symbol_mode}
+                  symbol_state={@symbol_bars_state}
+                  earnings={@trading_earnings}
+                  earnings_state={@trading_earnings_state}
+                />
               </div>
 
               <%!-- Chart Build owns its whole tab: the newest sanitized SVG above its
@@ -2306,6 +2292,10 @@ defmodule BusterClawWeb.TradingLive do
                 class="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row"
               >
                 <div class="flex min-h-0 flex-1 flex-col gap-2">
+                  <.chart_preview
+                    charts={chat_state(assigns, @active_tab).svgs}
+                    zoomed={chat_state(assigns, @active_tab).zoomed_id}
+                  />
                   <BusterClawWeb.ChatPanel.chat_window
                     id={"chartbuild-chat-#{@active_tab}"}
                     conv={@active_tab}
