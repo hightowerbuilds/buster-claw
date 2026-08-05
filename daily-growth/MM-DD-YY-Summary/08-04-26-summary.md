@@ -1,6 +1,6 @@
 # 08-04-26
 
-Twenty-one commits, two roadmaps closed and archived and a third opened.
+Twenty-five commits, two roadmaps closed and archived and a third opened.
 Yesterday's through-line was written claims coming apart from code. Today's is
 the sequel and it is less comfortable: **the suite was green through all of it,
 and an operator using the app found three bugs it could never have caught.** Not
@@ -335,3 +335,57 @@ pointing at a row that no longer exists is exactly the bug the feature invites.
 and stays there. That is the rest of Phase 2 and it is where the decisions are:
 the sweep caps at ten symbols, holdings already consume part of that, and
 somebody has to decide whose symbols lose when the cap binds.
+
+## Finnhub, settled in one call
+
+The most promising of the three cheap paths for market history, and the first
+thing the cost decision said to try if $0.57 ever bit. `/stock/candle` answers
+**HTTP 403, "You don't have access to this resource"** — with a key whose
+`/quote` returns 200 in the same minute. The control is what makes that worth
+anything: it is a tier restriction, not auth, and there is no free OHLC history
+there.
+
+Recorded in the source registry rather than only in a summary, for the same
+reason the Yahoo entry exists — so the DECISION is findable and the endpoint is
+not rediscovered and retried by whoever next wonders whether history could be
+free.
+
+With it closed, $0.57 a symbol stops being a placeholder. Alpha Vantage is 25
+requests/day and its own note calls it a demo; Yahoo's endpoints are
+unsanctioned; sonnet saves ~40% on the one surface whose only measured failure
+mode is silent fabrication. Deep history costs about half a dollar, and the
+honest move is to price it in the UI rather than keep looking for a way out.
+
+## Phase 3: the model could not see the year we bought
+
+The snapshot handed to Chart Build caps each symbol at 90 bars and said nothing
+about the cap. So the model read a preview as the whole cache.
+
+That was **true of QXO** (65 bars) and, as of this morning, **false of SPY** (254)
+— and indistinguishable from the inside. The agent's confident "that's all the
+cache holds" was right by luck, and would have become a plain untruth the moment
+the deep backfill it triggered actually landed. A $0.57 year of history that the
+consumer cannot perceive is not history, it is a row count.
+
+`CACHED_DATA.coverage` now carries `cached_bars`, `included_bars`, `truncated`,
+`first_cached`, `last_cached` per symbol. "That is all there is" became a claim
+the model can only make from coverage.
+
+**And the capability to do better already existed, unused.** A `datareq` with
+`source: "market"` returns every cached bar for a symbol with no 90-bar cap —
+built by the other session, never mentioned to the model. That is the fourth
+mechanism in three days that existed, was documented, and could not be reached
+from where it mattered. The pattern is consistent enough now to be a habit worth
+naming: **shipping a capability and telling its consumer are two jobs, and only
+the first one feels like work.**
+
+Three pieces of vocabulary followed, each one something the agent visibly lacked
+in the transcript that started all this: say WHICH chart you can draw rather than
+only which you cannot; distinguish *queued* (on a watchlist, history arrives on
+the tick) from *untracked*, and name the gesture that fixes the latter instead of
+advising the operator to go read the source; and index to 100 when comparing
+magnitudes — which the agent had proposed unprompted and is now in the contract.
+
+The drawable list also carries each symbol's depth rather than its bare name,
+because a bare name is exactly what lets a model promise a year of a symbol
+holding six days.
