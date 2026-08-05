@@ -20,6 +20,18 @@ defmodule BusterClawWeb.ExplorePanel do
 
   @site_url "https://busterclaw.lol"
   @ntf_url "https://notesthatfloat.com"
+  # Kept literal to avoid making a presentation component depend on the command
+  # dispatch layer (which creates a compile cycle). The Explore contract test
+  # derives the same values from Commands.list_commands/0 and fails on drift.
+  @command_stats %{
+    total: 165,
+    read: 66,
+    trigger: 17,
+    mutate: 82,
+    safe: 72,
+    restricted: 93,
+    gated: 20
+  }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in
   # @built has its own tutorial panel below; the rest render the generic stub
@@ -30,11 +42,11 @@ defmodule BusterClawWeb.ExplorePanel do
       key: "models",
       label: "Models",
       eyebrow: "The engine",
-      blurb: "Which Claude model runs each surface — your CLI, your model, your bill.",
+      blurb: "Which agent CLI and model run each surface — your login, your bill.",
       body:
-        "Buster Claw has no AI of its own; every run shells out to the claude " <>
-          "CLI you installed. The app can name a model per surface — chat, the " <>
-          "dispatcher, the money surfaces — and unset means your CLI decides.",
+        "Buster Claw has no AI of its own; runs use a supported agent CLI you " <>
+          "installed and signed in to. Chat and unattended work support Claude, " <>
+          "Codex, and OpenCode; Trading requires Claude.",
       path: "/settings",
       path_label: "Open Configuration"
     },
@@ -45,9 +57,8 @@ defmodule BusterClawWeb.ExplorePanel do
       blurb: "The live WGSL smoke behind the homepage — and how to swap it.",
       body:
         "The homepage background is a real WGSL shader, compiled live in the " <>
-          "webview. Drop a .wgsl file into your workspace and it hot-swaps — no " <>
-          "rebuild. Backgrounds, images, and the rest of the app's look live on " <>
-          "the Appearance tab.",
+          "webview. Add a valid .wgsl file to your workspace and it can appear in " <>
+          "Appearance without rebuilding the app; select it there to apply it.",
       path: "/appearance",
       path_label: "Open Appearance"
     },
@@ -58,9 +69,9 @@ defmodule BusterClawWeb.ExplorePanel do
       blurb: "An answering machine and SMS relay your agent works for you.",
       body:
         "Your agent gets its own number. Voice greets callers, records, " <>
-          "transcribes, and files the message into the Library; texts from " <>
-          "trusted numbers land in triage for the agent to work. The Phone tab " <>
-          "is the switchboard — messages, recordings, and the activity feed.",
+          "transcribes, and archives messages. Trusted SMS can become Dispatch " <>
+          "work; voicemail requires both a trusted number and a valid PIN before " <>
+          "it is enqueued. The Phone tab is the switchboard and local archive.",
       path: "/phone",
       path_label: "Open the Phone tab"
     },
@@ -83,10 +94,9 @@ defmodule BusterClawWeb.ExplorePanel do
       eyebrow: "The surface",
       blurb: "The whole command surface, one worked example at a time.",
       body:
-        "Every feature is reachable through one canonical command surface — " <>
-          "CLI and HTTP, per-caller trust tiers, every call audited. This " <>
-          "tutorial is the atlas: what the families do and what you'd say to " <>
-          "use them.",
+        "Agent-addressable backend operations share one canonical command " <>
+          "surface — CLI and HTTP, with operation types, caller trust tiers, " <>
+          "policy flags, and audit receipts for mutations and triggers.",
       path: "/cmd-list",
       path_label: "Open the command list"
     },
@@ -96,9 +106,9 @@ defmodule BusterClawWeb.ExplorePanel do
       eyebrow: "Google Workspace",
       blurb: "Connect once; the agent reads and acts on mail, calendar, files.",
       body:
-        "One-click connect, then sync and act on Gmail, Calendar, Drive, Docs, " <>
-          "and Contacts. Senders on your trusted list can even enqueue work for " <>
-          "the agent just by emailing you.",
+        "Connect with the bundled button when this build provides it, or use " <>
+          "Advanced setup with your own OAuth client. Trusted senders can enqueue " <>
+          "work; other mail is still archived but does not become agent work.",
       path: "/settings",
       path_label: "Open Configuration"
     },
@@ -136,7 +146,7 @@ defmodule BusterClawWeb.ExplorePanel do
              key: "ntf",
              label: "Notes That Float",
              eyebrow: "From the same bench",
-             blurb: "The operator's notebook on the open web."
+             blurb: "Creative writing and journaling in a spatial, 3D notebook."
            }
          ] ++ Enum.map(@features, &Map.take(&1, [:key, :label, :eyebrow, :blurb]))
 
@@ -241,12 +251,15 @@ defmodule BusterClawWeb.ExplorePanel do
               1
             </span>
             <div class="min-w-0">
-              <h3 class="font-semibold">Download &amp; install Claude Code</h3>
+              <h3 class="font-semibold">Install a supported agent CLI</h3>
               <p class="mt-0.5 text-sm text-base-content/65">
-                Buster Claw has no built-in AI — it drives your own Claude Code CLI
-                headlessly. Install it once with
-                <.copy_command command="brew install --cask claude-code" />, then
-                sign in (<span class="font-mono">claude</span> in a terminal).
+                Buster Claw has no built-in AI — it drives an agent CLI you install
+                and sign in to. Claude Code is recommended and required for Trading;
+                Chat and unattended work can also use Codex or OpenCode. On macOS,
+                Homebrew is one way to install Claude Code:
+                <.copy_command command="brew install --cask claude-code" />. Then sign
+                in with <span class="font-mono">claude</span>
+                in a terminal.
               </p>
             </div>
           </li>
@@ -259,8 +272,8 @@ defmodule BusterClawWeb.ExplorePanel do
               <h3 class="font-semibold">Chat with Buster Claw</h3>
               <p class="mt-0.5 text-sm text-base-content/65">
                 Use the Chat sub-tab, right next to this one. Ask it to triage your
-                inbox, draft a reply, or look something up — it runs headless Claude
-                for you, no terminal needed.
+                inbox, draft a reply, or look something up — it runs your selected
+                agent CLI headlessly, no terminal needed.
               </p>
             </div>
           </li>
@@ -272,13 +285,17 @@ defmodule BusterClawWeb.ExplorePanel do
             <div class="min-w-0">
               <h3 class="font-semibold">Set up communications</h3>
               <p class="mt-0.5 text-sm text-base-content/65">
-                Connect Google Workspace in
-                <.link navigate="/settings" class="font-semibold text-primary hover:opacity-80">
+                Connect Google Workspace in <.link
+                  navigate="/settings"
+                  class="font-semibold text-primary hover:opacity-80"
+                >
                   Configuration
-                </.link>
-                (one click), then list your trusted senders in Contacts — the corner
-                widget on this screen; mail from anyone else is ignored. When you're
-                ready, give your agent its own phone line on the
+                </.link>, then list your trusted senders in Contacts — the corner widget on
+                this screen. Use the bundled Connect button when this build offers
+                it; otherwise Advanced setup accepts your own OAuth client. Mail from
+                other senders is still synced and archived in the Library, but only
+                trusted senders become Dispatch work. When you're ready, give your
+                agent its own phone line on the
                 <.link navigate="/phone" class="font-semibold text-primary hover:opacity-80">
                   Phone
                 </.link>
@@ -310,9 +327,8 @@ defmodule BusterClawWeb.ExplorePanel do
     """
   end
 
-  # busterclaw.lol — headquarters, and the counter where the one purchasable
-  # asset (the agent's phone number) is bought. The copy describes what the
-  # site *is*, not a store that isn't live yet; revisit when vending opens.
+  # busterclaw.lol — headquarters and the future counter for the agent's phone
+  # number. Keep vending in future tense until the store is actually live.
   defp site_panel(assigns) do
     assigns = assign(assigns, :site_url, @site_url)
 
@@ -328,13 +344,13 @@ defmodule BusterClawWeb.ExplorePanel do
       <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
         <p>
           <span class="font-semibold text-base-content">busterclaw.lol</span>
-          is where the app lives on the web — releases, docs, and the counter where
-          your agent gets its own phone number.
+          is where the app lives on the web — releases, docs, and the planned
+          counter where your agent will be able to get its own phone number.
         </p>
         <p>
-          The number is the one thing you buy: a real line, issued to you, one
-          bill. It's what the whole machine is ultimately for — an agent that can
-          answer when the world calls.
+          The plan is deliberately simple: one purchasable asset, a real line
+          issued to you on one bill. Until number vending opens, use the Phone tab
+          to understand the answering-machine and relay workflow that line enables.
         </p>
       </div>
 
@@ -357,8 +373,9 @@ defmodule BusterClawWeb.ExplorePanel do
 
       <p class="text-sm leading-relaxed text-base-content/80">
         <span class="font-semibold text-base-content">Notes That Float</span>
-        is a separate notebook that lives on the open web — writing and experiments
-        from the operator, outside this app.
+        is a separate creative-writing and journaling app on the open web. It turns
+        notes into a spatial, 3D view for exploring ideas and connections; it is a
+        sibling project, not Buster Claw's operator notebook or command surface.
       </p>
 
       <.external_link url={@ntf_url} label="Open notesthatfloat.com" />
@@ -427,11 +444,12 @@ defmodule BusterClawWeb.ExplorePanel do
 
       <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
         <p>
-          Buster Claw has no AI inside it. Every run — this chat, a trading read,
-          an unattended shift at three in the morning — shells out to the <span class="font-semibold text-base-content">
-            <code>claude</code> CLI you installed and signed in to</span>. The app
-          holds no Claude API key and bills you nothing for tokens: the model is
-          yours, and so is the invoice.
+          Buster Claw has no AI inside it. Each run shells out to a supported agent
+          CLI you installed and signed in to: <code>claude</code>, <code>codex</code>,
+          or <code>opencode</code>. Chat and unattended work can use any of the three;
+          Trading is pinned to Claude because its broker-tool confinement depends on
+          Claude's flags. The app holds no Claude API key and bills you nothing for
+          tokens: the login, model, and invoice are yours.
         </p>
         <p>
           Out of the box the app says nothing about which model to use. It passes
@@ -536,7 +554,7 @@ defmodule BusterClawWeb.ExplorePanel do
           The surfaces
         </h3>
         <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
-          <li :for={surface <- @surfaces}>
+          <li :for={surface <- @surfaces} data-model-surface={surface.name}>
             <span class="font-mono font-bold text-base-content">{surface.name}</span>
             — {surface.description}
             <span
@@ -544,6 +562,13 @@ defmodule BusterClawWeb.ExplorePanel do
               class="ml-1 whitespace-nowrap font-mono text-[0.62rem] font-bold uppercase tracking-wide text-primary"
             >
               floor: {surface.floor}
+            </span>
+            <span
+              :if={surface.claude_only}
+              data-claude-only
+              class="ml-1 whitespace-nowrap font-mono text-[0.62rem] font-bold uppercase tracking-wide text-primary"
+            >
+              Claude only
             </span>
           </li>
         </ul>
@@ -716,7 +741,8 @@ defmodule BusterClawWeb.ExplorePanel do
       %{
         name: Atom.to_string(key),
         description: Map.fetch!(descriptions, key),
-        floor: Map.get(floors, key)
+        floor: Map.get(floors, key),
+        claude_only: ModelPolicy.claude_only?(key)
       }
     end)
   end
@@ -737,23 +763,23 @@ defmodule BusterClawWeb.ExplorePanel do
 
       <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
         <p>
-          Connect Google once —
+          Connect Google —
           <.link
             navigate="/settings"
             class="font-semibold text-primary hover:opacity-80"
           >
             Configuration → Google Workspace
           </.link>
-          — and everything below happens in
-          the home <span class="font-semibold text-base-content">Chat</span>. You type
-          plain English; the agent picks the commands. You never memorize a command
-          name — but they're shown here so you can see exactly what your words turn
-          into, and every call lands on the <.link
+          — with the bundled button when this build provides it, or Advanced setup
+          with your own OAuth client. Everything below happens in the home <span class="font-semibold text-base-content">Chat</span>. You type plain
+          English; the agent picks the commands. You never memorize a command name,
+          but they are shown here so you can see exactly what your words turn into.
+          Mutations, triggers, and policy decisions land on the <.link
             navigate="/security"
             class="font-semibold text-primary hover:opacity-80"
           >
             Security feed
-          </.link>.
+          </.link>; ordinary reads are intentionally omitted to keep that feed useful.
         </p>
       </div>
 
@@ -766,8 +792,9 @@ defmodule BusterClawWeb.ExplorePanel do
         <ol class="ic-unfold">
           <li>
             The agent runs <code>gmail_sync</code> — your latest mail lands in the app.
-            Anything from a sender on your trusted list is auto-filed into the Dispatch
-            queue as work.
+            Mail from a sender on your trusted list is also auto-filed into the
+            Dispatch queue as work. Other mail is still synced and archived in the
+            Library, but it is not enqueued for an agent.
           </li>
           <li>
             Then <code>google_calendar_sync</code> — today's events sync one-way into
@@ -780,7 +807,9 @@ defmodule BusterClawWeb.ExplorePanel do
           </li>
           <li>
             You get the brief in chat: the schedule, a short needs-your-reply list,
-            and flags. Nothing left your machine — these are all safe-tier reads.
+            and flags. Search and read are safe-tier reads; the two sync commands
+            are safe-tier triggers that update the local Library and Calendar and
+            are audited. None of them sends mail or changes Google data.
           </li>
         </ol>
       </.example>
@@ -803,12 +832,11 @@ defmodule BusterClawWeb.ExplorePanel do
               Thursday instead, then send."</span>
           </li>
           <li>
-            Now — and only now — <code>gmail_send</code>. Sending is a
-            <span class="font-semibold text-base-content">gated</span>
-            command: it's
-            outbound, so it's always audited, and an agent working untrusted content
-            can't fire it at all — the attempt is refused and queued for your
-            approval instead of silently dropped.
+            Now — and only now — <code>gmail_send</code>. It is a restricted mutation
+            with two controls: the command refuses without <code>confirm_send</code>,
+            and its policy-level <span class="font-semibold text-base-content">gated</span>
+            flag blocks untrusted-origin runs and files a pending approval. Successful
+            sends are audited on the Security feed.
           </li>
         </ol>
       </.example>
@@ -857,8 +885,12 @@ defmodule BusterClawWeb.ExplorePanel do
             reads the 3pm's details, and writes the rundown.
           </li>
           <li>
-            <code>dispatch_reply</code> sends a threaded Gmail reply back to your
-            phone and marks the item done — the full loop, unattended.
+            <code>dispatch_reply</code>
+            sends a threaded Gmail reply back to your
+            phone and marks the item done — the full loop, unattended. It is a
+            restricted, audited mutation, but it has no separate <code>confirm_send</code>
+            argument and is not policy-gated; trusting the
+            sender and starting an on-duty shift are the controls for this path.
           </li>
           <li>
             Stand down with <code>./buster-claw off-duty</code>. A <code>STOP</code>
@@ -893,9 +925,10 @@ defmodule BusterClawWeb.ExplorePanel do
             — a workspace file straight into Drive.
           </li>
           <li>
-            Sharing is its own gate: <code>drive_share</code> can email the grantee,
-            so it requires an explicit confirmation — the agent holds and asks you
-            before Dana gets access.
+            Sharing has a command-specific guard: <code>drive_share</code> refuses
+            unless <code>confirm_share</code> is explicitly true. It is a restricted,
+            audited mutation, but it is not a policy-gated command and does not
+            create a pending approval by itself.
           </li>
         </ol>
       </.example>
@@ -918,18 +951,19 @@ defmodule BusterClawWeb.ExplorePanel do
             downloads, things the agent wrote itself.
           </li>
           <li>
-            You read the draft, you say go — <code>gmail_send</code>, gated and
-            audited as ever, attachment and all.
+            You read the draft, you say go — <code>gmail_send</code>
+            with <code>confirm_send</code>, policy-gated and audited, attachment and all.
           </li>
         </ol>
       </.example>
 
       <p class="text-sm leading-relaxed text-base-content/70">
         The pattern in all six: <span class="font-semibold text-base-content">say the
-          outcome, not the commands</span> — and let the gates do their job. Reads
-        are free; anything outbound — a send, a share — is gated and audited. When
-        in doubt, end a prompt with "show me before you send" — the agent will hold
-        there.
+          outcome, then inspect the actual control</span>. A policy gate, a required
+        confirmation argument, and a trusted unattended workflow are different
+        mechanisms. “Show me before you send” is useful intent, but the enforced
+        stop is the command's real guard — <code>confirm_send</code>, <code>confirm_share</code>, or a pending policy approval — not the wording
+        alone.
       </p>
 
       <.link
@@ -943,12 +977,14 @@ defmodule BusterClawWeb.ExplorePanel do
   end
 
   # The Command List tutorial: the atlas of the command surface. Anatomy first
-  # (read / mutate / gated), then the funnel diagram, then one worked example
+  # (operation type / trust tier / policy flag), then the funnel diagram and examples
   # per non-GWS family — Gmail/Drive belong to the Gmail/GWS tab and deep
   # browser driving to BrowserControl, so this page stays deliberately light on
   # both. Command names checked against the catalog when written (08-02); the
   # test asserts each still exists.
   defp cmd_panel(assigns) do
+    assigns = assign(assigns, :command_stats, @command_stats)
+
     ~H"""
     <div class="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-8">
       <div>
@@ -958,34 +994,44 @@ defmodule BusterClawWeb.ExplorePanel do
         </h2>
       </div>
 
-      <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
+      <div
+        id="explore-command-taxonomy"
+        class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80"
+      >
         <p>
-          Everything Buster Claw can do — every tab, every feature — is reachable
-          through one canonical set of 150+ commands. You don't memorize them:
-          you say outcomes in Chat and the agent picks the commands. But knowing
-          the shape of the surface makes you a sharper driver, and that's this
-          page. The live, complete list is on <.link
+          Buster Claw's agent-addressable backend operations share one canonical
+          set of
+          <span id="explore-command-total" class="font-mono font-bold">{@command_stats.total}</span>
+          commands. Some UI-only work — including parts of Appearance, Studio, and
+          Trading — deliberately stays outside that surface. You do not memorize the
+          commands: say outcomes in Chat and let the agent select them. The live,
+          complete list is on <.link
             navigate="/cmd-list"
             class="font-semibold text-primary hover:opacity-80"
           >
             Cmd List
           </.link>.
         </p>
-        <p>Every command is one of three kinds, and the kind tells you the stakes:</p>
+        <p>Each command carries three independent pieces of metadata:</p>
         <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
-          <li>
-            <span class="font-mono font-bold text-base-content">read</span> — looks at
-            things. Safe to fire, nothing changes, nothing leaves the machine.
+          <li id="explore-command-operation-types">
+            <span class="font-mono font-bold text-base-content">operation type</span>
+            — {@command_stats.read} read, {@command_stats.trigger} trigger, and {@command_stats.mutate} mutate. A read does not change app state, but it
+            may still contact a service such as Google, a broker, or the public web.
           </li>
-          <li>
-            <span class="font-mono font-bold text-base-content">mutate</span> — changes
-            state. Restricted to trusted callers, always audited.
+          <li id="explore-command-trust-tiers">
+            <span class="font-mono font-bold text-base-content">trust tier</span>
+            — {@command_stats.safe} safe and {@command_stats.restricted} restricted.
+            The tier controls which callers may invoke a command; it does not say
+            whether network traffic occurs. Restricted commands require a trusted
+            path.
           </li>
-          <li>
-            <span class="font-mono font-bold text-primary">gated</span> — outbound or
-            irreversible: sends, shares, deletes. An agent working untrusted content
-            can't fire these at all — the refusal is queued for your approval, never
-            silently dropped.
+          <li id="explore-command-policy-flags">
+            <span class="font-mono font-bold text-primary">policy flag</span>
+            — {@command_stats.gated} commands are additionally <code>gated</code>.
+            An autonomous run working untrusted-origin content cannot execute one;
+            the refusal is filed as a pending approval. Gated is a flag, not a third
+            operation type, and command-specific confirmations are separate again.
           </li>
         </ul>
       </div>
@@ -994,7 +1040,7 @@ defmodule BusterClawWeb.ExplorePanel do
         <svg
           viewBox="0 0 560 300"
           role="img"
-          aria-label="Chat, terminal, and trusted email all funnel through one command surface, past policy tiers and gates, out to the app's surfaces — and every mutation lands on the Sentinel audit feed."
+          aria-label="Chat, terminal, and trusted email funnel through one command surface, past operation types, trust tiers, and policy flags, out to agent-addressable app surfaces. Mutations and triggers land on the Sentinel audit feed."
           class="w-full text-base-content/70"
         >
           <defs>
@@ -1053,7 +1099,7 @@ defmodule BusterClawWeb.ExplorePanel do
           <g class="font-mono" fill="currentColor" font-size="10" text-anchor="middle">
             <text x="280" y="80" font-weight="bold">ONE COMMAND</text>
             <text x="280" y="93" font-weight="bold">SURFACE</text>
-            <text x="280" y="108" font-size="8">150+ COMMANDS</text>
+            <text x="280" y="108" font-size="8">{@command_stats.total} COMMANDS</text>
           </g>
           <rect
             x="210"
@@ -1066,8 +1112,8 @@ defmodule BusterClawWeb.ExplorePanel do
             stroke-dasharray="4 3"
           />
           <g class="font-mono" fill="currentColor" font-size="8" text-anchor="middle">
-            <text x="280" y="134">POLICY</text>
-            <text x="280" y="145">TIERS · GATES</text>
+            <text x="280" y="134">METADATA</text>
+            <text x="280" y="145">TYPE · TIER · FLAGS</text>
           </g>
 
           <%!-- Surfaces --%>
@@ -1110,7 +1156,7 @@ defmodule BusterClawWeb.ExplorePanel do
             fill="var(--color-primary)"
             font-size="8"
           >
-            EVERY MUTATION
+            MUTATES + TRIGGERS
           </text>
           <rect
             x="200"
@@ -1135,12 +1181,13 @@ defmodule BusterClawWeb.ExplorePanel do
         </svg>
         <figcaption class="text-xs leading-relaxed text-base-content/60">
           Every caller — you in chat, you in the terminal, a trusted sender's email —
-          funnels through the same choke point. Nothing mutating skips the <.link
+          funnels through the same policy point. Mutations and triggers are receipted
+          on the <.link
             navigate="/security"
             class="font-semibold text-primary hover:opacity-80"
           >
             feed
-          </.link>.
+          </.link>; ordinary reads are skipped to keep the signal useful.
         </figcaption>
       </figure>
 
@@ -1281,8 +1328,8 @@ defmodule BusterClawWeb.ExplorePanel do
   # The BrowserControl tutorial. The load-bearing concept is *where the agent's
   # hands are* — the live tab, the ephemeral sandbox, or the Agent Mode window —
   # so the diagram comes before the cycles. The commerce cycle states the current
-  # posture deliberately: the human pays; the agent cannot pay and cannot
-  # confirm a purchase (browser-closeout roadmap owns revisiting that). Command
+  # posture deliberately: the human pays; the agent may record the operator's
+  # completed purchase but never enters payment itself. Command
   # names checked against the catalog when written (08-02); the test asserts
   # each still exists.
   defp browser_panel(assigns) do

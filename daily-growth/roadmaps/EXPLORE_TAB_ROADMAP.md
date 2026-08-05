@@ -1,6 +1,6 @@
 # Explore — a home tab that teaches the machine
 
-**Scoped 08-02-26 · Status: ACTIVE · Phase 0 in progress.**
+**Scoped 08-02-26 · Status: ACTIVE · Content accuracy pass scoped 08-04-26.**
 
 A new home sub-tab, **Explore**, alongside Chat / Calendar / Notes / Studio, with
 its own second-level rail. It holds a growing collection of tutorials — one per
@@ -221,6 +221,167 @@ Remaining after that: **BusterPhone** → **Shaders & Backgrounds**.
 
 - [ ] Make the Explore vs Manual call (see open question above) once two or
   three real tutorials make the overlap visible.
+
+# Phase 2.5 — Content accuracy and runnable demos *(audit 08-04-26)*
+
+Explore's structure is strong, but it is not editorially finished. Two feature
+tutorials are still placeholders, several foundational explanations conflict
+with the implementation, and every “demo” is a static worked example rather
+than something the operator can try.
+
+## Audit summary
+
+| Tab | Status | Required work |
+|---|---|---|
+| **Intro** | Accuracy rewrite complete 08-04 | It now recommends Claude, names Codex and OpenCode support, reserves Trading for Claude, explains both Google connection paths, and distinguishes archived untrusted mail from trusted Dispatch work. |
+| **BusterClaw.lol** | Accuracy rewrite complete 08-04 | Phone-number vending is now described as planned/future work until the store is actually live. |
+| **NTF** | Accuracy rewrite complete 08-04 | It now describes the sibling project as a creative-writing and journaling app with spatial 3D visualization, not Buster Claw's operator notebook. Grouping it under **Elsewhere** or **About** remains an information-architecture option. |
+| **Models** | Accuracy rewrite complete; demo pending | Harness copy now matches Claude/Codex/OpenCode support and the Claude-only Trading pin. Add a read-only current-policy demo instead of relying only on hypothetical examples. |
+| **Shaders & Backgrounds** | Stub accuracy corrected; tutorial incomplete | The stub now says a workspace shader appears without a rebuild and must be selected. The tutorial still needs Terminal backgrounds, image backgrounds, palettes, WebGPU fallback, and the custom WGSL contract. |
+| **BusterPhone** | Trust summary corrected; tutorial incomplete | The stub now separates trusted-number SMS from voicemail's trusted-number + PIN rule. The tutorial still needs SMS gating and limits, voicemail costs, heard/unheard behavior, and the distinction between recording a message and enqueueing work. |
+| **Gmail/GWS** | Accuracy rewrite complete 08-04 | The tutorial now separates policy gates, trust tiers, `confirm_send`/`confirm_share`, and the trusted unattended `dispatch_reply` path. It also covers bundled and Advanced OAuth setup. Runnable demo metadata remains. |
+| **Command List** | Taxonomy rewrite complete 08-04 | Counts and all three metadata axes are guarded against the live catalog by a contract test; UI-only surfaces and the mutation/trigger audit boundary are explicit. Runnable demo metadata remains. |
+| **BrowserControl** | Accuracy rewrite complete; demo metadata pending | The three-surface explanation remains, while audit copy now distinguishes redacted page ingestion, ordinary reads, and consequential actions. The stale purchase-confirmation source comment was corrected. |
+| **Trading** | Explanation good; demo missing | The safety explanation matches the committed implementation. Add a safe path through connection verification, a read-only market question, and an order-proposal card that explicitly stops before confirmation. Soften the absolute claim that funding is the most an order can touch. |
+
+## Foundational rewrites
+
+### 1. Tell one harness story
+
+The Intro and Models launcher say “Claude only”; the Models tutorial later says
+Claude, Codex, and OpenCode. Replace the shared explanation with:
+
+> Install a supported agent CLI. Claude Code is recommended and required for
+> Trading; Chat and unattended work can also use Codex or OpenCode.
+
+The existing `brew install --cask claude-code` command is still supported, but
+Anthropic now presents its native installer first. Keep Homebrew as a macOS
+choice rather than implying it is the only installation route:
+<https://code.claude.com/docs/en/getting-started>.
+
+### 2. Replace the Command List taxonomy
+
+The tutorial treats `read`, `mutate`, and `gated` as three equivalent kinds.
+They are not. The current catalog contains **165 commands** and has three
+separate axes:
+
+- **Operation type:** 66 read, 17 trigger, 82 mutate.
+- **Trust tier:** 72 safe, 93 restricted.
+- **Additional policy flag:** 20 gated commands.
+
+`gated` is not an operation type. `safe` also does not universally mean that
+nothing leaves the machine. Rewrite the diagram and legend around these axes.
+Replace “every tab, every feature” with “agent-addressable backend operations”:
+Appearance, Studio, and portions of Trading are intentionally UI-only.
+
+### 3. Explain confirmation mechanisms separately
+
+The GWS tutorial currently collapses three different controls into “gated”:
+
+1. Safe versus restricted command tier.
+2. The policy-level `gated` flag that blocks untrusted-provenance runs and files
+   a pending approval.
+3. Command-specific confirmation arguments such as `confirm_send` and
+   `confirm_share`.
+
+Rewrite every send/share example to name the actual mechanism it uses. Do not
+promise that adding “show me before you send” to a prompt creates a UI-enforced
+hold unless the command path actually provides one.
+
+### 4. Correct the trust and connection language
+
+- Untrusted Gmail is synced and archived to the Library; it is not ignored. Only
+  trusted senders become Dispatch work.
+- Trusted SMS becomes Dispatch work without a caller PIN. Voicemail requires
+  both a trusted number and a verified PIN.
+- Bundled one-click Google OAuth is conditional. When the bundled client is not
+  available, the actual path is Advanced setup with the operator's OAuth client.
+
+## Complete the two missing tutorials
+
+### BusterPhone
+
+- [ ] Diagram inbound voice/SMS → relay → local archive → trust decision →
+  optional Dispatch item.
+- [ ] Explain recording versus enqueueing: strangers are recorded by design but
+  never become agent work.
+- [ ] Show the two-factor voicemail rule (trusted number + PIN) and the lighter
+  trusted-number-only SMS rule.
+- [ ] Walk through unheard voicemail, transcript/recording playback, cost
+  breakdown, and explicit `phone_mark_heard` behavior.
+- [ ] Explain outbound `sms_send`: separately enabled, gated, audited, opt-out
+  aware, and capped per recipient per UTC day.
+- [ ] Add a safe demo: list unheard voicemail without marking anything heard.
+
+### Shaders & Backgrounds
+
+- [ ] Explain the shared catalog: Off, built-in shaders, workspace shaders, and
+  uploaded images.
+- [ ] Show that both Home and Terminal are background targets.
+- [ ] Walk through selecting a built-in shader before introducing custom WGSL.
+- [ ] Explain the `shaders/<name>.wgsl` contract, `fs_main`, the shared prelude,
+  size/name validation, and the distinction between background shaders and
+  `*-face` shaderfaces.
+- [ ] State the real refresh behavior: no application rebuild, but the file must
+  appear in/reload the Appearance catalog and the operator must select it.
+- [ ] Cover custom three-color palettes and the solid fallback when WebGPU is
+  unavailable.
+- [ ] Add a safe demo: apply a built-in shader to the Home preview.
+
+## Turn worked examples into real demos
+
+The shared `<.example>` component currently renders prose plus a prompt. Every
+demo should gain four explicit fields:
+
+1. **Prerequisites** — connection, desktop requirement, current tab, or account.
+2. **What it reads or changes** — name the side effects before the prompt.
+3. **Where confirmation occurs** — policy gate, command argument, or UI card.
+4. **Expected result and failure state** — where the artifact/receipt appears and
+   what the operator sees when the dependency is unavailable.
+
+Add two safe actions:
+
+- [ ] **Copy prompt** — always available.
+- [ ] **Try in Chat** — switch to Home → Chat and use the existing
+  `bc:chat_prefill` path. It prefills only; it never auto-submits.
+
+Mutation-heavy examples must stop at prefill. Explore must never execute a
+mutation merely because the operator opened a tutorial.
+
+Recommended first runnable demos:
+
+- **Models:** list the current model policy.
+- **Browser:** open a sandbox tab and read a public page.
+- **Command List:** create a local reminder.
+- **GWS:** list connected accounts or create a draft without sending.
+- **Phone:** list unheard voicemail without marking it heard.
+- **Trading:** generate an order proposal and stop at the confirmation card.
+- **Shaders:** apply a built-in shader to the Home preview.
+
+## Tests that protect meaning, not wording
+
+The current Explore tests prove that named commands exist and lock in selected
+phrases. They can still preserve a false explanation. Add contract tests that
+read catalog metadata and verify every claim made by a tutorial:
+
+- [x] Command type, trust tier, `gated` flag, and required confirmation argument.
+- [x] Models surfaces, floors, and Claude-only pins from `ModelPolicy`.
+- [x] Google connection copy covers bundled and Advanced paths.
+- [x] Phone copy covers SMS trust separately from voicemail trust + PIN.
+- [ ] Every demo declares prerequisites, side effects, confirmation, outcome,
+  Copy prompt, and (where appropriate) Try in Chat.
+
+## Recommended execution order
+
+1. **DONE 08-04** — Correct the shared harness, command-taxonomy, trust, and
+   gating explanations.
+2. Build BusterPhone and Shaders & Backgrounds tutorials.
+3. Add the reusable demo contract and safe Copy/Try actions.
+4. Retrofit Models, GWS, Command List, BrowserControl, and Trading examples.
+5. Rewrite or relocate BusterClaw.lol and NTF after verifying their live roles.
+6. Run a packaged-app editorial pass; archive this roadmap only after every
+   tutorial has been exercised against a real dependency or an explicit safe
+   failure state.
 
 # Phase 3 — Roster growth (proposals, not commitments)
 

@@ -5,6 +5,7 @@ defmodule BusterClawWeb.StatusLiveTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Calendar
+  alias BusterClaw.Commands
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
   alias BusterClaw.ModelPolicy
@@ -783,13 +784,18 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert has_element?(view, "details#explore-get-started")
       refute has_element?(view, "details#explore-get-started[open]")
 
-      # Step order (operator, 08-02): install Claude Code → chat → comms.
+      # Step order: install a supported harness → chat → communications.
       assert [_, one, two, three] =
                String.split(html, ~r/<h3[^>]*>/) |> Enum.take(4)
 
-      assert one =~ "Download &amp; install Claude Code"
+      assert one =~ "Install a supported agent CLI"
+      assert one =~ "Codex or OpenCode"
+      assert one =~ "required for Trading"
       assert two =~ "Chat with Buster Claw"
       assert three =~ "Set up communications"
+      assert three =~ "Advanced setup"
+      assert three =~ "still synced and archived"
+      assert three =~ "trusted senders become Dispatch work"
       refute html =~ "Quick chat"
 
       # Every non-Intro sub-tab has a launcher tile (rail button + grid tile
@@ -809,13 +815,18 @@ defmodule BusterClawWeb.StatusLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
       render_click(view, "select_home_tab", %{"tab" => "explore"})
 
-      # busterclaw.lol: asset-model copy + link through the app's own browser.
+      # busterclaw.lol: planned asset model, without claiming vending is live.
       html = render_click(view, "select_explore_tab", %{"tab" => "site"})
-      assert html =~ "one thing you buy"
+      assert html =~ "planned"
+      assert html =~ "Until number vending opens"
+      refute html =~ "The number is the one thing you buy"
       assert html =~ "/browse?url=https%3A%2F%2Fbusterclaw.lol"
 
       html = render_click(view, "select_explore_tab", %{"tab" => "ntf"})
       assert html =~ "Notes That Float"
+      assert html =~ "creative-writing and journaling app"
+      assert html =~ "spatial, 3D view"
+      assert html =~ "not Buster Claw&#39;s operator notebook"
       assert html =~ "/browse?url=https%3A%2F%2Fnotesthatfloat.com"
     end
 
@@ -827,6 +838,8 @@ defmodule BusterClawWeb.StatusLiveTest do
       html = render_click(view, "select_explore_tab", %{"tab" => "phone"})
       assert html =~ "BusterPhone"
       assert html =~ ~s(href="/phone")
+      assert html =~ "Trusted SMS can become Dispatch work"
+      assert html =~ "voicemail requires both a trusted number and a valid PIN"
       assert html =~ "Tutorial in the works"
     end
 
@@ -842,6 +855,8 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       # Fact 1: the CLI is the operator's, and so is the bill.
       assert html =~ "holds no Claude API key"
+      assert html =~ "<code>claude</code>, <code>codex</code>"
+      assert html =~ "Trading is pinned to Claude"
 
       # Fact 2: unset means the flag is omitted, not that a default is missing.
       assert html =~ "--model"
@@ -870,6 +885,13 @@ defmodule BusterClawWeb.StatusLiveTest do
       # rather than trusting that the old one merely went away.
       assert html =~ "The money surfaces stay on Claude"
       assert html =~ "It does not run at all"
+
+      for {surface, _reason} <- ModelPolicy.claude_only() do
+        assert has_element?(
+                 view,
+                 "[data-model-surface='#{surface}'] [data-claude-only]"
+               )
+      end
 
       # Fact 5: where to change it — Settings, and the command.
       assert html =~ ~s(href="/settings")
@@ -908,6 +930,38 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "Send the file, not a link"
       assert html =~ "You type"
 
+      # The explanation covers both connection paths and distinguishes archiving
+      # ordinary mail from trusting a sender to create agent work.
+      assert html =~ "bundled button when this build provides it"
+      assert html =~ "Advanced setup"
+      assert html =~ "Other mail is still synced and archived"
+
+      # The security explanation is a contract with catalog metadata, not just
+      # frozen prose. These three outbound paths use three different controls.
+      catalog = Map.new(Commands.list_commands(), &{&1.name, &1})
+      gmail_send = Map.fetch!(catalog, "gmail_send")
+      drive_share = Map.fetch!(catalog, "drive_share")
+      dispatch_reply = Map.fetch!(catalog, "dispatch_reply")
+
+      assert gmail_send.type == :mutate
+      assert gmail_send.tier == :restricted
+      assert gmail_send.gated
+      assert gmail_send.args["confirm_send"].required
+
+      assert drive_share.type == :mutate
+      assert drive_share.tier == :restricted
+      refute Map.get(drive_share, :gated, false)
+      assert drive_share.args["confirm_share"].required
+
+      assert dispatch_reply.type == :mutate
+      assert dispatch_reply.tier == :restricted
+      refute Map.get(dispatch_reply, :gated, false)
+      refute Map.has_key?(dispatch_reply.args, "confirm_send")
+
+      assert html =~ "not a policy-gated command"
+      assert html =~ "has no separate"
+      refute html =~ "anything outbound — a send, a share — is gated"
+
       # Every command the copy names must exist in the catalog — the tutorial
       # is a contract with the command surface, enforced here so a rename
       # can't silently strand the docs.
@@ -937,9 +991,31 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "Command List"
       refute html =~ "Promptship"
 
-      # The anatomy legend and the funnel SVG.
-      assert html =~ "gated"
+      # The taxonomy is rendered from the catalog's three independent axes.
+      assert has_element?(view, "#explore-command-taxonomy")
+      assert has_element?(view, "#explore-command-operation-types")
+      assert has_element?(view, "#explore-command-trust-tiers")
+      assert has_element?(view, "#explore-command-policy-flags")
+
+      commands = Commands.list_commands()
+      types = Enum.frequencies_by(commands, & &1.type)
+      tiers = Enum.frequencies_by(commands, & &1.tier)
+      gated = Enum.count(commands, &Map.get(&1, :gated, false))
+
+      assert element(view, "#explore-command-total") |> render() =~ to_string(length(commands))
+      assert html =~ "#{Map.fetch!(types, :read)} read"
+      assert html =~ "#{Map.fetch!(types, :trigger)} trigger"
+      assert html =~ "#{Map.fetch!(types, :mutate)} mutate"
+      assert html =~ "#{Map.fetch!(tiers, :safe)} safe"
+      assert html =~ "#{Map.fetch!(tiers, :restricted)} restricted"
+      assert html =~ "#{gated} commands are additionally"
+      assert html =~ "Gated is a flag, not a third"
+      refute html =~ "every tab, every feature"
+      refute html =~ "nothing leaves the machine"
+
+      # The funnel SVG uses the same corrected audit boundary.
       assert html =~ "SENTINEL AUDIT FEED"
+      assert html =~ "MUTATES + TRIGGERS"
       assert html =~ ~s(role="img")
 
       # The six examples.
@@ -994,6 +1070,8 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute html =~ "cannot confirm a purchase"
       assert html =~ "agent_run_confirm_purchase"
       assert html =~ "which of you said so"
+      assert html =~ "Ordinary reads do not each create a feed"
+      refute html =~ "every read and every click lands"
 
       # Same contract as the other tutorials: every named command must exist.
       for cmd <- ~w(browser_current browser_read browser_capture_page
