@@ -470,7 +470,13 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   defp apply_line(line, state) do
-    case StreamEvent.parse(state.agent, line) do
+    # `effective_agent/1`, NOT `state.agent`: a conversation carrying claude-only
+    # confinement is SPAWNED as claude even when the operator's harness is codex,
+    # so parsing by the stored harness would read claude's stream-json with the
+    # codex normalizer. Every event falls through to :unknown and the transcript
+    # renders empty — which is exactly how this was found, in the Trading tab.
+    # The argv and the parser must come from one function or they drift.
+    case StreamEvent.parse(effective_agent(state), line) do
       {:ok, event} -> state |> capture_session(event) |> project_event(event)
       :error -> remember_raw_line(state, line)
     end

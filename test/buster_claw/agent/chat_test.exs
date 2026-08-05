@@ -574,6 +574,35 @@ defmodule BusterClaw.Agent.ChatTest do
       GenServer.stop(pid)
     end
 
+    # The empty-chat bug, 08-04. A Trading conversation is SPAWNED as claude
+    # (its confinement is claude-only) while `state.agent` says codex. Parsing by
+    # the stored harness read claude's stream-json with the codex normalizer:
+    # every event fell through to :unknown and the transcript rendered EMPTY.
+    # The argv and the parser have to come from one function or they drift.
+    test "a claude-pinned conversation parses claude's stream, not the stored harness's" do
+      {conv, pid} =
+        start_chat!(agent: :codex, extra_cli_args: ["--strict-mcp-config", "--mcp-config", "x"])
+
+      Chat.subscribe(conv)
+      :ok = Chat.send_message(conv, "hello")
+      assert_receive {:spawned, _prompt, opts}
+      assert Keyword.fetch!(opts, :agent) == :claude
+
+      # A claude result event. Parsed as codex it would be :unknown and nothing
+      # would reach the transcript.
+      send(
+        pid,
+        {:fake_port,
+         {:data,
+          ~s({"type":"assistant","message":{"content":[{"type":"text","text":"PONG"}]}}) <> "\n"}}
+      )
+
+      assert_receive {:agent_chat, ^conv, {:message, %{role: :assistant, text: text}}}, 1_000
+      assert text =~ "PONG"
+
+      GenServer.stop(pid)
+    end
+
     test "a plain conversation honours the chosen harness" do
       {conv, pid} = start_chat!(agent: :codex)
       :ok = Chat.send_message(conv, "hello")
