@@ -142,32 +142,50 @@ The operator's distinction, made real rather than implied.
       is the right answer for comparing magnitudes and should be a first-class
       option once more than one symbol has real depth.
 
-# Phase 3.5 — Where the watchlist lives: a left sidebar with a bumper
+# Phase 3.5 — A shared left sidebar, on the workspace's bumper
 
-**Operator, 08-04:** the watchlist is created and viewed in a **sidebar on the
-left of the Trading tab**, opened by a **bumper**.
+**Operator, 08-04:** the **data panel and the watchlists share one left sidebar**,
+collapsed by a bumper, built like the one in the **Workspace** tab.
 
-- [ ] **Reuse the existing bumper, do not invent a second one.** The app already
-      has exactly one: `CornerWidget` (`home_widget.ex:33`, `ic-corner-bumper`),
-      the tab that pulls the Calendar/Contacts card out from the edge on the
-      homepage. A second bumper with its own hook and its own CSS would be two
-      answers to one question — the browser sidebar's ⌘B behaviour is the other
-      precedent worth reading before writing anything.
-- [ ] Left edge specifically. The homepage bumper pulls from the right; this one
-      pulls from the left, which is a parameter the hook may not take yet. Check
-      before assuming it generalises.
-- [ ] The sidebar holds **create and view**: name a watchlist, add and remove
-      tickers, see what each holds. Plural is the operator's word — the storage
-      in Phase 2 must therefore be *named lists*, not one flat set, and that
-      decision has to be made in Phase 2 rather than retrofitted here.
-- [ ] Each ticker's row shows the thing the whole roadmap is about: **how much
-      history the cache actually holds for it** — a year, six closes, or nothing
-      yet — so "advanced chart" versus "short-term chart" is visible where the
-      symbol is added rather than discovered when a chart comes back wrong.
-- [ ] It must survive a tab that is already crowded. Trading has a tab strip, a
-      chat window, a data panel and now a sidebar; the sidebar collapsing to a
-      bumper is what makes that fit, so the collapsed state is the default and
-      the expanded one is the exception.
+**Correction to this file's first draft**, which claimed the app has "exactly one
+bumper" and pointed at `CornerWidget`. It has **three**, and they are not
+interchangeable — that claim was made from one grep of two directories and was
+wrong:
+
+| pattern | where | how it works |
+|---|---|---|
+| `CornerWidget` | homepage corner card | JS hook, `ic-corner-bumper`, **right** edge, animated pop-out |
+| **Workspace sidebar** | `workspace_live.ex:265-292` | **pure LiveView** — `@sidebar_open`, `phx-click="toggle_sidebar"`, a `w-2.5` strip with a flipping chevron. No hook, no custom CSS. |
+| `#bumper` | native browser shell (`chrome.js:836`) | its own DOM + ⌘B, outside the LiveView world entirely |
+
+**The workspace one is the target, and it is the cheapest of the three**: a
+sibling `<button>` beside the panel, `border-y-2 border-r-2`, `bg-primary/15`,
+`hero-chevron-left` / `hero-chevron-right`, and a boolean in the LiveView. No
+JavaScript at all. Copying it is a dozen lines; reaching for `CornerWidget`
+would drag in a hook and an animation for a job that does not need either.
+
+- [ ] One left sidebar in the Trading tab holding **both** the data panel
+      (`trading_account_card` / `chart_preview`) and the watchlist UI. They share
+      the collapse: one bumper, one boolean, not two panels each with their own.
+- [ ] Decide how the two stack inside it — the data panel is tall and scrolls
+      (`overflow-y-auto`) and the watchlist is a list that also wants to scroll.
+      Two independently scrolling regions in a fixed-height column is the actual
+      layout problem here, and it is the reason to look at the real tab before
+      writing markup.
+- [ ] This is a **layout change to every Trading tab kind**, not just Chart
+      Build: Robinhood, Chart Build and a neutral chat all render that data panel
+      today. The neutral-chat case already has a bespoke "no data panel of its
+      own" branch (`trading_live.ex:2261`) that will need to say something
+      sensible when the sidebar exists but has nothing but watchlists in it.
+- [ ] Named lists, per the operator's plural — see Phase 2, where the storage
+      shape has to be decided rather than retrofitted.
+- [ ] Each ticker row shows **how much history the cache holds for it**, so
+      "advanced" versus "short-term" is visible where the symbol is added rather
+      than discovered when a chart comes back wrong.
+- [ ] Collapsed is the sensible default on a tab that already carries a tab
+      strip, a chat window and a data panel — but the workspace's own default is
+      **open**, so this is a deliberate difference and should be one, not an
+      accident.
 
 # Phase 4 — Only if it earns it
 
