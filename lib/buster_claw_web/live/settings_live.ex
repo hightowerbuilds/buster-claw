@@ -52,7 +52,6 @@ defmodule BusterClawWeb.SettingsLive do
      |> assign_gmail_forms()
      |> assign_calendar_form()
      # --- agent models ---
-     |> assign(:model_choices, ModelPolicy.known_models())
      |> assign(:backend_choices, ModelPolicy.backends())
      # A harness that is not installed is shown DISABLED rather than hidden:
      # hiding it makes the app look like it does not support codex at all, and
@@ -281,6 +280,11 @@ defmodule BusterClawWeb.SettingsLive do
     {:noreply, put_model(socket, :default, blank_to_nil(model))}
   end
 
+  def handle_event("model_default_backend", %{"backend" => backend}, socket) do
+    ModelPolicy.put_backend(:default, parse_backend_choice(backend))
+    {:noreply, assign_model_policy(socket)}
+  end
+
   def handle_event("model_backend", %{"surface" => surface, "backend" => backend}, socket) do
     ModelPolicy.put_backend(model_target(surface), parse_backend_choice(backend))
     {:noreply, assign_model_policy(socket)}
@@ -442,17 +446,42 @@ defmodule BusterClawWeb.SettingsLive do
             nothing.
           </p>
 
+          <form id="model-default-backend-form" phx-change="model_default_backend">
+            <label class="block max-w-sm">
+              <span class="ic-eyebrow">Global harness</span>
+              <select
+                name="backend"
+                aria-label="Global default harness"
+                class="select select-bordered mt-1 w-full font-mono text-xs"
+              >
+                <option value="auto" selected={is_nil(@model_default_backend)}>
+                  — auto — whichever CLI is found
+                </option>
+                <option
+                  :for={backend <- @backend_choices}
+                  value={backend}
+                  selected={@model_default_backend == backend}
+                  disabled={backend not in @backend_installed}
+                >
+                  {backend_label(backend, backend in @backend_installed)}
+                </option>
+              </select>
+            </label>
+          </form>
+
           <div class="grid gap-4 sm:grid-cols-2">
             <form id="model-default-form" phx-change="model_default">
               <label class="block">
-                <span class="ic-eyebrow">Global default</span>
+                <span class="ic-eyebrow">
+                  Global default model · {backend_display(@model_default_backend)}
+                </span>
                 <select
                   name="model"
                   aria-label="Global default model"
                   class="select select-bordered mt-1 w-full font-mono text-xs"
                 >
                   <option value="" selected={is_nil(@model_default)}>
-                    Unset — your claude CLI decides
+                    Unset — your {backend_display(@model_default_backend)} CLI decides
                   </option>
                   <option
                     :for={model <- @model_choices}
@@ -470,6 +499,11 @@ defmodule BusterClawWeb.SettingsLive do
                   </option>
                 </select>
               </label>
+              <p :if={@model_choices == []} class="pt-1 text-xs leading-5 text-base-content/60">
+                {backend_display(@model_default_backend)} cannot list its own models from here, so there is nothing to pick —
+                type the model beside this instead. A name only means something to
+                its own harness: OpenCode wants <code>provider/model</code>.
+              </p>
             </form>
 
             <form id="model-custom-form" phx-submit="model_custom" class="space-y-2">
@@ -792,6 +826,12 @@ defmodule BusterClawWeb.SettingsLive do
     default_backend = ModelPolicy.backend_for(:default)
 
     socket
+    |> assign(:model_default_backend, default_backend)
+    # The offered models follow the CHOSEN harness, not claude forever. Resolved
+    # here rather than at mount for that reason: a list that never changes would
+    # have offered claude model IDs to an operator running opencode, which is the
+    # one mistake `plausible_model?/2` exists to catch.
+    |> assign(:model_choices, ModelPolicy.known_models(default_backend))
     |> assign(:model_rows, Enum.map(ModelPolicy.surface_keys(), &{&1, Map.fetch!(in_force, &1)}))
     |> assign(:model_default, ModelPolicy.model_for(default_backend, :default))
   end

@@ -46,6 +46,49 @@ defmodule BusterClawWeb.SettingsLiveTest do
       end
     end
 
+    # The gap the operator found on 08-04: per-surface rows had a harness picker
+    # and the GLOBAL default never did, so the only harness anyone could reach
+    # from Settings was whichever one PATH detection happened to pick.
+    test "the global harness can be chosen, not just per surface", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> element("#model-default-backend-form")
+      |> render_change(%{"backend" => "codex"})
+
+      assert BusterClaw.ModelPolicy.backend_for(:default) == :codex
+      assert BusterClaw.ModelPolicy.backend_for(:chat) == :codex
+    end
+
+    test "the global harness offers all three, and auto", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+      html = render(view)
+
+      assert html =~ "Global harness"
+      assert html =~ "whichever CLI is found"
+
+      for backend <- BusterClaw.ModelPolicy.backends() do
+        assert html =~ Atom.to_string(backend)
+      end
+    end
+
+    # The model list is claude's only while claude is chosen. Offering claude
+    # model IDs to an operator running opencode is the one mistake that is
+    # unambiguous — opencode needs provider/model.
+    test "the model list follows the chosen harness", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+      assert render(view) =~ "claude-opus-5"
+
+      view
+      |> element("#model-default-backend-form")
+      |> render_change(%{"backend" => "opencode"})
+
+      html = render(view)
+      refute html =~ "claude-opus-5"
+      assert html =~ "cannot list its own models from here"
+      assert html =~ "your opencode CLI decides"
+    end
+
     test "choosing a harness for one surface stores it and leaves others alone", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings")
 

@@ -321,6 +321,19 @@ defmodule BusterClaw.ModelPolicyTest do
       for model <- ModelPolicy.known_models(), do: assert(ModelPolicy.valid_model?(model))
     end
 
+    # An unset harness reads the implicit claude bucket for its MODEL list too,
+    # not an empty one. Getting this wrong emptied the Settings picker on a fresh
+    # install — the state every install starts in.
+    test "an unset harness still offers claude's models" do
+      assert ModelPolicy.known_models(nil) == ModelPolicy.known_models(:claude)
+      refute ModelPolicy.known_models(nil) == []
+    end
+
+    test "a harness with no shipped list offers none rather than claude's" do
+      assert ModelPolicy.known_models(:opencode) == []
+      assert ModelPolicy.known_models(:codex) == []
+    end
+
     test "valid_model?/1 rejects blanks and non-strings" do
       refute ModelPolicy.valid_model?("")
       refute ModelPolicy.valid_model?("  ")

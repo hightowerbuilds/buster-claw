@@ -147,7 +147,8 @@ defmodule BusterClaw.ModelPolicy do
   Per backend since 08-03: only claude ships a list. See
   `AgentBackend.enumerate_models/1` for opencode, which can list its own.
   """
-  def known_models(backend \\ @implicit_backend), do: AgentBackend.known_models(backend)
+  def known_models(backend \\ @implicit_backend),
+    do: AgentBackend.known_models(bucket(backend))
 
   @doc "Backends the picker may offer, in detection order."
   def backends, do: AgentBackend.order()
