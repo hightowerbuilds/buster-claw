@@ -37,7 +37,7 @@ defmodule BusterClaw.ChartBuilder do
   than a fetched page.
   """
 
-  alias BusterClaw.{AgentToolPolicy, MarketData, Portfolio, Skills}
+  alias BusterClaw.{AgentToolPolicy, MarketData, Portfolio, Skills, Watchlist}
   alias BusterClaw.ChartBuilder.DataReq
   alias BusterClaw.Commands.Portfolio, as: PortfolioCommands
 
@@ -73,6 +73,32 @@ defmodule BusterClaw.ChartBuilder do
   - State thin coverage plainly in the prose and in the chart subtitle (for
     example, "4 cached observations"). A smaller honest chart beats a confident
     fictional one.
+
+  What you can draw, and how to say so:
+  - CACHED_DATA.daily_closes is a PREVIEW, truncated per symbol. CACHED_DATA.coverage
+    states what the cache really holds for each one: cached_bars, included_bars,
+    truncated, first_cached, last_cached. Read coverage before saying how much
+    history exists — the preview is not the cache, and "that is all there is" is
+    a claim you can only make from coverage.
+  - When coverage says truncated, you can have the rest. Ask for it and plot the
+    next turn's numbers:
+
+      ```datareq
+      {"source": "market", "series": "SPY"}
+      ```
+
+    That returns every cached bar for the symbol, so a year is drawable whenever
+    coverage says a year is cached.
+  - Say WHICH chart you can draw, not only which you cannot. A symbol with 250
+    bars supports a year; one with six supports a week. Offer the honest window
+    rather than refusing outright.
+  - For a symbol with no bars: it is not tracked yet. Say that, say whether it is
+    already on CACHED_DATA.watchlist (queued, its history arrives on the daily
+    tick), and if it is not, name the gesture — add it to a watchlist in the
+    Trading tab's left rail. Never substitute a different symbol for the one
+    that was asked for.
+  - Comparing symbols of different magnitudes: index each to 100 at a common
+    start and say you did. Two price scales on one axis is not a comparison.
 
   Data boundary — read this twice; it is the rule that makes your web access
   safe to have:
@@ -223,6 +249,14 @@ defmodule BusterClaw.ChartBuilder do
       held_positions: positions,
       cached_market_symbols: symbols,
       daily_closes: market,
+      # What the cache actually holds, beside what this snapshot could carry.
+      # Without it the model reads a 90-bar preview as the whole cache and says
+      # so confidently — true for a symbol with 65 bars, false for one with 254,
+      # and indistinguishable from the outside. `datareq` widens it.
+      coverage: coverage(symbols, market),
+      # Symbols the operator asked to track. A watched symbol with no bars is
+      # queued rather than missing, and that is a different sentence.
+      watchlist: Watchlist.symbols(),
       limits: %{
         portfolio_points: @max_portfolio_points,
         held_symbols: @max_symbols,
@@ -236,10 +270,40 @@ defmodule BusterClaw.ChartBuilder do
   # could have drawn or promises something it cannot.
   defp drawable do
     case MarketData.chartable_symbols() do
-      [] -> "nothing yet — the daily recorder has not filled the cache"
-      symbols -> Enum.join(symbols, ", ")
+      [] ->
+        "nothing yet — the daily recorder has not filled the cache"
+
+      symbols ->
+        # Names alone let the model promise a year of a symbol holding six days.
+        # Each one carries its depth so it can say WHICH chart it can draw.
+        Enum.map_join(symbols, ", ", fn symbol ->
+          case length(MarketData.bars(symbol)) do
+            0 -> "#{symbol} (queued, no bars yet)"
+            n -> "#{symbol} (#{n} bars)"
+          end
+        end)
     end
   end
+
+  # Per symbol: everything cached, and how much of it this snapshot carries.
+  defp coverage(symbols, market) do
+    Map.new(symbols, fn symbol ->
+      all = MarketData.bars(symbol)
+      included = Map.get(market, symbol, [])
+
+      {symbol,
+       %{
+         cached_bars: length(all),
+         included_bars: length(included),
+         truncated: length(all) > length(included),
+         first_cached: all |> List.first() |> bar_day(),
+         last_cached: all |> List.last() |> bar_day()
+       }}
+    end)
+  end
+
+  defp bar_day(%{bar_on: day}), do: Date.to_iso8601(day)
+  defp bar_day(_none), do: nil
 
   defp reference_playbook do
     case Skills.load("chart-builder") do
