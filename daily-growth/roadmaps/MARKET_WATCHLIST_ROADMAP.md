@@ -36,60 +36,72 @@ the cache by being held, full stop.** HOOD's 6 bars are a symbol that became hel
 recently; nothing about watchlists is involved, because nothing about watchlists
 exists.
 
-**Benchmarks are a separate, hardcoded path that has produced nothing.**
-`@benchmark_symbols ~w(SPY QQQ DIA IWM)`, target 240 bars, 370 calendar days
-back, via `backfill_benchmark/2` on the chart tier. The cache has **zero rows for
-all four**, while `benchmark_backfill_attempted_on` is set to today. So the
-attempt runs and yields nothing. The Chart Build agent flagged exactly this as
-*"a real thing to check rather than assume"* — it was right.
+**Benchmarks are a separate, hardcoded path with no rows yet — and the reason is
+NOT that it is broken.** `@benchmark_symbols ~w(SPY QQQ DIA IWM)`, target 240
+bars, 370 calendar days back, via `backfill_benchmark/2` on the chart tier. The
+cache has zero rows for all four.
 
-**Three structural facts make that failure durable rather than transient:**
+**Corrected 08-04 after measuring** (this file's first draft said the backfill
+"runs and yields nothing" and called that failure durable — a conclusion drawn
+from a single attempt):
 
-1. **The latch marks the attempt, not the success** (deliberate, and documented
-   in `MarketData`). A failing backfill therefore consumes the day and does not
-   retry until tomorrow.
-2. **One benchmark per day.** `Recorder.backfill_one_benchmark/1` takes the head
-   of `benchmarks_needing_backfill/0`. Four benchmarks is four clean days
-   minimum; with failures it is never.
+- The feature landed **2026-08-03 21:07**, after that day's fire time. Today is
+  the 4th. So **exactly one backfill attempt has ever run**, and at one benchmark
+  per day the queue had reached only SPY.
+- That one attempt most likely died on the **harness bug fixed hours later the
+  same day**: the operator had set the global harness to codex, `:trading_read`
+  was not yet pinned to claude, and codex answers claude's `--disallowedTools`
+  with `unexpected argument` and exit 2. Every trading-tier run in that window
+  failed the same way.
+- **The fetch itself works.** Running the recorder's exact chart-tier call for
+  SPY against Robinhood returned a full year of clean OHLCV, oldest first:
+  `111.2s`, 3 turns, `is_error: false`, **$0.57**. So there is no ceiling
+  problem, no span refusal and no timeout — the 300s cap is comfortable.
+
+Three structural properties remain true and are worth keeping as **risks rather
+than as a diagnosis**:
+
+1. **The latch marks the attempt, not the success** (deliberate, documented). A
+   failing backfill consumes the day.
+2. **One benchmark per day.** Four benchmarks is four clean days; a watchlist of
+   N symbols is N days before it can draw an advanced chart.
 3. **The failure is invisible.** `backfill_benchmark/2` returns `{:error, …}` and
-   the recorder writes a `Logger` line. **Nothing reaches the Sentinel feed** —
-   confirmed by querying `security_events` for benchmark/market messages and
-   finding none. A daily job that fails silently and re-latches is indistinguishable
-   from one that is working, unless someone is watching the server output.
+   the recorder writes a `Logger` line; nothing reaches the Sentinel feed —
+   confirmed by querying `security_events` and finding no benchmark messages.
+   That invisibility is what made one attempt look like an established failure,
+   including to this document.
+
+**And the number nobody had: $0.57 per deep backfill**, measured. That is the
+unit economics of the whole feature — a 20-symbol watchlist costs ~$11 to seed
+and, at one per day, twenty days to fill.
 
 **The sweep has a hard cap of 10 symbols**, and anything past it is skipped BY
 NAME rather than silently (`market_data_prompt/1`, and the `:skipped` warning in
 `refresh/1`). This is the constraint that shapes the whole feature: a watchlist
 is not free, and an unbounded one silently degrades the sweep it shares.
 
-**Not determined:** *why* the SPY backfill returns no bars. A probe running the
-real `fetch_symbol_bars("SPY", …)` was attempted and abandoned at 7 minutes — it
-was run via `mix run`, which boots a second copy of the app beside the running
-dev server and contends for the port and the SQLite file, so the timeout says
-nothing about the fetch. **This must be measured before Phase 2 is designed**;
-see Phase 0.
+**Still not determined:** whether the one failed attempt was in fact the codex
+bug. The evidence is circumstantial — right window, right symptom, no durable
+record either way, which is exactly the gap Phase 1 closes.
 
 ---
 
-# Phase 0 — Find out why the benchmarks are empty (before designing around it)
+# Phase 0 — Why the benchmarks are empty — **DONE 08-04**
 
-The whole feature is "let the operator choose symbols to backfill deeply". If
-deep backfill is broken, a watchlist just lets them choose more symbols that will
-not appear.
+- [x] **Ran the real `fetch_symbol_bars("SPY", -370d, "day")`**, driving the CLI
+      directly with the recorder's own prompt, tools and MCP config so the dev
+      server was never touched. Result: a full year of bars, `111.2s`, 3 turns,
+      `is_error: false`, `$0.5667`.
+- [x] None of the three candidates hold. Not (a) a span refusal, not (b) a
+      transcription timeout — 111s against a 300s cap — and not (c) auth or
+      allowlist.
+- [x] **The answer is "it has barely run".** One attempt, one day old, in the
+      window where the codex harness bug broke every trading-tier run.
 
-- [ ] **Run `Trading.fetch_symbol_bars("SPY", ~370 days back, "day")` for real**,
-      in a way that does not fight the dev server — a remote console into the
-      running node, or a one-off with the server stopped. Capture the actual
-      return.
-- [ ] Distinguish the three candidates the result will separate:
-      **(a)** the Robinhood historicals tool refuses a 370-day span for an ETF,
-      **(b)** the agent run times out on a ~252-row transcription (the chart tier
-      was sized for exactly this, so a failure here is a sizing fact worth
-      knowing), or **(c)** the run fails for an unrelated reason (auth, tool
-      allowlist, MCP config).
-- [ ] If it is (a) or (b), that is a **finding about the ceiling on any deep
-      history**, watchlist or not — and it changes what "advanced chart" can
-      honestly promise.
+**So deep backfill is viable, and "advanced charts" can honestly promise a year.**
+The thing to fix is not the fetch; it is that a single silent failure was
+indistinguishable from a broken feature — for a whole afternoon, to the Chart
+Build agent, the operator, and this roadmap.
 
 # Phase 1 — Make the failure visible, whatever it turns out to be
 
