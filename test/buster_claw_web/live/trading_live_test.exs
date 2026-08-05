@@ -343,13 +343,15 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert has_element?(view, "#trading-order-confirm-trading")
       refute has_element?(view, "#trading-order-confirm-#{chart.id}")
 
-      # And the panel underneath did switch.
-      assert has_element?(view, "#trading-lookup-card")
+      # And the panel underneath did switch. Asserted on the PANELS, not on the
+      # symbol lookup: the lookup moved into the left rail on 08-04 and now shows
+      # on both kinds, so its presence no longer says which panel is up.
+      assert has_element?(view, "#chartbuild-panel")
       refute has_element?(view, "#trading-account-card")
 
       render_click(view, "trading_select_tab", %{"id" => "trading"})
       assert has_element?(view, "#trading-account-card")
-      refute has_element?(view, "#trading-lookup-card")
+      refute has_element?(view, "#chartbuild-panel")
     end
 
     test "the lookup panel renders app-fetched figures, and says when it cannot",
@@ -2100,4 +2102,57 @@ defmodule BusterClawWeb.TradingLiveTest do
       assert event.metadata["model"] == "claude-opus-5"
     end
   end
+
+  # Trading was the one dock tab `SplitLive` had no entry for, so dragging it
+  # onto another tab produced the "can't be opened in a split pane yet" fallback.
+  # These live here rather than in `SplitLiveTest` because mounting /trading
+  # starts an account snapshot — unstubbed, that is a real `claude` subprocess
+  # spawned from a test, and this file is where those seams are already closed.
+  describe "joined into a split pane" do
+    test "Trading embeds instead of showing the unsupported fallback", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/split?left=/trading&right=/calendar")
+
+      refute html =~ "can&#39;t be opened in a split pane"
+      refute html =~ "can't be opened in a split pane"
+
+      # The real surface, not just the pane header: the tab's own content.
+      assert has_element?(view, "#trading-root")
+      assert html =~ "trading-read-only-banner"
+      assert html =~ "Calendar"
+
+      # Embedded panes are chromeless — only the outer split draws the shell.
+      assert occurrences(html, ~s(id="tab-strip")) == 1
+      assert occurrences(html, ~s(id="app-dock")) == 1
+    end
+
+    test "a floating chat window is bound to the pane, not the window", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/split?left=/trading&right=/calendar")
+
+      # `absolute` hands the window to #trading-root's box. `fixed` would let it
+      # sail over the neighbouring pane — which is what it did before, since the
+      # default geometry places it in the bottom-right of the *viewport*.
+      assert window_class(html) =~ "absolute"
+      refute window_class(html) =~ "fixed"
+    end
+
+    # The house lesson from the codesign guard: test the guard against a passing
+    # input too. Pane-binding must not follow Trading back to its own tab, where
+    # the viewport IS the right frame.
+    test "the same window stays viewport-bound on the solo Trading tab", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/trading")
+
+      assert window_class(html) =~ "fixed"
+      refute window_class(html) =~ "absolute"
+    end
+  end
+
+  # The class list on the floating chat window, which is what decides its
+  # containing block (and, via `offsetParent`, what the drag hook clamps to).
+  defp window_class(html) do
+    [_, rest] = String.split(html, ~s(id="trading-chat-trading"), parts: 2)
+    [_, class] = String.split(rest, ~s(class="), parts: 2)
+    class |> String.split(~s("), parts: 2) |> hd()
+  end
+
+  defp occurrences(haystack, needle), do: length(String.split(haystack, needle)) - 1
 end

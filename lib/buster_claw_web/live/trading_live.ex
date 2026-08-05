@@ -2216,10 +2216,15 @@ defmodule BusterClawWeb.TradingLive do
                     against a drawn one — the left rail is still beside it, and
                     now the tab has ONE place for ticker things: search a symbol,
                     and the lists you keep. --%>
-              <:panel :if={@active_kind == "chartbuild"}>
-                <%!-- States the stronger fact: the broker isn't restricted here,
-                      it's absent. This chat has no Robinhood tool to deny. --%>
+              <:panel :if={@active_kind in ["robinhood", "chartbuild"]}>
+                <%!-- Chart Build ONLY. It states the stronger fact — the broker
+                      isn't restricted in that chat, it's absent, with no Robinhood
+                      tool to deny. On the Robinhood tab the same sentence would be
+                      false: that chat can see your accounts, which is the whole
+                      point of it. The lookup below is public-data either way; the
+                      banner is a claim about the CHAT, not about the search. --%>
                 <div
+                  :if={@active_kind == "chartbuild"}
                   id="trading-lookup-banner"
                   class="border-2 border-info/40 px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-info"
                 >

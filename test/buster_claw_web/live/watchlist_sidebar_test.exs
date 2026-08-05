@@ -95,6 +95,27 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
   # The operator's actual ask: ticker things in one rail — search a symbol, and
   # the lists you keep. NOT the Robinhood account UI, which still owns the tab.
   describe "the symbol lookup shares the rail" do
+    # The lookup is public-data HTTP, not an agent run, so it is useful on both
+    # kinds — searching a ticker while looking at your positions is the obvious
+    # case.
+    test "the Robinhood tab has the lookup too", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+
+      assert has_element?(view, "#trading-account-card")
+      assert render(view) =~ "Search a ticker"
+    end
+
+    # The banner is a claim about the CHAT, not the search. On Robinhood that
+    # chat CAN see your accounts, so printing it there would be false.
+    test "the public-data banner stays on Chart Build only", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      refute render(view) =~ "cannot see your accounts"
+
+      render_click(view, "trading_new_tab_menu", %{})
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      assert render(view) =~ "cannot see your accounts"
+    end
+
     test "Chart Build renders the lookup inside the rail, not in a side column",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")
