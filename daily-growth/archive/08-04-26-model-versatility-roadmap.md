@@ -1,7 +1,7 @@
 # Model versatility — choosing the model, and saying so
 
-**Scoped 08-03-26 · Status: Phases 0–3 SHIPPED 08-03. Phase 4 deferred.**
-**Successor scope: `AGENT_BACKEND_ROADMAP.md`** — this roadmap chose the *model*;
+**Scoped 08-03-26 · CLOSED + ARCHIVED 08-04-26.** Phases 0–3 shipped; Phase 4's two items resolved separately — see the closeout.
+**Successor scope: `archive/08-04-26-agent-backend-roadmap.md`** — this roadmap chose the *model*;
 that one chooses the *runner the model runs in*, and it corrects one claim made
 here (see the note on codex under Phase 0).
 
@@ -178,19 +178,55 @@ Two implementation notes worth carrying:
       deliberately left alone.** The agent knowing which model it is buys
       nothing here, and adding it would be reflex rather than a decision.
 
-# Phase 4 — Optional, re-justify when reached
+# Phase 4 — Neither item survives as written
 
-- [ ] Per-conversation model choice on the Trading tab strip, the way `kind`
-      works today. Only if real use shows people wanting it per-chat rather than
-      per-surface.
-- [ ] Cost reporting per surface. Attractive, and a much bigger build than it
-      sounds — but **not for the reason this line gave until 08-03.** It said
-      "the CLI does not report spend back to us." That was never true: claude's
-      `result` event carries `total_cost_usd` (measured 08-03 at `0.0802325` on a
-      one-word prompt), `usage`, `num_turns` and `modelUsage`, and `StreamEvent`
-      has parsed the cost field the whole time. All three harnesses report — two
-      in dollars, codex in tokens. The build is the aggregation (per surface, per
-      day, across three shapes), not the capture.
+- [ ] **Per-conversation model choice on the Trading tab strip. NOT BUILT, and
+      not moved to `LEFTOVERS.md` on purpose.** Its own condition was "only if
+      real use shows people wanting it per-chat rather than per-surface", and
+      nothing since has. Parking it in Leftovers would launder an unjustified
+      idea into a queued task — Leftovers is for work that is concrete and
+      deferred, not for work that has not earned a reason. If someone wants a
+      model per tab, the evidence comes first and the roadmap comes after.
+- [x] **Cost reporting → shipped in half, and the other half moved.** This line
+      said "the CLI does not report spend back to us", which was never true of
+      any of the three: claude's `result` carries `total_cost_usd` (measured
+      `0.0802325`), codex reports tokens, OpenCode reports dollars — and
+      `StreamEvent` had been parsing claude's cost field the entire time. The
+      capture shipped 08-04 (`StreamEvent.usage`, `run_usage/2`); the
+      aggregation is in `LEFTOVERS.md` with the prerequisite that makes it real
+      work — three of six surfaces would silently total zero today.
+
+---
+
+# Closeout — 08-04
+
+The app names the model now, at all six run sites, and says which surface got it.
+That was the ask, and it is done.
+
+**What this roadmap got right and should be copied:** the floor. A measurement
+sitting in a comment (`trading.ex`, 07-28: a cheaper model on a trading read
+invoked the broker tool in 1 of 2 runs and *invented* the answer on the miss)
+became a constraint the global default cannot lower, with tests asserting the
+opts the production code hands its runner rather than re-asserting the
+resolution. That is the difference between a recorded finding and an enforced
+one.
+
+**What it got wrong, twice, in writing:** it asserted `--model` was "claude-only
+by construction" when codex had accepted `-m` all along, and it asserted the CLIs
+do not report spend when all three do. Both were disproved in minutes by running
+`--help` and one throwaway prompt. Both had been repeated into other documents
+before anyone checked. The successor roadmap
+(`archive/08-04-26-agent-backend-roadmap.md`) exists because the first of those
+was wrong.
+
+**The question it told every phase to ask** — *can an operator lower cost in a
+way that silently reaches a money surface?* — was worth asking every time. It
+caught the floor's claude-only scope being implicit, and then caught something
+bigger: choosing another harness for a money surface produced a run that could
+not execute at all. Those surfaces are pinned to claude as of 08-04.
+
+**Superseded by** `archive/08-04-26-agent-backend-roadmap.md`, which chose the
+harness the model runs in. The two are one arc and should be read in order.
 
 ---
 
