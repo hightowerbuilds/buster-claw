@@ -1,7 +1,7 @@
 # Agent backends — Codex and OpenCode as first-class runners
 
 **Scoped 08-03-26 · CLOSED + ARCHIVED 08-04-26.** Phases 0–3 shipped, Phase 4 half shipped and half moved to `LEFTOVERS.md`.
-**Successor scope to `MODEL_VERSATILITY_ROADMAP.md`** — that roadmap chose the
+**Successor scope to `archive/08-04-26-model-versatility-roadmap.md`** — that roadmap chose the
 *model*; this one chooses the *runner the model runs in*, and the two are not
 separable. A model ID means nothing without a backend to interpret it.
 
@@ -158,7 +158,7 @@ hatch the whole picker depends on.
 
 **Therefore: switching a money surface to codex or opencode makes every model on
 it floor-exempt.** The protection does not warn and does not degrade — it simply
-stops applying. That is precisely the question `MODEL_VERSATILITY_ROADMAP` says to
+stops applying. That is precisely the question the model-versatility roadmap says to
 ask of every phase ("can an operator lower cost in a way that silently reaches a
 money surface?"), and backends are the first time the answer is yes.
 
