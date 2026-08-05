@@ -142,6 +142,33 @@ The operator's distinction, made real rather than implied.
       is the right answer for comparing magnitudes and should be a first-class
       option once more than one symbol has real depth.
 
+# Phase 3.5 — Where the watchlist lives: a left sidebar with a bumper
+
+**Operator, 08-04:** the watchlist is created and viewed in a **sidebar on the
+left of the Trading tab**, opened by a **bumper**.
+
+- [ ] **Reuse the existing bumper, do not invent a second one.** The app already
+      has exactly one: `CornerWidget` (`home_widget.ex:33`, `ic-corner-bumper`),
+      the tab that pulls the Calendar/Contacts card out from the edge on the
+      homepage. A second bumper with its own hook and its own CSS would be two
+      answers to one question — the browser sidebar's ⌘B behaviour is the other
+      precedent worth reading before writing anything.
+- [ ] Left edge specifically. The homepage bumper pulls from the right; this one
+      pulls from the left, which is a parameter the hook may not take yet. Check
+      before assuming it generalises.
+- [ ] The sidebar holds **create and view**: name a watchlist, add and remove
+      tickers, see what each holds. Plural is the operator's word — the storage
+      in Phase 2 must therefore be *named lists*, not one flat set, and that
+      decision has to be made in Phase 2 rather than retrofitted here.
+- [ ] Each ticker's row shows the thing the whole roadmap is about: **how much
+      history the cache actually holds for it** — a year, six closes, or nothing
+      yet — so "advanced chart" versus "short-term chart" is visible where the
+      symbol is added rather than discovered when a chart comes back wrong.
+- [ ] It must survive a tab that is already crowded. Trading has a tab strip, a
+      chat window, a data panel and now a sidebar; the sidebar collapsing to a
+      bumper is what makes that fit, so the collapsed state is the default and
+      the expanded one is the exception.
+
 # Phase 4 — Only if it earns it
 
 - [ ] Watchlist symbols that are neither held nor benchmarks still cost a fetch
