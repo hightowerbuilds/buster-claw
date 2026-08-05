@@ -33,9 +33,9 @@ defmodule BusterClaw.Agent.Chat do
 
   require Logger
 
+  alias BusterClaw.Agent.ChatTransport
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.Agent.Transcript
-  alias BusterClaw.AgentBackend
   alias BusterClaw.AgentRunner
   alias BusterClaw.ModelPolicy
   alias BusterClaw.Sentinel
@@ -73,8 +73,53 @@ defmodule BusterClaw.Agent.Chat do
   or `{:error, reason}`.
   """
   def send_message(conv_id, text) when is_binary(conv_id) and is_binary(text) do
+    # Flattens `submit/3`'s effective mode back to a bare `:ok`. Kept because
+    # every existing call site and test was written against this contract, and
+    # Phase 1 is an extraction, not a behaviour change. New call sites should
+    # use `submit/3` and render the mode it returns.
+    case submit(conv_id, text, delivery: :auto) do
+      {:ok, _mode} -> :ok
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc """
+  Submit a user message with an explicit delivery mode.
+
+  * `:auto` — today's behaviour, and what `send_message/2` asks for: start a turn
+    when idle, queue it when a run is in flight.
+  * `:next` — queue as its own follow-up turn, never touching the active one.
+    Deliberate even when the chat is idle, where it is the same as starting a turn.
+  * `:steer` — deliver into the ACTIVE turn.
+
+  Returns `{:ok, effective_mode}` where `effective_mode` is one of `:started`,
+  `:queued`, or `:steered` — the mode that actually happened, which is not always
+  the one asked for. `:steer` on an idle chat starts a turn; `:steer` on a backend
+  that cannot do it (all of them, until Phase 2) queues instead. **The caller must
+  render the returned mode, never the requested one** — showing "steered" for a
+  message that was queued is the single most damaging bug this feature can have.
+  """
+  @spec submit(String.t(), String.t(), keyword()) ::
+          {:ok, :started | :queued | :steered} | {:error, term()}
+  def submit(conv_id, text, opts \\ []) when is_binary(conv_id) and is_binary(text) do
+    delivery = Keyword.get(opts, :delivery, :auto)
+
     with {:ok, _pid} <- ensure_started(conv_id) do
-      GenServer.call(via(conv_id), {:send, text})
+      GenServer.call(via(conv_id), {:submit, text, delivery})
+    end
+  end
+
+  @doc """
+  What the conversation's backend can do and prove right now — see
+  `BusterClaw.Agent.ChatTransport` for the shape.
+
+  Read from the backend the NEXT turn would use, so a UI can label its send
+  button before anything is running.
+  """
+  def capabilities(conv_id) do
+    case whereis(conv_id) do
+      nil -> ChatTransport.Claude.capabilities()
+      pid -> GenServer.call(pid, :capabilities)
     end
   end
 
@@ -256,6 +301,26 @@ defmodule BusterClaw.Agent.Chat do
       # needs a restart — the same contract `append_system_prompt` already has.
       # nil = whatever `AgentRunner.detect/0` finds, which is the shipped state.
       agent: Keyword.get(opts, :agent),
+      # Tool names whose USE is consequential enough to land on the audit feed
+      # by itself, without waiting for the run to end. Generic on purpose: this
+      # module does not learn what a broker is, it learns that some verbs are
+      # worth recording the moment they are exercised. Trading supplies the list
+      # because its chat holds a cancel verb that reaches a real account with no
+      # confirmation card in front of it.
+      audit_tools: Keyword.get(opts, :audit_tools, []),
+      # The backend adapter driving the CURRENT run, and its handle. Both are nil
+      # while idle: the transport is chosen per run from `effective_agent/1`, for
+      # the same reason the model is (a run must never inherit a choice made at
+      # process start). Phase 2's long-lived Claude conversation is what turns
+      # these into state that outlives a turn.
+      transport: nil,
+      handle: nil,
+      # Injectable for tests, like `:spawner` beside it. `steer/3` has no live
+      # implementation until Phase 2, so a fake adapter is the only way to cover
+      # the accepted-steer and completion-race branches before then — and those
+      # are precisely the branches where a bug shows the operator "STEERED" for a
+      # message that was actually queued.
+      transport_mod: Keyword.get(opts, :transport_mod),
       # Injectable for tests: `spawner.(prompt, opts) :: {:ok, port} | {:error, reason}`.
       spawner: Keyword.get(opts, :spawner, &default_spawner/2)
     }
@@ -267,18 +332,28 @@ defmodule BusterClaw.Agent.Chat do
   # dispatched as its own turn when the current run finishes (see dispatch_next/1).
   # The queue is in-memory only — items not yet sent are dropped on restart.
   @impl true
-  def handle_call({:send, text}, _from, %{status: :running} = state) do
-    item = %{id: System.unique_integer([:positive, :monotonic]), text: text}
-    state = %{state | queue: state.queue ++ [item]}
-    broadcast_queue(state)
-    {:reply, :ok, state}
-  end
+  def handle_call({:submit, text, :steer}, _from, %{status: :running} = state),
+    do: steer_or_queue(state, text)
 
-  def handle_call({:send, text}, _from, state) do
+  # `:auto` and `:next` are the same thing while a run is in flight — the
+  # message becomes its own turn once this one finishes. They differ only in
+  # intent, which matters to the UI, not here.
+  def handle_call({:submit, text, _delivery}, _from, %{status: :running} = state),
+    do: {:reply, {:ok, :queued}, enqueue(state, text)}
+
+  # Idle: every delivery mode starts a turn. There is no active turn to steer
+  # into and nothing to queue behind, so honouring the literal request would
+  # just make the operator wait for nothing.
+  def handle_call({:submit, text, _delivery}, _from, state) do
     case start_run(state, text) do
-      {:ok, state} -> {:reply, :ok, state}
+      {:ok, state} -> {:reply, {:ok, :started}, state}
       {:error, reason, state} -> {:reply, {:error, reason}, state}
     end
+  end
+
+  def handle_call(:capabilities, _from, state) do
+    mod = state.transport_mod || transport_for(effective_agent(state))
+    {:reply, mod.capabilities(), state}
   end
 
   def handle_call(:status, _from, state), do: {:reply, state.status, state}
@@ -311,13 +386,15 @@ defmodule BusterClaw.Agent.Chat do
   # — same trick as interrupt/1. No transcript churn: unlike interrupt we don't
   # emit an "interrupted" message, because a reset also drops the transcript.
   def handle_call(:reset, _from, state) do
-    if is_port(state.port), do: AgentRunner.kill_port(state.port)
+    close_transport(state)
     if state.timer, do: Process.cancel_timer(state.timer)
 
     state = %{
       state
       | status: :idle,
         port: nil,
+        transport: nil,
+        handle: nil,
         buf: "",
         raw_tail: [],
         timer: nil,
@@ -373,7 +450,7 @@ defmodule BusterClaw.Agent.Chat do
 
   def handle_info({:run_timeout, token}, %{status: :running, run: %{token: run_token}} = state)
       when token == run_token do
-    if is_port(state.port), do: AgentRunner.kill_port(state.port)
+    interrupt_transport(state)
 
     state =
       state
@@ -411,27 +488,105 @@ defmodule BusterClaw.Agent.Chat do
         cost: nil
       })
 
+    # WHICH argv and WHERE the prompt goes are the backend's business, not this
+    # module's — see `BusterClaw.Agent.ChatTransport`. `Chat` keeps the decision
+    # of which backend (`effective_agent/1` is a security call) and everything
+    # downstream of the bytes.
     agent = effective_agent(state)
+    transport = state.transport_mod || transport_for(agent)
 
-    extra =
-      AgentBackend.stream_args(agent, stream: true) ++
-        resume_args(agent, state.session_id) ++
-        append_system_prompt_args(agent, state.append_system_prompt) ++
-        state.extra_cli_args
+    {:ok, handle} =
+      transport.open(
+        # Passed through UNRESOLVED, nil included. `nil` is not "claude" — it is
+        # "let `AgentRunner.detect/0` decide", which is what honours the
+        # `:agent_cli` override and PATH order. Substituting the adapter's own
+        # name here turns detection into a hard `{:agent_unavailable, :claude}`
+        # on a machine that only has codex.
+        agent: agent,
+        session_id: state.session_id,
+        append_system_prompt: state.append_system_prompt,
+        extra_cli_args: state.extra_cli_args,
+        permission_mode: state.permission_mode,
+        spawner: state.spawner
+      )
 
-    spawn_opts =
-      [extra_args: extra, login: true, agent: agent]
-      |> maybe_put_permission_mode(state.permission_mode)
-
-    case state.spawner.(prompt_for(agent, state, text), spawn_opts) do
-      {:ok, port} ->
+    case transport.start_turn(handle, text) do
+      {:ok, handle, turn_ref} ->
         broadcast(state, {:status, :running})
         timer = Process.send_after(self(), {:run_timeout, token}, state.timeout_ms)
-        {:ok, %{state | status: :running, port: port, buf: "", raw_tail: [], timer: timer}}
+
+        {:ok,
+         %{
+           state
+           | status: :running,
+             port: turn_ref,
+             transport: transport,
+             handle: handle,
+             buf: "",
+             raw_tail: [],
+             timer: timer
+         }}
 
       {:error, reason} ->
         state = state |> emit_message(:error, error_text(reason)) |> audit_run({:failed, reason})
         {:error, reason, %{state | run: nil, status: :idle}}
+    end
+  end
+
+  # Append to the on-deck queue. Dispatched one-per-turn, in order, by
+  # `dispatch_next/1`. In-memory only — Phase 6's ledger is what makes an
+  # acknowledged message survive a crash.
+  defp enqueue(state, text), do: do_enqueue(state, text, :back)
+
+  # The completion race gets the FRONT. The operator aimed this message at work
+  # that was happening a moment ago; making it wait behind messages they wrote
+  # earlier would reorder their intent. Ordinary queue-next keeps its place in
+  # line.
+  defp enqueue_front(state, text), do: do_enqueue(state, text, :front)
+
+  defp do_enqueue(state, text, position) do
+    item = %{id: System.unique_integer([:positive, :monotonic]), text: text}
+
+    queue =
+      case position do
+        :front -> [item | state.queue]
+        :back -> state.queue ++ [item]
+      end
+
+    state = %{state | queue: queue}
+    broadcast_queue(state)
+    state
+  end
+
+  # Try to put `text` into the turn that is already running; fall back to the
+  # queue when the backend cannot, or when the turn ended first.
+  #
+  # The fallback is not a failure path — it is the correct answer to the
+  # completion race (roadmap scenario C), and the reason `submit/3` returns the
+  # mode that HAPPENED rather than the one requested. Phase 1 always lands here,
+  # because no adapter implements `steer/3` yet.
+  defp steer_or_queue(%{transport: nil} = state, text),
+    do: {:reply, {:ok, :queued}, enqueue(state, text)}
+
+  defp steer_or_queue(state, text) do
+    case state.transport.steer(state.handle, state.port, text) do
+      {:ok, handle, _receipt} ->
+        # A steered message belongs to the active turn: it is persisted and
+        # shown as operator input, but it does not start a turn, so nothing
+        # here touches `run` or the turn counter.
+        state = emit_message(%{state | handle: handle}, :user, text)
+        {:reply, {:ok, :steered}, state}
+
+      # The turn ended between the operator hitting send and the adapter being
+      # asked. The message is NOT lost and is NOT retried against whatever turn
+      # starts next — it becomes the next turn itself, first in line.
+      {:error, :no_active_turn} ->
+        {:reply, {:ok, :queued}, enqueue_front(state, text)}
+
+      # The backend simply cannot steer. This is an ordinary follow-up turn and
+      # takes its place in line.
+      {:error, _reason} ->
+        {:reply, {:ok, :queued}, enqueue(state, text)}
     end
   end
 
@@ -461,7 +616,7 @@ defmodule BusterClaw.Agent.Chat do
   # (finish_run → dispatch_next). The killed process's later exit/data messages
   # carry the old port, so they no longer match handle_info and are ignored.
   defp interrupt_running(state) do
-    if is_port(state.port), do: AgentRunner.kill_port(state.port)
+    interrupt_transport(state)
 
     state
     |> emit_message(:meta, "interrupted")
@@ -498,13 +653,26 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   defp capture_session(state, %StreamEvent{session_id: id}) when is_binary(id),
-    do: %{state | session_id: id}
+    do: %{state | session_id: id, handle: ChatTransport.put_session(state.handle, id)}
 
   defp capture_session(state, _event), do: state
 
   defp project_event(state, %StreamEvent{kind: :assistant_text, text: text})
        when is_binary(text) and text != "",
        do: state |> mark_first_token() |> emit_message(:assistant, text)
+
+  defp project_event(state, %StreamEvent{kind: :tool_use, tool: tool} = event)
+       when is_binary(tool) do
+    if tool in state.audit_tools, do: audit_tool_use(state, event)
+
+    case event.summary do
+      summary when is_binary(summary) ->
+        state |> mark_first_token() |> emit_message(:tool, summary)
+
+      _ ->
+        mark_first_token(state)
+    end
+  end
 
   defp project_event(state, %StreamEvent{kind: :tool_use, summary: summary})
        when is_binary(summary),
@@ -549,7 +717,45 @@ defmodule BusterClaw.Agent.Chat do
   # broadcasts :idle when the queue is empty.
   defp finish_run(state) do
     if state.timer, do: Process.cancel_timer(state.timer)
-    dispatch_next(%{state | status: :idle, port: nil, buf: "", timer: nil, run: nil})
+
+    dispatch_next(%{
+      state
+      | status: :idle,
+        port: nil,
+        transport: nil,
+        handle: nil,
+        buf: "",
+        timer: nil,
+        run: nil
+    })
+  end
+
+  # Stop the in-flight turn through its own adapter. One-shot backends kill the
+  # process group; Phase 2's duplex Claude will interrupt the turn and keep the
+  # process. `Chat` deliberately does not know which of those happened — that is
+  # the whole point of the boundary.
+  #
+  # Both helpers fall back to `AgentRunner.kill_port/1` when there is no handle:
+  # a run can be in flight with `transport: nil` only if `start_run/2` failed
+  # midway, and leaking a process group is worse than a redundant kill.
+  defp interrupt_transport(%{transport: nil} = state) do
+    if is_port(state.port), do: AgentRunner.kill_port(state.port)
+    :ok
+  end
+
+  defp interrupt_transport(state) do
+    state.transport.interrupt(state.handle, state.port)
+    :ok
+  end
+
+  defp close_transport(%{transport: nil} = state) do
+    if is_port(state.port), do: AgentRunner.kill_port(state.port)
+    :ok
+  end
+
+  defp close_transport(state) do
+    state.transport.close(state.handle)
+    :ok
   end
 
   # Record the run on the Sentinel audit feed (best-effort). This is both the
@@ -666,37 +872,24 @@ defmodule BusterClaw.Agent.Chat do
   defp error_text(:no_agent_cli), do: "No agent CLI found. Install Claude Code to chat."
   defp error_text(reason), do: "Run failed: #{inspect(reason)}"
 
-  # Resume is spelled differently per harness, and codex's is not a flag at all:
-  # `codex exec resume <id>` is a SUBCOMMAND, which changes the argv shape rather
-  # than appending to it. `AgentBackend.argv/3` does not model that yet, so a
-  # codex conversation starts fresh each turn instead of silently appending a
-  # flag codex would reject. Recorded in AGENT_BACKEND_ROADMAP.md rather than
-  # faked here.
-  defp resume_args(_agent, nil), do: []
-  defp resume_args(:codex, _session_id), do: []
-  defp resume_args(:opencode, session_id), do: ["--session", session_id]
-  defp resume_args(_claude, session_id), do: ["--resume", session_id]
+  # Per-harness argv (resume spelling, where the system-prompt guide goes, the
+  # streaming flags) moved to `BusterClaw.Agent.ChatTransport.{Claude,Codex,
+  # OpenCode}` — one module per protocol, so a JSON-RPC or HTTP backend does not
+  # have to pretend to be a flag list. The reasoning that used to live here is
+  # preserved in those moduledocs, including why codex gets no resume.
 
-  # `--append-system-prompt` is claude's spelling and claude's alone: codex
-  # answers it with "unexpected argument '--append-system-prompt'" and exits 2,
-  # which is exactly how this was found — in the app, after switching the global
-  # harness. The other harnesses have no equivalent flag, so the guide is
-  # PREPENDED to the prompt instead by `prompt_for/3`. Dropping it silently would
-  # have left the SVG and trading vocabularies quietly missing.
-  defp append_system_prompt_args(_agent, nil), do: []
-  defp append_system_prompt_args(_agent, ""), do: []
-  defp append_system_prompt_args(:claude, prompt), do: ["--append-system-prompt", prompt]
-  defp append_system_prompt_args(_other, _prompt), do: []
-
-  # The same instructions, carried in the prompt for a harness that cannot take
-  # them as a flag. Only ever applied where the flag was NOT emitted, so claude
-  # is untouched and no conversation gets the guide twice.
-  defp prompt_for(:claude, _state, text), do: text
-  defp prompt_for(_agent, %{append_system_prompt: nil}, text), do: text
-  defp prompt_for(_agent, %{append_system_prompt: ""}, text), do: text
-
-  defp prompt_for(_agent, %{append_system_prompt: guide}, text),
-    do: guide <> "\n\n---\n\n" <> text
+  # The harness → adapter mapping. It lives here rather than on `ChatTransport`
+  # because the adapters depend on that module for `@behaviour`, so pointing back
+  # at them from there would make the four transport files a dependency cycle.
+  #
+  # An unknown or unresolved backend reads as claude, the same rule
+  # `StreamEvent.parse/2` follows: every caller predates harness selection, and
+  # claude's shape is the one they were written against. Note this decides the
+  # PROTOCOL only — the agent value itself is passed through unresolved, so `nil`
+  # still means "let `AgentRunner.detect/0` choose the binary".
+  defp transport_for(:codex), do: ChatTransport.Codex
+  defp transport_for(:opencode), do: ChatTransport.OpenCode
+  defp transport_for(_claude_or_unknown), do: ChatTransport.Claude
 
   # A conversation whose profile carries claude-only confinement — the Trading
   # chat's `--strict-mcp-config`/`--allowedTools`, Chart Build's — cannot run
@@ -706,10 +899,27 @@ defmodule BusterClaw.Agent.Chat do
   defp effective_agent(%{extra_cli_args: []} = state), do: state.agent
   defp effective_agent(_state), do: :claude
 
-  defp maybe_put_permission_mode(opts, nil), do: opts
-
-  defp maybe_put_permission_mode(opts, mode) when is_binary(mode),
-    do: Keyword.put(opts, :permission_mode, mode)
+  # The click is what used to leave a record. Without one, this is the record:
+  # the tool call itself, as it happens, with the arguments the model passed.
+  # `:outbound_send` is the same category the order confirmation uses, because it
+  # is the same kind of event — something left this machine for a broker.
+  defp audit_tool_use(state, %StreamEvent{tool: tool, tool_input: input}) do
+    BusterClaw.Sentinel.observe(
+      :outbound_send,
+      "Agent used #{tool}",
+      %{
+        source: "agent_chat_tool",
+        conv_id: state.conv_id,
+        tool: tool,
+        arguments: inspect(input),
+        agent: state.agent || :auto
+      },
+      severity: :warning
+    )
+  rescue
+    # Never let the audit be the thing that takes the run down.
+    _error -> :ok
+  end
 
   defp broadcast(state, payload),
     do: PubSub.broadcast(BusterClaw.PubSub, state.topic, {:agent_chat, state.conv_id, payload})
