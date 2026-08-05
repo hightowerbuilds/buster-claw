@@ -103,6 +103,45 @@ The thing to fix is not the fetch; it is that a single silent failure was
 indistinguishable from a broken feature — for a whole afternoon, to the Chart
 Build agent, the operator, and this roadmap.
 
+## The cost, and the operator's call on it — DECIDED 08-04
+
+**$0.5667 per deep backfill, and every cent of it is model work.** Measured, with
+the breakdown:
+
+```
+claude-opus-5   $0.5659      output_tokens   8,922
+haiku-4-5       $0.0008      cache_creation 30,551
+                             cache_read     74,576
+```
+
+Robinhood charges nothing for the tool call. The cost is **transcription**: the
+MCP tool returns bars as JSON, and the model retypes them as different JSON —
+8,922 output tokens of copying, under a prompt that says "transcribed exactly —
+never invented". A frontier model as a careful photocopier.
+
+Three cheaper paths were identified and **all three declined for now (operator,
+08-04): stay on the $0.57 path.**
+
+- **Finnhub candles** — already wired and `:verified`, key present, but it
+  implements only `quote/2` and `news/2`. If its free tier still serves candles
+  this becomes a direct HTTP fetch at zero model cost. **One call would settle
+  it; not made.** This is the first thing to try if the cost ever bites.
+- **Sonnet on `:trading_read`** — permitted (it is the floor, not below it), and
+  roughly 40% cheaper by arithmetic on the token counts above. Declined because
+  the 07-28 fabrication finding measured *haiku*, says nothing about sonnet
+  either way, and this surface transcribes financial data where one wrong digit
+  is silent. Cheaper transcription is exactly the axis on which the Chart Build
+  agent's refusal-to-invent would degrade quietly.
+- **Alpha Vantage** — 25 requests/day is useless interactively but would in
+  principle cover one backfill per day. Registry status `:candidate`, and its
+  own note calls it "a demo, not a data source".
+
+**What this means for the watchlist:** the list itself is free (a `Settings`
+row), and charting anything already cached is free forever. The $0.57 is a
+one-time seeding cost per NEW symbol, and ongoing top-ups ride the existing daily
+sweep in a batch. So the honest framing in the UI is a per-ticker admission price,
+not a subscription.
+
 # Phase 1 — Make the failure visible, whatever it turns out to be
 
 Independent of the diagnosis, and small.
