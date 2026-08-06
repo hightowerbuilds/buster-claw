@@ -657,7 +657,7 @@ defmodule BusterClaw.Agent.Chat do
         append_system_prompt: state.append_system_prompt,
         extra_cli_args: state.extra_cli_args,
         permission_mode: state.permission_mode,
-        model: resolve_model(),
+        model: resolve_model(agent),
         spawner: state.spawner
       )
 
@@ -666,13 +666,23 @@ defmodule BusterClaw.Agent.Chat do
 
   defp persistent?(transport), do: Map.get(transport.capabilities(), :persistent, false)
 
-  # The per-surface model, for transports that have no spawn to hang it on.
+  # The per-surface model for THIS conversation's backend, for transports that
+  # have no spawn to hang it on.
+  #
+  # `model_for/2` and not `for_surface/1`: the latter resolves the backend from
+  # global policy, which is not necessarily the backend this conversation is
+  # running. They agree in the app (the LiveViews pass
+  # `ModelPolicy.backend_for(:chat)` as the agent) and diverge the moment
+  # anything pins an agent explicitly — at which point a claude model id would
+  # be handed to codex, which rejects it. Model strings are only meaningful
+  # inside their own namespace.
+  #
   # Rescued rather than guarded: `Chat`'s own tests run async with no DB
   # sandbox, and the documented behaviour of an unresolved model is to omit it
   # and leave the CLI's own default in charge — the same rule
   # `AgentBackend.argv/3` follows.
-  defp resolve_model do
-    ModelPolicy.for_surface(:chat)
+  defp resolve_model(agent) do
+    ModelPolicy.model_for(agent || ModelPolicy.backend_for(:chat), :chat)
   rescue
     _error -> nil
   end

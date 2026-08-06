@@ -259,6 +259,24 @@ defmodule BusterClaw.Agent.ChatCodexParityTest do
     end
   end
 
+  describe "model resolution" do
+    test "a codex conversation is given a CODEX model, not the global backend's" do
+      # `ModelPolicy.for_surface/1` resolves the backend from global policy,
+      # which is not necessarily the backend a conversation is running. Handing
+      # a claude model id to codex is not a degraded outcome — codex rejects it,
+      # and model strings are only meaningful inside their own namespace.
+      ctx = start_chat()
+      assert {:ok, :started} = Chat.submit(ctx.conv, "first", delivery: :auto)
+
+      model = :sys.get_state(ctx.pid).handle.model
+
+      # Nothing is configured in this test env, so the honest answer is nil —
+      # omit the field and leave the CLI's own default in charge. What must NOT
+      # happen is a claude id leaking through.
+      refute is_binary(model) and String.starts_with?(model, "claude-")
+    end
+  end
+
   describe "confinement translation" do
     test "the handle's permission mode becomes codex's sandbox enum, not a widening" do
       # `bypassPermissions` deliberately does NOT become `danger-full-access`:
