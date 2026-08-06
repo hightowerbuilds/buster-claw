@@ -68,6 +68,27 @@ defmodule BusterClaw.Trading do
     mcp__robinhood__get_realized_pnl
   )
 
+  # The one WRITE verb the chat holds. Kept out of `@read_tools` so that list
+  # stays literally what its name says, and so the exception is visible at every
+  # call site rather than buried in an alphabetical list of get_*.
+  #
+  # Operator decision 08-04, against the recommendation on record: cancellation
+  # happens on the model's say-so rather than through a confirmation card. That
+  # converts this tab's safety from STRUCTURAL (the model held no verb) to
+  # BEHAVIOURAL (it holds one and is told how to use it). What that costs, and
+  # what was done about each:
+  #
+  #   * The operator's click is gone. Nothing replaces it — that was the point.
+  #   * The audit record is NOT gone: this list is handed to the chat process as
+  #     `:audit_tools`, and `Agent.Chat` posts a Sentinel line the moment one of
+  #     these tools is called — as it happens, not when the run ends. So every
+  #     cancellation still lands on the feed even though no card was clicked.
+  #   * Which ACCOUNT gets cancelled in cannot be enforced here. The tool call is
+  #     the model's, so the agentic-account restriction is an instruction in the
+  #     prompt and a fact about what Robinhood accepts — not a guarantee this app
+  #     makes. That is a real difference from placement and is stated plainly.
+  @cancel_tools ~w(mcp__robinhood__cancel_equity_order)
+
   # The account panel's cached snapshot (JSON blob in Settings — the
   # browser_tabs precedent). Every refresh is a real agent run, so staleness is
   # tolerated rather than polled away.
@@ -118,14 +139,35 @@ defmodule BusterClaw.Trading do
   @system_prompt """
   You are the operator's Robinhood portfolio assistant.
 
-  Authority — this is the one rule that never bends:
+  Authority — read this twice; it is the rule that decides what you may touch:
   - You may READ any account using the available get_* tools.
-  - You have NO order tool and you never will in this conversation. You cannot
-    place, amend, or cancel anything. What you can do is PROPOSE an order, which
-    the application shows the operator as a confirmation card. Their click, not
-    your message, is what reaches the broker.
-  - Never say or imply that you placed, submitted, or cancelled an order. You
-    did not. Say "I've put that up for your confirmation."
+  - You may CANCEL a resting order with mcp__robinhood__cancel_equity_order.
+    This is the one write verb you hold, and it reaches the broker the moment you
+    call it. There is no confirmation card in front of it and no click after it.
+  - You may NOT place or amend anything. To place an order you PROPOSE one, and
+    the application shows the operator a confirmation card; their click, not your
+    message, is what places it.
+  - Never say or imply that you PLACED an order. You cannot. Say "I've put that
+    up for your confirmation."
+
+  Cancelling — the whole weight of this rests on you, so:
+  - Cancel only when the operator has asked you to, in this conversation, in
+    words that name what they want stopped. Never cancel as a side effect of
+    tidying, rebalancing, or "fixing" something.
+  - Call get_equity_orders FIRST and cancel by the id you read there. Never
+    cancel from memory, from an id in your own earlier message, or from an id you
+    inferred. If you did not just read it, you do not know it.
+  - If more than one open order could match what they asked, STOP and ask which.
+    "Cancel my Apple order" with two Apple orders open is a question, not an
+    instruction.
+  - Cancel exactly one order per request unless they explicitly asked for
+    several, and name each one you cancelled, with its symbol, side and
+    quantity — not just its id.
+  - Only accounts marked "agentic": true accept order actions. Check before you
+    call, and say so plainly if the order lives somewhere you cannot act.
+  - A cancel can fail or land after a fill. If the tool does not clearly confirm
+    it, say the outcome is UNKNOWN and tell them to check the order list. Never
+    report a cancellation you did not see succeed.
 
   Proposing an order:
   - Only propose when the operator has actually asked to trade. Do not attach a
@@ -265,9 +307,22 @@ defmodule BusterClaw.Trading do
     [
       append_system_prompt: @system_prompt,
       permission_mode: "dontAsk",
-      extra_cli_args: read_only_cli_args()
+      extra_cli_args: read_only_cli_args(),
+      # Every use of the cancel verb reaches the audit feed as it happens. The
+      # operator gave up the confirmation click; they do not also give up the
+      # record of what was done in their account.
+      audit_tools: @cancel_tools,
+      # This conversation can now cancel a real order, so it is governed by the
+      # money surface's policy rather than the chat's — same floor, same
+      # claude-only pin. Operator decision 08-04: cancellation SHARES
+      # `:order_submit` rather than getting a surface of its own, so a cheaper
+      # model can never reach cancelling without also reaching placing.
+      model: ModelPolicy.for_surface(:order_submit)
     ]
   end
+
+  @doc "The chat's tools: every read, plus cancellation. See `@cancel_tools`."
+  def chat_tools, do: @read_tools ++ @cancel_tools
 
   @doc """
   Claude arguments that make the Robinhood surface deny-by-default.
@@ -301,7 +356,7 @@ defmodule BusterClaw.Trading do
       "--disallowedTools",
       Enum.join(BusterClaw.AgentToolPolicy.denied_builtins(), ","),
       "--allowedTools",
-      Enum.join(@read_tools, ","),
+      Enum.join(chat_tools(), ","),
       "--strict-mcp-config",
       "--mcp-config",
       ensure_mcp_config()

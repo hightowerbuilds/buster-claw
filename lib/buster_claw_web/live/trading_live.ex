@@ -2322,11 +2322,12 @@ defmodule BusterClawWeb.TradingLive do
                   class="border-2 border-success/40 px-3 py-1.5 font-mono text-xs text-success"
                 >
                   <p class="font-bold uppercase tracking-wide">
-                    Orders leave only from a card you click — the assistant proposes, it never sends
+                    New orders leave only from a card you click — but this chat can cancel on its own
                   </p>
                   <p class="pt-0.5 text-[0.68rem] text-success/70">
-                    Ask this chat to buy or sell. It gathers the details, then Buster Claw shows you
-                    the exact order to confirm.
+                    Ask it to buy or sell and Buster Claw shows you the exact order to confirm.
+                    Ask it to cancel a resting order and it does that directly, without a card —
+                    every cancellation is recorded on the Security feed.
                   </p>
                 </div>
                 <%!-- First-run setup: the OAuth handshake is interactive by nature

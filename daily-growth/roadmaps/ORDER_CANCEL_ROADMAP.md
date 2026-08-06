@@ -1,6 +1,53 @@
 # Cancelling an order — the second thing that reaches the broker
 
-**Scoped 08-04-26 · Status: SCOPED, nothing built.**
+**Scoped 08-04-26 · Status: BUILT 08-04-26 as option B — the chat holds the
+verb.**
+
+> **Operator decision, against the recommendation below.** This roadmap
+> recommended **A** (a `cancel` fence and a confirmation card). The operator
+> chose **B**: the cancel tool goes into the chat's own allowlist and reaches the
+> broker on the model's say-so. That is recorded here rather than quietly
+> rewritten, because the recommendation was wrong about what the operator wanted,
+> not about what it costs — and what it costs is stated in the code that ships
+> it (`trading.ex`, above `@cancel_tools`).
+>
+> **What the choice traded:** this tab's safety was *structural* — the model held
+> no write verb, so it could not act. It is now *behavioural* — it holds one and
+> is told how to use it. The prompt is the guard rail; there is no second one.
+>
+> **What it did not trade:** the audit record. `:audit_tools` hands the cancel
+> verb to `Agent.Chat`, which posts a Sentinel `:outbound_send` line the moment
+> the tool is called — as it happens, not at the end of the run. The operator
+> gave up the click, not the record.
+
+## What shipped
+
+- `@cancel_tools` — one verb, kept *out* of `@read_tools` so that list keeps
+  meaning what its name says and the exception stays visible.
+- The Authority paragraph rewritten, not appended to. It used to promise "you
+  never will" about cancel; shipping the verb under that sentence would have
+  been the worst of both. Plus four named rules: read the id first, stop on
+  ambiguity, agentic accounts only, and UNKNOWN when the tool does not confirm.
+- `:audit_tools` in `Agent.Chat` — generic on purpose; that module does not
+  learn what a broker is, only that some verbs are worth recording on use.
+- `ModelPolicy` — cancellation **shares** `:order_submit` (Phase 3's open
+  question, decided). A cheaper model can never reach cancelling without also
+  reaching placing.
+- The Trading banner and the Explore tutorial both restated. Neither now claims
+  the chat cannot cancel.
+
+## What was NOT built, and is not planned
+
+Phases 1 and 2 below are the *option A* design — a `cancel` fence, a
+`TradingCancel` parser, a confirmation card, a third confined run. None of it
+exists. Read them as the road not taken, not as work outstanding.
+
+The one thing option A had that B cannot: **the agentic-account restriction is
+no longer a guarantee this app makes.** The tool call is the model's, so we ask
+for it in the prompt and rely on Robinhood refusing the rest. That is a real
+difference from placement and should not be described as equivalent.
+
+---
 
 The Trading chat can already *see* resting orders — `get_equity_orders` has been
 in the read allowlist all along. It cannot touch them. This roadmap adds
@@ -93,16 +140,16 @@ the same three-state honesty placement already gets.
 
 ---
 
-# Phase 0 — Decide (short)
+# Phase 0 — Decide (short) — DONE
 
-- [ ] **A, B, or C.** Everything else follows from it.
-- [ ] If A: does a cancel card carry the same "unknown" outcome vocabulary as a
-      submit? (It should — the failure mode is identical.)
-- [ ] Is cancellation restricted to `agentic: true` accounts *by us*, or do we
-      rely on the broker refusing? Recommend asserting it ourselves, so the
-      refusal is legible in our audit trail rather than only in theirs.
+- [x] **A, B, or C.** → **B**, by the operator.
+- [x] The "unknown" vocabulary survives, but as a *prompt rule* rather than a
+      card state: the model is told to report UNKNOWN when the tool does not
+      clearly confirm, and never to report a cancellation it did not see succeed.
+- [x] `agentic: true` is **not** asserted by us — see above. The prompt asks;
+      Robinhood enforces. This is the one guarantee option B could not keep.
 
-# Phase 1 — The proposal
+# Phase 1 — The proposal — NOT BUILT (option A design)
 
 - [ ] A ` ```cancel ` fence and a `TradingCancel` parse/validate, mirroring
       `TradingOrder.parse/1`. It needs enough to identify ONE order
@@ -115,7 +162,7 @@ the same three-state honesty placement already gets.
 - [ ] Prompt changes are a **rewrite of the Authority paragraph**, not an
       addition. It currently says "you never will" about cancel specifically.
 
-# Phase 2 — The card and the run
+# Phase 2 — The card and the run — NOT BUILT (option A design)
 
 - [ ] A confirmation card built from parsed values, in `TradingOrderCard`'s
       shape, showing what will be cancelled and what it was for.
@@ -128,14 +175,16 @@ the same three-state honesty placement already gets.
 - [ ] Sentinel: the confirmation and the settlement, with the harness and model,
       exactly as `:order_submit` now records.
 
-# Phase 3 — The surfaces
+# Phase 3 — The surfaces — DONE
 
-- [ ] `ModelPolicy` gains an `:order_cancel` surface, or cancellation shares
-      `:order_submit`. Sharing is probably right — same money path, same floor —
-      but it should be a decision, not an omission.
-- [ ] The read-only banner needs new words. "Orders leave only from a card you
-      click" stays true under A and should be *extended* to name cancellation
-      rather than left to imply it.
+- [x] Cancellation **shares** `:order_submit` — decided, not omitted. Same money
+      path, same floor, same claude-only pin.
+- [x] The banner was **replaced**, not extended: under B, "orders leave only from
+      a card you click" was simply false. It now names the split — new orders
+      need the card, cancellation does not, and every cancellation is on the
+      Security feed.
+- [x] The Explore tutorial's "what it can't do" listed cancellation. Moved to
+      "what it can do", with the missing card and the audit line both named.
 
 ---
 

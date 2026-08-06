@@ -179,10 +179,17 @@ defmodule BusterClawWeb.TradingLiveTest do
 
       # This copy said "Buster Claw cannot place, amend, or cancel Robinhood
       # orders" for a full day after the confirm card shipped. It was true when
-      # written and false when read.
+      # written and false when read. It then said "the assistant proposes, it
+      # never sends" — true until the chat was given a cancel verb on 08-04, at
+      # which point it became the same kind of lie about a different verb.
       refute html =~ "cannot place, amend, or cancel"
-      assert html =~ "Orders leave only from a card you click"
-      assert html =~ "the assistant proposes, it never sends"
+      refute html =~ "it never sends"
+
+      # What is true now: placing needs the click, cancelling does not, and the
+      # operator is told where the record of a cancellation lives.
+      assert html =~ "New orders leave only from a card you click"
+      assert html =~ "this chat can cancel on its own"
+      assert html =~ "recorded on the Security feed"
     end
 
     test "a proposal for a non-agentic account is refused before it is drawn",

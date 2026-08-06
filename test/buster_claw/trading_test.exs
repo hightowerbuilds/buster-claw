@@ -71,7 +71,11 @@ defmodule BusterClaw.TradingTest do
     assert File.read!(path) =~ "custom"
   end
 
-  test "unconfirmed or free-form turns cannot reach a Robinhood write tool" do
+  # CHANGED 08-04 by operator decision, and the change is the point of the test.
+  # This chat used to reach NO write tool at all — its safety was structural, not
+  # behavioural. It now holds exactly one write verb: cancel. The boundary moved
+  # deliberately, so this asserts where it moved TO rather than being deleted.
+  test "the chat reaches exactly one Robinhood write tool: cancel" do
     opts = Trading.chat_opts()
     extra = Keyword.fetch!(opts, :extra_cli_args)
 
@@ -81,11 +85,19 @@ defmodule BusterClaw.TradingTest do
     allowed = Enum.at(extra, Enum.find_index(extra, &(&1 == "--allowedTools")) + 1)
     allowed_tools = String.split(allowed, ",", trim: true)
 
-    assert Enum.all?(allowed_tools, &String.starts_with?(&1, "mcp__robinhood__get_"))
+    writes = Enum.reject(allowed_tools, &String.starts_with?(&1, "mcp__robinhood__get_"))
+
+    # Exactly one, and it is the one that was agreed to. A second write verb
+    # appearing here is a change nobody decided.
+    assert writes == ["mcp__robinhood__cancel_equity_order"]
+
     assert allowed =~ "mcp__robinhood__get_accounts"
+    # Reading the orders is what makes cancelling by id possible rather than
+    # cancelling from memory.
     assert allowed =~ "mcp__robinhood__get_equity_orders"
+
+    # Placing still requires the operator's click, on its own confined run.
     refute allowed =~ "place"
-    refute allowed =~ "cancel"
     refute allowed =~ "amend"
   end
 
@@ -97,14 +109,18 @@ defmodule BusterClaw.TradingTest do
     assert prompt =~ "never simulate"
   end
 
-  test "the system prompt tells the model it proposes, and the operator sends" do
+  # Rewritten 08-04 alongside the cancel verb. The promise narrowed rather than
+  # disappearing: PLACING is still the operator's click. Cancelling is not.
+  test "the system prompt tells the model it proposes orders, and cancels directly" do
     prompt = Keyword.fetch!(Trading.chat_opts(), :append_system_prompt)
 
-    assert prompt =~ "NO order tool"
-    assert prompt =~ "place, amend, or cancel anything"
-    assert prompt =~ "Their click, not"
+    assert prompt =~ "You may NOT place or amend"
+    assert prompt =~ "their click, not your"
     # It must never claim to have done what only a confirm click can do.
-    assert prompt =~ "Never say or imply that you placed"
+    assert prompt =~ "Never say or imply that you PLACED"
+
+    # And the verb it does hold is stated, not implied.
+    assert prompt =~ "You may CANCEL a resting order"
   end
 
   test "the system prompt makes the model gather every order parameter first" do
