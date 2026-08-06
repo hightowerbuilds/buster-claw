@@ -720,6 +720,47 @@ on the measured capability; it never relabels asynchronous next-turn delivery.
    keep the primary action's accessible name current, and never encode state by
    color alone.
 
+### Status — COMPLETE 08-05-26 (except the attention contract, below)
+
+The composer is now **one implementation** shared by Home and Trading, and the
+delivery vocabulary reaches the operator.
+
+- `ChatPanel.composer/1` replaces two forked `<form>`s. The primary action is
+  **Send** when idle, **Steer now** while running on a steerable backend, and
+  **Queue next** when it is not. There is no Steer button that silently queues —
+  a control that lies about its effect is worse than one that is missing, and
+  this is the surface where that lie is most expensive.
+- One `Composer` JS hook replaces the duplicated Enter handling that lived in
+  BOTH `chat.js` and `chat_window.js`. The decisions are pure functions in
+  `assets/js/lib/compose_keys.js` with 13 Bun tests, so the button label, the
+  keyboard chord, and the value posted to the server cannot disagree. `Enter`
+  submits the primary, `Shift+Enter` is a newline, `Cmd/Ctrl+Shift+Enter`
+  inverts for one message, and Enter during IME composition is left alone.
+- **The UI renders the mode that HAPPENED, never the one requested.**
+  `Chat.submit/3` returns `:started | :queued | :steered`, and the chip and the
+  announcement are both driven by that. A steer demoted by the completion race
+  says *queued*, and a test pins it.
+- Only a steered message is chipped. An ordinary message needs no explanation
+  and a queued one lives in the on-deck rail, so marking everything would bury
+  the one label that carries information.
+- Accessibility: a polite live region announces every outcome, so state is never
+  colour-only — and the steer announcement says the wait out loud
+  ("the agent will pick this up at its next step"), because Phase 0 measured
+  that boundary can be minutes on a long tool call.
+- An unrecognised `delivery` param reads as `auto`: it can start a turn or
+  queue, never claim to have steered.
+
+Tests: 10 LiveView tests through stable ids (`#home-composer`,
+`[data-primary-action]`, `[data-secondary-action]`, `[data-delivery]`,
+`[data-delivery-chip]`, `#home-composer-announcement`) plus 13 Bun tests.
+Full suite 2675/0, `bun test` 133/0, credo clean, cycles 2.
+
+Two gaps found and fixed while wiring this, both the same shape — a projection
+dropping the marker: `StatusLive.push_msg/4` and `TradingLive.push_msg_to/5`
+each rebuilt the message map and silently discarded `:delivery`, so the chip
+never rendered. Worth remembering that the transcript projection is a place
+where new message fields die quietly.
+
 ### The common attention contract
 
 Every general chat profile receives a short backend-neutral prompt addendum:

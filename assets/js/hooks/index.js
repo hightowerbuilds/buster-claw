@@ -28,6 +28,7 @@ import {PortfolioChart} from "./portfolio_chart.js"
 import {MusicPlayer} from "./music_player.js"
 import {Dtmf} from "./dtmf.js"
 import {ChatWindow} from "./chat_window.js"
+import {Composer} from "./composer.js"
 
 export const Hooks = {
   PortfolioChart,
@@ -41,6 +42,7 @@ export const Hooks = {
   VoiceToggle,
   AgentChat,
   ChatWindow,
+  Composer,
   ThinkingTimer,
   QueueRail,
   CrtAberration,

@@ -79,6 +79,10 @@ defmodule BusterClawWeb.TradingLive do
     socket =
       socket
       |> assign(:page_title, "Trading")
+      # Last delivery outcome, announced politely by the composer. One per
+      # LiveView rather than per window: the operator submits one message at a
+      # time, and the announcement is about that action.
+      |> assign(:chat_announcement, nil)
       # The left rail, open by default like the Workspace tab's: it carries the
       # symbol lookup on Chart Build, and a search box nobody can see is not a
       # search box. The account UI still owns the tab — only ticker things live
@@ -170,7 +174,10 @@ defmodule BusterClawWeb.TradingLive do
       {true, trimmed} when trimmed != "" ->
         # An operator turn refills the data-request budget: the brake exists to
         # bound an unwatched loop, and someone typing is the end of unwatched.
-        {:noreply, socket |> reset_datareq_budget(conv) |> dispatch_chat(conv, trimmed)}
+        {:noreply,
+         socket
+         |> reset_datareq_budget(conv)
+         |> dispatch_chat(conv, trimmed, delivery_param(params))}
 
       _ ->
         {:noreply, socket}
@@ -759,10 +766,12 @@ defmodule BusterClawWeb.TradingLive do
     end
   end
 
-  defp apply_chat(socket, conv, {:message, %{role: role, text: text}}) do
+  defp apply_chat(socket, conv, {:message, %{role: role, text: text} = msg}) do
     socket
     |> maybe_speak(conv, role, text)
-    |> push_msg_to(conv, role, text)
+    # `:delivery` rides through so a steered bubble can say so — same contract
+    # as Home's projection.
+    |> push_msg_to(conv, role, text, [], Map.get(msg, :delivery))
     |> maybe_propose_order(conv, role, text)
     |> maybe_flag_unread(conv, role)
   end
@@ -887,7 +896,14 @@ defmodule BusterClawWeb.TradingLive do
 
   defp maybe_speak(socket, _conv, _role, _text), do: socket
 
-  defp dispatch_chat(socket, conv_id, text) do
+  # See `StatusLive.delivery_param/1` — same three values, same safe default.
+  # Anything unrecognised reads as `:auto`, which can start a turn or queue but
+  # can never claim to have steered.
+  defp delivery_param(%{"delivery" => "steer"}), do: :steer
+  defp delivery_param(%{"delivery" => "next"}), do: :next
+  defp delivery_param(_params), do: :auto
+
+  defp dispatch_chat(socket, conv_id, text, delivery) do
     # Trading requires the Claude CLI specifically: the MCP flags in
     # Trading.chat_opts/0 are Claude's, and codex would choke on them.
     case BusterClaw.AgentRunner.detect() do
@@ -915,7 +931,7 @@ defmodule BusterClawWeb.TradingLive do
           )
         )
 
-        do_send(socket, conv_id, text)
+        do_send(socket, conv_id, text, delivery)
 
       _other ->
         push_msg_to(socket, conv_id, :error, "Trading requires the Claude Code CLI.")
@@ -927,10 +943,14 @@ defmodule BusterClawWeb.TradingLive do
 
   # While a run is in flight send_message/2 queues the text (returns :ok) rather
   # than rejecting it; the queued item arrives back over PubSub as {:queue, …}.
-  defp do_send(socket, conv_id, text) do
-    case Chat.send_message(conv_id, text) do
-      :ok ->
-        socket
+  # The announcement is driven by the mode `submit/3` REPORTS, never the one the
+  # composer asked for: a steer becomes `:queued` when the turn ended first, and
+  # saying "steered" there would be the exact false-delivery this roadmap exists
+  # to prevent.
+  defp do_send(socket, conv_id, text, delivery) do
+    case Chat.submit(conv_id, text, delivery: delivery) do
+      {:ok, mode} ->
+        assign(socket, :chat_announcement, announcement_for(mode, delivery))
 
       {:error, :no_agent_cli} ->
         socket
@@ -940,15 +960,24 @@ defmodule BusterClawWeb.TradingLive do
     end
   end
 
+  defp announcement_for(:steered, _requested),
+    do: "Steered. The agent will pick this up at its next step."
+
+  defp announcement_for(:queued, :steer),
+    do: "The turn finished first, so this was queued to run next."
+
+  defp announcement_for(:queued, _requested), do: "Queued to run next."
+  defp announcement_for(:started, _requested), do: "Sent."
+
   # Panel-side errors (a failed cost fetch, a crashed bar run) belong to whichever
   # conversation the operator is looking at, which is the active tab's.
   defp push_msg(socket, role, text),
     do: push_msg_to(socket, socket.assigns.active_tab, role, text)
 
-  defp push_msg_to(socket, conv, role, text, svg_ids \\ []) do
+  defp push_msg_to(socket, conv, role, text, svg_ids \\ [], delivery \\ nil) do
     put_chat(socket, conv, fn c ->
       seq = c.seq + 1
-      msg = %{id: seq, role: role, text: text, svg_ids: svg_ids}
+      msg = %{id: seq, role: role, text: text, svg_ids: svg_ids, delivery: delivery}
 
       %{
         c
@@ -968,6 +997,7 @@ defmodule BusterClawWeb.TradingLive do
       messages: messages,
       seq: length(messages),
       running: Chat.running?(conv_id),
+      steerable: :steer in Chat.capabilities(conv_id).modes,
       thinking: if(Chat.running?(conv_id), do: :running, else: nil),
       queue: Chat.queue(conv_id),
       pending_order: nil,
@@ -988,6 +1018,7 @@ defmodule BusterClawWeb.TradingLive do
       messages: [],
       seq: 0,
       running: false,
+      steerable: false,
       thinking: nil,
       queue: [],
       pending_order: nil,
@@ -2407,6 +2438,8 @@ defmodule BusterClawWeb.TradingLive do
                     messages={chat_state(assigns, @active_tab).messages}
                     seq={chat_state(assigns, @active_tab).seq}
                     running={chat_state(assigns, @active_tab).running}
+                    steerable={chat_state(assigns, @active_tab).steerable}
+                    announcement={@chat_announcement}
                     thinking={chat_state(assigns, @active_tab).thinking}
                     queue={chat_state(assigns, @active_tab).queue}
                     minimized={MapSet.member?(@minimized, @active_tab)}
@@ -2431,6 +2464,8 @@ defmodule BusterClawWeb.TradingLive do
                 messages={chat_state(assigns, @active_tab).messages}
                 seq={chat_state(assigns, @active_tab).seq}
                 running={chat_state(assigns, @active_tab).running}
+                steerable={chat_state(assigns, @active_tab).steerable}
+                announcement={@chat_announcement}
                 thinking={chat_state(assigns, @active_tab).thinking}
                 queue={chat_state(assigns, @active_tab).queue}
                 focused
@@ -2486,6 +2521,8 @@ defmodule BusterClawWeb.TradingLive do
           messages={chat_state(assigns, conv).messages}
           seq={chat_state(assigns, conv).seq}
           running={chat_state(assigns, conv).running}
+          steerable={chat_state(assigns, conv).steerable}
+          announcement={@chat_announcement}
           thinking={chat_state(assigns, conv).thinking}
           queue={chat_state(assigns, conv).queue}
           minimized={MapSet.member?(@minimized, conv)}

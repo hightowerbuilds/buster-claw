@@ -83,6 +83,12 @@ defmodule BusterClawWeb.ChatPanel do
   attr :messages, :list, required: true, doc: "[{dom_id, msg}] — a plain list, not a stream"
   attr :seq, :integer, required: true
   attr :running, :boolean, required: true
+
+  attr :steerable, :boolean,
+    default: false,
+    doc: "the backend can deliver into a running turn — drives the composer's primary action"
+
+  attr :announcement, :string, default: nil, doc: "last delivery outcome, announced politely"
   attr :thinking, :any, required: true
   attr :queue, :list, required: true
   attr :minimized, :boolean, default: false
@@ -95,6 +101,11 @@ defmodule BusterClawWeb.ChatPanel do
   attr :embedded, :boolean,
     default: false,
     doc: "panel-owned chats sit in flow without changing the persisted dock state"
+
+  attr :in_pane, :boolean,
+    default: false,
+    doc:
+      "float within the nearest positioned ancestor rather than the viewport — for a Trading tab joined into a split pane, where a `fixed` window would sail over the neighbouring pane"
 
   attr :agent_cli_missing, :boolean, default: false
   attr :empty_message, :string, required: true
@@ -142,7 +153,7 @@ defmodule BusterClawWeb.ChatPanel do
           # that only earned its place over a dashboard.
           if(@flow,
             do: "min-h-0 border-base-content/25 bg-base-100",
-            else: "fixed z-30 backdrop-blur-md transition-colors"
+            else: float_class(@in_pane)
           ),
           # Collapsed in flow, the header is the whole window. It has to stop
           # growing as well as hide its body, or the panel above it gains
@@ -283,28 +294,16 @@ defmodule BusterClawWeb.ChatPanel do
           Install Claude Code and run <code class="font-mono">claude login</code>.
         </div>
 
-        <form
-          phx-submit="chat_send"
-          data-chat-form
-          class="flex shrink-0 items-end gap-2 border-t-2 border-base-content/20 p-2"
-        >
-          <input type="hidden" name="conv" value={@conv} />
-          <textarea
-            name="message"
-            data-chat-input
-            rows="2"
-            disabled={@agent_cli_missing}
-            placeholder={if @agent_cli_missing, do: "Install Claude Code to chat", else: @placeholder}
-            class="min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100/80 px-2 py-1.5 text-[15px] focus:border-primary focus:outline-none disabled:opacity-50"
-          ></textarea>
-          <button
-            type="submit"
-            disabled={@agent_cli_missing}
-            class="shrink-0 rounded bg-primary px-3 py-2 text-xs font-semibold text-primary-content transition hover:opacity-85 disabled:opacity-40"
-          >
-            Send
-          </button>
-        </form>
+        <.composer
+          id={"#{@id}-composer"}
+          conv={@conv}
+          running={@running}
+          steerable={@steerable}
+          agent_cli_missing={@agent_cli_missing}
+          placeholder={@placeholder}
+          announcement={@announcement}
+          compact
+        />
 
         <div
           :if={not @flow}
@@ -319,6 +318,14 @@ defmodule BusterClawWeb.ChatPanel do
     </section>
     """
   end
+
+  # A floating window's containing block. `fixed` is the whole viewport, which is
+  # right when Trading owns the window and wrong when it is one half of a split:
+  # `absolute` hands the window to the pane's own box. The ChatWindow hook reads
+  # the same distinction off `offsetParent` (null for `fixed`, the pane for
+  # `absolute`), so the CSS choice alone decides which box the drag clamps to.
+  defp float_class(true), do: "absolute z-30 backdrop-blur-md transition-colors"
+  defp float_class(false), do: "fixed z-30 backdrop-blur-md transition-colors"
 
   defp kind_button_class(kind, option) when kind != option,
     do: "border-base-content/20 text-base-content/35 hover:text-base-content"
@@ -335,6 +342,12 @@ defmodule BusterClawWeb.ChatPanel do
   attr :messages, :any, required: true, doc: "the parent LiveView's chat_messages stream"
   attr :seq, :integer, required: true, doc: "message counter — see data-seq below"
   attr :running, :boolean, required: true
+
+  attr :steerable, :boolean,
+    default: false,
+    doc: "the backend can deliver into a running turn — drives the composer's primary action"
+
+  attr :announcement, :string, default: nil, doc: "last delivery outcome, announced politely"
   attr :thinking, :any, required: true
   attr :queue, :list, required: true
   attr :agent_cli_missing, :boolean, default: false
@@ -430,48 +443,144 @@ defmodule BusterClawWeb.ChatPanel do
         in a terminal, then reload this page.
       </div>
 
-      <form
-        phx-submit="chat_send"
-        data-chat-form
-        class="flex items-end gap-2 border-t-2 border-base-content/20 p-3"
-      >
-        <div class="relative flex-1">
-          <textarea
-            name="message"
-            data-chat-input
-            rows="2"
-            disabled={@agent_cli_missing}
-            placeholder={
-              if @agent_cli_missing,
-                do: "Install Claude Code to chat",
-                else: @placeholder
-            }
-            class="min-h-0 w-full resize-none rounded-sm border-2 border-base-content/25 bg-base-100 px-3 py-2 text-[17px] focus:border-primary focus:outline-none disabled:opacity-50"
-          ></textarea>
-        </div>
-
-        <button
-          type="submit"
-          disabled={@agent_cli_missing}
-          class="inline-flex items-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-semibold text-primary-content transition hover:opacity-85 disabled:opacity-40 disabled:hover:opacity-40"
-        >
-          <.icon name="hero-paper-airplane" class="size-4" /> Send
-        </button>
-      </form>
-
-      <div
-        data-resize-handle
-        role="separator"
-        aria-orientation="horizontal"
-        title="Drag to resize the chat"
-        class="group/resize flex h-2.5 shrink-0 cursor-ns-resize items-center justify-center border-t-2 border-base-content/20 bg-base-200/40 transition hover:bg-base-200"
-      >
-        <span class="h-1 w-10 rounded-full bg-base-content/25 transition group-hover/resize:bg-primary">
-        </span>
-      </div>
+      <.composer
+        id="home-composer"
+        running={@running}
+        steerable={@steerable}
+        agent_cli_missing={@agent_cli_missing}
+        placeholder={@placeholder}
+        announcement={@announcement}
+      />
     </section>
     """
   end
+
+  attr :id, :string, required: true
+  attr :conv, :string, default: nil, doc: "nil on Home, where there is one chat to disambiguate"
+  attr :running, :boolean, required: true
+
+  attr :steerable, :boolean,
+    required: true,
+    doc: "the backend can deliver into a running turn — drives the primary action"
+
+  attr :agent_cli_missing, :boolean, default: false
+  attr :placeholder, :string, required: true
+  attr :compact, :boolean, default: false, doc: "the tighter Trading-window sizing"
+
+  attr :announcement, :string,
+    default: nil,
+    doc: "last delivery outcome, announced politely — state must not be colour-only"
+
+  @doc """
+  The message composer, shared by Home and Trading.
+
+  One implementation on purpose. These were two forked `<form>`s with two copies
+  of the Enter handling in two different JS hooks, and the next change was about
+  to be a third rule in both. A drifted copy here fails invisibly: one surface
+  steers and the other quietly queues, and the operator has no way to tell which
+  they got.
+
+  ## The primary action names what will actually happen
+
+  While a turn is running the main button is **Steer now** on a backend that can
+  steer and **Queue next** on one that cannot. There is deliberately no Steer
+  button that silently queues — a control that lies about its effect is worse
+  than one that is missing, and this is the surface where that lie would be most
+  expensive.
+
+  `Cmd/Ctrl+Shift+Enter` inverts the two for one message. The mapping from
+  (running, steerable) to label and posted delivery lives in
+  `assets/js/lib/compose_keys.js`, so the button, the chord, and the value on the
+  wire cannot disagree.
+  """
+  def composer(assigns) do
+    ~H"""
+    <form
+      id={@id}
+      phx-hook="Composer"
+      phx-submit="chat_send"
+      data-chat-form
+      data-running={to_string(@running)}
+      data-steerable={to_string(@steerable)}
+      class={[
+        "flex shrink-0 items-end gap-2 border-t-2 border-base-content/20",
+        if(@compact, do: "p-2", else: "p-3")
+      ]}
+    >
+      <input :if={@conv} type="hidden" name="conv" value={@conv} />
+      <%!-- Delivery state is announced as well as chipped. A steer that quietly
+            became a queued message is exactly the thing a colour change alone
+            would hide. --%>
+      <p
+        id={"#{@id}-announcement"}
+        role="status"
+        aria-live="polite"
+        class="sr-only"
+      >
+        {@announcement}
+      </p>
+      <%!-- The delivery the NEXT submit should use. The hook rewrites it for an
+            inverted chord and puts it straight back, so a stray value can never
+            outlive one submission. --%>
+      <input type="hidden" name="delivery" value={delivery_for(@running, @steerable)} data-delivery />
+
+      <textarea
+        name="message"
+        data-chat-input
+        rows="2"
+        disabled={@agent_cli_missing}
+        placeholder={if @agent_cli_missing, do: "Install Claude Code to chat", else: @placeholder}
+        class={[
+          "min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100 focus:border-primary focus:outline-none disabled:opacity-50",
+          if(@compact, do: "px-2 py-1.5 text-[15px]", else: "px-3 py-2 text-[17px]")
+        ]}
+      ></textarea>
+
+      <div class="flex shrink-0 flex-col items-stretch gap-1">
+        <button
+          type="submit"
+          data-primary-action
+          disabled={@agent_cli_missing}
+          class={[
+            "inline-flex items-center justify-center gap-2 rounded bg-primary font-semibold text-primary-content transition hover:opacity-85 disabled:opacity-40",
+            if(@compact, do: "px-3 py-2 text-xs", else: "px-4 py-2.5 text-sm")
+          ]}
+        >
+          <.icon :if={not @running} name="hero-paper-airplane" class="size-4" />
+          {primary_label(@running, @steerable)}
+        </button>
+
+        <%!-- Only rendered when it does something different from the primary.
+              While idle, or on a backend without steering, both actions start
+              or queue the same turn. --%>
+        <button
+          :if={@running and @steerable}
+          type="submit"
+          data-secondary-action
+          name="delivery"
+          value="next"
+          disabled={@agent_cli_missing}
+          title="Run this after the current turn instead of changing it (⌘⇧↵)"
+          class="inline-flex items-center justify-center rounded border-2 border-base-content/25 px-3 py-1 font-mono text-[0.6rem] uppercase tracking-wide text-base-content/70 transition hover:border-primary hover:text-primary disabled:opacity-40"
+        >
+          Queue next
+        </button>
+      </div>
+    </form>
+    """
+  end
+
+  # Mirrors `deliveryFor/2` in `assets/js/lib/compose_keys.js`. Both exist
+  # because the server renders the first value and the hook rewrites it for an
+  # inverted chord; the Bun suite pins the JS side and `chat_panel_test.exs`
+  # pins this one.
+  defp delivery_for(false, _steerable), do: "auto"
+  defp delivery_for(true, true), do: "steer"
+  defp delivery_for(true, false), do: "next"
+
+  defp primary_label(false, _steerable), do: "Send"
+  defp primary_label(true, true), do: "Steer now"
+  defp primary_label(true, false), do: "Queue next"
 
   @doc """
   Full-screen SVG preview modal. There is no persistent viewer — a drawing lives
@@ -634,11 +743,28 @@ defmodule BusterClawWeb.ChatPanel do
   attr :msg, :map, required: true
 
   defp chat_bubble(%{msg: %{role: :user}} = assigns) do
+    # A message reloaded from the transcript has no delivery — it is not
+    # persisted (see `Chat.emit_message/4`), so an old bubble simply renders
+    # without a chip rather than guessing at one.
+    assigns = assign(assigns, :delivery, Map.get(assigns.msg, :delivery))
+
     ~H"""
-    <div id={@id} class="flex justify-end">
+    <div id={@id} class="flex flex-col items-end gap-1">
       <div class="ic-drop-in max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content">
         {@msg.text}
       </div>
+      <%!-- Only a STEERED message is chipped. An ordinary message that started
+            its own turn needs no explanation, and a queued one lives in the
+            on-deck rail until it runs. Marking everything would make the one
+            label that carries information disappear into decoration. --%>
+      <span
+        :if={@delivery == :steered}
+        data-delivery-chip="steered"
+        title="Delivered into the turn already running. The agent picks it up at its next step, which can take as long as the tool it is running."
+        class="inline-flex items-center gap-1 rounded-sm border border-primary/40 px-1.5 font-mono text-[0.55rem] uppercase tracking-wider text-primary"
+      >
+        <.icon name="hero-arrow-uturn-left" class="size-2.5" /> Steered
+      </span>
     </div>
     """
   end

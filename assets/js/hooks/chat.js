@@ -6,25 +6,11 @@ export const AgentChat = {
     this.log = this.el.querySelector("[data-chat-log]")
     this.input = this.el.querySelector("[data-chat-input]")
     this.form = this.el.querySelector("[data-chat-form]")
-    this.handle = this.el.querySelector("[data-resize-handle]")
-    this.applyHeight()
     this.scrollToBottom()
 
-    this.onKeydown = (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault()
-        if (this.input.value.trim() !== "") {
-          this.form.requestSubmit()
-          this.input.value = ""
-        }
-      }
-    }
-    this.onSubmit = () => {
-      // Clear after the framework has serialized the form values.
-      requestAnimationFrame(() => {
-        this.input.value = ""
-      })
-    }
+    // Enter/Shift+Enter/chord handling now lives in the `Composer` hook on the
+    // form itself, shared with Trading's windows. It was duplicated here and in
+    // chat_window.js, and a third rule was about to be added to both.
     // Esc stops the model while a run is in flight (mirrors the header Stop
     // button). Gated on data-running so it doesn't hijack Escape when idle.
     this.onEscape = (e) => {
@@ -35,35 +21,6 @@ export const AgentChat = {
     }
     window.addEventListener("keydown", this.onEscape)
 
-    // Drag the bottom handle to resize the chat height. Persisted in
-    // localStorage and re-applied on updated() (LiveView patches would
-    // otherwise drop the inline height on the next render).
-    this.onHandleDown = (e) => {
-      e.preventDefault()
-      this.dragging = true
-      this.dragStartY = e.clientY
-      this.dragStartH = this.el.offsetHeight
-      window.addEventListener("pointermove", this.onHandleMove)
-      window.addEventListener("pointerup", this.onHandleUp)
-      document.body.style.userSelect = "none"
-      document.body.style.cursor = "ns-resize"
-    }
-    this.onHandleMove = (e) => {
-      this.el.style.height = this.clampHeight(this.dragStartH + (e.clientY - this.dragStartY)) + "px"
-    }
-    this.onHandleUp = () => {
-      this.dragging = false
-      window.removeEventListener("pointermove", this.onHandleMove)
-      window.removeEventListener("pointerup", this.onHandleUp)
-      document.body.style.userSelect = ""
-      document.body.style.cursor = ""
-      const h = parseInt(this.el.style.height, 10)
-      if (!isNaN(h)) localStorage.setItem("bc:chat-height", String(h))
-    }
-
-    this.input.addEventListener("keydown", this.onKeydown)
-    this.form.addEventListener("submit", this.onSubmit)
-    this.handle?.addEventListener("pointerdown", this.onHandleDown)
     // Voice input lives in its own reusable `Mic` hook on the mic button.
 
     // Prefill the composer from elsewhere in the app (e.g. the corner widget's
@@ -81,36 +38,13 @@ export const AgentChat = {
     })
   },
   updated() {
-    this.applyHeight()
     this.scrollToBottom()
   },
   destroyed() {
-    this.input.removeEventListener("keydown", this.onKeydown)
-    this.form.removeEventListener("submit", this.onSubmit)
-    this.handle?.removeEventListener("pointerdown", this.onHandleDown)
     window.removeEventListener("keydown", this.onEscape)
-    window.removeEventListener("pointermove", this.onHandleMove)
-    window.removeEventListener("pointerup", this.onHandleUp)
-    // If destroyed mid-drag, onHandleUp never fired — restore the body styles it
-    // would have reset, or the page is left with text selection disabled and a
-    // stuck ns-resize cursor.
-    if (this.dragging) {
-      document.body.style.userSelect = ""
-      document.body.style.cursor = ""
-    }
   },
   scrollToBottom() {
     if (this.log) this.log.scrollTop = this.log.scrollHeight
-  },
-  clampHeight(h) {
-    const min = 240
-    const max = Math.round(window.innerHeight * 0.9)
-    return Math.max(min, Math.min(max, h))
-  },
-  applyHeight() {
-    if (this.dragging) return
-    const saved = parseInt(localStorage.getItem("bc:chat-height"), 10)
-    if (!isNaN(saved)) this.el.style.height = this.clampHeight(saved) + "px"
   },
 }
 

@@ -641,8 +641,10 @@ defmodule BusterClaw.Agent.Chat do
       {:ok, handle, _receipt} ->
         # A steered message belongs to the active turn: it is persisted and
         # shown as operator input, but it does not start a turn, so nothing
-        # here touches `run` or the turn counter.
-        state = emit_message(%{state | handle: handle}, :user, text)
+        # here touches `run` or the turn counter. The `:steered` marker is what
+        # lets the bubble say so — and it is only ever set on this branch, so
+        # the UI cannot claim it for a message that was queued.
+        state = emit_message(%{state | handle: handle}, :user, text, delivery: :steered)
         {:reply, {:ok, :steered}, state}
 
       # The turn ended between the operator hitting send and the adapter being
@@ -904,7 +906,13 @@ defmodule BusterClaw.Agent.Chat do
   # LiveView renders straight from `{:message, msg}`, so formatting lives here
   # once — a reload reproduces the same transcript from the stored content.
   defp emit_message(state, role, text, extra \\ []) do
-    msg = %{role: role, text: text}
+    # `:delivery` rides on the BROADCAST but not into the transcript. It is a
+    # fact about how a message reached the agent, not about what was said, and
+    # the transcript is append-only prose. Phase 6's delivery ledger is where it
+    # earns a durable home; until then a reload simply shows the message without
+    # its chip, which is honest — we no longer know.
+    {delivery, extra} = Keyword.pop(extra, :delivery)
+    msg = %{role: role, text: text, delivery: delivery}
     broadcast(state, {:message, msg})
 
     if state.persist? do

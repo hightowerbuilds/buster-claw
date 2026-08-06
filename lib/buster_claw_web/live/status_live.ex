@@ -121,6 +121,8 @@ defmodule BusterClawWeb.StatusLive do
     |> assign(:chats, chats)
     |> assign(:active_chat, active)
     |> assign(:chat_running, Chat.running?(active))
+    |> assign(:chat_steerable, steerable?(active))
+    |> assign(:chat_announcement, nil)
     |> assign(:chat_thinking, nil)
     |> assign(:chat_queue, Chat.queue(active))
     |> assign(:zoomed_id, nil)
@@ -498,13 +500,13 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, assign(socket, :weather_form, true)}
   end
 
-  def handle_event("chat_send", %{"message" => text}, socket) do
+  def handle_event("chat_send", %{"message" => text} = params, socket) do
     # Sending barges in on any reply still being spoken.
     socket = push_event(socket, "bc:stop_speak", %{})
 
     case String.trim(text) do
       "" -> {:noreply, socket}
-      trimmed -> {:noreply, dispatch_chat(socket, trimmed)}
+      trimmed -> {:noreply, dispatch_chat(socket, trimmed, delivery_param(params))}
     end
   end
 
@@ -557,6 +559,7 @@ defmodule BusterClawWeb.StatusLive do
       |> assign(:chats, socket.assigns.chats ++ [to_chat_tab(conv)])
       |> assign(:active_chat, conv.id)
       |> assign(:chat_running, false)
+      |> assign(:chat_steerable, steerable?(conv.id))
       |> assign(:chat_thinking, nil)
       |> assign(:chat_queue, [])
       |> stream(:chat_messages, [], reset: true)
@@ -627,7 +630,21 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, socket}
   end
 
-  defp dispatch_chat(socket, text) do
+  # Which backend the conversation would use, and whether it can take a message
+  # into a turn that is already running. Read per render rather than cached:
+  # the harness is a setting, and a stale answer here means the composer offers
+  # a Steer button that quietly queues.
+  defp steerable?(conv_id), do: :steer in Chat.capabilities(conv_id).modes
+
+  # The composer posts one of `auto` / `next` / `steer`. Anything else — an old
+  # tab, a hand-crafted request — is read as `auto`, which is today's behaviour
+  # and the only safe default: it can start a turn or queue, never claim to have
+  # steered.
+  defp delivery_param(%{"delivery" => "steer"}), do: :steer
+  defp delivery_param(%{"delivery" => "next"}), do: :next
+  defp delivery_param(_params), do: :auto
+
+  defp dispatch_chat(socket, text, delivery) do
     # The user echo and all agent events arrive via the active conversation's
     # PubSub broadcast, so on success we don't append here. send_message/2 starts
     # the conversation's process on demand (a dev refresh is enough). Errors are
@@ -641,7 +658,7 @@ defmodule BusterClawWeb.StatusLive do
       agent: BusterClaw.ModelPolicy.backend_for(:chat)
     )
 
-    do_send(socket, conv_id, text)
+    do_send(socket, conv_id, text, delivery)
   catch
     :exit, _reason ->
       push_msg(socket, :error, "Chat backend isn't running — restart the server.")
@@ -649,10 +666,17 @@ defmodule BusterClawWeb.StatusLive do
 
   # While a run is in flight send_message/2 queues the text (returns :ok) rather
   # than rejecting it; the queued item arrives back over PubSub as {:queue, …}.
-  defp do_send(socket, conv_id, text) do
-    case Chat.send_message(conv_id, text) do
-      :ok ->
-        maybe_autotitle(socket, conv_id, text)
+  # `submit/3` reports the mode that ACTUALLY happened, which is not always the
+  # one the composer asked for: a steer lands as `:queued` when the turn ended
+  # first. The announcement below is driven by the returned mode for exactly
+  # that reason — telling the operator "steered" for a message that was queued
+  # is the single most damaging bug this surface can have.
+  defp do_send(socket, conv_id, text, delivery) do
+    case Chat.submit(conv_id, text, delivery: delivery) do
+      {:ok, mode} ->
+        socket
+        |> announce_delivery(mode, delivery)
+        |> maybe_autotitle(conv_id, text)
 
       {:error, :no_agent_cli} ->
         socket
@@ -661,6 +685,32 @@ defmodule BusterClawWeb.StatusLive do
         push_msg(socket, :error, "Could not start the run: #{inspect(reason)}")
     end
   end
+
+  # A polite live-region line, so the delivery state is not encoded by the chip
+  # colour alone. It says the wait out loud on a steer, because Phase 0 measured
+  # that the agent picks the message up at its next tool boundary — which can be
+  # minutes on a long build, not the instant the chip appears.
+  defp announce_delivery(socket, :steered, _requested),
+    do:
+      assign(
+        socket,
+        :chat_announcement,
+        "Steered. The agent will pick this up at its next step."
+      )
+
+  defp announce_delivery(socket, :queued, :steer),
+    do:
+      assign(
+        socket,
+        :chat_announcement,
+        "The turn finished first, so this was queued to run next."
+      )
+
+  defp announce_delivery(socket, :queued, _requested),
+    do: assign(socket, :chat_announcement, "Queued to run next.")
+
+  defp announce_delivery(socket, :started, _requested),
+    do: assign(socket, :chat_announcement, "Sent.")
 
   @impl true
   def handle_info({:agent_chat, conv_id, payload}, socket),
@@ -852,6 +902,7 @@ defmodule BusterClawWeb.StatusLive do
       if conv_id == socket.assigns.active_chat do
         socket
         |> assign(:chat_running, status == :running)
+        |> assign(:chat_steerable, steerable?(conv_id))
         # Start the live timer on :running; clear it on :idle (the finished duration
         # lives on in the transcript's :meta line, so the header chip can disappear).
         |> assign(:chat_thinking, if(status == :running, do: :running, else: nil))
@@ -900,11 +951,13 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
-  defp apply_chat(socket, conv_id, {:message, %{role: role, text: text}}) do
+  defp apply_chat(socket, conv_id, {:message, %{role: role, text: text} = msg}) do
     if conv_id == socket.assigns.active_chat do
       socket
       |> maybe_speak(role, text)
-      |> push_msg(role, text)
+      # `:delivery` rides through to the bubble so a steered message can say so.
+      # Dropping it here is how the chip silently stopped appearing once.
+      |> push_msg(role, text, [], Map.get(msg, :delivery))
     else
       mark_unread(socket, conv_id)
     end
@@ -1018,6 +1071,7 @@ defmodule BusterClawWeb.StatusLive do
     socket
     |> assign(:active_chat, id)
     |> assign(:chat_running, Chat.running?(id))
+    |> assign(:chat_steerable, steerable?(id))
     |> assign(:chat_thinking, if(Chat.running?(id), do: :running, else: nil))
     |> assign(:chat_queue, Chat.queue(id))
     |> assign(:zoomed_id, nil)
@@ -1047,9 +1101,9 @@ defmodule BusterClawWeb.StatusLive do
     text |> String.trim() |> String.replace(~r/\s+/, " ") |> String.slice(0, 40)
   end
 
-  defp push_msg(socket, role, text, svg_ids \\ []) do
+  defp push_msg(socket, role, text, svg_ids \\ [], delivery \\ nil) do
     seq = socket.assigns.chat_seq + 1
-    msg = %{id: seq, role: role, text: text, svg_ids: svg_ids}
+    msg = %{id: seq, role: role, text: text, svg_ids: svg_ids, delivery: delivery}
 
     socket
     |> assign(:chat_seq, seq)
@@ -1298,6 +1352,8 @@ defmodule BusterClawWeb.StatusLive do
                 messages={@streams.chat_messages}
                 seq={@chat_seq}
                 running={@chat_running}
+                steerable={@chat_steerable}
+                announcement={@chat_announcement}
                 thinking={@chat_thinking}
                 queue={@chat_queue}
                 agent_cli_missing={@agent_cli_missing}

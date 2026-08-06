@@ -25,18 +25,8 @@ export const ChatWindow = {
     this.applyStoredGeometry()
     this.scrollToBottom()
 
-    // Enter sends, Shift+Enter is a newline. Cleared optimistically; the echo
-    // arrives over PubSub like every other message.
-    this.onKeydown = (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault()
-        if (this.input.value.trim() !== "") {
-          this.form.requestSubmit()
-          this.input.value = ""
-        }
-      }
-    }
-    this.onSubmit = () => requestAnimationFrame(() => { this.input.value = "" })
+    // Enter/Shift+Enter/chord handling lives in the `Composer` hook on the form
+    // itself, shared with Home's panel — see assets/js/lib/compose_keys.js.
 
     // Escape stops THIS window's run, and only while it is the focused one —
     // otherwise a single keypress would cut every in-flight conversation.
@@ -48,8 +38,6 @@ export const ChatWindow = {
       this.pushEvent("cut_run", {conv: this.conv})
     }
 
-    if (this.input) this.input.addEventListener("keydown", this.onKeydown)
-    if (this.form) this.form.addEventListener("submit", this.onSubmit)
     window.addEventListener("keydown", this.onEscape)
 
     this.bindDrag()
@@ -64,8 +52,6 @@ export const ChatWindow = {
   },
 
   destroyed() {
-    if (this.input) this.input.removeEventListener("keydown", this.onKeydown)
-    if (this.form) this.form.removeEventListener("submit", this.onSubmit)
     window.removeEventListener("keydown", this.onEscape)
     this.endDrag()
     this.endResize()
@@ -116,27 +102,46 @@ export const ChatWindow = {
     return this.el.dataset.minimized === "true"
   },
 
+  // The box this window may move in, and where that box starts in client coords.
+  //
+  // A `fixed` window has no `offsetParent` — the spec returns null for fixed
+  // position — so the viewport answer is self-selecting and the normal Trading
+  // tab keeps exactly the geometry it had. Joined into a split pane the window
+  // renders `absolute` (see `ChatPanel.float_class/1`) and `offsetParent`
+  // becomes `#trading-root`, so it clamps to its own half instead of sailing
+  // over the neighbouring pane.
+  frame() {
+    const parent = this.el.offsetParent
+    if (parent && parent !== document.body) {
+      const r = parent.getBoundingClientRect()
+      return {ox: r.left, oy: r.top, w: r.width, h: r.height}
+    }
+    return {ox: 0, oy: 0, w: window.innerWidth, h: window.innerHeight}
+  },
+
   // Cascade successive windows so a second one does not land exactly on top of
   // the first. Index comes from the server's render order.
   defaultGeometry() {
     const i = parseInt(this.el.dataset.index, 10) || 0
-    const w = Math.min(420, Math.max(MIN_W, window.innerWidth - 2 * MARGIN))
-    const h = Math.min(520, Math.max(MIN_H, window.innerHeight - 160))
+    const f = this.frame()
+    const w = Math.min(420, Math.max(MIN_W, f.w - 2 * MARGIN))
+    const h = Math.min(520, Math.max(MIN_H, f.h - 160))
     return {
-      x: Math.max(MARGIN, window.innerWidth - w - MARGIN - i * 28),
-      y: Math.max(MARGIN, window.innerHeight - h - MARGIN - i * 28),
+      x: Math.max(MARGIN, f.w - w - MARGIN - i * 28),
+      y: Math.max(MARGIN, f.h - h - MARGIN - i * 28),
       w,
       h,
     }
   },
 
   clamp(g) {
-    const w = Math.max(MIN_W, Math.min(g.w || MIN_W, window.innerWidth - 2 * MARGIN))
-    const h = Math.max(MIN_H, Math.min(g.h || MIN_H, window.innerHeight - 2 * MARGIN))
+    const f = this.frame()
+    const w = Math.max(MIN_W, Math.min(g.w || MIN_W, f.w - 2 * MARGIN))
+    const h = Math.max(MIN_H, Math.min(g.h || MIN_H, f.h - 2 * MARGIN))
     // Keep at least the title bar reachable: a window dragged off-screen and
     // then persisted there would be unrecoverable without clearing storage.
-    const x = Math.max(MARGIN - w + 80, Math.min(g.x ?? MARGIN, window.innerWidth - 80))
-    const y = Math.max(MARGIN, Math.min(g.y ?? MARGIN, window.innerHeight - 40))
+    const x = Math.max(MARGIN - w + 80, Math.min(g.x ?? MARGIN, f.w - 80))
+    const y = Math.max(MARGIN, Math.min(g.y ?? MARGIN, f.h - 40))
     return {x, y, w, h}
   },
 
@@ -160,16 +165,20 @@ export const ChatWindow = {
       if (e.target.closest("button")) return
       e.preventDefault()
       const g = this.currentGeometry()
-      this.dragging = {dx: e.clientX - g.x, dy: e.clientY - g.y}
+      // `left`/`top` are relative to the frame, the pointer is in client coords —
+      // the same numbers only while the frame IS the viewport.
+      const f = this.frame()
+      this.dragging = {dx: e.clientX - f.ox - g.x, dy: e.clientY - f.oy - g.y}
       window.addEventListener("pointermove", this.onDragMove)
       window.addEventListener("pointerup", this.onDragUp)
       document.body.style.userSelect = "none"
     }
     this.onDragMove = (e) => {
+      const f = this.frame()
       const g = this.clamp({
         ...this.currentGeometry(),
-        x: e.clientX - this.dragging.dx,
-        y: e.clientY - this.dragging.dy,
+        x: e.clientX - f.ox - this.dragging.dx,
+        y: e.clientY - f.oy - this.dragging.dy,
       })
       this.el.style.left = g.x + "px"
       this.el.style.top = g.y + "px"
