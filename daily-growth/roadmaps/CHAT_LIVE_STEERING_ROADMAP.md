@@ -1,14 +1,21 @@
 # Chat live steering — let the operator change the work while it is happening
 
-**Scoped 08-04-26 · Status: PHASES 0 AND 1 COMPLETE — probes run and the
-transport boundary is extracted. No live steering yet; that is Phase 2.**
+**Scoped 08-04-26 · Status: PHASES 0–5 BUILT. Claude's acceptance smoke PASSED
+08-06-26; Codex's and OpenCode's are still outstanding. Phase 6 (durable
+delivery) and Phase 7 (rollout) not started.**
 
-> **Headline: all three harnesses steer.** Claude, Codex, and OpenCode each
-> accepted a mid-run correction into the *active* turn, verified by filesystem
-> effect and by a single turn/idle boundary. The `:interrupt_then_resume`
-> contingency written into Phase 4 is not needed. Probe scripts are
-> `scripts/probe_{claude_duplex,codex_appserver,opencode_server}.exs`; findings
-> are in the Phase 0 section below and supersede any earlier claim in this doc.
+> **Headline: all three harnesses steer, and all three now do it through Buster
+> Claw.** Claude, Codex, and OpenCode each accept a mid-run correction into the
+> *active* turn. Claude is proven end to end against a real CLI; the other two
+> are unit-verified with their smokes written and unrun.
+>
+> Parity across models is a **product requirement** (operator, 08-05), not a
+> nice-to-have — see the scoreboard at the end of Phase 4 for the two
+> asymmetries that remain and why neither is fixable by configuration.
+>
+> Probe scripts: `scripts/probe_{claude_duplex,codex_appserver,opencode_server}.exs`.
+> Acceptance smokes: `scripts/smoke_chat_steering{,_codex,_opencode}.exs`.
+> Phase 0's findings supersede any earlier claim in this doc.
 
 Buster Claw's chat now lets an operator type while an agent is working, but the
 new message waits in an in-memory queue until the current run exits. That is
@@ -604,33 +611,56 @@ and resumes on the next turn. Claude advertises `interrupt_receipt_v1`, but
 that is a protocol this module does not yet speak, and reporting a turn as
 stopped while it kept running is worse than a restart.
 
-### ⚠ Acceptance is NOT yet signed off — the operator must run it
+### Acceptance — PASSED 08-06-26
 
-`scripts/smoke_chat_steering.exs` (`mix run`) is written and is the acceptance
-criterion above, end to end: it enables the flag, submits a real multi-step
-Claude task, calls `Chat.submit(…, delivery: :steer)` the moment the first tool
-starts, and passes only if all four hold —
-
-- `Chat.submit/3` returned `{:ok, :steered}`, not `{:ok, :queued}`;
-- a `redirected` tool call appears in the transcript;
-- `step-three` never runs;
-- exactly **one** turn completes (one process, one turn — not two).
-
-It has no side effects: every step is a `sleep` and an `echo` to stdout.
-
-**It could not be run from the agent harness.** Anything that boots the app
-long-running is SIGTERM'd as an agent task (exit 144) — the same constraint
-that stops `mix phx.server` being backgrounded. It needs the operator, with the
-dev server stopped:
+Operator ran `mix run scripts/smoke_chat_steering.exs` against real
+claude 2.1.222. All four conditions held:
 
 ```
-mix run scripts/smoke_chat_steering.exs
+VERDICT: PASS — steered inside the active turn
+  Chat.submit returned:  {:ok, :steered}
+  redirect ran:          true
+  step three skipped:    true
+  turns completed:       1
+  tool calls: [5730ms] sleep 8 && echo step-one
+              [24315ms] echo redirected
 ```
 
-Until that passes, Phase 2 is **built and unit-verified, not accepted**. The
-harness behaviour it depends on was measured in Phase 0, and 34 tests cover the
-Buster Claw half against fakes and a real pipe — but no test in this repo has
-yet watched a real claude turn change course through `Chat`.
+**Phase 2 is accepted.** A real Claude turn changed course through
+`Chat.submit/3`, in one turn, on one process.
+
+⚠ **And the latency law is bigger in the app than in the probe.** Steered at
+5.73s; the redirect did not run until 24.3s — **18.6 seconds**. The probe saw
+~10.7s for the same shape. The extra time is the model turn after the tool ends
+(the probe's was ~2.6s, this one ~10.6s), most likely a larger model via
+`ModelPolicy`. Either way the conclusion sharpens rather than changes:
+
+> `SENDING` is not a flicker and not "a few seconds". On a real surface with a
+> real model it was **nearly twenty seconds** for a task whose tool slept for
+> eight. Phase 5's copy — "the agent will pick this up at its next step" — is
+> the right claim, and any future temptation to add a spinner implying
+> immediacy should be measured against this number.
+
+### Acceptance for the OTHER backends — still outstanding
+
+Phase 2's smoke passed above. The Codex and OpenCode equivalents have not been
+run:
+
+```
+mix run scripts/smoke_chat_steering_codex.exs      # Phase 3
+mix run scripts/smoke_chat_steering_opencode.exs   # Phase 4
+```
+
+**None of these can run from the agent harness.** Anything that boots the app
+long-running is SIGTERM'd as an agent task (exit 144) — the same constraint that
+stops `mix phx.server` being backgrounded. They need the operator, with the dev
+server stopped (they boot the app, so port 4000 must be free).
+
+The codex script additionally checks **continuity**: same thread on turn 2, and
+turn 2 able to name the command turn 1 ran. That is the half of Phase 3 that
+`codex exec` could not do at all. The opencode script treats `{:ok, :sent}` as a
+pass for steering — what proves the steer is whether the run changed course, not
+whether the receipt arrived in the window.
 
 ---
 
