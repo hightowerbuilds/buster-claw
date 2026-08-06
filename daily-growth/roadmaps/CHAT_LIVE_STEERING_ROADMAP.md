@@ -1,13 +1,13 @@
 # Chat live steering — let the operator change the work while it is happening
 
-**Scoped 08-04-26 · Status: PHASES 0–5 BUILT. Claude's acceptance smoke PASSED
-08-06-26; Codex's and OpenCode's are still outstanding. Phase 6 (durable
+**Scoped 08-04-26 · Status: PHASES 0–5 BUILT. Claude and Codex acceptance
+smokes PASSED 08-06-26; OpenCode's is the last one outstanding. Phase 6 (durable
 delivery) and Phase 7 (rollout) not started.**
 
 > **Headline: all three harnesses steer, and all three now do it through Buster
 > Claw.** Claude, Codex, and OpenCode each accept a mid-run correction into the
-> *active* turn. Claude is proven end to end against a real CLI; the other two
-> are unit-verified with their smokes written and unrun.
+> *active* turn. Claude and Codex are proven end to end against real CLIs;
+> OpenCode is unit-verified with its smoke written and unrun.
 >
 > Parity across models is a **product requirement** (operator, 08-05), not a
 > nice-to-have — see the scoreboard at the end of Phase 4 for the two
@@ -825,6 +825,37 @@ parity through `Chat`). Full suite 2726/0, credo clean, cycles 2.
 `scripts/smoke_chat_steering_opencode.exs` — and note it treats `:sent` as a pass
 for steering, because what proves the steer is whether the run changed course,
 not the label.
+
+### Acceptance — PASSED 08-06-26 (second run, after the two fixes below)
+
+```
+VERDICT: PASS — codex steers AND remembers
+  Chat.submit returned:  {:ok, :steered}
+  redirect ran:          true
+  step three skipped:    true
+  turns completed:       1
+  same thread on turn 2: true
+  turn 2 answered:       true
+  tool calls: [ 7642ms] command_execution: sleep 8 && echo step-one
+              [19022ms] command_execution: echo redirected
+```
+
+**Phase 3 is accepted.** Codex steers a running turn AND remembers the previous
+one — turn 2 named the command turn 1 ran, on the same thread. Before this phase
+a Codex chat could not answer that question at all, because every turn was a
+fresh `codex exec` process.
+
+**Cross-backend latency, both now measured on real CLIs:**
+
+| | steer → redirect ran |
+|---|---|
+| Claude | 18.6s |
+| Codex | **11.4s** |
+
+Codex turns a steer around faster, despite the extra JSON-RPC hop. Both are far
+longer than the ~8s tool they were interrupting, and both confirm the same
+thing: the wait is dominated by the **model turn after the tool ends**, not by
+the transport. `SENDING` remains a real, tens-of-seconds state on every backend.
 
 ### ⚠ First Codex smoke run FAILED — two real bugs, both fixed 08-06-26
 
