@@ -23,6 +23,8 @@ defmodule BusterClaw.Agent.StreamEvent do
     * `:tool_use`       — a tool call; carries `:tool`, `:tool_input`, `:summary`
     * `:tool_result`    — a tool's result coming back
     * `:user`           — a user/tool-result turn echoed back
+    * `:usage`          — token counts arriving separately from the result, as
+                          codex's app-server reports them; carries `:usage`
     * `:result`         — the run finished; carries `:text`, `:cost_usd`,
                           `:num_turns`, `:session_id`
     * `:unknown`        — anything else (kept so callers can ignore it cleanly)
@@ -40,7 +42,14 @@ defmodule BusterClaw.Agent.StreamEvent do
   @writing_any ~w(write edit patch notebookedit apply_patch)
 
   @type kind ::
-          :system | :assistant_text | :tool_use | :tool_result | :user | :result | :unknown
+          :system
+          | :assistant_text
+          | :tool_use
+          | :tool_result
+          | :user
+          | :usage
+          | :result
+          | :unknown
 
   @type t :: %__MODULE__{
           kind: kind(),
@@ -130,6 +139,7 @@ defmodule BusterClaw.Agent.StreamEvent do
   """
   @spec normalize(atom(), map()) :: t()
   def normalize(:codex, map), do: normalize_codex(map)
+  def normalize(:codex_app_server, map), do: normalize_codex_app_server(map)
   def normalize(:opencode, map), do: normalize_opencode(map)
   def normalize(_claude_or_unknown, map), do: normalize(map)
 
@@ -178,6 +188,120 @@ defmodule BusterClaw.Agent.StreamEvent do
        do: %__MODULE__{kind: :tool_result, raw: m}
 
   defp normalize_codex(m), do: %__MODULE__{kind: :unknown, raw: m}
+
+  # --- codex app-server ----------------------------------------------------
+  #
+  # A DIFFERENT schema from `codex exec --json` above, not a variant of it:
+  # these are JSON-RPC notifications, so the discriminator is `method` and the
+  # payload is under `params`. Observed against codex-cli 0.146.0 by
+  # `scripts/probe_codex_appserver.exs`; the redacted trace is the reference.
+  #
+  #   {"method":"turn/started",   "params":{"threadId":…,"turn":{"id":…}}}
+  #   {"method":"item/started",   "params":{"item":{"type":"commandExecution","command":…}}}
+  #   {"method":"item/completed", "params":{"item":{"type":"agentMessage","text":…}}}
+  #   {"method":"turn/completed", "params":{"threadId":…,"turn":{"status":…,"error":…}}}
+  #   {"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":…,"total":…}}}
+  #
+  # `item.type` is camelCase here and snake_case in `exec` output — same
+  # concepts, different spelling, which is exactly why these are separate
+  # normalizers rather than one with a shared fallback.
+
+  defp normalize_codex_app_server(%{"method" => "thread/started", "params" => params} = m),
+    do: %__MODULE__{kind: :system, session_id: get_in(params, ["thread", "id"]), raw: m}
+
+  defp normalize_codex_app_server(%{"method" => "turn/started", "params" => params} = m),
+    do: %__MODULE__{kind: :system, session_id: params["threadId"], raw: m}
+
+  # The model talking. Taken from `item/completed` rather than accumulated from
+  # `item/agentMessage/delta`: the completed item carries the whole text, so
+  # coalescing is by construction and the transcript is never handed one row per
+  # token. The deltas fall through to `:unknown` on purpose.
+  defp normalize_codex_app_server(
+         %{
+           "method" => "item/completed",
+           "params" => %{"item" => %{"type" => "agentMessage"} = item}
+         } =
+           m
+       ),
+       do: %__MODULE__{kind: :assistant_text, text: stringish(item["text"]), raw: m}
+
+  # A shell command, reported when it STARTS so the transcript shows work in
+  # progress rather than only after it finishes — the same moment `exec`'s
+  # `item.started` fires.
+  defp normalize_codex_app_server(
+         %{
+           "method" => "item/started",
+           "params" => %{"item" => %{"type" => "commandExecution"} = item}
+         } = m
+       ) do
+    command = stringish(item["command"]) || ""
+
+    %__MODULE__{
+      kind: :tool_use,
+      tool: "command_execution",
+      tool_input: %{"command" => command},
+      summary: "command_execution: " <> command,
+      raw: m
+    }
+  end
+
+  defp normalize_codex_app_server(
+         %{
+           "method" => "item/completed",
+           "params" => %{"item" => %{"type" => "commandExecution"}}
+         } = m
+       ),
+       do: %__MODULE__{kind: :tool_result, raw: m}
+
+  # Our own message echoed back. `clientId` is the `clientUserMessageId` we sent,
+  # which makes this the acceptance receipt for a steer — the one thing that
+  # proves the harness took it. `:user` events are ignored by the transcript
+  # (they would double the operator's own bubble), so this is carried for the
+  # transport to read rather than for display.
+  defp normalize_codex_app_server(
+         %{"method" => "item/completed", "params" => %{"item" => %{"type" => "userMessage"}}} = m
+       ),
+       do: %__MODULE__{kind: :user, raw: m}
+
+  defp normalize_codex_app_server(%{"method" => "turn/completed", "params" => params} = m) do
+    turn = params["turn"] || %{}
+
+    %__MODULE__{
+      kind: :result,
+      # Codex reports token counts but no dollar figure, and this app owns no
+      # price table — a computed cost would be a number the operator trusts and
+      # we invented.
+      text: turn_error_text(turn["error"]),
+      num_turns: 1,
+      session_id: params["threadId"],
+      raw: m
+    }
+  end
+
+  defp normalize_codex_app_server(
+         %{"method" => "thread/tokenUsage/updated", "params" => params} = m
+       ),
+       do: %__MODULE__{kind: :usage, usage: codex_app_server_usage(params["tokenUsage"]), raw: m}
+
+  defp normalize_codex_app_server(m), do: %__MODULE__{kind: :unknown, raw: m}
+
+  defp turn_error_text(%{"message" => message}) when is_binary(message), do: message
+  defp turn_error_text(_error), do: nil
+
+  # `last` is this turn; `total` is the thread. The turn is what a transcript
+  # line is about, so `last` is the one normalized — the same per-turn-vs-session
+  # distinction that made claude's cumulative cost a bug.
+  defp codex_app_server_usage(%{"last" => last}) when is_map(last) do
+    %{
+      input_tokens: last["inputTokens"],
+      output_tokens: last["outputTokens"],
+      cache_read_tokens: last["cachedInputTokens"],
+      cache_write_tokens: last["cacheWriteInputTokens"],
+      cost_usd: nil
+    }
+  end
+
+  defp codex_app_server_usage(_usage), do: nil
 
   # --- opencode ------------------------------------------------------------
   #

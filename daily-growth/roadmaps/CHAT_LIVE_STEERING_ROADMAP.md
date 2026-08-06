@@ -659,6 +659,61 @@ yet watched a real claude turn change course through `Chat`.
 continuity. A second normal turn can refer to the first without Buster Claw
 prepending a synthetic transcript summary.
 
+### Status — BUILT 08-05-26 · parity is a product requirement
+
+Operator call, 08-05: **Buster Claw is meant to be balanced between models —
+Codex must work as well as Claude.** That reframes this phase from "nice
+follow-up" to a requirement, and it is what justified doing it before Phase 6.
+
+Codex was the weakest backend by a distance, and not only for steering: under
+`codex exec` a chat **forgot everything between turns**, because
+`codex exec resume` is a subcommand `AgentBackend.argv/3` cannot express. Both
+gaps close together.
+
+- `BusterClaw.Agent.CodexAppServer` — one supervised JSON-RPC connection for the
+  whole application, multiplexing conversations by thread id. **Not one server
+  per tab:** an app-server boots the operator's MCP servers on every thread, so
+  a server per conversation would multiply that by the number of open tabs. The
+  port opens lazily, so a machine without codex pays nothing.
+- `ChatTransport.CodexAppServer` — `:steer`, `:turn_addressed`, `persistent:
+  true`. The strongest receipt of the three: `turn/steer` carries
+  `expectedTurnId` and a stale id is refused by the protocol, so unlike Claude
+  and OpenCode the completion race is **guaranteed**, not inferred.
+- `StreamEvent.normalize(:codex_app_server, …)` — a separate normalizer from the
+  `exec` one, because they are different schemas rather than variants
+  (`item/completed` + `agentMessage` vs `item.completed` + `agent_message`).
+  Deltas are ignored and text is taken from the completed item, so coalescing is
+  by construction and the transcript is never handed one row per token.
+- `Chat` gained a second event path: `{:chat_event, ref, %StreamEvent{}}` for
+  transports with no port of their own, plus `{:chat_transport_down, ref, why}`.
+  Both are matched against `handle.port`, which server-backed adapters set to
+  their routing ref — one matching rule for every backend rather than a special
+  case.
+
+⚠ **Ordering finding.** codex emits `thread/started` immediately after answering
+`thread/start` — *before* the caller can be registered against the thread id it
+announces, so that notification is always dropped. Nothing depends on it: the
+thread id comes from the response and the transport puts it on the handle, where
+`Chat` now reads it. Relying on the notification would have been a race that
+worked in testing and failed under load.
+
+Confinement is unchanged and one-to-one: `thread/start`'s `SandboxMode` is the
+same three-value enum `AgentBackend.permission_args/2` already emits as `-s`,
+and Phase 0 verified `read-only` genuinely refuses a write. `bypassPermissions`
+still does **not** become `danger-full-access`. App Server does not scope MCP
+any more than `exec` does — unchanged, not worsened, and still the reason the
+money surfaces stay Claude-pinned.
+
+Tests: 26 new (the JSON-RPC connection against a scripted stand-in server built
+from the Phase 0 trace, plus Codex parity through `Chat`). Full suite 2701/0,
+`bun test` 133/0, credo clean, cycles 2.
+
+**Acceptance NOT yet signed off**, same constraint as Phase 2:
+`scripts/smoke_chat_steering_codex.exs` checks all six conditions — steered,
+redirect ran, step three skipped, one turn, same thread on turn 2, and turn 2
+answered — but anything that boots the app long-running is SIGTERM'd in the
+agent harness. The operator must run it with the dev server stopped.
+
 ---
 
 ## Phase 4 — OpenCode gets the server transport, with an honest capability

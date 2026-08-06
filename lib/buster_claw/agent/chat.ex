@@ -1,27 +1,52 @@
 defmodule BusterClaw.Agent.Chat do
   @moduledoc """
-  A real-time chat conversation backed by **headless Claude**.
+  A real-time chat conversation, one GenServer per conversation.
 
-  Each user message spawns a short-lived `claude -p` run with
-  `--output-format stream-json`, owned by this GenServer (inside the BEAM, so it
-  can broadcast — the `./buster-claw` escript cannot). As the run streams NDJSON
-  events, they are parsed by `BusterClaw.Agent.StreamEvent` and broadcast on the
-  conversation's PubSub topic; the homepage chat LiveView renders from those.
+  Owned inside the BEAM so it can broadcast — the `./buster-claw` escript
+  cannot. Agent output is normalized by `BusterClaw.Agent.StreamEvent` and
+  broadcast on the conversation's PubSub topic; the chat LiveViews render from
+  those.
 
-  ## Conversation model
+  ## What this module owns, and what it does not
 
-  One short-lived run per message, threaded with `--resume`. The first message
-  runs with no session flag; we capture the `session_id` from the stream and pass
-  `--resume <id>` on every subsequent message, so the agent keeps context without
-  a long-lived process. State survives the run process exiting between turns.
+  This module owns **ordering, persistence, the transcript, audit, delivery
+  modes, and the queue**. It does not know how any harness works. That lives
+  behind `BusterClaw.Agent.ChatTransport`, because the three supported backends
+  do not share a shape: one is a pipe, one is JSON-RPC over stdio, one is HTTP
+  with an SSE stream.
+
+  ## Two transport lifecycles
+
+  Which one applies is read from the transport's `:persistent` capability, and
+  it decides what the two observable things MEAN:
+
+  | | one-shot | persistent |
+  |---|---|---|
+  | turn ends when | the process exits | a `result` event arrives |
+  | an OS exit means | the turn finished | the transport FAILED |
+
+  Getting that backwards either hangs a conversation on a turn that finished, or
+  reports a crash as a clean completion.
+
+  A persistent transport also keeps its identity across turns: the Claude duplex
+  process and its session, or the Codex thread id. That is what lets a second
+  turn refer to the first without Buster Claw prepending a synthetic summary.
+
+  ## Delivery
+
+  `submit/3` takes `:auto`, `:next`, or `:steer` and returns the mode that
+  **actually happened**. A steer aimed at a turn that finished first comes back
+  `:queued` and goes to the front of the queue — it is never applied to whatever
+  turn started afterwards. Callers must render the returned mode, never the
+  requested one.
 
   ## Discipline (borrowed from `BusterClaw.Dispatcher`)
 
-  - **Serialized.** One run in flight per conversation; `send_message/2` returns
-    `{:error, :busy}` while a run is active.
-  - **Wall-clock cap.** A hung run is killed and reported as `{:error, :timeout}`.
-  - **Crash-safe.** The run is a monitored Port; if it dies the conversation
-    resets to idle.
+  - **Serialized.** One turn in flight per conversation; anything submitted
+    while it runs is steered into it or queued behind it.
+  - **Wall-clock cap.** A hung turn is stopped and reported as a timeout.
+  - **Crash-safe.** A dead transport fails the active turn visibly, keeps the
+    session/thread id, and reconnects on the next message.
 
   ## Trust boundary
 
@@ -34,6 +59,7 @@ defmodule BusterClaw.Agent.Chat do
   require Logger
 
   alias BusterClaw.Agent.ChatTransport
+  alias BusterClaw.Agent.CodexAppServer
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.Agent.Transcript
   alias BusterClaw.AgentRunner
@@ -492,6 +518,29 @@ defmodule BusterClaw.Agent.Chat do
     {:noreply, drop_transport(state)}
   end
 
+  # A server-backed transport has no port of its own, so its events arrive
+  # already normalized rather than as bytes to parse. Matched on the handle's
+  # `ref` for the same reason the pipe transports match on their port: an event
+  # from a conversation we have since reset must not land in the current one.
+  def handle_info({:chat_event, ref, %StreamEvent{} = event}, %{port: ref} = state),
+    do: {:noreply, state |> capture_session(event) |> project_event(event)}
+
+  # The shared connection died. Same meaning as a duplex port exiting: the turn
+  # in flight is lost, the thread id is kept, and the next message reconnects
+  # and resumes.
+  def handle_info({:chat_transport_down, ref, reason}, %{port: ref} = state) do
+    state =
+      if state.status == :running do
+        state
+        |> emit_message(:error, error_text({:transport_down, reason}))
+        |> audit_run({:failed, {:transport_down, reason}})
+      else
+        state
+      end
+
+    {:noreply, drop_transport(state)}
+  end
+
   def handle_info({:run_timeout, token}, %{status: :running, run: %{token: run_token}} = state)
       when token == run_token do
     interrupt_transport(state)
@@ -553,6 +602,12 @@ defmodule BusterClaw.Agent.Chat do
              # outlives this turn.
              port: handle.port,
              turn_ref: turn_ref,
+             # A server-backed transport learns its thread id from the response
+             # to `thread/start`, not from an event — and the notification that
+             # would have carried it can arrive before the conversation is even
+             # registered. Reading it off the handle is the only ordering that
+             # is not a race.
+             session_id: handle.session_id || state.session_id,
              transport: transport,
              handle: handle,
              persistent?: persistent?(transport),
@@ -591,6 +646,7 @@ defmodule BusterClaw.Agent.Chat do
         append_system_prompt: state.append_system_prompt,
         extra_cli_args: state.extra_cli_args,
         permission_mode: state.permission_mode,
+        model: resolve_model(),
         spawner: state.spawner
       )
 
@@ -598,6 +654,17 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   defp persistent?(transport), do: Map.get(transport.capabilities(), :persistent, false)
+
+  # The per-surface model, for transports that have no spawn to hang it on.
+  # Rescued rather than guarded: `Chat`'s own tests run async with no DB
+  # sandbox, and the documented behaviour of an unresolved model is to omit it
+  # and leave the CLI's own default in charge — the same rule
+  # `AgentBackend.argv/3` follows.
+  defp resolve_model do
+    ModelPolicy.for_surface(:chat)
+  rescue
+    _error -> nil
+  end
 
   # Append to the on-deck queue. Dispatched one-per-turn, in order, by
   # `dispatch_next/1`. In-memory only — Phase 6's ledger is what makes an
@@ -849,7 +916,10 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   defp interrupt_transport(state) do
-    state.transport.interrupt(state.handle, state.port)
+    # Addressed to the TURN, not the port — a server-backed transport has many
+    # turns behind one connection, and stopping "the port" there would mean
+    # stopping every conversation on it.
+    state.transport.interrupt(state.handle, state.turn_ref)
     :ok
   end
 
@@ -982,6 +1052,13 @@ defmodule BusterClaw.Agent.Chat do
 
   defp error_text(:timeout), do: "The run timed out and was stopped."
   defp error_text(:no_agent_cli), do: "No agent CLI found. Install Claude Code to chat."
+
+  # A shared connection dropping is recoverable and says so: the thread id
+  # survives, so the next message reconnects and resumes rather than starting
+  # the conversation over.
+  defp error_text({:transport_down, reason}),
+    do: "The agent connection dropped (#{inspect(reason)}). Your next message reconnects it."
+
   defp error_text(reason), do: "Run failed: #{inspect(reason)}"
 
   # Per-harness argv (resume spelling, where the system-prompt guide goes, the
@@ -999,7 +1076,16 @@ defmodule BusterClaw.Agent.Chat do
   # claude's shape is the one they were written against. Note this decides the
   # PROTOCOL only — the agent value itself is passed through unresolved, so `nil`
   # still means "let `AgentRunner.detect/0` choose the binary".
-  defp transport_for(:codex), do: ChatTransport.Codex
+  # Codex reaches parity with claude only through app-server: `codex exec` can
+  # neither steer nor resume, so behind the flag both capabilities arrive at
+  # once. Falls back to the one-shot adapter when codex is not installed, so a
+  # machine without it degrades rather than erroring on every turn.
+  defp transport_for(:codex) do
+    if steering_enabled?() and CodexAppServer.available?(),
+      do: ChatTransport.CodexAppServer,
+      else: ChatTransport.Codex
+  end
+
   defp transport_for(:opencode), do: ChatTransport.OpenCode
 
   # Claude is the one harness with a live-steering transport today. It is behind

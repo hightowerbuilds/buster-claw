@@ -67,6 +67,7 @@ defmodule BusterClaw.Agent.ChatTransport do
           append_system_prompt: String.t() | nil,
           extra_cli_args: [String.t()],
           permission_mode: String.t() | nil,
+          model: String.t() | nil,
           spawner: (String.t(), keyword() -> {:ok, term()} | {:error, term()}),
           port: term() | nil,
           conn: term() | nil
@@ -77,6 +78,7 @@ defmodule BusterClaw.Agent.ChatTransport do
             append_system_prompt: nil,
             extra_cli_args: [],
             permission_mode: nil,
+            model: nil,
             spawner: nil,
             port: nil,
             conn: nil
@@ -152,6 +154,10 @@ defmodule BusterClaw.Agent.ChatTransport do
       append_system_prompt: Keyword.get(opts, :append_system_prompt),
       extra_cli_args: Keyword.get(opts, :extra_cli_args, []),
       permission_mode: Keyword.get(opts, :permission_mode),
+      # Only the server-backed transports read this. The pipe transports get
+      # their model from `Chat`'s spawner, which resolves it at the last moment
+      # before the spawn; a transport with no spawn has nowhere else to put it.
+      model: Keyword.get(opts, :model),
       spawner: Keyword.get(opts, :spawner)
     }
   end

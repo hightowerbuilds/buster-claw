@@ -46,6 +46,11 @@ defmodule BusterClaw.Application do
         # lazily on the first message. Always on (cheap; tests use them too).
         {Registry, keys: :unique, name: BusterClaw.Agent.ChatRegistry},
         BusterClaw.Agent.ChatSupervisor,
+        # One codex app-server connection for the whole app, multiplexing every
+        # Codex conversation by thread id. It opens its port lazily, so a
+        # machine without codex — or an operator who never opens a Codex chat —
+        # pays nothing for it.
+        BusterClaw.Agent.CodexAppServer,
         # Bounded fan-out for parallel sub-runs (Phase 4). Always on (cheap; an idle
         # Task.Supervisor holds no resources).
         {Task.Supervisor, name: BusterClaw.SwarmTaskSupervisor},
