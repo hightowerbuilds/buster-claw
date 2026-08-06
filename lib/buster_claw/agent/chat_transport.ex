@@ -89,10 +89,17 @@ defmodule BusterClaw.Agent.ChatTransport do
     the message, send it as the next turn) and needs nothing from the backend.
   * `:receipt` — `:none`, `:boundary_replay`, `:turn_addressed`, or
     `:admission_event`. `:none` means the UI may say *sent*, never *steered*.
+  * `:persistent` — the transport outlives a turn. This changes what `Chat` may
+    conclude from the two things it observes: with a persistent transport a
+    `result` event ends the TURN and an OS exit is a transport FAILURE, whereas
+    a one-shot transport ends its turn by exiting. Getting this backwards either
+    hangs the conversation on a turn that finished or reports a crash as a
+    clean completion.
   """
   @type capabilities :: %{
           modes: [:start_turn | :queue_next | :steer | :interrupt],
-          receipt: :none | :boundary_replay | :turn_addressed | :admission_event
+          receipt: :none | :boundary_replay | :turn_addressed | :admission_event,
+          persistent: boolean()
         }
 
   @type turn_ref :: term()

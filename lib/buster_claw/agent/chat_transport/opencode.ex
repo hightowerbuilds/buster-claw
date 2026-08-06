@@ -51,7 +51,7 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCode do
 
   @impl true
   def capabilities do
-    %{modes: [:start_turn, :queue_next, :interrupt], receipt: :none}
+    %{modes: [:start_turn, :queue_next, :interrupt], receipt: :none, persistent: false}
   end
 
   @impl true

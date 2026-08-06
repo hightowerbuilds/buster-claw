@@ -34,7 +34,11 @@ defmodule BusterClaw.Agent.FakeChatTransport do
 
   @impl true
   def capabilities,
-    do: %{modes: [:start_turn, :queue_next, :steer, :interrupt], receipt: :turn_addressed}
+    do: %{
+      modes: [:start_turn, :queue_next, :steer, :interrupt],
+      receipt: :turn_addressed,
+      persistent: false
+    }
 
   @impl true
   def start_turn(handle, text), do: ChatTransport.spawn_turn(handle, text, [])

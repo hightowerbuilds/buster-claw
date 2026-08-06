@@ -275,7 +275,16 @@ defmodule BusterClaw.AgentBackend do
   def argv(backend, prompt, opts \\ [])
 
   def argv(:claude, prompt, opts) do
-    ["-p", prompt, "--permission-mode", permission_mode(opts)] ++
+    # `:duplex` drops the positional prompt: in streaming-input mode the prompt
+    # arrives as JSONL on stdin, and `claude -p <prompt> --input-format
+    # stream-json` would be giving it the first message twice. Everything else —
+    # permission mode, model, confinement — is deliberately identical, so the
+    # duplex path cannot quietly acquire a different posture than the one-shot
+    # path it replaces.
+    prompt_args = if Keyword.get(opts, :duplex, false), do: ["-p"], else: ["-p", prompt]
+
+    prompt_args ++
+      ["--permission-mode", permission_mode(opts)] ++
       model_args(:claude, opts) ++ stream_args(:claude, opts)
   end
 
@@ -312,8 +321,29 @@ defmodule BusterClaw.AgentBackend do
   instead of knowing which harness they are on.
   """
   def stream_args(backend, opts \\ []) do
-    if Keyword.get(opts, :stream, false), do: do_stream_args(backend), else: []
+    cond do
+      not Keyword.get(opts, :stream, false) -> []
+      Keyword.get(opts, :duplex, false) -> do_duplex_args(backend)
+      true -> do_stream_args(backend)
+    end
   end
+
+  # Streaming INPUT as well as output — the shape that lets a second user message
+  # reach a turn that is already running. Measured on claude 2.1.222; see
+  # `scripts/probe_claude_duplex.exs`.
+  #
+  # `--replay-user-messages` is not optional decoration: it is the only evidence
+  # the harness accepted a message at all. Without it "accepted" would be an
+  # assumption, and the UI would be free to claim STEERED for a message that
+  # never landed.
+  #
+  # Only claude has this mode. codex and opencode get their ordinary streaming
+  # flags rather than a flag they would reject — their live paths are servers
+  # (Phases 3 and 4), not a duplex pipe.
+  defp do_duplex_args(:claude),
+    do: do_stream_args(:claude) ++ ["--input-format", "stream-json", "--replay-user-messages"]
+
+  defp do_duplex_args(other), do: do_stream_args(other)
 
   defp do_stream_args(:claude), do: ["--output-format", "stream-json", "--verbose"]
   defp do_stream_args(:codex), do: ["--json"]

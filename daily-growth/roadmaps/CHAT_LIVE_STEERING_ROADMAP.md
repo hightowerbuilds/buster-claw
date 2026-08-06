@@ -565,6 +565,73 @@ Deviations and findings, all deliberate:
 accepted into the same active turn and changes the next model action without an
 OS-process restart.
 
+### Status — BUILT 08-05-26
+
+`ChatTransport.ClaudeDuplex` alongside the untouched one-shot
+`ChatTransport.Claude`, behind `:chat_live_steering_enabled` (default off).
+Flipping the flag off is a real rollback: no code was removed.
+
+- `AgentRunner.open_duplex/2` is a **separate function**, not a flag on
+  `open/2`. `open_port/4` keeps its `/dev/null` stdin, so no unattended run is
+  one wrong keyword away from hanging on an empty pipe.
+- `AgentBackend.argv/3` gained `:duplex`, which drops the positional prompt
+  (the message arrives as JSONL instead) and adds `--input-format stream-json
+  --replay-user-messages`. Permission mode, model, and confinement flags are
+  byte-identical to the one-shot path — a transport swap is not permission to
+  run with a different posture.
+- `ChatMessageEncoder` is the single place operator text becomes bytes on an
+  agent's stdin, and it refuses an oversized message **before** the pipe write.
+  A half-written JSONL line desynchronises the harness's parser for the rest of
+  the conversation; a rejected message does not.
+- `Chat` now separates the **turn** from the **transport**. A `result` event
+  ends the turn and leaves the process standing; an OS exit is a transport
+  failure, and the session id is kept so the next message resumes rather than
+  starting over. Which of those applies is read from the transport's
+  `:persistent` capability, so the one-shot path is untouched.
+- A steer is addressed to `turn_ref`, not the port. Under a duplex transport
+  the port outlives the turn, so naming the port would happily steer a turn the
+  operator never saw.
+- ⚠ **The cumulative-cost finding is fixed.** Each turn is charged
+  `total_cost_usd` minus the session baseline, guarded against a non-monotonic
+  total. Without this, every turn after the first silently reported the running
+  session total as its own cost.
+
+Tests: 34 new (duplex lifecycle via a persistent fake, the adapter against a
+real pipe, the encoder, duplex argv). Full suite 2661/0, credo clean, cycles 2.
+
+Not done in this phase, deliberately: interrupt still kills the process group
+and resumes on the next turn. Claude advertises `interrupt_receipt_v1`, but
+that is a protocol this module does not yet speak, and reporting a turn as
+stopped while it kept running is worse than a restart.
+
+### ⚠ Acceptance is NOT yet signed off — the operator must run it
+
+`scripts/smoke_chat_steering.exs` (`mix run`) is written and is the acceptance
+criterion above, end to end: it enables the flag, submits a real multi-step
+Claude task, calls `Chat.submit(…, delivery: :steer)` the moment the first tool
+starts, and passes only if all four hold —
+
+- `Chat.submit/3` returned `{:ok, :steered}`, not `{:ok, :queued}`;
+- a `redirected` tool call appears in the transcript;
+- `step-three` never runs;
+- exactly **one** turn completes (one process, one turn — not two).
+
+It has no side effects: every step is a `sleep` and an `echo` to stdout.
+
+**It could not be run from the agent harness.** Anything that boots the app
+long-running is SIGTERM'd as an agent task (exit 144) — the same constraint
+that stops `mix phx.server` being backgrounded. It needs the operator, with the
+dev server stopped:
+
+```
+mix run scripts/smoke_chat_steering.exs
+```
+
+Until that passes, Phase 2 is **built and unit-verified, not accepted**. The
+harness behaviour it depends on was measured in Phase 0, and 34 tests cover the
+Buster Claw half against fakes and a real pipe — but no test in this repo has
+yet watched a real claude turn change course through `Chat`.
+
 ---
 
 ## Phase 3 — Codex chat moves from `exec` to App Server

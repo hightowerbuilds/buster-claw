@@ -315,6 +315,20 @@ defmodule BusterClaw.Agent.Chat do
       # these into state that outlives a turn.
       transport: nil,
       handle: nil,
+      # Identifies the ACTIVE turn, separately from the port. Under a one-shot
+      # transport the two are the same thing; under a duplex one a single
+      # process owns many turns, and a steer has to name the turn the operator
+      # was actually looking at.
+      turn_ref: nil,
+      # Cached from the transport's `capabilities/0`. `Chat` consults it to
+      # decide what a `result` event and an OS exit MEAN — see `finish_turn/1`.
+      persistent?: false,
+      # Claude reports `total_cost_usd` as a SESSION-CUMULATIVE figure while
+      # `num_turns` is per-turn (measured 08-04, see the roadmap). One process
+      # per turn made the field equal the turn's cost; a long-lived process does
+      # not. This is the running total already accounted for, so a turn can be
+      # charged the delta.
+      cost_baseline: 0.0,
       # Injectable for tests, like `:spawner` beside it. `steer/3` has no live
       # implementation until Phase 2, so a fake adapter is the only way to cover
       # the accepted-steer and completion-race branches before then — and those
@@ -395,6 +409,12 @@ defmodule BusterClaw.Agent.Chat do
         port: nil,
         transport: nil,
         handle: nil,
+        turn_ref: nil,
+        persistent?: false,
+        # A reset starts a fresh thread, so the session's running cost total
+        # starts over with it. Carrying the old baseline would make the new
+        # conversation's first turn read as free.
+        cost_baseline: 0.0,
         buf: "",
         raw_tail: [],
         timer: nil,
@@ -432,20 +452,44 @@ defmodule BusterClaw.Agent.Chat do
     {:noreply, Enum.reduce(lines, %{state | buf: buf}, &apply_line/2)}
   end
 
-  def handle_info({port, {:exit_status, 0}}, %{port: port} = state),
+  # A ONE-SHOT transport ends its turn by exiting, so a clean exit is a clean
+  # turn. A PERSISTENT transport does not: its turn already ended on the `result`
+  # event, and the process going away means the transport died. Reporting that as
+  # a completed turn would hide a crash.
+  def handle_info({port, {:exit_status, 0}}, %{port: port, persistent?: false} = state),
     do: {:noreply, state |> audit_run(:completed) |> finish_run()}
 
   # A non-zero exit is a FAILED run. This used to be audited as :completed with
   # nothing on screen — the classic first-run shape (Claude installed but not
   # logged in) looked like the app was broken. Surface what the CLI printed and
   # the likely remedy.
-  def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
+  def handle_info({port, {:exit_status, code}}, %{port: port, persistent?: false} = state) do
     state =
       state
       |> emit_message(:error, exit_error_text(code, state.raw_tail))
       |> audit_run({:failed, {:exit_status, code}})
 
     {:noreply, finish_run(state)}
+  end
+
+  # The persistent transport's process died. Whatever the exit status, this is a
+  # TRANSPORT failure: the conversation loses its process, and any turn still in
+  # flight dies with it. The session id is kept on purpose so the next message
+  # resumes the conversation in a fresh process rather than starting over.
+  def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
+    state =
+      if state.status == :running do
+        state
+        |> emit_message(:error, exit_error_text(code, state.raw_tail))
+        |> audit_run({:failed, {:transport_exit, code}})
+      else
+        # Died while idle — between turns. Nothing to fail and nothing worth
+        # putting in the transcript; the next submission restarts it.
+        Logger.info("Chat #{state.conv_id}: duplex transport exited (#{code}) while idle")
+        state
+      end
+
+    {:noreply, drop_transport(state)}
   end
 
   def handle_info({:run_timeout, token}, %{status: :running, run: %{token: run_token}} = state)
@@ -492,6 +536,46 @@ defmodule BusterClaw.Agent.Chat do
     # module's — see `BusterClaw.Agent.ChatTransport`. `Chat` keeps the decision
     # of which backend (`effective_agent/1` is a security call) and everything
     # downstream of the bytes.
+    {transport, handle} = ensure_transport(state)
+
+    case transport.start_turn(handle, text) do
+      {:ok, handle, turn_ref} ->
+        broadcast(state, {:status, :running})
+        timer = Process.send_after(self(), {:run_timeout, token}, state.timeout_ms)
+
+        {:ok,
+         %{
+           state
+           | status: :running,
+             # The PORT comes from the handle, not from the turn ref. They are
+             # the same value under a one-shot transport and must not be under a
+             # duplex one, where `handle_info` has to keep matching a port that
+             # outlives this turn.
+             port: handle.port,
+             turn_ref: turn_ref,
+             transport: transport,
+             handle: handle,
+             persistent?: persistent?(transport),
+             buf: "",
+             raw_tail: [],
+             timer: timer
+         }}
+
+      {:error, reason} ->
+        state = state |> emit_message(:error, error_text(reason)) |> audit_run({:failed, reason})
+        {:error, reason, %{state | run: nil, status: :idle}}
+    end
+  end
+
+  # Reuse the conversation's existing transport when it has one — that is what
+  # lets a duplex process, and its session, survive from turn to turn. A one-shot
+  # transport is equally happy to be reused: its handle carries a dead port and
+  # `start_turn/2` spawns a fresh one regardless.
+  defp ensure_transport(%{transport: transport, handle: %{} = handle} = state)
+       when not is_nil(transport),
+       do: {transport, ChatTransport.put_session(handle, state.session_id)}
+
+  defp ensure_transport(state) do
     agent = effective_agent(state)
     transport = state.transport_mod || transport_for(agent)
 
@@ -510,28 +594,10 @@ defmodule BusterClaw.Agent.Chat do
         spawner: state.spawner
       )
 
-    case transport.start_turn(handle, text) do
-      {:ok, handle, turn_ref} ->
-        broadcast(state, {:status, :running})
-        timer = Process.send_after(self(), {:run_timeout, token}, state.timeout_ms)
-
-        {:ok,
-         %{
-           state
-           | status: :running,
-             port: turn_ref,
-             transport: transport,
-             handle: handle,
-             buf: "",
-             raw_tail: [],
-             timer: timer
-         }}
-
-      {:error, reason} ->
-        state = state |> emit_message(:error, error_text(reason)) |> audit_run({:failed, reason})
-        {:error, reason, %{state | run: nil, status: :idle}}
-    end
+    {transport, handle}
   end
+
+  defp persistent?(transport), do: Map.get(transport.capabilities(), :persistent, false)
 
   # Append to the on-deck queue. Dispatched one-per-turn, in order, by
   # `dispatch_next/1`. In-memory only — Phase 6's ledger is what makes an
@@ -563,13 +629,15 @@ defmodule BusterClaw.Agent.Chat do
   #
   # The fallback is not a failure path — it is the correct answer to the
   # completion race (roadmap scenario C), and the reason `submit/3` returns the
-  # mode that HAPPENED rather than the one requested. Phase 1 always lands here,
-  # because no adapter implements `steer/3` yet.
+  # mode that HAPPENED rather than the one requested.
   defp steer_or_queue(%{transport: nil} = state, text),
     do: {:reply, {:ok, :queued}, enqueue(state, text)}
 
   defp steer_or_queue(state, text) do
-    case state.transport.steer(state.handle, state.port, text) do
+    # Addressed to the TURN, not the port. Under a duplex transport the port
+    # outlives the turn, so naming the port would happily steer a turn the
+    # operator never saw.
+    case state.transport.steer(state.handle, state.turn_ref, text) do
       {:ok, handle, _receipt} ->
         # A steered message belongs to the active turn: it is persisted and
         # shown as operator input, but it does not start a turn, so nothing
@@ -679,16 +747,21 @@ defmodule BusterClaw.Agent.Chat do
        do: state |> mark_first_token() |> emit_message(:tool, summary)
 
   defp project_event(state, %StreamEvent{kind: :result} = event) do
-    state = %{state | run: stash_result(state.run, event)}
+    {turn_cost, state} = charge_turn(state, event)
+    state = %{state | run: stash_result(state.run, event, turn_cost)}
     state = surface_result_error(state, event)
 
-    case result_meta_line(state.run, event) do
-      nil ->
-        state
+    state =
+      case result_meta_line(state.run, event, turn_cost) do
+        nil -> state
+        line -> emit_message(state, :meta, line, cost_usd: turn_cost, num_turns: event.num_turns)
+      end
 
-      line ->
-        emit_message(state, :meta, line, cost_usd: event.cost_usd, num_turns: event.num_turns)
-    end
+    # THE turn boundary for a persistent transport. A one-shot transport falls
+    # through and ends its turn when the process exits, exactly as before.
+    if state.persistent?,
+      do: state |> audit_run(:completed) |> finish_turn(),
+      else: state
   end
 
   defp project_event(state, _event), do: state
@@ -704,31 +777,61 @@ defmodule BusterClaw.Agent.Chat do
 
   defp mark_first_token(state), do: state
 
-  defp stash_result(run, event),
+  # ⚠ Claude's `total_cost_usd` is SESSION-CUMULATIVE; `num_turns` is per-turn.
+  # Measured 08-04: turn 1 reported $0.1197/3 turns, then a twelve-token turn 2
+  # reported $0.1326/1 turn. One process per turn is the only reason the field
+  # ever equalled the turn's cost — under a long-lived process it is a running
+  # total, and reporting it verbatim would inflate every turn after the first.
+  #
+  # Charging the delta is correct for BOTH transports: a one-shot run starts from
+  # a zero baseline, so the delta is the whole figure.
+  defp charge_turn(state, %StreamEvent{cost_usd: total}) when is_number(total) do
+    # `max/2` guards a backend whose total is not monotonic (or a resumed session
+    # reporting a smaller figure): a negative cost is never the right answer.
+    {max(total - state.cost_baseline, 0.0), %{state | cost_baseline: total}}
+  end
+
+  defp charge_turn(state, _event), do: {nil, state}
+
+  defp stash_result(run, event, turn_cost),
     do:
       Map.merge(run || %{}, %{
         turns: event.num_turns,
-        cost: event.cost_usd,
+        cost: turn_cost,
         usage: event.usage
       })
 
-  # End the current run, then hand off to the queue: dispatch_next/1 either starts
-  # the next queued turn (staying :running, no idle flicker between turns) or
-  # broadcasts :idle when the queue is empty.
-  defp finish_run(state) do
+  # End the current TURN and the transport with it — the one-shot lifecycle,
+  # where the two are the same event.
+  defp finish_run(state), do: finish_turn(drop_transport_fields(state))
+
+  # End the current turn, then hand off to the queue: `dispatch_next/1` either
+  # starts the next queued turn (staying :running, no idle flicker between turns)
+  # or broadcasts :idle when the queue is empty.
+  #
+  # Deliberately does NOT touch `transport`/`handle`: under a duplex transport
+  # the process, the session, and the cost baseline all outlive this turn, and
+  # tearing them down here is what would turn a long-lived conversation back into
+  # one process per message.
+  defp finish_turn(state) do
     if state.timer, do: Process.cancel_timer(state.timer)
 
     dispatch_next(%{
       state
       | status: :idle,
-        port: nil,
-        transport: nil,
-        handle: nil,
+        turn_ref: nil,
         buf: "",
         timer: nil,
         run: nil
     })
   end
+
+  # Forget the transport, keeping the session id so the next turn can resume the
+  # conversation in a fresh process.
+  defp drop_transport(state), do: finish_turn(drop_transport_fields(state))
+
+  defp drop_transport_fields(state),
+    do: %{state | port: nil, transport: nil, handle: nil, persistent?: false}
 
   # Stop the in-flight turn through its own adapter. One-shot backends kill the
   # process group; Phase 2's duplex Claude will interrupt the turn and keep the
@@ -811,14 +914,15 @@ defmodule BusterClaw.Agent.Chat do
     state
   end
 
-  defp result_meta_line(run, %StreamEvent{cost_usd: cost, num_turns: turns})
-       when is_number(cost) and is_integer(turns) do
-    [thinking_label(run), "#{turns} turns", "$#{Float.round(cost * 1.0, 4)}"]
+  # `turn_cost` is THIS turn's spend, not the session total the event carries.
+  defp result_meta_line(run, %StreamEvent{num_turns: turns}, turn_cost)
+       when is_number(turn_cost) and is_integer(turns) do
+    [thinking_label(run), "#{turns} turns", "$#{Float.round(turn_cost * 1.0, 4)}"]
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" · ")
   end
 
-  defp result_meta_line(_run, _event), do: nil
+  defp result_meta_line(_run, _event, _turn_cost), do: nil
 
   defp thinking_label(%{started: started, first_token_at: ft})
        when is_integer(started) and is_integer(ft),
@@ -889,7 +993,17 @@ defmodule BusterClaw.Agent.Chat do
   # still means "let `AgentRunner.detect/0` choose the binary".
   defp transport_for(:codex), do: ChatTransport.Codex
   defp transport_for(:opencode), do: ChatTransport.OpenCode
-  defp transport_for(_claude_or_unknown), do: ChatTransport.Claude
+
+  # Claude is the one harness with a live-steering transport today. It is behind
+  # `:chat_live_steering_enabled` because it is a different process lifecycle,
+  # not a flag — and because the one-shot path stays intact, turning the flag off
+  # is a real rollback rather than a code revert.
+  defp transport_for(_claude_or_unknown) do
+    if steering_enabled?(), do: ChatTransport.ClaudeDuplex, else: ChatTransport.Claude
+  end
+
+  defp steering_enabled?,
+    do: Application.get_env(:buster_claw, :chat_live_steering_enabled, false)
 
   # A conversation whose profile carries claude-only confinement — the Trading
   # chat's `--strict-mcp-config`/`--allowedTools`, Chart Build's — cannot run
@@ -943,7 +1057,16 @@ defmodule BusterClaw.Agent.Chat do
       # resolution could disagree with them.
       |> Keyword.put_new(:model, ModelPolicy.for_surface(:chat))
 
-    case AgentRunner.open(prompt, opts) do
+    # A duplex transport needs stdin left open; every other caller of
+    # `AgentRunner` needs it closed. The two openers are separate functions
+    # rather than one flag, so an unattended run cannot end up one wrong keyword
+    # away from hanging on an empty pipe.
+    open =
+      if Keyword.get(opts, :duplex, false),
+        do: &AgentRunner.open_duplex/2,
+        else: &AgentRunner.open/2
+
+    case open.(prompt, opts) do
       {:ok, %{port: port}} -> {:ok, port}
       {:error, _reason} = error -> error
     end

@@ -187,6 +187,59 @@ defmodule BusterClaw.Agent.ChatTransportTest do
     end
   end
 
+  describe "duplex argv" do
+    test "drops the positional prompt and asks for streaming INPUT" do
+      argv = BusterClaw.AgentBackend.argv(:claude, "hello", duplex: true, stream: true)
+
+      # No positional prompt: it arrives as JSONL on stdin instead, and passing
+      # both would hand claude the first message twice.
+      refute "hello" in argv
+
+      assert argv == [
+               "-p",
+               "--permission-mode",
+               "bypassPermissions",
+               "--output-format",
+               "stream-json",
+               "--verbose",
+               "--input-format",
+               "stream-json",
+               "--replay-user-messages"
+             ]
+    end
+
+    test "keeps the same permission posture as the one-shot path" do
+      duplex =
+        BusterClaw.AgentBackend.argv(:claude, "hi", duplex: true, permission_mode: "dontAsk")
+
+      one_shot = BusterClaw.AgentBackend.argv(:claude, "hi", permission_mode: "dontAsk")
+
+      # The confinement flags must be identical — a transport swap is not
+      # permission to run with a different posture.
+      assert "dontAsk" in duplex
+      assert "dontAsk" in one_shot
+    end
+
+    test "the model flag still applies, so ModelPolicy is not bypassed" do
+      argv =
+        BusterClaw.AgentBackend.argv(:claude, "hi",
+          duplex: true,
+          stream: true,
+          model: "claude-opus-5"
+        )
+
+      assert "--model" in argv
+      assert "claude-opus-5" in argv
+    end
+
+    test "only claude has a duplex mode; the others get ordinary streaming flags" do
+      assert BusterClaw.AgentBackend.stream_args(:codex, stream: true, duplex: true) == ["--json"]
+
+      assert BusterClaw.AgentBackend.stream_args(:opencode, stream: true, duplex: true) ==
+               ["--format", "json"]
+    end
+  end
+
   describe "capabilities" do
     test "every backend offers queue-next, which is Buster Claw's own behaviour" do
       for agent <- [:claude, :codex, :opencode] do

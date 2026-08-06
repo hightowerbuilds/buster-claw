@@ -42,7 +42,7 @@ defmodule BusterClaw.Agent.ChatTransport.Claude do
     # supports it. Phase 2 flips this to
     # `%{modes: [...:steer...], receipt: :boundary_replay}` — claiming it before
     # the duplex transport exists would be a UI that lies.
-    %{modes: [:start_turn, :queue_next, :interrupt], receipt: :none}
+    %{modes: [:start_turn, :queue_next, :interrupt], receipt: :none, persistent: false}
   end
 
   @impl true

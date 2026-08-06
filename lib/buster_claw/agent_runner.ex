@@ -209,6 +209,56 @@ defmodule BusterClaw.AgentRunner do
       {:error, {:spawn_failed, Exception.message(error)}}
   end
 
+  @doc """
+  Open a **duplex** streaming Port: like `open/2`, but stdin stays writable so
+  the caller can push more input into a run that is already going.
+
+  This exists for one caller — the live chat transport — and is deliberately a
+  separate function rather than a flag on `open/2`. `open_port/4` attaches stdin
+  to `/dev/null`, and that is correct for every other caller: `run/2` is the
+  one-shot primitive behind Dispatcher, Swarm, and Trading reads, none of which
+  have a stdin protocol, and the explicit EOF also stops recent Claude Code
+  releases waiting three seconds for piped context that will never arrive.
+  Making that conditional would put every unattended run one wrong keyword away
+  from hanging on an empty pipe.
+
+  Write to the returned port with `Port.command/2`. The process-group leader
+  trick is preserved, so `kill_port/1` still reaps the agent and its tool
+  subprocesses together.
+
+  Returns `{:ok, %{port: port, agent: agent, binary: binary}}` or
+  `{:error, reason}`.
+  """
+  @spec open_duplex(String.t(), keyword()) ::
+          {:ok, %{port: port(), agent: atom(), binary: String.t()}} | {:error, term()}
+  def open_duplex(prompt, opts \\ []) when is_binary(prompt) do
+    with {:ok, {agent, binary}} <- resolve_agent(opts) do
+      cwd = Keyword.get(opts, :cwd) || Artifact.workspace_root()
+      args = build_args(agent, prompt, opts)
+      port = open_duplex_port(binary, args, cwd, opts)
+      {:ok, %{port: port, agent: agent, binary: binary}}
+    end
+  rescue
+    error ->
+      Logger.error("AgentRunner failed to open duplex stream: #{Exception.message(error)}")
+      {:error, {:spawn_failed, Exception.message(error)}}
+  end
+
+  # `open_port/4` verbatim, minus `</dev/null`. That single redirect is the
+  # entire difference between a run that can be steered and one that cannot.
+  defp open_duplex_port(binary, args, cwd, opts) do
+    shell = Keyword.get(opts, :shell) || "/bin/sh"
+    flag = if Keyword.get(opts, :login, false), do: "-lc", else: "-c"
+    cmd = ~s|exec perl -e 'setpgrp(0,0); exec @ARGV or exit 127' "$@" 2>&1|
+    shell_args = [flag, cmd, "sh", binary | args]
+
+    port_opts =
+      [:binary, :exit_status, :hide, {:args, shell_args}, {:cd, String.to_charlist(cwd)}] ++
+        env_opt(opts)
+
+    Port.open({:spawn_executable, shell}, port_opts)
+  end
+
   # `:argv` is an explicit escape hatch (tests, or unusual agents). Otherwise the
   # known agents get their documented non-interactive invocation, with any
   # `:extra_args` (streaming flags, --resume) appended.
