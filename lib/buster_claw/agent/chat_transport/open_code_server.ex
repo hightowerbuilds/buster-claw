@@ -73,7 +73,7 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
   def start_turn(handle, text) do
     with {:ok, handle} <- ensure_session(handle),
          {:ok, message_id} <-
-           OpenCodeServer.prompt(server(), handle.session_id, text, model: handle.model) do
+           server().prompt(server(), handle.session_id, text, model: handle.model) do
       {:ok, put_turn(handle, message_id), message_id}
     end
   end
@@ -94,7 +94,7 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
 
   @impl true
   def interrupt(handle, _turn_ref) do
-    if handle.session_id, do: OpenCodeServer.abort(server(), handle.session_id)
+    if handle.session_id, do: server().abort(server(), handle.session_id)
     {:ok, handle}
   end
 
@@ -102,16 +102,16 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
   def close(handle) do
     # The SESSION is not deleted, only our interest in it — a reopened tab
     # continues where it left off.
-    if ref(handle), do: OpenCodeServer.unregister(server(), ref(handle))
+    if ref(handle), do: server().unregister(server(), ref(handle))
     :ok
   end
 
   # --- delivery ------------------------------------------------------------
 
   defp deliver(handle, text) do
-    case OpenCodeServer.prompt(server(), handle.session_id, text) do
+    case server().prompt(server(), handle.session_id, text) do
       {:ok, message_id} ->
-        case OpenCodeServer.await_receipt(ref(handle), message_id) do
+        case server().await_receipt(ref(handle), message_id) do
           :ok ->
             {:ok, handle, %{message_id: message_id, receipt: :admission_event}}
 
@@ -140,7 +140,7 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
   defp ensure_session(%{session_id: nil} = handle) do
     conn = new_conn(handle)
 
-    case OpenCodeServer.create_session(server(), conn.ref, []) do
+    case server().create_session(server(), conn.ref, []) do
       {:ok, session_id} ->
         {:ok, %{handle | session_id: session_id, conn: attached(conn), port: conn.ref}}
 
@@ -155,7 +155,7 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
     else
       conn = new_conn(handle)
 
-      case OpenCodeServer.attach_session(server(), conn.ref, handle.session_id) do
+      case server().attach_session(server(), conn.ref, handle.session_id) do
         {:ok, _id} -> {:ok, %{handle | conn: attached(conn), port: conn.ref}}
         {:error, reason} -> {:error, reason}
       end
@@ -180,5 +180,7 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
   defp current_turn(%{conn: %{turn_ref: ref}}), do: ref
   defp current_turn(_handle), do: nil
 
-  defp server, do: OpenCodeServer
+  # Injectable for the same reason as the codex adapter's: without it the ref
+  # plumbing is unreachable from the suite.
+  defp server, do: Application.get_env(:buster_claw, :open_code_server, OpenCodeServer)
 end

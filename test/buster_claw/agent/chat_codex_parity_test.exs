@@ -259,6 +259,48 @@ defmodule BusterClaw.Agent.ChatCodexParityTest do
     end
   end
 
+  describe "the turn's meta line" do
+    test "a codex turn reports TOKENS, because codex reports no cost" do
+      ctx = start_chat()
+      assert {:ok, :started} = Chat.submit(ctx.conv, "first", delivery: :auto)
+
+      # Codex delivers usage in its own notification, BEFORE the result and not
+      # on it. Chat used to drop that event entirely, so a codex turn completed
+      # with no meta line at all while a claude turn reported its cost — a
+      # parity gap the acceptance smoke surfaced as `turns completed: 0`.
+      emit(ctx, %StreamEvent{
+        kind: :usage,
+        usage: %{
+          input_tokens: 15_804,
+          output_tokens: 122,
+          cache_read_tokens: 11_008,
+          cache_write_tokens: 0,
+          cost_usd: nil
+        }
+      })
+
+      emit(ctx, turn_completed())
+
+      assert_receive {:agent_chat, _, {:message, %{role: :meta, text: text}}}
+      assert text =~ "1 turns"
+      assert text =~ "15.9k tokens"
+
+      # And no invented dollar figure: this app owns no price table.
+      refute text =~ "$"
+    end
+
+    test "a turn with neither cost nor tokens still ends, it just says less" do
+      ctx = start_chat()
+      assert {:ok, :started} = Chat.submit(ctx.conv, "first", delivery: :auto)
+
+      emit(ctx, turn_completed())
+
+      # The turn must END regardless — a missing meta line is cosmetic, a turn
+      # that never completes is the conversation hanging until its timeout.
+      refute Chat.running?(ctx.conv)
+    end
+  end
+
   describe "model resolution" do
     test "a codex conversation is given a CODEX model, not the global backend's" do
       # `ModelPolicy.for_surface/1` resolves the backend from global policy,

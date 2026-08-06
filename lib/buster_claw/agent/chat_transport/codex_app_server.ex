@@ -65,7 +65,7 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
   def start_turn(handle, text) do
     with {:ok, handle} <- ensure_thread(handle),
          {:ok, turn_id} <-
-           CodexAppServer.start_turn(server(), handle.session_id, text, model: handle.model) do
+           server().start_turn(server(), handle.session_id, text, model: handle.model) do
       {:ok, put_turn(handle, turn_id), turn_id}
     else
       {:error, reason} -> {:error, reason}
@@ -84,7 +84,7 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
         {:error, :no_active_turn}
 
       true ->
-        case CodexAppServer.steer(server(), handle.session_id, turn_ref, text) do
+        case server().steer(server(), handle.session_id, turn_ref, text) do
           {:ok, turn_id} -> {:ok, handle, %{turn_id: turn_id}}
           {:error, reason} -> {:error, reason}
         end
@@ -94,7 +94,7 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
   @impl true
   def interrupt(handle, turn_ref) do
     if handle.session_id && turn_ref do
-      CodexAppServer.interrupt(server(), handle.session_id, turn_ref)
+      server().interrupt(server(), handle.session_id, turn_ref)
     end
 
     {:ok, %{handle | conn: nil}}
@@ -105,7 +105,7 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
     # The THREAD is not deleted — only our interest in it. A closed tab that is
     # reopened resumes where it was, which is the whole point of the thread id
     # being durable.
-    if ref(handle), do: CodexAppServer.unregister(server(), ref(handle))
+    if ref(handle), do: server().unregister(server(), ref(handle))
     :ok
   end
 
@@ -115,10 +115,22 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
   # `Chat`'s durable per-conversation identifier, and for this backend it holds
   # the codex thread id — which is exactly what makes a second turn able to refer
   # to the first.
+  # ⚠ `conn` is bound ONCE and reused. `conn_map/1` mints a fresh `make_ref()`
+  # for a handle that has none, so calling it twice — once to register, once to
+  # store — hands the connection one ref and keeps a different one. Every
+  # notification then routes to a ref nobody is listening on: the transcript
+  # stays empty and the turn sits until its timeout.
+  #
+  # That shipped, and no unit test caught it, because the fakes have their own
+  # correct ref handling and the connection tests supply their own refs. The
+  # real adapter's ref plumbing was the one seam nothing crossed. The Codex
+  # acceptance smoke found it on its first run.
   defp ensure_thread(%{session_id: nil} = handle) do
-    case CodexAppServer.start_thread(server(), ensure_ref(handle), thread_opts(handle)) do
+    conn = conn_map(handle)
+
+    case server().start_thread(server(), conn.ref, thread_opts(handle)) do
       {:ok, thread_id} ->
-        {:ok, with_port(%{handle | session_id: thread_id, conn: conn(handle)})}
+        {:ok, attach(handle, conn, thread_id)}
 
       {:error, reason} ->
         {:error, reason}
@@ -129,17 +141,32 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
     if registered?(handle) do
       {:ok, handle}
     else
-      case CodexAppServer.resume_thread(
+      conn = conn_map(handle)
+
+      case server().resume_thread(
              server(),
-             ensure_ref(handle),
+             conn.ref,
              handle.session_id,
              thread_opts(handle)
            ) do
-        {:ok, _thread_id} -> {:ok, with_port(%{handle | conn: conn(handle)})}
+        {:ok, _thread_id} -> {:ok, attach(handle, conn, handle.session_id)}
         {:error, reason} -> {:error, reason}
       end
     end
   end
+
+  # The one place the handle learns its routing ref, so registration and
+  # matching cannot disagree. `Chat` matches incoming messages against
+  # `handle.port` whatever the transport; there is no port here, so the ref
+  # takes its place — one matching rule for every backend rather than a special
+  # case in `Chat`.
+  defp attach(handle, conn, thread_id),
+    do: %{
+      handle
+      | session_id: thread_id,
+        conn: Map.put(conn, :registered?, true),
+        port: conn.ref
+    }
 
   defp thread_opts(handle) do
     [
@@ -155,17 +182,9 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
   # The ref is what the connection routes events to, and it must survive across
   # turns — a fresh one per turn would orphan the stream mid-conversation.
 
-  defp conn(handle), do: Map.put(conn_map(handle), :registered?, true)
-
-  # `Chat` matches incoming messages against `handle.port`, whatever the
-  # transport. There is no port here, so the routing ref takes its place — one
-  # matching rule for every backend rather than a special case in `Chat`.
-  defp with_port(handle), do: %{handle | port: ref(handle)}
-
   defp conn_map(%{conn: %{} = conn}), do: conn
   defp conn_map(_handle), do: %{ref: make_ref(), turn_ref: nil, registered?: false}
 
-  defp ensure_ref(handle), do: Map.fetch!(conn_map(handle), :ref)
   defp ref(%{conn: %{ref: ref}}), do: ref
   defp ref(_handle), do: nil
 
@@ -181,5 +200,8 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
   defp current_turn(%{conn: %{turn_ref: ref}}), do: ref
   defp current_turn(_handle), do: nil
 
-  defp server, do: CodexAppServer
+  # Injectable so a test can watch what ref is handed over. Without this seam
+  # the adapter's ref plumbing is unreachable from the suite — which is exactly
+  # how the double-`make_ref` bug reached a real run.
+  defp server, do: Application.get_env(:buster_claw, :codex_app_server, CodexAppServer)
 end

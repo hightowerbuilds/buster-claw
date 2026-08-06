@@ -826,6 +826,49 @@ parity through `Chat`). Full suite 2726/0, credo clean, cycles 2.
 for steering, because what proves the steer is whether the run changed course,
 not the label.
 
+### ⚠ First Codex smoke run FAILED — two real bugs, both fixed 08-06-26
+
+The acceptance smoke earned its cost on its first run. Output: thread id
+present, **zero tool calls**, `turns completed: 0`, and
+`"The run timed out and was stopped."` after five minutes. Two independent
+defects, neither of which any unit test could see.
+
+**1. The routing ref was minted twice.** `conn_map/1` returns a fresh
+`make_ref()` for a handle that has none, and `ensure_thread/1` called it once to
+register with the connection and once to store on the handle. So the connection
+routed every notification to ref A while `Chat` matched on ref B. Nothing
+errored — the transcript simply stayed empty and the turn sat until its own
+timeout.
+
+Why nothing caught it: `FakeCodexTransport` has its own (correct) ref handling,
+and the connection tests supply their own refs. **The real adapter's ref
+plumbing was the one seam no test crossed.** Fixed by binding `conn` once, and
+now pinned by `chat_transport_routing_test.exs`, which drives both real
+server-backed adapters against a recording stub and asserts the invariant
+directly:
+
+> the ref handed to the connection MUST be the ref left on the handle
+
+That test was verified to fail against the original bug before being kept.
+Both adapters gained an `Application.get_env` server seam so the suite can reach
+them at all — the absence of that seam is why the bug shipped.
+
+**2. A completed Codex turn produced no meta line.** `result_meta_line/3` only
+rendered when the cost was a number, and codex reports no dollar figure — so a
+codex turn finished silently while a claude turn reported its spend. Worse,
+codex's token counts arrive in their own `thread/tokenUsage/updated`
+notification, and `Chat.project_event/2` had no `:usage` clause, so they were
+dropped on the floor.
+
+Now `:usage` is stashed onto the run, `stash_result/3` no longer overwrites it
+with the result's `nil`, and the meta line falls back to tokens
+(`thought 4.1s · 1 turns · 15.9k tokens`). Still no invented dollar figure —
+this app owns no price table.
+
+Both were parity gaps by definition: claude worked, codex did not. Worth
+recording that the unit suite was green through both of them, and that the only
+thing that found them was running the real CLI.
+
 ### Parity scoreboard — 08-06-26
 
 | | steers | continuity | receipt | confined chat |

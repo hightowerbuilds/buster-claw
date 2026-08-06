@@ -839,6 +839,13 @@ defmodule BusterClaw.Agent.Chat do
        when is_binary(summary),
        do: state |> mark_first_token() |> emit_message(:tool, summary)
 
+  # Codex reports token counts in their own `thread/tokenUsage/updated`
+  # notification rather than on the result, so without this clause they fall
+  # through to the catch-all and are lost — and a codex turn then has nothing at
+  # all to show in its meta line.
+  defp project_event(state, %StreamEvent{kind: :usage, usage: usage}) when is_map(usage),
+    do: %{state | run: Map.put(state.run || %{}, :usage, usage)}
+
   defp project_event(state, %StreamEvent{kind: :result} = event) do
     {turn_cost, state} = charge_turn(state, event)
     state = %{state | run: stash_result(state.run, event, turn_cost)}
@@ -886,13 +893,18 @@ defmodule BusterClaw.Agent.Chat do
 
   defp charge_turn(state, _event), do: {nil, state}
 
-  defp stash_result(run, event, turn_cost),
-    do:
-      Map.merge(run || %{}, %{
-        turns: event.num_turns,
-        cost: turn_cost,
-        usage: event.usage
-      })
+  defp stash_result(run, event, turn_cost) do
+    run = run || %{}
+
+    Map.merge(run, %{
+      turns: event.num_turns,
+      cost: turn_cost,
+      # `||` and not a plain overwrite: codex delivers usage in a separate event
+      # BEFORE the result, and the result carries none. Overwriting would throw
+      # away the only token counts that backend gives us.
+      usage: event.usage || run[:usage]
+    })
+  end
 
   # End the current TURN and the transport with it — the one-shot lifecycle,
   # where the two are the same event.
@@ -1017,14 +1029,34 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   # `turn_cost` is THIS turn's spend, not the session total the event carries.
-  defp result_meta_line(run, %StreamEvent{num_turns: turns}, turn_cost)
-       when is_number(turn_cost) and is_integer(turns) do
-    [thinking_label(run), "#{turns} turns", "$#{Float.round(turn_cost * 1.0, 4)}"]
+  #
+  # A backend that reports no dollar figure still gets a line. Codex reports
+  # tokens only — this app owns no price table, and a computed cost would be a
+  # number the operator trusts and we invented — so it shows tokens instead of
+  # nothing. Rendering nothing was a real parity gap: a codex turn completed
+  # silently while a claude turn reported its cost.
+  defp result_meta_line(run, %StreamEvent{num_turns: turns}, turn_cost) do
+    [thinking_label(run), turns_label(turns), spend_label(turn_cost, run[:usage])]
     |> Enum.reject(&is_nil/1)
-    |> Enum.join(" · ")
+    |> case do
+      [] -> nil
+      parts -> Enum.join(parts, " · ")
+    end
   end
 
-  defp result_meta_line(_run, _event, _turn_cost), do: nil
+  defp turns_label(turns) when is_integer(turns), do: "#{turns} turns"
+  defp turns_label(_turns), do: nil
+
+  defp spend_label(cost, _usage) when is_number(cost), do: "$#{Float.round(cost * 1.0, 4)}"
+
+  defp spend_label(_cost, %{input_tokens: input, output_tokens: output})
+       when is_integer(input) or is_integer(output),
+       do: "#{format_tokens((input || 0) + (output || 0))} tokens"
+
+  defp spend_label(_cost, _usage), do: nil
+
+  defp format_tokens(n) when n >= 1000, do: "#{Float.round(n / 1000, 1)}k"
+  defp format_tokens(n), do: Integer.to_string(n)
 
   defp thinking_label(%{started: started, first_token_at: ft})
        when is_integer(started) and is_integer(ft),
