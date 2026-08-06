@@ -329,12 +329,32 @@ the highlight — `phx-keydown` and an index, no hook. The real work was not the
 arrows but resetting the cursor everywhere the matches change, since an index
 pointing at a row that no longer exists is exactly the bug the feature invites.
 
-## Still not wired, and worth saying
+## Wired, later the same night — and the cap got its answer
 
-**The sweep does not read the watchlist.** A ticker added today shows `queued`
-and stays there. That is the rest of Phase 2 and it is where the decisions are:
-the sweep caps at ten symbols, holdings already consume part of that, and
-somebody has to decide whose symbols lose when the cap binds.
+This section said "the sweep does not read the watchlist" and was true for about
+four hours. Left standing it would have been the third stale claim in this
+document, so: it reads it now.
+
+Tracked symbols are NAMED in the sweep prompt, because they cannot be discovered
+— they live in this app, not at the broker. The agent finds holdings; the app
+supplies the rest.
+
+And the ten-symbol cap got the explicit answer the roadmap demanded and nobody
+had given: **holdings win.** Money the operator actually has beats curiosity,
+largest position first, tracked symbols filling whatever slots remain in the
+order listed. Anything dropped is named in `"skipped"` — a tracked symbol that
+did not fit is not an error, it is a symbol whose turn comes another day.
+
+The deep-backfill queue became `symbols_needing_backfill/0`: benchmarks, then the
+watchlist. That order is a **spending decision, not a sort** — each backfill is
+one agent run at ~$0.57 and the Recorder does one a day, so the list is literally
+the order the operator's money gets spent. The baseline every comparison chart
+needs comes first; a long watchlist delays itself and never the benchmarks.
+
+Repointing two prompt tests that pinned the old wording found a real
+inconsistency introduced in the same edit: step 5 said "symbols you covered"
+while a rule below still said "held symbols". Second time in a day that a test
+which looked like it was only pinning phrasing caught an actual contradiction.
 
 ## Finnhub, settled in one call
 
