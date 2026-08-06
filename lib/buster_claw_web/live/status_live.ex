@@ -709,6 +709,16 @@ defmodule BusterClawWeb.StatusLive do
   defp announce_delivery(socket, :queued, _requested),
     do: assign(socket, :chat_announcement, "Queued to run next.")
 
+  # Deliberately does NOT say "steered": this backend cannot confirm receipt,
+  # and the announcement is the one place a screen-reader user learns that.
+  defp announce_delivery(socket, :sent, _requested),
+    do:
+      assign(
+        socket,
+        :chat_announcement,
+        "Sent to the running turn. This backend does not confirm receipt."
+      )
+
   defp announce_delivery(socket, :started, _requested),
     do: assign(socket, :chat_announcement, "Sent.")
 

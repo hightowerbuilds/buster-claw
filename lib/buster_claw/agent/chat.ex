@@ -60,6 +60,7 @@ defmodule BusterClaw.Agent.Chat do
 
   alias BusterClaw.Agent.ChatTransport
   alias BusterClaw.Agent.CodexAppServer
+  alias BusterClaw.Agent.OpenCodeServer
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.Agent.Transcript
   alias BusterClaw.AgentRunner
@@ -118,15 +119,25 @@ defmodule BusterClaw.Agent.Chat do
     Deliberate even when the chat is idle, where it is the same as starting a turn.
   * `:steer` — deliver into the ACTIVE turn.
 
-  Returns `{:ok, effective_mode}` where `effective_mode` is one of `:started`,
-  `:queued`, or `:steered` — the mode that actually happened, which is not always
-  the one asked for. `:steer` on an idle chat starts a turn; `:steer` on a backend
-  that cannot do it (all of them, until Phase 2) queues instead. **The caller must
-  render the returned mode, never the requested one** — showing "steered" for a
-  message that was queued is the single most damaging bug this feature can have.
+  Returns `{:ok, effective_mode}` — the mode that actually happened, which is
+  not always the one asked for:
+
+  * `:started` — a new turn began.
+  * `:queued` — it runs next. Also what a `:steer` becomes when the turn ended
+    first, or when the backend cannot steer at all.
+  * `:steered` — it reached the running turn AND the backend proved acceptance.
+  * `:sent` — it was delivered and acceptance could **not** be proven. Only
+    OpenCode can produce this: `prompt_async` returns an empty body, so the
+    evidence is an SSE echo that may not arrive in time. The message is in
+    flight, so it is emphatically not re-queued — that would deliver the same
+    instruction twice.
+
+  **The caller must render the returned mode, never the requested one.** Showing
+  "steered" for a message that was queued — or for one we merely posted — is the
+  single most damaging bug this feature can have.
   """
   @spec submit(String.t(), String.t(), keyword()) ::
-          {:ok, :started | :queued | :steered} | {:error, term()}
+          {:ok, :started | :queued | :steered | :sent} | {:error, term()}
   def submit(conv_id, text, opts \\ []) when is_binary(conv_id) and is_binary(text) do
     delivery = Keyword.get(opts, :delivery, :auto)
 
@@ -705,14 +716,17 @@ defmodule BusterClaw.Agent.Chat do
     # outlives the turn, so naming the port would happily steer a turn the
     # operator never saw.
     case state.transport.steer(state.handle, state.turn_ref, text) do
-      {:ok, handle, _receipt} ->
+      {:ok, handle, receipt} ->
         # A steered message belongs to the active turn: it is persisted and
         # shown as operator input, but it does not start a turn, so nothing
-        # here touches `run` or the turn counter. The `:steered` marker is what
-        # lets the bubble say so — and it is only ever set on this branch, so
-        # the UI cannot claim it for a message that was queued.
-        state = emit_message(%{state | handle: handle}, :user, text, delivery: :steered)
-        {:reply, {:ok, :steered}, state}
+        # here touches `run` or the turn counter.
+        #
+        # `:steered` vs `:sent` is decided by whether the BACKEND proved it, not
+        # by whether we posted successfully. Only this branch can set either, so
+        # the UI cannot claim them for a message that was queued.
+        mode = if Map.get(receipt, :receipt) == :unconfirmed, do: :sent, else: :steered
+        state = emit_message(%{state | handle: handle}, :user, text, delivery: mode)
+        {:reply, {:ok, mode}, state}
 
       # The turn ended between the operator hitting send and the adapter being
       # asked. The message is NOT lost and is NOT retried against whatever turn
@@ -1086,7 +1100,13 @@ defmodule BusterClaw.Agent.Chat do
       else: ChatTransport.Codex
   end
 
-  defp transport_for(:opencode), do: ChatTransport.OpenCode
+  # OpenCode steers too (measured), so parity means it gets the server transport
+  # as well. Degrades to the one-shot adapter when opencode is not installed.
+  defp transport_for(:opencode) do
+    if steering_enabled?() and OpenCodeServer.available?(),
+      do: ChatTransport.OpenCodeServer,
+      else: ChatTransport.OpenCode
+  end
 
   # Claude is the one harness with a live-steering transport today. It is behind
   # `:chat_live_steering_enabled` because it is a different process lifecycle,

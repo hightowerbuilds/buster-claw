@@ -753,17 +753,31 @@ defmodule BusterClawWeb.ChatPanel do
       <div class="ic-drop-in max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content">
         {@msg.text}
       </div>
-      <%!-- Only a STEERED message is chipped. An ordinary message that started
-            its own turn needs no explanation, and a queued one lives in the
-            on-deck rail until it runs. Marking everything would make the one
-            label that carries information disappear into decoration. --%>
+      <%!-- Only a message delivered INTO a running turn is chipped. An ordinary
+            message that started its own turn needs no explanation, and a queued
+            one lives in the on-deck rail until it runs. Marking everything would
+            make the labels that carry information disappear into decoration.
+
+            SENT is not a lesser STEERED — it is a different claim. OpenCode's
+            `prompt_async` returns an empty body, so when its out-of-band
+            acceptance echo does not arrive in time we know the message was
+            posted and nothing more. Saying "steered" there would be the exact
+            false delivery this whole surface is built to avoid. --%>
       <span
         :if={@delivery == :steered}
         data-delivery-chip="steered"
-        title="Delivered into the turn already running. The agent picks it up at its next step, which can take as long as the tool it is running."
+        title="Delivered into the turn already running, and the agent confirmed it. The agent acts on it at its next step, which can take as long as the tool it is running."
         class="inline-flex items-center gap-1 rounded-sm border border-primary/40 px-1.5 font-mono text-[0.55rem] uppercase tracking-wider text-primary"
       >
         <.icon name="hero-arrow-uturn-left" class="size-2.5" /> Steered
+      </span>
+      <span
+        :if={@delivery == :sent}
+        data-delivery-chip="sent"
+        title="Sent to the running turn. This backend does not confirm receipt, so it is not being reported as delivered."
+        class="inline-flex items-center gap-1 rounded-sm border border-base-content/30 px-1.5 font-mono text-[0.55rem] uppercase tracking-wider text-base-content/60"
+      >
+        <.icon name="hero-paper-airplane" class="size-2.5" /> Sent
       </span>
     </div>
     """

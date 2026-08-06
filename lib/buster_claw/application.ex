@@ -51,6 +51,9 @@ defmodule BusterClaw.Application do
         # machine without codex — or an operator who never opens a Codex chat —
         # pays nothing for it.
         BusterClaw.Agent.CodexAppServer,
+        # Same shape for opencode: one `opencode serve` for the app, started
+        # lazily on first use, multiplexing conversations by session id.
+        BusterClaw.Agent.OpenCodeServer,
         # Bounded fan-out for parallel sub-runs (Phase 4). Always on (cheap; an idle
         # Task.Supervisor holds no resources).
         {Task.Supervisor, name: BusterClaw.SwarmTaskSupervisor},

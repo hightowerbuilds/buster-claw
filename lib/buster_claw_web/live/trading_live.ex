@@ -14,7 +14,7 @@ defmodule BusterClawWeb.TradingLive do
   turns.
 
   A `research` kind sat between the two until 08-03; Chart Build absorbed its job
-  and its fetchers (`daily-growth/roadmaps/CHART_BUILD_WEB_DATA_ROADMAP.md`).
+  and its fetchers (`daily-growth/archive/08-05-26-chart-build-web-data.md`).
 
   ## The dashboard
 
@@ -967,6 +967,12 @@ defmodule BusterClawWeb.TradingLive do
     do: "The turn finished first, so this was queued to run next."
 
   defp announcement_for(:queued, _requested), do: "Queued to run next."
+
+  # Not "steered" — this backend cannot confirm receipt, and saying otherwise
+  # would be the false delivery the whole design exists to prevent.
+  defp announcement_for(:sent, _requested),
+    do: "Sent to the running turn. This backend does not confirm receipt."
+
   defp announcement_for(:started, _requested), do: "Sent."
 
   # Panel-side errors (a failed cost fetch, a crashed bar run) belong to whichever

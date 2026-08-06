@@ -742,6 +742,78 @@ agent harness. The operator must run it with the dev server stopped.
 the message. The UI says either **Steered** or **Interrupted & redirected** based
 on the measured capability; it never relabels asynchronous next-turn delivery.
 
+### Status — BUILT 08-06-26 · all three backends now steer
+
+Item 5 (the `:interrupt_then_resume` fallback) was **not needed and not built** —
+Phase 0 proved OpenCode steers, so the contingency for a backend that could not
+is dead scope. The acceptance line above should read *Steered* or *Sent*, not
+*Interrupted & redirected*.
+
+- `BusterClaw.Agent.OpenCodeServer` — one supervised `opencode serve` for the
+  app, `--port 0` (the OS picks, the server announces where it landed, nothing
+  races for a port), password generated per boot and passed via the environment
+  so it never appears in `ps`. Basic auth with the username literally
+  `opencode`. Req for HTTP, a Req-streamed SSE reader that reconnects with a
+  bounded delay rather than turning a blip into an outage.
+- `ChatTransport.OpenCodeServer` — `:steer`, `:admission_event`, `persistent`.
+- Per-STEP costs are summed into a per-turn figure, because opencode reports
+  cost per step and a turn's spend would otherwise have to be invented.
+
+#### ⚠ The new delivery mode: `:sent`
+
+This backend forced an honesty problem the other two did not. `prompt_async`
+returns an **empty body** — a 2xx says the server took the request, not that the
+session admitted the message. The real evidence is an SSE echo of a `messageID`
+we supply, ~20ms later. So `steer/3` posts and then waits for that echo, and
+`Chat.submit/3` gained a fourth outcome:
+
+| | reported | meaning |
+|---|---|---|
+| echo arrives | `:steered` | admitted into the running turn, proven |
+| echo times out | **`:sent`** | in flight, acceptance unproven |
+| POST fails | `{:error, …}` | never left |
+
+**`:sent` is not a lesser `:steered` — it is a different claim**, and the timeout
+is emphatically *not* a failure: the message was posted, so re-queueing it would
+deliver the same instruction twice. The bubble gets a distinct `SENT` chip and
+the live region says "this backend does not confirm receipt". Claude and Codex
+can never produce `:sent`; only the backend that genuinely cannot prove
+acceptance does.
+
+#### Confinement: refused, not degraded
+
+Phase 0 item 6's condition was met, so `create_session/3` **refuses** any request
+naming an agent file rather than running it unconfined, and the transport refuses
+a conversation carrying confinement flags. `Chat.effective_agent/1` already pins
+those to claude, so this is a second lock — the right number for a control whose
+failure mode is a silent `{"*", allow, "*"}`.
+
+Tests: 25 new (the connection with boot/HTTP/SSE all injected, plus OpenCode
+parity through `Chat`). Full suite 2726/0, credo clean, cycles 2.
+
+**Acceptance NOT signed off**, same harness constraint:
+`scripts/smoke_chat_steering_opencode.exs` — and note it treats `:sent` as a pass
+for steering, because what proves the steer is whether the run changed course,
+not the label.
+
+### Parity scoreboard — 08-06-26
+
+| | steers | continuity | receipt | confined chat |
+|---|---|---|---|---|
+| Claude | ✅ duplex stdin | ✅ session | `:boundary_replay` | ✅ flags |
+| Codex | ✅ `turn/steer` | ✅ thread | `:turn_addressed` (strongest) | ✅ sandbox |
+| OpenCode | ✅ `prompt_async` | ✅ session | `:admission_event` (weakest) | ❌ **refused** |
+
+Two honest asymmetries remain, and neither is a bug to be fixed by config:
+
+1. **OpenCode cannot host a confined chat.** Its confinement fails open with no
+   trustworthy signal, so Trading and Chart Build cannot run on it. Closing this
+   needs a change upstream in opencode, not here.
+2. **The money surfaces are Claude-only** via `effective_agent/1`. Codex's
+   sandbox is genuine but does not scope MCP, so a codex thread still sees the
+   operator's configured servers. Moving that pin needs an independent
+   confinement proof per backend — a security decision, not a setting.
+
 ---
 
 ## Phase 5 — One chat interaction model in Home and Trading

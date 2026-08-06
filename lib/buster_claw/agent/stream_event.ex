@@ -141,6 +141,7 @@ defmodule BusterClaw.Agent.StreamEvent do
   def normalize(:codex, map), do: normalize_codex(map)
   def normalize(:codex_app_server, map), do: normalize_codex_app_server(map)
   def normalize(:opencode, map), do: normalize_opencode(map)
+  def normalize(:opencode_server, map), do: normalize_opencode_server(map)
   def normalize(_claude_or_unknown, map), do: normalize(map)
 
   # --- codex ---------------------------------------------------------------
@@ -353,6 +354,65 @@ defmodule BusterClaw.Agent.StreamEvent do
     }
 
   defp normalize_opencode(m), do: %__MODULE__{kind: :unknown, raw: m}
+
+  # --- opencode server mode -------------------------------------------------
+  #
+  # A THIRD opencode shape, distinct from `run --format json` above: the v1
+  # server's SSE stream. Observed by `scripts/probe_opencode_server.exs` against
+  # opencode 1.18.3.
+  #
+  # `BusterClaw.Agent.OpenCodeServer` pre-chews two things this parser cannot
+  # know on its own, and passes them in:
+  #
+  #   * `role` — SSE part events carry no role at all, only a `messageID`. The
+  #     connection tracks which ids are the assistant's from `message.updated`.
+  #   * `cost` on the idle event — opencode reports cost per STEP, so the
+  #     connection sums them for the turn. Doing it here would need state, and
+  #     this module is pure.
+
+  defp normalize_opencode_server(%{"type" => "part", "role" => "assistant", "part" => part} = m) do
+    case part do
+      %{"type" => "text", "text" => text} when is_binary(text) and text != "" ->
+        %__MODULE__{kind: :assistant_text, text: text, raw: m}
+
+      %{"type" => "tool"} ->
+        normalize_opencode_server_tool(part, m)
+
+      %{"type" => "step-finish"} ->
+        %__MODULE__{kind: :usage, usage: opencode_usage(part), raw: m}
+
+      _ ->
+        %__MODULE__{kind: :unknown, raw: m}
+    end
+  end
+
+  # A part belonging to the USER is our own message echoed back. It is the
+  # acceptance receipt, which the connection handles directly; the transcript
+  # ignores it rather than doubling the operator's own bubble.
+  defp normalize_opencode_server(%{"type" => "part"} = m),
+    do: %__MODULE__{kind: :unknown, raw: m}
+
+  # `session.idle` is the turn boundary — exactly one per run, including a run
+  # that was steered mid-flight. That is what proved the steered message joined
+  # the ACTIVE turn instead of starting a second one.
+  defp normalize_opencode_server(%{"type" => "idle"} = m),
+    do: %__MODULE__{kind: :result, cost_usd: m["cost"], num_turns: 1, raw: m}
+
+  defp normalize_opencode_server(m), do: %__MODULE__{kind: :unknown, raw: m}
+
+  defp normalize_opencode_server_tool(part, m) do
+    input = get_in(part, ["state", "input"]) || %{}
+    tool = stringish(part["tool"]) || ""
+
+    %__MODULE__{
+      kind:
+        if(get_in(part, ["state", "status"]) == "completed", do: :tool_result, else: :tool_use),
+      tool: tool,
+      tool_input: input,
+      summary: tool_summary(tool, input),
+      raw: m
+    }
+  end
 
   # --- decoded map → normalized event ---
 
