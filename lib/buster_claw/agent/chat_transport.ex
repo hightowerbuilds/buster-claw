@@ -27,7 +27,7 @@ defmodule BusterClaw.Agent.ChatTransport do
   ## Capabilities, and why a boolean is not enough
 
   Phase 0 measured all three harnesses steering (see
-  `daily-growth/roadmaps/CHAT_LIVE_STEERING_ROADMAP.md`). They do **not** differ
+  `daily-growth/archive/08-06-26-chat-live-steering.md`). They do **not** differ
   on whether steering works. They differ on what they can *prove*, which is what
   the UI is allowed to claim:
 

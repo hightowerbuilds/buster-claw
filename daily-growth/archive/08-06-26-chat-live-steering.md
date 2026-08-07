@@ -1,21 +1,30 @@
 # Chat live steering — let the operator change the work while it is happening
 
-**Scoped 08-04-26 · Status: PHASES 0–5 COMPLETE AND ACCEPTED. All three
-acceptance smokes PASSED 08-06-26 against real CLIs. Phase 6 (durable delivery)
-and Phase 7 (rollout) not started.**
+**Scoped 08-04-26 · ARCHIVED 08-06-26 · Phases 0–6 COMPLETE. Phase 7 (rollout)
+moved to `daily-growth/roadmaps/LAUNCH_ROADMAP.md` as G-41 + a line in G-39.**
 
-> **Headline: all three harnesses steer, and all three now do it through Buster
-> Claw.** Claude, Codex, and OpenCode each accept a mid-run correction into the
-> *active* turn, and all three are proven end to end against real CLIs — not
-> just against probes or fakes.
+> **Closed out.** All three harnesses — Claude, Codex, OpenCode — accept a
+> mid-run correction into the *active* turn, all three keep a conversation
+> across turns, and all three were proven end to end against real CLIs rather
+> than probes or fakes. The composer says which happened and never claims more.
+> A queued message survives a crash.
 >
-> Parity across models is a **product requirement** (operator, 08-05), not a
-> nice-to-have — see the scoreboard at the end of Phase 4 for the two
-> asymmetries that remain and why neither is fixable by configuration.
+> **On in dev only.** Shipping it is a release decision, gated by G-41 in the
+> launch roadmap and guarded by
+> `test/buster_claw/agent/steering_rollout_test.exs`, which fails if the flag is
+> enabled in any config outside `dev.exs`.
 >
-> Probe scripts: `scripts/probe_{claude_duplex,codex_appserver,opencode_server}.exs`.
-> Acceptance smokes: `scripts/smoke_chat_steering{,_codex,_opencode}.exs`.
-> Phase 0's findings supersede any earlier claim in this doc.
+> **The one thing worth re-reading before touching this code** is the run of
+> defects the acceptance smokes found that a green suite could not see — the
+> codex ref-routing bug, the missing codex meta line, the duplicated opencode
+> tool lines, and the dropped conversation guide. Every one of them lived in the
+> gap between a fake that encoded what I expected and a protocol that did
+> something else. If you change a transport, run the smokes.
+>
+> **Left undone, deliberately:** the transcript projection (item 5 of Phase 6) —
+> a reloaded page shows a steered bubble without its chip, because delivery
+> state is broadcast but not persisted onto the transcript row. The ledger holds
+> the data; joining it on reload is a small follow-up.
 
 Buster Claw's chat now lets an operator type while an agent is working, but the
 new message waits in an in-memory queue until the current run exits. That is

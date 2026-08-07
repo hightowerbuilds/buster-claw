@@ -859,6 +859,48 @@ logged-in checkout.
 > **If the checkout walk fails, stop and fix before the rest.** The others are
 > quality; that one is money.
 
+### G-41 — Live chat steering ships OFF, and stays off until it is decided **[R1]**
+
+**Status: built and dev-only. The decision to ship it is not made.**
+
+Chat live steering (`daily-growth/archive/08-06-26-chat-live-steering.md`) lets an
+operator redirect an agent mid-turn. All three harnesses do it, all three are
+proven end to end against real CLIs, and it is **on in dev only**.
+
+**Why it is a release gate rather than a feature flag nobody thinks about.** It
+is a *transport* switch, not a UI toggle. With it on, a chat conversation holds
+a long-lived `claude` process, a `codex app-server` connection, or an
+`opencode serve` subprocess for as long as the conversation is open. That is a
+real change in what a packaged app does on someone's machine — more processes,
+more ports, a different failure surface — and it should be a decision rather
+than a leftover.
+
+**The guard is a CI assertion, not a checklist line** (`G-39` is where
+checklists go; this belongs where it cannot be skipped).
+`test/buster_claw/agent/steering_rollout_test.exs` fails if the flag is enabled
+in any config outside `dev.exs`, and also fails if dev *stops* enabling it, so
+the local default cannot rot silently either.
+
+That test is deliberate about the checklist's weakness: the flag is invisible in
+the UI until a run is in flight, so an accidental rollout would not be caught by
+clicking around a build.
+
+**To turn it on for a release, all of these first:**
+
+- [ ] the three acceptance smokes pass on this machine (see G-39)
+- [ ] the flag has been on in dev long enough to have been *used*, not just tested
+- [ ] a decision recorded here about the resource cost: one long-lived agent
+      process (or server connection) per open conversation, not per turn
+- [ ] `steering_rollout_test.exs` updated deliberately, in the same commit
+
+**Deliberately not shipped with it:** operational metrics
+(submit-to-accept latency, demotion count, transport restarts). They were scoped
+in the original Phase 7 and are **R2 or later** — they need somewhere to go, and
+telemetry is already deferred to Release 2. Nothing about steering requires them
+to be useful; they are for tuning it once real people are using it.
+
+---
+
 ### G-39 — The repeatable release checklist **[R1 + R2 — runs every release]**
 
 Everything above is one-time. This runs every release, forever.
@@ -868,6 +910,11 @@ Everything above is one-time. This runs every release, forever.
 - [ ] `scripts/check_docs_drift.sh` green
 - [ ] `mix test --include browser_engine` green on a machine with a browser
 - [ ] Deno tests for the edge functions green
+- [ ] **If chat live steering is enabled for this release (G-41):** all three
+      acceptance smokes pass — `mix run scripts/smoke_chat_steering{,_codex,_opencode}.exs`,
+      dev server stopped. These cannot be CI: they drive the operator's own
+      logged-in CLIs and cost real tokens. They found four defects a green suite
+      could not see, so they are a gate rather than a formality.
 - [ ] Two-arch DMGs built, signed, notarized, stapled
 - [ ] `smoke_desktop.sh` + `smoke_command_surface.sh` green against **each** packaged artifact
 - [ ] III.J exit tests passed on real hardware, **both** arches
