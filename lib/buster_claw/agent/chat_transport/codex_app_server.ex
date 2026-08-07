@@ -44,6 +44,7 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
 
   require Logger
 
+  alias BusterClaw.Agent.AttentionContract
   alias BusterClaw.Agent.ChatTransport
   alias BusterClaw.Agent.CodexAppServer
 
@@ -172,7 +173,12 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
     [
       permission_mode: handle.permission_mode,
       model: handle.model,
-      cwd: BusterClaw.Library.Artifact.workspace_root()
+      cwd: BusterClaw.Library.Artifact.workspace_root(),
+      # `developerInstructions`, NOT `baseInstructions`: the latter replaces
+      # codex's own system prompt rather than adding to it. This carries the
+      # conversation's guide, which this transport was silently dropping until
+      # the attention contract needed the same channel.
+      instructions: AttentionContract.compose(handle.append_system_prompt, true)
     ]
   end
 

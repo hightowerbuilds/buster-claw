@@ -51,6 +51,7 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
 
   require Logger
 
+  alias BusterClaw.Agent.AttentionContract
   alias BusterClaw.Agent.ChatTransport
   alias BusterClaw.Agent.OpenCodeServer
 
@@ -73,7 +74,10 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
   def start_turn(handle, text) do
     with {:ok, handle} <- ensure_session(handle),
          {:ok, message_id} <-
-           server().prompt(server(), handle.session_id, text, model: handle.model) do
+           server().prompt(server(), handle.session_id, text,
+             model: handle.model,
+             system: instructions(handle)
+           ) do
       {:ok, put_turn(handle, message_id), message_id}
     end
   end
@@ -109,7 +113,7 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
   # --- delivery ------------------------------------------------------------
 
   defp deliver(handle, text) do
-    case server().prompt(server(), handle.session_id, text) do
+    case server().prompt(server(), handle.session_id, text, system: instructions(handle)) do
       {:ok, message_id} ->
         case server().await_receipt(ref(handle), message_id) do
           :ok ->
@@ -126,6 +130,11 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
         {:error, reason}
     end
   end
+
+  # OpenCode carries instructions on the PROMPT rather than the session, so
+  # every message repeats them — including a steered one, which is the message
+  # most likely to need the contract's framing.
+  defp instructions(handle), do: AttentionContract.compose(handle.append_system_prompt, true)
 
   # --- session lifecycle ---------------------------------------------------
 

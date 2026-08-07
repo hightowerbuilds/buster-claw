@@ -404,6 +404,7 @@ defmodule BusterClaw.Agent.CodexAppServer do
     %{"sandbox" => sandbox_for(opts[:permission_mode])}
     |> maybe_put("cwd", opts[:cwd])
     |> maybe_put("model", opts[:model])
+    |> maybe_put("developerInstructions", opts[:instructions])
     |> Map.put("approvalPolicy", "never")
   end
 

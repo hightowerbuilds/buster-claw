@@ -48,6 +48,7 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
 
   require Logger
 
+  alias BusterClaw.Agent.AttentionContract
   alias BusterClaw.Agent.ChatMessageEncoder
   alias BusterClaw.Agent.ChatTransport
 
@@ -138,16 +139,20 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
   end
 
   defp extra_args(handle) do
-    resume_args(handle.session_id) ++
-      append_args(handle.append_system_prompt) ++ handle.extra_cli_args
+    # The conversation's guide AND the attention contract — this transport can
+    # steer, so the contract describes something that genuinely happens here.
+    instructions = AttentionContract.compose(handle.append_system_prompt, true)
+
+    resume_args(handle.session_id) ++ append_args(instructions) ++ handle.extra_cli_args
   end
 
   defp resume_args(nil), do: []
   defp resume_args(session_id), do: ["--resume", session_id]
 
-  defp append_args(nil), do: []
-  defp append_args(""), do: []
-  defp append_args(prompt), do: ["--append-system-prompt", prompt]
+  # Always a string here: a steerable transport always has at least the
+  # attention contract to say, so `AttentionContract.compose/2` never returns
+  # nil on this path.
+  defp append_args(prompt) when is_binary(prompt), do: ["--append-system-prompt", prompt]
 
   # A port whose process has gone leaves the port itself looking fine to
   # `is_port/1`; `Port.info/1` returning nil is what actually says it is dead.

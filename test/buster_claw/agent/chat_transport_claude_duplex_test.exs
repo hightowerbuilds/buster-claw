@@ -78,7 +78,7 @@ defmodule BusterClaw.Agent.ChatTransportClaudeDuplexTest do
 
       assert {:ok, handle, _ref} = ClaudeDuplex.start_turn(handle, "one")
       assert_receive {:spawned, first_port, first_opts}
-      assert ["--resume", "sess-xyz"] = Keyword.fetch!(first_opts, :extra_args)
+      assert ["--resume", "sess-xyz" | _contract] = Keyword.fetch!(first_opts, :extra_args)
       _ = echoed()
 
       # Lose the process the way a crash would.
@@ -89,8 +89,9 @@ defmodule BusterClaw.Agent.ChatTransportClaudeDuplexTest do
       refute second_port == first_port
 
       # Resumed, not restarted from nothing: a transport failure costs the turn,
-      # not the conversation.
-      assert ["--resume", "sess-xyz"] = Keyword.fetch!(second_opts, :extra_args)
+      # not the conversation. The tail is the attention contract, which every
+      # steerable transport carries — see `AttentionContractTest`.
+      assert ["--resume", "sess-xyz" | _contract] = Keyword.fetch!(second_opts, :extra_args)
 
       ClaudeDuplex.close(handle)
     end

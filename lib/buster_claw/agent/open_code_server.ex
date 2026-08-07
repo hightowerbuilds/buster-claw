@@ -181,6 +181,7 @@ defmodule BusterClaw.Agent.OpenCodeServer do
         "parts" => [%{"type" => "text", "text" => text}]
       }
       |> maybe_put("model", model_ref(opts[:model]))
+      |> maybe_put("system", opts[:system])
 
     # A new turn starts here, so the accumulated per-turn cost restarts with it.
     state = %{state | turn_cost: Map.put(state.turn_cost, session_id, 0.0)}

@@ -1045,9 +1045,17 @@ each rebuilt the message map and silently discarded `:delivery`, so the chip
 never rendered. Worth remembering that the transcript projection is a place
 where new message fields die quietly.
 
-### The common attention contract
+### The common attention contract — BUILT 08-06-26
 
-Every general chat profile receives a short backend-neutral prompt addendum:
+`BusterClaw.Agent.AttentionContract` holds the text scoped here, unchanged, and
+each steerable transport carries it through that backend's own instruction
+mechanism:
+
+| backend | mechanism |
+|---|---|
+| Claude duplex | `--append-system-prompt` |
+| Codex app-server | `developerInstructions` on `thread/start` |
+| OpenCode server | `system` on every `prompt_async`, steers included |
 
 ```text
 The operator may send additional user messages while you are working. Treat a
@@ -1059,9 +1067,22 @@ action. Keep working normally when no message is present; never wait or poll for
 a possible follow-up.
 ```
 
-For Claude this remains an appended system prompt. For Codex and OpenCode it is
-folded into the backend's supported instruction/profile mechanism, following
-the existing rule that Claude-only flags never leak into another argv.
+**Only where a message can actually arrive mid-turn.** `apply?/1` gates on the
+transport advertising `:steer`. On a one-shot backend a message submitted during
+a run becomes the *next turn*, so telling the model to reconcile it mid-turn
+would describe a mechanism that does not exist — the prompt-side version of the
+placebo button the composer refuses to render.
+
+⚠ **`developerInstructions`, not `baseInstructions`.** Codex offers both; the
+latter REPLACES its own system prompt rather than adding to it. Reaching for the
+wrong one would have silently removed codex's own instructions.
+
+⚠ **This also fixed a real gap.** Both server transports were **dropping the
+conversation's own guide entirely** — `SvgViewer.guide()` never reached codex or
+opencode, so the homepage chat's SVG vocabulary was silently missing there while
+it worked on claude. Nothing surfaced it because a missing guide has no error,
+only absent behaviour. The contract needed the same channel, and building it
+exposed the omission.
 
 The contract makes the model receptive; the transport makes the message real.
 Neither is sufficient alone.
