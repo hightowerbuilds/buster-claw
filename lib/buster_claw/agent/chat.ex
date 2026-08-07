@@ -60,6 +60,7 @@ defmodule BusterClaw.Agent.Chat do
 
   alias BusterClaw.Agent.ChatTransport
   alias BusterClaw.Agent.CodexAppServer
+  alias BusterClaw.Agent.Deliveries
   alias BusterClaw.Agent.OpenCodeServer
   alias BusterClaw.Agent.StreamEvent
   alias BusterClaw.Agent.Transcript
@@ -310,6 +311,8 @@ defmodule BusterClaw.Agent.Chat do
       # a non-zero exit show the user what the CLI actually said.
       raw_tail: [],
       # Messages typed while a run is in flight, dispatched one-per-turn in order.
+      # Seeded from the ledger below, so work the operator was SHOWN as queued
+      # survives a crash instead of disappearing with the process.
       queue: [],
       timer: nil,
       timeout_ms:
@@ -376,27 +379,65 @@ defmodule BusterClaw.Agent.Chat do
       spawner: Keyword.get(opts, :spawner, &default_spawner/2)
     }
 
-    {:ok, state}
+    {:ok, recover_queue(state)}
+  end
+
+  # Pick up where the last process left off. `pending` and `queued` rows are
+  # work the operator is still owed; `sending` rows are marked uncertain by
+  # `Deliveries.recover/1` and deliberately NOT resumed, because resending a
+  # message that may already have landed applies the instruction twice.
+  defp recover_queue(%{persist?: false} = state), do: state
+
+  defp recover_queue(state) do
+    %{resumable: resumable} = Deliveries.recover(state.conv_id)
+
+    queue =
+      Enum.map(resumable, fn delivery ->
+        %{
+          id: System.unique_integer([:positive, :monotonic]),
+          text: delivery.content,
+          delivery: delivery
+        }
+      end)
+
+    if queue != [] do
+      Logger.info("Chat #{state.conv_id}: recovered #{length(queue)} queued message(s)")
+    end
+
+    %{state | queue: queue}
+  rescue
+    # A conversation that cannot read the ledger still runs; it just starts
+    # empty, which is where it was before the ledger existed.
+    _error -> state
   end
 
   # A run is already in flight: queue the message instead of rejecting it. It is
   # dispatched as its own turn when the current run finishes (see dispatch_next/1).
   # The queue is in-memory only — items not yet sent are dropped on restart.
+  # Every submission is written to the ledger BEFORE anything is attempted, so
+  # a message can never be lost in the gap between the operator letting go of
+  # Enter and a backend accepting it. The row then follows the message to a
+  # terminal state.
   @impl true
   def handle_call({:submit, text, :steer}, _from, %{status: :running} = state),
-    do: steer_or_queue(state, text)
+    do: steer_or_queue(state, text, record_delivery(state, text, :steer))
 
   # `:auto` and `:next` are the same thing while a run is in flight — the
   # message becomes its own turn once this one finishes. They differ only in
-  # intent, which matters to the UI, not here.
-  def handle_call({:submit, text, _delivery}, _from, %{status: :running} = state),
-    do: {:reply, {:ok, :queued}, enqueue(state, text)}
+  # intent, which matters to the UI and to an audit, so both are recorded.
+  def handle_call({:submit, text, delivery}, _from, %{status: :running} = state) do
+    row = record_delivery(state, text, delivery)
+    row = Deliveries.transition(row, %{status: "queued", effective_mode: "queued"})
+    {:reply, {:ok, :queued}, enqueue(state, text, row)}
+  end
 
   # Idle: every delivery mode starts a turn. There is no active turn to steer
   # into and nothing to queue behind, so honouring the literal request would
   # just make the operator wait for nothing.
-  def handle_call({:submit, text, _delivery}, _from, state) do
-    case start_run(state, text) do
+  def handle_call({:submit, text, delivery}, _from, state) do
+    row = record_delivery(state, text, delivery)
+
+    case start_run(state, text, row) do
       {:ok, state} -> {:reply, {:ok, :started}, state}
       {:error, reason, state} -> {:reply, {:error, reason}, state}
     end
@@ -459,6 +500,11 @@ defmodule BusterClaw.Agent.Chat do
         queue: [],
         session_id: nil
     }
+
+    # A reset starts a fresh conversation, so the remembered threads go with it
+    # — on EVERY backend, not just the current one. Leaving one behind would
+    # mean switching harness after a reset silently resumed the old thread.
+    if state.persist?, do: Deliveries.clear_threads(state.conv_id)
 
     broadcast(state, {:reset})
     {:reply, :ok, state}
@@ -576,7 +622,7 @@ defmodule BusterClaw.Agent.Chat do
 
   # Spawn a headless run for `text`. Returns `{:ok, state}` once streaming, or
   # `{:error, reason, state}` if the spawn failed (already surfaced + audited).
-  defp start_run(state, text) do
+  defp start_run(state, text, row) do
     # A per-run token stamps the timeout timer so a stale `:run_timeout` (fired
     # just as its turn ended) can't be mistaken for the next run's timeout.
     token = System.unique_integer([:positive, :monotonic])
@@ -600,6 +646,20 @@ defmodule BusterClaw.Agent.Chat do
 
     case transport.start_turn(handle, text) do
       {:ok, handle, turn_ref} ->
+        # The message reached a backend and became a turn. Its thread id is
+        # remembered PER BACKEND, so switching harness and switching back does
+        # not lose the conversation on either side.
+        Deliveries.transition(row, %{
+          status: "delivered",
+          effective_mode: "started",
+          backend: to_string(handle.agent || :auto),
+          backend_thread_id: handle.session_id,
+          backend_turn_id: turn_id(turn_ref)
+        })
+
+        if state.persist?,
+          do: Deliveries.put_thread(state.conv_id, handle.agent || :auto, handle.session_id)
+
         broadcast(state, {:status, :running})
         timer = Process.send_after(self(), {:run_timeout, token}, state.timeout_ms)
 
@@ -628,6 +688,14 @@ defmodule BusterClaw.Agent.Chat do
          }}
 
       {:error, reason} ->
+        # It never left. A failed row is terminal — recovery must not retry it,
+        # because the operator can see it failed and decide for themselves.
+        Deliveries.transition(row, %{
+          status: "failed",
+          effective_mode: "failed",
+          error: inspect(reason)
+        })
+
         state = state |> emit_message(:error, error_text(reason)) |> audit_run({:failed, reason})
         {:error, reason, %{state | run: nil, status: :idle}}
     end
@@ -645,6 +713,10 @@ defmodule BusterClaw.Agent.Chat do
     agent = effective_agent(state)
     transport = state.transport_mod || transport_for(agent)
 
+    # Per-backend, so switching harness and switching back returns to the
+    # conversation that backend was having rather than a blank one.
+    session_id = state.session_id || remembered_thread(state, agent)
+
     {:ok, handle} =
       transport.open(
         # Passed through UNRESOLVED, nil included. `nil` is not "claude" — it is
@@ -653,7 +725,7 @@ defmodule BusterClaw.Agent.Chat do
         # name here turns detection into a hard `{:agent_unavailable, :claude}`
         # on a machine that only has codex.
         agent: agent,
-        session_id: state.session_id,
+        session_id: session_id,
         append_system_prompt: state.append_system_prompt,
         extra_cli_args: state.extra_cli_args,
         permission_mode: state.permission_mode,
@@ -690,16 +762,16 @@ defmodule BusterClaw.Agent.Chat do
   # Append to the on-deck queue. Dispatched one-per-turn, in order, by
   # `dispatch_next/1`. In-memory only — Phase 6's ledger is what makes an
   # acknowledged message survive a crash.
-  defp enqueue(state, text), do: do_enqueue(state, text, :back)
+  defp enqueue(state, text, row), do: do_enqueue(state, text, row, :back)
 
   # The completion race gets the FRONT. The operator aimed this message at work
   # that was happening a moment ago; making it wait behind messages they wrote
   # earlier would reorder their intent. Ordinary queue-next keeps its place in
   # line.
-  defp enqueue_front(state, text), do: do_enqueue(state, text, :front)
+  defp enqueue_front(state, text, row), do: do_enqueue(state, text, row, :front)
 
-  defp do_enqueue(state, text, position) do
-    item = %{id: System.unique_integer([:positive, :monotonic]), text: text}
+  defp do_enqueue(state, text, row, position) do
+    item = %{id: System.unique_integer([:positive, :monotonic]), text: text, delivery: row}
 
     queue =
       case position do
@@ -712,16 +784,27 @@ defmodule BusterClaw.Agent.Chat do
     state
   end
 
+  defp record_delivery(%{persist?: false}, _text, _mode), do: nil
+
+  defp record_delivery(state, text, mode),
+    do:
+      Deliveries.record(state.conv_id, text, mode,
+        backend: effective_agent(state) || :auto,
+        position: :back
+      )
+
   # Try to put `text` into the turn that is already running; fall back to the
   # queue when the backend cannot, or when the turn ended first.
   #
   # The fallback is not a failure path — it is the correct answer to the
   # completion race (roadmap scenario C), and the reason `submit/3` returns the
   # mode that HAPPENED rather than the one requested.
-  defp steer_or_queue(%{transport: nil} = state, text),
-    do: {:reply, {:ok, :queued}, enqueue(state, text)}
+  defp steer_or_queue(%{transport: nil} = state, text, row) do
+    row = Deliveries.transition(row, %{status: "queued", effective_mode: "queued"})
+    {:reply, {:ok, :queued}, enqueue(state, text, row)}
+  end
 
-  defp steer_or_queue(state, text) do
+  defp steer_or_queue(state, text, row) do
     # Addressed to the TURN, not the port. Under a duplex transport the port
     # outlives the turn, so naming the port would happily steer a turn the
     # operator never saw.
@@ -735,6 +818,17 @@ defmodule BusterClaw.Agent.Chat do
         # by whether we posted successfully. Only this branch can set either, so
         # the UI cannot claim them for a message that was queued.
         mode = if Map.get(receipt, :receipt) == :unconfirmed, do: :sent, else: :steered
+
+        # `uncertain`, not `delivered`, when the backend could not prove it: the
+        # ledger records what we KNOW, and recovery must never resend a row it
+        # cannot vouch for.
+        Deliveries.transition(row, %{
+          status: if(mode == :sent, do: "uncertain", else: "delivered"),
+          effective_mode: to_string(mode),
+          backend_turn_id: turn_id(state.turn_ref)
+        })
+
+        audit_delivery(state, mode, :steer)
         state = emit_message(%{state | handle: handle}, :user, text, delivery: mode)
         {:reply, {:ok, mode}, state}
 
@@ -742,13 +836,53 @@ defmodule BusterClaw.Agent.Chat do
       # asked. The message is NOT lost and is NOT retried against whatever turn
       # starts next — it becomes the next turn itself, first in line.
       {:error, :no_active_turn} ->
-        {:reply, {:ok, :queued}, enqueue_front(state, text)}
+        row =
+          row
+          |> Deliveries.transition(%{status: "queued", effective_mode: "queued"})
+          # In the LEDGER as well as the in-memory queue, or the ordering the
+          # operator was shown is lost on the next restart.
+          |> Deliveries.move_to_front()
+
+        audit_delivery(state, :demoted, :steer)
+        {:reply, {:ok, :queued}, enqueue_front(state, text, row)}
 
       # The backend simply cannot steer. This is an ordinary follow-up turn and
       # takes its place in line.
       {:error, _reason} ->
-        {:reply, {:ok, :queued}, enqueue(state, text)}
+        row = Deliveries.transition(row, %{status: "queued", effective_mode: "queued"})
+        {:reply, {:ok, :queued}, enqueue(state, text, row)}
     end
+  end
+
+  defp remembered_thread(%{persist?: false}, _agent), do: nil
+  defp remembered_thread(state, agent), do: Deliveries.thread_for(state.conv_id, agent || :auto)
+
+  defp turn_id(ref) when is_binary(ref), do: ref
+  defp turn_id(_ref), do: nil
+
+  # Sentinel entries for the delivery outcomes worth being able to look up
+  # later — a steer that landed, and one the race demoted. Bounded metadata
+  # only: the message body is already in the transcript and does not belong on
+  # the security feed twice.
+  defp audit_delivery(%{audit?: false}, _mode, _requested), do: :ok
+
+  defp audit_delivery(state, mode, requested) do
+    Sentinel.observe(
+      :command_invoke,
+      "Chat delivery #{mode}",
+      %{
+        source: "chat_delivery",
+        conv_id: state.conv_id,
+        requested_mode: requested,
+        effective_mode: mode,
+        agent: effective_agent(state) || :auto
+      },
+      severity: if(mode == :demoted, do: :warning, else: :info)
+    )
+
+    :ok
+  rescue
+    _error -> :ok
   end
 
   # Pull the next queued message into a fresh run, or settle into idle. Skips past
@@ -767,7 +901,9 @@ defmodule BusterClaw.Agent.Chat do
     state = %{state | queue: rest}
     broadcast_queue(state)
 
-    case start_run(state, next.text) do
+    # The queued row follows its message into the turn, so a message that waited
+    # in the queue still ends in exactly one terminal state.
+    case start_run(state, next.text, next[:delivery]) do
       {:ok, state} -> state
       {:error, _reason, state} -> dispatch_next(state)
     end
@@ -813,8 +949,15 @@ defmodule BusterClaw.Agent.Chat do
     end
   end
 
-  defp capture_session(state, %StreamEvent{session_id: id}) when is_binary(id),
-    do: %{state | session_id: id, handle: ChatTransport.put_session(state.handle, id)}
+  defp capture_session(state, %StreamEvent{session_id: id}) when is_binary(id) do
+    # Written only when it CHANGES: claude repeats its session id on every
+    # `system/init`, which is once per turn, and this must not become a write
+    # per event.
+    if state.persist? and state.session_id != id,
+      do: Deliveries.put_thread(state.conv_id, effective_agent(state) || :auto, id)
+
+    %{state | session_id: id, handle: ChatTransport.put_session(state.handle, id)}
+  end
 
   defp capture_session(state, _event), do: state
 

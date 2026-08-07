@@ -656,6 +656,51 @@ defmodule BusterClawWeb.TradingLiveTest do
       refute html |> String.split("keep going") |> List.last() =~ "reached its data-request limit"
     end
 
+    test "a STEER does not refill the budget — that would defeat the brake", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trading")
+      render_click(view, "trading_new_tab", %{"kind" => "chartbuild"})
+      chart = Enum.find(Conversations.list_kinds(["chartbuild"]), & &1)
+
+      Application.put_env(:buster_claw, :datareq_opts,
+        req_options: [plug: {Req.Test, BusterClaw.DataReqSteerHTTP}]
+      )
+
+      Req.Test.stub(BusterClaw.DataReqSteerHTTP, fn conn ->
+        Req.Test.json(conn, %{"status" => "REQUEST_NOT_PROCESSED", "message" => ["nope"]})
+      end)
+
+      on_exit(fn -> Application.delete_env(:buster_claw, :datareq_opts) end)
+
+      ask = fn n ->
+        send(
+          view.pid,
+          {:agent_chat, chart.id,
+           {:message,
+            %{
+              role: :assistant,
+              text: "```datareq\n" <> ~s({"source":"bls","series":"S#{n}"}) <> "\n```"
+            }}}
+        )
+
+        _ = :sys.get_state(view.pid)
+      end
+
+      Enum.each(1..7, ask)
+      assert render(view) =~ "reached its data-request limit"
+
+      # Steering joins the turn already running. Refilling here would hand a
+      # looping agent a fresh budget mid-loop — the operator "helping" it past
+      # the exact limit that exists to bound it.
+      render_submit(view, "chat_send", %{
+        "message" => "actually try a different source",
+        "conv" => chart.id,
+        "delivery" => "steer"
+      })
+
+      ask.(99)
+      assert render(view) =~ "reached its data-request limit"
+    end
+
     test "the same failing request twice is refused a third time", %{conn: conn} do
       Application.put_env(:buster_claw, :datareq_opts,
         req_options: [plug: {Req.Test, BusterClaw.DataReqRepeatHTTP}]

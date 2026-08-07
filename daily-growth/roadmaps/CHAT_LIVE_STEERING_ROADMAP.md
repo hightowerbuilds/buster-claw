@@ -1123,6 +1123,67 @@ message acknowledged by the UI must survive a LiveView crash or backend restart.
 10. **Sound:** steering acceptance does not ring. Ring only when the whole
     conversation settles idle with no queued work, preserving today's rule.
 
+### Status — BUILT 08-06-26
+
+`agent_chat_deliveries` (the ledger) and `agent_chat_threads` (per-backend
+bindings), with `Deliveries` as the context and `Chat` writing through it.
+
+- **Every submission is written down before anything is attempted**, so a
+  message cannot be lost in the gap between the operator letting go of Enter and
+  a backend accepting it. The row then follows the message to exactly one
+  terminal state.
+- **The queue is recovered at process start.** `pending` and `queued` rows come
+  back in order — including a race-demoted message's place at the FRONT, which
+  is now a ledger fact rather than an in-memory one.
+- ⚠ **`sending` rows are marked `uncertain` and NOT resumed.** They left the
+  machine with no proof of arrival, and resending would apply an instruction
+  twice. The operator can retype a message they can see went unanswered; they
+  cannot un-run a duplicate.
+- **`requested_mode` and `effective_mode` are both stored.** They differ
+  whenever a steer lost the race, and keeping both is what lets an audit answer
+  "how often does that happen" — one field cannot.
+- **Thread bindings are keyed `{conv_id, backend}`.** Switching harness no
+  longer overwrites the id needed to switch back; a reset clears every backend's,
+  deliberately, so switching after a reset cannot silently resume the old thread.
+- Sentinel records a steer that landed and a steer the race demoted, with
+  bounded metadata — the message body is already in the transcript and does not
+  belong on the security feed twice.
+- The whole context is **best-effort**: a conversation that cannot reach the
+  ledger still runs, it just cannot survive a crash, which is where everything
+  was before this table existed.
+
+#### Surface safety
+
+| item | state |
+|---|---|
+| **Sound** — steering must not ring | Already correct. `Chat` rings only from `dispatch_next([])`, which a steer never reaches. Now pinned by a test. |
+| **Trading** — a steer cannot reach the order-write harness | Unchanged: the parsed proposal and operator confirmation are still mandatory, and a steer starts no turn. |
+| **Chart Build** — a steer must not reset the `datareq` budget | ⚠ **Was broken.** Fixed. |
+
+⚠ **The Chart Build bug, and the wrong fix I tried first.** `chat_send` refilled
+the budget on *every* submit, so steering mid-turn handed the running turn a
+fresh budget — the operator "helping" a looping agent past the exact limit meant
+to bound it.
+
+My first fix moved the refill to the `{:status, :running}` broadcast, reasoning
+that it fires once per turn start. **The existing budget test caught that
+immediately**: a datareq *answer* is itself a turn, so refilling on every turn
+start refills on precisely the loop the brake exists to stop. The budget could
+then never exhaust.
+
+The correct rule is narrower — refill on the mode `submit/3` **reports**, when it
+is `:started` or `:queued`. A steer never refills; a steer the race demoted does,
+because it really did become an operator turn. Worth recording as a case where
+the obvious generalisation was wrong and a pre-existing test knew why.
+
+Tests: 21 new (the ledger and crash recovery, plus surface safety). Full suite
+2769/0, credo clean, cycles 2.
+
+Not done: item 5's transcript projection — a reloaded page shows a steered
+bubble without its chip, because delivery state is broadcast but not persisted
+onto the transcript row. The ledger now has the data; joining it into the
+reloaded transcript is a small follow-up rather than part of durability.
+
 **Acceptance:** kill the LiveView, chat process, and each backend transport at
 different points between submission and receipt. Every prompt ends in exactly
 one visible terminal state and no prompt is silently discarded.

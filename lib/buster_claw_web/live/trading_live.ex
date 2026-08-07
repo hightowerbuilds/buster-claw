@@ -172,12 +172,11 @@ defmodule BusterClawWeb.TradingLive do
 
     case {known_tab?(socket, conv), String.trim(text)} do
       {true, trimmed} when trimmed != "" ->
-        # An operator turn refills the data-request budget: the brake exists to
-        # bound an unwatched loop, and someone typing is the end of unwatched.
-        {:noreply,
-         socket
-         |> reset_datareq_budget(conv)
-         |> dispatch_chat(conv, trimmed, delivery_param(params))}
+        # The datareq budget is refilled when a TURN STARTS, not when a message
+        # is submitted — see the `{:status, :running}` handler. Refilling here
+        # would refill it on a STEER too, handing the turn already running a
+        # fresh budget and defeating the brake that exists to bound it.
+        {:noreply, dispatch_chat(socket, conv, trimmed, delivery_param(params))}
 
       _ ->
         {:noreply, socket}
@@ -950,7 +949,9 @@ defmodule BusterClawWeb.TradingLive do
   defp do_send(socket, conv_id, text, delivery) do
     case Chat.submit(conv_id, text, delivery: delivery) do
       {:ok, mode} ->
-        assign(socket, :chat_announcement, announcement_for(mode, delivery))
+        socket
+        |> maybe_refill_datareq(conv_id, mode)
+        |> assign(:chat_announcement, announcement_for(mode, delivery))
 
       {:error, :no_agent_cli} ->
         socket
@@ -1238,6 +1239,20 @@ defmodule BusterClawWeb.TradingLive do
   end
 
   defp datareq_opts, do: Application.get_env(:buster_claw, :datareq_opts, [])
+
+  # An operator TURN refills the data-request budget: the brake bounds an
+  # unwatched loop, and someone typing is the end of unwatched.
+  #
+  # A STEER does not. It joins the turn already running, so refilling would hand
+  # that turn a fresh budget and defeat the very brake meant to bound it — the
+  # operator would be "helping" a looping agent past its own limit.
+  #
+  # Keyed on the mode `submit/3` REPORTS, not the one requested: a steer the
+  # race demoted really did become an operator turn, and should refill.
+  defp maybe_refill_datareq(socket, conv, mode) when mode in [:started, :queued],
+    do: reset_datareq_budget(socket, conv)
+
+  defp maybe_refill_datareq(socket, _conv, _mode), do: socket
 
   defp reset_datareq_budget(socket, conv) do
     if tab_kind(socket, conv) == "chartbuild" do
