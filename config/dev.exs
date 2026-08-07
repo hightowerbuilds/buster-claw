@@ -85,6 +85,26 @@ config :buster_claw, dev_routes: true
 # costs microseconds; the stale cache costs a confused ten minutes.
 config :buster_claw, :memoize_catalog, false
 
+# Live chat steering: ON in dev, off everywhere else (CHAT_LIVE_STEERING_ROADMAP
+# Phase 7 turns it on more broadly once it has been lived with).
+#
+# This is a TRANSPORT switch, not a feature toggle. On, a chat conversation gets
+# a long-lived process or server connection — claude over duplex stdin, codex
+# over app-server, opencode over `opencode serve` — and can take a message into
+# a turn that is already running. Off, every backend goes back to one short
+# process per turn and the composer says "Queue next" instead of "Steer now",
+# because there is genuinely nothing to steer.
+#
+# Turning it off is a real rollback: the one-shot adapters were never removed.
+#
+# Two things change that are worth knowing while trying it:
+#   * Codex conversations REMEMBER across turns here. Under `codex exec` they
+#     could not, so a codex chat will behave noticeably better with this on.
+#   * A steered message sits in SENDING until the agent's in-flight tool
+#     finishes — measured at 11-19s across the three backends. That is the
+#     feature working, not hanging.
+config :buster_claw, :chat_live_steering_enabled, true
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 
