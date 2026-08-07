@@ -229,6 +229,109 @@ defmodule BusterClaw.Agent.OpenCodeServerTest do
       assert_in_delta cost, 0.005, 0.0001
     end
 
+    test "a tool is announced ONCE, however many part updates it gets", %{ref: ref} = ctx do
+      sse(ctx, %{
+        "type" => "message.updated",
+        "properties" => %{
+          "info" => %{"id" => "msg_a", "role" => "assistant", "sessionID" => @session}
+        }
+      })
+
+      # Exactly the sequence the acceptance smoke produced: an update with no
+      # arguments yet, then the same part several times as its state advances.
+      # Claude and Codex each emit one transcript line per tool call, so
+      # forwarding all of these would make opencode the odd one out — the smoke
+      # showed eight lines for two commands.
+      part = fn status, input ->
+        %{
+          "type" => "message.part.updated",
+          "properties" => %{
+            "part" => %{
+              "type" => "tool",
+              "id" => "prt_1",
+              "tool" => "bash",
+              "messageID" => "msg_a",
+              "sessionID" => @session,
+              "state" => %{"status" => status, "input" => input}
+            }
+          }
+        }
+      end
+
+      sse(ctx, part.("pending", %{}))
+      sse(ctx, part.("running", %{"command" => "sleep 8 && echo step-one"}))
+      sse(ctx, part.("running", %{"command" => "sleep 8 && echo step-one"}))
+      sse(ctx, part.("completed", %{"command" => "sleep 8 && echo step-one"}))
+
+      assert_receive {:chat_event, ^ref, %StreamEvent{kind: :tool_use, summary: summary}}
+      assert summary =~ "sleep 8"
+
+      # The bare-name update never reaches the transcript, and neither do the
+      # repeats.
+      refute_receive {:chat_event, ^ref, %StreamEvent{kind: :tool_use}}, 100
+    end
+
+    test "a tool that completes with no arguments is still announced once", %{ref: ref} = ctx do
+      sse(ctx, %{
+        "type" => "message.updated",
+        "properties" => %{
+          "info" => %{"id" => "msg_a", "role" => "assistant", "sessionID" => @session}
+        }
+      })
+
+      # Suppressing empty-input updates must not swallow a tool that genuinely
+      # has none — it would vanish from the transcript entirely.
+      sse(ctx, %{
+        "type" => "message.part.updated",
+        "properties" => %{
+          "part" => %{
+            "type" => "tool",
+            "id" => "prt_2",
+            "tool" => "list",
+            "messageID" => "msg_a",
+            "sessionID" => @session,
+            "state" => %{"status" => "completed", "input" => %{}}
+          }
+        }
+      })
+
+      assert_receive {:chat_event, ^ref, %StreamEvent{tool: "list"}}
+    end
+
+    test "a NEW turn can announce its tools again", %{ref: ref} = ctx do
+      sse(ctx, %{
+        "type" => "message.updated",
+        "properties" => %{
+          "info" => %{"id" => "msg_a", "role" => "assistant", "sessionID" => @session}
+        }
+      })
+
+      tool = fn id ->
+        %{
+          "type" => "message.part.updated",
+          "properties" => %{
+            "part" => %{
+              "type" => "tool",
+              "id" => id,
+              "tool" => "bash",
+              "messageID" => "msg_a",
+              "sessionID" => @session,
+              "state" => %{"status" => "running", "input" => %{"command" => "ls"}}
+            }
+          }
+        }
+      end
+
+      sse(ctx, tool.("prt_a"))
+      assert_receive {:chat_event, ^ref, %StreamEvent{kind: :tool_use}}
+
+      sse(ctx, %{"type" => "session.idle", "properties" => %{"sessionID" => @session}})
+      assert_receive {:chat_event, ^ref, %StreamEvent{kind: :result}}
+
+      sse(ctx, tool.("prt_b"))
+      assert_receive {:chat_event, ^ref, %StreamEvent{kind: :tool_use}}
+    end
+
     test "events for an unregistered session are dropped, not crashed on", ctx do
       OpenCodeServer.unregister(ctx.server, ctx.ref)
       _ = :sys.get_state(ctx.pid)

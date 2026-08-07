@@ -1,13 +1,13 @@
 # Chat live steering — let the operator change the work while it is happening
 
-**Scoped 08-04-26 · Status: PHASES 0–5 BUILT. Claude and Codex acceptance
-smokes PASSED 08-06-26; OpenCode's is the last one outstanding. Phase 6 (durable
-delivery) and Phase 7 (rollout) not started.**
+**Scoped 08-04-26 · Status: PHASES 0–5 COMPLETE AND ACCEPTED. All three
+acceptance smokes PASSED 08-06-26 against real CLIs. Phase 6 (durable delivery)
+and Phase 7 (rollout) not started.**
 
 > **Headline: all three harnesses steer, and all three now do it through Buster
 > Claw.** Claude, Codex, and OpenCode each accept a mid-run correction into the
-> *active* turn. Claude and Codex are proven end to end against real CLIs;
-> OpenCode is unit-verified with its smoke written and unrun.
+> *active* turn, and all three are proven end to end against real CLIs — not
+> just against probes or fakes.
 >
 > Parity across models is a **product requirement** (operator, 08-05), not a
 > nice-to-have — see the scoreboard at the end of Phase 4 for the two
@@ -899,6 +899,59 @@ this app owns no price table.
 Both were parity gaps by definition: claude worked, codex did not. Worth
 recording that the unit suite was green through both of them, and that the only
 thing that found them was running the real CLI.
+
+### Acceptance — PASSED 08-06-26
+
+```
+VERDICT: PASS — opencode steers AND remembers
+  Chat.submit returned:  {:ok, :steered}
+  acceptance confirmed:  true
+  redirect ran:          true      step three skipped: true
+  turns completed:       1
+  same session on turn 2: true     turn 2 answered: true
+```
+
+**Phase 4 is accepted, and all three backends are now proven end to end.**
+
+Note `acceptance confirmed: true` — the SSE echo arrived inside the window, so
+this was a real `:steered` rather than the `:sent` fallback. `:sent` remains the
+honest answer when it does not, but on a healthy local server it does.
+
+⚠ **The run also exposed a transcript defect, now fixed.** Its tool list showed
+**eight lines for two commands**, including a bare `bash` with no command after
+it:
+
+```
+[12169ms] bash
+[12818ms] bash: sleep 8 && echo step-one
+[12864ms] bash: sleep 8 && echo step-one
+[20886ms] bash: sleep 8 && echo step-one
+```
+
+OpenCode re-sends `message.part.updated` for the SAME part as its state advances
+(pending → running → completed), and the connection forwarded every one. Claude
+and Codex emit one transcript line per tool call, so opencode's transcript was
+the odd one out — a parity defect in the plainest sense, and only visible by
+looking at a real run.
+
+Fixed in the connection, where the state already lives: a tool part is announced
+once, on the first update that actually carries its arguments (which is what
+removes the bare `bash`), and the seen-set clears at each `session.idle` so a new
+turn can announce its own tools. A tool that genuinely completes with no
+arguments is still announced, rather than vanishing.
+
+### Latency — all three, measured on real CLIs
+
+| | steer → redirect ran |
+|---|---|
+| Claude | 18.6s |
+| Codex | 11.4s |
+| OpenCode | ~14.3s |
+
+Three unrelated protocols, the same story: the wait is dominated by the model
+turn after the in-flight tool ends, not by the transport. `SENDING` is a
+tens-of-seconds state everywhere, and no UI on any backend should imply
+otherwise.
 
 ### Parity scoreboard — 08-06-26
 

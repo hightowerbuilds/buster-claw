@@ -138,6 +138,10 @@ defmodule BusterClaw.Agent.OpenCodeServer do
        roles: %{},
        # session_id => accumulated cost for the turn in flight
        turn_cost: %{},
+       # Tool part ids already announced to the transcript. OpenCode re-sends
+       # `message.part.updated` for the SAME part as its state advances, so
+       # without this a single command appears three or four times.
+       tools_seen: MapSet.new(),
        booter: Keyword.get(opts, :booter, &default_boot/1),
        http: Keyword.get(opts, :http, &default_http/1),
        # Injectable alongside `:booter` and `:http` so a test never opens a real
@@ -373,9 +377,21 @@ defmodule BusterClaw.Agent.OpenCodeServer do
   # without inventing a number.
   defp handle_event(state, %{"type" => "message.part.updated", "properties" => %{"part" => part}}) do
     state = accumulate_cost(state, part)
-    role = Map.get(state.roles, part["messageID"])
 
-    forward(state, part["sessionID"], Map.put(%{"type" => "part", "part" => part}, "role", role))
+    if tool_repeat?(state, part) do
+      # Already announced. OpenCode re-sends a tool part on every state change
+      # (pending -> running -> completed), and the other two backends emit one
+      # transcript line per tool call — so forwarding each update would make
+      # opencode's transcript the odd one out, with a command repeated three or
+      # four times.
+      state
+    else
+      role = Map.get(state.roles, part["messageID"])
+
+      state
+      |> remember_tool(part)
+      |> forward(part["sessionID"], Map.put(%{"type" => "part", "part" => part}, "role", role))
+    end
   end
 
   # The turn boundary. Exactly one per run, measured — including a run that was
@@ -387,9 +403,34 @@ defmodule BusterClaw.Agent.OpenCodeServer do
     state
     |> forward(id, %{"type" => "idle", "cost" => cost})
     |> Map.update!(:turn_cost, &Map.put(&1, id, 0.0))
+    # The turn is over, so its part ids can never repeat again. Clearing bounds
+    # the set on a long conversation.
+    |> Map.put(:tools_seen, MapSet.new())
   end
 
   defp handle_event(state, _event), do: state
+
+  # A tool part is announced ONCE, on the first update that actually carries its
+  # arguments. An earlier update with an empty input would render as a bare tool
+  # name with no command — which is the `bash` with nothing after it that the
+  # acceptance smoke showed.
+  defp tool_repeat?(state, %{"type" => "tool", "id" => id} = part) do
+    MapSet.member?(state.tools_seen, id) or empty_input?(part)
+  end
+
+  defp tool_repeat?(_state, _part), do: false
+
+  defp empty_input?(part) do
+    case get_in(part, ["state", "input"]) do
+      input when is_map(input) and map_size(input) > 0 -> false
+      _ -> get_in(part, ["state", "status"]) != "completed"
+    end
+  end
+
+  defp remember_tool(state, %{"type" => "tool", "id" => id}),
+    do: %{state | tools_seen: MapSet.put(state.tools_seen, id)}
+
+  defp remember_tool(state, _part), do: state
 
   defp accumulate_cost(state, %{"cost" => cost, "sessionID" => id}) when is_number(cost),
     do: %{state | turn_cost: Map.update(state.turn_cost, id, cost, &(&1 + cost))}
