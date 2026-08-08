@@ -139,7 +139,31 @@ and the cap. Delete 200 lines from a capped file; it fails asking for the ratche
 
 ## Phase 1 — The markup-heavy panels: long, not overloaded
 
-**Status: `explore_panel.ex` DONE 08-08-26 (`7e55599`). Three files remain.**
+**Status: three of four DONE 08-08-26. Only `home_widget.ex` remains — and see
+the note under it for why it may not be worth doing.**
+
+| File | Before | After | Commit |
+|---|---:|---|---|
+| `explore_panel.ex` | 1,577 | **92** + 9 modules | `7e55599` |
+| `phone_panels.ex` | 952 | **deleted** → 4 modules, largest 300 | `d9b3d7f` |
+| `gws_panels.ex` | 513 | **122** + 5 modules, largest 231 | `751e321` |
+
+**What the three cost, stated rather than buried:** +142, +25, +146 lines. The
+cost tracks how much was *authored* rather than relocated — Phone moved whole
+functions and cost almost nothing; Gws needed four new `attr` lists and cost the
+most. Budget accordingly for Phases 2–4, which are logic splits and will need
+more writing than any of these did.
+
+**The one defect the phase turned up.** Splitting Gws made `console_tab_keys/0`
+visible as public, documented "for the parent's tab guard", and called by
+nothing — `SettingsLive.gws_tab/1` hand-wrote the same five keys with a
+`_ -> :accounts` fallback. A sixth console tab would have rendered a rail button
+that silently fell back to Accounts. Latent, not live; fixed with a test that
+walks every key the rail offers (`fb9c406`). **This is the second instance of the
+same bug shape in this codebase** — the first shipped Phone as a home tab the
+guard had never heard of. Two occurrences is a pattern: any surface with a rail
+and a guard should derive one from the other, and Phase 2 should check
+`StatusLive`'s remaining rails for a third.
 
 > **`explore_panel.ex` 1,577 → 92.** Nine modules under `components/explore/`,
 > largest 360. Panels are `import`ed into the parent, so every dispatch line
@@ -164,8 +188,8 @@ and the cap. Delete 200 lines from a capped file; it fails asking for the ratche
 > The test was always there — `status_live_test.exs`, "the Command List tab is
 > the atlas" — and now the comment says so.
 
-**Files.** ~~`explore_panel.ex` (1,577 / 82%)~~, `phone_panels.ex` (952 / 80%),
-`gws_panels.ex` (513 / 80%), `home_widget.ex` (688 / 81%).
+**Files.** ~~`explore_panel.ex` (1,577 / 82%)~~, ~~`phone_panels.ex` (952 / 80%)~~,
+~~`gws_panels.ex` (513 / 80%)~~, `home_widget.ex` (688 / 81%).
 
 **What.** These are not doing several jobs; they are one job written at length.
 Each becomes a directory of siblings under `components/<feature>/`, one module per
