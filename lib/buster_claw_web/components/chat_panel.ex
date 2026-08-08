@@ -79,6 +79,11 @@ defmodule BusterClawWeb.ChatPanel do
 
   attr :title, :string, required: true
   attr :kind, :string, required: true, doc: "typed Trading conversation kind"
+
+  # Which kinds this surface may hold — the retype control offers exactly these.
+  # `/charts` must not present an RH button, and `TradingLive` refuses the event
+  # for a kind off the surface, so the control and the guard agree.
+  attr :kinds, :list, default: ["chat", "robinhood", "chartbuild"]
   attr :index, :integer, default: 0, doc: "render order, used to cascade default positions"
   attr :messages, :list, required: true, doc: "[{dom_id, msg}] — a plain list, not a stream"
   attr :seq, :integer, required: true
@@ -179,14 +184,23 @@ defmodule BusterClawWeb.ChatPanel do
         <%!-- What this conversation is pointed at, and the control to change it.
               Retyping restarts the session, so it is a decision, not a filter —
               which is why the current one is written, not just highlighted. --%>
-        <div class="flex shrink-0 items-center gap-px" role="group" aria-label="Chat kind">
+        <div
+          :if={length(@kinds) > 1}
+          class="flex shrink-0 items-center gap-px"
+          role="group"
+          aria-label="Chat kind"
+        >
           <button
             :for={
-              {k, badge} <- [
-                {"chat", "CHAT"},
-                {"robinhood", "RH"},
-                {"chartbuild", "CHART"}
-              ]
+              {k, badge} <-
+                Enum.filter(
+                  [
+                    {"chat", "CHAT"},
+                    {"robinhood", "RH"},
+                    {"chartbuild", "CHART"}
+                  ],
+                  fn {k, _badge} -> k in @kinds end
+                )
             }
             type="button"
             phx-click="trading_set_kind"

@@ -53,6 +53,17 @@ defmodule BusterClaw.Trading do
 
   @conv_id "trading"
   @tab_kinds ~w(chat robinhood chartbuild)
+
+  # Chart Build has no broker surface — `ChatProfile.for_kind("chartbuild")`
+  # hands it web search and app-fetched public data, and no Robinhood tool
+  # exists in its run. It lived on `/trading` only because that is where the tab
+  # strip was built, so gating Trading behind its extension would have taken a
+  # surface with no broker dependency down with it.
+  #
+  # `/charts` is therefore its own route over the same LiveView, carrying only
+  # this kind. Not `chat`: a neutral chat belongs to Home, and admitting it here
+  # would mean one conversation appearing on two routes.
+  @chart_kinds ~w(chartbuild)
   @mcp_url "https://agent.robinhood.com/mcp/trading"
   @read_tools ~w(
     mcp__robinhood__get_accounts
@@ -218,7 +229,29 @@ defmodule BusterClaw.Trading do
   transcript written while that conversation was DB-less becomes this tab's
   history instead of being orphaned.
   """
-  def tabs do
+  def tabs, do: tabs(:trading)
+
+  @doc """
+  The open tabs for one surface.
+
+  `:charts` lists Chart Build conversations only and seeds one when there are
+  none. It deliberately does NOT call `Conversations.ensure/2` for the pinned
+  Robinhood row: opening the charts route must not conjure a broker
+  conversation, which is the difference between a route that is broker-free and
+  one that merely does not show you the broker.
+  """
+  def tabs(:charts) do
+    case Conversations.list_kinds(@chart_kinds) do
+      [] ->
+        {:ok, conv} = Conversations.create(%{title: "Chart Build", kind: "chartbuild"})
+        [conv]
+
+      tabs ->
+        tabs
+    end
+  end
+
+  def tabs(_trading) do
     _seeded = Conversations.ensure(@conv_id, title: "Robinhood", kind: "robinhood")
 
     case Conversations.list_kinds(@tab_kinds) do
@@ -238,6 +271,14 @@ defmodule BusterClaw.Trading do
 
   @doc "The conversation kinds that live on the Trading page, in tab order."
   def tab_kinds, do: @tab_kinds
+
+  @doc """
+  The kinds one surface may hold. This is the authority for both which tabs a
+  surface lists and which kinds it will let you create or retype a tab into —
+  otherwise `/charts` could grow a Robinhood tab through the new-tab menu.
+  """
+  def tab_kinds(:charts), do: @chart_kinds
+  def tab_kinds(_trading), do: @tab_kinds
 
   # The kind → Claude-profile mapping lives in `BusterClaw.Trading.ChatProfile`,
   # NOT here and not behind a delegate from here. Naming `ChartBuilder` from this

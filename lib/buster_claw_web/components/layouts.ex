@@ -45,6 +45,13 @@ defmodule BusterClawWeb.Layouts do
       path: "/trading",
       icon: "hero-chart-bar"
     },
+    # Chart Build, on its own route since 08-07. It was a Trading tab kind with
+    # no broker dependency, which made it collateral in gating Trading.
+    %{
+      label: "Charts",
+      path: "/charts",
+      icon: "hero-presentation-chart-line"
+    },
     %{
       label: "Settings",
       path: "/appearance",

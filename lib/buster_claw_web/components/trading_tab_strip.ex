@@ -18,6 +18,12 @@ defmodule BusterClawWeb.TradingTabStrip do
   attr :menu_open, :boolean, required: true
   attr :open_chats, :list, required: true
 
+  # Which kinds this surface may hold. The new-tab menu offers exactly these —
+  # `/charts` must not present a Robinhood button, and the server refuses the
+  # event anyway (`TradingLive.handle_event("trading_new_tab", …)`), so the menu
+  # and the guard say the same thing rather than the menu being the only fence.
+  attr :kinds, :list, required: true
+
   def trading_tabs(assigns) do
     ~H"""
     <%!-- The strip doubles as the dock target: drag a floating chat onto it and
@@ -121,6 +127,7 @@ defmodule BusterClawWeb.TradingTabStrip do
         <%!-- Chat leads: it is the neutral one, and it can be pointed at either
               of the others afterwards. --%>
         <button
+          :if={"chat" in @kinds}
           type="button"
           phx-click="trading_new_tab"
           phx-value-kind="chat"
@@ -132,6 +139,7 @@ defmodule BusterClawWeb.TradingTabStrip do
           </span>
         </button>
         <button
+          :if={"robinhood" in @kinds}
           type="button"
           phx-click="trading_new_tab"
           phx-value-kind="robinhood"

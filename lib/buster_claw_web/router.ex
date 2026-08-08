@@ -26,6 +26,11 @@ defmodule BusterClawWeb.Router do
     live_session :default, on_mount: [BusterClawWeb.RequireOnboarding] do
       live "/", StatusLive, :home
       live "/trading", TradingLive, :index
+      # Chart Build's own route over the same LiveView. It carries only the
+      # `chartbuild` kind, so it never touches the broker — which is what lets
+      # Trading be gated behind its extension without taking a surface that has
+      # no broker dependency down with it.
+      live "/charts", TradingLive, :charts
       live "/browse", BrowseLive, :index
       live "/split", SplitLive, :index
       live "/terminal", TerminalLive, :index

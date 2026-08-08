@@ -69,16 +69,24 @@ defmodule BusterClawWeb.TradingLive do
   @datareq_budget 6
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
+    # Which surface this mount is: `/trading` (the full desk) or `/charts`
+    # (Chart Build alone). One LiveView, two routes — the kinds a surface may
+    # hold are the only difference, so the render blocks below key off
+    # `@active_kind` exactly as they already did.
+    surface = surface(socket.assigns[:live_action], session)
+
     # Every open tab is subscribed, not just the active one: a run keeps going
     # when you switch away, and its tab has to be able to show an unread dot.
-    tabs = Trading.tabs()
+    tabs = Trading.tabs(surface)
     active = hd(tabs)
     if connected?(socket), do: Enum.each(tabs, &Chat.subscribe(&1.id))
 
     socket =
       socket
-      |> assign(:page_title, "Trading")
+      |> assign(:surface, surface)
+      |> assign(:tab_kinds, Trading.tab_kinds(surface))
+      |> assign(:page_title, if(surface == :charts, do: "Chart Build", else: "Trading"))
       # Last delivery outcome, announced politely by the composer. One per
       # LiveView rather than per window: the operator submits one message at a
       # time, and the announcement is about that action.
@@ -150,13 +158,26 @@ defmodule BusterClawWeb.TradingLive do
 
     # The static (disconnected) render must not spend agent runs: show whatever
     # is cached; fetches start once the socket is live.
+    #
+    # `/charts` takes the cached path even when connected, so opening it can
+    # never start a Robinhood run. That is the load-bearing property of this
+    # route: broker-free is a thing the code does, not a thing the template
+    # declines to render.
     socket =
-      if connected?(socket),
+      if connected?(socket) and surface == :trading,
         do: load_trading_account(socket),
         else: socket |> assign_cached_snapshot() |> load_chart()
 
     {:ok, socket}
   end
+
+  # `live_action` comes from the router: `:charts` for `/charts`, `:index` for
+  # `/trading`. A nested `live_render` (SplitLive) has no action, so the surface
+  # travels in the session instead. Anything else is the full desk, so a new
+  # action can never silently produce a surface with no kinds.
+  defp surface(:charts, _session), do: :charts
+  defp surface(_action, %{"surface" => "charts"}), do: :charts
+  defp surface(_action, _session), do: :trading
 
   # ---------------------------------------------------------------------------
   # Chat events
@@ -211,36 +232,15 @@ defmodule BusterClawWeb.TradingLive do
     {:noreply, assign(socket, :new_tab_open, not socket.assigns.new_tab_open)}
   end
 
+  # The kind must be one THIS SURFACE holds, not merely a kind that exists —
+  # otherwise a forged `phx-value-kind` would grow a Robinhood tab on `/charts`.
   def handle_event("trading_new_tab", %{"kind" => kind}, socket)
-      when kind in ["chat", "robinhood", "chartbuild"] do
-    # A new tab starts docked — it opens as a sub-tab rather than a window the
-    # operator has to place. The exception is a kind that HAS a data panel:
-    # docking a Robinhood tab hides the very dashboard you just asked for, so it
-    # starts with the panel showing and the chat floating over it. Either can be
-    # dragged or buttoned into the other state after. (Chart Build owns both
-    # halves of its tab, so its dock flag stays false for a different reason.)
-    docked = kind == "chat"
-
-    {:ok, conv} =
-      Conversations.create(%{title: Trading.kind_label(kind), kind: kind, docked: docked})
-
-    if connected?(socket), do: Chat.subscribe(conv.id)
-
-    # A tab you just made is one you want to talk to, so a floating one opens
-    # with it — and appended, so it is the focused one. Selecting an EXISTING
-    # tab deliberately does not do this: a window the operator closed stays
-    # closed. A docked tab needs no window; it is already the tab.
-    open_chats =
-      if docked or kind == "chartbuild",
-        do: socket.assigns.open_chats,
-        else: socket.assigns.open_chats ++ [conv.id]
-
-    {:noreply,
-     socket
-     |> assign(:tabs, socket.assigns.tabs ++ [to_tab(conv)])
-     |> assign(:new_tab_open, false)
-     |> assign(:open_chats, open_chats)
-     |> activate_tab(conv.id)}
+      when is_binary(kind) do
+    if kind in socket.assigns.tab_kinds do
+      new_tab(socket, kind)
+    else
+      {:noreply, assign(socket, :new_tab_open, false)}
+    end
   end
 
   def handle_event("trading_new_tab", _params, socket),
@@ -351,9 +351,13 @@ defmodule BusterClawWeb.TradingLive do
   # `--resume` into a context full of account balances that the Chart Build
   # toolset is specifically supposed to have no way of seeing — and Chart Build
   # can now search the web, which makes the leak worse than it used to be.
+  # Same surface restriction as `trading_new_tab`: retyping is the other way a
+  # tab could change kind, so a Robinhood tab must be unreachable from `/charts`
+  # through this event too.
   def handle_event("trading_set_kind", %{"id" => id, "kind" => kind}, socket)
-      when kind in ["chat", "robinhood", "chartbuild"] do
-    if known_tab?(socket, id) and tab_kind(socket, id) != kind do
+      when is_binary(kind) do
+    if kind in socket.assigns.tab_kinds and known_tab?(socket, id) and
+         tab_kind(socket, id) != kind do
       previous_kind = tab_kind(socket, id)
       {:ok, _conv} = Conversations.set_kind(id, kind)
       Chat.stop(id)
@@ -1101,6 +1105,37 @@ defmodule BusterClawWeb.TradingLive do
   # Switching tabs swaps the PANEL and nothing else. Open chat windows are
   # deliberately untouched: they float above whichever panel is showing, and a
   # run in one conversation is not interrupted by looking at another's data.
+  defp new_tab(socket, kind) do
+    # A new tab starts docked — it opens as a sub-tab rather than a window the
+    # operator has to place. The exception is a kind that HAS a data panel:
+    # docking a Robinhood tab hides the very dashboard you just asked for, so it
+    # starts with the panel showing and the chat floating over it. Either can be
+    # dragged or buttoned into the other state after. (Chart Build owns both
+    # halves of its tab, so its dock flag stays false for a different reason.)
+    docked = kind == "chat"
+
+    {:ok, conv} =
+      Conversations.create(%{title: Trading.kind_label(kind), kind: kind, docked: docked})
+
+    if connected?(socket), do: Chat.subscribe(conv.id)
+
+    # A tab you just made is one you want to talk to, so a floating one opens
+    # with it — and appended, so it is the focused one. Selecting an EXISTING
+    # tab deliberately does not do this: a window the operator closed stays
+    # closed. A docked tab needs no window; it is already the tab.
+    open_chats =
+      if docked or kind == "chartbuild",
+        do: socket.assigns.open_chats,
+        else: socket.assigns.open_chats ++ [conv.id]
+
+    {:noreply,
+     socket
+     |> assign(:tabs, socket.assigns.tabs ++ [to_tab(conv)])
+     |> assign(:new_tab_open, false)
+     |> assign(:open_chats, open_chats)
+     |> activate_tab(conv.id)}
+  end
+
   defp activate_tab(socket, id) do
     Conversations.touch(id)
     kind = tab_kind(socket, id)
@@ -2322,6 +2357,7 @@ defmodule BusterClawWeb.TradingLive do
             active={@active_tab}
             menu_open={@new_tab_open}
             open_chats={@open_chats}
+            kinds={@tab_kinds}
           />
           <%!-- The left rail. It wraps the tab body rather than replacing any of
                 it, so the three kind-blocks below are untouched — moving the data
@@ -2456,6 +2492,7 @@ defmodule BusterClawWeb.TradingLive do
                     index={0}
                     title={tab_title(@tabs, @active_tab)}
                     kind={@active_kind}
+                    kinds={@tab_kinds}
                     messages={chat_state(assigns, @active_tab).messages}
                     seq={chat_state(assigns, @active_tab).seq}
                     running={chat_state(assigns, @active_tab).running}
@@ -2482,6 +2519,7 @@ defmodule BusterClawWeb.TradingLive do
                 index={0}
                 title={tab_title(@tabs, @active_tab)}
                 kind={@active_kind}
+                kinds={@tab_kinds}
                 messages={chat_state(assigns, @active_tab).messages}
                 seq={chat_state(assigns, @active_tab).seq}
                 running={chat_state(assigns, @active_tab).running}
@@ -2539,6 +2577,7 @@ defmodule BusterClawWeb.TradingLive do
           index={i}
           title={tab_title(@tabs, conv)}
           kind={tab_kind_of(@tabs, conv)}
+          kinds={@tab_kinds}
           messages={chat_state(assigns, conv).messages}
           seq={chat_state(assigns, conv).seq}
           running={chat_state(assigns, conv).running}
