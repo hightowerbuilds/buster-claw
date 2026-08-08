@@ -327,6 +327,18 @@ defmodule BusterClawWeb.PhonePanels do
               </button>
             </div>
 
+            <%!-- This keypad looks like a dialer and is not one: `dial_key` only
+                  appends a digit and re-runs `closest_contact/2`. The container's
+                  aria-label has always said so, but a sighted user had no way to
+                  know, which is the gap this line closes. Delete it when outbound
+                  calling actually exists. --%>
+            <p
+              id="phone-keypad-purpose"
+              class="mt-2 px-2 font-mono text-[10px] uppercase tracking-wide text-base-content/40"
+            >
+              Searches your contacts · outbound calling isn't built
+            </p>
+
             <button
               :if={@dial_match && (!@selected_contact || @selected_contact.id != @dial_match.id)}
               id="phone-dial-match"
@@ -395,7 +407,7 @@ defmodule BusterClawWeb.PhonePanels do
               phx-target={@target}
               phx-value-key={key}
               class="grid min-h-0 min-w-0 place-items-center bg-transparent transition hover:bg-accent/10 active:bg-accent/25 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-              aria-label={"Dial #{if key == "*", do: "star", else: if(key == "#", do: "hash", else: key)}"}
+              aria-label={"Enter #{if key == "*", do: "star", else: if(key == "#", do: "hash", else: key)}"}
             >
               <span class="sr-only">{key}</span>
             </button>

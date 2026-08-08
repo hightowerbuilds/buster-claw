@@ -145,6 +145,21 @@ defmodule BusterClawWeb.PhoneLiveTest do
     refute has_element?(view, "#phone-message-detail")
   end
 
+  # The keypad looks like a dialer and isn't one. That was disclosed only in the
+  # container's aria-label, so a sighted user had no way to know — the exact
+  # "decorative control that reads as finished" case BUSTERCLAW_CRITICAL_REVIEW
+  # Phase 0 names. Gating it behind Labs was declined, so honest labelling in
+  # place is the standing obligation and this test is what keeps it.
+  test "the keypad says on screen that it only searches contacts", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/phone")
+
+    assert has_element?(view, "#phone-keypad-purpose", "Searches your contacts")
+    assert has_element?(view, "#phone-keypad-purpose", "outbound calling isn't built")
+
+    # Not just the accessible name: the disclosure has to survive as visible text.
+    refute view |> element("#phone-keypad-purpose") |> render() =~ "sr-only"
+  end
+
   test "keypad searches contacts by number and supports correction", %{conn: conn} do
     {:ok, contact} =
       Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})

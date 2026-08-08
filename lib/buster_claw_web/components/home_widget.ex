@@ -171,11 +171,17 @@ defmodule BusterClawWeb.HomeWidget do
               <span class="truncate font-display text-xs font-bold text-base-content">{c.name}</span>
             </span>
             <div class="flex shrink-0 items-center gap-1">
+              <%!-- Inert: outbound telephony isn't wired. `title` is a hover
+                    tooltip only, so these carry an aria-label too — otherwise the
+                    accessible name is empty (the icons are decorative) and the
+                    "not built" state is reachable by mouse alone. --%>
               <button
                 :if={c.phone}
                 type="button"
                 disabled
+                aria-disabled="true"
                 title="Texting isn't available yet"
+                aria-label={"Text #{c.name} — not available yet"}
                 class="cursor-not-allowed rounded-xs border border-base-content/20 p-1 text-base-content/35"
               >
                 <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
@@ -184,7 +190,9 @@ defmodule BusterClawWeb.HomeWidget do
                 :if={c.phone}
                 type="button"
                 disabled
+                aria-disabled="true"
                 title="Calling isn't available yet"
+                aria-label={"Call #{c.name} — not available yet"}
                 class="cursor-not-allowed rounded-xs border border-base-content/20 p-1 text-base-content/35"
               >
                 <.icon name="hero-phone" class="size-3.5" />
