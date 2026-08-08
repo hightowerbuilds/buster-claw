@@ -41,7 +41,9 @@ defmodule BusterClawWeb.TradingLive do
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
   alias BusterClaw.ChartBuilder.DataReq
   alias BusterClaw.ChartBuilder.Fetch
+  alias BusterClaw.Commands
   alias BusterClaw.DataState
+  alias BusterClaw.Extensions
   alias BusterClaw.MarketData
   alias BusterClaw.Portfolio
   alias BusterClaw.SvgViewer
@@ -76,6 +78,40 @@ defmodule BusterClawWeb.TradingLive do
     # `@active_kind` exactly as they already did.
     surface = surface(socket.assigns[:live_action], session)
 
+    if surface == :trading and not trading_installed?() do
+      mount_not_installed(socket)
+    else
+      mount_surface(socket, surface)
+    end
+  end
+
+  # The Trading surface belongs to the `trading-robinhood` extension. A surface
+  # no manifest claims is not gated — deleting the extension must not hide
+  # ordinary application code that happens to share the name.
+  defp trading_installed? do
+    not Extensions.surface_owned?("trading") or Extensions.surface_enabled?("trading")
+  end
+
+  # Off: mount nothing. No tabs are listed, no conversation is seeded, no
+  # snapshot is read, nothing subscribes. The card below is the whole LiveView,
+  # which is what makes "not installed" a fact about the process rather than a
+  # branch in a template that has already done the work.
+  defp mount_not_installed(socket) do
+    manifest =
+      case Extensions.fetch("trading-robinhood") do
+        {:ok, manifest} -> manifest
+        _ -> nil
+      end
+
+    {:ok,
+     socket
+     |> assign(:installed?, false)
+     |> assign(:manifest, manifest)
+     |> assign(:page_title, "Trading")
+     |> assign(:embedded?, BusterClawWeb.ChromeHook.embedded?())}
+  end
+
+  defp mount_surface(socket, surface) do
     # Every open tab is subscribed, not just the active one: a run keeps going
     # when you switch away, and its tab has to be able to show an unread dot.
     tabs = Trading.tabs(surface)
@@ -84,6 +120,7 @@ defmodule BusterClawWeb.TradingLive do
 
     socket =
       socket
+      |> assign(:installed?, true)
       |> assign(:surface, surface)
       |> assign(:tab_kinds, Trading.tab_kinds(surface))
       |> assign(:page_title, if(surface == :charts, do: "Chart Build", else: "Trading"))
@@ -184,6 +221,23 @@ defmodule BusterClawWeb.TradingLive do
   # ---------------------------------------------------------------------------
 
   @impl true
+  # The install card's button. It goes through `Commands.call/3` rather than
+  # `Extensions.enable/1` so that turning a money surface on lands a Sentinel
+  # record like any other consequential action — the UI is a caller, not a
+  # shortcut past the audit path.
+  def handle_event("enable_trading", _params, socket) do
+    case Commands.call("extension_enable", %{"id" => "trading-robinhood"}, caller: :trusted) do
+      {:ok, _result} ->
+        # A full navigation, not a re-render: the surface's whole mount was
+        # skipped, so there is no tab list, no subscription and no snapshot to
+        # patch into. Remounting is the honest way to arrive installed.
+        {:noreply, push_navigate(socket, to: ~p"/trading")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not enable Trading: #{inspect(reason)}")}
+    end
+  end
+
   # The window's composer names its conversation in a hidden field: with several
   # open at once, "the chat" is no longer a thing the server can infer.
   def handle_event("chat_send", %{"message" => text} = params, socket) do
@@ -2343,6 +2397,68 @@ defmodule BusterClawWeb.TradingLive do
   # ---------------------------------------------------------------------------
 
   @impl true
+  def render(%{installed?: false} = assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} socket={@socket}>
+      <div id="trading-not-installed" class="mx-auto max-w-2xl space-y-4 p-4 font-mono">
+        <div class="ic-panel space-y-4 p-6">
+          <div class="space-y-1">
+            <p class="text-xs font-black uppercase tracking-widest text-base-content/50">
+              Extension · not installed
+            </p>
+            <h1 class="text-2xl font-black uppercase tracking-tight">
+              {(@manifest && @manifest.name) || "Robinhood Trading"}
+            </h1>
+            <p :if={@manifest} class="text-sm text-base-content/70">{@manifest.summary}</p>
+          </div>
+
+          <%!-- Rendered from the manifest, never from prose written here: the
+                loader enforces exactly these fields, so a capability shown on
+                this screen cannot drift from the one that is actually granted. --%>
+          <dl :if={@manifest} class="space-y-2 border-2 border-base-content/20 p-4 text-xs">
+            <div :if={@manifest.network != []} class="flex gap-3">
+              <dt class="w-28 shrink-0 font-black uppercase tracking-wide text-base-content/50">
+                Reaches
+              </dt>
+              <dd class="flex-1">{Enum.join(@manifest.network, ", ")}</dd>
+            </div>
+            <div :if={@manifest.writes != []} class="flex gap-3">
+              <dt class="w-28 shrink-0 font-black uppercase tracking-wide text-base-content/50">
+                Can change
+              </dt>
+              <dd class="flex-1">{Enum.join(@manifest.writes, ", ")}</dd>
+            </div>
+            <div :if={@manifest.money} class="flex gap-3 text-warning">
+              <dt class="w-28 shrink-0 font-black uppercase tracking-wide">Money</dt>
+              <dd class="flex-1">
+                This extension acts on a real brokerage account. Read what it can do before
+                you turn it on.
+              </dd>
+            </div>
+          </dl>
+
+          <button
+            id="trading-enable"
+            type="button"
+            phx-click="enable_trading"
+            class="border-2 border-primary bg-primary px-4 py-2 text-sm font-black uppercase tracking-wide text-primary-content transition hover:opacity-80"
+          >
+            Enable
+          </button>
+
+          <p class="text-xs text-base-content/60">
+            Charts and market research do not need this — they live on
+            <.link navigate={~p"/charts"} class="font-bold text-primary hover:opacity-80">
+              Charts
+            </.link>
+            and never touch a broker.
+          </p>
+        </div>
+      </div>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} socket={@socket} fit_viewport>

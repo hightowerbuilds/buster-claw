@@ -9,6 +9,12 @@ defmodule BusterClawWeb.WatchlistSidebarTest do
 
   alias BusterClaw.Watchlist
 
+  # The rail lives on the Trading surface, which its extension gates.
+  setup do
+    {:ok, _manifest} = BusterClaw.Extensions.enable("trading-robinhood")
+    :ok
+  end
+
   # Open by default: the rail carries the Chart Build symbol lookup, and a search
   # box nobody can see is not a search box.
   test "starts open, and the bumper collapses it", %{conn: conn} do

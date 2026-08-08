@@ -57,6 +57,10 @@ defmodule BusterClawWeb.TradingLiveTest do
       File.rm_rf(root)
     end)
 
+    # Trading belongs to the `trading-robinhood` extension and is off on a fresh
+    # install. This whole file is about the installed surface.
+    {:ok, _manifest} = BusterClaw.Extensions.enable("trading-robinhood")
+
     {:ok, root: root}
   end
 

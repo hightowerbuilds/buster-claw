@@ -19,6 +19,9 @@ defmodule BusterClawWeb.LookupKeyboardTest do
     expires_at = System.monotonic_time(:millisecond) + 60_000
     :persistent_term.put({BusterClaw.Finance.Edgar, :ticker_map}, {map, expires_at})
     on_exit(fn -> :persistent_term.erase({BusterClaw.Finance.Edgar, :ticker_map}) end)
+
+    # The lookup lives on the Trading surface, which its extension gates.
+    {:ok, _manifest} = BusterClaw.Extensions.enable("trading-robinhood")
     :ok
   end
 

@@ -14,6 +14,7 @@ defmodule BusterClawWeb.ChartsLiveTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Agent.Conversations
+  alias BusterClaw.Extensions
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_charts_live_#{System.unique_integer([:positive])}")
@@ -59,6 +60,11 @@ defmodule BusterClawWeb.ChartsLiveTest do
       Application.put_env(:buster_claw, :trading_detail_fetcher, prev_detail)
       File.rm_rf(root)
     end)
+
+    # Trading belongs to the `trading-robinhood` extension and is off by
+    # default. The `/trading` cases here are controls for the `/charts` ones, so
+    # they need the surface actually installed.
+    {:ok, _manifest} = Extensions.enable("trading-robinhood")
 
     :ok
   end

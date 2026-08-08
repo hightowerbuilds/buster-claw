@@ -7,6 +7,8 @@ defmodule BusterClawWeb.SplitLive do
   """
   use BusterClawWeb, :live_view
 
+  alias BusterClaw.Extensions
+
   # Views that are safe to embed in a split pane (they render from mount-set
   # assigns, not route params). Every workspace tab — including Home — is
   # joinable; chrome is suppressed centrally by `BusterClawWeb.ChromeHook` +
@@ -57,7 +59,7 @@ defmodule BusterClawWeb.SplitLive do
     pathname = path |> String.split("?") |> hd()
     url = pane_url(path)
 
-    case Map.fetch(@panes, pathname) do
+    case pane_module(pathname) do
       {:ok, {module, label}} ->
         %{
           path: path,
@@ -69,6 +71,30 @@ defmodule BusterClawWeb.SplitLive do
 
       :error ->
         %{path: path, module: nil, label: pathname, url: url, child_session: %{}}
+    end
+  end
+
+  # A pane owned by an extension is only joinable while that extension is on.
+  # Without this, a split pane would be a way back into a surface the dock has
+  # removed — the gate has to hold at every door, not the front one.
+  @gated_panes %{"/trading" => "trading"}
+
+  defp pane_module(pathname) do
+    with {:ok, pane} <- Map.fetch(@panes, pathname),
+         true <- pane_available?(pathname) do
+      {:ok, pane}
+    else
+      _ -> :error
+    end
+  end
+
+  defp pane_available?(pathname) do
+    case Map.fetch(@gated_panes, pathname) do
+      {:ok, surface} ->
+        not Extensions.surface_owned?(surface) or Extensions.surface_enabled?(surface)
+
+      :error ->
+        true
     end
   end
 

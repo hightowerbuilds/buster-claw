@@ -5,6 +5,8 @@ defmodule BusterClawWeb.Layouts do
   """
   use BusterClawWeb, :html
 
+  alias BusterClaw.Extensions
+
   @navigation_items [
     %{label: "Home", path: "/", icon: "hero-home", image: "/images/brand/home-icon.png"},
     %{
@@ -40,10 +42,13 @@ defmodule BusterClawWeb.Layouts do
     # Trading (TRADING_TAB_ROADMAP Phase 0): the pinned agent conversation
     # beside the accounts dashboard — promoted from a Home sub-tab to a
     # top-level surface. No brand PNG yet; the dock falls back to the label.
+    # Owned by the `trading-robinhood` extension: absent from the dock until it
+    # is switched on. See `navigation_items/0`.
     %{
       label: "Trading",
       path: "/trading",
-      icon: "hero-chart-bar"
+      icon: "hero-chart-bar",
+      surface: "trading"
     },
     # Chart Build, on its own route since 08-07. It was a Trading tab kind with
     # no broker dependency, which made it collateral in gating Trading.
@@ -147,10 +152,30 @@ defmodule BusterClawWeb.Layouts do
     """
   end
 
+  @doc """
+  The dock items this install actually has.
+
+  An item carrying a `:surface` belongs to an extension and appears only while
+  that extension is on. An item whose surface no manifest claims stays visible —
+  removing an extension must not silently hide ordinary application code that
+  happens to share a name.
+
+  `@tab_labels` is deliberately NOT filtered: it labels an open tab, and a tab
+  that is somehow open should be named rather than blank.
+  """
+  def navigation_items do
+    Enum.filter(@navigation_items, fn item ->
+      case item[:surface] do
+        nil -> true
+        surface -> not Extensions.surface_owned?(surface) or Extensions.surface_enabled?(surface)
+      end
+    end)
+  end
+
   defp shell(assigns) do
     assigns =
       assigns
-      |> assign(:nav_items, @navigation_items)
+      |> assign(:nav_items, navigation_items())
       |> assign(:tab_labels, @tab_labels_json)
 
     ~H"""

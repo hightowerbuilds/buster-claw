@@ -93,11 +93,34 @@ defmodule BusterClaw.Application do
         # one shared image pool. A settings migration, not workspace scaffolding.
         # Idempotent; rewrites settings, not files.
         BusterClaw.Appearance.ensure()
+        # Extensions are off on a fresh install. An install that was already
+        # using Trading before it became an extension must not lose it to an
+        # update, so adopt it as on — once, and only if the operator has never
+        # decided. `adopt/2` refuses to overwrite a decision, so someone who
+        # turns Trading off keeps it off through every later boot.
+        adopt_pre_extension_surfaces()
         ok
 
       other ->
         other
     end
+  end
+
+  # Whether this install was using Trading before it became an extension. A
+  # Robinhood conversation is the marker: the surface seeds one the first time
+  # it is opened, so its presence means someone has been there. Portfolio rows
+  # would say the same thing but only for accounts that recorded — a browsed
+  # surface that never recorded is still a surface someone was using.
+  defp adopt_pre_extension_surfaces do
+    case BusterClaw.Agent.Conversations.list_kinds(["robinhood"]) do
+      [] -> :ok
+      [_ | _] -> BusterClaw.Extensions.adopt("trading-robinhood", true)
+    end
+  rescue
+    error ->
+      require Logger
+      Logger.warning("Extension adoption skipped: #{Exception.message(error)}")
+      :ok
   end
 
   # Tell Phoenix to update the endpoint configuration

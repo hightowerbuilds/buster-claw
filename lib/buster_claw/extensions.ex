@@ -169,6 +169,29 @@ defmodule BusterClaw.Extensions do
     end
   end
 
+  @doc """
+  Set enablement **only if the operator has never decided** — the upgrade path
+  for an install that predates the extension.
+
+  Returns `:adopted` when it wrote a value, `:already_decided` when a setting
+  already exists (including one deliberately set to off). Deciding for someone
+  who has already decided is the one thing an upgrade must never do: an operator
+  who turned Trading off does not want it back after an update.
+
+  The *policy* — what counts as "this install already uses the surface" — lives
+  at the call site, because it needs knowledge of the surface's own data that
+  this module has no business carrying.
+  """
+  def adopt(id, enabled?) when is_binary(id) and is_boolean(enabled?) do
+    cond do
+      not valid_id?(id) -> {:error, :invalid_id}
+      not is_nil(Settings.get(setting_key(id))) -> :already_decided
+      true -> Settings.put(setting_key(id), if(enabled?, do: "on", else: "off")) && :adopted
+    end
+  rescue
+    _error -> {:error, :unavailable}
+  end
+
   @doc "Turn an extension off. Its parts leave the skills surface immediately."
   def disable(id) when is_binary(id) do
     if valid_id?(id) do
@@ -178,6 +201,41 @@ defmodule BusterClaw.Extensions do
       {:error, :invalid_id}
     end
   end
+
+  @doc """
+  Whether the extension that owns an application surface is switched on.
+
+  A surface (`"trading"`) is named by exactly one manifest's `surface:` field.
+  This is what the dock, the split-pane list, and the surface's own LiveView
+  consult, so "installed" has one answer everywhere.
+
+  `enabled?/1` is checked **before** the manifest is parsed: when the extension
+  is off — the common case on a fresh install, and the one on every page render
+  — this costs one indexed settings lookup and no parsing.
+
+  Fails closed for the same reason `enabled?/1` does: a surface whose ownership
+  cannot be determined is not installed.
+  """
+  def surface_enabled?(surface) when is_binary(surface) do
+    Enum.any?(ids(), fn id ->
+      enabled?(id) and match?({:ok, %{surface: ^surface}}, fetch(id))
+    end)
+  end
+
+  def surface_enabled?(_surface), do: false
+
+  @doc """
+  Whether any installed manifest claims this surface at all.
+
+  A surface nobody owns is **not** gated — it is ordinary application code that
+  happens to share a name. Without this, deleting an extension would silently
+  hide the surface it used to own instead of leaving it visible.
+  """
+  def surface_owned?(surface) when is_binary(surface) do
+    Enum.any?(ids(), fn id -> match?({:ok, %{surface: ^surface}}, fetch(id)) end)
+  end
+
+  def surface_owned?(_surface), do: false
 
   @doc """
   Workspace skill directories belonging to **enabled** extensions.

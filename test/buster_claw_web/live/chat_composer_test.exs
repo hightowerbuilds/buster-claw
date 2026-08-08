@@ -195,6 +195,13 @@ defmodule BusterClawWeb.ChatComposerTest do
   end
 
   describe "the composer is one implementation" do
+    # Trading is gated by the `trading-robinhood` extension; the composer
+    # contract can only be compared on a surface that mounts.
+    setup do
+      {:ok, _manifest} = BusterClaw.Extensions.enable("trading-robinhood")
+      :ok
+    end
+
     test "Trading renders the same composer contract as Home", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/trading")
 
