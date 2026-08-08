@@ -139,7 +139,32 @@ and the cap. Delete 200 lines from a capped file; it fails asking for the ratche
 
 ## Phase 1 — The markup-heavy panels: long, not overloaded
 
-**Files.** `explore_panel.ex` (1,577 / 82%), `phone_panels.ex` (952 / 80%),
+**Status: `explore_panel.ex` DONE 08-08-26 (`7e55599`). Three files remain.**
+
+> **`explore_panel.ex` 1,577 → 92.** Nine modules under `components/explore/`,
+> largest 360. Panels are `import`ed into the parent, so every dispatch line
+> still reads `<.models_panel />` and every `~H` block moved byte-identically —
+> extracted by line range with `sed`, never retyped. The 55 StatusLive tests
+> passed **unedited**; `check_cycles.sh` still reports its two accepted cycles.
+>
+> Two things worth carrying to the next three files:
+>
+> - **The registry had to become its own dependency-free module.** `Intro` needs
+>   the tiles and `ExplorePanel` imports `Intro`, so leaving a `tiles/0`
+>   accessor on the parent would have put a runtime edge back against a compile
+>   edge — a new cycle, and `check_cycles.sh` fails on exactly that. Any panel
+>   split where a leaf needs parent data has this shape. Extract the data first.
+> - **Cost is honest: +142 lines** (1,577 → 1,719 across ten files) in module
+>   headers and moduledocs. That is the price of the split, not a hidden win.
+>
+> One detour, recorded because it cost real time: the registry comment claimed a
+> command-stats drift test existed, a `grep` using `\|` alternation failed to
+> find it (BSD `grep` does not honour that in a basic regex, and does not warn),
+> and a weaker duplicate got written and then reverted (`739ce28` → `50b73c5`).
+> The test was always there — `status_live_test.exs`, "the Command List tab is
+> the atlas" — and now the comment says so.
+
+**Files.** ~~`explore_panel.ex` (1,577 / 82%)~~, `phone_panels.ex` (952 / 80%),
 `gws_panels.ex` (513 / 80%), `home_widget.ex` (688 / 81%).
 
 **What.** These are not doing several jobs; they are one job written at length.
