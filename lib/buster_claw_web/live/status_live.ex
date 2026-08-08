@@ -30,6 +30,27 @@ defmodule BusterClawWeb.StatusLive do
   # conditions. Matches Weather's cache TTL, so each tick is at most one fetch.
   @sky_refresh_ms :timer.minutes(10)
 
+  # The Phone sub-tab's component id. Named here because this LiveView is the
+  # host half of `PhoneComponent`'s contract and relays broadcasts to it.
+  @phone_component_id "home-phone"
+
+  # The Home sub-tabs, in display order — ONE list, feeding both the rail and the
+  # `select_home_tab` guard. They were two lists until 08-08, which is how Phone
+  # arrived as a button the server then refused: the rail offered it, the guard
+  # had never heard of it, and the click raised.
+  @home_tabs [
+    {"chat", "Chat"},
+    {"calendar", "Calendar"},
+    {"phone", "Phone"},
+    {"notes", "Notes"},
+    {"studio", "Studio"},
+    {"explore", "Explore"}
+  ]
+  @home_tab_keys Enum.map(@home_tabs, &elem(&1, 0))
+
+  @doc "The Home sub-tabs, in display order. The rail and the guard share this."
+  def home_tabs, do: @home_tabs
+
   @impl true
   def mount(_params, _session, socket) do
     today = LocalTime.today()
@@ -39,6 +60,9 @@ defmodule BusterClawWeb.StatusLive do
       Notifications.subscribe()
       # Keep the corner-widget's "Recent activity" live as calls/texts land.
       Telephony.subscribe()
+      # The Phone sub-tab's component cannot subscribe for itself — it has no
+      # process. This host subscribes and relays; see `PhoneComponent`.
+      BusterClaw.Contacts.subscribe()
       # Keep the Notes tab's record live as the agent appends entries.
       BusterClaw.Journal.subscribe()
       # The Music tab renders transport it does not own — the player is the
@@ -286,7 +310,7 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("select_home_tab", %{"tab" => tab}, socket)
-      when tab in ["chat", "calendar", "notes", "studio", "explore"] do
+      when tab in @home_tab_keys do
     {:noreply, switch_home_tab(socket, tab)}
   end
 
@@ -760,7 +784,29 @@ defmodule BusterClawWeb.StatusLive do
     do: {:noreply, load_notifications(socket)}
 
   # A call/text landed — refresh the corner-widget "Recent activity" feed.
-  def handle_info({:telephony_event, _event}, socket), do: {:noreply, load_comms(socket)}
+  # Two consumers of the same broadcast: the corner widget's activity list, and
+  # the Phone sub-tab's component. The component decides what each message means
+  # (`PhoneComponent.handle_notify/2`); this only relays.
+  def handle_info({:telephony_event, _event} = message, socket) do
+    BusterClawWeb.PhoneComponent.notify(@phone_component_id, message)
+    {:noreply, load_comms(socket)}
+  end
+
+  def handle_info(:telephony_costs_updated = message, socket) do
+    BusterClawWeb.PhoneComponent.notify(@phone_component_id, message)
+    {:noreply, socket}
+  end
+
+  def handle_info(message, socket)
+      when message in [:telephony_contacts_changed, :contacts_changed] do
+    BusterClawWeb.PhoneComponent.notify(@phone_component_id, message)
+    {:noreply, load_comms(socket)}
+  end
+
+  def handle_info({BusterClawWeb.PhoneComponent, :reload, id}, socket) do
+    BusterClawWeb.PhoneComponent.notify(id, :reload)
+    {:noreply, socket}
+  end
 
   # An entry (agent or another session) landed in the day's Notes — ping the
   # The dock player announced new transport state; the Music tab renders it.
@@ -1327,15 +1373,7 @@ defmodule BusterClawWeb.StatusLive do
                 aria-label="Home view"
               >
                 <button
-                  :for={
-                    {key, label} <- [
-                      {"chat", "Chat"},
-                      {"calendar", "Calendar"},
-                      {"notes", "Notes"},
-                      {"studio", "Studio"},
-                      {"explore", "Explore"}
-                    ]
-                  }
+                  :for={{key, label} <- home_tabs()}
                   type="button"
                   role="tab"
                   aria-selected={@home_tab == key}
@@ -1379,6 +1417,13 @@ defmodule BusterClawWeb.StatusLive do
                 id="home-calendar"
                 today={@today}
               />
+            </div>
+
+            <%!-- Phone left the dock on 08-08: a normal user has no provisioned
+                  number, so a top-level destination overstated the app. Same
+                  component the `/phone` route renders — see `PhoneComponent`. --%>
+            <div :if={@home_tab == "phone"} class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <.live_component module={BusterClawWeb.PhoneComponent} id="home-phone" />
             </div>
 
             <div :if={@home_tab == "notes"} class="flex min-h-0 flex-1 flex-col">

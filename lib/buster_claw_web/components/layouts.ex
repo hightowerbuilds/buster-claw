@@ -33,11 +33,6 @@ defmodule BusterClawWeb.Layouts do
     # split pane), so its tab-strip label is preserved in @tab_labels below.
     # No brand PNG yet — the dock falls back to the text label (see render below).
     %{
-      label: "Phone",
-      path: "/phone",
-      icon: "hero-phone"
-    },
-    %{
       label: "Settings",
       path: "/appearance",
       icon: "hero-cog-6-tooth",
@@ -57,6 +52,9 @@ defmodule BusterClawWeb.Layouts do
                   # no longer a dock item — label it here so the tab strip still
                   # names it when opened directly.
                   "/calendar" => "Calendar",
+                  # Left the dock 08-08 (now a Home sub-tab); still reachable by
+                  # deep link and in a split pane, so it still needs a label.
+                  "/phone" => "Phone",
                   "/integrations" => "Integrations",
                   "/security" => "Security",
                   "/settings" => "Settings",

@@ -300,6 +300,18 @@ defmodule BusterClawWeb.StatusLiveTest do
 
   defp active_chat(_view), do: "default"
 
+  # The Phone component debounces its reload by 250ms and routes it back through
+  # the host, so the render lands a couple of scheduler hops after the broadcast.
+  # Polling beats a fixed sleep: it passes as soon as it is true, and it fails for
+  # the right reason (the relay is broken) rather than for a slow machine.
+  defp eventually(fun, remaining_ms \\ 2_000) do
+    cond do
+      fun.() -> true
+      remaining_ms <= 0 -> false
+      true -> (Process.sleep(25) || :ok) && eventually(fun, remaining_ms - 25)
+    end
+  end
+
   describe "corner widget tabs" do
     test "default to Time & Place and switch to Contacts (Calendar/Get Started have moved)",
          %{conn: conn} do
@@ -713,6 +725,71 @@ defmodule BusterClawWeb.StatusLiveTest do
       # The active sub-tab carries the primary wash; Chat is active on load.
       assert has_element?(view, "button[phx-value-tab='chat'].bg-primary")
       refute has_element?(view, "button[phx-value-tab='calendar'].bg-primary")
+    end
+
+    # Phone left the dock on 08-08 and became a Home sub-tab. These assert the
+    # move itself — the Message Machine's own behavior stays covered by
+    # `PhoneLiveTest` against `/phone`, since both surfaces render one component.
+    test "the Phone sub-tab shows the Message Machine and hides the chat", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      render_click(view, "select_home_tab", %{"tab" => "phone"})
+
+      assert has_element?(view, "#home-phone-root")
+      assert has_element?(view, "#phone-keypad-stage")
+      assert has_element?(view, "button[phx-value-tab='phone'].bg-primary")
+
+      render_click(view, "select_home_tab", %{"tab" => "chat"})
+      refute has_element?(view, "#home-phone-root")
+    end
+
+    test "Phone is gone from the dock but still reachable directly", %{conn: conn} do
+      {:ok, _view, home} = live(conn, ~p"/")
+
+      # Assert on the rendered dock rather than the item list: the dock is what a
+      # user sees, and it survives however the list is built.
+      refute home =~ ~s(<a href="/phone")
+
+      # The route survives for deep links and split panes, exactly as /calendar
+      # did when it moved — and the tab strip can still name it.
+      {:ok, _view, html} = live(conn, ~p"/phone")
+      assert html =~ "phone-keypad-stage"
+      assert html =~ ~s(&quot;/phone&quot;:&quot;Phone&quot;)
+    end
+
+    test "the rail and the select_home_tab guard cannot disagree", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # Every tab the rail offers must be one the server accepts. This is the
+      # test for the bug the single list exists to prevent.
+      for {key, _label} <- BusterClawWeb.StatusLive.home_tabs() do
+        assert has_element?(view, "button[phx-value-tab='#{key}']")
+        render_click(view, "select_home_tab", %{"tab" => key})
+        assert has_element?(view, "button[phx-value-tab='#{key}'].bg-primary")
+      end
+    end
+
+    # The host half of the component contract: a LiveComponent has no process, so
+    # if StatusLive stops relaying, the sub-tab silently goes stale while /phone
+    # stays live. This is the assertion that catches that.
+    test "a telephony broadcast reaches the sub-tab, not just the widget", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "phone"})
+
+      refute render(view) =~ "(503) 555-0142"
+
+      {:ok, _event} =
+        BusterClaw.Telephony.record_event(%{
+          direction: "inbound",
+          kind: "voicemail",
+          from_number: "+15035550142",
+          to_number: "+18445550100",
+          occurred_at: DateTime.utc_now(:second)
+        })
+
+      # The component debounces its reload by 250ms and asks the host to ping it
+      # back; both hops have to work for this to land.
+      assert eventually(fn -> render(view) =~ "(503) 555-0142" end)
     end
 
     test "the Calendar sub-tab shows the calendar and hides the chat", %{conn: conn} do
