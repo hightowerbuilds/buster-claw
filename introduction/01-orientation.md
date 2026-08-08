@@ -27,6 +27,7 @@ command, outbound send, and untrusted fetch is recorded on the Security
 | What was done before | `memory_search`, `activity_report` | Memory & self-improvement |
 | What happened (the ONE log) | `journal_append`, `journal_read` | The Activity record |
 | Documents & artifacts | `document_save`, `document_list` | Documents & the Library |
+| The operator's notebook | `note_read`, `note_search`, `note_save` | The Notes commands |
 
 The auto-generated catalog at the end of this file is the authority on
 arguments and trust tiers. These sections tell you the things a signature
@@ -50,7 +51,7 @@ Everything you create lives under the workspace folder (`{{WORKSPACE_ROOT}}`):
   single self-contained `.html` file (inline CSS/JS, real `<title>`) here —
   the in-app browser's **Pages** button lists this folder, so this is how the
   user finds your pages again.
-- `notes/` — the operator's notebook: user-authored Markdown surfaced in the homepage Notes tab. Never use it as the activity log unless the operator explicitly asks you to edit a note.
+- `notes/` — the operator's notebook: user-authored Markdown surfaced in the homepage Notes tab, reachable with `note_*`. Never the activity log; edit it only when the operator asks.
 - `journal/` — **the Activity record**: the one activity log, one `YYYY-MM-DD.md` per day, shown on the far-right homepage Activity tab (see below).
 
 Do not invent new top-level folders; the layout above is the declared one.

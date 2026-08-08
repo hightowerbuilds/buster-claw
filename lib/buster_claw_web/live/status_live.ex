@@ -68,6 +68,9 @@ defmodule BusterClawWeb.StatusLive do
       BusterClaw.Contacts.subscribe()
       # Keep the Activity tab's BC Minutes live as the agent appends entries.
       BusterClaw.Journal.subscribe()
+      # Same relay for the Notes vault: a `note_*` command run in the terminal
+      # must show up in an open rail without a tab switch.
+      BusterClaw.Notes.subscribe()
       # The Music tab renders transport it does not own — the player is the
       # sticky dock LiveView, so its state arrives over PubSub.
       BusterClaw.Music.Player.subscribe_state()
@@ -598,6 +601,18 @@ defmodule BusterClawWeb.StatusLive do
   def handle_info({:journal_appended, _date}, socket) do
     send_update(BusterClawWeb.ActivityComponent,
       id: "home-activity",
+      refresh: System.unique_integer()
+    )
+
+    {:noreply, socket}
+  end
+
+  # A note changed under us — an agent command, or another window. The component
+  # re-reads the vault and reconciles the open note; a draft in flight turns this
+  # into the conflict banner rather than a silent replacement.
+  def handle_info({:notes, _event}, socket) do
+    send_update(BusterClawWeb.NotesComponent,
+      id: "home-notes",
       refresh: System.unique_integer()
     )
 

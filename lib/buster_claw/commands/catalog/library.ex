@@ -50,6 +50,86 @@ defmodule BusterClaw.Commands.Catalog.Library do
         }
       },
 
+      # Notes (the operator's notebook — NOT the activity log). No delete: the
+      # destructive verb stays a human one, behind the UI's confirmation.
+      #
+      # All three reads are `:restricted`, unlike `journal_read`, `document_read`
+      # and `memory_search`, which are `:safe` reads of the same workspace. The
+      # difference is whose writing it is: the journal is the agent's own record
+      # and the Library is artifacts it produced, while `notes/` is the
+      # operator's private writing — including the titles, which is why even
+      # `note_list` is not safe-tier.
+      #
+      # Be clear about what this does and does not buy. `:restricted` gates the
+      # `:agent` and `:mcp` callers; it does NOT gate `:agent_untrusted`, which
+      # the baseline stops only at `gated` commands. So an autonomous run working
+      # untrusted-origin content can still read the notebook. What contains that
+      # is the other half: every outbound send is `gated`, so the read cannot
+      # leave the machine without a human in the loop. Reads were not marked
+      # `gated` because that flag means outbound/irreversible, and diluting it
+      # would weaken the check that is actually doing the work.
+      %{
+        name: "note_list",
+        type: :read,
+        tier: :restricted,
+        description:
+          "List the operator's notes (paths and titles, no bodies). Notes is the operator's own Markdown notebook on the homepage Notes tab — never the activity log; that is journal_append.",
+        args: %{}
+      },
+      %{
+        name: "note_read",
+        type: :read,
+        tier: :restricted,
+        description:
+          "Read one note. Returns its body and the revision you must pass back to note_save.",
+        args: %{
+          "path" => %{
+            type: :string,
+            required: true,
+            description: "Vault-relative path, e.g. Projects/Launch.md"
+          }
+        }
+      },
+      %{
+        name: "note_search",
+        type: :read,
+        tier: :restricted,
+        description: "Search note titles and bodies; returns paths with a short snippet.",
+        args: %{"query" => %{type: :string, required: true}}
+      },
+      %{
+        name: "note_create",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Create a note in the operator's notebook, optionally with a body. Only when the operator asked for a note; findings and reports belong in the Library (document_save).",
+        args: %{
+          "title" => %{type: :string, required: true},
+          "folder" => %{
+            type: :string,
+            required: false,
+            description: "Existing vault folder; defaults to the vault root"
+          },
+          "body" => %{type: :string, required: false}
+        }
+      },
+      %{
+        name: "note_save",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Overwrite a note. Requires the revision from note_read; if the file changed since, the save is refused with the current revision so you can re-read and merge rather than silently winning.",
+        args: %{
+          "path" => %{type: :string, required: true},
+          "body" => %{type: :string, required: true},
+          "revision" => %{
+            type: :string,
+            required: true,
+            description: "The revision returned by note_read"
+          }
+        }
+      },
+
       # Events
       Helpers.list_entry("event_list", "List all calendar events."),
       Helpers.get_entry("event_get", "Fetch an event by ID."),

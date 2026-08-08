@@ -11,8 +11,6 @@ defmodule BusterClawWeb.Notes.Editor do
   """
   use BusterClawWeb, :html
 
-  alias BusterClaw.Markdown
-
   attr :target, :any, required: true, doc: "the owning LiveComponent's @myself"
   attr :selected, :string, default: nil
   attr :body, :string, required: true
@@ -23,6 +21,8 @@ defmodule BusterClawWeb.Notes.Editor do
   attr :folder_options, :list, required: true
   attr :editor_form, :any, required: true
   attr :preview_open, :boolean, required: true
+  attr :preview_html, :string, required: true
+  attr :backlinks, :list, required: true
 
   @doc "The Notes editor pane."
   def editor(assigns) do
@@ -229,7 +229,31 @@ defmodule BusterClawWeb.Notes.Editor do
           <p :if={String.trim(@body) == ""} class="font-mono text-xs text-base-content/40">
             Your rendered Markdown will appear here.
           </p>
-          <div :if={String.trim(@body) != ""}>{raw(Markdown.to_html(@body))}</div>
+          <%!-- Sanitized in `Markdown.to_html/1` before it ever reaches here; a
+                note may be agent-authored or imported, so its HTML is never
+                trusted. Wiki links arrive as `#note/…` fragments the NoteEditor
+                hook intercepts — inert rather than a 404 if that hook is gone. --%>
+          <div :if={String.trim(@body) != ""} data-note-links>{raw(@preview_html)}</div>
+
+          <section :if={@backlinks != []} id="note-backlinks" class="not-prose mt-6">
+            <h3 class="font-mono text-[10px] font-bold uppercase tracking-wide text-base-content/45">
+              Linked from
+            </h3>
+            <ul class="mt-1.5 flex flex-col gap-1">
+              <li :for={note <- @backlinks}>
+                <button
+                  type="button"
+                  phx-click="select_note"
+                  phx-value-path={note.path}
+                  phx-target={@target}
+                  class="flex w-full items-center gap-1.5 rounded-xs px-2 py-1 text-left font-mono text-xs text-base-content/70 transition hover:bg-base-content/7 hover:text-base-content"
+                >
+                  <.icon name="hero-arrow-uturn-left" class="size-3 shrink-0 opacity-55" />
+                  <span class="truncate">{note.path}</span>
+                </button>
+              </li>
+            </ul>
+          </section>
         </article>
       </div>
     </section>

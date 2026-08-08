@@ -133,6 +133,65 @@ defmodule BusterClaw.NotesTest do
     assert ["Projects/zeta.md", "Alpha.md"] = Enum.map(Notes.list(), & &1.path)
   end
 
+  test "search reads titles and bodies and returns a usable snippet", %{root: root} do
+    {:ok, note} = Notes.create("Remote access")
+
+    {:ok, _saved} =
+      Notes.save(
+        note.path,
+        "# Remote access\n\nKeep Phoenix on loopback and tunnel with ssh -L.\n",
+        note.revision
+      )
+
+    assert [%{path: "Remote access.md", snippet: snippet}] = Notes.search("LOOPBACK")
+    assert snippet =~ "loopback"
+    refute snippet =~ "\n"
+
+    # A title-only match still gets a snippet — the note's opening line.
+    assert [%{snippet: opening}] = Notes.search("remote")
+    assert opening =~ "Remote access"
+
+    assert Notes.search("nothing here") == []
+    assert Notes.search("   ") == []
+
+    # Oversized files are skipped rather than read into memory to be searched.
+    File.write!(Path.join([root, "notes", "Huge.md"]), String.duplicate("loopback ", 200_000))
+    assert [%{path: "Remote access.md"}] = Notes.search("loopback")
+  end
+
+  test "a snippet around a multi-byte match stays valid UTF-8" do
+    {:ok, note} = Notes.create("Unicode")
+    body = String.duplicate("→ ", 60) <> "needle" <> String.duplicate(" ←", 60)
+    {:ok, _saved} = Notes.save(note.path, body, note.revision)
+
+    assert [%{snippet: snippet}] = Notes.search("needle")
+    assert String.valid?(snippet)
+    assert snippet =~ "needle"
+  end
+
+  test "backlinks and link resolution follow the vault, not an index" do
+    assert :ok = Notes.create_folder("Projects")
+    {:ok, target} = Notes.create("Remote access")
+    {:ok, source} = Notes.create("Launch", "Projects")
+
+    {:ok, _saved} =
+      Notes.save(
+        source.path,
+        "See [[Remote access]] and [[Ghost]].\n\n```\n[[Remote access]]\n```\n",
+        source.revision
+      )
+
+    assert [%{path: "Projects/Launch.md"}] = Notes.backlinks(target.path)
+    assert Notes.backlinks(source.path) == []
+
+    assert Notes.resolve_link("Remote access") == "Remote access.md"
+    assert Notes.resolve_link("Remote access.md") == "Remote access.md"
+    assert Notes.resolve_link("Projects/Launch") == "Projects/Launch.md"
+    assert Notes.resolve_link("Ghost") == nil
+    assert Notes.resolve_link("") == nil
+    assert Notes.resolve_link(nil) == nil
+  end
+
   test "blank and duplicate titles are rejected" do
     assert {:error, :blank} = Notes.create("   ")
     assert {:error, :blank} = Notes.create("///")

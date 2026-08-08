@@ -764,3 +764,117 @@ gaming it is not.
 dead buttons and a blind test were all sitting in files nobody had reason to open
 until something needed moving — and none of them would have been found by the
 tests that were already green.
+
+---
+
+# Late night: Notes finishes, and the roadmap closes
+
+Phases 3, 4 and 5 landed in one pass and **Home Activity + Notes is archived**.
+Notes now finds things — search, a ⌘P switcher, `[[wiki links]]`, backlinks —
+and the agent can touch the notebook through five commands with an explicit
+boundary. Phase 5 is closed **unbuilt**, every candidate with a reason.
+
+## A link href had three constraints, and only one shape satisfied all of them
+
+Rendering `[[Remote access]]` as something clickable looks like a formatting
+problem. It is a security problem wearing a formatting problem's clothes:
+
+- Note HTML is **sanitized** before it reaches the webview, because a note may be
+  agent-authored or imported. So `data-note-path` is out — `data-` attributes are
+  stripped. The `href` is the only thing that survives to carry the target.
+- `note:Projects/Launch.md` is also out. A custom scheme is stripped too; the
+  anchor renders with **no href at all**, silently.
+- `/notes/Projects/Launch.md` survives sanitization — and is a **404** the moment
+  the click handler doesn't run.
+
+`#note/<encoded path>` satisfies all three: it survives, it carries the target,
+and an unhandled click on a fragment does nothing at all. Missing targets get
+`#note-new/<title>` and create the note. **When JavaScript fails, the fallback
+should be inert rather than wrong.**
+
+## The threshold I was about to publish was 10x off
+
+The plan said to publish measured search thresholds, so I wrote "roughly 25 ms"
+in the docstring and then measured it: **125 ms to list, 334 ms to search** a
+500-note vault. Nearly all of it was one line.
+
+`FileManager.within?/2` canonicalizes every component of every path — a
+`read_link` syscall per component, ~4,000 for a 500-note walk — and it was buying
+**nothing** in that walk. A planted symlink `lstat`s as `:symlink`, which matches
+neither the file branch nor the directory branch, so the walk had already refused
+it before `within?` was consulted. Reading bodies through `get/1` then paid for
+the same check a second time.
+
+| | before | after |
+|---|---|---|
+| `list/0` | 125 ms | **24 ms** |
+| `search/1` | 334 ms | **87 ms** |
+| `backlinks/1` | 295 ms | **52 ms** |
+
+`within?/2` still guards every caller-supplied path, where the escape is real.
+And at 87 ms there is no case for the SQLite FTS index the plan held in reserve:
+it would buy tens of milliseconds for a second source of truth and a set of
+invalidation rules. **A defence in the wrong place costs real time and protects
+nothing — and you find out by measuring the claim you were about to publish.**
+
+## The snapshot test asked a question I had answered too fast
+
+`note_list`, `note_read` and `note_search` were written `:safe`, matching
+`journal_read` and `document_read`. The catalog-invariants test refused them:
+*commands newly promoted to :safe (runnable by any MCP/agent token)*.
+
+It is right, and the reason is whose writing it is. The journal is the agent's
+own record and the Library holds artifacts it produced; `notes/` is the
+**operator's private writing** — including the titles, which is why even
+`note_list` moved. Scrubbing note bodies out of audit rows and then letting any
+token read them would have been incoherent.
+
+What matters more is being precise about what the fix buys, because tiers invite
+over-claiming. `:restricted` gates `:agent` and `:mcp`. It does **not** gate
+`:agent_untrusted`, whose baseline stops only at `gated` commands — so an
+autonomous run on untrusted content can still read the notebook. What contains
+that is the other half of the design: **every outbound send is `gated`, so a read
+cannot leave the machine without a human in the loop.** The reads were
+deliberately not marked `gated`; that flag means outbound or irreversible, and
+diluting it would weaken the check actually doing the work.
+
+There is no `note_delete`. Deleting stays a human action behind the UI's confirm.
+
+## A broadcast that reset the rail under the cursor
+
+Wiring the host relay — so a terminal `note_*` command shows up in an open rail —
+also wired the editor to its **own** saves. Every 700 ms autosave echoed back and
+reset the file rail while the operator typed. `Phoenix.PubSub.broadcast_from/4`
+with `self()` fixes it exactly: the caller already knows what it did, and every
+*other* subscriber still hears it. **The publisher's own process is almost never
+an audience.**
+
+## Closing Phase 5 by writing down what would reopen it
+
+Nine polish candidates, none built, each with a decision and a **trigger**:
+`.trash/` when someone actually loses a note; attachments when someone wants an
+image; a filesystem watcher when the focus/tick contract demonstrably misses an
+edit; a graph when the backlink list stops answering "what links here". One —
+the daily-note template — was **rejected outright rather than deferred**, because
+a dated note in the notebook is the exact confusion this roadmap removed.
+
+A deferral with a trigger is a decision. A deferral without one is a list.
+
+## Small things that earned their keep
+
+- An existing test compared the Explore tab's hardcoded command total against the
+  live catalog and failed the moment five commands landed. That number is
+  literal on purpose (to avoid a compile cycle) and the test is what keeps it
+  honest — it caught the drift twice in one session, since the tier change moved
+  the safe/restricted split too.
+- The uncovered JS behaviours went to `LEFTOVERS.md` rather than being quietly
+  dropped: debounce-after-destroy, caret survival across patches, reduced-motion.
+  All three need a DOM harness this repo does not have, and **faking coverage
+  would be worse than the gap because it reads as coverage.**
+
+## The late-night line
+
+**Measure the claim you are about to publish, and say plainly what your defence
+does not cover.** The search threshold was 10x wrong until it was timed; the tier
+fix was worth making and still leaves a read an untrusted run can perform. Both
+are only useful written down in the form someone can act on later.

@@ -153,6 +153,30 @@ designed without this consumer in mind.
 
 ---
 
+### A DOM harness for LiveView hooks, or an honest admission there isn't one
+
+**What.** Three JS behaviours in the Notes editor are uncovered and cannot be
+covered by anything this repo currently owns: a debounce firing after its
+component was destroyed, caret/selection survival across a LiveView preview
+patch, and reduced-motion/narrow-layout interaction. The same gap applies to
+every other hook in `assets/js/hooks/` — Notes is only where it got written down.
+`bun test` covers pure functions (this is why `note_keys.js` exists at all), and
+`render_hook/3` covers the *server* end of a hook's events while never loading
+`assets/js`.
+
+**Why deferred.** Adding jsdom or a real browser runner is a testing-strategy
+decision for the whole app, and it was not this roadmap's to make. Faking it —
+asserting on markup and calling it a JS test — would be worse than the gap,
+because it reads as coverage.
+
+**What makes it expensive later.** Nothing gets more expensive; it stays exactly
+this size. The risk is the failure mode instead: hook bugs are invisible to a
+green suite, which is the same shape as the `phx-hook`-not-registered bug that
+already shipped once and now has `HooksRegisteredTest` guarding it. That test
+covers *existence*; nothing covers *behaviour*.
+
+---
+
 ### Refresh out-of-repo prompts naming the old click/fill error atoms
 
 **What.** `browser_click` / `browser_fill` fallbacks were renamed

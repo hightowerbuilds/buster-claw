@@ -1082,6 +1082,178 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert has_element?(view, "#notes-empty-state")
     end
 
+    test "the Notes rail searches bodies and shows a snippet", %{conn: conn, root: root} do
+      File.mkdir_p!(Path.join(root, "notes"))
+      File.write!(Path.join([root, "notes", "Tunnel.md"]), "Keep Phoenix on loopback.\n")
+      File.write!(Path.join([root, "notes", "Groceries.md"]), "Oat milk.\n")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      assert has_element?(view, ~s(button[phx-value-path="Groceries.md"]))
+
+      view
+      |> form("#notes-search-form", %{"search" => %{"query" => "loopback"}})
+      |> render_change()
+
+      assert has_element?(view, ~s(button[phx-value-path="Tunnel.md"]))
+      refute has_element?(view, ~s(button[phx-value-path="Groceries.md"]))
+      assert render(view) =~ "Keep Phoenix on loopback."
+
+      view
+      |> form("#notes-search-form", %{"search" => %{"query" => "zzz no match"}})
+      |> render_change()
+
+      assert render(view) =~ "No notes match."
+
+      view
+      |> form("#notes-search-form", %{"search" => %{"query" => ""}})
+      |> render_change()
+
+      assert has_element?(view, ~s(button[phx-value-path="Groceries.md"]))
+    end
+
+    test "the switcher jumps to a note by keyboard", %{conn: conn, root: root} do
+      File.mkdir_p!(Path.join(root, "notes"))
+      File.write!(Path.join([root, "notes", "Alpha.md"]), "first\n")
+      File.write!(Path.join([root, "notes", "Beta.md"]), "second\n")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      refute has_element?(view, "#note-switcher")
+      view |> element("#home-notes") |> render_hook("open_switcher", %{})
+
+      assert has_element?(view, "#note-switcher")
+      assert has_element?(view, ~s(#note-switcher-input[aria-activedescendant]))
+      assert has_element?(view, ~s(li[role="option"][aria-selected="true"]), "Alpha")
+
+      # Arrow down moves the selection; Enter opens whatever it landed on.
+      view |> element("#home-notes") |> render_hook("switcher_move", %{"dir" => "down"})
+      assert has_element?(view, ~s(li[role="option"][aria-selected="true"]), "Beta")
+
+      view |> element("#home-notes") |> render_hook("switcher_select", %{})
+      refute has_element?(view, "#note-switcher")
+      assert has_element?(view, "#notes-editor-pane")
+      assert render(view) =~ "Beta.md"
+
+      # Escape closes without touching the note.
+      view |> element("#home-notes") |> render_hook("open_switcher", %{})
+      view |> element("#home-notes") |> render_hook("close_switcher", %{})
+      refute has_element?(view, "#note-switcher")
+      assert has_element?(view, "#notes-editor-pane")
+    end
+
+    test "wiki links open notes, offer to create missing ones, and list backlinks",
+         %{conn: conn, root: root} do
+      File.mkdir_p!(Path.join(root, "notes"))
+      File.write!(Path.join([root, "notes", "Remote access.md"]), "# Remote access\n")
+
+      File.write!(
+        Path.join([root, "notes", "Launch.md"]),
+        "See [[Remote access]] and [[Ghost]].\n"
+      )
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+      view |> element(~s(button[phx-value-path="Launch.md"])) |> render_click()
+
+      html = render(view)
+      assert html =~ ~s(href="#note/Remote+access.md")
+      assert html =~ ~s(href="#note-new/Ghost")
+
+      # A known link opens the note it names...
+      view
+      |> element("#notes-editor-pane")
+      |> render_hook("open_link", %{"path" => "Remote access.md"})
+
+      assert render(view) =~ "Remote access.md"
+      # ...and the note it came from is listed as a backlink.
+      assert has_element?(view, "#note-backlinks")
+      assert has_element?(view, ~s(#note-backlinks button[phx-value-path="Launch.md"]))
+
+      # A missing link creates the note rather than dead-ending.
+      view
+      |> element("#notes-editor-pane")
+      |> render_hook("create_link", %{"title" => "Ghost"})
+
+      assert File.exists?(Path.join([root, "notes", "Ghost.md"]))
+      assert has_element?(view, ~s(button[phx-value-path="Ghost.md"]))
+    end
+
+    test "a wiki link inside a code fence is left as text", %{conn: conn, root: root} do
+      File.mkdir_p!(Path.join(root, "notes"))
+      File.write!(Path.join([root, "notes", "Syntax.md"]), "```\n[[Fenced]]\n```\n")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+      view |> element(~s(button[phx-value-path="Syntax.md"])) |> render_click()
+
+      html = render(view)
+      assert html =~ "[[Fenced]]"
+      refute html =~ "#note-new/Fenced"
+    end
+
+    test "the new-note chord reveals the rail by clearing the selection", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Open one"}})
+      |> render_submit()
+
+      assert has_element?(view, "#notes-editor-pane")
+
+      view |> element("#home-notes") |> render_hook("new_note", %{})
+
+      refute has_element?(view, "#notes-editor-pane")
+      assert has_element?(view, "#new-note-title")
+    end
+
+    test "an agent's note command reaches an open Notes rail without a tab switch",
+         %{conn: conn, root: root} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      refute has_element?(view, ~s(button[phx-value-path="Agent note.md"]))
+
+      {:ok, _created} =
+        Commands.call("note_create", %{"title" => "Agent note", "body" => "from the terminal\n"})
+
+      assert has_element?(view, ~s(button[phx-value-path="Agent note.md"]))
+      assert File.exists?(Path.join([root, "notes", "Agent note.md"]))
+    end
+
+    test "an agent edit colliding with an open draft preserves both versions",
+         %{conn: conn, root: root} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Shared"}})
+      |> render_submit()
+
+      # The operator is mid-sentence: a draft the server knows about but has not
+      # saved (exactly the window `phx-debounce` opens).
+      view |> element("#notes-editor-pane") |> render_hook("note_dirty", %{})
+      assert has_element?(view, ~s(#note-save-status[data-state="unsaved"]))
+
+      {:ok, read} = Commands.call("note_read", %{"path" => "Shared.md"})
+
+      {:ok, _saved} =
+        Commands.call("note_save", %{
+          "path" => "Shared.md",
+          "body" => "the agent's version\n",
+          "revision" => read.revision
+        })
+
+      # The broadcast reaches the open panel: conflict, not a silent swap.
+      assert has_element?(view, ~s(#note-save-status[data-state="conflict"]))
+      assert has_element?(view, "#note-conflict")
+      assert has_element?(view, "#copy-draft-button")
+      assert File.read!(Path.join([root, "notes", "Shared.md"])) == "the agent's version\n"
+    end
+
     test "the Activity sub-tab shows BC Minutes without an editing surface", %{conn: conn} do
       {:ok, _} = BusterClaw.Journal.append("Handled dispatch #7.", :agent)
       {:ok, view, _html} = live(conn, ~p"/")

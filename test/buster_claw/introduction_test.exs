@@ -101,6 +101,15 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "the Library holds artifacts"
     assert md =~ "Activity holds what happened"
 
+    # The note_* family is taught WITH its boundary, not as a bare capability:
+    # giving the model write access to the operator's notebook without the
+    # "only when asked" rule is how Notes becomes a second activity log again.
+    assert md =~ "note_read"
+    assert md =~ "note_save"
+    assert md =~ "only when the\noperator asked for a note"
+    assert md =~ "there is no note delete"
+    assert md =~ "revision"
+
     # notesthatfloat.com is a separate product, acknowledged and firewalled off.
     assert md =~ "notesthatfloat.com"
     assert md =~ "not part of Buster Claw"

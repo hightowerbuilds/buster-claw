@@ -29,8 +29,16 @@ defmodule BusterClawWeb.NotesComponent do
 
   import BusterClawWeb.Notes.Editor
   import BusterClawWeb.Notes.Rail
+  import BusterClawWeb.Notes.Switcher
 
+  alias BusterClaw.Markdown
   alias BusterClaw.Notes
+  alias BusterClaw.Notes.Links
+
+  # The switcher is a jump list, not a search results page: past a screenful,
+  # more rows are noise. The count of what was left out is shown rather than
+  # dropped silently.
+  @switcher_limit 20
 
   @impl true
   def mount(socket) do
@@ -51,6 +59,16 @@ defmodule BusterClawWeb.NotesComponent do
      |> assign(:folder_form_open, false)
      |> assign(:renaming, false)
      |> assign(:preview_open, false)
+     |> assign(:preview_html, "")
+     |> assign(:backlinks, [])
+     |> assign(:query, "")
+     |> assign(:index, [])
+     |> assign(:search_form, search_form(""))
+     |> assign(:switcher_open, false)
+     |> assign(:switcher_form, switcher_form(""))
+     |> assign(:switcher_results, [])
+     |> assign(:switcher_total, 0)
+     |> assign(:switcher_index, 0)
      |> assign(:loaded, false)
      |> stream(:notes, [])}
   end
@@ -69,10 +87,22 @@ defmodule BusterClawWeb.NotesComponent do
         |> assign(:loaded, true)
         |> load_folders()
         |> reload_notes()
+        |> refresh_open_note()
       end
 
     {:ok, socket}
   end
+
+  # The vault changed — an agent command, another window, an external editor.
+  # The list is already back; this decides what it means for the note on screen,
+  # and it is the same decision the focus check makes, deliberately: a clean
+  # editor adopts the new bytes, a draft in flight gets the conflict banner.
+  defp refresh_open_note(%{assigns: %{selected: nil}} = socket), do: socket
+
+  defp refresh_open_note(%{assigns: %{save_status: :conflict}} = socket), do: socket
+
+  defp refresh_open_note(socket),
+    do: reconcile(socket, Notes.get(socket.assigns.selected))
 
   @impl true
   def handle_event("create_note", %{"note" => params}, socket) do
@@ -126,6 +156,88 @@ defmodule BusterClawWeb.NotesComponent do
 
   def handle_event("close_note", _params, socket) do
     {:noreply, clear_selection(socket)}
+  end
+
+  def handle_event("search_notes", %{"search" => params}, socket) do
+    query = Map.get(params, "query", "")
+
+    {:noreply,
+     socket
+     |> assign(:query, query)
+     |> assign(:search_form, search_form(query))
+     |> reload_notes()}
+  end
+
+  # ⌘N. Clearing the selection is what makes this work on a narrow window, where
+  # the rail — and the field about to be focused — is hidden behind the editor.
+  def handle_event("new_note", _params, socket) do
+    {:noreply, socket |> close_switcher() |> clear_selection()}
+  end
+
+  def handle_event("open_switcher", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:switcher_open, true)
+     |> assign(:switcher_form, switcher_form(""))
+     |> switcher_results("")}
+  end
+
+  def handle_event("close_switcher", _params, socket) do
+    {:noreply, close_switcher(socket)}
+  end
+
+  def handle_event("switcher_search", %{"switcher" => params}, socket) do
+    query = Map.get(params, "query", "")
+
+    {:noreply,
+     socket
+     |> assign(:switcher_form, switcher_form(query))
+     |> switcher_results(query)}
+  end
+
+  def handle_event("switcher_move", %{"dir" => dir}, socket) do
+    count = length(socket.assigns.switcher_results)
+
+    index =
+      case {dir, socket.assigns.switcher_index} do
+        {_dir, _current} when count == 0 -> 0
+        {"up", current} -> rem(current - 1 + count, count)
+        {_down, current} -> rem(current + 1, count)
+      end
+
+    {:noreply, assign(socket, :switcher_index, index)}
+  end
+
+  def handle_event("switcher_select", _params, socket) do
+    case Enum.at(socket.assigns.switcher_results, socket.assigns.switcher_index) do
+      %{path: path} -> open_path(close_switcher(socket), path)
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("switcher_pick", %{"path" => path}, socket) do
+    open_path(close_switcher(socket), path)
+  end
+
+  # A wiki link in the preview. The path came from the vault's own resolution, so
+  # it is re-read rather than trusted: the note may have moved since it rendered.
+  def handle_event("open_link", %{"path" => path}, socket), do: open_path(socket, path)
+
+  # A link to a note that does not exist yet. Creating it here is the whole point
+  # of rendering missing links differently from broken ones.
+  def handle_event("create_link", %{"title" => title}, socket) do
+    {folder, name} = split_link_title(title)
+
+    case Notes.create(name, folder) do
+      {:ok, note} ->
+        {:noreply, socket |> reload_notes() |> load_folders() |> open(note)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:save_status, :error)
+         |> assign(:save_error, create_error(reason))}
+    end
   end
 
   def handle_event("toggle_preview", _params, socket) do
@@ -278,12 +390,62 @@ defmodule BusterClawWeb.NotesComponent do
     |> assign(:conflict, nil)
     |> assign(:renaming, false)
     |> assign(:unsupported, nil)
+    |> assign(:backlinks, Notes.backlinks(note.path))
   end
 
+  defp open_path(socket, path) do
+    case Notes.get(path) do
+      note when is_map(note) -> {:noreply, open(socket, note)}
+      nil -> {:noreply, socket |> clear_selection() |> reload_notes()}
+      {:error, reason} -> {:noreply, unsupported(socket, path, reason)}
+    end
+  end
+
+  # Rendering the preview here rather than in `render/1` keeps a vault read and a
+  # Markdown pass off every re-render — including the ones a sibling assign
+  # causes, which have nothing to do with the note's text.
   defp assign_draft(socket, body) do
     socket
     |> assign(:body, body)
     |> assign(:editor_form, editor_form(body))
+    |> assign(:preview_html, preview_html(body, socket.assigns.index))
+  end
+
+  defp preview_html("", _index), do: ""
+
+  defp preview_html(body, index) do
+    body
+    |> Links.replace(&Notes.resolve_link(&1, index))
+    |> Markdown.to_html()
+  end
+
+  # A link target may name a folder ("Projects/Launch"); creation takes the
+  # folder and the title separately, and inventing folders from a link would be
+  # a filesystem write nobody asked for.
+  defp split_link_title(title) do
+    case Path.dirname(title) do
+      "." -> {"", title}
+      folder -> {folder, Path.basename(title)}
+    end
+  end
+
+  defp close_switcher(socket) do
+    socket
+    |> assign(:switcher_open, false)
+    |> assign(:switcher_index, 0)
+  end
+
+  defp switcher_results(socket, query) do
+    all =
+      case String.trim(query) do
+        "" -> socket.assigns.index
+        term -> Notes.search(term)
+      end
+
+    socket
+    |> assign(:switcher_results, Enum.take(all, @switcher_limit))
+    |> assign(:switcher_total, length(all))
+    |> assign(:switcher_index, 0)
   end
 
   defp clear_selection(socket) do
@@ -330,8 +492,16 @@ defmodule BusterClawWeb.NotesComponent do
     end
   end
 
+  # `index` is the same list the rail streams, kept as a plain assign because a
+  # stream cannot be read back and both wiki-link resolution and the switcher
+  # need to consult it without re-walking the vault.
   defp reload_notes(socket) do
-    stream(socket, :notes, group_headings(Notes.list()), reset: true)
+    index = Notes.list()
+    shown = if socket.assigns.query == "", do: index, else: Notes.search(socket.assigns.query)
+
+    socket
+    |> assign(:index, index)
+    |> stream(:notes, group_headings(shown), reset: true)
   end
 
   defp load_folders(socket), do: assign(socket, :folders, Notes.folders())
@@ -363,6 +533,8 @@ defmodule BusterClawWeb.NotesComponent do
 
   defp folder_form, do: to_form(%{"name" => ""}, as: :folder)
   defp editor_form(body), do: to_form(%{"body" => body}, as: :editor)
+  defp search_form(query), do: to_form(%{"query" => query}, as: :search)
+  defp switcher_form(query), do: to_form(%{"query" => query}, as: :switcher)
 
   defp rename_form(nil), do: to_form(%{"title" => "", "folder" => ""}, as: :rename)
 
@@ -410,11 +582,28 @@ defmodule BusterClawWeb.NotesComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="home-notes" class="flex min-h-0 flex-1 gap-3 lg:gap-4">
+    <div
+      id="home-notes"
+      phx-hook="NotesKeys"
+      phx-target={@myself}
+      data-switcher-open={to_string(@switcher_open)}
+      class="flex min-h-0 flex-1 gap-3 lg:gap-4"
+    >
+      <.switcher
+        target={@myself}
+        open={@switcher_open}
+        form={@switcher_form}
+        results={@switcher_results}
+        total={@switcher_total}
+        index={@switcher_index}
+      />
+
       <.rail
         target={@myself}
         notes={@streams.notes}
         selected={@selected}
+        search_form={@search_form}
+        query={@query}
         collapsed={!is_nil(@selected) or !is_nil(@unsupported)}
         folders={@folders}
         folder_options={folder_options(@folders)}
@@ -479,6 +668,8 @@ defmodule BusterClawWeb.NotesComponent do
         folder_options={folder_options(@folders)}
         editor_form={@editor_form}
         preview_open={@preview_open}
+        preview_html={@preview_html}
+        backlinks={@backlinks}
       />
     </div>
     """

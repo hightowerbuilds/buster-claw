@@ -1,5 +1,5 @@
 import {expect, test, describe} from "bun:test"
-import {isSaveChord, shouldAnnounceDirty} from "./note_keys.js"
+import {isSaveChord, notesIntent, shouldAnnounceDirty} from "./note_keys.js"
 
 describe("isSaveChord", () => {
   test("⌘S and Ctrl+S both save", () => {
@@ -42,5 +42,37 @@ describe("shouldAnnounceDirty", () => {
 
   test("a freshly opened note announces on its first edit", () => {
     expect(shouldAnnounceDirty({dirty: false, state: "idle"})).toBe(true)
+  })
+})
+
+describe("notesIntent", () => {
+  const key = (k, extra = {}) => ({key: k, ...extra})
+
+  test("⌘P opens the switcher and ⌘N starts a note, open or not", () => {
+    expect(notesIntent(key("p", {metaKey: true}), {switcherOpen: false})).toBe("switcher")
+    expect(notesIntent(key("N", {ctrlKey: true}), {switcherOpen: true})).toBe("new")
+  })
+
+  test("⌘S is left to the editor hook, so it is never double-submitted", () => {
+    expect(notesIntent(key("s", {metaKey: true}), {switcherOpen: false})).toBe(null)
+  })
+
+  test("navigation keys belong to the switcher only while it is open", () => {
+    // Otherwise arrows and Enter would be stolen from the textarea.
+    expect(notesIntent(key("ArrowDown"), {switcherOpen: false})).toBe(null)
+    expect(notesIntent(key("Enter"), {switcherOpen: false})).toBe(null)
+    expect(notesIntent(key("Escape"), {switcherOpen: false})).toBe(null)
+
+    expect(notesIntent(key("ArrowDown"), {switcherOpen: true})).toBe("down")
+    expect(notesIntent(key("ArrowUp"), {switcherOpen: true})).toBe("up")
+    expect(notesIntent(key("Enter"), {switcherOpen: true})).toBe("select")
+    expect(notesIntent(key("Escape"), {switcherOpen: true})).toBe("close")
+  })
+
+  test("ordinary typing is none of its business", () => {
+    expect(notesIntent(key("a"), {switcherOpen: false})).toBe(null)
+    expect(notesIntent(key("p"), {switcherOpen: true})).toBe(null)
+    expect(notesIntent(null, {})).toBe(null)
+    expect(notesIntent({}, {})).toBe(null)
   })
 })

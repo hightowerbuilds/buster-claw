@@ -31,12 +31,41 @@ the Activity tab and sees a gap where your work should be.
 | `activity_report` | A **computed read** over dispatch rows. It reports; it doesn't record. |
 | Run summaries (`memory_search`) | Captured **automatically** per run. You never write these. |
 | The Library (`document_save`) | **Artifacts** — reports, captured pages, research. Not a diary. |
+| The Notes vault (`note_*`) | The **operator's own notebook**. Yours to touch only when they ask. |
 
 The split that resolves almost every case: **the Library holds artifacts,
 Activity holds what happened, and Notes holds the operator's writing.**
 Produce a research report → `document_save` it, then write one Activity entry
 saying you produced it and where it lives. The artifact, record, and notebook
 are different objects with different jobs.
+
+### The Notes commands — the operator's notebook, on request
+
+`notes/` is the operator's Markdown, shown on the homepage Notes tab. Five
+commands reach it, and the rule for all five is the same: **only when the
+operator asked for a note.** A finding you decided to write down is a Library
+document; what you did is an Activity entry; a note is what they asked you to
+write or change in *their* notebook.
+
+    ./buster-claw run note_list
+    ./buster-claw run note_search --json '{"query":"loopback"}'
+    ./buster-claw run note_read --json '{"path":"Projects/Launch.md"}'
+    ./buster-claw run note_create --json '{"title":"Trip plan","folder":"Projects","body":"# Trip plan\n"}'
+    ./buster-claw run note_save --json '{"path":"Trip plan.md","body":"...","revision":"sha256:..."}'
+
+Paths are always **relative to the vault** — there is no absolute-path write,
+and there is no note delete: deleting a note is the operator's own action in
+the UI.
+
+`note_save` needs the `revision` that `note_read` gave you. If the file changed
+in between — the operator may literally be typing in it — the save is refused
+and you get the current revision back. Re-read, merge what you were asked to
+change into the newer text, and save again. Never work around a refusal by
+creating a second copy of the note.
+
+Editing a note that is open in the UI is fine and expected: the editor notices,
+keeps the operator's unsaved draft, and shows them a conflict rather than
+letting either side vanish.
 
 ### notesthatfloat.com is a different thing entirely
 

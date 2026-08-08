@@ -199,7 +199,11 @@ defmodule BusterClaw.Commands do
   # (`{:block, _}`) is a hard refusal — there is nothing to confirm — and returns
   # `:policy_blocked`. Both land on the Sentinel feed as a critical security block.
   defp refuse(name, args, caller, {:confirm, meta}) do
-    BusterClaw.Sentinel.Pending.record(name, args, caller)
+    # Pending is the one Sentinel sink that does not go through `record/3`, so it
+    # gets the catalog-aware scrub explicitly. Its own `redact/1` is a generic
+    # key-name net and stays as the second layer; this is the command-specific
+    # knowledge that only lives here.
+    BusterClaw.Sentinel.Pending.record(name, scrub_args(name, args), caller)
 
     record(
       :security_block,
@@ -300,7 +304,7 @@ defmodule BusterClaw.Commands do
         "#{name} (#{outcome})",
         %{
           command: name,
-          args: scrub_audit_args(name, args),
+          args: args,
           caller: caller,
           tier: command_tier(name),
           outcome: outcome
@@ -312,19 +316,53 @@ defmodule BusterClaw.Commands do
   end
 
   # Sentinel's redaction is key-name + value-shape based, which can't see a
-  # secret nested inside a command's own payload under a generic key. The one
-  # such case today: a browser_flow `fill` step's "value". Reduce those to
-  # lengths before the args reach the audit row (operator call, 07-18).
-  defp scrub_audit_args("browser_flow", %{"steps" => steps} = args) when is_list(steps),
+  # secret nested inside a command's own payload under a generic key. Reduce
+  # those to lengths before the args reach any Sentinel sink.
+  #
+  # Deliberately per-command rather than widening Sentinel's `@sensitive_fragments`
+  # with a generic key like "value": that fragment appears all over the catalog on
+  # arguments that are not secrets, and over-redacting them would gut the audit
+  # feed's usefulness to hide three commands' worth of real risk.
+  #
+  # `browser_flow`'s `fill` step values (operator call, 07-18).
+  defp scrub_args("browser_flow", %{"steps" => steps} = args) when is_list(steps),
     do: Map.put(args, "steps", BusterClaw.Commands.Web.redact_flow_steps(steps))
 
-  defp scrub_audit_args(_name, args), do: args
+  # `browser_secret_put`'s whole payload is a credential, carried under the
+  # generic key "value" that neither Sentinel's key-name list nor its value-shape
+  # masks can catch — an ordinary site password is short, unprefixed and not
+  # Luhn-valid, so it matched none of them and landed in `security_events` in the
+  # clear. That is the exact opposite of `BrowserControl.Secret`'s promise that the
+  # value "never appears in a dump of the database" (Clinch Phase 0).
+  defp scrub_args("browser_secret_put", %{"value" => value} = args) when is_binary(value),
+    do: Map.put(args, "value", "<#{byte_size(value)} bytes>")
+
+  # A note is the operator's private writing. The audit row records that a note
+  # changed, which one, and how much — never what it says. (Home Activity + Notes
+  # Phase 4: "note path and revision but not entire private note bodies".)
+  defp scrub_args(name, %{"body" => body} = args)
+       when name in ["note_create", "note_save"] and is_binary(body),
+       do: Map.put(args, "body", "<#{byte_size(body)} bytes>")
+
+  defp scrub_args(_name, args), do: args
+
+  # Every Sentinel sink in this module goes through `record/3`, so the scrub lives
+  # here rather than at each call site. It used to sit inline in `audit_invoke`
+  # only — which left the rate-limit block, both refusal paths and their metadata
+  # carrying raw args, so a credential refused for an untrusted caller leaked even
+  # though the same credential accepted for a trusted one did not. One door.
+  defp scrub_meta(%{command: name, args: args} = meta) when is_binary(name) and is_map(args),
+    do: %{meta | args: scrub_args(name, args)}
+
+  defp scrub_meta(meta), do: meta
 
   # Sentinel persistence + broadcast is on the hot command path. In tests it must
   # run inline so it shares the request's Ecto sandbox connection (tests read the
   # audit rows back synchronously). In dev/prod it is offloaded to a Task so the
   # caller doesn't block on a DB insert + PubSub broadcast.
   defp record(category, message, meta) do
+    meta = scrub_meta(meta)
+
     if inline_audit?() do
       BusterClaw.Sentinel.observe(category, message, meta)
     else
@@ -478,6 +516,12 @@ defmodule BusterClaw.Commands do
 
   defdelegate journal_append(args), to: BusterClaw.Commands.Journal
   defdelegate journal_read(args \\ %{}), to: BusterClaw.Commands.Journal
+  # Notes (the operator's notebook — never the activity log)
+  defdelegate note_list(args \\ %{}), to: BusterClaw.Commands.Notes
+  defdelegate note_read(args), to: BusterClaw.Commands.Notes
+  defdelegate note_create(args), to: BusterClaw.Commands.Notes
+  defdelegate note_save(args), to: BusterClaw.Commands.Notes
+  defdelegate note_search(args), to: BusterClaw.Commands.Notes
   # Integrations (extras; CRUD comes from the auto-loop above)
   defdelegate integration_poll(args), to: BusterClaw.Commands.Integrations
   defdelegate integration_poll_all(args \\ %{}), to: BusterClaw.Commands.Integrations

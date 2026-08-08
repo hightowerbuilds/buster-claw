@@ -93,14 +93,22 @@ check lib/buster_claw_web/live/status/comms.ex               125 HELD
 check lib/buster_claw_web/live/status/studio.ex              114 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD
 
-# The Notes vault: state in the live_component, markup in two function
-# components. Split at ~810 lines during HOME_ACTIVITY_NOTES Phase 2 rather than
-# after, because Phase 3 (search, switcher, wikilinks, backlinks) lands in all
-# three and would have taken the single file past every other panel in the app.
-# Phase 3 raising these with a reason is the intended outcome, not a failure.
-check lib/buster_claw_web/live/notes_component.ex              535 HELD
-check lib/buster_claw_web/components/notes/editor.ex           274 HELD
-check lib/buster_claw_web/components/notes/rail.ex             179 HELD
+# The Notes vault: state in the live_component, markup in three function
+# components. Split at ~810 lines during the Home Activity + Notes roadmap's
+# Phase 2 (archive/08-08-26-home-activity-notes.md) rather than
+# after, because Phase 3 (search, switcher, wikilinks, backlinks) landed in all
+# of them.
+#
+# Raised in the Phase 3 commit, which is the intended use of this gate rather
+# than a failure of it: the component gained search, the switcher's six events,
+# wiki-link open/create, and backlinks; the rail gained the search field and
+# snippets. The switcher came out as its own file instead of a fourth section of
+# the component. The roadmap is closed, so the next change to any of these owes
+# a reason here.
+check lib/buster_claw_web/live/notes_component.ex              744 HELD
+check lib/buster_claw_web/components/notes/editor.ex           300 HELD
+check lib/buster_claw_web/components/notes/rail.ex             211 HELD
+check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 
 # --- FROZEN: named by an unstarted phase; capped at today's size -------------
 

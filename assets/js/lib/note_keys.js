@@ -18,6 +18,49 @@ export function isSaveChord(event) {
   return event.key.toLowerCase() === "s"
 }
 
+// What a keydown means to the Notes panel. Returns one of:
+//
+//   "switcher"  open the ⌘P jump list
+//   "new"       start a new note (⌘N)
+//   "close"     close the switcher
+//   "up"/"down" move the switcher's selection
+//   "select"    open the highlighted result
+//   null        not ours — let the event through
+//
+// Typing contexts are deliberately NOT excluded. ⌘P and ⌘N are print and
+// new-window: an editor is expected to claim them, and the moment you most want
+// "jump to another note" is halfway through typing a sentence. The navigation
+// keys are claimed only while the switcher is open, so arrows and Enter keep
+// their ordinary meaning in the textarea the rest of the time.
+//
+// ⌘S is checked first and rejected: it belongs to the editor hook, and claiming
+// it in both places would submit the form twice.
+export function notesIntent(event, {switcherOpen} = {}) {
+  if (!event || typeof event.key !== "string") return null
+  if (isSaveChord(event)) return null
+
+  const mod = event.metaKey || event.ctrlKey
+  const key = event.key.toLowerCase()
+
+  if (mod && key === "p") return "switcher"
+  if (mod && key === "n") return "new"
+
+  if (!switcherOpen) return null
+
+  switch (event.key) {
+    case "Escape":
+      return "close"
+    case "ArrowDown":
+      return "down"
+    case "ArrowUp":
+      return "up"
+    case "Enter":
+      return "select"
+    default:
+      return null
+  }
+}
+
 // Whether a keystroke should tell the server the draft is now ahead of disk.
 //
 // Two suppressions, both load-bearing:

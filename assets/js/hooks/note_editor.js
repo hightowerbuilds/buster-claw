@@ -86,10 +86,33 @@ export const NoteEditor = {
 
   onClick(event) {
     const button = event.target.closest("[data-note-copy-draft]")
-    if (!button) return
+    if (button) {
+      event.preventDefault()
+      this.copyDraft(button)
+      return
+    }
+
+    const link = event.target.closest("[data-note-links] a[href^='#note']")
+    if (link) this.openLink(event, link)
+  },
+
+  // Wiki links render as `#note/<path>` for a note that exists and
+  // `#note-new/<title>` for one that does not. Fragments rather than paths so an
+  // unhandled click is inert instead of a 404, and the href is the only thing
+  // carrying the target — the sanitizer strips data attributes off note HTML.
+  openLink(event, link) {
+    const href = link.getAttribute("href")
+    const [, kind, value] = /^#(note|note-new)\/(.*)$/.exec(href) || []
+    if (!value) return
 
     event.preventDefault()
-    this.copyDraft(button)
+    const decoded = decodeURIComponent(value.replace(/\+/g, " "))
+
+    if (kind === "note") {
+      this.pushEventTo(this.el, "open_link", {path: decoded})
+    } else {
+      this.pushEventTo(this.el, "create_link", {title: decoded})
+    }
   },
 
   onFocus() {

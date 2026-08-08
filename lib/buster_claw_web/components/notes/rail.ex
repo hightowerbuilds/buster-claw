@@ -20,6 +20,8 @@ defmodule BusterClawWeb.Notes.Rail do
   attr :new_note_form, :any, required: true
   attr :folder_form, :any, required: true
   attr :folder_form_open, :boolean, required: true
+  attr :search_form, :any, required: true
+  attr :query, :string, required: true
 
   @doc "The Notes file rail."
   def rail(assigns) do
@@ -34,6 +36,26 @@ defmodule BusterClawWeb.Notes.Rail do
           Markdown files you own
         </p>
       </header>
+
+      <.form
+        for={@search_form}
+        id="notes-search-form"
+        phx-change="search_notes"
+        phx-submit="search_notes"
+        phx-target={@target}
+        class="border-b-2 border-base-content/20 px-3 pt-3"
+      >
+        <.input
+          field={@search_form[:query]}
+          id="notes-search"
+          type="search"
+          phx-debounce="200"
+          autocomplete="off"
+          aria-label="Search notes by name or contents"
+          placeholder="Search notes…"
+          class="w-full rounded-xs border-2 border-base-content/20 bg-transparent px-2 py-1.5 font-mono text-xs text-base-content placeholder:text-base-content/35 focus:border-primary focus:outline-none"
+        />
+      </.form>
 
       <.form
         for={@new_note_form}
@@ -109,7 +131,9 @@ defmodule BusterClawWeb.Notes.Rail do
       <ul id="notes-list" phx-update="stream" class="min-h-0 flex-1 overflow-y-auto p-1.5">
         <li id="notes-list-empty" class="hidden only:block px-3 py-8 text-center">
           <.icon name="hero-document-text" class="mx-auto size-7 text-base-content/25" />
-          <p class="mt-2 font-mono text-xs text-base-content/50">No notes yet.</p>
+          <p class="mt-2 font-mono text-xs text-base-content/50">
+            {if @query == "", do: "No notes yet.", else: "No notes match."}
+          </p>
         </li>
         <li :for={{id, note} <- @notes} id={id}>
           <p
@@ -151,6 +175,12 @@ defmodule BusterClawWeb.Notes.Rail do
                 class="block truncate font-mono text-[9px] uppercase text-base-content/40"
               >
                 Too large to edit
+              </span>
+              <span
+                :if={Map.get(note, :snippet)}
+                class="block truncate font-mono text-[10px] font-normal text-base-content/50"
+              >
+                {note.snippet}
               </span>
             </span>
           </button>
