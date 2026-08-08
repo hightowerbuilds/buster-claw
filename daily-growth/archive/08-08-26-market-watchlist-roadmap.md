@@ -1,3 +1,34 @@
+> ## ARCHIVED 2026-08-08 — the cache it was choosing symbols for no longer exists
+>
+> This roadmap was **SCOPED, nothing built**. Its entire subject — `MarketData`,
+> the daily sweep, `Trading.fetch_market_data/1`, the benchmark path and Chart
+> Build — was deleted whole on 08-08 (`293f47f`) with the trading stack. There is
+> no cache left to choose symbols for.
+>
+> **Archived rather than deleted, matching its five siblings** (the trading tab,
+> its critical review, portfolio history, the chart builder and Chart Build web
+> data all sit in this directory). It was sitting deleted-but-uncommitted in the
+> working tree; that would have made it the only one of the six to vanish rather
+> than be filed.
+>
+> **What is worth keeping is the measured negative results**, because they are the
+> expensive kind to rediscover — someone will reach for a free OHLC source again:
+>
+> - **Finnhub has no free OHLC history.** `/stock/candle` returns HTTP 403 with a
+>   key whose `/quote` returns 200 in the same minute — a tier restriction, not
+>   auth (measured 08-04). **This one survives in live code** at
+>   `lib/buster_claw/finance/sources.ex` (~:110), which is where it will actually
+>   be read; the copy here is the fuller reasoning.
+> - **Alpha Vantage** is 25 requests/day, described in its own registry note as
+>   "a demo, not a data source". **Yahoo's endpoints are `:unsanctioned`.**
+> - **A deep backfill cost $0.57 per symbol**, measured — so a 20-symbol watchlist
+>   was ~$11 to seed. The operator's call was to price it honestly rather than keep
+>   hunting for a cheap path that the three findings above show does not exist.
+> - **The sweep had a hard 10-symbol cap**, and skipped by name rather than
+>   silently — the constraint that shaped the whole design.
+>
+> Do not rebuild any of this. See the `trading_stack_deleted` memory first.
+
 # Market watchlist — choosing which symbols the cache holds
 
 **Scoped 08-04-26 · Status: SCOPED, nothing built.**
