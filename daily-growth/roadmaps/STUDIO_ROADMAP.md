@@ -443,23 +443,78 @@ this roadmap's whole posture is to keep the signing path clean.
 
 ## Phases
 
-**V.0 — Framing and the FFT.** Pre-emphasis, 25 ms frames at 10 ms hop, Hamming
-window, iterative radix-2 FFT over PCM16. Pure, no deps. **Tested against
-analytically-known signals** — a DC signal, a single sine at a bin centre, a sum
-of two sines — because an FFT that is subtly wrong produces features that are
-subtly wrong and every downstream result becomes plausible garbage.
+> **V.0–V.3 SHIPPED 08-08-26. 2,785 tests green.**
+>
+> The code landed in commit `eccfbf4` — whose message is about the modularization
+> roadmap, because a concurrent session ran a catch-all `git add` over the shared
+> working tree while these files were staged. Nothing was lost or altered, but
+> `git log` will not lead anyone here. **This block is the real record.**
 
-**V.1 — MFCC.** Mel filterbank, log, DCT-II, 13 coefficients, optional deltas.
-Test the filterbank shape and that a pure tone lands where the mel scale says it
-should.
+**V.0 — Framing and the FFT. SHIPPED.** `Cutup.Signal`: 25 ms frames at a 10 ms
+hop, pre-emphasis, Hamming, iterative radix-2 FFT with compile-time twiddle and
+bit-reversal tables. Verified bin-for-bin against an independent naive O(n²) DFT
+— the strongest check available, since it cannot share a bug with its reference.
 
-**V.2 — Subsequence DTW.** The matcher: a template against a longer recording,
-returning every span whose warped distance beats a threshold, with the distance
-as the score. Cepstral mean normalisation first, so channel differences between
-two phone calls do not dominate the distance.
+- **Measured: ~40 s single-core to index the 295 s corpus, ~27 s across 8 cores.**
+  The estimate above held — **but two errors cancelled.** It costed a *512*-point
+  FFT, and 25 ms at 22.05 kHz is 551 samples, so the smallest radix-2 size that
+  holds a frame is **1024**. Real work is ~2.2× the projection; the estimate
+  survived only by being pessimistic about per-operation cost by about the same
+  factor. An estimate right by accident is worth what a wrong one is, until
+  measured.
+- **Throughput HALVES on long clips.** Framing is eager, so a 10 s clip leaves
+  ~1M live floats on the process heap and every GC walks them; the same audio in
+  3 s pieces runs 2.5× faster. Chunking the *consumption* does not help.
+  **Index one file per process, and prefer short files.**
+- A 10 ms hop at 22.05 kHz is 220.5 samples. Rounding once to 221 and stepping
+  drifts 0.23% forever — **0.67 s across this corpus, longer than a word.** Frame
+  starts are recomputed from the index; error is bounded at half a sample and
+  never accumulates.
 
-**V.3 — VAD and segmentation.** Windowed RMS plus zero-crossing rate → speech and
-silence spans. Delivers Phase D, and gives DTW hits clean edges to snap to.
+**V.1 — MFCC. SHIPPED.** `Cutup.Mfcc`: 26 mel filters, log, orthonormal DCT-II —
+chosen so the transform is an isometry, which means a DTW threshold means the
+same thing on either side of it. Coefficient 0 kept, because CMN turns it from
+absolute loudness into *relative* loudness within a recording. Deltas
+implemented, **recommended off**: they sit on a different numeric scale, so
+unweighted Euclidean over the concatenation silently reweights the vector.
+
+**V.2 — Subsequence DTW. SHIPPED.** `Cutup.Dtw`, and the two decisions that make
+it correct rather than merely working:
+
+- **The recurrence minimises accumulated cost and normalises once at the end.**
+  Minimising the ratio per cell has no optimal substructure — the argmin of a
+  ratio does not decompose — so it would be a greedy heuristic optimal for
+  neither objective. Cost and path weight are carried per cell as
+  `{cost, weight, start_frame}` rather than backtracked, which is O(1) extra
+  against retaining a 1.8M-cell matrix.
+- **Symmetric step weights (diagonal 2, axis 1).** With all-1 weights the
+  diagonal is a discount, so a straight path scores structurally lower than a
+  warped one and the score partly measures *how much warping happened*. Weight 2
+  makes the normalised distance exactly the mean local frame distance.
+- **Measured 1.6M cells/s, flat across template length** — the observable proof
+  per-cell work is O(1). A 30 s recording against a 60-frame template: **0.108 s**.
+  The whole corpus: ~1 s.
+- **Length independence is asserted**: at fixed perturbation, scores agree within
+  ~1% across a 4× template-length range. Un-normalised they differ by 4×.
+- Synthetic threshold band **≈0.2–0.9** against a false-alarm floor of ~2.2 that
+  barely moves with target length. Real audio will differ; the moduledoc gives
+  the *recipe* — measure the floor on a recording known not to contain the word,
+  the ceiling on one that does, set nearer the floor.
+
+**V.3 — VAD. SHIPPED.** `Cutup.Vad`: adaptive threshold as a multiplicative
+margin over a p10 noise floor, hysteresis expressed as a run rule (a span is a
+maximal run above the *leave* gates containing one frame above the *enter*
+gates). Energy OR (lower energy AND high ZCR), because unvoiced fricatives are
+low-energy and high-ZCR and an energy-only detector clips the onset of every word
+starting with `s` or `f`.
+
+- Two alternative thresholding schemes were built and rejected; the reasons are
+  in the moduledoc. One of them would have made the ZCR branch **dead code at low
+  SNR** — exactly the telephony case it exists for.
+- **Predicted first failure on real audio:** the ZCR gate at 0.25. 8 kHz
+  telephony bands out above 3.4 kHz, which is most of a fricative's energy;
+  expect to want 0.15–0.20, and expect line noise to start creeping in there.
+- Spans are **utterance boundaries, not word boundaries.**
 
 **V.4 — Wire it to the index.** A DTW hit becomes a `t:word/0` with `origin:
 :recognizer`, so **everything built in Phase A consumes it unchanged** — that is
