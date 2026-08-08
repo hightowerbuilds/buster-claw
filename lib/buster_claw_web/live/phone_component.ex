@@ -45,7 +45,9 @@ defmodule BusterClawWeb.PhoneComponent do
   alias BusterClaw.Contacts
   alias BusterClaw.Telephony
   alias BusterClaw.Telephony.Event
-  alias BusterClawWeb.PhonePanels
+  alias BusterClawWeb.Phone.ContactList
+  alias BusterClawWeb.Phone.Log, as: PhoneLog
+  alias BusterClawWeb.Phone.Playback
 
   @filters [
     %{key: "all", label: "All"},
@@ -444,7 +446,7 @@ defmodule BusterClawWeb.PhoneComponent do
 
     ~H"""
     <div id={"#{@id}-root"} class="flex h-full min-h-0 flex-col gap-3 p-3 lg:grid lg:grid-cols-5">
-      <PhonePanels.event_log
+      <PhoneLog.event_log
         target={@myself}
         events={@events}
         threads={@threads}
@@ -458,7 +460,7 @@ defmodule BusterClawWeb.PhoneComponent do
 
       <%!-- RIGHT: divided column — Playback over Machine --%>
       <div class="flex min-h-0 flex-1 flex-col gap-3 lg:col-span-2">
-        <PhonePanels.playback
+        <Playback.playback
           target={@myself}
           keypad_keys={@keypad_keys}
           dialed_number={@dialed_number}
@@ -471,7 +473,7 @@ defmodule BusterClawWeb.PhoneComponent do
           wave_colors={@wave_colors}
         />
 
-        <PhonePanels.contacts
+        <ContactList.contacts
           target={@myself}
           contacts={@contacts}
           orphan_numbers={@orphan_numbers}
