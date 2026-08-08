@@ -40,6 +40,11 @@ defmodule BusterClaw.Portfolio.RecorderTest do
       Application.put_env(:buster_claw, :trading_bars_fetcher, prev_bars)
     end)
 
+    # Every duty here is a broker run, and the broker belongs to the
+    # `trading-robinhood` extension. The recorder no-ops while it is off, so a
+    # file about what the recorder DOES has to install it first.
+    {:ok, _manifest} = BusterClaw.Extensions.enable("trading-robinhood")
+
     :ok
   end
 
@@ -355,6 +360,68 @@ defmodule BusterClaw.Portfolio.RecorderTest do
       pid = start_recorder()
       tick_and_settle(pid)
 
+      assert Process.alive?(pid)
+    end
+  end
+
+  describe "the extension gate" do
+    # The unattended half of gating Trading. Everything the recorder does is a
+    # real broker run, so a surface that is not installed must not be able to
+    # spend one on a schedule nobody is watching.
+    setup do
+      :ok = BusterClaw.Extensions.disable("trading-robinhood")
+      :ok
+    end
+
+    test "an uninstalled Trading surface records nothing and calls no broker" do
+      Application.put_env(:buster_claw, :local_today, @past_trading_day)
+      stub_fetcher({:ok, snapshot()})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+
+      refute_receive :fetch_called, 200
+      refute Portfolio.recorded_on?(@past_trading_day)
+    end
+
+    test "the market sweep and benchmark backfill are skipped too" do
+      test_pid = self()
+
+      Application.put_env(:buster_claw, :trading_market_data_fetcher, fn _start ->
+        send(test_pid, :sweep_called)
+        {:ok, %{closes: %{}, quotes: [], indexes: [], skipped: [], errors: []}}
+      end)
+
+      Application.put_env(:buster_claw, :trading_bars_fetcher, fn _s, _start, _i ->
+        send(test_pid, :bars_called)
+        {:ok, %{bars: []}}
+      end)
+
+      Application.put_env(:buster_claw, :local_today, @past_trading_day)
+      stub_fetcher({:ok, snapshot()})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+
+      refute_receive :sweep_called, 200
+      refute_receive :bars_called, 200
+    end
+
+    test "the recorder stays alive and resumes when the extension is enabled" do
+      Application.put_env(:buster_claw, :local_today, @past_trading_day)
+      stub_fetcher({:ok, snapshot()})
+
+      pid = start_recorder()
+      tick_and_settle(pid)
+      refute_receive :fetch_called, 200
+
+      # Enabling takes effect on the NEXT tick — the process is supervised from
+      # boot and checks per tick, so no restart is needed.
+      {:ok, _manifest} = BusterClaw.Extensions.enable("trading-robinhood")
+      tick_and_settle(pid)
+
+      assert_receive :fetch_called, 500
+      assert Portfolio.recorded_on?(@past_trading_day)
       assert Process.alive?(pid)
     end
   end

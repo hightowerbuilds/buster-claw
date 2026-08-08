@@ -88,9 +88,7 @@ defmodule BusterClawWeb.TradingLive do
   # The Trading surface belongs to the `trading-robinhood` extension. A surface
   # no manifest claims is not gated — deleting the extension must not hide
   # ordinary application code that happens to share the name.
-  defp trading_installed? do
-    not Extensions.surface_owned?("trading") or Extensions.surface_enabled?("trading")
-  end
+  defp trading_installed?, do: Extensions.surface_available?("trading")
 
   # Off: mount nothing. No tabs are listed, no conversation is seeded, no
   # snapshot is read, nothing subscribes. The card below is the whole LiveView,

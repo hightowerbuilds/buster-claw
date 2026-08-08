@@ -91,7 +91,7 @@ defmodule BusterClawWeb.SplitLive do
   defp pane_available?(pathname) do
     case Map.fetch(@gated_panes, pathname) do
       {:ok, surface} ->
-        not Extensions.surface_owned?(surface) or Extensions.surface_enabled?(surface)
+        Extensions.surface_available?(surface)
 
       :error ->
         true

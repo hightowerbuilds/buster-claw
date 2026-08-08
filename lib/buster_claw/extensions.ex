@@ -238,6 +238,20 @@ defmodule BusterClaw.Extensions do
   def surface_owned?(_surface), do: false
 
   @doc """
+  Whether a surface may be used right now — the question every gate actually
+  asks, and the one place the two-part rule is written.
+
+  A surface is available when **no manifest claims it** (ordinary application
+  code that happens to share a name) **or** when the extension that claims it is
+  on. Every door into a gated surface consults this: the dock, the split-pane
+  list, the LiveView's own mount, and the daily recorder. Spelling the rule out
+  at each door is how one of them ends up spelling it differently.
+  """
+  def surface_available?(surface) do
+    not surface_owned?(surface) or surface_enabled?(surface)
+  end
+
+  @doc """
   Workspace skill directories belonging to **enabled** extensions.
 
   `BusterClaw.Skills` scans these alongside the workspace `skills/` directory.

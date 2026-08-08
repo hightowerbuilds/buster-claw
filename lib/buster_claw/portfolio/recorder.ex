@@ -36,6 +36,7 @@ defmodule BusterClaw.Portfolio.Recorder do
 
   require Logger
 
+  alias BusterClaw.Extensions
   alias BusterClaw.MarketCalendar
   alias BusterClaw.MarketData
   alias BusterClaw.Portfolio
@@ -87,7 +88,8 @@ defmodule BusterClaw.Portfolio.Recorder do
   defp run_if_due(state) do
     today = MarketCalendar.today()
 
-    if MarketCalendar.trading_day?(today) and past_fire_time?(state, today) do
+    if trading_installed?() and MarketCalendar.trading_day?(today) and
+         past_fire_time?(state, today) do
       unless Portfolio.recorded_on?(today), do: record_today(today)
       unless MarketData.attempted_on?(today), do: sweep_market_data(today)
       unless MarketData.benchmark_attempted_on?(today), do: backfill_one_benchmark(today)
@@ -101,6 +103,17 @@ defmodule BusterClaw.Portfolio.Recorder do
       Logger.warning("Portfolio.Recorder: tick failed: #{inspect(error)}")
       :ok
   end
+
+  # All three duties above are real agent runs against the operator's broker.
+  # The Trading surface belongs to the `trading-robinhood` extension, and an
+  # uninstalled surface must not spend runs — a gate that stops the UI but
+  # leaves a daily unattended job reaching the broker is not a gate, it is a
+  # hidden link.
+  #
+  # Checked per tick rather than at startup on purpose: enabling the extension
+  # then takes effect on the next tick instead of needing a restart, and this
+  # process is supervised from boot regardless.
+  defp trading_installed?, do: Extensions.surface_available?("trading")
 
   defp record_today(today) do
     Logger.info("Portfolio.Recorder: recording #{today}")

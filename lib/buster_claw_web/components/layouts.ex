@@ -167,7 +167,7 @@ defmodule BusterClawWeb.Layouts do
     Enum.filter(@navigation_items, fn item ->
       case item[:surface] do
         nil -> true
-        surface -> not Extensions.surface_owned?(surface) or Extensions.surface_enabled?(surface)
+        surface -> Extensions.surface_available?(surface)
       end
     end)
   end
