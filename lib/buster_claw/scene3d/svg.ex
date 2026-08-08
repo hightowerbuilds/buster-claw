@@ -56,12 +56,20 @@ defmodule BusterClaw.Scene3d.Svg do
     interleaving is a change to `Types`, not to this module.
   * **Painter's algorithm is wrong for interpenetrating solids.** Documented in
     `Types` and forbidden by the authoring guide. **Do not add a BSP tree.**
-  * **Labels are one uniform size, and do not shrink with distance.** `poly_label`
-    carries only an anchor and a depth, so billboard scale would be this module's
-    invention. It stays uninvented: a label exists to be read, and shrinking the
-    far ones trades away the whole point of decision 5 for a depth cue the
-    geometry already gives. Size is a fraction of the viewBox (`@label_scale`),
-    so it tracks the card, not the scene's arbitrary units.
+  * **Label placement is not decided here** (Phase 2). `Scene3d.Labels` owns
+    sizing, collision resolution and dropping; this module renders the
+    `t:BusterClaw.Scene3d.Types.placed_label/0` list it returns, each at its own
+    `size` and `at`, plus a hairline leader for any whose `at` drifted off its
+    `anchor`. **A label absent from that list was dropped deliberately and is not
+    drawn** — the card's caption still names it, and the `<title>` here is still
+    derived from the frame's *full* label list, so a dropped label never
+    disappears from the accessible name. `@label_scale` survives only as the
+    fallback size for a malformed entry.
+  * **A `:surface` poly is drawn as a wash, not as a colour** (Phase 2). See
+    `mute/1`: the palette is a *series* palette with no quiet slot, so a ground
+    plane picked one and came out as a wall of magenta over most of the card.
+    Adding a sixth "quiet" slot would break the five-slot colourblind validation,
+    so the quiet tone is *derived* instead.
   * **`depth` is not used for anything visual here**, by design. It is in scene
     units and is *not* scale-invariant — only the ordering it produced upstream
     is scale-free. Phase 2's distance cues must normalise against the frame's own
@@ -77,6 +85,7 @@ defmodule BusterClaw.Scene3d.Svg do
     authored `width` reads as px.
   """
 
+  alias BusterClaw.Scene3d.Labels
   alias BusterClaw.Scene3d.Types
 
   # The Chart Builder's validated 5-slot palette (reconciled against the
@@ -108,8 +117,48 @@ defmodule BusterClaw.Scene3d.Svg do
   # as one continuous seam across facets of differing brightness.
   @edge_factor 0.55
 
-  # Label size as a fraction of the smaller viewBox dimension, so text stays
-  # proportionate whatever scale the scene was authored at (decision 3).
+  # ── The muted tone for `role: :surface` ─────────────────────────────────────
+  #
+  # A backdrop must read as backdrop. Two knobs, and they do different jobs:
+  #
+  # 1. **Chroma.** Mix the palette colour toward neutral grey, keeping
+  #    @surface_chroma of it. A *hint* of hue, so two surfaces in one scene are
+  #    still told apart, but nowhere near series strength. The mix target is a
+  #    fixed mid grey rather than the colour's own luminance on purpose: the
+  #    colour's luminance varies wildly across the five slots (magenta's is
+  #    ~59, yellow's ~140), so mixing toward it would make "quiet" mean a
+  #    different lightness per slot, and magenta would vanish on #121212.
+  #
+  # 2. **Alpha.** Then paint that tone at @surface_fill_opacity so it composites
+  #    against whatever the card's ground actually is. **This is the fill-side
+  #    equivalent of the `currentColor` trick used for labels** — we do not know
+  #    the theme at render time and must not guess a hex, so instead of blending
+  #    toward a ground we picked, we let the browser blend toward the real one.
+  #    A mid grey at 18% lands ~1.4:1 against #121212 and ~1.15:1 against
+  #    #F4F1EA: present on both, subject on neither.
+  #
+  # The cost, stated rather than solved: alpha accumulates where two surfaces
+  # overlap. Backdrops are one or two planes in practice, and the alternative —
+  # picking a ground hex — is wrong on one theme by construction.
+  @surface_chroma 0.25
+  @surface_grey 128
+  @surface_fill_opacity 0.18
+
+  # The surface's own edge, quiet to match. Same tone as the fill, just less
+  # transparent, so the plane has a discernible boundary on both grounds without
+  # becoming a frame. It deliberately does NOT use @edge_factor: darkening a
+  # muted tone sinks it into the dark ground and reads as a missing edge.
+  @surface_stroke_opacity 0.4
+
+  # Leader hairline from a displaced label back to the point it names. Inherits
+  # `currentColor` like the text it belongs to, and is held well under it — a
+  # leader is a pointer, not a line in the drawing.
+  @leader_opacity 0.35
+
+  # Fallback label size, as a fraction of the smaller viewBox dimension, so text
+  # stays proportionate whatever scale the scene was authored at (decision 3).
+  # Sizing is `Scene3d.Labels`' job now; this covers a placed label that arrives
+  # without a usable one.
   @label_scale 0.055
 
   # Labels beyond this many stop being useful in an accessible name; the rest are
@@ -123,10 +172,15 @@ defmodule BusterClaw.Scene3d.Svg do
   * `:title` — the accessible name. Defaults to one derived from the scene's own
     labels, because `role="img"` hides the inner `<text>` from assistive tech and
     a generic name would throw away the only thing the scene says out loud.
+  * `:layout` — the label layout function, defaulting to `&Labels.layout/3`.
+    A seam, not a feature: it lets *this* module's rendering of a placed label be
+    tested against known input, without the test depending on another module's
+    collision policy. Production never passes it, and any other option given here
+    is forwarded to the layout function.
 
-  Both are escaped like any other text.
+  `:class` and `:title` are escaped like any other text.
   """
-  @type opts :: [class: String.t(), title: String.t()]
+  @type opts :: [class: String.t(), title: String.t(), layout: (... -> [Types.placed_label()])]
 
   @doc """
   Serialize a frame to one complete, self-contained SVG document.
@@ -137,7 +191,7 @@ defmodule BusterClaw.Scene3d.Svg do
   @spec render(Types.frame(), opts()) :: String.t()
   def render(%{polys: polys, lines: lines, labels: labels, viewbox: viewbox}, opts \\ [])
       when is_list(opts) do
-    {min_x, min_y, w, h} = viewbox(viewbox)
+    {min_x, min_y, w, h} = box = viewbox(viewbox)
 
     [
       ~s(<svg xmlns="http://www.w3.org/2000/svg" viewBox="),
@@ -155,10 +209,10 @@ defmodule BusterClaw.Scene3d.Svg do
       title(opts, labels),
       "</title>",
       # Order is the whole contract of this function: geometry as given, then
-      # every label, last.
+      # every label that survived layout, last.
       poly_layer(polys),
       line_layer(lines),
-      label_layer(labels, label_size(w, h)),
+      label_layer(layout(labels, box, opts), label_size(w, h)),
       "</svg>"
     ]
     |> IO.iodata_to_binary()
@@ -172,17 +226,45 @@ defmodule BusterClaw.Scene3d.Svg do
     [~s(<g data-layer="polys">), Enum.map(polys, &poly/1), "</g>"]
   end
 
-  defp poly(%{points: points, color: color, shade: shade}) do
-    rgb = slot(color)
-
+  defp poly(%{points: points, color: color, shade: shade} = poly) do
     [
       ~s(<polygon points="),
       points(points),
-      ~s(" fill="),
-      hex(scale(rgb, shade_factor(shade))),
+      ~s(" ),
+      paint(slot(color), shade_factor(shade), role(poly)),
+      ~s( stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>)
+    ]
+  end
+
+  # `role` is Phase 2's addition to `t:Types.poly/0`. Defaulting a poly without
+  # one to `:solid` keeps the loud reading for anything that predates the field —
+  # a backdrop drawn as a subject is ugly, a subject drawn as a backdrop is gone.
+  defp role(%{role: :surface}), do: :surface
+  defp role(_poly), do: :solid
+
+  defp paint(rgb, shade, :solid) do
+    [
+      ~s(fill="),
+      hex(scale(rgb, shade)),
       ~s(" stroke="),
       hex(scale(rgb, @edge_factor)),
-      ~s(" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>)
+      ~s(")
+    ]
+  end
+
+  defp paint(rgb, shade, :surface) do
+    tone = hex(scale(mute(rgb), shade))
+
+    [
+      ~s(fill="),
+      tone,
+      ~s(" fill-opacity="),
+      num(@surface_fill_opacity),
+      ~s(" stroke="),
+      tone,
+      ~s(" stroke-opacity="),
+      num(@surface_stroke_opacity),
+      ~s(")
     ]
   end
 
@@ -210,24 +292,90 @@ defmodule BusterClaw.Scene3d.Svg do
     ]
   end
 
-  defp label_layer([], _size), do: []
+  # `Scene3d.Labels` decides where each label goes, how big it is, and which ones
+  # do not fit at all. Called only when there is something placeable to place, so
+  # an empty frame is still renderable with no collaborator in the picture.
+  #
+  # The filter is this module keeping its own promise, not distrust of the
+  # collaborator: Phase 1 guarantees that a malformed label cannot crash the last
+  # stage before the DOM, and delegating does not transfer that guarantee. A
+  # label whose text is not a string or whose anchor is not a point could not be
+  # drawn anyway, and it still reaches the accessible name, which is derived from
+  # the frame's own list rather than from this one.
+  defp layout(labels, box, opts) do
+    case Enum.filter(labels, &placeable?/1) do
+      [] ->
+        []
 
-  defp label_layer(labels, size) do
+      placeable ->
+        fun = Keyword.get(opts, :layout, &Labels.layout/3)
+        fun.(placeable, box, Keyword.drop(opts, [:class, :title, :layout]))
+    end
+  end
+
+  defp placeable?(%{at: {x, y}, text: text}) when is_number(x) and is_number(y) do
+    is_binary(text) and text != ""
+  end
+
+  defp placeable?(_label), do: false
+
+  defp label_layer([], _fallback), do: []
+
+  defp label_layer(placed, fallback) do
     [
       # `currentColor` is the cross-theme mechanism: the label inherits the card's
       # text colour, so it inverts with the theme instead of us guessing a hex
-      # that has to be legible on both #F4F1EA and #121212.
-      ~s(<g data-layer="labels" font-family="ui-sans-serif, system-ui, sans-serif" font-size="),
-      num(size),
-      ~s(" text-anchor="middle" dominant-baseline="middle" fill="currentColor">),
-      Enum.map(labels, &label/1),
+      # that has to be legible on both #F4F1EA and #121212. `font-size` is no
+      # longer here — each label carries its own.
+      ~s(<g data-layer="labels" font-family="ui-sans-serif, system-ui, sans-serif"),
+      ~s( text-anchor="middle" dominant-baseline="middle" fill="currentColor">),
+      # Leaders first, so text sits over its own hairline rather than under it.
+      Enum.map(placed, &leader/1),
+      Enum.map(placed, &label(&1, fallback)),
       "</g>"
     ]
   end
 
-  defp label(%{at: {x, y}, text: text}) do
-    [~s(<text x="), num(x), ~s(" y="), num(y), ~s(">), esc(text), "</text>"]
+  # A displaced label with no leader is a label pointing at nothing, so the
+  # hairline is drawn from the anchor it names to wherever layout moved it.
+  defp leader(%{leader: true, at: {x, y}, anchor: {ax, ay}}) do
+    [
+      ~s(<line x1="),
+      num(ax),
+      ~s(" y1="),
+      num(ay),
+      ~s(" x2="),
+      num(x),
+      ~s(" y2="),
+      num(y),
+      ~s(" stroke="currentColor" stroke-opacity="),
+      num(@leader_opacity),
+      ~s(" stroke-width="1" vector-effect="non-scaling-stroke"/>)
+    ]
   end
+
+  defp leader(_placed), do: []
+
+  defp label(%{at: {x, y}, text: text} = placed, fallback) do
+    [
+      ~s(<text x="),
+      num(x),
+      ~s(" y="),
+      num(y),
+      ~s(" font-size="),
+      num(font_size(placed, fallback)),
+      ~s(">),
+      esc(text),
+      "</text>"
+    ]
+  end
+
+  # This is the last stage before the DOM and not the place to discover that a
+  # collaborator handed over a shape it promised not to.
+  defp label(_placed, _fallback), do: []
+
+  defp font_size(%{size: size}, _fallback) when is_number(size) and size > 0, do: size
+  defp font_size(_placed, fallback), do: fallback
 
   # ── Text: the one model-controlled surface ──────────────────────────────────
 
@@ -287,6 +435,16 @@ defmodule BusterClaw.Scene3d.Svg do
   defp clamp01(n) when n < 0, do: 0.0
   defp clamp01(n) when n > 1, do: 1.0
   defp clamp01(n), do: n * 1.0
+
+  # A series colour reduced to a backdrop tone: keep @surface_chroma of the hue,
+  # mix the rest toward neutral. Paired with @surface_fill_opacity at the emit
+  # site — see the attribute block above for why it takes both, and why neither
+  # is a sixth palette slot.
+  defp mute({r, g, b}), do: {toward_grey(r), toward_grey(g), toward_grey(b)}
+
+  defp toward_grey(value) do
+    round(value * @surface_chroma + @surface_grey * (1.0 - @surface_chroma))
+  end
 
   defp scale({r, g, b}, factor), do: {channel(r, factor), channel(g, factor), channel(b, factor)}
 

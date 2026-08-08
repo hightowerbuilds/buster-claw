@@ -56,15 +56,35 @@ defmodule BusterClaw.Scene3d do
   meant to come from the composition helpers, not from more primitives — each new
   primitive is tessellation code plus a new way to be wrong.
 
+  `:region` is the one primitive that has since cleared that bar, because nothing
+  in the set could express an arbitrary footprint: a landmass drawn as a
+  `:polyline` is a hairline outline of a shape nobody can see. `role` cleared it
+  for the opposite reason — it adds no geometry at all, only *how loudly* a node
+  is drawn, and it exists because the palette has five saturated series hues and
+  no quiet one (see `t:BusterClaw.Scene3d.Types.role/0`).
+
+  ## What a `:region` does not check
+
+  A region's outline is checked for arity, count, magnitude and **degeneracy**
+  (zero area, or every point on one line), but deliberately **not for
+  self-intersection**. The check is affordable — 128 vertices is ~8k segment
+  pairs — but the trade is wrong: a bow-tie polygon still renders as *something*,
+  whereas rejecting one drops the entire card silently with no feedback to the
+  model. Real coastline data is also full of near-touching and repeated points
+  that a strict test would refuse. The guide asks for a non-crossing outline
+  instead; if it crosses anyway, the fill is ugly and that is the accepted
+  failure.
+
   ## Error reasons
 
   All errors are `{:error, atom()}`. The named reasons are stable enough to test
   against: `:not_a_string`, `:too_large`, `:invalid_json`, `:not_an_object`,
   `:unknown_key`, `:missing_field`, `:bad_camera`, `:bad_nodes`, `:empty_scene`,
   `:too_many_nodes`, `:too_deep`, `:unknown_kind`, `:bad_number`, `:out_of_range`,
-  `:bad_vec3`, `:bad_size`, `:bad_color`, `:bad_label`, `:label_too_long`,
-  `:bad_points`, `:too_many_points`, `:bad_count`, `:count_too_large`,
-  `:bad_child`, `:not_a_scene`.
+  `:bad_vec3`, `:bad_size`, `:bad_color`, `:bad_role`, `:bad_label`,
+  `:label_too_long`, `:bad_points`, `:too_many_points`, `:bad_outline`,
+  `:degenerate_outline`, `:bad_count`, `:count_too_large`, `:bad_child`,
+  `:not_a_scene`.
   """
 
   alias BusterClaw.Scene3d.Types
@@ -93,9 +113,16 @@ defmodule BusterClaw.Scene3d do
   # bounds a single helper before the product check below even runs.
   @max_axis 32
 
-  # Vertices in a polyline — the only variable-length list in the vocabulary, so
-  # the only one that needs its own cap. 256 segments outresolves the card.
+  # Vertices in a polyline. 256 segments outresolves the card.
   @max_points 256
+
+  # Vertices in a region's outline. Lower than @max_points because a region is
+  # *filled*: it fans out to n-2 triangles where a polyline costs n-1 hairlines.
+  # 128 puts a region at the cap at roughly the same polygon cost as one sphere
+  # (16x8 = 128 faces), which is the budget the flat node cap was sized against.
+  # It is also generous enough for the use case — 128 points draws a recognisable
+  # island, and a coastline needing more than that is a flat map, i.e. an SVG.
+  @max_outline 128
 
   # Label length in graphemes. Labels billboard onto a small card; past ~120
   # characters it is a paragraph, not a label. Checked after a cheap byte guard
@@ -116,6 +143,7 @@ defmodule BusterClaw.Scene3d do
     "capsule" => :capsule,
     "polyline" => :polyline,
     "arrow" => :arrow,
+    "region" => :region,
     "grid" => :grid,
     "stack" => :stack,
     "ring" => :ring
@@ -123,11 +151,18 @@ defmodule BusterClaw.Scene3d do
 
   @helpers [:grid, :stack, :ring]
 
+  # The two node roles. Same fixed-lookup discipline as `@kinds` — model input
+  # never reaches `String.to_atom/1`.
+  @roles %{
+    "solid" => :solid,
+    "surface" => :surface
+  }
+
   # Shape fields per kind, and which of them are required. Helpers deliberately
-  # do NOT accept `color`/`label`: a helper is a layout, and since defaults are
-  # applied here we could not tell "colour omitted" from "colour 0" at expansion
-  # time, so propagating one to the copies would silently lose the other. Better
-  # to reject the key and make the model put it on the child.
+  # do NOT accept `color`/`label`/`role`: a helper is a layout, and since defaults
+  # are applied here we could not tell "colour omitted" from "colour 0" at
+  # expansion time, so propagating one to the copies would silently lose the
+  # other. Better to reject the key and make the model put it on the child.
   @shape_fields %{
     box: ~w(size),
     sphere: ~w(r),
@@ -136,6 +171,7 @@ defmodule BusterClaw.Scene3d do
     capsule: ~w(r h),
     polyline: ~w(points),
     arrow: ~w(from to),
+    region: ~w(outline height),
     grid: ~w(child count gap),
     stack: ~w(child count gap),
     ring: ~w(child count r)
@@ -149,12 +185,13 @@ defmodule BusterClaw.Scene3d do
     capsule: ~w(r h),
     polyline: ~w(points),
     arrow: ~w(from to),
+    region: ~w(outline),
     grid: ~w(child count),
     stack: ~w(child count),
     ring: ~w(child count r)
   }
 
-  @common_fields ~w(kind at rotate color label)
+  @common_fields ~w(kind at rotate color role label)
   @helper_fields ~w(kind at rotate)
 
   @default_camera %{azimuth: 35.0, elevation: 25.0}
@@ -198,8 +235,12 @@ defmodule BusterClaw.Scene3d do
 
   Total: any input at all yields `{:ok, scene}` or `{:error, atom()}`, never a
   raise. Defaults are filled in for every omitted optional field (`at` at the
-  origin, `rotate` zero, `color` 0, `label` `nil`, `camera` a three-quarter view)
-  so no stage downstream ever has to handle a missing key.
+  origin, `rotate` zero, `color` 0, `role` `:solid`, `label` `nil`, `camera` a
+  three-quarter view) so no stage downstream ever has to handle a missing key.
+
+  The one deliberate exception is a region's `height`, which stays **absent**
+  rather than becoming `nil` — its presence is what distinguishes a flat region
+  from an extruded one, so a default would erase the distinction.
 
   Composition helpers are left nested here — `expand/1` resolves them.
   """
@@ -319,7 +360,7 @@ defmodule BusterClaw.Scene3d do
   defp common(raw, kind) when kind in @helpers do
     with {:ok, at} <- optional_vec3(raw, "at", {0.0, 0.0, 0.0}),
          {:ok, rotate} <- optional_vec3(raw, "rotate", {0.0, 0.0, 0.0}) do
-      {:ok, %{kind: kind, at: at, rotate: degrees(rotate), color: 0, label: nil}}
+      {:ok, %{kind: kind, at: at, rotate: degrees(rotate), color: 0, role: :solid, label: nil}}
     end
   end
 
@@ -327,8 +368,17 @@ defmodule BusterClaw.Scene3d do
     with {:ok, at} <- optional_vec3(raw, "at", {0.0, 0.0, 0.0}),
          {:ok, rotate} <- optional_vec3(raw, "rotate", {0.0, 0.0, 0.0}),
          {:ok, color} <- color(Map.get(raw, "color", 0)),
+         {:ok, role} <- role(Map.get(raw, "role")),
          {:ok, label} <- label(Map.get(raw, "label")) do
-      {:ok, %{kind: kind, at: at, rotate: degrees(rotate), color: color, label: label}}
+      {:ok,
+       %{
+         kind: kind,
+         at: at,
+         rotate: degrees(rotate),
+         color: color,
+         role: role,
+         label: label
+       }}
     end
   end
 
@@ -373,6 +423,13 @@ defmodule BusterClaw.Scene3d do
     with {:ok, from} <- vec3(Map.fetch!(raw, "from")),
          {:ok, to} <- vec3(Map.fetch!(raw, "to")) do
       {:ok, base |> Map.put(:from, from) |> Map.put(:to, to), budget}
+    end
+  end
+
+  defp shape(:region, raw, base, _depth, budget) do
+    with {:ok, outline} <- outline(Map.fetch!(raw, "outline")),
+         {:ok, height} <- optional_height(raw) do
+      {:ok, base |> Map.put(:outline, outline) |> put_height(height), budget}
     end
   end
 
@@ -502,8 +559,96 @@ defmodule BusterClaw.Scene3d do
     end
   end
 
+  # ── region outlines ────────────────────────────────────────────────────────
+
+  # An outline is 2D by construction: a region lies in the ground plane, so a `y`
+  # component would only ever be a way to get it wrong. It is stored as `{x, z}`
+  # pairs and `Geometry` supplies the zero.
+  defp outline(list) when is_list(list) do
+    cond do
+      length(list) < 3 -> {:error, :bad_outline}
+      length(list) > @max_outline -> {:error, :too_many_points}
+      true -> collect_vec2(list)
+    end
+  end
+
+  defp outline(_), do: {:error, :bad_outline}
+
+  defp collect_vec2(list) do
+    Enum.reduce_while(list, {:ok, []}, fn raw, {:ok, acc} ->
+      case vec2(raw) do
+        {:ok, v} -> {:cont, {:ok, [v | acc]}}
+        {:error, _} -> {:halt, {:error, :bad_outline}}
+      end
+    end)
+    |> case do
+      {:ok, acc} -> acc |> Enum.reverse() |> non_degenerate()
+      error -> error
+    end
+  end
+
+  defp vec2([x, z]) do
+    with {:ok, x} <- num(x),
+         {:ok, z} <- num(z) do
+      {:ok, {x, z}}
+    end
+  end
+
+  defp vec2(_), do: {:error, :bad_outline}
+
+  # A polygon with no area — every point on one line, or every point the same —
+  # tessellates to nothing and would render as an invisible node the model
+  # believes it drew. The tolerance is derived from the outline's **own bounding
+  # box** rather than being an absolute epsilon, because scene scale is arbitrary
+  # here (the camera auto-fits): an island authored in metres and the same island
+  # in kilometres must get the same verdict.
+  #
+  # Self-intersection is NOT checked — see the moduledoc for why.
+  defp non_degenerate(points) do
+    xs = Enum.map(points, &elem(&1, 0))
+    zs = Enum.map(points, &elem(&1, 1))
+    extent = max(Enum.max(xs) - Enum.min(xs), Enum.max(zs) - Enum.min(zs))
+
+    if abs(shoelace(points)) <= 1.0e-9 * extent * extent,
+      do: {:error, :degenerate_outline},
+      else: {:ok, points}
+  end
+
+  # Twice the signed area. Sign (winding) is `Geometry`'s problem, not ours.
+  defp shoelace(points) do
+    points
+    |> Enum.zip(tl(points) ++ [hd(points)])
+    |> Enum.reduce(0.0, fn {{x1, z1}, {x2, z2}}, acc -> acc + (x1 * z2 - x2 * z1) end)
+  end
+
+  defp optional_height(raw) do
+    case Map.get(raw, "height") do
+      nil -> {:ok, nil}
+      v -> pos_num(v)
+    end
+  end
+
+  # An omitted `height` leaves the key genuinely **absent**, not `nil`:
+  # `t:Types.node_/0` marks it `optional`, and flat-versus-extruded is the one
+  # distinction `Geometry` reads off the key's presence.
+  defp put_height(node, nil), do: node
+  defp put_height(node, height), do: Map.put(node, :height, height)
+
+  # ── enums ──────────────────────────────────────────────────────────────────
+
   defp color(i) when is_integer(i) and i >= 0 and i <= 4, do: {:ok, i}
   defp color(_), do: {:error, :bad_color}
+
+  defp role(nil), do: {:ok, :solid}
+
+  defp role(name) when is_binary(name) do
+    case Map.fetch(@roles, name) do
+      {:ok, role} -> {:ok, role}
+      :error -> {:error, :bad_role}
+    end
+  end
+
+  defp role(_), do: {:error, :bad_role}
 
   defp label(nil), do: {:ok, nil}
 
@@ -685,8 +830,15 @@ defmodule BusterClaw.Scene3d do
      boundary and rejects a whole scene on one bad key, with no feedback loop
      back to the model. Every quirk omitted here surfaces to the user as "3D
      doesn't work" rather than "the guide was short", so the awkward specifics —
-     `plane`'s two-element size, `ring` taking `r` not `gap`, helpers refusing
-     `color`/`label` — earn their words.
+     `plane`'s two-element size, `region`'s two-element outline points, `ring`
+     taking `r` not `gap`, helpers refusing `color`/`role`/`label` — earn their
+     words.
+
+  Three lines here are not vocabulary at all; they are the Phase 2 motivating
+  failure written down. The flat-map sentence, the `role: "surface"` paragraph
+  and the label budget each correspond to one way a real scene came out
+  unreadable, and each is worded to say *why* rather than just *what* — a rule
+  with its reason attached survives paraphrase, and a bare prohibition does not.
   """
   @spec guide() :: String.t()
   def guide do
@@ -695,7 +847,9 @@ defmodule BusterClaw.Scene3d do
     ```svg block for anything FLAT — diagrams, charts, flowcharts, annotated \
     sketches. Use a ```scene3d block ONLY when the third dimension carries real \
     meaning: physical structure, layering, volume, spatial arrangement. If a scene \
-    would read the same flattened, it should have been an SVG.
+    would read the same flattened, it should have been an SVG. A FLAT MAP IS AN \
+    SVG — reach for scene3d on a map only when something is genuinely in the third \
+    dimension: terrain height, extruded regions, stacked layers.
 
     A ```scene3d block is JSON, never code:
 
@@ -712,9 +866,23 @@ defmodule BusterClaw.Scene3d do
     - plane — size [w,d]        (TWO numbers: a plane has no thickness)
     - polyline — points [[x,y,z], …]
     - arrow — from [x,y,z], to [x,y,z]
+    - region — outline [[x,z], …], and optional height
+
+    A region is a FILLED polygon lying on the ground: a landmass, a zone, a \
+    building footprint, a catchment. Its outline points are TWO numbers each — \
+    [x,z], never y, because a region is on the ground by definition. Give at least \
+    3, list them in order around the shape, and do not let the outline cross \
+    itself. Add height to extrude the region into a prism, which is usually the \
+    thing that earns a map its third dimension in the first place.
 
     Every node also takes at, rotate, color (an integer 0-4 — a palette index, \
-    NEVER a hex string) and label.
+    NEVER a hex string), label, and role.
+
+    role is "solid" (the default — the subject) or "surface". Use "surface" for \
+    ground, water, a floor, a base map: it is drawn quietly and does not frame the \
+    shot. Reach for it instead of picking a colour — the palette is five saturated \
+    series hues with no quiet slot, so water authored as color 3 comes out as a \
+    wall of magenta across the whole card.
 
     For repetition use a helper instead of listing nodes by hand. A helper wraps a \
     `child` node:
@@ -722,15 +890,17 @@ defmodule BusterClaw.Scene3d do
     - stack — count n (up the Y axis), gap
     - ring — count n, r  (a ring takes RADIUS, not gap)
 
-    Put color and label on the CHILD, not on the helper — a helper rejects them.
+    Put color, role and label on the CHILD, not on the helper — a helper rejects them.
 
-    Four rules that decide whether a scene renders at all:
-    - LABEL things. An unlabeled box communicates nothing; labels are the point.
+    Three rules that decide whether a scene reads at all:
+    - LABEL what matters, and ONLY what matters. Aim for at most 6-8 labels in a \
+      scene. Labels that do not fit are DROPPED, so thirteen labels leave you with \
+      fewer legible ones than six would — name the rest in your prose instead. \
+      Keep the shape count down too: a dozen well-labelled shapes beats a hundred.
     - Never set camera distance or zoom. The camera auto-fits your scene, so any \
       consistent scale works — pick the two viewing angles and nothing else.
     - Never make solids intersect. Faces are depth-sorted per face, so \
       interpenetrating shapes render wrong. Place things adjacent, not overlapping.
-    - Keep it small and legible: a dozen well-labelled shapes beats a hundred.
 
     An invalid scene is dropped silently and your message arrives with nothing \
     where the picture should be, so prefer the plain vocabulary above over \

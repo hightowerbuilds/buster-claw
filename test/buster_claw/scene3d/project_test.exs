@@ -9,7 +9,7 @@ defmodule BusterClaw.Scene3d.ProjectTest do
 
   # An axis-aligned box, wound CCW-from-outside on every face, with the normals
   # `Geometry` is contracted to precompute.
-  defp box(center \\ {0.0, 0.0, 0.0}, side \\ 1.0, color \\ 0) do
+  defp box(center \\ {0.0, 0.0, 0.0}, side \\ 1.0, color \\ 0, role \\ :solid) do
     {cx, cy, cz} = center
     h = side / 2.0
 
@@ -35,7 +35,8 @@ defmodule BusterClaw.Scene3d.ProjectTest do
         %{
           verts: Enum.map(signs, fn {sx, sy, sz} -> corner.(sx * 1.0, sy * 1.0, sz * 1.0) end),
           normal: normal,
-          color: color
+          color: color,
+          role: role
         }
       end)
 
@@ -43,6 +44,22 @@ defmodule BusterClaw.Scene3d.ProjectTest do
   end
 
   defp empty_mesh, do: %{faces: [], lines: [], labels: []}
+
+  # A horizontal quad in the XZ plane, normal up, sized by `half`. The backdrop
+  # shape: wide, flat, and usually far bigger than what stands on it.
+  defp ground(half, role, color \\ 4) do
+    %{
+      verts: [
+        {-half, 0.0, -half},
+        {-half, 0.0, half},
+        {half, 0.0, half},
+        {half, 0.0, -half}
+      ],
+      normal: {0.0, 1.0, 0.0},
+      color: color,
+      role: role
+    }
+  end
 
   # Scales world positions only. Normals are unit directions and must NOT be
   # scaled — that is the whole premise of the scale-invariance property.
@@ -72,6 +89,43 @@ defmodule BusterClaw.Scene3d.ProjectTest do
         [label.depth, x, y]
       end) ++
       [min_x, min_y, w, h]
+  end
+
+  # A small subject standing on a backdrop far larger than itself: the shape of
+  # every scene the `role` split exists for.
+  defp subject_over(half, role) do
+    subject = box({0.0, 0.0, 0.0}, 2.0, 0)
+    %{subject | faces: subject.faces ++ [ground(half, role)]}
+  end
+
+  defp extent_of(points) do
+    xs = Enum.map(points, &elem(&1, 0))
+    ys = Enum.map(points, &elem(&1, 1))
+
+    max(Enum.max(xs) - Enum.min(xs), Enum.max(ys) - Enum.min(ys))
+  end
+
+  # What fraction of the card's width the geometry of one colour takes up. This
+  # is the number the motivating screenshot got wrong: the islands were there,
+  # they were just 5% of the frame because the water decided the crop.
+  defp fill_of(frame, color) do
+    {_min_x, _min_y, w, _h} = frame.viewbox
+
+    frame.polys
+    |> Enum.filter(&(&1.color == color))
+    |> Enum.flat_map(& &1.points)
+    |> extent_of()
+    |> Kernel./(w)
+  end
+
+  defp assert_viewbox_close(a, b) do
+    {ax, ay, aw, ah} = a
+    {bx, by, bw, bh} = b
+
+    assert_in_delta ax, bx, 1.0e-9
+    assert_in_delta ay, by, 1.0e-9
+    assert_in_delta aw, bw, 1.0e-9
+    assert_in_delta ah, bh, 1.0e-9
   end
 
   # NaN fails every comparison, and an infinity blows the bound, so this catches
@@ -175,7 +229,8 @@ defmodule BusterClaw.Scene3d.ProjectTest do
         %{
           verts: [{-1.0, -1.0, z}, {1.0, -1.0, z}, {1.0, 1.0, z}, {-1.0, 1.0, z}],
           normal: normal,
-          color: color
+          color: color,
+          role: :solid
         }
       end
 
@@ -212,7 +267,8 @@ defmodule BusterClaw.Scene3d.ProjectTest do
             %{
               verts: [{-1.0, -1.0, 0.0}, {1.0, -1.0, 0.0}, {1.0, 1.0, 0.0}, {-1.0, 1.0, 0.0}],
               normal: normal,
-              color: 0
+              color: 0,
+              role: :solid
             }
           ],
           lines: [],
@@ -254,7 +310,8 @@ defmodule BusterClaw.Scene3d.ProjectTest do
         %{
           verts: [{-1.0, -1.0, z}, {1.0, -1.0, z}, {1.0, 1.0, z}, {-1.0, 1.0, z}],
           normal: {0.0, 0.0, 1.0},
-          color: color
+          color: color,
+          role: :solid
         }
       end
 
@@ -393,6 +450,84 @@ defmodule BusterClaw.Scene3d.ProjectTest do
     end
   end
 
+  # ── Surface-aware framing ───────────────────────────────────────────────────
+
+  describe "surfaces are drawn but do not frame the shot" do
+    @backdrop_cam %{azimuth: 30.0, elevation: 35.0}
+
+    test "a backdrop 20x the subject leaves the subject filling the card" do
+      frame = Project.run(subject_over(40.0, :surface), @backdrop_cam)
+
+      assert fill_of(frame, 0) > 0.8
+    end
+
+    test "the same backdrop marked :solid is the motivating bug" do
+      frame = Project.run(subject_over(40.0, :solid), @backdrop_cam)
+
+      # Identical geometry, one word of difference in the authored scene, and the
+      # subject collapses to a smudge in the middle. This is the screenshot.
+      assert fill_of(frame, 0) < 0.15
+    end
+
+    test "the backdrop is still drawn, and runs off the edges of the card" do
+      frame = Project.run(subject_over(40.0, :surface), @backdrop_cam)
+
+      assert [surface] = Enum.filter(frame.polys, &(&1.role == :surface))
+      assert surface.color == 4
+
+      # Fitting to solids only puts the camera close to the subject, which would
+      # have put a backdrop this large behind the eye and dropped it whole (there
+      # is no near-plane clipper). The clearance floor is what stops that.
+      {min_x, min_y, w, h} = frame.viewbox
+
+      assert Enum.any?(surface.points, fn {x, y} ->
+               x < min_x or x > min_x + w or y < min_y or y > min_y + h
+             end)
+
+      assert_all_finite(frame)
+    end
+
+    test "every poly carries the role of the face it came from" do
+      frame = Project.run(subject_over(40.0, :surface), @backdrop_cam)
+
+      assert Enum.count(frame.polys, &(&1.role == :solid)) == 3
+      assert Enum.count(frame.polys, &(&1.role == :surface)) == 1
+    end
+
+    test "a scene of nothing but surfaces falls back to framing all of it" do
+      surface_only = %{faces: [ground(5.0, :surface)], lines: [], labels: []}
+      solid_only = %{faces: [ground(5.0, :solid)], lines: [], labels: []}
+
+      surface_frame = Project.run(surface_only, @backdrop_cam)
+      solid_frame = Project.run(solid_only, @backdrop_cam)
+
+      assert [poly] = surface_frame.polys
+      assert poly.role == :surface
+
+      # Nothing to exclude means nothing is excluded: an all-water card frames
+      # its water rather than cropping to an empty subject.
+      assert_viewbox_close(surface_frame.viewbox, solid_frame.viewbox)
+      assert fill_of(surface_frame, 4) > 0.8
+      assert_all_finite(surface_frame)
+    end
+
+    test "scale invariance survives the clearance floor" do
+      mesh = subject_over(40.0, :surface)
+
+      small = Project.run(mesh, @backdrop_cam)
+      large = Project.run(scale_mesh(mesh, 1000.0), @backdrop_cam)
+
+      assert_viewbox_close(small.viewbox, large.viewbox)
+
+      for {a, b} <- Enum.zip(small.polys, large.polys),
+          {{ax, ay}, {bx, by}} <- Enum.zip(a.points, b.points) do
+        assert a.role == b.role
+        assert_in_delta ax, bx, 1.0e-6
+        assert_in_delta ay, by, 1.0e-6
+      end
+    end
+  end
+
   # ── Degenerate input ────────────────────────────────────────────────────────
 
   describe "degenerate cameras and meshes" do
@@ -468,18 +603,8 @@ defmodule BusterClaw.Scene3d.ProjectTest do
     end
 
     test "a flat scene with zero extent on one axis still fits" do
-      # A ground plane: no thickness in Y at all.
-      mesh = %{
-        faces: [
-          %{
-            verts: [{-5.0, 0.0, -5.0}, {5.0, 0.0, -5.0}, {5.0, 0.0, 5.0}, {-5.0, 0.0, 5.0}],
-            normal: {0.0, 1.0, 0.0},
-            color: 4
-          }
-        ],
-        lines: [],
-        labels: []
-      }
+      # A solid slab lying flat: no thickness in Y at all.
+      mesh = %{faces: [ground(5.0, :solid)], lines: [], labels: []}
 
       frame = Project.run(mesh, %{azimuth: 0.0, elevation: 45.0})
 
@@ -494,7 +619,8 @@ defmodule BusterClaw.Scene3d.ProjectTest do
           %{
             verts: [{-1.0, -1.0, 0.0}, {1.0, -1.0, 0.0}, {1.0, 1.0, 0.0}],
             normal: {0.0, 0.0, 0.0},
-            color: 0
+            color: 0,
+            role: :solid
           }
         ],
         lines: [],
@@ -508,7 +634,8 @@ defmodule BusterClaw.Scene3d.ProjectTest do
     end
 
     test "a face with no vertices is skipped" do
-      mesh = %{faces: [%{verts: [], normal: {0.0, 0.0, 1.0}, color: 0}], lines: [], labels: []}
+      face = %{verts: [], normal: {0.0, 0.0, 1.0}, color: 0, role: :solid}
+      mesh = %{faces: [face], lines: [], labels: []}
 
       assert Project.run(mesh, @front).polys == []
     end
@@ -528,7 +655,8 @@ defmodule BusterClaw.Scene3d.ProjectTest do
     assert Map.keys(frame) |> Enum.sort() == [:labels, :lines, :polys, :viewbox]
 
     for poly <- frame.polys do
-      assert Map.keys(poly) |> Enum.sort() == [:color, :depth, :points, :shade]
+      assert Map.keys(poly) |> Enum.sort() == [:color, :depth, :points, :role, :shade]
+      assert poly.role == :solid
     end
 
     for line <- frame.lines do

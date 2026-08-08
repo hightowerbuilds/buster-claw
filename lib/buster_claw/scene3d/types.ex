@@ -62,6 +62,25 @@ defmodule BusterClaw.Scene3d.Types do
   @type color :: 0..4
 
   @typedoc """
+  What a node is *for*, which decides how loudly it is drawn and whether it
+  frames the shot.
+
+  - `:solid` — the subject. Full palette colour, and it counts toward the
+    camera's auto-fit bounds.
+  - `:surface` — backdrop: ground, water, a floor. Rendered muted and
+    low-contrast, and **excluded from auto-fit bounds**.
+
+  This exists because the palette is a *series* palette — five saturated hues
+  chosen so chart series stay distinguishable. It has no quiet colour, so before
+  `:surface` existed the only way to draw water was to pick a series slot, and a
+  ground plane came out as a wall of magenta covering the card. A backdrop also
+  must not frame the shot: bounds over every point let a large plane dominate the
+  bounding box and squeeze the actual subject into a small patch in the middle.
+  Both failures are visible in the Phase 2 motivating screenshot.
+  """
+  @type role :: :solid | :surface
+
+  @typedoc """
   One authored node. `kind` decides which of the shape fields are present; the
   rest are universal. `label` is the **only** model-controlled text in the whole
   pipeline and must be HTML-escaped at render time.
@@ -69,6 +88,12 @@ defmodule BusterClaw.Scene3d.Types do
   Composition helpers (`:grid`, `:stack`, `:ring`) carry a `child` node and a
   count/spacing, and are removed entirely by `expand/1` — no stage after
   expansion ever sees one.
+
+  `:region` is the map primitive: a **filled** polygon lying in the ground plane,
+  given as 2D `{x, z}` points (no `y` — a region is on the ground by definition,
+  and omitting the axis is one fewer thing to get wrong). With `height` it
+  extrudes into a prism, which is what makes a map worth rendering in 3D at all
+  rather than as a tilted flat picture.
   """
   @type node_ :: %{
           required(:kind) =>
@@ -79,17 +104,21 @@ defmodule BusterClaw.Scene3d.Types do
             | :capsule
             | :polyline
             | :arrow
+            | :region
             | :grid
             | :stack
             | :ring,
           required(:at) => vec3(),
           required(:rotate) => vec3(),
           required(:color) => color(),
+          required(:role) => role(),
           required(:label) => String.t() | nil,
           optional(:size) => vec3(),
           optional(:r) => float(),
           optional(:h) => float(),
           optional(:points) => [vec3()],
+          optional(:outline) => [{float(), float()}],
+          optional(:height) => float(),
           optional(:from) => vec3(),
           optional(:to) => vec3(),
           optional(:child) => node_(),
@@ -114,7 +143,7 @@ defmodule BusterClaw.Scene3d.Types do
   precomputed because both culling and shading need it and it is cheaper to
   carry than to recompute per frame.
   """
-  @type face :: %{verts: [vec3()], normal: vec3(), color: color()}
+  @type face :: %{verts: [vec3()], normal: vec3(), color: color(), role: role()}
 
   @typedoc """
   A world-space line segment. Used by `:polyline` and `:arrow`.
@@ -158,11 +187,39 @@ defmodule BusterClaw.Scene3d.Types do
   camera and the scene is front-lit at every azimuth. Physically dishonest, and
   deliberately so: a diagram that goes dark when you turn it is the worse lie.
   """
-  @type poly :: %{points: [vec2()], color: color(), shade: float(), depth: float()}
+  @type poly :: %{
+          points: [vec2()],
+          color: color(),
+          shade: float(),
+          depth: float(),
+          role: role()
+        }
 
   @type poly_line :: %{a: vec2(), b: vec2(), color: color(), width: float(), depth: float()}
 
   @type poly_label :: %{at: vec2(), text: String.t(), depth: float()}
+
+  @typedoc """
+  A label after layout: where it will actually be drawn, at what size, and
+  whether it needs a leader line back to the thing it names.
+
+  `anchor` is the projected point the label belongs to; `at` is where it ended up
+  after collision resolution. When they differ, `leader` is true and the renderer
+  draws a hairline between them — an offset label with no leader is a label
+  pointing at nothing.
+
+  Labels that could not be placed are **absent from the list**, not marked. A
+  dropped label is not lost information: the card's caption already names
+  everything in the scene, so the honest trade is a readable picture plus a
+  complete list, rather than thirteen overlapping words and neither.
+  """
+  @type placed_label :: %{
+          at: vec2(),
+          anchor: vec2(),
+          text: String.t(),
+          size: float(),
+          leader: boolean()
+        }
 
   @typedoc """
   A finished 2D frame. `polys` and `lines` arrive **already sorted back-to-front**

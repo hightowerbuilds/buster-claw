@@ -1,6 +1,6 @@
 # Scene3D — a 3D card the model can put in the chat
 
-**Scoped 08-08-26 · Status: PHASES 0-1 SHIPPED 08-08-26.**
+**Scoped 08-08-26 · Status: PHASES 0-1 SHIPPED, PHASE 2 PASSES 1-2 SHIPPED 08-08-26.**
 
 Phases 0 and 1 landed the same day they were scoped, built by four agents
 against the shared contract in `lib/buster_claw/scene3d/types.ex`. **148 unit
@@ -266,15 +266,75 @@ reload, and it looks right in a running app.
 reaches the DOM and there is no sanitizer regex to outsmart. This channel is
 strictly safer than the one it sits beside.
 
-# Phase 2 — Make it look like something
+# Phase 2 — Make it readable
 
-*Gated on reading real Phase 1 transcripts first (see the open question).*
+*The gate opened 08-08 the moment a real scene was driven, and it did not open
+the way this phase expected.*
 
-- [ ] Faceted shading from face normals against a fixed key light — the cheapest
-  change with the largest legibility gain.
-- [ ] Ground plane with a soft contact shadow; optional subtle grid.
-- [ ] Label leader lines when a label would otherwise sit on top of geometry.
-- [ ] Depth cue: slight desaturation with distance.
+## The motivating failure — a map of Puget Sound
+
+Asked for a 3D map, the model emitted a `plane` for the water, `polyline`
+coastlines, `cylinder` towns, an `arrow` ferry route, and thirteen labels. The
+card was unusable. **Almost all of it was our bug, not the model's** — given the
+vocabulary it was handed, it did roughly the right thing.
+
+Four causes, ranked by how much damage each did:
+
+1. **Labels had no layout.** `svg.ex` drew every label at a uniform 5.5% of the
+   viewBox with no collision handling. Fine at the 3–5 labels Phase 1 was tested
+   with; at thirteen clustered in one region, "Deception Pass Bridge" landed on
+   top of "Fidalgo Island" on top of "Oak Harbor". **Uniform label sizing was a
+   deliberate Phase 1 decision, taken on the reasoning that shrinking distant
+   labels defeats the point of labelling. That reasoning was right at small
+   counts and nobody asked what happened at large ones.**
+2. **There was nowhere for "water" to live.** All five palette slots are
+   saturated *series* colours, chosen so chart series stay distinguishable. The
+   vocabulary had no way to say "this is a backdrop, draw it quietly", so the
+   model picked a slot and the ocean came out as magenta over 60% of the card.
+3. **Auto-fit framed the backdrop.** `Project.bounds/1` took every point, so a
+   large ground plane dominated the bounding box and squeezed the actual islands
+   into a small patch in the middle.
+4. **No filled-region primitive.** Coastlines could only be `polyline`, which
+   renders as 1px hairlines. A map wants filled landmasses.
+
+**And a fifth, which is about the guide rather than the renderer:** a flat map
+tilted in space is *worse* than a flat map — the third dimension carried nothing
+and cost legibility. The model crossed the channel line this roadmap's open
+question is about, which is evidence the line needs stating more sharply than
+"if it would read the same flattened".
+
+## Pass 1 — readability
+
+- [x] **Label layout** (`Scene3d.Labels`, new): estimated text extents, size
+  scaled to label density, greedy placement with candidate offsets, leader lines
+  for offset labels, and **dropping** what cannot fit. Dropping is the right
+  trade: the card caption already names everything in the scene, so a readable
+  picture plus a complete list beats thirteen overlapping words and neither.
+- [x] **A `surface` role** on nodes — rendered muted and low-contrast. NOT a
+  sixth palette slot: the five-slot order is the colourblind-safety mechanism.
+- [x] **Surfaces excluded from auto-fit bounds**, so a backdrop cannot frame the
+  shot. Falls back to all geometry when a scene is nothing but surfaces.
+
+## Pass 2 — actually enabling maps
+
+- [x] **A `region` primitive**: a filled polygon in the ground plane from 2D
+  `{x, z}` points. Concave by nature, so ear clipping, not a triangle fan.
+- [x] **Extrusion** — `height` on a region turns a landmass into a prism. **This
+  is the change that makes a 3D map worth being 3D** rather than a tilted flat
+  picture, and it is the one most likely to move this from bad to good.
+- [x] **Guide changes**: a label budget, `surface` and `region` taught, and a
+  sharper channel line — a flat map is an SVG; a scene needs something genuinely
+  in the third dimension.
+
+## Deferred from the original Phase 2
+
+- [ ] Faceted shading from face normals — already partly present via `shade`,
+  which `Project` computes and `Svg` applies narrowly. Widen it once the
+  readability work lands and the cards are worth polishing.
+- [ ] Ground contact shadow; optional subtle grid.
+- [ ] Depth cue: desaturation with distance. **Note the constraint recorded in
+  `t:poly/0`** — `depth` is in scene units and is not scale-invariant, so this
+  must normalise against the frame's own min/max.
 
 **Done when:** a scene reads as a solid object rather than a wireframe, without
 any new model-facing vocabulary.

@@ -5,11 +5,22 @@ defmodule BusterClaw.Scene3d.GeometryTest do
 
   @eps 1.0e-9
 
+  # A 2x2 ground square, written clockwise-seen-from-above on purpose: the model
+  # has no reason to prefer a winding and neither should this file.
+  @square [{0.0, 0.0}, {2.0, 0.0}, {2.0, 2.0}, {0.0, 2.0}]
+
   # ── Helpers ─────────────────────────────────────────────────────────────────
 
   defp prim(kind, extra \\ %{}) do
     Map.merge(
-      %{kind: kind, at: {0.0, 0.0, 0.0}, rotate: {0.0, 0.0, 0.0}, color: 0, label: nil},
+      %{
+        kind: kind,
+        at: {0.0, 0.0, 0.0},
+        rotate: {0.0, 0.0, 0.0},
+        color: 0,
+        role: :solid,
+        label: nil
+      },
       extra
     )
   end
@@ -67,6 +78,54 @@ defmodule BusterClaw.Scene3d.GeometryTest do
       assert abs(magnitude(face.normal) - 1.0) < @eps,
              "normal #{inspect(face.normal)} is not unit length"
     end
+  end
+
+  # A C opening toward +x. The bite out of it — 1 < x < 3, 1 < z < 2 — is
+  # emphatically not part of the polygon, and a fan from vertex zero covers it.
+  # That is the whole point of this shape.
+  defp c_shape do
+    [
+      {0.0, 0.0},
+      {3.0, 0.0},
+      {3.0, 1.0},
+      {1.0, 1.0},
+      {1.0, 2.0},
+      {3.0, 2.0},
+      {3.0, 3.0},
+      {0.0, 3.0}
+    ]
+  end
+
+  # Ray casting on the ground plane. This is the instrument that proves ear
+  # clipping actually clips ears: a fan triangulation of a concave outline
+  # necessarily puts at least one face centroid outside, and nothing else in this
+  # file would notice.
+  defp inside_outline?({px, pz}, outline) do
+    outline
+    |> Enum.zip(tl(outline) ++ [hd(outline)])
+    |> Enum.reduce(false, fn {{xi, zi}, {xj, zj}}, inside ->
+      crosses? = zi > pz != zj > pz
+
+      if crosses? and px < (xj - xi) * (pz - zi) / (zj - zi) + xi do
+        not inside
+      else
+        inside
+      end
+    end)
+  end
+
+  # Unsigned area of a polygon projected onto the ground plane.
+  defp ground_area(verts) do
+    verts
+    |> Enum.zip(tl(verts) ++ [hd(verts)])
+    |> Enum.reduce(0.0, fn {{xi, _, zi}, {xj, _, zj}}, sum -> sum + (xi * zj - xj * zi) end)
+    |> abs()
+    |> Kernel./(2.0)
+  end
+
+  # "It terminates" is only an assertion if the test can fail instead of hang.
+  defp within(fun, timeout \\ 5_000) do
+    fun |> Task.async() |> Task.await(timeout)
   end
 
   # ── Winding: one property test per primitive ────────────────────────────────
@@ -156,7 +215,8 @@ defmodule BusterClaw.Scene3d.GeometryTest do
             {:box, %{size: {2.0, 1.0, 3.0}}},
             {:sphere, %{r: 1.0}},
             {:cylinder, %{r: 0.6, h: 2.0}},
-            {:capsule, %{r: 0.4, h: 1.2}}
+            {:capsule, %{r: 0.4, h: 1.2}},
+            {:region, %{outline: @square, height: 2.0}}
           ] do
         {kind, fields} = kind_and_fields
         fields = Map.merge(fields, %{rotate: {35.0, -110.0, 62.0}, at: {5.0, -2.0, 8.0}})
@@ -219,6 +279,356 @@ defmodule BusterClaw.Scene3d.GeometryTest do
       assert length(mesh.faces) == 16 + 2
       caps = Enum.filter(mesh.faces, &(length(&1.verts) == 16))
       assert length(caps) == 2
+    end
+  end
+
+  # ── Role: the backdrop marker, which every face must carry ──────────────────
+
+  describe "role" do
+    test "reaches every face of every primitive that makes one" do
+      shapes = [
+        {:box, %{size: {2.0, 2.0, 2.0}}},
+        {:sphere, %{r: 1.0}},
+        {:cylinder, %{r: 1.0, h: 2.0}},
+        {:plane, %{size: {2.0, 0.0, 2.0}}},
+        {:capsule, %{r: 0.5, h: 1.0}},
+        {:arrow, %{from: {0.0, 0.0, 0.0}, to: {0.0, 2.0, 0.0}}},
+        {:region, %{outline: c_shape()}},
+        {:region, %{outline: c_shape(), height: 1.5}}
+      ]
+
+      for role <- [:solid, :surface], {kind, fields} <- shapes do
+        mesh = build(prim(kind, Map.put(fields, :role, role)))
+
+        refute mesh.faces == [], "#{kind} produced no faces to check the role on"
+
+        assert Enum.all?(mesh.faces, &(&1.role == role)),
+               "#{kind} dropped its #{role} role on at least one face"
+      end
+    end
+
+    test "is per node, not per scene" do
+      mesh =
+        build([
+          prim(:plane, %{size: {10.0, 0.0, 10.0}, role: :surface}),
+          prim(:box, %{size: {1.0, 1.0, 1.0}, role: :solid})
+        ])
+
+      assert Enum.count(mesh.faces, &(&1.role == :surface)) == 2
+      assert Enum.count(mesh.faces, &(&1.role == :solid)) == 6
+    end
+
+    test "defaults to :solid when a node somehow arrives without one" do
+      # :solid is the loud default on purpose. A backdrop drawn as a subject is a
+      # visible mistake someone fixes; a subject drawn as a backdrop is greyed
+      # out AND dropped from the auto-fit, which reads as a rendering bug.
+      node = :box |> prim(%{size: {1.0, 1.0, 1.0}}) |> Map.delete(:role)
+
+      assert Enum.all?(build(node).faces, &(&1.role == :solid))
+    end
+  end
+
+  # ── Region: filled ground polygons, flat and extruded ───────────────────────
+
+  describe "region: flat" do
+    test "is double-sided, like a plane and for the same reason" do
+      # Project's cull predicate again. A map's water is looked at from below the
+      # moment the model writes a negative elevation, and elevation validates to
+      # -89 — so a one-sided landmass is a hole in ordinary use.
+      mesh = build(prim(:region, %{outline: c_shape(), at: {0.0, -1.0, 0.0}}))
+
+      refute mesh.faces == []
+      assert rem(length(mesh.faces), 2) == 0
+      half = div(length(mesh.faces), 2)
+
+      for eye <- [{0.0, 50.0, 0.0}, {30.0, 20.0, 30.0}, {0.0, -50.0, 0.0}, {30.0, -20.0, 30.0}] do
+        visible =
+          Enum.filter(mesh.faces, fn f -> dot(f.normal, sub(eye, centroid(f.verts))) > 0.0 end)
+
+        assert length(visible) == half,
+               "expected half the region's faces to survive culling from #{inspect(eye)}"
+
+        # And exactly one of each coplanar pair, not both of some and none of
+        # others — which is what a per-triangle winding slip would look like.
+        assert length(Enum.uniq_by(visible, &Enum.sort(&1.verts))) == half
+      end
+    end
+
+    test "lies flat, at the node's own height" do
+      mesh = build(prim(:region, %{outline: c_shape(), at: {0.0, 4.0, 0.0}}))
+      ys = mesh.faces |> Enum.flat_map(& &1.verts) |> Enum.map(&elem(&1, 1))
+
+      assert Enum.uniq(ys) == [4.0]
+    end
+
+    test "a concave outline yields no face outside it — this is why it is not a fan" do
+      # THE assertion for ear clipping. Fanning the C from vertex zero emits
+      # (0,0)-(1,2)-(3,2), whose centroid sits in the bite at (1.33, 1.33): water
+      # painted as land. Every triangulation that is actually a triangulation
+      # passes this; a fan cannot.
+      outline = c_shape()
+      mesh = build(prim(:region, %{outline: outline}))
+
+      refute mesh.faces == []
+
+      for face <- mesh.faces do
+        {x, _y, z} = centroid(face.verts)
+
+        assert inside_outline?({x, z}, outline),
+               "face centroid #{inspect({x, z})} lies outside the outline; " <>
+                 "verts #{inspect(face.verts)}"
+      end
+    end
+
+    test "the triangles tile the outline exactly, with no gaps and no overlap" do
+      # The containment test above catches faces that escape the outline; this
+      # one catches the opposite failures — a triangle dropped, or two of them
+      # covering the same ground.
+      mesh = build(prim(:region, %{outline: c_shape()}))
+
+      covered =
+        mesh.faces
+        |> Enum.filter(&(elem(&1.normal, 1) > 0.0))
+        |> Enum.map(&ground_area(&1.verts))
+        |> Enum.sum()
+
+      # The C is a 3x3 square with a 2x1 bite taken out of it.
+      assert_in_delta covered, 7.0, @eps
+    end
+
+    test "is n-2 triangles per side, and every one of them is a triangle" do
+      mesh = build(prim(:region, %{outline: c_shape()}))
+
+      assert length(mesh.faces) == 2 * (8 - 2)
+      assert Enum.all?(mesh.faces, &(length(&1.verts) == 3))
+      assert mesh.lines == []
+    end
+  end
+
+  describe "region: extruded" do
+    test "a convex outline extrudes into a closed prism with outward normals" do
+      mesh = build(prim(:region, %{outline: @square, height: 2.0}))
+
+      assert_outward!(mesh.faces)
+      assert_unit_normals!(mesh.faces)
+    end
+
+    test "caps sit at 0 and at height, one facing up and one facing down" do
+      mesh = build(prim(:region, %{outline: @square, height: 3.0}))
+
+      ys = mesh.faces |> Enum.flat_map(& &1.verts) |> Enum.map(&elem(&1, 1))
+      assert Enum.min(ys) == 0.0
+      assert Enum.max(ys) == 3.0
+
+      normals = Enum.map(mesh.faces, & &1.normal)
+      assert Enum.count(normals, &(elem(&1, 1) > 0.999)) == 2, "expected a 2-triangle top cap"
+      assert Enum.count(normals, &(elem(&1, 1) < -0.999)) == 2, "expected a 2-triangle bottom cap"
+    end
+
+    test "is one wall quad per outline edge, and nothing is double-sided" do
+      mesh = build(prim(:region, %{outline: @square, height: 1.0}))
+
+      walls = Enum.filter(mesh.faces, &(length(&1.verts) == 4))
+      assert length(walls) == 4
+      # 4 walls + 2 top + 2 bottom. A prism has an outside, so unlike the flat
+      # case there is nothing here to double.
+      assert length(mesh.faces) == 8
+    end
+
+    test "every wall normal points out of the outline, reflex corners included" do
+      # assert_outward!/1 assumes a convex solid, so the C-shape gets the direct
+      # form of the same claim: step off a wall along its normal and you must
+      # leave the polygon; step the other way and you must stay in it. At a
+      # reflex corner those two swap if the ring winding was not normalised.
+      outline = c_shape()
+      mesh = build(prim(:region, %{outline: outline, height: 1.0}))
+      walls = Enum.filter(mesh.faces, &(length(&1.verts) == 4))
+
+      assert length(walls) == length(outline)
+
+      for wall <- walls do
+        {cx, _cy, cz} = centroid(wall.verts)
+        {nx, ny, nz} = wall.normal
+        step = 1.0e-4
+
+        assert abs(ny) < @eps, "a wall should be vertical, got #{inspect(wall.normal)}"
+
+        refute inside_outline?({cx + nx * step, cz + nz * step}, outline),
+               "wall at #{inspect({cx, cz})} has its normal pointing into the region"
+
+        assert inside_outline?({cx - nx * step, cz - nz * step}, outline)
+      end
+    end
+
+    test "cap triangles stay inside a concave outline" do
+      outline = c_shape()
+      mesh = build(prim(:region, %{outline: outline, height: 1.0}))
+      caps = Enum.filter(mesh.faces, &(length(&1.verts) == 3))
+
+      assert length(caps) == 2 * (8 - 2)
+
+      for face <- caps do
+        {x, _y, z} = centroid(face.verts)
+        assert inside_outline?({x, z}, outline)
+      end
+    end
+
+    test "a zero height is flat, not a prism of no thickness" do
+      flat = build(prim(:region, %{outline: @square}))
+      zero = build(prim(:region, %{outline: @square, height: 0.0}))
+
+      assert flat == zero
+    end
+  end
+
+  describe "region: outline winding" do
+    test "clockwise and counter-clockwise outlines produce identical geometry" do
+      # The model will not be consistent about this and should not have to be.
+      outline = c_shape()
+
+      assert build(prim(:region, %{outline: outline})) ==
+               build(prim(:region, %{outline: Enum.reverse(outline)}))
+    end
+
+    test "the top cap faces up whichever way the outline was written" do
+      for outline <- [@square, Enum.reverse(@square)] do
+        mesh = build(prim(:region, %{outline: outline, height: 2.0}))
+
+        assert_outward!(mesh.faces)
+
+        tops = Enum.filter(mesh.faces, &(elem(centroid(&1.verts), 1) > 1.999))
+        refute tops == []
+
+        for top <- tops, do: assert_close(top.normal, {0.0, 1.0, 0.0})
+      end
+    end
+
+    test "a closing repeat of the first point is not a zero-length edge" do
+      assert build(prim(:region, %{outline: @square, height: 1.0})) ==
+               build(prim(:region, %{outline: @square ++ [hd(@square)], height: 1.0}))
+    end
+  end
+
+  describe "region: malformed outlines" do
+    test "a self-intersecting outline terminates and still draws something" do
+      # A bowtie has no triangulation at all. The renderer's job here is to not
+      # hang and not raise; being slightly wrong about a polygon the model got
+      # wrong is a fine trade.
+      bowtie = [{0.0, 0.0}, {2.0, 2.0}, {2.0, 0.0}, {0.0, 2.0}]
+
+      mesh = within(fn -> build(prim(:region, %{outline: bowtie, height: 1.0})) end)
+
+      refute mesh.faces == []
+      assert_unit_normals!(mesh.faces)
+    end
+
+    test "an outline that crosses itself many times also terminates" do
+      # The {20/9} star polygon: every edge crosses several others, so the ear
+      # search finds nothing and must give up on its own.
+      outline =
+        for i <- 0..19 do
+          t = 2 * :math.pi() * rem(i * 9, 20) / 20
+          {2.0 * :math.cos(t), 2.0 * :math.sin(t)}
+        end
+
+      mesh = within(fn -> build(prim(:region, %{outline: outline})) end)
+
+      assert is_list(mesh.faces)
+      assert_unit_normals!(mesh.faces)
+    end
+
+    test "an outline of fewer than three distinct points draws nothing" do
+      for outline <- [
+            [],
+            [{0.0, 0.0}],
+            [{0.0, 0.0}, {1.0, 1.0}],
+            [{1.0, 1.0}, {1.0, 1.0}, {1.0, 1.0}]
+          ] do
+        mesh = build(prim(:region, %{outline: outline, height: 2.0}))
+
+        assert mesh.faces == []
+        assert mesh.lines == []
+      end
+    end
+
+    test "junk entries in the outline are skipped, not fatal" do
+      outline = [{0.0, 0.0}, "nope", {2.0, 0.0}, nil, {2.0, 2.0}, {0.0, 2.0}]
+      mesh = build(prim(:region, %{outline: outline, height: 1.0}))
+
+      assert length(mesh.faces) == 8
+    end
+
+    test "an absurdly long outline is truncated rather than paid for" do
+      # Ear clipping is roughly cubic in the outline length in the worst case, so
+      # the cap is what stops a thousand-point coastline from becoming a wedged
+      # renderer. One wall per surviving edge makes the cap directly observable.
+      outline =
+        for i <- 0..999 do
+          t = 2 * :math.pi() * i / 1000
+          {:math.cos(t), :math.sin(t)}
+        end
+
+      mesh = within(fn -> build(prim(:region, %{outline: outline, height: 1.0})) end)
+
+      assert Enum.count(mesh.faces, &(length(&1.verts) == 4)) == 128
+    end
+  end
+
+  describe "region labels" do
+    test "anchor at the outline centroid, on the ground when flat" do
+      mesh =
+        build(
+          prim(:region, %{
+            outline: [{0.0, 0.0}, {4.0, 0.0}, {4.0, 2.0}, {0.0, 2.0}],
+            label: "the sound"
+          })
+        )
+
+      assert [%{at: at, text: "the sound"}] = mesh.labels
+      assert_close(at, {2.0, 0.0, 1.0})
+    end
+
+    test "ride on top of an extrusion rather than inside it" do
+      mesh =
+        build(
+          prim(:region, %{
+            outline: [{0.0, 0.0}, {4.0, 0.0}, {4.0, 2.0}, {0.0, 2.0}],
+            height: 5.0,
+            label: "island"
+          })
+        )
+
+      assert [%{at: at}] = mesh.labels
+      assert_close(at, {2.0, 5.0, 1.0})
+    end
+
+    test "are area-weighted, not a mean of the points" do
+      # The same square, but with the bottom edge sampled eleven times over —
+      # which is exactly what a traced coastline looks like where the shore
+      # wiggles. A vertex mean lands at z = 0.31 and drops the label off the
+      # bottom edge; the area-weighted centroid does not move at all.
+      dense = for i <- 0..10, do: {i * 0.4, 0.0}
+      outline = dense ++ [{4.0, 2.0}, {0.0, 2.0}]
+
+      mesh = build(prim(:region, %{outline: outline, label: "x"}))
+
+      assert [%{at: at}] = mesh.labels
+      assert_close(at, {2.0, 0.0, 1.0})
+    end
+
+    test "follow the node's placement like any other label" do
+      mesh =
+        build(
+          prim(:region, %{
+            outline: @square,
+            height: 2.0,
+            at: {10.0, 0.0, -4.0},
+            label: "here"
+          })
+        )
+
+      assert [%{at: at}] = mesh.labels
+      assert_close(at, {11.0, 2.0, -3.0})
     end
   end
 

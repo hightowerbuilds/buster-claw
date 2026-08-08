@@ -29,6 +29,25 @@ defmodule BusterClaw.Scene3d.Project do
   is scale-invariant. A future depth cue (roadmap Phase 2) must normalise against
   the frame's own min/max rather than treating `depth` as a 0–1 quantity.
 
+  ## Surfaces do not frame the shot
+
+  Auto-fit over *every* point has a failure that only shows up once scenes get
+  backdrops: a water plane or a ground plane is usually far larger than the
+  subject standing on it, so it dominates the bounding box, the camera pulls back
+  to fit the water, and the islands you actually came to look at end up a small
+  smudge in the middle. That is a real screenshot, not a hypothetical.
+
+  So `role` splits the geometry two ways. `:solid` faces frame the shot; `:surface`
+  faces are drawn but excluded from both the camera fit **and** the viewbox crop,
+  which is what lets a backdrop bleed off the edges of the card the way a backdrop
+  should. Lines and labels carry no role in the contract and always count as
+  subject: an arrow or a name is something the author wanted seen, and there is no
+  such thing as a backdrop arrow.
+
+  A scene made entirely of surfaces would leave that set empty, so both the fit
+  and the crop **fall back to all geometry** rather than producing empty bounds
+  and a degenerate frame. A card that is nothing but water still frames its water.
+
   ## Painter's algorithm, and what it gets wrong (roadmap decision 7)
 
   Faces are culled by their outward normal and then sorted back-to-front by
@@ -67,6 +86,16 @@ defmodule BusterClaw.Scene3d.Project do
   the scene can be behind it — so the check is a guard against a degenerate
   camera, not a clipper. Building a real clipper for a case that cannot occur
   would be speculative work.
+
+  Fitting to solids only would have quietly broken that invariant, and broken it
+  in the worst possible way: a backdrop large enough to reach past the eye is
+  exactly the backdrop the fit no longer accounts for, and it would have vanished
+  whole — a map of Puget Sound with no Puget Sound. So the camera distance keeps a
+  **clearance floor**: far enough back that the entire scene, surfaces included,
+  stays in front of the eye. Framing still comes from the solids, because the
+  viewbox crop — not the camera distance — is what decides how big the subject
+  looks. The only cost is weaker perspective in scenes whose backdrop is more than
+  ~3× the subject, and a backdrop that large was never going to read as 3D anyway.
 
   `shade` is computed against a key light fixed in **view** space, not world
   space, so the light orbits with the camera. That is not physically honest — a
@@ -107,6 +136,10 @@ defmodule BusterClaw.Scene3d.Project do
   # fit to, so we invent one and the whole thing lands in the middle of the card.
   @fallback_radius 1.0
 
+  # Slack on the clearance floor, so the furthest backdrop corner sits strictly in
+  # front of the eye rather than exactly on the near plane.
+  @clearance_slack 1.05
+
   # Below this the perspective divide is meaningless; drop the primitive instead.
   @min_depth 1.0e-9
 
@@ -126,8 +159,9 @@ defmodule BusterClaw.Scene3d.Project do
   """
   @spec run(Types.mesh(), Types.camera()) :: Types.frame()
   def run(mesh, camera) do
-    {center, radius} = bounds(mesh_points(mesh))
-    cam = basis(camera, center, radius)
+    all_points = mesh_points(mesh)
+    {center, radius} = bounds(fit_points(mesh, all_points))
+    cam = basis(camera, center, radius, clearance(center, all_points))
 
     # Combines the perspective term (1 / tan(fov/2)) with the screen scale, so
     # the hot path is one multiply and one divide per coordinate.
@@ -157,6 +191,35 @@ defmodule BusterClaw.Scene3d.Project do
       Enum.map(mesh.labels, & &1.at)
   end
 
+  # The points the camera is allowed to frame: solid faces, plus every line and
+  # label, since neither carries a role and neither is ever a backdrop. Falls back
+  # to the whole mesh when a scene is nothing but surfaces — an all-water card
+  # must still frame its water instead of fitting to an empty set.
+  @spec fit_points(Types.mesh(), [Types.vec3()]) :: [Types.vec3()]
+  defp fit_points(mesh, all_points) do
+    subject =
+      mesh.faces
+      |> Enum.filter(&(&1.role == :solid))
+      |> Enum.flat_map(& &1.verts)
+      |> Kernel.++(Enum.flat_map(mesh.lines, &[&1.a, &1.b]))
+      |> Kernel.++(Enum.map(mesh.labels, & &1.at))
+
+    case subject do
+      [] -> all_points
+      points -> points
+    end
+  end
+
+  # Distance from the framing centre to the furthest point of the *whole* scene,
+  # backdrops included. The camera never comes closer than this, which is what
+  # keeps every vertex in front of the eye now that the fit ignores surfaces.
+  @spec clearance(Types.vec3(), [Types.vec3()]) :: float()
+  defp clearance(_center, []), do: 0.0
+
+  defp clearance(center, points) do
+    points |> Enum.map(&norm(sub(&1, center))) |> Enum.max()
+  end
+
   # Bounding-box centre plus the radius of the sphere that encloses the box. The
   # sphere overestimates for elongated scenes, which only costs a little slack in
   # the camera distance — the viewbox crop takes the slack back afterwards.
@@ -177,8 +240,8 @@ defmodule BusterClaw.Scene3d.Project do
   # Orbit angles → an eye position and an orthonormal view basis. `azimuth`
   # rotates around Y, `elevation` lifts above the XZ plane; at (0, 0) the eye
   # sits on +Z looking down -Z, which is the contract's default camera.
-  @spec basis(Types.camera(), Types.vec3(), float()) :: basis()
-  defp basis(camera, center, radius) do
+  @spec basis(Types.camera(), Types.vec3(), float(), float()) :: basis()
+  defp basis(camera, center, radius, clearance) do
     az = radians(camera.azimuth)
     el = radians(clamp(camera.elevation, -@max_elevation, @max_elevation))
 
@@ -193,7 +256,9 @@ defmodule BusterClaw.Scene3d.Project do
 
     # Distance at which a sphere of this radius exactly fills the vertical FOV.
     # Proportional to radius, which is what makes the whole stage scale-free.
-    distance = radius / :math.sin(radians(@fov_deg) / 2.0)
+    # The clearance floor is proportional too, so scale-invariance survives it.
+    distance =
+      max(radius / :math.sin(radians(@fov_deg) / 2.0), clearance * @clearance_slack)
 
     z = normalize(dir)
     x = normalize(cross({0.0, 1.0, 0.0}, z))
@@ -216,7 +281,8 @@ defmodule BusterClaw.Scene3d.Project do
               points: points,
               color: face.color,
               shade: shade(face.normal, cam),
-              depth: mean(depths)
+              depth: mean(depths),
+              role: face.role
             }
           ]
 
@@ -306,11 +372,16 @@ defmodule BusterClaw.Scene3d.Project do
   # is predictable regardless of the card's aspect. Squaring never distorts —
   # SVG's default `preserveAspectRatio` letterboxes — it just stops a flat wide
   # scene from being blown up vertically.
+  #
+  # Cropped to the *subject*, not to everything: surfaces are excluded here for
+  # the same reason they are excluded from the camera fit, and the consequence is
+  # the desirable one — a backdrop runs off the edges of the card instead of
+  # deciding how much card the subject gets.
   @spec viewbox([Types.poly()], [Types.poly_line()], [Types.poly_label()]) ::
           {float(), float(), float(), float()}
   defp viewbox(polys, lines, labels) do
     points =
-      Enum.flat_map(polys, & &1.points) ++
+      Enum.flat_map(framing_polys(polys), & &1.points) ++
         Enum.flat_map(lines, &[&1.a, &1.b]) ++
         Enum.map(labels, & &1.at)
 
@@ -331,6 +402,17 @@ defmodule BusterClaw.Scene3d.Project do
           center_y = (min_y + max_y) / 2.0
           {center_x - extent / 2.0, center_y - extent / 2.0, extent, extent}
         end
+    end
+  end
+
+  # Solids if there are any, everything if there are not. Same fallback as the
+  # camera fit and for the same reason: an all-surface scene has no subject to
+  # crop to, and cropping to nothing is a degenerate frame.
+  @spec framing_polys([Types.poly()]) :: [Types.poly()]
+  defp framing_polys(polys) do
+    case Enum.filter(polys, &(&1.role == :solid)) do
+      [] -> polys
+      solid -> solid
     end
   end
 

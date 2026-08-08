@@ -154,6 +154,138 @@ defmodule BusterClaw.Scene3dPipelineTest do
     end
   end
 
+  # Phase 2 exists because of one screenshot: a 3D map of Puget Sound where a
+  # magenta water plane covered 60% of the card, the coastlines were hairlines,
+  # and thirteen labels overlapped into mush. These reconstruct that scene in the
+  # NEW vocabulary and assert each of those four failures is gone. They are
+  # deliberately end-to-end — every individual fix is unit-tested by its own
+  # module, and none of those tests would notice if the stages stopped composing.
+  describe "the motivating failure does not reproduce" do
+    defp map_scene do
+      # A water backdrop far larger than the subject, two filled landmasses (one
+      # extruded), and the full thirteen labels that broke the original card.
+      towns =
+        ~w(Oak Harbor Coupeville Greenbank Freeland Clinton Langley Mukilteo
+           Deception Pass Fidalgo Camano Whidbey Everett Anacortes)
+        |> Enum.with_index()
+        |> Enum.map(fn {name, i} ->
+          %{
+            "kind" => "cylinder",
+            "r" => 0.3,
+            "h" => 0.6,
+            "at" => [rem(i, 4) * 1.5 - 2.0, 0.3, div(i, 4) * 1.5 - 2.0],
+            "label" => String.replace(name, " ", " "),
+            "color" => 0
+          }
+        end)
+
+      Jason.encode!(%{
+        "camera" => %{"azimuth" => 35, "elevation" => 30},
+        "nodes" =>
+          [
+            %{
+              "kind" => "plane",
+              "size" => [120, 120],
+              "at" => [0, -0.05, 0],
+              "role" => "surface",
+              "color" => 1
+            },
+            %{
+              "kind" => "region",
+              "outline" => [[-3, -3], [3, -3], [3, 0], [0, 0], [0, 3], [-3, 3]],
+              "height" => 0.8,
+              "label" => "Whidbey Island",
+              "color" => 2
+            },
+            %{
+              "kind" => "region",
+              "outline" => [[4, -2], [7, -2], [7, 2], [4, 2]],
+              "color" => 3
+            }
+          ] ++ towns
+      })
+    end
+
+    test "it renders at all — a surface, a concave extruded region, and 14 labels" do
+      assert {:ok, svg} = Scene3d.render(map_scene())
+      assert {_doc, []} = :xmerl_scan.string(String.to_charlist(svg), quiet: true)
+    end
+
+    test "no two drawn labels overlap — the failure that motivated Phase 2" do
+      {:ok, scene} = Scene3d.validate(map_scene())
+      {:ok, flat} = Scene3d.expand(scene)
+
+      frame =
+        flat
+        |> BusterClaw.Scene3d.Geometry.build()
+        |> BusterClaw.Scene3d.Project.run(flat.camera)
+
+      placed = BusterClaw.Scene3d.Labels.layout(frame.labels, frame.viewbox)
+      boxes = Enum.map(placed, &BusterClaw.Scene3d.Labels.box/1)
+
+      for {a, i} <- Enum.with_index(boxes), {b, j} <- Enum.with_index(boxes), i < j do
+        {ax0, ay0, ax1, ay1} = a
+        {bx0, by0, bx1, by1} = b
+
+        refute ax0 < bx1 and bx0 < ax1 and ay0 < by1 and by0 < ay1,
+               "labels #{i} and #{j} overlap: #{inspect(a)} vs #{inspect(b)}"
+      end
+
+      # And the fix must not be "drop everything" — most labels still make it.
+      assert length(placed) >= div(length(frame.labels), 2),
+             "only #{length(placed)} of #{length(frame.labels)} labels survived layout"
+    end
+
+    test "the backdrop does not frame the shot" do
+      # The same 120x120 water plane, as :surface and as :solid. Marked surface it
+      # is excluded from the fit and the crop, so the subject fills the card;
+      # marked solid it dominates and the islands shrink to a smudge. The two
+      # viewboxes must therefore differ — if they match, auto-fit regressed.
+      surface = map_scene()
+      solid = String.replace(surface, ~s("role":"surface"), ~s("role":"solid"))
+      refute surface == solid, "fixture no longer contains the surface role"
+
+      assert {:ok, a} = Scene3d.render(surface)
+      assert {:ok, b} = Scene3d.render(solid)
+
+      [va] = Regex.run(~r/viewBox="([^"]+)"/, a, capture: :all_but_first)
+      [vb] = Regex.run(~r/viewBox="([^"]+)"/, b, capture: :all_but_first)
+      refute va == vb, "the surface role made no difference to framing"
+    end
+
+    test "a surface renders quieter than the same colour as a solid" do
+      one = fn role ->
+        Jason.encode!(%{
+          "nodes" => [
+            %{"kind" => "plane", "size" => [4, 4], "role" => role, "color" => 2}
+          ]
+        })
+      end
+
+      {:ok, as_surface} = Scene3d.render(one.("surface"))
+      {:ok, as_solid} = Scene3d.render(one.("solid"))
+      refute as_surface == as_solid, "role had no effect on how the plane is drawn"
+    end
+
+    test "an extruded region has more geometry than a flat one" do
+      outline = [[0, 0], [4, 0], [4, 4], [0, 4]]
+
+      flat =
+        Jason.encode!(%{"nodes" => [%{"kind" => "region", "outline" => outline}]})
+
+      tall =
+        Jason.encode!(%{
+          "nodes" => [%{"kind" => "region", "outline" => outline, "height" => 2}]
+        })
+
+      {:ok, a} = Scene3d.render(flat)
+      {:ok, b} = Scene3d.render(tall)
+
+      count = fn svg -> svg |> String.split("<polygon") |> length() end
+      assert count.(b) > count.(a), "extrusion produced no walls"
+    end
+  end
+
   describe "the authoring guide" do
     # The guide is the model's only description of a strict vocabulary that
     # fails closed with no feedback loop. Each of these is a rule a scene is

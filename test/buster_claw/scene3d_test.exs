@@ -8,6 +8,10 @@ defmodule BusterClaw.Scene3dTest do
 
   defp box(extra \\ %{}), do: Map.merge(%{"kind" => "box", "size" => [1, 1, 1]}, extra)
 
+  defp region(extra \\ %{}) do
+    Map.merge(%{"kind" => "region", "outline" => [[0, 0], [4, 0], [4, 3], [0, 3]]}, extra)
+  end
+
   defp scene(nodes, extra \\ %{}) do
     Map.merge(%{"camera" => %{"azimuth" => 30, "elevation" => 20}, "nodes" => nodes}, extra)
   end
@@ -92,6 +96,7 @@ defmodule BusterClaw.Scene3dTest do
       assert node.at == {0.0, 0.0, 0.0}
       assert node.rotate == {0.0, 0.0, 0.0}
       assert node.color == 0
+      assert node.role == :solid
       assert node.label == nil
     end
 
@@ -122,14 +127,15 @@ defmodule BusterClaw.Scene3dTest do
         %{"kind" => "plane", "size" => [10, 10]},
         %{"kind" => "capsule", "r" => 0.3, "h" => 1.5},
         %{"kind" => "polyline", "points" => [[0, 0, 0], [1, 1, 1], [2, 0, 2]]},
-        %{"kind" => "arrow", "from" => [0, 0, 0], "to" => [0, 3, 0]}
+        %{"kind" => "arrow", "from" => [0, 0, 0], "to" => [0, 3, 0]},
+        %{"kind" => "region", "outline" => [[0, 0], [4, 0], [4, 3]]}
       ]
 
       assert {:ok, %{nodes: validated}} = validate(scene(nodes))
-      assert length(validated) == 7
+      assert length(validated) == 8
 
       assert Enum.map(validated, & &1.kind) ==
-               [:box, :sphere, :cylinder, :plane, :capsule, :polyline, :arrow]
+               [:box, :sphere, :cylinder, :plane, :capsule, :polyline, :arrow, :region]
     end
 
     test "a plane is authored as [width, depth] and stored as a zero-thickness vec3" do
@@ -139,6 +145,177 @@ defmodule BusterClaw.Scene3dTest do
 
     test "a blank label collapses to nil rather than an empty text node" do
       assert {:ok, %{nodes: [%{label: nil}]}} = validate(scene([box(%{"label" => "   "})]))
+    end
+  end
+
+  # `role` is what stops a ground plane being authored as a series colour. The
+  # rule that matters downstream is that it is present on EVERY node, defaulted,
+  # exactly like `color` and `at` — `Geometry` and `Project` both pattern-match
+  # it, so a node without one is a crash rather than a wrong colour.
+  describe "validate/1 — role" do
+    test "both roles are expressible and unknown ones are named" do
+      assert {:ok, %{nodes: [%{role: :solid}]}} = validate(scene([box(%{"role" => "solid"})]))
+      assert {:ok, %{nodes: [%{role: :surface}]}} = validate(scene([box(%{"role" => "surface"})]))
+
+      assert validate(scene([box(%{"role" => "backdrop"})])) == {:error, :bad_role}
+      assert validate(scene([box(%{"role" => "SURFACE"})])) == {:error, :bad_role}
+      assert validate(scene([box(%{"role" => 1})])) == {:error, :bad_role}
+      assert validate(scene([box(%{"role" => ["surface"]})])) == {:error, :bad_role}
+    end
+
+    test "a role name never becomes an atom" do
+      name = "definitely_not_an_existing_role_7c4b"
+      assert validate(scene([box(%{"role" => name})])) == {:error, :bad_role}
+      assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
+    end
+
+    test "every kind carries a role, defaulted, with no missing key anywhere" do
+      nodes = [
+        box(),
+        %{"kind" => "sphere", "r" => 1},
+        %{"kind" => "plane", "size" => [4, 4], "role" => "surface"},
+        %{"kind" => "polyline", "points" => [[0, 0, 0], [1, 0, 0]]},
+        %{"kind" => "arrow", "from" => [0, 0, 0], "to" => [1, 0, 0]},
+        %{"kind" => "region", "outline" => [[0, 0], [1, 0], [1, 1]], "role" => "surface"}
+      ]
+
+      assert {:ok, %{nodes: validated}} = validate(scene(nodes))
+      assert Enum.all?(validated, &Map.has_key?(&1, :role))
+      assert Enum.map(validated, & &1.role) == ~w(solid solid surface solid solid surface)a
+    end
+
+    test "a helper rejects role for the same reason it rejects colour and label" do
+      assert validate(
+               scene([%{"kind" => "grid", "count" => 2, "child" => box(), "role" => "surface"}])
+             ) == {:error, :unknown_key}
+    end
+  end
+
+  # The map primitive. A region is 2D by construction — the `y` of every outline
+  # point is not "defaulted to zero", it cannot be written at all.
+  describe "validate/1 — the region primitive" do
+    test "a flat region validates and stores its outline as 2D pairs" do
+      assert {:ok, %{nodes: [node]}} = validate(scene([region()]))
+
+      assert node.kind == :region
+      assert node.outline == [{0.0, 0.0}, {4.0, 0.0}, {4.0, 3.0}, {0.0, 3.0}]
+    end
+
+    test "an omitted height leaves the key absent, not nil — presence IS the flag" do
+      assert {:ok, %{nodes: [flat]}} = validate(scene([region()]))
+      refute Map.has_key?(flat, :height)
+
+      assert {:ok, %{nodes: [prism]}} = validate(scene([region(%{"height" => 2})]))
+      assert prism.height == 2.0
+    end
+
+    test "outline points are TWO numbers; a 3D point is a malformed outline" do
+      assert validate(scene([region(%{"outline" => [[0, 0, 0], [1, 0, 0], [1, 0, 1]]})])) ==
+               {:error, :bad_outline}
+
+      assert validate(scene([region(%{"outline" => [[0], [1, 0], [1, 1]]})])) ==
+               {:error, :bad_outline}
+
+      assert validate(scene([region(%{"outline" => [[0, "0"], [1, 0], [1, 1]]})])) ==
+               {:error, :bad_outline}
+
+      assert validate(scene([region(%{"outline" => "the coastline"})])) == {:error, :bad_outline}
+    end
+
+    test "fewer than three points is not a polygon" do
+      assert validate(scene([region(%{"outline" => []})])) == {:error, :bad_outline}
+      assert validate(scene([region(%{"outline" => [[0, 0]]})])) == {:error, :bad_outline}
+      assert validate(scene([region(%{"outline" => [[0, 0], [1, 1]]})])) == {:error, :bad_outline}
+    end
+
+    test "the outline is capped, and the cap is lower than a polyline's" do
+      at_cap = for i <- 0..127, do: [:math.cos(i / 20.0), :math.sin(i / 20.0)]
+
+      assert {:ok, %{nodes: [%{outline: outline}]}} =
+               validate(scene([region(%{"outline" => at_cap})]))
+
+      assert length(outline) == 128
+
+      over = for i <- 0..128, do: [:math.cos(i / 20.0), :math.sin(i / 20.0)]
+      assert validate(scene([region(%{"outline" => over})])) == {:error, :too_many_points}
+
+      # A polyline of the same length is still fine — the region cap is tighter
+      # because a region is filled, not stroked.
+      line = for i <- 0..200, do: [i, 0, 0]
+      assert {:ok, _} = validate(scene([%{"kind" => "polyline", "points" => line}]))
+    end
+
+    test "a degenerate polygon is refused rather than rendering as nothing" do
+      # Every point on one line.
+      assert validate(scene([region(%{"outline" => [[0, 0], [1, 1], [2, 2]]})])) ==
+               {:error, :degenerate_outline}
+
+      assert validate(scene([region(%{"outline" => [[0, 0], [5, 0], [2, 0], [9, 0]]})])) ==
+               {:error, :degenerate_outline}
+
+      # Every point the same.
+      assert validate(scene([region(%{"outline" => [[3, 3], [3, 3], [3, 3]]})])) ==
+               {:error, :degenerate_outline}
+
+      # A "polygon" that doubles back on itself and encloses nothing.
+      assert validate(scene([region(%{"outline" => [[0, 0], [4, 0], [0, 0], [4, 0]]})])) ==
+               {:error, :degenerate_outline}
+    end
+
+    test "the degeneracy test is scale-free, because scene scale is arbitrary" do
+      # The camera auto-fits, so the same island in millimetres and in kilometres
+      # must get the same verdict. An absolute epsilon would fail one of these.
+      tiny = [[0, 0], [1.0e-4, 0], [0, 1.0e-4]]
+      huge = [[0, 0], [1.0e5, 0], [0, 1.0e5]]
+
+      assert {:ok, _} = validate(scene([region(%{"outline" => tiny})]))
+      assert {:ok, _} = validate(scene([region(%{"outline" => huge})]))
+
+      # ...and a collinear outline is refused at both scales too.
+      assert validate(
+               scene([region(%{"outline" => [[0, 0], [1.0e-4, 1.0e-4], [2.0e-4, 2.0e-4]]})])
+             ) ==
+               {:error, :degenerate_outline}
+
+      assert validate(scene([region(%{"outline" => [[0, 0], [1.0e5, 1.0e5], [2.0e5, 2.0e5]]})])) ==
+               {:error, :degenerate_outline}
+    end
+
+    test "a thin but genuine sliver survives" do
+      assert {:ok, _} = validate(scene([region(%{"outline" => [[0, 0], [10, 0], [10, 0.001]]})]))
+    end
+
+    test "a non-positive or malformed height" do
+      assert validate(scene([region(%{"height" => 0})])) == {:error, :out_of_range}
+      assert validate(scene([region(%{"height" => -1})])) == {:error, :out_of_range}
+      assert validate(scene([region(%{"height" => "tall"})])) == {:error, :bad_number}
+    end
+
+    test "an out-of-range outline coordinate is refused" do
+      assert validate(scene([region(%{"outline" => [[0, 0], [1.0e300, 0], [1, 1]]})])) ==
+               {:error, :bad_outline}
+    end
+
+    test "a region takes the universal fields and rejects a foreign one" do
+      assert {:ok, %{nodes: [node]}} =
+               validate(
+                 scene([
+                   region(%{
+                     "at" => [0, 1, 0],
+                     "color" => 2,
+                     "role" => "surface",
+                     "label" => "Puget Sound"
+                   })
+                 ])
+               )
+
+      assert node.at == {0.0, 1.0, 0.0}
+      assert node.color == 2
+      assert node.role == :surface
+      assert node.label == "Puget Sound"
+
+      assert validate(scene([region(%{"points" => [[0, 0, 0]]})])) == {:error, :unknown_key}
+      assert validate(scene([%{"kind" => "region"}])) == {:error, :missing_field}
     end
   end
 
@@ -536,6 +713,44 @@ defmodule BusterClaw.Scene3dTest do
              ]) == {:error, :too_many_nodes}
     end
 
+    test "role survives expansion, on a bare primitive and through a helper" do
+      assert {:ok, flat} =
+               expanded([
+                 %{"kind" => "plane", "size" => [20, 20], "role" => "surface"},
+                 %{
+                   "kind" => "grid",
+                   "count" => [2, 1, 2],
+                   "gap" => 2,
+                   "child" => box(%{"role" => "surface", "color" => 1})
+                 },
+                 box()
+               ])
+
+      assert length(flat.nodes) == 6
+      # Every node downstream sees has the key, defaulted or not.
+      assert Enum.all?(flat.nodes, &Map.has_key?(&1, :role))
+      assert Enum.map(flat.nodes, & &1.role) == ~w(surface surface surface surface surface solid)a
+    end
+
+    test "a region passes through expansion with its outline and height intact" do
+      assert {:ok, flat} =
+               expanded([
+                 region(%{"at" => [5, 0, 0], "height" => 3, "role" => "surface"}),
+                 region()
+               ])
+
+      assert [prism, flat_region] = flat.nodes
+      assert prism.at == {5.0, 0.0, 0.0}
+      assert prism.height == 3.0
+      assert prism.role == :surface
+      assert prism.outline == [{0.0, 0.0}, {4.0, 0.0}, {4.0, 3.0}, {0.0, 3.0}]
+
+      # The absent-key distinction has to survive the walk too, or every region
+      # downstream looks extruded.
+      refute Map.has_key?(flat_region, :height)
+      assert flat_region.role == :solid
+    end
+
     test "a non-scene is refused rather than raising" do
       assert Scene3d.expand(%{}) == {:error, :not_a_scene}
       assert Scene3d.expand(nil) == {:error, :not_a_scene}
@@ -579,6 +794,64 @@ defmodule BusterClaw.Scene3dTest do
     end
   end
 
+  # The guide is the only thing standing between the vocabulary and a model that
+  # cannot see its own rejections. These four lines are not documentation of the
+  # code — they ARE the Phase 2 feature for anything the validator cannot enforce,
+  # so a guide that stops carrying one silently regresses the failure it fixed.
+  describe "guide/0 teaches the Phase 2 additions" do
+    test "it teaches the region primitive and its 2D outline" do
+      guide = Scene3d.guide()
+
+      assert guide =~ "region"
+      assert guide =~ ~r/outline/
+      assert guide =~ ~r/\[\[x,z\], …\]/
+      assert guide =~ ~r/height/
+      # The [x,z]-not-[x,y,z] trap is the one the validator rejects a whole scene
+      # for, so it has to be spelled out rather than implied by the example.
+      assert guide =~ ~r/TWO numbers each/
+    end
+
+    test "it teaches role: surface, WITH the reason" do
+      guide = Scene3d.guide()
+
+      assert guide =~ ~r/"surface"/
+      assert guide =~ ~r/drawn quietly/
+      assert guide =~ ~r/does not frame the shot/
+      # A bare rule gets paraphrased away; the palette argument is what makes the
+      # model reach for the role instead of a series colour.
+      assert guide =~ ~r/no quiet slot/
+    end
+
+    test "it states a label budget and says unplaced labels are dropped" do
+      guide = Scene3d.guide()
+
+      assert guide =~ ~r/6-8 labels/
+      assert guide =~ ~r/DROPPED/
+    end
+
+    test "it says plainly that a flat map is an SVG" do
+      guide = Scene3d.guide()
+
+      assert guide =~ ~r/A FLAT MAP IS AN SVG/
+      assert guide =~ ~r/terrain height, extruded regions, stacked layers/
+    end
+
+    test "the Phase 0-1 strict edges are still there — additions, not a rewrite" do
+      guide = Scene3d.guide()
+
+      for line <- [
+            "```svg",
+            "```scene3d",
+            "NEVER a hex string",
+            "TWO numbers: a plane has no thickness",
+            "a ring takes RADIUS, not gap",
+            "a helper rejects them"
+          ] do
+        assert guide =~ line, "the guide stopped teaching: #{line}"
+      end
+    end
+  end
+
   describe "hostile input" do
     test "a deliberately hostile scene is refused without crashing" do
       hostile = [
@@ -600,6 +873,10 @@ defmodule BusterClaw.Scene3dTest do
         json(scene([box(%{"at" => [1.0e308, -1.0e308, 1.0e308]})])),
         # A bignum that would raise if converted to a float.
         ~s({"nodes":[{"kind":"sphere","r":#{String.duplicate("7", 5000)}}]}),
+        # A region outline far past its cap, and one made of nonsense.
+        json(scene([%{"kind" => "region", "outline" => for(i <- 1..5_000, do: [i, i * i])}])),
+        json(scene([%{"kind" => "region", "outline" => [[[0]], [[1]], [[2]]]}])),
+        json(scene([%{"kind" => "region", "outline" => [[0, 0], [0, 0], [0, 0]]}])),
         # Structural nonsense.
         ~s({"nodes":{"kind":"box"}}),
         ~s({"nodes":[[[[[[[[[[1]]]]]]]]]]}),

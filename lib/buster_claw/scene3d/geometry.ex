@@ -42,6 +42,42 @@ defmodule BusterClaw.Scene3d.Geometry do
   "don't cull me" flag — would change the shared `t:Types.face/0` contract for
   the sake of one primitive, which is a much worse trade than one extra quad.
 
+  ### `:region` is the same exception, until it is extruded
+
+  A region is a filled polygon lying in the ground plane, which is a plane by
+  another name — so a flat region emits the same double-sided pair, for the same
+  reason and with the same cull argument. Given a `height` it closes into a prism
+  (top cap, bottom cap, one quad per outline edge) and the double-siding goes
+  away, because a prism has an outside.
+
+  Its outline is **concave** in every case worth drawing — a coastline is mostly
+  reflex vertices — so triangulation is ear clipping and not a fan from vertex
+  zero. A fan is correct only for convex polygons; across a reflex vertex it
+  emits triangles lying outside the outline, which on a map is water painted as
+  land. That is the whole reason this primitive is not four lines long.
+
+  Ear clipping needs a known winding and the model will not supply one
+  consistently, so the outline is normalised by its own signed area first. It can
+  also fail outright: a self-intersecting outline has no triangulation at all,
+  and the naive loop hunting for an ear that does not exist spins forever.
+  **The bounded guard matters more than the tessellation quality** — this draws a
+  card in a chat transcript, and a renderer that hangs on a malformed polygon is
+  strictly worse than one that draws a slightly wrong island. So the search is
+  capped at one full pass of the remaining ring, and whatever ring is left when
+  no ear can be found is replaced by its convex hull and fanned. Wrong, bounded,
+  drawn.
+
+  ## Role rides on every face
+
+  Each node carries a `role` and every face it produces copies it. This looks
+  like bookkeeping and is not: `Project` excludes `:surface` faces from the
+  camera's auto-fit bounds and `Svg` draws them muted, so a face that inherits
+  the wrong role does not come out subtly off — it either repaints a landmass in
+  backdrop grey or lets a water plane seize the framing and squeeze the subject
+  into the middle of the card. Lines and labels carry no role, because
+  `t:Types.line/0` has nowhere to put one and a muted hairline is not a thing the
+  vocabulary can ask for.
+
   ## Rotation and handedness
 
   `rotate` is XYZ Euler in **degrees**, applied about the fixed world axes in the
@@ -104,6 +140,14 @@ defmodule BusterClaw.Scene3d.Geometry do
   # meaningfully, so it is dropped rather than given an invented one.
   @degenerate 1.0e-12
 
+  # Ear clipping walks the remaining ring looking for an ear and, in the worst
+  # case, does that once per removed vertex — so the cost of an outline is
+  # roughly cubic in its length. A coastline drawn at card size is legible at a
+  # few dozen points and indistinguishable beyond that, so points past this are
+  # dropped rather than paid for. It is also the hard bound that keeps a
+  # pathological outline from becoming a wedged renderer.
+  @max_outline_points 128
+
   @origin {0.0, 0.0, 0.0}
 
   @typep vec3 :: Types.vec3()
@@ -111,6 +155,9 @@ defmodule BusterClaw.Scene3d.Geometry do
   @typep poly :: [vec3()]
   # A line segment with its stroke width, before placement.
   @typep segment :: {vec3(), vec3(), float()}
+  # A point on the ground plane: {x, z}, with y implied. This is the region's
+  # own coordinate, NOT `t:Types.vec2/0` — that one is a projected screen point.
+  @typep ground :: {float(), float()}
 
   @doc """
   Tessellate every node of a flat scene into world space.
@@ -122,7 +169,9 @@ defmodule BusterClaw.Scene3d.Geometry do
 
   A node's `label`, when present, contributes exactly one `t:Types.label/0` at
   the node's centre — the local origin for the solids, the midpoint of the
-  geometry for `:polyline` and `:arrow`, which have no origin worth anchoring to.
+  geometry for `:polyline` and `:arrow`, which have no origin worth anchoring to,
+  and the area-weighted centroid of the outline for `:region`, raised to the top
+  of the extrusion so the name of a landmass sits on it rather than in it.
   """
   @spec build(Types.flat_scene()) :: Types.mesh()
   def build(scene) when is_map(scene) do
@@ -145,6 +194,7 @@ defmodule BusterClaw.Scene3d.Geometry do
 
   defp node_mesh(node) when is_map(node) do
     color = color(node)
+    role = role(node)
     rotate = vec(Map.get(node, :rotate), @origin)
     at = vec(Map.get(node, :at), @origin)
 
@@ -153,7 +203,7 @@ defmodule BusterClaw.Scene3d.Geometry do
     %{
       faces:
         Enum.flat_map(polys, fn verts ->
-          verts |> Enum.map(&place(&1, rotate, at)) |> face(color)
+          verts |> Enum.map(&place(&1, rotate, at)) |> face(color, role)
         end),
       lines:
         Enum.map(segments, fn {a, b, width} ->
@@ -179,14 +229,14 @@ defmodule BusterClaw.Scene3d.Geometry do
   # Newell's normal is computed on the *placed* vertices. Rotation is orthonormal
   # and orientation-preserving, so this is identical to rotating a local normal,
   # and it removes a whole second code path that could disagree with the winding.
-  defp face(verts, color) when length(verts) >= 3 do
+  defp face(verts, color, role) when length(verts) >= 3 do
     case normalize(newell(verts)) do
       nil -> []
-      normal -> [%{verts: verts, normal: normal, color: color}]
+      normal -> [%{verts: verts, normal: normal, color: color, role: role}]
     end
   end
 
-  defp face(_verts, _color), do: []
+  defp face(_verts, _color, _role), do: []
 
   # ── Primitives ──────────────────────────────────────────────────────────────
   #
@@ -211,6 +261,9 @@ defmodule BusterClaw.Scene3d.Geometry do
 
   defp primitive(%{kind: :arrow} = node),
     do: arrow(vec(Map.get(node, :from), @origin), vec(Map.get(node, :to), @origin))
+
+  defp primitive(%{kind: :region} = node),
+    do: region(outline(node), extrusion(node))
 
   # Composition helpers are gone by expansion time and anything else was refused
   # by the validator. Contributing nothing is the only sane response either way.
@@ -328,6 +381,209 @@ defmodule BusterClaw.Scene3d.Geometry do
     end
   end
 
+  # ── Region: the map primitive ───────────────────────────────────────────────
+  #
+  # The outline arrives as 2D `{x, z}` ground points in whichever winding the
+  # model felt like. Everything below works on a ring that has been normalised to
+  # **counter-clockwise seen from +Y**, which is the traversal whose Newell normal
+  # comes out `{0, 1, 0}` — the same one `plane_polys/1` spells out by hand.
+
+  @spec region([ground()], float() | nil) :: {[poly()], [segment()], vec3()}
+  defp region(outline, height) do
+    case ccw_from_above(outline) do
+      ring when length(ring) >= 3 ->
+        {region_polys(ring, height), [], region_center(ring, height)}
+
+      _too_few ->
+        {[], [], @origin}
+    end
+  end
+
+  # Flat: one filled polygon at y = 0, emitted twice with opposite winding. A
+  # region on the ground is a plane by another name, and the argument in the
+  # moduledoc for why a plane is two faces applies here verbatim.
+  defp region_polys(ring, nil) do
+    up = Enum.map(ear_clip(ring), &lift(&1, 0.0))
+
+    up ++ Enum.map(up, &Enum.reverse/1)
+  end
+
+  # Extruded: a closed prism, so it gets one face per surface like every other
+  # solid. The top cap keeps the ring's winding (+Y), the bottom takes the
+  # reverse (-Y), and each wall is built bottom edge first so that walking the
+  # ring counter-clockwise from above sends its normal outward.
+  defp region_polys(ring, height) do
+    caps = ear_clip(ring)
+    top = Enum.map(caps, &lift(&1, height))
+    bottom = Enum.map(caps, &(&1 |> lift(0.0) |> Enum.reverse()))
+
+    walls =
+      for {{ax, az}, {bx, bz}} <- cyclic_pairs(ring) do
+        [{ax, 0.0, az}, {bx, 0.0, bz}, {bx, height, bz}, {ax, height, az}]
+      end
+
+    top ++ bottom ++ walls
+  end
+
+  defp lift(polygon, y), do: Enum.map(polygon, fn {x, z} -> {x, y, z} end)
+
+  # Lifted to the top of an extrusion rather than left on the ground, so the
+  # label of a raised landmass sits on it instead of buried inside it.
+  defp region_center(ring, height) do
+    {x, z} = polygon_centroid(ring)
+    {x, height || 0.0, z}
+  end
+
+  # Area-weighted, which for a coastline differs from the vertex mean by more
+  # than rounding: outlines are sampled densely where the shore wiggles, so a
+  # plain mean drags the label toward whichever bay had the most points. A
+  # zero-area outline has no area to weight by and falls back to the mean.
+  @spec polygon_centroid([ground()]) :: ground()
+  defp polygon_centroid(ring) do
+    {sx, sz, a2} =
+      ring
+      |> cyclic_pairs()
+      |> Enum.reduce({0.0, 0.0, 0.0}, fn {{xi, zi}, {xj, zj}}, {sx, sz, a2} ->
+        c = xi * zj - xj * zi
+        {sx + (xi + xj) * c, sz + (zi + zj) * c, a2 + c}
+      end)
+
+    if abs(a2) < @degenerate do
+      mean_point(ring)
+    else
+      {sx / (3.0 * a2), sz / (3.0 * a2)}
+    end
+  end
+
+  defp mean_point([]), do: {0.0, 0.0}
+
+  defp mean_point(ring) do
+    {sx, sz} = Enum.reduce(ring, {0.0, 0.0}, fn {x, z}, {ax, az} -> {ax + x, az + z} end)
+    n = length(ring)
+    {sx / n, sz / n}
+  end
+
+  # ── Ear clipping ────────────────────────────────────────────────────────────
+
+  # Repeatedly snip off a convex vertex whose triangle contains no other vertex
+  # of the ring. Unlike a fan from vertex zero this is correct for concave
+  # outlines, which is every outline a map cares about.
+  #
+  # Two independent bounds keep it terminating: `find_ear/2` gives up after one
+  # full rotation of the ring, and `clip/3` cannot iterate more times than the
+  # ring had vertices. Neither should ever fire on a simple polygon — the two-ears
+  # theorem says one always exists — but a self-intersecting outline is not a
+  # simple polygon and the model can write one.
+  @spec ear_clip([ground()]) :: [[ground()]]
+  defp ear_clip(ring) when length(ring) < 3, do: []
+  defp ear_clip(ring), do: clip(ring, [], length(ring))
+
+  defp clip(ring, acc, budget) when length(ring) < 3 or budget <= 0, do: Enum.reverse(acc)
+
+  defp clip(ring, acc, budget) do
+    case find_ear(ring, length(ring)) do
+      {ear, rest} -> clip(rest, [ear | acc], budget - 1)
+      :none -> Enum.reverse(acc) ++ hull_fan(ring)
+    end
+  end
+
+  defp find_ear(_ring, tries) when tries <= 0, do: :none
+
+  defp find_ear([a, b, c | rest] = ring, tries) do
+    if convex?(a, b, c) and not Enum.any?(rest, &inside?(&1, a, b, c)) do
+      {[a, b, c], [a, c | rest]}
+    else
+      find_ear(rotate_left(ring), tries - 1)
+    end
+  end
+
+  defp find_ear(_ring, _tries), do: :none
+
+  defp rotate_left([head | tail]), do: tail ++ [head]
+
+  defp convex?(a, b, c), do: cross2(a, b, c) > 0.0
+
+  defp inside?(p, a, b, c) do
+    cross2(a, b, p) > 0.0 and cross2(b, c, p) > 0.0 and cross2(c, a, p) > 0.0
+  end
+
+  # The last resort, reached only when the outline crosses itself and no ear
+  # exists. The hull is not the shape the model asked for, but it is simple,
+  # bounded, correctly wound and covers roughly the right ground — all of which
+  # beat returning nothing or looping.
+  defp hull_fan(ring) do
+    case convex_hull(ring) do
+      [head | [_, _ | _] = rest] ->
+        for [b, c] <- Enum.chunk_every(rest, 2, 1, :discard), do: [head, b, c]
+
+      _degenerate ->
+        []
+    end
+  end
+
+  # Andrew's monotone chain. Sorted by {z, x} rather than {x, z} because the
+  # turn test below measures angles in that same order; sorting on one axis pair
+  # and turning on the other silently yields the hull's mirror image.
+  @spec convex_hull([ground()]) :: [ground()]
+  defp convex_hull(ring) do
+    sorted = ring |> Enum.uniq() |> Enum.sort_by(fn {x, z} -> {z, x} end)
+
+    case sorted do
+      [_, _ | _] ->
+        Enum.drop(half_hull(sorted), -1) ++ Enum.drop(sorted |> Enum.reverse() |> half_hull(), -1)
+
+      _degenerate ->
+        sorted
+    end
+  end
+
+  defp half_hull(points) do
+    points |> Enum.reduce([], &push_hull/2) |> Enum.reverse()
+  end
+
+  defp push_hull(p, [b, a | rest]) do
+    if convex?(a, b, p), do: [p, b, a | rest], else: push_hull(p, [a | rest])
+  end
+
+  defp push_hull(p, stack), do: [p | stack]
+
+  # ── Ground-plane orientation ────────────────────────────────────────────────
+
+  # Twice the signed area of triangle `abc` on the ground plane, positive when
+  # a→b→c turns counter-clockwise **seen from +Y**. Written in the {z, x} order
+  # rather than {x, z} so the sign agrees with Newell's Y component: the two
+  # disagreeing is exactly how a top cap ends up facing the floor.
+  @spec cross2(ground(), ground(), ground()) :: float()
+  defp cross2({ax, az}, {bx, bz}, {cx, cz}), do: (bz - az) * (cx - ax) - (bx - ax) * (cz - az)
+
+  # The same quantity summed round the whole ring: twice its signed area.
+  @spec ccw_area([ground()]) :: float()
+  defp ccw_area(ring) do
+    ring
+    |> cyclic_pairs()
+    |> Enum.reduce(0.0, fn {{xi, zi}, {xj, zj}}, sum -> sum + (zi * xj - zj * xi) end)
+  end
+
+  # Normalise an authored outline: drop the repeats, then flip it if it was
+  # wound clockwise. Models are not consistent about winding — asking them to be
+  # would be one more rule to get wrong — so this stage simply does not care.
+  @spec ccw_from_above([ground()]) :: [ground()]
+  defp ccw_from_above(outline) do
+    ring = outline |> Enum.dedup() |> drop_closing_repeat()
+
+    if ccw_area(ring) < 0.0, do: Enum.reverse(ring), else: ring
+  end
+
+  # An outline that repeats its first point at the end is a closed ring written
+  # the way GeoJSON writes one. Keeping the repeat would leave a zero-length
+  # edge, and a zero-length edge is a wall quad with no area and an ear with no
+  # normal.
+  defp drop_closing_repeat([first | _] = ring) when length(ring) > 1 do
+    if List.last(ring) == first, do: Enum.drop(ring, -1), else: ring
+  end
+
+  defp drop_closing_repeat(ring), do: ring
+
   # ── Surfaces of revolution ──────────────────────────────────────────────────
 
   # Stitch a top-to-bottom stack of rings into bands. Quads between two rings,
@@ -408,10 +664,43 @@ defmodule BusterClaw.Scene3d.Geometry do
     end)
   end
 
+  # `:h` on a cylinder and `:height` on a region are different fields on purpose:
+  # `h` is a solid's own extent about its centre, `height` is how far a ground
+  # polygon is pushed *up from* the ground. They are not interchangeable and
+  # sharing an accessor would invite treating them as if they were.
+  defp extrusion(node) do
+    case Map.get(node, :height) do
+      h when is_number(h) and h != 0 -> abs(h) * 1.0
+      _flat -> nil
+    end
+  end
+
+  defp outline(node) do
+    node
+    |> Map.get(:outline, [])
+    |> List.wrap()
+    |> Enum.flat_map(fn
+      {x, z} when is_number(x) and is_number(z) -> [{x * 1.0, z * 1.0}]
+      _not_a_ground_point -> []
+    end)
+    |> Enum.take(@max_outline_points)
+  end
+
   defp color(node) do
     case Map.get(node, :color) do
       c when is_integer(c) and c >= 0 and c <= 4 -> c
       _ -> 0
+    end
+  end
+
+  # `:solid` is the default because it is the loud one: a node that should have
+  # been a backdrop and comes out as the subject is a visible mistake someone
+  # will fix, whereas the reverse quietly greys out the thing the scene is about
+  # and drops it from the framing.
+  defp role(node) do
+    case Map.get(node, :role) do
+      r when r in [:solid, :surface] -> r
+      _ -> :solid
     end
   end
 
