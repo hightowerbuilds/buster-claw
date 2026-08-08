@@ -252,8 +252,11 @@ naturally. **No rendering in this phase.**
 - [x] Tests: a scene in an assistant message renders a card; a malformed scene
   is dropped silently; scenes survive a history reload; a label containing
   `<script>` is escaped in the output.
-- [ ] **OPEN — the one unverified claim.** Operator eyeballs it in the real app (operator runs the server — agent
-  tasks get SIGTERM'd, per `feedback_dev_server_run`).
+- [x] Operator eyeballed it in the real app (operator runs the server — agent
+  tasks get SIGTERM'd, per `feedback_dev_server_run`). **Confirmed working
+  08-08-26.** This was the one claim the suite could not make — `render_hook`
+  never touches a browser, so until someone opened a running app and looked at a
+  card, "2,356 tests green" said nothing about whether the thing renders.
 
 **Done when:** the model can put a labeled 3D diagram in the chat, it survives
 reload, and it looks right in a running app.
