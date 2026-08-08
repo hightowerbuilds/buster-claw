@@ -19,6 +19,24 @@ defmodule BusterClaw.Notifications.Cutup.Types do
 
       Cutup.Transcripts.search/2 → [t:transcript_hit/0]
 
+  And the signal layer that fills an index without any external recogniser
+  (Part III) — query-by-example, not transcription:
+
+      PCM16 clip
+        └─ Cutup.Signal.frames/2   → [t:frame/0]     (pre-emphasis, window, hop)
+        └─ Cutup.Signal.spectrum/1 → t:spectrum/0    (FFT magnitudes)
+        └─ Cutup.Mfcc.features/2   → t:features/0    (mel → log → DCT)
+        └─ Cutup.Dtw.search/3      → [t:match/0]     (template vs recording)
+        └─ Cutup.Vad.spans/2       → [t:span/0]      (energy + ZCR)
+
+  ## The analysis frame is fixed, and everything depends on it
+
+  **25 ms frames at a 10 ms hop.** Those are the standard values and they are
+  pinned here rather than passed around, because a template extracted at one hop
+  and a recording analysed at another cannot be compared at all — the frame index
+  IS the clock, and `frame_index * hop_ms` is the only thing converting features
+  back to a splice point. Changing either number invalidates every stored index.
+
   ## Why the index is a contract and not an implementation detail
 
   A `t:index/0` does not care where its timings came from. A speech recognizer
@@ -114,6 +132,102 @@ defmodule BusterClaw.Notifications.Cutup.Types do
           gap_ms: float(),
           normalize: boolean()
         ]
+
+  # ── The signal layer (Part III — our own recogniser) ───────────────────────
+
+  @typedoc """
+  One frame of audio: samples normalised to roughly -1.0..1.0.
+
+  Normalising at the framing boundary rather than carrying PCM16 integers means
+  every stage downstream is scale-free, so a quiet recording and a loud one
+  produce comparable features without anyone remembering to divide.
+  """
+  @type frame :: [float()]
+
+  @typedoc """
+  A magnitude spectrum — the output of the FFT stage, one value per frequency
+  bin, length `fft_size / 2 + 1` (DC through Nyquist inclusive).
+
+  Magnitudes, not complex pairs: nothing downstream of the FFT needs phase.
+  Discarding it at the boundary keeps the seam narrow and halves what the MFCC
+  stage has to reason about.
+
+  **MAGNITUDE — `sqrt(re² + im²)` — not power, not power in dB.** The MFCC stage
+  squares these itself, per the conventional definition. This distinction has no
+  visible failure mode, which is exactly why it is pinned here: if the FFT ever
+  returned power instead, every log-domain feature would shift by a constant
+  factor *uniformly*, so nothing would look broken — but a template stored under
+  one convention would stop being comparable to a recording analysed under the
+  other, and the only symptom would be matches quietly getting worse.
+  """
+  @type spectrum :: [float()]
+
+  @typedoc """
+  A feature vector for one frame — 13 MFCCs by convention.
+
+  This is the unit DTW compares. **It is deliberately opaque to the matcher**: as
+  far as `Dtw` is concerned this is a point in N-space with a distance function,
+  so the feature extractor can be changed (more coefficients, deltas, a different
+  filterbank) without touching the matcher at all.
+  """
+  @type features :: [float()]
+
+  @typedoc """
+  A time-ordered sequence of feature vectors — a whole recording, or a template
+  cut out of one. Frame `i` starts at `i * hop_ms`.
+
+  ## Normalise the recording, THEN cut the template out
+
+  Cepstral mean normalisation is what makes two phone calls comparable — it
+  subtracts the channel's constant colouring, so the distance reflects which word
+  was said rather than which handset said it. But the mean must be taken over a
+  **whole recording**, not over a template.
+
+  Over a two-word snippet the mean is substantially the speech itself, so
+  normalising it subtracts the signal along with the channel. The template and
+  the target then sit in different spaces and every distance is wrong — with no
+  error, no crash, and no symptom except results that are quietly poor.
+
+  So the order is: analyse the full recording → CMN the full sequence → slice the
+  template out of the normalised sequence. Both sides of a comparison must have
+  been normalised the same way. This is the easiest thing in the pipeline to get
+  backwards, which is why it is written on the type rather than in one module.
+
+  **CMN belongs to the feature stage — apply it once.** `Cutup.Mfcc.cmn/1` is the
+  intended home. `Cutup.Dtw` also offers it as an opt-in (default off) for callers
+  holding features that were never normalised; **do not enable both.** Applying it
+  twice subtracts an already-zero mean over a *different* window and quietly
+  changes the score's scale, so a threshold tuned under one arrangement does not
+  transfer to the other — with, as usual in this pipeline, no error to notice.
+  """
+  @type feature_seq :: [features()]
+
+  @typedoc """
+  A DTW match: where in the target a template was found, and how badly it fits.
+
+  `distance` is the **length-normalised** warped distance (total cost divided by
+  path length). Un-normalised, a long template always scores worse than a short
+  one and no single threshold can work across words of different lengths — which
+  is the trap that makes a naive DTW keyword spotter useless in practice.
+
+  Lower is better. There is no natural scale: the threshold has to be tuned
+  against a real corpus, and the roadmap warns that tuning it may cost as long as
+  writing the matcher did.
+  """
+  @type match :: %{
+          start_frame: non_neg_integer(),
+          end_frame: non_neg_integer(),
+          start_ms: float(),
+          end_ms: float(),
+          distance: float()
+        }
+
+  @typedoc """
+  A span of speech (or of anything above the noise floor), as found by voice
+  activity detection. `frames` is how many analysis frames it spans, kept so a
+  caller can reject spans too short to be a word without recomputing.
+  """
+  @type span :: %{start_ms: float(), end_ms: float(), frames: pos_integer()}
 
   @typedoc """
   A transcript search result — Phase B, and the half that needs no recognizer.
