@@ -101,6 +101,13 @@ defmodule BusterClaw.Scene3d.Svg do
   # invalidates that validation run. The Chart Builder code that first carried
   # these hexes was deleted with the trading stack on 08-08; the palette itself
   # is app-wide and outlived it.
+  #
+  # **It now lives here and nowhere else.** If a second surface ever needs series
+  # colours, PROMOTE this to a shared module — do not copy the hexes across. A
+  # copy is how the slot ordering quietly stops being a guarantee: the two lists
+  # drift, nobody re-runs the validation, and the colourblind-safety property
+  # dies without a single failing test. A 3D renderer is already a strange sole
+  # home for it.
   @palette {{255, 68, 7}, {0, 161, 206}, {148, 23, 255}, {225, 0, 149}, {172, 144, 0}}
 
   # An out-of-range or non-integer index resolves here rather than raising. It

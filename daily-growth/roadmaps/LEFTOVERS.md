@@ -351,6 +351,55 @@ whole design assumes free tiers and endpoints will move.
 
 ---
 
+### Move the scene3d guide into a reference skill
+
+*Inherited 08-08 from `archive/08-08-26-scene3d-roadmap.md`.*
+
+**What.** `Scene3d.guide/0` is now a substantial block teaching primitives,
+composition helpers, the `region`/`surface` vocabulary, a label budget and the
+SVG-vs-3D channel line. It ships in the homepage system prompt on **every turn**,
+alongside `SvgViewer.guide/0`. Make it a `handler_kind: reference` skill instead —
+`skills/scene-designer.md`, sibling to the existing `shader-designer`.
+
+**Why deferred.** The guide has to be right before it is worth relocating, and
+"right" is an empirical question nobody has enough transcripts to answer yet. The
+one live signal so far — the model choosing a 3D scene for a flat map — was
+answered by making the guide *longer*, which is the wrong direction to relocate
+from.
+
+**What makes it expensive later.** This is a compounding cost, not a fixed one:
+every turn on the homepage pays for the whole guide, and each vocabulary addition
+makes it worse. Skills are runtime-loadable and operator-editable; a system-prompt
+string is neither, so today the only way to tune the wording is a recompile. The
+`shader-designer` skill is the worked precedent, so this needs no design — only
+the confidence that the words have settled.
+
+---
+
+### Scene3D's unbuilt polish — all of it waiting on evidence
+
+*Inherited 08-08 from `archive/08-08-26-scene3d-roadmap.md`.*
+
+**What.** Three cosmetic items and one interaction, none started: widen the
+faceted shading (`Project` already computes `shade`; `Svg` applies it narrowly),
+a ground contact shadow, a depth cue, and **orbit drag** — porting the projector
+to JS so a card can be turned with the pointer.
+
+**Why deferred.** The cards became legible on 08-08 and nobody has yet wanted
+them prettier or wanted to rotate one. Orbit in particular costs the most and is
+the least justified: it duplicates ~200 lines of projection math in JS, and would
+need a lockstep test pinning both implementations to the same projection for a
+fixture scene — because the Elixir suite cannot see JS, so without one they
+silently diverge.
+
+**What makes it expensive later.** Nothing structural; these stay additive. The
+one trap is the depth cue: **`depth` is in scene units and is not
+scale-invariant** — only the ordering is — so an implementation that treats it as
+a 0–1 quantity works on a small scene and breaks on a large one. That constraint
+is recorded in `t:BusterClaw.Scene3d.Types.poly/0` where it will be read.
+
+---
+
 
 ## Rules of engagement
 

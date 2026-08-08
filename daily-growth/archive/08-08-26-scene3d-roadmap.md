@@ -1,6 +1,52 @@
 # Scene3D — a 3D card the model can put in the chat
 
+> ## ARCHIVED 2026-08-08 — shipped, field-tested, fixed, and closed the same day
+>
+> **Phases 0, 1 and 2 all shipped** (`da57ac8` → `a314990`). The model can put a
+> labelled 3D card in the chat; it survives reload; the operator confirmed it
+> renders in a running app, sent back a screenshot of it failing on a real map,
+> and the four failures that screenshot exposed were fixed the same afternoon.
+> Final state: **2,466 tests green**, four pure stages behind one contract.
+>
+> ### What is NOT inherited — Phase 4, deliberately
+>
+> The raymarched WGSL renderer **dies with this file**. It was gated from the
+> start behind a measured fact: the SDF attempt during Humo (07-04) *crashed
+> WKWebView*, and Phase 1 then answered the question the gate was waiting on —
+> real scenes run well past the 30–50 primitive ceiling a raymarcher can afford
+> (a single sphere is 128 faces; the node cap is 256). It does not belong in
+> `LEFTOVERS.md`, whose rule is that anything needing a design belongs in a real
+> roadmap. **If it is ever wanted, promote it back into its own roadmap and make
+> the argument fresh** — do not treat it as leftover work.
+>
+> ### What was inherited → `LEFTOVERS.md`
+>
+> Two entries, both concrete and both waiting on evidence rather than design:
+> **moving `guide/0` into a `scene-designer` reference skill** (it ships in every
+> homepage turn, and that cost compounds with each vocabulary addition), and
+> **the unbuilt polish** — shading, contact shadow, depth cue, orbit drag.
+>
+> ### The lessons that outlived the document
+>
+> - **"3D in Elixir" was the wrong question.** The webview draws regardless;
+>   Elixir's job here was what it always is — validate, bound, persist, hand over.
+>   `:gl`/`:wx`, Scenic and Nx were all surveyed and none of them render into a
+>   webview. That is not a mark against the language.
+> - **Uniform label sizing was correct at the size it was tested and wrong at the
+>   size it shipped.** Every test used 3–5 labels; the first real scene had 13 and
+>   was illegible. No test caught it because no test asked.
+> - **Contract-first is what made four parallel agents cheaper than one.** Writing
+>   `scene3d/types.ex` before dispatching — a compiled, types-only module pinning
+>   winding, handedness and units — is why four independently-built stages
+>   composed on the first try. Done twice, both times the same way.
+> - **The validated 5-slot palette is now sole-sourced in `Scene3d.Svg`**, having
+>   outlived the Chart Builder code deleted the same morning. The instruction to
+>   *promote, not copy* it now lives in that module's `@palette` comment rather
+>   than only here.
+
 **Scoped 08-08-26 · Status: PHASES 0-1 SHIPPED, PHASE 2 PASSES 1-2 SHIPPED 08-08-26.**
+
+**CLOSED 08-08-26.** See the banner above for what was inherited and what died.
 
 Phases 0 and 1 landed the same day they were scoped, built by four agents
 against the shared contract in `lib/buster_claw/scene3d/types.ex`. **148 unit
