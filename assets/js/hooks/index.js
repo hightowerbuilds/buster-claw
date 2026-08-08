@@ -29,6 +29,7 @@ import {MusicPlayer} from "./music_player.js"
 import {Dtmf} from "./dtmf.js"
 import {ChatWindow} from "./chat_window.js"
 import {Composer} from "./composer.js"
+import {NoteEditor} from "./note_editor.js"
 
 export const Hooks = {
   PortfolioChart,
@@ -67,4 +68,5 @@ export const Hooks = {
   WorkspaceDropzone,
   NotifySound,
   SoundPreview,
+  NoteEditor,
 }

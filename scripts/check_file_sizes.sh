@@ -93,6 +93,15 @@ check lib/buster_claw_web/live/status/comms.ex               125 HELD
 check lib/buster_claw_web/live/status/studio.ex              114 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD
 
+# The Notes vault: state in the live_component, markup in two function
+# components. Split at ~810 lines during HOME_ACTIVITY_NOTES Phase 2 rather than
+# after, because Phase 3 (search, switcher, wikilinks, backlinks) lands in all
+# three and would have taken the single file past every other panel in the app.
+# Phase 3 raising these with a reason is the intended outcome, not a failure.
+check lib/buster_claw_web/live/notes_component.ex              535 HELD
+check lib/buster_claw_web/components/notes/editor.ex           274 HELD
+check lib/buster_claw_web/components/notes/rail.ex             179 HELD
+
 # --- FROZEN: named by an unstarted phase; capped at today's size -------------
 
 # Phase 3. 20% markup, so ~987 lines of logic in a live_component. The source

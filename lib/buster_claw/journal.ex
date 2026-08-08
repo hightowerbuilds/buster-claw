@@ -1,21 +1,20 @@
 defmodule BusterClaw.Journal do
   @moduledoc """
-  The **Notes record**: the single place Buster Claw activity is logged. One
+  The **Activity record**: the single place Buster Claw activity is logged. One
   rolling markdown document per calendar day under `<workspace>/journal/`,
-  named `YYYY-MM-DD.md`, surfaced as the homepage **Notes** tab.
+  named `YYYY-MM-DD.md`, surfaced as the homepage **Activity** tab.
 
   There is deliberately no second activity log. `.buster-claw/dispatch/<date>/Dispatch.*` is a
   machine projection of queue events, `analysis/` holds per-request findings,
   and `activity_report` is computed from dispatch rows — none of them is where
   "what happened today" is written. This is.
 
-  Both the agent (via the `journal_append` command) and the operator (via the
-  homepage Notes tab) append entries; each entry lands chronologically under a
-  `###### HH:MM` timestamp heading, and operator entries carry an ` — OPERATOR`
-  suffix so the human's items stand out in a mostly-agent stream. A day's file
-  is only created on its first entry — a day Buster Claw isn't used has no
-  document. Like the rest of the workspace, this is plain markdown you own:
-  no database, `grep` works.
+  The agent appends through `journal_append`; the Activity UI is read-only.
+  Existing operator entries are preserved and the lower-level API still accepts
+  `:operator` for compatibility. Every entry lands chronologically under a
+  `###### HH:MM` timestamp heading, with operator entries carrying an
+  ` — OPERATOR` suffix. A day's file is created on its first entry. Like the rest
+  of the workspace, this is plain Markdown you own: no database, `grep` works.
 
   ## Safety
 
@@ -45,7 +44,7 @@ defmodule BusterClaw.Journal do
   def subscribe, do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, @topic)
 
   @doc """
-  Append one entry to today's Notes record. `source` is `:agent` or `:operator`;
+  Append one entry to today's Activity record. `source` is `:agent` or `:operator`;
   operator entries are marked in the timestamp heading. Creates the day's
   document (with a title line) on the first entry. Returns `{:ok, day}` with
   the updated day map, or `{:error, :blank}` for empty text.
@@ -92,7 +91,7 @@ defmodule BusterClaw.Journal do
   end
 
   @doc """
-  Read one day's Notes record by ISO date string. Returns
+  Read one day's Activity record by ISO date string. Returns
   `%{date: Date.t(), name: String.t(), body: String.t()}` or `nil` when the
   day has no document (or the name isn't a date).
   """

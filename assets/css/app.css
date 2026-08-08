@@ -175,6 +175,20 @@
   background-color: color-mix(in oklab, var(--color-primary, currentColor) 12%, transparent);
 }
 
+/* Notes editor save chip. Four of its five states are assigns; "Saving…" is
+   not, because the in-flight save is over before any assign made during it
+   could paint. LiveView already marks the form for exactly that window, so the
+   chip reads the window itself and the server keeps saying what it knows. */
+#note-save-status [data-note-saving] { display: none; }
+#notes-editor-pane:has(form[data-note-editor].phx-change-loading) #note-save-status [data-note-state],
+#notes-editor-pane:has(form[data-note-editor].phx-submit-loading) #note-save-status [data-note-state] {
+  display: none;
+}
+#notes-editor-pane:has(form[data-note-editor].phx-change-loading) #note-save-status [data-note-saving],
+#notes-editor-pane:has(form[data-note-editor].phx-submit-loading) #note-save-status [data-note-saving] {
+  display: inline;
+}
+
 /* ============================================================
    INDUSTRIAL CLAW — type system + identity layer
    ============================================================ */

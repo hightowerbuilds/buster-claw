@@ -236,8 +236,8 @@ defmodule BusterClawWeb.Explore.Cmd do
             Library — markdown on disk, yours, greppable.
           </li>
           <li>
-            <code>journal_append</code> adds a line to today's record (the Notes
-            sub-tab, live).
+            <code>journal_append</code> adds a line to today's record (the Activity
+            sub-tab, live and read-only).
           </li>
           <li>
             <code>notify_create</code> sets a 45-minute timer — it chimes from the

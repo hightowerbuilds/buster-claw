@@ -407,3 +407,236 @@ thing your plan depends on before the plan depends on it.** The morning deleted
 a 3D card and then fixed it against a real screenshot an hour later. The evening
 found the boundary of what can be built, went around it, and let a free phase
 decide the expensive question.
+
+---
+
+# Late evening: Notes gets its name back; minutes get theirs
+
+Two problems arrived together: how Buster Claw should be reachable through SSH,
+and why the homepage's **Notes** tab was not actually a notebook. Both turned out
+to be boundary problems. The safe SSH design keeps the application boundary
+narrow; the Notes split gives two kinds of Markdown separate ownership.
+
+## SSH: use the tunnel we already have before building a server
+
+OTP's `:ssh` application can run clients, daemons, shells, command execution,
+SFTP, and TCP forwarding. That capability is precisely why embedding it is not
+the first release. This project pins OTP 28, where leaving daemon options out can
+expose more than intended; authentication also does not create an OS sandbox —
+the session still acts with the BEAM process's filesystem authority.
+
+The roadmap therefore chooses ordinary OpenSSH local forwarding first:
+
+```text
+remote browser → ssh -L → loopback Phoenix → Buster Claw
+```
+
+Phoenix stays bound to loopback. The remote key is forwarding-only, narrowed to
+one destination; no IEx, PTY, general command execution, SFTP, agent forwarding,
+or public Phoenix bind. Tailscale may supply reachability, but it does not replace
+that application boundary. The one product complication is the packaged app's
+random Phoenix port, so Remote Access needs a stable loopback gateway before the
+copied command can be dependable. The research and security gates live in
+`daily-growth/roadmaps/SSH_REMOTE_ACCESS_ROADMAP.md`.
+
+## The Notes tab had been replaced once already
+
+Repository history supplied the cleanest map. Before `a1d0b5e`, Buster Claw had
+`BusterClaw.Notes` and a split Markdown editor/preview under `notes/`.
+`a1d0b5e` replaced that surface with one dated `journal/YYYY-MM-DD.md` per day,
+then later language called it “the Notes record” to make the agent see exactly
+one activity destination.
+
+That last constraint was correct; the label was not. The implementation now
+keeps exactly one automatic activity log while naming it **Activity**. Notes is
+the operator's notebook and is never where the agent dumps routine work.
+
+The Home rail is now:
+
+```text
+Chat | Notes | Calendar | Phone | Studio | Explore | Activity
+```
+
+Activity sits at the far right by operator decision.
+
+## Activity moved without moving one byte of history
+
+`BusterClaw.Journal`, `journal/`, `journal_append`, `journal_read`, the PubSub
+topic, date validation, and every existing file remain in place. Only the
+presentation boundary changed:
+
+- `ActivityComponent` renders **BC Minutes** as a read-only day stream;
+- the old operator composer is gone, while historical `— OPERATOR` entries stay;
+- agent appends still appear live through the existing journal broadcast;
+- Runs, Commands, Handled, and Open cards come from `ActivityReport.summary/1`
+  and are explicitly labelled as seven-day/current context rather than part of
+  the selected day's prose.
+
+This is a migration worth repeating: **rename the responsibility, not the user's
+data.**
+
+## Notes is plain Markdown with a concurrency contract
+
+The restored `BusterClaw.Notes` is not a blind copy of the deleted version. It
+recursively discovers `.md` and `.markdown` beneath `<workspace>/notes/`, ignores
+symlinks, normalizes relative paths, reuses `FileManager.within?/2`, sanitizes new
+titles, refuses clobbering, rejects binary/oversized content, and never accepts an
+absolute path.
+
+The important difference is save semantics. Each open note carries a SHA-256
+revision of the exact bytes read. A save writes a same-directory temporary file
+and renames it over the destination only if the disk revision still matches. If
+an external editor or agent changed the note first, the UI stops, keeps the
+operator's draft in the textarea, leaves the newer disk file untouched, and
+offers **Reload disk version** or an explicitly confirmed **Overwrite**.
+
+That is the minimum honest contract for “Obsidian-like.” Plain files are only an
+ownership story if opening the same file somewhere else does not make autosave a
+data-loss mechanism.
+
+The first UI slice now has safe note creation, streamed recursive discovery, a
+real textarea, 700 ms autosave, sanitized live preview, save/conflict/error
+status, and confirmed permanent deletion. Folder controls, rename/move, explicit
+keyboard save, search, wikilinks, backlinks, and responsive preview switching
+remain open in `HOME_ACTIVITY_NOTES_ROADMAP.md`.
+
+## The vocabulary changed with the UI
+
+Changing two buttons without changing the model's guide would have recreated the
+bug on the next run. `Introduction`, seeded job descriptions, command catalog
+copy, Explore's command tutorial, journal moduledocs, and tests now all teach the
+same rule:
+
+> Activity is the one Buster Claw activity log. Notes is the user's notebook.
+
+The compatibility names remain `journal_*`; naming purity is not worth breaking
+jobs or old prompts.
+
+## Validation, without borrowing green from the shared checkout
+
+The focused selection is green: **17 tests, 0 failures** across the Notes context,
+generated Introduction, and the five new Home split paths. It covers the
+Markdown round-trip, stale-revision conflict with both versions recoverable,
+nested discovery, hostile path/symlink exclusion, live Activity refresh,
+read-only controls, and far-right tab order. Documentation drift also passes.
+
+`mix precommit` completed warnings-as-errors compilation, formatting, Credo,
+cycle/file-size checks, and the Rust checks. Its full Elixir run finished at
+**2,793 tests with 2 failures**, both in concurrent browser-controller work
+outside this slice (`ClawConfirmTest` and `BrowserHomeControllerTest`). This same
+daily summary already recorded why a shared working tree does not entitle anyone
+to borrow a green claim, so the result is recorded exactly as it ran.
+
+## The late-evening line
+
+**A trustworthy product boundary says not only where something appears, but who
+writes it, what authority reaches it, and what survives when two writers arrive
+at once.** SSH stays a tunnel to one loopback service. Activity stays the one
+automatic record. Notes becomes the operator's Markdown, with a conflict instead
+of a silent overwrite.
+
+---
+
+# Night: finishing Notes, and three states that could not come from one place
+
+Phase 2 closed out — folders, rename/move, ⌘S, the save-status lifecycle, the
+narrow-window preview toggle, and unsupported files. What made it interesting was
+not the feature list. It was that finishing a status chip required deciding, for
+each of five words, **which layer is actually entitled to say it.**
+
+## A status chip is a claim about authority, not a label
+
+The roadmap asked for `Unsaved → Saving… → Saved → Conflict`. The obvious
+implementation — one assign, five values — is wrong twice over, and both errors
+are silent:
+
+- **`Unsaved` cannot be the server's.** `phx-debounce="700"` means the server
+  hears nothing for 700 ms after a keystroke, so a server-owned chip reads
+  "Saved" over a draft that is not saved. It has to come from the client.
+- **`Saving…` cannot be an assign.** The in-flight request is over before any
+  assign made during it could paint. There is no moment at which a server render
+  could show it truthfully.
+
+The first attempt at fixing `Unsaved` was to let the hook write the label into
+the DOM. That is the trap: LiveView diffs against the *previous rendered value*,
+not against the DOM. Save-then-save leaves the server's value unchanged, no diff
+is sent, and the hook's stale "Unsaved" stays on screen over a saved file. So the
+hook does not write anything — it pushes `note_dirty` once per clean→dirty
+transition and the server owns the label from there. `Saving…` became four lines
+of CSS keyed to LiveView's own `phx-change-loading`, which *is* the in-flight
+window rather than a guess at it.
+
+| State | Authority | Why not elsewhere |
+|---|---|---|
+| `Unsaved` | the hook's `note_dirty` | the server hears nothing for 700 ms |
+| `Saving…` | CSS on `phx-change-loading` | over before an assign could paint |
+| `Saved` / `Conflict` / `Save failed` | the LiveComponent | only the write knows |
+
+**A UI state belongs to whichever layer can observe it.** Sourcing it anywhere
+else produces a display that is confident and wrong.
+
+## Move by copy, because rename destroys
+
+`rename/2` and `move/2` do not call `File.rename/2`. POSIX rename silently
+clobbers an existing destination, and losing a note to a name collision is the
+exact failure this vault was built to prevent. They copy into an
+exclusively-created destination and then remove the source: the collision is
+refused by the filesystem rather than by a check that can race, and a crash
+between the two steps leaves a **duplicate**, which anyone can fix, instead of a
+hole, which nobody can.
+
+## The check that turns a silent overwrite into a decision
+
+Revision-checked saves protect the moment you press save. They do nothing for a
+note sitting open while another editor writes it. The hook now asks the server to
+reconcile on window focus and on a 20-second tick, and the two outcomes are
+deliberately different:
+
+- **clean editor** → adopt the newer file silently; refusing to show it would be
+  the surprising half;
+- **draft in flight** → the same conflict banner a save would raise, now with
+  **Copy my draft** so "Reload disk version" is not the only exit.
+
+## The test that exists because a green suite lied once
+
+`render_hook/3` never loads `assets/js`. A hook that markup names and
+`hooks/index.js` does not export is a **silently dead interaction**: no error, no
+warning, a passing suite, and a button that does nothing in the real app. This
+repo has already shipped that failure once through a regex rename.
+
+`BusterClawWeb.HooksRegisteredTest` now asserts every `phx-hook` in `lib/` exists
+in the registry — verified by removing `NoteEditor` and watching it fail. It runs
+one direction on purpose: unregistered markup is always a bug, while a registered
+hook nobody uses is usually just a deleted surface (`PortfolioChart` and
+`ChatWindow` are exactly that, left over from the Trading cut).
+
+The same reasoning added an assertion for the `data-note-editor` anchor the
+`Saving…` CSS selects on. Nothing else in the suite could see a rename break it.
+
+## Split at 810 lines rather than after
+
+`NotesComponent` reached ~810 lines, and Phase 3 (search, switcher, wikilinks,
+backlinks) lands in the same file. The markup came out as two pure function
+components — `Notes.Rail` and `Notes.Editor` — with state and every save decision
+staying in the LiveComponent: **486 + 249 + 162**. All three are named in
+`check_file_sizes.sh`, so Phase 3 has to raise those caps deliberately instead of
+quietly, which is the entire point of that script.
+
+## Validation, and a failure that was not ours
+
+Full suite: **2,824 tests, 3 doctests, 0 failures** — including the two
+browser-controller failures this morning's entry recorded, now green. 142 JS
+tests. Format, Credo strict, cycles, file sizes, Rust, and docs drift all pass.
+
+One environment fact earned its place in the roadmap: **run tests with
+`MIX_TEST_PARTITION=<lane>` in this checkout.** An unpartitioned run collided with
+another session on the single SQLite file and produced 19 `Exqlite.Error:
+Database busy` failures at `Conversations.ensure_seeded/0` — on mount, which reads
+exactly like a LiveView bug and is not one. A shared working tree does not only
+threaten borrowed green claims; it manufactures convincing red ones too.
+
+## The night line
+
+**Ask of every piece of state: who can actually see this?** The answer decides
+where it lives, and a status that comes from the wrong layer is not a cosmetic
+problem — it is a confident lie about whether the user's work is safe.

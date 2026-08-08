@@ -25,13 +25,13 @@ defmodule BusterClaw.Commands.Catalog.Library do
       },
       Helpers.delete_entry("document_delete", "Delete a document's file and mark it deleted."),
 
-      # Journal (the Notes record — the one activity log, on the homepage Notes tab)
+      # Journal (the Activity record — the one activity log, on the Activity tab)
       %{
         name: "journal_append",
         type: :mutate,
         tier: :restricted,
         description:
-          "Append a timestamped entry to the Notes record — THE one place Buster Claw activity is logged, shown on the homepage Notes tab. Every command run, reply sent, and notable decision goes here; there is no second activity log.",
+          "Append a timestamped entry to the Activity record — THE one place Buster Claw activity is logged, shown on the homepage Activity tab. Every command run, reply sent, and notable decision goes here; there is no second activity log.",
         args: %{
           "text" => %{type: :string, required: true}
         }
@@ -40,7 +40,7 @@ defmodule BusterClaw.Commands.Catalog.Library do
         name: "journal_read",
         type: :read,
         tier: :safe,
-        description: "Read one day's Notes record (the homepage Notes tab's document).",
+        description: "Read one day's Activity record (the homepage Activity tab's document).",
         args: %{
           "date" => %{
             type: :string,

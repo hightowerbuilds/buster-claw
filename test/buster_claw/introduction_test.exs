@@ -70,25 +70,28 @@ defmodule BusterClaw.IntroductionTest do
     # no pre-rename names.
     assert md =~ "`jobs/`"
     assert md =~ "`Dispatch.md`"
+    assert md =~ "`notes/`"
     assert md =~ "`journal/`"
     refute md =~ "`analysis/`"
     refute md =~ "`projects/`"
     refute md =~ "job-descriptions"
     refute md =~ "shift/Dispatch.md"
 
-    # The Notes record: one journal document per day, appended through the command
-    # surface (NOT hand-written files — the old mm-dd-yy-summary/ convention).
+    # The Activity record: one journal document per day, appended through the
+    # command surface (NOT hand-written files — the old summary convention).
     assert md =~ "journal_append"
     assert md =~ "journal_read"
     assert md =~ "YYYY-MM-DD.md"
     refute md =~ "mm-dd-yy-summary"
 
-    # ONE activity log. The whole point of the Notes-record consolidation: the
-    # doc must name a single destination and must not reintroduce the competing
-    # vocabulary ("minutes"/"diary"/"daily summary") that made it read as three.
-    assert md =~ "The Notes record"
+    # ONE activity log, now correctly separated from the user's Notes notebook.
+    # The model must never start dumping routine activity into notes/.
+    assert md =~ "The Activity record"
     assert md =~ "exactly one activity log"
     assert md =~ "What is NOT the activity log"
+    assert md =~ "homepage Activity tab"
+    assert md =~ "homepage Notes tab is a separate notebook"
+    refute md =~ "homepage Notes tab.**"
     refute md =~ "daily minutes"
     refute md =~ "dated diary"
 
@@ -96,6 +99,7 @@ defmodule BusterClaw.IntroductionTest do
     # can't reason its way into writing activity where nobody will read it.
     assert md =~ "activity_report"
     assert md =~ "the Library holds artifacts"
+    assert md =~ "Activity holds what happened"
 
     # notesthatfloat.com is a separate product, acknowledged and firewalled off.
     assert md =~ "notesthatfloat.com"

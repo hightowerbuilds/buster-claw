@@ -55,9 +55,10 @@ defmodule BusterClawWeb.StatusLiveTest do
     assert response =~ ~s(id="home-corner-widget")
     assert response =~ ~s(phx-hook="CornerWidget")
     assert response =~ "Contacts"
-    # Home sub-tabs: Chat (default) | Calendar | Notes.
+    # Home sub-tabs include the operator notebook and the far-right Activity record.
     assert response =~ "Calendar"
     assert response =~ "Notes"
+    assert response =~ "Activity"
     # Trading moved to a top-level tab (TRADING_TAB_ROADMAP Phase 0); the Home
     # sub-tab row must not offer it.
     refute response =~ ~s(phx-value-tab="trading")
@@ -805,7 +806,7 @@ defmodule BusterClawWeb.StatusLiveTest do
     end
   end
 
-  describe "home sub-tabs (chat / calendar / notes)" do
+  describe "Home sub-tabs" do
     test "chat is the default view and the calendar is hidden", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
@@ -896,41 +897,230 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute has_element?(view, "#calendar-grid")
     end
 
-    test "the Notes sub-tab shows the day's record and appends an operator item",
-         %{conn: conn} do
+    test "the Notes sub-tab creates, edits, previews, and saves a Markdown file",
+         %{conn: conn, root: root} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      html = render_click(view, "select_home_tab", %{"tab" => "notes"})
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
       refute has_element?(view, "#calendar-grid")
-      # Fresh day: no document exists until the first entry.
-      assert html =~ "No notes for this day yet"
-      assert html =~ BusterClaw.Journal.today_name()
+      assert has_element?(view, "#home-notes")
+      assert has_element?(view, "#notes-empty-state")
       assert has_element?(view, "button[phx-value-tab='notes'].bg-primary")
 
-      # The composer appends an OPERATOR-marked entry to today's notes.
-      html =
-        view
-        |> form("#journal-composer-form", %{text: "Renew the domain."})
-        |> render_submit()
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Remote access"}})
+      |> render_submit()
 
-      assert html =~ "Renew the domain."
-      assert html =~ "OPERATOR"
-      assert %{body: body} = BusterClaw.Journal.get(BusterClaw.Journal.today_name())
-      assert body =~ "Renew the domain."
-      assert body =~ "OPERATOR"
+      assert has_element?(view, "#notes-editor-pane")
+      assert has_element?(view, "#note-editor")
+      assert has_element?(view, "#note-preview")
+
+      view
+      |> form("#note-editor-form", %{
+        "editor" => %{"body" => "# Remote access\n\n- Keep Phoenix on loopback"}
+      })
+      |> render_change()
+
+      assert has_element?(view, ~s(#note-save-status[data-state="saved"]))
+      assert has_element?(view, "#note-preview h1")
+
+      assert File.read!(Path.join([root, "notes", "Remote access.md"])) =~
+               "Keep Phoenix on loopback"
     end
 
-    test "agent journal appends update an open Notes tab live", %{conn: conn} do
+    test "the Notes editor preserves a draft when the file changes on disk",
+         %{conn: conn, root: root} do
       {:ok, view, _html} = live(conn, ~p"/")
       render_click(view, "select_home_tab", %{"tab" => "notes"})
 
-      # An agent entry lands via the command surface; the broadcast should reach
-      # the mounted LiveView and re-render the notes without any user action.
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Shared draft"}})
+      |> render_submit()
+
+      path = Path.join([root, "notes", "Shared draft.md"])
+      File.write!(path, "newer disk version")
+
+      view
+      |> form("#note-editor-form", %{"editor" => %{"body" => "my unsaved draft"}})
+      |> render_change()
+
+      assert has_element?(view, ~s(#note-save-status[data-state="conflict"]))
+      assert has_element?(view, "#note-conflict")
+      assert has_element?(view, "#reload-note-button")
+      assert has_element?(view, "#overwrite-note-button")
+      assert File.read!(path) == "newer disk version"
+    end
+
+    test "the Notes rail files a note into a folder and moves it back out",
+         %{conn: conn, root: root} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      # The folder form is behind its toggle until asked for.
+      refute has_element?(view, "#new-folder-form")
+      view |> element("#new-folder-button") |> render_click()
+
+      view
+      |> form("#new-folder-form", %{"folder" => %{"name" => "Projects"}})
+      |> render_submit()
+
+      refute has_element?(view, "#new-folder-form")
+      assert File.dir?(Path.join([root, "notes", "Projects"]))
+
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Launch", "folder" => "Projects"}})
+      |> render_submit()
+
+      assert File.exists?(Path.join([root, "notes", "Projects", "Launch.md"]))
+      assert has_element?(view, ~s([data-note-heading="Projects"]))
+      assert has_element?(view, ~s(button[phx-value-path="Projects/Launch.md"]))
+
+      # Rename and move in one submission: the file lands under its new name at
+      # the vault root and nothing is left behind at the old path.
+      view |> element("#rename-note-button") |> render_click()
+
+      view
+      |> form("#rename-note-form", %{"rename" => %{"title" => "Launch plan", "folder" => ""}})
+      |> render_submit()
+
+      assert File.exists?(Path.join([root, "notes", "Launch plan.md"]))
+      refute File.exists?(Path.join([root, "notes", "Projects", "Launch.md"]))
+      refute has_element?(view, ~s([data-note-heading="Projects"]))
+      assert has_element?(view, ~s(button[phx-value-path="Launch plan.md"]))
+    end
+
+    test "the Notes editor reports Unsaved, saves on demand, and reconciles with disk",
+         %{conn: conn, root: root} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Field notes"}})
+      |> render_submit()
+
+      path = Path.join([root, "notes", "Field notes.md"])
+
+      # "Saving…" is CSS keyed to `#notes-editor-pane:has(form[data-note-editor]
+      # .phx-change-loading)`. Nothing else asserts that anchor, and losing it
+      # would drop one save state silently.
+      assert has_element?(view, "#notes-editor-pane form[data-note-editor]")
+      assert has_element?(view, "#note-save-status [data-note-saving]")
+
+      # The hook's clean -> dirty announcement, which is the only reason the chip
+      # can say Unsaved during the 700ms the server hears nothing.
+      view |> element("#notes-editor-pane") |> render_hook("note_dirty", %{})
+      assert has_element?(view, ~s(#note-save-status[data-state="unsaved"]))
+
+      # ⌘S submits the same form the debounce would have.
+      view
+      |> form("#note-editor-form", %{"editor" => %{"body" => "# Field notes\n"}})
+      |> render_submit()
+
+      assert has_element?(view, ~s(#note-save-status[data-state="saved"]))
+      assert File.read!(path) == "# Field notes\n"
+
+      # Clean editor, changed file: adopt disk silently. Refusing to show the
+      # newer file would be the surprising half of this.
+      File.write!(path, "# From another editor\n")
+      view |> element("#notes-editor-pane") |> render_hook("check_revision", %{})
+
+      assert has_element?(view, ~s(#note-save-status[data-state="saved"]))
+      assert view |> element("#note-editor") |> render() =~ "From another editor"
+
+      # Draft in flight, changed file: the same fact becomes a conflict, and the
+      # newer bytes stay on disk.
+      view |> element("#notes-editor-pane") |> render_hook("note_dirty", %{})
+      File.write!(path, "# From a third editor\n")
+      view |> element("#notes-editor-pane") |> render_hook("check_revision", %{})
+
+      assert has_element?(view, ~s(#note-save-status[data-state="conflict"]))
+      assert has_element?(view, "#copy-draft-button")
+      assert File.read!(path) == "# From a third editor\n"
+
+      # Autosave has stopped: a further keystroke updates the draft only.
+      view
+      |> form("#note-editor-form", %{"editor" => %{"body" => "still typing"}})
+      |> render_change()
+
+      assert has_element?(view, ~s(#note-save-status[data-state="conflict"]))
+      assert File.read!(path) == "# From a third editor\n"
+    end
+
+    test "the preview toggle swaps the pane on narrow windows", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Toggle me"}})
+      |> render_submit()
+
+      assert has_element?(view, "#note-preview.hidden")
+      refute has_element?(view, "#note-editor-form.hidden")
+
+      view |> element("#toggle-preview-button") |> render_click()
+
+      assert has_element?(view, "#note-editor-form.hidden")
+      refute has_element?(view, "#note-preview.hidden")
+    end
+
+    test "a Markdown file too large to edit is listed but never opened",
+         %{conn: conn, root: root} do
+      File.mkdir_p!(Path.join(root, "notes"))
+      File.write!(Path.join([root, "notes", "Huge.md"]), String.duplicate("x", 1_000_001))
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      assert has_element?(view, ~s(button[phx-value-path="Huge.md"]))
+      view |> element(~s(button[phx-value-path="Huge.md"])) |> render_click()
+
+      assert has_element?(view, "#notes-unsupported")
+      refute has_element?(view, "#note-editor")
+      refute render(view) =~ "xxxxxxxxxx"
+
+      view |> element("#unsupported-back-button") |> render_click()
+      assert has_element?(view, "#notes-empty-state")
+    end
+
+    test "the Activity sub-tab shows BC Minutes without an editing surface", %{conn: conn} do
       {:ok, _} = BusterClaw.Journal.append("Handled dispatch #7.", :agent)
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      render_click(view, "select_home_tab", %{"tab" => "activity"})
+
+      assert has_element?(view, "#home-activity")
+      assert has_element?(view, "#activity-summary")
+      assert has_element?(view, "#activity-reading")
+      assert has_element?(view, "button[phx-value-tab='activity'].bg-primary")
+      refute has_element?(view, "#journal-composer-form")
+      refute has_element?(view, "#note-editor-form")
+      assert render(view) =~ "Handled dispatch #7."
+    end
+
+    test "agent journal appends update an open Activity tab live", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "activity"})
+
+      # An agent entry lands via the command surface; the broadcast should reach
+      # the mounted LiveView and refresh BC Minutes without any user action.
+      {:ok, _} = BusterClaw.Journal.append("Saved launch review.", :agent)
 
       _ = :sys.get_state(view.pid)
-      html = render(view)
-      assert html =~ "Handled dispatch #7."
+      assert render(view) =~ "Saved launch review."
+    end
+
+    test "Activity is the far-right Home tab" do
+      expected = [
+        {"chat", "Chat"},
+        {"notes", "Notes"},
+        {"calendar", "Calendar"},
+        {"phone", "Phone"},
+        {"studio", "Studio"},
+        {"explore", "Explore"},
+        {"activity", "Activity"}
+      ]
+
+      assert BusterClawWeb.StatusLive.home_tabs() == expected
     end
 
     test "the Explore sub-tab opens on Intro with a launcher tile per sub-tab",

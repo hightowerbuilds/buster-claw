@@ -37,11 +37,12 @@ defmodule BusterClawWeb.StatusLive do
   # had never heard of it, and the click raised.
   @home_tabs [
     {"chat", "Chat"},
+    {"notes", "Notes"},
     {"calendar", "Calendar"},
     {"phone", "Phone"},
-    {"notes", "Notes"},
     {"studio", "Studio"},
-    {"explore", "Explore"}
+    {"explore", "Explore"},
+    {"activity", "Activity"}
   ]
   @home_tab_keys Enum.map(@home_tabs, &elem(&1, 0))
 
@@ -65,7 +66,7 @@ defmodule BusterClawWeb.StatusLive do
       # The Phone sub-tab's component cannot subscribe for itself — it has no
       # process. This host subscribes and relays; see `PhoneComponent`.
       BusterClaw.Contacts.subscribe()
-      # Keep the Notes tab's record live as the agent appends entries.
+      # Keep the Activity tab's BC Minutes live as the agent appends entries.
       BusterClaw.Journal.subscribe()
       # The Music tab renders transport it does not own — the player is the
       # sticky dock LiveView, so its state arrives over PubSub.
@@ -592,10 +593,11 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, assign(socket, :studio_clip, id)}
   end
 
-  # journal component so an open Notes tab re-reads the document.
+  # Relay journal broadcasts to the read-only Activity component. `send_update`
+  # is safe while another tab is mounted; the next Activity mount reads disk.
   def handle_info({:journal_appended, _date}, socket) do
-    send_update(BusterClawWeb.JournalComponent,
-      id: "home-notes",
+    send_update(BusterClawWeb.ActivityComponent,
+      id: "home-activity",
       refresh: System.unique_integer()
     )
 
@@ -771,7 +773,7 @@ defmodule BusterClawWeb.StatusLive do
             </div>
 
             <div :if={@home_tab == "notes"} class="flex min-h-0 flex-1 flex-col">
-              <.live_component module={BusterClawWeb.JournalComponent} id="home-notes" />
+              <.live_component module={BusterClawWeb.NotesComponent} id="home-notes" />
             </div>
 
             <div :if={@home_tab == "studio"} class="flex min-h-0 flex-1 flex-col">
@@ -791,6 +793,10 @@ defmodule BusterClawWeb.StatusLive do
 
             <div :if={@home_tab == "explore"} class="flex min-h-0 flex-1 flex-col">
               <BusterClawWeb.ExplorePanel.explore_panel tab={@explore_tab} />
+            </div>
+
+            <div :if={@home_tab == "activity"} class="flex min-h-0 flex-1 flex-col">
+              <.live_component module={BusterClawWeb.ActivityComponent} id="home-activity" />
             </div>
           </div>
 

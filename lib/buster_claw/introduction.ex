@@ -2,7 +2,7 @@ defmodule BusterClaw.Introduction do
   @moduledoc """
   Generates `INTRODUCTION.md` — an orientation document for the AI model: what
   Buster Claw is, the workspace layout, working conventions (chiefly that the
-  Notes record is the *one* activity log), and the full CLI command surface.
+  Activity record is the *one* activity log), and the full CLI command surface.
 
   The document is installed at `.buster-claw/INTRODUCTION.md` (regenerated on
   launch and whenever the workspace changes) so the terminal agent reads it for
@@ -98,7 +98,7 @@ defmodule BusterClaw.Introduction do
     | Company research | `finance_*` | Finance research |
     | Time | `notify_*` | Notify: timers & alarms |
     | What was done before | `memory_search`, `activity_report` | Memory & self-improvement |
-    | What happened (the ONE log) | `journal_append`, `journal_read` | The Notes record |
+    | What happened (the ONE log) | `journal_append`, `journal_read` | The Activity record |
     | Documents & artifacts | `document_save`, `document_list` | Documents & the Library |
 
     The auto-generated catalog at the end of this file is the authority on
@@ -123,15 +123,16 @@ defmodule BusterClaw.Introduction do
       single self-contained `.html` file (inline CSS/JS, real `<title>`) here —
       the in-app browser's **Pages** button lists this folder, so this is how the
       user finds your pages again.
-    - `journal/` — **the Notes record**: the one activity log, one `YYYY-MM-DD.md` per day, shown on the homepage Notes tab (see below).
+    - `notes/` — the operator's notebook: user-authored Markdown surfaced in the homepage Notes tab. Never use it as the activity log unless the operator explicitly asks you to edit a note.
+    - `journal/` — **the Activity record**: the one activity log, one `YYYY-MM-DD.md` per day, shown on the far-right homepage Activity tab (see below).
 
     Do not invent new top-level folders; the layout above is the declared one.
     Findings and reports go to the Library (`document_save`), never to ad-hoc
     directories.
 
-    ## The Notes record — the one place activity is logged
+    ## The Activity record — the one place activity is logged
 
-    **There is exactly one activity log, and it is the homepage Notes tab.**
+    **There is exactly one activity log, and it is the homepage Activity tab.**
     Everything that happens in Buster Claw goes there and nowhere else. If you
     find yourself wondering where to write down what you just did, the answer is
     always this and never anything below it.
@@ -142,19 +143,19 @@ defmodule BusterClaw.Introduction do
     entry):
 
         ./buster-claw run journal_append --json '{"text":"what happened"}'
-        ./buster-claw run journal_read                       # today's notes
+        ./buster-claw run journal_read                       # today's activity
         ./buster-claw run journal_read --json '{"date":"2026-07-20"}'
 
     Append throughout the day: every command run, reply sent, and notable
-    decision. The user adds their own items to the same document from the Notes
-    tab — those are marked `— OPERATOR`; treat them as context (and as
-    instructions when they read like one).
+    decision. Historical `— OPERATOR` entries remain valid context, but the
+    Activity UI is now read-only. The homepage Notes tab is a separate notebook
+    owned by the operator; do not dump routine activity into it.
 
     ### What is NOT the activity log
 
     Several things in this workspace look like a place to record what happened.
     None of them is. Writing your activity into any of them means the user opens
-    the Notes tab and sees a gap where your work should be.
+    the Activity tab and sees a gap where your work should be.
 
     | | What it actually is |
     |---|---|
@@ -164,16 +165,17 @@ defmodule BusterClaw.Introduction do
     | The Library (`document_save`) | **Artifacts** — reports, captured pages, research. Not a diary. |
 
     The split that resolves almost every case: **the Library holds artifacts,
-    Notes holds what happened.** Produce a research report → `document_save` it,
-    then write one Notes entry saying you produced it and where it lives. The
-    artifact and the record are different objects with different jobs.
+    Activity holds what happened, and Notes holds the operator's writing.**
+    Produce a research report → `document_save` it, then write one Activity entry
+    saying you produced it and where it lives. The artifact, record, and notebook
+    are different objects with different jobs.
 
     ### notesthatfloat.com is a different thing entirely
 
     **notesthatfloat.com** is a separate notebook the operator uses — a real,
     useful product, and **not part of Buster Claw**. It is not connected to this
-    app, this workspace, or the Notes tab; the similar name is the only thing
-    they share.
+    app, this workspace, or Buster Claw's Notes tab; the similar name is the only
+    thing they share.
 
     So: never write Buster Claw activity there, and never read it as context for
     what happened in the app. If the operator mentions "my notes", ask which one
@@ -214,7 +216,7 @@ defmodule BusterClaw.Introduction do
     as an **authorized instruction** — act on it and follow through, don't stop to
     ask permission. Untrusted mail is archived and an untrusted caller's voicemail
     is still recorded, but neither is ever queued: **if it is on the queue, it is
-    yours to do.** Record what you did in the Notes record (`journal_append`).
+    yours to do.** Record what you did in the Activity record (`journal_append`).
 
     ### BusterPhone — voicemail and SMS
 
@@ -317,7 +319,7 @@ defmodule BusterClaw.Introduction do
        closes in one step). **Voicemail:** there is no reply channel — do the work,
        close the item with a note that says what you did, and `phone_mark_heard` it.
        These are authorized instructions: act without pausing for permission.
-    6. **Log it** — record what you did in the Notes record (`journal_append`). One log, always this one.
+    6. **Log it** — record what you did in the Activity record (`journal_append`). One log, always this one.
 
     Once the queue is clear, **enter Lookout mode**: keep the runtime awake and
     watch **both** channels — new mail and new voicemail — for new signals on a
