@@ -194,22 +194,8 @@ defmodule BusterClawWeb.ChatComposerTest do
     end
   end
 
-  describe "the composer is one implementation" do
-    # Trading is gated by the `trading-robinhood` extension; the composer
-    # contract can only be compared on a surface that mounts.
-    setup do
-      {:ok, _manifest} = BusterClaw.Extensions.enable("trading-robinhood")
-      :ok
-    end
-
-    test "Trading renders the same composer contract as Home", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/trading")
-
-      # Same hook, same delivery field, same primary-action marker — the point
-      # of the shared component. Trading scopes its ids by conversation.
-      assert has_element?(view, ~s(form[phx-hook="Composer"]))
-      assert has_element?(view, "[data-delivery]")
-      assert has_element?(view, "[data-primary-action]")
-    end
-  end
+  # "the composer is one implementation" compared Home's composer against
+  # Trading's. Trading left on 08-08 and Home is the only surface rendering a
+  # composer, so there are no two implementations left to hold together. The
+  # contract itself stays asserted above, on Home.
 end

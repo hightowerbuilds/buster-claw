@@ -3,17 +3,17 @@ defmodule BusterClaw.Agent.Conversation do
   use Ecto.Schema
   import Ecto.Changeset
 
-  # `chat` is the neutral Trading kind: a conversation the operator has not
-  # pointed at anything yet. It can be retyped to robinhood or chartbuild from
-  # inside the chat itself, which is why kind is a plain field rather than
-  # something baked in at creation.
+  # `home` is the only kind left. `chat`, `robinhood` and `chartbuild` were the
+  # Trading page's tab kinds and left with it on 08-08; their rows are
+  # deleted by `20260808070000_drop_trading_stack`, which had to run BEFORE the
+  # values left this list, because `validate_inclusion` below is what would
+  # otherwise strand them (the same ordering lesson as the 08-03 research
+  # retype).
   #
-  # `research` was removed 08-03 when Chart Build absorbed the data-research job.
-  # Existing rows were retyped to `chartbuild` by
-  # `20260803210122_retype_research_conversations_to_chartbuild` — which had to
-  # run BEFORE the value left this list, because `validate_inclusion` below is
-  # what would otherwise strand them.
-  @kinds ~w(home chat robinhood chartbuild)
+  # The field stays rather than collapsing to a boolean: it is the seam that
+  # keeps a non-Home conversation out of Home's strip, and the next surface that
+  # owns conversations will need it again.
+  @kinds ~w(home)
 
   @primary_key {:id, :string, autogenerate: false}
   schema "agent_conversations" do
@@ -25,7 +25,7 @@ defmodule BusterClaw.Agent.Conversation do
     timestamps(type: :utc_datetime)
   end
 
-  @doc "The conversation kinds. `home` is Home's chat strip; the rest are Trading tabs."
+  @doc "The conversation kinds. `home` is Home's chat strip."
   def kinds, do: @kinds
 
   def changeset(conversation, attrs) do

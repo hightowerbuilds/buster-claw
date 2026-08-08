@@ -1,9 +1,9 @@
 defmodule BusterClaw.AgentToolPolicy do
   @moduledoc """
-  The built-in tools a confined agent run is refused — the one place `Trading`,
-  `ChartBuilder`, and `TradingOrder` get their denial list.
+  The built-in tools a confined agent run is refused — the one place a confined
+  surface gets its denial list.
 
-  A leaf on purpose (CODE_QUALITY_REFACTOR_ROADMAP Phase 1): `Trading` and the
+  A leaf on purpose (CODE_QUALITY_REFACTOR_ROADMAP Phase 1): the
   since-deleted `Research` used to share this by calling each other, which made
   them a dependency cycle for the sake of a word list.
 
@@ -57,26 +57,22 @@ defmodule BusterClaw.AgentToolPolicy do
   @doc """
   Every built-in tool a confined run is refused.
 
-  This is the strict default: no filesystem, no shell, no web at all. `Trading`
-  and `TradingOrder` use it as-is, because a run that can read the broker has no
-  business reaching the internet in the same conversation.
+  This is the strict default: no filesystem, no shell, no web at all.
   """
   def denied_builtins, do: @denied_builtins
 
   @doc """
   The denial list for a named profile.
 
-  `:chartbuild` — Chart Build researches data, so it keeps web **search**. It
-  loses nothing else: the shell, the filesystem, `Task`, and `WebFetch` all stay
-  denied. This is a subtraction of exactly one entry, and
-  `AgentToolPolicyTest` asserts that it stays one.
+  No profile subtracts anything today — `:chartbuild`, the only one that did,
+  left with Chart Build on 08-08. The arity stays so a future web-capable
+  profile has a place to be declared rather than a new mechanism to invent.
   """
-  def denied_builtins(:chartbuild), do: @denied_builtins -- @web_capable_builtins
   def denied_builtins(_profile), do: @denied_builtins
 
   @doc """
   The built-ins a web-capable profile may run — the exact set subtracted by
-  `denied_builtins(:chartbuild)`, so the deny list and the allowlist can never
+  a web-capable profile's `denied_builtins/1`, so deny list and allowlist never
   drift apart.
 
   `WebSearch` only. `WebFetch` is not here and must not be added without

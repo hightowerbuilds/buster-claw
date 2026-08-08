@@ -176,7 +176,7 @@ defmodule BusterClaw.Extensions do
   Returns `:adopted` when it wrote a value, `:already_decided` when a setting
   already exists (including one deliberately set to off). Deciding for someone
   who has already decided is the one thing an upgrade must never do: an operator
-  who turned Trading off does not want it back after an update.
+  who turned a surface off does not want it back after an update.
 
   The *policy* — what counts as "this install already uses the surface" — lives
   at the call site, because it needs knowledge of the surface's own data that
@@ -205,7 +205,7 @@ defmodule BusterClaw.Extensions do
   @doc """
   Whether the extension that owns an application surface is switched on.
 
-  A surface (`"trading"`) is named by exactly one manifest's `surface:` field.
+  A surface is named by exactly one manifest's `surface:` field.
   This is what the dock, the split-pane list, and the surface's own LiveView
   consult, so "installed" has one answer everywhere.
 
@@ -609,8 +609,8 @@ defmodule BusterClaw.Extensions do
        the operator's decision. "Daily position summary for one account" beats
        "helper skill".
     3. **State what it does not do.** The negative space is what makes a playbook
-       trustworthy — see `robinhood-trading`, whose most useful section is a list
-       of things never to do.
+       trustworthy — the most useful section of a good playbook is usually its
+       list of things never to do.
     4. **Ground it in real names.** Real command names, real tool names, real
        field names. A playbook that invents a tool teaches the reader a tool that
        does not exist.

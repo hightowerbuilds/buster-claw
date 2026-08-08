@@ -565,17 +565,17 @@ defmodule BusterClawWeb.SettingsLive do
                     class="border-l-2 border-primary/60 pl-3 text-xs leading-5 text-base-content/60"
                   >
                     Floor: {entry.floor}. A cheaper model on this surface was measured
-                    inventing a financial answer instead of reporting a problem, so the
-                    global default cannot lower it. Naming this surface here still can.
+                    inventing an answer instead of reporting a problem, so the global
+                    default cannot lower it. Naming this surface here still can.
                   </p>
                   <p
                     :if={ModelPolicy.claude_only?(surface)}
                     class="border-l-2 border-base-content/30 pl-3 text-xs leading-5 text-base-content/60"
                   >
-                    Claude only. This surface's Robinhood confinement is written in
-                    Claude's flags, which the other harnesses reject outright — so
-                    there is no harness to choose here rather than a choice that
-                    would fail.
+                    Claude only. This surface's confinement is written in Claude's
+                    own flags, which the other harnesses reject outright — so there
+                    is no harness to choose here rather than a choice that would
+                    fail.
                   </p>
                 </div>
 

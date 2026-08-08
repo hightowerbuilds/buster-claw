@@ -24,7 +24,7 @@ defmodule BusterClaw.Notifications.SoundBoard do
 
   ## The direct lane
 
-  `ring/1` is for the few moments that have no broadcast: `TradingLive` pinning
+  `ring/1` is for the few moments that have no broadcast: a LiveView pinning
   an order card, the Phase 3 boot chime. It validates against
   `Sound.route_keys/0` before broadcasting, so a typo'd key dies at the caller
   instead of crashing the board's LiveView mid-`handle_info`.
@@ -109,7 +109,7 @@ defmodule BusterClaw.Notifications.SoundBoard do
 
   @doc """
   Ring a routing key directly — for moments with no broadcast of their own
-  (the trading order card, the boot chime). Unknown keys are refused here, at
+  (the boot chime). Unknown keys are refused here, at
   the caller, rather than crashing the board mid-`handle_info`.
   """
   def ring(key) when is_binary(key) do

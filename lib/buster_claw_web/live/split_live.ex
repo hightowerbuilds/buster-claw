@@ -7,8 +7,6 @@ defmodule BusterClawWeb.SplitLive do
   """
   use BusterClawWeb, :live_view
 
-  alias BusterClaw.Extensions
-
   # Views that are safe to embed in a split pane (they render from mount-set
   # assigns, not route params). Every workspace tab — including Home — is
   # joinable; chrome is suppressed centrally by `BusterClawWeb.ChromeHook` +
@@ -16,7 +14,6 @@ defmodule BusterClawWeb.SplitLive do
   # (the first-run wizard).
   @panes %{
     "/" => {BusterClawWeb.StatusLive, "Home"},
-    "/charts" => {BusterClawWeb.TradingLive, "Chart Build"},
     "/browse" => {BusterClawWeb.BrowseLive, "Browser"},
     "/calendar" => {BusterClawWeb.CalendarLive, "Calendar"},
     "/terminal" => {BusterClawWeb.TerminalLive, "Terminal"},
@@ -59,7 +56,7 @@ defmodule BusterClawWeb.SplitLive do
     pathname = path |> String.split("?") |> hd()
     url = pane_url(path)
 
-    case pane_module(pathname) do
+    case Map.fetch(@panes, pathname) do
       {:ok, {module, label}} ->
         %{
           path: path,
@@ -71,30 +68,6 @@ defmodule BusterClawWeb.SplitLive do
 
       :error ->
         %{path: path, module: nil, label: pathname, url: url, child_session: %{}}
-    end
-  end
-
-  # A pane owned by an extension is only joinable while that extension is on.
-  # Without this, a split pane would be a way back into a surface the dock has
-  # removed — the gate has to hold at every door, not the front one.
-  @gated_panes %{"/trading" => "trading"}
-
-  defp pane_module(pathname) do
-    with {:ok, pane} <- Map.fetch(@panes, pathname),
-         true <- pane_available?(pathname) do
-      {:ok, pane}
-    else
-      _ -> :error
-    end
-  end
-
-  defp pane_available?(pathname) do
-    case Map.fetch(@gated_panes, pathname) do
-      {:ok, surface} ->
-        Extensions.surface_available?(surface)
-
-      :error ->
-        true
     end
   end
 
@@ -112,11 +85,6 @@ defmodule BusterClawWeb.SplitLive do
       query -> URI.decode_query(query)
     end
   end
-
-  # `/charts` and `/trading` are the same LiveView. A nested `live_render` gets
-  # no `live_action`, so the surface has to travel in the session — otherwise a
-  # Chart Build pane would mount the full Trading desk and start a broker run.
-  defp pane_child_session("/charts", _path, _url, _side), do: %{"surface" => "charts"}
 
   defp pane_child_session("/terminal", path, _url, _side) do
     params = pane_params(path)

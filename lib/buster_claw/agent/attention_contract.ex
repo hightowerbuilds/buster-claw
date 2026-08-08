@@ -71,7 +71,7 @@ defmodule BusterClaw.Agent.AttentionContract do
   transport.
 
   `guide` is the per-conversation system-prompt addendum (the homepage chat's
-  SVG vocabulary, Trading's profile) and may be `nil`. Returns `nil` only when
+  SVG vocabulary, say) and may be `nil`. Returns `nil` only when
   there is nothing at all to say, so a caller can omit the field entirely rather
   than sending an empty string.
   """

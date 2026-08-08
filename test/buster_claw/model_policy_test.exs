@@ -47,52 +47,10 @@ defmodule BusterClaw.ModelPolicyTest do
   # trading.ex: haiku on the trading read invoked the broker tool in only 1 of 2
   # runs, and on the miss it FABRICATED the answer rather than erroring. Without
   # these assertions the floor is a comment in a moduledoc.
-  describe "the money-surface floor" do
-    test "a cheap global default cannot reach the trading surfaces" do
-      {:ok, _} = ModelPolicy.put(:default, "claude-haiku-4-5")
-
-      assert ModelPolicy.for_surface(:chat) == "claude-haiku-4-5",
-             "the floor should not apply to surfaces that don't touch money"
-
-      assert ModelPolicy.for_surface(:trading_read) == "claude-sonnet-5"
-      assert ModelPolicy.for_surface(:order_submit) == "claude-sonnet-5"
-    end
-
-    test "in_force names the floor as the reason, so the UI can explain it" do
-      {:ok, _} = ModelPolicy.put(:default, "claude-haiku-4-5")
-      in_force = ModelPolicy.in_force()
-
-      assert in_force[:trading_read].source == :floor
-      assert in_force[:trading_read].floor == "claude-sonnet-5"
-      assert in_force[:chat].source == :default
-    end
-
-    test "a capable global default passes through untouched" do
-      {:ok, _} = ModelPolicy.put(:default, "claude-opus-5")
-
-      assert ModelPolicy.for_surface(:trading_read) == "claude-opus-5"
-      assert ModelPolicy.in_force()[:trading_read].source == :default
-    end
-
-    # The floor is a guard against lowering cost by accident, not a lock. An
-    # operator who names the money surface itself has made a deliberate choice.
-    test "naming the surface itself still goes below the floor" do
-      {:ok, _} = ModelPolicy.put(:default, "claude-opus-5")
-      {:ok, _} = ModelPolicy.put(:trading_read, "claude-haiku-4-5")
-
-      assert ModelPolicy.for_surface(:trading_read) == "claude-haiku-4-5"
-      assert ModelPolicy.in_force()[:trading_read].source == :surface
-      assert ModelPolicy.for_surface(:order_submit) == "claude-opus-5"
-    end
-
-    # A model we don't rank must not be silently swapped for the floor — that
-    # would break the free-text escape hatch the picker depends on.
-    test "an unranked global default is left alone" do
-      {:ok, _} = ModelPolicy.put(:default, "some-future-model")
-
-      assert ModelPolicy.for_surface(:trading_read) == "some-future-model"
-    end
-  end
+  # `trading_read` and `order_submit` — the only floored, claude-pinned surfaces
+  # — left with the trading stack on 08-08. `@floors` and `@claude_only` are now
+  # empty maps rather than deleted mechanisms: the next money-shaped surface
+  # should declare itself there, not rebuild this.
 
   describe "per-surface overrides" do
     test "win over the global default without touching other surfaces" do
@@ -235,45 +193,6 @@ defmodule BusterClaw.ModelPolicyTest do
   # flags turned out to be untranslatable — codex answers `--disallowedTools` with
   # "unexpected argument" — so "allow it and warn" would have meant offering a
   # choice whose only outcome is a failed run. These surfaces are pinned instead.
-  describe "the money surfaces are pinned to claude" do
-    test "a global default cannot move them" do
-      {:ok, _} = ModelPolicy.put_backend(:default, :codex)
-
-      assert ModelPolicy.backend_for(:chat) == :codex
-      assert ModelPolicy.backend_for(:trading_read) == :claude
-      assert ModelPolicy.backend_for(:order_submit) == :claude
-    end
-
-    test "naming one is refused, with the reason" do
-      assert {:error, {:claude_only, :order_submit, why}} =
-               ModelPolicy.put_backend(:order_submit, :codex)
-
-      assert why =~ "confinement"
-      assert ModelPolicy.backend_for(:order_submit) == :claude
-    end
-
-    test "claude_only?/1 names exactly the floored surfaces" do
-      assert Enum.sort(Map.keys(ModelPolicy.claude_only())) ==
-               Enum.sort(Map.keys(ModelPolicy.floors()))
-    end
-
-    # The pin and the floor have to move together. If a future change lifts the
-    # pin without giving the floor a per-backend measurement, this fails.
-    test "so the floor always applies, and nothing is ever unfloored" do
-      {:ok, _} = ModelPolicy.put_backend(:default, :opencode)
-
-      assert ModelPolicy.unfloored_money_surfaces() == []
-      assert ModelPolicy.floor_applies?(ModelPolicy.backend_for(:trading_read), :trading_read)
-    end
-
-    test "the floor still bites through a cheap global default" do
-      {:ok, _} = ModelPolicy.put_backend(:default, :codex)
-      {:ok, _} = ModelPolicy.put_model(:claude, :default, "claude-haiku-4-5")
-
-      assert ModelPolicy.for_surface(:trading_read) == "claude-sonnet-5"
-    end
-  end
-
   # An operator who set a policy before harnesses existed keeps it.
   describe "migration from the pre-backend row" do
     test "a flat surface => model row is read as claude's models" do
@@ -286,12 +205,6 @@ defmodule BusterClaw.ModelPolicyTest do
       assert ModelPolicy.for_surface(:swarm_run) == "claude-haiku-4-5"
       assert ModelPolicy.model_for(:claude, :chat) == "claude-opus-5"
       assert ModelPolicy.backend_for(:chat) == nil
-    end
-
-    test "the floor still holds across the migration" do
-      BusterClaw.Settings.put("model_policy", Jason.encode!(%{"default" => "claude-haiku-4-5"}))
-
-      assert ModelPolicy.for_surface(:trading_read) == "claude-sonnet-5"
     end
 
     test "writing after a migration does not lose the migrated values" do

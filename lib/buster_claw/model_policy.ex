@@ -38,23 +38,23 @@ defmodule BusterClaw.ModelPolicy do
 
   ## Floors, and why they are claude-only *explicitly*
 
-  `trading.ex` records what happened the last time a money surface ran cheap:
+  A surface may declare a floor: a capability level a lowered *global* default
+  cannot reach, though naming that surface explicitly still can. **No surface
+  declares one today** — the two that did, the broker read and the order
+  submission, left with the trading stack on 08-08.
 
-  > *"NOT haiku. It was chosen when these reads were cheap and their failure
-  > mode was assumed to be an error; measured on 07-28 it invoked the broker
-  > tool in only 1 of 2 runs, and on the miss it invented the answer rather than
-  > reporting a problem."*
-
-  It did not error. It **fabricated**, on a surface that reads real balances. So
-  `:trading_read` and `:order_submit` carry a floor a lowered *global* default
-  cannot reach; naming that surface explicitly still can.
+  The mechanism is kept, and the reason it existed is worth keeping with it. A
+  cheap model was measured on 07-28 invoking its tool in only 1 of 2 runs, and on
+  the miss it **invented the answer** rather than reporting a problem. It did not
+  error; it fabricated. That is the failure a floor is for, and it is not
+  specific to money.
 
   **The floor is claude-only, and `floor_applies?/2` says so in the data.** The
   ranks are claude model IDs and the 07-28 measurement was taken on claude, so a
   floor cannot be honestly enforced against a codex or opencode model. Left
   implicit it would still "work" — an unranked model passes `below_floor?/2`
   untouched — but it would look like protection while being a no-op. The
-  operator chose (08-03) to allow any backend on the money surfaces *with a loud
+  operator chose (08-03) to allow any backend on a floored surface *with a loud
   warning*; a warning can only be loud if the code knows when the floor stopped
   applying.
 
@@ -67,9 +67,9 @@ defmodule BusterClaw.ModelPolicy do
   ## Leaf, deliberately
 
   Nothing here calls a surface, and nothing here detects or spawns. Every surface
-  calls in. Hanging this off `Trading` or `AgentRunner` for convenience is
+  calls in. Hanging this off a surface module or `AgentRunner` for convenience is
   exactly the placement that produced the `Trading → ChartBuilder → Portfolio`
-  cycle on 08-03.
+  cycle on 08-03 — a lesson that outlived the modules in it.
   """
 
   alias BusterClaw.AgentBackend
@@ -93,18 +93,16 @@ defmodule BusterClaw.ModelPolicy do
 
   # Every surface that spawns a run, and what it is.
   @surfaces %{
-    chat: "Chat — the homepage and Trading tab conversations",
-    trading_read: "Trading reads — balances, positions, market data",
-    order_submit: "Order submission — the one path that moves money",
+    chat: "Chat — the homepage conversations",
     dispatcher: "On-duty dispatcher — the unattended queue worker",
     swarm_planner: "Swarm planner — the single run that shapes a swarm",
     swarm_run: "Swarm sub-runs — the fan-out"
   }
 
-  @floors %{
-    trading_read: "claude-sonnet-5",
-    order_submit: "claude-sonnet-5"
-  }
+  # No surface carries a floor today. The two that did — the Robinhood read and
+  # the order submission — left with the trading stack on 08-08. The mechanism
+  # stays because the next money-shaped surface should not have to reinvent it.
+  @floors %{}
 
   # The floor's ranks and its measurement are both claude's. See the moduledoc.
   @floor_backend :claude
@@ -113,8 +111,8 @@ defmodule BusterClaw.ModelPolicy do
   #
   # Not a preference and not a floor — a capability fact. Their confinement is
   # written in claude's flag vocabulary (`--allowedTools` / `--disallowedTools` /
-  # `--strict-mcp-config`, all three load-bearing per the probe at
-  # `trading.ex:290`), and codex rejects those outright: `error: unexpected
+  # `--strict-mcp-config`, all three measured load-bearing on 07-28), and codex
+  # rejects those outright: `error: unexpected
   # argument '--disallowedTools'`, measured 08-03. A codex or opencode run on
   # these surfaces does not run cheaply, or unsafely — it does not run at all.
   #
@@ -124,10 +122,7 @@ defmodule BusterClaw.ModelPolicy do
   # outcome is a failed run. Reversed 08-03 with the reason stated. If per-backend
   # confinement is ever built (AGENT_BACKEND_ROADMAP Phase 3.5), this pin is what
   # should be lifted, and only then.
-  @claude_only %{
-    trading_read: "its Robinhood confinement is claude-only",
-    order_submit: "its Robinhood confinement is claude-only"
-  }
+  @claude_only %{}
 
   # Which bucket an unset backend reads. See the moduledoc.
   @implicit_backend :claude
@@ -289,7 +284,7 @@ defmodule BusterClaw.ModelPolicy do
 
   @doc """
   What is actually in force per surface — the answer to "I set a default, so why
-  is trading on something else?".
+  is this surface on something else?".
 
   Each entry carries the resolved `backend` and `model`, the `source` that
   decided each (`:surface`, `:floor`, `:default`, `:cli`/`:auto`), the surface's

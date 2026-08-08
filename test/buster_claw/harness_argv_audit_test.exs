@@ -48,25 +48,8 @@ defmodule BusterClaw.HarnessArgvAuditTest do
     |> Enum.filter(&(&1 in @claude_only_flags))
   end
 
-  describe "the pinned money surfaces" do
-    # trading.ex and trading_order.ex hardcode claude's tool flags and claude's
-    # stream format, and parse with the claude normalizer. That is correct ONLY
-    # because ModelPolicy pins those surfaces. If the pin is lifted without those
-    # two files being rewritten, the argv is rejected and the anti-fabrication
-    # check misreads its own stream — so the pin is asserted here, next to the
-    # assumption it licenses.
-    test "are pinned, which is what licenses their hardcoded claude vocabulary" do
-      assert ModelPolicy.claude_only?(:trading_read)
-      assert ModelPolicy.claude_only?(:order_submit)
-    end
-
-    test "resolve to claude even when the operator has chosen otherwise" do
-      {:ok, _} = ModelPolicy.put_backend(:default, :codex)
-
-      assert ModelPolicy.backend_for(:trading_read) == :claude
-      assert ModelPolicy.backend_for(:order_submit) == :claude
-    end
-  end
+  # `@claude_only` is empty since the trading stack left. The unpinned case
+  # below is now the whole story; a future pinned surface restores the pair.
 
   describe "the unpinned surfaces carry no claude-only flag" do
     setup do

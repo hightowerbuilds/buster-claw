@@ -78,7 +78,10 @@ defmodule BusterClaw.WorkspaceTest do
       # a bare literal, a list head, and a module attribute.
       found = source_files() |> Enum.flat_map(&referenced_entries/1) |> MapSet.new(&elem(&1, 0))
 
-      for name <- ["journal", "memory", "mcp", "browser-control", "skills", "sounds"] do
+      # `mcp` was in this list until 08-08; it was Trading's MCP config dir and
+      # nothing references it now. Its shape (a list head) is still covered by
+      # `memory` and `browser-control`, so no regex goes unexercised.
+      for name <- ["journal", "memory", "browser-control", "skills", "sounds"] do
         assert name in found, "the guard failed to resolve #{name} — its regexes have drifted"
       end
     end

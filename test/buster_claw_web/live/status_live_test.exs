@@ -162,6 +162,12 @@ defmodule BusterClawWeb.StatusLiveTest do
   end
 
   describe "agent chat panel" do
+    test "does not render a resize bar", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#home-agent-chat [data-resize-handle]")
+    end
+
     test "renders the chat column with an empty-state prompt", %{conn: conn} do
       conn = get(conn, ~p"/")
       response = html_response(conn, 200)
@@ -790,7 +796,7 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       assert one =~ "Install a supported agent CLI"
       assert one =~ "Codex or OpenCode"
-      assert one =~ "required for Trading"
+      assert one =~ "recommended one"
       assert two =~ "Chat with Buster Claw"
       assert three =~ "Set up communications"
       assert three =~ "Advanced setup"
@@ -856,7 +862,6 @@ defmodule BusterClawWeb.StatusLiveTest do
       # Fact 1: the CLI is the operator's, and so is the bill.
       assert html =~ "holds no Claude API key"
       assert html =~ "<code>claude</code>, <code>codex</code>"
-      assert html =~ "Trading is pinned to Claude"
 
       # Fact 2: unset means the flag is omitted, not that a default is missing.
       assert html =~ "--model"
@@ -869,22 +874,14 @@ defmodule BusterClawWeb.StatusLiveTest do
                "the Models tutorial does not render the #{surface} surface"
       end
 
-      # Fact 4: the floors, and the 07-28 finding that is the reason for them.
-      # This paragraph is the point of the whole page — if it ever goes missing,
-      # the tutorial has stopped explaining why an operator gets overridden.
+      # Fact 4: floors and claude-only pins render FROM the policy, so a surface
+      # that declares one gets its badge without this tutorial being rewritten.
+      # Both maps are empty since the trading stack left on 08-08 — these loops
+      # are deliberately vacuous today and become real the moment one is
+      # declared, which is the property worth keeping.
       for {_surface, floor} <- ModelPolicy.floors() do
         assert html =~ "floor: #{floor}"
       end
-
-      assert html =~ "it invented the answer"
-      assert html =~ "naming that surface"
-
-      # Fact 4b: the money surfaces are PINNED to claude, and the tutorial says
-      # why — a capability fact, not a preference. The paragraph this replaced
-      # taught the opposite (choose freely, get warned), so assert the new claim
-      # rather than trusting that the old one merely went away.
-      assert html =~ "The money surfaces stay on Claude"
-      assert html =~ "It does not run at all"
 
       for {surface, _reason} <- ModelPolicy.claude_only() do
         assert has_element?(
@@ -1028,7 +1025,7 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       # Same contract as the GWS tutorial: every named command must exist.
       for cmd <- ~w(document_save journal_append notify_create
-                    finance_quote finance_news portfolio_history
+                    finance_quote finance_news
                     finance_fundamentals finance_filings
                     phone_list phone_mark_heard sms_send
                     web_search browser_fetch bookmark_add
@@ -1091,31 +1088,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute html =~ "Tutorial in the works"
     end
 
-    test "the Trading tab teaches connect-once and the can/can't split",
-         %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
-
-      html = render_click(view, "select_explore_tab", %{"tab" => "trading"})
-
-      # The connect block mirrors the Trading tab's own first-run commands,
-      # wraps instead of scrolling (no <pre>/overflow-x here — operator, 08-02),
-      # and each command carries a copy button.
-      assert html =~ "claude mcp add --transport http --scope user robinhood"
-      assert html =~ "claude mcp login robinhood"
-      assert html =~ "logout robinhood"
-      refute html =~ "<pre"
-      assert html =~ ~s(data-terminal-command-copy="claude mcp login robinhood")
-
-      # The split, and its load-bearing claims.
-      assert html =~ "What it can do"
-      assert html =~ "What it can&#39;t do"
-      assert html =~ "read-only by construction"
-      assert html =~ "never re-sends an order"
-      assert html =~ ~s(href="/trading")
-
-      refute html =~ "Tutorial in the works"
-    end
+    # The Trading tutorial left Explore on 08-08 with the surface it taught.
 
     test "an unknown Explore sub-tab key is refused, not crashed on", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")

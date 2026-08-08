@@ -39,24 +39,6 @@ defmodule BusterClawWeb.Layouts do
       path: "/phone",
       icon: "hero-phone"
     },
-    # Trading (TRADING_TAB_ROADMAP Phase 0): the pinned agent conversation
-    # beside the accounts dashboard — promoted from a Home sub-tab to a
-    # top-level surface. No brand PNG yet; the dock falls back to the label.
-    # Owned by the `trading-robinhood` extension: absent from the dock until it
-    # is switched on. See `navigation_items/0`.
-    %{
-      label: "Trading",
-      path: "/trading",
-      icon: "hero-chart-bar",
-      surface: "trading"
-    },
-    # Chart Build, on its own route since 08-07. It was a Trading tab kind with
-    # no broker dependency, which made it collateral in gating Trading.
-    %{
-      label: "Charts",
-      path: "/charts",
-      icon: "hero-presentation-chart-line"
-    },
     %{
       label: "Settings",
       path: "/appearance",

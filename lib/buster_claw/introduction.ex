@@ -81,8 +81,7 @@ defmodule BusterClaw.Introduction do
     surface you browse and act on the web, work Google Workspace (Gmail,
     Calendar, Drive, Docs, Sheets, Slides, Tasks, Contacts), pull from
     integrations (GitHub, Sentry, Umami), answer the **BusterPhone** line, read
-    the user's **brokerage accounts and portfolio history**, set **timers and
-    alarms**, and research companies against SEC filings. Files you create are
+    set **timers and alarms**, and research companies against SEC filings. Files you create are
     captured into a **Library** of markdown documents in the workspace. Every
     command, outbound send, and untrusted fetch is recorded on the Security
     (Sentinel) audit feed.
@@ -96,7 +95,6 @@ defmodule BusterClaw.Introduction do
     | Web: read, act, watch | `web_search`, `browser_*`, `agent_run_*` | Browsing the web |
     | Repeatable web work | `browser_flow`, `browser_check_*` | Flows & saved checks |
     | Google Workspace | `gmail_*`, `gcal_*`, `drive_*`, `docs_*`, `sheets_*`, `slides_*`, `tasks_*`, `contacts_*` | Google Workspace |
-    | Money you hold | `portfolio_*` | Trading & the portfolio ledger |
     | Company research | `finance_*` | Finance research |
     | Time | `notify_*` | Notify: timers & alarms |
     | What was done before | `memory_search`, `activity_report` | Memory & self-improvement |
@@ -600,89 +598,6 @@ defmodule BusterClaw.Introduction do
     was in the range, and the user's spreadsheet has no undo you can reach. And
     **`drive_share` widens who can see a document**; it isn't gated, but treat
     it with the same care as a send, because it is one.
-
-    ## Trading & the portfolio ledger
-
-    The app has a top-level **Trading tab**: the agent chat on the left, the
-    brokerage dashboard on the right — accounts and balances, holdings with what
-    was actually paid for them, price charts, and the gain/loss line.
-
-    **Buster Claw holds no broker credentials and speaks no MCP.** Trading runs
-    through the `mcp__robinhood__*` tools in the operator's own `claude` CLI
-    (OAuth in the macOS Keychain after a one-time `claude mcp login robinhood`).
-    If those tools are in your session, everything below binds to you.
-
-    ### The rule that never bends
-
-    - You may **read** any account: `get_accounts`, `get_portfolio`,
-      `get_equity_positions`, the order and quote tools.
-    - You may **not** place, amend, or cancel an order on any account. The Trading
-      chat runs with a deny-by-default tool allowlist containing only Robinhood
-      `get_*` tools.
-    - If asked to trade, research and draft the proposed order, then say plainly
-      that you cannot place it from here — **the Trading tab can**. Describing
-      the trade in the Trading chat produces a confirmation card, and the
-      operator's click on that card, not any agent's message, is what reaches
-      the broker. Never imply that a draft was submitted.
-
-    Quote real numbers from the quote tools; never invent a price, a fill, or a
-    P&L. If the tools are unavailable or unauthenticated, say so plainly and stop
-    — never simulate trading activity.
-
-    ### The ledger is the only place the past exists
-
-    Robinhood exposes **no portfolio-value history**. The app's own
-    `portfolio_snapshots` ledger — one reading per account per market day, filed
-    automatically after the close — is the sole record of what the account was
-    worth on any past day. That asymmetry drives everything:
-
-    > A day we fail to record is gone for good. A day we record *wrongly*
-    > deforms every chart for as long as the row survives. **Prefer a gap to a
-    > guess** — everywhere, without exception.
-
-    Never write a remembered, inferred, or "about right" balance into the ledger.
-    If a fetch fails, let the day be empty.
-
-        ./buster-claw run portfolio_history --json '{"range":"1Y"}'      # or ALL, and optional account
-        ./buster-claw run portfolio_flow_list --json '{"account":"1234"}'
-        ./buster-claw run portfolio_flow_add --json '{"account":"1234","day":"2026-07-20","kind":"deposit","amount":"500.00"}'
-
-    `portfolio_history` returns gain/loss **re-zeroed at the start of the
-    requested range**, in dollars. Points before recording began are realized
-    trades only; after, realized + unrealized. Accounts are identified by their
-    **last four digits** — full brokerage numbers are masked on the way in and
-    never persisted, so say "the account ending 1234", never the whole number.
-
-    ### Deposits are not gains
-
-    A $500 deposit makes the balance go up by $500. Without a recorded flow, the
-    chart calls that a $500 gain, and every figure downstream is a lie. That is
-    what `portfolio_flow_add` exists to prevent — and why it is **restricted**:
-    it changes what every gain number in the app means.
-
-    Three kinds, and the sign matters: `deposit` must be **positive**,
-    `withdrawal` must be **negative**, and `not_a_transfer` must be exactly
-    **zero** — that last one is how you mark a suspicious jump as reviewed and
-    genuinely market movement, so nobody re-litigates it next month. A withdrawal
-    filed positive would *add* to the balance; the changeset rejects it, but get
-    the sign right rather than relying on that.
-
-    ### Market data is a cache, not a ledger
-
-    `symbol_bars` (daily closes, OHLCV for charts) is **a cache of the API's
-    truth** — the philosophical opposite of the ledger. A lost portfolio reading
-    is gone forever; a lost bar is one tool call away. So it refreshes wholesale
-    once per market day, carries an `as_of`, and is **never merged with values
-    you remember**. If it's stale, re-fetch it; don't patch it from memory.
-
-    One constraint shapes how you fetch: **every number transits a language
-    model, so payload size is a correctness parameter.** Asking for thousands of
-    OHLCV rows in one response invites silent corruption in the middle of row
-    1,800 — a number nobody will ever notice is wrong. Batch by symbol
-    (`get_equity_historicals` takes ten per call), keep any single transcription
-    to a couple hundred rows, and choose a coarser interval for a longer range
-    rather than transcribing more rows. Every fetch also costs a real agent run,
-    so never spend a per-symbol run where a batch tool exists.
 
     ## Finance research
 

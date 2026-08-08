@@ -196,14 +196,6 @@ defmodule BusterClaw.Workspace do
       note: "Saved site checks the agent can re-run."
     },
     %{
-      name: "mcp",
-      kind: :dir,
-      tier: :on_demand,
-      owner: BusterClaw.Trading,
-      seed: nil,
-      note: "MCP server configs (e.g. the brokerage connection)."
-    },
-    %{
       name: "backgrounds",
       kind: :dir,
       tier: :on_demand,
@@ -278,6 +270,16 @@ defmodule BusterClaw.Workspace do
       owner: nil,
       seed: nil,
       note: "Orphan. Superseded by journal/; nothing creates it any more."
+    },
+    %{
+      name: "mcp",
+      kind: :dir,
+      tier: :deprecated,
+      owner: BusterClaw.Workspace,
+      seed: nil,
+      note:
+        "Orphan. Held the brokerage MCP config; nothing writes it since the " <>
+          "trading stack was deleted 08-08. Safe to remove by hand."
     },
     %{
       name: "MANUAL.html",

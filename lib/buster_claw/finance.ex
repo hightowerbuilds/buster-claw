@@ -1,7 +1,7 @@
 defmodule BusterClaw.Finance do
   @moduledoc """
   Read-only financial research context. Backs the safe `finance_*` commands and
-  (later) the `finance` integration poller / `watchlist_research` cron.
+  (later) the `finance` integration poller.
 
   Design rules (see `projects/financial-advisor/build-roadmap.md`):
 

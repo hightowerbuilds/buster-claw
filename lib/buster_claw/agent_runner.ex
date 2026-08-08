@@ -37,8 +37,8 @@ defmodule BusterClaw.AgentRunner do
   authorization boundary.
 
   Callers that expose tools outside `BusterClaw.Commands` must choose a stricter
-  mode explicitly. The Trading surface, for example, uses `dontAsk` plus an
-  allowlist containing only Robinhood's read tools. An unlisted write tool is
+  mode explicitly. A confined surface pairs `dontAsk` with an allowlist naming
+  only the tools it may use. An unlisted write tool is
   denied by the agent process before the model can invoke it.
   """
 
@@ -216,7 +216,7 @@ defmodule BusterClaw.AgentRunner do
   This exists for one caller — the live chat transport — and is deliberately a
   separate function rather than a flag on `open/2`. `open_port/4` attaches stdin
   to `/dev/null`, and that is correct for every other caller: `run/2` is the
-  one-shot primitive behind Dispatcher, Swarm, and Trading reads, none of which
+  one-shot primitive behind Dispatcher and Swarm, neither of which
   have a stdin protocol, and the explicit EOF also stops recent Claude Code
   releases waiting three seconds for piped context that will never arrive.
   Making that conditional would put every unattended run one wrong keyword away

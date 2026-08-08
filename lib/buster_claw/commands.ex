@@ -41,7 +41,7 @@ defmodule BusterClaw.Commands do
   # Except in dev, where that cache outlives code reloading. Phoenix recompiles
   # the catalog modules on the next request, but nothing invalidates the cached
   # list, so a newly-added command answers `unknown_command` until the server is
-  # restarted — which cost time on 07-28 adding `portfolio_history` and would
+  # restarted — which cost time on 07-28 adding a new command and would
   # cost it again for whoever adds the next one. Dev therefore rebuilds on every
   # call: a few hundred literal maps, far cheaper than the confusion.
   #
@@ -475,9 +475,6 @@ defmodule BusterClaw.Commands do
   defdelegate document_save(args), to: BusterClaw.Commands.Documents
   defdelegate document_delete(args), to: BusterClaw.Commands.Documents
   # Journal (the Notes record)
-  defdelegate portfolio_history(args \\ %{}), to: BusterClaw.Commands.Portfolio
-  defdelegate portfolio_flow_list(args), to: BusterClaw.Commands.Portfolio
-  defdelegate portfolio_flow_add(args), to: BusterClaw.Commands.Portfolio
 
   defdelegate journal_append(args), to: BusterClaw.Commands.Journal
   defdelegate journal_read(args \\ %{}), to: BusterClaw.Commands.Journal

@@ -5,8 +5,8 @@ defmodule BusterClaw.ModelPolicyWiringTest do
   use BusterClaw.DataCase, async: false
 
   alias BusterClaw.Agent.Chat
-  alias BusterClaw.{AgentRunner, Dispatch, Dispatcher, ModelPolicy}
-  alias BusterClaw.{Orchestration, Swarm, Trading, TradingOrder}
+  alias BusterClaw.{Dispatch, Dispatcher, ModelPolicy}
+  alias BusterClaw.{Orchestration, Swarm}
   alias BusterClaw.Swarm.Coordinator
 
   # These assert on the opts the PRODUCTION code hands its runner, never on
@@ -42,20 +42,6 @@ defmodule BusterClaw.ModelPolicyWiringTest do
         :error -> Application.delete_env(:buster_claw, key)
       end
     end)
-  end
-
-  defp order! do
-    {:ok, order} =
-      TradingOrder.parse("""
-      Ready when you are.
-
-      ```order
-      {"side":"buy","symbol":"AAPL","quantity":2,"order_type":"limit",
-       "limit_price":199.25,"time_in_force":"day","account_last4":"6587"}
-      ```
-      """)
-
-    order
   end
 
   defp wait_until(fun, retries \\ 200)
@@ -100,110 +86,11 @@ defmodule BusterClaw.ModelPolicyWiringTest do
       assert_receive {:run_opts, opts}, 1_000
       assert Keyword.fetch!(opts, :agent) == :codex
     end
-
-    # The additive promise, for the harness half: unset must reach AgentRunner as
-    # nil so `detect/0` stays in charge, exactly as before Phase 2.
-    test "an unset backend passes nil, leaving detection alone" do
-      put_env(:trading_agent_runner, capturing_runner(self()))
-
-      _ = Trading.fetch_account_snapshot()
-
-      assert_receive {:run_opts, opts}
-      # Pinned, so this one is :claude rather than nil — but it is a NAMED
-      # backend either way, never a silent fall-through.
-      assert Keyword.get(opts, :agent) == :claude
-    end
-
-    # The pin, at the call site rather than in the policy: a global default of
-    # codex must not reach the surface that places orders.
-    test "a global codex default still sends the money surfaces to claude" do
-      {:ok, _} = ModelPolicy.put_backend(:default, :codex)
-      put_env(:trading_submit_runner, capturing_runner(self()))
-
-      _ = TradingOrder.submit(order!())
-
-      assert_receive {:run_opts, opts}
-      assert Keyword.fetch!(opts, :agent) == :claude
-    end
   end
 
-  describe "the money surfaces, where the floor is the point" do
-    # The 07-28 measurement: haiku on a trading read invoked the broker tool in
-    # only 1 of 2 runs, and on the miss it INVENTED the answer. An operator
-    # economising globally must not be able to reach these two surfaces.
-    test "a trading read runs at the floor even when the global default is haiku" do
-      {:ok, _} = ModelPolicy.put(:default, "claude-haiku-4-5")
-      put_env(:trading_agent_runner, capturing_runner(self()))
-
-      _ = Trading.fetch_account_snapshot()
-
-      assert_receive {:run_opts, opts}
-      assert Keyword.fetch!(opts, :model) == "claude-sonnet-5"
-    end
-
-    test "an order submission runs at the floor even when the global default is haiku" do
-      {:ok, _} = ModelPolicy.put(:default, "claude-haiku-4-5")
-      put_env(:trading_submit_runner, capturing_runner(self()))
-
-      _ = TradingOrder.submit(order!())
-
-      assert_receive {:run_opts, opts}
-      assert Keyword.fetch!(opts, :model) == "claude-sonnet-5"
-    end
-
-    # Naming the surface IS the deliberate gesture, so it is honoured.
-    test "naming the surface explicitly still goes below the floor" do
-      {:ok, _} = ModelPolicy.put(:trading_read, "claude-haiku-4-5")
-      put_env(:trading_agent_runner, capturing_runner(self()))
-
-      _ = Trading.fetch_account_snapshot()
-
-      assert_receive {:run_opts, opts}
-      assert Keyword.fetch!(opts, :model) == "claude-haiku-4-5"
-    end
-  end
-
-  describe "the additive promise" do
-    # An install that upgrades into this feature must run exactly as it did the
-    # day before: no `--model`, not `--model ""`, not a named default.
-    test "an empty policy leaves the money surfaces with no model to pass" do
-      put_env(:trading_agent_runner, capturing_runner(self()))
-      put_env(:trading_submit_runner, capturing_runner(self()))
-
-      _ = Trading.fetch_account_snapshot()
-      assert_receive {:run_opts, read_opts}
-      assert Keyword.get(read_opts, :model) == nil
-
-      _ = TradingOrder.submit(order!())
-      assert_receive {:run_opts, submit_opts}
-      assert Keyword.get(submit_opts, :model) == nil
-    end
-
-    test "a nil model reaches the CLI as NO --model argument" do
-      assert {:ok, %{exit_status: 0, output: output}} =
-               AgentRunner.run("prompt",
-                 agent: :claude,
-                 agent_binary: "/bin/echo",
-                 cwd: System.tmp_dir!(),
-                 model: nil
-               )
-
-      # The failure this test exists to catch is `--model ""` reaching claude.
-      refute output =~ "--model"
-    end
-
-    test "a configured model reaches the CLI as a real --model argument" do
-      assert {:ok, %{exit_status: 0, output: output}} =
-               AgentRunner.run("prompt",
-                 agent: :claude,
-                 agent_binary: "/bin/echo",
-                 cwd: System.tmp_dir!(),
-                 model: "claude-opus-5"
-               )
-
-      assert output =~ "--model claude-opus-5"
-    end
-  end
+  # The floored money surfaces left with the trading stack on 08-08. The wiring
+  # they proved — that a floor reaches the runner's argv, not just the policy
+  # table — is asserted for the surfaces that remain in "the remaining surfaces".
 
   describe "the remaining surfaces" do
     test "the dispatcher's queue run carries the :dispatcher model" do

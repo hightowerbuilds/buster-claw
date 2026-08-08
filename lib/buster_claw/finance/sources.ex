@@ -369,6 +369,34 @@ defmodule BusterClaw.Finance.Sources do
   """
   def verified, do: Enum.filter(all(), &(&1.status == :verified))
 
+  # Which sources this app can actually FETCH from, keyed to their adapter.
+  #
+  # This lived in `ChartBuilder.DataReq` until 08-08, because the `datareq`
+  # channel was the only thing that fetched. It belongs here: it is a fact about
+  # the registry, not about a chat surface, and putting it here is what let the
+  # channel be deleted without taking the distinction with it.
+  #
+  # `market` was the cached-bar adapter and left with `MarketData`.
+  @adapters %{"bls" => BusterClaw.Finance.BLS}
+
+  @doc """
+  Verified sources that have an adapter, as `%{key => adapter}`.
+
+  Listing is not permission: a source becomes fetchable by someone writing an
+  adapter, never by being described. That is what stops a `:blocked` or
+  `:unsanctioned` entry being reachable because it happens to be in the
+  registry — and the `:verified` half means a status change withdraws it even
+  though the adapter still exists.
+  """
+  def fetchable do
+    for %{key: key} = source <- verified(), Map.has_key?(@adapters, key), into: %{} do
+      {key, {Map.fetch!(@adapters, key), source}}
+    end
+  end
+
+  @doc "The fetchable source keys, sorted."
+  def fetchable_keys, do: fetchable() |> Map.keys() |> Enum.sort()
+
   @doc "Group by status, for the `finance_sources` listing."
   def by_status, do: Enum.group_by(all(), & &1.status)
 

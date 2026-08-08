@@ -326,7 +326,7 @@ defmodule BusterClaw.Agent.Chat do
       # `--append-system-prompt` on every turn; nil = unchanged behaviour.
       append_system_prompt: Keyword.get(opts, :append_system_prompt),
       # Optional extra CLI flags appended verbatim to every turn's argv (e.g.
-      # the trading conversation's `--strict-mcp-config --mcp-config <path>`).
+      # a confined conversation's `--strict-mcp-config --mcp-config <path>`).
       # Captured at first start like every other opt; [] = unchanged behaviour.
       extra_cli_args: Keyword.get(opts, :extra_cli_args, []),
       # Most conversations inherit AgentRunner's bypassPermissions default.
@@ -344,9 +344,10 @@ defmodule BusterClaw.Agent.Chat do
       # Tool names whose USE is consequential enough to land on the audit feed
       # by itself, without waiting for the run to end. Generic on purpose: this
       # module does not learn what a broker is, it learns that some verbs are
-      # worth recording the moment they are exercised. Trading supplies the list
-      # because its chat holds a cancel verb that reaches a real account with no
-      # confirmation card in front of it.
+      # worth recording the moment they are exercised. A caller supplies the list
+      # when its conversation holds a verb that reaches something real with no
+      # confirmation card in front of it. Nothing supplies one today — the
+      # trading chat's cancel verb was the original and only case.
       audit_tools: Keyword.get(opts, :audit_tools, []),
       # The backend adapter driving the CURRENT run, and its handle. Both are nil
       # while idle: the transport is chosen per run from `effective_agent/1`, for
@@ -1304,7 +1305,7 @@ defmodule BusterClaw.Agent.Chat do
   defp steering_enabled?,
     do: Application.get_env(:buster_claw, :chat_live_steering_enabled, false)
 
-  # A conversation whose profile carries claude-only confinement — the Trading
+  # A conversation whose profile carries claude-only confinement — a surface
   # chat's `--strict-mcp-config`/`--allowedTools`, Chart Build's — cannot run
   # anywhere else; those flags are rejected outright, not degraded. Same fact
   # that pins the money surfaces, applied one level up. Silently honouring a

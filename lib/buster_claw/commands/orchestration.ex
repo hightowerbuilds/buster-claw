@@ -26,14 +26,14 @@ defmodule BusterClaw.Commands.Orchestration do
   With no `surface`, lists what is in force everywhere: the model, the `source`
   that decided it (`surface` | `floor` | `default` | `cli`), and the surface's
   floor where it has one. That triple is the answer to "I set a default, so why
-  is trading on something else?" — printing the model alone would not be.
+  is this surface on something else?" — printing the model alone would not be.
 
   With `surface` and `model`, records one; `surface: "default"` sets the global
   default. `clear: true` removes an entry so the surface inherits again; a blank
   `model` is refused rather than stored, because a blank would silently never
   apply. Nothing stored means no `--model` flag is passed at all.
 
-  `trading_read` and `order_submit` carry a floor the global default cannot
+  A surface may carry a floor the global default cannot
   lower — see `BusterClaw.ModelPolicy` for the 07-28 measurement behind it.
   """
   def model_policy(args \\ %{})

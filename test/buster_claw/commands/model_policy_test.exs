@@ -67,23 +67,9 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
       assert Enum.all?(listing.backends_available, &(&1 in listing.backends))
     end
 
-    # The money surfaces cannot leave claude, so the command must refuse rather
-    # than store a choice whose only outcome is a failed run.
-    test "refuses a harness for a pinned money surface" do
-      assert {:error, {:claude_only, :order_submit, _why}} =
-               Commands.model_policy(%{"surface" => "order_submit", "backend" => "codex"})
-
-      assert BusterClaw.ModelPolicy.backend_for(:order_submit) == :claude
-    end
-
-    test "the listing shows the money surfaces on claude with the floor applying" do
-      {:ok, _} = Commands.model_policy(%{"surface" => "default", "backend" => "codex"})
-      {:ok, listing} = Commands.model_policy()
-
-      assert entry(listing, "order_submit").backend == "claude"
-      assert entry(listing, "order_submit").floor_applies == true
-      assert entry(listing, "chat").backend == "codex"
-    end
+    # `@claude_only` and `@floors` are empty since the trading stack left on
+    # 08-08. The refusal and the floor-naming behaviour they proved are still in
+    # `ModelPolicy`; nothing declares itself pinned or floored to exercise them.
   end
 
   describe "the listing" do
@@ -103,26 +89,6 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
       assert "default" in listing.surfaces
       assert "claude-opus-5" in listing.known_models
     end
-
-    # Printing the model alone would leave the operator staring at a trading
-    # surface running something they never chose, with no reason given.
-    test "names the floor, not just the model, when the floor is what decided" do
-      assert {:ok, _} =
-               Commands.model_policy(%{"surface" => "default", "model" => "claude-haiku-4-5"})
-
-      assert {:ok, listing} = Commands.model_policy()
-
-      trading = entry(listing, "trading_read")
-      assert trading.model == "claude-sonnet-5"
-      assert trading.source == "floor"
-      assert trading.floor == "claude-sonnet-5"
-
-      # A surface with no floor shows the default it actually got.
-      chat = entry(listing, "chat")
-      assert chat.model == "claude-haiku-4-5"
-      assert chat.source == "default"
-      assert chat.floor == nil
-    end
   end
 
   describe "setting" do
@@ -138,20 +104,6 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
       assert entry(listing, "swarm_run").source == "surface"
 
       assert %{surface: "swarm_run", backend: "claude", model: "claude-opus-5"} in listing.operator_set.models
-    end
-
-    # The 07-28 measurement, as a command-level regression guard: a cheaper
-    # model on a trading read invoked the broker tool in 1 of 2 runs and
-    # INVENTED the answer on the miss. Lowering the global default is the cheap
-    # gesture; it must not be the gesture that reaches the money path.
-    test "a cheap global default does not change what order_submit runs" do
-      assert {:ok, _} =
-               Commands.model_policy(%{"surface" => "default", "model" => "claude-haiku-4-5"})
-
-      assert {:ok, listing} = Commands.model_policy()
-      assert entry(listing, "order_submit").model == "claude-sonnet-5"
-      assert entry(listing, "order_submit").source == "floor"
-      assert ModelPolicy.for_surface(:order_submit) == "claude-sonnet-5"
     end
 
     test "clear removes an entry so the surface inherits again" do
@@ -183,7 +135,7 @@ defmodule BusterClaw.Commands.ModelPolicyTest do
       assert {:error, {:unknown_surface, "trading", valid}} =
                Commands.model_policy(%{"surface" => "trading", "model" => "claude-opus-5"})
 
-      assert "trading_read" in valid
+      assert "dispatcher" in valid
       assert "default" in valid
       assert ModelPolicy.stored() == %{backends: %{}, models: %{}}
     end

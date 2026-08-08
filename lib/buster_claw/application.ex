@@ -40,7 +40,6 @@ defmodule BusterClaw.Application do
         analyzer_child(),
         telephony_drain_child(),
         notifications_scheduler_child(),
-        portfolio_recorder_child(),
         # Per-conversation chat: a Registry for {:via} lookup by conv_id and a
         # DynamicSupervisor that starts one Chat process per open conversation,
         # lazily on the first message. Always on (cheap; tests use them too).
@@ -93,34 +92,11 @@ defmodule BusterClaw.Application do
         # one shared image pool. A settings migration, not workspace scaffolding.
         # Idempotent; rewrites settings, not files.
         BusterClaw.Appearance.ensure()
-        # Extensions are off on a fresh install. An install that was already
-        # using Trading before it became an extension must not lose it to an
-        # update, so adopt it as on — once, and only if the operator has never
-        # decided. `adopt/2` refuses to overwrite a decision, so someone who
-        # turns Trading off keeps it off through every later boot.
-        adopt_pre_extension_surfaces()
         ok
 
       other ->
         other
     end
-  end
-
-  # Whether this install was using Trading before it became an extension. A
-  # Robinhood conversation is the marker: the surface seeds one the first time
-  # it is opened, so its presence means someone has been there. Portfolio rows
-  # would say the same thing but only for accounts that recorded — a browsed
-  # surface that never recorded is still a surface someone was using.
-  defp adopt_pre_extension_surfaces do
-    case BusterClaw.Agent.Conversations.list_kinds(["robinhood"]) do
-      [] -> :ok
-      [_ | _] -> BusterClaw.Extensions.adopt("trading-robinhood", true)
-    end
-  rescue
-    error ->
-      require Logger
-      Logger.warning("Extension adoption skipped: #{Exception.message(error)}")
-      :ok
   end
 
   # Tell Phoenix to update the endpoint configuration
@@ -204,15 +180,6 @@ defmodule BusterClaw.Application do
   defp telephony_drain_child do
     if Application.get_env(:buster_claw, :telephony_drain_enabled, false) do
       BusterClaw.Telephony.Drain
-    end
-  end
-
-  # The daily portfolio recorder: files one balance reading per trading day so
-  # the ledger doesn't depend on the user opening the Trading tab. Off in tests
-  # (the suite drives run_if_due via tick_now/1 with a stubbed fetcher).
-  defp portfolio_recorder_child do
-    if Application.get_env(:buster_claw, :portfolio_recorder_enabled, true) do
-      BusterClaw.Portfolio.Recorder
     end
   end
 

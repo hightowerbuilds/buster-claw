@@ -361,7 +361,7 @@ defmodule BusterClaw.AgentBackend do
   | `dontAsk` | `-s read-only` | *(nothing — see below)* |
   | anything else, incl. `bypassPermissions` | `-s workspace-write` | `--auto` |
 
-  `dontAsk` is the mode the trading surfaces use, and on claude it is paired with
+  `dontAsk` is the mode a confined surface uses, and on claude it is paired with
   an explicit tool allowlist. codex's `read-only` sandbox is a genuine analogue
   for a *read* surface.
 

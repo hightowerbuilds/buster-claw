@@ -130,24 +130,9 @@ defmodule BusterClawWeb.SettingsLiveTest do
       assert BusterClaw.ModelPolicy.backend_for(:chat) == nil
     end
 
-    # The money surfaces have no harness picker at all now — offering one would
-    # offer a choice whose only outcome is a failed run.
-    test "a pinned money surface offers no harness choice, and says why", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/settings")
-      html = render(view)
-
-      assert html =~ "Claude only"
-      assert html =~ "which the other harnesses reject"
-      refute has_element?(view, "#model-backend-order_submit")
-      assert has_element?(view, "#model-backend-chat")
-    end
-
-    test "the floor explanation is shown for the money surfaces", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/settings")
-      html = render(view)
-
-      assert html =~ "Floor: claude-sonnet-5"
-    end
+    # The pinned money surfaces (`trading_read`, `order_submit`) left with the
+    # trading stack on 08-08, so no surface is claude-only or floored today. The
+    # picker's *mechanism* for both is still exercised by the rows that remain.
   end
 
   describe "the agent model picker" do
@@ -169,27 +154,6 @@ defmodule BusterClawWeb.SettingsLiveTest do
       assert ModelPolicy.stored() == %{backends: %{}, models: %{}}
     end
 
-    test "a cheap global default shows the money surfaces held at the floor", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/settings")
-
-      html =
-        view
-        |> form("#model-default-form", %{"model" => "claude-haiku-4-5"})
-        |> render_change()
-
-      in_force = ModelPolicy.in_force()
-      assert in_force[:chat].model == "claude-haiku-4-5"
-      assert in_force[:chat].source == :default
-      assert in_force[:trading_read].model == "claude-sonnet-5"
-      assert in_force[:trading_read].source == :floor
-      assert in_force[:order_submit].source == :floor
-
-      # The floor is worthless if the operator can't see it bite, and the 07-28
-      # reason has to be on the row, not in a tooltip.
-      assert html =~ "held at the floor"
-      assert html =~ "inventing a financial answer instead of reporting a problem"
-    end
-
     test "a per-surface override moves only that surface", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings")
 
@@ -205,7 +169,7 @@ defmodule BusterClawWeb.SettingsLiveTest do
       assert in_force[:chat].source == :surface
       assert in_force[:dispatcher].model == "claude-opus-5"
       assert in_force[:dispatcher].source == :default
-      assert in_force[:trading_read].model == "claude-opus-5"
+      assert in_force[:swarm_run].model == "claude-opus-5"
       assert html =~ "set for this surface"
     end
 
@@ -228,11 +192,11 @@ defmodule BusterClawWeb.SettingsLiveTest do
 
       html =
         view
-        |> form("#model-custom-form", %{"target" => "trading_read", "model" => "  my-own-alias  "})
+        |> form("#model-custom-form", %{"target" => "swarm_run", "model" => "  my-own-alias  "})
         |> render_submit()
 
-      assert ModelPolicy.for_surface(:trading_read) == "my-own-alias"
-      assert ModelPolicy.in_force()[:trading_read].source == :surface
+      assert ModelPolicy.for_surface(:swarm_run) == "my-own-alias"
+      assert ModelPolicy.in_force()[:swarm_run].source == :surface
       # An unlisted model still has to render as the selected option, or the row
       # would claim it was inheriting.
       assert html =~ "my-own-alias"

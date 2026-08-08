@@ -24,12 +24,12 @@ defmodule BusterClawWeb.ExplorePanel do
   # dispatch layer (which creates a compile cycle). The Explore contract test
   # derives the same values from Commands.list_commands/0 and fails on drift.
   @command_stats %{
-    total: 170,
-    read: 68,
+    total: 167,
+    read: 66,
     trigger: 17,
-    mutate: 85,
-    safe: 74,
-    restricted: 96,
+    mutate: 84,
+    safe: 72,
+    restricted: 95,
     gated: 21
   }
 
@@ -46,7 +46,7 @@ defmodule BusterClawWeb.ExplorePanel do
       body:
         "Buster Claw has no AI of its own; runs use a supported agent CLI you " <>
           "installed and signed in to. Chat and unattended work support Claude, " <>
-          "Codex, and OpenCode; Trading requires Claude.",
+          "Codex, and OpenCode — any surface, any of the three.",
       path: "/settings",
       path_label: "Open Configuration"
     },
@@ -111,23 +111,11 @@ defmodule BusterClawWeb.ExplorePanel do
           "work; other mail is still archived but does not become agent work.",
       path: "/settings",
       path_label: "Open Configuration"
-    },
-    %{
-      key: "trading",
-      label: "Trading",
-      eyebrow: "The desk",
-      blurb: "Robinhood, read-first: connect once, confirm every order yourself.",
-      body:
-        "The Trading tab is a market desk run through your own Claude CLI — " <>
-          "balances, cost-basis P&L, charts, earnings. The app never holds " <>
-          "your broker credentials, and nothing trades without your click.",
-      path: "/trading",
-      path_label: "Open the Trading tab"
     }
   ]
 
   # Feature tabs whose tutorial panel exists — everything else stubs.
-  @built ~w(models gws cmd browser trading)
+  @built ~w(models gws cmd browser)
 
   # {key, rail label}, in rail order. Intro leads, the two site tabs follow,
   # then the feature tabs in @features order.
@@ -196,7 +184,6 @@ defmodule BusterClawWeb.ExplorePanel do
         <.gws_panel :if={@tab == "gws"} />
         <.cmd_panel :if={@tab == "cmd"} />
         <.browser_panel :if={@tab == "browser"} />
-        <.trading_panel :if={@tab == "trading"} />
         <.stub_panel :for={stub <- @stubs} :if={@tab == stub.key} stub={stub} />
       </div>
     </section>
@@ -254,7 +241,7 @@ defmodule BusterClawWeb.ExplorePanel do
               <h3 class="font-semibold">Install a supported agent CLI</h3>
               <p class="mt-0.5 text-sm text-base-content/65">
                 Buster Claw has no built-in AI — it drives an agent CLI you install
-                and sign in to. Claude Code is recommended and required for Trading;
+                and sign in to. Claude Code is the recommended one;
                 Chat and unattended work can also use Codex or OpenCode. On macOS,
                 Homebrew is one way to install Claude Code:
                 <.copy_command command="brew install --cask claude-code" />. Then sign
@@ -427,11 +414,7 @@ defmodule BusterClawWeb.ExplorePanel do
   # Nothing here promises a per-chat picker or a spend report: both are Phase 4
   # of the roadmap and neither exists.
   defp models_panel(assigns) do
-    assigns =
-      assign(assigns,
-        surfaces: surface_rows(),
-        floor_model: ModelPolicy.floors() |> Map.values() |> Enum.uniq() |> Enum.join(" / ")
-      )
+    assigns = assign(assigns, surfaces: surface_rows())
 
     ~H"""
     <div class="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-8">
@@ -446,10 +429,9 @@ defmodule BusterClawWeb.ExplorePanel do
         <p>
           Buster Claw has no AI inside it. Each run shells out to a supported agent
           CLI you installed and signed in to: <code>claude</code>, <code>codex</code>,
-          or <code>opencode</code>. Chat and unattended work can use any of the three;
-          Trading is pinned to Claude because its broker-tool confinement depends on
-          Claude's flags. The app holds no Claude API key and bills you nothing for
-          tokens: the login, model, and invoice are yours.
+          or <code>opencode</code>. Any surface can use any of the three. The app
+          holds no Claude API key and bills you nothing for tokens: the login,
+          model, and invoice are yours.
         </p>
         <p>
           Out of the box the app says nothing about which model to use. It passes
@@ -461,9 +443,9 @@ defmodule BusterClawWeb.ExplorePanel do
         <p>
           What the app adds is the ability to <span class="font-semibold text-base-content">name a model per surface</span>,
           because the surfaces are not alike. A chat you are sitting in front of, a
-          dispatcher grinding through a queue while you sleep, and a run that reads
-          your real brokerage balance are not the same job, and the cheapest model
-          that is fine for one is not automatically fine for the next.
+          dispatcher grinding through a queue while you sleep, and a fan-out of
+          sub-runs are not the same job, and the cheapest model that is fine for
+          one is not automatically fine for the next.
         </p>
       </div>
 
@@ -574,38 +556,6 @@ defmodule BusterClawWeb.ExplorePanel do
         </ul>
       </section>
 
-      <section class="ic-panel flex flex-col gap-3 p-4">
-        <p class="ic-eyebrow">Why two of them have a floor</p>
-        <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
-          <p>
-            On 07-28 the trading reads were running on the cheapest model in the
-            list, chosen back when they were assumed to fail loudly if they failed
-            at all. Measured over two runs, it called the broker tool <span class="font-semibold text-base-content">once</span>. On the run it
-            skipped, it did not report a problem — <span class="font-semibold text-base-content">it invented the answer</span>.
-          </p>
-          <p>
-            A read that silently fabricates half the time is worse than a read that
-            costs more. So the two money surfaces carry a floor of <code class="font-semibold">{@floor_model}</code>, and lowering the
-            global default cannot reach them: a default below the floor comes back
-            up to the floor, and the listing says so rather than quietly complying.
-          </p>
-          <p>
-            You can still go lower there — but only by <span class="font-semibold text-base-content">naming that surface</span>.
-            Trimming your bill and putting a cheap model on the path to your
-            brokerage account are two different decisions, and the app declines to
-            let one gesture be both.
-          </p>
-          <p class="text-base-content/70">
-            One sharp edge, stated plainly: floors are enforced by comparing known
-            models. If you type in a model the app has never heard of — a new
-            release, an alias of your own — it is passed through untouched,
-            including as a global default on a floored surface. Refusing to run a
-            string we simply do not recognise would be worse, but it means the
-            floor protects you only from models the app knows are cheaper.
-          </p>
-        </div>
-      </section>
-
       <.example
         n={1}
         title="What am I actually running?"
@@ -660,29 +610,6 @@ defmodule BusterClawWeb.ExplorePanel do
         </ol>
       </.example>
 
-      <.example
-        n={3}
-        title="No — I meant trading too"
-        want="The floor is a speed bump, not a lock. It just wants you to mean it."
-      >
-        <.prompt text="I've read why the floor is there and I still want it. Put the trading reads on the cheap model." />
-        <ol class="ic-unfold">
-          <li>
-            Name the surface: set <code>trading_read</code> itself, in Settings or
-            with <code>model_policy</code>. A surface you name explicitly is
-            honoured exactly as typed — below the floor included.
-          </li>
-          <li>
-            That is the only way down there, by design. Re-read the section above
-            first; the failure mode you are opting into is not an error message.
-          </li>
-          <li>
-            To undo it, clear that surface and it falls back to the global default,
-            floor and all.
-          </li>
-        </ol>
-      </.example>
-
       <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/70">
         <p>
           <span class="font-semibold text-base-content">Three harnesses, not one.</span>
@@ -697,17 +624,6 @@ defmodule BusterClawWeb.ExplorePanel do
           settings. Leave it on <code>auto</code>
           and the app uses whichever CLI it
           finds — that is the shipped behaviour and it is a perfectly good answer.
-        </p>
-        <p>
-          <span class="font-semibold text-base-content">
-            The money surfaces stay on Claude.
-          </span>
-          Trading reads and order submission are pinned, and not as a preference.
-          Their Robinhood confinement is written in Claude's own flags, and the
-          other harnesses reject those outright — so a Codex run on that surface
-          does not run cheaply, or unsafely. It does not run at all. There is no
-          harness to choose there rather than a choice that could only fail, and
-          the Claude-only capability floor keeps applying because of it.
         </p>
         <p>
           <span class="font-semibold text-base-content">What this doesn't do yet.</span>
@@ -1002,8 +918,8 @@ defmodule BusterClawWeb.ExplorePanel do
           Buster Claw's agent-addressable backend operations share one canonical
           set of
           <span id="explore-command-total" class="font-mono font-bold">{@command_stats.total}</span>
-          commands. Some UI-only work — including parts of Appearance, Studio, and
-          Trading — deliberately stays outside that surface. You do not memorize the
+          commands. Some UI-only work — parts of Appearance and Studio, say —
+          deliberately stays outside that surface. You do not memorize the
           commands: say outcomes in Chat and let the agent select them. The live,
           complete list is on <.link
             navigate="/cmd-list"
@@ -1216,20 +1132,20 @@ defmodule BusterClawWeb.ExplorePanel do
       <.example
         n={2}
         title="The market at a glance"
-        want="Quotes, news, and your own history — without opening a single site."
+        want="Quotes, news and filings — without opening a single site."
       >
-        <.prompt text="What's NVDA doing today, any news worth my time, and how has the portfolio done this month?" />
+        <.prompt text="What's NVDA doing today, and is there any news worth my time?" />
         <ol class="ic-unfold">
           <li>
-            <code>finance_quote</code>, <code>finance_news</code>, <code>portfolio_history</code>
-            — all reads, all safe-tier, answered
-            straight into chat.
+            <code>finance_quote</code>
+            and <code>finance_news</code>
+            — both reads, both safe-tier, answered straight into chat.
           </li>
           <li>
             Deeper digging is the same shape: <code>finance_fundamentals</code>
             and <code>finance_filings</code>
-            when you ask "why". The full desk lives on
-            the Trading tab.
+            when you ask "why". Every figure carries
+            its source and an as-of; none of it is transcribed by the model.
           </li>
         </ol>
       </.example>
@@ -1347,13 +1263,15 @@ defmodule BusterClawWeb.ExplorePanel do
           Not a headless scraper. The agent can work
           <span class="font-semibold text-base-content">the tab you are looking
             at</span>
-          — your live, logged-in session, while you watch — and every
-          read and every click lands on the
+          — your live, logged-in session, while you watch. Page content sent to an
+          agent is policy-filtered and redacted; consequential actions and command
+          mutations land on the
           <.link navigate="/security" class="font-semibold text-primary hover:opacity-80">
             Security feed
           </.link>
-          with what it targeted and how it matched. The first thing to learn is
-          where the agent's hands can be, because there are three answers:
+          with their targets and outcomes. Ordinary reads do not each create a feed
+          row. The first thing to learn is where the agent's hands can be, because
+          there are three answers:
         </p>
       </div>
 
@@ -1588,122 +1506,6 @@ defmodule BusterClawWeb.ExplorePanel do
     """
   end
 
-  # The Trading tutorial — deliberately the simple one: how to connect
-  # Robinhood, then a plain can/can't split. Source of truth is the
-  # `Trading`/`TradingOrder` moduledocs; the connect commands mirror what the
-  # Trading tab itself shows on first run. No cycles here — the surface's
-  # whole pitch is restraint, and the page should read that way too.
-  defp trading_panel(assigns) do
-    ~H"""
-    <div class="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-8">
-      <div>
-        <p class="ic-eyebrow">The desk</p>
-        <h2 class="mt-2 font-display text-2xl font-black tracking-tight">
-          Trading — Robinhood, read-first
-        </h2>
-      </div>
-
-      <div class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80">
-        <p>
-          The
-          <.link navigate="/trading" class="font-semibold text-primary hover:opacity-80">
-            Trading tab
-          </.link>
-          is a market desk: balances across your accounts, positions with real
-          cost-basis P&amp;L, charts, earnings, and a chat that can talk it all
-          through. Everything runs through
-          <span class="font-semibold text-base-content">your own Claude CLI</span>
-          —
-          Buster Claw never holds your Robinhood credentials, and account numbers
-          are masked to their last four digits and never stored.
-        </p>
-      </div>
-
-      <div class="ic-panel flex flex-col gap-3 p-4">
-        <p class="ic-eyebrow">Connect — once, in a terminal</p>
-        <div class="flex flex-col gap-2">
-          <.command_block command="claude mcp add --transport http --scope user robinhood https://agent.robinhood.com/mcp/trading" />
-          <.command_block command="claude mcp login robinhood" />
-        </div>
-        <p class="text-sm leading-relaxed text-base-content/70">
-          The login opens Robinhood's own OAuth page in your browser; the tokens
-          land in your Mac's Keychain and every trading turn reuses them silently
-          after that. If the tools still report unavailable after logging in, run
-          <code class="font-semibold">claude mcp logout robinhood</code>
-          and log in
-          again — a known Claude Code quirk, not a Buster Claw setting.
-        </p>
-      </div>
-
-      <div class="grid gap-3 sm:grid-cols-2">
-        <div class="ic-panel flex flex-col gap-2 p-4">
-          <p class="ic-eyebrow">What it can do</p>
-          <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
-            <li>
-              Read your accounts: balances, positions with tax-lot cost basis,
-              order history, quotes, charts, and the earnings calendar — the
-              dashboard is built from these reads.
-            </li>
-            <li>
-              Talk markets in the trading chat: "how has my cost basis on AAPL
-              changed this year?" is a question, not a risk.
-            </li>
-            <li>
-              <span class="font-semibold text-base-content">Propose</span> an
-              order: ask it to buy or sell and it gathers side, symbol, quantity,
-              and price into a typed confirm card — showing you exactly what
-              would be submitted.
-            </li>
-          </ul>
-        </div>
-
-        <div class="ic-panel flex flex-col gap-2 p-4">
-          <p class="ic-eyebrow">What it can't do</p>
-          <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
-            <li>
-              Place, amend, or cancel an order on its own. The chat's tool list
-              is read-only by construction — an order submits only when
-              <span class="font-semibold text-base-content">you</span>
-              click the
-              confirm card, and only to the one account Robinhood marks as
-              Agentic. Every other account stays read-only.
-            </li>
-            <li>
-              Retry an uncertain submit. If a run dies before the broker's answer
-              arrives, it reports unknown and tells you to check Robinhood — it
-              never re-sends an order.
-            </li>
-            <li>
-              See your password. The OAuth handshake is between you and
-              Robinhood; Buster Claw only ever borrows the Keychain tokens.
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <p class="text-sm leading-relaxed text-base-content/70">
-        The quiet risk cap: only the Agentic account can ever transact, so what
-        you fund it with is the most an order can touch.
-      </p>
-
-      <.link
-        navigate="/trading"
-        class="inline-flex w-fit items-center gap-2 rounded-xs bg-primary px-4 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85"
-      >
-        <.icon name="hero-arrow-right" class="size-3.5" /> Open the Trading tab
-      </.link>
-    </div>
-    """
-  end
-
-  attr :n, :integer, required: true
-  attr :title, :string, required: true
-  attr :want, :string, required: true
-  slot :inner_block, required: true
-
-  # One worked walkthrough: number + name, the itch it scratches, then the
-  # prompt and its unfolding (the caller's inner block). Shared by every
-  # tutorial panel — this is the tutorial template, in component form.
   defp example(assigns) do
     ~H"""
     <section class="flex flex-col gap-3 border-l-2 border-base-content/20 pl-4">
@@ -1739,31 +1541,6 @@ defmodule BusterClawWeb.ExplorePanel do
   # never demand horizontal scrolling — operator, 08-02), full-contrast mono on
   # a bordered field, copy button via the global data-terminal-command-copy
   # listener in globals.js.
-  defp command_block(assigns) do
-    ~H"""
-    <div class="flex items-start gap-2 rounded-xs border-2 border-base-content/25 bg-base-200 p-3">
-      <code class="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-[0.8rem] font-semibold leading-relaxed">
-        {@command}
-      </code>
-      <button
-        type="button"
-        data-terminal-command-copy={@command}
-        aria-label={"Copy command: #{@command}"}
-        title="Copy"
-        class="inline-flex shrink-0 items-center gap-1 rounded-sm border border-base-content/20 px-1.5 py-0.5 font-mono text-[0.62rem] font-semibold uppercase tracking-wide text-base-content/60 transition hover:border-primary hover:text-primary"
-      >
-        <.icon name="hero-clipboard-document" class="size-3" />
-        <span data-terminal-command-copy-label>Copy</span>
-      </button>
-    </div>
-    """
-  end
-
-  attr :command, :string, required: true
-
-  # Inline shell command with a copy button (the click handler is the global
-  # data-terminal-command-copy listener in globals.js). Moved here with the
-  # 3-step onboarding when GetStartedLive retired (08-02).
   defp copy_command(assigns) do
     ~H"""
     <span class="inline-flex items-center gap-1 align-middle">

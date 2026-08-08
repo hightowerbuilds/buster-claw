@@ -22,50 +22,19 @@ defmodule BusterClaw.Agent.Conversations do
   @doc """
   Open (non-archived) Home conversations, in stable creation order.
 
-  Home only — a Trading tab must never appear in Home's chat strip, which is the
-  whole reason `kind` exists. Use `list_kinds/1` for the Trading page.
+  Home only. `kind` exists so a surface that owns its own conversations cannot
+  leak them into Home's strip; Home is the only such surface today.
   """
   def list do
     ensure_seeded()
     query_kinds(["home"])
   end
 
-  @doc """
-  Open conversations of the given kinds, in stable creation order.
-
-  The Trading page passes `Trading.tab_kinds/0` and gets its tab strip,
-  left to right, with the pinned Robinhood conversation first because it was
-  seeded first.
-  """
-  def list_kinds(kinds) when is_list(kinds), do: query_kinds(kinds)
-
   defp query_kinds(kinds) do
     Conversation
     |> where([c], is_nil(c.archived_at) and c.kind in ^kinds)
     |> order_by(asc: :inserted_at, asc: :id)
     |> Repo.all()
-  end
-
-  @doc """
-  Ensure a specific conversation row exists, without resurrecting a closed one.
-
-  Used for the first Robinhood tab: its transcript already lives under the
-  `"trading"` conv_id from when the conversation was deliberately DB-less, so
-  seeding that exact id adopts the existing history rather than starting over.
-
-  Never resurrects: a row the operator closed stays closed (it comes back
-  archived, and `list_kinds/1` still omits it). Keeping at least one tab on
-  screen is the caller's job, exactly as it is for Home.
-  """
-  def ensure(id, attrs) when is_binary(id) do
-    case get(id) do
-      nil ->
-        {:ok, conv} = create(Map.merge(Map.new(attrs), %{id: id}))
-        conv
-
-      conv ->
-        conv
-    end
   end
 
   def get(id), do: Repo.get(Conversation, id)
@@ -81,24 +50,6 @@ defmodule BusterClaw.Agent.Conversations do
     %Conversation{}
     |> Conversation.changeset(attrs)
     |> Repo.insert()
-  end
-
-  @doc """
-  Set a Trading conversation's kind — which decides its toolset on the next turn.
-
-  The caller is responsible for stopping the conversation's `Chat` process
-  afterwards. That is not incidental: the session id lives in that process, so
-  stopping it means the next message starts a FRESH claude session instead of
-  `--resume`-ing one whose context was gathered under the old kind. Retyping a
-  Robinhood chat to Chart Build would otherwise hand account balances to a run
-  that is supposed to have no account access at all — and which can reach the
-  web.
-  """
-  def set_kind(id, kind) when is_binary(kind) do
-    case get(id) do
-      nil -> {:error, :not_found}
-      conv -> conv |> Conversation.changeset(%{kind: kind}) |> Repo.update()
-    end
   end
 
   @doc "Dock a conversation into the sub-tab system, or float it back out."

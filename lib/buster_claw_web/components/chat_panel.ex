@@ -1,18 +1,18 @@
 defmodule BusterClawWeb.ChatPanel do
   @moduledoc """
-  Chat rendering: the conversation tabs, Home's docked chat panel, and Trading's
-  floating chat windows — plus the pieces all three share (transcript bubbles,
-  thinking timer, on-deck queue rail, composer).
+  Chat rendering: the conversation tabs and Home's docked chat panel, plus the
+  pieces they share (transcript bubbles, thinking timer, on-deck queue rail,
+  composer).
 
   Presentation only — every event (`select_chat`, `close_chat`, `new_chat`,
   `chat_send`, `cut_run`, `cancel_queued`, …) is handled by the parent LiveView,
-  which owns the conversation state. `StatusLive` owns Home's; `TradingLive`
-  owns the Trading page's.
+  which owns the conversation state. `StatusLive` owns Home's, and Home is the
+  only surface rendering a chat since Trading was deleted on 08-08.
 
-  The two surfaces differ in one way that shapes everything here: Home has
-  exactly one chat on screen and Trading can have several. So the shared pieces
-  take an explicit DOM id and, where they push an event, an explicit
-  conversation — both defaulted for Home, where there is nothing to disambiguate.
+  The shared pieces still take an explicit DOM id and, where they push an event,
+  an explicit conversation — both defaulted for Home. That generality was built
+  for the floating Trading windows; it is kept because it costs nothing and is
+  what the next multi-chat surface would need.
   """
   use BusterClawWeb, :html
 
@@ -70,288 +70,6 @@ defmodule BusterClawWeb.ChatPanel do
     </div>
     """
   end
-
-  attr :id, :string, required: true, doc: "unique DOM id — several windows are on screen at once"
-
-  attr :conv, :string,
-    required: true,
-    doc: "conversation id; every event this window pushes names it"
-
-  attr :title, :string, required: true
-  attr :kind, :string, required: true, doc: "typed Trading conversation kind"
-
-  # Which kinds this surface may hold — the retype control offers exactly these.
-  # `/charts` must not present an RH button, and `TradingLive` refuses the event
-  # for a kind off the surface, so the control and the guard agree.
-  attr :kinds, :list, default: ["chat", "robinhood", "chartbuild"]
-  attr :index, :integer, default: 0, doc: "render order, used to cascade default positions"
-  attr :messages, :list, required: true, doc: "[{dom_id, msg}] — a plain list, not a stream"
-  attr :seq, :integer, required: true
-  attr :running, :boolean, required: true
-
-  attr :steerable, :boolean,
-    default: false,
-    doc: "the backend can deliver into a running turn — drives the composer's primary action"
-
-  attr :announcement, :string, default: nil, doc: "last delivery outcome, announced politely"
-  attr :thinking, :any, required: true
-  attr :queue, :list, required: true
-  attr :minimized, :boolean, default: false
-  attr :focused, :boolean, default: false
-
-  attr :docked, :boolean,
-    default: false,
-    doc: "docked windows sit in the tab's flow instead of floating over it"
-
-  attr :embedded, :boolean,
-    default: false,
-    doc: "panel-owned chats sit in flow without changing the persisted dock state"
-
-  attr :in_pane, :boolean,
-    default: false,
-    doc:
-      "float within the nearest positioned ancestor rather than the viewport — for a Trading tab joined into a split pane, where a `fixed` window would sail over the neighbouring pane"
-
-  attr :agent_cli_missing, :boolean, default: false
-  attr :empty_message, :string, required: true
-  attr :placeholder, :string, required: true
-  slot :pinned
-
-  @doc """
-  A floating, translucent chat window.
-
-  Unlike `chat_panel/1` there can be several of these on screen at once, so
-  everything that was implicit there is explicit here: the DOM id, the queue
-  rail's id, the thinking chip's id, and — most importantly — the conversation
-  on every event. A `cut_run` with no conversation is unambiguous when one chat
-  exists and actively dangerous when three do.
-
-  Translucency is the point of the window rather than decoration: these sit on
-  top of a full-tab dashboard, and the operator needs to keep reading the
-  numbers underneath while a run is going. The focused window is more opaque
-  than the ones behind it, which is what makes a stack of them legible.
-
-  It renders a plain list rather than a LiveView stream. Streams are keyed per
-  name and there is no clean way to have one per conversation; transcripts are
-  capped at 200 messages and only a few windows are ever open, so the parent
-  holds them in assigns and hands them over already paired with their dom ids.
-  """
-  def chat_window(assigns) do
-    assigns = assign(assigns, :flow, assigns.docked or assigns.embedded)
-
-    ~H"""
-    <section
-      id={@id}
-      phx-hook="ChatWindow"
-      data-conv={@conv}
-      data-index={@index}
-      data-running={to_string(@running)}
-      data-minimized={to_string(@minimized)}
-      data-docked={to_string(@flow)}
-      data-seq={@seq}
-      phx-click={not @flow && "trading_focus_chat"}
-      phx-value-id={@conv}
-      class={
-        [
-          "ic-panel flex flex-col overflow-hidden border-2",
-          # Docked: it IS the tab, so it takes the flow and drops the translucency
-          # that only earned its place over a dashboard.
-          if(@flow,
-            do: "min-h-0 border-base-content/25 bg-base-100",
-            else: float_class(@in_pane)
-          ),
-          # Collapsed in flow, the header is the whole window. It has to stop
-          # growing as well as hide its body, or the panel above it gains
-          # nothing — which is the entire point of collapsing it.
-          @flow and if(@minimized, do: "shrink-0", else: "flex-1"),
-          not @flow and
-            if(@focused,
-              do: "border-primary/60 bg-base-100/95 shadow-[4px_4px_0_0_oklch(var(--bc)/0.25)]",
-              else: "border-base-content/25 bg-base-100/75 shadow-[3px_3px_0_0_oklch(var(--bc)/0.12)]"
-            )
-        ]
-      }
-    >
-      <header
-        data-window-drag={not @flow}
-        class={[
-          "flex shrink-0 items-center gap-2 border-b-2 border-base-content/20 bg-base-200/60 px-2 py-1.5",
-          not @flow and "cursor-grab active:cursor-grabbing"
-        ]}
-      >
-        <span class="min-w-0 flex-1 truncate font-mono text-xs font-bold">{@title}</span>
-
-        <%!-- What this conversation is pointed at, and the control to change it.
-              Retyping restarts the session, so it is a decision, not a filter —
-              which is why the current one is written, not just highlighted. --%>
-        <div
-          :if={length(@kinds) > 1}
-          class="flex shrink-0 items-center gap-px"
-          role="group"
-          aria-label="Chat kind"
-        >
-          <button
-            :for={
-              {k, badge} <-
-                Enum.filter(
-                  [
-                    {"chat", "CHAT"},
-                    {"robinhood", "RH"},
-                    {"chartbuild", "CHART"}
-                  ],
-                  fn {k, _badge} -> k in @kinds end
-                )
-            }
-            type="button"
-            phx-click="trading_set_kind"
-            phx-value-id={@conv}
-            phx-value-kind={k}
-            title={"Point this chat at #{k}"}
-            aria-pressed={to_string(@kind == k)}
-            class={[
-              "border px-1 font-mono text-[0.55rem] font-black uppercase tracking-wider transition",
-              kind_button_class(@kind, k)
-            ]}
-          >
-            {badge}
-          </button>
-        </div>
-
-        <.thinking_chip thinking={@thinking} id={"#{@id}-thinking"} />
-
-        <button
-          :if={@running}
-          type="button"
-          phx-click="cut_run"
-          phx-value-conv={@conv}
-          title="Stop the model"
-          class="shrink-0 rounded border-2 border-error/50 px-1.5 py-0.5 font-mono text-[0.55rem] uppercase tracking-wide text-error transition hover:bg-error/10"
-        >
-          Stop
-        </button>
-        <%!-- A panel-owned chat cannot be floated, minimised to the desktop, or
-              closed — it is half of its own tab. Collapsing is the one size
-              gesture it can offer, and it reuses the floating window's
-              `minimized` state rather than inventing a second flag. --%>
-        <button
-          :if={@embedded}
-          type="button"
-          phx-click="trading_minimize_chat"
-          phx-value-id={@conv}
-          title={
-            if @minimized, do: "Show the chat", else: "Collapse the chat to give the panel more room"
-          }
-          aria-expanded={to_string(not @minimized)}
-          aria-controls={"#{@id}-body"}
-          class="grid size-5 shrink-0 place-items-center rounded-sm font-mono text-base-content/50 hover:bg-base-content/15 hover:text-base-content"
-        >
-          {if @minimized, do: "▴", else: "▾"}
-        </button>
-        <button
-          :if={@docked and not @embedded}
-          type="button"
-          phx-click="trading_float_chat"
-          phx-value-id={@conv}
-          title="Float this chat back over the panel"
-          class="grid size-5 shrink-0 place-items-center rounded-sm font-mono text-base-content/50 hover:bg-base-content/15 hover:text-base-content"
-        >
-          ⇱
-        </button>
-        <button
-          :if={not @flow}
-          type="button"
-          phx-click="trading_minimize_chat"
-          phx-value-id={@conv}
-          title={if @minimized, do: "Expand", else: "Minimise"}
-          class="grid size-5 shrink-0 place-items-center rounded-sm font-mono text-base-content/50 hover:bg-base-content/15 hover:text-base-content"
-        >
-          {if @minimized, do: "▢", else: "—"}
-        </button>
-        <button
-          :if={not @flow}
-          type="button"
-          phx-click="trading_toggle_chat"
-          phx-value-id={@conv}
-          title="Close this chat window"
-          class="grid size-5 shrink-0 place-items-center rounded-sm font-mono text-base-content/50 hover:bg-base-content/15 hover:text-primary"
-        >
-          ×
-        </button>
-      </header>
-
-      <div :if={not @minimized} id={"#{@id}-body"} class="flex min-h-0 flex-1 flex-col">
-        <div
-          id={"#{@id}-log"}
-          data-chat-log
-          class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4"
-        >
-          <div
-            :if={@messages == []}
-            class="m-auto max-w-xs text-center text-[15px] text-base-content/55"
-          >
-            {@empty_message}
-          </div>
-          <.chat_bubble :for={{dom_id, msg} <- @messages} id={dom_id} msg={msg} />
-        </div>
-
-        <.queue_strip queue={@queue} id={"#{@id}-queue"} conv={@conv} />
-
-        <div :if={@pinned != []} class="border-t-2 border-base-content/20">
-          {render_slot(@pinned)}
-        </div>
-
-        <div
-          :if={@agent_cli_missing}
-          class="border-t-2 border-warning/60 bg-warning/10 px-3 py-2 text-[13px]"
-        >
-          <span class="font-semibold">No agent CLI found.</span>
-          Install Claude Code and run <code class="font-mono">claude login</code>.
-        </div>
-
-        <.composer
-          id={"#{@id}-composer"}
-          conv={@conv}
-          running={@running}
-          steerable={@steerable}
-          agent_cli_missing={@agent_cli_missing}
-          placeholder={@placeholder}
-          announcement={@announcement}
-          compact
-        />
-
-        <div
-          :if={not @flow}
-          data-window-resize
-          title="Drag to resize"
-          class="absolute bottom-0 right-0 size-4 cursor-nwse-resize"
-        >
-          <span class="absolute bottom-1 right-1 size-2 border-b-2 border-r-2 border-base-content/40">
-          </span>
-        </div>
-      </div>
-    </section>
-    """
-  end
-
-  # A floating window's containing block. `fixed` is the whole viewport, which is
-  # right when Trading owns the window and wrong when it is one half of a split:
-  # `absolute` hands the window to the pane's own box. The ChatWindow hook reads
-  # the same distinction off `offsetParent` (null for `fixed`, the pane for
-  # `absolute`), so the CSS choice alone decides which box the drag clamps to.
-  defp float_class(true), do: "absolute z-30 backdrop-blur-md transition-colors"
-  defp float_class(false), do: "fixed z-30 backdrop-blur-md transition-colors"
-
-  defp kind_button_class(kind, option) when kind != option,
-    do: "border-base-content/20 text-base-content/35 hover:text-base-content"
-
-  defp kind_button_class(_kind, "chartbuild"),
-    do: "border-secondary/60 bg-secondary/10 text-secondary"
-
-  defp kind_button_class(_kind, "chat"),
-    do: "border-base-content/50 bg-base-content/10 text-base-content"
-
-  defp kind_button_class(_kind, _robinhood),
-    do: "border-success/60 bg-success/10 text-success"
 
   attr :messages, :any, required: true, doc: "the parent LiveView's chat_messages stream"
   attr :seq, :integer, required: true, doc: "message counter — see data-seq below"
@@ -479,14 +197,14 @@ defmodule BusterClawWeb.ChatPanel do
 
   attr :agent_cli_missing, :boolean, default: false
   attr :placeholder, :string, required: true
-  attr :compact, :boolean, default: false, doc: "the tighter Trading-window sizing"
+  attr :compact, :boolean, default: false, doc: "the tighter multi-window sizing"
 
   attr :announcement, :string,
     default: nil,
     doc: "last delivery outcome, announced politely — state must not be colour-only"
 
   @doc """
-  The message composer, shared by Home and Trading.
+  The message composer.
 
   One implementation on purpose. These were two forked `<form>`s with two copies
   of the Enter handling in two different JS hooks, and the next change was about
@@ -698,7 +416,7 @@ defmodule BusterClawWeb.ChatPanel do
   attr :queue, :list, required: true
   attr :id, :string, default: "chat-queue-rail"
   # nil on Home, where there is one chat and `cancel_queued` needs no scope. The
-  # Trading windows pass theirs, because several queues can be on screen at once.
+  # A multi-chat surface passes its own, since several queues can be on screen.
   attr :conv, :string, default: nil
 
   defp queue_strip(%{queue: []} = assigns), do: ~H""

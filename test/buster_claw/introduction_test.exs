@@ -120,30 +120,8 @@ defmodule BusterClaw.IntroductionTest do
     assert md =~ "`mailman`"
   end
 
-  test "the trading section matches what the app actually does with orders" do
-    md = Introduction.markdown()
-
-    # The prohibition itself is load-bearing and must survive every rewrite: the
-    # terminal session this guide addresses runs UNCONFINED — read_only_cli_args
-    # confinement applies only to app-spawned runs — so this sentence is the only
-    # thing between a session holding live mcp__robinhood__* tools and
-    # place_equity_order. (Finding 1's proposed "fix" would have deleted it.)
-    assert md =~ "You may **not** place, amend, or cancel an order"
-
-    # But the REFERRAL must be current. "Execution is disabled" stopped being
-    # true when TradingOrder shipped: execution moved behind the Trading tab's
-    # confirm card. A guide that says "disabled" teaches the agent to refuse a
-    # thing the product does (drifted 07-28 → 08-02).
-    refute md =~ "execution is disabled"
-    assert md =~ "the Trading tab can"
-    assert md =~ "confirmation card"
-
-    # And the click, not the model's message, is what reaches the broker — the
-    # same sentence Trading.@system_prompt teaches the Trading chat, kept in
-    # agreement here so the two prompts never describe two different products.
-    assert md =~ "operator's click"
-    assert md =~ "Never imply that a draft was submitted"
-  end
+  # The trading section left the agent's guide on 08-08 with the stack it
+  # described.
 
   test "install! writes INTRODUCTION.md into the machine-files dir", %{root: root} do
     assert {:ok, path} = Introduction.install!()

@@ -1,7 +1,6 @@
 defmodule BusterClaw.Commands.Finance do
   @moduledoc "Read-only finance research commands (filings, fundamentals, quote, news). Delegated to from `BusterClaw.Commands`."
 
-  alias BusterClaw.ChartBuilder.DataReq
   alias BusterClaw.Finance
   alias BusterClaw.Finance.Sources
 
@@ -16,7 +15,7 @@ defmodule BusterClaw.Commands.Finance do
   record of an answer, not a to-do.
   """
   def finance_sources(args \\ %{}) do
-    fetchable = DataReq.source_keys()
+    fetchable = Sources.fetchable_keys()
     sources = filter_status(Sources.all(), Map.get(args, "status"))
 
     {:ok,
