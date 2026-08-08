@@ -640,3 +640,127 @@ threaten borrowed green claims; it manufactures convincing red ones too.
 **Ask of every piece of state: who can actually see this?** The answer decides
 where it lives, and a status that comes from the wrong layer is not a cosmetic
 problem — it is a confident lie about whether the user's work is safe.
+
+---
+
+# In parallel: a modularization pass, and what reading forced us to notice
+
+A second thread ran through the day: a feature-by-feature read of all 304 modules
+under `lib/`, a roadmap
+(`daily-growth/roadmaps/MODULARIZATION_ROADMAP.md`), and then five of its phases.
+
+**The refactoring is the smaller half of what it produced.** Almost every real
+defect found today was found while reading code in order to move it — never by
+the moving itself, and never by a test that was already there.
+
+## The measurement that made the plan honest
+
+The first useful thing was not a decomposition, it was separating two problems
+the line count hides. Measuring each web file's **markup share** split the list
+cleanly:
+
+- **Long** files — `explore_panel.ex` at 82% `~H`, `phone_panels.ex` 80%,
+  `home_widget.ex` 81%. Big because markup is verbose.
+- **Overloaded** files — `status_live.ex` at **11%** `~H`, so 1,356 lines of
+  logic. `sound_studio_component.ex` at 20%.
+
+They need opposite treatments, and a roadmap that had not measured the ratio
+would have prescribed the same cure for both. `sound_studio_component` was the
+sharpest case: `components/sound_studio/` already existed, so the *markup* had
+been split and the *logic* never had.
+
+## What landed
+
+| | Before | After |
+|---|---:|---|
+| `explore_panel.ex` | 1,577 | 92 + 9 modules |
+| `phone_panels.ex` | 952 | deleted → 4 modules |
+| `gws_panels.ex` | 513 | 122 + 5 modules |
+| `status_live.ex` | 1,526 | 804 (logic 1,356 → 634) |
+| four browser pages | 723 | 176 controller + 695 HEEx |
+| `introduction.ex` | 758 | 146 + `introduction/*.md` |
+| `skills.ex` | 533 | 344 + `skill-seeds/*.md` |
+
+Every extraction moved by **line range, never retyped**, and every panel module
+is `import`ed so call sites stayed byte-identical. The tests were not edited.
+
+## The same bug, three times, and nobody had noticed once
+
+A rail renders from one list; its guard checks another, hand-written. It had
+already shipped once — Phone arrived as a home tab the server refused. Splitting
+files surfaced two more:
+
+- **The GWS console.** `console_tab_keys/0` was public, documented "for the
+  parent's tab guard", and called by **nothing**; `SettingsLive` hand-wrote the
+  same five keys. A sixth tab would have rendered a button that silently fell
+  back to Accounts.
+- **The corner widget.** The loosest of the three — a literal inlined in a
+  template's `for`-comprehension, and a second literal in the guard *in a
+  different order*. Also the worst: `select_widget_tab` has no catch-all clause,
+  so a drifted key does not fall back, it **raises and takes the LiveView down**.
+
+Three occurrences is not a coincidence, it is a shape. Any surface with a rail
+should derive its guard from the rail on day one.
+
+## Two buttons that had never worked
+
+The in-app browser's history page gated its clear buttons on
+`onsubmit="return confirm(…)"`. There is no WKUIDelegate in this shell, so
+`window.confirm()` returns **false** — which cancels the submit. Both buttons
+have been dead in the packaged app for months, and perfect in every dev browser.
+
+`claw_confirm_test.exs` has guarded the rest of the app against exactly this for
+months. It missed these because it greps for `data-confirm=` and theirs said
+`onsubmit`. **A guard that checks one spelling is a guard against one spelling.**
+
+## The gate shipped third, and was specified to ship first
+
+Phase 0 — a file-size gate that fails in both directions — exists because this
+repo has decomposed large files three times and been undone twice. It was
+written down as the thing that goes *first*, because everything after it decays
+unguarded. It shipped after Phases 1 and 2, because momentum was available and
+the gate was not. That is recorded in the roadmap rather than tidied away.
+
+It earned itself twice on day one. It tripped within minutes on `introduction.ex`
+growing two lines from another session's new commands — **which was not rot**,
+because that file's length tracked the command surface; the cap was wrong, not
+the file, and a gate that fights legitimate work gets deleted. Later, when
+Phase 7 cut that file to 146, the *under*-cap half refused to pass until the cap
+was banked in the same commit.
+
+## Green is not identical — twice
+
+The day's most transferable lesson, and it arrived twice in different clothes.
+
+**Phase 7.** Moving 657 lines of prose out of `introduction.ex`, the first
+composition joined sections with `"\n"` — adding seven blank lines, because each
+file already ended with the separator the heredoc had. It compiled. All 2,897
+tests passed. Only diffing the generated document against a render from the old
+code caught it.
+
+**The widened confirm guard.** Its first version skipped heredocs so it would not
+flag the six comments that *describe* this bug. But **a `~H` template is a
+heredoc** — so it was blind to every LiveView and function component in the app.
+It passed cleanly when fed the real historical defect.
+
+Both were caught the same way: by breaking the thing on purpose and watching for
+the failure. Every guard written today was verified by injection — a padded file,
+a cut file, a restored old guard, a sixth tab, each of the three confirm
+spellings. **A guard nobody has watched fail is not a guard, it is a hope.**
+
+## A target retired rather than met
+
+`StatusLive` was supposed to reach under 600 lines. It reached 804. What remains
+is `mount`, a 170-line `render`, and 55 message-handling clauses whose largest is
+28 lines — the coordinator's job, not residue. Reaching 600 needs macro plumbing
+the roadmap ruled out on its first read, and the ruling still looks right. The
+target was retired **in the roadmap, with the reason**, and 850 became the number
+the gate holds. A goal set before the map existed is allowed to be wrong; quietly
+gaming it is not.
+
+## The day in one line, again
+
+**Refactoring pays mostly in what it makes you read.** Three rail/guard bugs, two
+dead buttons and a blind test were all sitting in files nobody had reason to open
+until something needed moving — and none of them would have been found by the
+tests that were already green.
