@@ -230,23 +230,37 @@ Pair with the Chart Build walk below; both need a browser and nothing else.
 
 ---
 
-### Decompose TradingLive — it grew back
+### Decompose the surviving hotspots — and make regrowth visible
 
-**What.** The `TRADING_TAB_CRITICAL_REVIEW` flagged a **1,728-line** LiveView.
-`CODE_QUALITY_REFACTOR` Phase 3A then cut it **3,503 → 1,900 (−46%)** across two
-passes. It is **2,174 lines today** — Chart Build and the rest of this week
-landed on top of it.
+*Inherited 08-08 from `archive/08-08-26-busterclaw-critical-review.md` Phase 4, the
+only part of that review with no home in `LAUNCH_ROADMAP`. Its predecessor entry
+here — "Decompose TradingLive" — died with the file on 08-08.*
 
-**Why deferred.** Nothing is broken, and the technique is proven twice here: map
-lines-per-responsibility, extract, then `import` the extracted module so the
-template call sites stay byte-identical. It needs no design, only an afternoon.
+**What.** Three surviving clusters, in size order: `explore_panel.ex` **1,577**,
+`status_live.ex` **1,460**, `agent/chat.ex` **1,376**. `StatusLive` should become a
+page coordinator — it currently owns chat, contacts, telephony, notifications,
+weather, music, studio, notes, calendar, shaders and Explore. `Agent.Chat` splits
+into a state machine, delivery persistence, queueing/steering, transcript
+projection, and transport adapters. Two smaller items travelled with it: burn down
+the Dialyzer baseline in risk order (audit/policy → dispatch → orchestration →
+browser → filesystem → UI), and replace ignored returns in durability and security
+paths with explicit handling.
 
-**What makes it expensive later.** It is the file every Trading change touches,
-so it accretes by default. The important part is what the two data points show
-together: **the extraction held and the file still regrew**, so this is a rate
-rather than a one-time job. Either it gets re-cut periodically, or something has
-to make growth visible — the same lesson as the cycle count, which drifted back
-to 3 on 08-03 because nothing asserted it.
+**Why deferred.** Nothing is broken, and the extraction technique is proven twice
+here: map lines-per-responsibility, extract, then `import` the extracted module so
+the template call sites stay byte-identical. `StatusLive` needs no design, only an
+afternoon each. `Agent.Chat` does need one — its state transitions aren't written
+down anywhere yet — so by this file's own rule that half is a roadmap item the day
+someone wants it.
+
+**What makes it expensive later.** The load-bearing observation survived the file it
+was made about: TradingLive was cut **3,503 → 1,900 (−46%)** and had grown back to
+**2,174** by the time it was deleted. **The extraction held and the file still
+regrew** — so this is a rate, not a one-time job. Either it gets re-cut
+periodically, or something makes growth visible. That is the actual item: a CI
+check that fails when an agreed file grows, which is cheap now and is the only part
+that stops the next 2,000-line LiveView from arriving unnoticed. Same lesson as the
+cycle count, which drifted back to 3 on 08-03 because nothing asserted it.
 
 ---
 
@@ -301,6 +315,39 @@ slow or missing.
 **What makes it expensive later.** The list is per-machine (it reflects the
 operator's authenticated providers), so this is the only honest way to offer
 opencode models at all. Until it exists, opencode users type model IDs by hand.
+
+---
+
+### Persisting fetched macro series — waiting on evidence, not on a design
+
+**From the chart-build web-data roadmap's Phase 4**
+(`daily-growth/archive/08-05-26-chart-build-web-data.md`). Series fetched through
+the `datareq` channel are conversation-scoped: fetched, plotted, gone. Persisting
+them means **a new table**, not a wider `symbol_bars` — that schema is
+ticker-and-cents shaped, and pushing a CPI index or an unemployment rate through
+it would feed prose-shaped keys to a regex that exists to refuse them.
+
+**Concrete:** a table for external series (source key, series id, observation
+date, value, units, frequency), written by `ChartBuilder.Fetch` on the registry
+path and read back before re-fetching.
+
+**Why deferred.** The value is unproven, and `MarketData`'s own moduledoc draws
+the line this sits on: a lost bar is one tool call away, unlike a portfolio
+reading — which is why one is a cache and the other a ledger. External series are
+firmly in the cache half: refetchable, published by someone else, not ours to
+lose.
+
+**The trigger, written down so it can actually fire:** build this when repeated
+fetches of the *same* series are observably costing something — rate limit
+headroom or latency in a real session. Note the number this depends on: **BLS
+keyless is 25 queries/day**; a free key takes it to 500 (`:buster_claw,
+:bls_api_key`). Without the key, "we are re-fetching too much" arrives far
+sooner, and the cheaper fix is the key, not the table.
+
+**What makes it expensive later.** Nothing, structurally — it stays a clean
+greenfield table. The risk is the opposite one: building it *before* the evidence
+means a schema shaped by guesses about which sources matter, on a registry whose
+whole design assumes free tiers and endpoints will move.
 
 ---
 
