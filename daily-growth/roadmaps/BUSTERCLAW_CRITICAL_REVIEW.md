@@ -7,33 +7,36 @@ review as written. Part II is the remediation roadmap it produced.
 
 > ### What has happened since — read this first
 >
-> **Part I is a dated review and is preserved exactly as written.** Its findings
-> were true on 2026-08-06; several are no longer true, and rewriting them would
-> destroy the record of what an outside read actually found. Nothing in Part I has
-> been edited.
+> **Part I is a dated review.** Its findings were true on 2026-08-06; several are no
+> longer true, and rewriting them would destroy the record of what an outside read
+> actually found. It is therefore preserved as written, with **one exception, recorded
+> here rather than left silent:** the Trading material was **excised on 2026-08-08**
+> when the surface itself was deleted. Nothing else in Part I has been edited.
 >
 > **Part II is a live plan and IS updated.** Since it was written:
 >
 > - **2026-08-08 — the trading stack was deleted** (`293f47f`): Trading, Portfolio,
->   MarketData, Watchlist and Chart Build, ~22,000 lines. **This resolves Phase 5
->   entirely** and shrinks Phases 0 and 4.
+>   MarketData, Watchlist and Chart Build, ~22,000 lines. The review section that
+>   examined it and the phase that answered it have been removed from this document.
+>   What the surface taught is recorded in `LAUNCH_ROADMAP.md` and in
+>   `daily-growth/MM-DD-YY-Summary/08-08-26-summary.md`.
 > - **2026-08-08 — the extension mechanism was deleted** (`a89163e`) after one day,
->   having been built to re-home Trading.
+>   having been built to re-home the surface that was then deleted outright.
 > - **The clean-clone test gap the review predicted was found and fixed** — a
 >   workspace assertion that passed only on machines carrying a gitignored build
 >   artifact.
 >
 > The subtraction the review asked for **has begun and went further than proposed**:
-> the review recommended putting Trading behind Labs; the operator deleted it.
+> the review recommended containment behind Labs; the operator deleted the surface.
 
 > ### The verdict in one paragraph
 >
 > BusterClaw is an ambitious, thoughtful prototype that **mistakes breadth for product
 > maturity**. Its strongest idea is excellent: give a terminal agent a durable queue,
 > canonical command surface, local workspace, and receipts for consequential actions.
-> Instead, that core is buried beneath browser, email, calendar, trading, phone, audio,
-> finance, shader, journal, and tutorial products. The launch roadmap admits users cannot
-> answer *"what is BusterClaw?"* because each surface pitches something different. **That is
+> Instead, that core is buried beneath browser, email, calendar, phone, audio, finance,
+> shader, journal, and tutorial products. The launch roadmap admits users cannot answer
+> *"what is BusterClaw?"* because each surface pitches something different. **That is
 > evidence that prioritization has failed at scale.**
 
 ---
@@ -48,13 +51,12 @@ review as written. Part II is the remediation roadmap it produced.
 - [4. The durable work loop](#4-the-durable-work-loop)
 - [5. Security — the best engineering and the biggest overclaim](#5-security--the-best-engineering-and-the-biggest-overclaim)
 - [6. The autonomous-agent posture](#6-the-autonomous-agent-posture)
-- [7. Trading — capability outrunning assurance](#7-trading--capability-outrunning-assurance)
-- [8. Testing — a strength that needs calibration](#8-testing--a-strength-that-needs-calibration)
-- [9. The release story](#9-the-release-story)
-- [10. Data evolution](#10-data-evolution)
-- [11. The interface](#11-the-interface)
-- [12. The remedy](#12-the-remedy)
-- [13. The honest summary](#13-the-honest-summary)
+- [7. Testing — a strength that needs calibration](#7-testing--a-strength-that-needs-calibration)
+- [8. The release story](#8-the-release-story)
+- [9. Data evolution](#9-data-evolution)
+- [10. The interface](#10-the-interface)
+- [11. The remedy](#11-the-remedy)
+- [12. The honest summary](#12-the-honest-summary)
 
 **Part II — [Remediation roadmap](#part-ii--remediation-roadmap)**
 
@@ -64,9 +66,8 @@ review as written. Part II is the remediation roadmap it produced.
 - [Phase 2 — Prove the command and prompt-injection boundaries](#phase-2--prove-the-command-and-prompt-injection-boundaries)
 - [Phase 3 — Give local data a safe upgrade path](#phase-3--give-local-data-a-safe-upgrade-path)
 - [Phase 4 — Reduce architectural change amplification](#phase-4--reduce-architectural-change-amplification)
-- [Phase 5 — Contain or rebuild Trading](#phase-5--contain-or-rebuild-trading)
-- [Phase 6 — Make the packaged application the tested product](#phase-6--make-the-packaged-application-the-tested-product)
-- [Phase 7 — Make failures supportable and public release measurable](#phase-7--make-failures-supportable-and-public-release-measurable)
+- [Phase 5 — Make the packaged application the tested product](#phase-5--make-the-packaged-application-the-tested-product)
+- [Phase 6 — Make failures supportable and public release measurable](#phase-6--make-failures-supportable-and-public-release-measurable)
 - [Milestones](#milestones)
 - [Finding-to-phase map](#finding-to-phase-map)
 - [Completion gate for every phase](#completion-gate-for-every-phase)
@@ -111,22 +112,19 @@ stage.
 
 | Module | Lines |
 |---|---|
-| `TradingLive` | **2,575** |
 | `ExplorePanel` | 1,812 |
 | `StatusLive` | 1,415 |
 | `Agent.Chat` | 1,375 |
-| `Trading` | 1,374 |
 | `PhoneLive` | 1,275 |
 | `SoundStudioComponent` | 1,235 |
 
 `StatusLive` coordinates chat, contacts, telephony, notifications, weather, music playback,
-studio editing, notes, calendar, shaders, and Explore. `TradingLive` handles dashboard
-state, multiple conversation types, order proposals, chart data, portfolio history, tabs,
-streaming, and a huge template.
+studio editing, notes, calendar, shaders, and Explore.
 
-> **The roadmap says `TradingLive` was cut from 3,503 to 1,900 lines and then grew back.**
-> That proves this is not a one-time cleanup problem; **the architecture lacks a force that
-> keeps responsibilities separated.**
+> **No mechanism keeps responsibilities separated.** Extraction happens under review
+> pressure and the files grow back afterwards, because nothing in the build notices. This
+> is not a one-time cleanup problem; **the architecture lacks a force that keeps
+> responsibilities apart.**
 
 ## 3. The command surface
 
@@ -234,29 +232,7 @@ These choices may be defensible for unattended execution, yet:
 > The security story currently asks the operator to **admire policy controls without clearly
 > explaining how aggressively the underlying harnesses are configured to act.**
 
-## 7. Trading — capability outrunning assurance
-
-**The clearest example in the codebase.**
-
-The order flow has meaningful safeguards: broker reads are allowlisted, proposals must appear
-in a fenced block, values are parsed into a struct, displayed confirmation comes from parsed
-data, submission is a separate one-shot run, and confirmed payloads cannot be replayed.
-
-Still:
-
-- **A model transcribes account balances into the permanent portfolio ledger.** A wrong
-  number can become **irreversible history** because Robinhood does not provide equivalent
-  historical account values.
-- **The final order hop remains another Claude run instructed not to double-submit** — rather
-  than an idempotent, application-owned broker call.
-- **Account identity relies heavily on the last four digits.** Collisions fail closed, but
-  that is a guard, not stable identity.
-
-> The model has been removed from **arbitrary execution**, not from the **financial data
-> path**. Putting this surface in primary navigation lends experimental machinery an
-> authority it has not earned.
-
-## 8. Testing — a strength that needs calibration
+## 7. Testing — a strength that needs calibration
 
 | Suite | Result |
 |---|---|
@@ -266,9 +242,8 @@ Still:
 | Real Chromium | Runs on a **separate schedule** |
 
 The suites cover malformed inputs, crashes, timeout cleanup, range handling, path traversal,
-redaction, policy decisions, rate limits, backend parity, portfolio anomalies, webhook
-failures, and LiveView interactions. **Excellent volume and often thoughtful boundary
-coverage.**
+redaction, policy decisions, rate limits, backend parity, webhook failures, and LiveView
+interactions. **Excellent volume and often thoughtful boundary coverage.**
 
 **However:**
 
@@ -282,7 +257,7 @@ coverage.**
 > connections disconnected, and spawned processes raised.** Some noise is deliberately
 > induced, but **green output should not look indistinguishable from an incident.**
 
-## 9. The release story
+## 8. The release story
 
 **Even less mature.** The active roadmap says signing and hardened-runtime work is largely
 written but **not fully exercised**, notarization acceptance remains open, a clean-clone
@@ -300,7 +275,7 @@ front-door documentation are moving at different speeds.
 > is good, but the episode shows a recurring habit: **elaborate internal correctness precedes
 > the shortest real-world acceptance test.**
 
-## 10. Data evolution
+## 9. Data evolution
 
 **Another quiet threat.** Fifty-three migrations already record considerable feature churn,
 including creating and later dropping orchestration, wallet, and order-workflow structures.
@@ -321,7 +296,7 @@ baseline is needed **before the first cohort accumulates permanent local state.*
 > Otherwise, upgrades will **update binaries while leaving behavior frozen in yesterday's
 > files.**
 
-## 11. The interface
+## 10. The interface
 
 The interface code shows **strong visual intent** — custom industrial styling, WebGPU
 backgrounds, polished empty states, thoughtful keyboard behavior, detailed micro-interactions,
@@ -333,7 +308,6 @@ and graceful fallbacks. **That craft is real.**
   the dialpad remains **decorative**.
 - **Voice largely directs users elsewhere.**
 - **Explore includes stubs.**
-- **Trading remains safety-sensitive.**
 - **Sound Studio is impressive but unrelated to the core promise.**
 
 Continuous shaders, animation, long-lived LiveViews, audio, embedded browsers, and background
@@ -343,14 +317,14 @@ agents all compete for battery and memory, yet **long-session measurements are a
 > reliability.** BusterClaw's visual confidence exceeds its operational confidence,
 > encouraging users to explore precisely the areas that deserve caution.
 
-## 12. The remedy
+## 11. The remedy
 
 **The remedy is focus, not another subsystem.**
 
 1. **Freeze feature development.** Define BusterClaw as the durable local agent queue,
    canonical command surface, browser-and-terminal body, workspace, and trustworthy audit
    record. Make home, onboarding, README, and website tell that **same** story.
-2. **Put Phone, Trading, Voice, Studio, and unfinished Explore content behind explicit Labs
+2. **Put Phone, Voice, Studio, and unfinished Explore content behind explicit Labs
    controls** or remove them from release builds.
 3. **Convert pending refusals into a durable approval-and-replay workflow.**
 4. **Couple mutations to audit persistence**, add a **visible kill switch**, **disclose
@@ -363,7 +337,7 @@ agents all compete for battery and memory, yet **long-session measurements are a
    architectures.** Treat packaged smokes as **the product gate**, not an optional epilogue
    to source tests.
 
-## 13. The honest summary
+## 12. The honest summary
 
 > **BusterClaw is neither fraudulent nor incompetent. It is more concerning than that: it is
 > talented, inventive, self-aware, and dangerously undisciplined.**
@@ -379,7 +353,7 @@ future controls as present trust**.
 | Audience | Ready? |
 |---|---|
 | Technical beta among informed collaborators | **Acceptable with blunt disclosure** |
-| Strangers, financial workflows, unattended email, public distribution | **Not ready** |
+| Strangers, unattended email, public distribution | **Not ready** |
 
 > The path forward is **subtraction, exercised release evidence, and promises rewritten to
 > match what the code can guarantee today.**
@@ -388,7 +362,7 @@ future controls as present trust**.
 
 # Part II — Remediation roadmap
 
-**Status:** Proposed **2026-08-06** · **Phase 5 resolved by deletion 2026-08-08.** This roadmap answers the findings above.
+**Status:** Proposed **2026-08-06**. This roadmap answers the findings above.
 
 > `LAUNCH_ROADMAP.md` remains the authority for **Apple signing, notarization, packaging, and
 > public-release mechanics**; this document defines the **product, trust, architecture, and
@@ -426,9 +400,7 @@ acceptance evidence waits until the relevant phase exits.
       unrelated front doors.
 - [ ] **Add a single Labs capability flag** and move Phone, Voice, Sound Studio, unfinished
       Explore panels, and any decorative control behind it. Labs must **default off** for a
-      fresh production install. *(Trading left this list on 08-08 — deleted, not flagged.)*
-- [x] ~~**Keep read-only Trading visible only if** it is clearly labeled non-authoritative
-      and experimental.~~ **Resolved 08-08 by deletion.**
+      fresh production install.
 - [ ] **Remove or rewrite every claim** that says all commands are audited, refusals are
       actionable approvals, or the app contains no AI in a way that hides the required
       external agent.
@@ -621,52 +593,15 @@ acceptance evidence waits until the relevant phase exits.
 
 - Each top-level LiveView owns **navigation and composition**, not several business domains.
 - Agent chat has **explicit, testable state transitions** independent of HEEx rendering.
-  *(The trading workflow that shared this criterion was deleted 08-08; `StatusLive` and
-  `Agent.Chat` remain — the two largest extractions, and now the only ones.)*
+  *(`StatusLive` and `Agent.Chat` are the two largest extractions, and since 08-08 the only
+  ones.)*
 - **No known security or durability path relies on an ignored return** without a documented
   best-effort contract.
 - **The largest files cannot regrow unnoticed in CI.**
 
 ---
 
-## Phase 5 — Contain or rebuild Trading — **RESOLVED BY DELETION 2026-08-08**
-
-> **The decision gate demanded one of two honest products: read-only research, or
-> controlled execution with an application-owned broker boundary. It said "do not
-> keep a halfway state indefinitely."**
->
-> The operator took a third option the phase did not offer and **deleted the
-> surface** (`293f47f`), together with Portfolio, MarketData, Watchlist and Chart
-> Build — which could not survive it, having no writer or no UI of their own.
-
-Every exit criterion is met, though not in the way the phase imagined:
-
-- **No model-generated number silently becomes authoritative financial history** —
-  there is no financial history.
-- **No order reaches a broker through free-form model prose** — no order reaches a
-  broker.
-
-**What is worth carrying to the next money-shaped surface,** because it was learned
-the expensive way and is not specific to Robinhood:
-
-1. **Transcription is the risk, not judgement.** The one measured failure on that
-   surface was *silent fabrication* — a cheap model invented a broker answer rather
-   than erroring. A read that fabricates half the time is worse than a read that
-   costs more.
-2. **A display convention used as a key will collide.** Last-four was the account
-   identity in 42 places.
-3. **Irreversibility asymmetry decides the design.** The ledger was durable because
-   the broker published no history; the bar cache was disposable because a lost bar
-   is one tool call away. *Which half a datum falls in should decide its schema
-   before anything else does.*
-4. **A checkbox in an archived roadmap is a claim about the past.** The archived
-   trading review recorded OAuth, PKCE and HMAC account keys as done. None of it
-   was ever in the tree.
-
-**Do not treat this phase as reopenable.** If a financial surface returns, it starts
-from requirements, not from this document.
-
-## Phase 6 — Make the packaged application the tested product
+## Phase 5 — Make the packaged application the tested product
 
 > **Priority: P1.** This phase **consumes** the detailed Apple work in `LAUNCH_ROADMAP.md`
 > rather than duplicating it.
@@ -700,7 +635,7 @@ from requirements, not from this document.
 
 ---
 
-## Phase 7 — Make failures supportable and public release measurable
+## Phase 6 — Make failures supportable and public release measurable
 
 > **Priority: P2** for a private beta; **mandatory** for unrestricted public distribution.
 
@@ -745,25 +680,24 @@ from requirements, not from this document.
 |---|---|---|
 | **M0 — Honest internal build** | Phase 0 | Developer only |
 | **M1 — Controlled private beta** | Phases 0–3 plus G-34/G-35 | Named technical collaborators with direct support |
-| **M2 — Focused release candidate** | Phases 0–6 | Named external testers on supported Macs |
-| **M3 — Public download** | Phases 0–7 and the complete `LAUNCH_ROADMAP.md` public gate | Unrestricted users |
+| **M2 — Focused release candidate** | Phases 0–5 | Named external testers on supported Macs |
+| **M3 — Public download** | Phases 0–6 and the complete `LAUNCH_ROADMAP.md` public gate | Unrestricted users |
 
 ## Finding-to-phase map
 
 | Review finding | Primary response |
 |---|---|
 | Product has no single center | **Phase 0** |
-| Unfinished surfaces look production-ready | **Phases 0 and 5** |
+| Unfinished surfaces look production-ready | **Phase 0** |
 | Pending approvals are an in-memory stub | **Phase 1.1** |
 | Audit claims exceed best-effort persistence | **Phase 1.2** |
 | Permission bypass and kill switch are hidden | **Phase 1.3** |
 | Command classification and prompt injection are under-tested | **Phase 2** |
 | Seeded defaults never upgrade | **Phase 3** |
 | Giant LiveViews and ignored returns amplify risk | **Phase 4** |
-| Models remain in the financial data and order paths | **Phase 5** |
-| Source tests outrun artifact evidence | **Phase 6** |
-| Green tests contain operationally alarming noise | **Phase 7** |
-| Public failures are invisible and unsupported | **Phase 7** |
+| Source tests outrun artifact evidence | **Phase 5** |
+| Green tests contain operationally alarming noise | **Phase 6** |
+| Public failures are invisible and unsupported | **Phase 6** |
 
 ## Completion gate for every phase
 

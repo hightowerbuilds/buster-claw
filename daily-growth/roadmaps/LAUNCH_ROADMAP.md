@@ -1149,12 +1149,18 @@ what a money surface costs to hold — **not** as a to-do:
    done. **None of it was ever in the code** — verified 08-03, and worth
    remembering as the sharpest instance of a checkbox outrunning a tree.
 
+4. **Irreversibility asymmetry decided the design, and was noticed too late.** The
+   ledger had to be durable because the broker published no history; the bar cache
+   was disposable because a lost bar is one tool call away. **Which half a datum
+   falls in should decide its schema before anything else does.**
+
 **The generalisable lesson, which outlives the surface:** a checkbox in an
 archived roadmap is a claim about the past, and the tree is the only authority on
 the present. Finding #3 was found by grepping, not by reading the roadmap.
 
-Full detail in `daily-growth/MM-DD-YY-Summary/08-08-26-summary.md` and in
-`BUSTERCLAW_CRITICAL_REVIEW.md` §7, which is preserved as written.
+Full detail in `daily-growth/MM-DD-YY-Summary/08-08-26-summary.md`. The trading
+sections of `BUSTERCLAW_CRITICAL_REVIEW.md` were excised on 08-08 with the
+surface itself; what they taught is recorded here.
 
 ---
 
