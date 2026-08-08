@@ -25,12 +25,12 @@ defmodule BusterClawWeb.Explore.Registry do
   # because it took a search to find, and someone once concluded it did not
   # exist and wrote a second, weaker copy of it.
   @command_stats %{
-    total: 166,
-    read: 68,
+    total: 175,
+    read: 74,
     trigger: 17,
-    mutate: 81,
-    safe: 74,
-    restricted: 92,
+    mutate: 84,
+    safe: 80,
+    restricted: 95,
     gated: 20
   }
 

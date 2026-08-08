@@ -22,6 +22,7 @@ defmodule BusterClaw.Commands.Catalog do
     Library,
     Notify,
     Orchestration,
+    Sound,
     Telephony,
     Web
   }
@@ -38,5 +39,6 @@ defmodule BusterClaw.Commands.Catalog do
         Finance.entries() ++
         Telephony.entries() ++
         Notify.entries() ++
+        Sound.entries() ++
         Orchestration.entries()
 end

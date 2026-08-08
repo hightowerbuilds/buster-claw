@@ -132,6 +132,25 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     #   The model needs the names to write `$secret.<name>` in a fill at all, so
     #   this is the minimum visibility the reference design requires. Read-only;
     #   nothing outbound, nothing irreversible.
+    #
+    #   sound_list / sound_routes / sound_sources / sound_probe (added 08-08,
+    #   STUDIO_ROADMAP Part I Phase 0) — the read half of the Studio surface.
+    #   They list the sound library's two layers, the event routing table, and
+    #   the studio's imported clips, and read one named file's header/samples to
+    #   report format, duration and peak. Names are basenames allowlisted
+    #   against a directory listing, so nothing outside `sounds/` is reachable.
+    #   Nothing here writes a file, changes a route, or plays anything.
+    #
+    #   sound_transcript_search / sound_transcript_words / sound_corpus /
+    #   sound_index_list / sound_index_words / sound_index_search (added 08-08,
+    #   STUDIO_ROADMAP Part III) — the cut-up read surface. The transcript three
+    #   read the `transcript` column of telephony events the operator already
+    #   received and report where the audio lives (a Library-relative path, never
+    #   an absolute one, and never file contents). The index three read JSON word
+    #   indexes under `sounds/studio/index/`, gated to basenames by the same
+    #   allowlist. Nothing outbound, nothing written; the writing cut-up verbs
+    #   (sound_index_import, sound_index_delete, sound_assemble) are :restricted
+    #   and deliberately absent from this list.
     @safe_tier ~w(
       activity_report
       agent_run_status
@@ -198,6 +217,16 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       shift_stop
       skill_suggestions
       slides_get
+      sound_corpus
+      sound_index_list
+      sound_index_search
+      sound_index_words
+      sound_list
+      sound_probe
+      sound_routes
+      sound_sources
+      sound_transcript_search
+      sound_transcript_words
       tasks_get
       tasks_list
       terminal_command_list

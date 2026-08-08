@@ -489,6 +489,21 @@ defmodule BusterClaw.Commands do
   defdelegate notify_snooze(args), to: BusterClaw.Commands.Notify
   defdelegate notify_dismiss(args), to: BusterClaw.Commands.Notify
   defdelegate notify_delete(args), to: BusterClaw.Commands.Notify
+  # Sound library + Studio (reads)
+  defdelegate sound_list(args \\ %{}), to: BusterClaw.Commands.Sound
+  defdelegate sound_routes(args \\ %{}), to: BusterClaw.Commands.Sound
+  defdelegate sound_sources(args \\ %{}), to: BusterClaw.Commands.Sound
+  defdelegate sound_probe(args), to: BusterClaw.Commands.Sound
+  # Cut-up: transcripts (no timings), word indexes (timings), assembly
+  defdelegate sound_transcript_search(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_transcript_words(args \\ %{}), to: BusterClaw.Commands.Sound
+  defdelegate sound_corpus(args \\ %{}), to: BusterClaw.Commands.Sound
+  defdelegate sound_index_list(args \\ %{}), to: BusterClaw.Commands.Sound
+  defdelegate sound_index_words(args \\ %{}), to: BusterClaw.Commands.Sound
+  defdelegate sound_index_search(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_index_import(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_index_delete(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_assemble(args), to: BusterClaw.Commands.Sound
   # Google Workspace
   defdelegate google_account_list(args \\ %{}), to: BusterClaw.Commands.Google
   defdelegate google_account_get(args), to: BusterClaw.Commands.Google
