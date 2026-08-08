@@ -141,10 +141,34 @@ defmodule BusterClaw.WorkspaceTest do
       Application.put_env(:buster_claw, :workspace_root, root)
       Application.put_env(:buster_claw, :library_root, Path.join(root, "library"))
 
+      # `WorkspaceCLI.ensure/0` writes the `buster-claw` launcher only if it can
+      # find a CLI to point at, and its last fallback is `./buster-claw` in the
+      # cwd — a GITIGNORED escript build artifact. So these tests passed on a
+      # machine that had run `mix escript.build` and failed on a clean clone,
+      # which is the worst way for an assertion to be environment-dependent: it
+      # is green for whoever wrote it.
+      #
+      # Point the documented env seam at a real file instead. The launcher path
+      # is now decided by the test rather than by whether someone happened to
+      # build an escript, and `ensure/0` is still asserted to write it.
+      # Outside `root`: anything inside it would be an undeclared entry and trip
+      # the registry guard two tests down.
+      cli = root <> "-cli"
+      File.write!(cli, "#!/bin/sh\nexit 0\n")
+      File.chmod!(cli, 0o755)
+      prev_cli = System.get_env("BUSTER_CLAW_CLI_PATH")
+      System.put_env("BUSTER_CLAW_CLI_PATH", cli)
+
       on_exit(fn ->
         Application.put_env(:buster_claw, :workspace_root, prev_ws)
         Application.put_env(:buster_claw, :library_root, prev_lib)
+
+        if prev_cli,
+          do: System.put_env("BUSTER_CLAW_CLI_PATH", prev_cli),
+          else: System.delete_env("BUSTER_CLAW_CLI_PATH")
+
         File.rm_rf(root)
+        File.rm_rf(cli)
       end)
 
       {:ok, root: root}
