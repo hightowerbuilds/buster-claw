@@ -480,4 +480,55 @@ defmodule BusterClawWeb.Status.Chat do
     "error" => :error
   }
   def history_role(role), do: Map.get(@history_roles, role, :assistant)
+
+  # Open a fresh conversation and make it active. Every chat assign is reset
+  # explicitly rather than by re-running `init_chats/1`, because the new
+  # conversation has no history to replay and a reset stream is cheaper than a
+  # round trip that finds nothing.
+  def open_new_chat(socket) do
+    {:ok, conv} = Conversations.create()
+    if connected?(socket), do: Chat.subscribe(conv.id)
+
+    socket
+    |> assign(:chats, socket.assigns.chats ++ [to_chat_tab(conv)])
+    |> assign(:active_chat, conv.id)
+    |> assign(:chat_running, false)
+    |> assign(:chat_steerable, steerable?(conv.id))
+    |> assign(:chat_thinking, nil)
+    |> assign(:chat_queue, [])
+    |> stream(:chat_messages, [], reset: true)
+    |> assign(:chat_seq, 0)
+    |> assign(:chat_svgs, [])
+    |> assign(:svg_seq, 0)
+    |> assign(:zoomed_id, nil)
+  end
+
+  # Close a conversation, stop its process, and decide what the user looks at
+  # next. There is always at least one chat open — closing the last one opens a
+  # fresh one rather than leaving an empty surface.
+  def close_chat(socket, id) do
+    Chat.stop(id)
+    Conversations.close(id)
+    # Drop the subscription to the now-closed conversation's topic so its future
+    # broadcasts (if any) no longer reach this LiveView.
+    if connected?(socket),
+      do: Phoenix.PubSub.unsubscribe(BusterClaw.PubSub, Chat.topic(id))
+
+    remaining = Enum.reject(socket.assigns.chats, &(&1.id == id))
+
+    cond do
+      # Always keep at least one chat open.
+      remaining == [] ->
+        {:ok, conv} = Conversations.create()
+        if connected?(socket), do: Chat.subscribe(conv.id)
+        socket |> assign(:chats, [to_chat_tab(conv)]) |> activate_chat(conv.id)
+
+      # Closing the active tab → switch to the first remaining.
+      socket.assigns.active_chat == id ->
+        socket |> assign(:chats, remaining) |> activate_chat(hd(remaining).id)
+
+      true ->
+        assign(socket, :chats, remaining)
+    end
+  end
 end

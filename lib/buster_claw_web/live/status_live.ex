@@ -4,11 +4,13 @@ defmodule BusterClawWeb.StatusLive do
   # The chat surface — a third of this file until 08-08 — imported rather than
   # aliased so every call site below reads as it did before the split.
   import BusterClawWeb.Status.Chat
+  import BusterClawWeb.Status.Comms
+  import BusterClawWeb.Status.Studio
+  import BusterClawWeb.Status.Weather
 
   require Logger
 
   alias BusterClaw.Agent.Chat
-  alias BusterClaw.Agent.Conversations
   alias BusterClaw.Appearance
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
@@ -131,98 +133,6 @@ defmodule BusterClawWeb.StatusLive do
      |> then(fn s -> if connected?(s), do: mount_weather(s), else: s end)}
   end
 
-  # The gate, split into the part with a person behind it and the part without.
-  # Both halves are rendered — see `TrustedContactsPanel` for why omitting the
-  # orphans would understate the trust surface.
-  #
-  # Trust is read from the policy files on every load rather than cached in the
-  # socket, because this tab is not the only writer: the `/phone` view, the
-  # `phone_trusted_*` commands, and the agent editing the markdown directly all
-  # move the same gate.
-  defp load_trust(socket) do
-    people = Enum.filter(Contacts.list_contacts(), &Contacts.email_trusted?/1)
-
-    socket
-    |> assign(:trusted_people, people)
-    |> assign(:trusted_entries, Contacts.orphan_entries().emails)
-  end
-
-  # The corner-widget "Contacts" tab is a comms hub: recent phone activity plus
-  # the contact list (with a trusted marker) and per-person actions. Both are
-  # pre-shaped here so HomeWidget stays presentational.
-  defp load_comms(socket) do
-    contacts = Contacts.list_contacts()
-    names = Contacts.by_phone(contacts)
-
-    people =
-      Enum.map(contacts, fn c ->
-        %{id: c.id, name: c.name, phone: c.phone, email: c.email, trusted?: Contacts.trusted?(c)}
-      end)
-
-    activity = Enum.map(Telephony.list_events(limit: 6), &activity_row(&1, names))
-
-    socket
-    |> assign(:comms_contacts, people)
-    |> assign(:phone_activity, activity)
-  end
-
-  # Shape one telephony event into a compact widget row: the other party's name
-  # (or bare number), a direction mark + human title, a one-line snippet, and a
-  # relative timestamp.
-  defp activity_row(event, names) do
-    number = Telephony.counterparty(event)
-
-    label =
-      case Map.get(names, number) do
-        %{name: name} -> name
-        _ -> number || "Unknown"
-      end
-
-    %{
-      id: event.id,
-      label: label,
-      mark: if(event.direction == "outbound", do: "↗", else: "↙"),
-      title: "#{String.capitalize(event.direction)} #{kind_label(event.kind)}",
-      snippet: activity_snippet(event),
-      when: relative_time(event.occurred_at)
-    }
-  end
-
-  defp kind_label("voicemail"), do: "voicemail"
-  defp kind_label("sms"), do: "text"
-  defp kind_label("call"), do: "call"
-  defp kind_label(other), do: other
-
-  defp activity_snippet(%{kind: "sms", body: body}) when is_binary(body), do: snip(body)
-
-  defp activity_snippet(%{kind: "voicemail", transcript: t}) when is_binary(t) and t != "",
-    do: snip(t)
-
-  defp activity_snippet(%{kind: "voicemail"}), do: "voicemail"
-  defp activity_snippet(%{kind: "call"}), do: "call"
-  defp activity_snippet(_), do: ""
-
-  defp snip(text) do
-    text = String.trim(text)
-    if String.length(text) > 60, do: String.slice(text, 0, 60) <> "…", else: text
-  end
-
-  # A coarse relative timestamp for the activity feed ("3m", "2h", "5d"); older
-  # than a week falls back to a short date. occurred_at is UTC; so is now/0.
-  defp relative_time(nil), do: ""
-
-  defp relative_time(%DateTime{} = dt) do
-    seconds = DateTime.diff(now(), dt, :second)
-
-    cond do
-      seconds < 60 -> "now"
-      seconds < 3600 -> "#{div(seconds, 60)}m"
-      seconds < 86_400 -> "#{div(seconds, 3600)}h"
-      seconds < 604_800 -> "#{div(seconds, 86_400)}d"
-      true -> Elixir.Calendar.strftime(dt, "%b %-d")
-    end
-  end
-
   # --- Notify widget ---------------------------------------------------------
 
   defp load_notifications(socket), do: assign(socket, :notifications, Notifications.upcoming())
@@ -236,8 +146,6 @@ defmodule BusterClawWeb.StatusLive do
   # Timer/alarm/reminder wall-clock arithmetic lives in
   # `BusterClaw.Notifications.Schedule` — pure, and extracted 08-03 so the
   # next-occurrence and DST cases can be asserted without driving a mount.
-
-  defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   @impl true
   def handle_event("toggle_add_contact", _params, socket) do
@@ -551,24 +459,7 @@ defmodule BusterClawWeb.StatusLive do
     do: {:noreply, activate_chat(socket, id)}
 
   def handle_event("new_chat", _params, socket) do
-    {:ok, conv} = Conversations.create()
-    if connected?(socket), do: Chat.subscribe(conv.id)
-
-    socket =
-      socket
-      |> assign(:chats, socket.assigns.chats ++ [to_chat_tab(conv)])
-      |> assign(:active_chat, conv.id)
-      |> assign(:chat_running, false)
-      |> assign(:chat_steerable, steerable?(conv.id))
-      |> assign(:chat_thinking, nil)
-      |> assign(:chat_queue, [])
-      |> stream(:chat_messages, [], reset: true)
-      |> assign(:chat_seq, 0)
-      |> assign(:chat_svgs, [])
-      |> assign(:svg_seq, 0)
-      |> assign(:zoomed_id, nil)
-
-    {:noreply, socket}
+    {:noreply, open_new_chat(socket)}
   end
 
   # Open / close / page the full-screen SVG viewer modal. `@zoomed_id` is the id of
@@ -602,32 +493,7 @@ defmodule BusterClawWeb.StatusLive do
   def handle_event("zoom_key", _params, socket), do: {:noreply, socket}
 
   def handle_event("close_chat", %{"id" => id}, socket) do
-    Chat.stop(id)
-    Conversations.close(id)
-    # Drop the subscription to the now-closed conversation's topic so its future
-    # broadcasts (if any) no longer reach this LiveView.
-    if connected?(socket),
-      do: Phoenix.PubSub.unsubscribe(BusterClaw.PubSub, Chat.topic(id))
-
-    remaining = Enum.reject(socket.assigns.chats, &(&1.id == id))
-
-    socket =
-      cond do
-        # Always keep at least one chat open.
-        remaining == [] ->
-          {:ok, conv} = Conversations.create()
-          if connected?(socket), do: Chat.subscribe(conv.id)
-          socket |> assign(:chats, [to_chat_tab(conv)]) |> activate_chat(conv.id)
-
-        # Closing the active tab → switch to the first remaining.
-        socket.assigns.active_chat == id ->
-          socket |> assign(:chats, remaining) |> activate_chat(hd(remaining).id)
-
-        true ->
-          assign(socket, :chats, remaining)
-      end
-
-    {:noreply, socket}
+    {:noreply, close_chat(socket, id)}
   end
 
   @impl true
@@ -757,156 +623,6 @@ defmodule BusterClawWeb.StatusLive do
 
   def handle_async(:weather, {:exit, reason}, socket) do
     {:noreply, assign(socket, :weather, {:error, {:exit, reason}})}
-  end
-
-  # Fetch off the LiveView process; a slow weather API must never stall the
-  # homepage. No location yet → show the form instead of spawning a fetch; a
-  # loaded map is kept (Weather.current/0 handles staleness via its own TTL).
-  defp load_weather(socket) do
-    cond do
-      is_nil(Weather.location()) ->
-        assign(socket, :weather_form, true)
-
-      is_map(socket.assigns.weather) ->
-        socket
-
-      true ->
-        socket
-        |> assign(:weather, :loading)
-        |> start_async(:weather, fn -> Weather.current() end)
-    end
-  end
-
-  # On connect, populate the default Time & Place widget tab and, when the
-  # background is in weather mode, the sky. Both read the TTL-cached Weather and
-  # both would start_async(:weather); the branch keeps exactly one of them from
-  # firing so two tasks never race on the same async key. In weather mode
-  # `maybe_fetch_sky/1` covers both surfaces (its result also lands in `@weather`
-  # via `handle_async/3`); otherwise `load_weather/1` just fills the widget.
-  defp mount_weather(socket) do
-    if socket.assigns.home_bg.mode == "weather" do
-      maybe_fetch_sky(socket)
-    else
-      load_weather(socket)
-    end
-  end
-
-  # The weather-shader background needs real conditions whether or not the
-  # widget's Time & Place tab is open: when the homepage background is in
-  # weather mode and a location is set, (re)fetch. Unlike load_weather/1 this
-  # refetches even when conditions are already loaded (the :sky_refresh tick),
-  # but keeps the loaded map on screen instead of flashing :loading.
-  defp maybe_fetch_sky(socket) do
-    if socket.assigns.home_bg.mode == "weather" and not is_nil(Weather.location()) do
-      socket
-      |> then(fn s ->
-        if is_map(s.assigns.weather), do: s, else: assign(s, :weather, :loading)
-      end)
-      |> start_async(:weather, fn -> Weather.current() end)
-    else
-      socket
-    end
-  end
-
-  # Hand the SmokeBackground hook the real sky: condition code plus wind/cloud,
-  # sunrise/sunset as day-fractions, and the location's UTC offset (the hook
-  # derives the place's live time-of-day from it each frame). Skipped when the
-  # conditions predate the sunrise/sunset fields.
-  defp push_sky(socket) do
-    case socket.assigns.weather do
-      %{sunrise_frac: sr, sunset_frac: ss} = w when is_number(sr) and is_number(ss) ->
-        push_event(socket, "bc:sky", %{
-          code: w.code,
-          wind_mph: w.wind_mph,
-          cloud_pct: w.cloud_pct,
-          sunrise_frac: sr,
-          sunset_frac: ss,
-          utc_offset: w.utc_offset
-        })
-
-      _incomplete ->
-        socket
-    end
-  end
-
-  # ---------------------------------------------------------------------------
-  # Arranger history
-  # ---------------------------------------------------------------------------
-
-  # Deep enough for a working session, bounded because these are whole
-  # arrangements and this LiveView is long-lived.
-  @studio_history_limit 50
-
-  defp reset_studio_history(socket) do
-    socket
-    |> assign(:studio_clip, nil)
-    |> assign(:studio_undo, [])
-    |> assign(:studio_redo, [])
-  end
-
-  defp push_studio_history(socket, %StudioMix{} = previous) do
-    socket
-    |> assign(
-      :studio_undo,
-      Enum.take([previous | socket.assigns.studio_undo], @studio_history_limit)
-    )
-    # A new edit after undoing abandons the redo branch — the standard contract,
-    # and the alternative (keeping it) lets redo overwrite work done since.
-    |> assign(:studio_redo, [])
-  end
-
-  # Undo and redo are the same move in opposite directions: pop the source
-  # stack, put the CURRENT state on the other one, write the popped state back.
-  defp step_history(socket, from_key, to_key) do
-    with [previous | rest] <- socket.assigns[from_key],
-         {:ok, current} <- open_mix(socket) do
-      StudioMix.save(previous)
-      send_update(BusterClawWeb.SoundStudioComponent, id: "home-studio")
-
-      socket
-      |> assign(from_key, rest)
-      |> assign(to_key, Enum.take([current | socket.assigns[to_key]], @studio_history_limit))
-      # The selected clip may not exist in the state just restored.
-      |> assign(:studio_clip, nil)
-    else
-      _ -> socket
-    end
-  end
-
-  defp open_mix(socket) do
-    case socket.assigns.studio_source do
-      "mix:" <> name -> StudioMix.load(name)
-      _ -> {:error, :no_mix}
-    end
-  end
-
-  # Load, apply, save, and record the previous state for undo — the one path
-  # every keyboard-driven arrangement change goes through.
-  defp mutate_open_mix(socket, fun) do
-    case open_mix(socket) do
-      {:ok, mix} ->
-        updated = fun.(mix)
-
-        if updated == mix do
-          socket
-        else
-          StudioMix.save(updated)
-          send_update(BusterClawWeb.SoundStudioComponent, id: "home-studio")
-          push_studio_history(socket, mix)
-        end
-
-      {:error, _reason} ->
-        socket
-    end
-  end
-
-  defp selected_clip(socket) do
-    with id when is_binary(id) <- socket.assigns.studio_clip,
-         {:ok, mix} <- open_mix(socket) do
-      mix |> StudioMix.clips() |> Enum.find_value(fn {_t, c} -> if c.id == id, do: c end)
-    else
-      _ -> nil
-    end
   end
 
   defp switch_home_tab(socket, tab), do: assign(socket, :home_tab, tab)
