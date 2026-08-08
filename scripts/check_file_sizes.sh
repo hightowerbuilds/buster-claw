@@ -115,15 +115,20 @@ check lib/buster_claw_web/live/settings_live.ex               936 FROZEN
 # transition sites and no diagram anywhere. Frozen so it cannot gain a twelfth.
 check lib/buster_claw/agent/chat.ex                          1376 FROZEN
 
-# Phase 7. A 657-line markdown heredoc inside markdown/0. It is a document.
+# Phase 7, DONE 08-08-26: 758 -> 146. The 657-line heredoc is now
+# `introduction/*.md`, composed at compile time.
 #
-# HELD, not FROZEN, and the first run of this script is why: it tripped within
-# minutes on a two-line growth from four new commands landing in another
-# session. That growth is not rot — this file's length is a function of the
-# command surface, and the surface is supposed to grow. What is wrong with it is
-# that the prose lives in code at all, which shrinking it would not fix and
-# Phase 7's relocation would. So it gets room, and the roadmap keeps the ask.
-check lib/buster_claw/introduction.ex                         850 HELD
+# The cap fell 850 -> 161 in the same commit that earned it, which is the whole
+# point of the under-cap half of this script. Note what the old cap's comment
+# argued: this file grew with the command surface, so it was given room rather
+# than frozen. That is now moot — the part that grew is a markdown file, and
+# this module is just the composer.
+check lib/buster_claw/introduction.ex                         161 HELD
+
+# Phase 7's other half: three seed templates (162 lines of heredoc) became
+# `skill-seeds/*.md`, so the two skill seeds are now the same kind of file they
+# seed and can be validated as skills without being unpacked from a string.
+check lib/buster_claw/skills.ex                               379 HELD
 
 # Phase 1's fourth file, deliberately not split (15 small functions, reads fine).
 # Frozen instead: capping it was always the cheaper half of that decision.
