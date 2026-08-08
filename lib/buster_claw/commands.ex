@@ -613,6 +613,12 @@ defmodule BusterClaw.Commands do
   defdelegate skill_suggestions(args), to: BusterClaw.Commands.Skills
   defdelegate skill_suggestion_approve(args), to: BusterClaw.Commands.Skills
   defdelegate skill_suggestion_reject(args), to: BusterClaw.Commands.Skills
+  # Extensions
+  defdelegate extension_list(args \\ %{}), to: BusterClaw.Commands.Extensions
+  defdelegate extension_show(args), to: BusterClaw.Commands.Extensions
+  defdelegate extension_add_part(args), to: BusterClaw.Commands.Extensions
+  defdelegate extension_enable(args), to: BusterClaw.Commands.Extensions
+  defdelegate extension_disable(args), to: BusterClaw.Commands.Extensions
   # Orchestration (runtime, terminal, shift)
   defdelegate runtime_status(args \\ %{}), to: BusterClaw.Commands.Orchestration
   defdelegate activity_report(args \\ %{}), to: BusterClaw.Commands.Orchestration

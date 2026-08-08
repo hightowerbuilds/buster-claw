@@ -112,6 +112,14 @@ defmodule BusterClaw.Workspace do
       note: "Reusable procedures the agent can follow."
     },
     %{
+      name: "extensions",
+      kind: :dir,
+      tier: :core,
+      owner: BusterClaw.Extensions,
+      seed: {BusterClaw.Extensions, :ensure},
+      note: "Installed extensions' workspace side: parts attached after install."
+    },
+    %{
       name: ".claude",
       kind: :dir,
       tier: :core,

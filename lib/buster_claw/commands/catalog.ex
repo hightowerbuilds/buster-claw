@@ -14,6 +14,7 @@ defmodule BusterClaw.Commands.Catalog do
   """
 
   alias BusterClaw.Commands.Catalog.{
+    Extensions,
     Finance,
     Google,
     GoogleContacts,
@@ -38,5 +39,6 @@ defmodule BusterClaw.Commands.Catalog do
         Finance.entries() ++
         Telephony.entries() ++
         Notify.entries() ++
-        Orchestration.entries()
+        Orchestration.entries() ++
+        Extensions.entries()
 end

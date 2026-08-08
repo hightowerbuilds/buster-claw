@@ -158,6 +158,8 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       drive_get
       drive_list
       event_get
+      extension_list
+      extension_show
       event_list
       finance_filings
       finance_fundamentals
@@ -214,6 +216,17 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     # (Note lives out here because ~w() has no comment syntax; putting it inside
     # the sigil turns every word into a command name, which this very test
     # caught.)
+
+    # `extension_list` / `extension_show` reviewed and added 08-07: pure reads of
+    # local extension manifests — id, name, version, declared hosts, declared
+    # write verbs, on/off state. No outbound call, nothing irreversible, and no
+    # secret: a manifest is the *consent document*, written to be read.
+    #
+    # The one thing worth pausing on is that they disclose what an extension may
+    # reach, which is capability metadata. That is deliberately readable by any
+    # caller — an agent that cannot see it would have to guess whether an action
+    # is available, and guessing is what these commands exist to prevent.
+    # `extension_enable` is where capability actually changes, and it is gated.
 
     test "the safe tier is exactly the reviewed snapshot" do
       actual =
