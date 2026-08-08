@@ -19,8 +19,11 @@ defmodule BusterClawWeb.Explore.Registry do
   @site_url "https://busterclaw.lol"
   @ntf_url "https://notesthatfloat.com"
   # Kept literal to avoid making a presentation component depend on the command
-  # dispatch layer (which creates a compile cycle). The Explore contract test
-  # derives the same values from Commands.list_commands/0 and fails on drift.
+  # dispatch layer (which creates a compile cycle). The contract test derives
+  # the same values from Commands.list_commands/0 and fails on drift — it is
+  # `status_live_test.exs`, "the Command List tab is the atlas". Named here
+  # because it took a search to find, and someone once concluded it did not
+  # exist and wrote a second, weaker copy of it.
   @command_stats %{
     total: 166,
     read: 68,
