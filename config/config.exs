@@ -67,8 +67,13 @@ config :esbuild,
     # in <head>, before first paint, so the theme cannot flash. app.js is
     # `defer` and cannot do that. Making it a file rather than an inline
     # script is what let the CSP drop its nonce (08-03).
+    # browser_pages.js is a fourth entry point for the same reason theme.js is a
+    # third: the in-app browser's own pages (home/pages/workspace/history) are
+    # plain controller HTML, not LiveView, so they cannot reach app.js. Making
+    # their behaviour a file rather than inline <script> is what lets their
+    # scope finally carry `script-src 'self'` (08-08).
     args:
-      ~w(js/app.js js/chrome.js js/theme.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
+      ~w(js/app.js js/chrome.js js/theme.js js/browser_pages.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
   ]

@@ -153,64 +153,11 @@ defmodule BusterClawWeb.BrowserHomeController do
 
   defp script([]), do: ""
 
+  # The bookmark search / tag filter lives in `assets/js/browser_pages.js`, the
+  # bundle all four in-app browser pages share. It was an inline <script> until
+  # 08-08, which is the reason this whole scope carried no CSP.
   defp script(_entries) do
-    """
-    <script>
-    (function () {
-      var search = document.getElementById("search");
-      var clear = document.getElementById("clear");
-      var nomatch = document.getElementById("nomatch");
-      var cards = Array.prototype.slice.call(document.querySelectorAll(".card"));
-      var groups = Array.prototype.slice.call(document.querySelectorAll(".bmgroup"));
-      var filters = Array.prototype.slice.call(document.querySelectorAll(".filter"));
-      var activeTag = null;
-
-      function apply() {
-        var q = (search.value || "").trim().toLowerCase();
-        var shown = 0;
-        cards.forEach(function (card) {
-          var hay = card.getAttribute("data-search") || "";
-          var tags = (card.getAttribute("data-tags") || "").split(" ");
-          var matchText = !q || hay.indexOf(q) !== -1;
-          var matchTag = !activeTag || tags.indexOf(activeTag) !== -1;
-          var show = matchText && matchTag;
-          card.style.display = show ? "" : "none";
-          if (show) shown++;
-        });
-        // Hide a folder group (header + grid) when none of its cards survive.
-        groups.forEach(function (g) {
-          var visible = Array.prototype.some.call(
-            g.querySelectorAll(".card"),
-            function (c) { return c.style.display !== "none"; }
-          );
-          g.style.display = visible ? "" : "none";
-        });
-        nomatch.hidden = shown !== 0;
-        clear.hidden = !q && !activeTag;
-      }
-
-      search.addEventListener("input", apply);
-
-      filters.forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var tag = btn.getAttribute("data-tag");
-          activeTag = activeTag === tag ? null : tag;
-          filters.forEach(function (b) {
-            b.setAttribute("aria-pressed", b.getAttribute("data-tag") === activeTag ? "true" : "false");
-          });
-          apply();
-        });
-      });
-
-      clear.addEventListener("click", function () {
-        search.value = "";
-        activeTag = null;
-        filters.forEach(function (b) { b.setAttribute("aria-pressed", "false"); });
-        apply();
-      });
-    })();
-    </script>
-    """
+    ~s(<script src="/assets/js/browser_pages.js"></script>)
   end
 
   defp bookmarks_body([]) do

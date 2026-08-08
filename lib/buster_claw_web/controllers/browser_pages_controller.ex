@@ -62,17 +62,7 @@ defmodule BusterClawWeb.BrowserPagesController do
       <h1>Pages</h1>
       #{yours_section(yours)}
       #{bundled_section(bundled)}
-      <script>
-        // Record opened pages into the browser history (fires during navigation).
-        document.addEventListener("click", function (e) {
-          var a = e.target.closest("a[data-file]")
-          if (!a) return
-          try {
-            navigator.sendBeacon("/browser/history?url=" + encodeURIComponent(a.getAttribute("href")) +
-              "&label=" + encodeURIComponent(a.getAttribute("data-label")))
-          } catch (_e) {}
-        })
-      </script>
+      <script src="/assets/js/browser_pages.js"></script>
     </body>
     </html>
     """

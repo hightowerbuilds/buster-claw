@@ -11,6 +11,28 @@ defmodule BusterClawWeb.Router do
     plug BusterClawWeb.ContentSecurityPolicy
   end
 
+  # The in-app browser's own pages. Secure headers and CSP, and deliberately
+  # NOT the rest of the `:browser` pipeline:
+  #
+  #   * no `:accepts, ["html"]` — the same scope carries JSON/no-content POSTs
+  #     (history, tabs, bookmarks, screenshot, command),
+  #   * no `fetch_session` / `protect_from_forgery` — these pages are plain
+  #     controller HTML posting to loopback with no session, and adding CSRF
+  #     would break every form without adding a boundary the loopback-only
+  #     binding doesn't already give.
+  #
+  # It exists because until 08-08 this scope had no pipeline at all, so it
+  # received no CSP and no `nosniff` — the one part of the app that
+  # `ContentSecurityPolicy`'s `script-src 'self'` did not reach, on the surface
+  # that renders the most outside-shaped content. Applying it required first
+  # moving four inline <script> blocks and two inline `onsubmit=` handlers into
+  # `assets/js/browser_pages.js`; the header would otherwise have broken all
+  # four pages in prod (where CSP is enforced) and nowhere else.
+  pipeline :browser_page do
+    plug :put_secure_browser_headers
+    plug BusterClawWeb.ContentSecurityPolicy
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
   end
@@ -113,6 +135,8 @@ defmodule BusterClawWeb.Router do
   # Native chrome (toolbar) for the embedded browser's `browser-chrome` webview.
   # Raw HTML; loopback-only; drives the sibling content webview via Tauri commands.
   scope "/browser", BusterClawWeb do
+    pipe_through :browser_page
+
     get "/chrome", BrowserChromeController, :show
     get "/home", BrowserHomeController, :show
     get "/pages", BrowserPagesController, :show

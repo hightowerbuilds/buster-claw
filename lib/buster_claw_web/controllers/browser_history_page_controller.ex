@@ -104,6 +104,27 @@ defmodule BusterClawWeb.BrowserHistoryPageController do
              flex: 1 1 auto; min-width: 0; text-align: right; }
       .empty { color: rgba(244,241,234,.55); margin: 24px 0 0; max-width: 40rem; }
       .empty code { color: #ff4d1c; }
+
+      /* The shared confirm modal (assets/js/lib/claw_confirm.js). Its markup is
+         built with Tailwind utility classes, and this page has no Tailwind — so
+         style it through the data attributes it also carries, which are stable
+         because the interceptor selects on them. */
+      [data-claw-confirm-modal] { position: fixed; inset: 0; z-index: 100;
+                                  display: grid; place-items: center;
+                                  background: rgba(0,0,0,.5); }
+      [data-claw-confirm-modal] [role="alertdialog"] {
+        width: 20rem; max-width: 90vw; padding: 20px;
+        background: #121212; color: #f4f1ea;
+        border: 2px solid rgba(244,241,234,.85); }
+      [data-claw-confirm-modal] p { margin: 0; font-size: 14px; }
+      [data-claw-confirm-modal] div { display: flex; justify-content: flex-end;
+                                      gap: 8px; margin-top: 20px; }
+      [data-claw-confirm-modal] button { padding: 5px 12px; font-size: 14px;
+                                         cursor: pointer; background: transparent;
+                                         color: #f4f1ea;
+                                         border: 2px solid rgba(244,241,234,.85); }
+      [data-claw-ok] { background: #ff4d1c !important; border-color: #ff4d1c !important;
+                       color: #121212 !important; font-weight: 600; }
     </style>
     </head>
     <body>
@@ -119,6 +140,7 @@ defmodule BusterClawWeb.BrowserHistoryPageController do
                autocomplete="off" autofocus />
       </form>
       #{body(q, groups)}
+      <script src="/assets/js/browser_pages.js"></script>
     </body>
     </html>
     """
@@ -129,7 +151,7 @@ defmodule BusterClawWeb.BrowserHistoryPageController do
   defp clear_all_button(_groups) do
     """
     <form class="inline" method="post" action="/browser/history/clear"
-          onsubmit="return confirm('Clear ALL browsing history?')">
+          data-claw-confirm="Clear ALL browsing history?">
       <input type="hidden" name="scope" value="all" />
       <button class="danger" type="submit">Clear all</button>
     </form>
@@ -154,7 +176,7 @@ defmodule BusterClawWeb.BrowserHistoryPageController do
     <div class="dayhead">
       <h2>#{Calendar.strftime(date, "%A, %B %-d, %Y")}</h2>
       <form class="inline" method="post" action="/browser/history/clear"
-            onsubmit="return confirm('Clear history for #{Date.to_iso8601(date)}?')">
+            data-claw-confirm="Clear history for #{Date.to_iso8601(date)}?">
         <input type="hidden" name="scope" value="day" />
         <input type="hidden" name="date" value="#{Date.to_iso8601(date)}" />
         <button class="danger" type="submit">clear day</button>
