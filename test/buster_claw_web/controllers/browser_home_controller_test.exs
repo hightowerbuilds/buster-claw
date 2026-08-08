@@ -63,7 +63,7 @@ defmodule BusterClawWeb.BrowserHomeControllerTest do
     # The filter behaviour is a FILE, not an inline block — that is what lets
     # this scope carry `script-src 'self'`. An inline <script> here would pass
     # in dev (CSP report-only) and break the page in prod (enforced).
-    assert body =~ ~s(<script src="/assets/js/browser_pages.js"></script>)
+    assert body =~ ~s(src="/assets/js/browser_pages.js")
     refute body =~ "<script>"
   end
 

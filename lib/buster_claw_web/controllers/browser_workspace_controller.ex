@@ -4,92 +4,38 @@ defmodule BusterClawWeb.BrowserWorkspaceController do
   with `/`. Lists the folders/files under a workspace-relative path (the leading
   `/` is the workspace root), filtered by the trailing name. Folders drill in
   (link back here); files open via `/ws/file`. Dark-themed to match.
+
+  The markup lives in `BusterClawWeb.Browser.WorkspaceIndex`; this resolves the
+  path and does the listing.
   """
   use BusterClawWeb, :controller
 
   alias BusterClaw.FileManager
   alias BusterClaw.Library.Artifact
+  alias BusterClawWeb.Browser.WorkspaceIndex
 
   def show(conn, params) do
     conn
     |> put_resp_content_type("text/html")
-    |> send_resp(200, page(params["q"] || "/"))
+    |> send_resp(200, WorkspaceIndex.html(listing(params["q"] || "/")))
   end
 
-  defp page(q) do
+  defp listing(q) do
     ws = Artifact.workspace_root()
     {dir, prefix} = split(q)
-    abs_dir = abs_of(ws, dir)
 
-    listing =
-      case FileManager.list(abs_dir, ws) do
+    entries =
+      case FileManager.list(abs_of(ws, dir), ws) do
         {:ok, entries} ->
           entries
           |> Enum.filter(&prefix_match?(&1.name, prefix))
-          |> rows(ws, dir)
+          |> Enum.map(&%{name: &1.name, type: &1.type, rel: rel_of(ws, &1.path)})
 
-        {:error, _} ->
-          ~s(<p class="empty">That folder isn't in the workspace.</p>)
+        {:error, _reason} ->
+          :error
       end
 
-    """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Workspace</title>
-    <style>
-      * { box-sizing: border-box; }
-      html, body { margin: 0; height: 100%; }
-      body { background: #121212; color: #f4f1ea; padding: 32px 28px;
-             font: 15px/1.5 -apple-system, system-ui, sans-serif; }
-      .eyebrow { font: 700 11px/1 ui-monospace, monospace; letter-spacing: .12em;
-                 text-transform: uppercase; color: rgba(244,241,234,.5); }
-      h1 { margin: 6px 0 20px; font: 700 18px/1.3 ui-monospace, monospace; word-break: break-all; }
-      ul { list-style: none; margin: 0; padding: 0; max-width: 52rem; }
-      li { border-top: 1px solid rgba(244,241,234,.12); }
-      a { display: flex; align-items: center; gap: 10px; padding: 10px 4px;
-          color: #f4f1ea; text-decoration: none; }
-      a:hover { color: #ff4d1c; }
-      .ico { flex: 0 0 1.2em; opacity: .6; }
-      .empty { color: rgba(244,241,234,.55); }
-    </style>
-    </head>
-    <body>
-      <p class="eyebrow">Workspace</p>
-      <h1>#{escape(dir)}</h1>
-      #{listing}
-      <script src="/assets/js/browser_pages.js"></script>
-    </body>
-    </html>
-    """
-  end
-
-  defp rows(entries, ws, dir) do
-    parent =
-      if dir != "/" do
-        ~s(<li><a href="/browser/workspace?q=#{enc(parent_dir(dir))}"><span class="ico">&#8617;</span>..</a></li>)
-      else
-        ""
-      end
-
-    items =
-      Enum.map_join(entries, "\n", fn e ->
-        rel = rel_of(ws, e.path)
-
-        if e.type == :dir do
-          ~s(<li><a href="/browser/workspace?q=#{enc(rel <> "/")}"><span class="ico">&#128193;</span>#{escape(e.name)}</a></li>)
-        else
-          ~s(<li><a data-file data-label="#{escape(rel)}" href="/ws/file?path=#{enc(rel)}"><span class="ico">&#128196;</span>#{escape(e.name)}</a></li>)
-        end
-      end)
-
-    body = parent <> "\n" <> items
-
-    if String.trim(items) == "",
-      do: parent <> ~s(<p class="empty">Empty folder.</p>),
-      else: "<ul>#{body}</ul>"
+    %{dir: dir, entries: entries, parent: if(dir != "/", do: parent_dir(dir))}
   end
 
   # "/library/no" -> {"/library", "no"}; "/library/" -> {"/library", ""}; "/" -> {"/", ""}.
@@ -123,9 +69,4 @@ defmodule BusterClawWeb.BrowserWorkspaceController do
 
   defp prefix_match?(name, prefix),
     do: String.starts_with?(String.downcase(name), String.downcase(prefix))
-
-  defp enc(value), do: URI.encode_www_form(to_string(value))
-
-  defp escape(value),
-    do: value |> to_string() |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 end
