@@ -1,6 +1,12 @@
 # Scene3D — a 3D card the model can put in the chat
 
-**Scoped 08-08-26 · Status: SCOPED, not started.**
+**Scoped 08-08-26 · Status: PHASES 0-1 SHIPPED 08-08-26.**
+
+Phases 0 and 1 landed the same day they were scoped, built by four agents
+against the shared contract in `lib/buster_claw/scene3d/types.ex`. **148 unit
+tests + 9 end-to-end + 2 LiveView wiring; full `mix precommit` green at 2,356.**
+The one claim this document cannot make is that anyone has opened a running app
+and looked at a card — see the unchecked box in Phase 1.
 
 **What this is, in one line:** a second visual channel for the homepage chat where
 the model emits a **declarative 3D scene** — never code — which our renderer
@@ -39,11 +45,17 @@ sanitized SVG (`:345`), and `@max_chat_svgs 200` caps the session pool
 (`status_live.ex:27`). **An inline card is therefore new UI, not reuse.** This is
 the single biggest scoping correction in this document.
 
-**The house SVG doctrine is already written down.** `PortfolioChart`'s moduledoc:
-*"Server-rendered SVG. No charting dependency: the data already lives on the
-server, LiveView already re-renders, and the CSP forbids fetching a library
-anyway."* The operator declined `lightweight-charts` on 07-28. The same reasoning
-forecloses three.js here, independently of the WebGPU argument below.
+**The house SVG doctrine is written down — in a file that no longer exists.**
+`PortfolioChart`'s moduledoc read: *"Server-rendered SVG. No charting dependency:
+the data already lives on the server, LiveView already re-renders, and the CSP
+forbids fetching a library anyway."* The operator declined `lightweight-charts`
+on 07-28, and that reasoning forecloses three.js here independently of the
+WebGPU argument below. **But the module was deleted on 08-08 with the trading
+stack (`293f47f`)** — it is recoverable only at
+`git show 293f47f^:lib/buster_claw_web/components/portfolio_chart.ex` (moduledoc
+at :2-37). Scoping cited it as live; that was wrong. The doctrine still holds,
+it simply has no home in the tree any more, which makes `Scene3d.Svg` its
+successor rather than its imitator.
 
 **The model already authors GPU code — and that is *not* the model to copy.**
 `BusterClaw.Shaders` lets the agent write `<workspace>/shaders/<name>.wgsl`
@@ -72,9 +84,19 @@ declaratively... 'the model draws a canvas chart' means the model produces
 executable JavaScript."* That verdict is about **model-authored executable code**,
 not about pixels. It binds this feature too.
 
-**The palette convention exists and was reconciled against the `dataviz` method**
-(Chart Builder Phase 3, `9c12d24`): a validated 5-slot palette, snap-to-passing
-against the app ground. Scene colours are indices into it.
+**The palette convention exists, was reconciled against the `dataviz` method, and
+was also deleted on 08-08.** The validated 5-slot palette — hazard `#ff4407`,
+cyan `#00a1ce`, violet `#9417ff`, magenta `#e10095`, yellow `#ac9000` — lived in
+the `chart-builder` skill (`293f47f^:lib/buster_claw/skills.ex:638-664`) with its
+gates recorded: worst adjacent CVD ΔE 16.0, worst adjacent normal-vision ΔE 23.4,
+all five slots ≥ 3:1 on the dark ground. **The slot order is the colourblind-safety
+mechanism, not decoration.**
+
+> **This palette is now sole-sourced in `Scene3d.Svg`.** Real accessibility work
+> went into those five hexes and their ordering, the code that enforced it is
+> gone, and a 3D renderer is a strange place for it to live alone. If a second
+> surface ever needs series colours, promote it to a shared module rather than
+> copying the hexes — a copy is how the ordering guarantee quietly dies.
 
 ---
 
@@ -189,20 +211,20 @@ Phase 1 answers it for free by revealing how large real scenes actually get.
 *Deliberately shippable alone. This is the risky part; get it in front of the
 operator before any pixels exist.*
 
-- [ ] `BusterClaw.Scene3d` (`lib/buster_claw/scene3d.ex`): `extract/1` mirroring
+- [x] `BusterClaw.Scene3d` (`lib/buster_claw/scene3d.ex`): `extract/1` mirroring
   `SvgViewer.extract/1` (fenced ```` ```scene3d ````, fail-closed, byte cap —
   start at 32 KB, well under SVG's 100 KB since JSON is denser).
-- [ ] `validate/1` → `{:ok, scene}` | `{:error, reason}`. Typed, total, and
+- [x] `validate/1` → `{:ok, scene}` | `{:error, reason}`. Typed, total, and
   strict: unknown keys rejected, numbers finite and bounded, node count capped,
   nesting depth capped, palette index in range, label length capped.
-- [ ] The vocabulary itself: `camera` (orbit angles only, per decision 2),
+- [x] The vocabulary itself: `camera` (orbit angles only, per decision 2),
   `nodes` of `box` / `sphere` / `cylinder` / `plane` / `capsule` / `polyline` /
   `arrow`, each with `at` / `rotate` / `label` / `color`; plus the `grid` /
   `stack` / `ring` composition helpers of decision 6.
-- [ ] `expand/1`: composition helpers → a flat primitive list. Pure, and the
+- [x] `expand/1`: composition helpers → a flat primitive list. Pure, and the
   place the node cap is enforced *after* expansion (a small `grid` must not
   smuggle in 10,000 boxes).
-- [ ] Tests: a valid scene round-trips; every malformed shape fails closed with a
+- [x] Tests: a valid scene round-trips; every malformed shape fails closed with a
   named reason; expansion is bounded; a hostile scene (huge counts, deep
   nesting, NaN/Infinity, absurd coordinates) is refused without a crash.
 
@@ -212,25 +234,25 @@ naturally. **No rendering in this phase.**
 
 # Phase 1 — Project to SVG, render an inline card
 
-- [ ] `BusterClaw.Scene3d.Project`: camera basis from orbit angles, bounding-box
+- [x] `BusterClaw.Scene3d.Project`: camera basis from orbit angles, bounding-box
   auto-fit (decision 3), model→view→projection, backface cull, painter sort by
   face centroid (decision 7).
-- [ ] Tessellation for each primitive. Keep segment counts low and fixed — a
+- [x] Tessellation for each primitive. Keep segment counts low and fixed — a
   sphere at 16×8 is plenty for a chat card and keeps the polygon count sane.
-- [ ] SVG emit: flat-filled polygons from the palette (decision 4), edge strokes,
+- [x] SVG emit: flat-filled polygons from the palette (decision 4), edge strokes,
   billboarded labels drawn last (decision 5). Labels are the **only**
   model-controlled text and must be HTML-escaped.
-- [ ] Inline card in `chat_bubble/1` for `:assistant` (decision 8), plus reuse of
+- [x] Inline card in `chat_bubble/1` for `:assistant` (decision 8), plus reuse of
   `svg_modal/1` for click-to-zoom. Mirror the existing `svg_ids` assign shape so
   a message can carry several scenes.
-- [ ] Wire into `StatusLive` at the same four points the SVG channel uses,
+- [x] Wire into `StatusLive` at the same four points the SVG channel uses,
   including re-extraction in `load_chat_history/2` so scenes survive reload.
-- [ ] `guide/0` — the system-prompt appendix, carrying the SVG-vs-3D line from
+- [x] `guide/0` — the system-prompt appendix, carrying the SVG-vs-3D line from
   the open question above. Update `SvgViewer.guide/0` with the same line.
-- [ ] Tests: a scene in an assistant message renders a card; a malformed scene
+- [x] Tests: a scene in an assistant message renders a card; a malformed scene
   is dropped silently; scenes survive a history reload; a label containing
   `<script>` is escaped in the output.
-- [ ] Operator eyeballs it in the real app (operator runs the server — agent
+- [ ] **OPEN — the one unverified claim.** Operator eyeballs it in the real app (operator runs the server — agent
   tasks get SIGTERM'd, per `feedback_dev_server_run`).
 
 **Done when:** the model can put a labeled 3D diagram in the chat, it survives

@@ -13,6 +13,7 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Notifications.Schedule
   alias BusterClaw.Notifications.StudioMix
   alias BusterClaw.Runtime.Status
+  alias BusterClaw.Scene3d
   alias BusterClaw.Setup
   alias BusterClaw.SvgViewer
   alias BusterClaw.Telephony
@@ -675,10 +676,12 @@ defmodule BusterClawWeb.StatusLive do
     # appended inline as a persistent message.
     conv_id = socket.assigns.active_chat
 
-    # Start the conversation taught the SVG viewer vocabulary (idempotent — the
-    # guide is fixed at first start; a no-op once the process exists).
+    # Start the conversation taught both visual vocabularies (idempotent — the
+    # guides are fixed at first start; a no-op once the process exists). They
+    # ship together on purpose: each guide's first job is to say when the OTHER
+    # channel is the right one, so teaching one alone biases every choice.
     Chat.ensure_started(conv_id,
-      append_system_prompt: SvgViewer.guide(),
+      append_system_prompt: SvgViewer.guide() <> "\n\n" <> Scene3d.guide(),
       agent: BusterClaw.ModelPolicy.backend_for(:chat)
     )
 
@@ -981,23 +984,32 @@ defmodule BusterClawWeb.StatusLive do
       else: socket
   end
 
-  # Assistant replies may carry ```svg blocks: strip them from the spoken/shown
-  # bubble text and stash the drawings, tagging this message's bubble with their
-  # ids so it renders a "View drawing" link into the modal. An SVG-only reply
-  # still gets a bubble (text-less) so the drawing stays reachable.
+  # Assistant replies may carry ```svg and ```scene3d blocks: strip both from the
+  # spoken/shown bubble text and stash what they produced. Drawings become a
+  # "View drawing" link into the modal; scenes render INLINE in the bubble (the
+  # card is the message's point, not an attachment to it) while still joining the
+  # same modal pool, so paging walks every visual in the conversation.
+  #
+  # A scene's rendered SVG rides on the message rather than being looked up from
+  # the pool because bubbles render as stream items — a stream entry cannot join
+  # against a sibling assign at render time.
   defp apply_chat(socket, conv_id, {:message, %{role: :assistant, text: text}}) do
     if conv_id == socket.assigns.active_chat do
       {clean, svgs} = SvgViewer.extract(text)
+      {clean, scene_svgs} = extract_scenes(clean)
       base = socket.assigns.svg_seq
-      socket = collect_svgs(socket, svgs)
+      socket = collect_svgs(socket, svgs ++ scene_svgs)
       svg_ids = svg_ids_for(base, svgs)
+      scenes = scenes_for(base + length(svgs), scene_svgs)
 
       cond do
         clean != "" ->
-          socket |> maybe_speak(:assistant, clean) |> push_msg(:assistant, clean, svg_ids)
+          socket
+          |> maybe_speak(:assistant, clean)
+          |> push_msg(:assistant, clean, svg_ids, nil, scenes)
 
-        svgs != [] ->
-          push_msg(socket, :assistant, "", svg_ids)
+        svgs != [] or scenes != [] ->
+          push_msg(socket, :assistant, "", svg_ids, nil, scenes)
 
         true ->
           socket
@@ -1028,6 +1040,37 @@ defmodule BusterClawWeb.StatusLive do
   # `svg_seq+1 .. svg_seq+n`), so a bubble can link straight to its own drawings.
   defp svg_ids_for(_base, []), do: []
   defp svg_ids_for(base, svgs), do: Enum.to_list((base + 1)..(base + length(svgs)))
+
+  # Pull ```scene3d blocks out of a reply and render each to SVG, dropping any
+  # that fail to validate. Failure is silent by design: a malformed scene costs
+  # the message nothing, exactly as a malformed ```svg block does. The cost of
+  # that choice is that a scene the model got wrong is indistinguishable from one
+  # it never sent — which is why `Scene3d.guide/0` carries the strict edges.
+  defp extract_scenes(text) do
+    {clean, bodies} = Scene3d.extract(text)
+    {clean, Enum.flat_map(bodies, &render_scene/1)}
+  end
+
+  defp render_scene(body) do
+    case Scene3d.render(body) do
+      {:ok, svg} ->
+        [svg]
+
+      {:error, reason} ->
+        Logger.info("scene3d block dropped: #{inspect(reason)}")
+        []
+    end
+  end
+
+  # The `%{id, svg}` entries a bubble renders inline, numbered in step with the
+  # modal pool so clicking a card opens the right slide.
+  defp scenes_for(_base, []), do: []
+
+  defp scenes_for(base, svgs) do
+    svgs
+    |> Enum.with_index(base + 1)
+    |> Enum.map(fn {svg, id} -> %{id: id, svg: svg} end)
+  end
 
   # Speak the model's replies aloud (client gates on the Voice toggle + desktop
   # app). Only `:assistant` text — never tool/meta/error lines. A turn emits one
@@ -1157,9 +1200,17 @@ defmodule BusterClawWeb.StatusLive do
     text |> String.trim() |> String.replace(~r/\s+/, " ") |> String.slice(0, 40)
   end
 
-  defp push_msg(socket, role, text, svg_ids \\ [], delivery \\ nil) do
+  defp push_msg(socket, role, text, svg_ids \\ [], delivery \\ nil, scenes \\ []) do
     seq = socket.assigns.chat_seq + 1
-    msg = %{id: seq, role: role, text: text, svg_ids: svg_ids, delivery: delivery}
+
+    msg = %{
+      id: seq,
+      role: role,
+      text: text,
+      svg_ids: svg_ids,
+      delivery: delivery,
+      scenes: scenes
+    }
 
     socket
     |> assign(:chat_seq, seq)
@@ -1211,17 +1262,24 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
-  # Restore the transcript AND the SVG viewer from the conversation's history:
-  # assistant rows are stored with their ```svg blocks intact, so re-extract them
-  # to (a) strip the raw markup from the bubble and (b) refill the SVG viewer. The
-  # bank thus reflects every SVG in the conversation and survives reload /
-  # tab-switch. It is NOT a saved gallery — the drawings only live as long as the
-  # chat's transcript does, so deleting the chat takes them with it.
+  # Restore the transcript AND the visual pool from the conversation's history:
+  # assistant rows are stored with their ```svg and ```scene3d blocks intact, so
+  # re-extract them to (a) strip the raw markup from the bubble, (b) refill the
+  # modal pool, and (c) re-render every scene. The pool thus reflects every
+  # visual in the conversation and survives reload / tab-switch. It is NOT a
+  # saved gallery — they live only as long as the chat's transcript does, so
+  # deleting the chat takes them with it.
+  #
+  # Scenes are re-rendered from their stored JSON rather than cached, which is
+  # what makes a renderer improvement apply retroactively to old conversations.
+  # It also means a scene that rendered once will render again — the pipeline is
+  # pure, so history replay cannot diverge from what the user first saw.
   defp load_chat_history(socket, conv_id) do
     # Reading-order entries built by prepending (++ in the reduce would be
     # quadratic over the 200-row transcript) then reversing. Each assistant entry
-    # keeps the drawings pulled from its ```svg blocks, so its bubble can link to
-    # them; an SVG-only reply keeps a text-less bubble rather than vanishing.
+    # keeps the drawings and scenes pulled from its blocks, so its bubble can
+    # link to and render them; a visual-only reply keeps a text-less bubble
+    # rather than vanishing.
     entries =
       conv_id
       |> AgentTranscript.recent(limit: 200)
@@ -1229,33 +1287,41 @@ defmodule BusterClawWeb.StatusLive do
         case history_role(row.role) do
           :assistant ->
             {clean, block_svgs} = SvgViewer.extract(row.content)
+            {clean, scenes} = extract_scenes(clean)
 
             drawings =
               Enum.map(block_svgs, &(&1 |> SvgViewer.sanitize() |> SvgViewer.normalize()))
 
-            if clean == "" and drawings == [],
+            if clean == "" and drawings == [] and scenes == [],
               do: acc,
-              else: [%{role: :assistant, text: clean, drawings: drawings} | acc]
+              else: [
+                %{role: :assistant, text: clean, drawings: drawings, scenes: scenes} | acc
+              ]
 
           role ->
-            [%{role: role, text: row.content, drawings: []} | acc]
+            [%{role: role, text: row.content, drawings: [], scenes: []} | acc]
         end
       end)
       |> Enum.reverse()
 
-    # Number every drawing across the transcript (reading order), hand each
-    # message the ids of its own drawings, and build the flat modal pool in step.
+    # Number every visual across the transcript (reading order — drawings then
+    # scenes within a message, matching the live path), hand each message the ids
+    # of its own, and build the flat modal pool in step.
     {messages_rev, pool_rev, _next} =
       Enum.reduce(entries, {[], [], 1}, fn entry, {msgs, pool, next} ->
         n = length(entry.drawings)
         ids = if n == 0, do: [], else: Enum.to_list(next..(next + n - 1))
+        scenes = scenes_for(next + n - 1, entry.scenes)
 
         pool =
-          Enum.reduce(Enum.zip(ids, entry.drawings), pool, fn {id, svg}, p ->
-            [%{id: id, svg: svg} | p]
-          end)
+          Enum.reduce(
+            Enum.zip(ids, entry.drawings) ++ Enum.map(scenes, &{&1.id, &1.svg}),
+            pool,
+            fn {id, svg}, p -> [%{id: id, svg: svg} | p] end
+          )
 
-        {[%{role: entry.role, text: entry.text, svg_ids: ids} | msgs], pool, next + n}
+        msg = %{role: entry.role, text: entry.text, svg_ids: ids, scenes: scenes}
+        {[msg | msgs], pool, next + n + length(scenes)}
       end)
 
     messages =

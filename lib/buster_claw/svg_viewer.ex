@@ -13,8 +13,9 @@ defmodule BusterClaw.SvgViewer do
   handlers, `<foreignObject>`, and external references are stripped before it is
   ever stored or rendered.
 
-  The **real** backstop is the enforced app CSP (`script-src 'self' 'nonce-…'`,
-  enforced in prod — see `BusterClawWeb.ContentSecurityPolicy`): the browser
+  The **real** backstop is the enforced app CSP (`script-src 'self'`, enforced in
+  prod — see `BusterClawWeb.ContentSecurityPolicy`; the nonce this once cited was
+  dropped on 08-03, leaving a policy that allows no inline script at all): the browser
   refuses to run inline scripts, `on*` handlers, and `javascript:` URLs that
   reach the DOM regardless of what the regex misses. `sanitize/1` is hardened
   defense-in-depth on top of that, not the sole line — the SVG is kept verbatim

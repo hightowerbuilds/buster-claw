@@ -118,6 +118,25 @@ defmodule BusterClawWeb.StatusLiveTest do
     refute response =~ "No trusted senders"
   end
 
+  # Outbound telephony isn't wired, so these two buttons are inert. They carried a
+  # `title` only — a hover tooltip, which leaves the accessible name empty (the
+  # icons are decorative) and the "not built" state unreachable without a mouse.
+  # Same standing obligation as the phone keypad: gating was declined, so the
+  # disclosure has to hold up in place. See BUSTERCLAW_CRITICAL_REVIEW Phase 0.
+  test "inert Text/Call contact actions announce that they are not available", %{conn: conn} do
+    {:ok, _contact} = Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
+
+    {:ok, view, _html} = live(conn, ~p"/")
+    render_click(view, "select_widget_tab", %{"tab" => "contacts"})
+
+    assert has_element?(view, ~s(button[aria-label="Text Dana Printshop — not available yet"]))
+    assert has_element?(view, ~s(button[aria-label="Call Dana Printshop — not available yet"]))
+
+    # Disabled in fact, not only in styling.
+    assert has_element?(view, ~s(button[aria-label^="Text Dana"][disabled]))
+    assert has_element?(view, ~s(button[aria-label^="Call Dana"][disabled]))
+  end
+
   test "adds and removes a trusted contact from the home panel", %{conn: conn} do
     # Use an address that does NOT appear in the input placeholder text.
     contact = "dana@example.org"
@@ -275,6 +294,53 @@ defmodule BusterClawWeb.StatusLiveTest do
       )
 
       assert render(view) =~ "View drawing"
+    end
+
+    # A scene differs from a drawing in the one way that matters to the reader:
+    # it renders INLINE. These pin that difference, because a scene that quietly
+    # degraded into a "View drawing" link would still pass every other test.
+    test "a scene3d block in a reply renders an inline card", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      active = active_chat(view)
+
+      scene = ~s({"nodes": [{"kind": "box", "size": [1,1,1], "label": "Ingest"}]})
+
+      send(
+        view.pid,
+        {:agent_chat, active,
+         {:message, %{role: :assistant, text: "See the scene:\n```scene3d\n#{scene}\n```"}}}
+      )
+
+      html = render(view)
+      assert html =~ "See the scene:"
+      refute html =~ "```scene3d"
+      # The JSON must not leak into the bubble, and the SVG must be inline —
+      # not behind a link.
+      refute html =~ ~s("kind")
+      assert html =~ "3D scene"
+      assert html =~ "<svg"
+      assert html =~ "Ingest"
+      assert has_element?(view, ~s(button[phx-click="zoom_svg"] svg))
+    end
+
+    test "a malformed scene3d block costs the message nothing", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      active = active_chat(view)
+
+      send(
+        view.pid,
+        {:agent_chat, active,
+         {:message,
+          %{role: :assistant, text: "Still here.\n```scene3d\n{\"kind\": \"teapot\"}\n```"}}}
+      )
+
+      html = render(view)
+      # The text survives, the block is stripped, and no card appears. The
+      # failure is silent on purpose — see `extract_scenes/1`.
+      assert html =~ "Still here."
+      refute html =~ "```scene3d"
+      refute html =~ "teapot"
+      refute html =~ "3D scene"
     end
 
     test "New chat adds a tab and clears the panel", %{conn: conn} do
