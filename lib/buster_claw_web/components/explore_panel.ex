@@ -24,13 +24,13 @@ defmodule BusterClawWeb.ExplorePanel do
   # dispatch layer (which creates a compile cycle). The Explore contract test
   # derives the same values from Commands.list_commands/0 and fails on drift.
   @command_stats %{
-    total: 167,
-    read: 66,
+    total: 162,
+    read: 64,
     trigger: 17,
-    mutate: 84,
-    safe: 72,
-    restricted: 95,
-    gated: 21
+    mutate: 81,
+    safe: 70,
+    restricted: 92,
+    gated: 20
   }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in

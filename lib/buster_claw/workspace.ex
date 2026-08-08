@@ -112,14 +112,6 @@ defmodule BusterClaw.Workspace do
       note: "Reusable procedures the agent can follow."
     },
     %{
-      name: "extensions",
-      kind: :dir,
-      tier: :core,
-      owner: BusterClaw.Extensions,
-      seed: {BusterClaw.Extensions, :ensure},
-      note: "Installed extensions' workspace side: parts attached after install."
-    },
-    %{
       name: ".claude",
       kind: :dir,
       tier: :core,
@@ -270,6 +262,16 @@ defmodule BusterClaw.Workspace do
       owner: nil,
       seed: nil,
       note: "Orphan. Superseded by journal/; nothing creates it any more."
+    },
+    %{
+      name: "extensions",
+      kind: :dir,
+      tier: :deprecated,
+      owner: BusterClaw.Workspace,
+      seed: nil,
+      note:
+        "Orphan. Held installed extensions' parts; the extension mechanism was " <>
+          "deleted 08-08. Swept when empty."
     },
     %{
       name: "mcp",

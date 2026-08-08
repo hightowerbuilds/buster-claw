@@ -1,3 +1,28 @@
+> ## ARCHIVED 2026-08-08 — the mechanism was built, then deleted
+>
+> The extension loader, its five commands, the workspace `extensions/` directory
+> and the model-attaches-a-part flow all shipped on 08-07 (`663c4ed`) and were
+> **deleted on 08-08** along with the code they existed to serve.
+>
+> The reasoning is worth keeping. This roadmap was written to re-home Trading —
+> its Part 0 says so in the first line, and its Part VII says plainly that
+> extensions reduce *product* surface, not *code* surface. When the operator
+> chose to delete Trading outright rather than re-home it, the mechanism lost
+> its only user and became ~1,400 lines serving nothing. Keeping it would have
+> been exactly the speculative breadth the critical review diagnosed, one layer
+> up.
+>
+> **What is worth re-reading if extensions ever return:** the six locked
+> decisions in Part II — above all **D1, that an extension is never executable
+> code**, which is a fact about the BEAM having no code sandbox and does not
+> expire. Part V's containment for agent-authored parts (disabled by default,
+> install is gated, an unattended run may author but never install) was the
+> hardest part to get right and would be worth lifting wholesale.
+>
+> Superseded by larger architectural moves the operator has planned.
+
+---
+
 # Extensions — the after-download surface
 
 **How BusterClaw ships a capability it does not carry.** Extensions are the mechanism that

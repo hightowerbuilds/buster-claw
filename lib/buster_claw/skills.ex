@@ -42,7 +42,6 @@ defmodule BusterClaw.Skills do
   """
   require Logger
 
-  alias BusterClaw.Extensions
   alias BusterClaw.Library.{Artifact, Frontmatter}
 
   @subdir "skills"
@@ -89,7 +88,7 @@ defmodule BusterClaw.Skills do
   `{:error, reason}` for a malformed file, or `nil` when no file exists.
   """
   def load(name) when is_binary(name) do
-    case read_source(name) do
+    case File.read(skill_path(name)) do
       {:ok, content} ->
         %{fields: fields, body: body} = Frontmatter.split(content)
 
@@ -187,57 +186,19 @@ defmodule BusterClaw.Skills do
   # --- internals ---------------------------------------------------------
 
   defp enabled_skills do
-    Enum.flat_map(known_names(), fn name ->
-      case load(name) do
-        {:ok, %{enabled: true} = skill} -> [skill]
-        _ -> []
-      end
-    end)
-  end
+    case File.ls(dir()) do
+      {:ok, entries} ->
+        entries
+        |> Enum.filter(&skill_file?/1)
+        |> Enum.flat_map(fn entry ->
+          case entry |> Path.rootname() |> load() do
+            {:ok, %{enabled: true} = skill} -> [skill]
+            _ -> []
+          end
+        end)
 
-  # Every skill name reachable from any source, deduped. `load/1` resolves each
-  # one through `read_source/1`, so precedence is decided in exactly one place.
-  defp known_names do
-    dir_names = Enum.flat_map(search_dirs(), &dir_skill_names/1)
-    bundled = Enum.map(Extensions.bundled_parts(), &elem(&1, 0))
-    Enum.uniq(dir_names ++ bundled)
-  end
-
-  defp dir_skill_names(dir) do
-    case File.ls(dir) do
-      {:ok, entries} -> entries |> Enum.filter(&skill_file?/1) |> Enum.map(&Path.rootname/1)
-      _ -> []
-    end
-  end
-
-  # The workspace `skills/` directory, then the part directories of *enabled*
-  # extensions. A disabled extension contributes no directory, which is what
-  # makes its off switch real rather than cosmetic.
-  defp search_dirs, do: [dir() | Extensions.skill_dirs()]
-
-  # Resolution order, and the reason for it:
-  #
-  #   1. workspace `skills/` — an operator file always wins.
-  #   2. an enabled extension's workspace parts — attached after install.
-  #   3. an enabled extension's BUNDLED parts, embedded at compile time.
-  #
-  # Bundled last means an operator (or a model-attached part) can shadow a
-  # shipped playbook by name, which is the deliberate override hatch. Bundled
-  # content is read from memory rather than disk, so a shipped part cannot be
-  # edited on disk into something the release never contained.
-  defp read_source(name) do
-    Enum.find_value(search_dirs(), fn dir ->
-      case File.read(Path.join(dir, name <> ".md")) do
-        {:ok, content} -> {:ok, content}
-        _ -> nil
-      end
-    end) || bundled_source(name)
-  end
-
-  defp bundled_source(name) do
-    case Enum.find(Extensions.bundled_parts(), fn {part, _content} -> part == name end) do
-      {_part, content} -> {:ok, content}
-      nil -> nil
+      _ ->
+        []
     end
   end
 

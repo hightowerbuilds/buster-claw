@@ -5,8 +5,6 @@ defmodule BusterClawWeb.Layouts do
   """
   use BusterClawWeb, :html
 
-  alias BusterClaw.Extensions
-
   @navigation_items [
     %{label: "Home", path: "/", icon: "hero-home", image: "/images/brand/home-icon.png"},
     %{
@@ -134,30 +132,10 @@ defmodule BusterClawWeb.Layouts do
     """
   end
 
-  @doc """
-  The dock items this install actually has.
-
-  An item carrying a `:surface` belongs to an extension and appears only while
-  that extension is on. An item whose surface no manifest claims stays visible —
-  removing an extension must not silently hide ordinary application code that
-  happens to share a name.
-
-  `@tab_labels` is deliberately NOT filtered: it labels an open tab, and a tab
-  that is somehow open should be named rather than blank.
-  """
-  def navigation_items do
-    Enum.filter(@navigation_items, fn item ->
-      case item[:surface] do
-        nil -> true
-        surface -> Extensions.surface_available?(surface)
-      end
-    end)
-  end
-
   defp shell(assigns) do
     assigns =
       assigns
-      |> assign(:nav_items, navigation_items())
+      |> assign(:nav_items, @navigation_items)
       |> assign(:tab_labels, @tab_labels_json)
 
     ~H"""
