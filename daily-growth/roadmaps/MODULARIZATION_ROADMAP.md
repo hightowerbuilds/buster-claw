@@ -594,11 +594,19 @@ deliberately capped rather than split), Phase 2, Phase 6.
 
 **Open, in the order I would take them:**
 
-1. **Widen `claw_confirm_test.exs`** — it greps `lib/buster_claw_web/**/*.ex` for
-   `data-confirm=` and therefore missed `onsubmit="return confirm(…)"`, which is
-   how two buttons stayed dead in the packaged app for months. Add the
-   `confirm(` spelling and point it at `assets/js` too. Half an hour, and it is
-   the generalisable half of Phase 6's find.
+1. ~~**Widen `claw_confirm_test.exs`**~~ — **DONE 08-08-26 (`bdfe40f`).** It now
+   checks three spellings (`data-confirm=`, an inline `on…=` handler calling
+   `confirm(`, and native `confirm(` in JS) across `assets/js` as well as `lib`,
+   and skips comments and `@doc` heredocs so it cannot flag its own explanation.
+
+   > **One thing worth stealing from it.** The first version of that
+   > comment-skipping dropped *every* heredoc — and **a `~H` template is a
+   > heredoc**, so it was blind to every LiveView and function component in the
+   > app. It passed when fed the real historical defect. Any future source-grep
+   > guard in this codebase has to make that distinction, and the only reason
+   > this one does is that it was verified by injecting the actual bug rather
+   > than by being read.
+
 2. **Phase 3** (Sound Studio catalog → core) — check first whether the `sound_*`
    command work that landed 08-08 already needs it.
 3. **Phase 7** (content out of code), then **Phase 4**, then **Phase 8**.
