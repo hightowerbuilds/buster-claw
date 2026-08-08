@@ -167,9 +167,16 @@ without touching anything.
 
 # Phase 1 — The write half, clip-level
 
-- [ ] `sound_import` — a file into `sounds/studio/`, via `import_source/1`.
-  Decoder-dependent: `decoder_available?/0` exists and must be reported, not
-  assumed. Non-WAV input on a machine without the decoder is a clear refusal.
+- [x] **`sound_import` — SHIPPED 08-08-26.** By `event_id` (the acceptance path)
+  or a Library-root-relative path, never an absolute one. Two independent
+  guards: a segment scan before the filesystem is touched at all, then
+  containment on the expanded path. Thirteen traversal shapes tested to their
+  exact named errors. **Measured on the real corpus: a 54.5 s voicemail imports
+  end to end in 224 ms.**
+  *Residual gap, disclosed:* containment is lexical, not `realpath`, so a
+  symlink **inside** the Library pointing outside it would resolve. Left open
+  deliberately — refusing symlinks could break a legitimate layout — and cheap
+  to close with `File.lstat/1` if wanted.
 - [ ] `sound_trim` — `splice/3`, rendering to a new name.
 - [ ] `sound_fade` — `fade/2`.
 - [ ] `sound_normalize` — `normalize/2`.
@@ -456,6 +463,11 @@ bit-reversal tables. Verified bin-for-bin against an independent naive O(n²) DF
 — the strongest check available, since it cannot share a bug with its reference.
 
 - **Measured: ~40 s single-core to index the 295 s corpus, ~27 s across 8 cores.**
+  Two qualifiers, both found by re-running it: that is **framing + FFT only**
+  (MFCC is on top), and it is an **idle machine**. The same benchmark run
+  beside four other suites drops to 229 frames/s and projects **129 s** — a
+  3.2x contention penalty. Indexing would run alongside a live app, so treat
+  40 s as the floor and 130 s as the realistic ceiling.
   The estimate above held — **but two errors cancelled.** It costed a *512*-point
   FFT, and 25 ms at 22.05 kHz is 551 samples, so the smallest radix-2 size that
   holds a frame is **1024**. Real work is ~2.2× the projection; the estimate
@@ -515,6 +527,48 @@ starting with `s` or `f`.
   telephony bands out above 3.4 kHz, which is most of a fricative's energy;
   expect to want 0.15–0.20, and expect line noise to start creeping in there.
 - Spans are **utterance boundaries, not word boundaries.**
+
+## The threshold, measured against real speech (08-08)
+
+The roadmap warned the synthetic threshold would not transfer. It did not, and
+the size of the gap is the point: **DTW's own synthetic tests suggested a usable
+band of 0.2–0.9 against a false-alarm floor of ~2.2. Real speech runs an order of
+magnitude higher.**
+
+Measured over the **Free Spoken Digit Dataset** (CC BY-SA 4.0, 8 kHz mono — the
+same band as telephony), 45 labelled files, 3 speakers × 3 digits × 5 takes,
+**990 pairs**, through the full Signal → Mfcc → CMN → Dtw chain:
+
+| class | n | min | p05 | p50 | p95 | max |
+|---|---|---|---|---|---|---|
+| same word, same speaker | 90 | 2.97 | 3.38 | **4.43** | 7.49 | 9.23 |
+| same word, diff speaker | 225 | 4.67 | 5.28 | 6.97 | 10.07 | 11.83 |
+| diff word, same speaker | 225 | 5.08 | 6.05 | **8.99** | 10.78 | 13.24 |
+| diff word, diff speaker | 450 | 6.08 | 6.71 | 9.40 | 11.78 | 13.11 |
+
+**The ordering is exactly right, and speaker-dependence is confirmed as designed** —
+the same word from another speaker (6.97) sits closer to a *different word* than
+to the same speaker saying it again (4.43). For assembling one person's
+voicemails that is the wanted behaviour.
+
+**Operating point, same-speaker only (the real use case): threshold ≈ 6.0 →
+precision 0.88, recall 0.93, F1 0.91.**
+
+**But the distributions overlap, and an early 8-file sample hid that.** Eight
+files showed a clean gap with no overlap at all; at 990 pairs, **128 of 225
+negatives fall below the worst positive (9.23)**. The tail positives cannot be
+recovered — pushing the threshold up to catch them floods the result with false
+matches.
+
+**So this is a shortlist generator, not an oracle**, and that is the honest frame
+for the feature: at threshold 6 it finds 93% of real takes and about one in eight
+returned spans is wrong. For a tool whose next step is *listen and pick*, that is
+useful. For anything unattended, it is not.
+
+**Caveat on transfer:** FSDD is clean, trimmed, isolated digits. Connected speech
+inside a noisy voicemail — with co-articulated fragments and partial-word
+matches among the negatives — should be harder. Treat 6.0 as a starting point to
+re-measure against the operator's corpus, not as a constant.
 
 **V.4 — Wire it to the index.** A DTW hit becomes a `t:word/0` with `origin:
 :recognizer`, so **everything built in Phase A consumes it unchanged** — that is
@@ -579,8 +633,13 @@ being appended to a phase list that has already been built against.
   answerable. The clip verbs exist and are used; the question was always whether
   a multi-track arrangement authored *blind* is worth the second half of the
   vocabulary. **Decide from whether anyone reaches for the clip verbs first.**
-- **Does `sound_probe` need decode-on-demand?** Phase 0 says yes; Phase 1 is
-  where it lands. Until then the agent cannot read the level of an mp3 voicemail.
+- ~~Does `sound_probe` need decode-on-demand?~~ **ANSWERED 08-08: yes, shipped
+  as opt-in `decode: true`.** Measured ~4.6 ms per second of audio plus ~40 ms
+  fixed subprocess cost — 278 ms for a 54.5 s voicemail against 23 ms for the
+  header-only default. **And it immediately paid for itself: the operator's real
+  voicemails peak at ~0.96, near the rail** — which is exactly the fact the
+  default probe could not see, and it means `normalize` has almost nothing to
+  do on this corpus while clipping on assembly is a live risk.
 - **What does the tuned DTW threshold turn out to be** (Part III)? It cannot be
   guessed from a fixture, and the roadmap warns it may cost as long as the
   algorithm did.

@@ -2,17 +2,24 @@ defmodule BusterClaw.Commands.Catalog.Sound do
   @moduledoc """
   Catalog entries: the sound library, its routing table, the Sound Studio's
   imported clips, and the cut-up surface — searching recordings for words and
-  splicing them into new sources (STUDIO_ROADMAP Part I Phase 0, Part III
+  splicing them into new sources (STUDIO_ROADMAP Part I Phases 0/1, Part III
   Phases A/B).
 
   The reads are `:safe`: they open files read-only, touch no setting, and change
   nothing about what the machine plays.
 
-  Three entries write, and all three are `:restricted`. None is `gated`, and the
-  line is worth stating: `sound_assemble` writes a **new source** into
-  `sounds/studio/`, and `sound_index_*` write text beside it. Nothing here
-  installs a chime or routes a key — routing is the only act that changes what
-  the machine does when nobody is watching, and it stays a later, gated phase.
+  Four entries write, and all four are `:restricted`. None is `gated`, and the
+  line is worth stating: `sound_import` and `sound_assemble` write a **new
+  source** into `sounds/studio/`, and `sound_index_*` write text beside it.
+  Nothing here installs a chime or routes a key — routing is the only act that
+  changes what the machine does when nobody is watching, and it stays a later,
+  gated phase.
+
+  `sound_import` is the one entry that names a file **outside** the sound
+  stores, and its two inputs are the whole of that reach: an `event_id`, whose
+  recording path the app itself stored, or a path **relative to the Library
+  root**. Absolute paths and `..` are refused, so the verb can address the
+  operator's recordings and nothing else on the disk.
   """
 
   @doc "Sound catalog entries."
@@ -47,8 +54,13 @@ defmodule BusterClaw.Commands.Catalog.Sound do
         type: :read,
         tier: :safe,
         description:
-          "Inspect one sound or studio source by name: sample rate, channels, bits, duration_ms, peak level, and whether it is already in the Studio's internal PCM16 mono 22.05 kHz format. Resolves a workspace library file first, then a bundled default, then a studio source. The only way to learn what a sound actually is without listening to it.",
-        args: %{"name" => %{type: :string, required: true}}
+          "Inspect one sound: sample rate, channels, bits, duration_ms, peak level, and whether it is already in the Studio's internal PCM16 mono 22.05 kHz format. The only way to learn what a sound actually is without listening to it. Name it three ways: name (a workspace library file, then a bundled default, then a studio source), event_id (a phone event's recording), or path (relative to the Library root — absolute paths and .. are refused). Peak needs decoded samples, so an mp3 or m4a reports none by default; decode true measures it by running the file through the decoder, which is exact and costs a full decode.",
+        args: %{
+          "name" => %{type: :string, required: false},
+          "event_id" => %{type: :integer, required: false},
+          "path" => %{type: :string, required: false},
+          "decode" => %{type: :boolean, required: false, default: false}
+        }
       },
       %{
         name: "sound_transcript_search",
@@ -122,6 +134,19 @@ defmodule BusterClaw.Commands.Catalog.Sound do
           "source" => %{type: :string, required: false},
           "min_confidence" => %{type: :number, required: false},
           "limit" => %{type: :integer, required: false}
+        }
+      },
+      %{
+        name: "sound_import",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Bring an audio file into sounds/studio/ as a WAV in the Studio's internal format — the door a voicemail comes through before anything can cut it up. Name the file with event_id (a phone event, whose recording is imported) or path (relative to the Library root; absolute paths and .. are refused). name is the stored basename and is always forced to .wav; omit it to derive one from the source. Refuses an existing source unless overwrite is true. Reports duration, peak, format and whether the system decoder had to run — non-WAV audio on a machine without /usr/bin/afconvert is refused as no_decoder rather than failing later.",
+        args: %{
+          "event_id" => %{type: :integer, required: false},
+          "path" => %{type: :string, required: false},
+          "name" => %{type: :string, required: false},
+          "overwrite" => %{type: :boolean, required: false, default: false}
         }
       },
       %{

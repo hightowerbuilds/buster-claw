@@ -1,7 +1,7 @@
 defmodule BusterClaw.Commands.Sound do
   @moduledoc """
   The `sound_*` command surface — the Studio, addressable (STUDIO_ROADMAP Part I
-  Phase 0 and Part III Phase A/B). Delegated to from `BusterClaw.Commands`.
+  Phases 0/1 and Part III Phase A/B). Delegated to from `BusterClaw.Commands`.
 
   The Sound Studio is the one authoring surface in this app the agent cannot
   reach. The library verbs give it eyes and nothing else: `sound_list`,
@@ -19,9 +19,26 @@ defmodule BusterClaw.Commands.Sound do
     what a cut needs. An index hit is already a cut: hand its `source`,
     `start_ms` and `end_ms` straight to `sound_assemble`.
 
-  `sound_assemble` is the only verb here that writes audio, and it writes a new
-  *source* — it never routes anything, which is why it is `:restricted` but not
-  gated. Routing is the only act that changes what the machine does unattended.
+  `sound_import` and `sound_assemble` are the only verbs here that write audio,
+  and both write a new *source* — neither routes anything, which is why they are
+  `:restricted` but not gated. Routing is the only act that changes what the
+  machine does unattended.
+
+  ## The one verb that names a file outside the sound stores
+
+  Every other verb here takes a **basename** and resolves it against a directory
+  listing, so nothing outside `sounds/` is even expressible. `sound_import` has
+  to reach further — a voicemail lives under the Library root, in none of the
+  three sound stores — and `sound_probe` follows it there so the workflow is
+  *probe it, then import it* rather than *import blind, then probe*.
+
+  That reach is deliberately the narrowest thing that works: an `event_id`,
+  whose `recording_path` the app stored itself, or a path **relative to the
+  Library root**. `under_library/1` is the whole boundary — absolute paths, `..`
+  and null bytes are refused before the filesystem is touched, and the expanded
+  result is re-checked against the root. There is no second line of defence
+  behind it: a verb that accepted an absolute path would let an agent read
+  anything this app can read.
 
   Two things the shape of these answers is deliberately built around:
 
@@ -36,6 +53,13 @@ defmodule BusterClaw.Commands.Sound do
   internal PCM16/mono/22.05 kHz format — the one fact that decides whether an
   edit needs the system decoder at all.
 
+  Peak is the fact that needs *samples*, and an mp3 has none until something
+  decodes it — so the default probe of a voicemail is blind on exactly the file
+  the acceptance walk starts from. `decode: true` fixes that by running the file
+  through `import_source/1` and measuring the clip that comes back. It is opt-in
+  because it is a subprocess and a full decode; the header-only path stays the
+  default and stays honest about what it could not answer.
+
   Names are basenames, never paths. Resolution goes through `Sound.path_for/1`,
   `Sound.bundled_path_for/1` and `SoundStudio.path_for/1`, each of which
   allowlists against a real directory listing, and anything carrying a separator
@@ -48,10 +72,12 @@ defmodule BusterClaw.Commands.Sound do
   alias BusterClaw.Notifications.Cutup.Transcripts
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
+  alias BusterClaw.Telephony
 
   @workspace "workspace"
   @bundled "bundled"
   @studio "studio"
+  @library "library"
 
   @default_transcript_limit 50
   @default_word_limit 50
@@ -208,14 +234,44 @@ defmodule BusterClaw.Commands.Sound do
   # One sound, described — the substitute for ears
   # ---------------------------------------------------------------------------
 
-  def sound_probe(%{"name" => name}) when is_binary(name) do
-    with {:ok, clean} <- validate_name(name),
-         {:ok, layer, path} <- locate(clean) do
-      {:ok, describe(clean, layer, path)}
+  def sound_probe(args) when is_map(args) do
+    with {:ok, target} <- probe_target(args) do
+      {:ok, describe(target, boolean(Map.get(args, "decode"), false))}
     end
   end
 
   def sound_probe(_args), do: {:error, :missing_name}
+
+  # Three ways to name one file, in precedence order. `event_id` and `path`
+  # reach the Library root through the same funnel `sound_import` uses — the
+  # point being that a voicemail can be *looked at* before it is brought in,
+  # rather than imported blind and probed afterwards.
+  defp probe_target(args) do
+    cond do
+      present?(args, "event_id") or present?(args, "path") ->
+        with {:ok, origin} <- import_origin(args) do
+          {:ok,
+           %{
+             name: Path.basename(origin.path),
+             layer: @library,
+             path: origin.path,
+             event_id: origin.event_id,
+             library_path: origin.relative
+           }}
+        end
+
+      is_binary(Map.get(args, "name")) ->
+        with {:ok, clean} <- validate_name(Map.get(args, "name")),
+             {:ok, layer, path} <- locate(clean) do
+          {:ok, %{name: clean, layer: layer, path: path, event_id: nil, library_path: nil}}
+        end
+
+      true ->
+        {:error, :missing_name}
+    end
+  end
+
+  defp present?(args, key), do: not is_nil(Map.get(args, key)) and Map.get(args, key) != ""
 
   # A name is a basename or it is nothing. `path_for/1` already allowlists
   # against a directory listing, so traversal could never resolve — but a
@@ -245,29 +301,62 @@ defmodule BusterClaw.Commands.Sound do
     end
   end
 
-  defp describe(name, layer, path) do
+  defp describe(target, decode?) do
+    path = target.path
     header = header_facts(path)
     clip = clip_facts(path)
+    decoded = decoded_facts(clip, path, decode?)
     decoder? = SoundStudio.decoder_available?()
 
     %{
-      name: name,
-      layer: layer,
+      name: target.name,
+      layer: target.layer,
       path: path,
+      event_id: target.event_id,
+      library_path: target.library_path,
       bytes: byte_size_of(path),
-      # A parsed clip is exact; the header prober is the fallback for anything
-      # that is not a WAV we can read (an mp3 voicemail, say).
-      duration_ms: clip[:duration_ms] || header[:duration_ms],
+      # A parsed clip is exact; a decode is exact too and the only way to reach
+      # a compressed file's samples; the header prober is the last fallback.
+      duration_ms: clip[:duration_ms] || decoded[:duration_ms] || header[:duration_ms],
+      # Deliberately NOT taken from the decode: the decoder resamples and
+      # downmixes, so its rate and channel count describe the conversion rather
+      # than the file. The header is what the file itself says.
       sample_rate: clip[:sample_rate] || header[:sample_rate],
       channels: clip[:channels] || header[:channels],
       bits: clip[:bits],
-      peak: clip[:peak],
+      peak: clip[:peak] || decoded[:peak],
       internal: Map.get(clip, :internal, false),
       internal_format: internal_format(),
+      decoded: Map.get(decoded, :ran, false),
       decoder_available: decoder?,
-      notes: notes(clip, header, decoder?)
+      notes: notes(clip, header, decoded, decoder?)
     }
   end
+
+  # Decode-on-demand — the gap Phase 0 flagged and this phase owns. Three of
+  # probe's four facts need a *parsed* clip, and an mp3 voicemail cannot be
+  # parsed without decoding, so the agent's only substitute for ears was blind
+  # on exactly the input the acceptance walk starts from.
+  #
+  # Opt-in, and skipped whenever the direct parse already answered: a decode is
+  # a subprocess plus the whole file materialized as PCM, and it could only
+  # repeat what we just read. `peak` is the trigger rather than "unreadable",
+  # because a 24-bit WAV parses fine and still has no peak.
+  defp decoded_facts(clip, path, true) do
+    if is_nil(clip[:peak]) do
+      case SoundStudio.import_source(path) do
+        {:ok, decoded} ->
+          %{ran: true, peak: peak_of(decoded), duration_ms: SoundStudio.duration_ms(decoded)}
+
+        {:error, reason} ->
+          %{ran: false, decode_error: reason}
+      end
+    else
+      %{ran: false}
+    end
+  end
+
+  defp decoded_facts(_clip, _path, _decode?), do: %{ran: false}
 
   # What the file itself says, once parsed as a WAV. Peak needs samples, so it
   # is the fact only this path can supply.
@@ -303,11 +392,12 @@ defmodule BusterClaw.Commands.Sound do
   defp peak_of(%SoundStudio{bits: 16} = clip), do: SoundStudio.peak(clip)
   defp peak_of(%SoundStudio{}), do: nil
 
-  defp notes(clip, header, decoder?) do
+  defp notes(clip, header, decoded, decoder?) do
     [
-      unreadable_note(clip[:read_error]),
+      unreadable_note(clip[:read_error], decoded),
       prober_note(header[:probe_error]),
       format_note(clip),
+      decoded_note(decoded),
       unless(decoder?,
         do:
           "No system decoder (/usr/bin/afconvert): only WAV already in the internal format can be imported."
@@ -316,11 +406,25 @@ defmodule BusterClaw.Commands.Sound do
     |> Enum.reject(&is_nil/1)
   end
 
-  defp unreadable_note(nil), do: nil
+  defp unreadable_note(nil, _decoded), do: nil
 
-  defp unreadable_note(reason),
+  defp unreadable_note(reason, %{ran: true}),
     do:
-      "Not readable as a WAV (#{inspect(reason)}): format and duration come from the header prober, and peak needs a decode first."
+      "Not readable as a WAV (#{inspect(reason)}): format comes from the header prober, and peak was measured by decoding."
+
+  defp unreadable_note(reason, _decoded),
+    do:
+      "Not readable as a WAV (#{inspect(reason)}): format and duration come from the header prober, and peak needs a decode first — pass decode: true to measure it (it costs a full decode of the file)."
+
+  defp decoded_note(%{ran: true}),
+    do:
+      "peak and duration_ms were measured by decoding the file to the Studio's internal format (PCM16 mono 22.05 kHz) — the clip an edit would actually operate on, not the original's own rate or channel count."
+
+  defp decoded_note(%{decode_error: reason}),
+    do:
+      "decode: true was asked for and the decode failed (#{inspect(reason)}), so there is still no peak for this file."
+
+  defp decoded_note(_decoded), do: nil
 
   defp prober_note(nil), do: nil
 
@@ -650,7 +754,179 @@ defmodule BusterClaw.Commands.Sound do
   def sound_index_delete(_args), do: {:error, :missing_source}
 
   # ---------------------------------------------------------------------------
-  # Assembly — the one verb here that writes audio
+  # Import — the door into the studio
+  # ---------------------------------------------------------------------------
+
+  def sound_import(args) when is_map(args) do
+    overwrite? = boolean(Map.get(args, "overwrite"), false)
+
+    with {:ok, origin} <- import_origin(args),
+         {:ok, target} <- stored_name(blank_to_nil(Map.get(args, "name")) || origin.name),
+         {:ok, path, replaced?} <- studio_target(target, overwrite?),
+         {:ok, clip, decoded?} <- import_clip(origin.path),
+         :ok <- write_source(clip, path) do
+      {:ok,
+       %{
+         name: target,
+         path: path,
+         event_id: origin.event_id,
+         library_path: origin.relative,
+         duration_ms: SoundStudio.duration_ms(clip),
+         sample_rate: clip.sample_rate,
+         channels: clip.channels,
+         bits: clip.bits,
+         peak: peak_of(clip),
+         internal: SoundStudio.internal?(clip),
+         internal_format: internal_format(),
+         decoded: decoded?,
+         decoder_available: SoundStudio.decoder_available?(),
+         bytes: byte_size_of(path),
+         replaced: replaced?,
+         notes: import_notes(decoded?, replaced?)
+       }}
+    end
+  end
+
+  def sound_import(_args), do: {:error, :missing_source}
+
+  # Where the file being imported comes from. `event_id` wins when both are
+  # given: it is the acceptance path, and it names a recording the app stored
+  # itself rather than a path a caller typed.
+  defp import_origin(%{"event_id" => id}) when not is_nil(id) and id != "" do
+    with {:ok, event_id} <- event_id(id),
+         {:ok, event} <- fetch_event(event_id),
+         {:ok, relative} <- recording_of(event),
+         {:ok, path} <- under_library(relative) do
+      {:ok, %{event_id: event.id, relative: relative, path: path, name: Path.basename(relative)}}
+    end
+  end
+
+  defp import_origin(%{"path" => relative}) when is_binary(relative) do
+    with {:ok, path} <- under_library(relative) do
+      {:ok,
+       %{event_id: nil, relative: String.trim(relative), path: path, name: Path.basename(path)}}
+    end
+  end
+
+  # A path that is not a string at all is a bad path, not a missing one.
+  defp import_origin(%{"path" => path}) when not is_nil(path), do: {:error, :invalid_path}
+
+  defp import_origin(_args), do: {:error, :missing_source}
+
+  # A wire caller may hand over "12" rather than 12, and `Repo.get/2` raises on
+  # anything that is not castable — so the cast happens here, as a named error.
+  defp event_id(id) when is_integer(id) and id > 0, do: {:ok, id}
+
+  defp event_id(id) when is_binary(id) do
+    case Integer.parse(String.trim(id)) do
+      {parsed, ""} when parsed > 0 -> {:ok, parsed}
+      _other -> {:error, :invalid_event_id}
+    end
+  end
+
+  defp event_id(_id), do: {:error, :invalid_event_id}
+
+  defp fetch_event(id) do
+    case Telephony.get_event(id) do
+      nil -> {:error, :event_not_found}
+      event -> {:ok, event}
+    end
+  end
+
+  defp recording_of(%Telephony.Event{recording_path: path}) when is_binary(path) and path != "",
+    do: {:ok, path}
+
+  defp recording_of(%Telephony.Event{}), do: {:error, :no_recording}
+
+  # **The security boundary of this module.** Everywhere else a caller supplies
+  # a basename that is allowlisted against a directory listing; here a caller
+  # supplies a path, so this function is the only thing standing between an
+  # agent and every file this app can read.
+  #
+  # Two independent checks, because one of them being subtly wrong is the whole
+  # risk: the segments are scanned before the filesystem is touched at all
+  # (absolute, `~`, `..`, empty segment, null byte), and the *expanded* result
+  # is then required to sit under the expanded root. The second check is what
+  # catches anything the first one failed to imagine.
+  #
+  # Note that `recording_path` values go through it too. They were written by
+  # the drain from a relay row, which makes them data from off this machine —
+  # trusted enough to store, not trusted enough to join into a path unchecked.
+  defp under_library(relative) when is_binary(relative) do
+    with {:ok, root} <- library_root(),
+         {:ok, clean} <- relative_path(relative),
+         {:ok, path} <- contained(root, clean) do
+      if File.regular?(path), do: {:ok, path}, else: {:error, :not_found}
+    end
+  end
+
+  defp under_library(_relative), do: {:error, :invalid_path}
+
+  # Read from the env rather than through `Artifact.root/0`, which raises when
+  # unset — an unconfigured Library root is a named error here, not a crash.
+  defp library_root do
+    case Application.get_env(:buster_claw, :library_root) do
+      root when is_binary(root) and root != "" -> {:ok, Path.expand(root)}
+      _unset -> {:error, :no_library_root}
+    end
+  end
+
+  defp relative_path(relative) do
+    trimmed = String.trim(relative)
+    segments = String.split(trimmed, "/")
+
+    cond do
+      trimmed == "" -> {:error, :invalid_path}
+      String.contains?(trimmed, <<0>>) -> {:error, :invalid_path}
+      Path.type(trimmed) != :relative -> {:error, :absolute_path}
+      String.starts_with?(trimmed, "~") -> {:error, :absolute_path}
+      Enum.any?(segments, &(&1 in ["..", "."])) -> {:error, :traversal}
+      Enum.any?(segments, &(&1 == "")) -> {:error, :invalid_path}
+      true -> {:ok, trimmed}
+    end
+  end
+
+  defp contained(root, relative) do
+    path = Path.expand(Path.join(root, relative))
+
+    if String.starts_with?(path, root <> "/"), do: {:ok, path}, else: {:error, :traversal}
+  end
+
+  # `import_source/1` is the one door to the outside world and decides for
+  # itself whether the decoder is needed. Asking it the same question first is
+  # the only way to *report* which path it took — and whether the decoder ran is
+  # exactly what a caller needs to know when the answer on another machine
+  # would have been a refusal.
+  defp import_clip(path) do
+    decoded? = not already_internal?(path)
+
+    case SoundStudio.import_source(path) do
+      {:ok, clip} -> {:ok, clip, decoded?}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp already_internal?(path) do
+    case SoundStudio.read(path) do
+      {:ok, clip} -> SoundStudio.internal?(clip)
+      {:error, _reason} -> false
+    end
+  end
+
+  defp import_notes(decoded?, replaced?) do
+    [
+      "Stored in sounds/studio/ as a SOURCE — raw material. It is not in the sound library and nothing is routed to it; probe it, cut it, and route it as separate deliberate acts.",
+      if(decoded?,
+        do:
+          "The system decoder ran, so the stored clip was resampled and downmixed to PCM16 mono 22.05 kHz. Its peak is the peak of that conversion, which is the clip an edit will operate on."
+      ),
+      if(replaced?, do: "An existing source of this name was overwritten.")
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Assembly — the other verb that writes audio
   # ---------------------------------------------------------------------------
 
   def sound_assemble(%{"cuts" => cuts, "name" => name} = args)
@@ -658,8 +934,8 @@ defmodule BusterClaw.Commands.Sound do
     overwrite? = boolean(Map.get(args, "overwrite"), false)
     opts = assemble_opts(args)
 
-    with {:ok, target} <- assembled_name(name),
-         {:ok, path, replaced?} <- assemble_target(target, overwrite?),
+    with {:ok, target} <- stored_name(name),
+         {:ok, path, replaced?} <- studio_target(target, overwrite?),
          {:ok, clip} <- Assemble.build(Enum.map(cuts, &cut/1), opts),
          :ok <- write_source(clip, path) do
       {:ok,
@@ -682,9 +958,11 @@ defmodule BusterClaw.Commands.Sound do
   def sound_assemble(%{"cuts" => cuts}) when is_list(cuts), do: {:error, :missing_name}
   def sound_assemble(_args), do: {:error, :empty_selection}
 
-  # Forced to `.wav` because that is what the assembler renders: a sentence
-  # saved as `.mp3` would be a WAV lying about its container.
-  defp assembled_name(name) do
+  # Forced to `.wav` because that is what both writers render: a sentence — or
+  # an imported mp3 — saved under its original extension would be a WAV lying
+  # about its container. Shared by `sound_assemble` and `sound_import` so the
+  # two cannot disagree about what a legal stored name is.
+  defp stored_name(name) do
     with {:ok, clean} <- validate_name(name) do
       {:ok, AudioName.safe_name(Path.rootname(clean) <> ".wav")}
     end
@@ -694,7 +972,7 @@ defmodule BusterClaw.Commands.Sound do
   # unrecoverable, so an existing name is refused unless the caller says
   # overwrite. `File.exists?/1` rather than the audio listing, so a non-audio
   # file squatting the name is still protected.
-  defp assemble_target(target, overwrite?) do
+  defp studio_target(target, overwrite?) do
     path = Path.join(SoundStudio.dir(), target)
     exists? = File.exists?(path)
 

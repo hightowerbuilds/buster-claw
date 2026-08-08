@@ -141,6 +141,18 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     #   against a directory listing, so nothing outside `sounds/` is reachable.
     #   Nothing here writes a file, changes a route, or plays anything.
     #
+    #   sound_probe's reach WIDENED 08-08 (Part I Phase 1) and stays :safe: it
+    #   now also takes an `event_id` (a phone event whose recording_path the app
+    #   stored itself) or a path **relative to the Library root**, so a voicemail
+    #   can be inspected before it is imported. That is the only path-shaped
+    #   input in the safe tier, and it is why `Commands.Sound.under_library/1`
+    #   refuses absolute paths, `~`, `..` and null bytes before touching the
+    #   filesystem and then re-checks the expanded path against the root. It
+    #   returns format/duration/peak — never file contents, and never a path
+    #   outside that root. `decode: true` additionally runs the file through the
+    #   system decoder to measure its level; that is a subprocess over a file
+    #   already inside the Library root, and it writes nothing.
+    #
     #   sound_transcript_search / sound_transcript_words / sound_corpus /
     #   sound_index_list / sound_index_words / sound_index_search (added 08-08,
     #   STUDIO_ROADMAP Part III) — the cut-up read surface. The transcript three

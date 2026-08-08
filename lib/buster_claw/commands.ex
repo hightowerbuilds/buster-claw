@@ -474,7 +474,7 @@ defmodule BusterClaw.Commands do
   defdelegate document_read(args), to: BusterClaw.Commands.Documents
   defdelegate document_save(args), to: BusterClaw.Commands.Documents
   defdelegate document_delete(args), to: BusterClaw.Commands.Documents
-  # Journal (the Notes record)
+  # Journal (the Activity record)
 
   defdelegate journal_append(args), to: BusterClaw.Commands.Journal
   defdelegate journal_read(args \\ %{}), to: BusterClaw.Commands.Journal
@@ -494,6 +494,8 @@ defmodule BusterClaw.Commands do
   defdelegate sound_routes(args \\ %{}), to: BusterClaw.Commands.Sound
   defdelegate sound_sources(args \\ %{}), to: BusterClaw.Commands.Sound
   defdelegate sound_probe(args), to: BusterClaw.Commands.Sound
+  # The door into the studio: a Library recording becomes an editable source
+  defdelegate sound_import(args), to: BusterClaw.Commands.Sound
   # Cut-up: transcripts (no timings), word indexes (timings), assembly
   defdelegate sound_transcript_search(args), to: BusterClaw.Commands.Sound
   defdelegate sound_transcript_words(args \\ %{}), to: BusterClaw.Commands.Sound
