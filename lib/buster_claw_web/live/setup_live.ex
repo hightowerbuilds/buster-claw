@@ -259,7 +259,10 @@ defmodule BusterClawWeb.SetupLive do
             <ul class="space-y-2 text-sm leading-7 text-base-content/80">
               <li>Email it like a person — it reads and replies.</li>
               <li>It acts for you across Gmail, Calendar, the web, and your tools.</li>
-              <li>You stay in control — trusted contacts only, full audit, instant kill switch.</li>
+              <li>
+                You stay in control — trusted contacts only, an audit feed of everything it
+                changes, and a kill switch (<code>./buster-claw off-duty</code>).
+              </li>
             </ul>
             <p class="text-sm leading-7 text-base-content/60">
               Everything runs on your machine. Four quick steps and you're live.

@@ -41,8 +41,9 @@ The dock at the bottom switches surfaces:
 - **Calendar** — local events.
 - **Advanced** — Scheduler, Webhooks/Hooks, Integrations (GitHub/Sentry/Umami),
   Delivery, Memory, and Security.
-- **Security** — the **Sentinel audit feed**: every command, outbound send, and
-  untrusted fetch is logged here.
+- **Security** — the **Sentinel audit feed**: every command that changes
+  something, every outbound send, and every untrusted fetch is logged here.
+  Plain reads are not, so the feed stays legible.
 - **Settings** — profile, Google Workspace, appearance.
 
 Everything the agent creates lives under your **workspace folder**: `library/`

@@ -398,12 +398,22 @@ acceptance evidence waits until the relevant phase exits.
 - [ ] **Make the durable queue the primary first-run path.** Explain home chat as an
       interactive mode and the unattended Dispatcher as an advanced mode; do not present two
       unrelated front doors.
-- [ ] **Add a single Labs capability flag** and move Phone, Voice, Sound Studio, unfinished
-      Explore panels, and any decorative control behind it. Labs must **default off** for a
-      fresh production install.
-- [ ] **Remove or rewrite every claim** that says all commands are audited, refusals are
+- [x] ~~**Add a single Labs capability flag** and move Phone, Voice, Sound Studio, unfinished
+      Explore panels, and any decorative control behind it.~~ **Declined by the operator
+      2026-08-08.** Phone, Studio and Voice stay where they are. The review's premise —
+      that these surfaces are prominent — is also weaker than it was: the dock is down to
+      Home / Workspace / Browser / Terminal / Settings, and Phone and Studio are Home
+      sub-tabs rather than top-level destinations. **The obligation this transfers:** the
+      exit criterion below is not met by hiding these surfaces, so it must be met by
+      **labelling them honestly in place** — a decorative dialpad has to read as decorative
+      on the screen it appears on, not only in the README.
+- [x] **Remove or rewrite every claim** that says all commands are audited, refusals are
       actionable approvals, or the app contains no AI in a way that hides the required
-      external agent.
+      external agent. **Done 2026-08-08:** `README.md` (tagline, lede, command-surface and
+      Sentinel bullets), `user-guide/introduction.md`, and the setup wizard's first screen.
+      98 of 162 commands are audited — the 64 `read`-type ones are not — and audit writes
+      are best-effort, both of which the copy now says outright. The Sentinel bullet now
+      states that a refusal is **visible, not approvable**.
 - [ ] **Update the setup and introduction guides** to match the actual route structure,
       wizard steps, permission requirements, and supported features.
 - [ ] **Add a small docs assertion** that the canonical product sentence and support
@@ -413,7 +423,9 @@ acceptance evidence waits until the relevant phase exits.
 
 - A new user can answer **what BusterClaw does** after the first screen.
 - **No default navigation destination** is a stub, dead end, decorative prototype, or
-  safety-sensitive experiment.
+  safety-sensitive experiment — **or, where one stays visible by operator decision, it says
+  so on its own surface.** Labelling in place is the accepted alternative to hiding; leaving
+  a decorative control unlabelled is not.
 - Product copy distinguishes **current guarantees, accepted risks, and planned work**.
 - Existing launch items **VI-a through VI-g** and **G-23, G-24, G-36, G-37, G-38** are
   reconciled against this phase.
