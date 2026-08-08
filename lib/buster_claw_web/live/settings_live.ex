@@ -807,11 +807,19 @@ defmodule BusterClawWeb.SettingsLive do
 
   # Map the phx-value-tab string to a known console tab atom (any unknown value
   # falls back to Accounts rather than minting an atom or crashing).
-  defp gws_tab("search"), do: :search
-  defp gws_tab("labels"), do: :labels
-  defp gws_tab("sync_mail"), do: :sync_mail
-  defp gws_tab("calendar"), do: :calendar
-  defp gws_tab(_), do: :accounts
+  #
+  # Derived from `GwsPanels.console_tab_keys/0` rather than retyped. It used to
+  # be a second hand-written list, which is the exact shape of the bug that
+  # shipped Phone as a home tab the rail offered and the guard had never heard
+  # of: the console would have rendered a rail button for a sixth tab and then
+  # silently fallen back to Accounts when it was clicked.
+  #
+  # Read at runtime rather than into a module attribute: an attribute would add
+  # a compile-time edge to the component for a five-element list this is never
+  # hot enough to care about.
+  defp gws_tab(tab) do
+    Enum.find(BusterClawWeb.GwsPanels.console_tab_keys(), :accounts, &(Atom.to_string(&1) == tab))
+  end
 
   # --- Agent model helpers -----------------------------------------------
 

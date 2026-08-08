@@ -218,4 +218,32 @@ defmodule BusterClawWeb.SettingsLiveTest do
       assert render(view) =~ "Agent harness"
     end
   end
+
+  describe "the Google Workspace console rail" do
+    # The rail is rendered from GwsPanels.console_tab_keys/0 and the click is
+    # resolved by SettingsLive's own guard. Those were two hand-written lists
+    # until 08-08, so a sixth tab would have rendered a button that silently
+    # fell back to Accounts. This walks every key the rail actually offers.
+    test "every tab the rail offers is a tab the guard opens", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      for key <- BusterClawWeb.GwsPanels.console_tab_keys() do
+        assert has_element?(view, "#gws-tab-#{key}"),
+               "the rail does not render a button for #{key}"
+
+        render_click(view, "gws_tab", %{"tab" => to_string(key)})
+
+        assert has_element?(view, ~s(#gws-tab-#{key}[aria-current="page"])),
+               "clicking #{key} did not open it — the guard and the rail disagree"
+      end
+    end
+
+    test "an unknown tab key falls back to Accounts rather than crashing", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      render_click(view, "gws_tab", %{"tab" => "../../etc"})
+
+      assert has_element?(view, ~s(#gws-tab-accounts[aria-current="page"]))
+    end
+  end
 end
