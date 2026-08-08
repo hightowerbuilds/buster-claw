@@ -379,6 +379,28 @@ defmodule BusterClawWeb.StatusLiveTest do
   end
 
   describe "corner widget tabs" do
+    # The rail renders from HomeWidget.widget_tab_keys/0 and StatusLive's guard
+    # reads the same list. They were two literals in two files, in different
+    # orders, until 08-08 — the third instance of the shape that shipped Phone
+    # as a home tab the guard had never heard of. This walks every key the rail
+    # actually offers, so a fourth tab cannot arrive as a dead button.
+    test "every tab the widget rail offers is a tab the guard opens", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      for key <- BusterClawWeb.HomeWidget.widget_tab_keys() do
+        assert has_element?(
+                 view,
+                 ~s(button[phx-click="select_widget_tab"][phx-value-tab="#{key}"])
+               ),
+               "the widget rail does not render a button for #{key}"
+
+        render_click(view, "select_widget_tab", %{"tab" => key})
+
+        assert has_element?(view, ~s(button[phx-value-tab="#{key}"][aria-selected="true"])),
+               "clicking #{key} did not select it — the guard and the rail disagree"
+      end
+    end
+
     test "default to Time & Place and switch to Contacts (Calendar/Get Started have moved)",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")

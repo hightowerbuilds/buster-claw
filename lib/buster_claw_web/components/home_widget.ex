@@ -9,6 +9,19 @@ defmodule BusterClawWeb.HomeWidget do
   """
   use BusterClawWeb, :html
 
+  # The widget's sub-tabs, in display order — ONE list, feeding both the rail
+  # below and `StatusLive`'s `select_widget_tab` guard. It was two literals in
+  # two files (in different orders) until 08-08, which is the third instance of
+  # the shape that shipped Phone as a home tab the guard had never heard of.
+  @widget_tabs [
+    {"place", "Time & Place"},
+    {"contacts", "Contacts"},
+    {"notify", "Notify"}
+  ]
+
+  @doc "The widget's sub-tab keys, in display order. The rail and the guard share this."
+  def widget_tab_keys, do: Enum.map(@widget_tabs, &elem(&1, 0))
+
   attr :tab, :string, required: true
   attr :contacts, :list, required: true
   attr :activity, :list, required: true
@@ -27,6 +40,8 @@ defmodule BusterClawWeb.HomeWidget do
   # finds the header too narrow to fit the widget beside the banner it collapses
   # the widget to a right-edge bumper that pops the card back out on click.
   def corner_widget(assigns) do
+    assigns = assign(assigns, :widget_tabs, @widget_tabs)
+
     ~H"""
     <div
       id="home-corner-widget"
@@ -52,11 +67,7 @@ defmodule BusterClawWeb.HomeWidget do
           aria-label="Widget"
           class="flex gap-1 border-b-2 border-base-content/20 px-2 pt-2"
         >
-          <%= for {key, text} <- [
-            {"place", "Time & Place"},
-            {"contacts", "Contacts"},
-            {"notify", "Notify"}
-          ] do %>
+          <%= for {key, text} <- @widget_tabs do %>
             <button
               type="button"
               role="tab"

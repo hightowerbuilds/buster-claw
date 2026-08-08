@@ -49,6 +49,11 @@ defmodule BusterClawWeb.StatusLive do
   ]
   @home_tab_keys Enum.map(@home_tabs, &elem(&1, 0))
 
+  # The corner widget's sub-tabs, owned by the component that renders the rail.
+  # A guard cannot call a remote function, so this is read at compile time —
+  # which is the whole point: the two lists can no longer drift apart.
+  @widget_tab_keys BusterClawWeb.HomeWidget.widget_tab_keys()
+
   @doc "The Home sub-tabs, in display order. The rail and the guard share this."
   def home_tabs, do: @home_tabs
 
@@ -434,7 +439,7 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("select_widget_tab", %{"tab" => tab}, socket)
-      when tab in ["contacts", "place", "notify"] do
+      when tab in @widget_tab_keys do
     socket = assign(socket, :widget_tab, tab)
 
     # Selecting Time & Place (re)loads conditions (TTL-cached, so a real fetch at
