@@ -365,16 +365,39 @@ without being asked twice — reversing a winding, disabling a ZCR gate, zeroing
 silence threshold — and reported which tests went red. A test nobody has tried to
 break is a test nobody knows the strength of.
 
-## In flight at the time of writing
+## The number the plan depended on, measured
 
-The signal layer (Part III) is mid-build: MFCC and VAD have landed, the FFT and
-the DTW matcher are still being written. **The number that matters is not in yet:**
-the roadmap claims a full index build over the 295-second corpus takes "tens of
-seconds" in pure Elixir, and that figure is derived from an operation count rather
-than from anything that has run. If it is badly wrong, the zero-dependency posture
-has a real cost and the "don't reach for Nx until past an hour of audio" line needs
-rewriting before anyone relies on it. Both agents were asked for measured
-throughput, not estimates.
+The roadmap claimed a full index build over the 295-second corpus would take
+"tens of seconds" in pure Elixir. That figure came from an operation count, not
+from anything that had run, and it was load-bearing: it is the whole basis for
+"stay dependency-free, don't reach for Nx until past an hour of audio."
+
+**Measured: ~40 s single-core, ~27 s across 8 cores.** The estimate holds.
+
+**But it holds for a reason worth writing down, because two errors cancelled.**
+The estimate costed a *512*-point FFT — and 25 ms at 22.05 kHz is 551 samples, so
+the smallest radix-2 size that holds a frame without truncating it is **1024**.
+The real work is about 2.2x what was projected. The estimate survived only
+because it was pessimistic about per-operation cost by roughly the same factor.
+An estimate that is right by accident is worth exactly as much as one that is
+wrong, until someone measures it.
+
+**One measured surprise for whoever writes the indexer:** throughput *halves* on
+long clips. Framing is eager, so a 10-second clip leaves ~1M live floats on the
+process heap and every GC walks them; the same audio in 3-second pieces runs 2.5x
+faster. Chunking the consumption does not help — the list is already
+materialised. Index one file per process, and prefer short files.
+
+**And a drift bug caught in the same family as the day's others:** a 10 ms hop at
+22.05 kHz is 220.5 samples. Rounding that once to 221 and stepping by it is wrong
+by 0.23% forever — 0.67 s of accumulated drift across this corpus, which is more
+than a word. Frame starts are recomputed from the index instead, so the error is
+bounded at half a sample and never accumulates. Pinned by a test over all 29,500
+frame indices.
+
+The FFT itself is cross-checked bin-for-bin against an independent naive O(n²)
+DFT, which is the strongest verification available for one. The matcher was still
+being written when this was recorded.
 
 ## The day in one line, again
 
