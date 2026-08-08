@@ -21,6 +21,20 @@ they disagreed with each other and with the code.
 > Every gate item below is tagged **[R1]** or **[R2]**. The split exists because the two
 > have genuinely different risk: R1's audience can be told things, and R2's cannot.
 
+> ### The trading stack was deleted 2026-08-08
+>
+> Trading, Portfolio, MarketData, Watchlist and Chart Build were removed whole
+> (`293f47f`), and the extension mechanism built to re-home them followed
+> (`a89163e`). **~24,000 lines.** Operator decision: size the app down and finish
+> what remains.
+>
+> **This closes gate items and risks rather than completing them** — the honest
+> distinction, and the reason each is marked *closed by deletion* below rather
+> than ticked. Affected: **G-38**, **R9**, **V.9**, **T-10**, two **G-40** manual
+> checks, and the Trading rows in the QA checklist and the surface table.
+>
+> `finance_*` (SEC/Finnhub, public reads) survives; nothing else from that stack does.
+
 > **Enrollment cleared 2026-08-01.** The Apple Developer membership is live and the account
 > is at the certificates page. That was the gate on all of Part III, and it is now open —
 > the constraint has moved from *waiting on Apple* to *doing the work*.
@@ -800,9 +814,10 @@ A stranger judges maturity by the weakest surface they click.
       somewhere else.
 - [ ] **G-37.** **Move Phone out of the dock or behind a labs toggle** until a new user can
       do something with it. 1,275 lines of polish; no number to give out.
-- [ ] **G-38.** Decide what to do about **Trading in the dock** while its safety remediation
-      is open (**R9**). Read-only today; a stranger finding an unsafe path in a financial
-      surface will not care that it was labelled a prototype.
+- [x] **G-38. CLOSED BY DELETION 08-08.** *Decide what to do about Trading in the dock
+      while its safety remediation is open (**R9**).* Decided in the strongest available
+      way: the surface is gone. Nothing to label, nothing to gate, no unsafe path for a
+      stranger to find.
 
 ### G-40 — The human walkthrough: one build, every answer **[R1]**
 
@@ -837,16 +852,6 @@ logged-in checkout.
       confirm `amazon.com` actually resolves to `structure_only` and the step
       receipts show free text withheld. Shipped 08-03 with the default in code;
       the field test measured 89.8 KB leaving at `:full` with zero redactions.
-- [ ] **Chart Build, looked at.** Open a Chart Build tab, ask for a line chart
-      and a bar chart off cached data: the preview renders above the chat, the
-      ```` ```svg ```` fence is stripped from the bubble, the drawn-not-computed
-      label shows, the newest chart replaces the previous, and the zoom modal
-      opens. Then collapse the chat with **▾** — it should drop to a header-only
-      strip and hand its height to the preview. Tests assert the flex classes
-      swap; only a person can say the chart is easier to read.
-- [ ] **The model actually follows the chart palette** — slot 1 hazard
-      `#ff4407` first, no invented sixth hue. The palette is validated; whether
-      a model obeys it is not something a validator can answer.
 - [ ] **A first-open workspace, through the setup wizard.** Packaged app →
       wizard picks the folder → open it in **Finder** → count. The scaffolding
       is guarded by 24 tests and its count was measured by setting
@@ -957,18 +962,17 @@ confidence sits*, not volume.
 | T-1 | No test proves the packaged app boots | BLOCKER-1 shipped through five green CI jobs | **Promoted → G-5** |
 | T-2 | `:browser_engine` tests excluded by default **and in CI** | One of the largest subsystems; its tests never run automatically | Backlog — run nightly |
 | T-3 | No exhaustive tier×command authorization matrix | The trust model is the differentiator; it deserves a generated test over the whole catalog | Backlog — *half a day* |
-| T-4 | No end-to-end LiveView/browser tests | The Trading stale-SVG defect was invisible to server-rendered-HTML assertions | Backlog |
+| T-4 | No end-to-end LiveView/browser tests | A stale-DOM defect on a deleted surface was invisible to server-rendered-HTML assertions — the class of bug outlived the surface | Backlog |
 | T-5 | No migration test from a real 0.1.0 database | First update to a real user is the first time this runs | **Partly promoted → G-20** |
 | T-6 | Smoke scripts manual, not in CI | Only checks that exercise production ACL resolution end to end | **Promoted → G-6** |
 | T-7 | No soak/leak test | Always-on app, continuous render loops, long-lived LiveViews | Backlog |
 | T-8 | No prompt-injection regression suite | The most likely real-world attack on an agent runtime | Backlog — **highest-value backlog item** |
 | T-9 | Rust `browser/` modules thinly tested relative to size | 934-line `mod.rs`, 582-line `js.rs` | Backlog |
-| T-10 | Trading Stage 6 confidence tests | Tracked in the Trading roadmap | Backlog |
 | T-11 | Sandbox checkout times out under CPU starvation | Green on an idle machine; 816 sandbox-checkout failures under a saturating parallel build. Presents as mass unrelated red, not as "the runner was busy" — and a gate that goes red for unreproducible reasons teaches you to ignore red | **New 08-01** — low priority, but pin `max_cases` or raise the ownership timeout before it bites in CI |
 
-**Principles worth keeping.** *Test at the boundary that fails* — 131 passing Trading tests
-concentrated on prompt text and pure math missed a stale-DOM defect and an unsafe execution
-boundary. And **every bug found in QA gets a regression test before the fix is merged**; the
+**Principles worth keeping.** *Test at the boundary that fails* — 131 passing tests on the
+old Trading surface, concentrated on prompt text and pure math, missed a stale-DOM defect and
+an unsafe execution boundary. The surface is gone; the lesson is not. And **every bug found in QA gets a regression test before the fix is merged**; the
 QA lists are one-time discovery, the tests are what make them permanent.
 
 ### V.2 — Per-surface QA
@@ -992,10 +996,6 @@ Agent Mode run starts/streams/stops and survives the command call that started i
 
 **Workspace** — file tree lists/opens/renders markdown · drag-and-drop import · a file deleted
 on disk disappears without an error · path traversal via a crafted filename is refused.
-
-**Trading** — read-only enforcement holds; no free-form model turn can place, amend, or cancel
-an order · dashboard renders with zero agent runs on open · rapid account/symbol/range
-switching never shows stale data · two accounts with identical last-four fail closed.
 
 **Phone** — inbound call → greeting → record → transcript → Library doc + `/phone` row ·
 voicemail audio plays · a call while the Mac is asleep drains on wake · inbound SMS from a
@@ -1075,12 +1075,11 @@ reaches new installs only:
 
 | Seeder | Files |
 |---|---|
-| `Skills.ensure/0` | `save-note`, `shader-designer`, `chart-builder`, roster |
+| `Skills.ensure/0` | `save-note`, `shader-designer`, roster |
 | `Jobs.ensure/0` | `mail-triage`, `voicemail-triage`, `sms-triage`, roster |
 | `Jobs.seed_trusted_senders/0` | **`memory/policy.md`**, `trusted-email-senders.md`, `trusted-phone-numbers.md` |
 | `Jobs.seed_agent_settings/0` | agent settings |
 | `TerminalCommands.ensure/0` | roster, command catalog |
-| `Trading.ensure_mcp_config/0` | `mcp/robinhood.json` |
 
 **Note what is on that list.** `memory/policy.md` is the operator's security
 policy, and `trusted-email-senders.md` / `trusted-phone-numbers.md` gate the
@@ -1128,72 +1127,34 @@ Whatever the mechanism, apply it once across the whole table above rather than
 per-seeder — six `ensure/0` functions drifting apart is how this became invisible
 in the first place.
 
-### V.9 — Trading: the model is still in the financial data path
+### V.9 — Trading: the model in the financial data path — **CLOSED BY DELETION 08-08**
 
-**Status: open, needs a design. Inherited 08-03 from
-`TRADING_TAB_CRITICAL_REVIEW_ROADMAP.md` (archived) — the only findings from that
-review that are still live.**
+**Was: open, needs a design.** Inherited 08-03 from
+`TRADING_TAB_CRITICAL_REVIEW_ROADMAP.md` (archived); resolved by removing the
+surface rather than by designing around it (`293f47f`).
 
-That review's Stages 0, 3, 4 and 6 closed, and Stage 2 met its bar: **the model
-can propose an order but cannot execute one.** Verified in code 08-03 — the
-conversational run holds eleven `get_*` tools and no write tool, the model
-proposes via a fenced ```` ```order ```` block, the app parses it to a struct,
-renders the *parsed* values for confirmation, and submits from literals in a
-separate one-shot run that never auto-retries. That part is done and should not
-be re-litigated.
+Three findings were live when it closed, and they are worth keeping as a record of
+what a money surface costs to hold — **not** as a to-do:
 
-Three things did not close.
+1. **A model transcribed money into the permanent ledger.** The account snapshot
+   was a Claude turn emitting JSON, filed daily by `Portfolio.Recorder` into
+   durable history. Careful prose is not a parser, and the broker keeps no value
+   history, so a number that landed wrong was permanent.
+2. **Submission travelled through a Claude run.** The struct was the source of
+   truth and the operator had confirmed the parsed values, but the last hop was a
+   model turn, and "do not double-submit" was prose rather than an idempotency
+   guarantee.
+3. **Last-four was the account identity, everywhere.** The archived review
+   recorded a first-party MCP client with OAuth, PKCE and HMAC account keys as
+   done. **None of it was ever in the code** — verified 08-03, and worth
+   remembering as the sharpest instance of a checkbox outrunning a tree.
 
-**1. A model still transcribes money into the permanent ledger.** The account
-snapshot is a Claude turn instructed to emit JSON containing `value`, `cash`, and
-`buying_power`, and `Portfolio.Recorder` files that reading daily into durable
-history. The prompt is careful — *"copy each number from the named field"*,
-*"never invent them"*, *"never clamp to zero"* — but careful prose is not a
-parser, and Robinhood keeps no value history, so **a number that lands wrong is
-permanent.** The original review's Stage 1 bar was *"no model text is parsed into
-the permanent financial ledger"*, and it is not met. `fetched_at` is stamped
-app-side (the model's clock is correctly never trusted), but there is no broker
-timestamp or response identifier on durable records.
+**The generalisable lesson, which outlives the surface:** a checkbox in an
+archived roadmap is a claim about the past, and the tree is the only authority on
+the present. Finding #3 was found by grepping, not by reading the roadmap.
 
-**2. Submission travels through a Claude run.** `TradingOrder.submit/1` spawns a
-run allowlisted for `place_equity_order` with the parameters written into the
-prompt. The struct is the source of truth and the operator has already confirmed
-the parsed values, so this is far from the free-form execution the review
-warned about — but the last hop is still a model turn, and the instruction not
-to double-submit is prose in a prompt rather than an idempotency guarantee. A
-direct application-owned broker call would close it.
-
-**3. Last-four is still the account identity, everywhere.** The archived review
-records a `[x]` for *"introduce a stable opaque account key or HMAC-based
-identity for the new direct broker boundary"*, and a whole progress section
-describing a first-party Robinhood MCP client with OAuth, PKCE, refresh-token
-rotation, encrypted tokens and namespaced HMAC account keys.
-
-**None of that is in the code.** Verified 08-03: the only OAuth in the tree is
-Google's; the only HMAC use is webhook signature checks in the Sentry and GitHub
-integrations; and there are **42 `last4`/`last_four` references** across
-`lib/buster_claw/`. Trading reaches Robinhood exclusively through the operator's
-own `claude` CLI via `--mcp-config` — the app holds no broker credentials and no
-MCP client. Whether that lane was descoped or never landed, treat the checkbox
-as **not done**, because the thing it refers to is absent.
-
-Collisions fail closed today, which is why this is not urgent — but "fails
-closed" is a guard, not an identity scheme, and the first task here is deciding
-whether a first-party broker client is wanted at all before designing a key for
-a boundary that may never exist.
-
-**Why it is in the launch document.** Every one of these is a **trust claim**
-(G-29) about real money, and the review's own final recommendation was a launch
-*sequence*: read-only portfolio → trustworthy identity → direct structured data
-→ deterministic drafts → explicit confirmation → audited submission →
-reconciliation. Most of that is built. These are the remaining links, and the
-review's closing warning was specifically not to invert the order by letting
-execution run ahead of the controls.
-
-**Not blocking R1** — orders require deliberate operator confirmation and the
-dashboard is explicitly labelled an end-of-day monitor. But R1 puts real money
-in front of real users, so decide *deliberately* whether the model-transcribed
-ledger ships to them, rather than discovering it after.
+Full detail in `daily-growth/MM-DD-YY-Summary/08-08-26-summary.md` and in
+`BUSTERCLAW_CRITICAL_REVIEW.md` §7, which is preserved as written.
 
 ---
 
@@ -1214,7 +1175,6 @@ model in the first session:
 | Onboarding wizard | "Your assistant, reachable by email" |
 | Home screen | "Chat with Claude" |
 | Phone tab | "An answering machine for your agent" (mostly unbuilt) |
-| Trading tab | "A portfolio dashboard" (read-only, remediation open) |
 
 **A user cannot answer "what is Buster Claw?" after a full session — the answer changes with
 the screen.** The competitor that wins the comparison is the one whose one-sentence pitch
@@ -1421,8 +1381,8 @@ shows up: *"What did you use it for this week?"* The answers are the roadmap.
 
 - **SMS / A2P 10DLC** — code-complete, frozen on the Sole-Proprietor registration reset. Does
   not gate anything here.
-- **Trading Stages 1–7** — real safety work in its own roadmap; the tab is read-only today.
-  But see **G-38** and **R9**: read-only is a reason it doesn't block, not a reason to ignore it.
+- ~~**Trading Stages 1–7**~~ — **moot 08-08.** The surface was deleted rather than
+  remediated, which closed G-38, R9 and V.9 together.
 - **The iPhone companion and the newspaper reader** — separate products (III.K in the 07-27
   revision; retained in git history).
 - **Everything in Part V.**
@@ -1471,9 +1431,8 @@ expensive-looking item, App Store compliance, is the one we are deliberately not
   strangers while `Sentinel.Pending` is a stub and there is no kill-switch UI is the one
   reputational risk that compounds. *Mitigation:* G-29 through G-32 are in the release gate for
   exactly this reason.
-- **R9 — Trading is in the dock while its remediation is open.** A user who finds an unsafe path
-  in a financial surface will not care that it was labelled a prototype. *Mitigation:* G-38 —
-  decide deliberately rather than by default.
+- ~~**R9 — Trading is in the dock while its remediation is open.**~~ **CLOSED BY DELETION
+  08-08.** The financial surface no longer exists, so there is no unsafe path in it to find.
 - **R10 — busterclaw.lol is an exotic TLD** some corporate mail filters treat badly, and it is
   baked into the bundle ID. The door is closed; this is a risk to watch, not a decision to reopen.
 

@@ -5,6 +5,27 @@ review as written. Part II is the remediation roadmap it produced.
 
 **Reviewed 2026-08-06 · Roadmap proposed 2026-08-06 · Status: PROPOSED.**
 
+> ### What has happened since — read this first
+>
+> **Part I is a dated review and is preserved exactly as written.** Its findings
+> were true on 2026-08-06; several are no longer true, and rewriting them would
+> destroy the record of what an outside read actually found. Nothing in Part I has
+> been edited.
+>
+> **Part II is a live plan and IS updated.** Since it was written:
+>
+> - **2026-08-08 — the trading stack was deleted** (`293f47f`): Trading, Portfolio,
+>   MarketData, Watchlist and Chart Build, ~22,000 lines. **This resolves Phase 5
+>   entirely** and shrinks Phases 0 and 4.
+> - **2026-08-08 — the extension mechanism was deleted** (`a89163e`) after one day,
+>   having been built to re-home Trading.
+> - **The clean-clone test gap the review predicted was found and fixed** — a
+>   workspace assertion that passed only on machines carrying a gitignored build
+>   artifact.
+>
+> The subtraction the review asked for **has begun and went further than proposed**:
+> the review recommended putting Trading behind Labs; the operator deleted it.
+
 > ### The verdict in one paragraph
 >
 > BusterClaw is an ambitious, thoughtful prototype that **mistakes breadth for product
@@ -367,7 +388,7 @@ future controls as present trust**.
 
 # Part II — Remediation roadmap
 
-**Status:** Proposed on **2026-08-06**. This roadmap answers the findings above.
+**Status:** Proposed **2026-08-06** · **Phase 5 resolved by deletion 2026-08-08.** This roadmap answers the findings above.
 
 > `LAUNCH_ROADMAP.md` remains the authority for **Apple signing, notarization, packaging, and
 > public-release mechanics**; this document defines the **product, trust, architecture, and
@@ -403,11 +424,11 @@ acceptance evidence waits until the relevant phase exits.
 - [ ] **Make the durable queue the primary first-run path.** Explain home chat as an
       interactive mode and the unattended Dispatcher as an advanced mode; do not present two
       unrelated front doors.
-- [ ] **Add a single Labs capability flag** and move Phone, Voice, Trading order actions,
-      Sound Studio, unfinished Explore panels, and any decorative control behind it. Labs
-      must **default off** for a fresh production install.
-- [ ] **Keep read-only Trading visible only if** it is clearly labeled non-authoritative and
-      experimental. Otherwise move the entire surface behind Labs.
+- [ ] **Add a single Labs capability flag** and move Phone, Voice, Sound Studio, unfinished
+      Explore panels, and any decorative control behind it. Labs must **default off** for a
+      fresh production install. *(Trading left this list on 08-08 — deleted, not flagged.)*
+- [x] ~~**Keep read-only Trading visible only if** it is clearly labeled non-authoritative
+      and experimental.~~ **Resolved 08-08 by deletion.**
 - [ ] **Remove or rewrite every claim** that says all commands are audited, refusals are
       actionable approvals, or the app contains no AI in a way that hides the required
       external agent.
@@ -557,8 +578,8 @@ acceptance evidence waits until the relevant phase exits.
 - [ ] **Create fixture databases and workspaces for each released version.** Test database
       migrations, seed upgrades, rollback-safe failures, moved workspaces, corrupt manifests,
       full disks, and process death during writes.
-- [ ] **Exercise SQLite contention** with Dispatcher, chat, portfolio, and Sentinel writers
-      active together. Convert unexplained `database busy` outcomes into explicit retry or
+- [ ] **Exercise SQLite contention** with Dispatcher, chat, and Sentinel writers active
+      together. Convert unexplained `database busy` outcomes into explicit retry or
       failure behavior.
 
 ### Exit criteria
@@ -582,13 +603,8 @@ acceptance evidence waits until the relevant phase exits.
 - [ ] **Turn `StatusLive` into a page coordinator.** Extract chat, communications,
       notifications, studio, notes, calendar, weather, and Explore state into domain-owned
       modules or isolated LiveViews/components with explicit inputs and events.
-- [ ] **Split `TradingLive`** into dashboard loading, conversation orchestration, chart-build
-      flow, order approval, and rendering boundaries. **No extracted module may call private
-      LiveView state through implicit imports.**
 - [ ] **Split `BusterClaw.Agent.Chat`** into a documented state machine, delivery persistence,
       queueing/steering, transcript projection, and backend transport adapters.
-- [ ] **Separate `Trading`** portfolio reads, broker-agent invocation, tab persistence, and MCP
-      configuration.
 - [ ] **Inventory native-shell responsibilities** and define one cross-language contract for
       Phoenix/Tauri commands. Generate handler/capability declarations from a shared manifest
       where possible; **keep the ACL lockstep test as defense in depth**.
@@ -604,56 +620,51 @@ acceptance evidence waits until the relevant phase exits.
 ### Exit criteria
 
 - Each top-level LiveView owns **navigation and composition**, not several business domains.
-- Agent chat and trading workflows have **explicit, testable state transitions** independent
-  of HEEx rendering.
+- Agent chat has **explicit, testable state transitions** independent of HEEx rendering.
+  *(The trading workflow that shared this criterion was deleted 08-08; `StatusLive` and
+  `Agent.Chat` remain — the two largest extractions, and now the only ones.)*
 - **No known security or durability path relies on an ignored return** without a documented
   best-effort contract.
 - **The largest files cannot regrow unnoticed in CI.**
 
 ---
 
-## Phase 5 — Contain or rebuild Trading
+## Phase 5 — Contain or rebuild Trading — **RESOLVED BY DELETION 2026-08-08**
 
-> **Priority: P1** — because **real money changes the acceptable evidence bar**.
+> **The decision gate demanded one of two honest products: read-only research, or
+> controlled execution with an application-owned broker boundary. It said "do not
+> keep a halfway state indefinitely."**
+>
+> The operator took a third option the phase did not offer and **deleted the
+> surface** (`293f47f`), together with Portfolio, MarketData, Watchlist and Chart
+> Build — which could not survive it, having no writer or no UI of their own.
 
-### Decision gate
+Every exit criterion is met, though not in the way the phase imagined:
 
-- [ ] **Decide between two honest products:**
+- **No model-generated number silently becomes authoritative financial history** —
+  there is no financial history.
+- **No order reaches a broker through free-form model prose** — no order reaches a
+  broker.
 
-| Option | What it means |
-|---|---|
-| **A — Read-only research** | Remove order submission and label model-derived balances non-authoritative. |
-| **B — Controlled execution** | Build an application-owned structured broker boundary. |
+**What is worth carrying to the next money-shaped surface,** because it was learned
+the expensive way and is not specific to Robinhood:
 
-> **Do not keep a halfway state indefinitely.** Polished confirmation UI does not make a
-> model-mediated submission deterministic.
+1. **Transcription is the risk, not judgement.** The one measured failure on that
+   surface was *silent fabrication* — a cheap model invented a broker answer rather
+   than erroring. A read that fabricates half the time is worse than a read that
+   costs more.
+2. **A display convention used as a key will collide.** Last-four was the account
+   identity in 42 places.
+3. **Irreversibility asymmetry decides the design.** The ledger was durable because
+   the broker published no history; the bar cache was disposable because a lost bar
+   is one tool call away. *Which half a datum falls in should decide its schema
+   before anything else does.*
+4. **A checkbox in an archived roadmap is a claim about the past.** The archived
+   trading review recorded OAuth, PKCE and HMAC account keys as done. None of it
+   was ever in the tree.
 
-### Controlled-execution requirements
-
-- [ ] **Replace model-transcribed account snapshots** with structured provider responses. If
-      that cannot be done, **do not write those values into permanent history**.
-- [ ] **Introduce a stable opaque account identifier.** Last-four digits may remain display
-      text but **cannot be the primary key or authorization identity**.
-- [ ] **Generate a canonical order intent from typed application data**, bind the confirmation
-      to its digest, and **reject any changed payload**.
-- [ ] **Submit through an idempotent application-owned client**, persist the provider order ID,
-      and reconcile final status. **Never auto-retry an unknown submission outcome.**
-- [ ] **Record intent, confirmation, submission, provider response, cancellation, and
-      reconciliation as a linked audit chain.**
-- [ ] **Add real-browser tests** for rapid account, symbol, and range switches so stale charts
-      or balances cannot survive a selection change.
-- [ ] **Add failure tests** for duplicate confirmation, process death, network timeout,
-      provider ambiguity, account collision, partial data, and delayed reconciliation.
-
-### Exit criteria
-
-- **No model-generated number silently becomes authoritative financial history.**
-- **No order reaches a broker through free-form model prose.**
-- Every submitted order has **stable account identity, one immutable confirmed intent,
-  idempotency protection, and reconciled outcome**.
-- **Until those conditions hold, Trading remains read-only and behind Labs.**
-
----
+**Do not treat this phase as reopenable.** If a financial surface returns, it starts
+from requirements, not from this document.
 
 ## Phase 6 — Make the packaged application the tested product
 

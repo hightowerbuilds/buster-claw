@@ -1,5 +1,11 @@
 # Explore — a home tab that teaches the machine
 
+> **Trading tutorial deleted 2026-08-08.** The Trading surface was removed from the
+> app (`293f47f`), and its Explore tile, tutorial panel and roster entry went with
+> it. Every Trading row below is struck rather than removed: what a tutorial was
+> asked to explain, and what it got wrong, is the record this roadmap exists to
+> keep. The tile count is now **four built of five**, not five of six.
+
 **Scoped 08-02-26 · Status: ACTIVE · Content accuracy pass scoped 08-04-26.**
 
 A new home sub-tab, **Explore**, alongside Chat / Calendar / Notes / Studio, with
@@ -203,7 +209,7 @@ Replace each Phase 0.5 stub with an actual tutorial. One tutorial per commit.
   pays; the agent cannot pay and cannot confirm*, per the closeout
   roadmap's current posture; finish ≠ stop). Same command-contract test.
 
-- [x] **Trading** — BUILT 08-02, added to the roster (operator, same day). Deliberately the
+- [~] ~~**Trading**~~ — BUILT 08-02, **DELETED 08-08 with the surface**. Deliberately the
   *simple* one: no cycles, just (1) how to connect Robinhood — the two
   terminal commands the Trading tab itself shows (`claude mcp add …` +
   `claude mcp login robinhood`, OAuth → Keychain, the #65895 logout/login
@@ -215,7 +221,9 @@ Replace each Phase 0.5 stub with an actual tutorial. One tutorial per commit.
   allowlist by construction — only the operator's click submits, and only
   to the one account Robinhood marks Agentic); never auto-retries an
   uncertain submit; never sees the password. Source of truth:
-  `Trading`/`TradingOrder` moduledocs + trading-tab memory.
+  `Trading`/`TradingOrder` moduledocs + trading-tab memory. **All of that is gone;
+  kept because the can/can't split was the clearest thing this roadmap produced,
+  and the next safety-sensitive tutorial should be shaped the same way.**
 
 Remaining after that: **BusterPhone** → **Shaders & Backgrounds**.
 
@@ -233,16 +241,16 @@ than something the operator can try.
 
 | Tab | Status | Required work |
 |---|---|---|
-| **Intro** | Accuracy rewrite complete 08-04 | It now recommends Claude, names Codex and OpenCode support, reserves Trading for Claude, explains both Google connection paths, and distinguishes archived untrusted mail from trusted Dispatch work. |
+| **Intro** | Accuracy rewrite complete 08-04 | It now recommends Claude, names Codex and OpenCode support, explains both Google connection paths, and distinguishes archived untrusted mail from trusted Dispatch work. |
 | **BusterClaw.lol** | Accuracy rewrite complete 08-04 | Phone-number vending is now described as planned/future work until the store is actually live. |
 | **NTF** | Accuracy rewrite complete 08-04 | It now describes the sibling project as a creative-writing and journaling app with spatial 3D visualization, not Buster Claw's operator notebook. Grouping it under **Elsewhere** or **About** remains an information-architecture option. |
-| **Models** | Accuracy rewrite complete; demo pending | Harness copy now matches Claude/Codex/OpenCode support and the Claude-only Trading pin. Add a read-only current-policy demo instead of relying only on hypothetical examples. |
+| **Models** | Accuracy rewrite complete; demo pending | Harness copy now matches Claude/Codex/OpenCode support; the Claude-only pin it described went with Trading on 08-08. Add a read-only current-policy demo instead of relying only on hypothetical examples. |
 | **Shaders & Backgrounds** | Stub accuracy corrected; tutorial incomplete | The stub now says a workspace shader appears without a rebuild and must be selected. The tutorial still needs Terminal backgrounds, image backgrounds, palettes, WebGPU fallback, and the custom WGSL contract. |
 | **BusterPhone** | Trust summary corrected; tutorial incomplete | The stub now separates trusted-number SMS from voicemail's trusted-number + PIN rule. The tutorial still needs SMS gating and limits, voicemail costs, heard/unheard behavior, and the distinction between recording a message and enqueueing work. |
 | **Gmail/GWS** | Accuracy rewrite complete 08-04 | The tutorial now separates policy gates, trust tiers, `confirm_send`/`confirm_share`, and the trusted unattended `dispatch_reply` path. It also covers bundled and Advanced OAuth setup. Runnable demo metadata remains. |
 | **Command List** | Taxonomy rewrite complete 08-04 | Counts and all three metadata axes are guarded against the live catalog by a contract test; UI-only surfaces and the mutation/trigger audit boundary are explicit. Runnable demo metadata remains. |
 | **BrowserControl** | Accuracy rewrite complete; demo metadata pending | The three-surface explanation remains, while audit copy now distinguishes redacted page ingestion, ordinary reads, and consequential actions. The stale purchase-confirmation source comment was corrected. |
-| **Trading** | Explanation good; demo missing | The safety explanation matches the committed implementation. Add a safe path through connection verification, a read-only market question, and an order-proposal card that explicitly stops before confirmation. Soften the absolute claim that funding is the most an order can touch. |
+| ~~**Trading**~~ | **Deleted 08-08** | The tutorial went with the surface. Its one open correction — *"soften the absolute claim that funding is the most an order can touch"* — was a real inaccuracy that shipped for six days, and is worth remembering as the kind of overclaim a safety tutorial produces when it paraphrases a guarantee. |
 
 ## Foundational rewrites
 
@@ -251,8 +259,10 @@ than something the operator can try.
 The Intro and Models launcher say “Claude only”; the Models tutorial later says
 Claude, Codex, and OpenCode. Replace the shared explanation with:
 
-> Install a supported agent CLI. Claude Code is recommended and required for
-> Trading; Chat and unattended work can also use Codex or OpenCode.
+> Install a supported agent CLI. Claude Code is the recommended one; any surface
+> can also use Codex or OpenCode.
+>
+> *(Amended 08-08: the "required for Trading" clause went with the surface.)*
 
 The existing `brew install --cask claude-code` command is still supported, but
 Anthropic now presents its native installer first. Keep Homebrew as a macOS
@@ -262,17 +272,18 @@ choice rather than implying it is the only installation route:
 ### 2. Replace the Command List taxonomy
 
 The tutorial treats `read`, `mutate`, and `gated` as three equivalent kinds.
-They are not. The current catalog contains **165 commands** and has three
-separate axes:
+They are not. The catalog had **165 commands** when this was written and has
+**162** since the trading stack was deleted (08-08); the contract test is the
+authority, not this list. Three separate axes:
 
-- **Operation type:** 66 read, 17 trigger, 82 mutate.
-- **Trust tier:** 72 safe, 93 restricted.
+- **Operation type:** 64 read, 17 trigger, 81 mutate.
+- **Trust tier:** 70 safe, 92 restricted.
 - **Additional policy flag:** 20 gated commands.
 
 `gated` is not an operation type. `safe` also does not universally mean that
 nothing leaves the machine. Rewrite the diagram and legend around these axes.
 Replace “every tab, every feature” with “agent-addressable backend operations”:
-Appearance, Studio, and portions of Trading are intentionally UI-only.
+Appearance and Studio are intentionally UI-only.
 
 ### 3. Explain confirmation mechanisms separately
 
@@ -355,7 +366,6 @@ Recommended first runnable demos:
 - **Command List:** create a local reminder.
 - **GWS:** list connected accounts or create a draft without sending.
 - **Phone:** list unheard voicemail without marking it heard.
-- **Trading:** generate an order proposal and stop at the confirmation card.
 - **Shaders:** apply a built-in shader to the Home preview.
 
 ## Tests that protect meaning, not wording
@@ -377,7 +387,7 @@ read catalog metadata and verify every claim made by a tutorial:
    gating explanations.
 2. Build BusterPhone and Shaders & Backgrounds tutorials.
 3. Add the reusable demo contract and safe Copy/Try actions.
-4. Retrofit Models, GWS, Command List, BrowserControl, and Trading examples.
+4. Retrofit Models, GWS, Command List, and BrowserControl examples.
 5. Rewrite or relocate BusterClaw.lol and NTF after verifying their live roles.
 6. Run a packaged-app editorial pass; archive this roadmap only after every
    tutorial has been exercised against a real dependency or an explicit safe
@@ -387,7 +397,7 @@ read catalog metadata and verify every claim made by a tutorial:
 
 Candidate tiles beyond the operator's seven, each needing an operator yes:
 **The work queue & on-duty** (the queue is "the whole design" — README),
-**Chat & the agent**, **Trading**, **Music & Sound Studio**, **Security feed /
+**Chat & the agent**, **Music & Sound Studio**, **Security feed /
 Sentinel**, **The terminal**. Eight thin tutorials are worth less than five
 good ones; anything declined goes to `LEFTOVERS.md` with a reason.
 
