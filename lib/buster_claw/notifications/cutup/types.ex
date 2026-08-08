@@ -29,6 +29,18 @@ defmodule BusterClaw.Notifications.Cutup.Types do
         └─ Cutup.Dtw.search/3      → [t:match/0]     (template vs recording)
         └─ Cutup.Vad.spans/2       → [t:span/0]      (energy + ZCR)
 
+  And the bootstrap that fills an index with no recogniser at all — a transcript
+  plus the spans it must fit into:
+
+      Cutup.Align.align/3 :: (transcript, [t:span/0], opts) → [t:word/0]
+
+  **`Align` is the crude one, and it is supposed to be.** It exists because
+  query-by-example needs a seed: DTW can find every other take of a word, but
+  only once it has been given one. `Align` produces that first pass from text we
+  already have, so a corpus can be bootstrapped without anyone marking words by
+  ear. Its output is expected to be replaced, word by word, as better timings
+  arrive — which is exactly why `t:index/0` carries `origin` and `confidence`.
+
   ## The analysis frame is fixed, and everything depends on it
 
   **25 ms frames at a 10 ms hop.** Those are the standard values and they are
@@ -82,15 +94,21 @@ defmodule BusterClaw.Notifications.Cutup.Types do
   differs and a future reader needs to know which they are looking at:
 
   - `:manual` — hand-authored (a test fixture, or an operator correcting a
-    recognizer). Exact by definition.
-  - `:recognizer` — machine transcription. Approximate; see the padding note on
-    `t:cut/0`.
+    recogniser). Exact by definition, and the only origin `Index.build/3` gives
+    a confidence of 1.0.
+  - `:aligned` — derived by `Cutup.Align` from a transcript and VAD spans. **No
+    recogniser ran**: the word *sequence* is known and the *times* are a guess
+    from proportional weighting. Approximate in a specific way worth knowing —
+    a transcript error slides every word after it, and function words are
+    systematically over-allotted.
+  - `:recognizer` — machine transcription, where a recogniser genuinely produced
+    the timings. Approximate; see the padding note on `t:cut/0`.
   - `:imported` — carried in from an external tool.
   """
   @type index :: %{
           source: String.t(),
           words: [word()],
-          origin: :manual | :recognizer | :imported,
+          origin: :manual | :aligned | :recognizer | :imported,
           language: String.t() | nil,
           indexed_at: DateTime.t() | nil
         }

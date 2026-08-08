@@ -505,6 +505,7 @@ defmodule BusterClaw.Commands do
   defdelegate sound_index_search(args), to: BusterClaw.Commands.Sound
   defdelegate sound_index_import(args), to: BusterClaw.Commands.Sound
   defdelegate sound_index_delete(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_align(args), to: BusterClaw.Commands.Sound
   defdelegate sound_assemble(args), to: BusterClaw.Commands.Sound
   # Google Workspace
   defdelegate google_account_list(args \\ %{}), to: BusterClaw.Commands.Google

@@ -8,12 +8,12 @@ defmodule BusterClaw.Commands.Catalog.Sound do
   The reads are `:safe`: they open files read-only, touch no setting, and change
   nothing about what the machine plays.
 
-  Four entries write, and all four are `:restricted`. None is `gated`, and the
+  Five entries write, and all five are `:restricted`. None is `gated`, and the
   line is worth stating: `sound_import` and `sound_assemble` write a **new
-  source** into `sounds/studio/`, and `sound_index_*` write text beside it.
-  Nothing here installs a chime or routes a key — routing is the only act that
-  changes what the machine does when nobody is watching, and it stays a later,
-  gated phase.
+  source** into `sounds/studio/`, and `sound_align` and `sound_index_*` write
+  text beside it. Nothing here installs a chime or routes a key — routing is the
+  only act that changes what the machine does when nobody is watching, and it
+  stays a later, gated phase.
 
   `sound_import` is the one entry that names a file **outside** the sound
   stores, and its two inputs are the whole of that reach: an `event_id`, whose
@@ -146,6 +146,29 @@ defmodule BusterClaw.Commands.Catalog.Sound do
           "event_id" => %{type: :integer, required: false},
           "path" => %{type: :string, required: false},
           "name" => %{type: :string, required: false},
+          "overwrite" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "sound_align",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Give one already-imported studio source a word index by fitting its transcript onto the speech its audio actually contains — the bootstrap that makes sound_index_search and sound_assemble usable at all, since a source with no index cannot be cut from however good its transcript is. There is NO recognizer: voice-activity detection finds where sound happens, and the transcript's words are shared out across those spans by syllable count. The timings are therefore APPROXIMATE, and they are expected to be improved later, word by word. Name the work with event_id (the transcript comes from the phone event; pass transcript too to correct what the transcriber mangled) or with source plus an explicit transcript. The audio must already be in sounds/studio/: this verb never imports, and a source that is not there is refused as not_imported, naming the basename to run sound_import for. Refuses an existing index unless overwrite is true. Reports words, spans, and two quality figures that need no listening: the confidence spread (min/median/max), which is a plausibility check on the RECORDING as a whole rather than a per-word verdict — every word is scored against the same ~200 ms per syllable, so a flat spread is normal and means nothing, while a LOW value means the transcript does not fit the audio at any rate people speak at; and unplaced_ms, the detected speech no word covers, which is exactly the audio trimmed off words that straddled a span boundary. Confidence tops out at 0.9 because 1.0 means hand-marked, so min_confidence 0.95 asks for measured timings alone. Detector tuning: min_span_ms (default 60) rejects shorter activity, min_silence_ms (default 120) is the smallest gap that counts as a gap. Fit tuning: weight syllables (default) or characters, and syllable_ms (default 200), which only scores confidence and never moves a word.",
+        args: %{
+          "event_id" => %{type: :integer, required: false},
+          "source" => %{type: :string, required: false},
+          "transcript" => %{type: :string, required: false},
+          "min_span_ms" => %{type: :number, required: false, default: 60},
+          "min_silence_ms" => %{type: :number, required: false, default: 120},
+          "weight" => %{
+            type: :string,
+            required: false,
+            enum: ["syllables", "characters"],
+            default: "syllables"
+          },
+          "syllable_ms" => %{type: :number, required: false, default: 200},
+          "language" => %{type: :string, required: false},
           "overwrite" => %{type: :boolean, required: false, default: false}
         }
       },

@@ -20,10 +20,19 @@ was `SOUND_STUDIO_ROADMAP`'s Phase 2, never built, and has sat in `LEFTOVERS.md`
 since 08-02 with the honest note that it *"doesn't get expensive; it stays
 absent, which is the actual cost."*
 
-**How the parts relate.** Part I is the command surface — the substrate
-everything else is reached through. Part II is the cut-up feature the operator
-asked for. Part III is the recogniser that fills its index, built here rather
-than bought. Part IV is open space for additions not yet scoped.
+**How the parts relate.** **I** is the command surface — the substrate
+everything else is reached through. **II** is the cut-up feature itself. **III**
+is the recogniser that fills its index, built here rather than bought. **IV**
+chooses *which take* of a word to use, which is most of the quality and is
+currently nobody's job. **V** grows the corpus, because every problem downstream
+is partly a corpus problem. **VI** is the labelling loop that tunes IV to the
+operator's ear. **VII** is open space.
+
+**The honest dependency:** IV, V and VI compound. A lattice search cannot help
+when a slot has one candidate (V fixes that), and weights cannot be fitted
+without labels (VI produces them). **V is the cheapest and lifts everything**,
+including Part III — a donor recording has known text and clean audio, which
+removes `Align`'s two worst failure modes outright.
 
 ---
 
@@ -602,7 +611,168 @@ the whole reason the index was defined as a contract first.
 
 ---
 
-# Part IV — Open space
+# Part IV — Choosing takes: the unit-selection lattice
+
+**Operator ask (08-08):** give Ramshackle a graph, with weights, so phrasing can
+be honed word by word.
+
+**That instinct has a name — this is unit-selection synthesis**, the classical
+technique behind concatenative TTS, and our data is already in its shape.
+
+## The problem it fixes
+
+Today `sound_assemble` is handed an ordered list of cuts and splices them. The
+*choice* of which take of "morning" to use is made outside it, and in the first
+real paragraph it was made by picking the median duration — which is very nearly
+arbitrary. With 9 takes of "morning" and 35 of "to", the choice is most of the
+quality and nothing is currently making it.
+
+## Two costs and a search
+
+A sentence becomes a **lattice**: one slot per target word, N candidate takes per
+slot. Every path is a possible sentence; find the cheapest.
+
+**Target cost — is this take good *for this slot*, ignoring neighbours:**
+
+- alignment `confidence` (exists)
+- duration against its syllable expectation (exists, in `Align`)
+- **boundary energy** — does the cut start and end in a quiet moment, or
+  mid-vowel? `Vad.energy_profile/2` already exposes exactly this, per frame.
+  **This needs no human and no learning: a cut through a vowel is measurably
+  worse than a cut at a closure.**
+- distance from its own siblings — a take far from the other 8 instances of the
+  same word is probably mis-aligned. `Dtw.distance/3` already computes it.
+
+**Join cost — how well does this take splice onto the next.** The standard join
+cost in unit-selection TTS is **cepstral distance across the seam**, and we
+already compute MFCCs: compare the last frames of take A against the first frames
+of take B. Add a level-match term, since `normalize/2` equalises peaks rather
+than loudness and a level jump at a seam is audible.
+
+**The search is Viterbi** over the lattice — the same dynamic-programming family
+as the DTW already built and measured.
+
+## What this will and will not do
+
+- It will **not** invent audio. No path through a bad candidate set is good, and
+  with 1–2 takes in a slot the search has nothing to do. **This improves
+  monotonically as the corpus grows** (Part V), which is a reason to build it
+  early and let it get better on its own.
+- The acoustic costs are **measurable properties with obvious signs**. Hand-set
+  weights will capture most of the benefit; fitting them is Part VI's job and
+  should not block this.
+
+---
+
+# Part V — Growing the corpus
+
+**The measured ceiling:** 295 seconds, 655 tokens, 237 distinct words, 47 with
+3+ takes, and the frequency head is almost entirely function words. Every quality
+problem downstream is partly a corpus problem, and this is the cheapest of them
+to fix.
+
+Four sources, in order of value per effort:
+
+**1. A donor session — by far the highest value.** The operator reads a prepared
+passage aloud into the phone or a mic. This is how TTS voice datasets are
+actually built, and it inverts every hard problem at once: **the text is known
+exactly** (no Twilio mangling, no "bus o'clock"), the audio is clean and
+consistent in level and channel, and the passage can be *designed* to cover the
+vocabulary a cut-up actually needs — pronouns, verbs, connectives, numbers,
+days, months. An hour of reading would dwarf the entire existing corpus.
+
+**Note what it does to Part III:** with known text and clean audio, `Align`'s
+output stops being crude — its two worst failure modes (transcript errors sliding
+the timeline, and unpredictable spontaneous speech rate) both largely vanish.
+
+**2. Voicemails, which accumulate on their own.** Free, organic, already wired.
+The constraint is that they are other people's voices and Twilio's transcripts.
+
+**3. Public-domain corpora, for testing rather than material.**
+[FSDD](https://github.com/Jakobovski/free-spoken-digit-dataset) (CC BY-SA 4.0,
+8 kHz, 50 takes per digit per speaker) is already proven as the DTW ground truth
+that produced the threshold study. [LibriSpeech](https://www.openslr.org/12)
+(CC BY 4.0) matters for a different reason: **word-level alignments exist**
+(Montreal Forced Aligner), which is ground-truth timings we could measure
+`Align` and `Dtw` against instead of guessing.
+
+> **Do not vendor either into this repo.** FSDD is share-alike and this tree is
+> MIT open-core. A fetch script plus a gitignored fixture directory, with tests
+> that skip when it is absent — the pattern `sound_studio_test.exs` already uses
+> for a missing `afconvert`.
+
+**4. Anything the operator already has** — recordings, interviews, voice memos.
+`sound_import` takes any Library-relative file, so this is already reachable.
+
+**What to build:** a `sound_corpus`-style report that says what is *missing*
+rather than what exists — which words a target vocabulary lacks takes for, so a
+donor passage can be written against the gap rather than guessed at.
+
+---
+
+# Part VI — The listening session: labels, and only then weights
+
+**Operator ask (08-08):** an intensive session where the model asks a lot of
+questions about word quality.
+
+**This is active learning, and the framing matters.** The model cannot hear. It
+is not learning to judge audio — it is **building a labelled dataset by choosing
+good questions**, and then fitting Part IV's cost weights to match the operator's
+ear. Being clear about that is what keeps the feature honest.
+
+## Ask pairs, not scores
+
+**"Which of these two takes of *morning* is better?"** beats "rate this 1–5".
+Pairwise judgements are more reliable, need no calibration, survive fatigue
+better, and are what ranking models actually want. Absolute scores from one
+person drift within a single sitting.
+
+## Ask the questions that are worth asking
+
+A session that walks the corpus alphabetically wastes the operator's time. Query
+strategy, roughly in priority order:
+
+- **Leverage** — words that appear most often in assembled sentences. Getting
+  `to` and `the` right matters more than any content word, and they are the words
+  `Align` handles *worst* (function words are systematically over-allotted).
+- **Uncertainty** — pairs where the target costs disagree, or are close enough
+  that the model genuinely cannot rank them.
+- **Disagreement** — where boundary energy says one thing and DTW-to-siblings
+  says another. A label there resolves an actual conflict.
+
+Skip pairs the costs already rank confidently — they teach nothing.
+
+## What gets stored, and why it is worth doing before any fitting
+
+Each judgement stores **the two takes, the winner, and the full feature vector at
+judgement time**. That last part is what makes the data outlive the model: if the
+costs change, old labels remain fittable because the features they were judged
+under are recorded.
+
+## Be honest about the ceiling
+
+- **A few dozen labels is tuning, not learning.** Say so. Fit weights only when
+  the data supports it, and report how much data went in.
+- **This overfits to one person's ear on a small corpus** — which for a personal
+  tool is arguably correct, and should still be stated.
+- **Session design is a real constraint**: label quality degrades with fatigue,
+  so sessions should be short, resumable, and should record their own ordering so
+  a tired tail can be discounted later.
+
+## Phases
+
+- **VI.0** — store judgements (schema + verbs), with the feature vector. No
+  fitting. Immediately useful: a judged pair is a better take-choice than a
+  measured one, so Part IV can consult labels directly before any model exists.
+- **VI.1** — the query strategy, so a session asks its most valuable questions
+  first.
+- **VI.2** — fit the target/join weights. **Gated on having enough labels to
+  beat hand-set weights on a held-out set** — and if it does not beat them, say
+  so and keep the hand-set ones.
+
+---
+
+# Part VII — Open space
 
 The operator said on 08-08 that several Studio additions were in mind; one of
 them — the transcriber and ramshackle sentences — became Part II and Part III.

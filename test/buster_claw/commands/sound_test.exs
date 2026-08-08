@@ -4,8 +4,10 @@ defmodule BusterClaw.Commands.SoundTest do
   use BusterClaw.DataCase, async: false
 
   alias BusterClaw.Commands
+  alias BusterClaw.Notifications.Cutup.Index
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundGen
+  alias BusterClaw.Notifications.SoundStudio
   alias BusterClaw.Telephony
 
   # afconvert is a macOS system binary, but the suite should not fail on a
@@ -38,6 +40,30 @@ defmodule BusterClaw.Commands.SoundTest do
   # as a chime, so probe has something honest to read.
   defp wav, do: SoundGen.render("boot")
 
+  # A recording with structure the detector can actually find: `bursts` tone
+  # bursts of 300 ms separated by 300 ms of digital silence, with silence at each
+  # end so there is a noise floor to measure. Three bursts is three spans at the
+  # default gates, which is what gives an alignment somewhere to put words.
+  defp speech(bursts \\ 3) do
+    silence = pcm(300, 0.0)
+    body = Enum.map_join(1..bursts, silence, fn _burst -> pcm(300, 440.0) end)
+
+    SoundStudio.render(%SoundStudio{data: silence <> body <> silence})
+  end
+
+  defp pcm(ms, hz) do
+    count = trunc(22_050 * ms / 1000)
+
+    for i <- 0..(count - 1), into: <<>> do
+      sample =
+        if hz == 0.0,
+          do: 0,
+          else: round(0.5 * 32_767 * :math.sin(2 * :math.pi() * hz * i / 22_050))
+
+      <<sample::little-signed-16>>
+    end
+  end
+
   defp library(root, name, contents \\ nil),
     do: File.write!(Path.join([root, "sounds", name]), contents || wav())
 
@@ -55,7 +81,7 @@ defmodule BusterClaw.Commands.SoundTest do
     name = "voicemail-#{n}.wav"
 
     if Keyword.get(opts, :on_disk, true) do
-      File.write!(Path.join([root, "library", name]), wav())
+      File.write!(Path.join([root, "library", name]), Keyword.get(opts, :audio) || wav())
     end
 
     {:ok, event} =
@@ -103,6 +129,15 @@ defmodule BusterClaw.Commands.SoundTest do
   end
 
   defp studio_entries(root), do: root |> Path.join("sounds/studio") |> File.ls!() |> Enum.sort()
+
+  # A voicemail whose audio has structure, already through the studio door — the
+  # state every alignment starts from, and the one `sound_align` refuses to
+  # create for you.
+  defp aligned_voicemail(root, transcript \\ "meet me at the harbor") do
+    event = voicemail(root, transcript, audio: speech())
+    {:ok, imported} = Commands.Sound.sound_import(%{"event_id" => event.id})
+    {event, imported.name}
+  end
 
   # A word list of the shape a recognizer (or a hand-authored fixture) supplies,
   # with wire-style string keys.
@@ -769,6 +804,291 @@ defmodule BusterClaw.Commands.SoundTest do
     end
   end
 
+  describe "sound_align" do
+    test "an event's transcript becomes an index that is on disk", %{root: root} do
+      {event, source} = aligned_voicemail(root)
+
+      assert {:ok, result} = Commands.Sound.sound_align(%{"event_id" => event.id})
+
+      # Bound to the source it will be cut from, named the same way sound_import
+      # named it — otherwise Assemble could never resolve the cuts.
+      assert result.source == source
+      assert result.event_id == event.id
+      assert result.library_path == event.recording_path
+      assert result.audio_present
+      refute result.replaced
+
+      # Three bursts, five words, all of them placed.
+      assert result.spans == 3
+      assert result.words == 5
+      assert result.transcript_words == 5
+      assert result.origin == :aligned
+      assert result.speech_ms > 0
+      assert result.duration_ms > result.speech_ms
+
+      # It PERSISTED. sound_index_search reads from disk, so an in-memory index
+      # would have been worth nothing.
+      assert File.regular?(result.path)
+      assert {:ok, index} = Index.load(source)
+      assert length(index.words) == 5
+      assert index.origin == :aligned
+      assert Enum.map(index.words, & &1.word) == ~w(meet me at the harbor)
+
+      # Every word landed inside a detected span, in order, never in silence.
+      assert Enum.all?(index.words, &(&1.end_ms > &1.start_ms))
+      starts = Enum.map(index.words, & &1.start_ms)
+      assert starts == Enum.sort(starts)
+
+      # And the whole point: the cut-up surface can now use this source.
+      assert {:ok, %{indexes: [%{source: ^source, words: 5, audio_present: true}]}} =
+               Commands.Sound.sound_index_list()
+
+      assert {:ok, %{hits: [hit]}} = Commands.Sound.sound_index_search(%{"query" => "harbor"})
+      assert hit.source == source
+      assert hit.end_ms > hit.start_ms
+
+      assert Enum.any?(result.notes, &(&1 =~ "APPROXIMATE"))
+      assert Enum.any?(result.notes, &(&1 =~ "sound_assemble"))
+    end
+
+    test "the confidence spread is reported, and never claims to be hand-marked", %{root: root} do
+      {event, _source} = aligned_voicemail(root)
+
+      assert {:ok, result} = Commands.Sound.sound_align(%{"event_id" => event.id})
+
+      assert %{min: min, median: median, max: max} = result.confidence
+      assert min <= median and median <= max
+      assert min > 0.0
+
+      # 1.0 belongs to hand-marked timings, so `min_confidence: 0.95` can still
+      # ask for those alone after an alignment has run.
+      assert max <= 0.9
+      assert Enum.any?(result.notes, &(&1 =~ "0.9"))
+
+      # The spread is a whole-recording plausibility figure, NOT a per-word
+      # verdict: every word is scored against the same absolute expectation, so
+      # under the default weighting these are one number three times. The notes
+      # have to say so, or the flatness reads as the alignment being uniformly
+      # good.
+      assert min == max
+      assert Enum.any?(result.notes, &(&1 =~ "RECORDING"))
+
+      # The exact per-alignment figure the spread cannot give: with this fixture
+      # every word tiles the detected speech, so nothing was clamped away.
+      assert result.placed_ms > 0.0
+      assert_in_delta result.placed_ms, result.speech_ms, 0.001
+      assert result.unplaced_ms == 0.0
+
+      # A transcript far longer than the audio can hold collapses the whole
+      # batch's confidence rather than failing — which is the signal a caller
+      # gets instead of an error.
+      other = voicemail(root, "unused", audio: speech())
+      {:ok, %{name: crowded}} = Commands.Sound.sound_import(%{"event_id" => other.id})
+
+      assert {:ok, hurried} =
+               Commands.Sound.sound_align(%{
+                 "source" => crowded,
+                 "transcript" => String.duplicate("harbor ", 120)
+               })
+
+      assert hurried.confidence.max < result.confidence.min
+    end
+
+    test "a word that straddles a span boundary shows up as unplaced audio", %{root: root} do
+      source(root, "found.wav", speech())
+
+      # Eight syllables across three equal spans does not divide, so a word
+      # crosses a boundary, is clamped to the span it mostly occupies, and gives
+      # up the rest. That surrendered audio is the one exact per-word quality
+      # signal available — the confidence spread cannot report it.
+      assert {:ok, result} =
+               Commands.Sound.sound_align(%{
+                 "source" => "found.wav",
+                 "transcript" => "meet me at the harbor now please"
+               })
+
+      assert result.words == 7
+      assert result.unplaced_ms > 0.0
+      assert result.placed_ms < result.speech_ms
+      assert_in_delta result.placed_ms + result.unplaced_ms, result.speech_ms, 0.001
+
+      # And clamping is the only thing that moves confidence within one call.
+      assert result.confidence.min < result.confidence.max
+      assert Enum.any?(result.notes, &(&1 =~ "covered by no word"))
+    end
+
+    test "a source plus an explicit transcript needs no event at all", %{root: root} do
+      source(root, "found.wav", speech())
+
+      assert {:ok, result} =
+               Commands.Sound.sound_align(%{
+                 "source" => "found.wav",
+                 "transcript" => "meet me at the harbor",
+                 "language" => "en-US"
+               })
+
+      assert result.source == "found.wav"
+      assert result.event_id == nil
+      assert result.library_path == nil
+      assert result.words == 5
+      assert result.language == "en-US"
+      assert {:ok, %{language: "en-US"}} = Index.load("found.wav")
+    end
+
+    test "an explicit transcript overrides the one the event carries", %{root: root} do
+      # The transcriber renders "Buster Claw" as "bus o'clock"; correcting it is
+      # the cheapest improvement available to this whole feature.
+      {event, source} = aligned_voicemail(root, "bus o'clock is calling")
+
+      assert {:ok, result} =
+               Commands.Sound.sound_align(%{
+                 "event_id" => event.id,
+                 "transcript" => "buster claw is calling"
+               })
+
+      assert result.words == 4
+      assert {:ok, index} = Index.load(source)
+      assert Enum.map(index.words, & &1.word) == ~w(buster claw is calling)
+    end
+
+    test "an existing index is refused, then permitted", %{root: root} do
+      {event, source} = aligned_voicemail(root)
+
+      assert {:ok, %{replaced: false}} = Commands.Sound.sound_align(%{"event_id" => event.id})
+
+      assert {:error, :index_exists} = Commands.Sound.sound_align(%{"event_id" => event.id})
+
+      # The first index survived the refusal untouched.
+      assert {:ok, %{words: [_ | _] = words}} = Index.load(source)
+      assert length(words) == 5
+
+      assert {:ok, replaced} =
+               Commands.Sound.sound_align(%{
+                 "event_id" => event.id,
+                 "transcript" => "harbor",
+                 "overwrite" => true
+               })
+
+      assert replaced.replaced
+      assert replaced.words == 1
+      assert Enum.any?(replaced.notes, &(&1 =~ "replaced"))
+      assert {:ok, %{words: [%{word: "harbor"}]}} = Index.load(source)
+    end
+
+    test "audio that was never imported is refused, naming what to import", %{root: root} do
+      event = voicemail(root, "meet me at the harbor", audio: speech())
+      expected = Path.basename(event.recording_path)
+
+      # This verb never imports. The refusal carries the basename sound_import
+      # would store, so the fix is one call away.
+      assert {:error, {:not_imported, ^expected}} =
+               Commands.Sound.sound_align(%{"event_id" => event.id})
+
+      assert {:error, {:not_imported, "nope.wav"}} =
+               Commands.Sound.sound_align(%{"source" => "nope.wav", "transcript" => "harbor"})
+
+      # Nothing was written on the way to either refusal.
+      assert {:ok, %{count: 0}} = Commands.Sound.sound_index_list()
+
+      assert {:ok, _imported} = Commands.Sound.sound_import(%{"event_id" => event.id})
+      assert {:ok, %{words: 5}} = Commands.Sound.sound_align(%{"event_id" => event.id})
+    end
+
+    test "a missing transcript, a missing recording and a bad id are each named", %{root: root} do
+      assert {:error, :event_not_found} = Commands.Sound.sound_align(%{"event_id" => 987_654})
+      assert {:error, :invalid_event_id} = Commands.Sound.sound_align(%{"event_id" => "soon"})
+      assert {:error, :missing_source} = Commands.Sound.sound_align(%{})
+
+      # A voicemail Twilio never transcribed. The audio is fine; there is simply
+      # nothing to lay across it.
+      silent = voicemail(root, nil, audio: speech())
+      assert {:ok, _imported} = Commands.Sound.sound_import(%{"event_id" => silent.id})
+      assert {:error, :no_transcript} = Commands.Sound.sound_align(%{"event_id" => silent.id})
+
+      # A row whose audio was pruned, and an SMS that names no recording at all.
+      gone = voicemail(root, "meet me at the harbor", on_disk: false)
+      assert {:error, :not_found} = Commands.Sound.sound_align(%{"event_id" => gone.id})
+
+      {:ok, sms} =
+        Telephony.record_event(
+          %{
+            direction: "inbound",
+            kind: "sms",
+            from_number: "+15035551234",
+            to_number: "+18446878016",
+            twilio_sid: "SM#{System.unique_integer([:positive])}",
+            body: "no audio here",
+            occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+          },
+          observe: false
+        )
+
+      assert {:error, :no_recording} = Commands.Sound.sound_align(%{"event_id" => sms.id})
+
+      # A bare source with nothing to align is a different miss from an event
+      # that carries no text, and says so.
+      source(root, "found.wav", speech())
+
+      assert {:error, :missing_transcript} =
+               Commands.Sound.sound_align(%{"source" => "found.wav"})
+
+      assert {:error, :invalid_name} =
+               Commands.Sound.sound_align(%{"source" => "../escape.wav", "transcript" => "hi"})
+
+      assert {:ok, %{count: 0}} = Commands.Sound.sound_index_list()
+    end
+
+    test "silence produces no index rather than an empty one", %{root: root} do
+      source(root, "quiet.wav", SoundStudio.render(%SoundStudio{data: pcm(1000, 0.0)}))
+
+      assert {:error, :no_alignment} =
+               Commands.Sound.sound_align(%{
+                 "source" => "quiet.wav",
+                 "transcript" => "meet me at the harbor"
+               })
+
+      # No tombstone: the retry that tunes the detector does not need overwrite.
+      assert {:ok, %{count: 0}} = Commands.Sound.sound_index_list()
+    end
+
+    test "detector and fit options are passed through", %{root: root} do
+      source(root, "found.wav", speech())
+
+      # 400 ms rejects every 335 ms span the fixture has, so there is nowhere
+      # left to put a word — which is the detector doing exactly as told.
+      assert {:error, :no_alignment} =
+               Commands.Sound.sound_align(%{
+                 "source" => "found.wav",
+                 "transcript" => "meet me at the harbor",
+                 "min_span_ms" => 400
+               })
+
+      # 400 ms of silence between the bursts is no longer a gap, so the three
+      # spans merge into one.
+      assert {:ok, merged} =
+               Commands.Sound.sound_align(%{
+                 "source" => "found.wav",
+                 "transcript" => "meet me at the harbor",
+                 "min_silence_ms" => 400,
+                 "weight" => "characters",
+                 "syllable_ms" => 150
+               })
+
+      assert merged.spans == 1
+      assert merged.words == 5
+
+      assert merged.options == %{
+               min_silence_ms: 400,
+               weight: :characters,
+               syllable_ms: 150
+             }
+
+      # Character weighting gives words of different lengths different shares,
+      # so confidence stops being one number for the whole batch.
+      assert merged.confidence.min < merged.confidence.max
+    end
+  end
+
   describe "sound_assemble" do
     setup %{root: root} do
       source(root, "voicemail-03.wav")
@@ -960,6 +1280,18 @@ defmodule BusterClaw.Commands.SoundTest do
                Commands.call("sound_index_delete", %{"source" => "voicemail-03.wav"})
     end
 
+    test "sound_align is reachable through Commands.call/3", %{root: root} do
+      {event, source} = aligned_voicemail(root)
+
+      assert {:ok, %{source: ^source, words: 5, spans: 3}} =
+               Commands.call("sound_align", %{"event_id" => event.id})
+
+      assert {:error, :index_exists} = Commands.call("sound_align", %{"event_id" => event.id})
+
+      assert {:ok, %{hits: [%{source: ^source}]}} =
+               Commands.call("sound_index_search", %{"query" => "harbor"})
+    end
+
     test "errors survive dispatch unchanged", %{root: root} do
       source(root, "voicemail-03.wav")
 
@@ -989,9 +1321,12 @@ defmodule BusterClaw.Commands.SoundTest do
         refute Map.get(entry, :gated, false), "#{name} should not be gated"
       end
 
-      # The four that write. Restricted, and deliberately NOT gated: they write
+      # The five that write. Restricted, and deliberately NOT gated: they write
       # a new source or a text index, and none of them routes anything.
-      for name <- ~w(sound_import sound_index_import sound_index_delete sound_assemble) do
+      for name <- ~w(
+            sound_import sound_align
+            sound_index_import sound_index_delete sound_assemble
+          ) do
         entry = Map.fetch!(catalog, name)
         assert entry.type == :mutate, "#{name} should be a mutate"
         assert entry.tier == :restricted, "#{name} should be restricted"
@@ -1014,6 +1349,19 @@ defmodule BusterClaw.Commands.SoundTest do
 
       assert Map.fetch!(catalog, "sound_assemble").args["cuts"].required
       assert Map.fetch!(catalog, "sound_assemble").args["name"].required
+
+      # sound_align's two ways in are alternatives too, and its description has
+      # to say the thing a model choosing between verbs needs: the timings are
+      # approximate, and this is what makes the index verbs usable.
+      align = Map.fetch!(catalog, "sound_align")
+      refute align.args["event_id"].required
+      refute align.args["source"].required
+      refute align.args["transcript"].required
+      refute align.args["overwrite"].default
+      assert align.args["weight"].enum == ["syllables", "characters"]
+      assert align.description =~ "APPROXIMATE"
+      assert align.description =~ "sound_index_search"
+      assert align.description =~ "sound_import"
     end
   end
 end

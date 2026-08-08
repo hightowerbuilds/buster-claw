@@ -93,7 +93,7 @@ defmodule BusterClaw.Notifications.Cutup.Index do
   @subdir Path.join(["sounds", "studio", "index"])
   @ext ".index.json"
 
-  @origins [:manual, :recognizer, :imported]
+  @origins [:manual, :aligned, :recognizer, :imported]
 
   # Everything that is not a letter or a digit, in any script. See the moduledoc
   # for what this deliberately does not handle.
@@ -104,7 +104,7 @@ defmodule BusterClaw.Notifications.Cutup.Index do
 
   @typedoc "How `build/3` labels and stamps the index it constructs."
   @type build_opts :: [
-          origin: :manual | :recognizer | :imported,
+          origin: :manual | :aligned | :recognizer | :imported,
           language: String.t() | nil,
           indexed_at: DateTime.t() | nil
         ]

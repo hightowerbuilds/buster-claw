@@ -19,6 +19,16 @@ defmodule BusterClaw.Commands.Sound do
     what a cut needs. An index hit is already a cut: hand its `source`,
     `start_ms` and `end_ms` straight to `sound_assemble`.
 
+  `sound_align` is the bridge between the two families, and the reason the index
+  family is reachable at all: it fits a transcript — text with no timings — onto
+  the spans of activity `Cutup.Vad` finds in the audio, and saves the result as
+  an index. **Nothing in this module recognizes speech.** The timings it
+  produces are approximate by construction and are expected to be improved
+  later, word by word — so the verb reports two things a caller can judge them
+  by without listening: a confidence spread, which is a plausibility check on
+  the recording as a whole and *not* a per-word verdict, and `unplaced_ms`, the
+  detected speech no word ended up covering.
+
   `sound_import` and `sound_assemble` are the only verbs here that write audio,
   and both write a new *source* — neither routes anything, which is why they are
   `:restricted` but not gated. Routing is the only act that changes what the
@@ -67,9 +77,11 @@ defmodule BusterClaw.Commands.Sound do
   """
 
   alias BusterClaw.AudioName
+  alias BusterClaw.Notifications.Cutup.Align
   alias BusterClaw.Notifications.Cutup.Assemble
   alias BusterClaw.Notifications.Cutup.Index
   alias BusterClaw.Notifications.Cutup.Transcripts
+  alias BusterClaw.Notifications.Cutup.Vad
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundStudio
   alias BusterClaw.Telephony
@@ -81,7 +93,7 @@ defmodule BusterClaw.Commands.Sound do
 
   @default_transcript_limit 50
   @default_word_limit 50
-  @origins ~w(manual recognizer imported)
+  @origins ~w(manual aligned recognizer imported)
 
   # ---------------------------------------------------------------------------
   # The library, both layers
@@ -752,6 +764,250 @@ defmodule BusterClaw.Commands.Sound do
   end
 
   def sound_index_delete(_args), do: {:error, :missing_source}
+
+  # ---------------------------------------------------------------------------
+  # Alignment — the step that fills the index between search and assembly
+  # ---------------------------------------------------------------------------
+
+  def sound_align(args) when is_map(args) do
+    overwrite? = boolean(Map.get(args, "overwrite"), false)
+    detect = vad_opts(args)
+    fit = align_opts(args)
+
+    with {:ok, target} <- align_target(args),
+         {:ok, replaced?} <- index_slot(target.source, overwrite?),
+         {:ok, path} <- studio_source(target.source),
+         {:ok, clip} <- internal_clip(path),
+         {:ok, index, spans} <- aligned_index(target, clip, args, detect, fit),
+         :ok <- Index.save(index) do
+      {:ok, align_result(target, index, spans, clip, replaced?, detect ++ fit)}
+    end
+  end
+
+  def sound_align(_args), do: {:error, :missing_source}
+
+  # Two ways in, and they differ only in where the transcript comes from.
+  # `event_id` is the easy path — the app stored both the recording and Twilio's
+  # text — and an explicit `transcript` still wins there, because the transcriber
+  # mangles telephony audio and a corrected line is the cheapest improvement
+  # available to this whole feature.
+  defp align_target(%{"event_id" => id} = args) when not is_nil(id) and id != "" do
+    with {:ok, event_id} <- event_id(id),
+         {:ok, event} <- fetch_event(event_id),
+         {:ok, relative} <- recording_of(event),
+         {:ok, _path} <- under_library(relative),
+         {:ok, source} <- align_source(args, relative),
+         {:ok, transcript} <- align_transcript(args, event) do
+      {:ok, %{source: source, transcript: transcript, event_id: event.id, library_path: relative}}
+    end
+  end
+
+  defp align_target(%{"source" => source} = args) when is_binary(source) do
+    with {:ok, name} <- validate_name(source),
+         {:ok, transcript} <- align_transcript(args, nil) do
+      {:ok, %{source: name, transcript: transcript, event_id: nil, library_path: nil}}
+    end
+  end
+
+  defp align_target(_args), do: {:error, :missing_source}
+
+  # With no `source` given, the index binds to the name `sound_import` would have
+  # stored this recording under — same `stored_name/1`, so the two verbs cannot
+  # disagree about what the imported clip is called. The `recording_path` is run
+  # through `under_library/1` first, so nothing path-shaped is trusted here that
+  # `sound_import` would have refused.
+  defp align_source(args, relative) do
+    case blank_to_nil(Map.get(args, "source")) do
+      nil -> stored_name(Path.basename(relative))
+      given -> validate_name(given)
+    end
+  end
+
+  defp align_transcript(args, event) do
+    case blank_to_nil(Map.get(args, "transcript")) || event_transcript(event) do
+      nil -> {:error, transcript_error(event)}
+      text -> {:ok, text}
+    end
+  end
+
+  defp event_transcript(%Telephony.Event{transcript: text}), do: blank_to_nil(text)
+  defp event_transcript(nil), do: nil
+
+  # Distinguished because they call for different fixes: an event that carries no
+  # text needs one supplied, a bare `source` was simply never given one.
+  defp transcript_error(%Telephony.Event{}), do: :no_transcript
+  defp transcript_error(nil), do: :missing_transcript
+
+  # Checked *before* the audio is read, so a refusal to clobber costs nothing and
+  # a hand-corrected index is never at risk of a slow accident.
+  defp index_slot(source, overwrite?) do
+    case {Index.indexed?(source), overwrite?} do
+      {false, _overwrite?} -> {:ok, false}
+      {true, true} -> {:ok, true}
+      {true, false} -> {:error, :index_exists}
+    end
+  end
+
+  # **This verb never imports.** An index is only useful if `Assemble` can
+  # resolve its source by basename, and the honest answer to "that audio is not
+  # here" is the name to run `sound_import` for — not a silent second write into
+  # the studio that the caller did not ask for and cannot see in the result.
+  defp studio_source(name) do
+    case SoundStudio.path_for(name) do
+      nil -> {:error, {:not_imported, name}}
+      path -> {:ok, path}
+    end
+  end
+
+  # The detector measures PCM16 mono and reports nothing at all on anything else,
+  # so a non-internal clip would align to zero spans and look like silence rather
+  # than like the format mismatch it is. Everything `sound_import` writes is
+  # internal; this catches a file dropped into the studio by hand.
+  defp internal_clip(path) do
+    case SoundStudio.read(path) do
+      {:ok, clip} ->
+        if SoundStudio.internal?(clip), do: {:ok, clip}, else: {:error, :not_internal}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  # VAD finds where sound happens; `Align` lays the transcript's words across
+  # those spans. An alignment that produced no words is refused rather than
+  # saved: an empty index helps nobody, and writing one would take the slot and
+  # force `overwrite: true` on the retry that tuned the detector.
+  defp aligned_index(target, clip, args, detect, fit) do
+    spans = Vad.spans(clip, detect)
+
+    case Align.align(target.transcript, spans, fit) do
+      [] ->
+        {:error, :no_alignment}
+
+      words ->
+        build = [origin: :aligned, language: blank_to_nil(Map.get(args, "language"))]
+
+        with {:ok, index} <- Index.build(target.source, words, build) do
+          {:ok, index, spans}
+        end
+    end
+  end
+
+  defp align_result(target, index, spans, clip, replaced?, opts) do
+    speech = speech_ms(spans)
+    placed = placed_ms(index.words)
+    # Words tile the detected speech exactly, EXCEPT where one straddled a span
+    # boundary and was trimmed to the span it mostly occupied. So this gap is
+    # the audio no word covers — the only per-alignment quality figure here that
+    # is exact rather than inferred, and the one thing the confidence spread
+    # genuinely cannot tell you (see `confidence_summary/1`).
+    unplaced = max(speech - placed, 0.0)
+
+    %{
+      source: index.source,
+      path: Path.join(Index.dir(), index.source <> ".index.json"),
+      event_id: target.event_id,
+      library_path: target.library_path,
+      words: length(index.words),
+      # What the transcript asked for, against what the alignment could place.
+      # A gap between the two is the cheapest sign the fit went badly.
+      transcript_words: length(String.split(target.transcript, ~r/\s+/u, trim: true)),
+      spans: length(spans),
+      speech_ms: speech,
+      placed_ms: placed,
+      unplaced_ms: unplaced,
+      duration_ms: SoundStudio.duration_ms(clip),
+      origin: index.origin,
+      language: index.language,
+      confidence: confidence_summary(index.words),
+      replaced: replaced?,
+      audio_present: true,
+      options: Map.new(opts),
+      notes: align_notes(index, spans, unplaced, replaced?)
+    }
+  end
+
+  defp speech_ms(spans), do: spans |> Enum.map(&(&1.end_ms - &1.start_ms)) |> Enum.sum()
+
+  defp placed_ms(words), do: words |> Enum.map(&(&1.end_ms - &1.start_ms)) |> Enum.sum()
+
+  # **A whole-recording plausibility figure, and it must not be read as a
+  # per-word one.** `Align` scores a word against an *absolute* expectation of
+  # ~200 ms per syllable — deliberately absolute, because deriving the rate from
+  # this recording's own duration would be vacuous when the allotment is
+  # proportional by construction. The consequence is that under the default
+  # syllable weighting the ratio is identical for every word in one call, so
+  # these three numbers are usually the same number three times and within-call
+  # variation comes only from boundary clamping.
+  #
+  # What it does catch is the failure that matters: a transcript that does not
+  # fit its audio at any rate people speak at. Twilio hallucinates a tail on
+  # noisy voicemail, and 200 words over one second scores about 1e-7 each — the
+  # whole batch falls out of a `min_confidence: 0.3` filter together.
+  defp confidence_summary([]), do: nil
+
+  defp confidence_summary(words) do
+    sorted = words |> Enum.map(& &1.confidence) |> Enum.sort()
+
+    %{min: List.first(sorted), median: median(sorted), max: List.last(sorted)}
+  end
+
+  defp median(sorted) do
+    count = length(sorted)
+    mid = div(count, 2)
+
+    if rem(count, 2) == 1 do
+      Enum.at(sorted, mid)
+    else
+      (Enum.at(sorted, mid - 1) + Enum.at(sorted, mid)) / 2
+    end
+  end
+
+  defp align_notes(index, spans, unplaced_ms, replaced?) do
+    [
+      "These timings are APPROXIMATE and are meant to be replaced word by word as better ones arrive. Nothing recognized this audio: the detector found #{length(spans)} span(s) of activity and the transcript's words were shared out across them by syllable count, assuming a constant speech rate — which people do not have.",
+      "confidence here is a plausibility figure for the RECORDING, not a per-word verdict: every word is scored against the same absolute expectation of ~200 ms per syllable, so under the default weighting the three numbers are usually one number three times. A flat spread is normal and means nothing; a LOW value means the transcript does not fit the audio at any rate people speak at, which is what a hallucinated or truncated transcript looks like.",
+      "confidence tops out at 0.9 here, never 1.0 — 1.0 belongs to hand-marked timings, so min_confidence: 0.95 asks for those alone.",
+      "A wrong word does not only mistime itself: the whole transcript shares one timeline, so a dropped or invented word slides EVERY word after it. Correct the text and re-run with overwrite before trusting anything downstream of the mistake.",
+      "origin is aligned: the word SEQUENCE comes from the transcript but the TIMES are a proportional guess — no recogniser ran. A transcript error slides every word after it, and function words are systematically over-allotted. Correct by hand and re-import with sound_index_import and origin manual.",
+      "The index is on disk now: sound_index_words says what is cuttable, sound_index_search returns hits that are already cuts, and sound_assemble splices them.",
+      if(unplaced_ms > 1.0,
+        do:
+          "#{round(unplaced_ms)} ms of detected speech is covered by no word: that much audio was trimmed off words that straddled a span boundary and were clamped to the span they mostly occupied. Those words are fragments, and they are the only ones whose confidence was reduced individually."
+      ),
+      if(length(index.words) < length(spans),
+        do:
+          "Fewer words than spans: the audio contains activity the transcript does not account for — music, a second speaker, or text the transcriber dropped. Every word after a dropped one is mistimed, because the whole transcript shares one timeline."
+      ),
+      if(replaced?, do: "An existing index for this source was replaced.")
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # Only overrides are passed on, so the defaults documented in the catalog stay
+  # defined once — in `Vad` and `Align` — rather than being restated here where
+  # they could drift.
+  defp vad_opts(args) do
+    [
+      min_span_ms: number(Map.get(args, "min_span_ms")),
+      min_silence_ms: number(Map.get(args, "min_silence_ms"))
+    ]
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+  end
+
+  defp align_opts(args) do
+    [
+      weight: weight(Map.get(args, "weight")),
+      syllable_ms: number(Map.get(args, "syllable_ms"))
+    ]
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+  end
+
+  # Spelled out rather than converted, because a wire caller must never be able
+  # to name an atom this module did not choose.
+  defp weight(value) when value in ["syllables", :syllables], do: :syllables
+  defp weight(value) when value in ["characters", :characters], do: :characters
+  defp weight(_value), do: nil
 
   # ---------------------------------------------------------------------------
   # Import — the door into the studio
