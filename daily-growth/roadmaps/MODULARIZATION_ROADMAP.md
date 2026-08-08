@@ -132,13 +132,26 @@ by the next feature, and shipping it first means Phases 1–8 each get to *lower
 number in a file*, which is a far better completion signal than a line count
 someone re-measures by hand a week later.
 
-> **It did not go first, and that was a mistake.** Phases 1 and 2 shipped ahead of
-> it on 08-08 because momentum was available and the gate was not. Everything
-> those phases won is now unguarded, exactly as the two prior efforts were.
-> **Seed the caps from the post-Phase-2 measurements**, which are recorded in each
-> phase's status block: `status_live.ex` 850, `status/chat.ex` 560,
-> `explore_panel.ex` 100, `gws_panels.ex` 130, and the four `phone/` modules at
-> their current sizes +10%.
+**Status: DONE 08-08-26 (`scripts/check_file_sizes.sh`, wired into `precommit`).**
+
+> It shipped third, not first — Phases 1 and 2 went ahead of it because momentum
+> was available and the gate was not. That was the wrong order and it is written
+> down here rather than tidied away.
+>
+> **Two tiers, because "do not grow" and "do not grow, and you owe a cut" are
+> different promises.** HELD is decomposed work at +10%. FROZEN is an unstarted
+> phase's target at today's size with no headroom.
+>
+> **It earned its keep on its first run**, and taught something in the process: it
+> tripped on `introduction.ex` growing two lines from four new commands landing
+> in another session. That is not rot — that file's length tracks the command
+> surface, and the surface is supposed to grow. What is wrong with it is that the
+> prose lives in code at all, which shrinking would not fix and Phase 7 would. So
+> it moved to HELD with room. **A gate that fights legitimate work gets deleted**,
+> which would cost more than the drift it was catching.
+>
+> Verified in both directions: padding `weather.ex` 88 → 100 fails over cap;
+> cutting `studio.ex` to 79 fails under cap, printing the number to lower it to.
 
 **Acceptance.** Add a line to a capped file; `mix precommit` fails naming the file
 and the cap. Delete 200 lines from a capped file; it fails asking for the ratchet.
@@ -407,6 +420,43 @@ shipping surface.
 ---
 
 ## Phase 6 — The browser's hand-built HTML **(and the CSP hole underneath it)**
+
+**Status: the security half DONE 08-08-26 (`8f7eac9`). The HEEx migration is
+still open — see "What remains" below.**
+
+> **The header could not simply be added, and that is the finding.** This scope
+> had no pipeline because it *could not survive one*: four pages ran on inline
+> `<script>` and two forms on inline `onsubmit=`, every one of which
+> `script-src 'self'` forbids. So the order was forced — move the script, then
+> add the header:
+>
+> - `assets/js/browser_pages.js`, a fourth esbuild entry point, attribute-driven,
+>   serving all four pages. **Two of the inline scripts were byte-identical
+>   copies** of the same history beacon.
+> - `router :browser_page` — `put_secure_browser_headers` + CSP, and deliberately
+>   *not* `accepts`/session/CSRF: the same scope carries JSON POSTs and formless
+>   loopback forms.
+>
+> **The find that outgrew the phase.** Those `onsubmit` handlers were
+> `return confirm(…)`, and there is no WKUIDelegate in this shell — so
+> `window.confirm()` is a no-op returning **false**, which cancels the submit.
+> **Both history "clear" buttons have been dead in the packaged app** while
+> working perfectly in a dev browser. `claw_confirm_test.exs` has guarded the
+> rest of the app against precisely this for months; these pages sat outside its
+> reach because it greps `lib/buster_claw_web` for `data-confirm=` and theirs
+> said `onsubmit`. **Worth widening that test's net** — that is the general
+> lesson, and it is now the cheapest item in this roadmap.
+>
+> The new tests assert the headers land *and* that no page ships inline script or
+> an `on*` handler. The second is the one that rots: CSP is report-only in dev
+> and test and enforced only in prod, so a regression works everywhere the author
+> looks and breaks only in the shipped app.
+>
+> **What remains:** the ~1,085 lines of heredoc HTML and its five duplicated
+> copies of the same `#121212`/`#f4f1ea`/`#ff4d1c` stylesheet. Now purely a
+> deduplication job, with the security argument spent — so it ranks by line
+> count, not by risk. The confirm-modal CSS added to the history page is the
+> first thing a shared browser-surface layout should absorb.
 
 *Inherited from `LEFTOVERS.md` → the code-quality roadmap's tail. Re-measured and
 confirmed here.*
