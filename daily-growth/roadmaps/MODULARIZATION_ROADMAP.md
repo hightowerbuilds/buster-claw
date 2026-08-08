@@ -505,6 +505,42 @@ outranks its line count.
 
 ## Phase 7 — Content out of code
 
+**Status: DONE 08-08-26 (`e1e62d0`).**
+
+| File | Before | After | Content now |
+|---|---:|---:|---|
+| `introduction.ex` | 758 | **146** | `introduction/*.md`, 8 sections |
+| `skills.ex` | 533 | **344** | `skill-seeds/*.md`, 3 seeds |
+
+> **The introduction had exactly two dynamic holes in 657 lines.** They became
+> placeholders — `{{WORKSPACE_ROOT}}` and `{{COMMAND_SURFACE}}` — substituted in
+> `markdown/0`. `command_surface_markdown/0` stayed in code, as planned: it is
+> generated from the live catalog, which is the part that must not drift.
+>
+> **Repo root, not `priv/`**, matching `user-guide/`. Everything in `priv/` ships
+> loose inside the release, so `priv/` would package a second copy of text
+> already compiled into the BEAM — and put an editable-looking file in an
+> installed app that no edit could affect. (`mix.exs`'s comment about avoiding
+> `priv/` is about PLT caches, but the reasoning generalises.)
+>
+> **Verified byte-identical**, and it mattered: the first attempt was *not*.
+> Joining sections with `"\n"` added seven blank lines, because each file
+> already ends with the separator the heredoc had. Diffing the generated
+> `INTRODUCTION.md` against a render from the old code is what caught it — the
+> compiler and the suite were both happy.
+>
+> **The gate worked as designed.** `introduction.ex` dropping to 146 tripped the
+> under-cap ratchet, and the cap fell 850 → 161 in the same commit.
+>
+> **Still open, and it is a judgment call rather than work:** moving
+> `Scene3d.guide/0` out of the homepage system prompt into a
+> `handler_kind: reference` skill. Phase 7 removes the last mechanical obstacle
+> — `shader-designer.md` is now a real file to copy — but `LEFTOVERS` defers it
+> on evidence, not effort: the guide has to be *right* before relocating is worth
+> it, and nobody has enough transcripts to say. The cost of waiting is real
+> though: the whole guide ships on **every homepage turn** and can only be
+> reworded by a recompile.
+
 Three files are large because they contain **prose**, not logic.
 
 - **`introduction.ex`** — a **657-line** markdown heredoc inside `markdown/0`,
@@ -607,10 +643,12 @@ deliberately capped rather than split), Phase 2, Phase 6.
    > this one does is that it was verified by injecting the actual bug rather
    > than by being read.
 
-2. **Phase 3** (Sound Studio catalog → core) — check first whether the `sound_*`
+2. ~~**Phase 7**~~ — **DONE 08-08-26 (`e1e62d0`).**
+3. **Phase 3** (Sound Studio catalog → core) — check first whether the `sound_*`
    command work that landed 08-08 already needs it.
-3. **Phase 7** (content out of code), then **Phase 4**, then **Phase 8**.
-4. **Phase 5** last, and step 1 is prose, not code.
+4. **Phase 4** (`SettingsLive`), then **Phase 9** (tail + the 179-line Dialyzer
+   baseline), then **Phase 8** (design primitives — must follow 1–4).
+5. **Phase 5** last, and step 1 is prose, not code.
 
 **The pattern this roadmap found, worth carrying past it:** a rail and its guard
 holding two hand-written copies of the same list. Three instances, all fixed —
