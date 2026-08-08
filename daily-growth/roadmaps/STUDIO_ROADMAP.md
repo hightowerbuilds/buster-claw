@@ -1,6 +1,13 @@
 # The Studio — giving the agent a room it can enter
 
-**Scoped 08-08-26 · Status: SCOPED, nothing built.**
+**Scoped 08-08-26 · Status: ACTIVE — Part I Phase 0 and Part II Phases A+B SHIPPED
+08-08-26 (`e1088c2`).**
+
+**Shipped so far:** thirteen `sound_*` verbs (catalog 162 → 175), the word-index
+contract, the assembly engine, and transcript search over the recordings the app
+already holds. **2,605 tests green.** What remains is the write half of the CLI
+(Part I Phase 1), and the recogniser question — which the operator has answered:
+**build our own** (Part III).
 
 **What this is, in one line:** a `sound_*` command surface so the Studio's
 cutting, arranging and routing are reachable by the agent, not only by a person
@@ -13,9 +20,10 @@ was `SOUND_STUDIO_ROADMAP`'s Phase 2, never built, and has sat in `LEFTOVERS.md`
 since 08-02 with the honest note that it *"doesn't get expensive; it stays
 absent, which is the actual cost."*
 
-**Further phases are expected.** The operator has additions in mind that are not
-yet in this document — Part III is a deliberate placeholder. The CLI is scoped
-first because it is the substrate the rest will want.
+**How the parts relate.** Part I is the command surface — the substrate
+everything else is reached through. Part II is the cut-up feature the operator
+asked for. Part III is the recogniser that fills its index, built here rather
+than bought. Part IV is open space for additions not yet scoped.
 
 ---
 
@@ -122,26 +130,36 @@ agent cannot hear. Clip edits are verifiable from metadata it *can* read
 
 ---
 
+# Part I — The command surface
+
 # Phase 0 — The read half
 
-*Shippable alone, entirely `:safe`, and it is what makes the write half
-debuggable.*
+***SHIPPED 08-08-26** (`e1088c2`). Four `:safe` verbs, catalog 162 → 166.*
 
-- [ ] `commands/catalog/sound.ex` + `commands/sound.ex`, registered in
+> **What shipping it taught, kept because Phase 1 depends on it:** `sound_probe`
+> is degraded on exactly the input the acceptance walk starts from. Three of its
+> four facts (`peak`, `duration_ms`, `internal?`) need a *parsed* clip, and an
+> mp3 voicemail cannot be parsed without decoding — so it returns header data
+> from `afinfo` and **no peak at all**. The agent therefore cannot tell how loud
+> a voicemail is before importing it, and level is one of the two things that
+> decides whether an assembled sentence is intelligible. **Phase 1 should add
+> decode-on-demand probing**, not paper over it.
+
+- [x] `commands/catalog/sound.ex` + `commands/sound.ex`, registered in
   `catalog.ex` and delegated from `commands.ex`.
-- [ ] `sound_list` — the library, **both layers, showing which wins**. Bundled
+- [x] `sound_list` — the library, **both layers, showing which wins**. Bundled
   defaults and workspace files share a namespace and the workspace shadows the
   bundle; a listing that hides that is how "I replaced the chime and nothing
   changed" happens.
-- [ ] `sound_routes` — the routing table: every key from `Sound.route_keys/0`,
+- [x] `sound_routes` — the routing table: every key from `Sound.route_keys/0`,
   its human label, and what is currently routed to it. This is the map the agent
   needs before it can sensibly propose a change.
-- [ ] `sound_sources` — the Studio's imported clips (`sounds/studio/`).
-- [ ] `sound_probe` — format, duration, peak, and whether a file is already in
+- [x] `sound_sources` — the Studio's imported clips (`sounds/studio/`).
+- [x] `sound_probe` — format, duration, peak, and whether a file is already in
   the studio's internal format. Wraps `probe/1` + `peak/1` + `duration_ms/1`.
   **This is the agent's only substitute for ears** and it is the reason the read
   half ships first.
-- [ ] Tests: every verb against a tmp workspace; the shadowing case is asserted
+- [x] Tests: every verb against a tmp workspace; the shadowing case is asserted
   explicitly; a nonexistent name returns a named error rather than raising.
 
 **Done when:** the agent can describe the sound library completely and correctly
@@ -181,7 +199,7 @@ language to turn a recording into a chime.
 
 ---
 
-# Part III — Ramshackle sentences: cutting speech out of found audio
+# Part II — Ramshackle sentences: cutting speech out of found audio
 
 **The operator's ask (08-08):** a transcriber the model can use to find *words or
 sounds* inside audio files, and splice them together across sources to build
@@ -285,37 +303,179 @@ a recognizer's job:
 
 ## Phases — ordered so every risk lands last
 
-**Phase A — the index format and the assembly engine.** Define the word index.
-Build `sound_assemble` (take an ordered list of index entries → padded, faded,
-normalized `splice` + `concat` → a new file) and search over indexes. **Prove the
-whole feature end to end against a hand-authored index fixture, with no
-transcription in the codebase at all.** If this phase is right, everything after
-it is a matter of filling indexes.
+**Phase A — the index format and the assembly engine. SHIPPED 08-08-26**
+(`e1088c2`). `Cutup.Types` pins the contract; `Cutup.Index` persists and searches;
+`Cutup.Assemble` pads, splices, micro-fades, normalises and joins. Proven end to
+end against hand-authored fixtures with no transcription in the tree at all —
+which is exactly what lets Part III drop in underneath it unchanged.
 
-**Phase B — search the transcripts that already exist.** `Telephony.Event` already
-carries a `transcript` field from Twilio. That is text without timings — useless
-for splicing, **genuinely useful for discovery**: *"which recordings say
-harbor?"* Zero new dependencies, ships alone, and it is the half the agent will
-reach for first.
+Two findings from building it, both worth keeping:
 
-**Phase C — `SFSpeechRecognizer`, for the timings.** A Swift/ObjC shim behind a
-Rust command, producing the Phase A index from a file URL. Needs
-`NSSpeechRecognitionUsageDescription` and the Speech Recognition TCC prompt —
-**not** the microphone entitlement.
+- **`mixdown/1` rounds each placement offset from ms independently of clip
+  length, so a join drifts a sample per cut** and the total stops being the sum
+  of its pieces. `Assemble` uses `concat/1` + explicit silence instead. It is
+  also quadratic in this shape, and mixing is not what this does — no two cuts
+  ever sound at once.
+- **`fade_ms` must stay well below `pad_ms`.** If the ramp is longer than the
+  padding it reaches past it into the syllable onset and re-creates the
+  decapitation the padding exists to prevent. The two settings are coupled;
+  defaults are 30 / 8 / 60 ms with `normalize: true`.
 
-> **Do not land Phase C before the first notarized build.** The Whisper
-> post-mortem names *"an unproven notarization/entitlement gamble on the
-> Apple-signing critical path"* among the reasons it was cut, and
-> `LAUNCH_ROADMAP` is currently waiting on **G-2**, the Developer ID certificate,
-> with **nothing ever notarized or stapled**. Adding a new entitlement and a new
-> native dependency to a signing path that has never once succeeded is how a
-> release slips for reasons that have nothing to do with the feature. Phases A
-> and B are entitlement-free by construction; take them first, and add C once
-> there is a known-good notarized baseline to diff against.
+**Phase B — search the transcripts that already exist. SHIPPED 08-08-26**
+(`e1088c2`). `Cutup.Transcripts` searches the Twilio `transcript` on
+`Telephony.Event` — text without timings, useless for splicing, **genuinely
+useful for discovery**. Zero new dependencies.
+
+**It was also the corpus measurement this roadmap was staged around, and here is
+the answer:** 10 voicemails, 295 s, 655 tokens, **238 distinct words, 47 with 3+
+takes, 30 with 5+**. Thin but real — a sentence can be built today, mostly from
+function words (`to` 35, `the` 29, `you` 28, `and` 26, `me` 12, `email` 11,
+`need` 11, `morning` 9).
+
+**And it exposed why a better recogniser buys more than timings.** Twilio renders
+"Buster Claw" as *"busted class"*, *"buster clark"*, *"bus o'clock"*, *"a butcher
+cool and"* — four manglings of one phrase. So the frequency counts are polluted
+(`bus` and `o'clock` rank high on wreckage), search misses words you know are
+there, and **absence of a hit is weak evidence**. Part III improves discovery,
+not only cutting.
+
+**Phase C — an external recogniser. DEFERRED 08-08 in favour of Part III.**
+
+The original plan was `SFSpeechRecognizer` behind a Rust shim (or Google Cloud
+STT over HTTP), producing the Phase A index from a file URL. **The operator chose
+to build our own instead**, so this phase is not next — but it is not deleted
+either, because it buys something Part III explicitly cannot: **text**. A
+recogniser can name a word nobody has marked; query-by-example can only find more
+of a word you already have an instance of. Those are different capabilities, and
+one day the app may want both.
+
+**If it is ever revived, the two live options and their trade-offs:**
+
+| | `SFSpeechRecognizer` | Google Cloud STT |
+|---|---|---|
+| Word timings | yes | yes (`enableWordTimeOffsets`) |
+| Dependency | native shim + entitlement | HTTP; `req` is already a dep |
+| Audio leaves the machine | no | **yes** |
+| Cost | free | per-minute |
+| Telephony tuning | none | a `phone_call` model — **and this corpus is telephony** |
+| Apple signing path | **new entitlement** | untouched |
+
+> **And the caution that still applies:** do not land the native option before
+> the first notarized build. The Whisper post-mortem names *"an unproven
+> notarization/entitlement gamble on the Apple-signing critical path"* among the
+> reasons it was cut, and `LAUNCH_ROADMAP` is still waiting on **G-2** with
+> nothing ever notarized or stapled. Part III is entitlement-free by
+> construction, which is a further reason it goes first.
+
+**Not Whisper**, reaffirmed by the operator 08-08. See the note above for why the
+rule targets *bundling* rather than the name.
 
 **Phase D — non-speech: onset and silence detection.** Windowed RMS in pure
 Elixir. Serves "or sounds", needs no permission, and is independently useful for
-trimming leading silence off any clip.
+trimming leading silence off any clip. **Subsumed by Part III below**, which needs
+the same framing layer.
+
+---
+
+# Part III — Our own recogniser, honestly scoped
+
+**Operator ask (08-08): build our own, lean on Elixir and the BEAM, best effort.**
+
+## The boundary, stated first
+
+**Open-vocabulary speech-to-text is not buildable here, and that is a property of
+the problem rather than of our ambition.** Modern ASR is a trained acoustic model:
+thousands of hours of labelled audio, GPU-weeks, and a training pipeline nobody
+maintains by hand. The classical alternative — HMM-GMM in the Kaldi lineage — adds
+a pronunciation lexicon and a language model on top of decades of engineering.
+Neither is a weekend, a month, or a sensible use of this project.
+
+**Anyone proposing "let's write an ASR" should read this paragraph and stop.**
+
+## What we can build, and why it is a better fit anyway
+
+The cut-up feature never actually needed transcription. It needs two things, and
+both are classical, training-free, and pure arithmetic:
+
+**1. Query-by-example keyword spotting — MFCC + DTW.** Give it one instance of a
+word and it finds every other occurrence in the corpus by acoustic similarity.
+This is 1970s technology, needs **no training data, no model, no download, no
+entitlement and no network**.
+
+**2. Voice-activity detection — windowed energy and zero-crossing rate.** Where
+speech starts and stops, which is word boundaries in clean speech and the honest
+answer to "or sounds" in everything else.
+
+**Query-by-example is arguably the better tool for this aesthetic than ASR
+would be.** A recogniser answers "what word is this"; DTW answers "what else
+sounds like this" — same speaker, same prosody, same room. For assembling a
+sentence that hangs together, acoustic similarity is the more useful axis, and
+being **speaker-dependent is a feature** on a personal voicemail corpus rather
+than the limitation it would be in a product.
+
+It also composes with what shipped today: `Cutup.Transcripts` narrows *which
+recording* probably contains a word, a person confirms one instance by ear, and
+DTW finds the rest. Text search does the coarse pass; acoustics do the fine one.
+
+## Is the BEAM a good host for this? Honestly, mixed
+
+**In its favour:** the algorithms are small, pure, total functions over numbers —
+exactly what this codebase tests well. Binary pattern matching is genuinely good
+at PCM. Indexing N recordings is embarrassingly parallel and `Task.async_stream`
+is one line. And it needs **zero new dependencies** — nothing on the Apple
+signing path, which is the constraint that killed the last attempt.
+
+**Against it:** tight float loops are the BEAM's weakest axis — no SIMD, boxed
+floats. A pure-Elixir FFT will run perhaps two orders of magnitude slower than C.
+
+**The numbers, so the decision is not vibes.** The corpus is 295 s at 22.05 kHz.
+At a 10 ms hop that is ~30,000 frames; a 512-point radix-2 FFT is ~4,600 butterfly
+operations, so ~1.4×10⁸ float ops for a full index build. In pure Elixir that is
+**tens of seconds, parallelised across files, once** — and an index is saved, not
+recomputed. DTW search is a ~30-frame template against 30,000 frames: under a
+million cells, effectively instant.
+
+**So it works at this size, and the scaling limit is worth writing down now:**
+past roughly an hour of audio the index build becomes uncomfortable and the
+answer is `Nx` — not a rewrite, since the pipeline is already frame-parallel
+arithmetic. Do not add `Nx` before that hurts; EXLA is a heavy dependency and
+this roadmap's whole posture is to keep the signing path clean.
+
+## Phases
+
+**V.0 — Framing and the FFT.** Pre-emphasis, 25 ms frames at 10 ms hop, Hamming
+window, iterative radix-2 FFT over PCM16. Pure, no deps. **Tested against
+analytically-known signals** — a DC signal, a single sine at a bin centre, a sum
+of two sines — because an FFT that is subtly wrong produces features that are
+subtly wrong and every downstream result becomes plausible garbage.
+
+**V.1 — MFCC.** Mel filterbank, log, DCT-II, 13 coefficients, optional deltas.
+Test the filterbank shape and that a pure tone lands where the mel scale says it
+should.
+
+**V.2 — Subsequence DTW.** The matcher: a template against a longer recording,
+returning every span whose warped distance beats a threshold, with the distance
+as the score. Cepstral mean normalisation first, so channel differences between
+two phone calls do not dominate the distance.
+
+**V.3 — VAD and segmentation.** Windowed RMS plus zero-crossing rate → speech and
+silence spans. Delivers Phase D, and gives DTW hits clean edges to snap to.
+
+**V.4 — Wire it to the index.** A DTW hit becomes a `t:word/0` with `origin:
+:recognizer`, so **everything built in Phase A consumes it unchanged** — that is
+the whole reason the index was defined as a contract first.
+
+## What this will and will not do
+
+- It will **not** transcribe. There is no text output, ever.
+- It **cannot** find a word you have no example of. The workflow is
+  transcript-search → confirm one instance → DTW for the rest.
+- It is **speaker- and channel-dependent**. A word said by a different caller
+  will usually not match, and that is correct behaviour for assembling audio
+  that has to sound like one voice.
+- Accuracy on 8 kHz telephony will be worse than on clean speech, and the
+  threshold will need tuning against the real corpus rather than a fixture.
+  **Expect to spend as long tuning the threshold as writing the DTW.**
 
 ## What could make this not work
 
@@ -333,7 +493,13 @@ trimming leading silence off any clip.
 
 ---
 
-# Part IV — The operator's other additions *(placeholder — not yet scoped)*
+# Part IV — Open space
+
+The operator said on 08-08 that several Studio additions were in mind; one of
+them — the transcriber and ramshackle sentences — became Part II and Part III.
+**This part is what is left: genuinely unscoped, and deliberately not padded with
+guesses.** Anything that arrives here should get its own scoping pass rather than
+being appended to a phase list that has already been built against.
 
 **Known candidates already on file, neither committed to:**
 
@@ -352,6 +518,18 @@ trimming leading silence off any clip.
 
 ---
 
+## Open questions carried forward
+
+- **Mix-level verbs** (the open question above): still undecided, and now
+  answerable. The clip verbs exist and are used; the question was always whether
+  a multi-track arrangement authored *blind* is worth the second half of the
+  vocabulary. **Decide from whether anyone reaches for the clip verbs first.**
+- **Does `sound_probe` need decode-on-demand?** Phase 0 says yes; Phase 1 is
+  where it lands. Until then the agent cannot read the level of an mp3 voicemail.
+- **What does the tuned DTW threshold turn out to be** (Part III)? It cannot be
+  guessed from a fixture, and the roadmap warns it may cost as long as the
+  algorithm did.
+
 ## Tail items
 
 - `sound_studio_component.ex` is **1,235 lines** and `StatusLive` (1,460) owns six
@@ -361,3 +539,14 @@ trimming leading silence off any clip.
 - Check whether `Sound.install_bundled/0` should be reachable as a verb. It is
   the "restore the defaults" path and an agent that has just overwritten a chime
   is exactly who needs it.
+- **Two verb names are provisional**: `sound_index_words` / `sound_index_search`
+  were renamed from `sound_words` / `sound_word_search` during Part II so that
+  everything producing *cuttable* spans shares the `sound_index_*` prefix and
+  everything producing timing-less text shares `sound_transcript_*`. Mechanical
+  to revert across three files if the shorter names read better in practice.
+- **The corpus lives outside the dev workspace.** All 10 recordings are under the
+  configured DataZone; `tmp/dev-workspace` has none, so transcript search returns
+  nothing in dev unless `with_recording: false`. `sound_corpus` reports this as a
+  number rather than as a failure. Worth remembering that the DataZone sits on
+  iCloud Desktop, which this project's own history records as having evicted
+  files before — an audio corpus is exactly what iCloud likes to reclaim.
