@@ -255,3 +255,132 @@ hours earlier. Real accessibility work went into those five hexes *and their
 ordering*; the code enforcing it is gone. If a second surface ever needs series
 colours, **promote it — do not copy it.** A copy is how the ordering guarantee
 quietly dies.
+
+---
+
+# The evening: the room the agent could not enter
+
+The Studio was the only authoring surface in this app the agent could not reach.
+Every other one is agent-addressable, which is why *"turn that voicemail into my
+notification chime"* was a thing the app could do and the assistant could not.
+It had sat in `LEFTOVERS.md` since 08-02 with an honest note attached: it *"doesn't
+get expensive; it stays absent, which is the actual cost."*
+
+**Shipped (`e1088c2`, `35e9845`):** thirteen `sound_*` verbs — catalog 162 → 175 —
+plus the word-index contract, the assembly engine, and transcript search over the
+recordings the app already holds. 2,605 tests green. `STUDIO_ROADMAP.md` is the
+live document.
+
+## The design decision the CLI turns on
+
+**It operates on files, never on what the GUI has open.** The Studio's working
+state — source, trim, selection, clipboard, undo, redo — lives in `StatusLive`
+assigns and is discarded on every tab switch. An agent verb that mutated it would
+be editing something the operator is *holding*, with no undo they authored.
+
+**A CLI that renders to a new file is reviewable; one that reaches into a live
+editor is not.** That is not a limitation to route around later. It is the design.
+
+## "Build a transcriber" met an honest boundary, and then went around it
+
+The operator asked for a transcriber: find words or sounds inside audio, splice
+them across sources into ramshackle sentences. Then, later: **build our own, and
+lean on the BEAM.**
+
+Open-vocabulary speech-to-text is not buildable here, and saying so plainly was
+the useful part. It needs a trained acoustic model — thousands of hours of
+labelled audio, GPU-weeks — or the classical HMM-GMM path, which adds a
+pronunciation lexicon and a language model on top of decades of engineering.
+Neither is a project. That paragraph is now in the roadmap so nobody re-derives it.
+
+**But the feature never needed transcription.** Re-read what it actually asks:
+*find the other takes of this word*, and *where does it start and stop*. Those are
+two classical, training-free problems — **MFCC + subsequence DTW**, and **energy
+plus zero-crossing-rate VAD**. 1970s technology, no model, no download, no
+entitlement, no network, and **zero new dependencies** — which matters more here
+than elsewhere, because this project's last audio-ML attempt died on the Apple
+signing path.
+
+And query-by-example is arguably the *better* instrument for this aesthetic. A
+recogniser answers "what word is this"; DTW answers "what else sounds like this" —
+same speaker, same room, same prosody. For assembling a sentence that hangs
+together, acoustic similarity is the more useful axis, and **being
+speaker-dependent is a feature** on a personal voicemail corpus.
+
+## The staging worked: a free phase changed the decision
+
+The phases were ordered so every risk landed last — prove the assembly engine
+against a hand-authored index before any transcription exists, then search the
+Twilio transcripts already on disk, and only then decide about a recogniser.
+
+That middle phase cost nothing and **changed the answer**:
+
+- **The corpus is thin but real.** 10 voicemails, 295 seconds, 655 tokens, 238
+  distinct words, 47 with 3+ takes, 30 with 5+. A sentence is buildable today,
+  mostly out of function words.
+- **Twilio's transcription is bad enough to matter.** "Buster Claw" comes back as
+  *"busted class"*, *"buster clark"*, *"bus o'clock"*, *"a butcher cool and"*. So
+  the frequency counts are polluted by wreckage, search misses words that are
+  demonstrably there, and absence of a hit is weak evidence.
+
+That second finding **added an argument nobody had before measuring**: a better
+recogniser buys *discovery*, not only timings. The decision it informed was made
+on data that cost one phase of otherwise-necessary work.
+
+## The theme: bugs that do not announce themselves
+
+Four separate agents surfaced defects from the same family — wrong in a way that
+produces no error, no crash, and no failing test:
+
+- **`mixdown/1` rounds each placement offset independently of clip length**, so a
+  join drifts a sample per cut and the total stops being the sum of its pieces.
+  Found by choosing `concat/1` instead and asking why the arithmetic disagreed.
+- **`fade_ms` must stay well below `pad_ms`.** A ramp longer than the padding
+  reaches past it into the syllable onset and re-creates the decapitation the
+  padding exists to prevent. Two settings specified independently turned out to
+  be coupled.
+- **Magnitude versus power** at the FFT/MFCC seam. The contract said "magnitudes"
+  without saying which. Get it wrong and every log-domain feature shifts by a
+  constant factor *uniformly* — nothing looks broken, both suites stay green, and
+  the symptom arrives months later as "the matcher just isn't very good."
+- **Cepstral mean normalisation over a template instead of a recording.** Over a
+  two-word snippet the mean is substantially the speech, so normalising subtracts
+  the signal along with the channel. Template and target land in different spaces
+  and every distance is wrong, silently.
+
+The last two are now written on the shared type rather than in any one module,
+because they are seam properties and a seam belongs to neither side.
+
+## What the contract-first pattern is actually buying
+
+Four parallel agents, for the third and fourth time today, against a types-only
+module written first. The pattern's value is now measurable rather than asserted:
+every stage composed on the first try, and **the two most dangerous findings above
+were caught *because* the seam was written down** — one agent read the contract,
+noticed it under-specified its own input, and said so while the agent on the other
+side was still writing that function.
+
+Also worth recording: **three of four agents mutation-checked their own tests**
+without being asked twice — reversing a winding, disabling a ZCR gate, zeroing a
+silence threshold — and reported which tests went red. A test nobody has tried to
+break is a test nobody knows the strength of.
+
+## In flight at the time of writing
+
+The signal layer (Part III) is mid-build: MFCC and VAD have landed, the FFT and
+the DTW matcher are still being written. **The number that matters is not in yet:**
+the roadmap claims a full index build over the 295-second corpus takes "tens of
+seconds" in pure Elixir, and that figure is derived from an operation count rather
+than from anything that has run. If it is badly wrong, the zero-dependency posture
+has a real cost and the "don't reach for Nx until past an hour of audio" line needs
+rewriting before anyone relies on it. Both agents were asked for measured
+throughput, not estimates.
+
+## The day in one line, again
+
+**Delete what you cannot justify, ship what you can field-test, and measure the
+thing your plan depends on before the plan depends on it.** The morning deleted
+24,000 lines on evidence gathered while trying to keep them. The afternoon shipped
+a 3D card and then fixed it against a real screenshot an hour later. The evening
+found the boundary of what can be built, went around it, and let a free phase
+decide the expensive question.
