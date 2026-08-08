@@ -1,9 +1,46 @@
 # BusterClaw — Critical Review
 
+> ## ARCHIVED 2026-08-08 — superseded, not completed
+>
+> **Read this before citing anything below.** Part II never became the live plan.
+> `LAUNCH_ROADMAP.md` already carried the same P0 security work as release gates
+> with its own findings map, so this document was a **second status for one body of
+> work** — the exact thing its own Operating Rule 6 forbids. It is archived to leave
+> one authority standing, **not because its findings were closed.**
+>
+> **Most of Part II is still open.** Do not read an unticked box here as a claim
+> about anything; read the gate it points to.
+>
+> | Review phase | Where it actually lives now | State at archive |
+> |---|---|---|
+> | 1.1 durable approvals | **G-29** (findings map `F-12`) | Open. `Sentinel.Pending` is still the 99-line in-memory stub |
+> | 1.2 audit guarantees | **G-29** / V.9 | Open. `Sentinel.observe/4` still swallows a failed write |
+> | 1.3 kill switch · disclosure · Security in nav · loopback routes | **G-30, G-31, G-32, G-33** (`F-32`, `F-14`, `F-30/31`, `F-11`) | Open |
+> | 2 prompt injection | **T-8**, "highest-value backlog item" | Open. No hostile-content fixtures exist |
+> | 2 caller × command matrix | — | **Partly done, no owner.** `commands_test` sweeps every restricted command for `:mcp` and every gated one for `:agent_untrusted`; `catalog_invariants` pins the safe tier to a reviewed snapshot. The positive half is missing |
+> | 3 seeded-default upgrades | **V.8** | Open. Deadline is R1, not "someday" — the first cohort's `policy.md` freezes on install |
+> | 4 hotspots · Dialyzer · ignored returns | **`LEFTOVERS.md`** — promoted on archive | Open |
+> | 5 packaged product | **Part III + G-40** | Open |
+> | 6 supportability | Part VII / R2 items | Open |
+> | *(old Phase 5, Trading)* | — | **Closed by deletion** `293f47f` |
+>
+> **What this document did close.** Phase 0's copy work: the audit overclaims were
+> narrowed at all four front doors (`9f5c8ee`) after measuring that **98 of 162
+> commands are audited** and that audit writes are best-effort; the two decorative
+> controls were labelled in place (`3fd245c`).
+>
+> **One decision recorded here and nowhere else:** the operator **declined the Labs
+> flag** on 08-08. Phone, Studio and Voice stay where they are. The obligation moved
+> rather than vanishing — decorative controls are labelled on their own surface
+> instead of being hidden — which is what closed **G-36** and **G-37**.
+>
+> **Part I is preserved as written except for the Trading material,** excised 08-08
+> when the surface was deleted. That exception is recorded rather than left silent.
+
 **An outside read of the whole repository, and the plan that answers it.** Part I is the
 review as written. Part II is the remediation roadmap it produced.
 
-**Reviewed 2026-08-06 · Roadmap proposed 2026-08-06 · Status: PROPOSED.**
+**Reviewed 2026-08-06 · Roadmap proposed 2026-08-06 · Archived 2026-08-08 as superseded.**
 
 > ### What has happened since — read this first
 >

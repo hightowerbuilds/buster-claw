@@ -810,10 +810,19 @@ one reputational risk that compounds.
 
 A stranger judges maturity by the weakest surface they click.
 
-- [ ] **G-36.** **Move Voice out of main navigation.** 58 lines that tell you the control is
-      somewhere else.
-- [ ] **G-37.** **Move Phone out of the dock or behind a labs toggle** until a new user can
-      do something with it. 1,275 lines of polish; no number to give out.
+- [x] **G-36. CLOSED 08-08.** *Move Voice out of main navigation.* Already true and not
+      noticed: the dock is **Home / Workspace / Browser / Terminal / Settings**. Voice is a
+      Settings tab, not a destination. Re-read on archiving the critical review — the page
+      is also not a dead end, it is an accurate 58-line explainer that says where the
+      toggle is and that there is no microphone input.
+- [x] **G-37. CLOSED 08-08 by a different route than this gate proposed.** *Move Phone out
+      of the dock or behind a labs toggle.* Phone **left the dock on 08-08** and is now a
+      Home sub-tab. The operator then **declined the labs toggle** — Phone, Studio and
+      Voice stay where they are — so the obligation was met by **labelling in place**
+      instead (`3fd245c`): the keypad now says on screen that it only searches contacts and
+      that outbound calling isn't built, and the inert Text/Call buttons carry an
+      `aria-label`, not just a hover `title`. *The rule this sets for the next unfinished
+      surface: hiding and labelling are both acceptable; shipping it unmarked is not.*
 - [x] **G-38. CLOSED BY DELETION 08-08.** *Decide what to do about Trading in the dock
       while its safety remediation is open (**R9**).* Decided in the strongest available
       way: the surface is gone. Nothing to label, nothing to gate, no unsafe path for a
@@ -1159,7 +1168,7 @@ archived roadmap is a claim about the past, and the tree is the only authority o
 the present. Finding #3 was found by grepping, not by reading the roadmap.
 
 Full detail in `daily-growth/MM-DD-YY-Summary/08-08-26-summary.md`. The trading
-sections of `BUSTERCLAW_CRITICAL_REVIEW.md` were excised on 08-08 with the
+sections of `archive/08-08-26-busterclaw-critical-review.md` were excised on 08-08 with the
 surface itself; what they taught is recorded here.
 
 ---

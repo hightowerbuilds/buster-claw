@@ -147,9 +147,9 @@ defmodule BusterClawWeb.PhoneLiveTest do
 
   # The keypad looks like a dialer and isn't one. That was disclosed only in the
   # container's aria-label, so a sighted user had no way to know — the exact
-  # "decorative control that reads as finished" case BUSTERCLAW_CRITICAL_REVIEW
-  # Phase 0 names. Gating it behind Labs was declined, so honest labelling in
-  # place is the standing obligation and this test is what keeps it.
+  # "decorative control that reads as finished" case LAUNCH_ROADMAP G-37 names.
+  # Gating it behind Labs was declined, so honest labelling in place is the
+  # standing obligation and this test is what keeps it.
   test "the keypad says on screen that it only searches contacts", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/phone")
 

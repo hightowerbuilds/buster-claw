@@ -122,7 +122,7 @@ defmodule BusterClawWeb.StatusLiveTest do
   # `title` only — a hover tooltip, which leaves the accessible name empty (the
   # icons are decorative) and the "not built" state unreachable without a mouse.
   # Same standing obligation as the phone keypad: gating was declined, so the
-  # disclosure has to hold up in place. See BUSTERCLAW_CRITICAL_REVIEW Phase 0.
+  # disclosure has to hold up in place. See LAUNCH_ROADMAP G-37.
   test "inert Text/Call contact actions announce that they are not available", %{conn: conn} do
     {:ok, _contact} = Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
 
