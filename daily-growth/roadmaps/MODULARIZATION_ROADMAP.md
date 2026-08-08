@@ -421,8 +421,7 @@ shipping surface.
 
 ## Phase 6 — The browser's hand-built HTML **(and the CSP hole underneath it)**
 
-**Status: the security half DONE 08-08-26 (`8f7eac9`). The HEEx migration is
-still open — see "What remains" below.**
+**Status: DONE 08-08-26 — security half `8f7eac9`, HEEx migration `a2409c5`.**
 
 > **The header could not simply be added, and that is the finding.** This scope
 > had no pipeline because it *could not survive one*: four pages ran on inline
@@ -452,11 +451,34 @@ still open — see "What remains" below.**
 > and test and enforced only in prod, so a regression works everywhere the author
 > looks and breaks only in the shipped app.
 >
-> **What remains:** the ~1,085 lines of heredoc HTML and its five duplicated
-> copies of the same `#121212`/`#f4f1ea`/`#ff4d1c` stylesheet. Now purely a
-> deduplication job, with the security argument spent — so it ranks by line
-> count, not by risk. The confirm-modal CSS added to the history page is the
-> first thing a shared browser-surface layout should absorb.
+> **The HEEx migration (`a2409c5`).** Four pages moved to `Browser.Layout` plus
+> one markup module each: home 276 → 24+233, history 203 → 52+136, workspace
+> 131 → 72+82, pages 113 → 28+83.
+>
+> **Four private `escape/1` implementations are gone**, and that — not the line
+> count — is what the migration bought. HEEx escapes by construction, so
+> `{@title}` cannot emit markup and doing it deliberately needs `raw/1`, which
+> greps. The old code was safe exactly as long as nobody forgot a call.
+> **`safe_href/1` survives**: escaping makes an `href` safe to *parse*, not safe
+> to *click*, so the `javascript:`-URL allowlist was never an escaping concern.
+>
+> Two things HEEx forced, both worth knowing before the next page:
+>
+> - **HEEx does not interpolate inside `<style>` or `<script>`** — their contents
+>   are raw text, so `<style>{raw(css)}</style>` compiles happily and renders the
+>   braces. The element is emitted through `raw/1` and page CSS is a plain string
+>   attribute rather than a slot.
+> - **`use BusterClawWeb, :controller` cannot also carry `Phoenix.Component`** —
+>   `Plug.Conn.assign/3` and `Phoenix.Component.assign/3` collide. Hence a markup
+>   module per page, which is the Phoenix convention regardless.
+>
+> **`browser_chrome` was deliberately not converted.** It is a toolbar, not a
+> document; its 213-line stylesheet is duplicated nowhere; and its JS drives
+> Tauri commands. Most risk, least dedup — the one page where the heredoc is
+> still the right call.
+>
+> Cost: **+150 lines** across the ten files. Stated because this roadmap states
+> costs; it was never a line-count exercise.
 
 *Inherited from `LEFTOVERS.md` → the code-quality roadmap's tail. Re-measured and
 confirmed here.*
@@ -564,6 +586,29 @@ Cheap, mechanical, and individually not worth a phase.
 | **8** Design primitives | web-wide | low | **Must** follow 1–4. |
 | **9** Tail | scattered | low | Fold into whichever phase is already in the file. |
 | **5** `Agent.Chat` | design, then split | **high** | Last. Step 1 (write the state machine down) has value even if step 2 never happens. |
+
+## Where this stands, 08-08-26
+
+**Done:** Phase 0 (the gate), Phase 1 (three of four files — `home_widget.ex`
+deliberately capped rather than split), Phase 2, Phase 6.
+
+**Open, in the order I would take them:**
+
+1. **Widen `claw_confirm_test.exs`** — it greps `lib/buster_claw_web/**/*.ex` for
+   `data-confirm=` and therefore missed `onsubmit="return confirm(…)"`, which is
+   how two buttons stayed dead in the packaged app for months. Add the
+   `confirm(` spelling and point it at `assets/js` too. Half an hour, and it is
+   the generalisable half of Phase 6's find.
+2. **Phase 3** (Sound Studio catalog → core) — check first whether the `sound_*`
+   command work that landed 08-08 already needs it.
+3. **Phase 7** (content out of code), then **Phase 4**, then **Phase 8**.
+4. **Phase 5** last, and step 1 is prose, not code.
+
+**The pattern this roadmap found, worth carrying past it:** a rail and its guard
+holding two hand-written copies of the same list. Three instances, all fixed —
+Explore/Phone (already known), the GWS console (falls back silently), the corner
+widget (**crashes**, no catch-all clause). Any new surface with a rail should
+derive the guard from the rail on day one.
 
 ---
 
