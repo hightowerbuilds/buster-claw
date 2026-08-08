@@ -154,3 +154,104 @@ worth keeping.** The extension system was not wasted work — it produced the
 account of what Trading actually was, found the unattended broker job nobody had
 gated, and made the case for deletion in facts rather than in taste. Then it was
 deleted too, on the same evidence.
+
+---
+
+# The afternoon: a 3D card for the chat
+
+Same day, opposite direction. Having deleted ~24,000 lines, added a new visual
+channel: the model emits a declarative ```scene3d block and gets an inline 3D
+card in the transcript. **Scoped, built, shipped, field-tested and fixed in one
+afternoon** — `SCENE3D_ROADMAP.md`, commits `da57ac8` → `a314990`.
+
+## The question was "what are our options in Elixir", and the answer was that it is the wrong question
+
+There is no 3D library on Hex worth building on. `:gl`/`:wx` ship with OTP but
+render into a desktop window, not the webview; Scenic is 2D; Nx is tensor
+compute. **That is not a mark against Elixir.** The webview draws no matter what
+feeds it, and Elixir has never been on this app's drawing path — its job here is
+the same as everywhere else: validate, bound, persist, hand over.
+
+Three tempting paths were ruled out before any code, each on evidence already in
+the tree rather than on taste:
+
+- **three.js / a WebGPU mesh renderer** — the CSP forbids fetching a library, the
+  house doctrine forbids adding one, *and* multi-pipeline + depth buffer is the
+  exact configuration `smoke.js` records as having crashed the WKWebView GPU
+  process.
+- **The model authoring WGSL per card** — tempting, since the agent already writes
+  shaders. But the shader channel is safe partly *because the user selects it*.
+  A chat card renders the moment the model emits it. That difference does not
+  survive the transfer.
+- **A canvas** — already evaluated and rejected on the Chart Builder, and the
+  reason generalises: model-authored executable code, not pixels.
+
+What shipped instead: **one vocabulary, two renderers.** The model only ever emits
+validated JSON. A CPU projection to SVG is the renderer; a raymarched WGSL
+backend remains gated behind a banner recording that **the SDF attempt already
+crashed WKWebView once**, during Humo. The honest default is that it never
+happens.
+
+## The contract is what made four agents cheaper than one
+
+Four agents built the four stages in parallel. The thing that made that pay
+rather than cost was writing `scene3d/types.ex` **first** — a compiled,
+types-only module pinning every stage boundary, including winding convention,
+handedness and units. All four composed on the first try; the end-to-end test
+passed immediately.
+
+Done twice, both times the same way. The pattern is now a memory.
+
+## The screenshot was worth more than the scoping
+
+Phase 1 shipped green at 2,356 tests and looked fine. Then one real prompt — *a
+3D map of Puget Sound* — produced a card with a magenta ocean over 60% of it,
+hairline coastlines, and thirteen labels piled into illegible mush.
+
+**Given the vocabulary it was handed, the model did roughly the right thing.**
+Plane for water, polylines for coasts, cylinders for towns, labels for names.
+All four failures were ours:
+
+1. Labels had no layout — uniform 5.5% sizing, no collision handling. **That was a
+   deliberate Phase 1 decision, taken on reasoning that was right at 3–5 labels.
+   Nobody asked what happened at thirteen.**
+2. Nothing could say "this is a backdrop" — five saturated *series* colours and no
+   quiet one, so the ocean got a series slot.
+3. Auto-fit framed the backdrop, squeezing the subject to a smudge.
+4. No filled-region primitive, so a landmass could only be a hairline.
+
+And a fifth that is about the guide, not the renderer: **a flat map tilted in
+space is worse than a flat map.** The model crossed the channel line, which is
+evidence the line needed stating more sharply than "if it would read the same
+flattened."
+
+## What the agents caught that the coordinator did not
+
+- **My concavity test would have been vacuous.** I specified "an L-shape or a
+  C-shape" for the ear-clipping test. The geometry agent used a C and said why:
+  an L is star-shaped about its own corner, so a triangle fan is *valid* on it.
+  The mutation check would have passed against a fan.
+- **My fix would have broken an existing invariant.** Fitting the camera to solids
+  only meant a large backdrop could fall behind the eye and be dropped whole — a
+  map of Puget Sound with no Puget Sound. Caught, and answered with a clearance
+  floor rather than a near-plane clipper.
+- **A stale citation in my own roadmap.** I sent an agent to read `PortfolioChart`
+  as live house doctrine; it had been deleted that morning, in the work described
+  above. It recovered the doctrine *and* the validated palette from git rather
+  than inventing substitutes.
+- **A cross-module defect, correctly refused.** The renderer found `Labels` raised
+  on a non-binary label — breaking the guarantee that a malformed scene cannot
+  crash the last stage before the DOM — defended its own call site, and left the
+  module's own totality to its owner. That is the right split.
+
+## The lesson that is not about 3D
+
+**Uniform label sizing was correct at the size it was tested and wrong at the
+size it shipped.** No test caught it, because every test used three labels. The
+screenshot cost one prompt and taught more than the scoping document did.
+
+The palette is now sole-sourced in `Scene3d.Svg`, recovered from a skill deleted
+hours earlier. Real accessibility work went into those five hexes *and their
+ordering*; the code enforcing it is gone. If a second surface ever needs series
+colours, **promote it — do not copy it.** A copy is how the ordering guarantee
+quietly dies.
