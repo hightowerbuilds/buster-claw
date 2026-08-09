@@ -96,6 +96,18 @@ defmodule BusterClawWeb.ChatPanel do
   attr :placeholder, :string,
     default: "Message Buster Claw…  (Enter to send, Shift+Enter for a new line)"
 
+  attr :attachments, :list,
+    default: [],
+    doc: "staged files waiting to ride with the next message — see ChatAttachments"
+
+  attr :attach_error, :any, default: nil, doc: "the refusal the user has to see, or nil"
+
+  attr :upload, :any,
+    default: nil,
+    doc:
+      "the `allow_upload` config for the HTML5 (dev browser) drop path. nil renders the " <>
+        "panel with no upload wiring at all, which is what a component test wants"
+
   def chat_panel(assigns) do
     ~H"""
     <section
@@ -136,53 +148,91 @@ defmodule BusterClawWeb.ChatPanel do
         </div>
       </header>
 
+      <%!-- The dropzone wraps everything below the header, so a file dropped
+            anywhere over the conversation attaches. Two paths land here and only
+            one is ever live: the `ChatDropzone` hook forwards Tauri's native
+            drag-drop as `attach_paths` (paths — the packaged app), and in a dev
+            browser the same hook feeds LiveView's upload (contents).
+
+            `phx-drop-target` is NOT what carries the browser drop, and deleting
+            it as redundant would be the wrong reading. The hook takes the drop
+            itself and stops propagation, so LiveView's window handler never sees
+            the raw `FileList`; the hook then hands the *survivors* of its own
+            filtering back through `track-uploads` on the `live_file_input`
+            below. The upload is still LiveView's — only the choice of what gets
+            uploaded is the hook's. The attribute stays because it is what makes
+            this element a declared target, and it is harmless.
+
+            The overlay is `.bc-drop-overlay`, hidden until the hook marks this
+            container active; the class pair is WorkspaceDropzone's, reused so
+            there is one drag affordance in the app rather than two. --%>
       <div
-        id="agent-chat-log"
-        data-chat-log
-        phx-update="stream"
-        class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-5"
+        id="chat-dropzone"
+        phx-hook="ChatDropzone"
+        phx-drop-target={@upload && @upload.ref}
+        class="relative flex min-h-0 flex-1 flex-col"
       >
-        <%!-- Stream-managed container: the empty state is a static child shown
+        <div
+          id="agent-chat-log"
+          data-chat-log
+          phx-update="stream"
+          class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-5"
+        >
+          <%!-- Stream-managed container: the empty state is a static child shown
               via CSS only when it's the sole child (the stream idiom — the
               server no longer knows the collection size). data-seq on the
               section bumps per message so the AgentChat hook's updated()
               (scroll-to-bottom) is guaranteed to fire on stream inserts. --%>
-        <div
-          id="agent-chat-empty"
-          class="m-auto hidden max-w-xs text-center text-[17px] text-base-content/55 only:block"
-        >
-          {@empty_message}
+          <div
+            id="agent-chat-empty"
+            class="m-auto hidden max-w-xs text-center text-[17px] text-base-content/55 only:block"
+          >
+            {@empty_message}
+          </div>
+
+          <.chat_bubble :for={{dom_id, msg} <- @messages} id={dom_id} msg={msg} />
         </div>
 
-        <.chat_bubble :for={{dom_id, msg} <- @messages} id={dom_id} msg={msg} />
+        <.queue_strip queue={@queue} />
+
+        <div :if={@pinned != []} class="border-t-2 border-base-content/20">
+          {render_slot(@pinned)}
+        </div>
+
+        <div
+          :if={@agent_cli_missing}
+          id="agent-cli-missing"
+          class="border-t-2 border-warning/60 bg-warning/10 px-3 py-2 text-[15px]"
+        >
+          <span class="font-semibold">No agent CLI found.</span>
+          Chat runs your own Claude Code headlessly — install it
+          (<code phx-no-curly-interpolation class="font-mono text-[13px]">npm install -g @anthropic-ai/claude-code</code>),
+          run <code class="font-mono text-[13px]">claude login</code>
+          in a terminal, then reload this page.
+        </div>
+
+        <.composer
+          id="home-composer"
+          running={@running}
+          steerable={@steerable}
+          agent_cli_missing={@agent_cli_missing}
+          placeholder={@placeholder}
+          announcement={@announcement}
+          attachments={@attachments}
+          attach_error={@attach_error}
+          upload={@upload}
+        />
+
+        <div
+          class="bc-drop-overlay pointer-events-none absolute inset-0 z-20 place-items-center bg-base-100/85"
+          aria-hidden="true"
+        >
+          <div class="flex flex-col items-center gap-2 rounded-sm border-2 border-dashed border-primary px-8 py-6">
+            <.icon name="hero-paper-clip" class="size-7 text-primary" />
+            <p class="font-mono text-xs uppercase tracking-wide text-primary">Drop to attach</p>
+          </div>
+        </div>
       </div>
-
-      <.queue_strip queue={@queue} />
-
-      <div :if={@pinned != []} class="border-t-2 border-base-content/20">
-        {render_slot(@pinned)}
-      </div>
-
-      <div
-        :if={@agent_cli_missing}
-        id="agent-cli-missing"
-        class="border-t-2 border-warning/60 bg-warning/10 px-3 py-2 text-[15px]"
-      >
-        <span class="font-semibold">No agent CLI found.</span>
-        Chat runs your own Claude Code headlessly — install it
-        (<code phx-no-curly-interpolation class="font-mono text-[13px]">npm install -g @anthropic-ai/claude-code</code>),
-        run <code class="font-mono text-[13px]">claude login</code>
-        in a terminal, then reload this page.
-      </div>
-
-      <.composer
-        id="home-composer"
-        running={@running}
-        steerable={@steerable}
-        agent_cli_missing={@agent_cli_missing}
-        placeholder={@placeholder}
-        announcement={@announcement}
-      />
     </section>
     """
   end
@@ -202,6 +252,10 @@ defmodule BusterClawWeb.ChatPanel do
   attr :announcement, :string,
     default: nil,
     doc: "last delivery outcome, announced politely — state must not be colour-only"
+
+  attr :attachments, :list, default: []
+  attr :attach_error, :any, default: nil
+  attr :upload, :any, default: nil
 
   @doc """
   The message composer.
@@ -235,7 +289,7 @@ defmodule BusterClawWeb.ChatPanel do
       data-running={to_string(@running)}
       data-steerable={to_string(@steerable)}
       class={[
-        "flex shrink-0 items-end gap-2 border-t-2 border-base-content/20",
+        "flex shrink-0 flex-col gap-2 border-t-2 border-base-content/20",
         if(@compact, do: "p-2", else: "p-3")
       ]}
     >
@@ -256,51 +310,184 @@ defmodule BusterClawWeb.ChatPanel do
             outlive one submission. --%>
       <input type="hidden" name="delivery" value={delivery_for(@running, @steerable)} data-delivery />
 
-      <textarea
-        name="message"
-        data-chat-input
-        rows="2"
-        disabled={@agent_cli_missing}
-        placeholder={if @agent_cli_missing, do: "Install Claude Code to chat", else: @placeholder}
-        class={[
-          "min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100 focus:border-primary focus:outline-none disabled:opacity-50",
-          if(@compact, do: "px-2 py-1.5 text-[15px]", else: "px-3 py-2 text-[17px]")
-        ]}
-      ></textarea>
+      <.attach_error error={@attach_error} upload={@upload} />
+      <.attach_chips attachments={@attachments} />
 
-      <div class="flex shrink-0 flex-col items-stretch gap-1">
-        <button
-          type="submit"
-          data-primary-action
+      <div class="flex items-end gap-2">
+        <textarea
+          name="message"
+          data-chat-input
+          rows="2"
           disabled={@agent_cli_missing}
+          placeholder={if @agent_cli_missing, do: "Install Claude Code to chat", else: @placeholder}
           class={[
-            "inline-flex items-center justify-center gap-2 rounded bg-primary font-semibold text-primary-content transition hover:opacity-85 disabled:opacity-40",
-            if(@compact, do: "px-3 py-2 text-xs", else: "px-4 py-2.5 text-sm")
+            "min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100 focus:border-primary focus:outline-none disabled:opacity-50",
+            if(@compact, do: "px-2 py-1.5 text-[15px]", else: "px-3 py-2 text-[17px]")
           ]}
-        >
-          <.icon :if={not @running} name="hero-paper-airplane" class="size-4" />
-          {primary_label(@running, @steerable)}
-        </button>
+        ></textarea>
 
-        <%!-- Only rendered when it does something different from the primary.
+        <div class="flex shrink-0 flex-col items-stretch gap-1">
+          <button
+            type="submit"
+            data-primary-action
+            disabled={@agent_cli_missing}
+            class={[
+              "inline-flex items-center justify-center gap-2 rounded bg-primary font-semibold text-primary-content transition hover:opacity-85 disabled:opacity-40",
+              if(@compact, do: "px-3 py-2 text-xs", else: "px-4 py-2.5 text-sm")
+            ]}
+          >
+            <.icon :if={not @running} name="hero-paper-airplane" class="size-4" />
+            {primary_label(@running, @steerable)}
+          </button>
+
+          <%!-- Only rendered when it does something different from the primary.
               While idle, or on a backend without steering, both actions start
               or queue the same turn. --%>
-        <button
-          :if={@running and @steerable}
-          type="submit"
-          data-secondary-action
-          name="delivery"
-          value="next"
-          disabled={@agent_cli_missing}
-          title="Run this after the current turn instead of changing it (⌘⇧↵)"
-          class="inline-flex items-center justify-center rounded border-2 border-base-content/25 px-3 py-1 font-mono text-[0.6rem] uppercase tracking-wide text-base-content/70 transition hover:border-primary hover:text-primary disabled:opacity-40"
+          <button
+            :if={@running and @steerable}
+            type="submit"
+            data-secondary-action
+            name="delivery"
+            value="next"
+            disabled={@agent_cli_missing}
+            title="Run this after the current turn instead of changing it (⌘⇧↵)"
+            class="inline-flex items-center justify-center rounded border-2 border-base-content/25 px-3 py-1 font-mono text-[0.6rem] uppercase tracking-wide text-base-content/70 transition hover:border-primary hover:text-primary disabled:opacity-40"
+          >
+            Queue next
+          </button>
+        </div>
+
+        <%!-- The keyboard (and mouse) route to the same upload the dropzone
+              feeds. A drop-only affordance is not an affordance for everyone. --%>
+        <label
+          :if={@upload}
+          title="Attach a file"
+          class="inline-flex cursor-pointer items-center justify-center rounded border-2 border-base-content/25 px-2 py-1 text-base-content/60 transition hover:border-primary hover:text-primary"
         >
-          Queue next
-        </button>
+          <.icon name="hero-paper-clip" class="size-4" />
+          <span class="sr-only">Attach a file</span>
+          <.live_file_input upload={@upload} class="sr-only" />
+        </label>
       </div>
     </form>
     """
   end
+
+  @doc """
+  Pending attachment chips — filename, size, a thumbnail for an image, and a way
+  to take it back out.
+
+  Above the input rather than beside it, and rendered *before* the send: an
+  attachment the user cannot see and cannot cancel is worse than none, because
+  the first they learn of it is the model answering a question about a file they
+  did not mean to share.
+  """
+  attr :attachments, :list, required: true
+
+  def attach_chips(%{attachments: []} = assigns), do: ~H""
+
+  def attach_chips(assigns) do
+    ~H"""
+    <ul data-attach-chips class="flex flex-wrap items-center gap-2">
+      <li
+        :for={att <- @attachments}
+        data-attach-chip={att.id}
+        class="flex items-center gap-2 rounded-sm border-2 border-base-content/25 bg-base-200/70 py-1 pl-1 pr-2"
+      >
+        <img
+          :if={att.preview}
+          src={att.preview}
+          alt=""
+          class="size-8 shrink-0 rounded-xs object-cover"
+        />
+        <span
+          :if={!att.preview}
+          class="grid size-8 shrink-0 place-items-center rounded-xs bg-base-content/10"
+        >
+          <.icon name="hero-document" class="size-4 text-base-content/60" />
+        </span>
+        <span class="max-w-[11rem] truncate text-[13px]" title={att.filename}>{att.filename}</span>
+        <span class="shrink-0 font-mono text-[0.6rem] uppercase tracking-wide text-base-content/55">
+          {att.size_label}
+        </span>
+        <button
+          type="button"
+          phx-click="remove_attachment"
+          phx-value-id={att.id}
+          title={"Remove #{att.filename}"}
+          aria-label={"Remove #{att.filename}"}
+          class="shrink-0 text-base-content/45 transition hover:text-error"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </li>
+    </ul>
+    """
+  end
+
+  @doc """
+  A refusal, said out loud where the send button is.
+
+  Two sources, one banner: `error` is what the hook or the store refused (its
+  `:blocked` key is added when a send was then stopped because of it), and
+  `upload` carries what LiveView itself refused client-side — too large, too
+  many — which is the refusal-at-the-drop the roadmap asks for. Both are
+  dismissible, because a refusal that cannot be cleared blocks the composer
+  forever.
+  """
+  attr :error, :any, required: true
+  attr :upload, :any, required: true
+
+  def attach_error(assigns) do
+    ~H"""
+    <div
+      :if={@error}
+      data-attach-error
+      role="alert"
+      class="flex items-start gap-2 rounded-sm border-2 border-error/60 bg-error/10 px-2 py-1.5 text-[15px] text-error"
+    >
+      <.icon name="hero-exclamation-triangle" class="mt-0.5 size-4 shrink-0" />
+      <span class="flex-1">
+        {@error.message}
+        <span :if={@error[:blocked]} class="block font-semibold">{@error[:blocked]}</span>
+      </span>
+      <button
+        type="button"
+        phx-click="dismiss_attach_error"
+        class="shrink-0 font-mono text-[0.6rem] uppercase tracking-wide underline"
+      >
+        Dismiss
+      </button>
+    </div>
+
+    <div
+      :for={entry <- (@upload && @upload.entries) || []}
+      :if={upload_errors(@upload, entry) != []}
+      data-attach-upload-error={entry.ref}
+      role="alert"
+      class="flex items-center gap-2 rounded-sm border-2 border-error/60 bg-error/10 px-2 py-1.5 text-[15px] text-error"
+    >
+      <.icon name="hero-exclamation-triangle" class="size-4 shrink-0" />
+      <span class="flex-1">
+        {entry.client_name} — {upload_error_text(hd(upload_errors(@upload, entry)))}
+      </span>
+      <button
+        type="button"
+        phx-click="cancel_attach_upload"
+        phx-value-ref={entry.ref}
+        class="shrink-0 font-mono text-[0.6rem] uppercase tracking-wide underline"
+      >
+        Dismiss
+      </button>
+    </div>
+    """
+  end
+
+  # LiveView's own refusals, in the same vocabulary as the store's.
+  defp upload_error_text(:too_large), do: "too large to attach."
+  defp upload_error_text(:too_many_files), do: "too many files at once."
+  defp upload_error_text(:not_accepted), do: "not a kind of file that can be attached."
+  defp upload_error_text(other), do: "could not be attached (#{inspect(other)})."
 
   # Mirrors `deliveryFor/2` in `assets/js/lib/compose_keys.js`. Both exist
   # because the server renders the first value and the hook rewrites it for an
@@ -478,12 +665,58 @@ defmodule BusterClawWeb.ChatPanel do
     # A message reloaded from the transcript has no delivery — it is not
     # persisted (see `Chat.emit_message/4`), so an old bubble simply renders
     # without a chip rather than guessing at one.
-    assigns = assign(assigns, :delivery, Map.get(assigns.msg, :delivery))
+    assigns =
+      assigns
+      |> assign(:delivery, Map.get(assigns.msg, :delivery))
+      |> assign(:attachments, Map.get(assigns.msg, :attachments, []))
 
     ~H"""
     <div id={@id} class="flex flex-col items-end gap-1">
-      <div class="ic-drop-in max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content">
+      <div
+        :if={@msg.text != ""}
+        class="ic-drop-in max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content"
+      >
         {@msg.text}
+      </div>
+      <%!-- What was attached, on the message that attached it. An image is a
+            thumbnail that opens the SAME modal a drawing does — it joined the
+            conversation's visual pool, so ← / → page across everything visual in
+            the chat rather than treating attachments as a separate world. A file
+            is a chip; there is nothing to preview and pretending otherwise would
+            just be a grey rectangle. --%>
+      <div :if={@attachments != []} class="flex max-w-[85%] flex-wrap justify-end gap-2">
+        <button
+          :for={att <- Enum.filter(@attachments, & &1.preview)}
+          type="button"
+          phx-click="zoom_svg"
+          phx-value-id={att.pool_id}
+          data-attach-image={att.id}
+          title={att.filename}
+          aria-label={"Open #{att.filename} full-screen"}
+          class="block cursor-zoom-in overflow-hidden rounded-sm border-2 border-primary/40 transition hover:border-primary"
+        >
+          <img src={att.preview} alt={att.filename} class="block max-h-40 w-auto" />
+        </button>
+        <span
+          :for={att <- Enum.reject(@attachments, & &1.preview)}
+          data-attach-file={att.id}
+          class={[
+            "inline-flex items-center gap-2 rounded-sm border-2 px-2 py-1 text-[13px]",
+            if(att.available?,
+              do: "border-base-content/25 bg-base-200/70",
+              else: "border-base-content/20 bg-base-200/40 text-base-content/50 line-through"
+            )
+          ]}
+        >
+          <.icon name="hero-document" class="size-4 shrink-0" />
+          <span class="max-w-[12rem] truncate">{att.filename}</span>
+          <span class="font-mono text-[0.6rem] uppercase tracking-wide opacity-70">
+            {att.size_label}
+          </span>
+          <span :if={!att.available?} class="font-mono text-[0.55rem] uppercase tracking-wider">
+            No longer available
+          </span>
+        </span>
       </div>
       <%!-- Only a message delivered INTO a running turn is chipped. An ordinary
             message that started its own turn needs no explanation, and a queued

@@ -46,6 +46,105 @@ defmodule BusterClaw.Agent.ChatMessageEncoderTest do
     end
   end
 
+  describe "encode_user/2 — attachment blocks" do
+    @png Base.decode64!(
+           "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+         )
+
+    defp image_block(bytes \\ @png) do
+      %{
+        "type" => "image",
+        "source" => %{
+          "type" => "base64",
+          "media_type" => "image/png",
+          "data" => Base.encode64(bytes)
+        }
+      }
+    end
+
+    # The compatibility property, and the diff-noise property. Every turn that
+    # has ever run took this branch and must keep taking it unchanged.
+    test "no attachments leaves content a BARE STRING, byte-identical to encode_user/1" do
+      assert {:ok, one} = Encoder.encode_user("hello")
+      assert {:ok, two} = Encoder.encode_user("hello", [])
+
+      assert one == two
+      assert get_in(Jason.decode!(two), ["message", "content"]) == "hello"
+    end
+
+    test "attachments make content an array, text block first" do
+      assert {:ok, line} = Encoder.encode_user("what is this?", [image_block()])
+
+      assert %{"type" => "user", "message" => %{"role" => "user", "content" => content}} =
+               Jason.decode!(line)
+
+      assert [%{"type" => "text", "text" => "what is this?"}, block] = content
+
+      # The exact Anthropic format, as measured in Phase 0. An extra key here is
+      # a request the harness may reject.
+      assert block == %{
+               "type" => "image",
+               "source" => %{
+                 "type" => "base64",
+                 "media_type" => "image/png",
+                 "data" => Base.encode64(@png)
+               }
+             }
+    end
+
+    test "the emitted base64 decodes back to the file's exact bytes" do
+      assert {:ok, line} = Encoder.encode_user("describe it", [image_block()])
+
+      assert [_text, %{"source" => %{"data" => data}}] =
+               get_in(Jason.decode!(line), ["message", "content"])
+
+      assert Base.decode64!(data) == @png
+    end
+
+    test "several blocks keep their order behind the text" do
+      first = image_block(<<1, 2, 3>>)
+      second = %{"type" => "text", "text" => "attached file"}
+
+      assert {:ok, line} = Encoder.encode_user("look", [first, second])
+
+      assert [%{"type" => "text", "text" => "look"}, ^first, ^second] =
+               get_in(Jason.decode!(line), ["message", "content"])
+    end
+
+    test "an attachment line is still exactly one JSONL record" do
+      assert {:ok, line} = Encoder.encode_user("line one\nline two", [image_block()])
+
+      assert String.ends_with?(line, "\n")
+      assert length(String.split(String.trim_trailing(line, "\n"), "\n")) == 1
+    end
+
+    # A single 400 KB screenshot base64s past the 512 KB text cap, so sharing one
+    # limit would reject the very thing the feature exists to carry.
+    test "attachment lines get their own, larger ceiling" do
+      assert Encoder.max_attachment_bytes() > Encoder.max_bytes()
+
+      big = image_block(:crypto.strong_rand_bytes(Encoder.max_bytes()))
+      assert {:ok, _line} = Encoder.encode_user("hi", [big])
+    end
+
+    test "the text-only ceiling is unchanged by any of this" do
+      assert Encoder.max_bytes() == 512 * 1024
+
+      assert {:error, {:too_large, _size, limit}} =
+               Encoder.encode_user(String.duplicate("x", Encoder.max_bytes() + 1))
+
+      assert limit == Encoder.max_bytes()
+    end
+
+    test "an oversized attachment line is refused against the attachment ceiling" do
+      huge = image_block(:crypto.strong_rand_bytes(Encoder.max_attachment_bytes()))
+
+      assert {:error, {:too_large, size, limit}} = Encoder.encode_user("hi", [huge])
+      assert size > limit
+      assert limit == Encoder.max_attachment_bytes()
+    end
+  end
+
   describe "operator_replay?/1" do
     test "a replayed operator message has a string content" do
       # This IS the acceptance receipt. `--replay-user-messages` echoes our
@@ -67,9 +166,46 @@ defmodule BusterClaw.Agent.ChatMessageEncoderTest do
              })
     end
 
+    # Attachments broke the string-vs-list discriminator: an operator message
+    # with an image is now also a list. The second discriminator is the FIRST
+    # block, which encode_user/2 guarantees is the operator's text.
+    test "an operator message WITH attachments is still a receipt" do
+      assert Encoder.operator_replay?(%{
+               "type" => "user",
+               "message" => %{
+                 "role" => "user",
+                 "content" => [
+                   %{"type" => "text", "text" => "what is in this image?"},
+                   %{"type" => "image", "source" => %{"type" => "base64"}}
+                 ]
+               }
+             })
+    end
+
+    test "a tool result led by text is still NOT a receipt" do
+      refute Encoder.operator_replay?(%{
+               "type" => "user",
+               "message" => %{
+                 "role" => "user",
+                 "content" => [
+                   %{"type" => "text", "text" => "here you go"},
+                   %{"type" => "tool_result", "content" => "ok"}
+                 ]
+               }
+             })
+    end
+
+    test "a real encoded attachment message round-trips as a receipt" do
+      block = %{"type" => "image", "source" => %{"type" => "base64", "data" => "AA=="}}
+      assert {:ok, line} = Encoder.encode_user("steer this way", [block])
+
+      assert Encoder.operator_replay?(Jason.decode!(line))
+    end
+
     test "anything unrecognised is not a receipt" do
       refute Encoder.operator_replay?(%{"type" => "assistant"})
       refute Encoder.operator_replay?(%{})
+      refute Encoder.operator_replay?(%{"message" => %{"content" => []}})
     end
   end
 end

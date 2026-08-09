@@ -131,6 +131,25 @@ defmodule BusterClaw.AgentBackend do
   # carries ANSI colour codes.
   @opencode_fallback "falling back to default agent"
 
+  # How each CLI spells "here is a file I want you to look at". Measured 08-08-26
+  # from `--help` against the installed binaries, same as every flag above:
+  #
+  #   codex exec --help    →  -i, --image <FILE>...
+  #                             Optional image(s) to attach to the initial prompt
+  #   opencode run --help  →  -f, --file
+  #                             file(s) to attach to message            [array]
+  #   claude               →  NOTHING. claude has no attachment flag of any kind.
+  #
+  # ⚠ The two flags are NOT equivalent, and the difference is one word in their
+  # own help text: codex says **image(s)**, opencode says **file(s)**. Passing a
+  # PDF to `-i` hands it to an image decoder. `Agent.AttachmentDelivery` is where
+  # that consequence is handled; this table only records the vocabulary.
+  #
+  # claude's absence here is not an omission — its two routes are `--add-dir`
+  # plus a path in the prompt, and an inline base64 block on stdin. Both are
+  # measured; see `Agent.AttachmentDelivery`.
+  @attachment_flag %{codex: "-i", opencode: "-f"}
+
   @doc "Backend keys, in PATH-detection fallback order."
   def order, do: @order
 
@@ -349,6 +368,74 @@ defmodule BusterClaw.AgentBackend do
   defp do_stream_args(:codex), do: ["--json"]
   defp do_stream_args(:opencode), do: ["--format", "json"]
   defp do_stream_args(_other), do: []
+
+  @doc """
+  The flag `backend` uses to attach a file, or `nil` when it has none.
+
+  `"-i"` on codex (images only), `"-f"` on opencode (any file), `nil` on claude —
+  which has no attachment flag and reaches files by `--add-dir` instead. See the
+  table above for the measured help text.
+  """
+  @spec attachment_flag(atom()) :: String.t() | nil
+  def attachment_flag(backend), do: Map.get(@attachment_flag, backend)
+
+  @doc """
+  Argv attaching `paths` on `backend`, or `[]` when it has no attachment flag.
+
+  Flag and path are emitted as separate argv entries per path — `["-i", a, "-i",
+  b]` — because both CLIs take the flag repeatedly rather than a delimited list,
+  and because a path with a space in it must never depend on quoting.
+
+  **An empty list emits `[]`**, so a turn with no attachments is byte-identical to
+  one from before this existed.
+  """
+  @spec attachment_args(atom(), [String.t()]) :: [String.t()]
+  def attachment_args(backend, paths \\ [])
+
+  def attachment_args(_backend, []), do: []
+
+  def attachment_args(backend, paths) when is_list(paths) do
+    case attachment_flag(backend) do
+      flag when is_binary(flag) -> Enum.flat_map(paths, &[flag, &1])
+      _none -> []
+    end
+  end
+
+  @doc """
+  Argv granting `backend` read access to `dirs` for this run.
+
+  claude-only: `--add-dir` is how a path outside the working root becomes
+  readable, and it is the reason the staging directory can live outside the
+  workspace the agent browses. codex confines by sandbox and opencode by agent
+  file — neither has a per-run directory grant, so both get `[]`.
+  """
+  @spec dir_grant_args(atom(), [String.t()]) :: [String.t()]
+  def dir_grant_args(backend, dirs \\ [])
+
+  def dir_grant_args(:claude, dirs) when is_list(dirs),
+    do: Enum.flat_map(dirs, &["--add-dir", &1])
+
+  def dir_grant_args(_backend, _dirs), do: []
+
+  @doc """
+  True when `backend` can carry attachment *bytes*, with no file on disk.
+
+  Only claude, and only in `:duplex` mode — the inline
+  `{"type":"image","source":{"type":"base64",…}}` block rides the same
+  `--input-format stream-json` channel the operator's message does, and there is
+  no such channel on the one-shot `-p` path. Keyed on the same `:duplex` option
+  `argv/3` and `stream_args/2` take, so a caller cannot enable streaming input
+  and inline blocks independently and get them out of step.
+
+  codex and opencode take paths and **cannot take bytes at all**, which is why a
+  staged file is the shared substrate and this is only ever an optimisation.
+  """
+  @spec inline_attachments?(atom(), keyword()) :: boolean()
+  def inline_attachments?(backend, opts \\ [])
+
+  def inline_attachments?(:claude, opts), do: Keyword.get(opts, :duplex, false)
+
+  def inline_attachments?(_backend, _opts), do: false
 
   @doc """
   Translate claude's permission-mode string into `backend`'s equivalent.

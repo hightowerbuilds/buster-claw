@@ -87,8 +87,18 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # The homepage. 891 rather than the roadmap's original <600 target: what remains
 # is mount, render, and 55 message-handling clauses, which is the coordinator's
 # job and not residue. See the Phase 2 status block for why that target retired.
-check lib/buster_claw_web/live/status_live.ex                891 HELD
-check lib/buster_claw_web/live/status/chat.ex                588 HELD
+# Raised 08-08 for chat attachments (drag/paste of images and files), and the
+# reason is on the record because a silent raise is what this gate exists to
+# stop. The FEATURE did not land here: it is 546 lines in
+# `status/chat_attachments.ex`, created for it. What these two absorbed is the
+# part that provably cannot live anywhere else — `allow_upload` is a LiveView
+# configuration and must be on the LiveView, and an `apply_chat` clause must sit
+# at the dispatch point. Every substantive call in the added lines delegates
+# straight back out (`init`, `pending`, `marker`, `decode`, `hydrate`,
+# `place_in_pool`). If a later reader finds real logic in these lines rather than
+# wiring, this raise was wrong and the cut is owed.
+check lib/buster_claw_web/live/status_live.ex                920 HELD
+check lib/buster_claw_web/live/status/chat.ex                650 HELD
 check lib/buster_claw_web/live/status/comms.ex               125 HELD
 check lib/buster_claw_web/live/status/studio.ex              114 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD

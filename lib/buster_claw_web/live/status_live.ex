@@ -22,6 +22,12 @@ defmodule BusterClawWeb.StatusLive do
   alias BusterClaw.Telephony
   alias BusterClaw.TrustedSenders
   alias BusterClaw.Weather
+  alias BusterClawWeb.Status.ChatAttachments
+
+  # How many files may sit in the composer at once. The per-file byte cap is the
+  # store's (`Attachments.limits/0`) and is read at mount rather than restated
+  # here — two numbers that must agree are one number too many.
+  @attach_max_entries 5
 
   # How often the homepage sky (weather-shader background) re-checks real
   # conditions. Matches Weather's cache TTL, so each tick is at most one fetch.
@@ -134,7 +140,43 @@ defmodule BusterClawWeb.StatusLive do
      |> assign(:notify_kind, "timer")
      |> load_notifications()
      |> init_chats()
+     # The HTML5 half of the dropzone. It is the DEV half: WKWebView does not
+     # hand the DOM file contents on an OS drop, so in the packaged app this
+     # never fires and the `attach_paths` event below is the only live path.
+     # Both are declared because the `ChatDropzone` hook picks one per
+     # environment, exactly as `WorkspaceDropzone` already does.
+     # `max_file_size` refuses on the CLIENT, before a byte is uploaded — the
+     # refusal-at-the-drop the roadmap asks for rather than one after an upload
+     # that appeared to succeed. `accept: :any` is deliberate: the store decides
+     # what a file is (an `.ex` or a `.log` is a perfectly good text attachment)
+     # and a browser-side extension whitelist would refuse those before the store
+     # ever saw them.
+     |> allow_upload(:chat_attachments,
+       accept: :any,
+       max_entries: @attach_max_entries,
+       max_file_size: BusterClaw.Agent.Attachments.limits().max_file_bytes,
+       # Staged on drop, not on submit: a chip the user cannot see and cancel
+       # before sending is worse than no attachment at all.
+       auto_upload: true,
+       progress: &handle_attach_progress/3
+     )
      |> then(fn s -> if connected?(s), do: mount_weather(s), else: s end)}
+  end
+
+  # An upload only becomes an attachment once its bytes have arrived. LiveView
+  # hands us a temp file it will delete as soon as this returns, so the store
+  # copies during the consume — there is no later moment to do it in.
+  defp handle_attach_progress(:chat_attachments, entry, socket) do
+    if entry.done? do
+      socket =
+        consume_uploaded_entry(socket, entry, fn %{path: path} ->
+          {:ok, ChatAttachments.stage_upload(socket, path, entry.client_name)}
+        end)
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   # --- Notify widget ---------------------------------------------------------
@@ -415,11 +457,52 @@ defmodule BusterClawWeb.StatusLive do
   def handle_event("chat_send", %{"message" => text} = params, socket) do
     # Sending barges in on any reply still being spoken.
     socket = push_event(socket, "bc:stop_speak", %{})
+    trimmed = String.trim(text)
 
-    case String.trim(text) do
-      "" -> {:noreply, socket}
-      trimmed -> {:noreply, dispatch_chat(socket, trimmed, delivery_param(params))}
+    # An attachment-only message is a real message — "here, look at this" is how
+    # every chat this is compared to behaves — so empty text alone is no longer
+    # what makes a submit a no-op.
+    if trimmed == "" and ChatAttachments.pending(socket) == [] do
+      {:noreply, socket}
+    else
+      case ChatAttachments.gate(socket) do
+        {:ok, socket} -> {:noreply, dispatch_chat(socket, trimmed, delivery_param(params))}
+        {:blocked, socket} -> {:noreply, socket}
+      end
     end
+  end
+
+  # --- chat attachments ------------------------------------------------------
+  #
+  # Two ways in, one per environment. `attach_paths` is the packaged app: the
+  # Tauri native drag-drop event delivers absolute PATHS and the server reads
+  # them. The browser (dev) path is `allow_upload` + `phx-drop-target`, declared
+  # in `mount/3` — `allow_upload` alone is not enough in the packaged app, which
+  # is the entire reason the path route exists.
+
+  def handle_event("attach_paths", %{"paths" => paths}, socket) do
+    {:noreply, ChatAttachments.stage_paths(socket, List.wrap(paths))}
+  end
+
+  # A refusal the hook made for itself (wrong type, too big, unreadable) still
+  # has to reach the user — a drop that silently does nothing is the false
+  # affordance this feature exists to remove.
+  def handle_event("attach_error", %{"reason" => reason} = params, socket) do
+    {:noreply, ChatAttachments.refuse(socket, reason, Map.get(params, "filename"))}
+  end
+
+  def handle_event("remove_attachment", %{"id" => id}, socket) do
+    {:noreply, ChatAttachments.remove(socket, id)}
+  end
+
+  def handle_event("dismiss_attach_error", _params, socket) do
+    {:noreply, ChatAttachments.dismiss_error(socket)}
+  end
+
+  # An upload LiveView itself refused (too large, too many). Cancelling is what
+  # clears it out of `@uploads`, so the banner it renders has a way to go away.
+  def handle_event("cancel_attach_upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :chat_attachments, ref)}
   end
 
   def handle_event("cancel_queued", %{"id" => id}, socket) do
@@ -766,6 +849,9 @@ defmodule BusterClawWeb.StatusLive do
                 thinking={@chat_thinking}
                 queue={@chat_queue}
                 agent_cli_missing={@agent_cli_missing}
+                attachments={@chat_attachments}
+                attach_error={@chat_attach_error}
+                upload={@uploads.chat_attachments}
               />
             </div>
 

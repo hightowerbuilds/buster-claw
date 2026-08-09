@@ -36,6 +36,7 @@ defmodule BusterClawWeb.Status.Chat do
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
   alias BusterClaw.Scene3d
   alias BusterClaw.SvgViewer
+  alias BusterClawWeb.Status.ChatAttachments
 
   # Cap the retained in-memory transcript / SVG bank on the always-open home tab
   # so a long-lived session can't grow its assigns unbounded (oldest drop off the
@@ -67,6 +68,7 @@ defmodule BusterClawWeb.Status.Chat do
     # and the server doesn't hold 200 messages per socket. dom_id matches the
     # ids chat_bubble always rendered.
     |> stream_configure(:chat_messages, dom_id: &"chat-msg-#{&1.id}")
+    |> ChatAttachments.init()
     |> load_chat_history(active)
   end
 
@@ -116,9 +118,21 @@ defmodule BusterClawWeb.Status.Chat do
   # that reason — telling the operator "steered" for a message that was queued
   # is the single most damaging bug this surface can have.
   def do_send(socket, conv_id, text, delivery) do
-    case Chat.submit(conv_id, text, delivery: delivery) do
+    # Attachments ride as a citation fence on the persisted text (so a reload can
+    # find them again — see `ChatAttachments`) AND as a `:attachments` option, so
+    # the backend layer can deliver the files themselves without re-parsing prose.
+    # `Chat.submit/3` reads only `:delivery` today and ignores the rest, which is
+    # what makes shipping this half before the delivery half safe.
+    attachments = ChatAttachments.pending(socket)
+    wire = ChatAttachments.marker(text, attachments)
+
+    case Chat.submit(conv_id, wire, delivery: delivery, attachments: attachments) do
       {:ok, mode} ->
         socket
+        # The composer empties only once the message is actually away. A send
+        # that failed must leave the chips where they were, or the user has lost
+        # a file they cannot see to re-drop.
+        |> ChatAttachments.clear()
         |> announce_delivery(mode, delivery)
         |> maybe_autotitle(conv_id, text)
 
@@ -237,6 +251,19 @@ defmodule BusterClawWeb.Status.Chat do
     end
   end
 
+  # The user's own echo carries the attachment citation fence appended at send.
+  # Strip it (the reader must never see the marker, exactly as with ```svg) and
+  # turn it back into chips and thumbnails on the bubble.
+  def apply_chat(socket, conv_id, {:message, %{role: :user, text: text} = msg}) do
+    if conv_id == socket.assigns.active_chat do
+      {clean, metas} = ChatAttachments.decode(text)
+      {socket, attachments} = attach_to_pool(socket, conv_id, metas)
+      push_msg(socket, :user, clean, [], Map.get(msg, :delivery), [], attachments)
+    else
+      mark_unread(socket, conv_id)
+    end
+  end
+
   def apply_chat(socket, conv_id, {:message, %{role: role, text: text} = msg}) do
     if conv_id == socket.assigns.active_chat do
       socket
@@ -253,6 +280,14 @@ defmodule BusterClawWeb.Status.Chat do
 
   def mark_unread(socket, conv_id),
     do: update_tab(socket, conv_id, &%{&1 | unread: true})
+
+  # Hydrate cited attachments from the store and give the previewable ones a
+  # slot in the same visual pool drawings and scenes use, so clicking a
+  # thumbnail opens `svg_modal/1` with no second modal and no new event.
+  defp attach_to_pool(socket, _conv_id, []), do: {socket, []}
+
+  defp attach_to_pool(socket, conv_id, metas),
+    do: ChatAttachments.place_in_pool(socket, ChatAttachments.hydrate(conv_id, metas))
 
   # The pool ids `collect_svgs/2` just assigned to this batch (it numbers a batch
   # `svg_seq+1 .. svg_seq+n`), so a bubble can link straight to its own drawings.
@@ -316,10 +351,14 @@ defmodule BusterClawWeb.Status.Chat do
   end
 
   # Title a still-"New chat" conversation from its first user message.
+  # An attachment-only message has no text to title with, so the conversation
+  # keeps "New chat" until something is said. Naming it after a filename was the
+  # alternative and it reads worse — the tab strip is a list of topics, not a
+  # list of uploads.
   def maybe_autotitle(socket, conv_id, text) do
     tab = Enum.find(socket.assigns.chats, &(&1.id == conv_id))
 
-    if tab && tab.title == Conversations.default_title() do
+    if (tab && tab.title == Conversations.default_title()) and String.trim(text) != "" do
       title = title_from(text)
       Conversations.rename(conv_id, title)
       update_tab(socket, conv_id, &%{&1 | title: title})
@@ -332,7 +371,15 @@ defmodule BusterClawWeb.Status.Chat do
     text |> String.trim() |> String.replace(~r/\s+/, " ") |> String.slice(0, 40)
   end
 
-  def push_msg(socket, role, text, svg_ids \\ [], delivery \\ nil, scenes \\ []) do
+  def push_msg(
+        socket,
+        role,
+        text,
+        svg_ids \\ [],
+        delivery \\ nil,
+        scenes \\ [],
+        attachments \\ []
+      ) do
     seq = socket.assigns.chat_seq + 1
 
     msg = %{
@@ -341,7 +388,8 @@ defmodule BusterClawWeb.Status.Chat do
       text: text,
       svg_ids: svg_ids,
       delivery: delivery,
-      scenes: scenes
+      scenes: scenes,
+      attachments: attachments
     }
 
     socket
@@ -427,11 +475,37 @@ defmodule BusterClawWeb.Status.Chat do
             if clean == "" and drawings == [] and scenes == [],
               do: acc,
               else: [
-                %{role: :assistant, text: clean, drawings: drawings, scenes: scenes} | acc
+                %{
+                  role: :assistant,
+                  text: clean,
+                  drawings: drawings,
+                  scenes: scenes,
+                  attachments: []
+                }
+                | acc
               ]
 
+          # A user row carries its attachment citation fence. Decoding it here is
+          # the whole of Phase 3's "they survive reload": the fence names the
+          # ids, the store still holds the bytes (attachments die with the
+          # conversation, not with the turn), and a file the store has lost still
+          # renders as a named chip rather than vanishing.
+          :user ->
+            {clean, metas} = ChatAttachments.decode(row.content)
+
+            [
+              %{
+                role: :user,
+                text: clean,
+                drawings: [],
+                scenes: [],
+                attachments: ChatAttachments.hydrate(conv_id, metas)
+              }
+              | acc
+            ]
+
           role ->
-            [%{role: role, text: row.content, drawings: [], scenes: []} | acc]
+            [%{role: role, text: row.content, drawings: [], scenes: [], attachments: []} | acc]
         end
       end)
       |> Enum.reverse()
@@ -445,15 +519,29 @@ defmodule BusterClawWeb.Status.Chat do
         ids = if n == 0, do: [], else: Enum.to_list(next..(next + n - 1))
         scenes = scenes_for(next + n - 1, entry.scenes)
 
+        # Image attachments take the slots after this message's drawings and
+        # scenes, from the same counter, so the modal pages across drawings,
+        # scenes and attachments in one reading order.
+        {attachments, attachment_pool, next} =
+          ChatAttachments.number(entry.attachments, next + n + length(scenes))
+
         pool =
           Enum.reduce(
-            Enum.zip(ids, entry.drawings) ++ Enum.map(scenes, &{&1.id, &1.svg}),
+            Enum.zip(ids, entry.drawings) ++
+              Enum.map(scenes ++ attachment_pool, &{&1.id, &1.svg}),
             pool,
             fn {id, svg}, p -> [%{id: id, svg: svg} | p] end
           )
 
-        msg = %{role: entry.role, text: entry.text, svg_ids: ids, scenes: scenes}
-        {[msg | msgs], pool, next + n + length(scenes)}
+        msg = %{
+          role: entry.role,
+          text: entry.text,
+          svg_ids: ids,
+          scenes: scenes,
+          attachments: attachments
+        }
+
+        {[msg | msgs], pool, next}
       end)
 
     messages =
@@ -463,6 +551,7 @@ defmodule BusterClawWeb.Status.Chat do
       |> Enum.map(fn {m, i} -> Map.put(m, :id, i) end)
 
     svgs = Enum.reverse(pool_rev)
+    sent_ids = Enum.flat_map(entries, fn e -> Enum.map(e.attachments, & &1.id) end)
 
     socket
     |> stream(:chat_messages, messages, reset: true)
@@ -470,6 +559,10 @@ defmodule BusterClawWeb.Status.Chat do
     |> assign(:chat_svgs, svgs)
     |> assign(:svg_seq, length(svgs))
     |> assign(:zoomed_id, nil)
+    # Anything the store still holds that the transcript never cited was dropped
+    # into the composer and not sent — it comes back as a chip rather than
+    # sitting on disk with nothing on screen admitting to it.
+    |> ChatAttachments.recover_pending(conv_id, sent_ids)
   end
 
   @history_roles %{
@@ -501,6 +594,7 @@ defmodule BusterClawWeb.Status.Chat do
     |> assign(:chat_svgs, [])
     |> assign(:svg_seq, 0)
     |> assign(:zoomed_id, nil)
+    |> ChatAttachments.clear()
   end
 
   # Close a conversation, stop its process, and decide what the user looks at
@@ -509,6 +603,11 @@ defmodule BusterClawWeb.Status.Chat do
   def close_chat(socket, id) do
     Chat.stop(id)
     Conversations.close(id)
+    # Attachments die with their conversation — the `chat_svgs` rule, and the
+    # operator's constraint that staging is not saving. Closing the tab is the
+    # only end a conversation has in this app (the row is archived so the
+    # transcript stays queryable), so it is where the staged bytes go.
+    ChatAttachments.purge(id)
     # Drop the subscription to the now-closed conversation's topic so its future
     # broadcasts (if any) no longer reach this LiveView.
     if connected?(socket),

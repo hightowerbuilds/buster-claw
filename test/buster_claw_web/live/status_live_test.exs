@@ -4,6 +4,7 @@ defmodule BusterClawWeb.StatusLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias BusterClaw.Agent.Attachments
   alias BusterClaw.Calendar
   alias BusterClaw.Commands
   alias BusterClaw.Contacts
@@ -1648,5 +1649,296 @@ defmodule BusterClawWeb.StatusLiveTest do
                "#home-explore button[phx-value-tab='browser'][aria-selected='true']"
              )
     end
+  end
+
+  # A 1×1 PNG. Real magic bytes on purpose: `Attachments.classify/2` sniffs the
+  # head and ignores every claim, so a fake payload would stage as `:binary` and
+  # every thumbnail assertion below would pass for the wrong reason.
+  @png Base.decode64!(
+         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+       )
+
+  describe "chat attachments" do
+    setup do
+      root = Path.join(System.tmp_dir!(), "bc_attach_#{System.unique_integer([:positive])}")
+      prev = Application.get_env(:buster_claw, :attachments_root)
+      Application.put_env(:buster_claw, :attachments_root, root)
+
+      on_exit(fn ->
+        Application.put_env(:buster_claw, :attachments_root, prev)
+        File.rm_rf(root)
+      end)
+
+      {:ok, attach_root: root}
+    end
+
+    test "a dropped path is staged and chipped with its filename", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      html = render_hook(view, "attach_paths", %{"paths" => [write_file("shot.png", @png)]})
+
+      assert html =~ "shot.png"
+      assert has_element?(view, "[data-attach-chips]")
+      # The chip carries a thumbnail, not just a name — the whole point of
+      # showing it before the send is that the user can see WHICH image.
+      assert html =~ "data:image/png;base64,"
+    end
+
+    test "a refusal from the hook is surfaced with its reason", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      html =
+        render_hook(view, "attach_error", %{
+          "reason" => "too_large",
+          "filename" => "enormous.psd"
+        })
+
+      assert html =~ "enormous.psd"
+      assert html =~ "too large"
+      assert has_element?(view, "[data-attach-error]")
+    end
+
+    test "a refusal from the store is surfaced too", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # A directory is not a file. The store refuses it (`:not_regular`) and the
+      # composer has to say so — a drop that silently does nothing is the false
+      # affordance this feature exists to remove.
+      html = render_hook(view, "attach_paths", %{"paths" => [System.tmp_dir!()]})
+
+      assert has_element?(view, "[data-attach-error]")
+      assert html =~ "cannot be attached" or html =~ "could not be attached"
+      refute has_element?(view, "[data-attach-chips]")
+    end
+
+    test "an attachment can be removed before it is sent", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_hook(view, "attach_paths", %{"paths" => [write_file("notes.md", "# hello\n")]})
+
+      assert has_element?(view, "[data-attach-chip]")
+
+      html =
+        view
+        |> element(~s([data-attach-chips] button[phx-click="remove_attachment"]))
+        |> render_click()
+
+      refute html =~ "notes.md"
+      refute has_element?(view, "[data-attach-chips]")
+      # Removed from the staging directory too — a file the user cancelled has
+      # no reason to sit on disk until the conversation is deleted.
+      assert Attachments.list(active_chat(view)) == []
+    end
+
+    test "a refused attachment blocks the send until it is dismissed", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_hook(view, "attach_error", %{"reason" => "too_large", "filename" => "huge.png"})
+
+      html = view |> form("#home-composer", %{"message" => "look at this"}) |> render_submit()
+
+      # Nothing went. Silently sending a message whose image did not make it is
+      # the failure this gate exists for, and the banner has to say so.
+      assert html =~ "Nothing was sent"
+      refute html =~ ~s(class="ic-drop-in)
+
+      html =
+        view
+        |> element(~s([data-attach-error] button[phx-click="dismiss_attach_error"]))
+        |> render_click()
+
+      refute html =~ "Nothing was sent"
+      refute has_element?(view, "[data-attach-error]")
+    end
+
+    test "sending clears the composer's chips", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      conv = active_chat(view)
+      start_fake_chat(conv)
+
+      render_hook(view, "attach_paths", %{"paths" => [write_file("shot.png", @png)]})
+      assert has_element?(view, "[data-attach-chip]")
+
+      view |> form("#home-composer", %{"message" => "what is this?"}) |> render_submit()
+
+      refute has_element?(view, "[data-attach-chips]")
+      # The echo arrives over PubSub, a hop after the submit returns.
+      html = render(view)
+      # The message itself still shows what rode with it...
+      assert html =~ "what is this?"
+      assert has_element?(view, "[data-attach-image]")
+      # ...and the raw citation fence never reaches the reader.
+      refute html =~ "```attachments"
+    end
+
+    test "an attachment-only message is a real message", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_fake_chat(active_chat(view))
+
+      render_hook(view, "attach_paths", %{"paths" => [write_file("shot.png", @png)]})
+      view |> form("#home-composer", %{"message" => ""}) |> render_submit()
+
+      assert has_element?(view, "[data-attach-image]")
+      refute render(view) =~ "```attachments"
+    end
+
+    test "a user message with an image shows a thumbnail that opens the modal", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      conv = active_chat(view)
+      {:ok, att} = stage(conv, "shot.png", @png)
+
+      send(view.pid, {:agent_chat, conv, {:message, %{role: :user, text: marker("look", [att])}}})
+
+      html = render(view)
+      assert html =~ "look"
+      assert html =~ "data:image/png;base64,"
+      assert has_element?(view, ~s([data-attach-image="#{att.id}"]))
+
+      # It joined the drawings' visual pool, so the EXISTING modal opens it —
+      # there is no second viewer.
+      html = view |> element(~s([data-attach-image] )) |> render_click()
+      assert html =~ "ic-svg-modal"
+    end
+
+    test "a non-image attachment renders as a chip, not a broken thumbnail", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      conv = active_chat(view)
+      {:ok, att} = stage(conv, "report.pdf", "%PDF-1.4\n trailing bytes\n")
+
+      send(
+        view.pid,
+        {:agent_chat, conv, {:message, %{role: :user, text: marker("read it", [att])}}}
+      )
+
+      assert has_element?(view, ~s([data-attach-file="#{att.id}"]))
+      refute has_element?(view, "[data-attach-image]")
+    end
+
+    test "an SVG never renders as a thumbnail, whatever it claims to be", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      conv = active_chat(view)
+
+      svg = ~s|<svg xmlns="http://www.w3.org/2000/svg"><script>alert("x")</script></svg>|
+      {:ok, att} = stage(conv, "trojan.svg", svg)
+
+      send(view.pid, {:agent_chat, conv, {:message, %{role: :user, text: marker("hm", [att])}}})
+
+      # A chip, not an <img>. An SVG is a document that can carry script, and the
+      # only path that renders one live sanitizes it first — an attachment does
+      # not, so it does not get to be one. The 07-04 review paid for this once.
+      assert has_element?(view, ~s([data-attach-file="#{att.id}"]))
+      refute has_element?(view, "[data-attach-image]")
+      refute render(view) =~ "alert("
+    end
+
+    test "a forged citation cannot talk a file into being an image", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      conv = active_chat(view)
+      {:ok, att} = stage(conv, "notes.md", "# not an image\n")
+
+      # The fence is prose in an append-only log; nothing stops it claiming
+      # anything. What renders comes from the STORE's record, sniffed from the
+      # bytes, so the claim buys nothing.
+      forged = marker("look", [%{att | media_type: "image/png", kind: :image}])
+      send(view.pid, {:agent_chat, conv, {:message, %{role: :user, text: forged}}})
+
+      refute has_element?(view, "[data-attach-image]")
+      assert has_element?(view, ~s([data-attach-file="#{att.id}"]))
+    end
+
+    test "an attachment is still rendered after a reload", %{conn: conn} do
+      conv = "default"
+      {:ok, att} = stage(conv, "shot.png", @png)
+      BusterClaw.Agent.Transcript.record(conv, "user", marker("what is this?", [att]))
+
+      # A fresh mount — nothing carried over from the session that sent it. The
+      # transcript names the ids, the store still has the bytes.
+      {:ok, view, html} = live(conn, ~p"/")
+
+      assert html =~ "what is this?"
+      refute html =~ "```attachments"
+      assert has_element?(view, ~s([data-attach-image="#{att.id}"]))
+      assert render(view) =~ "data:image/png;base64,"
+    end
+
+    test "a reloaded attachment whose bytes are gone still names itself", %{conn: conn} do
+      conv = "default"
+      {:ok, att} = stage(conv, "shot.png", @png)
+      BusterClaw.Agent.Transcript.record(conv, "user", marker("what is this?", [att]))
+      :ok = Attachments.purge(conv)
+
+      {:ok, view, html} = live(conn, ~p"/")
+
+      # The citation is enough to render an honest chip. Disappearing would be
+      # the alternative, and a message that quietly loses its attachment is
+      # exactly what this design is trying to make impossible.
+      assert html =~ "shot.png"
+      assert html =~ "No longer available"
+      assert has_element?(view, ~s([data-attach-file="#{att.id}"]))
+    end
+
+    test "an unsent attachment comes back after a reload", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_hook(view, "attach_paths", %{"paths" => [write_file("draft.md", "# draft\n")]})
+
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      # It is still staged and nothing cited it, so it is still in the composer
+      # rather than an orphan on disk that nothing on screen admits to.
+      assert html =~ "draft.md"
+      assert html =~ "data-attach-chips"
+    end
+
+    test "closing a conversation purges its attachments and nobody else's", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      conv = active_chat(view)
+      {:ok, _} = stage(conv, "mine.png", @png)
+
+      other = "bystander"
+      {:ok, _} = stage(other, "theirs.png", @png)
+
+      view |> element(~s([role="tab"] span[phx-click="close_chat"])) |> render_click()
+
+      assert Attachments.list(conv) == []
+      assert [%{filename: "theirs.png"}] = Attachments.list(other)
+    end
+  end
+
+  # --- attachment helpers ----------------------------------------------------
+
+  defp write_file(name, contents) do
+    dir = Path.join(System.tmp_dir!(), "bc_drop_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    path = Path.join(dir, name)
+    File.write!(path, contents)
+    on_exit(fn -> File.rm_rf(dir) end)
+    path
+  end
+
+  defp stage(conv, name, contents) do
+    Attachments.stage(
+      conv,
+      %{filename: name, media_type: MIME.from_path(name), source: :upload},
+      {:bytes, contents}
+    )
+  end
+
+  # The citation fence exactly as the composer writes it, so these tests pin the
+  # format the transcript actually carries rather than a test-only shape.
+  defp marker(text, attachments),
+    do: BusterClawWeb.Status.ChatAttachments.marker(text, attachments)
+
+  # A conversation process with a spawner that starts nothing, so a submit
+  # succeeds (and echoes the user message back over PubSub) without a CLI.
+  defp start_fake_chat(conv_id) do
+    {:ok, pid} =
+      BusterClaw.Agent.Chat.start_link(
+        conv_id: conv_id,
+        spawner: fn _prompt, _opts -> {:ok, make_ref()} end,
+        transport_mod: BusterClaw.Agent.FakePersistentTransport,
+        persist: false,
+        audit: false
+      )
+
+    on_exit(fn -> if Process.alive?(pid), do: Process.exit(pid, :kill) end)
+    pid
   end
 end

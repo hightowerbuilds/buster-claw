@@ -173,6 +173,89 @@ defmodule BusterClaw.AgentBackendTest do
     end
   end
 
+  # The flag vocabulary only — what each CLI spells an attached file with.
+  # Reading the file and deciding what travels how is Agent.AttachmentDelivery's
+  # job, and its tests cover that.
+  describe "attachment flags" do
+    # Measured 08-08-26 from `--help` on the installed binaries. The one word
+    # that differs — image(s) vs file(s) — is why the delivery layer routes a PDF
+    # away from codex.
+    test "codex spells it -i, opencode spells it -f, claude has none" do
+      assert AgentBackend.attachment_flag(:codex) == "-i"
+      assert AgentBackend.attachment_flag(:opencode) == "-f"
+      assert AgentBackend.attachment_flag(:claude) == nil
+      assert AgentBackend.attachment_flag(:gemini) == nil
+    end
+
+    test "the flag repeats per path rather than taking a delimited list" do
+      assert AgentBackend.attachment_args(:codex, ["/a.png", "/b.png"]) ==
+               ["-i", "/a.png", "-i", "/b.png"]
+
+      assert AgentBackend.attachment_args(:opencode, ["/a.png", "/b.png"]) ==
+               ["-f", "/a.png", "-f", "/b.png"]
+    end
+
+    # A path with a space in it must never depend on quoting, so flag and path
+    # are always separate argv entries.
+    test "a path is one argv entry, never joined to its flag" do
+      assert AgentBackend.attachment_args(:codex, ["/tmp/my shot.png"]) ==
+               ["-i", "/tmp/my shot.png"]
+    end
+
+    test "a backend without an attachment flag emits nothing rather than guessing" do
+      assert AgentBackend.attachment_args(:claude, ["/a.png"]) == []
+      assert AgentBackend.attachment_args(:gemini, ["/a.png"]) == []
+    end
+
+    test "no paths means no args, on every backend" do
+      for backend <- AgentBackend.order() ++ [:gemini] do
+        assert AgentBackend.attachment_args(backend, []) == []
+        assert AgentBackend.attachment_args(backend) == []
+      end
+    end
+  end
+
+  describe "dir_grant_args/2" do
+    # --add-dir is the whole reason the staging directory can live outside the
+    # workspace the agent browses.
+    test "claude grants a directory; the sandbox/agent-file backends have no equivalent" do
+      assert AgentBackend.dir_grant_args(:claude, ["/tmp/staging"]) ==
+               ["--add-dir", "/tmp/staging"]
+
+      assert AgentBackend.dir_grant_args(:codex, ["/tmp/staging"]) == []
+      assert AgentBackend.dir_grant_args(:opencode, ["/tmp/staging"]) == []
+      assert AgentBackend.dir_grant_args(:gemini, ["/tmp/staging"]) == []
+    end
+
+    test "no dirs means no args" do
+      for backend <- AgentBackend.order(), do: assert(AgentBackend.dir_grant_args(backend) == [])
+    end
+  end
+
+  describe "inline_attachments?/2" do
+    # Bytes on the wire exist only where the wire does: claude's streaming-input
+    # channel. codex and opencode take paths and cannot take bytes at all.
+    test "only claude, and only in duplex mode" do
+      assert AgentBackend.inline_attachments?(:claude, duplex: true)
+      refute AgentBackend.inline_attachments?(:claude, duplex: false)
+      refute AgentBackend.inline_attachments?(:claude, [])
+      refute AgentBackend.inline_attachments?(:claude)
+    end
+
+    test "never true for a backend that cannot take bytes" do
+      for backend <- [:codex, :opencode, :gemini] do
+        refute AgentBackend.inline_attachments?(backend, duplex: true)
+      end
+    end
+
+    # Same option key as argv/3 and stream_args/2, so a caller cannot turn on
+    # streaming input and inline blocks independently and get them out of step.
+    test "it keys on the same :duplex option the rest of the module takes" do
+      assert AgentBackend.inline_attachments?(:claude, duplex: true)
+      assert "--input-format" in AgentBackend.stream_args(:claude, stream: true, duplex: true)
+    end
+  end
+
   describe "model namespaces" do
     test "opencode needs provider/model; the others take a bare id" do
       assert AgentBackend.model_namespace(:opencode) == :provider_slash_model
