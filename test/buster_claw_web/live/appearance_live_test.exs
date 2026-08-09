@@ -336,6 +336,21 @@ defmodule BusterClawWeb.AppearanceLiveTest do
       refute html =~ ~s(phx-submit="chat_send")
     end
 
+    test "sits in the left column under Theme, not below the whole page", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/appearance")
+
+      # Placement, asserted by document order: the left grid cell stacks Theme
+      # then Chat theme, so the chat panel comes BEFORE the tall terminal palette
+      # that fills the right cell. It used to come after everything, which left an
+      # empty half-column under Theme.
+      #
+      # This is also a guard against the obvious "fix" — making Chat theme a third
+      # child of the two-column grid. Auto-placement would put it in column 1 row
+      # 2, below the terminal column's baseline, and the gap would come back with
+      # the markup looking correct.
+      assert :binary.match(html, "chat-skin-heading") < :binary.match(html, "Terminal theme")
+    end
+
     test "offers every text size with its percentage", %{conn: conn} do
       {:ok, view, html} = live(conn, "/appearance")
 

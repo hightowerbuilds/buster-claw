@@ -314,6 +314,13 @@ guarded on `axis in [:chat_skin, :chat_text_size]` — the axis name *is* the as
 name, which is why one clause serves both and why an unknown broadcast cannot
 write an arbitrary assign.
 
+**Layout, 08-09:** the section is **not** full-width. It sits in the left cell of
+the Theme / Terminal-theme grid, stacked under Theme, filling a half-column that
+was empty because the terminal palette is tall. Worth knowing before rearranging
+it: making it a *third grid child* puts it in column 1 **row 2**, below the
+terminal column's baseline, so the gap survives and the markup looks fine. The
+left cell must be a stack. A test asserts document order for exactly that reason.
+
 **Only enlargement is offered.** Nobody asked to make the chat smaller and Minimal
 already runs the tightest type in the app; a "Small" step is a one-line addition
 if it is ever wanted.

@@ -165,6 +165,20 @@ treatment, and matching the reference beat matching ourselves. The roadmap had e
 licensed it — it said translucency was "each skin's call" — so the document was
 wrong before the CSS was, and it now says the opposite with the reason attached.
 
+## The gap under Theme, and a grid trap
+
+Chat theme shipped full-width below everything, which left an empty half-column
+under **Theme** while the terminal palette filled the right side. Moved into that
+gap, and compacted for it: the two dropdowns share a row, the copy is one line
+each, the preview takes the width it is given (a transcript is narrow anyway).
+
+**The obvious move is wrong.** Making Chat theme a third child of the two-column
+grid puts it in column 1 **row 2** — below the tall terminal column's baseline —
+so the gap survives while the markup looks correct. The left cell has to become a
+stack containing both panels. A test asserts document order (chat heading before
+"Terminal theme") precisely because that is the mistake a future refactor would
+make while looking right.
+
 ## Cuts, taken as decisions
 
 - **No smaller sizes.** Nobody asked to shrink the chat, and Minimal already runs

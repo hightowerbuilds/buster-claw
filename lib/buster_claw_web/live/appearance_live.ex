@@ -331,40 +331,126 @@ defmodule BusterClawWeb.AppearanceLive do
           </div>
         </div>
 
+        <%!-- Left cell stacks the two look-and-feel panels; right cell is the tall
+              terminal palette. A stack rather than three grid children on purpose:
+              auto-placement would put the third one in column 1 ROW 2, below the
+              terminal column's baseline, which is the empty gap this arrangement
+              exists to close. --%>
         <div class="grid items-start gap-6 lg:grid-cols-2">
-          <section class="ic-panel space-y-4 p-6">
-            <h2 class="ic-eyebrow">Theme</h2>
-            <p class="max-w-2xl text-sm leading-7 text-base-content/70">
-              Choose how Buster Claw looks. <span class="font-semibold">System</span>
-              follows your operating system's appearance.
-            </p>
-            <div class="flex flex-wrap gap-2">
-              <button
-                type="button"
-                phx-click={JS.dispatch("phx:set-theme")}
-                data-phx-theme="system"
-                class={theme_btn()}
+          <div class="space-y-6">
+            <section class="ic-panel space-y-4 p-6">
+              <h2 class="ic-eyebrow">Theme</h2>
+              <p class="text-sm leading-7 text-base-content/70">
+                Choose how Buster Claw looks. <span class="font-semibold">System</span>
+                follows your operating system's appearance.
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  phx-click={JS.dispatch("phx:set-theme")}
+                  data-phx-theme="system"
+                  class={theme_btn()}
+                >
+                  <.icon name="hero-computer-desktop" class="size-4" /> System
+                </button>
+                <button
+                  type="button"
+                  phx-click={JS.dispatch("phx:set-theme")}
+                  data-phx-theme="light"
+                  class={theme_btn()}
+                >
+                  <.icon name="hero-sun" class="size-4" /> Light
+                </button>
+                <button
+                  type="button"
+                  phx-click={JS.dispatch("phx:set-theme")}
+                  data-phx-theme="dark"
+                  class={theme_btn()}
+                >
+                  <.icon name="hero-moon" class="size-4" /> Dark
+                </button>
+              </div>
+            </section>
+
+            <%!-- Compact by design: this now lives in half a column under Theme
+                  rather than full-width below everything. The two dropdowns share a
+                  row, their copy is one line each, and the preview takes the width
+                  it is given — a transcript is narrow anyway, so a half column shows
+                  it honestly. --%>
+            <section class="ic-panel space-y-3 p-6" aria-labelledby="chat-skin-heading">
+              <h2 id="chat-skin-heading" class="ic-eyebrow">Chat theme</h2>
+              <p class="text-sm leading-7 text-base-content/70">
+                How the chat on the homepage looks. Applies the moment you pick it — here, and
+                in an open homepage.
+              </p>
+
+              <div class="grid gap-3 sm:grid-cols-2">
+                <form phx-change="set_chat_skin" class="space-y-2">
+                  <label for="chat-skin-select" class="ic-eyebrow block">Theme</label>
+                  <select
+                    id="chat-skin-select"
+                    name="skin"
+                    class="w-full rounded border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm font-semibold focus:border-primary focus:outline-none"
+                  >
+                    <option
+                      :for={skin <- @chat_skins}
+                      value={skin.key}
+                      selected={skin.key == @chat_skin}
+                    >
+                      {skin.label}
+                    </option>
+                  </select>
+                </form>
+
+                <%!-- A separate axis, on purpose: bigger text should not cost you the
+                      look you picked. The two multiply — every skin's font sizes are
+                      written as a multiple of this one number. --%>
+                <form phx-change="set_chat_text_size" class="space-y-2">
+                  <label for="chat-text-size-select" class="ic-eyebrow block">Text size</label>
+                  <select
+                    id="chat-text-size-select"
+                    name="size"
+                    class="w-full rounded border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm font-semibold focus:border-primary focus:outline-none"
+                  >
+                    <option
+                      :for={size <- @chat_text_sizes}
+                      value={size.key}
+                      selected={size.key == @chat_text_size}
+                    >
+                      {size.label} · {ChatTextSize.percent(size.key)}%
+                    </option>
+                  </select>
+                </form>
+              </div>
+
+              <p
+                :for={skin <- @chat_skins}
+                :if={skin.key == @chat_skin}
+                data-chat-skin-blurb
+                class="text-sm leading-6 text-base-content/70"
               >
-                <.icon name="hero-computer-desktop" class="size-4" /> System
-              </button>
-              <button
-                type="button"
-                phx-click={JS.dispatch("phx:set-theme")}
-                data-phx-theme="light"
-                class={theme_btn()}
-              >
-                <.icon name="hero-sun" class="size-4" /> Light
-              </button>
-              <button
-                type="button"
-                phx-click={JS.dispatch("phx:set-theme")}
-                data-phx-theme="dark"
-                class={theme_btn()}
-              >
-                <.icon name="hero-moon" class="size-4" /> Dark
-              </button>
-            </div>
-          </section>
+                {skin.blurb} Text size scales what you read, not the buttons.
+              </p>
+
+              <div class="rounded border-2 border-base-content/20 bg-base-100">
+                <BusterClawWeb.ChatPanel.transcript_preview
+                  skin={@chat_skin}
+                  text_size={@chat_text_size}
+                />
+              </div>
+              <%!-- Said rather than implied. The composer's form carries live hooks
+                    and a `chat_send` submit that would crash this page, so the
+                    preview is the transcript; and the skins' translucency and
+                    shadow rules describe a panel over the homepage's shader, which
+                    a settings page does not have. Both are real gaps, and a
+                    preview that quietly omitted them would be the kind of promise
+                    this app keeps getting wrong. --%>
+              <p class="text-xs leading-5 text-base-content/55">
+                The transcript only — the message box and the panel's own edges are shown on
+                the homepage.
+              </p>
+            </section>
+          </div>
 
           <section class="ic-panel space-y-4 p-6">
             <h2 class="ic-eyebrow">Terminal theme</h2>
@@ -400,81 +486,6 @@ defmodule BusterClawWeb.AppearanceLive do
             </div>
           </section>
         </div>
-
-        <section class="ic-panel space-y-4 p-6" aria-labelledby="chat-skin-heading">
-          <h2 id="chat-skin-heading" class="ic-eyebrow">Chat theme</h2>
-          <p class="max-w-2xl text-sm leading-7 text-base-content/70">
-            How the chat on the homepage looks. The change applies the moment you pick it —
-            here, and in an open homepage.
-          </p>
-
-          <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-            <form phx-change="set_chat_skin" class="space-y-3">
-              <label for="chat-skin-select" class="sr-only">Chat theme</label>
-              <select
-                id="chat-skin-select"
-                name="skin"
-                class="w-full rounded border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm font-semibold focus:border-primary focus:outline-none"
-              >
-                <option :for={skin <- @chat_skins} value={skin.key} selected={skin.key == @chat_skin}>
-                  {skin.label}
-                </option>
-              </select>
-              <p
-                :for={skin <- @chat_skins}
-                :if={skin.key == @chat_skin}
-                data-chat-skin-blurb
-                class="text-sm leading-6 text-base-content/70"
-              >
-                {skin.blurb}
-              </p>
-            </form>
-
-            <%!-- A separate axis, on purpose: bigger text should not cost you the
-                  look you picked. The two multiply — every skin's font sizes are
-                  written as a multiple of this one number. --%>
-            <form phx-change="set_chat_text_size" class="space-y-3">
-              <label for="chat-text-size-select" class="ic-eyebrow block">Text size</label>
-              <select
-                id="chat-text-size-select"
-                name="size"
-                class="w-full rounded border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm font-semibold focus:border-primary focus:outline-none"
-              >
-                <option
-                  :for={size <- @chat_text_sizes}
-                  value={size.key}
-                  selected={size.key == @chat_text_size}
-                >
-                  {size.label} · {ChatTextSize.percent(size.key)}%
-                </option>
-              </select>
-              <p class="text-sm leading-6 text-base-content/70">
-                Scales the message text, the composer and the run notes. Buttons and chips keep
-                their size — this makes the chat easier to read, not the whole panel bigger.
-              </p>
-            </form>
-
-            <div class="space-y-2">
-              <div class="rounded border-2 border-base-content/20 bg-base-100">
-                <BusterClawWeb.ChatPanel.transcript_preview
-                  skin={@chat_skin}
-                  text_size={@chat_text_size}
-                />
-              </div>
-              <%!-- Said rather than implied. The composer's form carries live hooks
-                    and a `chat_send` submit that would crash this page, so the
-                    preview is the transcript; and the skins' translucency and
-                    shadow rules describe a panel over the homepage's shader, which
-                    a settings page does not have. Both are real gaps, and a
-                    preview that quietly omitted them would be the kind of promise
-                    this app keeps getting wrong. --%>
-              <p class="text-xs leading-5 text-base-content/55">
-                The transcript only — the message box and the panel's own edges are shown on the
-                homepage.
-              </p>
-            </div>
-          </div>
-        </section>
       </section>
     </Layouts.app>
     """
