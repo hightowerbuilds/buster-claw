@@ -252,6 +252,36 @@ defmodule BusterClawWeb.ChatPanelTest do
     test "a panel rendered without a skin wears the default" do
       assert panel() =~ ~s(data-chat-skin="#{ChatSkin.default()}")
     end
+
+    # A skin is CSS, so its selectors are the only way it can reach anything.
+    # These anchors are that reach. Deleting one silently un-skins a piece of the
+    # panel in all three looks at once, with a green suite — the failure mode this
+    # test exists for.
+    test "every part a skin has to address is anchored" do
+      html = panel()
+
+      for anchor <- ~w(data-chat-header data-chat-log data-chat-form data-chat-input) do
+        assert html =~ anchor, "the #{anchor} anchor is gone — a skin cannot reach it"
+      end
+
+      for role <- ~w(user assistant tool meta error) do
+        assert html =~ ~s(data-chat-role="#{role}"),
+               "the #{role} bubble lost its role anchor, so no skin can style it"
+      end
+
+      # The thing that carries a bubble's background and border — what Minimal
+      # strips and Workplace re-shapes.
+      assert html =~ "data-chat-body"
+    end
+
+    test "the author line is present and inaudible-only until a skin asks for it" do
+      html = panel()
+
+      # Real DOM, not a CSS `content:` string: announced in every skin, and it
+      # survives copy-paste. `sr-only` is why adding it changed nothing visually.
+      assert html =~ ~s(<span data-chat-author class="sr-only">You</span>)
+      assert html =~ ~s(<span data-chat-author class="sr-only">Buster Claw</span>)
+    end
   end
 
   describe "the citation fence" do

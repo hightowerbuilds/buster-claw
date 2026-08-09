@@ -141,7 +141,10 @@ defmodule BusterClawWeb.ChatPanel do
       data-chat-skin={@skin}
       class="ic-panel flex min-h-0 w-full flex-1 flex-col overflow-hidden"
     >
-      <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">
+      <header
+        data-chat-header
+        class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4"
+      >
         <div>
           <p class="ic-eyebrow">Chat</p>
         </div>
@@ -695,9 +698,11 @@ defmodule BusterClawWeb.ChatPanel do
       |> assign(:attachments, Map.get(assigns.msg, :attachments, []))
 
     ~H"""
-    <div id={@id} class="flex flex-col items-end gap-1">
+    <div id={@id} data-chat-role="user" class="flex flex-col items-end gap-1">
+      <.chat_author>You</.chat_author>
       <div
         :if={@msg.text != ""}
+        data-chat-body
         class="ic-drop-in max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content"
       >
         {@msg.text}
@@ -779,9 +784,11 @@ defmodule BusterClawWeb.ChatPanel do
       |> assign(:scenes, Map.get(assigns.msg, :scenes, []))
 
     ~H"""
-    <div id={@id} class="flex flex-col items-start gap-1">
+    <div id={@id} data-chat-role="assistant" class="flex flex-col items-start gap-1">
+      <.chat_author>Buster Claw</.chat_author>
       <div
         :if={@msg.text != ""}
+        data-chat-body
         class="max-w-[85%] whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-100 px-3 py-2 text-[17px]"
       >
         {@msg.text}
@@ -810,6 +817,7 @@ defmodule BusterClawWeb.ChatPanel do
     ~H"""
     <div
       id={@id}
+      data-chat-role="tool"
       class="flex items-center gap-2 font-mono text-xs text-base-content/55"
     >
       <.icon name="hero-command-line" class="size-3.5 shrink-0" />
@@ -822,6 +830,7 @@ defmodule BusterClawWeb.ChatPanel do
     ~H"""
     <div
       id={@id}
+      data-chat-role="meta"
       class="text-center font-mono text-[0.62rem] uppercase tracking-wide text-base-content/45"
     >
       {@msg.text}
@@ -831,11 +840,36 @@ defmodule BusterClawWeb.ChatPanel do
 
   defp chat_bubble(%{msg: %{role: :error}} = assigns) do
     ~H"""
-    <div id={@id} class="flex justify-start">
-      <div class="max-w-[85%] rounded-sm border-2 border-error/50 bg-error/10 px-3 py-2 text-[17px] text-error">
+    <div id={@id} data-chat-role="error" class="flex justify-start">
+      <div
+        data-chat-body
+        class="max-w-[85%] rounded-sm border-2 border-error/50 bg-error/10 px-3 py-2 text-[17px] text-error"
+      >
         {@msg.text}
       </div>
     </div>
+    """
+  end
+
+  # Who said it — a line every skin renders and only one skin shows.
+  #
+  # `sr-only`, so it costs no layout and no visual change in the skins that
+  # distinguish speakers some other way (Industrial by alignment and colour,
+  # Minimal by a prompt glyph). The Workplace skin promotes it to a visible
+  # author line. Two things follow from it being real DOM rather than a CSS
+  # `content:` string: it is announced by a screen reader in EVERY skin — which
+  # alignment and colour never were — and it survives copy-paste.
+  #
+  # The rule is worth stating because the next skin will face it too: content
+  # belongs in the DOM, decoration belongs in CSS. A name is content. Minimal's
+  # `>` sigil is decoration, so it is a `::before` and appears nowhere here — a
+  # screen reader should not read a glyph aloud, and it should not land in
+  # copied text.
+  slot :inner_block, required: true
+
+  defp chat_author(assigns) do
+    ~H"""
+    <span data-chat-author class="sr-only">{render_slot(@inner_block)}</span>
     """
   end
 
