@@ -7,9 +7,13 @@ defmodule BusterClawWeb.PocketsPanel do
   A list of Pockets, and one Pocket open. Nothing else — no tree, no sidebar,
   no reordering, no drag handles, no inspector panel, no preview modal.
 
-  Phase 2b is **read-only**. There is deliberately no New, no Mount and no
-  Delete here; those arrive with the mount registry in Phase 3, which is the
-  surface that will own them.
+  Three write affordances and no others, exactly as D9 names them: **New**,
+  **Mount…**, and the `↗` glyph marking a mounted Pocket — plus the brand slots'
+  upload, which Part XI added. There is deliberately **no Delete**: a Pocket is a
+  folder, and removing an operator's folder is what Finder is for.
+
+  Their markup lives in `BusterClawWeb.Pockets.PocketControls` and
+  `BusterClawWeb.Pockets.BrandSlots`; only the state and the events are here.
 
   ## Why this is a live_component and `ExplorePanel` is not
 
@@ -39,6 +43,7 @@ defmodule BusterClawWeb.PocketsPanel do
   alias BusterClaw.Markdown
   alias BusterClaw.Pockets
   alias BusterClaw.Pockets.Brand
+  alias BusterClaw.Pockets.Operator
 
   # How many thumbnails the list row shows. A strip, not a gallery — the row is
   # a glance and the open Pocket is where every file is listed.
@@ -57,6 +62,9 @@ defmodule BusterClawWeb.PocketsPanel do
      |> assign(:loaded, false)
      |> assign(:upload_role, nil)
      |> assign(:upload_error, nil)
+     |> assign(:panel_open, nil)
+     |> assign(:mount_open, nil)
+     |> assign(:write_error, nil)
      # One upload for six slots, with `upload_role` naming the target. Six
      # `allow_upload` calls would be six live sockets kept open for a thing the
      # operator does once.
@@ -115,6 +123,47 @@ defmodule BusterClawWeb.PocketsPanel do
   # crash on an unhandled event.
   def handle_event("upload_brand", _params, socket), do: {:noreply, socket}
 
+  def handle_event("toggle_new", _params, socket) do
+    open = if socket.assigns.panel_open == "new", do: nil, else: "new"
+    {:noreply, socket |> assign(:panel_open, open) |> assign(:write_error, nil)}
+  end
+
+  def handle_event("create_pocket", %{"name" => name}, socket) do
+    case Pockets.ensure_pocket(String.trim(name), %{
+           kind: :free,
+           description: "",
+           body: "Say what this Pocket is for. The app reads this line back to you."
+         }) do
+      :ok ->
+        {:noreply, socket |> assign(:panel_open, nil) |> assign(:write_error, nil) |> reload()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :write_error, write_error_text(reason))}
+    end
+  end
+
+  def handle_event("toggle_mount", %{"name" => name}, socket) do
+    open = if socket.assigns.mount_open == name, do: nil, else: name
+    {:noreply, socket |> assign(:mount_open, open) |> assign(:write_error, nil)}
+  end
+
+  def handle_event("mount_pocket", %{"name" => name, "path" => path} = params, socket) do
+    # `Operator`, never `Mounts` — the role and app-owned refusals live there, and
+    # going straight to the registry would skip both.
+    case Operator.mount(name, String.trim(path), writable: params["writable"] == "true") do
+      {:ok, _mount} ->
+        {:noreply, socket |> assign(:mount_open, nil) |> assign(:write_error, nil) |> reload()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :write_error, write_error_text(reason))}
+    end
+  end
+
+  def handle_event("unmount_pocket", %{"name" => name}, socket) do
+    Operator.unmount(name)
+    {:noreply, socket |> assign(:write_error, nil) |> reload()}
+  end
+
   def handle_event("clear_brand", %{"role" => role}, socket) do
     Brand.clear(role)
     {:noreply, reload(socket)}
@@ -149,6 +198,27 @@ defmodule BusterClawWeb.PocketsPanel do
       {:noreply, socket}
     end
   end
+
+  # Every refusal a write can produce, in the operator's words. A reason rendered
+  # as `inspect/1` is a reason nobody acts on.
+  defp write_error_text(:invalid_name),
+    do: "the name must be lowercase letters, digits or hyphens"
+
+  defp write_error_text(:not_absolute), do: "give the full path, starting with /"
+  defp write_error_text(:not_found), do: "there is no folder at that path"
+  defp write_error_text(:not_a_directory), do: "that path is a file, not a folder"
+  defp write_error_text(:invalid_path), do: "that is not a path this can use"
+
+  defp write_error_text(:too_broad),
+    do: "too broad — pick a folder inside your home, not the whole of it"
+
+  defp write_error_text(:app_owned),
+    do: "the app writes into this Pocket, so it has to stay in the workspace"
+
+  defp write_error_text(:role_bound),
+    do: "a surface is using this Pocket, so it cannot move outside the workspace"
+
+  defp write_error_text(other), do: "could not do that: #{inspect(other)}"
 
   defp brand_error_text(:unsupported_type), do: "that file type is not an image we can show"
   defp brand_error_text(:unknown_role), do: "that slot no longer exists"
@@ -221,7 +291,7 @@ defmodule BusterClawWeb.PocketsPanel do
       <header class="flex shrink-0 flex-wrap items-baseline justify-between gap-2 border-b-2 border-base-content/20 px-4 py-3">
         <h2 class="font-display text-base font-black uppercase tracking-tight">Pockets</h2>
         <p class="font-mono text-[10px] uppercase tracking-wide text-base-content/45">
-          Read-only · folders that know what they are for
+          Folders that know what they are for
         </p>
       </header>
 
@@ -234,8 +304,21 @@ defmodule BusterClawWeb.PocketsPanel do
           upload_error={@upload_error}
           target={@myself}
         />
+        <BusterClawWeb.Pockets.PocketControls.new_pocket
+          :if={is_nil(@open_row)}
+          target={@myself}
+          open={@panel_open}
+          error={@write_error}
+        />
         <.pocket_list :if={is_nil(@open_row)} rows={@rows} target={@myself} />
         <.pocket_open :if={@open_row} row={@open_row} target={@myself} />
+        <BusterClawWeb.Pockets.PocketControls.mount_controls
+          :if={@open_row}
+          row={@open_row}
+          target={@myself}
+          open={@mount_open}
+          error={@write_error}
+        />
       </div>
     </section>
     """
@@ -329,6 +412,7 @@ defmodule BusterClawWeb.PocketsPanel do
           ← All Pockets
         </button>
         <span class="font-mono text-sm font-bold text-base-content">{@row.name}</span>
+        <BusterClawWeb.Pockets.PocketControls.mount_glyph pocket={@row.pocket} />
         <span class="font-mono text-[10px] uppercase tracking-wide text-base-content/45">
           {@row.pocket.kind} · {file_count(@row.files)}
         </span>

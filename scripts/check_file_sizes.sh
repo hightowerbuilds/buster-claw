@@ -243,7 +243,15 @@ check lib/buster_claw_web/live/phone_component.ex             541 HELD
 check lib/buster_claw/pockets.ex                              484 HELD
 check lib/buster_claw/pockets/mounts.ex                       347 HELD
 check lib/buster_claw/pocket.ex                               138 HELD
-check lib/buster_claw_web/components/pockets_panel.ex         383 HELD
+# Raised 08-09, 383 -> 467, for Phase 3's operator surface: New, Mount…, Unmount
+# and the ↗ glyph. The MARKUP is not here — it is 174 lines in
+# `pockets/pocket_controls.ex`, created for it. What landed here is four events,
+# three assigns, and `write_error_text/1`, which turns every refusal the mount
+# registry can return into a sentence. A reason rendered as `inspect/1` is a
+# reason nobody acts on, and that mapping has to sit with the events that produce
+# it. If a later reader finds control markup in this file, this raise was wrong.
+check lib/buster_claw_web/components/pockets_panel.ex         467 HELD
+check lib/buster_claw_web/components/pockets/pocket_controls.ex  174 HELD
 check lib/buster_claw_web/controllers/pocket_asset_controller.ex  97 HELD
 check lib/buster_claw/commands/pocket.ex                      265 HELD
 check lib/buster_claw/commands/catalog/pocket.ex               75 HELD

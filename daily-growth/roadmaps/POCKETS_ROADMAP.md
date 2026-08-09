@@ -1,19 +1,20 @@
 # Pockets — folders that know what they are for
 
-**Scoped 08-08-26 · Status: Phases 0, 1, 2 and 4 SHIPPED. Phase 5 resolved —
-half shipped, half refused with reasons. Phase 6 is open space.**
+**Scoped 08-08-26 · Status: Phases 0–4 SHIPPED, surfaces included. Phase 5
+resolved — half shipped, half refused with reasons. Phase 6 is open space.
+Part XI shipped. The roadmap is complete; what remains needs a person.**
 
-**Phase 3 is HALF done, and the half that is missing is the one a person
-touches.** Its registry, resolver and all six named containment tests shipped;
-**its operator surface did not.** `Pockets.Operator.mount/3` and `unmount/1` have
-no caller anywhere in `lib/` — the mount is reachable from tests only, and the
-three affordances Phase 3 names (**New**, **Mount…**, the `↗` glyph) do not
-exist. A user cannot point a Pocket at a folder today without editing Settings by
-hand.
+**Phase 3 is now complete, surface included** (08-09). The Pockets tab has the
+three affordances the phase names — **New**, **Mount…** (with **Unmount**), and
+the `↗` glyph — plus a location line and a sentence for every refusal the mount
+registry can return. A mount is a typed absolute path, per I.4; read-only unless
+Writable is ticked.
 
-*Corrected 08-09: this header briefly read "PHASES 0–4 SHIPPED", which counted
-Phase 3 as done because its code was. The phase is titled "the mount, **and the
-surface that owns it**" for a reason.*
+*Two corrections on the record. This header briefly read "PHASES 0–4 SHIPPED",
+counting Phase 3 as done because its code was — the phase is titled "the mount,
+**and the surface that owns it**" for a reason. And the first draft of the
+Unmount button used `data-confirm`, which does nothing in the packaged webview;
+an existing guard caught it and pointed at `data-claw-confirm`.*
 
 **[Part XI — Brand Pockets](#part-xi--brand-pockets-the-apps-own-art-becomes-swappable)
 SHIPPED 08-09**: the five dock icons and the homepage banner are swappable, with
@@ -541,7 +542,7 @@ will not believe in.
 
 **This is the phase that decides whether the roadmap continues.**
 
-### Phase 3 — The mount, and the surface that owns it · CODE SHIPPED, SURFACE NOT BUILT
+### Phase 3 — The mount, and the surface that owns it ✅ SHIPPED 08-09-26
 
 `Pockets.resolve/1`. The mount registry. The Workspace-tab action from I.4 (or
 folder-drop, if Phase 0 says it works). Read-only by default; the `writable`
