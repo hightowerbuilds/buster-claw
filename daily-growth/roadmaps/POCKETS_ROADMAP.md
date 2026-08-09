@@ -1,7 +1,19 @@
 # Pockets — folders that know what they are for
 
-**Scoped 08-08-26 · Status: PHASES 0–4 SHIPPED (08-08/09). Phase 5 resolved —
+**Scoped 08-08-26 · Status: Phases 0, 1, 2 and 4 SHIPPED. Phase 5 resolved —
 half shipped, half refused with reasons. Phase 6 is open space.**
+
+**Phase 3 is HALF done, and the half that is missing is the one a person
+touches.** Its registry, resolver and all six named containment tests shipped;
+**its operator surface did not.** `Pockets.Operator.mount/3` and `unmount/1` have
+no caller anywhere in `lib/` — the mount is reachable from tests only, and the
+three affordances Phase 3 names (**New**, **Mount…**, the `↗` glyph) do not
+exist. A user cannot point a Pocket at a folder today without editing Settings by
+hand.
+
+*Corrected 08-09: this header briefly read "PHASES 0–4 SHIPPED", which counted
+Phase 3 as done because its code was. The phase is titled "the mount, **and the
+surface that owns it**" for a reason.*
 
 **[Part XI — Brand Pockets](#part-xi--brand-pockets-the-apps-own-art-becomes-swappable)
 SHIPPED 08-09**: the five dock icons and the homepage banner are swappable, with
@@ -529,7 +541,7 @@ will not believe in.
 
 **This is the phase that decides whether the roadmap continues.**
 
-### Phase 3 — The mount, and the surface that owns it
+### Phase 3 — The mount, and the surface that owns it · CODE SHIPPED, SURFACE NOT BUILT
 
 `Pockets.resolve/1`. The mount registry. The Workspace-tab action from I.4 (or
 folder-drop, if Phase 0 says it works). Read-only by default; the `writable`
