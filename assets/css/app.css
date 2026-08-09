@@ -801,8 +801,10 @@ body { background-color: var(--color-base-100); }
 }
 
 /* ============================================================
-   CHAT SKINS — three looks for the homepage chat panel.
-   Setting + wiring: BusterClaw.ChatSkin. Markup: BusterClawWeb.ChatPanel.
+   CHAT SKINS — three looks for the homepage chat panel, and the text size that
+   scales all three.
+   Settings + wiring: BusterClaw.ChatSkin, BusterClaw.ChatTextSize.
+   Markup: BusterClawWeb.ChatPanel.
 
    Everything a skin does lives here, and that is a contract, not a habit. The
    transcript is a LiveView stream: children are rendered once, on insert, so a
@@ -828,6 +830,40 @@ body { background-color: var(--color-base-100); }
    in this file, which is why a rule that has to beat `.ic-home .ic-panel`
    (0,2,0) carries three selectors.
    ============================================================ */
+
+/* ---- TEXT SIZE — one number, multiplied into every font-size below ----
+
+   A separate axis from the skin, so a reader who wants larger text keeps the look
+   they chose and a skin does not ship four copies of itself. Every font-size in
+   the chat is written `calc(<its own size> * var(--chat-scale, 1))`, and the only
+   thing these rules do is supply the multiplier.
+
+   `normal` writes NOTHING, deliberately: the `var()` fallback of 1 already means
+   "as designed", so the out-of-the-box reading experience cannot regress through
+   this file — the same argument as the empty `industrial` block below.
+
+   The numbers are duplicated from `BusterClaw.ChatTextSize`, which is the source
+   of truth for the percentage the dropdown promises. They cannot drift: the CSS
+   test reads the scales out of that module and requires each one to appear here.
+
+   Type only. A larger setting must not inflate padding, avatars or buttons —
+   the ask is more readable text, not a magnified UI, and scaling the chrome is
+   how a scaled interface starts clipping. */
+
+[data-chat-text-size="large"] { --chat-scale: 1.15; }
+[data-chat-text-size="larger"] { --chat-scale: 1.3; }
+[data-chat-text-size="largest"] { --chat-scale: 1.5; }
+
+/* The baseline type scale, previously Tailwind literals in the markup
+   (`text-[17px]` and friends). They had to move: a utility class cannot be
+   multiplied, and two sources for one size is how a control ends up scaling half
+   a surface. One selector per thing a reader actually reads — bodies, the tool
+   line, the run notes, the composer, and the empty state. */
+[data-chat-body] { font-size: calc(1.0625rem * var(--chat-scale, 1)); }
+[data-chat-role="tool"] { font-size: calc(0.75rem * var(--chat-scale, 1)); }
+[data-chat-role="meta"] { font-size: calc(0.62rem * var(--chat-scale, 1)); }
+[data-chat-input] { font-size: calc(1.0625rem * var(--chat-scale, 1)); }
+[data-chat-empty] { font-size: calc(1.0625rem * var(--chat-scale, 1)); }
 
 /* ---- industrial — the app's own look ----
    Deliberately empty. The baseline IS the Tailwind utilities in the markup, so
@@ -879,7 +915,7 @@ body { background-color: var(--color-base-100); }
   border-radius: 0;
   background: transparent;
   color: inherit;
-  font-size: 0.8125rem;
+  font-size: calc(0.8125rem * var(--chat-scale, 1));
   line-height: 1.5;
 }
 
@@ -933,7 +969,7 @@ body { background-color: var(--color-base-100); }
   background: transparent;
   padding-left: 0.5rem;
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: calc(0.8125rem * var(--chat-scale, 1));
 }
 
 [data-chat-skin="minimal"] [data-chat-input]:focus { border-left-color: var(--color-primary); }
@@ -1035,7 +1071,7 @@ body { background-color: var(--color-base-100); }
   clip-path: none;
   white-space: normal;
   font-weight: 700;
-  font-size: 0.8125rem;
+  font-size: calc(0.8125rem * var(--chat-scale, 1));
   line-height: 1.3;
   color: var(--color-base-content);
 }
@@ -1049,7 +1085,7 @@ body { background-color: var(--color-base-100); }
   /* The user body ships `text-primary-content`, which is near-black — it was
      legible only on the orange bubble this skin just removed. */
   color: inherit;
-  font-size: 0.9375rem;
+  font-size: calc(0.9375rem * var(--chat-scale, 1));
   line-height: 1.46;
 }
 
@@ -1091,7 +1127,7 @@ body { background-color: var(--color-base-100); }
   border: 0;
   border-radius: 0;
   background: transparent;
-  font-size: 0.9375rem;
+  font-size: calc(0.9375rem * var(--chat-scale, 1));
 }
 
 [data-chat-skin="slack"] [data-primary-action] {

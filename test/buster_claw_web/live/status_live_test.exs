@@ -8,6 +8,7 @@ defmodule BusterClawWeb.StatusLiveTest do
   alias BusterClaw.Appearance
   alias BusterClaw.Calendar
   alias BusterClaw.ChatSkin
+  alias BusterClaw.ChatTextSize
   alias BusterClaw.Commands
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
@@ -407,6 +408,39 @@ defmodule BusterClawWeb.StatusLiveTest do
       # Still there, and untouched: the switch cost no stream ops, which is why
       # it applies to old messages instead of only new ones.
       assert html =~ "already here"
+    end
+
+    test "changing the text size restyles messages already on screen too", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/")
+      assert html =~ ~s(data-chat-text-size="#{ChatTextSize.default()}")
+
+      send(
+        view.pid,
+        {:agent_chat, active_chat(view), {:message, %{role: :assistant, text: "older words"}}}
+      )
+
+      assert render(view) =~ "older words"
+
+      assert {:ok, "largest"} = ChatTextSize.set("largest")
+
+      html = render(view)
+
+      assert html =~ ~s(data-chat-text-size="largest")
+      assert html =~ "older words"
+    end
+
+    test "the two axes do not clobber each other on the socket", %{conn: conn} do
+      # One handle_info clause serves both, keyed on the axis name. A clause that
+      # wrote the wrong assign would show up exactly here.
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert {:ok, "slack"} = ChatSkin.set("slack")
+      assert {:ok, "large"} = ChatTextSize.set("large")
+
+      html = render(view)
+
+      assert html =~ ~s(data-chat-skin="slack")
+      assert html =~ ~s(data-chat-text-size="large")
     end
   end
 

@@ -6,6 +6,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
 
   alias BusterClaw.Appearance
   alias BusterClaw.ChatSkin
+  alias BusterClaw.ChatTextSize
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_appearance_lv_#{System.unique_integer([:positive])}")
@@ -333,6 +334,56 @@ defmodule BusterClawWeb.AppearanceLiveTest do
       # real gaps, and an unlabelled preview would be a quiet promise.
       assert html =~ "The transcript only"
       refute html =~ ~s(phx-submit="chat_send")
+    end
+
+    test "offers every text size with its percentage", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/appearance")
+
+      for size <- ChatTextSize.sizes() do
+        assert has_element?(view, ~s(#chat-text-size-select option[value="#{size.key}"]))
+        # The percentage comes from the module's own scale, so the promise on
+        # screen and the multiplier in the CSS are one number.
+        assert html =~ "#{size.label} · #{ChatTextSize.percent(size.key)}%"
+      end
+    end
+
+    test "picking a size persists it and shows it in the preview", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      html =
+        view
+        |> element("form[phx-change='set_chat_text_size']")
+        |> render_change(%{"size" => "larger"})
+
+      assert ChatTextSize.get() == "larger"
+      assert html =~ ~s(data-chat-text-size="larger")
+    end
+
+    test "size and skin are independent controls", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view |> element("form[phx-change='set_chat_skin']") |> render_change(%{"skin" => "minimal"})
+
+      html =
+        view
+        |> element("form[phx-change='set_chat_text_size']")
+        |> render_change(%{"size" => "largest"})
+
+      # Bigger text must not cost you the look you picked — the reason these are
+      # two settings and not one list of twelve.
+      assert html =~ ~s(data-chat-skin="minimal")
+      assert html =~ ~s(data-chat-text-size="largest")
+      assert ChatSkin.get() == "minimal"
+    end
+
+    test "a size the dropdown could not have offered is ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("form[phx-change='set_chat_text_size']")
+      |> render_change(%{"size" => "gigantic"})
+
+      assert ChatTextSize.get() == ChatTextSize.default()
     end
 
     test "a skin the dropdown could not have offered is ignored", %{conn: conn} do

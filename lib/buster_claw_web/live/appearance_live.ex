@@ -19,20 +19,25 @@ defmodule BusterClawWeb.AppearanceLive do
   `phx:set-theme`, which the inline script in `root.html.heex` persists to
   `localStorage["phx:theme"]` and applies via the `data-theme` attribute.
 
-  ## The chat skin
+  ## The chat's look
 
-  Also here, because this is the tab that owns how the app looks: which of
-  `BusterClaw.ChatSkin`'s three looks the homepage chat wears. The dropdown
-  persists on change with no Save button, matching the click-to-apply behaviour
-  of everything else on this page, and it renders a live transcript preview
-  beside itself — the operator is on this page, not the homepage, so a preview is
-  the only way "see it immediately" can mean anything. An open homepage does
-  update for real, over PubSub, at the same moment.
+  Also here, because this is the tab that owns how the app looks: two independent
+  axes for the homepage chat — which of `BusterClaw.ChatSkin`'s three looks it
+  wears, and how large `BusterClaw.ChatTextSize` makes its text. Two settings
+  rather than a single list of twelve, because wanting bigger text should not cost
+  you the look you picked; they multiply in the CSS.
+
+  Both dropdowns persist on change with no Save button, matching the
+  click-to-apply behaviour of everything else on this page, and both drive the
+  same live transcript preview — the operator is on this page, not the homepage,
+  so a preview is the only way "see it immediately" can mean anything. An open
+  homepage does update for real, over PubSub, at the same moment.
   """
   use BusterClawWeb, :live_view
 
   alias BusterClaw.Appearance
   alias BusterClaw.ChatSkin
+  alias BusterClaw.ChatTextSize
 
   # Swatch metadata for the terminal-theme picker. The actual xterm palettes
   # live in `assets/js/lib/theme.js` (TERM_THEMES); `key` must match. bg/fg/accent
@@ -66,6 +71,8 @@ defmodule BusterClawWeb.AppearanceLive do
      |> assign(:surfaces, Appearance.surfaces())
      |> assign(:chat_skins, ChatSkin.skins())
      |> assign(:chat_skin, ChatSkin.get())
+     |> assign(:chat_text_sizes, ChatTextSize.sizes())
+     |> assign(:chat_text_size, ChatTextSize.get())
      |> assign_backgrounds()
      |> allow_upload(:background,
        accept: Appearance.accepted_extensions(),
@@ -107,6 +114,14 @@ defmodule BusterClawWeb.AppearanceLive do
     case ChatSkin.set(skin) do
       {:ok, key} -> {:noreply, assign(socket, :chat_skin, key)}
       {:error, :invalid_skin} -> {:noreply, socket}
+    end
+  end
+
+  # Same shape as the skin above, and the same reason for having no Save button.
+  def handle_event("set_chat_text_size", %{"size" => size}, socket) do
+    case ChatTextSize.set(size) do
+      {:ok, key} -> {:noreply, assign(socket, :chat_text_size, key)}
+      {:error, :invalid_size} -> {:noreply, socket}
     end
   end
 
@@ -415,9 +430,36 @@ defmodule BusterClawWeb.AppearanceLive do
               </p>
             </form>
 
+            <%!-- A separate axis, on purpose: bigger text should not cost you the
+                  look you picked. The two multiply — every skin's font sizes are
+                  written as a multiple of this one number. --%>
+            <form phx-change="set_chat_text_size" class="space-y-3">
+              <label for="chat-text-size-select" class="ic-eyebrow block">Text size</label>
+              <select
+                id="chat-text-size-select"
+                name="size"
+                class="w-full rounded border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm font-semibold focus:border-primary focus:outline-none"
+              >
+                <option
+                  :for={size <- @chat_text_sizes}
+                  value={size.key}
+                  selected={size.key == @chat_text_size}
+                >
+                  {size.label} · {ChatTextSize.percent(size.key)}%
+                </option>
+              </select>
+              <p class="text-sm leading-6 text-base-content/70">
+                Scales the message text, the composer and the run notes. Buttons and chips keep
+                their size — this makes the chat easier to read, not the whole panel bigger.
+              </p>
+            </form>
+
             <div class="space-y-2">
               <div class="rounded border-2 border-base-content/20 bg-base-100">
-                <BusterClawWeb.ChatPanel.transcript_preview skin={@chat_skin} />
+                <BusterClawWeb.ChatPanel.transcript_preview
+                  skin={@chat_skin}
+                  text_size={@chat_text_size}
+                />
               </div>
               <%!-- Said rather than implied. The composer's form carries live hooks
                     and a `chat_send` submit that would crash this page, so the

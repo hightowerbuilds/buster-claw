@@ -34,6 +34,8 @@ defmodule BusterClawWeb.Status.Chat do
   alias BusterClaw.Agent.Chat
   alias BusterClaw.Agent.Conversations
   alias BusterClaw.Agent.Transcript, as: AgentTranscript
+  alias BusterClaw.ChatSkin
+  alias BusterClaw.ChatTextSize
   alias BusterClaw.Scene3d
   alias BusterClaw.SvgViewer
   alias BusterClawWeb.Status.ChatAttachments
@@ -46,16 +48,42 @@ defmodule BusterClawWeb.Status.Chat do
   @max_chat_svgs 200
 
   @doc """
-  Adopt a chat skin chosen in Settings → Appearance.
+  Subscribe to both chat-appearance axes: the skin and the text size.
 
-  One assign, deliberately. The skin is a CSS-only concern by contract (see
-  `BusterClaw.ChatSkin`), so re-rendering `data-chat-skin` on the panel *is* the
-  whole update: every message already on screen restyles from the new descendant
-  rules, with no stream ops and no DOM churn. Nothing here may reach into the
-  transcript, because a stream cannot re-render what it has already inserted —
-  which is exactly why the skin is CSS in the first place.
+  One call rather than two lines in `mount/3`, because these arrive together, are
+  handled by one `handle_info` clause, and the LiveView they live in is against a
+  size cap that exists to keep exactly this kind of wiring from accumulating
+  there.
   """
-  def apply_chat_skin(socket, skin), do: assign(socket, :chat_skin, skin)
+  def subscribe_chat_look do
+    ChatSkin.subscribe()
+    ChatTextSize.subscribe()
+  end
+
+  @doc "Assign the chat's stored skin and text size at mount."
+  def assign_chat_look(socket) do
+    socket
+    |> assign(:chat_skin, ChatSkin.get())
+    |> assign(:chat_text_size, ChatTextSize.get())
+  end
+
+  @doc """
+  Adopt a chat skin or text size chosen in Settings → Appearance.
+
+  One assign, deliberately. Both axes are CSS-only by contract (see
+  `BusterClaw.ChatSkin` and `BusterClaw.ChatTextSize`), so re-rendering the
+  attribute on the panel *is* the whole update: every message already on screen
+  restyles from the new descendant rules, with no stream ops and no DOM churn.
+  Nothing here may reach into the transcript, because a stream cannot re-render
+  what it has already inserted — which is exactly why this is CSS in the first
+  place.
+
+  `axis` is `:chat_skin` or `:chat_text_size` and is also the assign name, which
+  is why one function serves both. The caller guards it against that pair, so an
+  unknown broadcast cannot write an arbitrary assign.
+  """
+  def apply_chat_look(socket, axis, value) when axis in [:chat_skin, :chat_text_size],
+    do: assign(socket, axis, value)
 
   # Load the open conversations (tabs), subscribe to each so background runs update
   # the tab badges, and show the most recent one's transcript.

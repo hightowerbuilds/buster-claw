@@ -114,8 +114,13 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # owns the button renders behind `:if` and cannot hold either. It delegates
 # nothing because there is nothing to delegate to — two lines of socket plumbing
 # and a size bound.
+# Raised 08-09 for the chat's text size. status_live.ex stays at 945 — the two new
+# axes cost it ONE line, because `status/chat.ex` absorbed the wiring: one
+# `subscribe_chat_look/0`, one `assign_chat_look/1`, and one `handle_info` clause
+# keyed on the axis name serving both skin and size. That is the shape this cap is
+# meant to produce, and it is why chat.ex moves instead.
 check lib/buster_claw_web/live/status_live.ex                945 HELD
-check lib/buster_claw_web/live/status/chat.ex                650 HELD
+check lib/buster_claw_web/live/status/chat.ex                685 HELD
 
 # Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been
 # decomposed, so this is not a post-split cap being defended — it is the first
@@ -130,7 +135,13 @@ check lib/buster_claw_web/live/status/chat.ex                650 HELD
 # The honest reading of 1,000 lines is that the bubble family (five roles, the
 # scene card, the SVG modal) is a coherent module hiding inside a panel module,
 # and it is the obvious cut when this next needs headroom.
-check lib/buster_claw_web/components/chat_panel.ex          1020 HELD
+# Raised 08-09 by 20 for the text size: two `attr` declarations, the
+# `data-chat-text-size` attribute, and the preview passing it through. The FEATURE
+# is not here — it is one CSS custom property in app.css and a 100-line module.
+# What this file gained is the opposite of bulk: five Tailwind type literals
+# LEFT it (`text-[17px]` and friends), because a utility class cannot be
+# multiplied and the sizes had to become `calc(x * var(--chat-scale, 1))`.
+check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
 check lib/buster_claw_web/live/status/comms.ex               125 HELD
 check lib/buster_claw_web/live/status/studio.ex              114 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD

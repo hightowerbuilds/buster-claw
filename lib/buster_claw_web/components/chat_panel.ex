@@ -14,15 +14,23 @@ defmodule BusterClawWeb.ChatPanel do
   for the floating Trading windows; it is kept because it costs nothing and is
   what the next multi-chat surface would need.
 
-  ## Skins are CSS, and that is a contract
+  ## Appearance is CSS, and that is a contract
 
-  The panel's look is switchable (`BusterClaw.ChatSkin`), and the **only** thing
-  that varies in what this module renders is `data-chat-skin` on the root
-  `<section>`. Nothing here may branch on the skin: the transcript is a stream,
-  so a message already on screen would keep the classes it was born with and the
-  switch would half-apply. An element one skin needs is rendered by all three and
-  hidden by CSS in the others. `BusterClawWeb.ChatPanelTest` asserts the rendered
-  HTML is byte-identical across skins once the attribute is normalized away.
+  The panel has two switchable axes — the skin (`BusterClaw.ChatSkin`) and the
+  text size (`BusterClaw.ChatTextSize`) — and the **only** thing that varies in
+  what this module renders is the pair of attributes `data-chat-skin` and
+  `data-chat-text-size` on the root `<section>`. Nothing here may branch on
+  either: the transcript is a stream, so a message already on screen would keep
+  the classes it was born with and the switch would half-apply. An element one
+  skin needs is rendered by all of them and hidden by CSS in the others.
+  `BusterClawWeb.ChatPanelTest` asserts the rendered HTML is byte-identical
+  across every skin *and* every size once the attributes are normalized away.
+
+  One consequence worth knowing before editing a bubble: **the chat's type sizes
+  are not in this markup.** They live in `app.css` as
+  `calc(<size> * var(--chat-scale, 1))`, because a Tailwind literal cannot be
+  multiplied and the size control has to multiply something. Adding a
+  `text-[17px]` back to a bubble would take it out of the scale silently.
   """
   use BusterClawWeb, :html
 
@@ -31,6 +39,8 @@ defmodule BusterClawWeb.ChatPanel do
   # exist or which one is the default.
   @default_skin BusterClaw.ChatSkin.default()
   @skin_keys BusterClaw.ChatSkin.keys()
+  @default_text_size BusterClaw.ChatTextSize.default()
+  @text_size_keys BusterClaw.ChatTextSize.keys()
 
   attr :chats, :list, required: true
   attr :active, :string, required: true
@@ -131,6 +141,14 @@ defmodule BusterClawWeb.ChatPanel do
       "which look to wear — the sole skin-dependent thing this component emits, as " <>
         "`data-chat-skin` on the root section. See the moduledoc's contract."
 
+  attr :text_size, :string,
+    default: @default_text_size,
+    values: @text_size_keys,
+    doc:
+      "how large the chat's text is — emitted as `data-chat-text-size`, which supplies " <>
+        "the `--chat-scale` every font-size in the chat multiplies by. Independent of " <>
+        "the skin: the two axes multiply."
+
   def chat_panel(assigns) do
     ~H"""
     <section
@@ -139,6 +157,7 @@ defmodule BusterClawWeb.ChatPanel do
       data-running={to_string(@running)}
       data-seq={@seq}
       data-chat-skin={@skin}
+      data-chat-text-size={@text_size}
       class="ic-panel flex min-h-0 w-full flex-1 flex-col overflow-hidden"
     >
       <header
@@ -207,7 +226,8 @@ defmodule BusterClawWeb.ChatPanel do
               (scroll-to-bottom) is guaranteed to fire on stream inserts. --%>
           <div
             id="agent-chat-empty"
-            class="m-auto hidden max-w-xs text-center text-[17px] text-base-content/55 only:block"
+            data-chat-empty
+            class="m-auto hidden max-w-xs text-center text-base-content/55 only:block"
           >
             {@empty_message}
           </div>
@@ -347,7 +367,7 @@ defmodule BusterClawWeb.ChatPanel do
           placeholder={if @agent_cli_missing, do: "Install Claude Code to chat", else: @placeholder}
           class={[
             "min-h-0 flex-1 resize-none rounded-sm border-2 border-base-content/25 bg-base-100 focus:border-primary focus:outline-none disabled:opacity-50",
-            if(@compact, do: "px-2 py-1.5 text-[15px]", else: "px-3 py-2 text-[17px]")
+            if(@compact, do: "px-2 py-1.5", else: "px-3 py-2")
           ]}
         ></textarea>
 
@@ -701,7 +721,7 @@ defmodule BusterClawWeb.ChatPanel do
       <div
         :if={@msg.text != ""}
         data-chat-body
-        class="ic-drop-in max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-[17px] text-primary-content"
+        class="ic-drop-in max-w-[85%] whitespace-pre-wrap rounded-sm bg-primary px-3 py-2 text-primary-content"
       >
         {@msg.text}
       </div>
@@ -791,7 +811,7 @@ defmodule BusterClawWeb.ChatPanel do
       <div
         :if={@msg.text != ""}
         data-chat-body
-        class="max-w-[85%] whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-100 px-3 py-2 text-[17px]"
+        class="max-w-[85%] whitespace-pre-wrap rounded-sm border-2 border-base-content/20 bg-base-100 px-3 py-2"
       >
         {@msg.text}
       </div>
@@ -820,7 +840,7 @@ defmodule BusterClawWeb.ChatPanel do
     <div
       id={@id}
       data-chat-role="tool"
-      class="flex items-center gap-2 font-mono text-xs text-base-content/55"
+      class="flex items-center gap-2 font-mono text-base-content/55"
     >
       <.icon name="hero-command-line" class="size-3.5 shrink-0" />
       <span class="truncate">{@msg.text}</span>
@@ -833,7 +853,7 @@ defmodule BusterClawWeb.ChatPanel do
     <div
       id={@id}
       data-chat-role="meta"
-      class="text-center font-mono text-[0.62rem] uppercase tracking-wide text-base-content/45"
+      class="text-center font-mono uppercase tracking-wide text-base-content/45"
     >
       {@msg.text}
     </div>
@@ -845,7 +865,7 @@ defmodule BusterClawWeb.ChatPanel do
     <div id={@id} data-chat-role="error" class="flex justify-start">
       <div
         data-chat-body
-        class="max-w-[85%] rounded-sm border-2 border-error/50 bg-error/10 px-3 py-2 text-[17px] text-error"
+        class="max-w-[85%] rounded-sm border-2 border-error/50 bg-error/10 px-3 py-2 text-error"
       >
         {@msg.text}
       </div>
@@ -902,13 +922,20 @@ defmodule BusterClawWeb.ChatPanel do
   transcript is faithful; the frame around it is this page's own.
   """
   attr :skin, :string, required: true
+  attr :text_size, :string, required: true
   attr :id, :string, default: "chat-skin-preview"
 
   def transcript_preview(assigns) do
     assigns = assign(assigns, :messages, preview_messages())
 
     ~H"""
-    <div id={@id} data-chat-skin={@skin} data-chat-skin-preview class="overflow-hidden">
+    <div
+      id={@id}
+      data-chat-skin={@skin}
+      data-chat-text-size={@text_size}
+      data-chat-skin-preview
+      class="overflow-hidden"
+    >
       <div data-chat-log class={log_class()}>
         <.chat_bubble :for={{dom_id, msg} <- @messages} id={"#{@id}-#{dom_id}"} msg={msg} />
       </div>

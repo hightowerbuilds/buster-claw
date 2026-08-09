@@ -6,6 +6,7 @@ defmodule BusterClawWeb.ChatSkinCssTest do
   use ExUnit.Case, async: true
 
   alias BusterClaw.ChatSkin
+  alias BusterClaw.ChatTextSize
 
   @css Path.join([__DIR__, "..", "..", "assets", "css", "app.css"]) |> Path.expand()
 
@@ -40,6 +41,61 @@ defmodule BusterClawWeb.ChatSkinCssTest do
     refute skin_section() =~ ~s([data-chat-skin="#{ChatSkin.default()}"]),
            "the default skin grew rules. If it needs them, the markup and this " <>
              "file now disagree about what the baseline is."
+  end
+
+  describe "the text scale" do
+    test "every size but the default declares its multiplier, and the numbers match the module" do
+      # The scales live in ChatTextSize (which the dropdown's percentage comes
+      # from) and are applied here. Two copies of one number, held together by
+      # reading one and requiring the other — the same derive-from-source habit
+      # the rest of the suite uses, applied to a stylesheet.
+      section = skin_section()
+
+      for size <- ChatTextSize.sizes(), size.key != ChatTextSize.default() do
+        assert section =~ ~s([data-chat-text-size="#{size.key}"]),
+               "#{size.key} is offered in the dropdown and scales nothing."
+
+        assert section =~ "--chat-scale: #{size.scale}",
+               "#{size.key} promises #{ChatTextSize.percent(size.key)}% in the UI but " <>
+                 "the stylesheet does not set --chat-scale: #{size.scale}."
+      end
+    end
+
+    test "the default size declares nothing" do
+      # Scale 1 is the `var(--chat-scale, 1)` fallback, so the default needs no
+      # rule — and having none is what makes the shipped reading size unable to
+      # regress through this file. Same argument as the empty industrial block.
+      refute skin_section() =~ ~s([data-chat-text-size="#{ChatTextSize.default()}"])
+    end
+
+    test "every font-size in the chat goes through the scale" do
+      # A literal font-size anywhere in this section is a thing that would stay
+      # put while everything around it grew. The exception is chrome — button and
+      # label type, which the size control deliberately leaves alone — so this
+      # asserts on the things a reader reads.
+      section = skin_section()
+
+      for anchor <- ~w(data-chat-body data-chat-input data-chat-empty) do
+        [_ | rules] = String.split(section, "[#{anchor}]")
+
+        sized =
+          rules
+          # Only that selector's own declaration block — up to its closing brace.
+          # Reading past it swept in the next rule's font-size and accused a
+          # button of being a message body.
+          |> Enum.map(&(&1 |> String.split("}", parts: 2) |> hd()))
+          |> Enum.flat_map(&Regex.scan(~r/font-size:\s*([^;]+);/, &1))
+          |> Enum.map(fn [_, value] -> value end)
+
+        assert sized != [], "#{anchor} has no font-size at all"
+
+        for value <- sized do
+          assert value =~ "var(--chat-scale",
+                 "#{anchor} has a fixed font-size (#{value}) — it will not grow with the " <>
+                   "text size setting."
+        end
+      end
+    end
   end
 
   test "no skin uses a hex colour" do

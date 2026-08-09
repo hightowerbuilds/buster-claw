@@ -7,6 +7,7 @@ defmodule BusterClawWeb.ChatPanelTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.ChatSkin
+  alias BusterClaw.ChatTextSize
   alias BusterClawWeb.ChatPanel
   alias BusterClawWeb.Status.ChatAttachments
 
@@ -228,18 +229,47 @@ defmodule BusterClawWeb.ChatPanelTest do
     # So the panel emits exactly one skin-dependent thing: `data-chat-skin`.
     # Normalize that away and all three renders must be byte-identical. A future
     # `if @skin == "slack"` in the template fails right here.
-    test "every skin renders byte-identical markup apart from the attribute" do
+    test "every skin and size renders byte-identical markup apart from the attributes" do
+      # The cross-product, not each axis alone: a branch on the PAIR would slip
+      # past two independent sweeps.
       [first | rest] =
-        Enum.map(ChatSkin.keys(), fn skin ->
-          panel(skin: skin)
+        for skin <- ChatSkin.keys(), size <- ChatTextSize.keys() do
+          panel(skin: skin, text_size: size)
           |> String.replace(~s(data-chat-skin="#{skin}"), ~s(data-chat-skin="NORMALIZED"))
-        end)
+          |> String.replace(
+            ~s(data-chat-text-size="#{size}"),
+            ~s(data-chat-text-size="NORMALIZED")
+          )
+        end
 
       for other <- rest do
         assert other == first,
-               "a skin changed the markup. Skins are CSS-only by contract — see " <>
-                 "BusterClaw.ChatSkin. Render the element in every skin and hide it " <>
-                 "in CSS instead of branching the template."
+               "a skin or size changed the markup. Both are CSS-only by contract — " <>
+                 "see BusterClaw.ChatSkin. Render the element in every skin and hide " <>
+                 "it in CSS instead of branching the template."
+      end
+    end
+
+    test "the size reaches the DOM as data-chat-text-size" do
+      for size <- ChatTextSize.keys() do
+        assert panel(text_size: size) =~ ~s(data-chat-text-size="#{size}")
+      end
+
+      assert panel() =~ ~s(data-chat-text-size="#{ChatTextSize.default()}")
+    end
+
+    # The sizes are applied by multiplying one CSS custom property, so nothing in
+    # the chat may carry its own font-size literal — a bubble that did would keep
+    # its size while everything around it grew.
+    test "no chat type size is pinned in the markup" do
+      html = panel()
+
+      refute html =~ "text-[17px]",
+             "a type size came back into the markup. It cannot be multiplied there — " <>
+               "see the `--chat-scale` block in app.css."
+
+      for anchor <- ~w(data-chat-body data-chat-empty) do
+        assert html =~ anchor
       end
     end
 
