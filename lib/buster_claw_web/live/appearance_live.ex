@@ -527,8 +527,27 @@ defmodule BusterClawWeb.AppearanceLive do
                   <span class="block text-sm font-semibold">{t.label}</span>
                   <span class="block font-mono text-xs text-base-content/55">{t.key}</span>
                 </span>
+                <%!-- The one thing that tells the operator this row is not theirs.
+                      Marked rather than moved: the agent's theme is selectable
+                      exactly like any other, and the badge is the whole
+                      difference. --%>
+                <span
+                  :if={agent_slot?(t, @agent_theme)}
+                  class="ml-auto shrink-0 rounded border-2 border-primary/60 px-1.5 py-0.5 font-mono text-[0.6rem] font-bold uppercase tracking-wide text-primary"
+                >
+                  Agent
+                </span>
               </button>
             </div>
+
+            <%!-- Only when there is one. An explanation of a row that isn't there
+                  is a promise about a feature the operator hasn't met. --%>
+            <p :if={@agent_theme} class="text-xs leading-6 text-base-content/60">
+              <span class="font-semibold">{@agent_theme.label}</span>
+              is the agent's own slot — it painted that, it is the only theme it can write,
+              and its own reset clears it. Select it, keep it, or ignore it; your colours
+              below are untouched either way.
+            </p>
 
             <%!-- The custom slot. Creating one means COPYING a preset, which is the
                   design rather than a convenience: a copy is always a complete
@@ -697,10 +716,19 @@ defmodule BusterClawWeb.AppearanceLive do
     """
   end
 
+  # Whether this picker row is the agent's slot rather than a preset or the
+  # operator's own. `nil` means the agent has never painted, so no row is.
+  defp agent_slot?(_theme, nil), do: false
+  defp agent_slot?(theme, agent), do: theme.key == agent.key
+
   defp assign_terminal_themes(socket) do
     socket
     |> assign(:terminal_themes, TerminalTheme.themes())
     |> assign(:custom_theme, TerminalTheme.custom())
+    # Read here rather than derived from `terminal_themes` — the agent may paint
+    # while this page is open, and the row has to be able to say whose it is
+    # without the picker list having to carry that fact.
+    |> assign(:agent_theme, TerminalTheme.agent())
     |> assign_new(:custom_draft, fn -> nil end)
     |> assign_new(:custom_name, fn -> TerminalTheme.custom_name() end)
     |> assign_new(:custom_hue, fn -> TerminalTheme.custom_hue() end)

@@ -193,9 +193,22 @@ edge is the part that deserves the effort.
 **`terminal_theme_paint` takes a partial map on purpose**, and it is the one
 place this diverges from `set_custom/3`. The operator's editor always holds a
 complete palette, so a partial save there means a broken form. The agent has no
-form — it wants to say *"make the foreground orange"* — so `paint` **merges over
-the currently selected palette** and validates the result as a whole. A merge that
-fails the floor or the format is refused entire.
+form — it wants to say *"make the foreground orange"* — so `paint` **merges** and
+validates the result as a whole. A merge that fails the floor or the format is
+refused entire.
+
+> **Corrected 08-09, and it was this document contradicting itself.** The line
+> above first said `paint` merges over *the currently selected palette*. It
+> cannot: [I.2](#i2--the-active-theme-is-client-side-only-the-server-cannot-see-it-or-set-it)
+> is that the server does not know the selection. The base is the **agent's own
+> palette** when it has painted before — so paints accumulate — and a fixed
+> preset otherwise. Caught by the agent implementing it, not by re-reading.
+
+**The merge base is `monokai`, not the default.** `industrial` is
+`palette: nil` — token-derived — so there is nothing to merge onto. Monokai
+carries the most contrast headroom of the shipped presets (fg:bg 13.94 vs Nord's
+9.25; 15 of 16 ANSI clearing 2.0 vs Nord's 14), which makes a one-field paint
+least likely to be refused for a colour the model never touched.
 
 **`reset` clears rather than restores.** There is no memory of what the operator
 had selected (it is in their browser's `localStorage`, per
@@ -256,6 +269,19 @@ beside it) and still makes a wholesale blackout impossible.
 rather than shipping 21 colours — so it has nothing to measure and nothing to
 refuse. Worth knowing before writing a test that iterates presets and expects a
 palette from each.
+
+**Two things this table missed, found while implementing it.** Nord's
+`brightBlack` is **1.69** — also under the floor — so exempting `black` *by name*
+would still have refused Nord. The count is load-bearing twice over, not once.
+And the failure names the **10th-best** ANSI colour rather than the worst: the
+worst is `black` in every dark theme, and `black` is precisely what the count
+exists to permit, so naming it would send the model to fix the wrong colour.
+
+**The floor bites at the app's own accent.** `foreground: "#ff4d1c"` over Monokai
+scores **4.48** and is refused by 0.02 — *this roadmap's own example request,
+"make the foreground orange", fails at the brand orange.* That is a correct WCAG
+refusal and the returned ratio makes it correctable (`#ff6a3c` passes), but the
+model will hit it on the first try, so the skill has to say so.
 
 **Refusal is whole-palette**, matching `validate_palette/1`: `{:error,
 {:illegible, field, ratio}}` naming the offending field and what it scored, so

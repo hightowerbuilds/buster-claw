@@ -178,6 +178,7 @@ defmodule BusterClaw.Skills do
     maybe_write(skill_path("shader-designer"), default_shader_designer())
     maybe_write(skill_path("sound-cutup"), default_sound_cutup())
     maybe_write(skill_path("pockets"), default_pockets())
+    maybe_write(skill_path("terminal-paint"), default_terminal_paint())
     :ok
   rescue
     error ->
@@ -337,16 +338,19 @@ defmodule BusterClaw.Skills do
   @external_resource Path.join(@seed_dir, "shader-designer.md")
   @external_resource Path.join(@seed_dir, "sound-cutup.md")
   @external_resource Path.join(@seed_dir, "pockets.md")
+  @external_resource Path.join(@seed_dir, "terminal-paint.md")
 
   @default_roster File.read!(Path.join(@seed_dir, "README.md"))
   @default_save_note File.read!(Path.join(@seed_dir, "save-note.md"))
   @default_shader_designer File.read!(Path.join(@seed_dir, "shader-designer.md"))
   @default_sound_cutup File.read!(Path.join(@seed_dir, "sound-cutup.md"))
   @default_pockets File.read!(Path.join(@seed_dir, "pockets.md"))
+  @default_terminal_paint File.read!(Path.join(@seed_dir, "terminal-paint.md"))
 
   defp default_roster, do: @default_roster
   defp default_save_note, do: @default_save_note
   defp default_shader_designer, do: @default_shader_designer
   defp default_sound_cutup, do: @default_sound_cutup
   defp default_pockets, do: @default_pockets
+  defp default_terminal_paint, do: @default_terminal_paint
 end

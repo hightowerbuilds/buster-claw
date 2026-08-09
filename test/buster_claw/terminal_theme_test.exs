@@ -233,6 +233,367 @@ defmodule BusterClaw.TerminalThemeTest do
     end
   end
 
+  describe "the agent slot" do
+    # A second dynamic slot, and the reason it exists is the reason these tests
+    # keep checking the operator's: there was ONE slot, `set_custom/3` overwrites
+    # it wholesale, and an agent writing a colour would have deleted a theme the
+    # operator built with a slider and named.
+    defp monokai do
+      TerminalTheme.fixed_presets()
+      |> Enum.find(&(&1.key == "monokai"))
+      |> Map.fetch!(:palette)
+    end
+
+    test "nothing painted means no agent theme and no extra key" do
+      assert TerminalTheme.agent() == nil
+      assert TerminalTheme.agent_key() == "agent"
+      assert TerminalTheme.keys() == TerminalTheme.preset_keys()
+    end
+
+    test "a paint appears in the picker with a swatch of its own colours" do
+      assert {:ok, theme} = TerminalTheme.set_agent("Hazard", %{"background" => "#010203"})
+
+      assert theme.key == TerminalTheme.agent_key()
+      assert theme.label == "Hazard"
+      assert theme.swatch.bg == "#010203"
+      assert TerminalTheme.valid?(TerminalTheme.agent_key())
+      assert List.last(TerminalTheme.keys()) == TerminalTheme.agent_key()
+    end
+
+    test "both dynamic slots can exist at once, the operator's first" do
+      TerminalTheme.set_custom("Mine", TerminalTheme.generate(200))
+      TerminalTheme.set_agent("Theirs", %{})
+
+      assert TerminalTheme.keys() == TerminalTheme.preset_keys() ++ ["custom", "agent"]
+    end
+
+    test "an agent write leaves the operator's slot completely untouched" do
+      # The whole point of D3, asserted at the level the slots are actually
+      # separated at — the Settings rows — rather than by trusting that nobody
+      # calls `set_custom/3` from the agent path.
+      TerminalTheme.set_custom("Mine", TerminalTheme.generate(200), 200)
+
+      before = TerminalTheme.custom()
+      rows = custom_rows()
+
+      assert {:ok, _theme} = TerminalTheme.set_agent("Theirs", %{"background" => "#010203"})
+
+      assert TerminalTheme.custom() == before
+      assert custom_rows() == rows
+      assert TerminalTheme.custom_name() == "Mine"
+      assert TerminalTheme.custom_hue() == 200
+      refute TerminalTheme.custom().palette["background"] == "#010203"
+
+      # And the reverse, since "separate" has two directions.
+      TerminalTheme.clear_agent()
+      assert TerminalTheme.custom() == before
+      assert custom_rows() == rows
+    end
+
+    test "a partial paint merges over a preset rather than being refused" do
+      # The one place this diverges from `set_custom/3`: the editor always holds a
+      # complete palette, the agent has no form at all.
+      assert {:ok, theme} = TerminalTheme.set_agent("Ember", %{"foreground" => "#ff8800"})
+
+      assert theme.palette["foreground"] == "#ff8800"
+      assert theme.palette["background"] == monokai()["background"]
+      assert map_size(theme.palette) == length(TerminalTheme.fields())
+
+      # And why the base cannot simply be the default theme: it has no palette to
+      # merge onto. This is the assertion that would fail if someone "tidied"
+      # @agent_base_key into `default()`.
+      assert TerminalTheme.palette(TerminalTheme.default()) == nil
+    end
+
+    test "successive paints accumulate on the agent's own palette" do
+      assert {:ok, _theme} = TerminalTheme.set_agent("One", %{"foreground" => "#ff8800"})
+      assert {:ok, theme} = TerminalTheme.set_agent(nil, %{"cursor" => "#00ff00"})
+
+      assert theme.palette["foreground"] == "#ff8800"
+      assert theme.palette["cursor"] == "#00ff00"
+
+      # A nil name keeps whatever the slot is already called, so a repaint does not
+      # have to re-state a name it did not change.
+      assert theme.label == "One"
+    end
+
+    test "an empty paint is a rename, not an error" do
+      TerminalTheme.set_agent("One", %{"foreground" => "#ff8800"})
+
+      assert {:ok, theme} = TerminalTheme.set_agent("Two", %{})
+      assert theme.label == "Two"
+      assert theme.palette["foreground"] == "#ff8800"
+    end
+
+    test "a name is optional, trimmed and bounded" do
+      assert {:error, :invalid_name} = TerminalTheme.set_agent("   ", %{})
+      assert {:error, :invalid_name} = TerminalTheme.set_agent(String.duplicate("x", 41), %{})
+
+      assert {:ok, theme} = TerminalTheme.set_agent(nil, %{})
+      assert theme.label == "Agent"
+
+      assert {:ok, theme} = TerminalTheme.set_agent("  Trimmed  ", %{})
+      assert theme.label == "Trimmed"
+    end
+
+    test "a bad colour is refused whole, and writes nothing" do
+      assert {:error, :invalid_colors} = TerminalTheme.set_agent("X", %{"red" => "#fff"})
+      assert {:error, :invalid_colors} = TerminalTheme.set_agent("X", %{"red" => "red"})
+
+      assert {:error, :invalid_colors} =
+               TerminalTheme.set_agent("X", %{"red" => "#aabbcc; background: url(x)"})
+
+      assert {:error, :invalid_colors} = TerminalTheme.set_agent("X", "not a map")
+
+      assert TerminalTheme.agent() == nil
+    end
+
+    test "a field name that is not a field is named, not ignored" do
+      # Merging costs the typo detector `set_custom/3` gets for free: an unknown
+      # key is simply not merged, so the base palette would validate, clear the
+      # floor and save — reporting `{:ok, …}` for a paint that changed nothing.
+      assert {:error, {:unknown_field, "foregruond"}} =
+               TerminalTheme.set_agent("X", %{"foregruond" => "#ff8800"})
+
+      assert TerminalTheme.agent() == nil
+    end
+
+    test "it survives being read back, and reaches the browser payload" do
+      TerminalTheme.set_agent("Ember", %{"background" => "#010203"})
+
+      assert TerminalTheme.palette("agent")["background"] == "#010203"
+      assert Jason.decode!(TerminalTheme.payload_json())["agent"]["background"] == "#010203"
+    end
+
+    test "a stored palette that has gone bad resolves to no agent theme" do
+      TerminalTheme.set_agent("Ember", %{})
+      BusterClaw.Settings.put("terminal_agent_theme_colors", ~s({"background":"nope"}))
+
+      assert TerminalTheme.agent() == nil
+      assert TerminalTheme.keys() == TerminalTheme.preset_keys()
+
+      BusterClaw.Settings.put("terminal_agent_theme_colors", "not json at all")
+      assert TerminalTheme.agent() == nil
+    end
+
+    test "clearing forgets it, idempotently" do
+      TerminalTheme.set_agent("Ember", %{})
+      assert TerminalTheme.agent()
+
+      assert TerminalTheme.clear_agent() == :ok
+      assert TerminalTheme.agent() == nil
+      assert TerminalTheme.agent_name() == "Agent"
+      assert TerminalTheme.clear_agent() == :ok
+    end
+
+    test "painting does not announce an operator edit" do
+      # `{:terminal_theme, custom()}` means "the operator's saved palette changed"
+      # and carries `custom()` as its payload. Firing it here would announce an
+      # edit that did not happen; live apply for a socket-less writer is
+      # `TerminalPaint.announce/2`, on its own topic.
+      TerminalTheme.subscribe()
+
+      TerminalTheme.set_agent("Ember", %{})
+      TerminalTheme.clear_agent()
+
+      refute_receive {:terminal_theme, _payload}
+    end
+
+    defp custom_rows do
+      Map.new(
+        ~w(terminal_custom_theme_name terminal_custom_theme_colors terminal_custom_theme_hue),
+        &{&1, BusterClaw.Settings.get(&1)}
+      )
+    end
+  end
+
+  describe "the legibility floor" do
+    # What this prevents is not ugliness but DISAPPEARANCE: an agent that can set
+    # `foreground` to `background` can hide its own output from the operator
+    # watching it work.
+    test "every shipped preset that has a palette passes" do
+      # The test that would have caught the first draft of the rule — a per-colour
+      # ANSI floor would have refused both of these.
+      presets = TerminalTheme.fixed_presets()
+
+      # Not vacuously green: this repo has shipped a guard over an empty
+      # collection before.
+      assert length(presets) >= 2
+
+      for preset <- presets do
+        assert TerminalTheme.legibility(preset.palette) == :ok,
+               "#{preset.key} is refused by the floor its own numbers set"
+      end
+    end
+
+    test "and so does every palette the slider can generate" do
+      # The operator's generator is not gated by the floor, but a hue that could
+      # produce something the agent slot would refuse means the two disagree about
+      # what a usable terminal is.
+      for hue <- 0..359 do
+        assert TerminalTheme.legibility(TerminalTheme.generate(hue)) == :ok,
+               "hue #{hue} generates a palette the floor refuses"
+      end
+    end
+
+    test "foreground at background is refused, by name and by measurement" do
+      background = monokai()["background"]
+
+      assert {:error, {:illegible, "foreground", 1.0}} =
+               TerminalTheme.legibility(Map.put(monokai(), "foreground", background))
+    end
+
+    test "cursor at background is refused" do
+      background = monokai()["background"]
+
+      assert {:error, {:illegible, "cursor", 1.0}} =
+               TerminalTheme.legibility(Map.put(monokai(), "cursor", background))
+    end
+
+    test "every ANSI colour at background is refused" do
+      # The nastiest of the three, because plain text keeps working: `ls`,
+      # `git status` and the agent's own status lines go blank while the terminal
+      # still looks like it is doing something.
+      background = monokai()["background"]
+      blanked = Enum.reduce(ansi_names(), monokai(), &Map.put(&2, &1, background))
+
+      assert {:error, {:illegible, field, 1.0}} = TerminalTheme.legibility(blanked)
+      assert field in ansi_names()
+    end
+
+    test "the ANSI rule counts, and ten of sixteen is the line" do
+      # The count IS the design, so the boundary is worth pinning: six blanked
+      # colours leave ten and pass, a seventh does not.
+      legible = Enum.reduce(ansi_names(), monokai(), &Map.put(&2, &1, "#ffffff"))
+      background = monokai()["background"]
+
+      blank = fn count ->
+        Enum.reduce(Enum.take(ansi_names(), count), legible, &Map.put(&2, &1, background))
+      end
+
+      assert TerminalTheme.legibility(blank.(6)) == :ok
+      assert {:error, {:illegible, _field, 1.0}} = TerminalTheme.legibility(blank.(7))
+    end
+
+    test "an ANSI black identical to the background is permitted, on purpose" do
+      # Measured here with the test's own WCAG implementation rather than the
+      # module's, so this asserts the numbers the rule was chosen from rather than
+      # asserting that the code agrees with itself.
+      assert monokai()["black"] == monokai()["background"]
+      assert wcag_ratio(monokai()["black"], monokai()["background"]) == 1.0
+
+      nord =
+        TerminalTheme.fixed_presets() |> Enum.find(&(&1.key == "nord")) |> Map.fetch!(:palette)
+
+      assert wcag_ratio(nord["black"], nord["background"]) == 1.24
+      assert wcag_ratio(nord["brightBlack"], nord["background"]) == 1.69
+
+      # That is not a flaw in those themes; it is what ANSI black is in a dark
+      # terminal. Exempting `black` by name instead of counting would still have
+      # refused Nord for its bright black.
+      assert TerminalTheme.legibility(monokai()) == :ok
+      assert TerminalTheme.legibility(nord) == :ok
+    end
+
+    test "a hideous but legible palette is accepted — that is the toy working" do
+      assert TerminalTheme.legibility(hideous()) == :ok
+      assert {:ok, _theme} = TerminalTheme.set_agent("Regrettable", hideous())
+    end
+
+    test "the worst offender is the biggest shortfall, not the lowest ratio" do
+      # #555555 scores 1.99 against Monokai's background and #535353 scores 1.93.
+      # The cursor has the LOWER raw ratio, but it only has to clear 2.0 while the
+      # foreground has to clear 4.5 — so the foreground is the worse failure and
+      # the one the model needs to be sent at.
+      palette =
+        monokai()
+        |> Map.put("foreground", "#555555")
+        |> Map.put("cursor", "#535353")
+
+      assert wcag_ratio("#535353", monokai()["background"]) <
+               wcag_ratio("#555555", monokai()["background"])
+
+      assert {:error, {:illegible, "foreground", 1.99}} = TerminalTheme.legibility(palette)
+    end
+
+    test "an incomplete or malformed palette answers invalid_colors rather than raising" do
+      # Legibility is only meaningful on a palette that would pass validation, and
+      # a command handler must not get an exception for a bad argument.
+      assert TerminalTheme.legibility(%{"background" => "#000000"}) ==
+               {:error, :invalid_colors}
+
+      assert TerminalTheme.legibility(Map.put(monokai(), "red", "#fff")) ==
+               {:error, :invalid_colors}
+
+      assert TerminalTheme.legibility("nope") == {:error, :invalid_colors}
+    end
+
+    test "set_agent refuses an illegible paint, and the app's own orange is one" do
+      # #ff4d1c is this app's hazard accent and it misses WCAG's body-text floor
+      # against Monokai by 0.02. Kept as the example because it is exactly the
+      # request the roadmap imagines — "make the foreground orange" — and it proves
+      # the refusal is correctable rather than a wall: the ratio comes back with it.
+      assert {:error, {:illegible, "foreground", 4.48}} =
+               TerminalTheme.set_agent("Hazard", %{"foreground" => "#ff4d1c"})
+
+      assert TerminalTheme.agent() == nil
+
+      assert {:ok, _theme} = TerminalTheme.set_agent("Hazard", %{"foreground" => "#ff6a3c"})
+    end
+
+    test "a refused paint does not disturb one that already landed" do
+      TerminalTheme.set_agent("Good", %{"foreground" => "#ff8800"})
+
+      assert {:error, {:illegible, "foreground", _ratio}} =
+               TerminalTheme.set_agent("Bad", %{"foreground" => monokai()["background"]})
+
+      assert TerminalTheme.agent().label == "Good"
+      assert TerminalTheme.agent().palette["foreground"] == "#ff8800"
+    end
+
+    defp ansi_names, do: Enum.map(TerminalTheme.ansi_fields(), &elem(&1, 0))
+
+    # Garish, unbalanced, and perfectly readable. Every ANSI slot is a saturated
+    # primary on black, which is what "the agent may make it ugly, it may not make
+    # it invisible" means in practice.
+    defp hideous do
+      base = %{
+        "background" => "#000000",
+        "foreground" => "#00ff00",
+        "cursor" => "#ff00ff",
+        "cursorAccent" => "#000000",
+        "selectionBackground" => "#0000ff"
+      }
+
+      ansi_names()
+      |> Enum.with_index()
+      |> Enum.reduce(base, fn {name, index}, acc ->
+        Map.put(acc, name, Enum.at(~w(#ff00ff #00ffff #ffff00 #ffffff), rem(index, 4)))
+      end)
+    end
+
+    # WCAG 2.x, written out here so the floor's numbers are asserted against an
+    # independent implementation rather than against the module agreeing with
+    # itself.
+    defp wcag_ratio(a, b) do
+      la = wcag_luminance(a)
+      lb = wcag_luminance(b)
+      {lighter, darker} = if la >= lb, do: {la, lb}, else: {lb, la}
+
+      Float.round((lighter + 0.05) / (darker + 0.05), 2)
+    end
+
+    defp wcag_luminance("#" <> hex) do
+      {r, g, b} = channels(hex)
+      0.2126 * srgb(r) + 0.7152 * srgb(g) + 0.0722 * srgb(b)
+    end
+
+    defp srgb(value) do
+      channel = value / 255
+      if channel <= 0.03928, do: channel / 12.92, else: :math.pow((channel + 0.055) / 1.055, 2.4)
+    end
+  end
+
   describe "generating from a hue" do
     test "one hue produces a complete, valid palette" do
       palette = TerminalTheme.generate(14)

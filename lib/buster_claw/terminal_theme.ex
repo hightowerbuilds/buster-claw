@@ -41,11 +41,55 @@ defmodule BusterClaw.TerminalTheme do
   would have quietly killed that behaviour on the **default** theme, which is the
   kind of regression nobody files a bug about — they just notice the terminal stopped
   matching the app.
+
+  ## Two dynamic slots, and they are not the same slot
+
+  `custom` is the operator's: named in Settings, generated from the spectrum
+  slider, edited a field at a time. `agent` is the model's, added by
+  `TERMINAL_PAINT_ROADMAP` Phase 1, and it exists because there was previously
+  **one** slot which `set_custom/3` overwrites wholesale — so an agent writing a
+  colour would have silently deleted a theme the operator built and named. That is
+  not a colour change; it is deleting someone's work.
+
+  The two are symmetric on purpose (`custom/0`/`agent/0`, `set_custom/3`/
+  `set_agent/2`, `clear_custom/0`/`clear_agent/0`) and share nothing but the
+  validator. **Nothing in the agent path touches a `terminal_custom_theme_*`
+  key**, which is the property a test asserts rather than a convention a reviewer
+  has to notice.
+
+  Two differences are deliberate, not oversights:
+
+  - **`set_agent/2` merges a partial map.** The editor always holds a complete
+    palette, so a partial save there means a form that lost its inputs — hence
+    `set_custom/3` refuses one. The agent has no form; it wants to say *"make the
+    foreground orange"*, so `set_agent/2` merges over a base and validates the
+    result whole.
+  - **The agent slot has no hue.** `terminal_custom_theme_hue` is the spectrum
+    slider's memory — a record of where an editor control was left. The agent has
+    no slider, and storing a hue it never chose would make the picker lie the next
+    time the operator dragged one.
+
+  ## The legibility floor
+
+  `validate_palette/1` guards the *shape* of a palette. It cannot guard whether
+  the result can be **read**, because that was never a threat from a human with a
+  colour picker. `legibility/1` is that guard, and `set_agent/2` runs it.
+
+  What it prevents is not ugliness but **disappearance**: an agent that can set
+  `foreground` to `background` can hide its own output from the operator watching
+  it work. That is observability suppression in an app whose whole audit layer is
+  premised on the operator being able to see. The floor is a constraint on the
+  *agent*, not a global policy — the operator may still make the editor produce
+  anything they like.
   """
 
   alias BusterClaw.Settings
 
   @default "industrial"
+
+  # Both dynamic slots bound their name the same way. One number so the two
+  # cannot drift into "the operator may have 40 characters and the agent 80".
+  @name_limit 40
 
   # The one custom slot. A key rather than a list because "save a theme" was
   # singular: a library brings rename, delete, duplicate and an ordering question
@@ -56,6 +100,14 @@ defmodule BusterClaw.TerminalTheme do
   @custom_colors_setting "terminal_custom_theme_colors"
   @custom_hue_setting "terminal_custom_theme_hue"
   @custom_default_name "Custom"
+
+  # The second slot, and the "loop rather than a redesign" the comment above
+  # predicted. Its keys mirror the custom ones exactly; there is no
+  # `terminal_agent_theme_hue`, see the moduledoc.
+  @agent_key "agent"
+  @agent_name_setting "terminal_agent_theme_name"
+  @agent_colors_setting "terminal_agent_theme_colors"
+  @agent_default_name "Agent"
 
   # The core values, labelled by what they actually do rather than by their xterm
   # names — "cursorAccent" means the character *under* the cursor, which nobody
@@ -182,6 +234,22 @@ defmodule BusterClaw.TerminalTheme do
 
   @preset_keys Enum.map(@themes, & &1.key)
 
+  # What a partial agent paint merges over when the agent slot is still empty.
+  #
+  # It cannot be `default()`. `industrial`'s palette is `nil` — token-derived, see
+  # the moduledoc — so there is literally nothing to merge onto, and a merge base
+  # has to be 21 complete fields or the result fails validation for reasons the
+  # model cannot act on.
+  #
+  # Monokai rather than Nord for two reasons, one aesthetic and one measured. It is
+  # the closer stand-in for the default: a neutral dark (#272822) where Nord is
+  # blue-tinted (#2e3440), and `industrial` is #121212. And it carries the most
+  # contrast headroom of the shipped presets — foreground:background 13.94 against
+  # Nord's 9.25, 15 of 16 ANSI colours clearing 2.0 against Nord's 14 — so a
+  # one-field paint has the best chance of landing legible rather than being
+  # refused for a colour the model never touched.
+  @agent_base_key "monokai"
+
   @doc "The shipped themes, without the operator's custom slot."
   def presets, do: @themes
 
@@ -189,15 +257,15 @@ defmodule BusterClaw.TerminalTheme do
   def preset_keys, do: @preset_keys
 
   @doc """
-  Every theme in picker order, the custom slot last when one has been saved.
+  Every theme in picker order: the presets, then the dynamic slots that exist.
 
-  Runtime rather than compile-time, because the custom slot is a `Settings` row.
+  Runtime rather than compile-time, because both dynamic slots are `Settings`
+  rows. The operator's slot comes before the agent's — the picker reads as
+  "the ones we ship, then yours, then the model's", and an agent painting cannot
+  reorder anything the operator sees.
   """
   def themes do
-    case custom() do
-      nil -> @themes
-      theme -> @themes ++ [theme]
-    end
+    @themes ++ Enum.reject([custom(), agent()], &is_nil/1)
   end
 
   @doc "Every valid theme key, in picker order."
@@ -206,8 +274,11 @@ defmodule BusterClaw.TerminalTheme do
   @doc "The theme an unset or unrecognized selection resolves to."
   def default, do: @default
 
-  @doc "The key the custom slot occupies."
+  @doc "The key the operator's custom slot occupies."
   def custom_key, do: @custom_key
+
+  @doc "The key the agent's slot occupies."
+  def agent_key, do: @agent_key
 
   @doc "The five core palette fields as `{name, label}`, in editor order."
   def core_fields, do: @core_fields
@@ -313,7 +384,7 @@ defmodule BusterClaw.TerminalTheme do
   def set_custom(name, colors, hue) when is_binary(name) and is_map(colors) do
     trimmed = String.trim(name)
 
-    if trimmed == "" or String.length(trimmed) > 40 do
+    if trimmed == "" or String.length(trimmed) > @name_limit do
       {:error, :invalid_name}
     else
       case validate_palette(colors) do
@@ -343,6 +414,269 @@ defmodule BusterClaw.TerminalTheme do
 
   @doc "The shipped themes that carry a fixed palette — everything but `industrial`."
   def fixed_presets, do: Enum.filter(@themes, &(&1.palette != nil))
+
+  # --- the agent slot ------------------------------------------------------
+
+  @doc """
+  The agent's saved theme as a picker entry, or `nil` when it has never painted.
+
+  Same rule as `custom/0`: a stored palette that has lost a field or gained a bad
+  colour resolves to `nil` rather than to something partly applied.
+
+  Deliberately **not** re-checked against `legibility/1` here. Reading is not the
+  point of enforcement — `set_agent/2` is, and it is the only writer. Making the
+  reader re-judge would mean a floor the operator could tighten under a palette
+  they were already looking at, which is the "seeded defaults have no upgrade
+  path" trap in reverse.
+  """
+  def agent do
+    with colors when is_binary(colors) <- Settings.get(@agent_colors_setting),
+         {:ok, decoded} <- Jason.decode(colors),
+         {:ok, palette} <- validate_palette(decoded) do
+      %{
+        key: @agent_key,
+        label: agent_name(),
+        swatch: %{
+          bg: palette["background"],
+          fg: palette["foreground"],
+          accent: palette["cursor"]
+        },
+        palette: palette
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  @doc "The agent theme's name, or the fallback when it has never been named."
+  def agent_name do
+    case Settings.get(@agent_name_setting) do
+      name when is_binary(name) and name != "" -> name
+      _ -> @agent_default_name
+    end
+  end
+
+  @doc """
+  Paint the agent's slot. **Never touches the operator's.**
+
+  `colors` may be **partial** — this is the one place that diverges from
+  `set_custom/3`, and the moduledoc says why. Whatever is given is merged over a
+  base and the *result* is validated whole:
+
+    * the agent's own current palette, if it has painted before — so successive
+      paints accumulate rather than each one starting from scratch;
+    * otherwise `#{@agent_base_key}`, for the reasons at `@agent_base_key`.
+
+  `name` may be `nil`, meaning "keep whatever this slot is already called" (and
+  `#{@agent_default_name}` when it has never been named), so a repaint does not
+  have to re-state a name it did not change.
+
+  The merged palette must pass `validate_palette/1` **and** `legibility/1`.
+  Refusal is whole-palette, matching the rest of this module: a failure returns
+  the reason rather than writing a partial theme.
+
+  Returns `{:ok, theme}`, `{:error, :invalid_colors}`, `{:error, :invalid_name}`,
+  `{:error, {:unknown_field, name}}` or `{:error, {:illegible, field, ratio}}`.
+  """
+  def set_agent(name, colors) when is_map(colors) do
+    with {:ok, label} <- agent_label(name),
+         {:ok, colors} <- known_fields_only(colors),
+         {:ok, palette} <- validate_palette(merge_over_agent_base(colors)),
+         :ok <- legibility(palette) do
+      Settings.put(@agent_name_setting, label)
+      Settings.put(@agent_colors_setting, Jason.encode!(palette))
+      {:ok, agent()}
+    else
+      # `validate_palette/1`'s bare `:error`, kept in its vocabulary here.
+      :error -> {:error, :invalid_colors}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def set_agent(_name, _colors), do: {:error, :invalid_colors}
+
+  @doc "Forget the agent's theme. Idempotent. Leaves the operator's slot alone."
+  def clear_agent do
+    Settings.delete(@agent_colors_setting)
+    Settings.delete(@agent_name_setting)
+    :ok
+  end
+
+  # No `broadcast/0` on either agent write, and that is a decision.
+  # `{:terminal_theme, custom()}` means "the operator's saved palette changed" and
+  # carries `custom()` as its payload — firing it here would announce an edit that
+  # did not happen. Live apply for a socket-less writer is
+  # `BusterClaw.TerminalPaint.announce/2`, which is a different message on a
+  # different topic on purpose (see that module).
+
+  # Merging costs the typo detector that `set_custom/3` gets for free.
+  #
+  # There, every field must be present, so a misspelled key shows up as a missing
+  # one and the save is refused. Here a misspelled key is simply not merged: the
+  # base palette validates, clears the floor, saves — and the model is told
+  # `{:ok, …}` for a paint that changed nothing. A silent no-op is the worst
+  # possible answer to give something with no eyes, so the unknown key is named.
+  defp known_fields_only(colors) do
+    known = MapSet.new(fields(), &elem(&1, 0))
+
+    case Enum.find(Map.keys(colors), &(not MapSet.member?(known, &1))) do
+      nil -> {:ok, colors}
+      unknown -> {:error, {:unknown_field, unknown}}
+    end
+  end
+
+  defp merge_over_agent_base(colors) do
+    base =
+      case agent() do
+        nil -> palette(@agent_base_key)
+        theme -> theme.palette
+      end
+
+    Map.merge(base, colors)
+  end
+
+  defp agent_label(nil), do: {:ok, agent_name()}
+
+  defp agent_label(name) when is_binary(name) do
+    trimmed = String.trim(name)
+
+    if trimmed == "" or String.length(trimmed) > @name_limit do
+      {:error, :invalid_name}
+    else
+      {:ok, trimmed}
+    end
+  end
+
+  defp agent_label(_name), do: {:error, :invalid_name}
+
+  # --- the legibility floor ------------------------------------------------
+
+  # Body text the operator reads continuously — WCAG 2.x's own number, and the
+  # only one here that is derived rather than chosen.
+  @foreground_floor 4.5
+
+  # A position marker, not prose. It has to be findable, not readable.
+  @cursor_floor 2.0
+
+  # The ANSI rule COUNTS rather than requires, and the count is the design.
+  #
+  # Measured before writing it, and the measurement killed the first draft: with a
+  # flat per-colour floor, **Monokai's ANSI `black` is byte-identical to its
+  # background** (ratio 1.00) and Nord's scores 1.24 — so "every ANSI colour
+  # clears 2.0" would have refused both shipped presets. Nord's `brightBlack`
+  # (1.69) would have taken it out twice over. That is not a flaw in those themes;
+  # it is what ANSI black *is* in a dark terminal.
+  #
+  # Do not "fix" this by exempting `black` by name. The threat was never one dim
+  # colour, it was **every colour at background** — which blanks `ls`, `git status`
+  # and the agent's own status lines while plain text keeps working, so the
+  # terminal still looks like it is doing something. Requiring 10 of 16 permits a
+  # black and a dim bright-black beside it and still makes a wholesale blackout
+  # impossible. The shipped presets clear it with room: Monokai 15, Nord 14.
+  @ansi_floor 2.0
+  @ansi_required 10
+
+  @doc """
+  Whether a palette can be read at all: `:ok` or `{:error, {:illegible, field, ratio}}`.
+
+  WCAG 2.x relative luminance, contrast `(L1 + 0.05) / (L2 + 0.05)`:
+
+  | Pair | Floor |
+  |---|---|
+  | `foreground` : `background` | #{@foreground_floor} |
+  | `cursor` : `background` | #{@cursor_floor} |
+  | the 16 ANSI colours | at least #{@ansi_required} of 16 clear #{@ansi_floor} |
+
+  Deliberately silent on three things. It does not check contrast **between** ANSI
+  colours — red on green is hideous and readable, which is the operator's problem
+  and the model's joke. It does not check `selectionBackground` or `cursorAccent`,
+  since neither carries the agent's output. And it is not a global policy: the
+  operator may still hand-edit anything they like in the theme editor.
+
+  `field` names the **worst offender**, ranked by how far short of its own floor it
+  falls rather than by raw ratio, because 3.0 against 4.5 is a worse failure than
+  1.9 against 2.0 and the model needs to be sent at the right one. `ratio` is the
+  measurement, rounded, so a refusal is correctable rather than a guessing game.
+
+  A palette that is not complete and well-formed answers `{:error, :invalid_colors}`
+  — legibility is only meaningful on one that would pass `validate_palette/1`.
+  """
+  def legibility(colors) when is_map(colors) do
+    case validate_palette(colors) do
+      {:ok, palette} -> worst_offender(palette)
+      :error -> {:error, :invalid_colors}
+    end
+  end
+
+  def legibility(_colors), do: {:error, :invalid_colors}
+
+  defp worst_offender(palette) do
+    background = palette["background"]
+
+    failures =
+      Enum.reject(
+        [
+          below_floor(palette["foreground"], background, "foreground", @foreground_floor),
+          below_floor(palette["cursor"], background, "cursor", @cursor_floor),
+          ansi_shortfall(palette, background)
+        ],
+        &is_nil/1
+      )
+
+    case failures do
+      [] ->
+        :ok
+
+      _ ->
+        {field, ratio, _floor} = Enum.min_by(failures, fn {_f, r, floor} -> r / floor end)
+        {:error, {:illegible, field, Float.round(ratio, 2)}}
+    end
+  end
+
+  defp below_floor(hex, background, field, floor) do
+    ratio = contrast(hex, background)
+    if ratio < floor, do: {field, ratio, floor}, else: nil
+  end
+
+  # The named field is the MARGINAL one — the 10th best, i.e. `@ansi_required` —
+  # not the worst. Naming the worst would name `black` in every dark theme written,
+  # and black is the colour the count exists to permit; sending the model to fix it
+  # would be sending it to fix the wrong thing. The 10th-best is the colour whose
+  # ratio actually decides the check, and raising it (and anything below it) is the
+  # correction that works.
+  defp ansi_shortfall(palette, background) do
+    {field, ratio} =
+      @ansi_fields
+      |> Enum.map(fn {field, _label} -> {field, contrast(palette[field], background)} end)
+      |> Enum.sort_by(&elem(&1, 1), :desc)
+      |> Enum.at(@ansi_required - 1)
+
+    if ratio < @ansi_floor, do: {field, ratio, @ansi_floor}, else: nil
+  end
+
+  defp contrast(a, b) do
+    {lighter, darker} =
+      case {relative_luminance(a), relative_luminance(b)} do
+        {la, lb} when la >= lb -> {la, lb}
+        {la, lb} -> {lb, la}
+      end
+
+    (lighter + 0.05) / (darker + 0.05)
+  end
+
+  # WCAG 2.x relative luminance. Every value reaching here has already cleared
+  # `normalize_hex/1`, so the `#rrggbb` shape is a given rather than a check.
+  defp relative_luminance("#" <> hex) do
+    0.2126 * linear(hex, 0) + 0.7152 * linear(hex, 2) + 0.0722 * linear(hex, 4)
+  end
+
+  defp linear(hex, offset) do
+    channel = String.to_integer(String.slice(hex, offset, 2), 16) / 255
+
+    if channel <= 0.03928,
+      do: channel / 12.92,
+      else: :math.pow((channel + 0.055) / 1.055, 2.4)
+  end
 
   # --- generating a palette from one number --------------------------------
 

@@ -175,6 +175,15 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     #   — the point of the roadmap's D4 — there is deliberately no verb at any
     #   tier that records, changes or removes a MOUNT; that is an operator act
     #   in the UI, and `commands/pocket_test.exs` fails if one ever appears.
+    #
+    #   terminal_theme_list (added 08-09, TERMINAL_PAINT_ROADMAP Phase 3) — the
+    #   read half of the terminal-colour surface, and the only one of its four
+    #   verbs that is safe. It reports the theme keys, labels and swatches that
+    #   already ship in the page's own `<meta>` payload, plus whether each of the
+    #   two dynamic slots holds a saved palette. No colour it returns is a
+    #   secret, nothing is written, and nothing is applied — the three verbs that
+    #   CHANGE what the operator sees (terminal_theme_select / _paint / _reset)
+    #   are :restricted and deliberately absent from this list.
     @safe_tier ~w(
       activity_report
       agent_run_status
@@ -258,6 +267,7 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       tasks_list
       terminal_command_list
       terminal_tab_open
+      terminal_theme_list
       web_search
     )
 

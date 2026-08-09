@@ -25,6 +25,7 @@ defmodule BusterClaw.Commands.Catalog do
     Pocket,
     Sound,
     Telephony,
+    TerminalTheme,
     Web
   }
 
@@ -42,5 +43,6 @@ defmodule BusterClaw.Commands.Catalog do
         Notify.entries() ++
         Sound.entries() ++
         Pocket.entries() ++
+        TerminalTheme.entries() ++
         Orchestration.entries()
 end

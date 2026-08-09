@@ -424,6 +424,110 @@ defmodule BusterClawWeb.AppearanceLiveTest do
     end
   end
 
+  describe "the agent's theme slot" do
+    defp paint_agent(overrides \\ %{}) do
+      {:ok, theme} =
+        TerminalTheme.set_agent("Sodium", Map.merge(%{"cursor" => "#ff9d2f"}, overrides))
+
+      theme
+    end
+
+    test "is absent from the picker until the agent has painted", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      refute has_element?(view, ~s([data-term-theme="#{TerminalTheme.agent_key()}"]))
+      # And no explanation of a row that isn't there.
+      refute render(view) =~ "the only theme it can write"
+    end
+
+    test "appears in the picker with its own swatch once painted", %{conn: conn} do
+      theme = paint_agent(%{"background" => "#100c06"})
+
+      {:ok, view, html} = live(conn, "/appearance")
+
+      assert has_element?(view, ~s([data-term-theme="#{TerminalTheme.agent_key()}"]))
+      assert html =~ "Sodium"
+      # The swatch is the agent's palette, not a stand-in.
+      assert html =~ "background:#{theme.palette["background"]}"
+    end
+
+    test "the row says it is the agent's, not the operator's", %{conn: conn} do
+      TerminalTheme.set_custom("Mine", TerminalTheme.generate(200))
+      paint_agent()
+
+      {:ok, view, html} = live(conn, "/appearance")
+
+      # The badge is the whole difference between this row and a preset — without
+      # it the operator cannot tell a theme the model painted from one they made.
+      assert view
+             |> element(~s([data-term-theme="#{TerminalTheme.agent_key()}"]))
+             |> render() =~ "Agent"
+
+      refute view
+             |> element(~s([data-term-theme="#{TerminalTheme.custom_key()}"]))
+             |> render() =~ "Agent"
+
+      assert html =~ "the only theme it can write"
+    end
+
+    test "is selectable exactly like any other theme", %{conn: conn} do
+      TerminalTheme.set_custom("Mine", TerminalTheme.generate(200))
+      paint_agent()
+
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      # Same dispatch, same data attribute — the badge marks the row, it does not
+      # make it a different kind of control.
+      for key <- TerminalTheme.keys() do
+        assert has_element?(
+                 view,
+                 ~s(button[phx-click][data-term-theme="#{key}"])
+               )
+      end
+    end
+
+    test "carries no editor and no delete button", %{conn: conn} do
+      paint_agent()
+
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      # Deliberate: `terminal_theme_reset` clears the agent slot, and this page is
+      # not the surface that owns it. An Edit here would also be an operator
+      # writing the model's theme, which nothing else in this feature allows.
+      refute has_element?(view, ~s(button[phx-click="edit_agent_theme"]))
+      refute has_element?(view, ~s(button[phx-click="delete_agent_theme"]))
+    end
+
+    test "the operator's own slot is untouched by a paint", %{conn: conn} do
+      TerminalTheme.set_custom("Mine", TerminalTheme.generate(200))
+      mine = TerminalTheme.custom()
+
+      paint_agent(%{"background" => "#100c06"})
+
+      {:ok, view, html} = live(conn, "/appearance")
+
+      assert TerminalTheme.custom() == mine
+      assert html =~ "Mine"
+      # Both dynamic slots render, side by side, and the operator's keeps its
+      # Edit/Delete controls.
+      assert has_element?(view, ~s([data-term-theme="#{TerminalTheme.custom_key()}"]))
+      assert has_element?(view, ~s(button[phx-click="delete_custom_theme"]))
+    end
+
+    test "deleting the operator's theme leaves the agent's in the picker", %{conn: conn} do
+      TerminalTheme.set_custom("Mine", TerminalTheme.generate(200))
+      paint_agent()
+
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view |> element(~s(button[phx-click="delete_custom_theme"])) |> render_click()
+
+      # The re-render walks both dynamic slots; losing one must not lose the other.
+      refute has_element?(view, ~s([data-term-theme="#{TerminalTheme.custom_key()}"]))
+      assert has_element?(view, ~s([data-term-theme="#{TerminalTheme.agent_key()}"]))
+    end
+  end
+
   describe "the chat theme picker" do
     test "offers every skin, with the one in force selected", %{conn: conn} do
       {:ok, view, html} = live(conn, "/appearance")

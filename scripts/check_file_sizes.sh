@@ -157,7 +157,16 @@ check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
 # The obvious cut when this next needs room: the terminal-theme block (its five
 # events, the draft helpers and the colour rows) is a coherent component, and the
 # background catalog is a second one.
-check lib/buster_claw_web/live/appearance_live.ex            1010 HELD
+#
+# Raised 08-09, 1010 -> 1035, for the agent's theme slot (TERMINAL_PAINT_ROADMAP
+# Phase 1). The slot itself is not here — it is `agent/0`, `set_agent/2` and the
+# legibility floor in `BusterClaw.TerminalTheme`, and this page cannot write it
+# at all. What landed is the 22 lines that make it VISIBLE: a badge on the
+# picker row, an `agent_slot?/2`, one assign, and the sentence telling the
+# operator whose theme that is. There is deliberately no editor and no delete
+# button for it — the model's `terminal_theme_reset` clears it, and this surface
+# does not own that.
+check lib/buster_claw_web/live/appearance_live.ex            1035 HELD
 check lib/buster_claw_web/live/status/comms.ex               125 HELD
 check lib/buster_claw_web/live/status/studio.ex              114 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD
@@ -256,6 +265,12 @@ check lib/buster_claw_web/controllers/pocket_asset_controller.ex  97 HELD
 check lib/buster_claw/commands/pocket.ex                      265 HELD
 check lib/buster_claw/commands/catalog/pocket.ex               75 HELD
 
+# Terminal paint (TERMINAL_PAINT_ROADMAP, 08-09) — the agent recolours the
+# terminal it is running in. Capped on arrival, no headroom.
+check lib/buster_claw/commands/terminal_theme.ex              246 HELD
+check lib/buster_claw/commands/catalog/terminal_theme.ex      101 HELD
+check lib/buster_claw/terminal_paint.ex                        81 HELD
+
 # Brand Pockets (POCKETS_ROADMAP Part XI, 08-09) — the dock icons and the
 # homepage banner become swappable. `pockets_panel.ex` is raised 294 -> 338 for
 # the upload: `allow_upload` configures the socket that owns it, so the state and
@@ -285,7 +300,17 @@ check lib/buster_claw_web/components/brand_art.ex              59 HELD
 # The dock nav, lifted OUT of the layout so it can re-render (an app layout is
 # rendered once at mount and never diffed). Capped at arrival with no headroom.
 check lib/buster_claw_web/live/dock_nav_live.ex                45 HELD
-check lib/buster_claw_web/chrome_hook.ex                       71 HELD
+# Raised 08-09, 71 -> 97, for terminal paint's Phase 0. This hook is now the one
+# place that carries "wear this theme now" out to the browser, because the
+# selected terminal theme lives in localStorage and a command has no socket. That
+# is a second subscription and a second handler clause in a module whose whole
+# job is app-chrome-for-every-LiveView, which is the right home for it.
+#
+# THIS RAISE WAS OWED IN 9a492ae AND WAS NOT TAKEN. That commit ran format and
+# compile but not this gate, so it shipped the tree red and a parallel agent
+# found it. The lesson is the boring one: the gate is part of the commit, not
+# part of the review.
+check lib/buster_claw_web/chrome_hook.ex                       97 HELD
 
 if [ "$fail" -ne 0 ]; then
   echo "FAIL: the file-size inventory does not hold."

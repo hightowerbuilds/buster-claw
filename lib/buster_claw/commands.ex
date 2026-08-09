@@ -571,6 +571,15 @@ defmodule BusterClaw.Commands do
   defdelegate pocket_list(args \\ %{}), to: BusterClaw.Commands.Pocket
   defdelegate pocket_describe(args), to: BusterClaw.Commands.Pocket
   defdelegate pocket_read(args), to: BusterClaw.Commands.Pocket
+  # Terminal colours — the model repaints the terminal it is running in. The
+  # writes reach the agent's OWN theme slot only: nothing here calls
+  # `TerminalTheme.set_custom/3`, so the operator's saved palette survives
+  # whatever the model does, and `commands/terminal_theme_test.exs` fails if a
+  # call to it ever appears (TERMINAL_PAINT_ROADMAP D3).
+  defdelegate terminal_theme_list(args \\ %{}), to: BusterClaw.Commands.TerminalTheme
+  defdelegate terminal_theme_select(args), to: BusterClaw.Commands.TerminalTheme
+  defdelegate terminal_theme_paint(args), to: BusterClaw.Commands.TerminalTheme
+  defdelegate terminal_theme_reset(args \\ %{}), to: BusterClaw.Commands.TerminalTheme
   # Google Workspace
   defdelegate google_account_list(args \\ %{}), to: BusterClaw.Commands.Google
   defdelegate google_account_get(args), to: BusterClaw.Commands.Google
