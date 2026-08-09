@@ -5,25 +5,27 @@ defmodule BusterClawWeb.Layouts do
   """
   use BusterClawWeb, :html
 
+  alias BusterClaw.Pockets.Brand
+
   @navigation_items [
-    %{label: "Home", path: "/", icon: "hero-home", image: "/images/brand/home-icon.png"},
+    %{label: "Home", path: "/", icon: "hero-home", role: "nav_home"},
     %{
       label: "Workspace",
       path: "/workspace",
       icon: "hero-folder",
-      image: "/images/brand/workspace-icon.png"
+      role: "nav_workspace"
     },
     %{
       label: "Browser",
       path: "/browse",
       icon: "hero-globe-alt",
-      image: "/images/brand/browser-icon.png"
+      role: "nav_browser"
     },
     %{
       label: "Terminal",
       path: "/terminal",
       icon: "hero-command-line",
-      image: "/images/brand/terminal-icon.png",
+      role: "nav_terminal",
       # Opens a NEW shell every click (fresh session key + tab), like Cmd-T —
       # a plain /terminal navigation would reattach to the shared "main" shell.
       new_terminal: true
@@ -36,7 +38,7 @@ defmodule BusterClawWeb.Layouts do
       label: "Settings",
       path: "/appearance",
       icon: "hero-cog-6-tooth",
-      image: "/images/brand/settings-icon.png"
+      role: "nav_settings"
     }
   ]
 
@@ -130,10 +132,23 @@ defmodule BusterClawWeb.Layouts do
     """
   end
 
+  # Resolve each dock item's art at render time, so an operator's own icon shows
+  # the moment it lands and disappears the moment their Pocket goes over-full.
+  #
+  # `Brand.image_url/1` answers `nil` for a slot in error, and the markup below
+  # already renders `item.label` when there is no image — that arm has existed
+  # since Calendar shipped without a PNG. **The failure state is not new
+  # behaviour; it is the behaviour that was already there.**
+  defp nav_items do
+    Enum.map(@navigation_items, fn item ->
+      Map.put(item, :image, Brand.image_url(item.role))
+    end)
+  end
+
   defp shell(assigns) do
     assigns =
       assigns
-      |> assign(:nav_items, @navigation_items)
+      |> assign(:nav_items, nav_items())
       |> assign(:tab_labels, @tab_labels_json)
 
     ~H"""

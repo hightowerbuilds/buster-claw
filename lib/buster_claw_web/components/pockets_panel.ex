@@ -38,6 +38,7 @@ defmodule BusterClawWeb.PocketsPanel do
 
   alias BusterClaw.Markdown
   alias BusterClaw.Pockets
+  alias BusterClaw.Pockets.Brand
 
   # How many thumbnails the list row shows. A strip, not a gallery — the row is
   # a glance and the open Pocket is where every file is listed.
@@ -50,7 +51,19 @@ defmodule BusterClawWeb.PocketsPanel do
 
   @impl true
   def mount(socket) do
-    {:ok, socket |> assign(:open, nil) |> assign(:loaded, false)}
+    {:ok,
+     socket
+     |> assign(:open, nil)
+     |> assign(:loaded, false)
+     |> assign(:upload_role, nil)
+     # One upload for six slots, with `upload_role` naming the target. Six
+     # `allow_upload` calls would be six live sockets kept open for a thing the
+     # operator does once.
+     |> allow_upload(:brand,
+       accept: Brand.accepted_extensions(),
+       max_entries: 1,
+       max_file_size: 8_000_000
+     )}
   end
 
   @impl true
@@ -73,6 +86,30 @@ defmodule BusterClawWeb.PocketsPanel do
     {:noreply, assign(socket, :open, nil)}
   end
 
+  def handle_event("pick_brand", %{"role" => role}, socket) do
+    # Clicking the open slot again closes the picker, so the button is a toggle
+    # rather than a one-way door.
+    role = if socket.assigns.upload_role == role, do: nil, else: role
+    {:noreply, assign(socket, :upload_role, role)}
+  end
+
+  def handle_event("validate_brand", _params, socket), do: {:noreply, socket}
+
+  def handle_event("upload_brand", _params, socket) do
+    role = socket.assigns.upload_role
+
+    consume_uploaded_entries(socket, :brand, fn %{path: path}, entry ->
+      {:ok, Brand.put(role, path, entry.client_name)}
+    end)
+
+    {:noreply, socket |> assign(:upload_role, nil) |> reload()}
+  end
+
+  def handle_event("clear_brand", %{"role" => role}, socket) do
+    Brand.clear(role)
+    {:noreply, reload(socket)}
+  end
+
   # `pockets/` is an `:on_demand` entry in the workspace registry — created when
   # the operator opens the surface that owns it, which is this one, and never at
   # install.
@@ -85,7 +122,7 @@ defmodule BusterClawWeb.PocketsPanel do
         {:error, name, reason} -> %{name: name, pocket: nil, error: reason, files: [], thumbs: []}
       end)
 
-    assign(socket, :rows, rows)
+    socket |> assign(:rows, rows) |> assign(:brand, Brand.overview())
   end
 
   defp row(pocket) do
@@ -145,6 +182,13 @@ defmodule BusterClawWeb.PocketsPanel do
       </header>
 
       <div class="min-h-0 flex-1 overflow-y-auto">
+        <BusterClawWeb.Pockets.BrandSlots.brand_slots
+          :if={is_nil(@open_row)}
+          slots={@brand}
+          uploads={@uploads}
+          upload_role={@upload_role}
+          target={@myself}
+        />
         <.pocket_list :if={is_nil(@open_row)} rows={@rows} target={@myself} />
         <.pocket_open :if={@open_row} row={@open_row} target={@myself} />
       </div>

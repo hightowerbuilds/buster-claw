@@ -789,23 +789,7 @@ defmodule BusterClawWeb.StatusLive do
         <div class="relative z-10 flex min-h-0 flex-1 flex-col space-y-8">
           <div class="flex items-stretch gap-4 border-b-2 border-base-content/20 pb-5">
             <div class="shrink-0 space-y-4">
-              <div
-                id="bc-heading"
-                phx-hook="CrtAberration"
-                class="ic-scanlines block w-full max-w-[28rem]"
-              >
-                <img
-                  src={~p"/images/brand/buster-claw-heading.png"}
-                  alt="Buster Claw"
-                  class="block h-auto w-full"
-                />
-                <img
-                  src={~p"/images/brand/buster-claw-heading.png"}
-                  alt=""
-                  aria-hidden="true"
-                  class="ic-crt-focus h-auto w-full"
-                />
-              </div>
+              <BusterClawWeb.BrandArt.banner />
               <div :if={not @setup_status.complete?} class="pt-1">
                 <.link
                   navigate={~p"/setup"}

@@ -1,11 +1,14 @@
 # Pockets — folders that know what they are for
 
-**Scoped 08-08-26 · Status: PHASE 0 MEASURED and PHASE 1 SHIPPED 08-08-26.
-Phase 2 — roles, the `backgrounds/` migration, and the tab — is next, and it is
-the phase [D7](#d7--backgrounds-migrates-in-this-roadmap-or-the-roadmap-stops)
-says the roadmap lives or dies on.**
+**Scoped 08-08-26 · Status: PHASES 0–4 SHIPPED (08-08/09). Phase 5 resolved —
+half shipped, half refused with reasons. Phase 6 is open space.**
 
-UI placement answered by the operator on 08-08 —
+**Now building [Part XI — Brand Pockets](#part-xi--brand-pockets-the-apps-own-art-becomes-swappable)**
+(operator, 08-09): the five dock icons and the homepage banner become swappable.
+That is [Part X](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0)'s
+Pocket #0 arriving for real, at the assets layer only.
+
+`D7` held — `backgrounds/` migrated, so the roadmap continued. UI placement is
 [D9](#d9--the-ui-is-a-home-sub-tab-and-it-is-minimalist), a minimalist Home
 sub-tab.
 
@@ -53,6 +56,7 @@ sub-tab.
 - [Part VIII — Risks](#part-viii--risks)
 - [Part IX — Open questions for the operator](#part-ix--open-questions-for-the-operator)
 - [Part X — The long horizon: BusterClaw ships as Pocket #0](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0)
+- [Part XI — Brand Pockets: the app's own art becomes swappable](#part-xi--brand-pockets-the-apps-own-art-becomes-swappable)
 
 ---
 
@@ -828,3 +832,129 @@ Two adjustments, both small:
 **What would have to be true before starting any of it:** Pockets survives its own
 Phase 2. If `backgrounds/` cannot migrate cleanly, none of Part X is reachable and
 none of it should be attempted.
+
+---
+
+## Part XI — Brand Pockets: the app's own art becomes swappable
+
+**Operator ask, 08-09.** The five dock icons and the homepage BusterClaw banner
+each get a Pocket, so a user can put their own art in. **This is
+[Part X](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0)'s Pocket #0
+arriving for real** — and it is the L1 (assets) layer, the one Part X called
+safe, with none of the L3 structure layer it called a trap.
+
+### XI.1 — What is already true
+
+The art is real files, not icons in a font: `priv/static/images/brand/*.png`,
+referenced from `@navigation_items` in `layouts.ex:9` and from the homepage
+heading at `status_live.ex:798`. So the shipped defaults **already live read-only
+in `priv/`**, which is exactly where [X.5.a](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0)
+requires Pocket #0 to be. Nothing is seeded, so a later build can still correct
+the app's own icons.
+
+And the text fallback already exists. `layouts.ex:201` renders
+`<span :if={!item[:image]}>{item.label}</span>` — the Calendar item has no PNG
+and falls back to its label today. **The failure state below is not new
+behaviour; it is behaviour that has shipped since before this roadmap.**
+
+### XI.2 — The three states, and why the failure state is text
+
+The operator's design, and it is better than either alternative that was offered.
+Every state is **derived from a directory listing on read**. Nothing is stored.
+
+| The Pocket | What the app shows |
+|---|---|
+| absent, or holds no image | the **shipped default** from `priv/static` |
+| holds **exactly one** image | that image, live |
+| holds **two or more** | **the text label**, plus a simple error |
+
+**Why over-full falls back to *text* rather than to the shipped default** — this
+is the load-bearing part of the design and it would be easy to get wrong:
+
+- *Picking the first image* would silently choose for the operator, and the
+  entire reason there is an error is that **the app cannot know which one they
+  meant.**
+- *Falling back to the shipped default* would hide the problem completely. The
+  dock would look correct, the extra file would sit there forever, and the error
+  would be a message about nothing visible.
+- **Text is the only fallback that looks different from both correct states.**
+  The art disappearing is the notification; the message only explains it.
+
+### XI.3 — No repair action exists, by construction
+
+The error is not a stored flag, so there is nothing to clear. Remove the extra
+file — in the app or in Finder — and the next read finds one image and the art
+returns. **There is no reset button, no "revalidate", and no way for the state to
+get stuck**, which is the whole benefit of deriving it.
+
+This also settles what the error *does*: nothing. It is shown and not acted on.
+No modal, no blocking, no forced choice — the operator may ignore it
+indefinitely and the app stays usable with text labels.
+
+### XI.4 — Locked decisions
+
+#### D10 — A brand role binds to a **fixed Pocket name**, never by manifest
+
+Role `nav_home` is filled by `pockets/nav-home/` and by nothing else.
+
+`for_role/1` finds whichever Pocket *declares* a role, and `POCKET.md` is a file
+the agent can write — so a discovered binding would let an agent shadow the app's
+own chrome by writing a manifest. That is precisely what
+[X.5.c](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0) forbids.
+
+Fixed names close it, and this is the **same call already made for
+`backgrounds/`** ("the Pocket name is FIXED rather than resolved through
+`for_role/1`"), for the same reason. Roles stay in the manifests as
+*description* — the tab shows "used by: nav_home" — and decide nothing.
+
+#### D11 — Cardinality belongs to the **role**, not to the manifest
+
+"Exactly one image" is a property of a dock slot, not a claim a Pocket makes
+about itself. It lives in the app's role table, which the agent cannot reach.
+A manifest saying `expects: 5` would be a permission in a description's clothing —
+the mistake Phase 0 already caught once with `source:` and `writable:`.
+
+#### D12 — Upload from inside the app is the sanctioned path
+
+The operator adds art in the Pockets tab; it lands in the Pocket and goes live
+immediately. **Finder is not forbidden** — it is the case the error exists for.
+The app never fights the filesystem; it explains what it found.
+
+#### D13 — The shipped defaults are **not copied** into the workspace
+
+Pocket #0 stays read-only in `priv/static`. Seeding it would put the app's own
+icons behind `maybe_write`, which never overwrites, and the app could then never
+correct its own art — the open app-wide trap named in
+[X.5.a](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0). An empty brand
+Pocket is not a broken one; it means "use ours".
+
+### XI.5 — The six slots
+
+| Role | Pocket | Shipped default |
+|---|---|---|
+| `nav_home` | `nav-home` | `home-icon.png` |
+| `nav_workspace` | `nav-workspace` | `workspace-icon.png` |
+| `nav_browser` | `nav-browser` | `browser-icon.png` |
+| `nav_terminal` | `nav-terminal` | `terminal-icon.png` |
+| `nav_settings` | `nav-settings` | `settings-icon.png` |
+| `home_banner` | `home-banner` | `buster-claw-heading.png` |
+
+**Three files in `priv/static/images/brand/` are deliberately left out**, and
+they are worth naming so a later reader does not think they were missed:
+`busterclaw-logo.png` and `home-bg.jpg` are referenced by nothing in `lib/`, and
+`workspace-icon.png`/`settings-icon.png` are *also* used as page wordmarks in
+three other files — those call sites keep the shipped asset for now, so a swap
+changes the dock and not every heading. Widening that is a one-line change per
+call site when someone wants it.
+
+### XI.6 — What this does not do
+
+**It does not make the dock agent-proof.** The agent can write into the
+workspace, so it can drop a file into a brand Pocket. What D10 removes is the
+*silent* path — an agent cannot invent a new Pocket that captures a slot. A file
+it drops in an existing brand Pocket either replaces the art visibly, or trips
+the over-full error and the slot goes to text. Both are seen.
+
+**It does not theme the app.** This is L1 assets only. Tokens (L2) and the theme
+Pocket remain [Part X](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0)'s
+open candidate, and structure (L3) stays refused.

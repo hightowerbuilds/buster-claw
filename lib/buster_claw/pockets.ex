@@ -78,7 +78,13 @@ defmodule BusterClaw.Pockets do
   A Pocket may declare a role that is not on this list. It simply never binds —
   see `for_role/1`.
   """
-  def roles, do: ~w(background)
+  # `background` is Appearance's pool. The six `nav_*`/`home_banner` roles are the
+  # brand slots — listed here rather than read from `BusterClaw.Pockets.Brand`,
+  # which would be a dependency cycle (Brand already calls this module).
+  # `BusterClaw.PocketsTest` asserts the two lists agree, so the duplication
+  # cannot drift.
+  def roles, do: ~w(background nav_home nav_workspace nav_browser nav_terminal
+                    nav_settings home_banner)
 
   @doc """
   The Pocket filling `role`, or `nil`.

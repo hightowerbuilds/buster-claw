@@ -119,7 +119,11 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # `subscribe_chat_look/0`, one `assign_chat_look/1`, and one `handle_info` clause
 # keyed on the axis name serving both skin and size. That is the shape this cap is
 # meant to produce, and it is why chat.ex moves instead.
-check lib/buster_claw_web/live/status_live.ex                945 HELD
+# LOWERED 08-09 from 945, banking the extraction the previous note said was
+# owed. The homepage banner became swappable and the heading moved out to
+# `components/brand_art.ex` rather than growing here: 944 -> 929. The cap follows
+# the file down in the same commit, which is the ratchet this script exists for.
+check lib/buster_claw_web/live/status_live.ex                929 HELD
 check lib/buster_claw_web/live/status/chat.ex                685 HELD
 
 # Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been
@@ -224,13 +228,23 @@ check lib/buster_claw_web/live/phone_component.ex             541 HELD
 # read fence and the mount entry point. If it grows, the fence
 # (`resolve/2`/`asset_url/2`) is the seam to extract, because it is the part
 # with its own test file already.
-check lib/buster_claw/pockets.ex                              535 HELD
+check lib/buster_claw/pockets.ex                              484 HELD
 check lib/buster_claw/pockets/mounts.ex                       347 HELD
 check lib/buster_claw/pocket.ex                               138 HELD
-check lib/buster_claw_web/components/pockets_panel.ex         294 HELD
+check lib/buster_claw_web/components/pockets_panel.ex         338 HELD
 check lib/buster_claw_web/controllers/pocket_asset_controller.ex  97 HELD
 check lib/buster_claw/commands/pocket.ex                      265 HELD
 check lib/buster_claw/commands/catalog/pocket.ex               75 HELD
+
+# Brand Pockets (POCKETS_ROADMAP Part XI, 08-09) — the dock icons and the
+# homepage banner become swappable. `pockets_panel.ex` is raised 294 -> 338 for
+# the upload: `allow_upload` configures the socket that owns it, so the state and
+# the four events must be here. The MARKUP is not — it is 114 lines in
+# `pockets/brand_slots.ex`, created for it. If a later reader finds slot markup
+# in the panel, this raise was wrong.
+check lib/buster_claw/pockets/brand.ex                        302 HELD
+check lib/buster_claw_web/components/pockets/brand_slots.ex   114 HELD
+check lib/buster_claw_web/components/brand_art.ex              55 HELD
 
 if [ "$fail" -ne 0 ]; then
   echo "FAIL: the file-size inventory does not hold."
