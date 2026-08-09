@@ -340,7 +340,10 @@ defmodule BusterClawWeb.ChatPanel do
       <.attach_error error={@attach_error} upload={@upload} />
       <.attach_chips attachments={@attachments} />
 
-      <div class="flex items-end gap-2">
+      <%!-- Anchored because two skins treat this row as one object: Minimal
+            strips it to a bare prompt line, Workplace draws the bordered box
+            that holds the input and the send button together. --%>
+      <div data-chat-input-row class="flex items-end gap-2">
         <textarea
           name="message"
           data-chat-input
@@ -713,7 +716,11 @@ defmodule BusterClawWeb.ChatPanel do
             the chat rather than treating attachments as a separate world. A file
             is a chip; there is nothing to preview and pretending otherwise would
             just be a grey rectangle. --%>
-      <div :if={@attachments != []} class="flex max-w-[85%] flex-wrap justify-end gap-2">
+      <div
+        :if={@attachments != []}
+        data-chat-attachments
+        class="flex max-w-[85%] flex-wrap justify-end gap-2"
+      >
         <button
           :for={att <- Enum.filter(@attachments, & &1.preview)}
           type="button"
