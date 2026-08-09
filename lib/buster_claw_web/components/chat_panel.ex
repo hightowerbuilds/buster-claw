@@ -13,8 +13,24 @@ defmodule BusterClawWeb.ChatPanel do
   an explicit conversation — both defaulted for Home. That generality was built
   for the floating Trading windows; it is kept because it costs nothing and is
   what the next multi-chat surface would need.
+
+  ## Skins are CSS, and that is a contract
+
+  The panel's look is switchable (`BusterClaw.ChatSkin`), and the **only** thing
+  that varies in what this module renders is `data-chat-skin` on the root
+  `<section>`. Nothing here may branch on the skin: the transcript is a stream,
+  so a message already on screen would keep the classes it was born with and the
+  switch would half-apply. An element one skin needs is rendered by all three and
+  hidden by CSS in the others. `BusterClawWeb.ChatPanelTest` asserts the rendered
+  HTML is byte-identical across skins once the attribute is normalized away.
   """
   use BusterClawWeb, :html
+
+  # Literals at compile time (an `attr` default and `values` may not be function
+  # calls), so the component and `ChatSkin` cannot disagree about which skins
+  # exist or which one is the default.
+  @default_skin BusterClaw.ChatSkin.default()
+  @skin_keys BusterClaw.ChatSkin.keys()
 
   attr :chats, :list, required: true
   attr :active, :string, required: true
@@ -108,6 +124,13 @@ defmodule BusterClawWeb.ChatPanel do
       "the `allow_upload` config for the HTML5 (dev browser) drop path. nil renders the " <>
         "panel with no upload wiring at all, which is what a component test wants"
 
+  attr :skin, :string,
+    default: @default_skin,
+    values: @skin_keys,
+    doc:
+      "which look to wear — the sole skin-dependent thing this component emits, as " <>
+        "`data-chat-skin` on the root section. See the moduledoc's contract."
+
   def chat_panel(assigns) do
     ~H"""
     <section
@@ -115,6 +138,7 @@ defmodule BusterClawWeb.ChatPanel do
       phx-hook="AgentChat"
       data-running={to_string(@running)}
       data-seq={@seq}
+      data-chat-skin={@skin}
       class="ic-panel flex min-h-0 w-full flex-1 flex-col overflow-hidden"
     >
       <header class="flex items-center justify-between gap-3 border-b-2 border-base-content/20 px-5 py-4">

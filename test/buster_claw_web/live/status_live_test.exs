@@ -7,10 +7,12 @@ defmodule BusterClawWeb.StatusLiveTest do
   alias BusterClaw.Agent.Attachments
   alias BusterClaw.Appearance
   alias BusterClaw.Calendar
+  alias BusterClaw.ChatSkin
   alias BusterClaw.Commands
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
   alias BusterClaw.ModelPolicy
+  alias BusterClaw.Settings
   alias BusterClaw.Telephony
 
   setup do
@@ -362,6 +364,49 @@ defmodule BusterClawWeb.StatusLiveTest do
       )
 
       assert render(view) =~ "streamed reply"
+    end
+  end
+
+  describe "chat skin" do
+    test "the panel mounts wearing the stored skin", %{conn: conn} do
+      ChatSkin.set("slack")
+
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ ~s(data-chat-skin="slack")
+    end
+
+    test "a stored skin that no longer exists mounts as the default", %{conn: conn} do
+      Settings.put(ChatSkin.setting_key(), "vaporwave")
+
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ ~s(data-chat-skin="#{ChatSkin.default()}")
+    end
+
+    test "changing the skin restyles messages already on screen", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/")
+      assert html =~ ~s(data-chat-skin="#{ChatSkin.default()}")
+
+      # Put a message in the transcript first. This is the case the whole design
+      # exists for: the transcript is a stream, so this node will not be
+      # re-rendered by the skin change and has to restyle from CSS alone.
+      send(
+        view.pid,
+        {:agent_chat, active_chat(view), {:message, %{role: :assistant, text: "already here"}}}
+      )
+
+      assert render(view) =~ "already here"
+
+      # The real path — Settings write plus broadcast — not a hand-rolled send.
+      assert {:ok, "minimal"} = ChatSkin.set("minimal")
+
+      html = render(view)
+
+      assert html =~ ~s(data-chat-skin="minimal")
+      # Still there, and untouched: the switch cost no stream ops, which is why
+      # it applies to old messages instead of only new ones.
+      assert html =~ "already here"
     end
   end
 

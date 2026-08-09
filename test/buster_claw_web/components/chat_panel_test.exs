@@ -6,6 +6,7 @@ defmodule BusterClawWeb.ChatPanelTest do
 
   import Phoenix.LiveViewTest
 
+  alias BusterClaw.ChatSkin
   alias BusterClawWeb.ChatPanel
   alias BusterClawWeb.Status.ChatAttachments
 
@@ -172,6 +173,85 @@ defmodule BusterClawWeb.ChatPanelTest do
       thinking: nil,
       queue: []
     )
+  end
+
+  defp msg(id, role, overrides) do
+    %{
+      id: id,
+      role: role,
+      text: "#{role} says something",
+      svg_ids: [],
+      delivery: nil,
+      scenes: [],
+      attachments: []
+    }
+    |> Map.merge(overrides)
+  end
+
+  # A maximally furnished panel: a bubble of every role, a running turn (so Stop
+  # renders), the thinking chip, a queued message, an attachment and a delivery
+  # chip. The skin-identity test is only as strong as the markup it renders, so
+  # this deliberately turns everything on rather than testing an empty panel —
+  # an empty chat is precisely the case where a half-applied skin looks fine.
+  defp panel(overrides \\ []) do
+    messages = [
+      {"chat-msg-1", msg(1, :user, %{delivery: :steered, attachments: [image(), file()]})},
+      {"chat-msg-2", msg(2, :assistant, %{svg_ids: ["svg-1"]})},
+      {"chat-msg-3", msg(3, :tool, %{})},
+      {"chat-msg-4", msg(4, :meta, %{})},
+      {"chat-msg-5", msg(5, :error, %{})}
+    ]
+
+    defaults = [
+      messages: messages,
+      seq: 5,
+      running: true,
+      steerable: true,
+      thinking: {:done, 4_200},
+      queue: [%{id: "q1", text: "next thing"}],
+      agent_cli_missing: true,
+      attachments: [image()],
+      announcement: "Steered into the running turn."
+    ]
+
+    render_component(&ChatPanel.chat_panel/1, Keyword.merge(defaults, overrides))
+  end
+
+  describe "skins" do
+    # The load-bearing test of the whole skin feature. The transcript is a
+    # LiveView stream: children are rendered once, on insert, so a message
+    # already on screen keeps the classes it was born with. If any skin were
+    # allowed to change the markup, switching skins would restyle the header and
+    # composer and leave every existing message in the old look until a reload —
+    # half-applied, and invisible on an empty chat.
+    #
+    # So the panel emits exactly one skin-dependent thing: `data-chat-skin`.
+    # Normalize that away and all three renders must be byte-identical. A future
+    # `if @skin == "slack"` in the template fails right here.
+    test "every skin renders byte-identical markup apart from the attribute" do
+      [first | rest] =
+        Enum.map(ChatSkin.keys(), fn skin ->
+          panel(skin: skin)
+          |> String.replace(~s(data-chat-skin="#{skin}"), ~s(data-chat-skin="NORMALIZED"))
+        end)
+
+      for other <- rest do
+        assert other == first,
+               "a skin changed the markup. Skins are CSS-only by contract — see " <>
+                 "BusterClaw.ChatSkin. Render the element in every skin and hide it " <>
+                 "in CSS instead of branching the template."
+      end
+    end
+
+    test "the skin reaches the DOM as data-chat-skin" do
+      for skin <- ChatSkin.keys() do
+        assert panel(skin: skin) =~ ~s(data-chat-skin="#{skin}")
+      end
+    end
+
+    test "a panel rendered without a skin wears the default" do
+      assert panel() =~ ~s(data-chat-skin="#{ChatSkin.default()}")
+    end
   end
 
   describe "the citation fence" do

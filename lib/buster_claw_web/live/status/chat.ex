@@ -45,6 +45,18 @@ defmodule BusterClawWeb.Status.Chat do
   @max_chat_messages 200
   @max_chat_svgs 200
 
+  @doc """
+  Adopt a chat skin chosen in Settings → Appearance.
+
+  One assign, deliberately. The skin is a CSS-only concern by contract (see
+  `BusterClaw.ChatSkin`), so re-rendering `data-chat-skin` on the panel *is* the
+  whole update: every message already on screen restyles from the new descendant
+  rules, with no stream ops and no DOM churn. Nothing here may reach into the
+  transcript, because a stream cannot re-render what it has already inserted —
+  which is exactly why the skin is CSS in the first place.
+  """
+  def apply_chat_skin(socket, skin), do: assign(socket, :chat_skin, skin)
+
   # Load the open conversations (tabs), subscribe to each so background runs update
   # the tab badges, and show the most recent one's transcript.
   def init_chats(socket) do

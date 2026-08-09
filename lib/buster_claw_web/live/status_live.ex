@@ -12,6 +12,7 @@ defmodule BusterClawWeb.StatusLive do
 
   alias BusterClaw.Agent.Chat
   alias BusterClaw.Appearance
+  alias BusterClaw.ChatSkin
   alias BusterClaw.Contacts
   alias BusterClaw.LocalTime
   alias BusterClaw.Notifications
@@ -66,6 +67,7 @@ defmodule BusterClawWeb.StatusLive do
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BusterClaw.PubSub, Appearance.home_topic())
+      ChatSkin.subscribe()
       Notifications.subscribe()
       # Keep the corner-widget's "Recent activity" live as calls/texts land.
       Telephony.subscribe()
@@ -87,6 +89,7 @@ defmodule BusterClawWeb.StatusLive do
      socket
      |> assign(:page_title, "Home")
      |> assign(:home_bg, Appearance.home_background_state())
+     |> assign(:chat_skin, ChatSkin.get())
      |> assign(status: Status.snapshot())
      |> assign(:today, today)
      |> assign(:setup_status, Setup.status())
@@ -623,6 +626,11 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, socket}
   end
 
+  # The chat skin changed in Settings → Appearance. One assign restyles the whole
+  # transcript, including messages already on screen — see `apply_chat_skin/2`.
+  def handle_info({:chat_skin, skin}, socket),
+    do: {:noreply, apply_chat_skin(socket, skin)}
+
   # Periodic sky tick: keep the weather-shader background tracking real
   # conditions while the homepage sits open. Cheap no-op in any other mode.
   def handle_info(:sky_refresh, socket) do
@@ -872,6 +880,7 @@ defmodule BusterClawWeb.StatusLive do
                 attachments={@chat_attachments}
                 attach_error={@chat_attach_error}
                 upload={@uploads.chat_attachments}
+                skin={@chat_skin}
               />
             </div>
 
