@@ -175,6 +175,23 @@ defmodule BusterClaw.Workspace do
       seed: {BusterClaw.Notes, :ensure},
       note: "The operator's Markdown vault — the Home Notes tab, read by note_*."
     },
+    # A DECLARED PARENT WITH USER-NAMED CHILDREN — the same shape as `sounds/`,
+    # whose `music/` and `studio/` are deliberately not declared here. This
+    # registry describes top-level entries; every Pocket is one level down, so
+    # the layout guard keeps its full value while the operator names whatever
+    # they like inside.
+    #
+    # Children of this directory are OPERATOR DATA. A feature that wants
+    # storage declares its own top-level entry above and does not hide inside
+    # here — that would defeat the guard by the back door.
+    %{
+      name: "pockets",
+      kind: :dir,
+      tier: :on_demand,
+      owner: BusterClaw.Pockets,
+      seed: nil,
+      note: "Your own sets of media — icons, badges, banners, fonts. One folder each."
+    },
     %{
       name: "sources",
       kind: :dir,

@@ -1,8 +1,13 @@
 # Pockets — folders that know what they are for
 
-**Scoped 08-08-26 · Status: SCOPED, nothing built. UI placement answered by the
-operator the same day — [D9](#d9--the-ui-is-a-home-sub-tab-and-it-is-minimalist),
-a minimalist Home sub-tab.**
+**Scoped 08-08-26 · Status: PHASE 0 MEASURED and PHASE 1 SHIPPED 08-08-26.
+Phase 2 — roles, the `backgrounds/` migration, and the tab — is next, and it is
+the phase [D7](#d7--backgrounds-migrates-in-this-roadmap-or-the-roadmap-stops)
+says the roadmap lives or dies on.**
+
+UI placement answered by the operator on 08-08 —
+[D9](#d9--the-ui-is-a-home-sub-tab-and-it-is-minimalist), a minimalist Home
+sub-tab.
 
 > ### The one-sentence version
 >
@@ -287,12 +292,10 @@ call, not a feature.
 
 ```markdown
 ---
-name: hazard-icons          # must equal the directory name, [a-z0-9-]
-kind: icons                 # icons | badges | banners | fonts | media | pages | free
+name: hazard-icons                  # must equal the directory name, [a-z0-9-]
+kind: icons                         # icons|badges|banners|fonts|media|pages|free
 description: Claw marks and hazard glyphs for app icons and badges.
-roles: [app_icon, badge]    # which slots this Pocket may fill
-source: null                # null = local; otherwise an absolute mounted path
-writable: false             # only meaningful when mounted; default false
+roles: ["app_icon", "badge"]        # JSON list — see Phase 0 result 4
 ---
 
 The 32px versions are the ones that read at menu-bar size. `claw.png` is the
@@ -307,6 +310,31 @@ been able to carry**, and they are most of why this is not just a directory.
 **`roles` decides what may bind to it.** They are separate because a Pocket of
 images might legitimately serve icons *and* badges, and a Pocket of images might
 legitimately serve neither.
+
+### The manifest holds description. It never holds permission.
+
+**Found while writing the example, and it is a genuine defect in the first
+draft.** That draft had `source:` and `writable:` as frontmatter fields. Both are
+D4/D5 violations, for the same one-line reason:
+
+> **`POCKET.md` lives inside the workspace, and the agent can write files in the
+> workspace.** A mount path in the manifest means an agent mounts a folder by
+> editing Markdown. A `writable: true` in the manifest means an agent grants
+> itself write access to it.
+
+So the split is now explicit and is the reason [D3](#d3--mounts-are-recorded-by-the-app-within2-does-not-change)
+says *recorded by the app*:
+
+| | Lives in | Written by | Why |
+|---|---|---|---|
+| name, kind, description, roles | `POCKET.md` | operator **or agent** | descriptive; a wrong value is a wrong label |
+| **mount path, writable** | **app-owned registry, outside the Pocket** | **the UI, only** | a wrong value is an escape |
+
+A Pocket's own directory can therefore be fully agent-editable without any of
+this becoming reachable — which is the property that makes
+[D4](#d4--the-agent-may-read-a-mounted-pocket-it-may-never-mount-one) enforceable
+by structure rather than by a policy check, exactly as The Clinch enforced its own
+split.
 
 ---
 
@@ -399,7 +427,47 @@ makes the rest smaller.
    it need a scalar? `Skills` uses JSON-in-a-string for `args`. If the parser is
    scalar-only, `roles` becomes a comma-separated string and D2 stands unchanged.
 
-### Phase 1 — The Pocket, local only
+#### Phase 0 results — 08-08-26
+
+**1. Not a WKWebView question at all — withdrawn.** Images are served by our own
+controller at `GET /workspace/image` (`router.ex:127`), so the webview issues an
+ordinary **same-origin HTTP request** and never touches a file path. There is
+nothing for WKWebView to refuse. The real check is the controller's own
+`servable?/1` fence, which is unit-testable and needs no packaged build.
+*One phase-0 unknown removed by looking at the router.*
+
+**2. Still open — needs the operator and a packaged build.** No way to settle
+whether a dropped *directory* yields a Tauri path from here. **It does not block
+anything:** I.4 already makes the Workspace-tab action the primary mount gesture,
+so folder-drop is a Phase 3 nicety to confirm at that point, not a dependency.
+
+**3. Answered — an afternoon, not a week.** The pool is exactly **two `Settings`
+keys per slot** across 8 slots: `background_image_<n>_path` (workspace-relative)
+and `background_image_<n>_updated_at`, plus three per-surface keys. Better,
+`appearance.ex` **already contains both idioms the migration needs**: a one-shot
+guarded by `@migrated_key` (`:469`), and a stored-prefix rewrite —
+`rewrite_renamed_dir/0` (`:492`) already renamed `appearance/` → `backgrounds/`
+exactly the way `backgrounds/` → `pockets/backgrounds/` will go.
+
+> **And it carries the hazard, written down by whoever did it last:** the prefix
+> rewrite **must run before the pool migration**, because `next_empty_slot/0`
+> trusts those pointers and *"a slot misread as empty gets a second image landed
+> on it."* Ordering is the whole risk in D7's migration, and it is already
+> documented in the file.
+
+**4. Answered — JSON lists work, with a caveat that changed the manifest.**
+`Frontmatter.parse_value/1` routes any value starting with `[` or `{` through
+`Jason.decode/1`. So a list is supported, but it must be **valid JSON**:
+`roles: ["app_icon", "badge"]`, not `roles: [app_icon, badge]` — the latter fails
+to decode and falls back to the raw string. The example in Part III is corrected.
+
+**5. Unplanned, and the most valuable of the five.** Writing the manifest example
+exposed that `source:` and `writable:` **cannot be frontmatter fields at all** —
+they are D4/D5 escapes, because the agent can write `POCKET.md`. See
+[the manifest holds description, never permission](#the-manifest-holds-description-it-never-holds-permission).
+**Phase 0 paid for itself here, not in the four questions it was scoped to ask.**
+
+### Phase 1 — The Pocket, local only ✅ SHIPPED 08-08-26
 
 `pockets/` registry entry (`:on_demand`, per I.1). `BusterClaw.Pockets` — a
 types-only contract module first, then load, validate, list. `POCKET.md` parsing
@@ -409,6 +477,32 @@ logged and skipped rather than crashing the list.
 **No mounts. No roles. No UI** — the tab lands in Phase 2, beside the migration it
 exists to make visible. A Pocket is a folder you can make by hand and the app can
 describe back to you.
+
+**Shipped as:** `lib/buster_claw/pocket.ex` (types only, mirroring
+`Agent.Attachment`), `lib/buster_claw/pockets.ex` (the loader), the `pockets/`
+registry entry, and 16 tests. Full gate green at **3,288 tests**.
+
+Three things went in that the phase description did not ask for, each because
+building it surfaced the need:
+
+- **`list_with_errors/0` alongside `list/0`.** `Skills` logs-and-skips an invalid
+  file, which is right, but it makes a broken folder look like a missing one.
+  Invalid has to be a *state the UI can draw*, so the error arm is part of the
+  contract rather than a log line.
+- **Roles are strings and stay strings.** `POCKET.md` is agent-writable, so
+  `String.to_atom/1` on its contents is unbounded atom creation from
+  attacker-influenced input — and atoms are never collected. There is no phase in
+  which a role needs to be an atom. The test asserts the exact name never becomes
+  an existing atom.
+- **`contents/1` uses `lstat`, not `stat`.** A planted symlink inside a Pocket is
+  *seen* and skipped rather than followed out of it — the same call `Attachments`
+  makes, for the same reason. **A mount is the only way a Pocket reaches outside
+  itself**, and this is the line that keeps that true.
+
+One test failed for the wrong reason and is worth recording: the first
+atom-safety test asserted on `:erlang.system_info(:atom_count)`, which drifts
+because first-call module loading interns atoms too. It failed while the code was
+correct. Asserting on the specific name via `String.to_existing_atom/1` is exact.
 
 ### Phase 2 — Roles, `backgrounds/` becomes the first consumer, and the tab
 
