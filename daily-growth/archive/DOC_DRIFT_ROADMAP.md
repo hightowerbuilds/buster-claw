@@ -1,8 +1,26 @@
 # Doc Drift — where the app explains itself wrongly
 
-**Scoped 08-09-26 · Status: ALL FINDINGS FIXED 08-09.** Gate after the pass:
-**3,115 tests + 7 doctests, 0 failures**; Credo strict clean; cycles, file sizes,
-`check_rust.sh`, `acl_lockstep` and `secret_provisioning` all green.
+**Scoped 08-09-26 · Status: COMPLETE + ARCHIVED 08-09** (`f5a7be2`). All 25
+findings fixed. Gate after the pass: **3,115 tests + 7 doctests, 0 failures**;
+Credo strict clean; cycles, file sizes, `check_rust.sh`, `acl_lockstep` and
+`secret_provisioning` all green.
+
+> **Read the three seams below before the finding tables.** The tables are a
+> record of what was wrong on one day; the seams are what will be wrong next
+> time, and they are the reason this document is worth keeping after the fixes
+> landed.
+>
+> **Two open items went to `roadmaps/LEFTOVERS.md`** — a test for the Manual,
+> and the two skill seeds plus three job mandates the comb never reached.
+> `docs/UML.md` sections 3–5 remain stale from 06-14 and are noted there too.
+>
+> **This comb was not exhaustive and should not be read as a clean bill.** It
+> covered `introduction/*.md`, the Explore panels, `user-guide/`, four `docs/`
+> files, the README, the workspace registry and one seed. It did not cover
+> `AGENTS.md` past line 110, `BUILD.md`, `DESKTOP_PACKAGING.md`, or the seeds
+> listed above. **A finding written from reading is a lower bound** — the one
+> guard actually executed here surfaced a 26th candidate within seconds of
+> first running.
 
 A comb of every surface that *explains* Buster Claw, checked against the code
 that *is* Buster Claw. Scope: `introduction/*.md` (the model's operating guide),

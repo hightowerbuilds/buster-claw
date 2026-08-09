@@ -463,6 +463,45 @@ is recorded in `t:BusterClaw.Scene3d.Types.poly/0` where it will be read.
 
 ---
 
+### The Manual has no test, and had the worst drift of any surface
+
+*Inherited 08-09 from `archive/DOC_DRIFT_ROADMAP.md`.*
+
+**What.** Assert that `user-guide/introduction.md` names the same dock surfaces
+`BusterClawWeb.Layouts` declares in `@navigation_items`, and no others. Same
+idiom as the `console_tab_keys` rail guard in `settings_live_test.exs`.
+
+**Why deferred.** The drift itself is fixed; this is the guard that keeps it
+fixed, and it needs ten minutes rather than a design.
+
+**What makes it expensive later.** `user-guide/` is rendered at `/manual` and is
+the first thing a new operator reads, yet **nothing in the suite reads it** —
+which is exactly why it accumulated the worst drift found in the 08-09 comb: a
+dock of nine when the code declares five, four retired features listed under an
+"Advanced" section that does not exist, and two folder names the app relocates
+on boot. Every one of those was months old and invisible to a green suite.
+
+### Two skill seeds were never combed
+
+*Inherited 08-09 from `archive/DOC_DRIFT_ROADMAP.md`.*
+
+**What.** Read `skill-seeds/shader-designer.md` (108 lines) and
+`sound-cutup.md` (183 lines) against the code, the way the 08-09 pass did for
+`introduction/*.md`. Same for the three job mandates seeded as heredocs in
+`jobs.ex` (`mail-triage`, `voicemail-triage`, `sms-triage`) — the roster was
+verified, the mandates inside were not.
+
+**Why deferred.** The comb was scoped to the surfaces most likely to be wrong
+and ran out of afternoon. Neither seed showed a symptom; neither was checked.
+
+**What makes it expensive later.** These are **reference playbooks the model
+reads to author an artifact** — a wrong constraint here produces a broken shader
+or a bad cut rather than a confusing sentence. And they are seeds: `maybe_write`
+never overwrites, so an error ships permanently into every workspace that has
+already been created. See the shipped-defaults problem in `LAUNCH_ROADMAP` V.8.
+
+---
+
 
 ## Rules of engagement
 
