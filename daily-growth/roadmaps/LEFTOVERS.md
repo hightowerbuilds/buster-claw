@@ -547,6 +547,59 @@ surprise.
 ---
 
 
+### The live-CLI walk for chat attachments — the one claim the suite cannot make
+
+*Inherited 08-08 when `CHAT_ATTACHMENTS_ROADMAP` was archived.*
+
+**What.** Drag an image into the homepage chat, send it, and ask the model
+something only the picture answers — on **each** backend. Then repeat it in a
+**packaged** build.
+
+**Why deferred.** Every mechanism was measured in Phase 0 against a real `claude`,
+`codex --help` and `opencode --help`, and 3,268 tests assert what leaves the BEAM
+— the argv handed to the spawner, and for the duplex path the actual JSONL bytes
+down a real pipe with the base64 decoded and compared to the original file. But
+**no test runs a CLI**. The chain from argv to a model that has genuinely seen
+the image is asserted at both ends and never walked in the middle.
+
+**What makes it expensive later.** Two specific gaps, both invisible to the suite:
+
+- **The packaged build is the only place the drop path can be proven.** WKWebView
+  does not hand file contents to the DOM, so a browser passing proves nothing —
+  that is exactly the trap that produced the original bug. This belongs with
+  `LAUNCH_ROADMAP` **G-40**, which already collects the needs-a-real-build items.
+- **Codex's sandbox reading the staging directory is unverified.** It sits
+  outside the working root; `-s workspace-write` is documented as a *write*
+  restriction so a read is expected to work — expected, not measured. If it
+  cannot, Codex attachments fail silently and only on a real run.
+
+---
+
+### `agent/chat.ex` is owed a cut — the frozen promise was broken 08-08
+
+*Inherited 08-08 when `CHAT_ATTACHMENTS_ROADMAP` was archived.*
+
+**What.** `lib/buster_claw/agent/chat.ex` is **FROZEN** in `check_file_sizes.sh` —
+the tier that means *already too big; may shrink, never grow*. Chat attachments
+grew it 1,376 → 1,510 and the cap was raised to match. **That is a broken
+promise, and it is filed here rather than left as a number nobody remembers
+earning.**
+
+**Why deferred.** Roughly half the growth is documentation and the rest is a
+GenServer message gaining a field — every `handle_call({:submit, …})` clause, the
+queue that carries a message until its turn runs, and the resolve step. **You
+cannot extract "this process's messages carry one more thing."** The delivery
+logic itself was correctly kept out (it lives in `ChatTransport`, +112, and
+`claude_duplex`, +51).
+
+**What makes it expensive later.** This is the third time a decomposition in this
+repo has been undone by regrowth, which is why the gate exists at all. The file
+is a target of the modularization work; the honest cut is to extract the queue
+and run-lifecycle half, not to shave the attachment threading. **Do not raise
+this cap again without extracting first** — twice is a pattern.
+
+---
+
 ## Rules of engagement
 
 - An item leaves this file by being **done** or by being **promoted** to a real

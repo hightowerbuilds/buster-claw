@@ -74,7 +74,7 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
   def start_turn(handle, text) do
     with {:ok, handle} <- ensure_session(handle),
          {:ok, message_id} <-
-           server().prompt(server(), handle.session_id, text,
+           server().prompt(server(), handle.session_id, prompt(handle, text),
              model: handle.model,
              system: instructions(handle)
            ) do
@@ -113,7 +113,9 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
   # --- delivery ------------------------------------------------------------
 
   defp deliver(handle, text) do
-    case server().prompt(server(), handle.session_id, text, system: instructions(handle)) do
+    case server().prompt(server(), handle.session_id, prompt(handle, text),
+           system: instructions(handle)
+         ) do
       {:ok, message_id} ->
         case server().await_receipt(ref(handle), message_id) do
           :ok ->
@@ -135,6 +137,13 @@ defmodule BusterClaw.Agent.ChatTransport.OpenCodeServer do
   # every message repeats them — including a steered one, which is the message
   # most likely to need the contract's framing.
   defp instructions(handle), do: AttentionContract.compose(handle.append_system_prompt, true)
+
+  # The CLI adapter attaches with `-f`; there is no argv on this path, so an
+  # attachment is named by absolute path in the prompt instead
+  # (`ChatTransport.path_only_deliveries/1`). Unchanged text when the message
+  # carries none.
+  defp prompt(handle, text),
+    do: ChatTransport.prefixed(text, ChatTransport.path_only_deliveries(handle))
 
   # --- session lifecycle ---------------------------------------------------
 

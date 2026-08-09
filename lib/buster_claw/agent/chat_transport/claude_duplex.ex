@@ -42,12 +42,32 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
   while keeping the process; that is a protocol this module does not yet speak,
   and pretending otherwise would leave a turn running that we reported as
   stopped.
+
+  ## Attachments: the one route where no file need exist
+
+  This is the only transport that can put attachment **bytes** on the wire, and
+  it is why `AgentBackend.inline_attachments?/2` is keyed on `:duplex`. An image
+  becomes a base64 block in the message's `content` array (see
+  `BusterClaw.Agent.ChatMessageEncoder`), a text file becomes a text block, and
+  claude answers with no file on disk and no Read tool call. A steered message
+  carries them the same way, because it is the same write.
+
+  ⚠ **A directory grant can only be made when the process is spawned.** The
+  `{:args, ["--add-dir", …]}` delivery — which only a PDF or another binary
+  produces here, since images and text inline — is applied in `ensure_process/2`,
+  so it lands on the first turn of a conversation and on any turn that respawns
+  after a crash. On turn five of a live process there is no way to add a flag to
+  an argv fixed four turns ago; the file is still named by absolute path in the
+  prompt prefix, and chat's default `bypassPermissions` is what lets claude read
+  it. Restarting the process to widen the grant would cost the operator the live
+  conversation, which is a far worse trade than an unflagged path.
   """
 
   @behaviour BusterClaw.Agent.ChatTransport
 
   require Logger
 
+  alias BusterClaw.Agent.AttachmentDelivery
   alias BusterClaw.Agent.AttentionContract
   alias BusterClaw.Agent.ChatMessageEncoder
   alias BusterClaw.Agent.ChatTransport
@@ -68,8 +88,13 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
 
   @impl true
   def start_turn(handle, text) do
-    with {:ok, handle} <- ensure_process(handle),
-         {:ok, handle, _receipt} <- write(handle, text) do
+    # Computed once and spent twice: the args half can only be applied if this
+    # turn is the one that spawns the process, and the inline half rides the
+    # message either way.
+    deliveries = ChatTransport.deliveries(handle, duplex: true)
+
+    with {:ok, handle} <- ensure_process(handle, deliveries),
+         {:ok, handle, _receipt} <- write(handle, text, deliveries) do
       # A fresh reference per turn. It cannot be the port any more — one process
       # now has many turns — and it is what makes a steer addressable to the turn
       # the operator was actually looking at.
@@ -91,7 +116,10 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
         {:error, :no_active_turn}
 
       true ->
-        write(handle, text)
+        # A steered message may carry its own attachments — same channel, same
+        # encoder. Only the inline blocks and the prompt prefix can apply: the
+        # process is by definition already running.
+        write(handle, text, ChatTransport.deliveries(handle, duplex: true))
     end
   end
 
@@ -114,7 +142,7 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
   # Lazily start the conversation's process, and restart it after a crash. The
   # saved session id is replayed as `--resume`, so a transport failure costs the
   # in-flight turn but not the conversation.
-  defp ensure_process(handle) do
+  defp ensure_process(handle, deliveries) do
     if alive?(handle) do
       {:ok, handle}
     else
@@ -124,7 +152,10 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
           stream: true,
           login: true,
           agent: handle.agent,
-          extra_args: extra_args(handle)
+          # `[]` unless a binary attachment needs a directory grant, so an
+          # ordinary turn's argv is unchanged. See the moduledoc on why a grant
+          # is only ever available at spawn time.
+          extra_args: extra_args(handle) ++ AttachmentDelivery.args(deliveries)
         ]
         |> maybe_put(:permission_mode, handle.permission_mode)
 
@@ -161,8 +192,14 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
 
   # --- writing -------------------------------------------------------------
 
-  defp write(handle, text) do
-    case ChatMessageEncoder.encode_user(text) do
+  defp write(handle, text, deliveries) do
+    # With no attachments this is `encode_user(text, [])`, which is the bare
+    # string `content` that has shipped since duplex landed — the encoder's own
+    # tests pin that shape.
+    case ChatMessageEncoder.encode_user(
+           ChatTransport.prefixed(text, deliveries),
+           AttachmentDelivery.blocks(deliveries)
+         ) do
       {:ok, line} ->
         Port.command(handle.port, line)
         {:ok, handle, %{written_bytes: byte_size(line)}}

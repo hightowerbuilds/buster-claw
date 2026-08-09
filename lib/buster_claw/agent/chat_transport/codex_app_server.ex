@@ -66,7 +66,9 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
   def start_turn(handle, text) do
     with {:ok, handle} <- ensure_thread(handle),
          {:ok, turn_id} <-
-           server().start_turn(server(), handle.session_id, text, model: handle.model) do
+           server().start_turn(server(), handle.session_id, prompt(handle, text),
+             model: handle.model
+           ) do
       {:ok, put_turn(handle, turn_id), turn_id}
     else
       {:error, reason} -> {:error, reason}
@@ -85,7 +87,7 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
         {:error, :no_active_turn}
 
       true ->
-        case server().steer(server(), handle.session_id, turn_ref, text) do
+        case server().steer(server(), handle.session_id, turn_ref, prompt(handle, text)) do
           {:ok, turn_id} -> {:ok, handle, %{turn_id: turn_id}}
           {:error, reason} -> {:error, reason}
         end
@@ -109,6 +111,20 @@ defmodule BusterClaw.Agent.ChatTransport.CodexAppServer do
     if ref(handle), do: server().unregister(server(), ref(handle))
     :ok
   end
+
+  # --- attachments ---------------------------------------------------------
+
+  # There is no argv here to hang codex's `-i` on and no inline channel to put
+  # bytes in — `turn/start` takes text. So an attachment travels the one way a
+  # server connection can always carry it: text inlined, everything else named by
+  # absolute path (`ChatTransport.path_only_deliveries/1`). Sending `-i` flags
+  # nowhere would be a silent drop; naming the path leaves codex's own file tools
+  # able to act.
+  #
+  # Unchanged text when the turn has no attachments, which is every turn today
+  # that is not carrying one.
+  defp prompt(handle, text),
+    do: ChatTransport.prefixed(text, ChatTransport.path_only_deliveries(handle))
 
   # --- thread lifecycle ----------------------------------------------------
 

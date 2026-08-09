@@ -40,6 +40,21 @@ defmodule BusterClaw.Agent.Chat do
   turn started afterwards. Callers must render the returned mode, never the
   requested one.
 
+  ## Attachments belong to a turn, not to a conversation
+
+  `submit/3` takes `:attachments`, and they ride with **that message only** —
+  they are never state here. A file dropped into one message that then waits in
+  the queue goes into the turn that message eventually becomes, and nothing
+  after it.
+
+  What this module does with them is deliberately narrow: resolve them to files
+  that exist and hand them to the transport. **How** a file reaches a CLI —
+  `--add-dir`, `-i`, `-f`, a base64 block, a path named in the prompt — is
+  `BusterClaw.Agent.ChatTransport`'s business, for the same reason argv is. There
+  are three ways a turn leaves the BEAM (a one-shot spawn, a duplex pipe, a
+  server connection) and applying the delivery here would have reached exactly
+  one of them.
+
   ## Discipline (borrowed from `BusterClaw.Dispatcher`)
 
   - **Serialized.** One turn in flight per conversation; anything submitted
@@ -58,6 +73,7 @@ defmodule BusterClaw.Agent.Chat do
 
   require Logger
 
+  alias BusterClaw.Agent.Attachments
   alias BusterClaw.Agent.ChatTransport
   alias BusterClaw.Agent.CodexAppServer
   alias BusterClaw.Agent.Deliveries
@@ -112,13 +128,30 @@ defmodule BusterClaw.Agent.Chat do
   end
 
   @doc """
-  Submit a user message with an explicit delivery mode.
+  Submit a user message with an explicit delivery mode, and optionally the files
+  that ride with it.
+
+  ## `:delivery`
 
   * `:auto` — today's behaviour, and what `send_message/2` asks for: start a turn
     when idle, queue it when a run is in flight.
   * `:next` — queue as its own follow-up turn, never touching the active one.
     Deliberate even when the chat is idle, where it is the same as starting a turn.
   * `:steer` — deliver into the ACTIVE turn.
+
+  ## `:attachments`
+
+  A list of `t:BusterClaw.Agent.Attachment.t/0` — what the composer was holding
+  when the operator hit send. They belong to **this message**: a queued message
+  keeps them until its turn runs, and nothing carries them into the turn after.
+
+  An entry may be the full staged record, or just its `:id` — the shape the
+  composer holds, which never needed a path. An id is resolved against
+  `BusterClaw.Agent.Attachments` **scoped to this conversation**, which is the
+  same containment `Attachments.get/2` provides everywhere else.
+
+  Omitting it, or passing `[]`, leaves the turn byte-identical to one from
+  before attachments existed.
 
   Returns `{:ok, effective_mode}` — the mode that actually happened, which is
   not always the one asked for:
@@ -141,9 +174,10 @@ defmodule BusterClaw.Agent.Chat do
           {:ok, :started | :queued | :steered | :sent} | {:error, term()}
   def submit(conv_id, text, opts \\ []) when is_binary(conv_id) and is_binary(text) do
     delivery = Keyword.get(opts, :delivery, :auto)
+    attachments = List.wrap(Keyword.get(opts, :attachments, []))
 
     with {:ok, _pid} <- ensure_started(conv_id) do
-      GenServer.call(via(conv_id), {:submit, text, delivery})
+      GenServer.call(via(conv_id), {:submit, text, delivery, attachments})
     end
   end
 
@@ -420,25 +454,25 @@ defmodule BusterClaw.Agent.Chat do
   # Enter and a backend accepting it. The row then follows the message to a
   # terminal state.
   @impl true
-  def handle_call({:submit, text, :steer}, _from, %{status: :running} = state),
-    do: steer_or_queue(state, text, record_delivery(state, text, :steer))
+  def handle_call({:submit, text, :steer, attachments}, _from, %{status: :running} = state),
+    do: steer_or_queue(state, text, attachments, record_delivery(state, text, :steer))
 
   # `:auto` and `:next` are the same thing while a run is in flight — the
   # message becomes its own turn once this one finishes. They differ only in
   # intent, which matters to the UI and to an audit, so both are recorded.
-  def handle_call({:submit, text, delivery}, _from, %{status: :running} = state) do
+  def handle_call({:submit, text, delivery, attachments}, _from, %{status: :running} = state) do
     row = record_delivery(state, text, delivery)
     row = Deliveries.transition(row, %{status: "queued", effective_mode: "queued"})
-    {:reply, {:ok, :queued}, enqueue(state, text, row)}
+    {:reply, {:ok, :queued}, enqueue(state, text, attachments, row)}
   end
 
   # Idle: every delivery mode starts a turn. There is no active turn to steer
   # into and nothing to queue behind, so honouring the literal request would
   # just make the operator wait for nothing.
-  def handle_call({:submit, text, delivery}, _from, state) do
+  def handle_call({:submit, text, delivery, attachments}, _from, state) do
     row = record_delivery(state, text, delivery)
 
-    case start_run(state, text, row) do
+    case start_run(state, text, attachments, row) do
       {:ok, state} -> {:reply, {:ok, :started}, state}
       {:error, reason, state} -> {:reply, {:error, reason}, state}
     end
@@ -621,9 +655,10 @@ defmodule BusterClaw.Agent.Chat do
 
   # --- run lifecycle ---
 
-  # Spawn a headless run for `text`. Returns `{:ok, state}` once streaming, or
-  # `{:error, reason, state}` if the spawn failed (already surfaced + audited).
-  defp start_run(state, text, row) do
+  # Spawn a headless run for `text`, carrying `attachments`. Returns `{:ok,
+  # state}` once streaming, or `{:error, reason, state}` if the spawn failed
+  # (already surfaced + audited).
+  defp start_run(state, text, attachments, row) do
     # A per-run token stamps the timeout timer so a stale `:run_timeout` (fired
     # just as its turn ended) can't be mistaken for the next run's timeout.
     token = System.unique_integer([:positive, :monotonic])
@@ -644,6 +679,11 @@ defmodule BusterClaw.Agent.Chat do
     # of which backend (`effective_agent/1` is a security call) and everything
     # downstream of the bytes.
     {transport, handle} = ensure_transport(state)
+
+    # The attachments are hung on the handle for this ONE call. Resolved here
+    # rather than at submit time because a queued message may have waited, and
+    # what matters is whether the file is on disk at the moment of the spawn.
+    handle = ChatTransport.put_attachments(handle, resolve_attachments(state, attachments))
 
     case transport.start_turn(handle, text) do
       {:ok, handle, turn_ref} ->
@@ -681,7 +721,10 @@ defmodule BusterClaw.Agent.Chat do
              # is not a race.
              session_id: handle.session_id || state.session_id,
              transport: transport,
-             handle: handle,
+             # Stored WITHOUT the attachments. A persistent transport's handle
+             # outlives its turn, and a screenshot that rode with one message
+             # must not be re-delivered with every message after it.
+             handle: ChatTransport.put_attachments(handle, []),
              persistent?: persistent?(transport),
              buf: "",
              raw_tail: [],
@@ -763,16 +806,26 @@ defmodule BusterClaw.Agent.Chat do
   # Append to the on-deck queue. Dispatched one-per-turn, in order, by
   # `dispatch_next/1`. In-memory only — Phase 6's ledger is what makes an
   # acknowledged message survive a crash.
-  defp enqueue(state, text, row), do: do_enqueue(state, text, row, :back)
+  defp enqueue(state, text, attachments, row),
+    do: do_enqueue(state, text, attachments, row, :back)
 
   # The completion race gets the FRONT. The operator aimed this message at work
   # that was happening a moment ago; making it wait behind messages they wrote
   # earlier would reorder their intent. Ordinary queue-next keeps its place in
   # line.
-  defp enqueue_front(state, text, row), do: do_enqueue(state, text, row, :front)
+  defp enqueue_front(state, text, attachments, row),
+    do: do_enqueue(state, text, attachments, row, :front)
 
-  defp do_enqueue(state, text, row, position) do
-    item = %{id: System.unique_integer([:positive, :monotonic]), text: text, delivery: row}
+  defp do_enqueue(state, text, attachments, row, position) do
+    item = %{
+      id: System.unique_integer([:positive, :monotonic]),
+      text: text,
+      # The files follow their message into the queue. They are the raw
+      # submission, not resolved records: resolution happens at the spawn, and a
+      # message can wait here for a long time.
+      attachments: attachments,
+      delivery: row
+    }
 
     queue =
       case position do
@@ -794,22 +847,94 @@ defmodule BusterClaw.Agent.Chat do
         position: :back
       )
 
+  # --- attachments ---
+
+  # Turn what the caller submitted into staged files that exist on disk RIGHT
+  # NOW, in submission order.
+  #
+  # Two shapes arrive here. The composer holds render maps — id, filename, size,
+  # kind — which never needed a path, so an entry without one is looked up in the
+  # store **scoped to this conversation**: that scoping is the containment, and
+  # it is the store's, not ours. An entry that already carries its path is the
+  # full staged record and is taken as given.
+  #
+  # A file that vanished between the operator hitting send and the turn spawning
+  # is DROPPED, and the turn runs without it. Both alternatives are worse:
+  # announcing a path that is not there sends the model looking for nothing, and
+  # failing the turn throws away the words the operator wrote — which are still
+  # in the message, still name the file, and are still worth answering.
+  defp resolve_attachments(_state, []), do: []
+
+  defp resolve_attachments(state, attachments) when is_list(attachments) do
+    staged = staged_index(state, attachments)
+
+    resolved =
+      attachments
+      |> Enum.map(&resolve_attachment(&1, staged))
+      |> Enum.filter(&on_disk?/1)
+
+    if length(resolved) < length(attachments) do
+      Logger.warning(
+        "Chat #{state.conv_id}: #{length(attachments) - length(resolved)} attachment(s) " <>
+          "were no longer staged at spawn time and did not ride with the turn"
+      )
+    end
+
+    resolved
+  rescue
+    # An unreadable staging directory costs the attachments, never the turn.
+    error ->
+      Logger.warning("Chat #{state.conv_id}: could not resolve attachments (#{inspect(error)})")
+      []
+  end
+
+  defp resolve_attachments(_state, _attachments), do: []
+
+  # The store is read once per turn, and only when something actually needs it:
+  # a caller holding full records costs no I/O at all.
+  defp staged_index(state, attachments) do
+    if Enum.all?(attachments, &staged_path?/1),
+      do: %{},
+      else: Map.new(Attachments.list(state.conv_id), &{&1.id, &1})
+  end
+
+  defp staged_path?(%{path: path}), do: is_binary(path)
+  defp staged_path?(_attachment), do: false
+
+  defp resolve_attachment(attachment, staged) do
+    if staged_path?(attachment),
+      do: attachment,
+      else: Map.get(staged, attachment_id(attachment))
+  end
+
+  defp attachment_id(%{id: id}), do: id
+  defp attachment_id(_attachment), do: nil
+
+  defp on_disk?(%{path: path}) when is_binary(path), do: File.regular?(path)
+  defp on_disk?(_attachment), do: false
+
   # Try to put `text` into the turn that is already running; fall back to the
   # queue when the backend cannot, or when the turn ended first.
   #
   # The fallback is not a failure path — it is the correct answer to the
   # completion race (roadmap scenario C), and the reason `submit/3` returns the
   # mode that HAPPENED rather than the one requested.
-  defp steer_or_queue(%{transport: nil} = state, text, row) do
+  defp steer_or_queue(%{transport: nil} = state, text, attachments, row) do
     row = Deliveries.transition(row, %{status: "queued", effective_mode: "queued"})
-    {:reply, {:ok, :queued}, enqueue(state, text, row)}
+    {:reply, {:ok, :queued}, enqueue(state, text, attachments, row)}
   end
 
-  defp steer_or_queue(state, text, row) do
+  defp steer_or_queue(state, text, attachments, row) do
+    # A steered message carries its own files, on the one transport that can
+    # take them mid-turn (claude's duplex pipe puts them in the message itself).
+    # Everywhere else the steer fails below and the message — attachments
+    # included — becomes the next turn instead.
+    handle = ChatTransport.put_attachments(state.handle, resolve_attachments(state, attachments))
+
     # Addressed to the TURN, not the port. Under a duplex transport the port
     # outlives the turn, so naming the port would happily steer a turn the
     # operator never saw.
-    case state.transport.steer(state.handle, state.turn_ref, text) do
+    case state.transport.steer(handle, state.turn_ref, text) do
       {:ok, handle, receipt} ->
         # A steered message belongs to the active turn: it is persisted and
         # shown as operator input, but it does not start a turn, so nothing
@@ -830,7 +955,14 @@ defmodule BusterClaw.Agent.Chat do
         })
 
         audit_delivery(state, mode, :steer)
-        state = emit_message(%{state | handle: handle}, :user, text, delivery: mode)
+
+        # Cleared on the way back into state, for the same reason `start_run/4`
+        # clears it: the handle outlives the message.
+        state =
+          emit_message(%{state | handle: ChatTransport.put_attachments(handle, [])}, :user, text,
+            delivery: mode
+          )
+
         {:reply, {:ok, mode}, state}
 
       # The turn ended between the operator hitting send and the adapter being
@@ -845,13 +977,13 @@ defmodule BusterClaw.Agent.Chat do
           |> Deliveries.move_to_front()
 
         audit_delivery(state, :demoted, :steer)
-        {:reply, {:ok, :queued}, enqueue_front(state, text, row)}
+        {:reply, {:ok, :queued}, enqueue_front(state, text, attachments, row)}
 
       # The backend simply cannot steer. This is an ordinary follow-up turn and
       # takes its place in line.
       {:error, _reason} ->
         row = Deliveries.transition(row, %{status: "queued", effective_mode: "queued"})
-        {:reply, {:ok, :queued}, enqueue(state, text, row)}
+        {:reply, {:ok, :queued}, enqueue(state, text, attachments, row)}
     end
   end
 
@@ -903,8 +1035,10 @@ defmodule BusterClaw.Agent.Chat do
     broadcast_queue(state)
 
     # The queued row follows its message into the turn, so a message that waited
-    # in the queue still ends in exactly one terminal state.
-    case start_run(state, next.text, next[:delivery]) do
+    # in the queue still ends in exactly one terminal state. So do its files —
+    # `[]` for a queue item recovered from the ledger, which stores the text and
+    # nothing else.
+    case start_run(state, next.text, next[:attachments] || [], next[:delivery]) do
       {:ok, state} -> state
       {:error, _reason, state} -> dispatch_next(state)
     end

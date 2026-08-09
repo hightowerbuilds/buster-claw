@@ -46,8 +46,36 @@ defmodule BusterClaw.Agent.ChatTransport do
   on at the **next tool boundary**, and the in-flight tool sets the wait. There is
   no mechanism anywhere here for reaching a model mid-inference, and adapters must
   not imply one.
+
+  ## Attachments are applied HERE, and that is deliberate
+
+  `Chat` decides *which* files ride with a turn; this layer decides *how* they
+  reach the CLI, because this is the layer that knows how the CLI is invoked at
+  all. `Chat` no longer builds an argv, and `AgentRunner` has no idea what an
+  attachment is — it takes `:extra_args` and a prompt, which is all a delivery
+  ever becomes.
+
+  There are three places a turn actually leaves the BEAM, and each takes its own
+  route through `BusterClaw.Agent.AttachmentDelivery`:
+
+  | Route | Applied in | What it can carry |
+  |---|---|---|
+  | one-shot spawn (`claude -p`, `codex exec`, `opencode run`) | `spawn_turn/3` below | `{:args, …}` and `{:prompt_prefix, …}` |
+  | duplex pipe (`ChatTransport.ClaudeDuplex`) | that adapter's `write/3` | `{:inline, …}` blocks and `{:prompt_prefix, …}` |
+  | a server connection (`CodexAppServer`, `OpenCodeServer`) | `path_only_deliveries/1` | `{:prompt_prefix, …}` only |
+
+  Applying this one layer up — in `Chat` — would have covered exactly one of
+  those and silently no-op'd the rest, which is the bug this wiring exists to
+  fix, reproduced one layer down.
+
+  **With no attachments every route is byte-identical to what shipped before they
+  existed**: `AttachmentDelivery.deliveries/3` answers `[]` for an empty list, so
+  the argv gains `++ []`, the prompt gains nothing, and the JSONL line keeps its
+  bare-string `content`.
   """
 
+  alias BusterClaw.Agent.Attachment
+  alias BusterClaw.Agent.AttachmentDelivery
   alias BusterClaw.AgentBackend
 
   @typedoc """
@@ -60,6 +88,11 @@ defmodule BusterClaw.Agent.ChatTransport do
   `:session_id` and `:port` are written by `Chat` as it parses the stream —
   `Chat` is the one that sees the events, so it is the one that learns the
   session id.
+
+  `:attachments` is the one field that belongs to a **turn** rather than to the
+  conversation. `Chat` writes it immediately before every `start_turn/2` and
+  `steer/3` and clears it immediately after, so a file dropped for one message
+  cannot ride along with the next — see `put_attachments/2`.
   """
   @type t :: %__MODULE__{
           agent: atom(),
@@ -70,7 +103,8 @@ defmodule BusterClaw.Agent.ChatTransport do
           model: String.t() | nil,
           spawner: (String.t(), keyword() -> {:ok, term()} | {:error, term()}),
           port: term() | nil,
-          conn: term() | nil
+          conn: term() | nil,
+          attachments: [Attachment.t()]
         }
 
   defstruct agent: nil,
@@ -81,7 +115,8 @@ defmodule BusterClaw.Agent.ChatTransport do
             model: nil,
             spawner: nil,
             port: nil,
-            conn: nil
+            conn: nil,
+            attachments: []
 
   @typedoc """
   What a backend can do, and what it can prove.
@@ -174,19 +209,84 @@ defmodule BusterClaw.Agent.ChatTransport do
   def put_session(handle, _id), do: handle
 
   @doc """
+  Hang `attachments` on the handle for the NEXT call only.
+
+  It is scratch space, not conversation state. `Chat` sets it before each
+  `start_turn/2` or `steer/3` and puts `[]` back on the handle it stores, because
+  a persistent transport's handle outlives its turn and a screenshot dropped into
+  one message must not be re-delivered with every message after it.
+
+  Tolerates a nil handle for the same reason `put_session/2` does.
+  """
+  @spec put_attachments(t() | nil, [Attachment.t()]) :: t() | nil
+  def put_attachments(nil, _attachments), do: nil
+
+  def put_attachments(handle, attachments) when is_list(attachments),
+    do: %{handle | attachments: attachments}
+
+  @doc """
+  The deliveries this handle's attachments need, on this handle's backend.
+
+  `:duplex` is passed through to `AttachmentDelivery.deliveries/3` — `true` only
+  on claude's streaming-input path, which is the one route that can carry bytes.
+  """
+  @spec deliveries(t(), keyword()) :: [Attachment.delivery()]
+  def deliveries(handle, opts \\ []),
+    do: AttachmentDelivery.deliveries(handle.agent, handle.attachments, opts)
+
+  @doc """
+  Deliveries for a transport that has **no argv and no inline channel** — the two
+  server-backed adapters, which reach their backend over JSON-RPC or HTTP.
+
+  The backend is deliberately asked for as `nil`. That is not a backend name and
+  is not meant to be one: `AttachmentDelivery` has no flag and no directory grant
+  for an unrecognised backend, so every attachment resolves to the one mechanism
+  a server connection can actually deliver — text inlined into the prompt, and
+  everything else named there by absolute path. Asking as `:codex` here would
+  produce `-i` flags with nowhere to put them, which is a silent drop.
+  """
+  @spec path_only_deliveries(t()) :: [Attachment.delivery()]
+  def path_only_deliveries(handle), do: AttachmentDelivery.deliveries(nil, handle.attachments)
+
+  @doc """
+  `prompt` with any attachment prefix in front of it.
+
+  Returns `prompt` **unchanged** when there is no prefix, which is what keeps an
+  ordinary turn byte-identical.
+  """
+  @spec prefixed(String.t(), [Attachment.delivery()]) :: String.t()
+  def prefixed(prompt, deliveries) do
+    case AttachmentDelivery.prompt_prefix(deliveries) do
+      "" -> prompt
+      prefix -> prefix <> "\n\n" <> prompt
+    end
+  end
+
+  @doc """
   Spawn a one-shot streaming turn: the shape every adapter used before this
-  module existed, and still the shape all three use in Phase 1.
+  module existed, and still the shape the three pipe adapters use.
 
   `argv_extra` is the backend's own flag list; `prompt` is whatever that backend
-  wants as its positional prompt.
+  wants as its positional prompt. Attachment flags are appended AFTER the
+  backend's own — `--add-dir`, `-i` and `-f` are all order-independent, and
+  keeping them last means the argv a reader already knows stays where it was.
   """
   @spec spawn_turn(t(), String.t(), [String.t()]) :: {:ok, t(), reference()} | {:error, term()}
   def spawn_turn(handle, prompt, argv_extra) do
+    # `deliveries/2` with no `:duplex`, because this function IS the non-duplex
+    # path: a positional prompt and a process that ends with its turn. There is
+    # no channel here for an inline block, and `AttachmentDelivery` knows it.
+    deliveries = deliveries(handle)
+
     opts =
-      [extra_args: argv_extra, login: true, agent: handle.agent]
+      [
+        extra_args: argv_extra ++ AttachmentDelivery.args(deliveries),
+        login: true,
+        agent: handle.agent
+      ]
       |> maybe_put(:permission_mode, handle.permission_mode)
 
-    case handle.spawner.(prompt, opts) do
+    case handle.spawner.(prefixed(prompt, deliveries), opts) do
       {:ok, port} ->
         # The port doubles as the turn ref while turns are one-shot: there is
         # exactly one turn per process, so they identify the same thing. Phase 2

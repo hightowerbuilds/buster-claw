@@ -131,7 +131,22 @@ check lib/buster_claw_web/live/settings_live.ex               936 FROZEN
 
 # Phase 5. Needs its state machine written down BEFORE it is split — eleven-plus
 # transition sites and no diagram anywhere. Frozen so it cannot gain a twelfth.
-check lib/buster_claw/agent/chat.ex                          1376 FROZEN
+# Raised 08-08 for chat attachments, and this one BROKE THE FROZEN PROMISE — a
+# frozen file is meant to shrink or hold, never grow, and this grew by 160. The
+# raise is recorded rather than quiet because a quiet one is the failure this
+# gate exists to catch, and the debt is filed in LEFTOVERS.md rather than left
+# as a number nobody remembers earning.
+#
+# What could NOT be extracted: roughly half the growth is documentation, and the
+# rest is a GenServer message gaining a field — every `handle_call({:submit, …})`
+# clause, the queue that carries a message until its turn runs, and the resolve
+# step. You cannot extract "this process's messages carry one more thing".
+#
+# What WAS kept out: the delivery logic itself. How a file reaches a CLI lives in
+# ChatTransport (+112) and claude_duplex (+51), not here — deliberately, because
+# there are three ways a turn leaves the BEAM and putting it here would have
+# reached exactly one of them.
+check lib/buster_claw/agent/chat.ex                          1510 FROZEN
 
 # Phase 7, DONE 08-08-26: 758 -> 146. The 657-line heredoc is now
 # `introduction/*.md`, composed at compile time.

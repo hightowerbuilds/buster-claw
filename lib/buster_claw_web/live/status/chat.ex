@@ -118,11 +118,13 @@ defmodule BusterClawWeb.Status.Chat do
   # that reason — telling the operator "steered" for a message that was queued
   # is the single most damaging bug this surface can have.
   def do_send(socket, conv_id, text, delivery) do
-    # Attachments ride as a citation fence on the persisted text (so a reload can
-    # find them again — see `ChatAttachments`) AND as a `:attachments` option, so
-    # the backend layer can deliver the files themselves without re-parsing prose.
-    # `Chat.submit/3` reads only `:delivery` today and ignores the rest, which is
-    # what makes shipping this half before the delivery half safe.
+    # Attachments ride two ways, and both are load-bearing. The citation fence on
+    # the persisted text is how a RELOAD finds them again (see `ChatAttachments`);
+    # the `:attachments` option is how the MODEL gets them — `Chat.submit/3`
+    # carries it to `ChatTransport`, which turns it into `--add-dir`, `-i`, `-f`
+    # or a base64 block depending on the backend. Neither substitutes for the
+    # other: drop the fence and a reload shows nothing, drop the option and the
+    # send looks perfect while the model never sees the file.
     attachments = ChatAttachments.pending(socket)
     wire = ChatAttachments.marker(text, attachments)
 
