@@ -47,6 +47,7 @@ a minimalist Home sub-tab.**
 - [Part VII — What this does not solve](#part-vii--what-this-does-not-solve)
 - [Part VIII — Risks](#part-viii--risks)
 - [Part IX — Open questions for the operator](#part-ix--open-questions-for-the-operator)
+- [Part X — The long horizon: BusterClaw ships as Pocket #0](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0)
 
 ---
 
@@ -530,3 +531,160 @@ storage.
    files. Unmounting a mounted Pocket deletes nothing. Those are different enough
    that the UI should probably use two different words, and I would like to know
    which two.
+
+---
+
+## Part X — The long horizon: BusterClaw ships as Pocket #0
+
+**Direction, not commitment.** Nothing here is a phase. It exists because the
+operator's read of where this ends up — *"most of the BC UI will be a Pocket"* —
+is **largely right**, and getting the near phases wrong would foreclose it. This
+part says which parts of that are true, which part is a trap, and the four things
+found by reading that decide it.
+
+### X.1 — "The UI" is three layers, and they are not equally safe
+
+| Layer | What it is | Is it data? | Verdict |
+|---|---|---|---|
+| **L1 — Assets** | icons, fonts, chimes, banners, backgrounds, imagery | yes, natively | **Safe.** Already this roadmap's subject. |
+| **L2 — Tokens** | palette, radii, border width, depth, noise | **yes, already** | **Safe, and nearly free.** See X.2. |
+| **L3 — Structure** | layout, which panels exist, what a screen contains | **no** | **The trap.** See X.4. |
+
+**"Most of the BC UI as a Pocket" is true and reachable for L1 + L2, and those
+two are most of what a person means by "the UI" when they look at it.** L3 is
+where the sentence stops being true, and it is worth knowing exactly where that
+line falls before building toward it.
+
+### X.2 — L2 is already a data structure, which is the finding that makes this real
+
+The app is **already fully token-driven** and nobody planned it as a Pocket
+substrate:
+
+- `assets/css/app.css:53` and `:91` declare **two complete named themes**,
+  `dark` and `light`, through the daisyUI theme plugin.
+- Each is **~25 CSS custom properties** — `--color-primary`, `--color-base-100`,
+  `--color-base-content`, `--radius-field`, `--border`, `--depth`, `--noise`.
+- Switching is already `[data-theme="…"]` (`app.css:549`), already live.
+- Only **12 files** in all of `lib/buster_claw_web/` still hardcode a hex, and
+  most are standalone documents served *outside* the app shell — browser chrome,
+  the OAuth page, the workspace index — not the shell itself.
+
+**So a theme in this app is already ~25 values in a table.** A Pocket that
+supplies a theme supplies those 25 values. That is not an architecture; it is a
+manifest with a colour section, and it is the single highest-leverage thing on
+this whole horizon.
+
+**Caveat, and it is a real one.** The 5-slot chart palette is sole-sourced and
+carries a standing rule: *promote it, never copy it.* A user-supplied palette
+must **not** silently become the palette that validated data visualisations are
+drawn with. Theme tokens and the data palette are different tables and should
+stay different, however similar they look.
+
+### X.3 — The strong version: the app's own defaults become Pocket #0
+
+Rather than "shipped defaults, plus a custom override" — which is the branch that
+exists in every feature that has ever had a default — **BusterClaw ships its own
+assets and tokens as a built-in Pocket, and a user Pocket shadows it by role.**
+
+    role :app_icon
+      ├─ user pocket "hazard-icons"   ← wins if it declares the role
+      └─ pocket #0 (shipped)          ← always present, always complete
+
+Three things fall out of that, and the third is the important one:
+
+1. **One code path.** No `if custom, do: …, else: …` scattered across surfaces. A
+   surface asks a role; something always answers.
+2. **Pocket #0 is a working reference.** The best documentation for "what goes in
+   an icons Pocket" is a correct icons Pocket the operator can open and read.
+3. **The mechanism becomes self-consuming — which is the complete answer to the
+   risk that killed extensions.** D7 asks for one consumer so Pockets isn't a
+   mechanism serving nothing. Pocket #0 makes *the entire app* the consumer.
+   `backgrounds/` stops being "the first consumer" and becomes "the first of N."
+
+### X.4 — Where the line falls, and why L3 is the trap
+
+L3 — layout, panel composition, what a screen *contains* — is **code**. HEEx
+compiles. A data-driven layout requires a layout language, a layout language
+requires an interpreter, and an interpreter is an engine this project would
+maintain forever.
+
+That is precisely the shape that died on 08-08, one level up:
+
+> *"Keeping it would have been exactly the speculative breadth the critical
+> review diagnosed, one layer up."* — the extensions archive banner
+
+**And the CSP already draws the line for us, which is the tell that it is the
+right line:**
+
+| | Directive | Where | Meaning for Pockets |
+|---|---|---|---|
+| **Permitted** | `style-src 'self' 'unsafe-inline'` | `content_security_policy.ex:79` | a Pocket may supply **appearance** — tokens on `:root` |
+| **Forbidden** | `script-src 'self'` | `content_security_policy.ex:77` | a Pocket may **never** supply behaviour |
+
+The browser is already enforcing the data/code split that D1 states as a rule.
+**The safe layers are exactly the permitted ones.** That is not a coincidence, and
+it means L3 does not need a new argument to be refused — it needs only the one
+already shipped.
+
+The exception that is already handled: a whole *page* as a Pocket
+([D8](#d8--an-app-pocket-is-a-page-bundle-not-a-program)) is fine, because it is a
+document served in its own context under the same CSP — not the app's chrome
+rearranged.
+
+### X.5 — Four constraints to lock before building toward this
+
+**X.5.a — Pocket #0 lives read-only in `priv/`. It is never seeded into the
+workspace.**
+
+This is the detail that makes the whole idea work, and it comes from a known open
+problem: **seeded defaults have no upgrade path.** `maybe_write` never overwrites,
+so anything laid into the workspace at install can never be corrected by a later
+build — the same trap `memory/policy.md` and the trusted-sender lists are already
+sitting in.
+
+If BC's default assets were seeded, **the app could never fix its own icons.**
+Read-only in `priv/` plus role shadowing *avoids* that trap rather than joining
+it, and it costs nothing: `priv/static` is already read-only in the packaged
+release, which is exactly why `backgrounds/` lives in the workspace
+(`appearance.ex:8`).
+
+**X.5.b — Consent surfaces are never Pocket-driven.**
+
+Any surface that asks the operator to *authorise* something — the permission
+prompt, the mount screen itself, the browser's purchase gate, a trust
+escalation — renders from shipped tokens only.
+
+A themeable confirm dialog is a phishing kit. This is cheap to hold now and
+extremely expensive to retrofit after surfaces have been built assuming they can
+be styled.
+
+**X.5.c — A UI-supplying Pocket is operator-authored, never agent-authored.**
+
+Extensions Part V's containment applies unchanged: an unattended run may *author*,
+never *install*. Reshaping the app's own chrome is strictly more dangerous than
+the extension case it was written for, so the gate is at least as tight — and it
+should be the **same gate**, not a second one written from memory.
+
+**X.5.d — Roles are the shadowing key, so the role table is load-bearing.**
+
+Everything above keys on roles. That moves the role table from "a nice
+indirection" to "the interface the app's own appearance is defined against," and
+it means **Phase 2's role design deserves more care than its size suggests.** A
+role added later is cheap; a role *named wrong* early is not.
+
+### X.6 — What this changes in the near phases
+
+**Phases 0–3 do not change.** That is the point of writing this down now: the
+horizon is reachable from the plan already scoped, which is the evidence that the
+plan is not pointed the wrong way.
+
+Two adjustments, both small:
+
+- **Phase 2's role table gets designed as an interface**, per X.5.d — named for
+  what a surface *needs*, not for what today's folders happen to hold.
+- **Phase 6 "open space" now has a named candidate**: Pocket #0 and the theme
+  Pocket. It stays open space; it is no longer blank.
+
+**What would have to be true before starting any of it:** Pockets survives its own
+Phase 2. If `backgrounds/` cannot migrate cleanly, none of Part X is reachable and
+none of it should be attempted.
