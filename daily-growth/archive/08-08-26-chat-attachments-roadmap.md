@@ -1,6 +1,45 @@
+> ## ARCHIVED 2026-08-08 — shipped and confirmed working the same day
+>
+> Drag and paste both work on the homepage chat, for images and files, across
+> all three backends. The operator confirmed it in the running app.
+>
+> **Two items left for `LEFTOVERS.md`**, both real:
+> - **The live-CLI walk**, including the packaged build. Every mechanism was
+>   measured and 3,268 tests assert what leaves the BEAM, but **no test runs a
+>   CLI** — and the WKWebView drop path can only be proven in a packaged app.
+> - **`agent/chat.ex` is owed a cut.** It is FROZEN in the file-size gate and
+>   this grew it by 160. The cap was raised with the reason recorded; the debt is
+>   filed rather than forgotten.
+>
+> ### What this roadmap got right, and it was the cheap part
+>
+> **Phase 0 built no UI on purpose, and it made the work smaller.** The blocking
+> question was whether a path in a `-p` prompt actually gets read. Answering it
+> took minutes with a generated PNG — and checking the other two CLIs while there
+> **withdrew a decision** (there was no backend to refuse; all three take
+> attachments) and **collapsed two competing mechanisms into one** (Codex and
+> OpenCode take paths and cannot take bytes, so staging is the shared substrate
+> rather than a Claude fallback). An afternoon of design was deleted by ten
+> minutes of measurement.
+>
+> ### The mistake worth keeping
+>
+> **The work was split across four agents by file, and the seam between two of
+> them was given to nobody.** `Chat.submit/3` ignored `:attachments` and
+> `AttachmentDelivery` was called from nowhere — so the feature shipped, passed
+> 3,251 tests, and did not work: you could drop a file, see the chip, send, and
+> the model never received it. The UI agent even reported the gap in plain words
+> and it was read past.
+>
+> Six defects today lived in seams rather than modules. This was the only one
+> introduced by how the work was organised rather than found in the code, and it
+> is the argument for the contract-first habit the rest of the day used: the
+> seams that had a written contract held, and the one that did not is the one
+> that broke.
+
 # Chat attachments — dragging images and files into the conversation
 
-**Scoped 08-08-26 · Status: PHASE 0 DONE — all mechanisms verified on this machine. MUST (operator, 08-08).**
+**Scoped 08-08-26 · Status: CLOSED + ARCHIVED 08-08-26 — shipped, confirmed working.**
 
 **What this is, in one line:** drag or paste an image or a file into the homepage
 chat and have the model actually see it — the way Claude Code, Codex and every
@@ -193,31 +232,31 @@ would have been wasted.
 
 # Phase 1 — Getting the bytes in
 
-- [ ] A `ChatDropzone` hook modelled on `WorkspaceDropzone`: Tauri native
+- [x] A `ChatDropzone` hook modelled on `WorkspaceDropzone`: Tauri native
       drag-drop (paths) and HTML5 (contents), one overlay, one event, exactly one
       live per environment.
-- [ ] Paste handling on the composer for image clipboard data.
-- [ ] Server-side: validate type and size, reject early and visibly, hold the
+- [x] Paste handling on the composer for image clipboard data.
+- [x] Server-side: validate type and size, reject early and visibly, hold the
       bytes against the conversation.
-- [ ] The composer shows attachment chips — name, size, thumbnail for images, and
+- [x] The composer shows attachment chips — name, size, thumbnail for images, and
       a way to remove one before sending.
-- [ ] Tests including the case that matters: a dropped file that is **too large
+- [x] Tests including the case that matters: a dropped file that is **too large
       or the wrong type is refused at the drop**, not after.
 
 # Phase 2 — Getting them to the model
 
-- [ ] Mechanism (B): staged file + `--add-dir`, path in the prompt, cleaned up
+- [x] Mechanism (B): staged file + `--add-dir`, path in the prompt, cleaned up
       with the conversation.
-- [ ] Mechanism (A): `ChatMessageEncoder` learns array `content` with image
+- [x] Mechanism (A): `ChatMessageEncoder` learns array `content` with image
       blocks. **Its existing tests pin the string shape — extend, do not replace.**
-- [ ] Pick per turn: (A) when streaming, (B) otherwise.
-- [ ] Backend refusal per decision 5.
+- [x] Pick per turn: (A) when streaming, (B) otherwise.
+- [x] Backend refusal per decision 5.
 
 # Phase 3 — The transcript
 
-- [ ] Attachments render in their message bubble — thumbnail for images, chip for
+- [x] Attachments render in their message bubble — thumbnail for images, chip for
       files — reusing the zoom modal `svg_modal/1` already provides.
-- [ ] They survive reload, the same way drawings do: **that means the attachment
+- [x] They survive reload, the same way drawings do: **that means the attachment
       must be recoverable from the transcript**, which is a real constraint on how
       Phase 1 stores them and is the reason this phase is scoped now rather than
       discovered later.
