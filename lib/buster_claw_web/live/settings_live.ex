@@ -20,6 +20,7 @@ defmodule BusterClawWeb.SettingsLive do
   use BusterClawWeb, :live_view
 
   alias BusterClaw.AgentBackend
+  alias BusterClaw.Clinch
   alias BusterClaw.Google
   alias BusterClaw.Google.CalendarSync
   alias BusterClaw.Google.Gmail
@@ -63,9 +64,13 @@ defmodule BusterClawWeb.SettingsLive do
      |> assign(:profile_name, Setup.profile_name())
      |> assign(:profile_org, Setup.profile_org())
      |> assign(:profile_note, nil)
-     |> assign(:recovery_key, Recovery.recovery_key())
-     |> assign(:recovery_revealed, false)
+     # The recovery key is deliberately NOT assigned. It used to be — which put
+     # the value that decrypts every other credential into a LiveView payload and
+     # a rendered diff. The `RecoveryKey` hook reads it from the Keychain through
+     # the desktop shell instead, so it never reaches the server and cannot cross
+     # a tunnel (Clinch Phase 2).
      |> assign(:restore_path, Recovery.restore_file_path())
+     |> assign(:clinch_entries, Clinch.list())
      |> assign_status()}
   end
 
@@ -319,8 +324,10 @@ defmodule BusterClawWeb.SettingsLive do
     {:noreply, push_navigate(socket, to: ~p"/setup")}
   end
 
-  def handle_event("toggle_recovery", _params, socket) do
-    {:noreply, update(socket, :recovery_revealed, &(not &1))}
+  # The shell stored or forgot a credential. Re-read the listing — names and
+  # metadata only; the value was never here and is not arriving now.
+  def handle_event("clinch:changed", _params, socket) do
+    {:noreply, assign(socket, :clinch_entries, Clinch.list())}
   end
 
   @impl true
@@ -695,37 +702,8 @@ defmodule BusterClawWeb.SettingsLive do
           </button>
         </section>
 
-        <section class="ic-panel space-y-4 p-6">
-          <h2 class="ic-eyebrow">Recovery key</h2>
-          <p class="text-sm text-base-content/70">
-            This key encrypts every credential Buster Claw stores — Google tokens,
-            integration secrets. It lives in your system keychain. Back it up to
-            move Buster Claw to another machine; anyone with it can decrypt your
-            data, so keep it somewhere safe.
-          </p>
-          <div :if={@recovery_key} class="space-y-3">
-            <button type="button" phx-click="toggle_recovery" class={button_outline()}>
-              {if @recovery_revealed, do: "Hide key", else: "Reveal key"}
-            </button>
-            <div :if={@recovery_revealed} class="space-y-3">
-              <input
-                type="text"
-                readonly
-                value={@recovery_key}
-                aria-label="Recovery key"
-                class="input w-full font-mono text-xs"
-              />
-              <p class="text-xs text-base-content/60">
-                To restore on a new machine: save this value, then before first
-                launch create a file named <code class="font-mono">RESTORE_SECRET_KEY</code>
-                containing it at <code class="break-all font-mono">{@restore_path}</code>.
-              </p>
-            </div>
-          </div>
-          <p :if={is_nil(@recovery_key)} class="text-sm text-base-content/60">
-            No recovery key is configured in this environment.
-          </p>
-        </section>
+        <BusterClawWeb.ClinchPanels.clinch_panel entries={@clinch_entries} />
+        <BusterClawWeb.ClinchPanels.recovery_panel restore_path={@restore_path} />
       </section>
     </Layouts.app>
     """

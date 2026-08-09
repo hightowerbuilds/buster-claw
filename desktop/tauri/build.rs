@@ -45,6 +45,9 @@ fn main() {
             "browser_find",
             "browser_find_count",
             "browser_set_content_blocking",
+            "clinch_put",
+            "clinch_delete",
+            "clinch_reveal_recovery_key",
         ]),
     ))
     .expect("failed to run tauri-build");

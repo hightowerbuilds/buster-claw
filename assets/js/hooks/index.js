@@ -31,6 +31,7 @@ import {ChatWindow} from "./chat_window.js"
 import {Composer} from "./composer.js"
 import {NoteEditor} from "./note_editor.js"
 import {NotesKeys} from "./notes_keys.js"
+import {ClinchManager, RecoveryKey} from "./clinch.js"
 
 export const Hooks = {
   PortfolioChart,
@@ -71,4 +72,6 @@ export const Hooks = {
   SoundPreview,
   NoteEditor,
   NotesKeys,
+  ClinchManager,
+  RecoveryKey,
 }

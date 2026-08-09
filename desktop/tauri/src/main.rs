@@ -13,6 +13,7 @@ use rand::Rng;
 use tauri::{Manager, RunEvent};
 
 mod browser;
+mod clinch;
 mod terminal;
 mod voice;
 mod workspace;
@@ -473,7 +474,10 @@ fn main() {
             browser::browser_find_count,
             browser::browser_set_content_blocking,
             voice::speak,
-            voice::stop_speaking
+            voice::stop_speaking,
+            clinch::clinch_put,
+            clinch::clinch_delete,
+            clinch::clinch_reveal_recovery_key
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

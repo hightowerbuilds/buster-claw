@@ -351,6 +351,24 @@
           "markdownDescription": "Enables the browser_wait_active command without any pre-configured scope."
         },
         {
+          "description": "Enables the clinch_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clinch-delete",
+          "markdownDescription": "Enables the clinch_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the clinch_put command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clinch-put",
+          "markdownDescription": "Enables the clinch_put command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the clinch_reveal_recovery_key command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clinch-reveal-recovery-key",
+          "markdownDescription": "Enables the clinch_reveal_recovery_key command without any pre-configured scope."
+        },
+        {
           "description": "Enables the speak command without any pre-configured scope.",
           "type": "string",
           "const": "allow-speak",
@@ -571,6 +589,24 @@
           "type": "string",
           "const": "deny-browser-wait-active",
           "markdownDescription": "Denies the browser_wait_active command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clinch_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clinch-delete",
+          "markdownDescription": "Denies the clinch_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clinch_put command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clinch-put",
+          "markdownDescription": "Denies the clinch_put command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clinch_reveal_recovery_key command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clinch-reveal-recovery-key",
+          "markdownDescription": "Denies the clinch_reveal_recovery_key command without any pre-configured scope."
         },
         {
           "description": "Denies the speak command without any pre-configured scope.",

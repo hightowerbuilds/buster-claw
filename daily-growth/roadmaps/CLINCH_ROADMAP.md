@@ -264,9 +264,44 @@ guards). `mix precommit` green. Zero behavior change visible to a user.
 
 ---
 
-## Phase 2 — The management gate
+## Phase 2 — The management gate — **DONE 08-08**
 
 Three new Tauri commands, and the plaintext leaves the web layer.
+
+**Shipped:** `clinch_put` / `clinch_delete` / `clinch_reveal_recovery_key` in
+`src/clinch.rs`, registered in all three lockstep places. `POST|DELETE
+/api/clinch` behind a new `:api_trusted` pipeline (`ApiAuth` then
+`RequireTrusted`) — **no GET, ever**. `assets/js/lib/clinch.js` (pure, 12 bun
+tests) with `hooks/clinch.js` as the DOM shell, and both panels extracted to
+`BusterClawWeb.ClinchPanels`.
+
+**`RequireTrusted` is a floor, not a tier.** `ApiAuth` alone would admit the MCP
+token and the agent-untrusted token — both are *valid* tokens, one handed to
+external agents and one to a headless run working open-internet content.
+`Commands.call/3` never sees these routes, so there is no per-command tier to
+fall back on. Anything that is not `:trusted` gets 403.
+
+**The recovery key is no longer a server assign.** It used to be assigned at
+mount and rendered into a readonly input — so the value that decrypts every other
+credential was in the socket's assigns and the rendered diff on *every* visit to
+Settings, revealed or not. Rust now reads the Keychain directly and hands it to a
+node the hook owns.
+
+**Two things worth carrying forward.** The kind arrives as a string and is matched
+against the declared enum rather than `String.to_atom/1`d — request input must not
+be able to grow the atom table, and the test asserts the string never became an
+atom at all. And `settings_live` blew its frozen size cap, so the panels were
+**extracted** rather than the cap raised: Phase 3 grows this surface further, and
+raising a cap twice for the same screen is how the last two decompositions were
+undone.
+
+**Verified by breaking each guard.** Deleting one capability entry fails
+`acl_lockstep` naming the command. Restoring the `@recovery_key` assign fails
+`SettingsRecoveryKeyTest` with "settings_live still assigns the recovery key".
+
+**Not yet done from this phase's own text:** integrations have not moved onto this
+path, so finding #5 (the `type="password"` round-trip in `integrations_live`) is
+still open. It closes in Phase 3 when `:service_key` gets a writable home.
 
 - `clinch_put`, `clinch_delete`, `clinch_reveal_recovery_key`. Registered in all
   three lockstep places; `tests/acl_lockstep.rs` covers the drift for free.

@@ -34,6 +34,9 @@
     "allow-browser-extract-active",
     "allow-browser-render-page",
     "allow-speak",
-    "allow-stop-speaking"
+    "allow-stop-speaking",
+    "allow-clinch-put",
+    "allow-clinch-delete",
+    "allow-clinch-reveal-recovery-key"
   ]
 }

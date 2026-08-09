@@ -17,14 +17,26 @@ defmodule BusterClawWeb.SettingsLiveTest do
     refute response =~ secret_key_base()
   end
 
-  test "revealing the recovery key shows the configured secret", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/settings")
-    refute render(view) =~ secret_key_base()
+  # Was: "revealing the recovery key shows the configured secret" — it clicked
+  # Reveal and asserted the key appeared in the re-rendered HTML. That behaviour
+  # was removed deliberately in Clinch Phase 2: revealing the master key is now a
+  # Keychain read performed by the desktop shell, written into a DOM node the
+  # `RecoveryKey` hook owns. There is no server round-trip to assert on, which is
+  # the point — the key that decrypts every other credential is no longer a
+  # LiveView assign, so it cannot cross a tunnel.
+  #
+  # The replacement assertions live in `SettingsRecoveryKeyTest`.
+  test "revealing is a client-side affair — no phx-click, no server round-trip", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/settings")
 
-    html = view |> element("button", "Reveal key") |> render_click()
-
-    assert html =~ secret_key_base()
+    assert html =~ ~s(phx-hook="RecoveryKey")
+    assert html =~ "data-recovery-toggle"
     assert html =~ "RESTORE_SECRET_KEY"
+
+    refute html =~ "toggle_recovery",
+           "the old server-side reveal event is still wired up"
+
+    refute render(view) =~ secret_key_base()
   end
 
   describe "the harness picker" do

@@ -42,6 +42,16 @@ defmodule BusterClawWeb.Router do
     plug BusterClawWeb.ApiAuth
   end
 
+  # The Clinch's management routes. `ApiAuth` establishes *which* token is
+  # calling; `RequireTrusted` insists it be the full one. Credential management
+  # has no per-command tier to fall back on, so the floor is set at the router
+  # where it can be read.
+  pipeline :api_trusted do
+    plug :accepts, ["json"]
+    plug BusterClawWeb.ApiAuth
+    plug BusterClawWeb.RequireTrusted
+  end
+
   scope "/", BusterClawWeb do
     pipe_through :browser
 
@@ -187,6 +197,17 @@ defmodule BusterClawWeb.Router do
     pipe_through :api_authenticated
 
     post "/run", ApiController, :run
+  end
+
+  # Credential management. The only write path into the Clinch, and reachable
+  # only by the full token — which is why the desktop shell, the one thing that
+  # holds it and can be invoked from the UI, is load-bearing rather than
+  # decorative. There is deliberately no GET: nothing returns a value.
+  scope "/api", BusterClawWeb do
+    pipe_through :api_trusted
+
+    post "/clinch", ClinchController, :put
+    delete "/clinch", ClinchController, :delete
   end
 
   # Other scopes may use custom stacks.

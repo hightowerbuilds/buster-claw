@@ -16,13 +16,17 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["unstable"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# `json` is for the Clinch management gate (src/clinch.rs), which POSTs a
+# credential to the app's own loopback API rather than letting it travel as a
+# LiveView payload.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 portpicker = "0.1"
 dirs = "5"
 rand = "0.8"
 portable-pty = "0.8"
 keyring = "2"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 base64 = "0.22"
 # Already in the tree via tauri (tauri::Url IS url::Url); a direct dep so the
 # pure labels module can name the type without importing tauri.
