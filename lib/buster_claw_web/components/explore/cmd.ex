@@ -228,6 +228,10 @@ defmodule BusterClawWeb.Explore.Cmd do
         n={1}
         title="Capture the day"
         want="Notes, documents, reminders — the desk-drawer commands."
+        needs="Nothing. These are the commands that work on a fresh install with nothing connected."
+        touches="Writes three local things: a markdown file in your Library, a line on today's journal, and one pending reminder. Nothing leaves the machine."
+        confirm="None of the three is gated. They are restricted, audited mutations — cheap, local, and visible where they land."
+        result="The document in your Library, the line on the Activity sub-tab, and the timer counting down in the corner widget. All three are files or rows you can go look at."
       >
         <.prompt text="Save that plan as a document called weekend-projects, note in my journal that the deck order shipped, and remind me in 45 minutes to check the oven." />
         <ol class="ic-unfold">
@@ -246,23 +250,46 @@ defmodule BusterClawWeb.Explore.Cmd do
         </ol>
       </.example>
 
+      <%!-- Cycle 2 was "The market at a glance" (finance_quote/news/fundamentals/
+            filings) until 08-08, when the operator called it: trading is not part
+            of what Explore teaches any more. The finance_* commands still exist and
+            are still on /cmd-list — they simply stopped being one of the six things
+            the atlas puts in front of a first-time user. The notebook replaced it
+            because it carries a better lesson: two write verbs that look alike and
+            are not interchangeable, and a concurrency rule you can actually hit. --%>
       <.example
         n={2}
-        title="The market at a glance"
-        want="Quotes, news and filings — without opening a single site."
+        title="The notebook and the vault"
+        want="Two places to put words, and they are not the same place."
+        needs="Nothing. The notebook is local Markdown in your workspace."
+        touches="Searches and reads your notes, then writes one. `note_save` overwrites a whole note; `note_create` makes a new one."
+        confirm="No gate, but a real guard on overwrites: `note_save` requires the revision that `note_read` returned. Changed underneath and the save is refused with the current revision instead of quietly winning."
+        result="A note on the Notes tab, greppable Markdown on disk. A stale revision comes back as a refusal you can re-read and merge, not as lost writing."
       >
-        <.prompt text="What's NVDA doing today, and is there any news worth my time?" />
+        <.prompt text="Find my note about the launch checklist, add the two things we settled today, and start a fresh note for the follow-ups." />
         <ol class="ic-unfold">
           <li>
-            <code>finance_quote</code>
-            and <code>finance_news</code>
-            — both reads, both safe-tier, answered straight into chat.
+            <code>note_search</code>
+            finds it by title or body; <code>note_read</code>
+            returns the note <span class="font-semibold text-base-content">and a revision</span>.
           </li>
           <li>
-            Deeper digging is the same shape: <code>finance_fundamentals</code>
-            and <code>finance_filings</code>
-            when you ask "why". Every figure carries
-            its source and an as-of; none of it is transcribed by the model.
+            <code>note_save</code> hands that revision back with the new body. If the
+            file moved on since — you edited it in the Notes tab, another run touched
+            it — the save is refused rather than clobbering you. Last writer does not
+            win by default.
+          </li>
+          <li>
+            <code>note_create</code>
+            starts the follow-ups note. Note the split worth
+            remembering: notes are <span class="font-semibold text-base-content">your</span>
+            writing, and the agent only creates one when you asked for a note. Its own
+            findings and reports go to the Library with <code>document_save</code>
+            — different place, different verb, on purpose.
+          </li>
+          <li>
+            Every note verb is restricted, including <code>note_list</code>: your note
+            titles are your private writing, so even listing them is not safe-tier.
           </li>
         </ol>
       </.example>
@@ -271,6 +298,10 @@ defmodule BusterClawWeb.Explore.Cmd do
         n={3}
         title="The phone desk"
         want="Voicemail triage and a quick text back, from the same chat."
+        needs="Messages in the archive for the reads. The text needs outbound SMS configured and explicitly switched on — off by default."
+        touches="Reads the phone log; clears one message's unheard flag; sends a real, unrecallable text."
+        confirm="`sms_send` is policy-gated — an untrusted-provenance run is blocked and files a pending approval. The reads are safe-tier and `phone_mark_heard` is an explicit verb rather than a side effect of reading."
+        result="Transcripts in chat, the light cleared on that one message, the text in its thread. With SMS not enabled the send refuses outright — it never half-sends."
       >
         <.prompt text="Any voicemails since yesterday? Mark the one from Dana heard, and text her: on my way." />
         <ol class="ic-unfold">
@@ -285,12 +316,20 @@ defmodule BusterClawWeb.Explore.Cmd do
             half-sends.
           </li>
         </ol>
+        <p class="text-sm leading-relaxed text-base-content/70">
+          The phone line has its own tutorial in this rail — the trust rules are
+          where the real content is.
+        </p>
       </.example>
 
       <.example
         n={4}
         title="Web errands, hands off the wheel"
         want="Fetch, search, file — without touching the browser tab."
+        needs="Network access. No browser tab, no desktop app, no login."
+        touches="Fetches a public page through an SSRF-guarded fetch, then writes a Library document and a bookmark locally."
+        confirm="None. The guard here is not a confirmation but the fetch itself: it refuses to be pointed at private or loopback addresses."
+        result="A saved copy in your Library and the address bookmarked. A blocked or unreachable URL fails on the fetch, before anything is filed."
       >
         <.prompt text="Find the Tauri 2.8 release notes, save a copy to my library, and bookmark the page." />
         <ol class="ic-unfold">
@@ -309,7 +348,15 @@ defmodule BusterClawWeb.Explore.Cmd do
         </ol>
       </.example>
 
-      <.example n={5} title="The queue is the desk" want="Durable work items, not chat scrollback.">
+      <.example
+        n={5}
+        title="The queue is the desk"
+        want="Durable work items, not chat scrollback."
+        needs="Nothing to enqueue. The recall half only has something to find once you have run work worth remembering."
+        touches="Adds a durable item to the queue and reads past run summaries. Claiming and completing items moves them through the queue."
+        confirm="None — the queue is a worklist, and adding to it is the cheap end. What an item is allowed to DO when an agent works it is governed by that run's own tier and gates."
+        result="The item survives a restart, an agent swap, everything short of you deleting it. `memory_search` with no history returns nothing rather than inventing a recollection."
+      >
         <.prompt text="Add 'renew the domain before Friday' to the queue — and didn't we already deal with a DNS thing last month? What did we do?" />
         <ol class="ic-unfold">
           <li>
@@ -332,6 +379,10 @@ defmodule BusterClawWeb.Explore.Cmd do
         n={6}
         title="It learns your routines"
         want="Repeated sequences become skills — with your sign-off."
+        needs="Enough command history to have a repeated sequence in it. On a fresh install there is nothing to find yet."
+        touches="Reads your command history and files suggestions. Approving one writes a new enabled skill file into your workspace."
+        confirm="`skill_suggestion_approve` is gated: an untrusted-provenance run cannot approve a skill, and approval files a pending request instead. Turning a sequence into a one-liner is exactly as consequential as it sounds."
+        result="A skill file on disk you can read and edit, and the sequence available as one command. Nothing is enabled until you approve it — suggestions just sit there."
       >
         <.prompt text="Anything I keep doing by hand that you could turn into a one-liner?" />
         <ol class="ic-unfold">

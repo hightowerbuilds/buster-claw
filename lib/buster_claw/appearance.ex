@@ -8,8 +8,10 @@ defmodule BusterClaw.Appearance do
   `max_images/0` uploaded images living in `<workspace>/backgrounds/` (writable in
   both dev and the packaged release, unlike the read-only `priv/static` bundle).
   Each surface independently points at one option. In Settings → Appearance the
-  catalog is shown **once** and the user drags an option onto the Homepage or
-  Terminal target; the same option may back both at the same time.
+  catalog is shown **once**, and every catalog row carries one button per surface
+  — a plain click, no drag (see `AppearanceLive`, which owns the interaction).
+  The same option may back both surfaces at the same time, which is why this is
+  one catalog rather than two pickers.
 
   ## Storage
 

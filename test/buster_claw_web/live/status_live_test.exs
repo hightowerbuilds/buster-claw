@@ -5,6 +5,7 @@ defmodule BusterClawWeb.StatusLiveTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Agent.Attachments
+  alias BusterClaw.Appearance
   alias BusterClaw.Calendar
   alias BusterClaw.Commands
   alias BusterClaw.Contacts
@@ -1364,17 +1365,222 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "/browse?url=https%3A%2F%2Fnotesthatfloat.com"
     end
 
-    test "a feature stub tab says something true and deep-links the real surface",
+    test "the BusterPhone tab separates recording a message from enqueueing it",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
       render_click(view, "select_home_tab", %{"tab" => "explore"})
 
       html = render_click(view, "select_explore_tab", %{"tab" => "phone"})
-      assert html =~ "BusterPhone"
+
+      assert html =~ "BusterPhone — an answering machine that can act"
       assert html =~ ~s(href="/phone")
-      assert html =~ "Trusted SMS can become Dispatch work"
-      assert html =~ "voicemail requires both a trusted number and a valid PIN"
-      assert html =~ "Tutorial in the works"
+
+      # The spine of the tutorial: the archive comes before the trust decision,
+      # so a stranger is always recorded and never work.
+      assert html =~ "ARCHIVED + PLAYABLE"
+      assert html =~ "THEN THE TRUST DECISION"
+
+      # The two rules are DIFFERENT, and the roadmap's 08-04 audit exists because
+      # the copy once collapsed them. Each rule is anchored so this asserts the
+      # right cell rather than the word "PIN" appearing anywhere on the page.
+      sms_rule = view |> element("[data-phone-sms-rule]") |> render()
+      assert sms_rule =~ "trusted list"
+      assert sms_rule =~ "No PIN involved"
+
+      voicemail_rule = view |> element("[data-phone-voicemail-rule]") |> render()
+      assert voicemail_rule =~ "trusted"
+      assert voicemail_rule =~ "PIN-verified"
+      assert voicemail_rule =~ "Two factors"
+
+      # The five cycles.
+      assert html =~ "Check the machine"
+      assert html =~ "Reading is not hearing"
+      assert html =~ "Decide who can give orders"
+      assert html =~ "The message that answers itself"
+      assert html =~ "Texting back"
+
+      # Setup is described honestly: the operator's own Twilio and relay, and no
+      # store to buy a number from yet (the busterclaw.lol tab says the same).
+      assert html =~ "SUPABASE_SERVICE_ROLE_KEY"
+      assert html =~ "There is no one-click"
+      assert html =~ "planned work, not a store you can visit"
+
+      # A contract with catalog metadata, not just frozen prose. Reads that an
+      # untrusted voicemail-triage run may make are safe; the two POLICY reads are
+      # not; every write that decides who may drive the queue is gated.
+      catalog = Map.new(Commands.list_commands(), &{&1.name, &1})
+
+      for name <- ~w(phone_list phone_get phone_stats) do
+        entry = Map.fetch!(catalog, name)
+        assert entry.type == :read
+        assert entry.tier == :safe, "#{name} must stay safe — a triage run reads it"
+      end
+
+      for name <- ~w(phone_trusted_list phone_pin_list) do
+        entry = Map.fetch!(catalog, name)
+        assert entry.type == :read
+
+        assert entry.tier == :restricted,
+               "#{name} is policy data, not operational data — caller ID is spoofable"
+      end
+
+      for name <- ~w(phone_trusted_add phone_trusted_remove phone_pin_set
+                     phone_pin_remove sms_send) do
+        entry = Map.fetch!(catalog, name)
+        assert entry.type == :mutate
+        assert entry.tier == :restricted
+        assert Map.get(entry, :gated, false), "#{name} must stay gated"
+      end
+
+      # phone_mark_heard is the one mutation that is deliberately NOT gated: it is
+      # cheap and local. What protects the blinking light is that reading does not
+      # clear it — so `phone_get` must stay a separate verb.
+      mark_heard = Map.fetch!(catalog, "phone_mark_heard")
+      assert mark_heard.type == :mutate
+      refute Map.get(mark_heard, :gated, false)
+      assert html =~ "It deliberately does not"
+
+      # Same contract as the other tutorials: every command named must exist.
+      for cmd <- ~w(phone_stats phone_list phone_get phone_mark_heard
+                    phone_trusted_add phone_trusted_remove phone_trusted_list
+                    phone_pin_set phone_pin_remove phone_pin_list sms_send) do
+        assert html =~ "<code>#{cmd}</code>"
+
+        assert Commands.command_type(cmd) != nil,
+               "tutorial names #{cmd}, which is not in the command catalog"
+      end
+
+      refute html =~ "Tutorial in the works"
+    end
+
+    test "the Shaders tab teaches the file contract and that selection is yours alone",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      html = render_click(view, "select_explore_tab", %{"tab" => "shaders"})
+
+      assert html =~ "Shaders &amp; Backgrounds"
+      assert html =~ ~s(href="/appearance")
+      assert has_element?(view, "#explore-shader-catalog")
+      assert has_element?(view, "#explore-shader-contract")
+
+      # The catalog is rendered FROM Appearance, so it cannot describe a set of
+      # built-ins or a pool size the module no longer has.
+      for shader <- Appearance.builtin_shaders() do
+        assert html =~ shader, "the Shaders tutorial does not name the #{shader} built-in"
+      end
+
+      assert html =~ "up to #{Appearance.max_images()} slots"
+
+      # The claim the whole tab rests on: nothing on the command surface selects a
+      # background, so an agent can propose a shader and never apply one. This is
+      # the assertion that turns that from prose into a contract — add an
+      # appearance/shader command later and this fails, as it should.
+      selectors =
+        Enum.filter(Commands.list_commands(), fn command ->
+          String.starts_with?(command.name, "shader") or
+            String.starts_with?(command.name, "appearance") or
+            String.starts_with?(command.name, "background")
+        end)
+
+      assert selectors == [],
+             "the Shaders tutorial says no command can select a background, but found: " <>
+               Enum.map_join(selectors, ", ", & &1.name)
+
+      assert html =~ "no commands on this"
+
+      # The file contract, each part of it load-bearing.
+      assert html =~ "fs_main"
+      assert html =~ "64 KB"
+      assert html =~ "shaderface"
+      assert html =~ "never offered or honored"
+
+      # Corrected 08-08 against the implementation: the catalog is click, and
+      # there is no palette-coloured fallback — the layer simply does not paint.
+      assert html =~ "a single click"
+      refute html =~ "drag"
+      assert html =~ "stays solid"
+
+      refute html =~ "Tutorial in the works"
+    end
+
+    test "every Explore demo declares its contract and offers the two safe actions",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      # The four fact rows are required attrs on `<.example>`, so a demo missing
+      # one is a compile warning rather than a passing test. What this asserts is
+      # the other half: that the rows actually REACH the page, on every tab that
+      # has demos, and that the two safe actions ride along with each prompt.
+      tabs = ~w(models shaders phone browser cmd gws)
+
+      for tab <- tabs do
+        html = render_click(view, "select_explore_tab", %{"tab" => tab})
+
+        facts = Regex.scan(~r/data-demo-facts/, html)
+        assert facts != [], "the #{tab} tutorial has no worked demos"
+
+        for field <- ~w(needs touches confirm result) do
+          rows = Regex.scan(~r/data-demo-#{field}/, html)
+
+          assert length(rows) == length(facts),
+                 "the #{tab} tutorial has #{length(facts)} demos but " <>
+                   "#{length(rows)} #{field} rows"
+        end
+
+        # Copy prompt is always available; nothing on an Explore tab submits.
+        assert html =~ "Copy prompt",
+               "the #{tab} tutorial has no copyable prompt"
+
+        refute html =~ ~s(phx-click="send"),
+               "an Explore tutorial must never offer to submit anything"
+      end
+    end
+
+    test "Try in Chat prefills the composer and does not submit", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_explore_tab", %{"tab" => "cmd"})
+
+      # Clicking the button on a real tutorial prompt: it switches to Chat and
+      # pushes the prefill event. Prefill only — the hook fills the input and the
+      # operator presses send, which is what keeps opening a tutorial from ever
+      # running a mutation.
+      view
+      |> element(~s([data-demo-try-in-chat][phx-value-text^="Save that plan"]))
+      |> render_click()
+
+      assert_push_event(view, "bc:chat_prefill", %{text: text})
+      assert text =~ "Save that plan as a document"
+      assert has_element?(view, "button[phx-value-tab='chat'].bg-primary")
+
+      # A forged or oversized payload is refused rather than crashing the page —
+      # same posture as the sub-tab whitelist beside it.
+      render_click(view, "explore_try_in_chat", %{"text" => String.duplicate("x", 3000)})
+      render_click(view, "explore_try_in_chat", %{})
+      assert has_element?(view, "#home-agent-chat")
+    end
+
+    test "the GWS unattended cycle does not offer to paste an email into Chat",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explore"})
+
+      html = render_click(view, "select_explore_tab", %{"tab" => "gws"})
+
+      # That cycle's prompt is mail from a trusted sender, and the lesson is that
+      # the trigger is the mail — offering "Try in Chat" on it would teach the
+      # wrong mechanism. Every other prompt on the tab keeps the button.
+      assert html =~ "You email — from your phone, hours later"
+
+      prompts = Regex.scan(~r/data-demo-prompt/, html)
+      buttons = Regex.scan(~r/data-demo-try-in-chat/, html)
+
+      assert length(buttons) == length(prompts) - 1,
+             "exactly one GWS prompt (the email) should omit Try in Chat — " <>
+               "#{length(prompts)} prompts, #{length(buttons)} buttons"
     end
 
     test "the Models tab teaches the shape: unset, per surface, and the floor",
@@ -1543,18 +1749,28 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ "MUTATES + TRIGGERS"
       assert html =~ ~s(role="img")
 
-      # The six examples.
+      # The six examples. Cycle 2 was "The market at a glance" until 08-08, when
+      # the operator took trading out of what Explore teaches. The finance_*
+      # commands still exist and are still on /cmd-list — the atlas simply stopped
+      # leading a first-time user there, so this asserts the market cycle is GONE
+      # rather than merely that the notebook one is present.
       assert html =~ "Capture the day"
-      assert html =~ "The market at a glance"
+      assert html =~ "The notebook and the vault"
       assert html =~ "The phone desk"
       assert html =~ "Web errands, hands off the wheel"
       assert html =~ "The queue is the desk"
       assert html =~ "It learns your routines"
 
+      refute html =~ "The market at a glance"
+
+      for cmd <- ~w(finance_quote finance_news finance_fundamentals finance_filings) do
+        refute html =~ "<code>#{cmd}</code>",
+               "the atlas should no longer teach #{cmd} — trading is out (08-08)"
+      end
+
       # Same contract as the GWS tutorial: every named command must exist.
       for cmd <- ~w(document_save journal_append notify_create
-                    finance_quote finance_news
-                    finance_fundamentals finance_filings
+                    note_search note_read note_save note_create note_list
                     phone_list phone_mark_heard sms_send
                     web_search browser_fetch bookmark_add
                     dispatch_enqueue dispatch_list dispatch_claim dispatch_done
@@ -1565,6 +1781,19 @@ defmodule BusterClawWeb.StatusLiveTest do
         assert BusterClaw.Commands.command_type(cmd) != nil,
                "tutorial names #{cmd}, which is not in the command catalog"
       end
+
+      # The replacement cycle's own claim is a contract too: the note verbs are
+      # restricted precisely because note titles are the operator's private
+      # writing, so `note_list` being safe-tier would falsify the copy.
+      catalog = Map.new(Commands.list_commands(), &{&1.name, &1})
+
+      for name <- ~w(note_list note_read note_search note_create note_save) do
+        assert Map.fetch!(catalog, name).tier == :restricted,
+               "#{name} must stay restricted — the tutorial says even listing isn't safe-tier"
+      end
+
+      assert Map.fetch!(catalog, "note_save").args["revision"].required,
+             "the tutorial teaches note_save's revision guard; it must stay required"
 
       refute html =~ "Tutorial in the works"
     end

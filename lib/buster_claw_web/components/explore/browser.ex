@@ -115,6 +115,10 @@ defmodule BusterClawWeb.Explore.Browser do
         n={1}
         title="Read over my shoulder"
         want="You're on the page. Let the agent do the reading."
+        needs="The desktop app, open, with a page loaded in the browse tab. Live-tab verbs do not exist outside it."
+        touches="Reads the rendered page as your logged-in session sees it. Clicks nothing. The capture writes a document to your Library and a screenshot to your workspace."
+        confirm="None. Page content handed to an agent is policy-filtered and redacted on the way out; that filtering is the control, not a prompt."
+        result="The summary in chat and the capture in your Library. No live tab and the verb tells you so rather than quietly reading something else."
       >
         <.prompt text="What am I looking at? Summarize the important parts of this thread and file a copy in my library." />
         <ol class="ic-unfold">
@@ -139,6 +143,10 @@ defmodule BusterClawWeb.Explore.Browser do
         n={2}
         title="Do the clicking"
         want="Same tab, but now the agent acts — while you watch it happen."
+        needs="The desktop app and the page you want driven, in front of you."
+        touches="Acts inside your real, logged-in session — clicks and typed input are indistinguishable from yours, because they are yours."
+        confirm="No per-click confirmation: you are watching, and consequential actions are receipted on the Security feed. The prompt's “don't submit” is instruction, not enforcement — the enforced stop lives in Agent Mode's payment gate, cycle 5."
+        result="The page reacts as you watch. An ambiguous target is refused rather than guessed at, and a stale element index after navigation is re-read rather than clicked blind."
       >
         <.prompt text="On this page, open the Pricing tab and put my work email into the newsletter box. Don't submit anything." />
         <ol class="ic-unfold">
@@ -166,6 +174,10 @@ defmodule BusterClawWeb.Explore.Browser do
         n={3}
         title="A fresh tab that forgets"
         want="Some errands shouldn't ride your session at all."
+        needs="The desktop app. No logins — that is the point of this cycle."
+        touches="Opens a tab with no cookies and no storage, reads it, and forgets it. Your sessions are not involved and nothing is saved."
+        confirm="None needed, because the default is the safe one: a new tab is ephemeral unless someone explicitly opts into your session."
+        result="The extracted section in chat; the tab is excluded from restore and leaves nothing behind. A condition that never arrives comes back as unmatched rather than as an error."
       >
         <.prompt text="Open the Stripe docs in a clean tab and find the webhook signature section — don't use my logins for this." />
         <ol class="ic-unfold">
@@ -188,6 +200,10 @@ defmodule BusterClawWeb.Explore.Browser do
         n={4}
         title="Turn a routine into a check"
         want="Anything you check weekly, the agent can check on demand — and remember the history."
+        needs="Your installed Chromium for the saved run. Composing the flow needs the desktop app; running it later does not."
+        touches="Writes a markdown check into your workspace and appends to its run history. The flow itself only navigates, waits, asserts and extracts — it is a read-only recipe."
+        confirm="None. A check is deliberately not allowed to be a way to smuggle in clicking: the step vocabulary has no purchase in it."
+        result="A file in your workspace's checks folder, runnable by name, with each run's result appended. A flow halts at the first failing step and reports which one — it does not press on."
       >
         <.prompt text="I keep checking whether the venue's booking page still shows Saturday slots. Make that a saved check I can run any time." />
         <ol class="ic-unfold">
@@ -214,6 +230,10 @@ defmodule BusterClawWeb.Explore.Browser do
         n={5}
         title="The long errand — Agent Mode"
         want="A multi-step task in its own window, with the sharpest gate in the app."
+        needs="Your installed Chromium, and a signed-in account on the site if the errand needs one. Commerce runs must be started as commerce runs — the scope is frozen up front."
+        touches="Drives a separate browser window through a multi-step errand, and can fill a cart. It cannot pay: no card, no payment fields, no confirmation of payment."
+        confirm="The hardest stop in the app, and it is structural rather than a prompt: navigation outside the frozen scope comes back halted, and the moment a payment page appears the cart freezes and the run stops for you."
+        result="A filled cart waiting for you in a real window, and a trajectory you can inspect. You pay by hand; the receipt records which of you confirmed it. Off-scope navigation halts visibly instead of wandering."
       >
         <.prompt text="Find the drain pump part number for my dishwasher (model in my notes), find a store that has it, and put one in a cart. I'll pay." />
         <ol class="ic-unfold">

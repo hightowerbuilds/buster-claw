@@ -4,9 +4,20 @@
 > app (`293f47f`), and its Explore tile, tutorial panel and roster entry went with
 > it. Every Trading row below is struck rather than removed: what a tutorial was
 > asked to explain, and what it got wrong, is the record this roadmap exists to
-> keep. The tile count is now **four built of five**, not five of six.
+> keep. The tile count went to **four built of five**, not five of six — and as
+> of 08-08 it is **six of six**, with the atlas's own market cycle retired too
+> (see Phase 2).
 
-**Scoped 08-02-26 · Status: ACTIVE · Content accuracy pass scoped 08-04-26.**
+**Scoped 08-02-26 · Status: ACTIVE · Content accuracy pass scoped 08-04-26 ·
+Roster completed + demo contract landed 08-08-26.**
+
+> **Where this stands (08-08):** all six feature tutorials are built — no stubs
+> remain — and every worked example carries the demo contract (prerequisites,
+> side effects, where the stop is, expected result and failure state) plus Copy
+> prompt and, where a chat prompt is the right trigger, Try in Chat. What is
+> left is editorial and structural, not content: the BusterClaw.lol / NTF
+> rewrite, the Explore-vs-Manual decision, cross-linking, and a packaged-app
+> walk. See "Recommended execution order" at the end of Phase 2.5.
 
 A new home sub-tab, **Explore**, alongside Chat / Calendar / Notes / Studio, with
 its own second-level rail. It holds a growing collection of tutorials — one per
@@ -225,10 +236,34 @@ Replace each Phase 0.5 stub with an actual tutorial. One tutorial per commit.
   kept because the can/can't split was the clearest thing this roadmap produced,
   and the next safety-sensitive tutorial should be shaped the same way.**
 
-Remaining after that: **BusterPhone** → **Shaders & Backgrounds**.
+- [x] **BusterPhone** and **Shaders & Backgrounds** — BUILT 08-08. Details in
+  Phase 2.5 below. The roster is complete: six tutorials, no stubs.
 
-- [ ] Make the Explore vs Manual call (see open question above) once two or
-  three real tutorials make the overlap visible.
+- [x] **The atlas stops teaching trading** (operator, 08-08). Cycle 2 of the
+  Command List was "The market at a glance" — `finance_quote`, `finance_news`,
+  `finance_fundamentals`, `finance_filings`. It is now **"The notebook and the
+  vault"** (`note_search` → `note_read` → `note_save` → `note_create`).
+
+  Scope decided explicitly, because "no more trading" had two readings: the
+  `finance_*` commands **still exist** and are **still on `/cmd-list`**. Nothing
+  was deleted. They are read-only public-record research (SEC EDGAR, BLS,
+  Finnhub) that survived the 08-08 Trading deletion; they simply stopped being
+  one of the six things Explore puts in front of a first-time user. The test
+  asserts the market cycle is *gone* and that none of the four command names
+  appear, rather than only asserting the new cycle is present — a `refute` was
+  the point of the change.
+
+  The replacement was chosen for content, not just to fill the slot: the note
+  verbs carry two lessons the market cycle had no equivalent of — `note_create`
+  vs `document_save` (the operator's writing vs the agent's findings, a
+  distinction the catalog enforces in its own descriptions), and `note_save`'s
+  required `revision`, a real optimistic-concurrency rule an operator can
+  actually hit by editing a note in the Notes tab mid-run. Both are asserted
+  against catalog metadata.
+
+- [ ] Make the Explore vs Manual call (see open question above). Six real
+  tutorials now exist, so the overlap is visible and this is decidable —
+  it is the oldest open item on this roadmap.
 
 # Phase 2.5 — Content accuracy and runnable demos *(audit 08-04-26)*
 
@@ -244,12 +279,12 @@ than something the operator can try.
 | **Intro** | Accuracy rewrite complete 08-04 | It now recommends Claude, names Codex and OpenCode support, explains both Google connection paths, and distinguishes archived untrusted mail from trusted Dispatch work. |
 | **BusterClaw.lol** | Accuracy rewrite complete 08-04 | Phone-number vending is now described as planned/future work until the store is actually live. |
 | **NTF** | Accuracy rewrite complete 08-04 | It now describes the sibling project as a creative-writing and journaling app with spatial 3D visualization, not Buster Claw's operator notebook. Grouping it under **Elsewhere** or **About** remains an information-architecture option. |
-| **Models** | Accuracy rewrite complete; demo pending | Harness copy now matches Claude/Codex/OpenCode support; the Claude-only pin it described went with Trading on 08-08. Add a read-only current-policy demo instead of relying only on hypothetical examples. |
-| **Shaders & Backgrounds** | Stub accuracy corrected; tutorial incomplete | The stub now says a workspace shader appears without a rebuild and must be selected. The tutorial still needs Terminal backgrounds, image backgrounds, palettes, WebGPU fallback, and the custom WGSL contract. |
-| **BusterPhone** | Trust summary corrected; tutorial incomplete | The stub now separates trusted-number SMS from voicemail's trusted-number + PIN rule. The tutorial still needs SMS gating and limits, voicemail costs, heard/unheard behavior, and the distinction between recording a message and enqueueing work. |
-| **Gmail/GWS** | Accuracy rewrite complete 08-04 | The tutorial now separates policy gates, trust tiers, `confirm_send`/`confirm_share`, and the trusted unattended `dispatch_reply` path. It also covers bundled and Advanced OAuth setup. Runnable demo metadata remains. |
-| **Command List** | Taxonomy rewrite complete 08-04 | Counts and all three metadata axes are guarded against the live catalog by a contract test; UI-only surfaces and the mutation/trigger audit boundary are explicit. Runnable demo metadata remains. |
-| **BrowserControl** | Accuracy rewrite complete; demo metadata pending | The three-surface explanation remains, while audit copy now distinguishes redacted page ingestion, ordinary reads, and consequential actions. The stale purchase-confirmation source comment was corrected. |
+| **Models** | **Complete 08-08** | Harness copy matches Claude/Codex/OpenCode support; the Claude-only pin it described went with Trading on 08-08. Both examples now carry the demo contract, including the read-only current-policy demo. |
+| **Shaders & Backgrounds** | **Tutorial BUILT 08-08** | `Explore.Shaders`. Catalog (Off / built-ins / workspace / images), Home *and* Terminal as independent targets, the WGSL file contract, palettes, and the honest refresh story. Two corrections landed with it — see below. |
+| **BusterPhone** | **Tutorial BUILT 08-08** | `Explore.Phone`. Inbound diagram, recording-vs-enqueueing as the spine, the asymmetric trust rules in a table, costs, and outbound `sms_send`'s three limits. |
+| **Gmail/GWS** | **Complete 08-08** | The tutorial separates policy gates, trust tiers, `confirm_send`/`confirm_share`, and the trusted unattended `dispatch_reply` path, and covers bundled and Advanced OAuth setup. All six cycles carry the demo contract. |
+| **Command List** | **Complete 08-08** | Counts and all three metadata axes are guarded against the live catalog by a contract test. Cycle 2 was the market/trading cycle until 08-08 — see the trading note below. All six cycles carry the demo contract. |
+| **BrowserControl** | **Complete 08-08** | The three-surface explanation, with audit copy that distinguishes redacted page ingestion, ordinary reads, and consequential actions. All five cycles carry the demo contract. |
 | ~~**Trading**~~ | **Deleted 08-08** | The tutorial went with the surface. Its one open correction — *"soften the absolute claim that funding is the most an order can touch"* — was a real inaccuracy that shipped for six days, and is worth remembering as the kind of overclaim a safety tutorial produces when it paraphrases a guarantee. |
 
 ## Foundational rewrites
@@ -308,65 +343,122 @@ hold unless the command path actually provides one.
 - Bundled one-click Google OAuth is conditional. When the bundled client is not
   available, the actual path is Advanced setup with the operator's OAuth client.
 
-## Complete the two missing tutorials
+## Complete the two missing tutorials — **DONE 08-08**
 
-### BusterPhone
+Both are built. Every tab in `@features` now has a real tutorial, so
+`Registry.stubs/0` returns `[]` and the stub `:for` in `ExplorePanel` is
+vacuous. The stub module is deliberately kept: it is what makes adding a
+sub-tab a one-line edit in the registry, and a new `@features` entry with no
+panel must still render something true rather than a dead rail button.
 
-- [ ] Diagram inbound voice/SMS → relay → local archive → trust decision →
-  optional Dispatch item.
-- [ ] Explain recording versus enqueueing: strangers are recorded by design but
+### BusterPhone — `Explore.Phone`
+
+- [x] Diagram inbound voice/SMS → relay → local archive → trust decision →
+  optional Dispatch item. The archive box sits **above** the trust box on
+  purpose: that ordering *is* the lesson.
+- [x] Explain recording versus enqueueing: strangers are recorded by design but
   never become agent work.
-- [ ] Show the two-factor voicemail rule (trusted number + PIN) and the lighter
-  trusted-number-only SMS rule.
-- [ ] Walk through unheard voicemail, transcript/recording playback, cost
-  breakdown, and explicit `phone_mark_heard` behavior.
-- [ ] Explain outbound `sms_send`: separately enabled, gated, audited, opt-out
+- [x] Show the two-factor voicemail rule (trusted number + PIN) and the lighter
+  trusted-number-only SMS rule. Built as a three-row table with
+  `data-phone-sms-rule` / `data-phone-voicemail-rule` anchors, so the test
+  asserts the right cell rather than the word "PIN" appearing anywhere.
+- [x] Walk through unheard voicemail, transcript/recording playback, cost
+  breakdown, and explicit `phone_mark_heard` behavior. The provisional →
+  settled cost story is stated as "a total that grows slightly after the fact
+  is the system working", because it looks like a bug otherwise.
+- [x] Explain outbound `sms_send`: separately enabled, gated, audited, opt-out
   aware, and capped per recipient per UTC day.
-- [ ] Add a safe demo: list unheard voicemail without marking anything heard.
+- [x] Safe demo: cycle 1 is `phone_stats` + `phone_list unheard_only`, and the
+  cycle exists partly to teach that reading is not hearing.
+- [x] Setup is stated honestly: the operator's own Twilio + Supabase relay, and
+  no store to buy a number from yet. The test asserts that claim so it cannot
+  quietly become a promise.
 
-### Shaders & Backgrounds
+### Shaders & Backgrounds — `Explore.Shaders`
 
-- [ ] Explain the shared catalog: Off, built-in shaders, workspace shaders, and
-  uploaded images.
-- [ ] Show that both Home and Terminal are background targets.
-- [ ] Walk through selecting a built-in shader before introducing custom WGSL.
-- [ ] Explain the `shaders/<name>.wgsl` contract, `fs_main`, the shared prelude,
+- [x] Explain the shared catalog: Off, built-in shaders, workspace shaders, and
+  uploaded images. Built-ins and the pool size render **from** `Appearance`.
+- [x] Show that both Home and Terminal are background targets.
+- [x] Walk through selecting a built-in shader before introducing custom WGSL.
+- [x] Explain the `shaders/<name>.wgsl` contract, `fs_main`, the shared prelude,
   size/name validation, and the distinction between background shaders and
   `*-face` shaderfaces.
-- [ ] State the real refresh behavior: no application rebuild, but the file must
-  appear in/reload the Appearance catalog and the operator must select it.
-- [ ] Cover custom three-color palettes and the solid fallback when WebGPU is
-  unavailable.
-- [ ] Add a safe demo: apply a built-in shader to the Home preview.
+- [x] State the real refresh behavior: no application rebuild, but the file must
+  appear in the Appearance catalog and the operator must select it. Written as
+  its own beat — *"Nothing changes on screen. This is the part people expect to
+  be broken and it isn't."*
+- [x] Cover custom three-color palettes (Base / Accent / Highlight, per
+  surface, shaders only).
+- [x] Safe demo: cycles 1 and 2 are UI walkthroughs with no prompt at all,
+  because there is nothing to prompt — see the finding below.
 
-## Turn worked examples into real demos
+**Two corrections this tutorial forced, both from reading the implementation
+rather than the older prose:**
 
-The shared `<.example>` component currently renders prose plus a prompt. Every
-demo should gain four explicit fields:
+1. **The catalog is a click, not a drag.** Each catalog row carries one button
+   per surface (`AppearanceLive.option_chip/1` → `assign_button`).
+   `Appearance`'s own moduledoc said "the user drags an option onto the
+   Homepage or Terminal target" — and so did this roadmap. Fixed in
+   `appearance.ex` in the same commit. Classic drift seam: the doc described an
+   interaction that was redesigned, and no test reads prose.
+2. **There is no palette-coloured fallback when WebGPU is missing.** This
+   roadmap asked for "the solid fallback"; there is no fallback *renderer*.
+   `.ic-home-bg` has no background of its own, so the shader layer simply does
+   not paint and the ordinary page shows through — which is what the Appearance
+   page already says ("the surface just stays solid"). The tutorial says that
+   instead of implying a fallback path exists.
 
-1. **Prerequisites** — connection, desktop requirement, current tab, or account.
-2. **What it reads or changes** — name the side effects before the prompt.
-3. **Where confirmation occurs** — policy gate, command argument, or UI card.
-4. **Expected result and failure state** — where the artifact/receipt appears and
-   what the operator sees when the dependency is unavailable.
+**And the finding worth keeping:** Appearance is the one taught surface with
+**no commands at all** — no `shader_*`, no `appearance_*`, nothing. That is not
+a gap, it is the safety model for arbitrary GPU code: a shader file may arrive
+from anywhere (you, or an agent with workspace file access), and only a human
+click ever puts it on screen. The tutorial makes that its thesis, and a test
+asserts the catalog really contains no such command, so adding one later
+fails the build rather than silently falsifying the page.
 
-Add two safe actions:
+## Turn worked examples into real demos — **DONE 08-08**
 
-- [ ] **Copy prompt** — always available.
-- [ ] **Try in Chat** — switch to Home → Chat and use the existing
-  `bc:chat_prefill` path. It prefills only; it never auto-submits.
+- [x] The four fields are **required attrs** on `<.example>` — `needs`,
+  `touches`, `confirm`, `result` — rendered as a four-row `<dl>` between the
+  cycle header and its body, because the rule was "name the side effects
+  *before* the prompt" and the prompt is the first thing in every body.
 
-Mutation-heavy examples must stop at prefill. Explore must never execute a
-mutation merely because the operator opened a tutorial.
+  Required rather than optional is the whole design. A worked example that does
+  not say what it needs, what it touches, where the stop is, and what happens
+  when the dependency is missing is exactly the failure mode this roadmap's
+  08-04 audit found: prose that reads like a promise. Required attrs make that a
+  compile warning rather than an editorial oversight nobody catches. Answering
+  "None — this is a read" is a fine answer; omitting the row is not possible.
 
-Recommended first runnable demos:
+- [x] **Copy prompt** — always available, via the existing generic
+  `data-terminal-command-copy` listener in `lib/globals.js`. No JS was written.
+- [x] **Try in Chat** — `explore_try_in_chat` in `StatusLive`, switching to
+  Home → Chat and pushing `bc:chat_prefill`. Prefill only, never submits, size
+  bounded. A `try_in_chat={false}` opt-out exists and has exactly one consumer:
+  the GWS unattended cycle, whose prompt is an **email**, where offering to
+  paste it into the composer would teach the wrong trigger. A test asserts
+  precisely one GWS prompt omits the button, so the opt-out cannot spread
+  quietly.
 
-- **Models:** list the current model policy.
-- **Browser:** open a sandbox tab and read a public page.
-- **Command List:** create a local reminder.
-- **GWS:** list connected accounts or create a draft without sending.
-- **Phone:** list unheard voicemail without marking it heard.
-- **Shaders:** apply a built-in shader to the Home preview.
+**Every demo now declares the contract** — 21 examples across six tutorials
+(19 retrofitted, plus the new Phone and Shaders cycles).
+
+Ordering note: this section was built **before** the two missing tutorials
+rather than after, so the new ones were written once, in the final shape,
+instead of being retrofitted the same week.
+
+The recommended first demos all landed, with one instructive exception:
+
+- **Models:** `model_policy` with no arguments — cycle 1. ✅
+- **Browser:** sandbox tab + public page — cycle 3. ✅
+- **Command List:** local reminder — cycle 1. ✅
+- **GWS:** draft without sending — cycle 2. ✅
+- **Phone:** unheard voicemail without marking heard — cycle 1. ✅
+- **Shaders:** apply a built-in to the Home preview — **cannot be a prompt.**
+  There is no command that selects a background, so this one is a UI
+  walkthrough with no prompt and no Try-in-Chat button. The demo contract still
+  applies to it; only the prompt is absent. Worth noting because "every demo
+  gets a runnable prompt" was an assumption, and one surface disproved it.
 
 ## Tests that protect meaning, not wording
 
@@ -377,21 +469,38 @@ read catalog metadata and verify every claim made by a tutorial:
 - [x] Command type, trust tier, `gated` flag, and required confirmation argument.
 - [x] Models surfaces, floors, and Claude-only pins from `ModelPolicy`.
 - [x] Google connection copy covers bundled and Advanced paths.
-- [x] Phone copy covers SMS trust separately from voicemail trust + PIN.
-- [ ] Every demo declares prerequisites, side effects, confirmation, outcome,
-  Copy prompt, and (where appropriate) Try in Chat.
+- [x] Phone copy covers SMS trust separately from voicemail trust + PIN — and
+  08-08 made it a metadata contract, not just phrase-matching: the phone test
+  asserts the tier of every read (safe for the three operational reads,
+  restricted for the two *policy* reads) and the `gated` flag on all five
+  consequential writes. `phone_mark_heard` is asserted **un**gated on purpose,
+  because what protects the blinking light is that reading never clears it.
+- [x] Every demo declares prerequisites, side effects, confirmation, outcome,
+  Copy prompt, and (where appropriate) Try in Chat. Enforced twice: required
+  attrs at compile time, and a test that walks all six tabs asserting the fact
+  rows actually *reach* the page in equal number to the demos.
+- [x] **New 08-08:** the Shaders tutorial's central claim is a contract — the
+  test fails if any `shader_*` / `appearance_*` / `background_*` command ever
+  enters the catalog, because that would falsify "only your click applies one".
 
 ## Recommended execution order
 
 1. **DONE 08-04** — Correct the shared harness, command-taxonomy, trust, and
    gating explanations.
-2. Build BusterPhone and Shaders & Backgrounds tutorials.
-3. Add the reusable demo contract and safe Copy/Try actions.
-4. Retrofit Models, GWS, Command List, and BrowserControl examples.
+2. **DONE 08-08** — Add the reusable demo contract and safe Copy/Try actions.
+   *(Swapped ahead of step 3 so the new tutorials were written once, in the
+   final shape.)*
+3. **DONE 08-08** — Build BusterPhone and Shaders & Backgrounds tutorials.
+4. **DONE 08-08** — Retrofit Models, GWS, Command List, and BrowserControl
+   examples.
 5. Rewrite or relocate BusterClaw.lol and NTF after verifying their live roles.
 6. Run a packaged-app editorial pass; archive this roadmap only after every
    tutorial has been exercised against a real dependency or an explicit safe
    failure state.
+
+**Remaining to close this roadmap:** step 5, step 6, the Explore-vs-Manual call
+(Phase 2's open question — six real tutorials now make the overlap visible, so
+it is decidable), and Phase 4's cross-linking and packaged walk.
 
 # Phase 3 — Roster growth (proposals, not commitments)
 

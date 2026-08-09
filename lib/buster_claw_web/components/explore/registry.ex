@@ -35,9 +35,14 @@ defmodule BusterClawWeb.Explore.Registry do
   }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in
-  # @built has its own tutorial panel below; the rest render the generic stub
-  # (a true paragraph, a deep link, an honest "tutorial in the works" line)
-  # until Phase 2 replaces them, one tab at a time.
+  # @built has its own tutorial panel; anything not in it renders the generic
+  # stub (a true paragraph, a deep link, an honest "tutorial in the works"
+  # line). Every key is built as of 08-08 — the stub path is the on-ramp for the
+  # NEXT tab, not a backlog.
+  #
+  # A tile's `blurb` is the launcher-grid one-liner and a stub's `body` is the
+  # placeholder page; a built tab uses the blurb and ignores the body, so a
+  # `body` here is not what the tutorial says.
   @features [
     %{
       key: "models",
@@ -115,8 +120,12 @@ defmodule BusterClawWeb.Explore.Registry do
     }
   ]
 
-  # Feature tabs whose tutorial panel exists — everything else stubs.
-  @built ~w(models gws cmd browser)
+  # Feature tabs whose tutorial panel exists — everything else stubs. Empty of
+  # stubs as of 08-08: every tab in @features has a tutorial, so `stubs/0`
+  # returns [] and the `:for` that renders them is vacuous. Left in place rather
+  # than deleted — the stub is what makes adding a tab a one-line edit here, and
+  # a `@features` entry with no panel must still render something true.
+  @built ~w(models shaders phone browser cmd gws)
 
   # {key, rail label}, in rail order. Intro leads, the two site tabs follow,
   # then the feature tabs in @features order.

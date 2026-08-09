@@ -19,8 +19,8 @@ defmodule BusterClawWeb.ExplorePanel do
   | `Explore.Registry` | the tab / tile / feature registries — **add a tab here** |
   | `Explore.Intro` | the launcher grid and Get Started |
   | `Explore.Sites` | busterclaw.lol, Notes That Float |
-  | `Explore.Stub` | any feature tab whose tutorial is unwritten |
-  | `Explore.Models`, `.Gws`, `.Cmd`, `.Browser` | the four built tutorials |
+  | `Explore.Stub` | any feature tab whose tutorial is unwritten (none today) |
+  | `Explore.Models`, `.Shaders`, `.Phone`, `.Browser`, `.Cmd`, `.Gws` | the six tutorials |
   | `Explore.Shared` | the leaf components tutorials are built from |
 
   The rail, the Intro grid, the parent's event whitelist (via `tab_keys/0`) and
@@ -34,6 +34,8 @@ defmodule BusterClawWeb.ExplorePanel do
   import BusterClawWeb.Explore.Gws
   import BusterClawWeb.Explore.Intro
   import BusterClawWeb.Explore.Models
+  import BusterClawWeb.Explore.Phone
+  import BusterClawWeb.Explore.Shaders
   import BusterClawWeb.Explore.Sites
   import BusterClawWeb.Explore.Stub
 
@@ -81,6 +83,8 @@ defmodule BusterClawWeb.ExplorePanel do
         <.site_panel :if={@tab == "site"} />
         <.ntf_panel :if={@tab == "ntf"} />
         <.models_panel :if={@tab == "models"} />
+        <.shaders_panel :if={@tab == "shaders"} />
+        <.phone_panel :if={@tab == "phone"} />
         <.gws_panel :if={@tab == "gws"} />
         <.cmd_panel :if={@tab == "cmd"} />
         <.browser_panel :if={@tab == "browser"} />

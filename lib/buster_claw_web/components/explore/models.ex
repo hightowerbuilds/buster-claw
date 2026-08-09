@@ -175,6 +175,10 @@ defmodule BusterClawWeb.Explore.Models do
         n={1}
         title="What am I actually running?"
         want="Before you change anything, find out what is in force."
+        needs="An agent CLI installed and signed in. Nothing configured — this is the first thing to run on a fresh install."
+        touches="Reads the model policy. Changes nothing."
+        confirm="None — a read of your own settings."
+        result="A per-surface list in chat, each row naming the model and where it came from. On a fresh install every row says your CLI decides, which is the shipped state rather than an error."
       >
         <.prompt text="Which model is each part of Buster Claw running right now — and if I set one default, where would it not apply?" />
         <ol class="ic-unfold">
@@ -203,6 +207,10 @@ defmodule BusterClawWeb.Explore.Models do
         n={2}
         title="Spend less, everywhere"
         want="One knob for the whole app."
+        needs="A model name your chosen harness recognizes — model names do not carry across harnesses."
+        touches="Writes one setting: the global default. Every surface you have not named individually follows it from the next run onward; runs already in flight are unaffected."
+        confirm="None. It is a local preference, and clearing it puts you back to passing no model flag at all."
+        result="The new default shows in the model section of Configuration and in `model_policy`. Name a model your harness does not know and the failure surfaces on the next run from that CLI, not here."
       >
         <.prompt text="I'm doing a lot of small errands today. Put everything on a cheaper model." />
         <ol class="ic-unfold">

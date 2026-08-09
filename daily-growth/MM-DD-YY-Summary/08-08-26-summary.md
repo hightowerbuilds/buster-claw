@@ -1168,3 +1168,124 @@ nobody remembers earning.
 That gate exists because this repo has decomposed large files three times and
 been undone twice. Today it made both of those raises a decision instead of an
 accident.
+
+---
+
+# Explore finishes its roster — and the gate for a tutorial's honesty
+
+The Explore tab had four tutorials and two stubs. It now has six tutorials and
+no stubs. But the more useful thing that changed is *what a worked example is
+required to say*.
+
+## The demo contract, as required attrs
+
+Every `<.example>` in Explore now carries four fields — **Needs** (prerequisites),
+**Touches** (what it reads or changes), **Stop** (where confirmation actually
+occurs), **Result** (where the artifact lands, and what you see when the
+dependency is missing) — rendered between the cycle header and its body, because
+the rule was *name the side effects before the prompt* and the prompt is the
+first thing in every body.
+
+They are **required attrs**, and that is the whole design. The 08-04 audit of
+this tab found the recurring failure was not wrong facts but **prose that reads
+like a promise** — copy that says "show me before you send" as though saying it
+creates a hold. A required attr turns "which control actually stops this?" from
+an editorial question nobody re-asks into a compile warning. Answering
+*"None — this is a read"* is a fine answer. Omitting the row is not possible.
+
+Two safe actions ride with each prompt: **Copy prompt**, which needed no new JS
+(the existing clipboard listener is generic), and **Try in Chat**, which
+prefills the composer and stops. Prefill-only is the entire safety story for
+runnable demos: clicking every button on an Explore tab cannot execute anything,
+because the operator still presses send — which is also where the agent's own
+gates get their chance to fire.
+
+The opt-out has exactly one consumer, and it is the interesting one. The GWS
+unattended cycle's prompt is an **email**, not chat input; offering to paste it
+into the composer would teach the wrong trigger for that entire mechanism. A
+test asserts precisely one GWS prompt omits the button, so a convenience cannot
+spread into a lie.
+
+**Ordering note:** the roadmap listed the contract *after* the two missing
+tutorials. Doing it first meant the new tutorials were written once, in the final
+shape, instead of being retrofitted in the same week they were born.
+
+## Two tutorials, and what writing them found
+
+**BusterPhone** is built around one asymmetry: *recording a message and handing
+it to an agent are different events, and only the first is automatic.* An
+answering machine records strangers by design. So the diagram puts
+`ARCHIVED + PLAYABLE` **above** `THEN THE TRUST DECISION` — the ordering is the
+lesson — and the two channels do not share a rule:
+
+- **SMS** → trusted number. One factor.
+- **Voicemail** → trusted number **and** a PIN-verified call. Two.
+
+A trusted number that calls and skips the code is the case worth teaching: it is
+recorded, not enqueued, and the near-miss is *logged*, because either you forgot
+your PIN or somebody is spoofing you.
+
+**Shaders & Backgrounds** turned out to be the one taught surface with **no
+commands at all** — no `shader_*`, no `appearance_*`, nothing. That is not a gap
+in the command surface; it is the safety model for arbitrary GPU code. A shader
+file may arrive from anywhere, including from an agent with workspace file
+access, and **only a human click ever puts it on screen.** So the tutorial's
+thesis is its own absence, and its best beat is the anticlimax: the agent writes
+the file, and *nothing happens* — "this is the part people expect to be broken
+and it isn't."
+
+Which produced the assertion this repo should write more of: a test that fails if
+any `shader_*` / `appearance_*` / `background_*` command ever enters the catalog.
+The page's central claim is now load-bearing on the build, not on prose.
+
+## Writing a tutorial is a documentation audit with teeth
+
+Two things disagreed with the implementation, and both were found only because
+something had to be *stated precisely enough to test*:
+
+1. **The Appearance catalog is a click, not a drag.** `Appearance`'s own moduledoc
+   said "the user drags an option onto the Homepage or Terminal target"; the
+   LiveView that owns the interaction says "one plain click, no drag." The
+   interaction was redesigned and the doc wasn't. Fixed.
+2. **There is no palette-coloured fallback when WebGPU is missing.** The roadmap
+   asked the tutorial to "cover the solid fallback." There is no fallback
+   *renderer*: `.ic-home-bg` has no background of its own, so the layer simply
+   does not paint and the ordinary page shows through.
+
+Both are the same drift seam this month keeps producing — **prose describing a
+mechanism that was replaced, surviving because no test reads prose.** The
+countermeasure that worked was not proofreading. It was rendering the facts
+*from* `Appearance` and `ModelPolicy` where possible, and asserting catalog
+metadata where not.
+
+## Trading leaves the atlas
+
+Operator call: the Command List's cycle 2 was "The market at a glance"
+(`finance_quote`, `finance_news`, `finance_fundamentals`, `finance_filings`).
+"No more trading" had two readings, so it was asked rather than assumed — and the
+answer was the narrow one. **Nothing was deleted.** Those commands are read-only
+public-record research (SEC EDGAR, BLS, Finnhub) that survived the 08-08 Trading
+cut and remain on `/cmd-list`; they simply stopped being one of six things put in
+front of a first-time user.
+
+The test `refute`s the market cycle rather than merely asserting the new one,
+because *removal* was the change.
+
+The replacement earns its slot on content: **"The notebook and the vault"**
+teaches `note_create` vs `document_save` (the operator's writing vs the agent's
+findings — a line the catalog enforces in its own descriptions) and `note_save`'s
+required `revision`, a real optimistic-concurrency rule you can hit by editing a
+note mid-run. Both asserted against catalog metadata, including that even
+`note_list` is restricted — your note *titles* are private writing.
+
+## The tally
+
+Six tutorials, 21 demos, all carrying the contract. 3,272 tests green. Three
+file-size caps raised **with reasons in the script**, which is the gate working
+rather than the gate losing.
+
+The through-line, and it is the same one as the attachments seam earlier today:
+**the contract you have to write down is the one that holds.** Four fields on a
+component did more for this tab's honesty than an accuracy pass did, because the
+accuracy pass fixed sentences and the fields changed what a sentence is allowed
+to leave out.

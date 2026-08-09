@@ -251,6 +251,26 @@ defmodule BusterClawWeb.StatusLive do
     end
   end
 
+  # A tutorial's "Try in Chat" button. It **prefills and stops** — same
+  # `bc:chat_prefill` path the corner widget's Email button uses, and for the
+  # same reason: staging an ask is not making one. This is the whole safety
+  # story for Explore's runnable demos. Opening a tutorial, or clicking every
+  # button on it, must never execute a command; the operator still presses send,
+  # which is also where the agent's own gates get their chance to fire.
+  #
+  # The text is bounded rather than trusted for length: it arrives from a
+  # phx-value on the operator's own page, so it is not a trust problem, but an
+  # unbounded string pushed into the composer is a denial-of-usability one.
+  def handle_event("explore_try_in_chat", %{"text" => text}, socket)
+      when is_binary(text) and byte_size(text) in 1..2000 do
+    {:noreply,
+     socket
+     |> switch_home_tab("chat")
+     |> push_event("bc:chat_prefill", %{text: text})}
+  end
+
+  def handle_event("explore_try_in_chat", _params, socket), do: {:noreply, socket}
+
   # The Studio's selection is owned HERE, not by the component: home tabs render
   # behind `:if`, which removes the DOM and discards the live_component with it,
   # so a selection held in the component would not survive a glance at Chat.

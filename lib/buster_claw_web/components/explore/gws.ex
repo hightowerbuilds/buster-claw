@@ -46,6 +46,10 @@ defmodule BusterClawWeb.Explore.Gws do
         n={1}
         title="The morning brief"
         want="You're busy. You want the day handed to you, not fished for."
+        needs="Google connected in Configuration. Nothing else — no trusted senders required to read your own mail."
+        touches="Pulls mail and today's events into the local Library and Calendar. Reads Google; writes nothing back to it."
+        confirm="None. The two syncs are safe-tier triggers and the searches are safe-tier reads; no path here sends mail or edits Google data."
+        result="The brief in chat, mail in the Library, events on the Calendar sub-tab. Not connected and the commands say so rather than returning an empty inbox that looks like a quiet day."
       >
         <.prompt text="Good morning — sync my mail and calendar, then brief me: what's on today, which emails actually need a reply from me, and anything that smells urgent." />
         <ol class="ic-unfold">
@@ -77,6 +81,10 @@ defmodule BusterClawWeb.Explore.Gws do
         n={2}
         title="Draft, don't send"
         want="Inbox triage in your voice — with your hand still on the send button."
+        needs="Google connected. Drafts are created in your real Gmail account, so this is not a dry run."
+        touches="Reads threads; creates real drafts in your Gmail Drafts folder. Sends nothing until the second half."
+        confirm="Two separate controls on the send, not one: `gmail_send` refuses without its `confirm_send` argument, and its policy-level gated flag blocks an untrusted-provenance run and files a pending approval instead."
+        result="Drafts visible in Gmail and quoted in chat; successful sends receipted on the Security feed. Saying “show me first” in the prompt is intent — the enforced stop is the confirm argument."
       >
         <.prompt text="Go through the unread. Anything that needs an answer, draft a reply in my voice — short, warm, direct. Show me all of them here. Send nothing." />
         <ol class="ic-unfold">
@@ -104,6 +112,10 @@ defmodule BusterClawWeb.Explore.Gws do
         n={3}
         title="Remember the schedule"
         want="Your calendar should interrupt you, not wait to be read."
+        needs="Google connected, and events actually on today's calendar."
+        touches="Syncs the calendar one way into the app, then creates local reminders. Nothing is written back to Google, and nothing leaves this machine."
+        confirm="None — a local reminder is cheap and undoable. Dismiss or snooze is right there on each one."
+        result="Reminders queued in the corner widget's Notify tab, each chiming when due. An empty calendar produces no reminders and says so."
       >
         <.prompt text="Sync my calendar, then set reminders 30 minutes before each meeting today — make it an hour for anything off-site." />
         <ol class="ic-unfold">
@@ -124,15 +136,23 @@ defmodule BusterClawWeb.Explore.Gws do
         n={4}
         title="The unattended cycle"
         want="You're out. The assistant answers your email about your own day."
+        needs="Google connected, your own address on the trusted-sender list, and an on-duty shift running."
+        touches="Enqueues a durable Dispatch item from your mail, then sends a threaded Gmail reply and marks the item done — all with nobody watching."
+        confirm="Different mechanism from cycle 2, and worth knowing: `dispatch_reply` has no confirm argument and is not policy-gated. Trusting the sender and starting the shift ARE the controls for this path."
+        result="A reply in your phone's inbox and the item marked done, with the run's receipts on the Security feed. Off-duty, or an untrusted sender, and the mail is archived without ever becoming work."
       >
         <p class="text-sm leading-relaxed text-base-content/80">
           One-time setup: add your own phone's email address to
           <span class="font-semibold text-base-content">Trusted Senders</span>
           (Contacts, in the corner widget), then in the terminal: <code>./buster-claw on-duty</code>.
         </p>
+        <%!-- No "Try in Chat" here: this prompt is an *email*, and the whole
+              point of the cycle is that the trigger is mail from a trusted
+              sender, not something typed into the composer. --%>
         <.prompt
           label="You email — from your phone, hours later"
           text="Subject: Afternoon check. What's between 1 and 6? Anything I should prep for the 3pm?"
+          try_in_chat={false}
         />
         <ol class="ic-unfold">
           <li>
@@ -163,6 +183,10 @@ defmodule BusterClawWeb.Explore.Gws do
         n={5}
         title="Make the files, not just the mail"
         want="The deliverable is a sheet or a deck — so have the agent build it where it lives."
+        needs="Google connected, with Drive, Sheets and Slides in scope for the connected account."
+        touches="Creates real files in your Drive and moves them into a folder. The share at the end grants another person access — the only step here another human notices."
+        confirm="A third mechanism: `drive_share` refuses unless its own `confirm_share` argument is explicitly true. It is restricted and audited but NOT policy-gated, so it files no pending approval by itself."
+        result="Files in Drive, in the named folder, with the share applied. A scope the connected account lacks fails on that command rather than silently skipping it."
       >
         <.prompt text="Pull the amounts out of this week's receipt emails into a new expenses sheet, and turn Monday's agenda into a short slide deck. Put both in a Drive folder called Ops, then share the folder with Dana as a writer." />
         <ol class="ic-unfold">
@@ -196,6 +220,10 @@ defmodule BusterClawWeb.Explore.Gws do
         n={6}
         title="Send the file, not a link"
         want="Some people want the attachment. Attach it."
+        needs="Google connected, and a file in Drive worth exporting."
+        touches="Downloads an export into your workspace, creates a draft carrying it, then sends real mail with a real attachment."
+        confirm="Same pair as cycle 2 — `confirm_send` on the command, plus the policy gate on untrusted-provenance runs. Nothing about an attachment relaxes either."
+        result="The mail leaves with the file on it, receipted on the Security feed; the export stays in your workspace. A missing or unexportable file fails before any draft exists."
       >
         <.prompt text="Email Dana the expenses sheet as an .xlsx — subject 'Ops expenses', two lines of context in the body, file attached. Show me before it goes." />
         <ol class="ic-unfold">
