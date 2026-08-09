@@ -104,6 +104,63 @@ defmodule BusterClawWeb.BrowseLiveTest do
       assert AgentMode.mode(live_run) == :agent_working
     end
 
+    # THE SECOND-RUN TRAP. `agent_dismissed` held ONE run_id, and runs stay
+    # registered after they end — so with two finished runs, dismissing the
+    # newest revealed the older one, and dismissing THAT one revealed the newest
+    # again, because the single slot had just been overwritten. The banner
+    # alternated forever and the native browser surface (`:if={!@agent_run}`)
+    # never came back: the tab was stuck in Agent Mode permanently, for every
+    # operator who ran an errand twice.
+    test "every finished run can be dismissed, not just the newest", %{conn: conn} do
+      first = start_run()
+      {:ok, view, _html} = live(conn, "/browse")
+      render_click(view, "agent_stop", %{})
+
+      second = start_run()
+      _ = :sys.get_state(view.pid)
+      render_click(view, "agent_stop", %{})
+
+      assert AgentMode.mode(first) == :stopped
+      assert AgentMode.mode(second) == :stopped
+
+      # Two dismissals for two finished runs, and the tab is a browser again.
+      render_click(view, "agent_dismiss", %{})
+      html = render_click(view, "agent_dismiss", %{})
+
+      refute html =~ "agent-mode-banner",
+             "a second finished run re-pinned the tab — dismissal is not accumulating"
+
+      assert html =~ "data-browser-surface",
+             "the native browser surface never came back"
+    end
+
+    # The other half of "stuck in Agent Mode": the surface itself. The mirror is
+    # an MJPEG stream from the run's Chromium, so once the run ends it is a dead
+    # frame — but it held the surface slot for ANY registered run, live or not,
+    # and the native webview stayed hidden behind it (`data-agent-mirror`). So
+    # every completed errand left the operator looking at a frozen picture of a
+    # closed browser until they found Dismiss. Ending the run is the restore.
+    test "a finished run gives the browser back without waiting to be dismissed", %{conn: conn} do
+      start_run()
+      {:ok, view, html} = live(conn, "/browse")
+
+      # While live: the mirror owns the surface and the webview is hidden.
+      assert html =~ ~s(data-agent-mirror="1")
+      refute html =~ "data-browser-surface"
+
+      html = render_click(view, "agent_stop", %{})
+
+      # The outcome is still on screen — that part must not vanish.
+      assert html =~ "agent-mode-banner"
+      assert html =~ "STOPPED"
+
+      # …but the browser is a browser again, with no click required.
+      refute html =~ ~s(data-agent-mirror="1")
+
+      assert html =~ "data-browser-surface",
+             "a finished run still held the surface — the operator is stuck on a dead mirror"
+    end
+
     test "the human can mark a handoff done without resuming the agent", %{conn: conn} do
       pid = start_run(true)
       {:ok, view, _html} = live(conn, "/browse")

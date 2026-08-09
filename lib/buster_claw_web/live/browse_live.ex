@@ -54,7 +54,12 @@ defmodule BusterClawWeb.BrowseLive do
      |> assign(:initial_url, initial_url || "")
      |> assign(:surface_id, surface_id)
      |> assign(:confirmation, "")
-     |> assign(:agent_dismissed, nil)
+     # A SET, not a single id. It held one run_id until 08-09, and runs stay
+     # registered after they end — so with two finished runs, dismissing the
+     # newest revealed the older, and dismissing that one revealed the newest
+     # again, because the single slot had just been overwritten. The tab stayed
+     # in Agent Mode permanently for anyone who ran a second errand.
+     |> assign(:agent_dismissed, MapSet.new())
      |> load_agent()}
   end
 
@@ -82,8 +87,12 @@ defmodule BusterClawWeb.BrowseLive do
   # run_id — shows up regardless of what was dismissed before.
   def handle_event("agent_dismiss", _params, socket) do
     case socket.assigns.agent_run do
-      %{run_id: run_id} -> {:noreply, socket |> assign(:agent_dismissed, run_id) |> load_agent()}
-      _none -> {:noreply, socket}
+      %{run_id: run_id} ->
+        dismissed = MapSet.put(socket.assigns.agent_dismissed, run_id)
+        {:noreply, socket |> assign(:agent_dismissed, dismissed) |> load_agent()}
+
+      _none ->
+        {:noreply, socket}
     end
   end
 
@@ -146,9 +155,11 @@ defmodule BusterClawWeb.BrowseLive do
     # with its own Stop button hidden, because that only renders while the run
     # is still live. Prefer something actually running; fall back to the newest
     # terminal run so the outcome is visible until dismissed.
+    dismissed = socket.assigns[:agent_dismissed] || MapSet.new()
+
     runs = AgentMode.list_runs() |> Enum.reject(&(&1.mode == :gone))
     live = Enum.find(runs, &(not Mode.terminal?(&1.mode)))
-    run = live || Enum.find(runs, &(&1.run_id != socket.assigns[:agent_dismissed]))
+    run = live || Enum.find(runs, &(not MapSet.member?(dismissed, &1.run_id)))
 
     if run do
       steps = safe(fn -> run.pid |> AgentMode.trajectory() |> Trajectory.steps() end) || []
@@ -156,11 +167,19 @@ defmodule BusterClawWeb.BrowseLive do
 
       socket
       |> assign(:agent_run, run)
+      # Only a LIVE run takes the surface. A finished run keeps its banner (the
+      # outcome, and the Dismiss button) but hands the browser straight back:
+      # its mirror is a stream from a Chromium that has already closed, so
+      # holding the surface for it meant every completed errand left the
+      # operator staring at a dead frame until they found Dismiss. The agent
+      # does not have to "restore" anything — ending the run is the restore.
+      |> assign(:agent_live?, not Mode.terminal?(run.mode))
       |> assign(:agent_steps, Enum.reverse(steps))
       |> assign(:agent_cart, cart && Cart.summary(cart))
     else
       socket
       |> assign(:agent_run, nil)
+      |> assign(:agent_live?, false)
       |> assign(:agent_steps, [])
       |> assign(:agent_cart, nil)
     end
@@ -201,7 +220,7 @@ defmodule BusterClawWeb.BrowseLive do
         phx-hook="EmbeddedBrowser"
         data-initial-url={@initial_url}
         data-surface-id={@surface_id}
-        data-agent-mirror={@agent_run && "1"}
+        data-agent-mirror={@agent_live? && "1"}
         class="flex min-h-0 flex-1 flex-col"
       >
         <%!-- Agent-workspace mode: the visible switch. Rendered OUTSIDE the
@@ -289,7 +308,7 @@ defmodule BusterClawWeb.BrowseLive do
 
                MJPEG in a plain <img>: the webview decodes natively and the
                frames never touch the LiveView channel. --%>
-          <div :if={@agent_run} class="relative min-h-0 flex-1 bg-base-300">
+          <div :if={@agent_live?} class="relative min-h-0 flex-1 bg-base-300">
             <img
               src={~p"/browser/agent-view/#{@agent_run.run_id}"}
               alt="Agent browser viewport"
@@ -302,7 +321,7 @@ defmodule BusterClawWeb.BrowseLive do
 
           <%!-- The native chrome (toolbar) + content webviews are positioned over
                this surface by the hook; shrinking it makes room for the rail. --%>
-          <div :if={!@agent_run} data-browser-surface class="relative min-h-0 flex-1">
+          <div :if={!@agent_live?} data-browser-surface class="relative min-h-0 flex-1">
             <div
               data-browser-fallback
               class="hidden h-full place-items-center p-8 text-center text-sm text-base-content/60"
