@@ -920,7 +920,9 @@ logged-in checkout.
       it *reads* well on a real build — cheap, and the only claim 3,272 tests
       cannot make.
 
-- [ ] **The three chat skins, looked at.** Inherited 08-09 from
+- [x] **The three chat skins, looked at.** — **SIGNED OFF by the operator
+      08-09-26.** Source roadmap archived to
+      `daily-growth/archive/08-09-26-chat-skins.md`. Inherited 08-09 from
       `CHAT_SKINS_ROADMAP.md`, whose own acceptance section this is. Settings →
       Appearance → Chat theme: change it three times and watch the preview. Then
       open the homepage **with a conversation already on screen** and confirm the
@@ -950,8 +952,14 @@ logged-in checkout.
 - [ ] **Terminal themes, including one you made.** Inherited 08-09 from
       `TERMINAL_THEME_ROADMAP.md`, whose acceptance section this is. Settings →
       Appearance → Terminal theme: pick each of Industrial, Nord and Monokai with a
-      terminal **already open** and confirm it restyles. Then *Start from Nord*,
-      change the background, and confirm the open terminal follows as you pick.
+      terminal **already open** and confirm it restyles. Then build a custom theme:
+      **drag the hue slider** and confirm the open terminal follows the drag live,
+      then change an individual swatch and confirm that sticks too.
+
+      *(This step said "Then *Start from Nord*" until 08-09. That entry point was
+      replaced the same day, on operator revision, by the hue spectrum — one
+      number in, all 21 colours out — and `copy_of/1`/`starting_points/0` were
+      deleted. The bullet described a button that no longer exists.)*
       Open a **second window** and confirm both terminals agree. Restart the app
       and confirm the custom theme is still there and still selected.
 

@@ -1,7 +1,32 @@
 # Chat skins — three looks for the homepage chat, switched from Settings
 
-**Scoped 08-08-26 · Status: Phases 0–3 SHIPPED 08-09. Only the acceptance walk
-is left, and it needs the operator.**
+**Scoped 08-08-26 · Status: COMPLETE + ARCHIVED 08-09-26.**
+
+> # CLOSED 08-09-26
+>
+> **All phases shipped, and the operator signed off the acceptance walk on
+> 08-09** — LAUNCH **G-40**'s "three chat skins, looked at" is checked. Nothing
+> is outstanding.
+>
+> **The one idea worth carrying out of here:** a LiveView stream never re-renders
+> messages already on screen, so anything that must change the *look* of existing
+> messages cannot be a change to what the template renders. That is why appearance
+> here is **CSS-only, keyed off two attributes on the root `<section>`** — and why
+> the DOM is byte-identical across all three skins and all four text sizes, with a
+> test asserting exactly that. Branching bubble classes on the skin would have
+> demoed perfectly on an empty chat and half-applied on a real one.
+>
+> Two corrections landed the same day they were caused, both from the operator:
+> the two new skins must keep the homepage's **translucent blurred panel** (an
+> opaque draft was wrong, and the roadmap had explicitly licensed the override —
+> so the document was wrong before the CSS was), and the Chat theme control
+> belongs **stacked under the app Theme panel**, which meant the left grid cell had
+> to become a stack, because a third grid child does not fill a gap.
+>
+> Also settled here: skin CSS wins by being **unlayered**, not by specificity —
+> verified against the built stylesheet after the roadmap first claimed otherwise.
+> And never call any of this a "theme" in code: daisyUI owns `data-theme`, so the
+> attribute is `data-chat-skin`.
 
 | Phase | State |
 |---|---|

@@ -483,7 +483,10 @@ a date rather than from "Dialyzer gates CI".
   delete inside `priv/static/assets/` directly, or accept the cruft, which is
   invisible anyway. This is the one item in this document whose "fix" was more
   dangerous than the finding.
-- **Two completed roadmaps still in `roadmaps/`.** `CHAT_SKINS_ROADMAP.md` and
+- **Two completed roadmaps still in `roadmaps/`.** *(Half resolved later the same
+  day: the operator signed off the chat-skins walk and it archived to
+  `08-09-26-chat-skins.md`. Terminal themes still waits on its walk.)*
+  `CHAT_SKINS_ROADMAP.md` and
   `TERMINAL_THEME_ROADMAP.md` both read *"SHIPPED 08-09. Only the operator walk
   remains."* Repo convention archives on completion; `archive/` holds 100 files.
   Both should move once their G-40 walks are signed off — **not before**, since
