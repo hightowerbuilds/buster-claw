@@ -1289,3 +1289,61 @@ The through-line, and it is the same one as the attachments seam earlier today:
 component did more for this tab's honesty than an accuracy pass did, because the
 accuracy pass fixed sentences and the fields changed what a sentence is allowed
 to leave out.
+
+## Archiving it, and two calls that were overdue
+
+The Explore roadmap closed. What made the close worth doing carefully is that
+two of its open items were **decisions, not tasks** — and a decision left in an
+archived roadmap becomes a decision someone re-litigates in three months.
+
+**Phase 1's markdown content pipeline: decided against, not deferred.** It
+proposed markdown files with a compile-time embed, mirroring the Manual, with
+HEEx as a rare escape hatch. It was never built — and a survey earlier today
+read that as debt, recommending Phase 1 as the fix for a large `explore_panel.ex`.
+That was backwards twice: the file had already been decomposed by the parallel
+modularization thread, and the six shipped tutorials had already answered the
+question. Each needs at least one thing markdown cannot do — **values rendered
+from source** (`ModelPolicy`, `Appearance`, the live command catalog — the single
+most effective anti-drift measure on the tab), **theme-aware inline SVG**, or
+**the demo contract's required attrs**, which only work because they are attrs.
+
+So HEEx is the pipeline, exactly as the roadmap predicted it might be when it
+wrote its own re-evaluation trigger. The accepted cost is real and recorded:
+adding a tutorial is a module plus two lines, not "drop a file".
+
+The third Phase 1 item — *write down a tutorial template* — was satisfied
+**better than proposed**. The template is not a skeleton in a README; it is four
+required attrs the compiler enforces. A README describing the shape would have
+been the sixth place this tab could drift from itself.
+
+**Explore vs the Manual: the proposed line held.** The fallback was folding the
+Manual into Explore's rail and retiring `/manual`. Six tutorials later they had
+not collided — no tutorial restates a Manual section — so both stay. What the
+exercise *did* expose is the reverse asymmetry: Explore links out to app surfaces
+constantly and to the Manual **not once**. That became the one Phase 4 item worth
+carrying forward rather than dropping.
+
+## Where a closed roadmap's tail should go
+
+Not all to one place, which is the habit worth keeping:
+
+- The **packaged read-through** went to `LAUNCH_ROADMAP` **G-40** — the gate whose
+  definition is *a build, and a person looking*. Two items collapsed into one
+  bullet there, and its stated risk turned out **void**: Phase 4 asked to confirm
+  "compile-time embeds must actually ship," and decision 1 means there are no
+  embeds. Carrying that sentence forward unexamined would have had someone
+  checking for a failure mode that cannot occur.
+- **Site-copy verification, NTF's place in the rail, cross-linking, and Phase 3's
+  five unaccepted tiles** went to `LEFTOVERS.md`.
+
+Phase 3's five were neither accepted nor declined, because no operator yes was
+ever given and taking one is what that phase's own rule forbids. But filing them
+surfaced a genuine imbalance: **the work queue has no tutorial while shaders
+does**, and the README calls the queue "the whole design." If one of the five gets
+promoted, that is the one.
+
+The external-site tabs got the sharpest deferral note, because they are the only
+content here that **can go stale with no commit touching it**. This repo's entire
+drift defence is derive-from-source plus contract tests, and neither can reach
+another origin. Which is an argument for keeping those two tabs short rather than
+for checking them more often.

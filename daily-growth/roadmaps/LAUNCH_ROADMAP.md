@@ -899,6 +899,27 @@ logged-in checkout.
       the new `secret_key_base` read is intelligible and that "Always Allow"
       sticks — that is **G-13**'s question, now with a second caller asking it.
 
+- [ ] **The Explore tab, read by a person.** Inherited 08-08 on
+      `EXPLORE_TAB_ROADMAP`'s archive
+      (`daily-growth/archive/08-08-26-explore-tab.md`), where it was two items —
+      Phase 0's "eyeball it in the real app" and Phase 4's packaged walk. Open the Explore rail in the
+      packaged build and read all nine sub-tabs: the eight-tab rail wraps
+      sensibly, the launcher grid's tiles are square and legible, each tutorial's
+      inline SVG renders in **both** themes (they use `currentColor` and
+      `var(--color-primary)`, which no test verifies visually), and the demo fact
+      rows (Needs / Touches / Stop / Result) read as a scannable block rather than
+      a wall. Click one **Try in Chat** and confirm it lands in the composer
+      *without* sending.
+
+      **The risk this originally named is void, and that is worth knowing before
+      you walk it.** Phase 4 asked to confirm "compile-time embeds must actually
+      ship — same class of check the music routes needed." There are no embeds:
+      Phase 1's markdown pipeline was evaluated and **decided against**, so all
+      six tutorials are HEEx function components compiled into the release like
+      any other module. Nothing can fail to ship. What remains is purely whether
+      it *reads* well on a real build — cheap, and the only claim 3,272 tests
+      cannot make.
+
 > **If the checkout walk fails, stop and fix before the rest.** The others are
 > quality; that one is money.
 

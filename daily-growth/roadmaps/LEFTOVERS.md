@@ -600,6 +600,65 @@ this cap again without extracting first** — twice is a pattern.
 
 ---
 
+### The Explore tab's tail — two errands and five tiles nobody said yes to
+
+*Inherited 08-08 when `EXPLORE_TAB_ROADMAP` was archived
+(`daily-growth/archive/08-08-26-explore-tab.md`). Its roster is complete
+— six tutorials, no stubs, every demo carrying the four-field contract — so what
+is left is editorial and structural, not content.*
+
+**Two things did not come here, and knowing where they went saves a search:**
+the packaged-build read-through became one bullet in **`LAUNCH_ROADMAP.md`
+G-40** (it needs a build and a person, which is that gate's whole definition),
+and **Phase 1's markdown content pipeline was decided against** rather than
+deferred — see the archived roadmap's closing note. Do not re-propose either as
+a leftover.
+
+**What.** Three items, none needing a design:
+
+- **Verify busterclaw.lol and Notes That Float, then fix the copy that describes
+  them.** Both site tabs were rewritten 08-04 for accuracy — vending is
+  described as planned, NTF as a creative-writing and journaling app with a
+  spatial 3D view. Neither was re-checked against the live sites afterwards, and
+  they are the two tabs in Explore whose subject **lives outside this repo**,
+  so no test can hold them. Visit both, confirm the copy, and correct it.
+- **Decide where NTF belongs in the rail.** It currently sits third, between
+  BusterClaw.lol and the six feature tutorials, which reads as though a sibling
+  product is a Buster Claw feature. The 08-04 audit floated grouping it (and
+  possibly the site tab) under an **Elsewhere** or **About** heading. One
+  registry edit; `Registry.@tabs` and `@tiles` both derive from one list, so the
+  rail and the launcher grid move together.
+- **Cross-link the three teaching surfaces.** Get Started and the Manual should
+  mention Explore where it helps, and the Explore Intro should link the Manual
+  for reference depth. Today Explore links *out* to app surfaces constantly
+  (`/appearance`, `/phone`, `/browse`, `/security`, `/settings`) and to the
+  Manual **not once**, which is the wrong asymmetry for the one surface whose
+  job is to teach.
+
+**And five candidate tiles that were proposed and never accepted:** *The work
+queue & on-duty*, *Chat & the agent*, *Music & Sound Studio*, *Security feed /
+Sentinel*, *The terminal*. Filed here rather than dropped because the strongest
+of them is a real gap — **the queue is described in the README as "the whole
+design" and has no tutorial**, while shaders (ambiance) has one. Each needs an
+operator yes, and the roadmap's own standing rule is the reason none was taken
+unilaterally: *eight thin tutorials are worth less than five good ones.*
+
+**Why deferred.** The roster work was the part that blocked a first-time user
+understanding the app; none of this does. The two site tabs are already accurate
+as far as anyone checked, the cross-link is a convenience, and a sixth tutorial
+nobody asked for is exactly the thin-tutorial failure the roadmap warned about.
+
+**What makes it expensive later.** The site copy is the one content in this app
+that can go stale **without any commit touching it** — a change on
+busterclaw.lol or notesthatfloat.com falsifies a page here silently, and this
+repo's whole drift defence is derive-from-source plus contract tests, neither of
+which can reach another origin. That is also the argument for keeping these two
+tabs short: every sentence about an external site is a maintenance liability with
+no automated owner. If Explore ever grows a third outbound tab, that is the
+moment to reconsider the pattern rather than the moment to write more prose.
+
+---
+
 ## Rules of engagement
 
 - An item leaves this file by being **done** or by being **promoted** to a real

@@ -1,5 +1,69 @@
 # Explore — a home tab that teaches the machine
 
+> # ARCHIVED 08-08-26 — roster complete, two decisions taken, tail dispersed
+>
+> **Shipped:** the Explore tab, its launcher grid, Get Started moved in, and
+> **six tutorials with no stubs** — Models, Shaders & Backgrounds, BusterPhone,
+> BrowserControl, Command List, Gmail/GWS — plus the two site tabs. Every worked
+> example carries the four-field demo contract (Needs / Touches / Stop / Result)
+> with Copy prompt and, where a chat prompt is the right trigger, Try in Chat.
+>
+> **Where the open items went:**
+>
+> - The **packaged-build read-through** (Phase 0's "eyeball it", Phase 4's walk)
+>   → **`LAUNCH_ROADMAP.md` G-40**, the gate for everything needing a build and a
+>   person. The risk Phase 4 named is void — see decision 1 below.
+> - **Site-copy verification, NTF's place in the rail, and cross-linking**, plus
+>   **Phase 3's five unaccepted candidate tiles** → `LEFTOVERS.md`, under *"The
+>   Explore tab's tail"*.
+>
+> ## Decision 1 — Phase 1's markdown pipeline: **decided against, not deferred**
+>
+> Phase 1 proposed `BusterClaw.ExploreGuide`, mirroring `UserGuide`: markdown
+> files in an `explore/` directory, compile-time embedded, with HEEx as a rare
+> escape hatch. **It was never built, and it should not be.** The roadmap set its
+> own test — *"re-evaluate when the next tutorial is written; if it also wants the
+> prompt/unfold shape, HEEx is the pipeline"* — and six tutorials answered it
+> unanimously. Every one of them needs at least one thing markdown cannot do:
+>
+> - **Values rendered from source.** Models lists surfaces, floors and
+>   Claude-only pins from `ModelPolicy`; Shaders lists built-ins and the image
+>   pool size from `Appearance`; Command List renders three metadata axes from the
+>   live catalog. This is the single most effective anti-drift measure on the tab,
+>   and markdown cannot call a function.
+> - **Theme-aware inline SVG.** Four tutorials open with a diagram using
+>   `currentColor` and `var(--color-primary)`. Sanitized markdown either strips
+>   these or ships an asset that cannot follow the theme.
+> - **The demo contract itself**, which only works because it is *required attrs
+>   on a component*. In markdown the four fields would be a convention, and a
+>   convention is exactly what the 08-04 audit found failing.
+>
+> So HEEx **is** the pipeline, and Phase 1 collapsed to "the sub-components" as
+> the roadmap predicted. The *third* Phase 1 item — a written tutorial template —
+> was satisfied differently and better: the template is not a skeleton in a
+> README, it is four required attrs the compiler enforces. A README describing the
+> shape would have been the sixth place this tab could drift.
+>
+> **The honest cost of the call:** adding a tutorial is a new module plus a
+> registry line plus a dispatch line, not "drop a file". That is more ceremony
+> than Phase 1 wanted, and it is the price of the three capabilities above.
+>
+> ## Decision 2 — Explore vs the Manual: **the proposed line held**
+>
+> The open question was whether two teaching surfaces would collide, with the
+> fallback of folding the Manual into Explore's rail and retiring `/manual`.
+> **Six real tutorials later, they did not collide, and the evidence is specific:
+> no tutorial restates a Manual section.** Explore is tutorial (here is what you
+> type, here is what it turns into, here is where the receipt lands); the Manual
+> stays reference. Both stay.
+>
+> What the exercise *did* expose is the reverse asymmetry — Explore links out to
+> app surfaces constantly and to the Manual not once — which is why the
+> cross-link is the one item from Phase 4 that went to `LEFTOVERS.md` rather than
+> being dropped. Note also that `LEFTOVERS.md` separately records *"The Manual has
+> no test, and had the worst drift of any surface"*; that is an argument for
+> testing the Manual, not for retiring it, and this decision does not touch it.
+
 > **Trading tutorial deleted 2026-08-08.** The Trading surface was removed from the
 > app (`293f47f`), and its Explore tile, tutorial panel and roster entry went with
 > it. Every Trading row below is struck rather than removed: what a tutorial was
@@ -103,9 +167,11 @@ tutorials make the overlap visible.** Don't decide it in the abstract.
   with both `/browse?url=…` cards; a forged `select_explore_tab` key is
   refused without a crash; the sub-tab selection survives a round-trip
   through Chat. `mix precommit` green.
-- [ ] Eyeball it in the real app (operator runs the server — agent tasks get
-  SIGTERM'd). The rail with one tab should not look broken; if it does, hide
-  the rail until Phase 2 gives it a second tab.
+- [→] **Moved to `LAUNCH_ROADMAP.md` G-40** on archive. Eyeball it in the real app
+  (operator runs the server — agent tasks get SIGTERM'd). The original worry is
+  moot twice over: the rail has nine tabs, not one, and it gained `flex-wrap` in
+  Phase 0.5 — so "hide the rail until it has a second tab" is void. What is left
+  is a read-through of a packaged build.
 
 **Done when:** the tab is on the homepage, Intro reads well, NTF link lands in
 the browse tab, suite green.
@@ -150,28 +216,37 @@ claims to be a tutorial that isn't one yet.
   collapsible, closed by default (operator, same day) — returning users see
   one quiet row; the `.ic-collapse-summary` CSS finally has a consumer again.
 
-# Phase 1 — The content pipeline
+# Phase 1 — The content pipeline — **DECIDED AGAINST 08-08**
 
 *How tutorials get written, before any are.*
 
-- [ ] `BusterClaw.ExploreGuide`, mirroring `UserGuide`: markdown files in
+> **Never built, and closed on purpose rather than left open** — the full
+> reasoning is decision 1 in the archive banner at the top. Short version: all
+> six tutorials need values rendered from source, theme-aware inline SVG, or the
+> demo contract's required attrs, and markdown can do none of the three. HEEx is
+> the pipeline. The three boxes below are kept for the record of what was
+> proposed; **do not implement them.**
+
+- [✗] `BusterClaw.ExploreGuide`, mirroring `UserGuide`: markdown files in
   `explore/` (repo root, beside `user-guide/`), `@sections` registry,
   compile-time embed, `Markdown.to_html/1`. Rail order = registry order,
   Intro pinned first.
-- [ ] Decide the escape hatch: markdown covers prose + screenshots + plain
+- [✗] Decide the escape hatch: markdown covers prose + screenshots + plain
   `<a href="/browse">`-style deep links into the app (full-page nav — fine).
   A tutorial that needs live interactivity (buttons that fire events, "try it
   here" panels) gets a HEEx panel function in `ExplorePanel` instead, keyed
   the same way. Both kinds coexist in one rail; markdown is the default.
-- [ ] A tutorial template, written down in `explore/README` or the first file's
-  header. Proposed skeleton, so every tutorial answers the same four things:
-  **what this surface is → drive it yourself (steps) → hand it to the agent
-  (the actual commands/prompts) → where the receipts land** (Sentinel/audit,
-  workspace files). The fourth section is the product's differentiator; no
-  tutorial ships without it.
+- [x] A tutorial template — **satisfied differently, and better.** The proposed
+  skeleton (*what this surface is → drive it yourself → hand it to the agent →
+  where the receipts land*) is the shape all six tutorials actually take, but it
+  was never written down as prose. It is enforced instead: the four **required**
+  attrs on `<.example>` make a demo that omits its stop or its receipts a compile
+  warning. A README describing the shape would have been a sixth place for this
+  tab to drift; the compiler cannot drift.
 
-**Done when:** adding a tutorial = drop a file + one registry line, and the
-template exists.
+**Done when:** ~~adding a tutorial = drop a file + one registry line~~ — the
+template exists, as code. Adding a tutorial is a module + a registry line + a
+dispatch line, which is the acknowledged cost of decision 1.
 
 # Phase 2 — Fill the roster (the operator's five, made real)
 
@@ -261,9 +336,12 @@ Replace each Phase 0.5 stub with an actual tutorial. One tutorial per commit.
   actually hit by editing a note in the Notes tab mid-run. Both are asserted
   against catalog metadata.
 
-- [ ] Make the Explore vs Manual call (see open question above). Six real
-  tutorials now exist, so the overlap is visible and this is decidable —
-  it is the oldest open item on this roadmap.
+- [x] **Made the Explore vs Manual call 08-08 — the proposed line held.** Six
+  tutorials exist and none restates a Manual section, so Explore stays tutorial,
+  the Manual stays reference, and `/manual` is not retired. Full reasoning in
+  decision 2 of the archive banner. The one thing the exercise exposed — Explore
+  links out to app surfaces constantly and to the Manual not once — is the
+  cross-link item now in `LEFTOVERS.md`.
 
 # Phase 2.5 — Content accuracy and runnable demos *(audit 08-04-26)*
 
@@ -493,16 +571,22 @@ read catalog metadata and verify every claim made by a tutorial:
 3. **DONE 08-08** — Build BusterPhone and Shaders & Backgrounds tutorials.
 4. **DONE 08-08** — Retrofit Models, GWS, Command List, and BrowserControl
    examples.
-5. Rewrite or relocate BusterClaw.lol and NTF after verifying their live roles.
-6. Run a packaged-app editorial pass; archive this roadmap only after every
-   tutorial has been exercised against a real dependency or an explicit safe
-   failure state.
+5. **→ `LEFTOVERS.md` 08-08** — Rewrite or relocate BusterClaw.lol and NTF after
+   verifying their live roles.
+6. **→ `LAUNCH_ROADMAP.md` G-40 08-08** — Run a packaged-app editorial pass.
 
-**Remaining to close this roadmap:** step 5, step 6, the Explore-vs-Manual call
-(Phase 2's open question — six real tutorials now make the overlap visible, so
-it is decidable), and Phase 4's cross-linking and packaged walk.
+   The original condition on archiving — *"only after every tutorial has been
+   exercised against a real dependency or an explicit safe failure state"* — was
+   **partly met and partly waived, deliberately.** Met: every tutorial's demo now
+   *declares* its failure state in the `result` field, which is the durable half,
+   and the claims that could be machine-checked are contract tests against
+   `ModelPolicy`, `Appearance` and the command catalog. Waived: the surfaces that
+   need a live dependency to exercise — BusterPhone needs the operator's own
+   Twilio and Supabase relay, GWS needs a connected Google account — cannot be
+   walked from this repo at all. Holding an archive on a dependency nobody has
+   provisioned is how a finished roadmap stays open for a month.
 
-# Phase 3 — Roster growth (proposals, not commitments)
+# Phase 3 — Roster growth (proposals, not commitments) — **→ LEFTOVERS 08-08**
 
 Candidate tiles beyond the operator's seven, each needing an operator yes:
 **The work queue & on-duty** (the queue is "the whole design" — README),
@@ -510,13 +594,25 @@ Candidate tiles beyond the operator's seven, each needing an operator yes:
 Sentinel**, **The terminal**. Eight thin tutorials are worth less than five
 good ones; anything declined goes to `LEFTOVERS.md` with a reason.
 
-# Phase 4 — Closeout
+- [→] **All five went to `LEFTOVERS.md` on archive, none accepted and none
+  declined.** No operator yes was ever given, and taking one unilaterally is
+  what this phase's own rule forbids. Recorded there with the observation worth
+  acting on: **the work queue has no tutorial while shaders does**, and the README
+  calls the queue "the whole design" — so if any of the five gets promoted, that
+  is the one.
 
-- [ ] Cross-link: Get Started and the Manual mention Explore where it helps;
-  the Intro links the Manual for reference depth.
-- [ ] Walk the tab in the packaged app (compile-time embeds must actually ship —
-  same class of check the music routes needed).
-- [ ] Archive this roadmap; open items → `LEFTOVERS.md`.
+# Phase 4 — Closeout — **DONE 08-08**
+
+- [→] Cross-link: Get Started and the Manual mention Explore where it helps;
+  the Intro links the Manual for reference depth. **→ `LEFTOVERS.md`.** Not done,
+  and it is the item decision 2 turned up rather than an afterthought.
+- [→] Walk the tab in the packaged app. **→ `LAUNCH_ROADMAP.md` G-40.** The
+  parenthetical reason — *compile-time embeds must actually ship* — **does not
+  apply**: decision 1 means there are no embeds, only ordinary compiled modules.
+  The walk survives as an editorial read-through, not a shipping check.
+- [x] Archive this roadmap; open items → `LEFTOVERS.md`. **Done 08-08** — this
+  banner, the `LEFTOVERS.md` section *"The Explore tab's tail"*, and one G-40
+  bullet are where everything went.
 
 ---
 
