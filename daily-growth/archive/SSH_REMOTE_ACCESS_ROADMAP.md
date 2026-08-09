@@ -1,6 +1,22 @@
 # Remote Buster Claw over SSH
 
-**Scoped 08-08-26 · Status: RESEARCHED, not started.**
+**Scoped 08-08-26 · Status: SUPERSEDED + ARCHIVED 08-08-26, never started.**
+
+> **Read `daily-growth/roadmaps/CLINCH_ROADMAP.md` instead.** This map was
+> absorbed whole on the day it was scoped, because reading it against the
+> credential findings made one thing obvious: its own foundation — *"anyone who
+> can reach the loopback listener can operate the UI"* — is a statement that a
+> tunnel turns into *"anyone holding the SSH key holds every credential in the
+> app."* Remote access could not ship ahead of a credential authorization model,
+> so the two became one project rather than two documents with a dependency
+> between them.
+>
+> Nothing here was lost. Phases 0–1 became **Clinch Phase 5**, phase 2 became
+> **Phase 6**, phase 3 became **Phase 7**, and phases 4–5 are carried as
+> explicitly deferred with their reasons intact. The OTP 28 trap, the
+> moving-port decision table, the rejected-alternatives table, the capability
+> matrix and every research source travelled with them. This file is kept only
+> as the record of the research as it originally stood.
 
 This map answers one product question: **how can the operator safely reach the
 Buster Claw running on their own Mac while they are away from it?**

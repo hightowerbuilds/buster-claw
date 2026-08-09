@@ -49,6 +49,7 @@ struct ReleaseLauncher {
     secret_key_base: String,
     api_token: String,
     mcp_token: String,
+    agent_token: String,
     port: u16,
     phoenix_url: String,
 }
@@ -69,6 +70,7 @@ impl ReleaseLauncher {
             .env("SECRET_KEY_BASE", &self.secret_key_base)
             .env("BUSTER_CLAW_API_TOKEN", &self.api_token)
             .env("BUSTER_CLAW_MCP_API_TOKEN", &self.mcp_token)
+            .env("BUSTER_CLAW_AGENT_API_TOKEN", &self.agent_token)
             .env("RELEASE_DISTRIBUTION", "none")
             .stdout(Stdio::from(stdout_log))
             .stderr(Stdio::from(stderr_log))
@@ -537,6 +539,14 @@ fn main() {
             )?;
             let api_token = ensure_secret(&data_dir, "api_token", &["api_token"], 43)?;
             let mcp_token = ensure_secret(&data_dir, "mcp_token", &["mcp_token"], 43)?;
+            // The agent-untrusted token is provisioned here for the same reason as
+            // its two siblings, and it was the one that wasn't: nothing set
+            // BUSTER_CLAW_AGENT_API_TOKEN, so `BusterClaw.ApiToken.agent_value/0`
+            // fell through to generating and persisting a CLEARTEXT file in the
+            // data dir — the token authorizing untrusted-provenance agent runs was
+            // the only one on disk in the clear (Clinch Phase 0). The migrate list
+            // adopts and deletes any such file left by an older build.
+            let agent_token = ensure_secret(&data_dir, "agent_token", &["agent_token"], 43)?;
             let workspace_root = workspace::resolve_workspace_root(&data_dir)?;
             workspace::ensure_workspace_dirs(&workspace_root)?;
             let database_path = data_dir.join("buster_claw.db");
@@ -562,6 +572,7 @@ fn main() {
                 secret_key_base,
                 api_token,
                 mcp_token,
+                agent_token,
                 port,
                 phoenix_url: format!("http://127.0.0.1:{port}"),
             };

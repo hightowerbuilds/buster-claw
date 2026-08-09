@@ -2,16 +2,21 @@ defmodule BusterClaw.ApiToken do
   @moduledoc """
   Loopback API token. Loaded once at first access and cached in Application env.
 
-  - Production: read or generate at `<user data dir>/api_token` (32 random
-    bytes, url-safe base64-encoded). The same data dir holds `secret_key_base`.
+  - Packaged app: the Tauri shell holds all three tokens in the **macOS
+    Keychain** and injects them as `BUSTER_CLAW_*_API_TOKEN`, which
+    `config/runtime.exs` reads into app env. Nothing here touches the disk.
+  - Manual release run outside the shell: read or generate at
+    `<user data dir>/<name>` (32 random bytes, url-safe base64-encoded).
   - Dev / test: pre-set in `config/dev.exs` and `config/test.exs` via
     `config :buster_claw, :api_token, "..."`. Reload doesn't rotate.
 
   ## Filesystem hygiene
 
-  When the token file is created (or read), the file is chmod-ed to `0o600`
-  and the parent directory to `0o700` on POSIX systems. Windows is a no-op
-  since it has no equivalent POSIX modes.
+  The file path is a fallback, not the normal path — a packaged install should
+  never create one. When it is used, the file is chmod-ed to `0o600` and the
+  parent directory to `0o700` on POSIX systems (Windows is a no-op, having no
+  equivalent modes), and the shell adopts any such file into the Keychain and
+  deletes it on next launch.
 
   ## Test override
 
@@ -53,9 +58,9 @@ defmodule BusterClaw.ApiToken do
   A *distinct* token the Dispatcher hands a headless run whose work originates
   from untrusted content. It authenticates as the `:agent_untrusted` caller,
   which `BusterClaw.Commands.call/3` allows to do a lot but refuses the `gated`
-  (outbound/irreversible) commands. Generated and stored next to the full token
-  (`agent_token`) in production; preset via `config :buster_claw, :agent_api_token`
-  in dev/test.
+  (outbound/irreversible) commands. Keychain-backed and injected as
+  `BUSTER_CLAW_AGENT_API_TOKEN` by the shell, exactly like its two siblings;
+  preset via `config :buster_claw, :agent_api_token` in dev/test.
   """
   def agent_value do
     case Application.get_env(@app, :agent_api_token) do
