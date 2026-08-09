@@ -543,16 +543,62 @@ something wants more. Read verbs at `:safe`; any write verb `:restricted` and
 gated. A reference skill teaching the agent what a Pocket is and when to look in
 one.
 
-### Phase 5 — Fonts and pages
+### Phase 5 — Fonts and pages · RESOLVED 08-08-26, HALF SHIPPED AND HALF REFUSED
 
 `kind: fonts` — self-hosted, same-origin, which the CSP already permits (I.3).
 `kind: pages` — the [D8](#d8--an-app-pocket-is-a-page-bundle-not-a-program) answer
 to "apps," served through the existing local-trust path.
 
+#### What shipped, for free
+
+**Both kinds already load, and both already serve.** `Pockets` accepts `:fonts`
+and `:pages`, and the asset route added with the read fence names `woff`,
+`woff2`, `ttf`, `otf`, `txt` and `md` content types with `nosniff` on every
+response. A fonts Pocket is *reachable* today, same-origin, under the app CSP,
+with no further work.
+
+#### What is deliberately NOT built, and the reason
+
+**Serving a font is not choosing a font.** Making a Pocket font actually appear
+needs an `@font-face` rule injected against the app's CSS custom properties, plus
+a surface to pick it — and **nothing and nobody currently asks for a font
+choice.** Building the injection without the picker is half a feature; building
+the picker is a Settings surface no one requested.
+
+Same for pages, one step further: the asset route serves a page Pocket's *files*,
+but opening one as a document needs a route with the local-trust treatment, and
+the thing that would open it — the in-app browser — is fenced to the workspace.
+A local Pocket is inside the workspace and already reachable there. **A mounted
+page Pocket is the only case that needs new code, and it is a case nobody has
+yet.**
+
+This is the roadmap's own rule applied to itself. The mechanism that died on
+08-08 died with ~1,400 lines serving nothing, and Part VIII names "a mechanism
+with no consumer" as the top risk. **A half-built font pipeline would be that
+risk in miniature**, and it would be dishonest to close Phase 5 as "shipped"
+while it sat there.
+
+#### What would trigger building it
+
+Any one of these, and the work is small because the serving half exists:
+
+1. The operator wants a custom typeface in the app — then build `@font-face`
+   injection plus one row in Settings → Appearance, which is where the other
+   look-and-feel choices already live.
+2. [Part X](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0)'s theme
+   Pocket gets started — a theme carries fonts, so the picker arrives with it and
+   fonts should ride along rather than being built twice.
+3. Someone mounts a page bundle from outside the workspace. Until then the
+   in-app browser already opens a local one.
+
 ### Phase 6 — Open space
 
 Deliberately empty. What Pockets should hold next is a question the first five
 phases will answer better than this document can.
+
+Part X named one candidate — Pocket #0 and the theme Pocket — and Phase 5 just
+named the trigger that would start it. That is the whole of it; nothing else goes
+here speculatively.
 
 ---
 
