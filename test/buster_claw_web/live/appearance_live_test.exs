@@ -5,6 +5,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
   import Phoenix.LiveViewTest
 
   alias BusterClaw.Appearance
+  alias BusterClaw.ChatSkin
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_appearance_lv_#{System.unique_integer([:positive])}")
@@ -264,5 +265,84 @@ defmodule BusterClawWeb.AppearanceLiveTest do
 
     assert Appearance.colors(:terminal) == ["#112233", "#445566", "#778899"]
     assert Appearance.colors(:home) == ["#0e0e0e", "#ff4d1c", "#f4f1ea"]
+  end
+
+  describe "the chat theme picker" do
+    test "offers every skin, with the one in force selected", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/appearance")
+
+      # Derived from the catalog, not restated: a skin added to ChatSkin and
+      # forgotten here would be a skin nobody can choose.
+      for skin <- ChatSkin.skins() do
+        assert html =~ skin.label
+        assert has_element?(view, ~s(#chat-skin-select option[value="#{skin.key}"]))
+      end
+
+      assert has_element?(
+               view,
+               ~s(#chat-skin-select option[value="#{ChatSkin.default()}"][selected])
+             )
+    end
+
+    test "picking a skin persists it with no Save button", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("form[phx-change='set_chat_skin']")
+      |> render_change(%{"skin" => "minimal"})
+
+      assert ChatSkin.get() == "minimal"
+      refute has_element?(view, "form[phx-change='set_chat_skin'] button[type='submit']")
+    end
+
+    test "the preview restyles in the same round-trip", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/appearance")
+
+      # The preview is the whole answer to "see it immediately" — the operator is
+      # on this page and cannot see the homepage.
+      assert html =~ ~s(data-chat-skin-preview)
+      assert html =~ ~s(data-chat-skin="#{ChatSkin.default()}")
+
+      html =
+        view
+        |> element("form[phx-change='set_chat_skin']")
+        |> render_change(%{"skin" => "slack"})
+
+      assert html =~ ~s(data-chat-skin="slack")
+      # And the blurb follows the selection, so the description never describes
+      # the skin you just left.
+      assert html =~ ChatSkin.label("slack")
+    end
+
+    test "the preview renders the real bubbles, every role", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      # Through the same private chat_bubble/1 the live chat uses. A second copy
+      # of the bubble markup would drift, and this is the surface where a drift
+      # would be least visible.
+      for role <- ~w(user assistant tool meta) do
+        assert has_element?(view, ~s([data-chat-skin-preview] [data-chat-role="#{role}"]))
+      end
+    end
+
+    test "the preview says what it is not showing", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/appearance")
+
+      # The composer cannot mount here (live hooks, a chat_send submit) and the
+      # panel-chrome rules describe a panel over the homepage's shader. Both are
+      # real gaps, and an unlabelled preview would be a quiet promise.
+      assert html =~ "The transcript only"
+      refute html =~ ~s(phx-submit="chat_send")
+    end
+
+    test "a skin the dropdown could not have offered is ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element("form[phx-change='set_chat_skin']")
+      |> render_change(%{"skin" => "vaporwave"})
+
+      assert ChatSkin.get() == ChatSkin.default()
+    end
   end
 end

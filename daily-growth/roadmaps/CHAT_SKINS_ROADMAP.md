@@ -1,14 +1,39 @@
 # Chat skins — three looks for the homepage chat, switched from Settings
 
-**Scoped 08-08-26 · Status: SCOPED, nothing built.**
+**Scoped 08-08-26 · Status: Phases 0–3 SHIPPED 08-09. Only the acceptance walk
+is left, and it needs the operator.**
 
 | Phase | State |
 |---|---|
-| 0 — The setting, and the wire that carries it | Not started |
-| 1 — Give the markup something to grab | Not started |
-| 2 — The three skins, in CSS | Not started |
-| 3 — The dropdown, and a preview that proves it | Not started |
+| 0 — The setting, and the wire that carries it | **DONE** (`6458a32`) |
+| 1 — Give the markup something to grab | **DONE** (`a89f6b7`) |
+| 2 — The three skins, in CSS | **DONE** (`064d6b2`) |
+| 3 — The dropdown, and a preview that proves it | **DONE** |
 | 4 — What we are not building yet | Decided below, not deferred silently |
+
+**What changed from the plan, and why.** Three things, all recorded where they
+happened:
+
+1. The preview does **not** need `chat_bubble/1` promoted to public. Putting
+   `transcript_preview/1` inside `ChatPanel` lets it call the private bubble
+   directly, so the API never widened. Better than the plan.
+2. The Settings key is `chat_skin`, not `chat.skin` — every other key in the
+   store is flat snake_case and one dotted key would have been the odd one out.
+3. The reason skin CSS beats the markup's utilities is **not** specificity, which
+   is what this document originally claimed. Hand-written rules in `app.css` are
+   *unlayered* and Tailwind's utilities live in `@layer utilities`; unlayered
+   wins outright, whatever the specificity. Verified against the built
+   stylesheet. Specificity still decides against the other unlayered `.ic-*`
+   rules, which is why beating `.ic-home .ic-panel` takes three selectors.
+
+**Three defects were found by writing Phase 2**, all the same shape — a rule
+correct for the *look* and wrong for the *panel*: `gap: 0` on every role would
+have crushed the tool line's icon against its text; Workplace's avatar-less rows
+would not have lined up with the rows that have one; and zeroing the textarea's
+border silently removed the **focus indicator** in both new skins, because
+`focus:border-primary` cannot colour a 0-width border. That last one is the one
+worth remembering: a skin can delete an accessibility affordance while looking
+finished, and nothing in the suite would have said so.
 
 **The ask (operator, 08-08):** the homepage chat harness gets three looks —
 **minimalist** (vim / pi-agent), **Slack**, and **what it is now** — chosen from a

@@ -116,6 +116,21 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # and a size bound.
 check lib/buster_claw_web/live/status_live.ex                945 HELD
 check lib/buster_claw_web/live/status/chat.ex                650 HELD
+
+# Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been
+# decomposed, so this is not a post-split cap being defended — it is the first
+# number anyone has put on the file, set where the skins left it. The growth was
+# +152 lines for three skins' worth of markup anchors, an author line, a shared
+# `log_class/0` and the Appearance preview, and the reason it landed HERE rather
+# than in a new module is the skin contract: the preview must render the SAME
+# private `chat_bubble/1` the live chat renders, or the surface you check a skin
+# on is the one place a drift would not show. A second module would have meant
+# either a public bubble API or a copy of the markup.
+#
+# The honest reading of 1,000 lines is that the bubble family (five roles, the
+# scene card, the SVG modal) is a coherent module hiding inside a panel module,
+# and it is the obvious cut when this next needs headroom.
+check lib/buster_claw_web/components/chat_panel.ex          1020 HELD
 check lib/buster_claw_web/live/status/comms.ex               125 HELD
 check lib/buster_claw_web/live/status/studio.ex              114 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD

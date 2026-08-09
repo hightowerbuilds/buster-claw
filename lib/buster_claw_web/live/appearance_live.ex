@@ -18,10 +18,21 @@ defmodule BusterClawWeb.AppearanceLive do
   App theme selection is applied client-side: the buttons dispatch
   `phx:set-theme`, which the inline script in `root.html.heex` persists to
   `localStorage["phx:theme"]` and applies via the `data-theme` attribute.
+
+  ## The chat skin
+
+  Also here, because this is the tab that owns how the app looks: which of
+  `BusterClaw.ChatSkin`'s three looks the homepage chat wears. The dropdown
+  persists on change with no Save button, matching the click-to-apply behaviour
+  of everything else on this page, and it renders a live transcript preview
+  beside itself — the operator is on this page, not the homepage, so a preview is
+  the only way "see it immediately" can mean anything. An open homepage does
+  update for real, over PubSub, at the same moment.
   """
   use BusterClawWeb, :live_view
 
   alias BusterClaw.Appearance
+  alias BusterClaw.ChatSkin
 
   # Swatch metadata for the terminal-theme picker. The actual xterm palettes
   # live in `assets/js/lib/theme.js` (TERM_THEMES); `key` must match. bg/fg/accent
@@ -53,6 +64,8 @@ defmodule BusterClawWeb.AppearanceLive do
      |> assign(:page_title, "Appearance")
      |> assign(:terminal_themes, @terminal_themes)
      |> assign(:surfaces, Appearance.surfaces())
+     |> assign(:chat_skins, ChatSkin.skins())
+     |> assign(:chat_skin, ChatSkin.get())
      |> assign_backgrounds()
      |> allow_upload(:background,
        accept: Appearance.accepted_extensions(),
@@ -83,6 +96,17 @@ defmodule BusterClawWeb.AppearanceLive do
           {:error, _reason} ->
             {:noreply, put_flash(socket, :error, "Unknown background.")}
         end
+    end
+  end
+
+  # No Save button: the change lands, the preview restyles, and any open homepage
+  # restyles with it. An unknown value is dropped rather than flashed — the only
+  # way to send one is to edit the select, and inventing an error message for a
+  # case the UI cannot produce is worse than ignoring it.
+  def handle_event("set_chat_skin", %{"skin" => skin}, socket) do
+    case ChatSkin.set(skin) do
+      {:ok, key} -> {:noreply, assign(socket, :chat_skin, key)}
+      {:error, :invalid_skin} -> {:noreply, socket}
     end
   end
 
@@ -361,6 +385,54 @@ defmodule BusterClawWeb.AppearanceLive do
             </div>
           </section>
         </div>
+
+        <section class="ic-panel space-y-4 p-6" aria-labelledby="chat-skin-heading">
+          <h2 id="chat-skin-heading" class="ic-eyebrow">Chat theme</h2>
+          <p class="max-w-2xl text-sm leading-7 text-base-content/70">
+            How the chat on the homepage looks. The change applies the moment you pick it —
+            here, and in an open homepage.
+          </p>
+
+          <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+            <form phx-change="set_chat_skin" class="space-y-3">
+              <label for="chat-skin-select" class="sr-only">Chat theme</label>
+              <select
+                id="chat-skin-select"
+                name="skin"
+                class="w-full rounded border-2 border-base-content/25 bg-base-100 px-3 py-2 text-sm font-semibold focus:border-primary focus:outline-none"
+              >
+                <option :for={skin <- @chat_skins} value={skin.key} selected={skin.key == @chat_skin}>
+                  {skin.label}
+                </option>
+              </select>
+              <p
+                :for={skin <- @chat_skins}
+                :if={skin.key == @chat_skin}
+                data-chat-skin-blurb
+                class="text-sm leading-6 text-base-content/70"
+              >
+                {skin.blurb}
+              </p>
+            </form>
+
+            <div class="space-y-2">
+              <div class="rounded border-2 border-base-content/20 bg-base-100">
+                <BusterClawWeb.ChatPanel.transcript_preview skin={@chat_skin} />
+              </div>
+              <%!-- Said rather than implied. The composer's form carries live hooks
+                    and a `chat_send` submit that would crash this page, so the
+                    preview is the transcript; and the skins' translucency and
+                    shadow rules describe a panel over the homepage's shader, which
+                    a settings page does not have. Both are real gaps, and a
+                    preview that quietly omitted them would be the kind of promise
+                    this app keeps getting wrong. --%>
+              <p class="text-xs leading-5 text-base-content/55">
+                The transcript only — the message box and the panel's own edges are shown on the
+                homepage.
+              </p>
+            </div>
+          </div>
+        </section>
       </section>
     </Layouts.app>
     """

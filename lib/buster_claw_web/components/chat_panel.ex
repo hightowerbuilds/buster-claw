@@ -199,12 +199,7 @@ defmodule BusterClawWeb.ChatPanel do
         phx-drop-target={@upload && @upload.ref}
         class="relative flex min-h-0 flex-1 flex-col"
       >
-        <div
-          id="agent-chat-log"
-          data-chat-log
-          phx-update="stream"
-          class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-5"
-        >
+        <div id="agent-chat-log" data-chat-log phx-update="stream" class={log_class()}>
           <%!-- Stream-managed container: the empty state is a static child shown
               via CSS only when it's the sole child (the stream idiom — the
               server no longer knows the collection size). data-seq on the
@@ -878,6 +873,98 @@ defmodule BusterClawWeb.ChatPanel do
     ~H"""
     <span data-chat-author class="sr-only">{render_slot(@inner_block)}</span>
     """
+  end
+
+  # The transcript container's classes, shared by the live log and the skin
+  # preview. One string, because a preview whose layout has drifted from the real
+  # log is worse than no preview: it is where you go to check, so it is the last
+  # place a difference would be noticed.
+  defp log_class, do: "flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-5"
+
+  @doc """
+  A short canned transcript in a given skin — the Appearance picker's preview.
+
+  Renders the **real** bubbles through the same private `chat_bubble/1` the live
+  chat uses, inside the same `log_class/0` container. A second copy of the bubble
+  markup would drift within a month and the drift would be invisible precisely
+  because this is the surface someone uses to check what a skin looks like.
+
+  ## What it deliberately leaves out
+
+  **The composer.** It is a `<form>` carrying `phx-hook="Composer"`,
+  `phx-submit="chat_send"` and hard-coded DOM ids; mounting it here would mean
+  live hooks with no chat LiveView behind them and a submit that crashes the
+  page. The caller says so in a line of copy instead.
+
+  **The panel chrome.** The skins' translucency, radius and shadow rules are
+  written against `.ic-home .ic-panel` — they describe a panel sitting over the
+  homepage's live shader, which no settings page has. Everything inside the
+  transcript is faithful; the frame around it is this page's own.
+  """
+  attr :skin, :string, required: true
+  attr :id, :string, default: "chat-skin-preview"
+
+  def transcript_preview(assigns) do
+    assigns = assign(assigns, :messages, preview_messages())
+
+    ~H"""
+    <div id={@id} data-chat-skin={@skin} data-chat-skin-preview class="overflow-hidden">
+      <div data-chat-log class={log_class()}>
+        <.chat_bubble :for={{dom_id, msg} <- @messages} id={"#{@id}-#{dom_id}"} msg={msg} />
+      </div>
+    </div>
+    """
+  end
+
+  # Four roles, because each one is a different part of the look: who said it
+  # (user/assistant), the agent working (tool), and the run's own bookkeeping
+  # (meta). The text is about the skins on purpose — a preview reading "Lorem
+  # ipsum" tells you nothing about line length or wrapping.
+  defp preview_messages do
+    [
+      {"user",
+       %{
+         id: 1,
+         role: :user,
+         text: "How does this look?",
+         svg_ids: [],
+         delivery: nil,
+         scenes: [],
+         attachments: []
+       }},
+      {"assistant",
+       %{
+         id: 2,
+         role: :assistant,
+         text:
+           "That is up to you. This is the whole transcript — your messages, mine, " <>
+             "the tools I run, and the notes in between.",
+         svg_ids: [],
+         delivery: nil,
+         scenes: [],
+         attachments: []
+       }},
+      {"tool",
+       %{
+         id: 3,
+         role: :tool,
+         text: "Bash: ./buster-claw note_list",
+         svg_ids: [],
+         delivery: nil,
+         scenes: [],
+         attachments: []
+       }},
+      {"meta",
+       %{
+         id: 4,
+         role: :meta,
+         text: "Run finished · 4.2s",
+         svg_ids: [],
+         delivery: nil,
+         scenes: [],
+         attachments: []
+       }}
+    ]
   end
 
   @doc """
