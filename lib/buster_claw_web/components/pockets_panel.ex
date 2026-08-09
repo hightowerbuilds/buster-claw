@@ -56,13 +56,26 @@ defmodule BusterClawWeb.PocketsPanel do
      |> assign(:open, nil)
      |> assign(:loaded, false)
      |> assign(:upload_role, nil)
+     |> assign(:upload_error, nil)
      # One upload for six slots, with `upload_role` naming the target. Six
      # `allow_upload` calls would be six live sockets kept open for a thing the
      # operator does once.
+     #
+     # `auto_upload: true` because the operator's spec was that choosing art
+     # "makes the adjustment live". A submit button made picking a file do
+     # nothing visible until a second click, which is exactly how this read as
+     # broken. Now the change event carries the finished upload and there is no
+     # second step.
      |> allow_upload(:brand,
        accept: Brand.accepted_extensions(),
        max_entries: 1,
-       max_file_size: 8_000_000
+       max_file_size: 8_000_000,
+       auto_upload: true,
+       # The `progress` callback, NOT the change event, is where a finished
+       # upload is consumed. `auto_upload` fires `phx-change` on *selection*,
+       # while the entry is still uploading, so consuming there returns `[]` and
+       # the file silently goes nowhere — which is exactly the bug this fixes.
+       progress: &handle_progress/3
      )}
   end
 
@@ -90,25 +103,56 @@ defmodule BusterClawWeb.PocketsPanel do
     # Clicking the open slot again closes the picker, so the button is a toggle
     # rather than a one-way door.
     role = if socket.assigns.upload_role == role, do: nil, else: role
-    {:noreply, assign(socket, :upload_role, role)}
+    {:noreply, socket |> assign(:upload_role, role) |> assign(:upload_error, nil)}
   end
 
+  # Selection only. The upload is consumed in `handle_progress/3` once the entry
+  # is actually done; doing it here would consume nothing (see the `progress:`
+  # note above). Re-rendering is the point — it is what draws the entry's errors.
   def handle_event("validate_brand", _params, socket), do: {:noreply, socket}
 
-  def handle_event("upload_brand", _params, socket) do
-    role = socket.assigns.upload_role
-
-    consume_uploaded_entries(socket, :brand, fn %{path: path}, entry ->
-      {:ok, Brand.put(role, path, entry.client_name)}
-    end)
-
-    {:noreply, socket |> assign(:upload_role, nil) |> reload()}
-  end
+  # Kept so a stray submit (Enter in the file field) is harmless rather than a
+  # crash on an unhandled event.
+  def handle_event("upload_brand", _params, socket), do: {:noreply, socket}
 
   def handle_event("clear_brand", %{"role" => role}, socket) do
     Brand.clear(role)
     {:noreply, reload(socket)}
   end
+
+  # Called by LiveView as the upload advances. Only the finished entry is
+  # consumed; anything earlier is just a re-render for the progress bar.
+  #
+  # The result of `Brand.put/3` is KEPT rather than discarded — an upload the
+  # server refuses (unsupported type, unknown role) has to say so, and wrapping
+  # it in the `{:ok, _}` the consumer wants is how that return value gets thrown
+  # away without anyone noticing.
+  defp handle_progress(:brand, entry, socket) do
+    if entry.done? do
+      role = socket.assigns.upload_role
+
+      results =
+        consume_uploaded_entries(socket, :brand, fn %{path: path}, e ->
+          {:ok, Brand.put(role, path, e.client_name)}
+        end)
+
+      failed = Enum.find(results, &match?({:error, _}, &1))
+
+      {:noreply,
+       socket
+       |> assign(:upload_error, failed && brand_error_text(elem(failed, 1)))
+       # The picker closes on success and stays open on failure, so the error is
+       # read next to the control that produced it.
+       |> assign(:upload_role, failed && role)
+       |> reload()}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp brand_error_text(:unsupported_type), do: "that file type is not an image we can show"
+  defp brand_error_text(:unknown_role), do: "that slot no longer exists"
+  defp brand_error_text(other), do: "upload failed: #{inspect(other)}"
 
   # `pockets/` is an `:on_demand` entry in the workspace registry — created when
   # the operator opens the surface that owns it, which is this one, and never at
@@ -187,6 +231,7 @@ defmodule BusterClawWeb.PocketsPanel do
           slots={@brand}
           uploads={@uploads}
           upload_role={@upload_role}
+          upload_error={@upload_error}
           target={@myself}
         />
         <.pocket_list :if={is_nil(@open_row)} rows={@rows} target={@myself} />

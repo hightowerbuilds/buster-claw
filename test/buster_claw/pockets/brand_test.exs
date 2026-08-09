@@ -99,6 +99,51 @@ defmodule BusterClaw.Pockets.BrandTest do
     end
   end
 
+  describe "replaced art is moved out, never deleted" do
+    test "the old image lands in the workspace root", %{root: root} do
+      {:ok, _} = upload("nav_home", "first.png")
+      old = File.read!(Path.join(Pockets.pocket_dir("nav-home"), "nav-home.png"))
+
+      {:ok, _} = upload("nav_home", "second.png")
+
+      # Moved, not removed — it is the operator's file.
+      assert File.read!(Path.join(root, "nav-home.png")) == old
+      assert Brand.status("nav_home") == :custom
+      assert Brand.retirement_dir() == root
+    end
+
+    test "a second retirement suffixes rather than overwriting the first", %{root: root} do
+      {:ok, _} = upload("nav_home", "a.png")
+      {:ok, _} = upload("nav_home", "b.png")
+      {:ok, _} = upload("nav_home", "c.png")
+
+      assert File.exists?(Path.join(root, "nav-home.png"))
+      assert File.exists?(Path.join(root, "nav-home (1).png"))
+      refute File.exists?(Path.join(root, "nav-home (2).png"))
+    end
+
+    test "clearing also moves the image out rather than destroying it", %{root: root} do
+      {:ok, _} = upload("nav_home")
+      assert :ok = Brand.clear("nav_home")
+
+      assert File.exists?(Path.join(root, "nav-home.png"))
+      assert Brand.status("nav_home") == :default
+    end
+
+    test "a stray file dropped in from Finder is retired too, clearing the error", %{root: root} do
+      {:ok, _} = upload("nav_home")
+      drop_in("nav_home", "stray.png")
+      assert {:error, :too_many, 2} = Brand.status("nav_home")
+
+      {:ok, _} = upload("nav_home", "chosen.png")
+
+      # Both of the previous images are preserved, and the slot is healthy.
+      assert File.exists?(Path.join(root, "nav-home.png"))
+      assert File.exists?(Path.join(root, "stray.png"))
+      assert Brand.status("nav_home") == :custom
+    end
+  end
+
   describe "upload and clear" do
     test "upload replaces rather than adds, so it can never cause the error" do
       {:ok, _} = upload("nav_home", "first.png")

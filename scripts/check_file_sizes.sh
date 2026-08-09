@@ -264,7 +264,12 @@ check lib/buster_claw/commands/catalog/pocket.ex               75 HELD
 # can fail — config errors, per-entry errors, progress, and the server's refusal.
 # None of it was rendered before, so a refused file looked exactly like a file
 # that had not been chosen.
-check lib/buster_claw/pockets/brand.ex                        302 HELD
+# Raised 08-09, 302 -> 347: replaced art is MOVED to the workspace root rather
+# than deleted (operator call). That is `retire_all/1` plus the doc section
+# explaining why a failed move leaves the original in place instead of destroying
+# what it could not preserve. The collision rule is not reimplemented here —
+# `FileManager.import_file/4` already had it.
+check lib/buster_claw/pockets/brand.ex                        347 HELD
 check lib/buster_claw_web/components/pockets/brand_slots.ex   146 HELD
 check lib/buster_claw_web/components/brand_art.ex              55 HELD
 

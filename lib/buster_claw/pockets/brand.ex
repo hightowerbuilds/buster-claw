@@ -37,6 +37,19 @@ defmodule BusterClaw.Pockets.Brand do
   Calendar has no PNG), so the failure state is behaviour that shipped long before
   this module.
 
+  ## Replaced art is moved, not deleted
+
+  Operator call (08-09). When an upload replaces a slot's image, the old one is
+  **moved to the top level of the workspace**, not removed. It is a file the
+  operator made or chose, and the app has no business destroying it because they
+  picked a different one. `clear/1` does the same, for the same reason.
+
+  A name already taken gets ` (1)`, ` (2)`, … — the collision rule
+  `FileManager.import_file/4` already uses for dropped files. And a move that
+  *fails* leaves the original where it is rather than deleting what it could not
+  preserve; the Pocket then holds two images and the slot falls back to text,
+  which is a state the operator can see and act on.
+
   ## One edge, stated rather than hidden
 
   A brand folder created **by hand with no `POCKET.md`** is inert: its images are
@@ -66,6 +79,8 @@ defmodule BusterClaw.Pockets.Brand do
   `writable:`. So it is in `@slots` below, which the agent cannot reach.
   """
 
+  alias BusterClaw.FileManager
+  alias BusterClaw.Library.Artifact
   alias BusterClaw.Pockets
 
   # role         — the slot's identity, used by callers
@@ -223,11 +238,10 @@ defmodule BusterClaw.Pockets.Brand do
         body: "Put one image here. Two or more and the app shows a text label instead."
       })
 
-      dir = Pockets.pocket_dir(slot.pocket)
-      Enum.each(images(slot), &File.rm(Path.join(dir, &1)))
+      retire_all(slot)
 
       name = "#{slot.pocket}#{ext}"
-      File.cp!(src_path, Path.join(dir, name))
+      File.cp!(src_path, Path.join(Pockets.pocket_dir(slot.pocket), name))
       {:ok, name}
     end
   end
@@ -240,11 +254,19 @@ defmodule BusterClaw.Pockets.Brand do
   """
   def clear(role) when is_binary(role) do
     with {:ok, slot} <- fetch_slot(role) do
-      dir = Pockets.pocket_dir(slot.pocket)
-      Enum.each(images(slot), &File.rm(Path.join(dir, &1)))
+      retire_all(slot)
       :ok
     end
   end
+
+  @doc """
+  Where a replaced image goes: the top level of the workspace.
+
+  Operator call (08-09). Art that comes out of a brand Pocket is **moved, never
+  deleted** — it is a file they made or chose, and the app has no business
+  destroying it because they picked a different one.
+  """
+  def retirement_dir, do: Artifact.workspace_root()
 
   @doc "The upload extensions the picker accepts."
   def accepted_extensions, do: @image_exts
@@ -261,6 +283,29 @@ defmodule BusterClaw.Pockets.Brand do
   defp check_ext(client_name) do
     ext = client_name |> to_string() |> Path.extname() |> String.downcase()
     if ext in @image_exts, do: {:ok, ext}, else: {:error, :unsupported_type}
+  end
+
+  # Move every image out of a slot's Pocket to the workspace root, keeping the
+  # name and suffixing ` (n)` on a collision — the retired file is named for the
+  # slot it came from (`nav-home.png`), which is more use to the operator later
+  # than the name it arrived under.
+  #
+  # **A copy that fails leaves the original in place**, deliberately. The
+  # alternative is deleting an image we could not preserve. The Pocket then holds
+  # two images and the slot shows its text label — a visible state the operator
+  # can act on, which is exactly what the over-full design is for.
+  defp retire_all(slot) do
+    dir = Pockets.pocket_dir(slot.pocket)
+    root = retirement_dir()
+
+    Enum.each(images(slot), fn name ->
+      src = Path.join(dir, name)
+
+      case FileManager.import_file(src, root, name, root) do
+        {:ok, _target} -> File.rm(src)
+        {:error, _reason} -> :ok
+      end
+    end)
   end
 
   defp classify([_one]), do: :custom

@@ -920,6 +920,27 @@ The operator adds art in the Pockets tab; it lands in the Pocket and goes live
 immediately. **Finder is not forbidden** — it is the case the error exists for.
 The app never fights the filesystem; it explains what it found.
 
+#### D12b — Replaced art is **moved to the workspace root**, never deleted
+
+**Operator call, 08-09.** When an upload replaces a slot's image, the old file is
+moved to the top level of the workspace. `clear/1` — "Use default" — does the
+same.
+
+It is a file the operator made or chose, and the app has no business destroying
+it because they picked a different one. A name already taken gets ` (1)`, ` (2)`,
+… , reusing the collision rule `FileManager.import_file/4` already had for
+dropped files rather than writing a second one.
+
+**A move that fails leaves the original where it is.** The alternative is
+deleting an image we could not preserve. The Pocket then holds two and the slot
+falls back to text — a visible state, which is what
+[XI.2](#xi2--the-three-states-and-why-the-failure-state-is-text) is for.
+
+*One consequence worth naming:* this writes operator files to the workspace root,
+which the workspace registry otherwise keeps to a declared set. The guard is not
+tripped — it only checks statically-resolvable top-level paths — but a reader
+should know these files arrive there by design rather than by accident.
+
 #### D13 — The shipped defaults are **not copied** into the workspace
 
 Pocket #0 stays read-only in `priv/static`. Seeding it would put the app's own

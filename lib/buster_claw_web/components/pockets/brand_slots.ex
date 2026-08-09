@@ -15,6 +15,7 @@ defmodule BusterClawWeb.Pockets.BrandSlots do
   attr :slots, :list, required: true
   attr :uploads, :map, required: true
   attr :upload_role, :string, default: nil
+  attr :upload_error, :string, default: nil
   attr :target, :any, required: true
 
   def brand_slots(assigns) do
@@ -83,21 +84,52 @@ defmodule BusterClawWeb.Pockets.BrandSlots do
             phx-submit="upload_brand"
             phx-change="validate_brand"
             phx-target={@target}
-            class="flex w-full items-center gap-2 pt-1"
+            class="w-full pt-1"
           >
-            <.live_file_input upload={@uploads.brand} class="file-input file-input-xs flex-1" />
-            <button
-              type="submit"
-              class="rounded bg-primary px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-primary-content"
+            <.live_file_input upload={@uploads.brand} class="file-input file-input-xs w-full" />
+            <p class="pt-1 font-mono text-[10px] text-base-content/45">
+              Choosing a file applies it straight away.
+            </p>
+
+            <%!-- Every reason an upload can fail has to be visible here. With
+                  none of this rendered, a refused file looked exactly like a
+                  file that had not been chosen — which is how this read as
+                  "the upload does nothing". --%>
+            <p
+              :for={err <- upload_errors(@uploads.brand)}
+              class="pt-1 font-mono text-[10px] text-error"
             >
-              Upload
-            </button>
+              {error_text(err)}
+            </p>
+            <div :for={entry <- @uploads.brand.entries} class="pt-1">
+              <p
+                :for={err <- upload_errors(@uploads.brand, entry)}
+                class="font-mono text-[10px] text-error"
+              >
+                {entry.client_name}: {error_text(err)}
+              </p>
+              <progress
+                :if={entry.progress > 0 and entry.progress < 100}
+                class="progress progress-primary h-1 w-full"
+                value={entry.progress}
+                max="100"
+              />
+            </div>
+            <p :if={@upload_error} class="pt-1 font-mono text-[10px] text-error">
+              {@upload_error}
+            </p>
           </form>
         </li>
       </ul>
     </section>
     """
   end
+
+  # LiveView's upload error atoms, said in the operator's terms.
+  defp error_text(:too_large), do: "that file is bigger than 8 MB"
+  defp error_text(:too_many_files), do: "one image at a time"
+  defp error_text(:not_accepted), do: "that is not an image type we can show"
+  defp error_text(other), do: to_string(other)
 
   defp error?({:error, _, _}), do: true
   defp error?(_status), do: false
