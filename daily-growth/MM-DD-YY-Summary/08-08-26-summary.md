@@ -985,3 +985,95 @@ just shipped — moved total duration by **10 ms across 24 words**. It is close 
 inert, exactly as its own strictly-quieter rule predicts. That is recorded as
 open rather than claimed as a win, because the improvement the operator heard may
 have come almost entirely from the other fix.
+
+---
+
+# Small hours: finishing the map
+
+The last stretch was five agents against the remaining Studio phases, split by
+file so none collided. Four landed; the fifth — the two verbs that finally make
+the recogniser reachable — was still being written when this was recorded, and is
+blocked on a `credo --strict` arity finding in its own in-flight code.
+
+## The acceptance criterion, unmet since 08-02, is met
+
+*"A voicemail becomes a routed sound effect end to end, from the CLI alone, with
+no UI involved."* There is now a test that walks exactly that, every step through
+`Commands.call/3` **by name**: probe → import → align → index search → assemble →
+trim → normalize → **apply**, then asserts the library file is on disk and the
+route resolves to it.
+
+A second test proves the gate is real rather than declared: running as
+`:agent_untrusted`, `sound_trim` succeeds and `sound_apply` returns
+`{:error, :requires_confirmation}` with nothing written and nothing routed.
+Routing is the one gated verb in the surface, because **it is the difference
+between the agent making a sound and the agent changing what your computer does
+at 3am.**
+
+The catalog went **13 → 24 `sound_*` verbs** across the day.
+
+## Everything expensive got measured, and one thing got measured past its brief
+
+The feature cache is the layer that makes the recogniser usable: **cold 108.8 s,
+warm ~155 ms — 700×**. Compression was measured and rejected (95.6% of raw, not
+worth the inflate on every read). Float64 over float32 deliberately, because the
+threshold study is measured to two decimals on distances of 3–13 and does not
+want a silent 1e-7 wobble underneath it.
+
+**The invalidation went past what was asked, for a specific reason.** The brief
+said size and mtime. The agent added a SHA-256 digest because **mtime is
+one-second granular** — a source re-saved at the same byte length within the same
+second is byte-different and stat-identical, which is a silent stale hit. There
+is a test that forces exactly that case, and it fails without the digest. Thirty
+milliseconds of hashing guarding 109 seconds of recomputation.
+
+## The fifth seam defect of the day
+
+`Signal.default_fft_size/0` is **1024**. `Mfcc.new/1`'s default is **512**. Wired
+naively, the filterbank has 257 bins, the spectra have 513, and the first call
+raises.
+
+The agent's own framing is the lesson: *"Neither module is wrong alone — this
+only exists once something connects them, which is exactly the layer that did not
+exist."* That is the fifth defect today living in a seam rather than in a module,
+after the magnitude/power convention, CMN scope, the mixdown sample drift, and
+the fade/pad coupling.
+
+## Two costs that would have been counted twice
+
+The lattice splits `c0` out of its spectral join cost and measures it separately
+as the level term — **because `c0` *is* frame log-energy**, so leaving it in
+would measure the same level jump twice and quietly double its weight. And the
+natural-run rule (two candidates adjacent in one recording join for free) is
+applied **after** normalisation, so a free join still contributes its honest raw
+distance to the population the scale is computed from.
+
+Both are the kind of thing that produces a system which almost works.
+
+## What was refused, and why that was right
+
+The skill agent declined to document `sound_align`'s two ear-tuned toggles,
+because they were accepted by the handler but **not declared in the catalog** —
+and the catalog is the only thing the model sees. Its reasoning: documenting an
+undeclared argument in a file the model reads as gospel is the same class of
+error as inventing a verb.
+
+It was right, and it was my bug. The toggles are the fixes that took the first
+paragraph from *garbled* to audibly better, so they are exactly the knobs someone
+would reach for. Now declared.
+
+That skill also ships with a **lockstep test**: every `sound_*` token in its body
+must be a live catalog name. A documentation file has exactly one failure mode —
+drifting from the thing it documents — and that test fails loudly the moment a
+verb is renamed or the playbook invents one.
+
+## What agents cannot finish
+
+Part V needs the operator to **record a donor passage** — an hour of read speech
+with known text would dwarf the 295-second corpus and removes `Align`'s two worst
+failure modes at the source rather than compensating for them. Part VI's
+listening session wants a **LiveView surface** around the existing
+`StudioAudition` hook, because judging audio is a listening activity and a CLI
+verb can only write files and ask someone to go find them.
+
+Neither is a gap in the plan. They are the parts a person has to do.
