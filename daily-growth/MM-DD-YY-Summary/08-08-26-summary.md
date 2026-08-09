@@ -1077,3 +1077,94 @@ listening session wants a **LiveView surface** around the existing
 verb can only write files and ask someone to go find them.
 
 Neither is a gap in the plan. They are the parts a person has to do.
+
+---
+
+# Last: the chat learns to take a file
+
+The homepage chat **looked** like it accepted dropped images and did not.
+Nothing handled the drop, so the webview's default took over — the cursor said
+"copy" on a surface that would do nothing useful. The interface was lying to the
+user, which is worse than the feature being absent, and is why the operator
+called it a must.
+
+Shipped: drag **and** paste, images **and** files, on all three backends,
+confirmed working in the running app.
+
+## Ten minutes of measurement deleted an afternoon of design
+
+Phase 0 built no UI on purpose. The blocking question was whether a path in a
+`-p` prompt actually gets read — everything else rested on it. Answering it took
+a generated PNG (magenta ground, yellow square, both facts verifiable and neither
+guessable) and one invocation. **It does.**
+
+Checking the other two CLIs while there did more than confirm a fallback:
+
+- It **withdrew a decision.** The roadmap said to refuse on backends that cannot
+  read images. All three can — Codex has `-i/--image`, OpenCode has `-f/--file`.
+  There was nothing to refuse.
+- It **collapsed two competing mechanisms into one.** Codex and OpenCode take
+  *paths* and cannot take bytes, so a staged file is required for two of three
+  backends regardless. Staging was never a Claude fallback; it is the substrate
+  all three share, and Claude's inline base64 block — the only route where no
+  file need exist — is an optimisation on top rather than an alternative
+  architecture.
+
+**The work got smaller because someone spent ten minutes checking.**
+
+## Three findings nothing in the brief predicted
+
+- **One word of help text decided a behaviour.** Codex's flag says *image(s)*;
+  OpenCode's says *file(s)*. So a PDF goes through `-f` and never `-i`, because
+  `-i` feeds an image decoder and a PDF there fails **the whole run**, not just
+  the attachment. Refusing one file must not cost the operator their turn.
+- **A steering function would have broken silently.** `operator_replay?/1` told an
+  acceptance receipt from a tool return purely by whether `content` was a string
+  or a list. Attachments make user messages lists — so an operator message with
+  an attachment would have been read as a tool return and the UI would never have
+  said STEERED.
+- **`File.stat` raises on a NUL in a filename**, so the NUL check has to come
+  *first* or the never-raises guarantee is a fiction on exactly the input an
+  attacker controls.
+
+And the reload question had an elegant answer: **the transcript is the index, the
+store is the bytes.** A citation fence rides on the message and is stripped on
+read, exactly as `SvgViewer` strips its own — carrying filename, size and kind
+rather than a bare id, so a chip still renders (marked unavailable) if the file
+is gone.
+
+## The mistake, which is the part worth keeping
+
+**Four agents were split by file to avoid collisions. The seam between two of
+them was given to nobody.**
+
+`Chat.submit/3` ignored `:attachments` and `AttachmentDelivery` was called from
+nowhere. So the feature shipped, passed 3,251 tests, and **did not work**: you
+could drop a file, see the chip, hit send, and the model never received it. The
+failure was designed to look like success — chip renders, message sends,
+assistant replies, and only the content of the reply gives it away.
+
+The UI agent reported the gap **in plain words** in its own summary. It was read
+past.
+
+**Six defects today lived in seams rather than modules** — magnitude versus
+power, CMN scope, the `mixdown` sample drift, the fade/pad coupling, the
+`fft_size` mismatch, and this. Five were *found*. This one was *introduced*, by
+how the work was organised rather than by anything in the code.
+
+Which is the argument for the habit the rest of the day used: **every seam with a
+written contract held. The one without a contract is the one that broke.**
+
+## And a gate did its job twice
+
+`check_file_sizes.sh` — built by the parallel modularization thread — refused
+this feature twice. Once on two HELD files, where reading the diff showed the
+growth was genuinely wiring (the feature is 546 lines in its own module) and the
+caps were raised with that reasoning. Once on `agent/chat.ex`, which is **FROZEN**
+— the tier meaning *already too big, never grow* — where the raise **broke the
+promise** and is recorded as a debt in `LEFTOVERS.md` rather than as a number
+nobody remembers earning.
+
+That gate exists because this repo has decomposed large files three times and
+been undone twice. Today it made both of those raises a decision instead of an
+accident.
