@@ -789,7 +789,7 @@ defmodule BusterClawWeb.StatusLive do
         <div class="relative z-10 flex min-h-0 flex-1 flex-col space-y-8">
           <div class="flex items-stretch gap-4 border-b-2 border-base-content/20 pb-5">
             <div class="shrink-0 space-y-4">
-              <BusterClawWeb.BrandArt.banner />
+              <BusterClawWeb.BrandArt.banner url={@banner_url} />
               <div :if={not @setup_status.complete?} class="pt-1">
                 <.link
                   navigate={~p"/setup"}

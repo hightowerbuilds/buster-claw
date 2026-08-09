@@ -139,6 +139,15 @@ defmodule BusterClaw.Pockets.Brand do
   # folder should read as a mistake rather than as a valid second image.
   @image_exts ~w(.png .jpg .jpeg .gif .webp .svg)
 
+  @doc """
+  PubSub topic broadcast when any slot's art changes.
+
+  Every LiveView renders the dock, and the homepage renders the banner, so a
+  change has to reach surfaces that are not the one the operator uploaded on.
+  `BusterClawWeb.ChromeHook` subscribes for all of them in one place.
+  """
+  def topic, do: "brand:art"
+
   @doc "Every brand slot, in display order."
   def slots, do: @slots
 
@@ -242,6 +251,7 @@ defmodule BusterClaw.Pockets.Brand do
 
       name = "#{slot.pocket}#{ext}"
       File.cp!(src_path, Path.join(Pockets.pocket_dir(slot.pocket), name))
+      broadcast()
       {:ok, name}
     end
   end
@@ -255,6 +265,7 @@ defmodule BusterClaw.Pockets.Brand do
   def clear(role) when is_binary(role) do
     with {:ok, slot} <- fetch_slot(role) do
       retire_all(slot)
+      broadcast()
       :ok
     end
   end
@@ -306,6 +317,10 @@ defmodule BusterClaw.Pockets.Brand do
         {:error, _reason} -> :ok
       end
     end)
+  end
+
+  defp broadcast do
+    Phoenix.PubSub.broadcast(BusterClaw.PubSub, topic(), :brand_art_changed)
   end
 
   defp classify([_one]), do: :custom

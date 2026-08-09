@@ -77,6 +77,53 @@ defmodule BusterClawWeb.BrandUploadTest do
     assert html =~ "/pockets/nav-home/"
   end
 
+  test "the OPEN page updates its dock and banner without a reload", %{conn: conn} do
+    view = open_pockets(conn)
+
+    refute render(view) =~ "/pockets/nav-home/"
+
+    view
+    |> element(~s(#brand-slot-nav_home button[phx-click="pick_brand"]))
+    |> render_click()
+
+    art =
+      file_input(view, "#brand-upload-nav_home", :brand, [
+        %{name: "claw.png", content: "png-bytes", type: "image/png"}
+      ])
+
+    render_upload(art, "claw.png")
+
+    # The dock lives in the layout and the banner in StatusLive's own render —
+    # both outside the component that handled the upload.
+    html = render(view)
+    assert html =~ "/pockets/nav-home/", "the dock did not pick up the new icon"
+  end
+
+  test "another open surface updates too, without being touched", %{conn: conn} do
+    # The dock is in the layout, so the surface that changes is usually NOT the
+    # one the operator uploaded on — and often not the same LiveView process.
+    {:ok, other, _html} = live(conn, ~p"/terminal")
+    refute render(other) =~ "/pockets/nav-home/"
+
+    view = open_pockets(conn)
+
+    view
+    |> element(~s(#brand-slot-nav_home button[phx-click="pick_brand"]))
+    |> render_click()
+
+    art =
+      file_input(view, "#brand-upload-nav_home", :brand, [
+        %{name: "claw.png", content: "png-bytes", type: "image/png"}
+      ])
+
+    render_upload(art, "claw.png")
+
+    # The broadcast reached the other view and its assigns changed, which is
+    # what makes the swap visible to LiveView's diff rather than only to a
+    # full re-render.
+    assert render(other) =~ "/pockets/nav-home/"
+  end
+
   test "clearing returns the slot to the shipped default", %{conn: conn} do
     view = open_pockets(conn)
 

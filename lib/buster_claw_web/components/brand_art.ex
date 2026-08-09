@@ -30,8 +30,12 @@ defmodule BusterClawWeb.BrandArt do
   The doubled `<img>` is not a mistake: the second is the CRT focus layer the
   `CrtAberration` hook drives, and it has to be the same source as the first.
   """
+  attr :url, :string,
+    default: nil,
+    doc: "resolved by ChromeHook so a swap reaches the diff; computed here if absent"
+
   def banner(assigns) do
-    assigns = assign(assigns, :url, Brand.image_url(@role))
+    assigns = assign(assigns, :url, assigns[:url] || Brand.image_url(@role))
 
     ~H"""
     <div

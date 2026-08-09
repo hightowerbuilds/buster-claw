@@ -139,16 +139,60 @@ defmodule BusterClawWeb.Layouts do
   # already renders `item.label` when there is no image — that arm has existed
   # since Calendar shipped without a PNG. **The failure state is not new
   # behaviour; it is the behaviour that was already there.**
-  defp nav_items do
+  @doc """
+  The dock items with their art resolved now.
+
+  Public because `BusterClawWeb.ChromeHook` assigns the result — the dock must
+  update when an operator swaps an icon, and a value computed inside this
+  module with no assign behind it is invisible to LiveView's change tracking.
+  """
+  def nav_items do
     Enum.map(@navigation_items, fn item ->
       Map.put(item, :image, Brand.image_url(item.role))
     end)
   end
 
+  attr :items, :list, required: true
+
+  @doc """
+  The dock's tab nav. A shared component so `BusterClawWeb.DockNavLive` and the
+  socket-less fallback in `shell/1` render the same markup rather than two copies
+  that drift.
+  """
+  def dock_nav(assigns) do
+    ~H"""
+    <nav class="flex items-center gap-1" aria-label="Open a tab">
+      <div :for={item <- @items} class="contents">
+        <%!-- Terminal opens a fresh shell per click via JS (see the marker
+        on @navigation_items); everything else is a normal tab navigation. --%>
+        <button
+          :if={item[:new_terminal]}
+          type="button"
+          id="dock-new-terminal"
+          phx-hook="DockNewTerminal"
+          title={item.label}
+          class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
+        >
+          <img :if={item[:image]} src={item[:image]} alt={item.label} class="h-6 w-auto shrink-0" />
+          <span :if={!item[:image]} class="font-medium">{item.label}</span>
+        </button>
+        <.link
+          :if={!item[:new_terminal]}
+          navigate={item.path}
+          title={item.label}
+          class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
+        >
+          <img :if={item[:image]} src={item[:image]} alt={item.label} class="h-6 w-auto shrink-0" />
+          <span :if={!item[:image]} class="font-medium">{item.label}</span>
+        </.link>
+      </div>
+    </nav>
+    """
+  end
+
   defp shell(assigns) do
     assigns =
       assigns
-      |> assign(:nav_items, nav_items())
       |> assign(:tab_labels, @tab_labels_json)
 
     ~H"""
@@ -201,32 +245,13 @@ defmodule BusterClawWeb.Layouts do
         id="app-dock"
         class="sticky bottom-0 z-30 flex items-center gap-2 overflow-x-auto border-t border-base-300 bg-base-100/95 px-3 py-2 backdrop-blur"
       >
-        <nav class="flex items-center gap-1" aria-label="Open a tab">
-          <div :for={item <- @nav_items} class="contents">
-            <%!-- Terminal opens a fresh shell per click via JS (see the marker
-            on @navigation_items); everything else is a normal tab navigation. --%>
-            <button
-              :if={item[:new_terminal]}
-              type="button"
-              id="dock-new-terminal"
-              phx-hook="DockNewTerminal"
-              title={item.label}
-              class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
-            >
-              <img :if={item[:image]} src={item[:image]} alt={item.label} class="h-6 w-auto shrink-0" />
-              <span :if={!item[:image]} class="font-medium">{item.label}</span>
-            </button>
-            <.link
-              :if={!item[:new_terminal]}
-              navigate={item.path}
-              title={item.label}
-              class="flex shrink-0 items-center gap-2 rounded px-3 py-2 text-sm transition hover:bg-base-200"
-            >
-              <img :if={item[:image]} src={item[:image]} alt={item.label} class="h-6 w-auto shrink-0" />
-              <span :if={!item[:image]} class="font-medium">{item.label}</span>
-            </.link>
-          </div>
-        </nav>
+        <%!-- The dock nav is its own sticky LiveView, for the same reason
+             DockLive is: a Phoenix app layout is rendered ONCE at mount and is
+             never part of a later diff, so an icon swapped from the Pockets tab
+             would sit stale here until the next navigation. A nested view has
+             its own process and its own diff. --%>
+        {(@socket && live_render(@socket, BusterClawWeb.DockNavLive, id: "bc-dock-nav", sticky: true)) ||
+          dock_nav(%{items: nav_items()})}
 
         <%!-- Right side: the sticky status widget (upcoming alarms/timers/
               reminders + temperature + clock). A separate LiveView process

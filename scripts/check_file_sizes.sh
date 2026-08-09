@@ -269,9 +269,15 @@ check lib/buster_claw/commands/catalog/pocket.ex               75 HELD
 # explaining why a failed move leaves the original in place instead of destroying
 # what it could not preserve. The collision rule is not reimplemented here —
 # `FileManager.import_file/4` already had it.
-check lib/buster_claw/pockets/brand.ex                        347 HELD
+# Raised again 08-09, 347 -> 362, for `topic/0` and the two broadcasts that make
+# a swap reach surfaces the operator is not looking at.
+check lib/buster_claw/pockets/brand.ex                        362 HELD
 check lib/buster_claw_web/components/pockets/brand_slots.ex   146 HELD
-check lib/buster_claw_web/components/brand_art.ex              55 HELD
+check lib/buster_claw_web/components/brand_art.ex              59 HELD
+# The dock nav, lifted OUT of the layout so it can re-render (an app layout is
+# rendered once at mount and never diffed). Capped at arrival with no headroom.
+check lib/buster_claw_web/live/dock_nav_live.ex                45 HELD
+check lib/buster_claw_web/chrome_hook.ex                       71 HELD
 
 if [ "$fail" -ne 0 ]; then
   echo "FAIL: the file-size inventory does not hold."

@@ -15,15 +15,16 @@ defmodule BusterClawWeb.RequireOnboarding do
 
   import Phoenix.LiveView, only: [push_navigate: 2]
 
-  # Views reachable during onboarding (before it is marked complete). NotifyLive
-  # and DockLive are sticky app-wide children (the fired-notification modal and
-  # the dock status widget) — they mount on every page, so they must never be
-  # the thing that bounces to /setup.
+  # Views reachable during onboarding (before it is marked complete). NotifyLive,
+  # DockLive and DockNavLive are sticky app-wide children (the fired-notification
+  # modal, the dock status widget and the dock's tab nav) — they mount on every
+  # page, so they must never be the thing that bounces to /setup.
   @allowed_views [
     BusterClawWeb.SetupLive,
     BusterClawWeb.TerminalLive,
     BusterClawWeb.NotifyLive,
-    BusterClawWeb.DockLive
+    BusterClawWeb.DockLive,
+    BusterClawWeb.DockNavLive
   ]
 
   def on_mount(:default, _params, _session, socket) do
