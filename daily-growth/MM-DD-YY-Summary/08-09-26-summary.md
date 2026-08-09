@@ -1,5 +1,28 @@
 # 08-09-26 — Three looks for the chat, three for the terminal
 
+**Two roadmaps scoped and closed, both in the Settings → Appearance tab.**
+
+| Shipped | Commits |
+|---|---|
+| Chat skins — 3 looks for the homepage chat, live | `6458a32` `a89f6b7` `064d6b2` `040d648` |
+| Chat text size — a second, independent axis | `8d7213e` |
+| Both new skins keep the homepage's blurred panel (operator correction) | `3e4c632` |
+| Chat theme moved into the gap under Theme | `39f7323` |
+| Terminal themes — Elixir owns the list, then 3 presets | `d0d1363` |
+| A custom terminal palette, generated from a spectrum | `8634308` `876a7f4` |
+
+**One thread runs through all of it:** every one of these settings had to apply to
+things *already on screen* — messages already in a stream, terminals already open —
+which is what pushed both features into CSS-and-attributes rather than re-rendering,
+and what made "half-applied" the failure mode worth designing against in each case.
+
+**Two operator corrections landed the same day they were caused**, and both were
+cases of matching a reference instead of matching this app: the opaque panels, and
+copying a preset where a spectrum was wanted. Both are recorded with the reasoning
+rather than just the fix.
+
+---
+
 Scoped `CHAT_SKINS_ROADMAP.md` and shipped all four phases: the homepage chat now
 has three skins — **Industrial Claw** (as it was), **Minimal** (a terminal
 transcript), **Workplace** (avatar, author line, hoverable rows) — chosen from a
@@ -326,3 +349,44 @@ app's light theme, which a fixed palette cannot.
 
 `appearance_live.ex` enters the file-size inventory at 1,010 with the cut named (the
 terminal-theme block is a coherent component; so is the background catalog).
+
+
+---
+
+# Where this leaves the Appearance tab
+
+It is now the app's one look-and-feel surface, and it owns five things: backgrounds
+for the two surfaces that have them, the app's light/dark theme, the terminal
+palette (three presets plus a generated custom one), and the chat's two axes. Two
+files carry it — `appearance_live.ex` at 1,010 capped lines and
+`BusterClaw.TerminalTheme` — and both have their next cut named in the same comment
+that raised their cap.
+
+## What the day added to the anti-drift habit
+
+Three of today's tests assert things nothing in this repo had ever asserted:
+
+- **A stylesheet.** `ChatSkinCssTest` reads `app.css` and holds the skin contract —
+  non-default skins have rules, the default has none, no hex literals, no
+  `display: none`, every `data-chat-*` selector exists in the markup, every
+  font-size a reader reads goes through the scale.
+- **A JS/Elixir pair.** `TerminalThemeTest` refuses a palette literal creeping back
+  into `theme.js` and checks the removed presets are gone from *both* languages.
+  Before today, terminal themes had no test at all and two copies of their list.
+- **A generated artifact.** All 360 hues must produce a savable palette, which is
+  the only reason to trust a slider that can be dragged anywhere.
+
+## What needs a person
+
+Two entries in LAUNCH **G-40**, both of them "a build and a person looking":
+
+- **The chat skins**: six skin/theme combinations, four controls, and the case a
+  test cannot make — that an *old* conversation restyles, and that it reads well.
+  Plus Largest text at 150% still fitting.
+- **The terminal themes**: each preset with a terminal already open, a spectrum drag
+  followed live, two windows agreeing, a restart preserving the custom theme, and
+  coloured output (`ls`, `git status`) looking themed under it.
+
+Nothing else is open on either roadmap. Everything deferred was deferred with a
+trigger — timestamps, a theme library, import/export, a light generated scheme — and
+each one says what would have to be true to pick it up.
