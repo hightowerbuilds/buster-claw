@@ -153,6 +153,12 @@ defmodule BusterClaw.Sentinel do
   # weekly — so :notice: visible in the feed without reading as an incident.
   def classify(:google_auth, _meta), do: :notice
 
+  # A credential being used is the app working, not an incident — every agent
+  # fill and every poll emits one. `:info` keeps it out of the alert tiers while
+  # leaving it queryable, which is the point: until the Clinch there was no
+  # record that a credential had been used at all.
+  def classify(:credential_use, _meta), do: :info
+
   def classify(_other, _meta), do: :info
 
   defp tier(meta) when is_map(meta), do: to_string(meta[:tier] || meta["tier"] || "")

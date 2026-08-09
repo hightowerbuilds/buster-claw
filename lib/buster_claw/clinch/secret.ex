@@ -1,22 +1,26 @@
-defmodule BusterClaw.BrowserControl.Secret do
+defmodule BusterClaw.Clinch.Secret do
   @moduledoc """
-  One `$secret.<name>` entry. `value` is `BusterClaw.Encrypted`, so it is
-  ciphertext at rest and never appears in a dump of the database.
+  One stored credential of a writable kind — today that means `:sign_in`, the
+  values an Agent Mode run types as `$secret.<name>`.
 
-  See `BusterClaw.BrowserControl.Secrets` for why the store lives here rather
-  than in a second Keychain integration.
+  `value` is `BusterClaw.Encrypted`, so it is ciphertext at rest and never
+  appears in a dump of the database. (Phase 0 closed the other half of that
+  promise: the value used to reach `security_events` in the clear on the way
+  *in*, which no amount of at-rest encryption would have helped.)
+
+  The table is still `browser_secrets`. It was created when the store belonged to
+  `BrowserControl`, and renaming it would be a migration that buys nothing — the
+  module moved because the Clinch owns credential storage now, not because the
+  bytes needed to.
   """
 
   use Ecto.Schema
 
   import Ecto.Changeset
 
-  @type t :: %__MODULE__{}
+  alias BusterClaw.Clinch.Types
 
-  # The reference grammar `SecretRef` will actually match — anything outside it
-  # could be stored and then never resolvable, which is a trap rather than a
-  # feature.
-  @name_re ~r/\A[a-z0-9_.-]+\z/
+  @type t :: %__MODULE__{}
 
   schema "browser_secrets" do
     field :name, :string
@@ -30,11 +34,11 @@ defmodule BusterClaw.BrowserControl.Secret do
     secret
     |> cast(attrs, [:name, :value, :note])
     |> validate_required([:name, :value])
-    |> validate_format(:name, @name_re,
+    |> validate_format(:name, Types.name_format(),
       message: "must match $secret.<name>: lowercase letters, digits, _ . -"
     )
-    |> validate_length(:name, max: 100)
-    |> validate_length(:note, max: 200)
+    |> validate_length(:name, max: Types.max_name_length())
+    |> validate_length(:note, max: Types.max_note_length())
     |> unique_constraint(:name)
   end
 end

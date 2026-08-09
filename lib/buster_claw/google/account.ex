@@ -3,7 +3,7 @@ defmodule BusterClaw.Google.Account do
 
   import Ecto.Changeset
 
-  alias BusterClaw.Google.Vault
+  alias BusterClaw.Clinch.Vault
 
   schema "google_accounts" do
     field :email, :string
@@ -52,13 +52,18 @@ defmodule BusterClaw.Google.Account do
     |> unique_constraint(:email)
   end
 
+  # `:google` is not optional here. These columns were written by the Google
+  # vault, whose key and AAD differ from the app vault's, so a value encrypted by
+  # one cannot be read by the other — and `Clinch.Vault`'s default is `:app`.
+  # Clinch Phase 4 retires the second vault by re-encrypting these columns.
   def decrypt(%__MODULE__{} = account, :client_secret),
-    do: Vault.decrypt(account.client_secret_enc)
+    do: Vault.decrypt(account.client_secret_enc, :google)
 
   def decrypt(%__MODULE__{} = account, :refresh_token),
-    do: Vault.decrypt(account.refresh_token_enc)
+    do: Vault.decrypt(account.refresh_token_enc, :google)
 
-  def decrypt(%__MODULE__{} = account, :access_token), do: Vault.decrypt(account.access_token_enc)
+  def decrypt(%__MODULE__{} = account, :access_token),
+    do: Vault.decrypt(account.access_token_enc, :google)
 
   def scrub(%__MODULE__{} = account) do
     %{account | client_secret: nil, refresh_token: nil, access_token: nil}
@@ -71,7 +76,7 @@ defmodule BusterClaw.Google.Account do
 
       value ->
         changeset
-        |> put_change(encrypted_field, Vault.encrypt!(value))
+        |> put_change(encrypted_field, Vault.encrypt!(value, :google))
         |> put_change(plaintext_field, nil)
     end
   end

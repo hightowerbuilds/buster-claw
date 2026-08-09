@@ -22,7 +22,7 @@ defmodule BusterClaw.Encrypted do
 
   require Logger
 
-  alias BusterClaw.Vault
+  alias BusterClaw.Clinch.Vault
 
   @impl true
   def type, do: :binary

@@ -209,10 +209,36 @@ env in a release, and that no token file is created when they do.
 
 ---
 
-## Phase 1 — The Clinch contract
+## Phase 1 — The Clinch contract — **DONE 08-08**
 
 A types-only module first, then the context. This follows the standing lesson
 from Scene3D: pin the stage boundaries as a real module before any work fans out.
+
+**Shipped:** `Clinch.Types` (kinds, ref grammar, entry shape, no logic),
+`Clinch.Vault` (the crypto chokepoint over both vaults), `Clinch.Secret` (the
+schema, moved out of `BrowserControl` so the Clinch owns its own storage), and
+`Clinch` itself — `resolve/2` + `resolver/2` as the audited use verb, `put/3` /
+`delete/1` / `list/0` / `known?/1` as the manage verb. `BrowserControl.Secrets`
+is now a thin adapter. `credential_use` is a new Sentinel category at `:info`.
+
+**One thing deliberately not done, and why.** `Integrations` and `Google.Account`
+do **not** call `resolve/2` per field. Their secrets are typed
+`BusterClaw.Encrypted`, so decryption happens transparently at *Ecto load* —
+there is no resolve moment to hook until those rows move, and manufacturing one
+would mean un-typing the columns and rewriting every caller for no security gain
+today. Their crypto does pass through `Clinch.Vault`, which is the property the
+exit criterion actually names. Revisit in Phase 3, when `:service_key` gets a
+writable home.
+
+**Two guards worth knowing about.** `ChokepointTest` scans `lib/` (heredocs and
+comments stripped) and fails if anything outside `Clinch.Vault` touches either
+vault — verified by pointing `Encrypted` back at the raw vault and watching it
+name the file. And a **wire-format** test asserts the `google_accounts` columns
+are readable by the Google vault and *not* by the app vault: a round-trip test
+cannot catch a refactor that drops `:google` from both sides, because
+encrypt→decrypt would still agree while every column on a real user's disk became
+unreadable. Verified the same way — every Google round-trip test stayed green
+while that one failed.
 
 - `BusterClaw.Clinch.Types` — the credential `kind` enum (`:service_key`,
   `:oauth`, `:sign_in`, `:loopback_token`, `:device_key`), the reference grammar,
