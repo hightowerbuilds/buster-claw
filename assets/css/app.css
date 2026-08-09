@@ -800,6 +800,56 @@ body { background-color: var(--color-base-100); }
   .ic-piece, .ic-drop-in { animation: none; }
 }
 
+/* The terminal theme's spectrum slider (Settings → Appearance). The track IS the
+   hue wheel, so the control shows what it does before you touch it. Written in
+   `hsl()` rather than hex stops on purpose: 13 hex literals here would be 13
+   colours that cannot follow a theme, and a hue wheel has no business being
+   theme-dependent anyway — it is the same wheel in light and dark. */
+.ic-hue-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1.25rem;
+  border-radius: 0.1875rem;
+  border: 2px solid color-mix(in oklab, var(--color-base-content) 25%, transparent);
+  cursor: pointer;
+  background: linear-gradient(
+    to right,
+    hsl(0 70% 55%), hsl(30 70% 55%), hsl(60 70% 55%), hsl(90 70% 55%),
+    hsl(120 70% 55%), hsl(150 70% 55%), hsl(180 70% 55%), hsl(210 70% 55%),
+    hsl(240 70% 55%), hsl(270 70% 55%), hsl(300 70% 55%), hsl(330 70% 55%),
+    hsl(360 70% 55%)
+  );
+}
+
+/* The thumb is a bar rather than a circle — the same hard-edged vocabulary as the
+   rest of the app, and easier to place precisely on a gradient. Vendor pseudos
+   cannot be combined in one rule: a browser that does not know one of them drops
+   the whole declaration block. */
+.ic-hue-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.625rem;
+  height: 1.5rem;
+  border-radius: 0.125rem;
+  border: 2px solid var(--color-base-100);
+  background: var(--color-base-content);
+  box-shadow: 0 0 0 1px color-mix(in oklab, black 45%, transparent);
+}
+
+.ic-hue-slider::-moz-range-thumb {
+  width: 0.625rem;
+  height: 1.5rem;
+  border-radius: 0.125rem;
+  border: 2px solid var(--color-base-100);
+  background: var(--color-base-content);
+}
+
+.ic-hue-slider:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 /* ============================================================
    CHAT SKINS — three looks for the homepage chat panel, and the text size that
    scales all three.

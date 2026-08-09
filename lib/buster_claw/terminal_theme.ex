@@ -54,6 +54,7 @@ defmodule BusterClaw.TerminalTheme do
   @custom_key "custom"
   @custom_name_setting "terminal_custom_theme_name"
   @custom_colors_setting "terminal_custom_theme_colors"
+  @custom_hue_setting "terminal_custom_theme_hue"
   @custom_default_name "Custom"
 
   # The core values, labelled by what they actually do rather than by their xterm
@@ -214,19 +215,29 @@ defmodule BusterClaw.TerminalTheme do
   @doc "The 16 ANSI palette fields as `{name, label}`, in editor order."
   def ansi_fields, do: @ansi_fields
 
+  @doc """
+  The editor's three groups: `{title, blurb, fields}`.
+
+  Grouped rather than listed because 21 swatches in one grid is a wall, and the
+  three groups answer different questions — what the terminal *is* (surfaces), what
+  programs colour *with* (the eight), and what they use for emphasis (the bright
+  eight). The split is also where the slider's reach ends: it tints the surfaces
+  fully and the other sixteen only slightly, so red stays red.
+  """
+  def field_groups do
+    {normal, bright} = Enum.split(@ansi_fields, 8)
+
+    [
+      {"Surfaces", "The terminal itself — what you look at when nothing is running.",
+       @core_fields},
+      {"Program colours", "What `ls`, `git` and friends draw with. Red means error everywhere.",
+       normal},
+      {"Bright variants", "The same eight, used for emphasis and bold text.", bright}
+    ]
+  end
+
   @doc "Every palette field as `{name, label}` — the five core, then the 16 ANSI."
   def fields, do: @core_fields ++ @ansi_fields
-
-  @doc """
-  Themes a custom palette can be copied from.
-
-  Only the ones with a fixed palette. `industrial` is excluded on purpose: it is
-  token-derived, so it has no fixed colours to copy — starting from it would either
-  snapshot whichever app theme happened to be active or produce a palette missing
-  its 16 ANSI values, and both of those are the half-applied result the copy exists
-  to prevent.
-  """
-  def starting_points, do: Enum.filter(@themes, &(&1.palette != nil))
 
   @doc "Whether `key` names a theme that exists (including a saved custom one)."
   def valid?(key), do: key in keys()
@@ -297,7 +308,9 @@ defmodule BusterClaw.TerminalTheme do
 
   Returns `{:ok, theme}`, `{:error, :invalid_colors}` or `{:error, :invalid_name}`.
   """
-  def set_custom(name, colors) when is_binary(name) and is_map(colors) do
+  def set_custom(name, colors, hue \\ nil)
+
+  def set_custom(name, colors, hue) when is_binary(name) and is_map(colors) do
     trimmed = String.trim(name)
 
     if trimmed == "" or String.length(trimmed) > 40 do
@@ -307,6 +320,7 @@ defmodule BusterClaw.TerminalTheme do
         {:ok, palette} ->
           Settings.put(@custom_name_setting, trimmed)
           Settings.put(@custom_colors_setting, Jason.encode!(palette))
+          if is_integer(hue), do: Settings.put(@custom_hue_setting, to_string(hue))
           broadcast()
           {:ok, custom()}
 
@@ -316,27 +330,140 @@ defmodule BusterClaw.TerminalTheme do
     end
   end
 
-  def set_custom(_name, _colors), do: {:error, :invalid_colors}
+  def set_custom(_name, _colors, _hue), do: {:error, :invalid_colors}
 
   @doc "Forget the custom theme. Idempotent."
   def clear_custom do
     Settings.delete(@custom_colors_setting)
     Settings.delete(@custom_name_setting)
+    Settings.delete(@custom_hue_setting)
     broadcast()
     :ok
   end
 
-  @doc """
-  A complete palette copied from preset `key`, for the editor to open on.
+  @doc "The shipped themes that carry a fixed palette — everything but `industrial`."
+  def fixed_presets, do: Enum.filter(@themes, &(&1.palette != nil))
 
-  `{:error, :not_copyable}` for anything without a fixed palette — see
-  `starting_points/0`.
-  """
-  def copy_of(key) do
-    case palette(key) do
-      nil -> {:error, :not_copyable}
-      palette -> {:ok, palette}
+  # --- generating a palette from one number --------------------------------
+
+  @doc "The hue range the spectrum slider spans."
+  def hue_range, do: 0..359
+
+  @doc "The hue a never-generated custom theme starts at — the app's hazard orange."
+  def default_hue, do: 14
+
+  @doc "The hue the saved custom theme was generated at, or `default_hue/0`."
+  def custom_hue do
+    with value when is_binary(value) <- Settings.get(@custom_hue_setting),
+         {hue, ""} <- Integer.parse(value),
+         true <- hue in hue_range() do
+      hue
+    else
+      _ -> default_hue()
     end
+  end
+
+  # Canonical hues for the eight named colours. These barely move, because their
+  # meanings do not: red is error output in every program ever written, and a
+  # "spectrum" that slid red round to green would produce a theme that lies.
+  @ansi_hues %{
+    "black" => nil,
+    "red" => 358,
+    "green" => 122,
+    "yellow" => 45,
+    "blue" => 214,
+    "magenta" => 300,
+    "cyan" => 186,
+    "white" => nil
+  }
+
+  # How far a program colour is pulled toward the chosen hue. Enough that the
+  # palette reads as one family, far too little to change what a colour means.
+  @ansi_pull 0.15
+
+  @doc """
+  A complete palette generated from one hue.
+
+  The whole point of the slider: `hue` tints the **surfaces** completely —
+  background, text, cursor and selection are that hue at fixed saturation and
+  lightness — while the sixteen program colours keep their canonical hues and are
+  pulled only #{trunc(@ansi_pull * 100)}% toward it. So dragging the slider changes
+  the terminal's whole mood without ever making `red` something other than red.
+
+  Deterministic: the same hue always produces the same palette, which is what lets
+  the slider be re-draggable rather than a one-shot roll.
+
+  Dark by construction. A light generated theme is a different scheme (the
+  lightnesses invert and the pull has to change), not a parameter — and every
+  surviving preset is dark. Someone who wants a light terminal can still set the
+  background by hand.
+  """
+  def generate(hue) when is_integer(hue) do
+    h = Integer.mod(hue, 360)
+
+    surfaces = %{
+      "background" => hsl(h, 0.18, 0.07),
+      "foreground" => hsl(h, 0.12, 0.88),
+      "cursor" => hsl(h, 0.85, 0.60),
+      "cursorAccent" => hsl(h, 0.18, 0.07),
+      "selectionBackground" => hsl(h, 0.30, 0.22)
+    }
+
+    Enum.reduce(@ansi_fields, surfaces, fn {field, _label}, acc ->
+      Map.put(acc, field, ansi_color(field, h))
+    end)
+  end
+
+  defp ansi_color("brightBlack", h), do: hsl(h, 0.12, 0.42)
+  defp ansi_color("brightWhite", h), do: hsl(h, 0.08, 0.96)
+  defp ansi_color("black", h), do: hsl(h, 0.16, 0.16)
+  defp ansi_color("white", h), do: hsl(h, 0.10, 0.80)
+
+  defp ansi_color("bright" <> rest, h) do
+    name = String.downcase(String.slice(rest, 0, 1)) <> String.slice(rest, 1..-1//1)
+    hsl(pulled_hue(name, h), 0.72, 0.72)
+  end
+
+  defp ansi_color(name, h), do: hsl(pulled_hue(name, h), 0.58, 0.62)
+
+  # Move `canonical` a fraction of the SHORT way round the wheel toward `h`. The
+  # short way matters: red is 358 and a hue of 20 is 22 degrees away, not 338.
+  defp pulled_hue(name, h) do
+    canonical = Map.fetch!(@ansi_hues, name)
+    delta = Integer.mod(h - canonical + 180, 360) - 180
+    Integer.mod(canonical + round(delta * @ansi_pull), 360)
+  end
+
+  # HSL to #rrggbb. Written here rather than pulled in because it is fifteen lines
+  # and the alternative is a dependency for one function.
+  defp hsl(h, s, l) do
+    c = (1 - abs(2 * l - 1)) * s
+    hp = h / 60
+    x = c * (1 - abs(:math.fmod(hp, 2) - 1))
+
+    {r1, g1, b1} =
+      case trunc(hp) do
+        0 -> {c, x, 0.0}
+        1 -> {x, c, 0.0}
+        2 -> {0.0, c, x}
+        3 -> {0.0, x, c}
+        4 -> {x, 0.0, c}
+        _ -> {c, 0.0, x}
+      end
+
+    m = l - c / 2
+    "#" <> channel(r1 + m) <> channel(g1 + m) <> channel(b1 + m)
+  end
+
+  defp channel(value) do
+    value
+    |> max(0.0)
+    |> min(1.0)
+    |> Kernel.*(255)
+    |> round()
+    |> Integer.to_string(16)
+    |> String.downcase()
+    |> String.pad_leading(2, "0")
   end
 
   # Every field present, every value a #rrggbb literal. Strict on both counts: the

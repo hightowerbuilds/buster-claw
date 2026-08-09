@@ -113,20 +113,21 @@ defmodule BusterClawWeb.AppearanceLive do
 
   # --- the custom terminal theme -------------------------------------------
 
-  # Open the editor on a COPY of a preset. That is the design, not a convenience:
-  # a copy is always a complete 22-colour palette, so a custom theme can never be
-  # the half-applied thing where the background is yours and `ls` is xterm's. It
-  # also makes the common case ("Nord but a black background") one edit.
-  def handle_event("start_custom_theme", %{"from" => from}, socket) do
-    case TerminalTheme.copy_of(from) do
-      {:ok, palette} ->
+  # The spectrum slider. One number in, a complete 21-colour palette out — which is
+  # what keeps the invariant that a custom theme is never half-applied (background
+  # yours, `ls` xterm's). The hue tints the surfaces fully and the program colours
+  # only slightly, so dragging it changes the terminal's whole mood and `red` stays
+  # red. Saved on every change, so the open terminal follows the drag.
+  def handle_event("generate_custom_theme", %{"hue" => hue}, socket) do
+    case Integer.parse(hue) do
+      {hue, ""} ->
         {:noreply,
          socket
-         |> assign(:custom_draft, palette)
-         |> assign(:custom_name, TerminalTheme.custom_name())
-         |> assign(:custom_error, nil)}
+         |> assign(:custom_hue, hue)
+         |> assign(:custom_error, nil)
+         |> save_draft(TerminalTheme.generate(hue), hue)}
 
-      {:error, :not_copyable} ->
+      _ ->
         {:noreply, socket}
     end
   end
@@ -559,24 +560,39 @@ defmodule BusterClawWeb.AppearanceLive do
                 </div>
               </div>
 
-              <div :if={is_nil(@custom_theme) and is_nil(@custom_draft)} class="space-y-2">
-                <p class="text-sm leading-6 text-base-content/70">
-                  Start from a theme and change what you like. Every colour is copied, so
-                  program output stays themed too.
-                </p>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    :for={preset <- TerminalTheme.starting_points()}
-                    type="button"
-                    phx-click="start_custom_theme"
-                    phx-value-from={preset.key}
-                    data-start-from={preset.key}
-                    class="rounded border-2 border-base-content/25 px-3 py-1.5 text-sm font-semibold transition hover:border-primary hover:text-primary"
-                  >
-                    Start from {preset.label}
-                  </button>
+              <%!-- The spectrum. One number produces all 21 colours, which is what
+                    keeps a custom theme from ever being half-applied — and it makes
+                    the first move a drag rather than a form. The hue tints the
+                    surfaces fully; the program colours are pulled only slightly
+                    toward it, so red stays red at every position. --%>
+              <form phx-change="generate_custom_theme" class="space-y-1.5">
+                <div class="flex items-baseline justify-between gap-2">
+                  <label for="custom-theme-hue" class="ic-eyebrow">Spectrum</label>
+                  <span class="font-mono text-[0.62rem] uppercase tracking-wide text-base-content/50">
+                    {@custom_hue}°
+                  </span>
                 </div>
-              </div>
+                <input
+                  id="custom-theme-hue"
+                  type="range"
+                  name="hue"
+                  min={Enum.min(TerminalTheme.hue_range())}
+                  max={Enum.max(TerminalTheme.hue_range())}
+                  value={@custom_hue}
+                  data-hue-slider
+                  class="ic-hue-slider"
+                />
+                <p class="text-xs leading-5 text-base-content/60">
+                  <span :if={is_nil(@custom_theme)}>
+                    Drag to build a theme — every colour is generated, so program output
+                    stays themed.
+                  </span>
+                  <span :if={@custom_theme}>
+                    Moving this rebuilds every colour. Edit the swatches below to change
+                    one at a time.
+                  </span>
+                </p>
+              </form>
 
               <%!-- One form for the whole palette: every input is named for its
                     field, so the params are the palette and there is no per-field
@@ -604,34 +620,29 @@ defmodule BusterClawWeb.AppearanceLive do
                   {@custom_error}
                 </p>
 
-                <div class="grid gap-2 sm:grid-cols-2">
-                  <.color_row
-                    :for={{field, label} <- TerminalTheme.core_fields()}
-                    field={field}
-                    label={label}
-                    value={@custom_draft[field]}
-                  />
-                </div>
-
-                <%!-- Collapsed, not omitted. These 16 are what colour `ls` and
-                      `git status`; most people will never open this, and the ones
-                      who want them would otherwise have no way in. --%>
-                <details class="rounded border-2 border-base-content/20">
-                  <summary class="ic-collapse-summary text-sm font-semibold">
-                    Program colours (16)
-                    <span class="font-mono text-[0.62rem] uppercase tracking-wide text-base-content/50">
-                      ANSI
-                    </span>
-                  </summary>
-                  <div class="grid gap-2 border-t-2 border-base-content/15 p-3 sm:grid-cols-2">
+                <%!-- Three groups rather than 21 swatches in one grid, because they
+                      answer different questions: what the terminal IS, what programs
+                      draw with, and what they use for emphasis. Every colour is
+                      visible — the previous version hid sixteen of them behind a
+                      collapsed section, which is most of the palette. --%>
+                <div
+                  :for={{title, blurb, fields} <- TerminalTheme.field_groups()}
+                  data-color-group={title}
+                  class="space-y-2"
+                >
+                  <div>
+                    <h4 class="ic-eyebrow">{title}</h4>
+                    <p class="text-xs leading-5 text-base-content/55">{blurb}</p>
+                  </div>
+                  <div class="grid gap-2 sm:grid-cols-2">
                     <.color_row
-                      :for={{field, label} <- TerminalTheme.ansi_fields()}
+                      :for={{field, label} <- fields}
                       field={field}
                       label={label}
                       value={@custom_draft[field]}
                     />
                   </div>
-                </details>
+                </div>
 
                 <div class="flex items-center justify-between gap-3">
                   <p class="text-xs leading-5 text-base-content/55">
@@ -692,6 +703,7 @@ defmodule BusterClawWeb.AppearanceLive do
     |> assign(:custom_theme, TerminalTheme.custom())
     |> assign_new(:custom_draft, fn -> nil end)
     |> assign_new(:custom_name, fn -> TerminalTheme.custom_name() end)
+    |> assign_new(:custom_hue, fn -> TerminalTheme.custom_hue() end)
     |> assign_new(:custom_error, fn -> nil end)
   end
 
@@ -699,14 +711,15 @@ defmodule BusterClawWeb.AppearanceLive do
     socket
     |> assign(:custom_draft, theme.palette)
     |> assign(:custom_name, theme.label)
+    |> assign(:custom_hue, TerminalTheme.custom_hue())
     |> assign(:custom_error, nil)
   end
 
   # Persist, refresh the picker, and push the palette at the browser so every open
   # terminal restyles without a reload. The push is what makes this live; the
   # Settings write is what makes it survive a restart.
-  defp save_draft(socket, draft) do
-    case TerminalTheme.set_custom(socket.assigns.custom_name, draft) do
+  defp save_draft(socket, draft, hue \\ nil) do
+    case TerminalTheme.set_custom(socket.assigns.custom_name, draft, hue) do
       {:ok, theme} ->
         socket
         |> assign(:custom_draft, draft)

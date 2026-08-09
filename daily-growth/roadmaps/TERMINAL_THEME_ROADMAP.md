@@ -103,26 +103,51 @@ case a real user will hit and nobody will report.
 
 ## Phase 2 — The custom theme
 
-### It starts as a copy of a preset
+### It is generated from a spectrum
 
-The editor opens on **"Start from: Industrial / Nord / Monokai"**, which copies
-that palette into the custom slot. Two things fall out of this and it is the
-central design decision:
+**Revised 08-09 by the operator, after the copy version shipped.** The entry point
+was "Start from Nord / Monokai", which copied a preset. It is now a **hue slider
+whose track is the hue wheel**: one number in, all 21 colours out.
 
-- The custom palette is **always complete** — all 22 values, so it can never be
-  the half-themed thing where your background is custom and `ls` is xterm's
-  defaults.
-- The common case is **one or two edits**, not twenty-two. "Nord but a black
-  background" should take one colour picker, not a form.
+What survives from the copy design is the reason it existed — the palette is
+**always complete**, so a custom theme can never be the half-themed thing where
+your background is custom and `ls` is xterm's defaults. What improves is the first
+move: a drag rather than a choice between two names, and every position on the
+track is a theme rather than only two.
 
-Starting from `industrial` snapshots its *currently resolved* colours (it is
-dynamic; the copy is not). That is a real asymmetry and the UI should say it: a
-custom theme does not follow the app's light/dark switch, only Industrial does.
+**The hue tints the surfaces fully; the sixteen program colours are pulled only
+15% toward it.** That is the load-bearing rule. A spectrum that slid `red` round to
+green would produce a theme that *lies* — red means error output in every program
+ever written — so the eight keep their canonical hues and take their cohesion from
+shared saturation and lightness. A test asserts red's dominant channel is still red
+at six hues around the wheel.
+
+Generation is **deterministic** (the same hue always gives the same palette), which
+is what lets the slider be dragged back and forth rather than being a one-shot roll,
+and **dark by construction**: a light scheme inverts the lightnesses and needs a
+different pull, so it is a decision rather than a parameter. Every surviving preset
+is dark.
+
+`copy_of/1` and `starting_points/0` were **deleted** rather than kept as an
+alternative path — dead production code with a comment is still dead. `generate/1`
+plus per-swatch editing covers the same ground, and the copy is six lines if it is
+ever wanted back.
+
+A custom theme still does not follow the app's light/dark switch; only Industrial
+does. The UI says so.
 
 ### The UI
 
-**Five** core colours always visible, each labelled by what it actually does
-(background, text, cursor, text under cursor, selection). Not six: `selectionForeground`
+All **21 colours visible, in three named groups** — *Surfaces* (what the terminal
+is when nothing is running), *Program colours* (what `ls` and `git` draw with), and
+*Bright variants* (the same eight, for emphasis). Revised 08-09 with the spectrum:
+the sixteen program colours had been behind a collapsed `<details>`, which hid
+**most of the palette** from someone who came to customise it. Three groups rather
+than one grid of 21 because they answer different questions, and the split is also
+where the slider's reach ends.
+
+The five core fields are labelled by what they actually do (background, text,
+cursor, text under cursor, selection). Not six: `selectionForeground`
 was cut, and the test that caught it is worth keeping in mind — **neither surviving
 preset sets it**, so a copy could never have satisfied a validator that required
 it, and no custom theme could ever have been saved. xterm's behaviour when it is

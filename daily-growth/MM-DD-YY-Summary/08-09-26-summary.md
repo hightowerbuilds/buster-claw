@@ -249,19 +249,37 @@ every theme into fixed hex would have killed that on the **default** theme — t
 kind of regression nobody files, they just notice the terminal stopped matching the
 app.
 
-## The custom theme is a copy, and that is the design
+## The custom theme is generated from a spectrum
 
-The editor opens on **"Start from Nord / Monokai"**, which copies that palette whole.
-Two things follow, and they are the point:
+*(Shipped first as a copy of a preset; revised the same day on the operator's
+call.)*
 
-- The palette is **always complete**, so a custom theme can never be the
-  half-applied thing where the background is yours and `ls` is xterm's.
-- The common case is **one edit** — "Nord but a black background" — not a
-  twenty-one-field form.
+The entry point is a **hue slider whose track is the hue wheel**: one number in, all
+21 colours out. What carried over from the copy version is the reason it existed —
+the palette is **always complete**, so a custom theme can never be the half-applied
+thing where the background is yours and `ls` is xterm's. What got better is that
+every position on the track is a theme, instead of a choice between two names.
 
-**Industrial is not offered as a starting point**, because it has nothing fixed to
-copy. Offering it would either snapshot whichever app theme happened to be on, or
-produce a palette missing its ANSI values.
+**The hue tints the surfaces fully and pulls the sixteen program colours only 15%
+toward it.** That is the rule the whole scheme hangs on: a spectrum that slid `red`
+round to green would produce a theme that *lies*, because red means error output in
+every program ever written. So the eight keep their canonical hues and take cohesion
+from shared saturation and lightness. A test walks six hues around the wheel and
+asserts red's dominant channel is still red.
+
+Generation is **deterministic**, which is what lets the slider be dragged back and
+forth rather than being a one-shot roll, and **dark by construction** — a light
+scheme inverts the lightnesses and needs a different pull, so it is a decision, not
+a parameter.
+
+And all **21 colours are now visible**, in three named groups: *Surfaces*, *Program
+colours*, *Bright variants*. The first version hid sixteen of them behind a collapsed
+section, which is most of the palette — a poor default on the one screen someone
+opens *in order to* customise.
+
+`copy_of/1` and `starting_points/0` were **deleted** rather than left as a second
+path. Dead production code with a comment is still dead, and the copy is six lines
+if it is ever wanted back.
 
 ## A test caught a field that could never have worked
 

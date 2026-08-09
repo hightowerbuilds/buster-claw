@@ -270,18 +270,21 @@ defmodule BusterClawWeb.AppearanceLiveTest do
   end
 
   describe "the custom terminal theme" do
-    defp start_from_nord(view) do
-      view |> element(~s([data-start-from="nord"])) |> render_click()
+    # Dragging the spectrum is now the only way to create one, which is also what
+    # makes the palette complete before a single swatch is touched.
+    defp drag_spectrum(view, hue \\ 200) do
+      view
+      |> element(~s(form[phx-change="generate_custom_theme"]))
+      |> render_change(%{"hue" => to_string(hue)})
     end
 
     defp palette_params(overrides) do
-      {:ok, palette} = TerminalTheme.copy_of("nord")
-      Map.merge(palette, overrides)
+      Map.merge(TerminalTheme.generate(200), overrides)
     end
 
-    test "offers the three presets and, with none saved, two starting points",
+    test "offers the three presets and a spectrum, not a list of copies",
          %{conn: conn} do
-      {:ok, view, html} = live(conn, "/appearance")
+      {:ok, view, _html} = live(conn, "/appearance")
 
       for key <- TerminalTheme.preset_keys() do
         assert has_element?(view, ~s([data-term-theme="#{key}"]))
@@ -292,32 +295,64 @@ defmodule BusterClawWeb.AppearanceLiveTest do
         refute has_element?(view, ~s([data-term-theme="#{gone}"]))
       end
 
-      # Industrial is not a starting point: it is token-derived, so there are no
-      # fixed colours to copy.
-      assert has_element?(view, ~s([data-start-from="nord"]))
-      assert has_element?(view, ~s([data-start-from="monokai"]))
-      refute has_element?(view, ~s([data-start-from="industrial"]))
-      assert html =~ "Start from Nord"
+      # The spectrum replaced "start from a preset" (08-09).
+      assert has_element?(view, "[data-hue-slider]")
+      refute has_element?(view, "[data-start-from]")
     end
 
-    test "starting from a preset opens a complete editor", %{conn: conn} do
+    test "dragging the spectrum opens a complete editor", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/appearance")
 
-      start_from_nord(view)
+      drag_spectrum(view)
 
       assert has_element?(view, "#custom-theme-editor")
 
-      # Every field, including the 16 in the collapsed section — the editor holds a
-      # complete palette so a custom theme can never be half-applied.
+      # Every one of the 21 fields, visible — no collapsed section hiding most of
+      # the palette, and complete so a custom theme can never be half-applied.
       for {field, _label} <- TerminalTheme.fields() do
         assert has_element?(view, ~s(#custom-theme-editor [data-color-field="#{field}"])),
                "the editor has no input for #{field}"
       end
     end
 
+    test "the swatches are grouped, and the groups cover the palette", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+      drag_spectrum(view)
+
+      for {title, _blurb, _fields} <- TerminalTheme.field_groups() do
+        assert has_element?(view, ~s(#custom-theme-editor [data-color-group="#{title}"]))
+      end
+    end
+
+    test "dragging the spectrum saves a whole palette and remembers where it was",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      drag_spectrum(view, 300)
+
+      theme = TerminalTheme.custom()
+      assert map_size(theme.palette) == length(TerminalTheme.fields())
+      assert theme.palette == TerminalTheme.generate(300)
+
+      # The slider has to come back where it was left, or it reads as a control
+      # that forgot.
+      assert TerminalTheme.custom_hue() == 300
+      assert render(view) =~ "300°"
+    end
+
+    test "a nonsense hue is ignored rather than crashing", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view
+      |> element(~s(form[phx-change="generate_custom_theme"]))
+      |> render_change(%{"hue" => "banana"})
+
+      assert TerminalTheme.custom() == nil
+    end
+
     test "changing a colour saves it and pushes it at the browser", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/appearance")
-      start_from_nord(view)
+      drag_spectrum(view)
 
       view
       |> element("#custom-theme-editor")
@@ -339,16 +374,16 @@ defmodule BusterClawWeb.AppearanceLiveTest do
 
       assert has_element?(view, ~s([data-term-theme="custom"]))
       assert html =~ "Mine"
-      # No starting-point buttons once one exists — the choice now is edit or delete.
-      refute has_element?(view, ~s([data-start-from="nord"]))
 
       view |> element(~s(button[phx-click="edit_custom_theme"])) |> render_click()
       assert has_element?(view, "#custom-theme-editor")
     end
 
-    test "a bad colour is refused with a message, and nothing is stored", %{conn: conn} do
+    test "a bad colour is refused with a message, and the saved palette is untouched",
+         %{conn: conn} do
       {:ok, view, _html} = live(conn, "/appearance")
-      start_from_nord(view)
+      drag_spectrum(view, 200)
+      good = TerminalTheme.palette("custom")
 
       html =
         view
@@ -356,12 +391,15 @@ defmodule BusterClawWeb.AppearanceLiveTest do
         |> render_change(palette_params(%{"red" => "not-a-colour", "name" => "Mine"}))
 
       assert html =~ "not a valid #rrggbb colour"
-      assert TerminalTheme.custom() == nil
+      # Refused whole: the palette on disk is the last one that validated, not a
+      # half-applied mixture of it and the bad edit.
+      assert TerminalTheme.palette("custom") == good
     end
 
     test "an empty name is refused rather than saved blank", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/appearance")
-      start_from_nord(view)
+      drag_spectrum(view)
+      before = TerminalTheme.custom_name()
 
       html =
         view
@@ -369,7 +407,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
         |> render_change(palette_params(%{"name" => "   "}))
 
       assert html =~ "Give the theme a name"
-      assert TerminalTheme.custom() == nil
+      assert TerminalTheme.custom_name() == before
     end
 
     test "deleting removes it from the picker and tells the browser", %{conn: conn} do
@@ -381,7 +419,8 @@ defmodule BusterClawWeb.AppearanceLiveTest do
       assert TerminalTheme.custom() == nil
       refute has_element?(view, ~s([data-term-theme="custom"]))
       assert_push_event(view, "bc-term-custom", %{palette: nil})
-      assert has_element?(view, ~s([data-start-from="nord"]))
+      # The spectrum is always there — it is the way back in.
+      assert has_element?(view, "[data-hue-slider]")
     end
   end
 
