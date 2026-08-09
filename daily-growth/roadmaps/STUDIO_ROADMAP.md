@@ -3,6 +3,29 @@
 **Scoped 08-08-26 · Status: PARTS I, II, III and IV SHIPPED 08-08-26. Parts V and
 VI remain, and both need a person rather than an agent.**
 
+> **Parts V and VI were rewritten 08-09-26**, folding in three documents written
+> that day — a microphone plan, a word-dictionary brief, and a legal survey of
+> sourcing words from YouTube. All three are retired; this is the only Studio map.
+>
+> **They agreed, three independent ways, on one action: record the operator's own
+> voice.** The engineering line (Part V already said so), the measurement line (a
+> sentence built on 08-09 scored 3/10 because two of its seven words exist in no
+> transcript), and the legal line (a four-layer survey concluded scraping is not a
+> clean path and landed on "record 30–60 minutes of phonetically balanced
+> sentences" *on the merits*). See **V.0**.
+>
+> **Part V** is now the corpus and how to capture it — nothing in this app records
+> audio today, and the reason that matters is a process-boundary fact, not a UI
+> gap (**V.3**). **Part VI** is the dictionary: the Studio can cut, align, match
+> and choose, but **it cannot listen**, and that single gap explains every
+> remaining quality problem (**VI.0**). The labelling session that used to be all
+> of Part VI is now **VI.4**, because three more valuable things come first.
+>
+> **Sequence by risk, not by value:** Part V is gated on an unknown
+> (`getUserMedia` inside WKWebView) and a notarization-affecting entitlement
+> change; the dictionary has **no blockers at all.** Spike **V.4a** on day one,
+> then build **VI.1** while the packaging clears.
+
 **Shipped:** **24 `sound_*` verbs** (the catalog went 162 → 191 across the day,
 including other sessions' work), the word-index contract, the assembly engine,
 transcript search, a complete pure-Elixir recogniser (framing, FFT, MFCC,
@@ -718,111 +741,711 @@ as the DTW already built and measured.
 
 ---
 
-# Part V — Growing the corpus
+# Part V — Growing the corpus: record it yourself
 
-**The measured ceiling:** 295 seconds, 655 tokens, 237 distinct words, 47 with
-3+ takes, and the frequency head is almost entirely function words. Every quality
-problem downstream is partly a corpus problem, and this is the cheapest of them
-to fix.
+**Rewritten 08-09-26**, folding in three documents written that day — a microphone
+plan, a word-dictionary brief, and a legal survey of sourcing words from YouTube.
+All three are now retired into Parts V and VI.
 
-Four sources, in order of value per effort:
+## V.0 The one thing all three documents agreed on
+
+Read separately they looked like three features. Read together they were **one
+finding arrived at three independent ways**:
+
+- **The engineering line.** Part V already called a donor session *"by far the
+  highest value"* — known text, clean audio, consistent channel, a designed
+  passage.
+- **The measurement line.** Building *"Take me out to the ball game"* on 08-09
+  scored **3/10 and was deleted.** Five of seven words had real takes; `take` and
+  `ball` appear in none of the ten transcripts and were faked by splicing sub-word
+  fragments. **The corpus, not the engine, was the constraint.**
+- **The legal line.** A four-layer survey of sourcing words from YouTube concluded
+  scraping is not a clean path, and arrived — on the merits, not as a consolation —
+  at *"record 30–60 minutes reading phonetically balanced sentences… for a personal
+  assistant that speaks in your own voice, this is almost certainly the right
+  answer."*
+
+**Three lines of reasoning — packaging, measurement, and law — converging on one
+action is as strong a signal as this project gets.** Everything below is ordered by
+it.
+
+### The rule all three derive separately: one voice, one channel
+
+Each document reaches this from a different direction and none says it in these
+words, so it is stated here once:
+
+- **Microphone:** pin a device for a donor session rather than "System Default",
+  because macOS can move the default out from under a long take.
+- **Dictionary:** `sound_find` is *"speaker- and channel-dependent by design"*, and
+  Part IV's lattice was built for one speaker.
+- **Legal:** *"Keep the voicemail corpus as its own separate voice. Don't merge
+  banks. A sentence assembled from one voice sounds intentional; a sentence
+  assembled from several sounds broken."*
+
+**Banks never merge, and a bank is a voice-and-channel, not a folder.** This
+constrains the data model before anything is built.
+
+## V.1 The legal question is closed — do not re-open it
+
+**Scraping general YouTube content is out.** It breaks YouTube's ToS at the
+download step, before copyright is reached — and that prohibition applies
+*regardless of what the video contains*, so even a public-domain recording hosted
+there is covered.
+
+**The copyright analysis is more favourable than expected and still not a plan.**
+Individual words are not copyrightable (37 CFR § 202.1), but **the sound recording
+of a word is a separate protected work** (17 U.S.C. § 102(a)(7)) — the fragment,
+not the word, is the exposure. There is a live circuit split, and Washington State
+sits in the **Ninth Circuit**, where *VMG Salsoul v. Ciccone* held a 0.23-second
+sample non-infringing: squarely the size of one spoken word, and the strongest
+legal fact available. But de minimis looks at the **aggregate** — a hundred words
+from one speaker stops being "trivially small" — and fair use is **a defense
+asserted after being sued**, not a permission.
+
+**The layer that matters most here is the one people forget.** This pipeline exists
+to make a recognisable voice say things it never said, which puts **right of
+publicity** ahead of copyright. Washington's RCW 63.60.010 makes voice an explicit
+property right with statutory remedies; *Midler v. Ford* and *Waits v. Frito-Lay*
+establish it federally for voice specifically; the **NO FAKES Act** (S. 4591,
+advanced out of Senate Judiciary 22 June 2026) would federalise it. **That risk is
+independent of how the audio was obtained and of how short the samples are.**
+
+**Which is the real argument for recording yourself: it removes an entire legal
+layer instead of arguing about it.** No ToS, no copyright, no publicity question —
+plus one channel, and the ability to re-record any word that comes out badly.
+
+*Not legal advice. Anything shipped should get a lawyer's eyes. Non-commercial
+personal use is where this sits today and is where every argument above is
+strongest.*
+
+## V.2 Where the audio can come from, in order of value per effort
 
 **1. A donor session — by far the highest value.** The operator reads a prepared
-passage aloud into the phone or a mic. This is how TTS voice datasets are
-actually built, and it inverts every hard problem at once: **the text is known
-exactly** (no Twilio mangling, no "bus o'clock"), the audio is clean and
-consistent in level and channel, and the passage can be *designed* to cover the
-vocabulary a cut-up actually needs — pronouns, verbs, connectives, numbers,
-days, months. An hour of reading would dwarf the entire existing corpus.
+passage aloud. This is how TTS voice datasets are actually built, and it inverts
+every hard problem at once: **the text is known exactly** (no Twilio mangling, no
+"bus o'clock"), the audio is clean and consistent in level and channel, and the
+passage can be *designed* to cover the vocabulary a cut-up actually needs —
+pronouns, verbs, connectives, numbers, days, months. An hour of reading would dwarf
+the entire existing corpus.
 
 **Note what it does to Part III:** with known text and clean audio, `Align`'s
 output stops being crude — its two worst failure modes (transcript errors sliding
 the timeline, and unpredictable spontaneous speech rate) both largely vanish.
 
-**2. Voicemails, which accumulate on their own.** Free, organic, already wired.
-The constraint is that they are other people's voices and Twilio's transcripts.
+**2. Voicemails, which accumulate on their own.** Free, organic, already wired. The
+constraint is that they are other people's voices and Twilio's transcripts.
 
-**3. Public-domain corpora, for testing rather than material.**
+**3. Licensed speech corpora — and note two different uses.**
 [FSDD](https://github.com/Jakobovski/free-spoken-digit-dataset) (CC BY-SA 4.0,
-8 kHz, 50 takes per digit per speaker) is already proven as the DTW ground truth
-that produced the threshold study. [LibriSpeech](https://www.openslr.org/12)
-(CC BY 4.0) matters for a different reason: **word-level alignments exist**
-(Montreal Forced Aligner), which is ground-truth timings we could measure
-`Align` and `Dtw` against instead of guessing.
+8 kHz) is already proven as the DTW ground truth behind the threshold study.
+[LibriSpeech](https://www.openslr.org/12) / **LibriTTS** (CC BY 4.0) matter twice
+over: **word-level alignments exist** (Montreal Forced Aligner), which is
+ground-truth timing to measure `Align` and `Dtw` against instead of guessing —
+*and* they are the **licensed fallback for material** if the donor session does not
+happen, because they carry **hours per individual speaker with transcripts
+included**, which skips the hardest pipeline step. Pick one reader with the most
+material and build that bank from that single voice. Also green: **Common Voice**
+(CC0, but many speakers × few minutes — good coverage, wrong shape for one
+consistent voice), **VCTK** (48 kHz studio, ~24 min/speaker), **LibriVox**, and US
+Government works (17 U.S.C. § 105).
 
-> **Do not vendor either into this repo.** FSDD is share-alike and this tree is
-> MIT open-core. A fetch script plus a gitignored fixture directory, with tests
+> **Do not vendor any of them into this repo.** FSDD is share-alike and this tree
+> is MIT open-core. A fetch script plus a gitignored fixture directory, with tests
 > that skip when it is absent — the pattern `sound_studio_test.exs` already uses
-> for a missing `afconvert`.
+> for a missing `afconvert`. And per V.0, a licensed bank stays **separate** from
+> the operator's voice.
 
 **4. Anything the operator already has** — recordings, interviews, voice memos.
 `sound_import` takes any Library-relative file, so this is already reachable.
 
-**What to build:** a `sound_corpus`-style report that says what is *missing*
-rather than what exists — which words a target vocabulary lacks takes for, so a
-donor passage can be written against the gap rather than guessed at.
+## V.3 There is no way to record inside this app, and that is the gap
+
+Verified 08-09 against the tree:
+
+| | State |
+|---|---|
+`getUserMedia` anywhere in `assets/js` | **none** |
+`NSMicrophoneUsageDescription` | **absent, deliberately** — `Info.plist` lists it under *"WHAT IS DELIBERATELY ABSENT, and why, so nobody adds it back on a hunch"* |
+`com.apple.security.device.audio-input` | **absent** from `Entitlements.plist` |
+`media-src` in the CSP | **absent** — media falls back to `default-src 'self'` |
+Tauri bridge precedent | `voice.js` (57) ↔ `voice.rs` (111), `speak`/`stop_speaking`, **output only** |
+`ffmpeg` | present, 8.1, built with `avfoundation` |
+
+**Directly reusable, so the recorder is smaller than it looks:** `studio_audition.js`
+(170 lines, WebAudio + ArrayBuffers, **no blob URLs**), `wave_trim.js` (161,
+drag-to-select — **the post-record trim UI already exists**), `clipwave.js` (247,
+WGSL peak texture), `studio_keys.js` (82), and `SoundStudio.write/2` — **WAV
+encoding already exists in Elixir.**
+
+### The process-boundary argument, which decides the design
+
+`Entitlements.plist` documents this trap in another context and it applies here at
+full force: **entitlements do not inherit across process boundaries.**
+
+**The process that opens the microphone is the process that needs the entitlement
+and the TCC grant.** Capturing in the WebView puts that in the Tauri app — signed
+with `Entitlements.plist`, carrying an `Info.plist`, both of the things consent
+requires. Spawning `ffmpeg` from the BEAM puts it in a process with neither, out of
+`Contents/Resources`, where consent is attributed to the *responsible* process — so
+the prompt may go to the wrong app or never appear, and **the failure mode is the
+worst available: a WAV full of silence, with no error.**
+
+**So: capture in the front end for the operator's path, and keep the `ffmpeg` route
+as an explicitly-caveated agent convenience (V.9).**
+
+## V.4 Two cheap decisive things, before anything else
+
+**V.4a — The `getUserMedia` spike (~1 day, the highest-risk unknown here).** Build
+a signed app that does nothing but open an input stream and print its sample rate.
+Test in **both** hosts: Chrome at `localhost:4000` (a secure context) and the
+**packaged** app. Needs the `Info.plist` key and the entitlement to be a real test,
+so it overlaps V.5 deliberately. **If it fails, front-end capture is dead and the
+recorder becomes a substantially larger Rust build — better to know on day one.**
+
+**V.4b — The "what words am I missing?" report.** Named by two of the three source
+documents as the true first task, and built by neither. A read-only report over the
+existing index: which words the corpus has, with how many takes, and — against a
+target vocabulary — **which it lacks entirely.**
+
+It is the difference between a designed passage and a guessed one: write the donor
+passage *against this*, so an hour of reading targets real gaps rather than ground
+the voicemails already cover 35 times over. It is also the first half of the
+dictionary's Pane 1 (VI.1), so it is not throwaway work.
+
+**A word with one take is a quotation, not a cut-up.** That distinction is the most
+useful thing this report — and later the dictionary — can surface.
+
+## V.5 Permissions and packaging groundwork
+
+`Info.plist`: add `NSMicrophoneUsageDescription`, **and fix the comment that
+currently asserts nothing captures.** It is in the "deliberately absent" list, which
+makes it an explicit claim rather than an omission — and a stale comment
+confidently stating the opposite of the truth is worse than no comment. Write the
+string honestly; the operator reads it verbatim in the system dialog.
+
+`Entitlements.plist`: add `com.apple.security.device.audio-input`. **Three rules
+that file documents about itself, all load-bearing:**
+
+1. **No double hyphen anywhere in a comment.** `plutil -lint` accepts it; codesign's
+   AMFI parser rejects the entire file and signs nothing.
+2. It is referenced from **two** places on purpose — `tauri.conf.json` at
+   `bundle.macOS.entitlements`, and `scripts/codesign_release.sh`, which signs every
+   Mach-O in the OTP tree. Both must stay pointed at it.
+3. The file says *"NOTHING ELSE BELONGS HERE."* Adding a key is a deliberate
+   exception and gets commented as one, in the same voice as its neighbours.
+
+**This is notarization-affecting.** Budget a full signed-and-notarized build to
+validate it, not a `cargo tauri dev` run — read `LAUNCH_ROADMAP.md` III.E first.
+
+**No CSP change should be needed**, because of the AudioWorklet decision in V.7. If
+a future path wants blob playback, `media-src 'self' blob:` gets argued on its own
+merits rather than slipped in. `tauri.conf.json` sets `app.security.csp: null`, so
+the Phoenix header is the only policy in force: one place to change.
+
+## V.6 See the mic move — metering with no recording at all
+
+**Independently useful, and where every device and permission edge case surfaces.**
+A small honest thing to ship before anything can be lost.
+
+**Enumeration has two gotchas, and building the picker first is a common avoidable
+rewrite:**
+
+- **Labels are empty until permission is granted.** The flow must be: prompt with
+  default constraints → get the grant → re-enumerate → *now* show real names.
+- **`deviceId` is stable per-origin but rotates** when permission is revoked or site
+  data is cleared. Persist the **label** alongside the id and fall back to matching
+  by label.
+
+**Hot-plug** via `ondevicechange`. Two cases that must not be silent: a device
+appearing mid-session refreshes the list but **does not switch the active input
+under the operator**; and **the active device disappearing mid-recording** — a USB
+mic unplugged, AirPods sleeping — must **stop the recording, keep what was
+captured, and say plainly what happened**, not keep "recording" silence.
+
+**Metering: two numbers off the same frames.** **Peak**, with a **latching clip
+indicator** — a clip that flashes for 40 ms is missed and the take is already
+ruined. And **RMS**, for "am I loud enough", because peak alone is a bad guide to
+whether a recording is usable. Render on **dBFS, −60 to 0, with a marked target
+zone**; a linear meter spends most of its travel where the ear does not care.
+Reuse `clipwave.js` — the meter must not become a second waveform implementation.
+
+**Aim for peaks −12 to −6 dBFS while speaking, nothing touching 0.** Digital
+clipping is unrecoverable, which is why this phase is **preventive**: a
+check-your-level state that runs *before* arming. Note `sound_normalize` targets
+≈ −1 dBFS and is **peak**, not loudness — it cannot rescue a clipped take and will
+happily amplify a quiet noisy one along with its noise. **And the probe already
+measured this corpus peaking at ~0.96**, so headroom is the live risk here, not
+level.
+
+### Bluetooth — the trap that reproduces the exact problem we are escaping
+
+**The highest-value warning in the microphone document.** Bluetooth has two
+profiles: **A2DP** (output only, high quality) and **HFP/HSP** (bidirectional, much
+worse). **Opening a Bluetooth headset as an input switches the whole device out of
+A2DP into HFP** — classic HFP is 8 kHz narrowband, wideband mSBC is 16 kHz.
+
+1. **A donor session recorded over AirPods is close to worthless** — it hands us a
+   second 8–16 kHz corpus, which is precisely what the session exists to escape. We
+   would have gained nothing but a known transcript.
+2. **The operator will hear their own output degrade the instant recording arms**,
+   because output collapses to HFP at the same moment. That reads like a bug, so the
+   UI should pre-empt it in words.
+
+**Read the true rate of the live stream** — `AudioContext.sampleRate` and
+`track.getSettings()` — and **display what the open stream is actually running at,
+never the device's advertised capability. Warn below 32 kHz** in plain language.
+Label Bluetooth transports in the picker *before* selection. Prefer wired: the
+built-in MacBook Pro mic at **48 kHz** beats any Bluetooth headset here and is the
+default already.
+
+**Channel count matters too:** a 2-in interface may carry voice on channel 1 with
+channel 2 silent or noise, so mixing to mono halves the level and folds in the
+noise. Show channel count; offer *left / right / mix* when > 1. Request
+`channelCount: 1` as a hint, not a guarantee.
+
+## V.7 Record and save
+
+```
+┌─ RECORD ─────────────────────────────────────────────────┐
+│                                                          │
+│  Input  [ MacBook Pro Microphone            ▾ ]          │
+│         48 000 Hz · 1 ch · Built-in            ✓ good    │
+│                                                          │
+│  Level  ▁▂▃▄▅▆▇█▇▆▅▄▃▂▁                                  │
+│         -60    -40    -20   -12  -6   0                  │
+│                      [   target   ]      ● CLIP          │
+│                                                          │
+│         Input volume  ────────●─────  62                 │
+│                                                          │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │            ●  RECORD          ⏎ or Space           │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                          │
+│  Saves to sounds/studio/ · nothing is uploaded           │
+└──────────────────────────────────────────────────────────┘
+```
+
+While recording: the button becomes **STOP**, an elapsed timer runs, the meter keeps
+moving, a live waveform scrolls, and everything else is disabled. After stopping it
+becomes a review state — waveform with the `wave_trim.js` selection overlay,
+**Play**, **Trim**, a name field, and **Save to Studio** / **Retake** / **Discard**.
+
+**The meter runs before you arm.** The operator must be able to see the needle move
+and set their level without committing to a take; this single behaviour prevents most
+bad recordings. **The format readout is always visible** and turns into a warning
+below 32 kHz (V.6).
+
+AudioWorklet capture → raw PCM → a new `sound_record_save` verb → a source in the
+Studio. Review state reusing `wave_trim.js`. **Retake as a first-class button**, not
+discard-then-restart — it is the most-pressed control in any recording tool. An
+optional 3-2-1 pre-roll so the first word is not clipped by the operator's own
+reaction time. Spacebar transport, matching `studio_keys.js`.
+
+### AudioWorklet, not `MediaRecorder` — three reasons
+
+1. **CSP.** `MediaRecorder` produces a `Blob`, whose natural next step is
+   `URL.createObjectURL`; with no `media-src` this app falls back to
+   `default-src 'self'` and `blob:` media is refused. `studio_audition.js` already
+   documents working around exactly this, and `dtmf.js` is the standing precedent.
+2. **Format.** `MediaRecorder` emits MP4/AAC in WKWebView and WebM/Opus in Chrome —
+   both lossy, both needing decode, and **the two hosts would disagree.** An
+   AudioWorklet hands back raw `Float32` PCM identically everywhere.
+3. **We already have the encoder.** Ship raw PCM to the server and let
+   `SoundStudio.write/2` produce the WAV with tested Elixir, rather than writing a
+   second WAV encoder in JS.
+
+### Turn the voice-call processing OFF — and why it is not a detail
+
+```js
+navigator.mediaDevices.getUserMedia({
+  audio: {
+    deviceId: {exact: chosenId},
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+    channelCount: 1,
+  },
+})
+```
+
+All three are on by default in Chrome, all three are built for conference calls,
+and all three are **time-varying** — they change behaviour as the signal changes.
+
+**`autoGainControl` is the sharpest cross-document finding in this whole roadmap.**
+It means two takes of the same word, from the same session a minute apart, come back
+at **different levels**. A cut-up splices exactly such fragments together — so AGC
+guarantees an audible level jump at every seam. That is *precisely* the artefact
+`sound_assemble`'s `normalize` option exists to suppress, **reintroduced upstream
+where nothing downstream can remove it.** `noiseSuppression` is nearly as bad: it
+gates and reshapes quiet passages, which is where word onsets and plosive closures
+live — the parts that matter most when cutting.
+
+**Constraints are requests, not guarantees.** Verify with `track.getSettings()` and
+surface a mismatch.
+
+### Sample rate policy
+
+- **Capture at the device's native rate** (48 kHz here). Do not ask the browser to
+  resample on the way in.
+- **Archive the 48 kHz master.** Downsampling is lossy and irreversible; if the
+  internal format ever changes, the masters are the only way back. An hour of
+  48 kHz mono PCM16 is ~350 MB. Disk is cheap.
+- **Resample properly.** 48 000 → 22 050 is ~2.1769, not an integer, so naive
+  decimation aliases badly. Use `OfflineAudioContext` at 22 050, or `ffmpeg`'s
+  `swresample`. Both apply the required low-pass.
+- **Keep 22.05 kHz as the working format**, archive at 48 kHz, revisit only with
+  evidence. The donor corpus is the first material that genuinely exceeds 22.05 kHz,
+  so this deserved a deliberate answer rather than inheritance — and the deliberate
+  answer is that 11 kHz of bandwidth covers the intelligible range and matches every
+  existing asset.
+
+**Never auto-overwrite.** A recording is unrepeatable; a name collision prompts,
+always. `sound_record_save` reports `peak` and **flags a clipped take at the door**
+rather than letting it be discovered later.
+
+### Levels: an honest limitation
+
+**The web layer cannot set OS input gain.** A `GainNode` after capture raises the
+recorded level but **cannot undo clipping that already happened at the converter.**
+In preference order: (1) guide the operator to *System Settings → Sound → Input*
+with a target-zone readout; (2) a small native command using
+`osascript -e "set volume input volume 50"` — coarse 0–100, current default device,
+no CoreAudio bindings, good value for the effort; (3) full per-device CoreAudio gain
+only if 1 and 2 prove insufficient.
+
+**Do not fake it.** A slider that silently only applies post-capture, while the
+operator believes it is setting the mic, is worse than no slider.
+
+## V.8 Donor session mode — the payoff
+
+A teleprompter over the V.7 recorder. This is what this Part was always pointing at.
+
+- The prepared passage, one line at a time, large type — **written against V.4b's
+  gap report.**
+- **Record per line, not per hour.** Each line becomes its own source with **known
+  text**, which is what makes `Align` stop being crude.
+- Per line: **Keep** / **Retake**, then advance.
+- Progress over the passage, and **resumable** — an hour of reading will not happen
+  in one sitting, and Part VI already notes that fatigue degrades quality.
+- **Pin the input device** for the session (V.0).
+
+Candidate passages: the **Harvard sentences** or VCTK's prompt list, both
+phonetically balanced — but the gap report should bend the selection toward the
+function words, numbers, days and months a cut-up actually needs.
+
+## V.9 `sound_record` for the agent, silence-checked
+
+The one route that works **today** with zero packaging changes: the BEAM spawning
+`ffmpeg -f avfoundation`. It is also the only **agent-addressable** capture path —
+*"record thirty seconds of room tone"* with nobody clicking — which is consistent
+with this project's posture that every surface should be reachable by the agent.
+
+**Ship it as a CLI/agent convenience with its caveat in the verb's own description,
+not as the operator's recording path.** No live metering (ffmpeg is a black box
+mid-capture), no device-change handling, and the TCC problem from V.3. **It must
+verify the capture is not digital silence before reporting success**, and return an
+error naming the TCC cause if it is.
+
+### New verbs, following the existing read-half / write-half split
+
+| Verb | Half | Does |
+|---|---|---|
+`sound_gaps` | read | V.4b's report: vocabulary coverage, and what is missing |
+`sound_devices` | read | Input devices with name, transport, channels, native rate, system-default flag |
+`sound_input_level` | read/write | Get/set OS input volume 0–100, via the `osascript` route |
+`sound_record` | write | Agent-addressable capture, duration-bounded, **silence-checked** |
+`sound_record_save` | write | Accepts raw PCM + rate/channels/name, writes via `SoundStudio.write/2`, reports `peak`, flags clipping |
+
+**Every one lands a file in `sounds/studio/` as a *source*.** Recording never routes
+a chime. **`sound_apply` stays the separate, trust-gated act.**
+
+## V.10 Risks specific to capture
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+`getUserMedia` broken in Tauri v2 WKWebView | **High** — invalidates the design | V.4a spike, day one. Fallback is native Rust (`cpal`), a much larger build. |
+Entitlement change breaks notarization | High | Full signed build in V.5 before any UI. Obey the no-double-hyphen rule. |
+**Bluetooth silently degrades the corpus** | **High for project value** | True-rate readout, hard warning below 32 kHz, transport labelled pre-selection. |
+**AGC / noise-suppression left on** | **High and easy to miss** | Explicit constraints, verified with `getSettings()`, mismatch surfaced. |
+TCC denial is sticky — no programmatic re-prompt | Medium | Detect it, show the exact path: System Settings → Privacy & Security → Microphone. **Never silently record nothing.** |
+Dev-in-Chrome and packaged permissions diverge | Medium | Two permission stores, two failure modes. Mirror the existing dev/packaged split. |
+Device vanishes mid-take | Medium | `ondevicechange`: stop, keep the audio, explain. |
 
 ---
 
-# Part VI — The listening session: labels, and only then weights
+# Part VI — The dictionary: the ear, and only then the weights
+
+**Rewritten 08-09-26.** The original Part VI was the labelling session alone. The
+dictionary brief showed that the labelling session is the *fourth* thing to build
+here, not the first — and that the three before it are more valuable.
+
+## VI.0 The thesis: the Studio cannot listen
+
+**It can cut, align, match and choose. It cannot listen.** Every remaining quality
+problem traces to that one gap:
+
+- `sound_align` confidence is **capped at 0.9** by design, because it is a
+  proportional guess. **Only a human ear promotes a take to `manual` / 1.0.**
+- **`sound_find` is unusable without a confirmation UI.** Its own docs call it a
+  *"SHORTLIST GENERATOR, not an oracle"* — precision 0.88 / recall 0.93 at DTW
+  threshold ≈ 6.0, measured against 990 labelled pairs. **Roughly one match in eight
+  is wrong.** There is no responsible way to run it at scale without a person
+  confirming by ear. **This is the strongest single argument for this Part.**
+- Part IV's lattice picks takes the operator never hears until the sentence is
+  already assembled.
+
+**And it compounds with Part V.** An hour of donor audio without the dictionary
+gives ten times the words with **still-uncorrectable boundaries**. The dictionary
+without new audio can only redistribute what 295 seconds holds. Together: record
+clean known-text audio, correct it once, permanently — and every future sentence
+using that word improves. **The corpus gets better each time it is used.**
+
+**Sequence by risk, not by value.** Part V is gated on an unknown (V.4a) and a
+notarization-affecting change; the dictionary has **no blockers at all** — it is
+LiveView plus existing hooks over verbs that already ship. So spike V.4a on day one,
+then build VI.1 while the packaging clears.
+
+## VI.1 Browse and audition — this alone is worth shipping
+
+### What the dictionary actually reads
+
+Part II defines the index as an in-memory map. **On disk it is one JSON file per
+source**, and the dictionary reads and writes these directly, so the full shape
+belongs here (measured 08-09):
+
+```
+sounds/studio/index/<source>.wav.index.json
+```
+
+```json
+{
+  "version": 1,
+  "source": "voicemail-RE176efbe12921acb0f55286217ac5aec0.wav",
+  "indexed_at": "2026-08-09T14:07:24.488767Z",
+  "origin": "aligned",
+  "language": null,
+  "words": [
+    { "word": "good", "text": "Good", "start_ms": 10.0,
+      "end_ms": 302.5, "confidence": 0.7743340717131871 }
+  ]
+}
+```
+
+Note `word` versus `text`: the normalised key and the surface form as spoken.
+`origin` is one of **`aligned`** (proportional guess, confidence caps at 0.9),
+**`recognizer`** (MFCC + DTW, from `sound_find`), or **`manual`** (hand-marked, the
+**only** origin that earns 1.0). Sources live one directory up in
+`sounds/studio/`; audio is PCM16 mono 22.05 kHz.
+
+**The corpus lives outside the dev workspace** — all ten recordings are under the
+configured DataZone, so a dictionary built in dev sees nothing unless pointed at
+it. `sound_corpus` reports that as a number rather than a failure.
+
+**Three panes.**
+
+**Pane 1 — Vocabulary.** Every indexed word, sorted by take count descending, with
+search. **Words with exactly one take are visually marked as not-cuttable — the
+highest-value pixel on the screen.** Data: `sound_index_words`. This is V.4b grown
+up.
+
+**Pane 2 — Takes.** One row per take, ranked by confidence: source, `start_ms`,
+duration, confidence, `origin`. A waveform per row that plays **instantly on
+selection** — arrow keys audition, no click. Show surrounding transcript as context
+with the word emphasised; knowing a take came from *"…at the 6 30 AM in the morning,
+go to the navy base…"* tells the operator what prosody to expect. Data:
+`sound_index_search`.
+
+**Pane 3 — Sentence builder.** Type a phrase; each word becomes a chip. **Chips for
+words with no take render as a clear warning before anything is built** — the one
+signal that would have prevented the 3/10 attempt entirely. Sliders for `gap_ms` /
+`pad_ms` / `fade_ms`. **Preview** renders and plays **without writing a file.**
+Data: `sound_sentence` — read its `missing` field first, and surface `selection`:
+**`candidates == slots` means every word had exactly one take and the lattice
+decided nothing, so a reported cost of 0.0 means *best-of-one*, not *good*.**
+
+**Four non-negotiable interaction rules:**
+
+- **Audition must be instant and keyboard-driven.** If hearing a take takes two
+  clicks, the operator will not audition twenty, and the feature dies. This is the
+  whole product.
+- **Preview before write.** Every failure so far came from committing audio nobody
+  had heard.
+- **Never silently drop a word** — per `sound_sentence`'s own docs, the worst failure
+  mode this feature has.
+- **Show provenance everywhere.** `aligned` / `recognizer` / `manual` mean very
+  different things and belong on every take, always.
+
+**Search grammar worth stealing:** `audiogrep` / `videogrep` (Sam Lavigne,
+`antiboredom` on GitHub, MIT-ish) is the same architecture — corpus → force-align →
+word index → search → concatenate — validated by a decade of use, and its **fragment
+and n-gram / pattern search is more expressive than `sound_index_search`'s
+whole-word lookup.** Cheap, high-value addition to the search box. **Read it; do not
+vendor it** — this tree is MIT open-core and the dependency is unnecessary. It is
+also informative for what it *lacks*: no audition, no boundary correction, no notion
+of take quality. **That absence is the gap this Part fills**, which means this is an
+unserved need rather than a solved one.
+
+## VI.2 Correct boundaries — what makes the dictionary compound
+
+Draggable start/end handles on the Pane 2 waveform; on commit, write back via
+`sound_index_import` with `origin: "manual"` and `overwrite: true`. **Every
+correction is permanent, raises that take to confidence 1.0, and improves every
+future sentence using that word.**
+
+**Praat solved this UI thirty years ago** — a waveform with draggable tier
+boundaries. Copy it. (ELAN's multi-tier layout is the reference if phones are ever
+indexed as well as words. Descript is the bar for the transcript-linked editing
+model.)
+
+**`sound_index_import` refuses an existing index unless `overwrite: true`,** because
+a hand-corrected index is real work. **Never overwrite `manual` with `aligned`
+output.**
+
+## VI.3 Confirm `sound_find` hits — how the corpus grows without recording
+
+From any confirmed take, sweep the corpus for acoustic matches and present them as
+an audition queue: play, then **keep** or **reject**. Kept hits enter as
+`origin: recognizer`.
+
+**`sound_index_words` counts are a floor, not a census**, because Twilio's
+transcriber drops words on 8 kHz audio. There are almost certainly unindexed takes
+of common words sitting in the existing ten files right now.
+
+**The DTW threshold ≈ 6.0 is a starting point, not a constant** — same-word distances
+(3–9) overlap different-word ones (5–13). Make it adjustable and **show the
+distances.**
+
+**Whether VI.2 or VI.3 goes first is an open question.** VI.3 grows the corpus; VI.2
+improves what is there. Corpus size is the binding constraint, which argues VI.3 —
+unless the donor session lands, in which case there will be an hour of fresh
+`aligned` timings worth promoting and VI.2 matters more.
+
+## VI.4 The labelling session: labels, and only then weights
 
 **Operator ask (08-08):** an intensive session where the model asks a lot of
 questions about word quality.
 
-**This is active learning, and the framing matters.** The model cannot hear. It
-is not learning to judge audio — it is **building a labelled dataset by choosing
-good questions**, and then fitting Part IV's cost weights to match the operator's
-ear. Being clear about that is what keeps the feature honest.
+**This is active learning, and the framing matters.** The model cannot hear. It is
+not learning to judge audio — it is **building a labelled dataset by choosing good
+questions**, and then fitting Part IV's cost weights to match the operator's ear.
+Being clear about that is what keeps the feature honest. **It comes after VI.1–VI.3
+because it needs the audition surface those build.**
 
-## Ask pairs, not scores
+### Ask pairs, not scores
 
 **"Which of these two takes of *morning* is better?"** beats "rate this 1–5".
-Pairwise judgements are more reliable, need no calibration, survive fatigue
-better, and are what ranking models actually want. Absolute scores from one
-person drift within a single sitting.
+Pairwise judgements are more reliable, need no calibration, survive fatigue better,
+and are what ranking models actually want. Absolute scores from one person drift
+within a single sitting.
 
-## Ask the questions that are worth asking
+### Ask the questions that are worth asking
 
 A session that walks the corpus alphabetically wastes the operator's time. Query
 strategy, roughly in priority order:
 
-- **Leverage** — words that appear most often in assembled sentences. Getting
-  `to` and `the` right matters more than any content word, and they are the words
-  `Align` handles *worst* (function words are systematically over-allotted).
-- **Uncertainty** — pairs where the target costs disagree, or are close enough
-  that the model genuinely cannot rank them.
-- **Disagreement** — where boundary energy says one thing and DTW-to-siblings
-  says another. A label there resolves an actual conflict.
+- **Leverage** — words that appear most often in assembled sentences. Getting `to`
+  and `the` right matters more than any content word, and they are the words `Align`
+  handles *worst* (function words are systematically over-allotted).
+- **Uncertainty** — pairs where the target costs disagree, or are close enough that
+  the model genuinely cannot rank them.
+- **Disagreement** — where boundary energy says one thing and DTW-to-siblings says
+  another. A label there resolves an actual conflict.
 
 Skip pairs the costs already rank confidently — they teach nothing.
 
-## What gets stored, and why it is worth doing before any fitting
+### What gets stored, and why it matters before any fitting
 
 Each judgement stores **the two takes, the winner, and the full feature vector at
 judgement time**. That last part is what makes the data outlive the model: if the
-costs change, old labels remain fittable because the features they were judged
-under are recorded.
+costs change, old labels remain fittable because the features they were judged under
+are recorded.
 
-## Be honest about the ceiling
+### Be honest about the ceiling
 
-- **A few dozen labels is tuning, not learning.** Say so. Fit weights only when
-  the data supports it, and report how much data went in.
-- **This overfits to one person's ear on a small corpus** — which for a personal
-  tool is arguably correct, and should still be stated.
-- **Session design is a real constraint**: label quality degrades with fatigue,
-  so sessions should be short, resumable, and should record their own ordering so
-  a tired tail can be discounted later.
+- **A few dozen labels is tuning, not learning.** Say so. Fit weights only when the
+  data supports it, and report how much went in.
+- **This overfits to one person's ear on a small corpus** — which for a personal tool
+  is arguably correct, and should still be stated.
+- **Session design is a real constraint**: label quality degrades with fatigue, so
+  sessions should be short, resumable, and should record their own ordering so a
+  tired tail can be discounted later.
 
-## Phases
+### Phases
 
-- **VI.0** — store judgements (schema + verbs), with the feature vector. No
-  fitting. Immediately useful: a judged pair is a better take-choice than a
-  measured one, so Part IV can consult labels directly before any model exists.
-- **VI.1** — the query strategy, so a session asks its most valuable questions
-  first.
-- **VI.2** — fit the target/join weights. **Gated on having enough labels to
-  beat hand-set weights on a held-out set** — and if it does not beat them, say
-  so and keep the hand-set ones.
+- **VI.4a** — store judgements (schema + verbs), with the feature vector. No fitting.
+  Immediately useful: a judged pair is a better take-choice than a measured one, so
+  Part IV can consult labels directly before any model exists.
+- **VI.4b** — the query strategy, so a session asks its most valuable questions first.
+- **VI.4c** — fit the target/join weights. **Gated on having enough labels to beat
+  hand-set weights on a held-out set** — and if it does not beat them, say so and
+  keep the hand-set ones.
+
+## VI.5 Constraints the dictionary must respect
+
+- **Feature analysis costs ~109 s per uncached source.** `sound_sentence` imputes
+  costs from the median for uncached sources and reports how many were imputed;
+  `warm: true` forces analysis first. **The UI must not block on this.** Warm in the
+  background and show which takes are scored versus imputed.
+- **Lattice costs are min-max normalised within one lattice**, so two sentences'
+  totals are **not comparable.** Do not build a UI implying they are.
+- **`sound_apply` is trust-gated** and is the only verb that changes what the machine
+  does when nobody is watching. **The dictionary must not route sounds** — keep
+  installation a separate, deliberate act.
+- **Assembly defaults:** `pad_ms: 30`, `fade_ms: 8`, `gap_ms: 60`, `normalize: true`.
+  Keep `fade_ms` well below `pad_ms` or word onsets get eaten. Below ~40 ms gap words
+  slur; above ~150 ms it reads as dictation.
+- **`sound_probe` rejected a `source` parameter** in CLI testing on 08-09. Confirm its
+  actual argument name before wiring it up.
+- **The dev server at :4000 returns HTTP 500 with a `CompileError` page mid-recompile.**
+  Observed three times during the source research. Any polling UI must tolerate it.
+
+## VI.6 Explicitly out of scope
+
+- **Sub-word / phoneme splicing.** This is what broke the 3/10 attempt: `ball` was a
+  /b/ off *"bus"* plus *"all"*; `take` was three fragments each under 200 ms spliced
+  at zero gap. **Phonemes do not have stable edges** — the /t/ in *"to"* is already
+  coarticulated with what follows, so cutting at phone boundaries puts the seam
+  exactly where the information is. The field's answer decades ago was **diphone**
+  units, cut from the middle of one phone to the middle of the next. That needs
+  diphone indexing and a different data model: separate project. **The UI must not
+  offer it.**
+- **A recogniser.** Settled and re-settled. Whisper is not coming back. Better timings
+  come from hand-correction and `sound_find`, not a model.
+- **2D similarity maps** (the CataRT / AudioStellar model). Beautiful for timbre,
+  wrong for speech — the operator wants a *specific word*, and a word list is a better
+  index than a cloud. Revisit only if browsing by prosody becomes a real need.
+- **Non-speech search.** There is no sound classifier; *"find the door slam"* cannot
+  be answered.
+- **Scraping general YouTube content.** Closed in V.1. Do not re-research it.
+- **Merging voice banks.** V.0.
+
+## VI.7 One finding about the verb surface itself
+
+Not about audio. The 3/10 sentence was assembled by hand-picking spans out of
+`sound_index_search` and passing them to `sound_assemble` — **when `sound_sentence`
+already does exactly that properly**, with a unit-selection lattice that scores
+candidates and picks the cheapest path. The verb existed and was not known about.
+
+**The verb surface has outgrown what a person or an agent can hold in their head.**
+A UI that makes the corpus and its verbs visible has value beyond word-picking, and
+that is a second, independent argument for VI.1.
+
+## VI.8 Open questions for the operator
+
+1. **Is the donor session actually going to happen?** The entire ordering rests on
+   it. If yes, V.4–V.8 are the critical path. If no, the answer is LibriTTS as a
+   separate bank (V.2) and Part VI becomes the whole map.
+2. **Where does the dictionary live** — a new tab, or an expansion of the Studio tab?
+   `sound_studio_component.ex` is **1,235 lines and `FROZEN`** in the size inventory,
+   so "expand it" means extracting first. That is a real cost and deserves an explicit
+   answer rather than discovery halfway through.
+3. **VI.2 or VI.3 first?** See VI.3.
+4. **Wired mic or built-in?** The built-in at 48 kHz is genuinely fine and is what is
+   attached. A cheap USB dynamic would be better, is not a blocker, and should not
+   delay anything.
+5. **How much does agent-addressable recording matter?** If `sound_record` (V.9) is
+   valuable on its own it could move much earlier, since it works today with no
+   packaging changes. If it is only there for consistency, it stays last.
 
 ---
 
