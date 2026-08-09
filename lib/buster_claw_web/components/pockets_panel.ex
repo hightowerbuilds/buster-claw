@@ -2,7 +2,7 @@ defmodule BusterClawWeb.PocketsPanel do
   @moduledoc """
   The home Pockets tab: the operator's own material, read-only.
 
-  Scoped by `daily-growth/roadmaps/POCKETS_ROADMAP.md` D9, which states the
+  Scoped by `daily-growth/archive/08-09-26-pockets-roadmap.md` D9, which states the
   minimalism as a **constraint** rather than a mood: *two levels, one screen.*
   A list of Pockets, and one Pocket open. Nothing else — no tree, no sidebar,
   no reordering, no drag handles, no inspector panel, no preview modal.

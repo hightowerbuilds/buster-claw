@@ -3,7 +3,7 @@ defmodule BusterClaw.Pockets.Mounts do
   The mount registry — the app's own record of which Pockets are backed by a
   directory somewhere else on the machine.
 
-  This is the "strengthened symlink" of `POCKETS_ROADMAP.md` Part IV, and the
+  This is the "strengthened symlink" of `daily-growth/archive/08-09-26-pockets-roadmap.md` Part IV, and the
   strength is not in the mechanism. A mount does exactly what a symlink does:
   it says *the bytes are over there*. What a symlink cannot carry is an author,
   a purpose, a permission and an off switch, and those four are the entire

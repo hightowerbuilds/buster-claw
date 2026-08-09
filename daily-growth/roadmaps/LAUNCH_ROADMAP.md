@@ -970,6 +970,37 @@ logged-in checkout.
       that carries an edit to the browser. What it cannot cover is whether xterm
       renders the palette the way the swatch promised.
 
+- [ ] **Pockets, and the app's own art.** Inherited 08-09 on `POCKETS_ROADMAP`'s
+      archive (`daily-growth/archive/08-09-26-pockets-roadmap.md`). One sitting,
+      four things a person has to judge:
+
+      **The brand loop, which is the one with a designed failure state.** In the
+      packaged app: Home → Pockets → Add art on a dock icon, confirm the dock
+      changes *without a reload* (it is a sticky nested LiveView — `DockNavLive` —
+      precisely because the app layout is never diffed after mount). Then open
+      `pockets/nav-home/` in **Finder**, drop a second image in, and confirm the
+      dock falls back to the **text label** with a plain error in the tab, no
+      modal and nothing blocking. Remove the extra file and confirm the art
+      returns on its own — there is no repair action by design. Finally confirm
+      the replaced image is sitting in the **top level of the workspace**, not
+      deleted.
+
+      **A real mount.** Point a Pocket at a folder outside the workspace and
+      confirm its files list and its thumbnails render. This is the only check
+      that exercises the asset route against a path the workspace fence would
+      otherwise refuse, and `Pockets.resolve/2` is the single fence it goes
+      through.
+
+      **The one measurement Phase 0 could not make.** Drag a **folder** onto the
+      app and see whether the Tauri drop event carries a path for a directory the
+      way it does for a file. If it does, folder-drop is the natural mount
+      gesture and the typed path becomes the fallback rather than the primary.
+      Nothing depends on the answer; it is cheap to get while the build is open.
+
+      **Why none of this is in CI:** every LiveView test passed against a dock
+      that a real browser would have shown stale, because `render/1` re-renders
+      the whole tree server-side. That is the specific reason this needs eyes.
+
 > **If the checkout walk fails, stop and fix before the rest.** The others are
 > quality; that one is money.
 

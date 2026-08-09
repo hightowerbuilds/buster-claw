@@ -1,6 +1,6 @@
 defmodule BusterClaw.PocketMountsTest do
   @moduledoc """
-  Phase 3 of `POCKETS_ROADMAP.md` — the mount.
+  Phase 3 of `daily-growth/archive/08-09-26-pockets-roadmap.md` — the mount.
 
   A mount is the one real trust expansion in the roadmap: it lets the app read
   bytes outside the workspace on purpose, having spent three layers of code

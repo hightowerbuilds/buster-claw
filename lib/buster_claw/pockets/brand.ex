@@ -6,7 +6,7 @@ defmodule BusterClaw.Pockets.Brand do
   shipped art stays where it already is, **read-only in `priv/static`**, and is
   used whenever the operator has not supplied their own.
 
-  Scoped as Part XI of `daily-growth/roadmaps/POCKETS_ROADMAP.md`.
+  Scoped as Part XI of `daily-growth/archive/08-09-26-pockets-roadmap.md`.
 
   ## The three states, derived on every read
 

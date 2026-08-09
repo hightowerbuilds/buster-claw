@@ -8,7 +8,7 @@ defmodule BusterClaw.Pocket do
   table that decides which Pocket fills a slot, the mount registry that may point
   a Pocket at a directory outside the workspace, and the Home tab that draws it.
 
-  Scoped in `daily-growth/roadmaps/POCKETS_ROADMAP.md`.
+  Scoped in `daily-growth/archive/08-09-26-pockets-roadmap.md`.
 
   ## The one rule that shapes every field below
 
