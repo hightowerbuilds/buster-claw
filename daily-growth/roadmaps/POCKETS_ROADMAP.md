@@ -1,6 +1,8 @@
 # Pockets — folders that know what they are for
 
-**Scoped 08-08-26 · Status: SCOPED, nothing built.**
+**Scoped 08-08-26 · Status: SCOPED, nothing built. UI placement answered by the
+operator the same day — [D9](#d9--the-ui-is-a-home-sub-tab-and-it-is-minimalist),
+a minimalist Home sub-tab.**
 
 > ### The one-sentence version
 >
@@ -214,6 +216,56 @@ the existing local-trust page path (`pages/`, `docs/LOCAL_TRUST.md`), same-origi
 under the app CSP. That is already how the Manual ships. It is *not* a program the
 BEAM loads, and it is not a new runtime.
 
+### D9 — The UI is a Home sub-tab, and it is minimalist
+
+**Operator call, 08-08.** Pockets are the operator's *material*, not a preference,
+so they belong beside Notes and Activity rather than inside Settings.
+
+Placement: **`chat · notes · pockets · calendar · phone · studio · explore ·
+activity`** — directly after Notes, because those two are the operator's own
+content and read as a pair. `activity` stays far right; it is the one automatic
+log and has been anchored there since 08-08.
+
+**Minimalist, stated as a constraint rather than a mood.** Two levels, one screen:
+
+```
+POCKETS                                    [ + New ]  [ Mount… ]
+
+  hazard-icons        icons      6 files   ▪▪▪▪▪▪
+  ntf-banners         banners    2 files   ▪▪
+  typefaces           fonts     14 files   ↗ ~/Library/Fonts
+  scratch             free       —         (empty)
+
+──────────────────────────────────────────────────────────────
+  ← hazard-icons · icons · 6 files · used by: app_icon, badge
+
+  [img] [img] [img] [img] [img] [img]
+
+  The 32px versions are the ones that read at menu-bar size.
+```
+
+**What that buys, and what it forbids.** A list, and one Pocket open. Nothing
+else: no tree, no sidebar, no reordering, no drag handles, no inspector panel, no
+preview modal. The `↗` is the only mount affordance and it is a *glyph*, not a
+badge. The manifest body renders as plain prose under the contents, because the
+operator wrote it to be read.
+
+**Two things this decision costs, recorded now rather than discovered later:**
+
+1. **The rail goes from seven tabs to eight.** That is a real crowding cost on a
+   narrow window, and it is the first thing to re-examine if the rail starts to
+   wrap. Pockets is not obviously more load-bearing than Studio or Calendar.
+2. **`status_live.ex` is over its size cap already** (911 lines against a HELD cap
+   of 891, as of 08-08) and is under active edit by another session. Adding a tab
+   touches the one list at `status_live.ex:44` that feeds both the rail and the
+   guard — *"they were two lists until 08-08, which is how Phone arrived as a
+   button the server then refused."* **Add to that list and nowhere else**, and
+   expect to owe an extraction rather than a cap raise.
+
+The panel itself lives in its own component (`components/pockets_panel.ex`),
+following `ExplorePanel` — so the LiveView gains a tab entry and a one-line render
+call, not a feature.
+
 ---
 
 ## Part III — What a Pocket is
@@ -353,14 +405,21 @@ types-only contract module first, then load, validate, list. `POCKET.md` parsing
 with the `Skills` guards reused: name matches directory, invalid Pockets are
 logged and skipped rather than crashing the list.
 
-**No mounts. No roles. No UI.** A Pocket is a folder you can make by hand and the
-app can describe back to you.
+**No mounts. No roles. No UI** — the tab lands in Phase 2, beside the migration it
+exists to make visible. A Pocket is a folder you can make by hand and the app can
+describe back to you.
 
-### Phase 2 — Roles, and `backgrounds/` becomes the first consumer
+### Phase 2 — Roles, `backgrounds/` becomes the first consumer, and the tab
 
 The role table. `Pockets.for_role/1`. Then the migration:
 `Appearance`'s image pool becomes a Pocket, its public API unchanged, its
 `Settings` keys rewritten in place with the files untouched.
+
+**And the tab arrives here, read-only** — the list and one open Pocket, per
+[D9](#d9--the-ui-is-a-home-sub-tab-and-it-is-minimalist). No creating, no
+mounting, no deleting; just the two levels, so the migration has somewhere to be
+*seen* landing. A `pockets/` folder the operator cannot look at is a folder they
+will not believe in.
 
 **This is the phase that decides whether the roadmap continues.**
 
@@ -369,6 +428,9 @@ The role table. `Pockets.for_role/1`. Then the migration:
 `Pockets.resolve/1`. The mount registry. The Workspace-tab action from I.4 (or
 folder-drop, if Phase 0 says it works). Read-only by default; the `writable`
 opt-in; the unattended refusal.
+
+The tab gains its three affordances here and no others: **New**, **Mount…**, and
+the `↗` glyph marking a mounted Pocket in the list.
 
 Tests that must exist before this phase is called done:
 
@@ -444,11 +506,15 @@ storage.
 
 ## Part IX — Open questions for the operator
 
-1. **Where does the Pockets UI live?** Settings → Pockets (where Appearance is,
-   which is where backgrounds are today), or a Home sub-tab beside Notes and
-   Activity (which is where operator *content* lives)? I lean **Home sub-tab** —
-   Pockets are the operator's material, not a preference — but backgrounds argue
-   for Settings and I would rather be told.
+1. ~~**Where does the Pockets UI live?**~~ **ANSWERED 08-08 — a Home sub-tab,
+   minimalist.** Locked as [D9](#d9--the-ui-is-a-home-sub-tab-and-it-is-minimalist).
+
+   One consequence follows and is worth the operator's eye: **backgrounds are
+   configured in Settings → Appearance, and their Pocket is now managed in Home →
+   Pockets.** That split is defensible — *which* image is a preference, *the pile
+   of images* is material — but it is a split, and D7's migration is where it
+   first shows. If it reads wrong when built, the cheap fix is a link from
+   Appearance to the tab, not a second copy of the UI.
 
 2. **Should a Pocket be droppable-into from the chat?** The attachment work
    already accepts files into a staging area that dies with the conversation. "Put
