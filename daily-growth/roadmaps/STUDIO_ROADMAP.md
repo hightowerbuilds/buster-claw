@@ -1,13 +1,25 @@
 # The Studio — giving the agent a room it can enter
 
-**Scoped 08-08-26 · Status: ACTIVE — Part I Phase 0 and Part II Phases A+B SHIPPED
-08-08-26 (`e1088c2`).**
+**Scoped 08-08-26 · Status: PARTS I, II, III and IV SHIPPED 08-08-26. Parts V and
+VI remain, and both need a person rather than an agent.**
 
-**Shipped so far:** thirteen `sound_*` verbs (catalog 162 → 175), the word-index
-contract, the assembly engine, and transcript search over the recordings the app
-already holds. **2,605 tests green.** What remains is the write half of the CLI
-(Part I Phase 1), and the recogniser question — which the operator has answered:
-**build our own** (Part III).
+**Shipped:** **24 `sound_*` verbs** (the catalog went 162 → 191 across the day,
+including other sessions' work), the word-index contract, the assembly engine,
+transcript search, a complete pure-Elixir recogniser (framing, FFT, MFCC,
+subsequence DTW, VAD, feature cache), proportional alignment, a unit-selection
+lattice, and a reference skill that teaches the lot. **3,112 tests green.**
+
+**The acceptance criterion is met.** *"A voicemail becomes a routed sound effect
+end to end, from the CLI alone, with no UI involved"* — carried unmet since
+08-02 — now has a test that walks it entirely through `Commands.call/3` by name,
+plus a second proving `sound_apply` is genuinely gated when untrusted.
+
+**And it made a sentence.** Twenty-four words spliced out of six different
+voicemails, a sentence nobody ever said. The operator's first verdict was
+"garbled"; two targeted fixes to `Align` later, "both sounds better".
+
+**What remains needs a person, not an agent:** Part V wants a donor recording,
+and Part VI wants a listening surface. Neither is a gap in the plan.
 
 **What this is, in one line:** a `sound_*` command surface so the Studio's
 cutting, arranging and routing are reachable by the agent, not only by a person

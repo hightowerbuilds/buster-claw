@@ -25,13 +25,13 @@ defmodule BusterClawWeb.Explore.Registry do
   # because it took a search to find, and someone once concluded it did not
   # exist and wrote a second, weaker copy of it.
   @command_stats %{
-    total: 182,
+    total: 191,
     read: 77,
     trigger: 17,
-    mutate: 88,
+    mutate: 97,
     safe: 80,
-    restricted: 102,
-    gated: 20
+    restricted: 111,
+    gated: 21
   }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in

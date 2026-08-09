@@ -126,6 +126,43 @@ defmodule BusterClaw.SkillsTest do
   # The `chart-builder` playbook was seeded for Chart Build and left with it on
   # 08-08. `shader-designer` above still covers the reference-skill seed path.
 
+  test "ensure seeds sound-cutup, and it loads as a read-only reference skill" do
+    assert :ok = Skills.ensure()
+
+    assert {:ok, skill} = Skills.load("sound-cutup")
+    assert skill.handler_kind == :reference
+    assert skill.enabled
+    assert skill.tier == :safe
+    assert skill.steps == []
+    assert skill.body =~ "sound_assemble"
+
+    # Discoverable (it is how the agent finds the playbook) but never runnable.
+    assert Enum.any?(Skills.list(), &(&1.name == "sound-cutup"))
+    assert :error = Skills.fetch("sound-cutup")
+    refute Enum.any?(Commands.list_skills(), &(&1.name == "sound-cutup"))
+  end
+
+  # A reference skill that names a verb the catalog does not have teaches a
+  # command that cannot be run — the one failure mode a doc file has, and the
+  # only one a test can catch. Keeps the playbook in lockstep with the catalog.
+  test "every sound_* verb the sound-cutup skill names exists in the live catalog" do
+    assert :ok = Skills.ensure()
+    assert {:ok, skill} = Skills.load("sound-cutup")
+
+    catalog = MapSet.new(Commands.list_commands(), & &1.name)
+
+    named =
+      ~r/\bsound_[a-z_]+/
+      |> Regex.scan(skill.body)
+      |> List.flatten()
+      |> MapSet.new()
+
+    refute Enum.empty?(named), "the skill should name the verbs it teaches"
+
+    assert MapSet.subset?(named, catalog),
+           "unknown verb(s): #{inspect(MapSet.to_list(MapSet.difference(named, catalog)))}"
+  end
+
   test "a skill exceeding max_steps is rejected", %{root: root} do
     steps = List.duplicate(%{"command" => "document_list"}, 21) |> Jason.encode!()
 

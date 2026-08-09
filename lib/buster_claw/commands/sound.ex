@@ -19,6 +19,26 @@ defmodule BusterClaw.Commands.Sound do
     what a cut needs. An index hit is already a cut: hand its `source`,
     `start_ms` and `end_ms` straight to `sound_assemble`.
 
+  `sound_find` is the only verb here where a **matcher** produces timings.
+  `sound_align` guesses proportionally from a transcript; `sound_find` takes one
+  confirmed instance of a word and finds the others across the corpus by
+  acoustic similarity — MFCC features, subsequence DTW, no transcription and no
+  network — writing what it finds back as `origin: :recognizer`. It is a
+  shortlist generator rather than an oracle, and it is priced accordingly: a
+  source whose features are not cached costs about 109 seconds to analyse and
+  about 155 ms once warm, so which sources were cold is always reported and
+  `warm_only: true` searches the cached set alone rather than blocking for
+  minutes.
+
+  `sound_sentence` is the whole cut-up in one call — a phrase in, an assembled
+  clip out — and it is the only verb that *chooses* between takes: it tokenises
+  through `Index.normalize_word/1`, searches the index per word, builds a
+  candidate lattice and hands it to `Cutup.Select`'s Viterbi search before
+  `Assemble` splices the winner. Two of its answers matter as much as the audio:
+  the words it could **not** find, which are fatal unless `allow_missing: true`,
+  and whether the lattice had anything to decide at all — `candidates == slots`
+  means every word had exactly one take and the search chose nothing.
+
   `sound_align` is the bridge between the two families, and the reason the index
   family is reachable at all: it fits a transcript — text with no timings — onto
   the spans of activity `Cutup.Vad` finds in the audio, and saves the result as
@@ -29,10 +49,40 @@ defmodule BusterClaw.Commands.Sound do
   the recording as a whole and *not* a per-word verdict, and `unplaced_ms`, the
   detected speech no word ended up covering.
 
-  `sound_import` and `sound_assemble` are the only verbs here that write audio,
-  and both write a new *source* — neither routes anything, which is why they are
-  `:restricted` but not gated. Routing is the only act that changes what the
-  machine does unattended.
+  `sound_import`, `sound_assemble` and the four editing verbs (`sound_trim`,
+  `sound_fade`, `sound_normalize`, `sound_concat`) are the verbs here that write
+  audio, and every one of them writes a new *source* — none routes anything,
+  which is why they are `:restricted` but not gated. Routing is the only act
+  that changes what the machine does unattended.
+
+  ## The one gated verb
+
+  `sound_apply` is the end of the walk and the only gated entry: it copies a
+  studio source into the sound library and points a routing key at it, which is
+  the difference between "the agent made me a sound" and "the agent changed what
+  my computer does at 3am". Two refusals happen *before* anything is written —
+  a key that is not in `Sound.route_keys/0`, so a typo cannot be discovered
+  later as a chime that does not play, and a library name that is already taken
+  or that would shadow a bundled default, because this layer overrides the
+  bundled set by basename and `alarm.wav` installed here replaces the built-in
+  alarm for every key that falls back to it, not only the one being routed.
+
+  `sound_restore_defaults` is the way back, and it exists because an agent that
+  has just overwritten a chime is exactly who needs one. It copies the bundled
+  set into the workspace without ever overwriting, and — only when asked — clears
+  the routing map so every key inherits again.
+
+  ## The editing verbs all render to a new name
+
+  `sound_trim`, `sound_fade`, `sound_normalize` and `sound_concat` each wrap one
+  pure function in `SoundStudio` and write the result as a **new** source; an
+  existing name is refused as `:name_taken` unless `overwrite: true`. Editing in
+  place would destroy a voicemail that cannot be re-recorded, and a render to a
+  new file is reviewable in a way an in-place mutation is not.
+
+  Each returns the new name together with `duration_ms` and `peak`, beside the
+  source's own — the agent cannot hear, so those two numbers are the whole of
+  how it checks that a cut cut something and that a level moved.
 
   ## The one verb that names a file outside the sound stores
 
@@ -79,7 +129,11 @@ defmodule BusterClaw.Commands.Sound do
   alias BusterClaw.AudioName
   alias BusterClaw.Notifications.Cutup.Align
   alias BusterClaw.Notifications.Cutup.Assemble
+  alias BusterClaw.Notifications.Cutup.Dtw
+  alias BusterClaw.Notifications.Cutup.Features
   alias BusterClaw.Notifications.Cutup.Index
+  alias BusterClaw.Notifications.Cutup.Select
+  alias BusterClaw.Notifications.Cutup.Signal
   alias BusterClaw.Notifications.Cutup.Transcripts
   alias BusterClaw.Notifications.Cutup.Vad
   alias BusterClaw.Notifications.Sound
@@ -94,6 +148,24 @@ defmodule BusterClaw.Commands.Sound do
   @default_transcript_limit 50
   @default_word_limit 50
   @origins ~w(manual aligned recognizer imported)
+
+  # The same-speaker operating point measured over 990 labelled pairs
+  # (STUDIO_ROADMAP Part III, "The threshold, measured against real speech"):
+  # precision 0.88, recall 0.93. It is a starting point to re-measure against a
+  # real corpus, never a constant.
+  @default_find_threshold 6.0
+  @default_find_limit 10
+
+  # Takes per word offered to the lattice. Twenty is far more than the corpus
+  # usually holds and the search is cheap in the number of candidates; the
+  # expensive term is `Select`'s own capped sibling DTW.
+  @default_takes 20
+
+  # The anchors of the distance -> confidence map. See `confidence_of/1`.
+  @best_distance 3.0
+  @worst_distance 12.0
+  @best_confidence 0.9
+  @worst_confidence 0.1
 
   # ---------------------------------------------------------------------------
   # The library, both layers
@@ -1030,6 +1102,376 @@ defmodule BusterClaw.Commands.Sound do
   defp weight(_value), do: nil
 
   # ---------------------------------------------------------------------------
+  # Query by example — the matcher, reachable
+  # ---------------------------------------------------------------------------
+
+  # **The one verb where a real matcher produces the timings.** Everything above
+  # is `Align`'s proportional arithmetic; this hands one confirmed instance of a
+  # word to `Dtw` and finds the others by acoustic similarity, then writes them
+  # back as `origin: :recognizer`.
+  #
+  # Cost is the design constraint and it is not close: a source with no cached
+  # features costs ~109 s to analyse and ~155 ms once it is warm. So which
+  # sources were cold is reported rather than absorbed, cold sources are warmed
+  # one process each through `Features.warm/2` rather than sequentially, and
+  # `warm_only: true` searches the already-cached set and names what it skipped.
+  # Nothing here ever silently spends ten minutes.
+  def sound_find(%{"source" => source} = args) when is_binary(source) do
+    warm_only? = boolean(Map.get(args, "warm_only"), false)
+    write? = boolean(Map.get(args, "write"), true)
+    overwrite? = boolean(Map.get(args, "overwrite"), false)
+    opts = find_opts(args)
+
+    with {:ok, word, text} <- find_word(args),
+         {:ok, name} <- validate_name(source),
+         {:ok, from, to} <- find_span(args),
+         {:ok, targets} <- find_targets(args),
+         {:ok, template} <- find_template(name, from, to, warm_only?) do
+      searched =
+        targets
+        |> search_targets(template, word, text, warm_only?, opts)
+        |> record_writes(write?, overwrite?)
+
+      {:ok, find_result(template, word, text, searched, opts, warm_only?, write?)}
+    end
+  end
+
+  def sound_find(_args), do: {:error, :missing_source}
+
+  defp find_word(args) do
+    case blank_to_nil(Map.get(args, "word")) do
+      nil ->
+        {:error, :missing_word}
+
+      text ->
+        # The same normaliser the corpus side uses, or the two would drift and
+        # a word written here would never be found by `sound_index_search`.
+        case Index.normalize_word(text) do
+          "" -> {:error, :invalid_word}
+          word -> {:ok, word, text}
+        end
+    end
+  end
+
+  # Both bounds are required and neither is defaulted: a template is a *specific*
+  # take somebody confirmed, and guessing either edge of it would silently change
+  # what is being searched for.
+  defp find_span(args) do
+    from = number(Map.get(args, "start_ms"))
+    to = number(Map.get(args, "end_ms"))
+
+    cond do
+      is_nil(from) or is_nil(to) -> {:error, :missing_span}
+      from < 0 -> {:error, :invalid_span}
+      to <= from -> {:error, :invalid_span}
+      true -> {:ok, from * 1.0, to * 1.0}
+    end
+  end
+
+  # Indexed sources by default, because those are the ones whose approximate
+  # timings this verb exists to improve. A source with audio and no index is
+  # reachable by naming it, and gets an index made of these matches alone.
+  defp find_targets(args) do
+    case Map.get(args, "targets") do
+      nil -> at_least_one(Index.list())
+      list when is_list(list) -> validated_targets(list)
+      _other -> {:error, :invalid_targets}
+    end
+  end
+
+  defp at_least_one([]), do: {:error, :no_targets}
+  defp at_least_one(targets), do: {:ok, targets}
+
+  defp validated_targets(list) do
+    list
+    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
+      case entry do
+        name when is_binary(name) ->
+          case validate_name(name) do
+            {:ok, clean} -> {:cont, {:ok, [clean | acc]}}
+            {:error, _reason} = error -> {:halt, error}
+          end
+
+        _other ->
+          {:halt, {:error, :invalid_name}}
+      end
+    end)
+    |> case do
+      {:ok, names} -> names |> Enum.reverse() |> Enum.uniq() |> at_least_one()
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # **The template is sliced out of the whole recording's normalised sequence**,
+  # never computed from a cut-out clip: `Features` takes the cepstral mean over
+  # the full file, and a mean taken over two words is substantially the speech
+  # itself. Getting this backwards does not error, it just makes every distance
+  # quietly wrong.
+  defp find_template(source, from, to, warm_only?) do
+    cached? = Features.cached?(source)
+
+    if warm_only? and not cached? do
+      {:error, {:template_not_cached, source}}
+    else
+      with {:ok, seq} <- Features.for_source(source) do
+        slice_template(source, seq, from, to, cached?)
+      end
+    end
+  end
+
+  defp slice_template(source, seq, from, to, cached?) do
+    frame0 = frame_at(from)
+    frame1 = max(frame_at(to) - 1, frame0)
+
+    case Enum.slice(seq, frame0, frame1 - frame0 + 1) do
+      [] ->
+        {:error, :empty_template}
+
+      frames ->
+        {:ok,
+         %{
+           source: source,
+           start_ms: from,
+           end_ms: to,
+           frame0: frame0,
+           frame1: frame0 + length(frames) - 1,
+           frame_count: length(frames),
+           cold: not cached?,
+           frames: frames
+         }}
+    end
+  end
+
+  # The pinned 10 ms hop is the only thing converting a millisecond boundary into
+  # the frame index `Features` and `Select` address, and `Types` is explicit that
+  # the frame index IS the clock. Read from `Signal` rather than restated.
+  defp frame_at(ms), do: max(trunc(ms / Signal.hop_ms()), 0)
+
+  defp find_opts(args) do
+    %{
+      threshold: positive_number(Map.get(args, "threshold"), @default_find_threshold),
+      limit: positive_integer(Map.get(args, "limit"), @default_find_limit)
+    }
+  end
+
+  defp search_targets(targets, template, word, text, warm_only?, opts) do
+    cold = Enum.reject(targets, &Features.cached?/1)
+
+    # One file per process, which is what `Features.warm/2` is for. Searching a
+    # cold corpus one source at a time would pay the ~109 s serially, and
+    # `Signal`'s own measurement says the parallel split is most of the win.
+    if not warm_only? and cold != [], do: Features.warm(cold)
+
+    Enum.map(targets, fn target ->
+      search_target(target, template, word, text, target in cold, warm_only?, opts)
+    end)
+  end
+
+  defp search_target(target, template, word, text, cold?, warm_only?, opts) do
+    base = %{source: target, cold: cold?, skipped: nil, error: nil, matches: []}
+
+    if warm_only? and cold? do
+      %{base | skipped: "not_cached"}
+    else
+      case Features.for_source(target) do
+        {:ok, seq} -> %{base | matches: matches(template, seq, word, text, target, opts)}
+        {:error, reason} -> %{base | error: reason}
+      end
+    end
+  end
+
+  # **No `:cmn` here, ever.** `Features` normalises the whole recording once and
+  # caches that, so `Dtw`'s opt-in would subtract an already-zero mean over a
+  # different window and silently rescale every distance — after which the
+  # measured threshold means nothing, with no error to notice.
+  defp matches(template, seq, word, text, target, opts) do
+    template.frames
+    |> Dtw.search(seq, threshold: opts.threshold, limit: opts.limit)
+    |> Enum.map(fn match ->
+      %{
+        word: word,
+        text: text,
+        start_ms: match.start_ms,
+        end_ms: match.end_ms,
+        distance: match.distance,
+        confidence: confidence_of(match.distance),
+        template: template_span?(template, target, match)
+      }
+    end)
+  end
+
+  # A match on the template's own span in the template's own source is the input
+  # coming back at a distance near zero. It is the cheapest proof the search
+  # actually ran, and it is not a discovery — so it is reported and never written.
+  defp template_span?(%{source: source} = template, source, match),
+    do: match.start_ms < template.end_ms and template.start_ms < match.end_ms
+
+  defp template_span?(_template, _target, _match), do: false
+
+  # A DTW distance has no natural scale, so this is an anchored linear map onto
+  # the 0.1–0.9 band and the anchors are the measured ones (STUDIO_ROADMAP Part
+  # III): over 990 labelled pairs the same-speaker positives ran 2.97 to 9.23
+  # with a median of 4.43, and nothing in the study exceeded 13.24.
+  #
+  # It tops out at 0.9 for the same reason `Align` does — 1.0 belongs to
+  # hand-marked timings — and it **ranks rather than measures**, which is all
+  # `t:Types.word/0` asks a confidence to do. `distance` is reported beside it so
+  # nobody has to invert this to get the number that was actually computed.
+  defp confidence_of(distance) do
+    span = @worst_distance - @best_distance
+    drop = (distance - @best_distance) / span * (@best_confidence - @worst_confidence)
+
+    (@best_confidence - drop) |> max(@worst_confidence) |> min(@best_confidence)
+  end
+
+  defp record_writes(searched, false, _overwrite?),
+    do: Enum.map(searched, &Map.merge(&1, no_write()))
+
+  defp record_writes(searched, true, overwrite?) do
+    Enum.map(searched, fn entry ->
+      case {entry.error, Enum.reject(entry.matches, & &1.template)} do
+        {nil, [_ | _] = writable} ->
+          Map.merge(entry, write_index(entry.source, writable, overwrite?))
+
+        _nothing ->
+          Map.merge(entry, no_write())
+      end
+    end)
+  end
+
+  defp no_write do
+    %{
+      written: false,
+      words: nil,
+      added: 0,
+      skipped_overlapping: 0,
+      replaced: 0,
+      previous_origin: nil,
+      origin: nil
+    }
+  end
+
+  # Matches are **merged** into whatever index the source already has, because an
+  # aligned index is a set of proportional guesses and replacing three of its
+  # words with measured ones is the entire point of this verb.
+  #
+  # An existing word whose span overlaps a match is kept and the match dropped,
+  # unless `overwrite: true` — a hand-corrected timing is real work, and the
+  # threshold study is explicit that about one in eight returned spans is wrong.
+  #
+  # **`origin` belongs to the whole index and there is no mixed value**, so a
+  # merge relabels the file `:recognizer` while the aligned words underneath are
+  # unchanged and still approximate. `previous_origin` is reported for exactly
+  # that reason, and the note says it out loud.
+  defp write_index(source, matches, overwrite?) do
+    {existing, language, previous} = current_index(source)
+
+    {kept, replaced, added} =
+      if overwrite? do
+        {stale, keep} = Enum.split_with(existing, &overlaps_any?(&1, matches))
+        {keep, length(stale), matches}
+      else
+        {existing, 0, Enum.reject(matches, &overlaps_any?(&1, existing))}
+      end
+
+    entries =
+      Enum.map(kept ++ added, &Map.take(&1, [:word, :text, :start_ms, :end_ms, :confidence]))
+
+    with {:ok, index} <- Index.build(source, entries, origin: :recognizer, language: language),
+         :ok <- Index.save(index) do
+      %{
+        written: true,
+        words: length(index.words),
+        added: length(added),
+        skipped_overlapping: length(matches) - length(added),
+        replaced: replaced,
+        previous_origin: previous,
+        origin: index.origin
+      }
+    else
+      {:error, reason} -> Map.merge(no_write(), %{previous_origin: previous, error: reason})
+    end
+  end
+
+  defp current_index(source) do
+    case Index.load(source) do
+      {:ok, index} -> {index.words, index.language, index.origin}
+      {:error, _reason} -> {[], nil, nil}
+    end
+  end
+
+  defp overlaps_any?(word, others),
+    do: Enum.any?(others, &(word.start_ms < &1.end_ms and &1.start_ms < word.end_ms))
+
+  defp find_result(template, word, text, sources, opts, warm_only?, write?) do
+    matched = Enum.flat_map(sources, & &1.matches)
+    discovered = Enum.reject(matched, & &1.template)
+    skipped = Enum.filter(sources, &(&1.skipped != nil))
+
+    %{
+      word: word,
+      text: text,
+      template: Map.drop(template, [:frames]),
+      threshold: opts.threshold,
+      limit: opts.limit,
+      warm_only: warm_only?,
+      wrote: write?,
+      counts: %{
+        targets: length(sources),
+        searched: Enum.count(sources, &(&1.skipped == nil and &1.error == nil)),
+        skipped_cold: length(skipped),
+        failed: Enum.count(sources, &(&1.error != nil)),
+        matches: length(matched),
+        new_matches: length(discovered),
+        added: sources |> Enum.map(& &1.added) |> Enum.sum(),
+        sources_with_matches: Enum.count(sources, &(&1.matches != []))
+      },
+      # Which sources this call had to analyse from scratch, which is the whole
+      # of where its wall-clock time went.
+      cold_sources: sources |> Enum.filter(& &1.cold) |> Enum.map(& &1.source),
+      skipped_sources: Enum.map(skipped, & &1.source),
+      distances: distance_summary(discovered),
+      sources: sources,
+      notes: find_notes(discovered, skipped, sources, opts, warm_only?, write?)
+    }
+  end
+
+  defp distance_summary([]), do: nil
+
+  defp distance_summary(matches) do
+    sorted = matches |> Enum.map(& &1.distance) |> Enum.sort()
+
+    %{min: List.first(sorted), median: median(sorted), max: List.last(sorted)}
+  end
+
+  defp find_notes(discovered, skipped, sources, opts, warm_only?, write?) do
+    cold = Enum.filter(sources, & &1.cold)
+
+    [
+      "distance is what was measured; confidence is a RANKING derived from it, and 0.9 is this verb's ceiling because 1.0 means hand-marked. Nothing here transcribed anything: these spans sound like the template, which is not the same as being the same word.",
+      "This is a SHORTLIST GENERATOR, not an oracle. Measured over 990 labelled pairs, threshold #{@default_find_threshold} finds about 93% of real takes and roughly one in eight returned spans is wrong. Listen before trusting one — sound_assemble a candidate on its own and play it.",
+      "Matching is speaker- and channel-dependent BY DESIGN: the same word from a different caller scores about as far away as a different word from the same one. For assembling one person's voice that is the wanted behaviour, and it is why a corpus-wide sweep finds fewer takes than the transcripts suggest.",
+      if(write?,
+        do:
+          "origin on an index is a property of the WHOLE file and there is no mixed value, so any index written here now reads recognizer while its older aligned words are unchanged and still proportional guesses. previous_origin per source is what says which ones those are."
+      ),
+      if(discovered == [],
+        do:
+          "Nothing matched above threshold #{opts.threshold}. Before lowering it, check that the template span is really the word — the measured band for real speech is 3 to 13, an order of magnitude above the 0.2–0.9 the synthetic tests suggested, and a threshold below about 3 will match nothing at all."
+      ),
+      if(skipped != [],
+        do:
+          "warm_only was set, so #{length(skipped)} source(s) with no cached features were SKIPPED, not searched: #{Enum.map_join(skipped, ", ", & &1.source)}. Those sources may well contain the word. Re-run without warm_only to analyse them, at roughly 109 s of CPU per five minutes of audio."
+      ),
+      if(not warm_only? and cold != [],
+        do:
+          "#{length(cold)} source(s) had no cached features and were analysed from scratch — that is where the wall-clock went. The cache is now warm, so asking again about this corpus costs milliseconds."
+      )
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # ---------------------------------------------------------------------------
   # Import — the door into the studio
   # ---------------------------------------------------------------------------
 
@@ -1299,6 +1741,726 @@ defmodule BusterClaw.Commands.Sound do
     do: Map.get(entry, string_key, Map.get(entry, atom_key))
 
   # ---------------------------------------------------------------------------
+  # A sentence, in one call — the whole feature end to end
+  # ---------------------------------------------------------------------------
+
+  # phrase -> tokens -> `Index.search/2` per word -> a lattice -> `Select.best/2`
+  # -> `Assemble.build/2` -> a new source. `sound_assemble` is the manual version
+  # of the last two steps and stays that way; this is the one that CHOOSES.
+  #
+  # Two things it refuses to be quiet about. **A word it could not find** is
+  # named and, by default, fatal — a sentence silently missing three words is
+  # worse than no sentence, and `allow_missing: true` is how someone says they
+  # want the partial anyway. And **whether the lattice actually decided
+  # anything**: `slots` against `candidates` is the honesty pair, because with
+  # one take per word the search has nothing to do and its cost of 0.0 means
+  # "best of one", not "good".
+  def sound_sentence(%{"phrase" => phrase, "name" => name} = args)
+      when is_binary(phrase) and is_binary(name) do
+    overwrite? = boolean(Map.get(args, "overwrite"), false)
+    allow_missing? = boolean(Map.get(args, "allow_missing"), false)
+    warm? = boolean(Map.get(args, "warm"), false)
+    opts = assemble_opts(args)
+
+    with {:ok, tokens} <- phrase_tokens(phrase),
+         {:ok, target} <- stored_name(name),
+         {:ok, path, replaced?} <- studio_target(target, overwrite?),
+         {:ok, weights} <- sentence_weights(args),
+         {:ok, slots, missing} <-
+           sentence_slots(tokens, sentence_index_opts(args), allow_missing?),
+         features = sentence_features(slots, warm?),
+         {:ok, plan} <- Select.explain(candidates(slots), [features: features.table] ++ weights),
+         {:ok, clip} <- Assemble.build(plan.cuts, opts),
+         :ok <- write_source(clip, path) do
+      # Three groups rather than ten positional arguments: what was written,
+      # what was asked for, and what the search made of it.
+      written = %{name: target, path: path, clip: clip, replaced: replaced?, options: opts}
+      asked = %{phrase: phrase, slots: slots, missing: missing}
+
+      {:ok, sentence_result(written, asked, plan, features)}
+    end
+  end
+
+  def sound_sentence(%{"phrase" => phrase}) when is_binary(phrase), do: {:error, :missing_name}
+  def sound_sentence(_args), do: {:error, :missing_phrase}
+
+  # `Index.normalize_word/1` and nothing else, so the tokens asked for are in the
+  # exact form the corpus is stored under. The original text is carried alongside
+  # so a missing word is reported the way it was typed.
+  defp phrase_tokens(phrase) do
+    tokens =
+      phrase
+      |> String.split(~r/\s+/u, trim: true)
+      |> Enum.map(fn text -> %{text: text, word: Index.normalize_word(text)} end)
+      |> Enum.reject(&(&1.word == ""))
+
+    if tokens == [], do: {:error, :empty_phrase}, else: {:ok, tokens}
+  end
+
+  defp sentence_index_opts(args), do: Keyword.put_new(index_opts(args), :limit, @default_takes)
+
+  # Missing words are FATAL by default and the error names them. The alternative
+  # — building the sentence out of whatever happened to exist — is the one
+  # failure mode of this feature that nobody notices until they listen.
+  defp sentence_slots(tokens, opts, allow_missing?) do
+    {found, missing} =
+      tokens
+      |> Enum.map(fn token -> Map.put(token, :hits, Index.search(token.word, opts)) end)
+      |> Enum.split_with(&(&1.hits != []))
+
+    # Naming the words comes first even when NOTHING was found: "you have no take
+    # of zebra" is actionable and ":no_takes" is not. The bare refusal is left
+    # for the caller who already said they would accept a partial sentence and
+    # would otherwise get an empty one.
+    cond do
+      missing != [] and not allow_missing? ->
+        {:error, {:words_not_found, Enum.map(missing, & &1.text)}}
+
+      found == [] ->
+        {:error, :no_takes}
+
+      true ->
+        {:ok, found, missing}
+    end
+  end
+
+  # `Index.search/2` returns best-confidence-first and that order is carried
+  # straight into the lattice: `Select` resolves an exact tie toward the
+  # earlier-listed candidate, so the best-confidence take wins a tie by
+  # construction rather than by accident.
+  defp candidates(slots) do
+    Enum.map(slots, fn slot ->
+      Enum.map(slot.hits, fn hit ->
+        frame0 = frame_at(hit.word.start_ms)
+
+        %{
+          source: hit.source,
+          word: hit.word,
+          frame0: frame0,
+          frame1: max(frame_at(hit.word.end_ms) - 1, frame0)
+        }
+      end)
+    end)
+  end
+
+  # **This never blocks on a cold corpus unless asked.** A source with no cached
+  # features costs ~109 s to analyse, so by default only the already-cached ones
+  # are handed over; `Select` imputes the acoustic terms for the rest from the
+  # population median and `imputed` reports how often that happened. `warm: true`
+  # is the opt-in that pays the bill, one process per source.
+  #
+  # The features handed over are the whole recording's, already CMN'd by
+  # `Features` — which is why nothing on this path enables `Dtw`'s own `:cmn`.
+  defp sentence_features(slots, warm?) do
+    sources =
+      slots |> Enum.flat_map(fn slot -> Enum.map(slot.hits, & &1.source) end) |> Enum.uniq()
+
+    cold = Enum.reject(sources, &Features.cached?/1)
+    wanted = if warm?, do: sources, else: sources -- cold
+
+    if warm? and cold != [], do: Features.warm(cold)
+
+    table =
+      Enum.reduce(wanted, %{}, fn source, acc ->
+        case Features.for_source(source) do
+          {:ok, [_ | _] = seq} -> Map.put(acc, source, seq)
+          _other -> acc
+        end
+      end)
+
+    %{
+      table: table,
+      warm: warm?,
+      sources: Enum.sort(sources),
+      with_features: table |> Map.keys() |> Enum.sort(),
+      without_features: Enum.sort(sources -- Map.keys(table)),
+      analysed: if(warm?, do: Enum.sort(cold), else: [])
+    }
+  end
+
+  # Spelled out rather than converted, like `weight/1` above: a wire caller must
+  # never be able to name an atom this module did not choose. `Select` refuses a
+  # negative weight itself; this refuses a key it does not recognise, so a typo'd
+  # weight cannot be silently ignored.
+  defp sentence_weights(args) do
+    case Map.get(args, "weights") do
+      nil -> {:ok, []}
+      map when is_map(map) and map_size(map) == 0 -> {:ok, []}
+      map when is_map(map) -> parsed_weights(map)
+      _other -> {:error, :invalid_weights}
+    end
+  end
+
+  defp parsed_weights(map) do
+    map
+    |> Enum.reduce_while({:ok, []}, fn {key, value}, {:ok, acc} ->
+      case weight_key(key) do
+        nil -> {:halt, {:error, :invalid_weights}}
+        atom when is_number(value) and value >= 0 -> {:cont, {:ok, [{atom, value * 1.0} | acc]}}
+        _atom -> {:halt, {:error, :invalid_weights}}
+      end
+    end)
+    |> case do
+      {:ok, list} -> {:ok, [weights: Map.new(list)]}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp weight_key(key) when is_atom(key) and not is_nil(key), do: weight_key(Atom.to_string(key))
+  defp weight_key("confidence"), do: :confidence
+  defp weight_key("duration"), do: :duration
+  defp weight_key("boundary"), do: :boundary
+  defp weight_key("typicality"), do: :typicality
+  defp weight_key("spectral"), do: :spectral
+  defp weight_key("level"), do: :level
+  defp weight_key(_other), do: nil
+
+  # `written` is the file and how it was rendered, `asked` is the phrase and what
+  # the index had for it, and the last two are the search's own answers. Grouped
+  # rather than spread out positionally because this is the function a future
+  # reader will come to modify, and ten arguments in a row is a shape nobody can
+  # call correctly twice.
+  defp sentence_result(written, asked, plan, features) do
+    words =
+      asked.slots
+      |> Enum.zip(plan.path)
+      |> Enum.map(fn {slot, pick} ->
+        %{
+          word: slot.word,
+          text: slot.text,
+          takes: length(slot.hits),
+          source: pick.source,
+          start_ms: pick.word.start_ms,
+          end_ms: pick.word.end_ms,
+          confidence: pick.word.confidence
+        }
+      end)
+
+    %{
+      name: written.name,
+      path: written.path,
+      phrase: asked.phrase,
+      # First field after the file itself, and a list of words rather than a
+      # count: this is the failure that must never be read past.
+      missing: Enum.map(asked.missing, & &1.text),
+      words: words,
+      sources: drawn_from(plan.cuts),
+      duration_ms: SoundStudio.duration_ms(written.clip),
+      peak: peak_of(written.clip),
+      bytes: byte_size_of(written.path),
+      replaced: written.replaced,
+      selection: selection_report(plan),
+      features: Map.drop(features, [:table]),
+      options: Map.new(written.options),
+      notes: sentence_notes(asked.missing, plan, features, written.replaced)
+    }
+  end
+
+  defp drawn_from(cuts) do
+    cuts
+    |> Enum.frequencies_by(& &1.source)
+    |> Enum.map(fn {source, words} -> %{source: source, words: words} end)
+    |> Enum.sort_by(& &1.source)
+  end
+
+  # `slots` against `candidates` is the pair that keeps this honest — equal means
+  # every word had exactly one take and the lattice decided nothing — and
+  # `imputed` says how many cost terms were filled from the population median
+  # because the acoustics were not available.
+  defp selection_report(plan) do
+    %{
+      slots: plan.slots,
+      candidates: plan.candidates,
+      chose: plan.candidates > plan.slots,
+      imputed: plan.imputed,
+      target_total: plan.target_total,
+      join_total: plan.join_total,
+      total: plan.total,
+      weights: plan.weights
+    }
+  end
+
+  defp sentence_notes(missing, plan, features, replaced?) do
+    [
+      if(missing != [],
+        do:
+          "#{length(missing)} word(s) are NOT in this sentence because the index has no take of them: #{Enum.map_join(missing, ", ", & &1.text)}. Say so before playing it — the audio is a different sentence from the one that was asked for. sound_index_words says what IS available, and sound_find is how a word that exists in the audio gets into the index.",
+        else: "Every word of the phrase was found and used."
+      ),
+      if(plan.candidates == plan.slots,
+        do:
+          "The lattice CHOSE NOTHING: #{plan.slots} slot(s), #{plan.candidates} candidate(s), so every word had exactly one take. The costs below are real arithmetic over a search with no alternatives, and a total of 0.0 means best-of-one rather than good. More recordings is the only fix for this one.",
+        else:
+          "#{plan.candidates} candidate takes across #{plan.slots} slot(s); the cheapest path was chosen. Costs are min-max normalised WITHIN this lattice, so 0.0 means best here and two sentences' totals cannot be compared."
+      ),
+      if(features.without_features != [],
+        do:
+          "No cached features for #{Enum.join(features.without_features, ", ")}, so the acoustic terms (typicality, and every seam touching those takes) were imputed from the median rather than measured — imputed says how often. Pass warm true to analyse them, at roughly 109 s of CPU per five minutes of audio and once only."
+      ),
+      if(plan.imputed.boundary > 0,
+        do:
+          "boundary is imputed for every candidate: this verb does not measure per-frame energy at the cut edges, so that term contributed nothing to the choice."
+      ),
+      "Written into sounds/studio/ as a new SOURCE. Nothing is installed as a chime and nothing is routed — sound_apply is that step, and it is deliberately separate.",
+      if(replaced?, do: "An existing source of this name was overwritten.")
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Editing — one pure function each, rendered to a new source
+  # ---------------------------------------------------------------------------
+
+  def sound_trim(%{"source" => source} = args) when is_binary(source) do
+    with {:ok, from, to} <- span(args) do
+      edit(args, "trim", fn clip ->
+        # `end_ms` resolves against the clip, which is the one part of the span
+        # that cannot be checked before the audio is open.
+        to = to || SoundStudio.duration_ms(clip)
+
+        with {:ok, cut} <- SoundStudio.splice(clip, from, to) do
+          {:ok, cut, %{start_ms: from, end_ms: to}}
+        end
+      end)
+    end
+  end
+
+  def sound_trim(_args), do: {:error, :missing_source}
+
+  # `end_ms` defaults to the end of the clip and `start_ms` to 0, so trimming a
+  # tail is one argument. `splice/3` clamps out-of-range values to the clip and
+  # refuses a span that ends at or before it starts, which is what a span
+  # entirely past the end collapses to — reported as :empty_selection rather
+  # than as a zero-length file.
+  defp span(args) do
+    from = Map.get(args, "start_ms")
+    to = Map.get(args, "end_ms")
+
+    cond do
+      not (is_nil(from) or is_number(from)) -> {:error, :invalid_span}
+      not (is_nil(to) or is_number(to)) -> {:error, :invalid_span}
+      is_number(from) and from < 0 -> {:error, :invalid_span}
+      true -> {:ok, from || 0, to}
+    end
+  end
+
+  def sound_fade(%{"source" => source} = args) when is_binary(source) do
+    with {:ok, in_ms, out_ms} <- ramps(args) do
+      edit(args, "fade", fn clip ->
+        {:ok, SoundStudio.fade(clip, in_ms: in_ms, out_ms: out_ms),
+         %{in_ms: in_ms, out_ms: out_ms}}
+      end)
+    end
+  end
+
+  def sound_fade(_args), do: {:error, :missing_source}
+
+  # A fade with neither ramp given is refused rather than silently written: it
+  # would render a byte-identical copy under a new name, which reads as the verb
+  # having done something when it did not.
+  defp ramps(args) do
+    in_ms = Map.get(args, "in_ms")
+    out_ms = Map.get(args, "out_ms")
+
+    cond do
+      is_nil(in_ms) and is_nil(out_ms) -> {:error, :missing_fade}
+      not (is_nil(in_ms) or is_number(in_ms)) -> {:error, :invalid_fade}
+      not (is_nil(out_ms) or is_number(out_ms)) -> {:error, :invalid_fade}
+      (in_ms || 0) < 0 or (out_ms || 0) < 0 -> {:error, :invalid_fade}
+      true -> {:ok, in_ms || 0, out_ms || 0}
+    end
+  end
+
+  def sound_normalize(%{"source" => source} = args) when is_binary(source) do
+    with {:ok, target} <- normalize_target(args) do
+      edit(args, "normalize", fn clip ->
+        levelled =
+          if target, do: SoundStudio.normalize(clip, target), else: SoundStudio.normalize(clip)
+
+        # `target` is nil when the module's own default was used, so the number
+        # that says what actually happened is `peak` beside `source_peak` — and
+        # on digital silence they are both 0.0, because there is no gain that
+        # makes zero louder.
+        {:ok, levelled, %{target: target}}
+      end)
+    end
+  end
+
+  def sound_normalize(_args), do: {:error, :missing_source}
+
+  # A target above 1.0 is not a louder sound, it is a clipped one — the samples
+  # clamp at full scale — so it is refused rather than obeyed.
+  defp normalize_target(args) do
+    case Map.get(args, "target") do
+      nil -> {:ok, nil}
+      target when is_number(target) and target > 0 and target <= 1.0 -> {:ok, target}
+      _other -> {:error, :invalid_target}
+    end
+  end
+
+  def sound_concat(%{"sources" => sources, "name" => name} = args)
+      when is_list(sources) and is_binary(name) do
+    overwrite? = boolean(Map.get(args, "overwrite"), false)
+
+    with {:ok, target} <- stored_name(name),
+         {:ok, path, replaced?} <- studio_target(target, overwrite?),
+         {:ok, loaded} <- concat_sources(sources),
+         {:ok, joined} <- SoundStudio.concat(Enum.map(loaded, & &1.clip)),
+         :ok <- write_source(joined, path) do
+      {:ok,
+       %{
+         name: target,
+         path: path,
+         sources: Enum.map(loaded, &Map.take(&1, [:name, :duration_ms, :peak])),
+         duration_ms: SoundStudio.duration_ms(joined),
+         peak: peak_of(joined),
+         bytes: byte_size_of(path),
+         replaced: replaced?,
+         notes:
+           new_source_notes(replaced?) ++
+             [
+               "Joined end to end with no gap and no fade: every seam is a hard cut, which is the loudest click a join can make. sound_assemble is the verb that pads, micro-fades and levels each piece — use this one for whole clips that already end quietly."
+             ]
+       }}
+    end
+  end
+
+  def sound_concat(%{"sources" => sources}) when is_list(sources), do: {:error, :missing_name}
+  def sound_concat(_args), do: {:error, :empty_selection}
+
+  # Order is the caller's, exactly as given — a concat is an arrangement, and
+  # sorting or de-duplicating it would silently change what was asked for. A
+  # source named twice is joined twice, on purpose.
+  defp concat_sources([]), do: {:error, :empty_selection}
+
+  defp concat_sources(sources) do
+    Enum.reduce_while(sources, {:ok, []}, fn source, {:ok, acc} ->
+      case load_source(source) do
+        {:ok, loaded} -> {:cont, {:ok, [loaded | acc]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, loaded} -> {:ok, Enum.reverse(loaded)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp load_source(source) when is_binary(source) do
+    with {:ok, name} <- validate_name(source),
+         {:ok, path} <- studio_source(name),
+         {:ok, clip} <- editable_clip(path) do
+      {:ok,
+       %{
+         name: name,
+         clip: clip,
+         duration_ms: SoundStudio.duration_ms(clip),
+         peak: peak_of(clip)
+       }}
+    end
+  end
+
+  defp load_source(_source), do: {:error, :invalid_name}
+
+  # The shape every single-source edit has: resolve the source, refuse the
+  # output name BEFORE doing the work, run one pure function, write the result.
+  #
+  # The name check sits ahead of the edit deliberately — the same reasoning as
+  # `sound_align`'s index slot: a refusal to clobber should cost nothing, and
+  # discovering it after a full render is how a caller learns to pass
+  # `overwrite: true` reflexively.
+  #
+  # Which is why **each verb validates its own arguments before calling this**,
+  # rather than inside `fun`. A bad `start_ms` reported as `:name_taken` because
+  # the previous run of the same verb already took the derived name is a
+  # genuinely misleading error, and it is what the ordering here would otherwise
+  # produce.
+  defp edit(args, verb, fun) do
+    overwrite? = boolean(Map.get(args, "overwrite"), false)
+    given = blank_to_nil(Map.get(args, "name"))
+
+    with {:ok, source} <- validate_name(Map.get(args, "source")),
+         {:ok, path} <- studio_source(source),
+         {:ok, clip} <- editable_clip(path),
+         {:ok, target} <- stored_name(given || derived_name(source, verb)),
+         {:ok, out, replaced?} <- studio_target(target, overwrite?),
+         {:ok, edited, extra} <- fun.(clip),
+         :ok <- write_source(edited, out) do
+      {:ok, edit_result(source, clip, target, out, edited, replaced?, extra)}
+    end
+  end
+
+  # With no name given, the output is named after its input — `harbor.wav`
+  # trimmed becomes `harbor-trim.wav`. Derived rather than required so a chain of
+  # edits reads as one thought, and colliding with a previous run of the same
+  # verb is a plain :name_taken rather than a silent overwrite.
+  defp derived_name(source, verb), do: Path.rootname(source) <> "-" <> verb <> ".wav"
+
+  # Editing is defined for PCM16 only: `fade/2` and `normalize/2` match on it,
+  # and a 24-bit WAV dropped into the studio by hand would otherwise raise
+  # instead of being refused. Everything `sound_import` writes qualifies.
+  defp editable_clip(path) do
+    case SoundStudio.read(path) do
+      {:ok, %SoundStudio{bits: 16} = clip} -> {:ok, clip}
+      {:ok, %SoundStudio{}} -> {:error, :unsupported_format}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # Both sides of the edit, because the agent cannot hear: the source's duration
+  # and peak beside the result's are the whole of how it verifies that a trim
+  # removed audio and a normalize moved a level.
+  defp edit_result(source, clip, target, path, edited, replaced?, extra) do
+    Map.merge(
+      %{
+        name: target,
+        path: path,
+        source: source,
+        source_duration_ms: SoundStudio.duration_ms(clip),
+        source_peak: peak_of(clip),
+        duration_ms: SoundStudio.duration_ms(edited),
+        peak: peak_of(edited),
+        bytes: byte_size_of(path),
+        replaced: replaced?,
+        notes: new_source_notes(replaced?)
+      },
+      extra
+    )
+  end
+
+  defp new_source_notes(replaced?) do
+    [
+      "Written into sounds/studio/ as a new SOURCE. It is not in the sound library and nothing is routed to it — sound_apply is the verb that installs a source as a chime and points a key at it.",
+      if(replaced?, do: "An existing source of this name was overwritten.")
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Deleting a source
+  # ---------------------------------------------------------------------------
+
+  def sound_delete(%{"name" => name} = args) when is_binary(name) do
+    with {:ok, clean} <- validate_name(name),
+         {:ok, path} <- studio_source(clean),
+         {:ok, index?} <- index_reference(clean, boolean(Map.get(args, "delete_index"), false)) do
+      bytes = byte_size_of(path)
+
+      case SoundStudio.delete(clean) do
+        :ok ->
+          {:ok,
+           %{
+             name: clean,
+             path: path,
+             bytes: bytes,
+             deleted: true,
+             index_deleted: index?,
+             notes: delete_notes(index?)
+           }}
+
+        {:error, _reason} = error ->
+          error
+      end
+    end
+  end
+
+  def sound_delete(_args), do: {:error, :missing_name}
+
+  # **A dangling index is the failure this refusal exists to prevent.** An index
+  # is addressed by its source's basename, so deleting the audio leaves a word
+  # list whose every hit resolves to nothing — `sound_index_search` keeps
+  # returning cuts and `sound_assemble` refuses them one at a time as
+  # :source_not_found, which is a confusing way to learn the audio is gone.
+  #
+  # So the default is to refuse and name the index, and taking it along is an
+  # explicit second act: an aligned or hand-corrected index is real work, and
+  # silently destroying it with the audio would be the worse half of the trade.
+  defp index_reference(source, delete?) do
+    case {Index.indexed?(source), delete?} do
+      {false, _delete?} -> {:ok, false}
+      {true, false} -> {:error, :source_indexed}
+      {true, true} -> with :ok <- Index.delete(source), do: {:ok, true}
+    end
+  end
+
+  defp delete_notes(true),
+    do: [
+      "The audio and its word index are both gone. Re-creating the index means re-importing the source and aligning it again."
+    ]
+
+  defp delete_notes(false),
+    do: [
+      "Only this studio source was removed. The sound library, the routing table and every other source are untouched."
+    ]
+
+  # ---------------------------------------------------------------------------
+  # Apply — the gated verb, and the only one that changes what plays
+  # ---------------------------------------------------------------------------
+
+  def sound_apply(%{"source" => source, "route" => route} = args)
+      when is_binary(source) and is_binary(route) do
+    overwrite? = boolean(Map.get(args, "overwrite"), false)
+    given = blank_to_nil(Map.get(args, "name"))
+
+    with {:ok, clean} <- validate_name(source),
+         {:ok, key} <- route_key(route),
+         {:ok, path} <- studio_source(clean),
+         {:ok, clip} <- editable_clip(path),
+         {:ok, target} <- stored_name(given || clean),
+         {:ok, shadowing?, replaced?} <- library_slot(target, overwrite?) do
+      before = %{assigned: Map.get(Sound.sound_map(), key), plays: Sound.resolved(key)}
+
+      with {:ok, installed} <- install_in_library(path, target, replaced?),
+           :ok <- Sound.assign(key, installed) do
+        {:ok, apply_result(clean, clip, installed, key, before, shadowing?, replaced?)}
+      end
+    end
+  end
+
+  def sound_apply(%{"source" => source}) when is_binary(source), do: {:error, :missing_route}
+  def sound_apply(_args), do: {:error, :missing_source}
+
+  # **Checked before a byte is written**, which is the whole point of validating
+  # here rather than letting `Sound.assign/2` refuse afterwards: a typo'd key
+  # that installed the file and then failed to route would leave a sound in the
+  # library, nothing routed to it, and a person wondering why their chime never
+  # fires. `sound_routes` lists every legal key.
+  defp route_key(route) do
+    key = String.trim(route)
+    if key in Sound.route_keys(), do: {:ok, key}, else: {:error, :unknown_route}
+  end
+
+  # The library layer overrides the bundled set **by basename**, so a name is
+  # taken in two different ways and only one of them is obvious. Installing over
+  # an existing workspace sound replaces the operator's file; installing under a
+  # bundled name (`alarm.wav`) silently replaces the built-in alarm for every key
+  # that falls back to it — a much wider change than the one key being routed,
+  # and invisible in the routing table. Both are refused unless asked for.
+  defp library_slot(target, overwrite?) do
+    workspace? = target in Sound.list()
+    bundled? = target in Sound.bundled_list()
+
+    cond do
+      workspace? and not overwrite? -> {:error, :name_taken}
+      bundled? and not overwrite? -> {:error, :shadows_bundled}
+      true -> {:ok, bundled?, workspace?}
+    end
+  end
+
+  # `install_file/2` is the documented door between working material and the
+  # library, and it never overwrites — so the deliberate replacement, already
+  # authorized above, is a copy. It hands back the name it actually used, and
+  # that is the name routed, never the one asked for.
+  defp install_in_library(path, target, false), do: Sound.install_file(path, target)
+
+  defp install_in_library(path, target, true) do
+    File.mkdir_p(Sound.dir())
+
+    with :ok <- File.cp(path, Path.join(Sound.dir(), target)), do: {:ok, target}
+  end
+
+  defp apply_result(source, clip, installed, key, before, shadowing?, replaced?) do
+    %{
+      name: installed,
+      path: Sound.path_for(installed),
+      source: source,
+      route: key,
+      route_label: Sound.route_label(key),
+      # The way back, in the result rather than in a note: what this key played
+      # a moment ago, and whether that was an explicit assignment or an
+      # inheritance. Nothing else records it.
+      previous_sound: before.assigned,
+      previously_played: before.plays,
+      plays: Sound.resolved(key),
+      duration_ms: SoundStudio.duration_ms(clip),
+      peak: peak_of(clip),
+      bytes: byte_size_of(Sound.path_for(installed) || ""),
+      enabled: Sound.enabled?(),
+      shadowing: shadowing?,
+      replaced: replaced?,
+      notes: apply_notes(installed, key, before, shadowing?, replaced?)
+    }
+  end
+
+  defp apply_notes(installed, key, before, shadowing?, replaced?) do
+    [
+      "#{installed} now plays for #{Sound.route_label(key)} — unattended, whenever that notification fires. Say so plainly before doing this again.",
+      if(before.plays && before.plays != installed,
+        do:
+          "It previously played #{before.plays}. To put that back, run sound_apply again with that sound, or sound_restore_defaults with routes true to clear every assignment."
+      ),
+      unless(Sound.enabled?(),
+        do:
+          "The master sound switch is OFF, so nothing plays at all right now — this routing takes effect when it is turned back on."
+      ),
+      if(shadowing?,
+        do:
+          "This name matches a bundled default, so the workspace copy now shadows it: EVERY key that falls back to that default plays this file, not only #{key}. sound_list reports it as shadowing."
+      ),
+      if(replaced?, do: "An existing library sound of this name was overwritten."),
+      "The studio source is untouched — the library holds a copy, so editing the source again does not change what plays until you apply it again."
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # ---------------------------------------------------------------------------
+  # The way back
+  # ---------------------------------------------------------------------------
+
+  def sound_restore_defaults(args \\ %{}) do
+    copy? = boolean(Map.get(args, "sounds"), true)
+    routes? = boolean(Map.get(args, "routes"), false)
+
+    installed = if copy?, do: Sound.install_bundled(), else: %{copied: [], skipped: []}
+    cleared = if routes?, do: clear_routes(), else: []
+
+    {:ok,
+     %{
+       copied: installed.copied,
+       skipped: installed.skipped,
+       cleared_routes: cleared,
+       counts: %{
+         copied: length(installed.copied),
+         skipped: length(installed.skipped),
+         cleared: length(cleared)
+       },
+       still_missing: Sound.missing_from_workspace(),
+       notes: restore_notes(copy?, routes?, installed)
+     }}
+  end
+
+  # Clearing an entry is not routing a key to a default — it deletes the
+  # assignment, so the key inherits again (source → kind → default → the bundled
+  # chime named after it), which is the state a fresh install is in.
+  defp clear_routes do
+    keys = Sound.sound_map() |> Map.keys() |> Enum.sort()
+    Enum.each(keys, &Sound.assign(&1, nil))
+    keys
+  end
+
+  defp restore_notes(copy?, routes?, installed) do
+    [
+      if(copy?,
+        do:
+          "Bundled chimes are copied into sounds/, and a name already there is SKIPPED rather than overwritten — that file is your edit or your replacement. skipped is not a failure."
+      ),
+      if(copy? and installed.skipped != [] and installed.copied == [],
+        do:
+          "Nothing was copied: every bundled name already exists in the workspace. If one of those files is an agent's overwrite, delete it — the bundled default underneath comes back on its own."
+      ),
+      if(routes?,
+        do:
+          "Every routing assignment was cleared, so each key inherits again and falls back to its bundled chime. This does not delete any sound file."
+      ),
+      unless(routes?,
+        do:
+          "Routing was NOT touched: this restores files only. Pass routes true to also clear every assignment, which is the way back from a sound_apply."
+      )
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # ---------------------------------------------------------------------------
   # Shared
   # ---------------------------------------------------------------------------
 
@@ -1323,6 +2485,9 @@ defmodule BusterClaw.Commands.Sound do
 
   defp number(value) when is_number(value), do: value
   defp number(_value), do: nil
+
+  defp positive_number(value, _default) when is_number(value) and value > 0, do: value * 1.0
+  defp positive_number(_value, default), do: default
 
   defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
 

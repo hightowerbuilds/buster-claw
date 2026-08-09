@@ -4,6 +4,7 @@ defmodule BusterClaw.Commands.SoundTest do
   use BusterClaw.DataCase, async: false
 
   alias BusterClaw.Commands
+  alias BusterClaw.Notifications.Cutup.Features
   alias BusterClaw.Notifications.Cutup.Index
   alias BusterClaw.Notifications.Sound
   alias BusterClaw.Notifications.SoundGen
@@ -62,6 +63,25 @@ defmodule BusterClaw.Commands.SoundTest do
 
       <<sample::little-signed-16>>
     end
+  end
+
+  # 200 ms of DC at a constant level: every sample is the same non-zero number,
+  # so a ramp that lands on true zero is visible in the bytes. A sine or a chime
+  # starts at zero anyway, which would make the fade assertions vacuous.
+  defp flat(ms \\ 200), do: SoundStudio.render(%SoundStudio{data: dc(ms)})
+
+  defp dc(ms), do: :binary.copy(<<8000::little-signed-16>>, trunc(22_050 * ms / 1000))
+
+  defp first_sample(path) do
+    {:ok, clip} = SoundStudio.read(path)
+    <<sample::little-signed-16, _rest::binary>> = clip.data
+    sample
+  end
+
+  defp last_sample(path) do
+    {:ok, clip} = SoundStudio.read(path)
+    <<sample::little-signed-16>> = binary_part(clip.data, byte_size(clip.data) - 2, 2)
+    sample
   end
 
   defp library(root, name, contents \\ nil),
@@ -145,6 +165,42 @@ defmodule BusterClaw.Commands.SoundTest do
     Enum.map(specs, fn {text, from, to} ->
       %{"text" => text, "start_ms" => from, "end_ms" => to, "confidence" => 0.9}
     end)
+  end
+
+  # A source with one "word" planted twice: silence, A, silence, B, silence, A,
+  # silence — 1.7 s in total, which is the whole cost story. `Cutup.Features`
+  # measures 108.8 s on a 300 s source and ~155 ms on a warm one; this fixture
+  # analyses in a fraction of a second. A fixture that approached a minute would
+  # be a fixture that was too big.
+  #
+  # A is at 200–500 ms and again at 1200–1500 ms, and B (a different tone) sits
+  # between them so the matcher has something it must NOT return.
+  defp planted do
+    gap = pcm(200, 0.0)
+    a = pcm(300, 440.0)
+    b = pcm(300, 900.0)
+
+    SoundStudio.render(%SoundStudio{data: gap <> a <> gap <> b <> gap <> a <> gap})
+  end
+
+  # The confirmed take `sound_find` starts from: the FIRST A, which is what an
+  # operator would have picked out of sound_index_search and listened to.
+  defp template(args \\ %{}) do
+    Map.merge(
+      %{"word" => "harbor", "source" => "planted.wav", "start_ms" => 200, "end_ms" => 500},
+      args
+    )
+  end
+
+  defp indexed(source, specs, origin \\ "aligned") do
+    {:ok, result} =
+      Commands.Sound.sound_index_import(%{
+        "source" => source,
+        "words" => words(specs),
+        "origin" => origin
+      })
+
+    result
   end
 
   # Two spans inside the fixture chime, in the order they should be spoken.
@@ -1212,6 +1268,1009 @@ defmodule BusterClaw.Commands.SoundTest do
     end
   end
 
+  describe "sound_trim" do
+    setup %{root: root} do
+      source(root, "voicemail-03.wav", speech())
+      :ok
+    end
+
+    test "cuts a span into a new source, named after its input", %{root: root} do
+      assert {:ok, result} =
+               Commands.Sound.sound_trim(%{
+                 "source" => "voicemail-03.wav",
+                 "start_ms" => 300,
+                 "end_ms" => 600
+               })
+
+      # Derived, not required: harbor.wav trimmed is harbor-trim.wav.
+      assert result.name == "voicemail-03-trim.wav"
+      assert result.source == "voicemail-03.wav"
+      assert result.start_ms == 300
+      assert result.end_ms == 600
+      refute result.replaced
+      assert File.regular?(Path.join([root, "sounds", "studio", "voicemail-03-trim.wav"]))
+
+      # Both sides of the edit, which is the whole of how an agent that cannot
+      # hear checks that a trim removed what it meant to remove.
+      assert_in_delta result.duration_ms, 300.0, 1.0
+      assert result.source_duration_ms > result.duration_ms
+      assert result.peak > 0.0
+      assert result.source_peak > 0.0
+
+      # The input is untouched — an edit renders, it does not mutate.
+      assert {:ok, %{duration_ms: original}} =
+               Commands.Sound.sound_probe(%{"name" => "voicemail-03.wav"})
+
+      assert original == result.source_duration_ms
+    end
+
+    test "each end has a default, so trimming one is one argument" do
+      # No end_ms: everything from 300 ms to the end of the clip.
+      assert {:ok, tail} =
+               Commands.Sound.sound_trim(%{
+                 "source" => "voicemail-03.wav",
+                 "start_ms" => 300,
+                 "name" => "tail"
+               })
+
+      assert_in_delta tail.duration_ms, tail.source_duration_ms - 300.0, 1.0
+
+      # No start_ms: the head.
+      assert {:ok, head} =
+               Commands.Sound.sound_trim(%{
+                 "source" => "voicemail-03.wav",
+                 "end_ms" => 300,
+                 "name" => "head"
+               })
+
+      assert head.start_ms == 0
+      assert_in_delta head.duration_ms, 300.0, 1.0
+    end
+
+    test "a span that selects nothing is refused, and writes nothing", %{root: root} do
+      before = studio_entries(root)
+
+      # Backwards, and entirely past the end — which clamps to zero length.
+      assert {:error, :empty_selection} =
+               Commands.Sound.sound_trim(%{
+                 "source" => "voicemail-03.wav",
+                 "start_ms" => 600,
+                 "end_ms" => 300
+               })
+
+      assert {:error, :empty_selection} =
+               Commands.Sound.sound_trim(%{
+                 "source" => "voicemail-03.wav",
+                 "start_ms" => 90_000,
+                 "end_ms" => 91_000
+               })
+
+      assert {:error, :invalid_span} =
+               Commands.Sound.sound_trim(%{"source" => "voicemail-03.wav", "start_ms" => "soon"})
+
+      assert {:error, :invalid_span} =
+               Commands.Sound.sound_trim(%{"source" => "voicemail-03.wav", "start_ms" => -10})
+
+      assert studio_entries(root) == before
+    end
+
+    test "it never clobbers an existing source silently" do
+      assert {:ok, _first} =
+               Commands.Sound.sound_trim(%{"source" => "voicemail-03.wav", "end_ms" => 300})
+
+      assert {:error, :name_taken} =
+               Commands.Sound.sound_trim(%{"source" => "voicemail-03.wav", "end_ms" => 300})
+
+      # Not even its own input.
+      assert {:error, :name_taken} =
+               Commands.Sound.sound_trim(%{
+                 "source" => "voicemail-03.wav",
+                 "end_ms" => 300,
+                 "name" => "voicemail-03"
+               })
+
+      assert {:ok, %{replaced: true}} =
+               Commands.Sound.sound_trim(%{
+                 "source" => "voicemail-03.wav",
+                 "end_ms" => 300,
+                 "overwrite" => true
+               })
+    end
+
+    test "a source that is not in the studio names itself" do
+      assert {:error, {:not_imported, "nope.wav"}} =
+               Commands.Sound.sound_trim(%{"source" => "nope.wav"})
+
+      assert {:error, :invalid_name} = Commands.Sound.sound_trim(%{"source" => "../escape.wav"})
+      assert {:error, :missing_source} = Commands.Sound.sound_trim(%{})
+    end
+  end
+
+  describe "sound_fade" do
+    setup %{root: root} do
+      source(root, "clip.wav", flat())
+      :ok
+    end
+
+    test "the ramps land on true zero, which is the click they exist to fix", %{root: root} do
+      assert first_sample(Path.join([root, "sounds", "studio", "clip.wav"])) == 8000
+
+      assert {:ok, result} =
+               Commands.Sound.sound_fade(%{
+                 "source" => "clip.wav",
+                 "in_ms" => 20,
+                 "out_ms" => 20
+               })
+
+      assert result.name == "clip-fade.wav"
+      assert result.in_ms == 20
+      assert result.out_ms == 20
+
+      # A fade changes level, never length.
+      assert_in_delta result.duration_ms, result.source_duration_ms, 0.001
+
+      assert first_sample(result.path) == 0
+      assert last_sample(result.path) == 0
+    end
+
+    test "one ramp is enough, and neither is refused", %{root: root} do
+      assert {:ok, in_only} =
+               Commands.Sound.sound_fade(%{"source" => "clip.wav", "in_ms" => 20})
+
+      assert in_only.out_ms == 0
+      assert first_sample(in_only.path) == 0
+      assert last_sample(in_only.path) == 8000
+
+      before = studio_entries(root)
+
+      # A fade with neither ramp would write a byte-identical copy under a new
+      # name, which reads as the verb having done something.
+      assert {:error, :missing_fade} = Commands.Sound.sound_fade(%{"source" => "clip.wav"})
+
+      assert {:error, :invalid_fade} =
+               Commands.Sound.sound_fade(%{"source" => "clip.wav", "in_ms" => -5})
+
+      assert {:error, :invalid_fade} =
+               Commands.Sound.sound_fade(%{"source" => "clip.wav", "out_ms" => "long"})
+
+      assert studio_entries(root) == before
+    end
+  end
+
+  describe "sound_normalize" do
+    test "a quiet source is lifted to the target, and reports both levels", %{root: root} do
+      source(root, "quiet.wav", speech())
+
+      assert {:ok, result} = Commands.Sound.sound_normalize(%{"source" => "quiet.wav"})
+
+      assert result.name == "quiet-normalize.wav"
+      assert result.target == nil
+      assert_in_delta result.source_peak, 0.5, 0.01
+      # The module's own default target, ~-1 dBFS.
+      assert_in_delta result.peak, 0.891, 0.01
+      assert_in_delta result.duration_ms, result.source_duration_ms, 0.001
+    end
+
+    test "an explicit target is honoured, and an impossible one is refused", %{root: root} do
+      source(root, "quiet.wav", speech())
+
+      assert {:ok, half} =
+               Commands.Sound.sound_normalize(%{"source" => "quiet.wav", "target" => 0.25})
+
+      assert half.target == 0.25
+      assert_in_delta half.peak, 0.25, 0.01
+
+      # Above full scale is not a louder sound, it is a clipped one.
+      assert {:error, :invalid_target} =
+               Commands.Sound.sound_normalize(%{"source" => "quiet.wav", "target" => 1.5})
+
+      assert {:error, :invalid_target} =
+               Commands.Sound.sound_normalize(%{"source" => "quiet.wav", "target" => 0})
+    end
+
+    test "digital silence is returned untouched rather than divided by zero", %{root: root} do
+      source(root, "silence.wav", SoundStudio.render(%SoundStudio{data: pcm(200, 0.0)}))
+
+      assert {:ok, result} = Commands.Sound.sound_normalize(%{"source" => "silence.wav"})
+
+      assert result.source_peak == 0.0
+      assert result.peak == 0.0
+    end
+  end
+
+  describe "sound_concat" do
+    setup %{root: root} do
+      source(root, "one.wav", SoundStudio.render(%SoundStudio{data: dc(200)}))
+      source(root, "two.wav", SoundStudio.render(%SoundStudio{data: dc(100)}))
+      :ok
+    end
+
+    test "joins whole sources in the order given", %{root: root} do
+      assert {:ok, result} =
+               Commands.Sound.sound_concat(%{
+                 "sources" => ["one.wav", "two.wav"],
+                 "name" => "joined"
+               })
+
+      assert result.name == "joined.wav"
+      assert Enum.map(result.sources, & &1.name) == ["one.wav", "two.wav"]
+      assert_in_delta result.duration_ms, 300.0, 1.0
+      assert File.regular?(Path.join([root, "sounds", "studio", "joined.wav"]))
+
+      # The join is byte concatenation, so the total is the sum of the pieces
+      # exactly — no drift, which is what makes this verb checkable at all.
+      assert_in_delta result.duration_ms,
+                      Enum.sum(Enum.map(result.sources, & &1.duration_ms)),
+                      0.001
+    end
+
+    test "naming the same source twice joins it twice, on purpose" do
+      assert {:ok, result} =
+               Commands.Sound.sound_concat(%{
+                 "sources" => ["two.wav", "two.wav", "two.wav"],
+                 "name" => "stutter"
+               })
+
+      assert length(result.sources) == 3
+      assert_in_delta result.duration_ms, 300.0, 1.0
+    end
+
+    test "a format mismatch is refused rather than resampled", %{root: root} do
+      # 44.1 kHz beside 22.05 kHz: joining them would play the first at half
+      # speed, which is a bug that sounds like a feature until someone listens.
+      source(
+        root,
+        "other-rate.wav",
+        SoundStudio.render(%SoundStudio{
+          data: dc(100),
+          sample_rate: 44_100
+        })
+      )
+
+      before = studio_entries(root)
+
+      assert {:error, :format_mismatch} =
+               Commands.Sound.sound_concat(%{
+                 "sources" => ["one.wav", "other-rate.wav"],
+                 "name" => "mixed"
+               })
+
+      assert studio_entries(root) == before
+    end
+
+    test "bad input is named, and writes nothing", %{root: root} do
+      before = studio_entries(root)
+
+      assert {:error, :empty_selection} =
+               Commands.Sound.sound_concat(%{"sources" => [], "name" => "empty"})
+
+      assert {:error, {:not_imported, "nope.wav"}} =
+               Commands.Sound.sound_concat(%{
+                 "sources" => ["one.wav", "nope.wav"],
+                 "name" => "missing"
+               })
+
+      assert {:error, :invalid_name} =
+               Commands.Sound.sound_concat(%{"sources" => ["../escape.wav"], "name" => "bad"})
+
+      assert {:error, :missing_name} = Commands.Sound.sound_concat(%{"sources" => ["one.wav"]})
+      assert {:error, :empty_selection} = Commands.Sound.sound_concat(%{})
+
+      assert studio_entries(root) == before
+    end
+  end
+
+  describe "sound_delete" do
+    test "removes a studio source and nothing else", %{root: root} do
+      source(root, "scratch.wav")
+      library(root, "keeper.wav")
+
+      assert {:ok, result} = Commands.Sound.sound_delete(%{"name" => "scratch.wav"})
+
+      assert result.deleted
+      refute result.index_deleted
+      assert result.bytes > 0
+      refute File.exists?(Path.join([root, "sounds", "studio", "scratch.wav"]))
+
+      # The library and the routing table are a different store.
+      assert File.regular?(Path.join([root, "sounds", "keeper.wav"]))
+
+      assert {:error, {:not_imported, "scratch.wav"}} =
+               Commands.Sound.sound_trim(%{"source" => "scratch.wav"})
+    end
+
+    test "a source with a live index is refused rather than left dangling", %{root: root} do
+      source(root, "indexed.wav")
+
+      {:ok, _index} =
+        Commands.Sound.sound_index_import(%{
+          "source" => "indexed.wav",
+          "words" => words([{"harbor", 100, 200}])
+        })
+
+      # The failure this refusal exists to prevent: an index whose every hit
+      # resolves to audio that is no longer there.
+      assert {:error, :source_indexed} = Commands.Sound.sound_delete(%{"name" => "indexed.wav"})
+      assert File.regular?(Path.join([root, "sounds", "studio", "indexed.wav"]))
+      assert {:ok, %{count: 1}} = Commands.Sound.sound_index_list()
+
+      assert {:ok, result} =
+               Commands.Sound.sound_delete(%{"name" => "indexed.wav", "delete_index" => true})
+
+      assert result.index_deleted
+      refute File.exists?(Path.join([root, "sounds", "studio", "indexed.wav"]))
+      assert {:ok, %{count: 0}} = Commands.Sound.sound_index_list()
+      assert {:ok, %{hits: []}} = Commands.Sound.sound_index_search(%{"query" => "harbor"})
+    end
+
+    test "an unknown or path-shaped name is refused" do
+      assert {:error, {:not_imported, "nope.wav"}} =
+               Commands.Sound.sound_delete(%{"name" => "nope.wav"})
+
+      assert {:error, :invalid_name} = Commands.Sound.sound_delete(%{"name" => "../escape.wav"})
+      assert {:error, :missing_name} = Commands.Sound.sound_delete(%{})
+    end
+  end
+
+  describe "sound_apply" do
+    setup %{root: root} do
+      source(root, "sentence.wav", speech())
+      :ok
+    end
+
+    test "installs into the library and routes a key to it", %{root: root} do
+      assert {:ok, result} =
+               Commands.Sound.sound_apply(%{
+                 "source" => "sentence.wav",
+                 "route" => "voicemail",
+                 "name" => "ramshackle"
+               })
+
+      assert result.name == "ramshackle.wav"
+      assert result.route == "voicemail"
+      assert result.route_label == "Voicemail"
+      assert result.duration_ms > 0
+      assert result.peak > 0.0
+      refute result.shadowing
+      refute result.replaced
+
+      # The file is in the library, which is the store the player reads.
+      assert File.regular?(Path.join([root, "sounds", "ramshackle.wav"]))
+      assert Sound.path_for("ramshackle.wav")
+
+      # And the routing table actually resolves to it — for the key, and for a
+      # notification that would fire against that key.
+      assert Sound.resolved("voicemail") == "ramshackle.wav"
+      assert Sound.for_notification(%{source: "voicemail", kind: "timer"}) == "ramshackle.wav"
+
+      assert {:ok, routes} = Commands.Sound.sound_routes()
+
+      assert %{assigned: "ramshackle.wav", plays: "ramshackle.wav", origin: "explicit"} =
+               route(routes, "voicemail")
+
+      # The studio source is untouched: the library holds a copy.
+      assert File.regular?(Path.join([root, "sounds", "studio", "sentence.wav"]))
+    end
+
+    test "the way back is in the result", %{root: root} do
+      library(root, "old.wav")
+      assert :ok = Sound.assign("voicemail", "old.wav")
+
+      assert {:ok, result} =
+               Commands.Sound.sound_apply(%{
+                 "source" => "sentence.wav",
+                 "route" => "voicemail",
+                 "name" => "new"
+               })
+
+      assert result.previous_sound == "old.wav"
+      assert result.previously_played == "old.wav"
+      assert result.plays == "new.wav"
+      assert Enum.any?(result.notes, &(&1 =~ "old.wav"))
+      assert Enum.any?(result.notes, &(&1 =~ "sound_restore_defaults"))
+    end
+
+    test "a typo'd route is refused BEFORE anything is written", %{root: root} do
+      before = File.ls!(Path.join(root, "sounds"))
+
+      assert {:error, :unknown_route} =
+               Commands.Sound.sound_apply(%{"source" => "sentence.wav", "route" => "voicemale"})
+
+      # Nothing installed, nothing routed — which is the entire point of
+      # validating the key at the verb rather than at the assignment.
+      assert File.ls!(Path.join(root, "sounds")) == before
+      assert Sound.sound_map() == %{}
+
+      assert {:error, :missing_route} = Commands.Sound.sound_apply(%{"source" => "sentence.wav"})
+      assert {:error, :missing_source} = Commands.Sound.sound_apply(%{"route" => "voicemail"})
+
+      assert {:error, {:not_imported, "nope.wav"}} =
+               Commands.Sound.sound_apply(%{"source" => "nope.wav", "route" => "voicemail"})
+    end
+
+    test "an existing library name, and a bundled one, are both refused", %{root: root} do
+      library(root, "taken.wav")
+
+      assert {:error, :name_taken} =
+               Commands.Sound.sound_apply(%{
+                 "source" => "sentence.wav",
+                 "route" => "voicemail",
+                 "name" => "taken"
+               })
+
+      # The wider hazard, and the one that is invisible in the routing table:
+      # the workspace overrides the bundled set BY BASENAME, so installing
+      # "alarm.wav" replaces the built-in alarm for every key that falls back
+      # to it, not only the key being routed.
+      assert "alarm.wav" in Sound.bundled_list()
+
+      assert {:error, :shadows_bundled} =
+               Commands.Sound.sound_apply(%{
+                 "source" => "sentence.wav",
+                 "route" => "voicemail",
+                 "name" => "alarm"
+               })
+
+      assert {:ok, shadow} =
+               Commands.Sound.sound_apply(%{
+                 "source" => "sentence.wav",
+                 "route" => "voicemail",
+                 "name" => "alarm",
+                 "overwrite" => true
+               })
+
+      assert shadow.shadowing
+      assert Enum.any?(shadow.notes, &(&1 =~ "shadow"))
+      assert {:ok, listing} = Commands.Sound.sound_list()
+      assert entry(listing, "alarm.wav").shadowing
+    end
+
+    test "it says so when the master switch is off", %{root: _root} do
+      Sound.set_enabled(false)
+      on_exit(fn -> Sound.set_enabled(true) end)
+
+      assert {:ok, result} =
+               Commands.Sound.sound_apply(%{"source" => "sentence.wav", "route" => "timer"})
+
+      refute result.enabled
+      assert Enum.any?(result.notes, &(&1 =~ "master sound switch is OFF"))
+    end
+  end
+
+  describe "sound_restore_defaults" do
+    test "copies the bundled set in without ever overwriting", %{root: root} do
+      # An operator's own file under a bundled name: the restore must leave it
+      # alone, because that file is their edit or their replacement.
+      library(root, "alarm.wav", "not really audio")
+
+      assert {:ok, result} = Commands.Sound.sound_restore_defaults()
+
+      assert "alarm.wav" in result.skipped
+      assert result.counts.copied > 0
+      assert result.still_missing == []
+      assert File.read!(Path.join([root, "sounds", "alarm.wav"])) == "not really audio"
+      assert File.regular?(Path.join([root, "sounds", "boot.wav"]))
+
+      # Files only, unless asked.
+      assert result.cleared_routes == []
+      assert Enum.any?(result.notes, &(&1 =~ "Routing was NOT touched"))
+    end
+
+    test "clearing the routes is the way back from a sound_apply", %{root: root} do
+      source(root, "sentence.wav", speech())
+
+      assert {:ok, _applied} =
+               Commands.Sound.sound_apply(%{
+                 "source" => "sentence.wav",
+                 "route" => "voicemail",
+                 "name" => "ramshackle"
+               })
+
+      assert Sound.resolved("voicemail") == "ramshackle.wav"
+
+      assert {:ok, result} =
+               Commands.Sound.sound_restore_defaults(%{"sounds" => false, "routes" => true})
+
+      assert result.cleared_routes == ["voicemail"]
+      assert result.counts.copied == 0
+
+      # The key inherits again and falls back to its bundled chime. The applied
+      # file is still on disk — nothing is deleted, only unrouted.
+      assert Sound.sound_map() == %{}
+      assert Sound.resolved("voicemail") in ["voicemail.wav", "ramshackle.wav"]
+      assert File.regular?(Path.join([root, "sounds", "ramshackle.wav"]))
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # The acceptance criterion, unmet since 08-02
+  # ---------------------------------------------------------------------------
+
+  describe "the acceptance walk" do
+    # STUDIO_ROADMAP Part I: "a voicemail becomes a routed sound effect end to
+    # end, from the CLI alone, with no UI involved."
+    #
+    # Every step goes through `Commands.call/3` BY NAME. That is the assertion —
+    # a handler nothing can reach through the dispatcher is not a command
+    # surface, and this walk fails on a missing catalog entry, a missing
+    # registration and a missing delegate exactly as loudly as on a broken edit.
+    test "a voicemail becomes a routed sound effect, from the CLI alone", %{root: root} do
+      event = voicemail(root, "meet me at the harbor", audio: speech())
+
+      # 1. Look before importing — the agent's only substitute for ears.
+      assert {:ok, %{layer: "library", duration_ms: heard}} =
+               Commands.call("sound_probe", %{"event_id" => event.id})
+
+      assert heard > 0
+
+      # 2. Through the studio door.
+      assert {:ok, %{name: imported, internal: true}} =
+               Commands.call("sound_import", %{"event_id" => event.id})
+
+      # 3. Give it timings. No recognizer: the transcript is fitted onto the
+      #    speech the detector found.
+      assert {:ok, %{source: ^imported, words: 5}} =
+               Commands.call("sound_align", %{"event_id" => event.id})
+
+      # 4. Search the index for a word, and get back something that is already
+      #    a cut.
+      assert {:ok, %{hits: [harbor]}} =
+               Commands.call("sound_index_search", %{"query" => "harbor"})
+
+      assert {:ok, %{hits: [meet]}} = Commands.call("sound_index_search", %{"query" => "meet"})
+      assert harbor.source == imported
+      assert harbor.end_ms > harbor.start_ms
+
+      # 5. Assemble the hits into a clip, in the order they should be spoken.
+      cut = fn hit -> Map.take(hit, [:source, :start_ms, :end_ms]) end
+
+      assert {:ok, %{name: sentence, duration_ms: assembled}} =
+               Commands.call("sound_assemble", %{
+                 "name" => "ramshackle",
+                 "cuts" => [cut.(meet), cut.(harbor)]
+               })
+
+      assert assembled > 0
+
+      # 6. Edit it: trim the tail, then level it.
+      assert {:ok, %{name: trimmed, duration_ms: shorter}} =
+               Commands.call("sound_trim", %{
+                 "source" => sentence,
+                 "end_ms" => assembled - 50
+               })
+
+      assert shorter < assembled
+
+      assert {:ok, %{name: levelled, peak: peak}} =
+               Commands.call("sound_normalize", %{"source" => trimmed})
+
+      assert_in_delta peak, 0.891, 0.01
+
+      # 7. Route it. The gated step, and the only one that changes what the
+      #    machine does when nobody is watching.
+      assert {:ok, applied} =
+               Commands.call("sound_apply", %{
+                 "source" => levelled,
+                 "route" => "voicemail",
+                 "name" => "ramshackle-chime"
+               })
+
+      # The library file exists...
+      assert applied.name == "ramshackle-chime.wav"
+      assert File.regular?(Path.join([root, "sounds", "ramshackle-chime.wav"]))
+
+      # ...and the route resolves to it, both as the routing table reports it
+      # and as a fired notification would resolve it.
+      assert Sound.resolved("voicemail") == "ramshackle-chime.wav"
+
+      assert Sound.for_notification(%{source: "voicemail", kind: "alarm"}) ==
+               "ramshackle-chime.wav"
+
+      assert {:ok, routes} = Commands.call("sound_routes", %{})
+      assert %{plays: "ramshackle-chime.wav", origin: "explicit"} = route(routes, "voicemail")
+
+      assert {:ok, listing} = Commands.call("sound_list", %{})
+      assert %{layer: "workspace"} = entry(listing, "ramshackle-chime.wav")
+
+      # And the way back is reachable by name too.
+      assert {:ok, %{cleared_routes: ["voicemail"]}} =
+               Commands.call("sound_restore_defaults", %{"sounds" => false, "routes" => true})
+
+      assert Sound.sound_map() == %{}
+      assert {:ok, cleared} = Commands.call("sound_routes", %{})
+      assert route(cleared, "voicemail").assigned == nil
+      refute route(cleared, "voicemail").origin == "explicit"
+
+      # Worth knowing, and not a bug: the clip still PLAYS for voicemail here,
+      # because the legacy fallback picks the first audio file in the workspace
+      # library alphabetically and this workspace has exactly one. Clearing a
+      # route removes the assignment, not the file — sound_list is where you see
+      # that, and deleting the file is the other half of an undo.
+      assert route(cleared, "voicemail").origin == "fallback"
+    end
+
+    test "the gate is real: an untrusted run cannot route a key", %{root: root} do
+      source(root, "sentence.wav", speech())
+
+      # Everything up to the routing step is reachable by an autonomous run
+      # working untrusted-origin content...
+      assert {:ok, _trimmed} =
+               Commands.call("sound_trim", %{"source" => "sentence.wav", "end_ms" => 300},
+                 caller: :agent_untrusted
+               )
+
+      # ...and the one act that changes what the machine does unattended is not.
+      assert {:error, :requires_confirmation} =
+               Commands.call(
+                 "sound_apply",
+                 %{"source" => "sentence.wav", "route" => "voicemail"},
+                 caller: :agent_untrusted
+               )
+
+      assert Sound.sound_map() == %{}
+      refute File.exists?(Path.join([root, "sounds", "sentence.wav"]))
+    end
+  end
+
+  describe "sound_find" do
+    setup %{root: root} do
+      source(root, "planted.wav", planted())
+      # An index is what makes a source a default target, and this one is
+      # `aligned` so the relabel to `recognizer` is visible in the result.
+      indexed("planted.wav", [{"harbor", 200, 500}])
+      :ok
+    end
+
+    test "finds the planted second take and writes it as origin recognizer" do
+      assert {:ok, result} = Commands.Sound.sound_find(template())
+
+      assert result.word == "harbor"
+      assert result.threshold == 6.0
+      assert result.template.frame0 == 20
+      assert result.template.cold
+
+      # The template's own span comes back at a distance near zero. That is the
+      # cheapest proof the search ran, and it is not a discovery.
+      assert [%{source: "planted.wav"} = found] = result.sources
+      assert Enum.any?(found.matches, & &1.template)
+
+      discovered = Enum.reject(found.matches, & &1.template)
+      assert [%{start_ms: start_ms, distance: distance}] = discovered
+      assert_in_delta start_ms, 1200.0, 120.0
+      assert distance < 6.0
+
+      assert result.counts.new_matches == 1
+      assert result.counts.added == 1
+      assert found.written
+      assert found.previous_origin == :aligned
+      assert found.origin == :recognizer
+
+      # And it is on disk, merged beside the word that was already there.
+      assert {:ok, index} = Index.load("planted.wav")
+      assert index.origin == :recognizer
+      assert length(index.words) == 2
+      assert Enum.all?(index.words, &(&1.word == "harbor"))
+
+      # A recognizer hit is a cut, exactly like any other index hit.
+      assert {:ok, %{count: 2}} = Commands.Sound.sound_index_search(%{"query" => "harbor"})
+    end
+
+    test "confidence ranks the distance and never claims a hand-marked 1.0" do
+      assert {:ok, result} = Commands.Sound.sound_find(template())
+
+      for match <- Enum.flat_map(result.sources, & &1.matches) do
+        assert match.confidence <= 0.9
+        assert match.confidence >= 0.1
+        assert is_float(match.distance)
+      end
+
+      assert result.distances.min <= result.distances.max
+    end
+
+    test "warm_only skips uncached sources and says which", %{root: root} do
+      source(root, "other.wav", planted())
+      indexed("other.wav", [{"harbor", 200, 500}])
+
+      # Warm the template source alone, without touching any index.
+      assert {:ok, _first} =
+               Commands.Sound.sound_find(
+                 template(%{"targets" => ["planted.wav"], "write" => false})
+               )
+
+      assert Features.cached?("planted.wav")
+      refute Features.cached?("other.wav")
+
+      assert {:ok, result} = Commands.Sound.sound_find(template(%{"warm_only" => true}))
+
+      assert result.warm_only
+      assert result.skipped_sources == ["other.wav"]
+      assert result.counts.skipped_cold == 1
+      assert result.counts.searched == 1
+      assert Enum.any?(result.notes, &(&1 =~ "warm_only was set"))
+
+      # The whole point: it did not spend a minute analysing it.
+      refute Features.cached?("other.wav")
+      assert {:ok, %{origin: :aligned}} = Index.load("other.wav")
+    end
+
+    test "warm_only refuses outright when the template itself is cold" do
+      assert {:error, {:template_not_cached, "planted.wav"}} =
+               Commands.Sound.sound_find(template(%{"warm_only" => true}))
+    end
+
+    test "write false searches and reports without touching an index" do
+      assert {:ok, result} = Commands.Sound.sound_find(template(%{"write" => false}))
+
+      refute result.wrote
+      assert result.counts.new_matches == 1
+      assert result.counts.added == 0
+      assert [%{written: false, origin: nil}] = result.sources
+
+      assert {:ok, %{origin: :aligned, words: [_only_one]}} = Index.load("planted.wav")
+    end
+
+    test "an existing word is not clobbered without overwrite" do
+      assert {:ok, %{counts: %{added: 1}}} = Commands.Sound.sound_find(template())
+
+      # Second run: the take it wrote a moment ago is now in the way.
+      assert {:ok, again} = Commands.Sound.sound_find(template())
+      assert [%{added: 0, skipped_overlapping: 1, replaced: 0}] = again.sources
+      assert {:ok, %{words: two}} = Index.load("planted.wav")
+      assert length(two) == 2
+
+      assert {:ok, forced} = Commands.Sound.sound_find(template(%{"overwrite" => true}))
+      assert [%{added: 1, replaced: 1}] = forced.sources
+      assert {:ok, %{words: still_two}} = Index.load("planted.wav")
+      assert length(still_two) == 2
+    end
+
+    test "the notes carry the measured guidance, not a bare number" do
+      assert {:ok, result} = Commands.Sound.sound_find(template())
+
+      joined = Enum.join(result.notes, " ")
+      assert joined =~ "SHORTLIST GENERATOR"
+      assert joined =~ "one in eight"
+      assert joined =~ "speaker- and channel-dependent"
+      assert joined =~ "origin on an index is a property of the WHOLE file"
+    end
+
+    test "bad inputs are named errors" do
+      assert {:error, :missing_word} = Commands.Sound.sound_find(Map.delete(template(), "word"))
+      assert {:error, :invalid_word} = Commands.Sound.sound_find(template(%{"word" => ",,,"}))
+      assert {:error, :missing_span} = Commands.Sound.sound_find(Map.delete(template(), "end_ms"))
+
+      assert {:error, :invalid_span} =
+               Commands.Sound.sound_find(template(%{"start_ms" => 500, "end_ms" => 200}))
+
+      assert {:error, :invalid_span} = Commands.Sound.sound_find(template(%{"start_ms" => -1}))
+
+      assert {:error, :invalid_name} =
+               Commands.Sound.sound_find(template(%{"source" => "../secrets.wav"}))
+
+      assert {:error, :invalid_name} =
+               Commands.Sound.sound_find(template(%{"targets" => ["../secrets.wav"]}))
+
+      assert {:error, :invalid_name} =
+               Commands.Sound.sound_find(template(%{"targets" => ["/etc/passwd"]}))
+
+      assert {:error, :no_targets} = Commands.Sound.sound_find(template(%{"targets" => []}))
+      assert {:error, :invalid_targets} = Commands.Sound.sound_find(template(%{"targets" => "x"}))
+      assert {:error, :missing_source} = Commands.Sound.sound_find(%{"word" => "harbor"})
+
+      # A span past the end of the recording has no frames to slice.
+      assert {:error, :empty_template} =
+               Commands.Sound.sound_find(template(%{"start_ms" => 90_000, "end_ms" => 91_000}))
+
+      # A source that is not in the studio at all.
+      assert {:error, :not_found} =
+               Commands.Sound.sound_find(template(%{"source" => "absent.wav"}))
+    end
+  end
+
+  describe "sound_sentence" do
+    setup %{root: root} do
+      source(root, "voicemail-03.wav", planted())
+
+      indexed(
+        "voicemail-03.wav",
+        [
+          {"meet", 100, 300},
+          {"me", 400, 550},
+          {"at", 700, 820},
+          {"the", 900, 1000},
+          {"harbor", 1100, 1400}
+        ]
+      )
+
+      :ok
+    end
+
+    test "assembles the phrase into a real file", %{root: root} do
+      assert {:ok, result} =
+               Commands.Sound.sound_sentence(%{
+                 "phrase" => "Meet me at the harbor.",
+                 "name" => "hello"
+               })
+
+      assert result.name == "hello.wav"
+      assert result.missing == []
+      assert result.duration_ms > 0.0
+      assert result.peak > 0.0
+      refute result.replaced
+      assert File.regular?(Path.join([root, "sounds", "studio", "hello.wav"]))
+
+      # Punctuation and case are normalized away by the same function the corpus
+      # is stored under, so "Meet" and "harbor." both resolve.
+      assert Enum.map(result.words, & &1.word) == ~w(meet me at the harbor)
+      assert Enum.map(result.words, & &1.text) == ["Meet", "me", "at", "the", "harbor."]
+      assert Enum.all?(result.words, &(&1.takes == 1))
+      assert result.sources == [%{source: "voicemail-03.wav", words: 5}]
+
+      # It landed as a SOURCE, not in the routed library.
+      assert {:ok, %{sources: sources}} = Commands.Sound.sound_sources()
+      assert Enum.any?(sources, &(&1.name == "hello.wav"))
+      assert {:ok, %{sounds: sounds}} = Commands.Sound.sound_list()
+      refute Enum.any?(sounds, &(&1.name == "hello.wav"))
+    end
+
+    test "one take per word reports that the lattice chose nothing" do
+      assert {:ok, result} =
+               Commands.Sound.sound_sentence(%{"phrase" => "meet me", "name" => "pair"})
+
+      assert result.selection.slots == 2
+      assert result.selection.candidates == 2
+      refute result.selection.chose
+      assert Enum.any?(result.notes, &(&1 =~ "CHOSE NOTHING"))
+      assert Enum.any?(result.notes, &(&1 =~ "more recordings" or &1 =~ "More recordings"))
+    end
+
+    test "a second take of a word gives the search something to do", %{root: root} do
+      source(root, "voicemail-04.wav", planted())
+      indexed("voicemail-04.wav", [{"harbor", 200, 500}])
+
+      assert {:ok, result} =
+               Commands.Sound.sound_sentence(%{"phrase" => "meet harbor", "name" => "choice"})
+
+      assert result.selection.slots == 2
+      assert result.selection.candidates == 3
+      assert result.selection.chose
+      assert %{word: "harbor", takes: 2} = Enum.at(result.words, 1)
+      assert Enum.any?(result.notes, &(&1 =~ "candidate takes across"))
+    end
+
+    test "a word with no take is fatal, and named" do
+      assert {:error, {:words_not_found, ["zebra"]}} =
+               Commands.Sound.sound_sentence(%{"phrase" => "meet the zebra", "name" => "z"})
+
+      # Nothing was written on the refusal.
+      assert {:ok, %{sources: sources}} = Commands.Sound.sound_sources()
+      refute Enum.any?(sources, &(&1.name == "z.wav"))
+
+      assert {:ok, result} =
+               Commands.Sound.sound_sentence(%{
+                 "phrase" => "meet the zebra",
+                 "name" => "z",
+                 "allow_missing" => true
+               })
+
+      assert result.missing == ["zebra"]
+      assert Enum.map(result.words, & &1.word) == ~w(meet the)
+      assert Enum.any?(result.notes, &(&1 =~ "NOT in this sentence"))
+      assert Enum.any?(result.notes, &(&1 =~ "zebra"))
+    end
+
+    test "a phrase with no takes at all is refused" do
+      assert {:error, :no_takes} =
+               Commands.Sound.sound_sentence(%{
+                 "phrase" => "zebra platypus",
+                 "name" => "nothing",
+                 "allow_missing" => true
+               })
+    end
+
+    test "features are imputed rather than computed, and it says so" do
+      assert {:ok, result} =
+               Commands.Sound.sound_sentence(%{"phrase" => "meet me", "name" => "cold"})
+
+      refute result.features.warm
+      assert result.features.with_features == []
+      assert result.features.without_features == ["voicemail-03.wav"]
+      assert result.selection.imputed.typicality == 2
+      assert Enum.any?(result.notes, &(&1 =~ "No cached features"))
+
+      # Nothing was analysed: the default must never spend the ~109 s a cold
+      # source costs.
+      refute Features.cached?("voicemail-03.wav")
+    end
+
+    test "warm true analyses the sources it needs" do
+      assert {:ok, result} =
+               Commands.Sound.sound_sentence(%{
+                 "phrase" => "meet me",
+                 "name" => "warmed",
+                 "warm" => true
+               })
+
+      assert result.features.warm
+      assert result.features.with_features == ["voicemail-03.wav"]
+      assert result.features.without_features == []
+      assert result.features.analysed == ["voicemail-03.wav"]
+      assert Features.cached?("voicemail-03.wav")
+    end
+
+    test "assembly and selection options are passed through" do
+      assert {:ok, loose} =
+               Commands.Sound.sound_sentence(%{"phrase" => "meet me", "name" => "loose"})
+
+      assert {:ok, tight} =
+               Commands.Sound.sound_sentence(%{
+                 "phrase" => "meet me",
+                 "name" => "tight",
+                 "pad_ms" => 0,
+                 "gap_ms" => 0,
+                 "fade_ms" => 0,
+                 "normalize" => false,
+                 "weights" => %{"confidence" => 2.0, "spectral" => 0}
+               })
+
+      assert tight.duration_ms < loose.duration_ms
+      assert tight.options == %{pad_ms: 0.0, gap_ms: 0.0, fade_ms: 0.0, normalize: false}
+      assert tight.selection.weights.confidence == 2.0
+      assert tight.selection.weights.spectral == 0.0
+    end
+
+    test "it refuses to overwrite, and the refusal costs nothing" do
+      assert {:ok, _first} =
+               Commands.Sound.sound_sentence(%{"phrase" => "meet me", "name" => "sentence"})
+
+      assert {:error, :name_taken} =
+               Commands.Sound.sound_sentence(%{"phrase" => "meet me", "name" => "sentence"})
+
+      # Refused before the phrase is even looked up: a missing word does not
+      # win a race against a taken name.
+      assert {:error, :name_taken} =
+               Commands.Sound.sound_sentence(%{"phrase" => "zebra", "name" => "sentence"})
+
+      assert {:ok, %{replaced: true}} =
+               Commands.Sound.sound_sentence(%{
+                 "phrase" => "meet me",
+                 "name" => "sentence",
+                 "overwrite" => true
+               })
+    end
+
+    test "bad inputs are named errors" do
+      assert {:error, :missing_phrase} = Commands.Sound.sound_sentence(%{"name" => "x"})
+      assert {:error, :missing_name} = Commands.Sound.sound_sentence(%{"phrase" => "meet"})
+
+      assert {:error, :empty_phrase} =
+               Commands.Sound.sound_sentence(%{"phrase" => ",,,", "name" => "x"})
+
+      assert {:error, :empty_phrase} =
+               Commands.Sound.sound_sentence(%{"phrase" => "  ", "name" => "x"})
+
+      assert {:error, :invalid_name} =
+               Commands.Sound.sound_sentence(%{"phrase" => "meet", "name" => "../escape"})
+
+      assert {:error, :invalid_name} =
+               Commands.Sound.sound_sentence(%{"phrase" => "meet", "name" => "/tmp/escape"})
+
+      assert {:error, :invalid_weights} =
+               Commands.Sound.sound_sentence(%{
+                 "phrase" => "meet",
+                 "name" => "x",
+                 "weights" => %{"nonsense" => 1.0}
+               })
+
+      assert {:error, :invalid_weights} =
+               Commands.Sound.sound_sentence(%{
+                 "phrase" => "meet",
+                 "name" => "x",
+                 "weights" => %{"confidence" => -1.0}
+               })
+    end
+  end
+
   describe "dispatch by name" do
     # The wiring is the phase: a handler nothing can reach through call/3 is not
     # a command surface. Catalog entry, registration, delegate and handler all
@@ -1290,6 +2349,26 @@ defmodule BusterClaw.Commands.SoundTest do
                Commands.call("sound_index_delete", %{"source" => "voicemail-03.wav"})
     end
 
+    test "the matcher and the sentence are reachable through Commands.call/3", %{root: root} do
+      source(root, "planted.wav", planted())
+      indexed("planted.wav", [{"harbor", 200, 500}])
+
+      assert {:ok, %{word: "harbor", counts: %{added: 1}}} =
+               Commands.call("sound_find", template())
+
+      assert {:ok, %{name: "line.wav", missing: []}} =
+               Commands.call("sound_sentence", %{"phrase" => "harbor", "name" => "line"})
+
+      assert {:error, :name_taken} =
+               Commands.call("sound_sentence", %{"phrase" => "harbor", "name" => "line"})
+
+      assert {:error, {:words_not_found, ["zebra"]}} =
+               Commands.call("sound_sentence", %{"phrase" => "zebra", "name" => "z"})
+
+      assert {:error, :invalid_name} =
+               Commands.call("sound_find", template(%{"source" => "../secrets.wav"}))
+    end
+
     test "sound_align is reachable through Commands.call/3", %{root: root} do
       {event, source} = aligned_voicemail(root)
 
@@ -1331,17 +2410,52 @@ defmodule BusterClaw.Commands.SoundTest do
         refute Map.get(entry, :gated, false), "#{name} should not be gated"
       end
 
-      # The five that write. Restricted, and deliberately NOT gated: they write
-      # a new source or a text index, and none of them routes anything.
+      # The ones that write. Restricted, and deliberately NOT gated: they write
+      # a new source, a text index, or the shipped defaults back, and none of
+      # them routes anything.
       for name <- ~w(
-            sound_import sound_align
+            sound_import sound_align sound_find sound_sentence
             sound_index_import sound_index_delete sound_assemble
+            sound_trim sound_fade sound_normalize sound_concat sound_delete
+            sound_restore_defaults
           ) do
         entry = Map.fetch!(catalog, name)
         assert entry.type == :mutate, "#{name} should be a mutate"
         assert entry.tier == :restricted, "#{name} should be restricted"
         refute Map.get(entry, :gated, false), "#{name} should not be gated"
       end
+
+      # And the one that is. Routing changes what the machine does when nobody
+      # is watching, which is the whole of the difference.
+      apply_entry = Map.fetch!(catalog, "sound_apply")
+      assert apply_entry.type == :mutate
+      assert apply_entry.tier == :restricted
+      assert apply_entry.gated
+      assert apply_entry.args["source"].required
+      assert apply_entry.args["route"].required
+      refute apply_entry.args["overwrite"].default
+      assert apply_entry.description =~ "unknown_route"
+      assert apply_entry.description =~ "sound_routes"
+
+      # Every editing verb renders to a new name and refuses to clobber.
+      for name <- ~w(sound_trim sound_fade sound_normalize sound_concat) do
+        args = Map.fetch!(catalog, name).args
+        refute args["overwrite"].default, "#{name} must not default to overwriting"
+      end
+
+      assert Map.fetch!(catalog, "sound_concat").args["sources"].required
+      assert Map.fetch!(catalog, "sound_concat").args["name"].required
+      refute Map.fetch!(catalog, "sound_delete").args["delete_index"].default
+
+      # The four alignment knobs the first real listen produced. They are only
+      # reachable if they are declared: the catalog is the whole of what the
+      # model sees, so an option that exists in the handler and not here is an
+      # option nothing will ever pass.
+      align_args = Map.fetch!(catalog, "sound_align").args
+      assert align_args["snap_to_energy"].default
+      assert align_args["snap_window_ms"].default == 40.0
+      assert align_args["reduce_function_words"].default
+      assert align_args["function_word_scale"].default == 0.55
 
       # sound_probe takes one of three inputs, so none of them is required on
       # its own — the handler names the missing one instead.
@@ -1372,6 +2486,39 @@ defmodule BusterClaw.Commands.SoundTest do
       assert align.description =~ "APPROXIMATE"
       assert align.description =~ "sound_index_search"
       assert align.description =~ "sound_import"
+
+      # The matcher's description has to carry the MEASURED guidance rather than
+      # a bare threshold — the synthetic band does not transfer to real speech,
+      # and a model that reads 0.2–0.9 anywhere will match nothing — and it has
+      # to price the cold path, which is the reason warm_only exists.
+      find = Map.fetch!(catalog, "sound_find")
+      assert find.args["word"].required
+      assert find.args["source"].required
+      assert find.args["start_ms"].required
+      assert find.args["end_ms"].required
+      refute find.args["overwrite"].default
+      refute find.args["warm_only"].default
+      assert find.args["write"].default
+      assert find.args["threshold"].default == 6.0
+      assert find.description =~ "precision 0.88"
+      assert find.description =~ "does NOT transfer to real speech"
+      assert find.description =~ "SHORTLIST GENERATOR"
+      assert find.description =~ "109 seconds"
+      assert find.description =~ "warm_only"
+      assert find.description =~ "origin recognizer"
+
+      # And the sentence's has to lead with the two things that can be silently
+      # wrong: a word it could not find, and a lattice that decided nothing.
+      sentence = Map.fetch!(catalog, "sound_sentence")
+      assert sentence.args["phrase"].required
+      assert sentence.args["name"].required
+      refute sentence.args["overwrite"].default
+      refute sentence.args["allow_missing"].default
+      refute sentence.args["warm"].default
+      assert sentence.description =~ "missing"
+      assert sentence.description =~ "candidates equal to slots"
+      assert sentence.description =~ "imputed"
+      assert sentence.description =~ "weights"
     end
   end
 end

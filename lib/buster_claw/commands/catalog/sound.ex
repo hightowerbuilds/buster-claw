@@ -8,12 +8,26 @@ defmodule BusterClaw.Commands.Catalog.Sound do
   The reads are `:safe`: they open files read-only, touch no setting, and change
   nothing about what the machine plays.
 
-  Five entries write, and all five are `:restricted`. None is `gated`, and the
-  line is worth stating: `sound_import` and `sound_assemble` write a **new
-  source** into `sounds/studio/`, and `sound_align` and `sound_index_*` write
-  text beside it. Nothing here installs a chime or routes a key — routing is the
-  only act that changes what the machine does when nobody is watching, and it
-  stays a later, gated phase.
+  Everything that writes is `:restricted`, and exactly one of them is `gated`.
+  The line is worth stating: `sound_import`, `sound_assemble` and the four
+  editing verbs write a **new source** into `sounds/studio/`, `sound_align` and
+  `sound_index_*` write text beside it, and `sound_delete` removes one. None of
+  those installs a chime or routes a key.
+
+  **`sound_apply` is the gated one**, and it is the only entry here that changes
+  what the machine does when nobody is watching: it copies a studio source into
+  the sound library and points a routing key at it. `sound_restore_defaults` is
+  its counterweight — `:restricted` but not gated, because it is the way back and
+  gating an undo only ever strands the person using it.
+
+  `sound_find` and `sound_sentence` are the two entries whose descriptions carry
+  a **measurement** rather than a default. `sound_find`'s threshold has no
+  natural scale — the number that works was measured over 990 labelled pairs of
+  real speech and sits an order of magnitude above what the synthetic tests
+  suggested — and its cost is 109 s per uncached source, so a model choosing it
+  has to be told both before it runs. `sound_sentence`'s description leads with
+  the words it could not find and with `candidates` against `slots`, because
+  those are the two ways its output can be wrong while looking right.
 
   `sound_import` is the one entry that names a file **outside** the sound
   stores, and its two inputs are the whole of that reach: an `event_id`, whose
@@ -154,7 +168,7 @@ defmodule BusterClaw.Commands.Catalog.Sound do
         type: :mutate,
         tier: :restricted,
         description:
-          "Give one already-imported studio source a word index by fitting its transcript onto the speech its audio actually contains — the bootstrap that makes sound_index_search and sound_assemble usable at all, since a source with no index cannot be cut from however good its transcript is. There is NO recognizer: voice-activity detection finds where sound happens, and the transcript's words are shared out across those spans by syllable count. The timings are therefore APPROXIMATE, and they are expected to be improved later, word by word. Name the work with event_id (the transcript comes from the phone event; pass transcript too to correct what the transcriber mangled) or with source plus an explicit transcript. The audio must already be in sounds/studio/: this verb never imports, and a source that is not there is refused as not_imported, naming the basename to run sound_import for. Refuses an existing index unless overwrite is true. Reports words, spans, and two quality figures that need no listening: the confidence spread (min/median/max), which is a plausibility check on the RECORDING as a whole rather than a per-word verdict — every word is scored against the same ~200 ms per syllable, so a flat spread is normal and means nothing, while a LOW value means the transcript does not fit the audio at any rate people speak at; and unplaced_ms, the detected speech no word covers, which is exactly the audio trimmed off words that straddled a span boundary. Confidence tops out at 0.9 because 1.0 means hand-marked, so min_confidence 0.95 asks for measured timings alone. Detector tuning: min_span_ms (default 60) rejects shorter activity, min_silence_ms (default 120) is the smallest gap that counts as a gap. Fit tuning: weight syllables (default) or characters, and syllable_ms (default 200), which only scores confidence and never moves a word.",
+          "Give one already-imported studio source a word index by fitting its transcript onto the speech its audio actually contains — the bootstrap that makes sound_index_search and sound_assemble usable at all, since a source with no index cannot be cut from however good its transcript is. There is NO recognizer: voice-activity detection finds where sound happens, and the transcript's words are shared out across those spans by syllable count. The timings are therefore APPROXIMATE, and they are expected to be improved later, word by word. Name the work with event_id (the transcript comes from the phone event; pass transcript too to correct what the transcriber mangled) or with source plus an explicit transcript. The audio must already be in sounds/studio/: this verb never imports, and a source that is not there is refused as not_imported, naming the basename to run sound_import for. Refuses an existing index unless overwrite is true. Reports words, spans, and two quality figures that need no listening: the confidence spread (min/median/max), which is a plausibility check on the RECORDING as a whole rather than a per-word verdict — every word is scored against the same ~200 ms per syllable, so a flat spread is normal and means nothing, while a LOW value means the transcript does not fit the audio at any rate people speak at; and unplaced_ms, the detected speech no word covers, which is exactly the audio trimmed off words that straddled a span boundary. Confidence tops out at 0.9 because 1.0 means hand-marked, so min_confidence 0.95 asks for measured timings alone. Detector tuning: min_span_ms (default 60) rejects shorter activity, min_silence_ms (default 120) is the smallest gap that counts as a gap. Fit tuning: weight syllables (default) or characters, and syllable_ms (default 200), which only scores confidence and never moves a word. Two corrections are ON by default and are what took the first real assembled paragraph from garbled to audibly better: snap_to_energy pulls each word boundary to the nearest strictly quieter frame within snap_window_ms (default 40), so a cut lands at a closure instead of mid-vowel, and reduce_function_words scales unstressed function words (to, the, of) by function_word_scale (default 0.55), because they run far shorter in real speech than a syllable count suggests and otherwise eat their neighbours' onsets. Both exist to be turned OFF: a change to how something SOUNDS can only be judged by listening to the pair, so align the same source twice and compare by ear rather than trusting the numbers.",
         args: %{
           "event_id" => %{type: :integer, required: false},
           "source" => %{type: :string, required: false},
@@ -168,6 +182,10 @@ defmodule BusterClaw.Commands.Catalog.Sound do
             default: "syllables"
           },
           "syllable_ms" => %{type: :number, required: false, default: 200},
+          "snap_to_energy" => %{type: :boolean, required: false, default: true},
+          "snap_window_ms" => %{type: :number, required: false, default: 40.0},
+          "reduce_function_words" => %{type: :boolean, required: false, default: true},
+          "function_word_scale" => %{type: :number, required: false, default: 0.55},
           "language" => %{type: :string, required: false},
           "overwrite" => %{type: :boolean, required: false, default: false}
         }
@@ -200,6 +218,47 @@ defmodule BusterClaw.Commands.Catalog.Sound do
         args: %{"source" => %{type: :string, required: true}}
       },
       %{
+        name: "sound_find",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Find every other occurrence of a word across the corpus from ONE known instance of it, by acoustic similarity, and add what it finds to the word indexes as origin recognizer. This is the only verb whose timings come from a matcher rather than a guess: sound_align shares a transcript out proportionally, this one compares MFCC features with dynamic time warping. It does NOT transcribe and it cannot find a word you have no example of — the workflow is sound_transcript_search or sound_index_search to locate one take, confirm it by ear, then run this to find the rest. Give it source plus start_ms and end_ms (a confirmed span, e.g. a hit from sound_index_search) and the word that span is an instance of. targets defaults to every indexed source; naming a source that has no index creates one from these matches alone. THRESHOLD: distances have no natural scale and must be measured, not assumed. Against 990 labelled pairs of real 8 kHz speech the same-speaker operating point is about 6.0 — precision 0.88, recall 0.93 — with same-word distances running 3 to 9 and different-word ones 5 to 13. The 0.2 to 0.9 band from the synthetic tests does NOT transfer to real speech and a threshold in it matches nothing. Treat 6.0 as a starting point to re-measure against this corpus. The distributions overlap, so this is a SHORTLIST GENERATOR, not an oracle: roughly one returned span in eight is wrong, and matching is speaker- and channel-dependent by design, so the same word from another caller usually will not match. COST: a source whose features are not cached takes about 109 seconds to analyse and about 155 milliseconds once warm. Cold sources are named in cold_sources and are warmed one process each; warm_only true searches only already-cached sources and reports the rest in skipped_sources rather than blocking for minutes, and refuses outright if the TEMPLATE source is itself uncached. write false searches and reports without touching any index. A match overlapping a word the index already has is skipped unless overwrite is true, because a hand-corrected timing is real work. Reports per source: matches with distances, what was added, and the index's previous origin — origin belongs to the whole index file and has no mixed value, so a merged index reads recognizer while its older aligned words are unchanged and still approximate.",
+        args: %{
+          "word" => %{type: :string, required: true},
+          "source" => %{type: :string, required: true},
+          "start_ms" => %{type: :number, required: true},
+          "end_ms" => %{type: :number, required: true},
+          "targets" => %{type: :list, required: false},
+          "threshold" => %{type: :number, required: false, default: 6.0},
+          "limit" => %{type: :integer, required: false, default: 10},
+          "warm_only" => %{type: :boolean, required: false, default: false},
+          "write" => %{type: :boolean, required: false, default: true},
+          "overwrite" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "sound_sentence",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Build a whole ramshackle sentence from a phrase in one call: each word is looked up in the word indexes, the takes of it become candidates, a unit-selection lattice picks the cheapest path through them, and the chosen spans are spliced into a new source in sounds/studio/. This is sound_index_search plus sound_assemble with the part nobody was doing in between — CHOOSING which take of each word to use, which is most of the quality. Read the missing field FIRST: any word with no take in the index is refused outright, naming the words, unless allow_missing is true, because a sentence quietly missing three words is the worst failure this feature has. Read selection second: candidates equal to slots means every word had exactly one take and the search decided nothing, so its cost of 0.0 means best-of-one rather than good — the fix for that is more recordings, not different weights. Costs are min-max normalised inside one lattice, so two sentences' totals cannot be compared. imputed counts cost terms filled from the median because the acoustics were unavailable: feature analysis costs about 109 seconds per uncached source, so by default only sources whose features are already cached inform the choice and the rest are imputed and reported; warm true analyses the missing ones first. Splicing options are sound_assemble's (pad_ms 30, fade_ms 8, gap_ms 60, normalize true). weights overrides the selector's six hand-set terms — confidence, duration, boundary, typicality, spectral, level — which are guesses awaiting an operator's ear, not fitted values. Reports which sources it drew from, the duration and peak, and the take chosen for every word. Writes a new SOURCE only: nothing is installed as a chime and nothing is routed.",
+        args: %{
+          "phrase" => %{type: :string, required: true},
+          "name" => %{type: :string, required: true},
+          "allow_missing" => %{type: :boolean, required: false, default: false},
+          "warm" => %{type: :boolean, required: false, default: false},
+          "source" => %{type: :string, required: false},
+          "min_confidence" => %{type: :number, required: false},
+          "limit" => %{type: :integer, required: false, default: 20},
+          "weights" => %{type: :object, required: false},
+          "pad_ms" => %{type: :number, required: false, default: 30},
+          "fade_ms" => %{type: :number, required: false, default: 8},
+          "gap_ms" => %{type: :number, required: false, default: 60},
+          "normalize" => %{type: :boolean, required: false, default: true},
+          "overwrite" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
         name: "sound_assemble",
         type: :mutate,
         tier: :restricted,
@@ -213,6 +272,95 @@ defmodule BusterClaw.Commands.Catalog.Sound do
           "gap_ms" => %{type: :number, required: false, default: 60},
           "normalize" => %{type: :boolean, required: false, default: true},
           "overwrite" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "sound_trim",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Cut a span out of one studio source and write it as a NEW source: start_ms (default 0) to end_ms (default the end of the clip), so trimming leading silence or a tail is one argument. Values outside the clip clamp to it; a span that ends at or before it starts is refused as empty_selection rather than written as a zero-length file. Omit name and the result is named after its input (harbor.wav becomes harbor-trim.wav); an existing name is refused unless overwrite is true. Reports the new duration_ms and peak beside the source's own, which is how you check a trim removed what you meant without listening.",
+        args: %{
+          "source" => %{type: :string, required: true},
+          "start_ms" => %{type: :number, required: false, default: 0},
+          "end_ms" => %{type: :number, required: false},
+          "name" => %{type: :string, required: false},
+          "overwrite" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "sound_fade",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Fade one studio source in and/or out, writing a NEW source. The ramps land on true zero at the first and last sample, which is the fix for the click a clip cut from the middle of a recording starts with — a step from silence to full amplitude. At least one of in_ms or out_ms is required, because a fade with neither would write a byte-identical copy under a new name. Ramps longer than the clip are clamped. Omit name and the result is named after its input; an existing name is refused unless overwrite is true.",
+        args: %{
+          "source" => %{type: :string, required: true},
+          "in_ms" => %{type: :number, required: false},
+          "out_ms" => %{type: :number, required: false},
+          "name" => %{type: :string, required: false},
+          "overwrite" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "sound_normalize",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Scale one studio source so its loudest sample sits at target (0 to 1, default about 0.891 — roughly -1 dBFS), writing a NEW source. This is peak normalization, not loudness: it makes a quiet clip usable and cannot make a clipped one clean. Compare peak against source_peak in the result to see what it did — a source already near 1.0 barely moves, and digital silence is returned untouched because no gain makes zero louder. Omit name and the result is named after its input; an existing name is refused unless overwrite is true.",
+        args: %{
+          "source" => %{type: :string, required: true},
+          "target" => %{type: :number, required: false, default: 0.891},
+          "name" => %{type: :string, required: false},
+          "overwrite" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "sound_concat",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Join whole studio sources end to end, in the order given, as one NEW source. Every source must share a format — joining a 44.1 kHz clip onto a 22.05 kHz one would play the first at half speed, so a mismatch is refused as format_mismatch rather than resampled. Naming the same source twice joins it twice, on purpose. This is a bare join: no padding, no fade, no gap, so every seam is a hard cut. To splice SPANS out of recordings into a sentence, use sound_assemble instead, which pads and micro-fades each piece. An existing name is refused unless overwrite is true.",
+        args: %{
+          "sources" => %{type: :list, required: true},
+          "name" => %{type: :string, required: true},
+          "overwrite" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "sound_delete",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Delete one studio source from sounds/studio/. Only the studio's working material — the sound library and the routing table are untouched, and this cannot remove a chime that is currently playing for something. A source that still has a word index is REFUSED as source_indexed, because deleting the audio would leave a word list whose every hit resolves to nothing; pass delete_index true to remove both, which also destroys any hand-corrected timings. Irreversible: an imported voicemail can be imported again, but an assembled sentence cannot.",
+        args: %{
+          "name" => %{type: :string, required: true},
+          "delete_index" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "sound_apply",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Install a studio source into the sound library and route a notification key to it — the last step, and the only one that changes what the machine does when nobody is watching. route must be a key from sound_routes (default, timer, alarm, reminder, chat, terminal, email, voicemail, manual, confirm, shift, blocked, web, order, sms, security, boot); anything else is refused as unknown_route BEFORE the file is written, so a typo can never be discovered later as a chime that does not play. name is the library basename (default the source's own, always .wav). Refuses name_taken if that name is already in the library, and shadows_bundled if it matches a bundled default — that second case would replace the built-in chime for EVERY key falling back to it, not just this one — unless overwrite is true. Reports what the key played before, so the change can be undone. Tell the operator what you are about to route before routing it.",
+        args: %{
+          "source" => %{type: :string, required: true},
+          "route" => %{type: :string, required: true},
+          "name" => %{type: :string, required: false},
+          "overwrite" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "sound_restore_defaults",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Put the shipped sound defaults back — the way out of a routing or overwrite you regret. Copies the bundled chimes into sounds/ and NEVER overwrites: a name already there is skipped, because that file is the operator's edit or replacement. Files only by default; pass routes true to also clear every routing assignment so each key inherits again and falls back to its bundled chime. Nothing is ever deleted. Reports what was copied, what was skipped, and which keys were cleared.",
+        args: %{
+          "sounds" => %{type: :boolean, required: false, default: true},
+          "routes" => %{type: :boolean, required: false, default: false}
         }
       }
     ]

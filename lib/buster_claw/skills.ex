@@ -176,6 +176,7 @@ defmodule BusterClaw.Skills do
     maybe_write(roster_path(), default_roster())
     maybe_write(skill_path("save-note"), default_save_note())
     maybe_write(skill_path("shader-designer"), default_shader_designer())
+    maybe_write(skill_path("sound-cutup"), default_sound_cutup())
     :ok
   rescue
     error ->
@@ -321,7 +322,7 @@ defmodule BusterClaw.Skills do
 
   # --- seed templates ----------------------------------------------------
   #
-  # The three seeds live in `skill-seeds/*.md` and are embedded at compile time
+  # The seeds live in `skill-seeds/*.md` and are embedded at compile time
   # — the shape `BusterClaw.UserGuide` and `BusterClaw.Introduction` both use.
   # They were 162 lines of heredoc here until 08-08.
   #
@@ -333,12 +334,15 @@ defmodule BusterClaw.Skills do
   @external_resource Path.join(@seed_dir, "README.md")
   @external_resource Path.join(@seed_dir, "save-note.md")
   @external_resource Path.join(@seed_dir, "shader-designer.md")
+  @external_resource Path.join(@seed_dir, "sound-cutup.md")
 
   @default_roster File.read!(Path.join(@seed_dir, "README.md"))
   @default_save_note File.read!(Path.join(@seed_dir, "save-note.md"))
   @default_shader_designer File.read!(Path.join(@seed_dir, "shader-designer.md"))
+  @default_sound_cutup File.read!(Path.join(@seed_dir, "sound-cutup.md"))
 
   defp default_roster, do: @default_roster
   defp default_save_note, do: @default_save_note
   defp default_shader_designer, do: @default_shader_designer
+  defp default_sound_cutup, do: @default_sound_cutup
 end

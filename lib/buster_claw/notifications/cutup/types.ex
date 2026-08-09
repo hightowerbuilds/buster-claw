@@ -247,6 +247,54 @@ defmodule BusterClaw.Notifications.Cutup.Types do
   """
   @type span :: %{start_ms: float(), end_ms: float(), frames: pos_integer()}
 
+  # ── Selection (Part IV — which take of a word to use) ──────────────────────
+
+  @typedoc """
+  One candidate for one word slot: a hit, plus everything needed to cost it.
+
+  `features` is the source's feature sequence, injected rather than loaded, so
+  the selector stays pure and testable while `Cutup.Features` owns the IO and
+  the cache. `frame0` is the index of the frame the candidate starts at, which
+  is how a caller slices `features` to reach the seam.
+  """
+  @type candidate :: %{
+          source: String.t(),
+          word: word(),
+          frame0: non_neg_integer(),
+          frame1: non_neg_integer()
+        }
+
+  @typedoc """
+  What it costs to use a candidate in a slot, ignoring its neighbours.
+
+  Unit-selection's *target cost*. Every term is already computable from what
+  exists: alignment `confidence`, duration against a syllable expectation, how
+  quiet the audio is at the cut boundaries (`Vad.energy_profile/2`), and how far
+  the candidate sits from other takes of the same word (`Dtw.distance/3`).
+
+  **A high-variance term must not silently dominate.** Terms are normalised
+  before weighting, or the weights mean nothing.
+  """
+  @type target_cost :: %{
+          confidence: float(),
+          duration: float(),
+          boundary: float(),
+          typicality: float(),
+          total: float()
+        }
+
+  @typedoc """
+  What it costs to splice one candidate onto the next.
+
+  Unit-selection's *join cost*, and the standard formulation is **cepstral
+  distance across the seam** — compare the last frames of A against the first
+  frames of B. We already compute MFCCs, so this is arithmetic over data we have.
+  A level term rides alongside it because `normalize/2` equalises peaks rather
+  than loudness, and a level jump at a seam is audible even when the spectrum
+  matches.
+  """
+  @type join_cost :: %{spectral: float(), level: float(), total: float()}
+
   @typedoc """
   A transcript search result — Phase B, and the half that needs no recognizer.
 

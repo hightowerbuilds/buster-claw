@@ -550,7 +550,20 @@ defmodule BusterClaw.Commands do
   defdelegate sound_index_import(args), to: BusterClaw.Commands.Sound
   defdelegate sound_index_delete(args), to: BusterClaw.Commands.Sound
   defdelegate sound_align(args), to: BusterClaw.Commands.Sound
+  # Query by example: the matcher that fills an index, and the sentence that
+  # chooses between the takes in one
+  defdelegate sound_find(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_sentence(args), to: BusterClaw.Commands.Sound
   defdelegate sound_assemble(args), to: BusterClaw.Commands.Sound
+  # Editing: one pure SoundStudio function each, rendered to a NEW source
+  defdelegate sound_trim(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_fade(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_normalize(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_concat(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_delete(args), to: BusterClaw.Commands.Sound
+  # The gated end of the walk, and the way back from it
+  defdelegate sound_apply(args), to: BusterClaw.Commands.Sound
+  defdelegate sound_restore_defaults(args \\ %{}), to: BusterClaw.Commands.Sound
   # Google Workspace
   defdelegate google_account_list(args \\ %{}), to: BusterClaw.Commands.Google
   defdelegate google_account_get(args), to: BusterClaw.Commands.Google
