@@ -153,6 +153,45 @@ designed without this consumer in mind.
 
 ---
 
+### Renaming a note orphans every `[[wiki link]]` pointing at it
+
+**What.** `Notes.rename/2` and `move/2` change a note's path and touch nothing
+else. Inbound wiki links keep the old target, so after a rename:
+
+```text
+resolve_link("Old name")   -> nil
+backlinks("New name.md")   -> []
+```
+
+The sharp edge is not the dangling link, it is that an orphaned link is
+**indistinguishable from one that never resolved** — so it renders as a *missing*
+link, and clicking it creates a new empty `Old name.md`. You end up with a ghost
+of the note you just renamed, alongside the renamed one.
+
+**Why deferred.** The Home Activity + Notes plan
+(`daily-growth/archive/08-08-26-home-activity-notes.md`) explicitly said a rename
+may update links "only through an explicit preview/confirmation", because
+rewriting every note on a filename change is too large a mutation to do quietly.
+Building that confirmation is a feature with its own UI — what links here, what
+would change, approve — not a patch, and nothing has demanded it yet. Doing the
+rewrite *without* the confirmation is the one option the plan ruled out. The gap
+was closed out unrecorded and is written down here late, which is the part that
+should not repeat.
+
+**What makes it expensive later.** Not the rename — that stays safe and
+reversible. The cost compounds in the vault: every ghost note created by clicking
+a stale link is a real file the operator now has to notice and clean up, and it
+carries the *old* name, so it looks like the note they were looking for. The
+longer wiki links are used before this is addressed, the more stale targets exist
+to click.
+
+**Cheapest partial fix**, if the full flow is not wanted: stop offering to create
+a ghost for a target that was *renamed* rather than never written. That needs a
+rename breadcrumb the vault does not currently keep, so it is more design than it
+first appears — which is why it is here rather than done.
+
+---
+
 ### A DOM harness for LiveView hooks, or an honest admission there isn't one
 
 **What.** Three JS behaviours in the Notes editor are uncovered and cannot be

@@ -42,7 +42,7 @@ user behind it yet.
 | 0 — language and data contract | **Complete** | Separate registry entries; Activity is far right; journal paths/commands preserved; Introduction, jobs, catalog, Explore copy, and tests teach the split | Optional `activity_*` command aliases remain intentionally deferred |
 | 1 — BC Minutes in Activity | **Complete** | `ActivityComponent`, read-only journal, streamed day rail, seven-day summary, live PubSub refresh, legacy operator markers | Timeline graph remains later polish |
 | 2 — Notes R1 | **Complete** | Recursive Markdown discovery; folder create + grouped rail; safe create/open/edit; rename and move; sanitized preview behind a narrow-window toggle; 700 ms autosave plus ⌘S; Unsaved/Saving…/Saved/Conflict/Save failed; atomic revision saves; focus + slow-tick reconciliation; conflict copy/reload/confirmed overwrite; unsupported-file pane; confirmed permanent delete | — |
-| 3 — search and links | **Complete** | Title/body search with snippets in the rail; ⌘P switcher (combobox, arrow/Enter/Escape, capped with the count shown); `[[wiki links]]` and `[[Folder/Note\|alias]]` outside code regions; missing links create the note; backlinks in the preview; ⌘N | Line-level jump from a search hit was not built — opening the note is the acceptance, and a highlight needs an editor scroll API the textarea does not have |
+| 3 — search and links | **Complete** | Title/body search with snippets in the rail; ⌘P switcher (combobox, arrow/Enter/Escape, capped with the count shown); `[[wiki links]]` and `[[Folder/Note\|alias]]` outside code regions; missing links create the note; backlinks in the preview; ⌘N | Two, both recorded below rather than implied: line-level jump from a search hit; and **rename does not touch inbound links** — it orphans them, and an orphaned link offers to create a ghost of the note that was renamed (→ `LEFTOVERS.md`) |
 | 4 — agent collaboration | **Complete** | `note_list/read/search/create/save`; revision-checked saves; no absolute paths and no delete; audit records path + size, never the body; host PubSub relay so an agent's note lands in an open rail; agent-vs-draft collision raises the conflict UI | — |
 | 5 — measured polish | **Closed unbuilt** | — | Every candidate declined with a reason below; each names the trigger that would reopen it |
 
@@ -485,6 +485,41 @@ exchange for invalidation rules and a second source of truth.
 **Not built:** jumping to the matching line. Opening the note was the stated
 acceptance; scrolling a `<textarea>` to an offset needs an editor API this one
 does not have, and the roadmap already called it later polish.
+
+### Not built, and recorded late: rename does not touch inbound links
+
+The plan above says a rename updates links "only through an explicit
+preview/confirmation." Neither half was built — not the rewrite, and not the
+confirmation that would authorize it. That obeys the constraint by doing nothing,
+which is the safe direction, but it is a real gap and this document originally
+closed without naming it.
+
+Measured after the fact rather than reasoned about:
+
+```text
+rename "Old name" -> "New name"
+resolve_link("Old name")   -> nil
+backlinks("New name.md")   -> []
+source body                -> "See [[Old name]].\n"    (untouched)
+```
+
+So a rename silently orphans every inbound link. The sharp edge is what happens
+next: an orphaned link is indistinguishable from one that never resolved, so it
+renders as a **missing** link — and clicking it creates a new empty
+`Old name.md`, resurrecting a ghost of the note that was just renamed. Two
+half-notes where there was one.
+
+Three ways out, and the reason none was taken today:
+
+1. **Record it** — done here and in `LEFTOVERS.md`. The rename itself is safe;
+   the cost is confusion, not data loss.
+2. **Make the stale link honest** — stop offering to create a ghost for a target
+   that was renamed rather than never written. Needs a rename breadcrumb the
+   vault does not keep, so it is more design than it looks.
+3. **Build the confirmation flow the plan specified** — after a rename, show what
+   links here and offer to update it. That is a feature with its own UI, not a
+   patch, and it belongs in its own map if renaming linked notes ever becomes a
+   habit.
 
 ---
 
