@@ -1,75 +1,48 @@
 // ---- Terminal color themes -------------------------------------------------
-// xterm palettes selectable from Settings → Appearance. The chosen key is
-// stored in localStorage["bc:term-theme"]; "industrial" derives its colors from
-// the app's CSS tokens so it tracks the light/dark app theme.
+// The palettes are NOT defined here. `BusterClaw.TerminalTheme` owns the list and
+// the root layout renders it into <meta name="bc-term-palettes">; this file reads
+// it and applies it. There used to be a copy here and a second partial copy in
+// AppearanceLive, kept in step by a comment, with no test on either — so removing
+// a theme could leave a dead palette in one language or a swatch selecting a
+// theme that no longer existed in the other.
+//
+// The chosen key is stored in localStorage["bc:term-theme"]. "industrial" arrives
+// with a null palette, meaning token-derived: it is resolved from the app's live
+// CSS custom properties so it tracks the light/dark switch, which is the one thing
+// Elixir cannot do for it.
 const TERM_THEME_KEY = "bc:term-theme"
 const TERM_THEME_DEFAULT = "industrial"
-const TERM_THEMES = {
-  industrial: null, // sentinel — resolved from CSS tokens, see termThemePalette
-  light: {
-    background: "#fafafa", foreground: "#1a1a1a", cursor: "#1a1a1a",
-    cursorAccent: "#fafafa", selectionBackground: "#c7d2fe", selectionForeground: "#1a1a1a"
-  },
-  solarized: {
-    background: "#002b36", foreground: "#839496", cursor: "#93a1a1",
-    cursorAccent: "#002b36", selectionBackground: "#073642",
-    black: "#073642", red: "#dc322f", green: "#859900", yellow: "#b58900",
-    blue: "#268bd2", magenta: "#d33682", cyan: "#2aa198", white: "#eee8d5",
-    brightBlack: "#586e75", brightRed: "#cb4b16", brightGreen: "#586e75", brightYellow: "#657b83",
-    brightBlue: "#839496", brightMagenta: "#6c71c4", brightCyan: "#93a1a1", brightWhite: "#fdf6e3"
-  },
-  dracula: {
-    background: "#282a36", foreground: "#f8f8f2", cursor: "#f8f8f2",
-    cursorAccent: "#282a36", selectionBackground: "#44475a",
-    black: "#21222c", red: "#ff5555", green: "#50fa7b", yellow: "#f1fa8c",
-    blue: "#bd93f9", magenta: "#ff79c6", cyan: "#8be9fd", white: "#f8f8f2",
-    brightBlack: "#6272a4", brightRed: "#ff6e6e", brightGreen: "#69ff94", brightYellow: "#ffffa5",
-    brightBlue: "#d6acff", brightMagenta: "#ff92df", brightCyan: "#a4ffff", brightWhite: "#ffffff"
-  },
-  nord: {
-    background: "#2e3440", foreground: "#d8dee9", cursor: "#d8dee9",
-    cursorAccent: "#2e3440", selectionBackground: "#434c5e",
-    black: "#3b4252", red: "#bf616a", green: "#a3be8c", yellow: "#ebcb8b",
-    blue: "#81a1c1", magenta: "#b48ead", cyan: "#88c0d0", white: "#e5e9f0",
-    brightBlack: "#4c566a", brightRed: "#bf616a", brightGreen: "#a3be8c", brightYellow: "#ebcb8b",
-    brightBlue: "#81a1c1", brightMagenta: "#b48ead", brightCyan: "#8fbcbb", brightWhite: "#eceff4"
-  },
-  gruvbox: {
-    background: "#282828", foreground: "#ebdbb2", cursor: "#ebdbb2",
-    cursorAccent: "#282828", selectionBackground: "#504945",
-    black: "#282828", red: "#cc241d", green: "#98971a", yellow: "#d79921",
-    blue: "#458588", magenta: "#b16286", cyan: "#689d6a", white: "#a89984",
-    brightBlack: "#928374", brightRed: "#fb4934", brightGreen: "#b8bb26", brightYellow: "#fabd2f",
-    brightBlue: "#83a598", brightMagenta: "#d3869b", brightCyan: "#8ec07c", brightWhite: "#ebdbb2"
-  },
-  monokai: {
-    background: "#272822", foreground: "#f8f8f2", cursor: "#f8f8f0",
-    cursorAccent: "#272822", selectionBackground: "#49483e",
-    black: "#272822", red: "#f92672", green: "#a6e22e", yellow: "#f4bf75",
-    blue: "#66d9ef", magenta: "#ae81ff", cyan: "#a1efe4", white: "#f8f8f2",
-    brightBlack: "#75715e", brightRed: "#f92672", brightGreen: "#a6e22e", brightYellow: "#f4bf75",
-    brightBlue: "#66d9ef", brightMagenta: "#ae81ff", brightCyan: "#a1efe4", brightWhite: "#f9f8f5"
-  },
-  "tokyo-night": {
-    background: "#1a1b26", foreground: "#c0caf5", cursor: "#c0caf5",
-    cursorAccent: "#1a1b26", selectionBackground: "#283457",
-    black: "#15161e", red: "#f7768e", green: "#9ece6a", yellow: "#e0af68",
-    blue: "#7aa2f7", magenta: "#bb9af7", cyan: "#7dcfff", white: "#a9b1d6",
-    brightBlack: "#414868", brightRed: "#f7768e", brightGreen: "#9ece6a", brightYellow: "#e0af68",
-    brightBlue: "#7aa2f7", brightMagenta: "#bb9af7", brightCyan: "#7dcfff", brightWhite: "#c0caf5"
-  },
-  matrix: {
-    background: "#000000", foreground: "#00ff41", cursor: "#00ff41",
-    cursorAccent: "#000000", selectionBackground: "#0f3d0f"
+
+// Parsed once. The <meta> is server-rendered and cannot change without a reload,
+// so re-reading it per terminal or per theme switch would be pure work.
+let TERM_THEMES = null
+
+function termThemes() {
+  if (TERM_THEMES) return TERM_THEMES
+  const meta = document.querySelector('meta[name="bc-term-palettes"]')
+  try {
+    TERM_THEMES = JSON.parse(meta?.content || "{}")
+  } catch (_e) {
+    // A malformed payload must not take the terminal with it: an empty table
+    // means every key resolves token-derived, which is the default theme and is
+    // always legible.
+    TERM_THEMES = {}
   }
+  return TERM_THEMES
 }
 
+// The stored key, resolved against the themes that actually exist. Six presets
+// were removed on 08-09, so anyone who had picked Dracula has a stale key in
+// localStorage; without this they would keep a legible terminal (the palette
+// lookup falls through to token-derived) but the picker would highlight nothing,
+// which reads as the setting being lost rather than retired.
 export function currentTermTheme() {
-  return localStorage.getItem(TERM_THEME_KEY) || TERM_THEME_DEFAULT
+  const stored = localStorage.getItem(TERM_THEME_KEY)
+  return stored && stored in termThemes() ? stored : TERM_THEME_DEFAULT
 }
 
 function termThemePalette(key) {
-  const preset = TERM_THEMES[key]
+  const preset = termThemes()[key]
   if (preset) return preset
   // "industrial" (or unknown) — match the live app surface via CSS tokens.
   const css = getComputedStyle(document.documentElement)

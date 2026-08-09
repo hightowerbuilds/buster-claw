@@ -4,6 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
+    <%!-- Terminal colour palettes, owned by `BusterClaw.TerminalTheme` and read
+          here by `assets/js/lib/theme.js`. In the head rather than on the picker
+          because a terminal can mount on a page that has no picker, so the data
+          has to be wherever a terminal is. A `<meta>` rather than an inline
+          `<script type="application/json">`: this app's CSP is `script-src 'self'`
+          with nothing inline, and while a JSON data block is not executed and so
+          not actually blocked, the repo deliberately removed its last inline
+          script to drop the nonce — re-adding a tag that merely looks like a
+          violation buys nothing. --%>
+    <meta name="bc-term-palettes" content={BusterClaw.TerminalTheme.payload_json()} />
     <.live_title default="Buster Claw" suffix=" · Buster Claw" phx-no-format>{assigns[:page_title]}</.live_title>
     <link
       rel="preload"

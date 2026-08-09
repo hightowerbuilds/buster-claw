@@ -38,21 +38,7 @@ defmodule BusterClawWeb.AppearanceLive do
   alias BusterClaw.Appearance
   alias BusterClaw.ChatSkin
   alias BusterClaw.ChatTextSize
-
-  # Swatch metadata for the terminal-theme picker. The actual xterm palettes
-  # live in `assets/js/lib/theme.js` (TERM_THEMES); `key` must match. bg/fg/accent
-  # are only used to render the preview chip. "industrial" mirrors the app's tokens.
-  @terminal_themes [
-    %{key: "industrial", label: "Industrial", bg: "#121212", fg: "#f4f1ea", accent: "#ff4d1c"},
-    %{key: "dracula", label: "Dracula", bg: "#282a36", fg: "#f8f8f2", accent: "#bd93f9"},
-    %{key: "solarized", label: "Solarized", bg: "#002b36", fg: "#839496", accent: "#2aa198"},
-    %{key: "nord", label: "Nord", bg: "#2e3440", fg: "#d8dee9", accent: "#88c0d0"},
-    %{key: "gruvbox", label: "Gruvbox", bg: "#282828", fg: "#ebdbb2", accent: "#fabd2f"},
-    %{key: "monokai", label: "Monokai", bg: "#272822", fg: "#f8f8f2", accent: "#a6e22e"},
-    %{key: "tokyo-night", label: "Tokyo Night", bg: "#1a1b26", fg: "#c0caf5", accent: "#7aa2f7"},
-    %{key: "light", label: "Light", bg: "#fafafa", fg: "#1a1a1a", accent: "#2563eb"},
-    %{key: "matrix", label: "Matrix", bg: "#000000", fg: "#00ff41", accent: "#00ff41"}
-  ]
+  alias BusterClaw.TerminalTheme
 
   # `phx-value-surface` arrives as a string. Resolve it through this table rather
   # than String.to_atom on user input.
@@ -67,7 +53,7 @@ defmodule BusterClawWeb.AppearanceLive do
     {:ok,
      socket
      |> assign(:page_title, "Appearance")
-     |> assign(:terminal_themes, @terminal_themes)
+     |> assign(:terminal_themes, TerminalTheme.themes())
      |> assign(:surfaces, Appearance.surfaces())
      |> assign(:chat_skins, ChatSkin.skins())
      |> assign(:chat_skin, ChatSkin.get())
@@ -473,10 +459,12 @@ defmodule BusterClawWeb.AppearanceLive do
               >
                 <span
                   class="flex size-11 shrink-0 flex-col items-start justify-center gap-1 rounded-md px-2 font-mono"
-                  style={"background:#{t.bg}"}
+                  style={"background:#{t.swatch.bg}"}
                 >
-                  <span class="text-xs font-bold leading-none" style={"color:#{t.fg}"}>$ ls</span>
-                  <span class="h-1.5 w-5 rounded-full" style={"background:#{t.accent}"}></span>
+                  <span class="text-xs font-bold leading-none" style={"color:#{t.swatch.fg}"}>
+                    $ ls
+                  </span>
+                  <span class="h-1.5 w-5 rounded-full" style={"background:#{t.swatch.accent}"}></span>
                 </span>
                 <span class="min-w-0">
                   <span class="block text-sm font-semibold">{t.label}</span>
