@@ -390,3 +390,160 @@ Two entries in LAUNCH **G-40**, both of them "a build and a person looking":
 Nothing else is open on either roadmap. Everything deferred was deferred with a
 trigger — timestamps, a theme library, import/export, a light generated scheme — and
 each one says what would have to be true to pick it up.
+
+---
+
+# Pockets — folders that know what they are for
+
+**A second roadmap ran the whole day in parallel with the two above.** Scoped
+08-08, and by tonight Phases 0–4 are shipped, Phase 5 is resolved, Phase 6 is
+open space, and Part XI — the app's own art — is live.
+
+| Shipped | Commits |
+|---|---|
+| Scoped, then the UI placement locked (D9) | `b4bf10d` `aa14a7b` |
+| Part X — the long horizon, BusterClaw as Pocket #0 | `fbaf89a` |
+| Phase 0 measured, Phase 1 — the Pocket, local only | `a5f88a1` |
+| Phase 2a — roles, and `backgrounds/` becomes the first consumer | `fe12bc9` |
+| The read fence — `resolve/2`, `asset_url/2`, one asset route | `7d20584` |
+| Phase 5 resolved: half shipped, half refused with reasons | `5e4ce41` |
+| Phases 2b, 3, 4 — the tab, the mount, the agent's reach | `68ba804` |
+| Part XI — dock icons and homepage banner become swappable | `aaa92ef` |
+| The upload never uploaded; replaced art is now kept | `64cf81d` |
+| Swapped art actually appears, dock included | `5e0edce` |
+
+## The ask was to strengthen the symlink. The answer was to replace it
+
+The operator wanted specialised folders — "Pockets" — that hold a user's chosen
+media, with the workspace's symlink style made stronger.
+
+Reading the code said the honest way to strengthen a symlink is to stop using
+one. **Three layers of this codebase exist specifically to defeat symlinks:**
+`FileManager.within?/2` canonicalizes every path component with `read_link`, and
+`Notes` and `Agent.Attachments` both `lstat` and refuse. A Pocket built on
+`File.ln_s/2` would be fought by our own security code on every read.
+
+At the filesystem level there is no difference between the link the operator made
+on purpose and one an attacker planted. **A mount is the same idea with the
+missing half supplied** — an author, a record, a permission, and an off switch.
+
+## Phase 0 paid for itself on a question it was not asked
+
+Four unknowns were scoped. One withdrew (images go through our own controller, so
+WKWebView never sees a path). One is still open and blocks nothing. One turned a
+week into an afternoon — `appearance.ex` already contained both idioms its
+migration needed, *and* the hazard, written by whoever did it last: the pointer
+rewrite must run before the pool migration, because **"a slot misread as empty
+gets a second image landed on it."**
+
+The fifth was not on the list. Writing the manifest example exposed that `source:`
+and `writable:` **cannot be frontmatter fields at all** — `POCKET.md` is inside
+the workspace and the agent can write there, so a mount path in the manifest
+means an agent mounts a folder by editing Markdown. Mount and permission moved to
+an app-owned registry. **The manifest holds description; it never holds
+permission**, and that one line is what makes D4 structural rather than a policy
+check.
+
+## Three agents, and the seam that caught me
+
+Phases 2b/3/4 went to three agents on disjoint files. The read fence was written
+first, by hand, rather than left between them — the chat-attachment lesson from
+08-08, where a feature shipped green and did not work because one seam belonged
+to nobody.
+
+It was still the seams that produced everything interesting:
+
+- The mounts agent found **D5 pointed at a mechanism that does not exist**.
+  `Dispatcher.token_for/1` hands an unattended shift the *full* token and
+  `ApiAuth` calls it `:trusted`, so an unattended run presents as trusted. It
+  said so plainly instead of working around it.
+- It also flagged a defect in *my* file: `Appearance` stores workspace-relative
+  pointers, so mounting `backgrounds` would read every slot as empty — the exact
+  double-landing hazard above. Refused in both directions.
+- **The D4 lockstep caught me.** My own fix put `mount/3` on `Pockets`, making
+  the writer transitively reachable from the command surface. The call-graph
+  guard failed the build, correctly. Moving it to `Pockets.Operator` restored the
+  structural guarantee. Weakening the guard to fit the mistake was never an
+  option.
+
+Testing my own contract also caught a catch-all `resolve/2` clause sitting above
+the by-name clause and swallowing it — every valid request 404'd while the fence
+looked correct.
+
+## Part XI: the operator's design beat both options offered
+
+The dock icons and homepage banner became swappable. Offered a choice between
+auto-pick and an operator picker, the operator specified something better:
+
+| The Pocket | What renders |
+|---|---|
+| absent or empty | the shipped default |
+| exactly one image | that image |
+| **two or more** | **the text label**, plus a plain error |
+
+**Over-full falls back to text, not to the shipped default.** Picking the first
+image would silently choose for them, and the whole reason there is an error is
+that the app cannot know which they meant. Falling back to the default would hide
+the problem — the dock would look right and the stray file would sit there
+forever. Text is the only fallback that differs from *both* correct states. **The
+art vanishing is the notification; the message only explains it.**
+
+Every state is derived from a directory listing on read, so **there is no repair
+action to build** — no revalidate, no reset, no way to get stuck.
+
+Two things were already true and made it small: the art is real PNGs in
+`priv/static`, so the shipped defaults already sit read-only in `priv/` exactly
+where X.5.a demands and nothing is seeded; and the dock has rendered a text label
+for an item with no image since Calendar shipped without a PNG. **The failure
+state is behaviour that predates the roadmap.**
+
+Later the operator added: replaced art is **moved to the workspace root, never
+deleted**. A move that fails leaves the original in place — the alternative is
+destroying an image we could not preserve.
+
+## "It uploads but nothing changes" — two reports, two different bugs
+
+Both were real, and neither was where it looked.
+
+**The first**: `auto_upload: true` fires `phx-change` on *selection*, while the
+entry is still in flight, so consuming there returned `[]` and the file went
+nowhere. The fix is the `progress:` callback. A LiveView test drove the component
+and **passed on the first run**, which is what located the bug on the client half
+rather than in the module. Compounding it: nothing rendered *any* failure — not
+config errors, not per-entry errors, not `Brand.put/3`'s own refusal, which was
+being thrown away inside the `{:ok, _}` the consumer wants. A refused file looked
+exactly like a file that had not been chosen.
+
+**The second, and the better finding**: the art swapped and the dock did not
+show it. **A Phoenix app layout is rendered once at mount and is never part of a
+later diff.** The dock lives there. No assign can reach it. So the dock nav moved
+out into `DockNavLive`, a sticky nested LiveView — the pattern `DockLive` already
+established beside it.
+
+Two bugs surfaced inside that fix:
+
+1. The first attempt had `DockNavLive` subscribe and handle the broadcast itself.
+   **It never fired** — `ChromeHook` runs for every LiveView including that one
+   and `:halt`s the message, so the view's own clause was dead code that read as
+   correct.
+2. **`render(view)` in LiveViewTest re-renders the whole tree server-side**, so it
+   reported the dock as updating when a browser never would have. That is why an
+   earlier test passed against a broken dock. The replacement asserts on a
+   *second open surface*, which is what distinguishes a diff from a full
+   re-render.
+
+## The rule the day kept proving
+
+**A test that passes on the surface you changed proves less than it looks like it
+does.** It held for the seam that belonged to nobody on 08-08, for the D4 guard
+catching its own author, and twice over for a dock that a full re-render insisted
+was fine.
+
+## What needs a person
+
+- **The live walk in a packaged build**: drop art in from Finder, watch a slot go
+  to text, remove the extra, watch it come back. Also the mount gesture, which
+  has a registry and no button yet.
+- **`status_live.ex` finally paid a debt** — the banner moved out rather than the
+  file growing, 944 → 929, and the cap followed it down in the same commit. It is
+  the first time that ratchet has moved in the direction it is usually ignored in.

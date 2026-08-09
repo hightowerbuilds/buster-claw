@@ -3,10 +3,17 @@
 **Scoped 08-08-26 · Status: PHASES 0–4 SHIPPED (08-08/09). Phase 5 resolved —
 half shipped, half refused with reasons. Phase 6 is open space.**
 
-**Now building [Part XI — Brand Pockets](#part-xi--brand-pockets-the-apps-own-art-becomes-swappable)**
-(operator, 08-09): the five dock icons and the homepage banner become swappable.
-That is [Part X](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0)'s
-Pocket #0 arriving for real, at the assets layer only.
+**[Part XI — Brand Pockets](#part-xi--brand-pockets-the-apps-own-art-becomes-swappable)
+SHIPPED 08-09**: the five dock icons and the homepage banner are swappable, with
+in-app upload, the over-full → text rule, and replaced art moved to the workspace
+root rather than deleted. That is
+[Part X](#part-x--the-long-horizon-busterclaw-ships-as-pocket-0)'s Pocket #0
+arriving for real, at the assets layer only.
+
+**What remains needs a person, not more code:** the mount gesture has a registry
+(`Pockets.Operator.mount/3`) and no button yet, and the live walk in a packaged
+build — drop art in from Finder, watch a slot fall back to text, remove the extra
+and watch it return — is a `LAUNCH G-40` item.
 
 `D7` held — `backgrounds/` migrated, so the roadmap continued. UI placement is
 [D9](#d9--the-ui-is-a-home-sub-tab-and-it-is-minimalist), a minimalist Home
