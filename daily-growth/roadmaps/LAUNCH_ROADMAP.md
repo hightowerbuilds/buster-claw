@@ -869,6 +869,24 @@ logged-in checkout.
 - [ ] **Byte ranges and codecs in the packaged app**, not a browser tab: confirm
       `RangeResponse` satisfies WKWebView's media stack and the probed codecs
       play. The two acceptance criteria `MUSIC_ROADMAP` could never close.
+- [ ] **The Clinch's management gate, clicked.** Inherited 08-08 from
+      `CLINCH_ROADMAP.md` Phase 2, whose own acceptance criterion this is.
+      Settings → the Clinch: store a credential, see it listed by name, delete
+      it. Then **Reveal key** and confirm the recovery key appears — it is now
+      read from the Keychain by Rust rather than assigned by the server, so this
+      is the first time that path runs against a real Keychain entry at all.
+
+      **Why no test reaches it.** The Elixir side is covered (3,093 tests), the
+      JS logic is covered (bun), and the three-place ACL registration is covered
+      by `acl_lockstep`. What none of them exercises is the actual IPC round
+      trip: `window.__TAURI__.core.invoke` → Rust → loopback with a
+      Keychain-sourced token. Dev builds also mask ACL omissions, which is
+      precisely how the co-presence commands (07-17) and `speak`/`stop_speaking`
+      (07-21) shipped dead. **A dev-shell click is not this check.**
+
+      While the packaged app is open, also confirm the **Keychain prompt** for
+      the new `secret_key_base` read is intelligible and that "Always Allow"
+      sticks — that is **G-13**'s question, now with a second caller asking it.
 
 > **If the checkout walk fails, stop and fix before the rest.** The others are
 > quality; that one is money.

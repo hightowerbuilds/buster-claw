@@ -1,6 +1,22 @@
 # The Clinch — one place for credentials, reachable from anywhere
 
-**Scoped 08-08-26 · Status: SCOPED, not started.**
+**Scoped 08-08-26 · Status: ACTIVE — Phases 0, 1, 2 shipped 08-08. Phase 3 next.**
+
+| Phase | State |
+|---|---|
+| 0 — Stop the bleeding | **DONE** (`35d7a55`, `df1d097`) |
+| 1 — The Clinch contract | **DONE** (`6ee19d1`) |
+| 2 — The management gate | **DONE** (`8aff7f9`) |
+| 3 — The screen, and evicting the env vars | **NEXT.** Unblocks BusterPhone; closes finding #5 |
+| 4 — Rotation, revocation, the second vault | Not started. Must precede Phase 5 |
+| 5–7 — Remote mode, pairing, private network | Not started (absorbed from the SSH map) |
+
+**One thing no test can close.** Everything below is verified by automated gates,
+but nobody has clicked these controls in a **packaged build**. Phase 2's own
+acceptance criterion — *"a packaged build stores and deletes a credential from
+the UI"* — needs a person, a signed build and an afternoon. It belongs with
+LAUNCH **G-40**, which is already the bucket for exactly this class of item, and
+it should travel there rather than sit here looking done.
 
 **Supersedes `SSH_REMOTE_ACCESS_ROADMAP.md`** (researched 08-08, archived the
 same day without ever starting). Its research is carried forward here in full —
@@ -56,9 +72,9 @@ kind of wall that actually holds against it.
 
 | Adversary | The wall that holds | Status today |
 |---|---|---|
-| **The agent** — prompt-injectable, runs in-VM with real command authority | No command ever returns a value. A model emits a reference; resolution happens in the executor at the moment of use. | Proven by `Egress.SecretRef` + `Secrets.resolver/0`. But the **write** path leaks — see Phase 0. |
-| **The remote operator** — holds an SSH key, may be a stolen laptop | Management is unreachable, not merely denied: it requires the full loopback API token, which lives only in the Keychain and the shell process env. | Does not exist. |
-| **Someone with the disk** — a backup, a stolen Mac, a copied `.db` | AES-256-GCM at rest via `Vault`, keyed from `secret_key_base`, which lives in the Keychain and never on disk. | Mostly true. Two holes, both in Phase 0. |
+| **The agent** — prompt-injectable, runs in-VM with real command authority | No command ever returns a value. A model emits a reference; resolution happens in the executor at the moment of use. | **Holds.** `Egress.SecretRef` + `Clinch.resolver/2` always did the read side; Phase 0 closed the write side, where the value reached `security_events` in the clear. |
+| **The remote operator** — holds an SSH key, may be a stolen laptop | Management is unreachable, not merely denied: it requires the full loopback API token, which lives only in the Keychain and the shell process env. | **Built (Phase 2)** — `RequireTrusted` + Tauri IPC. Unproven over an actual tunnel until Phase 5, which is the point of that phase's exit criteria. |
+| **Someone with the disk** — a backup, a stolen Mac, a copied `.db` | AES-256-GCM at rest via `Clinch.Vault`, keyed from `secret_key_base`, which lives in the Keychain and never on disk. | **Holds.** Both Phase 0 holes closed; the master key stopped being a LiveView assign in Phase 2. |
 
 Three adversaries, three walls. A design that answers only one of them is not a
 vault, it is a table with a nice name.
@@ -174,19 +190,22 @@ management, not crypto.**
 
 ### The findings this roadmap closes
 
-| # | Finding | Phase |
-|---|---|---|
-| 1 | **Env-var credentials are unreachable in a packaged build.** A double-clicked `.app` inherits launchd's environment, not a shell's; the shell forwards only eight vars (`main.rs:65-72`). Twilio/Supabase/Finnhub therefore cannot be configured by any user of a shipped build — and `phone_component.ex:178` tells them to "set TWILIO_ACCOUNT_SID," an instruction with nowhere to be carried out. | 3 |
-| 2 | **`browser_secret_put` writes the plaintext secret into the audit log.** It is `:mutate`, so `audit_invoke` captures its args (`commands.ex:294-308`). `scrub_audit_args` covers `browser_flow` steps and note bodies, not this (`commands.ex:318-328`). The arg key is `"value"`, which `@sensitive_fragments` does not match (`sentinel.ex:43`), and the value-shape masks only catch prefixed tokens, 40+ char alnum runs and Luhn cards — an ordinary site password matches none. `secret.ex` promises the value "never appears in a dump of the database"; true of `browser_secrets`, false of `security_events`. | 0 |
-| 3 | **No GUI for the `$secret` store.** The only writer is `commands/web.ex:708`, so the operator's only way to store a password is to type it to a model or into a terminal — where the model reads it going in, the transcript keeps it, and shell history keeps it. Defeats the stated design in `secrets.ex:26-34`. | 2 |
-| 4 | **`agent_token` is the one loopback token with no Keychain path.** The shell provisions three secrets; `runtime.exs:199` reads `BUSTER_CLAW_AGENT_API_TOKEN`, which nothing sets. So `ApiToken.agent_value/0` writes cleartext to the data dir — and it is the token authorizing untrusted-provenance agent runs. | 0 |
-| 5 | **Integration tokens round-trip to the browser in cleartext on edit.** `integrations_live.ex:75` builds the changeset from the loaded (decrypted) struct; `normalize_value/2` has no password case, so `core_components.ex:292` renders `value="ghp_…"` into the DOM and the LiveView diff. Loopback-only today — but this is exactly the class of leak a tunnel promotes. | 2 |
-| 6 | **Two vaults doing one job, and no rotation story.** `Vault` and `Google.Vault` differ only in AAD and key prefix; `Google.Account` hand-rolls what `Encrypted` already does. Everything derives from `secret_key_base`, `Recovery` is read-only, and there is no re-key path. | 4 |
-| 7 | **The in-app terminal gets the full-access token.** `main.rs:575` puts `BUSTER_CLAW_API_TOKEN` into the shell process env and `terminal.rs:95` forwards it to every PTY. Deliberate and documented — but the scoped `mcp`/`agent` tokens exist for exactly this shape of problem, and the terminal gets the unscoped one. | 4 |
+Three of the seven are closed. **Finding #2 turned out to be wider than written**
+— see Phase 0.
+
+| # | Finding | Phase | State |
+|---|---|---|---|
+| 1 | **Env-var credentials are unreachable in a packaged build.** A double-clicked `.app` inherits launchd's environment, not a shell's; the shell forwards only eight vars (`main.rs:65-72`). Twilio/Supabase/Finnhub therefore cannot be configured by any user of a shipped build — and `phone_component.ex:178` tells them to "set TWILIO_ACCOUNT_SID," an instruction with nowhere to be carried out. | 3 | open |
+| 2 | **`browser_secret_put` writes the plaintext secret into the audit log.** It is `:mutate`, so `audit_invoke` captures its args (`commands.ex:294-308`). `scrub_audit_args` covers `browser_flow` steps and note bodies, not this (`commands.ex:318-328`). The arg key is `"value"`, which `@sensitive_fragments` does not match (`sentinel.ex:43`), and the value-shape masks only catch prefixed tokens, 40+ char alnum runs and Luhn cards — an ordinary site password matches none. `secret.ex` promises the value "never appears in a dump of the database"; true of `browser_secrets`, false of `security_events`. | 0 | **closed** |
+| 3 | **No GUI for the `$secret` store.** The only writer is `commands/web.ex:708`, so the operator's only way to store a password is to type it to a model or into a terminal — where the model reads it going in, the transcript keeps it, and shell history keeps it. Defeats the stated design in `secrets.ex:26-34`. | 2 | **closed** — the Clinch panel is that GUI |
+| 4 | **`agent_token` is the one loopback token with no Keychain path.** The shell provisions three secrets; `runtime.exs:199` reads `BUSTER_CLAW_AGENT_API_TOKEN`, which nothing sets. So `ApiToken.agent_value/0` writes cleartext to the data dir — and it is the token authorizing untrusted-provenance agent runs. | 0 | **closed** |
+| 5 | **Integration tokens round-trip to the browser in cleartext on edit.** `integrations_live.ex:75` builds the changeset from the loaded (decrypted) struct; `normalize_value/2` has no password case, so `core_components.ex:292` renders `value="ghp_…"` into the DOM and the LiveView diff. Loopback-only today — but this is exactly the class of leak a tunnel promotes. | ~~2~~ 3 | **open** — the new path exists, integrations have not moved onto it |
+| 6 | **Two vaults doing one job, and no rotation story.** `Vault` and `Google.Vault` differ only in AAD and key prefix; `Google.Account` hand-rolls what `Encrypted` already does. Everything derives from `secret_key_base`, `Recovery` is read-only, and there is no re-key path. | 4 | open |
+| 7 | **The in-app terminal gets the full-access token.** `main.rs:575` puts `BUSTER_CLAW_API_TOKEN` into the shell process env and `terminal.rs:95` forwards it to every PTY. Deliberate and documented — but the scoped `mcp`/`agent` tokens exist for exactly this shape of problem, and the terminal gets the unscoped one. | 4 | open |
 
 ---
 
-## Phase 0 — Stop the bleeding
+## Phase 0 — Stop the bleeding — **DONE 08-08**
 
 Two live leaks. Neither needs a design, neither depends on anything else here,
 and both should land before the Clinch has a name in code.
@@ -206,6 +225,28 @@ and both should land before the Clinch has a name in code.
 a password-shaped input (short, no credential prefix, not Luhn-valid) — the case
 today's masks all miss. A test asserts all three loopback tokens resolve from
 env in a release, and that no token file is created when they do.
+
+### What it turned out to be — **the leak was wider than written above**
+
+Raw args reached **four** Sentinel sinks and `scrub_audit_args` guarded exactly
+one: the invoke audit. The rate-limit block, both refusal paths, and
+`Sentinel.Pending` all carried them untouched. So a credential **refused** for an
+untrusted caller leaked where the same credential **accepted** for a trusted one
+did not — the audit was strictest exactly where the least happened.
+
+Fixing four call sites would have left a fifth to forget, so the scrub moved into
+`record/3`, the one function every Sentinel sink in `Commands` already passes
+through. `Pending` gets it explicitly, being the one sink that does not.
+
+That is the roadmap's own argument applied to its first fix, and it is worth
+generalising: **a finding written from reading is a lower bound.** The write-up
+named the sink that was easiest to see.
+
+Test discipline that came out of it and should hold for the rest: the test value
+is *password-shaped* on purpose — short, unprefixed, not Luhn-valid — because a
+`ghp_`-style value is caught by Sentinel's existing generic masks and would prove
+nothing about the scrub under test. Every guard in this roadmap was then verified
+by **breaking the fix and watching the test fail**, not by watching it pass.
 
 ---
 
