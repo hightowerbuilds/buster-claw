@@ -1,6 +1,6 @@
 # Home Activity + Notes — minutes separated from the notebook
 
-**Scoped 08-08-26 · Status: IN PROGRESS — Phases 0-2 complete.**
+**Scoped 08-08-26 · Status: COMPLETE 08-08-26 — all phases closed, archived.**
 
 Before this implementation, Home had one **Notes** tab doing two jobs badly by
 definition:
@@ -19,16 +19,21 @@ This map separates those jobs:
 No existing journal file is moved or rewritten. The split changes the product
 model and UI, not the user's historical record.
 
-### Implementation checkpoint
+### What shipped
 
-The product split is done. Home carries distinct Notes and far-right Activity
-tabs; Activity is read-only, live-updating BC Minutes with seven-day metrics; and
-Notes is a working Markdown vault — folders, recursive discovery, safe creation,
-rename and move, a writing/preview surface, 700 ms autosave with ⌘S, an honest
-five-state save chip, atomic revision-checked writes, focus/tick reconciliation,
-conflict recovery that can copy the draft out, unsupported-file handling, and
-confirmed deletion. What remains is the notebook's *finding* half: search,
-wikilinks, backlinks, keyboard navigation, and the `note_*` command family.
+Home carries distinct Notes and far-right Activity tabs. Activity is read-only,
+live-updating BC Minutes with seven-day metrics. Notes is a working Markdown
+notebook: folders, recursive discovery, safe creation, rename and move, a
+writing/preview surface, 700 ms autosave with ⌘S, an honest five-state save chip,
+atomic revision-checked writes, focus/tick reconciliation, conflict recovery that
+can copy the draft out, unsupported-file handling, confirmed deletion — and then
+the finding half: title/body search with snippets, a ⌘P switcher, `[[wiki links]]`
+with create-on-click for missing targets, backlinks, and a five-command `note_*`
+family the agent may use only when asked.
+
+Phase 5 is closed **unbuilt**, with each candidate's reason recorded below. It
+was always a list of candidates, not promises, and nothing on it has a measured
+user behind it yet.
 
 ### Delivery ledger
 
@@ -37,9 +42,9 @@ wikilinks, backlinks, keyboard navigation, and the `note_*` command family.
 | 0 — language and data contract | **Complete** | Separate registry entries; Activity is far right; journal paths/commands preserved; Introduction, jobs, catalog, Explore copy, and tests teach the split | Optional `activity_*` command aliases remain intentionally deferred |
 | 1 — BC Minutes in Activity | **Complete** | `ActivityComponent`, read-only journal, streamed day rail, seven-day summary, live PubSub refresh, legacy operator markers | Timeline graph remains later polish |
 | 2 — Notes R1 | **Complete** | Recursive Markdown discovery; folder create + grouped rail; safe create/open/edit; rename and move; sanitized preview behind a narrow-window toggle; 700 ms autosave plus ⌘S; Unsaved/Saving…/Saved/Conflict/Save failed; atomic revision saves; focus + slow-tick reconciliation; conflict copy/reload/confirmed overwrite; unsupported-file pane; confirmed permanent delete | — |
-| 3 — search and links | **Not started** | — | Body search, switcher, wikilinks, backlinks, keyboard navigation |
-| 4 — agent collaboration | **Foundation only** | Notes context broadcasts changes and generated guidance protects the Activity/Notes boundary | `note_*` commands, host subscription, open-editor agent collision flow |
-| 5 — measured polish | **Not started** | — | Tags, outline, trash, attachments, watcher, graph only if justified |
+| 3 — search and links | **Complete** | Title/body search with snippets in the rail; ⌘P switcher (combobox, arrow/Enter/Escape, capped with the count shown); `[[wiki links]]` and `[[Folder/Note\|alias]]` outside code regions; missing links create the note; backlinks in the preview; ⌘N | Line-level jump from a search hit was not built — opening the note is the acceptance, and a highlight needs an editor scroll API the textarea does not have |
+| 4 — agent collaboration | **Complete** | `note_list/read/search/create/save`; revision-checked saves; no absolute paths and no delete; audit records path + size, never the body; host PubSub relay so an agent's note lands in an open rail; agent-vs-draft collision raises the conflict UI | — |
+| 5 — measured polish | **Closed unbuilt** | — | Every candidate declined with a reason below; each names the trigger that would reopen it |
 
 ---
 
@@ -401,7 +406,7 @@ link work has to raise those caps deliberately rather than quietly.
 
 ---
 
-## Phase 3 — Find and link notes like a notebook — NOT STARTED
+## Phase 3 — Find and link notes like a notebook — COMPLETE
 
 The feature becomes meaningfully Obsidian-like here, without building a plugin
 platform.
@@ -437,9 +442,53 @@ platform.
 **Acceptance:** links and backlinks survive reload, code-fence false positives are
 covered, missing-link creation is path-safe, and keyboard paths have JS tests.
 
+**Delivered 08-08-26.** Search reads titles, paths, and bodies and returns a
+whitespace-collapsed snippet around the first hit (a title-only match gets the
+note's opening line). Character offsets, not byte offsets — a byte-sliced window
+can cut a multi-byte character in half, and invalid UTF-8 reaching a template is
+a crash, not a cosmetic bug.
+
+Wiki links live in `BusterClaw.Notes.Links`, which classifies every line before
+scanning so fenced blocks (including a longer fence containing a shorter one) and
+inline code spans are never link syntax. An unterminated fence keeps the rest of
+the document as code, because the alternative is the user's sample flickering
+into links while they are still typing it. `replace/2` is byte-identical outside
+its substitutions.
+
+**Links render as `#note/<path>` fragments, not `/notes/<path>` URLs.** Three
+things had to agree: the sanitizer strips custom schemes (`note:` renders as a
+bare `<a>` with no href) and strips `data-` attributes, so the href is the only
+carrier; and a fragment whose click handler never runs is inert, where a path
+would be a 404 the moment JavaScript failed. Missing targets get
+`#note-new/<title>` and create the note on click.
+
+### The measured thresholds the plan asked for
+
+A 500-note vault of ~2 KB notes, development machine:
+
+| | first cut | shipped |
+|---|---|---|
+| `list/0` | 125 ms | **24 ms** |
+| `search/1` | 334 ms | **87 ms** |
+| `backlinks/1` | 295 ms | **52 ms** |
+
+The 5x was one line. `FileManager.within?/2` canonicalizes every component of
+every path — a `read_link` syscall per component, ~4,000 of them for a 500-note
+walk — and it was adding nothing: a planted symlink `lstat`s as `:symlink`, which
+matches neither the file nor the directory branch, so the walk already refused it.
+`within?/2` still guards every *caller-supplied* path, where the escape is real.
+Reading bodies through `get/1` was paying for that same check a second time.
+
+So: no SQLite FTS index. At these numbers it would buy tens of milliseconds in
+exchange for invalidation rules and a second source of truth.
+
+**Not built:** jumping to the matching line. Opening the note was the stated
+acceptance; scrolling a `<textarea>` to an offset needs an editor API this one
+does not have, and the roadmap already called it later polish.
+
 ---
 
-## Phase 4 — Agent collaboration without returning to one muddled log — FOUNDATION ONLY
+## Phase 4 — Agent collaboration without returning to one muddled log — COMPLETE
 
 Add a narrow command family backed by the same Notes context:
 
@@ -466,21 +515,56 @@ and conflict UI. The browser must never silently replace a local unsaved draft.
 **Acceptance:** an agent-created note appears in the open Notes rail without tab
 switching; an agent edit colliding with a user draft preserves both versions.
 
+**Delivered 08-08-26.** Both acceptance paths have tests. `StatusLive` subscribes
+to the Notes topic and relays to the component, which re-reads the vault and runs
+the *same* reconciliation as the focus check — clean editor adopts, draft in
+flight conflicts.
+
+Two decisions worth keeping:
+
+**The broadcast is `broadcast_from/4`, not `broadcast/3`.** The caller already
+knows what it just did; without the exclusion an autosave echoed back to the
+editor that made it and reset the file rail under the operator's cursor every
+700 ms while they typed. Every *other* subscriber still hears it, which is the
+case the relay exists for.
+
+**All three note reads are `:restricted`, not `:safe`** — unlike `journal_read`,
+`document_read`, and `memory_search`, which are safe reads of the same workspace.
+The difference is whose writing it is. The `catalog_invariants` snapshot test is
+what forced the question, by refusing three newly-safe commands.
+
+Be precise about what that buys, because tiers are easy to over-claim:
+`:restricted` gates the `:agent` and `:mcp` callers and **does not** gate
+`:agent_untrusted`, whose baseline stops only at `gated` commands. An autonomous
+run working untrusted-origin content can still read the notebook. What contains
+that is the other half of the design — every outbound send is `gated`, so a read
+cannot leave the machine without a human in the loop. The reads were deliberately
+**not** marked `gated`: that flag means outbound or irreversible, and diluting it
+would weaken the check actually doing the work.
+
+There is no `note_delete`. Deleting a note stays a human action behind the UI's
+confirmation.
+
 ---
 
-## Phase 5 — Polish after measured use — NOT STARTED
+## Phase 5 — Polish after measured use — CLOSED UNBUILT
 
-Candidates, not R1 promises:
+These were always candidates, not promises — "polish after measured use", and
+there is no measured use yet. Building them now would be the speculative breadth
+this codebase has spent two roadmaps removing. Each is closed with the trigger
+that would reopen it.
 
-- frontmatter-aware title/tags;
-- tag browser;
-- command palette actions;
-- outline generated from Markdown headings;
-- recoverable `.trash/` instead of permanent deletion;
-- daily-note template in the Notes vault (distinct from Activity minutes);
-- attachments under a note-assets directory with safe relative embeds;
-- filesystem watcher for instant external-editor updates;
-- graph view only if backlinks prove users need a graph rather than a list.
+| Candidate | Decision | Trigger to reopen |
+|---|---|---|
+| Frontmatter title/tags | **No.** `Markdown.to_html/1` already strips frontmatter, so notes carrying it render correctly today. Tags without a browser is half a feature. | The operator actually writes frontmatter and wants it read. |
+| Tag browser | **No.** Depends on the above; search already answers "notes about X". | Tags exist and search proves insufficient. |
+| Command palette actions | **No.** There is no app-wide palette to add to, and ⌘P covers the notebook. | An app-wide palette gets built for other reasons. |
+| Outline from headings | **No.** The preview already shows the headings, and a fourth rail does not fit the widths this panel targets. | Notes get long enough that scrolling the preview stops working. |
+| Recoverable `.trash/` | **No, and it is stated rather than hidden.** Deletion is confirmed and honestly labelled permanent. A `.trash/` directory shows up in every external editor's file tree, which is a real cost for a hypothetical recovery. | Someone loses a note. That is the honest trigger. |
+| Daily-note template | **Rejected outright**, not deferred. A dated note in the notebook is exactly the confusion this roadmap removed. | Never, while Activity exists. |
+| Attachments | **No.** Needs a safe relative-embed story and an `img` policy review of the sanitizer; no demand. | Someone wants an image in a note. |
+| Filesystem watcher | **No** — the plan said not to add one unless the focus/revision contract proved inadequate. It has not: focus + 20 s tick + the PubSub relay cover internal and external writes. | An external-editor change goes unnoticed long enough to matter. |
+| Graph view | **No** — gated on backlinks proving insufficient, and backlinks just shipped as a list. | The backlink list stops answering "what links here". |
 
 Explicitly out of scope until requested: Obsidian plugin compatibility,
 collaborative CRDT editing, proprietary sync, WYSIWYG rich text, and storing note
@@ -490,10 +574,10 @@ bodies in Ecto.
 
 ## Test map
 
-### Evidence at Phase 2 close (08-08-26)
+### Evidence at close (08-08-26)
 
-- Full Elixir suite: **2,824 tests, 3 doctests, 0 failures**. The two
-  browser-controller failures the earlier checkpoint recorded
+- Full Elixir suite: **2,909 tests, 4 doctests, 0 failures**. The two
+  browser-controller failures an earlier checkpoint recorded
   (`ClawConfirmTest`, `BrowserHomeControllerTest`) are green again.
 - **Run the suite with `MIX_TEST_PARTITION=<lane> mix test` in this checkout.**
   Other sessions share the working tree, and an unpartitioned run collides on the
@@ -510,8 +594,16 @@ bodies in Ecto.
   `note_dirty` → `Unsaved`, ⌘S submit, clean reconciliation vs conflicting
   reconciliation, the preview toggle, the unsupported pane, read-only Activity,
   live journal refresh, and Activity's far-right registry position.
-- JS: `bun test assets/js` — 142 passing, including `note_keys.test.js` for the
-  save chord and the dirty-announcement suppressions.
+- Phase 3/4 coverage: link parsing (fences, longer fences, unterminated fences,
+  inline spans, aliases with pipes, byte-identical rewrite), search snippets
+  including a multi-byte one, backlinks and link resolution, rail search, the
+  switcher's arrow/Enter/Escape path with `aria-selected` moving, wiki-link open
+  and create-on-click, the fenced-link non-regression, ⌘N, the five `note_*`
+  commands, a stale-revision refusal that writes nothing, vault containment, and
+  an audit row that carries `<17 bytes>` where a private body would have been.
+- JS: `bun test assets/js` — 146 passing, including `note_keys.test.js` for the
+  save chord, the dirty-announcement suppressions, and the whole `notesIntent`
+  chord table.
 - A new `BusterClawWeb.HooksRegisteredTest` asserts every `phx-hook` in `lib/`
   exists in `assets/js/hooks/index.js`. `render_hook/3` never loads JS, so an
   unregistered hook is a silently dead interaction with a green suite — the
@@ -553,33 +645,28 @@ bodies in Ecto.
 
 ### JavaScript
 
-Covered by `assets/js/lib/note_keys.test.js` (bun) plus the LiveView tests that
-exercise the events the hook pushes:
+The pure decisions are extracted to `assets/js/lib/note_keys.js` and tested with
+bun; the hooks are the wiring around them. Every event a hook can push is also
+covered server-side through `render_hook/3`.
 
-- Cmd/Ctrl+S mapping — **done**;
+- ⌘S mapping, and that ⌘S is claimed by exactly one hook — **done**;
 - conflict halts the dirty announcement, because autosave has stopped — **done**;
+- ⌘N, ⌘P, and arrows/Enter/Escape claimed only while the switcher is open —
+  **done** (`notesIntent`);
 - focus/tick revision check — the event and both its outcomes are covered
-  server-side; the listener wiring itself is not, and there is no DOM harness in
-  this repo to cover it with.
+  server-side; the listener wiring itself is not.
 
-Still owed, and waiting on Phase 3's keyboard work or a DOM harness:
-
-- Cmd/Ctrl+N;
-- debounce never submits after component destruction;
-- selection/caret survives LiveView preview patches;
-- reduced-motion and narrow-layout interactions.
-
-Run focused context, LiveView, and JS tests throughout; finish the completed
-implementation with `mix precommit`.
+**Not covered, and honestly so:** debounce-after-destroy, caret survival across
+preview patches, and reduced-motion/narrow-layout interaction. All three need a
+DOM harness this repo does not have, and inventing one for a notes panel is a
+bigger decision than this roadmap should make.
 
 ---
 
 ## Definition of done
 
-The core product split satisfies the questions below, and Notes is now a vault
-you can organize as well as write in. The roadmap remains in progress because
-finding is not building: search, wikilinks, backlinks, the keyboard paths, and
-the `note_*` command family are still ahead.
+Done. Every question below is answered by the shipped app, and Phase 5 is closed
+with reasons rather than left dangling.
 
 The split is done when a new user can answer these without explanation:
 
@@ -590,3 +677,16 @@ The split is done when a new user can answer these without explanation:
   a conflict and loses neither version.
 - “Did we create two activity logs?” → no. Activity is the one log; Notes is a
   notebook.
+- “Can I find something I wrote last month?” → search the rail, or ⌘P.
+- “Can I connect two notes?” → `[[like this]]`, and the note you linked *from*
+  shows up under **Linked from**.
+
+### What a successor should read first
+
+- `BusterClaw.Notes.Links` — why classification precedes scanning, and why
+  `replace/2` must be byte-identical outside its substitutions.
+- `entries/1` in `BusterClaw.Notes` — the 5x, and why `lstat` is the containment
+  in a walk while `within?/2` is the containment for caller-supplied paths.
+- The Notes block in `Commands.Catalog.Library` — what `:restricted` buys and,
+  more importantly, what it does not.
+- `NotesComponent`'s moduledoc — the save-state authority table.
