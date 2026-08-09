@@ -30,17 +30,19 @@ dispose of one. Approving turns a sequence you keep running by hand into a
 named composition skill. Surface good ones to the operator rather than
 silently approving your own.
 
-## Homepage shader patterns
+## Shader patterns (homepage and terminal)
 
-The homepage background is a live WebGPU **shader pattern**, chosen in
-Settings → Appearance. The shipped patterns are **smoke, waves, mandel,
+Backgrounds are live WebGPU **shader patterns**, chosen in Settings →
+Appearance. There is **one** catalog and **two** surfaces that can point at it —
+the homepage and the terminal — and the same pattern may back both at once. The
+shipped patterns are **smoke, waves, mandel,
 and weather**, all sharing one uniform/binding contract (value-noise/
 fbm helpers, a 3-colour palette in `colA`/`colB`/`colC`, and a shared
 `bg_post` tonemap pass) and coloured through the user's palette — so a
 pattern inherits their theme instead of fighting it. Shaders are used
 elsewhere in the app too (the animated face, the phone keypad, the
-seven-segment clock, the day-cycle sky); the homepage is the one surface
-you can extend from the workspace.
+seven-segment clock, the day-cycle sky); the background catalog is the one
+place you can extend from the workspace.
 
 **You can add new patterns at runtime.** Write one WGSL file at
 `shaders/<name>.wgsl` in this workspace — just the fragment entry point

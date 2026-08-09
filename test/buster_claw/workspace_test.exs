@@ -37,6 +37,56 @@ defmodule BusterClaw.WorkspaceTest do
       assert Workspace.path("skills") ==
                BusterClaw.Library.Artifact.workspace_path("skills")
     end
+
+    # THE NAME-RECLAMATION GUARD. Twice a directory was declared `:deprecated`,
+    # then had its name taken over by a new live feature, and the stale entry
+    # was left behind: `sources/` (caught 08-03) and `notes/` (caught 08-09,
+    # after the Notes vault shipped into a name the registry still called an
+    # orphan "superseded by journal/").
+    #
+    # Neither was destructive — `sweep_deprecated/0` refuses a non-empty
+    # directory — but both meant the sweeper deleted a live feature's folder on
+    # every boot where it happened to be empty, and both survived a human
+    # reading the file, because the entry reads perfectly well in isolation.
+    #
+    # The `owner:` field is no use here — it records who owned the directory
+    # historically, so `analysis/` legitimately still names a live module. The
+    # signal that a name has been RECLAIMED is that live code reaches for the
+    # path, which is precisely what the layout guard below already walks lib/ to
+    # compute. Deprecated means nothing builds it any more; if something does,
+    # the tier is wrong.
+    test "no deprecated entry is still reached by live code" do
+      reached = source_files() |> Enum.flat_map(&referenced_entries/1) |> Map.new()
+
+      reclaimed =
+        Workspace.entries(:deprecated)
+        # Directories only, mirroring `sweep_deprecated/0`'s own filter — a
+        # deprecated *file* is never swept, and the one we have (`MANUAL.html`)
+        # is referenced by `Pages.ensure/0` for the express purpose of deleting
+        # it, which is the opposite of a reclaimed name.
+        |> Enum.filter(&(&1.kind == :dir and Map.has_key?(reached, &1.name)))
+        |> Enum.map(&{&1.name, Map.fetch!(reached, &1.name)})
+
+      assert reclaimed == [], """
+      These entries are declared :deprecated but live code still reaches for them:
+
+      #{Enum.map_join(reclaimed, "\n", fn {name, file} -> "    #{name}  (#{file})" end)}
+
+      A deprecated entry is swept on boot whenever it is empty. If a feature has
+      taken the name over, move it out of the deprecated block and give it a real
+      tier, owner and seed — otherwise the sweeper deletes a live folder every
+      time the operator happens to leave it empty.
+
+      This has happened twice: `sources/` (08-03) and `notes/` (08-09).
+      """
+    end
+
+    test "a deprecated entry never seeds itself on boot" do
+      for entry <- Workspace.entries(:deprecated) do
+        assert entry.seed == nil,
+               "#{entry.name}/ is :deprecated but still seeds itself on boot"
+      end
+    end
   end
 
   # --- the lockstep guard --------------------------------------------------
@@ -366,13 +416,15 @@ defmodule BusterClaw.WorkspaceTest do
     end
 
     test "sweeps empty deprecated directories away", %{root: root} do
-      for dead <- ~w(analysis notes), do: File.mkdir_p!(Path.join(root, dead))
+      # `notes` was one of these until 08-09, when it turned out the Notes vault
+      # had reclaimed the name — see the reclamation test below.
+      for dead <- ~w(analysis extensions), do: File.mkdir_p!(Path.join(root, dead))
 
       :ok = Workspace.ensure()
 
       listing = File.ls!(root)
       refute "analysis" in listing
-      refute "notes" in listing
+      refute "extensions" in listing
     end
 
     # `sources/` was deprecated (a file-export feature nobody built) until 08-03,
@@ -389,21 +441,37 @@ defmodule BusterClaw.WorkspaceTest do
       refute "sources" in Workspace.sweep_deprecated()
     end
 
-    # Decluttering never outranks not destroying someone's files.
-    test "never removes a deprecated directory that holds anything", %{root: root} do
+    # The same story, one folder and five months later: `notes/` was an orphan
+    # "superseded by journal/" until the Notes vault shipped on 08-08 and took
+    # the name. The registry went on calling it deprecated until 08-09, so an
+    # operator with an empty vault had the directory removed on every boot.
+    # Nothing was lost — the sweeper refuses a non-empty directory, and Notes
+    # re-created it on next touch — but an empty vault is the NEW operator's
+    # state, which is the worst audience for a folder that keeps vanishing.
+    test "the reclaimed notes/ vault survives the sweep", %{root: root} do
       File.mkdir_p!(Path.join(root, "notes"))
-      File.write!(Path.join([root, "notes", "mine.md"]), "something I wrote")
 
       :ok = Workspace.ensure()
 
       assert "notes" in File.ls!(root)
-      assert File.read!(Path.join([root, "notes", "mine.md"])) == "something I wrote"
+      refute "notes" in Workspace.sweep_deprecated()
+    end
+
+    # Decluttering never outranks not destroying someone's files.
+    test "never removes a deprecated directory that holds anything", %{root: root} do
+      File.mkdir_p!(Path.join(root, "analysis"))
+      File.write!(Path.join([root, "analysis", "mine.md"]), "something I wrote")
+
+      :ok = Workspace.ensure()
+
+      assert "analysis" in File.ls!(root)
+      assert File.read!(Path.join([root, "analysis", "mine.md"])) == "something I wrote"
     end
 
     test "sweep_deprecated/0 reports what it removed", %{root: root} do
       File.mkdir_p!(Path.join(root, "analysis"))
-      File.mkdir_p!(Path.join(root, "notes"))
-      File.write!(Path.join([root, "notes", "keep.md"]), "x")
+      File.mkdir_p!(Path.join(root, "extensions"))
+      File.write!(Path.join([root, "extensions", "keep.md"]), "x")
 
       removed = Workspace.sweep_deprecated()
 

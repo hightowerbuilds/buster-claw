@@ -24,4 +24,3 @@ are an ordered list of existing native commands.
 - `steps` — (composition) JSON array of `{"command": "<native>", "args": {...}}`,
   run in order. In step args, `$<arg>` interpolates a skill input and `$prior`
   is the previous step's result.
-"""

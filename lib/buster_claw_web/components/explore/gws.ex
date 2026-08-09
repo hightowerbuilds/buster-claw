@@ -1,12 +1,12 @@
 defmodule BusterClawWeb.Explore.Gws do
   @moduledoc """
-  The Gmail / Google Workspace tutorial — four prompt-your-way cycles from a
+  The Gmail / Google Workspace tutorial — six prompt-your-way cycles from a
   cold connect to a working mail-and-calendar loop.
   """
   use BusterClawWeb, :html
   import BusterClawWeb.Explore.Shared
 
-  # The Gmail/GWS tutorial: four prompt-your-way cycles, each showing what the
+  # The Gmail/GWS tutorial: six prompt-your-way cycles, each showing what the
   # user literally types and how it unfolds command-by-command. Every command
   # named here is real — checked against the catalog and `cli.ex` when written
   # (08-02); if a command is renamed, this copy is part of the rename.

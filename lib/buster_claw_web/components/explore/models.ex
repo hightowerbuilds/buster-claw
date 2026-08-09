@@ -2,8 +2,18 @@ defmodule BusterClawWeb.Explore.Models do
   @moduledoc """
   The Models tutorial — which agent CLI and model run each surface.
 
-  Reads its surface list and floors from `BusterClaw.ModelPolicy` rather than
-  retyping them, so this page cannot drift from the policy it describes.
+  The surface list and the floor/claude-only badges render FROM
+  `BusterClaw.ModelPolicy`, so those cannot describe a policy that no longer
+  exists.
+
+  **The prose is not protected the same way, and once wasn't.** Until 08-09 this
+  page taught capability floors as a live mechanism — a whole rung of the
+  decision diagram, its `aria-label`, the figcaption, and a worked example —
+  after `@floors` had emptied out with the trading stack on 08-08. The badge
+  test kept passing because it iterates `ModelPolicy.floors()`, and an empty map
+  makes that loop vacuous. Derive-from-source protects the thing derived and
+  nothing else on the page; if you add a sentence here that quotes a count or
+  names a surface set, it is a string literal and it will rot.
   """
   use BusterClawWeb, :html
   import BusterClawWeb.Explore.Shared
@@ -59,9 +69,9 @@ defmodule BusterClawWeb.Explore.Models do
 
       <figure class="flex flex-col gap-2">
         <svg
-          viewBox="0 0 560 250"
+          viewBox="0 0 560 198"
           role="img"
-          aria-label="How the model for a surface is decided, first match wins: the surface's own model wins outright; otherwise the global default applies; on the two money surfaces a default below the floor is raised to the floor; and if nothing is set, no model flag is passed and your CLI decides."
+          aria-label="How the model for a surface is decided, first match wins: the surface's own model wins outright; otherwise the global default applies; and if nothing is set, no model flag is passed and your CLI decides."
           class="w-full text-base-content/70"
         >
           <defs>
@@ -93,7 +103,7 @@ defmodule BusterClawWeb.Explore.Models do
             x1="24"
             y1="34"
             x2="24"
-            y2="236"
+            y2="184"
             stroke="currentColor"
             stroke-width="1.5"
             marker-end="url(#mp-arrow)"
@@ -102,7 +112,6 @@ defmodule BusterClawWeb.Explore.Models do
           <g fill="none" stroke="currentColor" stroke-width="1.5">
             <rect x="40" y="34" width="250" height="38" />
             <rect x="40" y="86" width="250" height="38" />
-            <rect x="40" y="190" width="250" height="38" />
           </g>
           <rect
             x="40"
@@ -117,25 +126,23 @@ defmodule BusterClawWeb.Explore.Models do
           <g class="font-mono" fill="currentColor" font-size="10">
             <text x="54" y="58" font-weight="bold">THIS SURFACE'S OWN MODEL</text>
             <text x="54" y="110" font-weight="bold">THE GLOBAL DEFAULT</text>
-            <text x="54" y="162" font-weight="bold">RAISED TO THE FLOOR</text>
-            <text x="54" y="214" font-weight="bold">NOTHING SET</text>
+            <text x="54" y="162" font-weight="bold">NOTHING SET</text>
           </g>
 
           <g class="font-mono" fill="currentColor" font-size="8">
-            <text x="302" y="52">honoured as-is —</text>
-            <text x="302" y="63">below the floor included</text>
+            <text x="302" y="52">honoured as-is,</text>
+            <text x="302" y="63">whatever you name</text>
             <text x="302" y="104">applies to every surface</text>
             <text x="302" y="115">you did not name</text>
-            <text x="302" y="208">no --model is passed;</text>
-            <text x="302" y="219">your CLI decides</text>
           </g>
           <g class="font-mono" fill="var(--color-primary)" font-size="8">
-            <text x="302" y="156">money surfaces only, and</text>
-            <text x="302" y="167">only the GLOBAL default</text>
+            <text x="302" y="156">no --model is passed;</text>
+            <text x="302" y="167">your CLI decides</text>
           </g>
         </svg>
         <figcaption class="text-xs leading-relaxed text-base-content/60">
-          The middle rung is the whole argument of this page — read on.
+          The bottom rung is the shipped state — nothing is set, and that is an
+          answer rather than a gap.
         </figcaption>
       </figure>
 
@@ -173,11 +180,11 @@ defmodule BusterClawWeb.Explore.Models do
         <ol class="ic-unfold">
           <li>
             <code>model_policy</code> with no arguments lists every surface: the model
-            in force, where that came from — the surface's own setting, the global
-            default, a floor, or your CLI — and the floor if it has one.
+            in force, and where that came from — the surface's own setting, the
+            global default, or your CLI.
           </li>
           <li>
-            On a fresh install the answer is "your CLI" six times over, because
+            On a fresh install the answer is "your CLI" on every surface, because
             nothing is set and no <code>--model</code> is passed. That is the
             shipped state, not a gap.
           </li>
@@ -195,7 +202,7 @@ defmodule BusterClawWeb.Explore.Models do
       <.example
         n={2}
         title="Spend less, everywhere"
-        want="One knob for the whole app — with two surfaces that decline to follow."
+        want="One knob for the whole app."
       >
         <.prompt text="I'm doing a lot of small errands today. Put everything on a cheaper model." />
         <ol class="ic-unfold">
@@ -205,11 +212,14 @@ defmodule BusterClawWeb.Explore.Models do
             you have not named individually follows it from the next run onward.
           </li>
           <li>
-            Every surface except the two with a floor. Ask again what is in force
-            and those two read <span class="font-mono font-bold text-primary">floor</span>, not
-            <span class="font-mono font-bold text-base-content">default</span>
-            — the
-            app tells you it overrode you instead of pretending it didn't.
+            Every surface follows it today. The app keeps a
+            <span class="font-mono font-bold text-primary">floor</span>
+            mechanism — a surface can refuse to go below a named model, and says
+            <span class="font-mono font-bold text-primary">floor</span>
+            rather than <span class="font-mono font-bold text-base-content">default</span>
+            when it overrides you — but no surface declares one right now. The two
+            that did were the trading reads and order submission, and they left
+            with the trading stack.
           </li>
           <li>
             Clearing the default puts you back to unset, which means back to no <code>--model</code>
@@ -254,9 +264,10 @@ defmodule BusterClawWeb.Explore.Models do
     """
   end
 
-  # The six surfaces exactly as `ModelPolicy` defines them — descriptions and
-  # floors come from the policy module so the tutorial cannot describe a surface
-  # set that no longer exists.
+  # Every surface exactly as `ModelPolicy` defines them — descriptions, floors
+  # and claude-only pins all come from the policy module, so the tutorial cannot
+  # describe a surface set that no longer exists. Deliberately not a count: see
+  # the moduledoc for what happened the last time this page hardcoded one.
   defp surface_rows do
     descriptions = ModelPolicy.surfaces()
     floors = ModelPolicy.floors()

@@ -79,7 +79,7 @@ defmodule BusterClawWeb.Explore.Intro do
             <div class="min-w-0">
               <h3 class="font-semibold">Chat with Buster Claw</h3>
               <p class="mt-0.5 text-sm text-base-content/65">
-                Use the Chat sub-tab, right next to this one. Ask it to triage your
+                Use the Chat sub-tab — first in this same row. Ask it to triage your
                 inbox, draft a reply, or look something up — it runs your selected
                 agent CLI headlessly, no terminal needed.
               </p>

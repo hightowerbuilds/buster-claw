@@ -156,7 +156,24 @@ defmodule BusterClaw.Workspace do
       tier: :on_demand,
       owner: BusterClaw.Journal,
       seed: {BusterClaw.Journal, :ensure},
-      note: "Notes written from the Home tab."
+      note: "The Activity record — one YYYY-MM-DD.md per day, appended by the agent."
+    },
+    # NAME RECLAIMED 08-09, exactly as `sources/` was on 08-03 — see the comment
+    # on that entry. `notes/` was declared `:deprecated` ("superseded by
+    # journal/") back when it held an older scratch concept. The Notes vault
+    # shipped 08-08 and took the name over, which left a LIVE owner's directory
+    # sitting in the swept-when-empty list: `sweep_deprecated/0` removed it on
+    # every boot where the operator happened to have no notes, and `Notes`
+    # re-created it on next touch. Nothing was ever lost — the sweeper refuses a
+    # non-empty directory — but the registry was describing a live feature as an
+    # orphan, which is how the entry survived being read.
+    %{
+      name: "notes",
+      kind: :dir,
+      tier: :on_demand,
+      owner: BusterClaw.Notes,
+      seed: {BusterClaw.Notes, :ensure},
+      note: "The operator's Markdown vault — the Home Notes tab, read by note_*."
     },
     %{
       name: "sources",
@@ -254,14 +271,6 @@ defmodule BusterClaw.Workspace do
       owner: BusterClaw.Library.Artifact,
       seed: nil,
       note: "Unused. Reserved for file exports that were never built."
-    },
-    %{
-      name: "notes",
-      kind: :dir,
-      tier: :deprecated,
-      owner: nil,
-      seed: nil,
-      note: "Orphan. Superseded by journal/; nothing creates it any more."
     },
     %{
       name: "extensions",
@@ -482,9 +491,14 @@ defmodule BusterClaw.Workspace do
   @doc """
   Remove `:deprecated` directories — but **only when they are empty**.
 
-  These are scaffolding we shipped and then stopped using (`sources/`,
-  `analysis/`) plus one orphan nothing has created for months (`notes/`). They
-  are noise in every existing install and no new install should grow them.
+  These are scaffolding we shipped and then stopped using (`analysis/`,
+  `extensions/`, `mcp/`). They are noise in every existing install and no new
+  install should grow them.
+
+  **Before adding an entry here, check that no live module owns the name.**
+  Twice now a deprecated entry has outlived the name it described — `sources/`
+  (fixed 08-03) and `notes/` (fixed 08-09) — and in both cases the directory
+  went on being swept on boot after a new feature had claimed it.
 
   A non-empty one is left alone and logged. A user may have put something in
   there, and a folder we told them was theirs is not ours to empty — decluttering

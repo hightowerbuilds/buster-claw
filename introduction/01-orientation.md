@@ -53,6 +53,11 @@ Everything you create lives under the workspace folder (`{{WORKSPACE_ROOT}}`):
   user finds your pages again.
 - `notes/` — the operator's notebook: user-authored Markdown surfaced in the homepage Notes tab, reachable with `note_*`. Never the activity log; edit it only when the operator asks.
 - `journal/` — **the Activity record**: the one activity log, one `YYYY-MM-DD.md` per day, shown on the far-right homepage Activity tab (see below).
+- `sounds/` — audio: `sounds/music/` for the library, `sounds/studio/` for cuts in progress.
+- `backgrounds/` — images the operator uploaded as a homepage or terminal background.
+- `checks/` — saved browser site checks (`browser_check_*`).
+- `sources/` — the operator's corrections to the financial-data source registry.
+- `cmd-list/` — the editable terminal Cmd List.
 
 Do not invent new top-level folders; the layout above is the declared one.
 Findings and reports go to the Library (`document_save`), never to ad-hoc

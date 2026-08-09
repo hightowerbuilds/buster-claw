@@ -11,7 +11,7 @@ Buster Claw is now a Phoenix/LiveView application wrapped by a Tauri desktop she
 - Markdown artifacts remain local files under the configured Library root.
 - `desktop/tauri` contains the desktop shell used for development and future packaging.
 
-Buster Claw has no built-in LLM and needs no API keys: the intelligence is a terminal agent (Claude Code / Codex) running in the in-app PTY, driving the app through its command surface (`BusterClaw.Commands`) and the workspace files.
+Buster Claw has no built-in LLM and needs no API keys: the intelligence is an agent CLI the operator installed and signed in to — `claude`, `codex`, or `opencode` (`BusterClaw.ModelPolicy` picks the harness and model per surface). It runs either in the in-app PTY or headlessly via `BusterClaw.AgentRunner`, driving the app through its command surface (`BusterClaw.Commands`) and the workspace files.
 
 ## Core Contexts
 
@@ -26,10 +26,16 @@ Buster Claw has no built-in LLM and needs no API keys: the intelligence is a ter
 - `BusterClaw.Dispatch` (+ `BusterClaw.DispatchProjector`): the durable SQLite pull-queue and its projection to workspace markdown (`Dispatch.md`) that a terminal agent works.
 - `BusterClaw.Orchestration`: the unattended, indefinite "shift" — `Orchestrator` (a supervised kill-switch janitor), `Uptime`, and the `shifts` / `shift_assignments` schemas.
 - `BusterClaw.Sentinel`: the security/audit spine — every command, outbound send, and untrusted fetch is recorded; restricted actions from untrusted callers are refused and queued.
-- `BusterClaw.Trading` (+ `BusterClawWeb.TradingLive`, the top-level Trading tab): the Robinhood agentic-MCP surface — the pinned trading conversation beside a dashboard (hero/day change, positions with tax-lot cost basis, per-symbol charts, earnings). Every read runs through the operator's own `claude` CLI; the app holds no broker credentials.
-- `BusterClaw.Portfolio`: the portfolio ledger — daily balance readings per account (Robinhood keeps no value history, so this table is the only place that past exists), hand-marked transfer flows, realized-P&L backfill, and the gain math the chart and `portfolio_history` command share.
-- `BusterClaw.MarketData`: the market-data cache — daily closes/OHLCV per held symbol, quotes/indexes/earnings blob — refreshed once per trading day by `Portfolio.Recorder` so the Trading tab renders with zero agent runs on open.
+- `BusterClaw.Telephony` (+ `BusterClawWeb.PhoneLive`): BusterPhone — inbound voicemail and SMS drained from a signed relay, transcripts, the local message archive, and the trusted-caller/PIN gates that decide what becomes queue work.
+- `BusterClaw.Notes`: the operator's Markdown vault under `notes/` — the Home Notes tab, `note_*` commands, `[[wiki links]]` and backlinks. Distinct from `BusterClaw.Journal` (the Activity record) and from the Library.
+- `BusterClaw.BrowserControl` (+ `BusterClaw.AgentRuns`): co-presence verbs against the live tab, plus Agent Mode — a separate Chromium with a frozen scope and a payment gate.
+- `BusterClaw.Clinch`: the credential store — one chokepoint for encrypted values, with use (in-BEAM) split from management (Tauri IPC → loopback `/api/clinch`). See `daily-growth/roadmaps/CLINCH_ROADMAP.md`.
+- `BusterClaw.Notifications`: timers, alarms, reminders, and the SoundBoard chime routing.
+- `BusterClaw.Appearance` (+ `BusterClaw.Shaders`): one background catalog — built-in WGSL shaders, workspace `shaders/*.wgsl`, and uploaded images — shared by the homepage and the terminal.
+- `BusterClaw.Memory`: `Memory.RunSummary` rows capturing each headless run, full-text searched by `memory_search`.
 - `BusterClaw.Settings`: app settings.
+
+> The Trading, Portfolio, MarketData, Watchlist and Chart Build contexts were **deleted whole on 08-08** (`293f47f`, ~22k lines). `BusterClaw.Finance` above is what survived — it never held broker credentials.
 
 ## Desktop Shell
 

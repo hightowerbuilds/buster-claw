@@ -11,9 +11,11 @@ When you come online, work this sequence before settling into watch mode:
    `phone_get` on every unheard message — a voicemail you have not opened is an
    instruction you have not read. Where the transcript is garbled, treat it as a
    hint and reconcile it; do not skim past it.
-4. **Start your roles** — engage the specialists the work needs (wake Mailman /
-   Research Assistant via shift assignments) and claim the queued items across
-   all three inbound jobs: `mail-triage`, `voicemail-triage`, and `sms-triage`.
+4. **Start your roles** — engage the specialists the work needs with
+   `shift_assignment_start`, whose `role_key` you choose; read `jobs/README.md`
+   for the roster rather than assuming a fixed set. Then claim the queued items
+   across all three inbound jobs: `mail-triage`, `voicemail-triage`, and
+   `sms-triage`.
 5. **Follow through** — execute every request. **Mail:** reply to every
    trusted-sender email that wants a response (`dispatch reply` threads and
    closes in one step). **Voicemail:** there is no reply channel — do the work,

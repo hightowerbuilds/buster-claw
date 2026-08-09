@@ -2,8 +2,9 @@
 
 ## The loop
 
-1. **Open a terminal** in the app and start your agent in it — `claude` (or
-   `codex`). This is your own Claude Code session.
+1. **Open a terminal** in the app and start your agent in it — `claude`,
+   `codex`, or `opencode`. This is your own CLI session, on your own
+   subscription.
 2. **Go on duty** (there is a **Commands** menu in the terminal toolbar with
    this pre-filled, or type it):
 
@@ -55,15 +56,16 @@ work the queue for you — no terminal to babysit.
 - **See what it did.** Every run, command, and reply lands on the **Security**
   audit feed; the day's record is kept in `.buster-claw/dispatch/<date>/Dispatch.md`.
 
-> Needs your agent CLI (`claude`/`codex`) installed and logged in, since the
-> headless runs use your own subscription — same as the attended loop.
+> Needs your agent CLI (`claude`, `codex`, or `opencode`) installed and logged
+> in, since the headless runs use your own subscription — same as the attended
+> loop.
 
 ## Worth knowing
 
 - The agent treats email bodies as **untrusted data** — the fridge fences them in
   a code block so they cannot smuggle in instructions.
-- Add more jobs anytime by dropping a new `job-descriptions/<key>.md` file. The
-  filename is the job key used everywhere.
+- Add more jobs anytime by dropping a new `jobs/<key>.md` file. The filename is
+  the job key used everywhere.
 
 ## CLI quick reference
 

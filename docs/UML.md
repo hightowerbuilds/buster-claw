@@ -6,8 +6,9 @@ Markdown viewers.
 
 > Source of truth: sections **1 and 2 re-derived from `lib/` on 2026-08-02** — the
 > supervision tree had drifted badly (fifteen children missing, and a `DNSCluster`
-> that no longer exists), and the domain list predated Trading, Portfolio,
-> Telephony, Music and BrowserControl. Sections 3–5 still date from 2026-06-14
+> that no longer exists). The domain list was corrected again on 2026-08-09:
+> Trading, Portfolio, MarketData and Research were deleted on 08-08 and had
+> outlived their node. Sections 3–5 still date from 2026-06-14
 > (post pull-queue cut and the Delivery / Hooks / Webhooks / Scheduler / Memory
 > retirement) and have **not** been re-checked. Re-derive after large refactors,
 > and move this note when you do.
@@ -17,9 +18,9 @@ Markdown viewers.
 ## 1. System layers (functional overview)
 
 How the frontends, the unified command surface, the domain contexts, and the external world
-fit together. Buster Claw has no built-in LLM — the intelligence is a terminal agent
-(Claude Code / Codex) running in the in-app PTY, driving the command surface over the CLI/HTTP
-and pulling work from the Dispatch queue.
+fit together. Buster Claw has no built-in LLM — the intelligence is an agent CLI the operator installed
+(`claude`, `codex`, or `opencode`), running in the in-app PTY or headlessly via `AgentRunner`,
+driving the command surface over the CLI/HTTP and pulling work from the Dispatch queue.
 
 ```mermaid
 flowchart TB
@@ -39,7 +40,7 @@ flowchart TB
     subgraph Contexts["Domain Contexts"]
         Library & Browser & BrowserControl & Search & Calendar
         Google & Integrations & Dispatch & Workspace & Jobs
-        Trading & Portfolio & Finance & Research & MarketData
+        Finance & Telephony2["Clinch"] & Notes & BrowserControl2["AgentRuns"]
         Telephony & Notifications & Music & Contacts
         Orchestration & Sentinel & Settings
     end
@@ -51,7 +52,7 @@ flowchart TB
     end
 
     subgraph External["External services"]
-        TermAgent["Terminal agent<br/>(Claude Code / Codex in the PTY)"]
+        TermAgent["Agent CLI<br/>(claude / codex / opencode)"]
         GoogleAPI["Google Workspace<br/>(Gmail / Calendar)"]
         Integr["GitHub / Sentry / Umami"]
         FinanceAPI["SEC EDGAR / Finnhub"]
