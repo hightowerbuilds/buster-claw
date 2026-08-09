@@ -872,15 +872,20 @@ body { background-color: var(--color-base-100); }
    are told apart by alignment and colour exactly as before. */
 
 /* ---- minimal — a terminal transcript ----
-   No bubbles, no rounding, one column, mono throughout. Opaque on purpose: the
-   shader reading through a vim window would undo the whole point. */
+   No bubbles, no rounding, one column, mono throughout.
+
+   It does NOT touch the panel's background. Every panel on the homepage is
+   translucent with a backdrop blur (`.ic-home .ic-panel`) so the live shader
+   reads through it, and that is the app's surface treatment rather than one
+   skin's — a chat that went opaque would be the only solid panel on the page.
+   An earlier draft made both new skins opaque on the theory that a vim window
+   should look like a vim window; that was choosing the reference over the app.
+   What this skin changes is the frame's geometry: a hairline border, square
+   corners, and none of the hard offset shadow. */
 
 [data-chat-skin="minimal"] { font-family: var(--font-mono); }
 
 .ic-home [data-chat-skin="minimal"].ic-panel {
-  background: var(--color-base-100);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   border-width: 1px;
   border-radius: 0;
   box-shadow: none;
@@ -987,13 +992,12 @@ body { background-color: var(--color-base-100); }
 }
 
 /* ---- slack — the workplace look ----
-   Both speakers left-aligned as rows: avatar, author line, body. Opaque and
-   softly rounded, because the whole feel of this one is a solid app window. */
+   Both speakers left-aligned as rows: avatar, author line, body. Softly rounded
+   with a hairline border and a diffuse shadow instead of the hard offset one —
+   and, like Minimal, it leaves the panel's translucency and blur alone so it
+   still sits over the homepage shader with every other panel. */
 
 .ic-home [data-chat-skin="slack"].ic-panel {
-  background: var(--color-base-100);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   border-width: 1px;
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px color-mix(in oklab, black 18%, transparent);
@@ -1113,7 +1117,10 @@ body { background-color: var(--color-base-100); }
   border: 1px solid color-mix(in oklab, var(--color-base-content) 25%, transparent);
   border-radius: 0.5rem;
   padding: 0.5rem;
-  background: var(--color-base-100);
+  /* Translucent, not `base-100`: the panel behind it is translucent, so a solid
+     fill here would be the only opaque thing on the page. Enough tint to still
+     read as a box. */
+  background: color-mix(in oklab, var(--color-base-100) 55%, transparent);
 }
 
 /* Focus moves to the box, since the textarea inside it no longer has a border to

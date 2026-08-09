@@ -6,7 +6,8 @@ transcript), **Workplace** (avatar, author line, hoverable rows) — chosen from
 dropdown in Settings → Appearance, applying the moment you pick it.
 
 `6458a32` the setting and the wire · `a89f6b7` the markup anchors · `064d6b2` the
-three skins in CSS · `040d648` the dropdown and the preview.
+three skins in CSS · `040d648` the dropdown and the preview. Then a second ask the
+same day: **a text size**, four steps from 100% to 150%, as an independent axis.
 
 ## The finding that wrote the design
 
@@ -107,8 +108,67 @@ page), and neither is the panel chrome (those rules describe a panel over the
 homepage's shader, which no settings page has). Both are real gaps, and an
 unlabelled preview is exactly the quiet promise this app keeps having to un-learn.
 
+## The text size, and why it is a second axis
+
+Four steps (Normal / Large / Larger / Largest — 100 / 115 / 130 / 150%) in a
+`ChatTextSize` module mirroring `ChatSkin`, with its own key, topic and dropdown,
+sharing the same preview. **Two axes rather than twelve skins:** wanting larger
+text must not cost you the look you chose. They multiply — every font-size in the
+chat is `calc(<its own size> * var(--chat-scale, 1))` and the setting supplies the
+one number.
+
+`normal` is scale 1 and therefore writes **no CSS at all**, because the `var()`
+fallback already means "as designed". Same argument as the empty `industrial`
+block, and same payoff: the shipped reading size cannot regress through the
+stylesheet.
+
+**The type sizes had to leave the markup.** `text-[17px]` and four siblings *were*
+the chat's type scale, and a utility class cannot be multiplied. So they became
+`calc()` expressions in `app.css`, which narrows the Phase 2 claim honestly: the
+*skin* block is still empty, but the type scale is now shared and lives in CSS. A
+test refuses a `text-[17px]` coming back, because a bubble that pinned its own size
+would sit still while everything around it grew.
+
+Scaled: the things a reader reads — bodies, tool lines, run notes, composer, empty
+state, Workplace's author line. **Not** scaled: buttons, chips, labels. The ask was
+readable text, not a magnified UI, and scaling chrome is how an interface starts
+clipping.
+
+The one number lives in two places (the module's `scale`, the stylesheet's
+`--chat-scale`) and cannot drift: the CSS test reads the scales out of the module
+and requires each to appear in `app.css`. A UI promising 130% while CSS applies
+1.15 fails the suite.
+
+`status_live.ex` sat one line under its cap and both axes cost it exactly one more,
+because `status/chat.ex` absorbed the wiring — `subscribe_chat_look/0`,
+`assign_chat_look/1`, and a single `handle_info` clause guarded on
+`axis in [:chat_skin, :chat_text_size]`, where the axis name *is* the assign name.
+That is the shape the size gate exists to produce rather than to punish.
+
+## The opaque draft, corrected the same day
+
+Both new skins shipped **opaque**, on the reasoning that a vim window should look
+like a vim window and a workplace app should feel solid. The operator caught it
+within the hour: every panel on the homepage is translucent with a backdrop blur
+(`.ic-home .ic-panel`) so the live shader reads through, and a solid chat was the
+only solid panel on the page — it read as a bug, not a look.
+
+Both now leave `background` and `backdrop-filter` alone and change only the frame's
+geometry: Minimal a hairline square border with no offset shadow, Workplace a
+rounded hairline with a diffuse one. Workplace's composer box went from
+`base-100` to a 55% tint for the same reason — a solid box inside a blurred panel
+is the same mistake one level down.
+
+**The lesson is about which master a skin serves.** "Slack is opaque" and "vim is
+opaque" are both true and both irrelevant: a skin lives inside *this* app's surface
+treatment, and matching the reference beat matching ourselves. The roadmap had even
+licensed it — it said translucency was "each skin's call" — so the document was
+wrong before the CSS was, and it now says the opposite with the reason attached.
+
 ## Cuts, taken as decisions
 
+- **No smaller sizes.** Nobody asked to shrink the chat, and Minimal already runs
+  the tightest type in the app. A "Small" step is one line if it is ever wanted.
 - **No timestamps.** Workplace wants a clock and there is none to show: the
   message map has no `at`, and history is rebuilt from stored rows, so old
   messages would get a blank column or an invented time. Cut, with the revisit

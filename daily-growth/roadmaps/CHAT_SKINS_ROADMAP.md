@@ -10,6 +10,7 @@ is left, and it needs the operator.**
 | 2 — The three skins, in CSS | **DONE** (`064d6b2`) |
 | 3 — The dropdown, and a preview that proves it | **DONE** |
 | 4 — What we are not building yet | Decided below, not deferred silently |
+| 5 — Text size, a second axis | **DONE 08-09** (operator ask, added after Phase 3) |
 
 **What changed from the plan, and why.** Three things, all recorded where they
 happened:
@@ -94,9 +95,17 @@ to be legible, and each skin also sits over a live WGSL shader background on the
 homepage (`.ic-home .ic-panel` makes panels 70% opaque with a backdrop blur,
 `assets/css/app.css:511`). Every colour a skin sets goes through daisyUI tokens
 (`--color-base-*`, `--color-primary`) rather than a hex literal, or it will look
-right in dark and be unreadable in light. Skins may override the panel's
-translucency — that is each skin's call, and it should be a deliberate line in
-its block, not an accident.
+right in dark and be unreadable in light.
+
+**No skin overrides the panel's translucency.** This document originally said the
+opposite — that it was each skin's call — and both new skins shipped opaque on
+08-09 before the operator corrected it the same day. The translucent blurred panel
+is the *app's* surface treatment, shared by every tab on the homepage; a chat that
+went solid was the only opaque panel on the page, and it read as a bug rather than
+as a look. A skin may change the frame's geometry (border weight, radius, shadow)
+and must leave `background` and `backdrop-filter` to `.ic-home .ic-panel`. The
+general lesson: **matching the reference app beat matching our own app**, and the
+reference was the wrong master.
 
 ---
 
@@ -177,8 +186,9 @@ is still Industrial Claw, not a beige reskin.
 **`slack` — the workplace look.** Both roles left-aligned as rows: author line
 above, message body below, generous row padding, a hover tint on the row, sans
 throughout (IBM Plex Sans is already loaded), rounded corners, a bordered
-composer box with the send control inside it. Panel translucency probably comes
-off here — Slack's whole feel is opaque — and that is a one-line override.
+composer box with the send control inside it. **Its translucency stays** (see
+above): the composer box itself is tinted rather than solid, so it still reads as a
+box without becoming the one opaque thing in a blurred panel.
 
 Two things this phase must not do: introduce a hex colour (tokens only, or light
 mode breaks), or hide a control. A skin may restyle **Stop**, **Steer now** and
@@ -262,6 +272,54 @@ quietly dropped.
 
 ---
 
+---
+
+## Phase 5 — Text size, a second axis
+
+**Asked for 08-09, after Phase 3 shipped: "allow users to make the font bigger in
+the chat."** `BusterClaw.ChatTextSize` mirrors `ChatSkin` exactly — four steps
+(Normal / Large / Larger / Largest, 100 / 115 / 130 / 150%), own `Settings` key,
+own topic, own dropdown in the same Appearance section, same preview.
+
+**Two axes, not twelve skins.** Wanting larger text must not cost you the look you
+chose, so size is independent and the two multiply: every font-size in the chat is
+written `calc(<its own size> * var(--chat-scale, 1))` and the setting supplies the
+one number. `normal` is scale 1 and therefore writes **no CSS at all** — the
+`var()` fallback already means "as designed", which is the same argument as the
+empty `industrial` block, and it means the shipped reading size cannot regress
+through the stylesheet.
+
+**The type sizes had to leave the markup.** `text-[17px]` and four other Tailwind
+literals were the chat's type scale, and a utility class cannot be multiplied. So
+they moved into `app.css` as `calc()` expressions. This is a real narrowing of the
+Phase 2 claim that "Industrial is the utilities in the markup" — the *skin* block
+is still empty, but the type scale is now shared and lives in CSS. `ChatPanelTest`
+refuses a `text-[17px]` coming back, because a bubble that pinned its own size
+would sit still while everything around it grew.
+
+**Scaled: the things a reader reads** — message bodies, the tool line, the run
+notes, the composer, the empty state, and Workplace's author line. **Not scaled:
+buttons, chips, labels.** The ask is more readable text, not a magnified UI, and
+scaling chrome is how an interface starts clipping.
+
+**The one number lives in two places** — `ChatTextSize`'s `scale` (which the
+dropdown's percentage is computed from) and the stylesheet. They cannot drift: the
+CSS test reads the scales out of the module and requires each to appear in
+`app.css`, so a UI promising 130% and CSS applying 1.15 fails the suite.
+
+**`status_live.ex` did not grow.** It was one line under its cap, and both axes
+cost it exactly one more, because `status/chat.ex` absorbed the wiring:
+`subscribe_chat_look/0`, `assign_chat_look/1`, and a single `handle_info` clause
+guarded on `axis in [:chat_skin, :chat_text_size]` — the axis name *is* the assign
+name, which is why one clause serves both and why an unknown broadcast cannot
+write an arbitrary assign.
+
+**Only enlargement is offered.** Nobody asked to make the chat smaller and Minimal
+already runs the tightest type in the app; a "Small" step is a one-line addition
+if it is ever wanted.
+
+---
+
 ## Acceptance, end to end
 
 The walk a person does once, in a packaged build, and which no test replaces:
@@ -272,3 +330,9 @@ send a message, start a run, and confirm **Stop**, **Steer now** and attach are
 all reachable in all three. That is six skin/theme combinations and four
 controls, and it is the one thing here that needs the operator rather than CI —
 same bucket as LAUNCH **G-40**.
+
+**Phase 5 adds one thing to that walk that is worth doing deliberately:** set the
+text to **Largest** and check the chat still *fits* — a long message at 150%, the
+composer with two lines in it, and the queue rail open. Type scales and the panel
+does not, which is the intended trade, and the place it could go wrong is
+wrapping and overflow rather than colour.

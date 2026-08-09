@@ -932,12 +932,20 @@ logged-in checkout.
       **Stop**, **Steer now** and the attach affordance are all reachable in all
       three.
 
-      **What CI does cover, so you can skip re-checking it:** all three skins
-      render byte-identical DOM apart from `data-chat-skin`; no skin uses a hex
-      literal or `display: none`; every `data-chat-*` selector in the stylesheet
-      exists in the markup. What it cannot cover is legibility — including
-      whether Minimal's opaque panel reads well where the shader used to show
-      through, which is the one place this trades away an existing look.
+      Also check the **text size** control while you are there (Normal → Largest):
+      set it to Largest and confirm the chat still *fits* — a long message at
+      150%, two lines in the composer, the queue rail open. Type scales and the
+      panel does not, which is intended, so the risk is wrapping and overflow
+      rather than colour.
+
+      **What CI does cover, so you can skip re-checking it:** every skin *and*
+      size renders byte-identical DOM apart from the two attributes; no skin uses
+      a hex literal or `display: none`; every `data-chat-*` selector in the
+      stylesheet exists in the markup; every font-size a reader reads goes through
+      the scale; and the percentages the dropdown promises are the multipliers the
+      CSS applies. What it cannot cover is legibility. Note that all three skins
+      keep the homepage's translucent blurred panel — an opaque draft was corrected
+      on 08-09 — so none of them should look out of place beside the other tabs.
 
 > **If the checkout walk fails, stop and fix before the rest.** The others are
 > quality; that one is money.
