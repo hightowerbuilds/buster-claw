@@ -854,7 +854,17 @@ defmodule BusterClaw.Commands.SoundTest do
     test "the confidence spread is reported, and never claims to be hand-marked", %{root: root} do
       {event, _source} = aligned_voicemail(root)
 
-      assert {:ok, result} = Commands.Sound.sound_align(%{"event_id" => event.id})
+      # Both post-listen corrections OFF on purpose. This test pins the
+      # flat-spread and nothing-clamped properties, and those hold precisely
+      # when no word has been moved or reduced. Snapping and function-word
+      # reduction both legitimately clamp a word at a span join, which is the
+      # documented exception to a flat spread — covered by its own tests.
+      assert {:ok, result} =
+               Commands.Sound.sound_align(%{
+                 "event_id" => event.id,
+                 "snap_to_energy" => false,
+                 "reduce_function_words" => false
+               })
 
       assert %{min: min, median: median, max: max} = result.confidence
       assert min <= median and median <= max

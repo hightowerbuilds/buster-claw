@@ -611,6 +611,48 @@ the whole reason the index was defined as a contract first.
 
 ---
 
+## The first listen, and the two fixes it bought (08-08)
+
+**The first real 24-word paragraph assembled cleanly and the operator's verdict
+was one word: "garbled."** That is the most useful thing that happened to this
+feature, and it is worth recording how it resolved.
+
+Garbled ruled out the tempting next step. **Selection ranks what exists — if
+every take of a word has the wrong boundaries, choosing between them cannot
+help.** So the listening session (Part VI) was not the fix; `Align` was. The two
+defects were the ones `Align`'s own moduledoc had already predicted:
+
+1. **Boundaries landed mid-vowel.** Words were laid out proportionally and
+   clamped only at *span* edges, so an interior boundary fell wherever the
+   arithmetic put it. **Fixed** by snapping each boundary to the nearest strictly
+   quieter frame within 40 ms, using the energy profile `Vad` already computes.
+2. **Function words were over-allotted.** `to`, `the`, `of` run under 80 ms in
+   real speech but received a full syllable's share, so they ate their
+   neighbours' onsets — and this corpus is mostly function words. **Fixed** with
+   a 0.55 reduction over a hand-curated stopword set.
+
+**Both are on by default, and that default is now backed by ear**: rebuilt in
+four variants (neither / snap / reduce / both), the operator judged **both**
+better than the baseline. Both remain independently toggleable through
+`sound_align` so the comparison stays reproducible, and a test pins that
+*neither* reproduces the pre-correction output exactly — without which the A/B
+would be against a moving target.
+
+**One measurement that deserves follow-up:** snapping changed total duration by
+**10 ms across 24 words**. It is barely moving anything, which is consistent with
+its own strictly-quieter rule — a vowel-to-vowel or fricative-to-fricative
+junction has no minimum to find, so the boundary correctly stays put. Whether it
+earns its keep, or wants a wider window, is an open question that only more
+listening answers.
+
+**What is still wrong, and is not a parameter:** pre-boundary lengthening
+(speakers slow at phrase ends; the model assumes a constant rate), stressed
+function words now cut short (a *new* error class the reduction introduced), and
+transcript errors still sliding every word after them. Those are what V.4 and
+Part V address.
+
+---
+
 # Part IV — Choosing takes: the unit-selection lattice
 
 **Operator ask (08-08):** give Ramshackle a graph, with weights, so phrasing can

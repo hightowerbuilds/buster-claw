@@ -880,6 +880,13 @@ defmodule BusterClaw.Commands.Sound do
   defp aligned_index(target, clip, args, detect, fit) do
     spans = Vad.spans(clip, detect)
 
+    # Hand `Align` the energy profile so it can pull each word boundary to a
+    # nearby quiet instant instead of leaving it wherever the proportional
+    # arithmetic landed — frequently mid-vowel, which is what made the first
+    # assembled paragraph sound garbled. Same detector options as the spans, so
+    # the two analyses agree about what counts as quiet.
+    fit = Keyword.put_new_lazy(fit, :energy, fn -> Vad.energy_profile(clip, detect) end)
+
     case Align.align(target.transcript, spans, fit) do
       [] ->
         {:error, :no_alignment}
@@ -998,10 +1005,23 @@ defmodule BusterClaw.Commands.Sound do
   defp align_opts(args) do
     [
       weight: weight(Map.get(args, "weight")),
-      syllable_ms: number(Map.get(args, "syllable_ms"))
+      syllable_ms: number(Map.get(args, "syllable_ms")),
+      # The two corrections that came out of the first real listen, both ON by
+      # default. Exposed so they can be turned off and A/B'd by ear — a fix to
+      # how something SOUNDS cannot be judged from a test, only from the pair.
+      snap_to_energy: boolean(Map.get(args, "snap_to_energy")),
+      snap_window_ms: number(Map.get(args, "snap_window_ms")),
+      reduce_function_words: boolean(Map.get(args, "reduce_function_words")),
+      function_word_scale: number(Map.get(args, "function_word_scale"))
     ]
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
   end
+
+  # Spelled out, like `weight/1` below: a wire caller supplies strings, and a
+  # nil means "not given" rather than "false" so the module's own default wins.
+  defp boolean(value) when value in [true, "true"], do: true
+  defp boolean(value) when value in [false, "false"], do: false
+  defp boolean(_value), do: nil
 
   # Spelled out rather than converted, because a wire caller must never be able
   # to name an atom this module did not choose.
