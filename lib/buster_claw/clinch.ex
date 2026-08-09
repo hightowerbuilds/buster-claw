@@ -173,7 +173,7 @@ defmodule BusterClaw.Clinch do
     |> select([s], %{name: s.name, note: s.note, updated_at: s.updated_at})
     |> order_by([s], asc: s.name)
     |> Repo.all()
-    |> Enum.map(&Map.merge(&1, %{kind: :sign_in, managed?: true}))
+    |> Enum.map(&Map.merge(&1, %{kind: :sign_in, managed?: managed?(:sign_in)}))
   end
 
   def list(:oauth) do
@@ -181,7 +181,9 @@ defmodule BusterClaw.Clinch do
     |> select([a], %{name: a.email, updated_at: a.updated_at})
     |> order_by([a], asc: a.email)
     |> Repo.all()
-    |> Enum.map(&Map.merge(&1, %{kind: :oauth, note: "Google account", managed?: false}))
+    |> Enum.map(
+      &Map.merge(&1, %{kind: :oauth, note: "Google account", managed?: managed?(:oauth)})
+    )
   end
 
   def list(:service_key) do
@@ -190,7 +192,7 @@ defmodule BusterClaw.Clinch do
     |> select([i], %{name: i.name, note: i.service_type, updated_at: i.updated_at})
     |> order_by([i], asc: i.name)
     |> Repo.all()
-    |> Enum.map(&Map.merge(&1, %{kind: :service_key, managed?: false}))
+    |> Enum.map(&Map.merge(&1, %{kind: :service_key, managed?: managed?(:service_key)}))
   end
 
   # The Keychain holds the loopback tokens and paired device keys do not exist
@@ -203,6 +205,20 @@ defmodule BusterClaw.Clinch do
   def known?(ref), do: match?({:ok, _}, resolve(ref, audit: false))
 
   # ---- internals -------------------------------------------------------
+
+  # `Types.managed_kinds/0` is the SINGLE SOURCE OF TRUTH for the write
+  # boundary. Every `managed?` in a listing entry derives from it here and
+  # nowhere else.
+  #
+  # Until 08-09 the three `list/1` clauses asserted the flag as a literal
+  # (`managed?: true` for `:sign_in`, `false` for the other two) — a second copy
+  # of the boundary, agreeing with `Types` by coincidence and kept in step by
+  # nothing. Do not re-inline it. This flag is not cosmetic: the panel renders
+  # "· read-only" from it, so it is what decides whether the UI offers to edit a
+  # credential at all, and the roadmap's central rule is that remote may *use*
+  # credentials and never *manage* them. A boundary stated twice is one
+  # refactor away from being stated wrong.
+  defp managed?(kind), do: kind in Types.managed_kinds()
 
   # The kind and the name, never the value — and `Sentinel`'s own key-name
   # redaction is a second layer under that, not the thing being relied on.

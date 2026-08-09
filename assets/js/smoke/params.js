@@ -8,7 +8,7 @@
 
 export const clamp01 = (x) => Math.max(0, Math.min(1, x))
 
-export const clampR = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
+const clampR = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
 
 // Uniform buffer layout — must mirror `struct U` in smoke.wgsl.js:
 // six vec4<f32> = 24 floats = 96 bytes.
@@ -22,7 +22,7 @@ export const clampR = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
 export const UNIFORM_FLOATS = 36
 
 // Fallback palette (rgb 0..1) if no colors are supplied — the smoke defaults.
-export const DEFAULT_COLORS = {
+const DEFAULT_COLORS = {
   a: [0.055, 0.055, 0.055],
   b: [1.0, 0.302, 0.11],
   c: [0.956, 0.945, 0.918],

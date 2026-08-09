@@ -397,9 +397,6 @@ defmodule BusterClaw.Finance.Sources do
   @doc "The fetchable source keys, sorted."
   def fetchable_keys, do: fetchable() |> Map.keys() |> Enum.sort()
 
-  @doc "Group by status, for the `finance_sources` listing."
-  def by_status, do: Enum.group_by(all(), & &1.status)
-
   @doc "The directory operator overrides are read from."
   def dir, do: Artifact.workspace_path(@subdir)
 

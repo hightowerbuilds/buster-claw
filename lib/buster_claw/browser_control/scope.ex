@@ -141,8 +141,8 @@ defmodule BusterClaw.BrowserControl.Scope do
     Enum.any?(domains, fn d -> h == d or String.ends_with?(h, "." <> d) end)
   end
 
-  @doc "True if the URL is a payment/checkout page (host or path heuristics)."
-  def payment?(url) when is_binary(url) do
+  # True if the URL is a payment/checkout page (host or path heuristics).
+  defp payment?(url) when is_binary(url) do
     case host_of(url) do
       {:ok, host} -> payment_host?(host) or payment_path?(url)
       :error -> false

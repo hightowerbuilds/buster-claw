@@ -72,14 +72,12 @@ defmodule BusterClaw.Calendar do
     |> Enum.flat_map(&expand_event(&1, range_start, range_end))
   end
 
-  @doc """
-  Load only the events that can have an occurrence within `range_start..range_end`:
-  non-recurring events are filtered by date in SQL, while recurring events (those
-  with a `frequency`) are always loaded so they can be expanded in memory. The
-  in-memory expansion in `events_in_range/2` still enforces the exact range, so
-  the expanded result is identical to loading the whole table.
-  """
-  def list_events_in_range(%Date{} = range_start, %Date{} = range_end) do
+  # Load only the events that can have an occurrence within `range_start..range_end`:
+  # non-recurring events are filtered by date in SQL, while recurring events (those
+  # with a `frequency`) are always loaded so they can be expanded in memory. The
+  # in-memory expansion in `events_in_range/2` still enforces the exact range, so
+  # the expanded result is identical to loading the whole table.
+  defp list_events_in_range(%Date{} = range_start, %Date{} = range_end) do
     Repo.all(
       from e in Event,
         where:

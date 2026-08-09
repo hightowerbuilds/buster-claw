@@ -64,9 +64,6 @@ defmodule BusterClaw.Music.Player do
   @doc "A player with nothing loaded."
   def new, do: %__MODULE__{}
 
-  @doc "The default volume, 0..100."
-  def default_volume, do: @default_volume
-
   # ---------------------------------------------------------------------------
   # Transitions — pure
   # ---------------------------------------------------------------------------
@@ -176,9 +173,6 @@ defmodule BusterClaw.Music.Player do
     }
   end
 
-  @doc "Empty the queue without disturbing what is playing."
-  def clear_queue(%__MODULE__{} = state), do: %{state | queue: []}
-
   @doc "Record where the client says it is. Ignores junk rather than trusting it."
   def report_position(%__MODULE__{} = state, seconds) when is_number(seconds) and seconds >= 0,
     do: %{state | position: seconds * 1.0}
@@ -258,15 +252,15 @@ defmodule BusterClaw.Music.Player do
     PubSub.broadcast(BusterClaw.PubSub, @command_topic, {:music_command, message})
   end
 
-  # Convenience wrappers so callers don't hand-build tuples.
+  # Convenience wrappers so callers don't hand-build tuples. Only the verbs the
+  # Music library tab offers live here — previous/stop/volume are dock-local
+  # controls, so `music_player_live.ex` calls the pure transitions directly and
+  # never needs a remote-control wrapper for them.
   def request_play(name) when is_binary(name), do: command({:play, name})
   def request_enqueue(name) when is_binary(name), do: command({:enqueue, name})
   def request_toggle, do: command(:toggle)
   def request_next, do: command(:next)
-  def request_previous, do: command(:previous)
-  def request_stop, do: command(:stop)
   def request_seek(seconds) when is_number(seconds), do: command({:seek, seconds})
-  def request_volume(volume) when is_number(volume), do: command({:volume, volume})
 
   @doc """
   Apply a command tuple to a state. Kept here rather than in the LiveView so the

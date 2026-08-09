@@ -61,12 +61,10 @@ defmodule BusterClaw.TerminalCommands.Command do
     |> maybe_enforce_kind(Keyword.get(opts, :enforce_kind, true))
   end
 
-  @doc """
-  The single-line rule for shell commands, applied to a command changeset.
-  Prompts may span lines; shell text is typed straight into the PTY, where a
-  newline executes, so embedded newlines would smuggle extra commands.
-  """
-  def validate_single_line_shell(changeset, kind) do
+  # The single-line rule for shell commands, applied to a command changeset.
+  # Prompts may span lines; shell text is typed straight into the PTY, where a
+  # newline executes, so embedded newlines would smuggle extra commands.
+  defp validate_single_line_shell(changeset, kind) do
     command = get_field(changeset, :command)
 
     if kind == "shell" and is_binary(command) and String.match?(command, ~r/[\r\n]/) do

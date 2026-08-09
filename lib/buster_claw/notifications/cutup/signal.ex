@@ -10,6 +10,10 @@ defmodule BusterClaw.Notifications.Cutup.Signal.Tables do
   # Nothing here is on a hot path — every function is called once per FFT size,
   # or once per `frames/2` call — so it is written for clarity, not speed.
 
+  # Public because `Signal` — the sibling module in this same file — calls it
+  # when it builds its compile-time table. Being in one file is not being in one
+  # module: a dead-code sweep on 08-09 read the call sites as same-module and
+  # converted this to `defp`, which fails compilation. Leave it public.
   @doc false
   @spec twiddles(pos_integer()) :: tuple()
   def twiddles(n) when n >= 2 do
@@ -43,9 +47,8 @@ defmodule BusterClaw.Notifications.Cutup.Signal.Tables do
     for n <- 0..(len - 1), do: 0.54 - 0.46 * :math.cos(2.0 * :math.pi() * n / (len - 1))
   end
 
-  @doc false
   @spec bit_width(pos_integer()) :: non_neg_integer()
-  def bit_width(n) when n >= 1, do: bit_width(n, 0)
+  defp bit_width(n) when n >= 1, do: bit_width(n, 0)
 
   defp bit_width(1, acc), do: acc
   defp bit_width(n, acc), do: bit_width(div(n, 2), acc + 1)

@@ -52,14 +52,6 @@ defmodule BusterClaw.Agent.Conversations do
     |> Repo.insert()
   end
 
-  @doc "Dock a conversation into the sub-tab system, or float it back out."
-  def set_docked(id, docked?) when is_boolean(docked?) do
-    case get(id) do
-      nil -> {:error, :not_found}
-      conv -> conv |> Conversation.changeset(%{docked: docked?}) |> Repo.update()
-    end
-  end
-
   @doc "Rename a conversation (used to title a 'New chat' from its first message)."
   def rename(id, title) when is_binary(title) and title != "" do
     case get(id) do

@@ -151,13 +151,11 @@ defmodule BusterClaw.ModelPolicy do
   @doc "Rank for floor comparison, or `nil` when the model is unranked."
   def capability_rank(model), do: Map.get(@capability_rank, model)
 
-  @doc """
-  Whether a floor can be honestly enforced for `surface` on `backend`.
-
-  False for every backend but claude, and false for a surface with no floor.
-  `nil` (an unset backend) counts as claude — see the moduledoc.
-  """
-  def floor_applies?(backend, surface) do
+  # Whether a floor can be honestly enforced for `surface` on `backend`.
+  #
+  # False for every backend but claude, and false for a surface with no floor.
+  # `nil` (an unset backend) counts as claude — see the moduledoc.
+  defp floor_applies?(backend, surface) do
     Map.has_key?(@floors, surface) and bucket(backend) == @floor_backend
   end
 

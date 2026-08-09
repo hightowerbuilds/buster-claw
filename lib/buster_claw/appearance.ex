@@ -124,14 +124,8 @@ defmodule BusterClaw.Appearance do
   @doc "Absolute path to the background Pocket that holds the image pool."
   def dir, do: Pockets.pocket_dir(@pocket)
 
-  @doc "The Pocket the image pool lives in."
-  def pocket_name, do: @pocket
-
   @doc "Built-in shader design names."
   def builtin_shaders, do: @builtin_shaders
-
-  @doc "Built-in shader names (legacy alias of `builtin_shaders/0`)."
-  def home_shaders, do: @builtin_shaders
 
   @doc "Content-type for a stored image path, by extension."
   def content_type(path) do

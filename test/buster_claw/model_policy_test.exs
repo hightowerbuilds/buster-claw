@@ -230,6 +230,57 @@ defmodule BusterClaw.ModelPolicyTest do
       end
     end
 
+    # WHY THESE TWO EXIST, and why they must live or die together with the
+    # function they call. `ModelPolicy.unfloored_money_surfaces/0` has NO
+    # production caller — nothing renders it, no command reads it. Its docstring
+    # says it is "kept as a live assertion", and these tests are that assertion;
+    # they are the only thing that makes the docstring true. If you delete them,
+    # the function becomes dead code and should be deleted in the same commit.
+    #
+    # The invariant is the pin and the floor moving together: a surface carrying
+    # a floor must never resolve to a harness the floor cannot honestly reach
+    # (the ranks and the 07-28 measurement are claude's). Lifting `@claude_only`
+    # off a floored surface without giving the floor a per-backend measurement
+    # breaks it. Neither test names a surface, so declaring a floor puts them to
+    # work with no edit here.
+    test "no floored surface escapes its floor, on any harness" do
+      # Nothing set: an unset harness reads the implicit claude bucket, so this
+      # pass is the easy one.
+      assert ModelPolicy.unfloored_money_surfaces() == [],
+             "a floored surface is beyond its floor's reach with no policy set at all"
+
+      # The hostile condition, and the one that actually has teeth: lower the
+      # GLOBAL harness default to each harness in turn. A floored surface only
+      # escapes when its resolved harness is not claude's, which cannot happen
+      # while it is pinned — `backend_for/1` returns claude for a pinned surface
+      # whatever the default says. Lift the pin and leave the floor, and the
+      # surface starts appearing here.
+      for backend <- ModelPolicy.backends() do
+        {:ok, _} = ModelPolicy.put_backend(:default, backend)
+
+        assert ModelPolicy.unfloored_money_surfaces() == [],
+               "a floored surface escaped its floor with the global harness on #{backend}; " <>
+                 "either re-pin it or measure the floor for that harness"
+      end
+    end
+
+    # The non-vacuity readout, deliberately a separate assertion so the strength
+    # of the test above is visible rather than assumed. WHILE `floors/0` is empty
+    # the comprehension inside `unfloored_money_surfaces/0` has nothing to
+    # iterate and returns `[]` unconditionally: the guard above is DORMANT BY
+    # CONSTRUCTION and cannot fail. Declaring the first floor wakes it up
+    # automatically — and fails this test, which is the signal to a future editor
+    # that the guard just went live and this readout can be retired.
+    #
+    # This is the mistake `BusterClawWeb.Explore.Models` records: a loop over
+    # `ModelPolicy.floors()` kept passing for a day after the map emptied,
+    # because an empty collection makes every such loop vacuous.
+    test "the floor guard above is dormant, because no surface declares a floor" do
+      assert ModelPolicy.floors() == %{},
+             "a floor now exists, so the guard above is load-bearing rather than vacuous — " <>
+               "confirm it fails when the floored surface is unpinned, then delete this test"
+    end
+
     test "every offered model is valid" do
       for model <- ModelPolicy.known_models(), do: assert(ModelPolicy.valid_model?(model))
     end

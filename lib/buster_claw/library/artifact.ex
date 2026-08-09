@@ -115,7 +115,7 @@ defmodule BusterClaw.Library.Artifact do
      }}
   end
 
-  def parse_markdown_file(path) do
+  defp parse_markdown_file(path) do
     with {:ok, content} <- File.read(path) do
       split = Frontmatter.split(content)
 
@@ -149,7 +149,7 @@ defmodule BusterClaw.Library.Artifact do
     end
   end
 
-  def validate_raw_path(path) when is_binary(path) do
+  defp validate_raw_path(path) when is_binary(path) do
     abs_path = absolute_path(path)
     raw = raw_root()
 
@@ -177,7 +177,7 @@ defmodule BusterClaw.Library.Artifact do
     end
   end
 
-  def safe_join!(base, segments) when is_list(segments) do
+  defp safe_join!(base, segments) when is_list(segments) do
     base = Path.expand(base)
     path = Path.expand(Path.join([base | segments]))
 

@@ -69,21 +69,17 @@ defmodule BusterClaw.Orchestration do
   def topic, do: @topic
   def subscribe, do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, @topic)
 
-  def shift_jobs, do: @shift_jobs
-
-  def shift_job(key) when is_binary(key),
+  defp shift_job(key) when is_binary(key),
     do: Enum.find(@shift_jobs, &(&1.key == key)) || Enum.find(@shift_jobs, &(&1.name == key))
 
-  def shift_job(_key), do: nil
+  defp shift_job(_key), do: nil
 
-  def shift_assignment_roles, do: @shift_assignment_roles
-
-  def shift_assignment_role(key) when is_binary(key),
+  defp shift_assignment_role(key) when is_binary(key),
     do:
       Enum.find(@shift_assignment_roles, &(&1.key == key)) ||
         Enum.find(@shift_assignment_roles, &(&1.name == key))
 
-  def shift_assignment_role(_key), do: nil
+  defp shift_assignment_role(_key), do: nil
 
   defp broadcast(event) do
     Phoenix.PubSub.broadcast(BusterClaw.PubSub, @topic, {:orchestration, event})
@@ -192,14 +188,9 @@ defmodule BusterClaw.Orchestration do
 
   def shift_active?, do: active_shift() != nil
 
-  @doc "The most recent shift regardless of status (e.g. to read why it stopped)."
-  def latest_shift do
-    Shift |> order_by([s], desc: s.started_at) |> limit(1) |> Repo.one()
-  end
-
   # --- kill switch (a STOP file in the workspace the Orchestrator checks) ---
 
-  def kill_switch_path, do: Artifact.workspace_path(@kill_switch_file)
+  defp kill_switch_path, do: Artifact.workspace_path(@kill_switch_file)
   def kill_switch_engaged?, do: File.exists?(kill_switch_path())
   def engage_kill_switch, do: File.write(kill_switch_path(), "stop\n")
 
@@ -220,17 +211,11 @@ defmodule BusterClaw.Orchestration do
     end
   end
 
-  @doc "Mark a shift completed (e.g. superseded by a new shift)."
-  def complete_shift(shift \\ nil, reason \\ nil)
-
-  def complete_shift(nil, reason) do
-    case active_shift() do
-      nil -> {:error, :no_active_shift}
-      shift -> complete_shift(shift, reason)
-    end
-  end
-
-  def complete_shift(%Shift{} = shift, reason),
+  # Mark a shift completed (e.g. superseded by a new shift). The only caller
+  # maps over `active_shifts/0`, so a shift is always in hand — the old
+  # `complete_shift()` / `complete_shift(nil, reason)` arity that looked one up
+  # was already unreachable when this stopped being public.
+  defp complete_shift(%Shift{} = shift, reason),
     do: shift |> set_shift_status("completed", reason) |> tap_broadcast(:shift_completed)
 
   defp set_shift_status(%Shift{} = shift, status, reason) do
@@ -284,13 +269,6 @@ defmodule BusterClaw.Orchestration do
   def active_shift_assignments do
     active_shift()
     |> active_shift_assignments()
-  end
-
-  def list_shift_assignments(%Shift{} = shift) do
-    ShiftAssignment
-    |> where([a], a.shift_id == ^shift.id)
-    |> order_by([a], desc: a.started_at, desc: a.id)
-    |> Repo.all()
   end
 
   def start_shift_assignment(opts \\ []) do

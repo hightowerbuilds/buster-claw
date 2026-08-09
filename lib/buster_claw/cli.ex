@@ -447,10 +447,9 @@ defmodule BusterClaw.CLI do
 
   def format_dispatch_list(other), do: pretty(other)
 
-  @doc false
-  def format_dispatch_item(%{"empty" => true}), do: "Queue empty — nothing to claim."
+  defp format_dispatch_item(%{"empty" => true}), do: "Queue empty — nothing to claim."
 
-  def format_dispatch_item(item) when is_map(item) do
+  defp format_dispatch_item(item) when is_map(item) do
     [
       "##{item["id"]} [#{item["status"]}] #{item["subject"] || "(no subject)"}",
       dispatch_kv("Source", item["source"]),
@@ -462,7 +461,7 @@ defmodule BusterClaw.CLI do
     |> Enum.join("\n")
   end
 
-  def format_dispatch_item(other), do: pretty(other)
+  defp format_dispatch_item(other), do: pretty(other)
 
   @doc false
   def format_dispatch_claim(%{"empty" => true}), do: "Queue empty — nothing to claim."
@@ -478,12 +477,11 @@ defmodule BusterClaw.CLI do
 
   def format_dispatch_finish(other), do: pretty(other)
 
-  @doc false
-  def format_dispatch_enqueue(item) when is_map(item),
+  defp format_dispatch_enqueue(item) when is_map(item),
     do:
       "Queued ##{item["id"]} (#{item["strategy"]}): #{item["request_summary"] || item["subject"]}"
 
-  def format_dispatch_enqueue(other), do: pretty(other)
+  defp format_dispatch_enqueue(other), do: pretty(other)
 
   @doc false
   def format_dispatch_reply(%{"dispatch_item_id" => id} = result) do

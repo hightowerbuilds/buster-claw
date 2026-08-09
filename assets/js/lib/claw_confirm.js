@@ -19,7 +19,7 @@ let bypassNext = false
 // Promise-based confirm modal. Resolves true on Confirm, false on
 // Cancel / Escape / backdrop click. Async by nature — which is exactly why it
 // can't back LiveView's synchronous `data-confirm`, and why we re-dispatch.
-export function clawConfirm(message) {
+function clawConfirm(message) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div")
     overlay.className = "fixed inset-0 z-[100] grid place-items-center bg-black/50"

@@ -15,8 +15,6 @@ defmodule BusterClaw.Commands.Catalog.Helpers do
     "email" => %{type: :string, required: false}
   }
 
-  def id_required, do: @id_required
-
   def google_args(extra), do: Map.merge(@google_account, extra)
 
   def list_entry(name, desc),

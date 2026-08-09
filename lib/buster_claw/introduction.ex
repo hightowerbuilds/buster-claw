@@ -54,12 +54,6 @@ defmodule BusterClaw.Introduction do
 
   @markdowns Map.new(@sections, &{&1, File.read!(Path.join(@dir, &1))})
 
-  @doc "The introduction file name."
-  def filename, do: @filename
-
-  @doc "Workspace-relative path of the introduction (`.buster-claw/INTRODUCTION.md`)."
-  def rel_path, do: @rel
-
   @doc "Absolute path of the installed introduction in the current workspace."
   def path, do: Artifact.workspace_path(@rel)
 
@@ -117,8 +111,8 @@ defmodule BusterClaw.Introduction do
     |> String.replace("{{COMMAND_SURFACE}}", command_surface_markdown())
   end
 
-  @doc "Markdown list of the command catalog grouped by trust tier."
-  def command_surface_markdown do
+  # Markdown list of the command catalog grouped by trust tier.
+  defp command_surface_markdown do
     commands = Commands.list_commands()
     {safe, restricted} = Enum.split_with(commands, &(tier(&1) == :safe))
 

@@ -55,7 +55,7 @@ defmodule BusterClawWeb.Status.Comms do
   # Shape one telephony event into a compact widget row: the other party's name
   # (or bare number), a direction mark + human title, a one-line snippet, and a
   # relative timestamp.
-  def activity_row(event, names) do
+  defp activity_row(event, names) do
     number = Telephony.counterparty(event)
 
     label =
@@ -79,14 +79,14 @@ defmodule BusterClawWeb.Status.Comms do
   def kind_label("call"), do: "call"
   def kind_label(other), do: other
 
-  def activity_snippet(%{kind: "sms", body: body}) when is_binary(body), do: snip(body)
+  defp activity_snippet(%{kind: "sms", body: body}) when is_binary(body), do: snip(body)
 
-  def activity_snippet(%{kind: "voicemail", transcript: t}) when is_binary(t) and t != "",
+  defp activity_snippet(%{kind: "voicemail", transcript: t}) when is_binary(t) and t != "",
     do: snip(t)
 
-  def activity_snippet(%{kind: "voicemail"}), do: "voicemail"
-  def activity_snippet(%{kind: "call"}), do: "call"
-  def activity_snippet(_), do: ""
+  defp activity_snippet(%{kind: "voicemail"}), do: "voicemail"
+  defp activity_snippet(%{kind: "call"}), do: "call"
+  defp activity_snippet(_), do: ""
 
   def snip(text) do
     text = String.trim(text)
@@ -95,9 +95,9 @@ defmodule BusterClawWeb.Status.Comms do
 
   # A coarse relative timestamp for the activity feed ("3m", "2h", "5d"); older
   # than a week falls back to a short date. occurred_at is UTC; so is now/0.
-  def relative_time(nil), do: ""
+  defp relative_time(nil), do: ""
 
-  def relative_time(%DateTime{} = dt) do
+  defp relative_time(%DateTime{} = dt) do
     seconds = DateTime.diff(now(), dt, :second)
 
     cond do

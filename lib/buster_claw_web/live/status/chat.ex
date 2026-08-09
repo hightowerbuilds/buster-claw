@@ -112,7 +112,7 @@ defmodule BusterClawWeb.Status.Chat do
     |> load_chat_history(active)
   end
 
-  def to_chat_tab(conv), do: %{id: conv.id, title: conv.title, running: false, unread: false}
+  defp to_chat_tab(conv), do: %{id: conv.id, title: conv.title, running: false, unread: false}
 
   # Which backend the conversation would use, and whether it can take a message
   # into a turn that is already running. Read per render rather than cached:
@@ -157,7 +157,7 @@ defmodule BusterClawWeb.Status.Chat do
   # first. The announcement below is driven by the returned mode for exactly
   # that reason — telling the operator "steered" for a message that was queued
   # is the single most damaging bug this surface can have.
-  def do_send(socket, conv_id, text, delivery) do
+  defp do_send(socket, conv_id, text, delivery) do
     # Attachments ride two ways, and both are load-bearing. The citation fence on
     # the persisted text is how a RELOAD finds them again (see `ChatAttachments`);
     # the `:attachments` option is how the MODEL gets them — `Chat.submit/3`
@@ -190,7 +190,7 @@ defmodule BusterClawWeb.Status.Chat do
   # colour alone. It says the wait out loud on a steer, because Phase 0 measured
   # that the agent picks the message up at its next tool boundary — which can be
   # minutes on a long build, not the instant the chip appears.
-  def announce_delivery(socket, :steered, _requested),
+  defp announce_delivery(socket, :steered, _requested),
     do:
       assign(
         socket,
@@ -198,7 +198,7 @@ defmodule BusterClawWeb.Status.Chat do
         "Steered. The agent will pick this up at its next step."
       )
 
-  def announce_delivery(socket, :queued, :steer),
+  defp announce_delivery(socket, :queued, :steer),
     do:
       assign(
         socket,
@@ -206,12 +206,12 @@ defmodule BusterClawWeb.Status.Chat do
         "The turn finished first, so this was queued to run next."
       )
 
-  def announce_delivery(socket, :queued, _requested),
+  defp announce_delivery(socket, :queued, _requested),
     do: assign(socket, :chat_announcement, "Queued to run next.")
 
   # Deliberately does NOT say "steered": this backend cannot confirm receipt,
   # and the announcement is the one place a screen-reader user learns that.
-  def announce_delivery(socket, :sent, _requested),
+  defp announce_delivery(socket, :sent, _requested),
     do:
       assign(
         socket,
@@ -219,7 +219,7 @@ defmodule BusterClawWeb.Status.Chat do
         "Sent to the running turn. This backend does not confirm receipt."
       )
 
-  def announce_delivery(socket, :started, _requested),
+  defp announce_delivery(socket, :started, _requested),
     do: assign(socket, :chat_announcement, "Sent.")
 
   # --- chat transcript projection (from each conversation's PubSub broadcasts) ---
@@ -320,7 +320,7 @@ defmodule BusterClawWeb.Status.Chat do
 
   def apply_chat(socket, _conv_id, _other), do: socket
 
-  def mark_unread(socket, conv_id),
+  defp mark_unread(socket, conv_id),
     do: update_tab(socket, conv_id, &%{&1 | unread: true})
 
   # Hydrate cited attachments from the store and give the previewable ones a
@@ -333,8 +333,8 @@ defmodule BusterClawWeb.Status.Chat do
 
   # The pool ids `collect_svgs/2` just assigned to this batch (it numbers a batch
   # `svg_seq+1 .. svg_seq+n`), so a bubble can link straight to its own drawings.
-  def svg_ids_for(_base, []), do: []
-  def svg_ids_for(base, svgs), do: Enum.to_list((base + 1)..(base + length(svgs)))
+  defp svg_ids_for(_base, []), do: []
+  defp svg_ids_for(base, svgs), do: Enum.to_list((base + 1)..(base + length(svgs)))
 
   # Pull ```scene3d blocks out of a reply and render each to SVG, dropping any
   # that fail to validate. Failure is silent by design: a malformed scene costs
@@ -346,7 +346,7 @@ defmodule BusterClawWeb.Status.Chat do
     {clean, Enum.flat_map(bodies, &render_scene/1)}
   end
 
-  def render_scene(body) do
+  defp render_scene(body) do
     case Scene3d.render(body) do
       {:ok, svg} ->
         [svg]
@@ -359,9 +359,9 @@ defmodule BusterClawWeb.Status.Chat do
 
   # The `%{id, svg}` entries a bubble renders inline, numbered in step with the
   # modal pool so clicking a card opens the right slide.
-  def scenes_for(_base, []), do: []
+  defp scenes_for(_base, []), do: []
 
-  def scenes_for(base, svgs) do
+  defp scenes_for(base, svgs) do
     svgs
     |> Enum.with_index(base + 1)
     |> Enum.map(fn {svg, id} -> %{id: id, svg: svg} end)
@@ -370,8 +370,8 @@ defmodule BusterClawWeb.Status.Chat do
   # Speak the model's replies aloud (client gates on the Voice toggle + desktop
   # app). Only `:assistant` text — never tool/meta/error lines. A turn emits one
   # `:assistant` message per text block; each is enqueued and spoken in order.
-  def maybe_speak(socket, :assistant, text), do: push_event(socket, "bc:speak", %{text: text})
-  def maybe_speak(socket, _role, _text), do: socket
+  defp maybe_speak(socket, :assistant, text), do: push_event(socket, "bc:speak", %{text: text})
+  defp maybe_speak(socket, _role, _text), do: socket
 
   def activate_chat(socket, id) do
     Conversations.touch(id)
@@ -387,7 +387,7 @@ defmodule BusterClawWeb.Status.Chat do
     |> load_chat_history(id)
   end
 
-  def update_tab(socket, conv_id, fun) do
+  defp update_tab(socket, conv_id, fun) do
     chats = Enum.map(socket.assigns.chats, fn c -> if c.id == conv_id, do: fun.(c), else: c end)
     assign(socket, :chats, chats)
   end
@@ -397,7 +397,7 @@ defmodule BusterClawWeb.Status.Chat do
   # keeps "New chat" until something is said. Naming it after a filename was the
   # alternative and it reads worse — the tab strip is a list of topics, not a
   # list of uploads.
-  def maybe_autotitle(socket, conv_id, text) do
+  defp maybe_autotitle(socket, conv_id, text) do
     tab = Enum.find(socket.assigns.chats, &(&1.id == conv_id))
 
     if (tab && tab.title == Conversations.default_title()) and String.trim(text) != "" do
@@ -409,19 +409,19 @@ defmodule BusterClawWeb.Status.Chat do
     end
   end
 
-  def title_from(text) do
+  defp title_from(text) do
     text |> String.trim() |> String.replace(~r/\s+/, " ") |> String.slice(0, 40)
   end
 
-  def push_msg(
-        socket,
-        role,
-        text,
-        svg_ids \\ [],
-        delivery \\ nil,
-        scenes \\ [],
-        attachments \\ []
-      ) do
+  defp push_msg(
+         socket,
+         role,
+         text,
+         svg_ids \\ [],
+         delivery \\ nil,
+         scenes \\ [],
+         attachments \\ []
+       ) do
     seq = socket.assigns.chat_seq + 1
 
     msg = %{
@@ -440,7 +440,7 @@ defmodule BusterClawWeb.Status.Chat do
   end
 
   # Keep an appended list to a bound by dropping the oldest entries off the front.
-  def cap_list(list, max) do
+  defp cap_list(list, max) do
     over = length(list) - max
     if over > 0, do: Enum.drop(list, over), else: list
   end
@@ -496,7 +496,7 @@ defmodule BusterClawWeb.Status.Chat do
   # what makes a renderer improvement apply retroactively to old conversations.
   # It also means a scene that rendered once will render again — the pipeline is
   # pure, so history replay cannot diverge from what the user first saw.
-  def load_chat_history(socket, conv_id) do
+  defp load_chat_history(socket, conv_id) do
     # Reading-order entries built by prepending (++ in the reduce would be
     # quadratic over the 200-row transcript) then reversing. Each assistant entry
     # keeps the drawings and scenes pulled from its blocks, so its bubble can
@@ -614,7 +614,7 @@ defmodule BusterClawWeb.Status.Chat do
     "meta" => :meta,
     "error" => :error
   }
-  def history_role(role), do: Map.get(@history_roles, role, :assistant)
+  defp history_role(role), do: Map.get(@history_roles, role, :assistant)
 
   # Open a fresh conversation and make it active. Every chat assign is reset
   # explicitly rather than by re-running `init_chats/1`, because the new

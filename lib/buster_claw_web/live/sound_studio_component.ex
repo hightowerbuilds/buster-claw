@@ -126,8 +126,8 @@ defmodule BusterClawWeb.SoundStudioComponent do
 
   defp load_mix(socket, _selected), do: assign(socket, :mix, nil)
 
-  @doc "Public for `StatusLive`, which selects the mix a render came from."
-  def resolve_source(id), do: find_source(groups(), id)
+  # Resolve a source id to its entry in `groups/0` — which mix a render came from.
+  defp resolve_source(id), do: find_source(groups(), id)
 
   # ---------------------------------------------------------------------------
   # The catalog

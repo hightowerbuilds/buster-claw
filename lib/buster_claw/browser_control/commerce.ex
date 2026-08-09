@@ -103,8 +103,8 @@ defmodule BusterClaw.BrowserControl.Commerce do
     end
   end
 
-  @doc "Path of the append-only receipt record."
-  def receipts_path do
+  # Path of the append-only receipt record.
+  defp receipts_path do
     BusterClaw.Library.Artifact.workspace_path(["browser-control", "receipts.jsonl"])
   end
 

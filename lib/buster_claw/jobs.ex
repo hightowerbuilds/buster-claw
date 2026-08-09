@@ -18,7 +18,7 @@ defmodule BusterClaw.Jobs do
 
   def dir, do: Artifact.workspace_path(@subdir)
   def roster_path, do: Path.join(dir(), @roster)
-  def job_path(key), do: Path.join(dir(), slug(key) <> ".md")
+  defp job_path(key), do: Path.join(dir(), slug(key) <> ".md")
 
   @doc "All defined jobs (excluding the README roster), sorted by key."
   def list do

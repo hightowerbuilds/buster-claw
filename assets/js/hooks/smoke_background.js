@@ -11,7 +11,7 @@ import {skyAmounts, localDayFrac} from "../smoke/sky.js"
 // Resolve the palette for an element: custom colors (data-colors) when
 // data-custom="true", else the shader's built-in default. Falls back to the
 // default on any malformed input.
-export function resolvePalette(el) {
+function resolvePalette(el) {
   const shader = el.getAttribute("data-shader") || "smoke"
   const fallback = SHADER_PALETTES[shader] || SHADER_PALETTES.smoke
   if (el.getAttribute("data-custom") !== "true") return colorsForUniform(fallback)

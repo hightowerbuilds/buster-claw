@@ -99,11 +99,10 @@
   {"lib/buster_claw_web/live/split_live.ex", :unmatched_return},
   {"lib/buster_claw_web/live/status_live.ex", :unmatched_return},
   {"lib/buster_claw_web/live/terminal_live.ex", :unmatched_return},
-  {"lib/buster_claw_web/live/trading_live.ex", :unmatched_return},
   {"lib/buster_claw_web/terminal_workspace_hook.ex", :unmatched_return},
 
   # -------------------------------------------------------------------------
-  # 2. Everything that is not `unmatched_return` — 16 entries on 08-02, 10 now.
+  # 2. Everything that is not `unmatched_return` — 16 entries on 08-02, 9 now.
   # -------------------------------------------------------------------------
   #
   # All four confirmed defects diagnosed on 08-02 are now FIXED, and their
@@ -145,7 +144,10 @@
   #     backoff; the only caller passes the response it just received, so an
   #     upstream bug should crash loudly instead.
   #
-  # The other NINE are deliberate and stay, each for a stated reason:
+  # The other NINE were deliberate. EIGHT still are and stay, each for a stated
+  # reason below; the ninth (trading_live.ex :pattern_match_cov) left with its
+  # file when the trading stack was deleted on 08-08 — a deletion is the most
+  # complete kind of fix, and its entry came out the same way a fixed one does.
   #
   #   * appearance.ex, terminal_commands.ex, browser_home_controller.ex —
   #     corrupt-persisted-data degradation. Each catch-all turns a corrupt
@@ -161,9 +163,8 @@
   #     artifact: `is_binary(html) and ...` inside thin_page?, where Dialyzer
   #     proves html is currently always binary. The guard is defense against a
   #     malformed page map; the finding is noise from the `and` expansion.
-  #   * sound_studio_component.ex, trading_live.ex — LiveView catch-alls. A new
-  #     error atom from an upstream contract (TradingOrder.parse, StudioMix)
-  #     renders a generic message instead of crashing the whole page.
+  #   * sound_studio_component.ex — a LiveView catch-all. A new error atom from
+  #     StudioMix renders a generic message instead of crashing the whole page.
   #   * cli.ex :no_return — simply true: stand_down/2, its trap closure, and
   #     die/2 all end in System.halt/1.
   {"lib/buster_claw/appearance.ex", :pattern_match_cov},
@@ -174,6 +175,5 @@
   {"lib/buster_claw/system_browser.ex", :pattern_match_cov},
   {"lib/buster_claw/terminal_commands.ex", :pattern_match_cov},
   {"lib/buster_claw_web/controllers/browser_home_controller.ex", :pattern_match},
-  {"lib/buster_claw_web/live/sound_studio_component.ex", :pattern_match_cov},
-  {"lib/buster_claw_web/live/trading_live.ex", :pattern_match_cov}
+  {"lib/buster_claw_web/live/sound_studio_component.ex", :pattern_match_cov}
 ]

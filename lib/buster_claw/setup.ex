@@ -42,13 +42,6 @@ defmodule BusterClaw.Setup do
     %{steps: steps, completed: completed, total: total, complete?: completed == total}
   end
 
-  @doc """
-  Whether a name or org profile has been saved. No longer a tracked step, but
-  still used by the Settings page, so kept public.
-  """
-  def profile_complete?,
-    do: present?(Settings.get(@profile_name_key)) or present?(Settings.get(@profile_org_key))
-
   def workspace_complete?, do: Settings.get(@workspace_confirmed_key) == "true"
 
   @doc "True once the launcher is installed and an agent CLI is on `PATH`."

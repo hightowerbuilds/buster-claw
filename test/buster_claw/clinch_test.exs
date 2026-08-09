@@ -141,6 +141,50 @@ defmodule BusterClaw.ClinchTest do
       assert Clinch.list(:service_key) |> Enum.all?(&(not &1.managed?))
     end
 
+    # The guard on 4c/Pattern A. The three `list/1` clauses used to assert
+    # `managed?` as a literal, which agreed with `Types.managed_kinds/0` by
+    # coincidence; they now derive it. This is the test that fails if the two
+    # ever diverge again — and it drives the real `list/0`, so it catches a
+    # re-inlined literal in any clause, present or future.
+    test "managed? agrees with Types.managed_kinds/0 for every listed kind" do
+      # Non-empty, or the whole assertion below could pass with every kind
+      # read-only — the vacuously-green failure mode this repo keeps hitting.
+      refute Enum.empty?(Types.managed_kinds()),
+             "managed_kinds/0 is empty — nothing is writable, and the check below proves nothing"
+
+      # A row of every readable kind, so no clause is exercised vacuously.
+      assert {:ok, _} = Clinch.put(@ref, @value)
+
+      assert {:ok, _} =
+               BusterClaw.Google.create_account(%{
+                 "email" => "managed-check@example.com",
+                 "client_id" => "client-id",
+                 "client_secret" => "client-secret"
+               })
+
+      assert {:ok, _} =
+               BusterClaw.Integrations.create_integration(%{
+                 name: "managed-check",
+                 service_type: "github",
+                 token: "a-token"
+               })
+
+      entries = Clinch.list()
+      listed_kinds = entries |> Enum.map(& &1.kind) |> Enum.uniq()
+
+      assert :sign_in in listed_kinds
+      assert :oauth in listed_kinds
+      assert :service_key in listed_kinds
+
+      for entry <- entries do
+        assert entry.managed? == entry.kind in Types.managed_kinds(),
+               "#{entry.kind}/#{entry.name} lists managed? = #{entry.managed?}, but " <>
+                 "Types.managed_kinds/0 says #{entry.kind in Types.managed_kinds()}. " <>
+                 "The write boundary has two answers again — Clinch.list/1 must derive " <>
+                 "the flag from Types.managed_kinds/0, never restate it."
+      end
+    end
+
     test "kinds with no readable store list nothing rather than inventing names" do
       assert [] = Clinch.list(:loopback_token)
       assert [] = Clinch.list(:device_key)

@@ -154,7 +154,7 @@ export async function decodePeaks(arrayBuffer) {
   return peaks
 }
 
-export function hexToVec4(hex) {
+function hexToVec4(hex) {
   const n = parseInt((hex || "#ffffff").replace("#", ""), 16)
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1]
 }

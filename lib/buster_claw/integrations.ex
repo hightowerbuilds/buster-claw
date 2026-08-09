@@ -42,7 +42,7 @@ defmodule BusterClaw.Integrations do
   end
 
   def get_integration!(id), do: Repo.get!(Integration, id)
-  def get_by_name(name), do: Repo.get_by(Integration, name: name)
+  defp get_by_name(name), do: Repo.get_by(Integration, name: name)
 
   def create_integration(attrs) do
     %Integration{}
@@ -96,7 +96,7 @@ defmodule BusterClaw.Integrations do
     |> Enum.take(limit)
   end
 
-  def create_run(attrs) do
+  defp create_run(attrs) do
     %IntegrationRun{}
     |> IntegrationRun.changeset(attrs)
     |> Repo.insert()
@@ -529,7 +529,7 @@ defmodule BusterClaw.Integrations do
 
   defp timestamp, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
-  def bounded_error(text) do
+  defp bounded_error(text) do
     text = to_string(text)
 
     if String.length(text) > @max_error,

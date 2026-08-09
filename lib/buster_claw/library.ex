@@ -58,10 +58,8 @@ defmodule BusterClaw.Library do
   def get_document!(id), do: Repo.get!(Document, id)
   def create_document(attrs), do: %Document{} |> Document.changeset(attrs) |> Repo.insert()
 
-  def update_document(%Document{} = document, attrs),
+  defp update_document(%Document{} = document, attrs),
     do: document |> Document.changeset(attrs) |> Repo.update()
-
-  def delete_document(%Document{} = document), do: Repo.delete(document)
 
   def save_raw_document(attrs) do
     with {:ok, written} <- Artifact.write_raw_document(attrs) do

@@ -56,9 +56,15 @@ defmodule BusterClaw.Finance.BLS do
   # `..` in it would otherwise choose the endpoint, not just the series.
   @series_id_re ~r/\A[A-Z0-9]{1,32}\z/
 
-  # A few series worth naming, so a caller (or a model reading this catalog
-  # through `series_catalog/0`) does not have to guess an opaque code. Not
-  # exhaustive — any valid id works.
+  # A few series worth naming, so the title and units of a common request do not
+  # have to be looked up. Read by `observations/2` to describe a series it just
+  # fetched. Not exhaustive — any valid id works.
+  #
+  # There was a `series_catalog/0` here that exposed this map so a model could
+  # browse it instead of guessing an opaque code. Nothing ever called it, and no
+  # command surfaced it, so it was deleted on 08-09. If that discovery surface is
+  # wanted, the place to add it is the `finance_sources` command output, not a
+  # public accessor with no reader.
   @known_series %{
     "CUUR0000SA0" => %{
       title: "CPI-U, all items, U.S. city average",
@@ -91,9 +97,6 @@ defmodule BusterClaw.Finance.BLS do
       frequency: "monthly"
     }
   }
-
-  @doc "Series ids this module can describe without a lookup. Any valid id still works."
-  def series_catalog, do: @known_series
 
   @doc "Documented queries/day for the current configuration. Informational."
   def daily_quota, do: if(match?({:ok, _key}, api_key()), do: 500, else: 25)

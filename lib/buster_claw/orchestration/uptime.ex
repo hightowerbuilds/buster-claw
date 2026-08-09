@@ -151,8 +151,8 @@ defmodule BusterClaw.Orchestration.Uptime do
     :ok
   end
 
-  @doc "Path to the installed KeepAlive LaunchAgent plist (nil if no home dir)."
-  def launchd_plist_path do
+  # Path to the installed KeepAlive LaunchAgent plist (nil if no home dir).
+  defp launchd_plist_path do
     case System.user_home() do
       home when is_binary(home) ->
         Path.join([home, "Library", "LaunchAgents", "#{@launchd_label}.plist"])

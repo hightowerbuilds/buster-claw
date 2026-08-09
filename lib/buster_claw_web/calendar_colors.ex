@@ -1,27 +1,21 @@
 defmodule BusterClawWeb.CalendarColors do
   @moduledoc """
-  Shared event-color treatments for the two calendar surfaces — the home
-  corner-widget month grid (`HomeWidget`) and the full calendar page
-  (`CalendarLive`) — so both render the same category hues.
+  Shared event-color treatments for the calendar, so every surface renders the
+  same category hues.
 
   Each event `color` ("work" / "personal" / "social" / "travel" / "health" /
   "holiday" / "neutral", or nil) maps to a daisyUI semantic color; unknown/nil
   falls back to the brand primary. Class strings are full literals (never
   interpolated) so Tailwind's source scanner picks them up.
-  """
 
-  # Strong whole-cell fill — the widget's compact month cells, where the cell
-  # color IS the only event cue.
-  @cell_fill %{
-    "neutral" => "bg-base-content/20",
-    "work" => "bg-info/35",
-    "personal" => "bg-secondary/35",
-    "social" => "bg-accent/35",
-    "travel" => "bg-warning/35",
-    "health" => "bg-success/35",
-    "holiday" => "bg-error/35"
-  }
-  def cell_fill(color), do: Map.get(@cell_fill, color, "bg-primary/35")
+  The one consumer today is `CalendarComponent`, which uses `cell_wash/1`,
+  `chip/1` and `swatch/1`. This module was written for two surfaces — it used to
+  claim the home corner-widget month grid as the second — but `HomeWidget` never
+  referenced it, and the two treatments only that grid would have needed
+  (a strong whole-cell fill, and a text-only hue) were deleted on 08-09 rather
+  than kept against a caller that never arrived. Re-add a treatment when a
+  surface asks for it; the shape is four lines.
+  """
 
   # Faint whole-cell wash — the full calendar's tall cells: a subtle "busy" tint
   # that sits under the event chips so a day reads colored at a glance.
@@ -47,18 +41,6 @@ defmodule BusterClawWeb.CalendarColors do
     "holiday" => "bg-error/25 text-error"
   }
   def chip(color), do: Map.get(@chip, color, "bg-primary/25 text-primary")
-
-  # Text-only hue (e.g. a time label whose row already has its own background).
-  @text %{
-    "neutral" => "text-base-content",
-    "work" => "text-info",
-    "personal" => "text-secondary",
-    "social" => "text-accent",
-    "travel" => "text-warning",
-    "health" => "text-success",
-    "holiday" => "text-error"
-  }
-  def text(color), do: Map.get(@text, color, "text-primary")
 
   # Solid swatch dot.
   @swatch %{

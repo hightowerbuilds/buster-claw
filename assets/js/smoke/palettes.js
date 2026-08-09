@@ -10,9 +10,7 @@ export const SHADER_PALETTES = {
   keypad: ["#160d09", "#ff4d1c", "#ffc9b3"],
 }
 
-export const DEFAULT_PALETTE = SHADER_PALETTES.smoke
-
-export function hexToRgb(hex) {
+function hexToRgb(hex) {
   const h = String(hex || "").replace("#", "").trim()
   const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h.padEnd(6, "0").slice(0, 6)
   const int = parseInt(n, 16)

@@ -40,7 +40,4 @@ defmodule BusterClaw.Sentinel.Event do
     |> validate_inclusion(:category, @categories)
     |> validate_inclusion(:severity, @severities)
   end
-
-  def severities, do: @severities
-  def categories, do: @categories
 end

@@ -19,7 +19,6 @@ defmodule BusterClaw.Agent.Conversation do
   schema "agent_conversations" do
     field :title, :string
     field :kind, :string, default: "home"
-    field :docked, :boolean, default: false
     field :archived_at, :utc_datetime
 
     timestamps(type: :utc_datetime)
@@ -30,7 +29,7 @@ defmodule BusterClaw.Agent.Conversation do
 
   def changeset(conversation, attrs) do
     conversation
-    |> cast(attrs, [:id, :title, :kind, :docked, :archived_at])
+    |> cast(attrs, [:id, :title, :kind, :archived_at])
     |> validate_required([:id, :title, :kind])
     |> validate_length(:id, min: 1, max: 128)
     # Validated rather than free-text: `kind` decides which surface a tab shows

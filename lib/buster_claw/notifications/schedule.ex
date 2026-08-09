@@ -84,9 +84,9 @@ defmodule BusterClaw.Notifications.Schedule do
     |> DateTime.truncate(:second)
   end
 
-  @doc "Positive whole minutes, or `:error`. A trailing unit is tolerated."
+  # Positive whole minutes, or `:error`. A trailing unit is tolerated.
   @spec parse_minutes(term()) :: pos_integer() | :error
-  def parse_minutes(value) do
+  defp parse_minutes(value) do
     case value |> to_string() |> String.trim() |> Integer.parse() do
       {minutes, _rest} when minutes > 0 -> minutes
       _ -> :error

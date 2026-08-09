@@ -51,21 +51,10 @@ defmodule BusterClaw.Notifications do
     |> broadcast_change()
   end
 
-  def update_notification(%Notification{} = notification, attrs) do
-    notification
-    |> Notification.changeset(attrs)
-    |> Repo.update()
-    |> broadcast_change()
-  end
-
   def delete_notification(%Notification{} = notification) do
     notification
     |> Repo.delete()
     |> broadcast_change()
-  end
-
-  def change_notification(%Notification{} = notification \\ %Notification{}, attrs \\ %{}) do
-    Notification.changeset(notification, attrs)
   end
 
   # ---------------------------------------------------------------------------

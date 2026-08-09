@@ -185,7 +185,7 @@ defmodule BusterClawWeb.Status.ChatAttachments do
   Surface a refusal — the hook's own (`attach_error`), the store's, or ours.
 
   A refusal is *state*, not a flash: it blocks the next send until it is
-  dismissed. See `send_block/1`.
+  dismissed — see the send gate below.
   """
   def refuse(socket, reason, filename) do
     assign(socket, :chat_attach_error, %{
@@ -230,20 +230,18 @@ defmodule BusterClawWeb.Status.ChatAttachments do
 
   # --- the send gate ---------------------------------------------------------
 
-  @doc """
-  Why this message must not be sent yet, or `nil`.
-
-  Silently sending a message whose image did not make it is the failure users
-  hate most, so the two ways that can happen both stop the send:
-
-  1. an attachment was refused and the user has not acknowledged it — they may
-     well want to retry rather than send without it;
-  2. something staged has vanished from disk between the drop and the send.
-
-  Both are recoverable in one click, which is the only reason blocking (rather
-  than warning) is defensible.
-  """
-  def send_block(socket) do
+  # Why this message must not be sent yet, or `nil`.
+  #
+  # Silently sending a message whose image did not make it is the failure users
+  # hate most, so the two ways that can happen both stop the send:
+  #
+  # 1. an attachment was refused and the user has not acknowledged it — they may
+  #    well want to retry rather than send without it;
+  # 2. something staged has vanished from disk between the drop and the send.
+  #
+  # Both are recoverable in one click, which is the only reason blocking (rather
+  # than warning) is defensible.
+  defp send_block(socket) do
     gone = Enum.reject(pending(socket), &staged?(socket, &1))
 
     cond do

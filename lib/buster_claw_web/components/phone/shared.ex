@@ -134,7 +134,7 @@ defmodule BusterClawWeb.Phone.Shared do
 
   def format_cost(_nil), do: nil
 
-  def trim_cost_zeros(str) do
+  defp trim_cost_zeros(str) do
     [whole, frac] = String.split(str, ".")
     frac = String.trim_trailing(frac, "0") |> String.pad_trailing(2, "0")
     "#{whole}.#{frac}"

@@ -38,9 +38,6 @@ defmodule BusterClaw.Integrations.Integration do
     timestamps(type: :utc_datetime)
   end
 
-  def service_types, do: @service_types
-  def statuses, do: @statuses
-
   def changeset(integration, attrs) do
     integration
     |> cast(attrs, [

@@ -144,6 +144,9 @@ defmodule BusterClaw.MixProject do
         "format",
         "credo --strict",
         "test",
+        # The JS suite ran only in CI until 08-09, so a broken hook passed a
+        # green precommit and failed after push. Same command the CI job runs.
+        "cmd bun test assets/js",
         "cmd scripts/check_cycles.sh",
         "cmd scripts/check_file_sizes.sh",
         "cmd scripts/check_rust.sh"

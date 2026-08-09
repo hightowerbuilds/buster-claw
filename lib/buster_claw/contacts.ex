@@ -49,8 +49,6 @@ defmodule BusterClaw.Contacts do
 
   def get_contact!(id), do: Repo.get!(Contact, id)
 
-  def change_contact(%Contact{} = contact, attrs \\ %{}), do: Contact.changeset(contact, attrs)
-
   def create_contact(attrs) do
     %Contact{}
     |> Contact.changeset(attrs)

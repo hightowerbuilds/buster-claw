@@ -155,4 +155,50 @@ defmodule BusterClaw.DispatchProjectorTest do
     assert md =~ "· queued · #"
     assert md =~ "· finished · #"
   end
+
+  test "the appended diary md is byte-identical to render_diary/2 over the logged events",
+       %{tmp: tmp} do
+    # Drive a spread of shapes through the real projector so every diary_row/1
+    # branch is appended for real: subject present/absent, sender present/absent,
+    # a subject needing inline collapsing, and each logged status.
+    first =
+      enqueue!(%{
+        subject: "Reset  password\nplease",
+        sender: "alice@example.com",
+        recommended_role_key: "mail-triage",
+        dedupe_key: "rd-1"
+      })
+
+    # No subject and no sender — "(no subject)" and an empty sender suffix.
+    _bare = enqueue!(%{dedupe_key: "rd-2"})
+
+    {:ok, claimed} = Dispatch.claim_next("tester")
+    sync()
+    assert claimed.id == first.id
+
+    {:ok, running} = Dispatch.mark_running(claimed)
+    sync()
+
+    # A heartbeat is not a logged event: it must add neither a .jsonl line nor an
+    # .md row, so the re-render still has to match.
+    {:ok, _} = Dispatch.heartbeat(running)
+    sync()
+
+    {:ok, _} = Dispatch.finish(running, "done")
+    sync()
+
+    # Decode the .jsonl the way a reader would: one JSON object per line.
+    events =
+      tmp
+      |> jsonl()
+      |> String.split("\n", trim: true)
+      |> Enum.map(&Jason.decode!/1)
+
+    assert length(events) == 5
+
+    file = File.read!(Path.join(tmp, ".buster-claw/dispatch/2026-06-09/Dispatch.md"))
+    rendered = DispatchProjector.render_diary(~D[2026-06-09], events)
+
+    assert file == rendered
+  end
 end

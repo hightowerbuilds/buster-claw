@@ -64,7 +64,7 @@ defmodule BusterClaw.Integrations.Snapshot do
     |> Kernel.<>("\n")
   end
 
-  def inspect_block(value, limit \\ @default_payload_excerpt_limit) do
+  defp inspect_block(value, limit) do
     value
     |> inspect(pretty: true, limit: 50, printable_limit: limit)
     |> bounded(limit)

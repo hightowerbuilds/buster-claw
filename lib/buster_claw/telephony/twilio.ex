@@ -22,6 +22,12 @@ defmodule BusterClaw.Telephony.Twilio do
   Creds come from app env `:twilio`, set in `config/runtime.exs`. Outbound SMS
   additionally requires a Messaging Service SID and the explicit SMS kill
   switch. `req_options` (Req.Test plugs) inject in tests.
+
+  `send_sms/3` checks those three SMS preconditions itself, through the private
+  `sms_ready` below, which names *which* one is missing. There is deliberately no
+  public boolean twin of it — a `sms_configured?` was deleted 08-09 as dead. If a
+  UI ever needs the boolean, it is `sms_ready() == :ok`; do not re-add a second
+  copy of the conditions, which would drift out of step with the tagged errors.
   """
 
   @api "https://api.twilio.com"
@@ -29,11 +35,6 @@ defmodule BusterClaw.Telephony.Twilio do
   @doc "True when both the Twilio Account SID and Auth Token are configured."
   def configured? do
     present?(account_sid()) and present?(auth_token())
-  end
-
-  @doc "True only when credentials, Messaging Service, and the SMS kill switch are set."
-  def sms_configured? do
-    configured?() and present?(messaging_service_sid()) and sms_enabled?()
   end
 
   @doc "Create one outbound SMS through the configured Twilio Messaging Service."
@@ -213,7 +214,7 @@ defmodule BusterClaw.Telephony.Twilio do
 
   defp account_sid, do: get_in(config(), [:account_sid])
   defp auth_token, do: get_in(config(), [:auth_token])
-  def messaging_service_sid, do: get_in(config(), [:messaging_service_sid])
+  defp messaging_service_sid, do: get_in(config(), [:messaging_service_sid])
   defp sms_enabled?, do: get_in(config(), [:sms_enabled]) == true
   defp config, do: Application.get_env(:buster_claw, :twilio, %{})
 

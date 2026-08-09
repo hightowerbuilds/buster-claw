@@ -49,7 +49,7 @@ defmodule BusterClaw.Skills do
 
   def dir, do: Artifact.workspace_path(@subdir)
   def roster_path, do: Path.join(dir(), @roster)
-  def skill_path(name), do: Path.join(dir(), name <> ".md")
+  defp skill_path(name), do: Path.join(dir(), name <> ".md")
 
   @doc "All enabled, valid skills as summaries (`name`/`description`/`tier`), sorted."
   def list do
