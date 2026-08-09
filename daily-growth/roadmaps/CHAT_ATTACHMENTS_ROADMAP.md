@@ -1,6 +1,6 @@
 # Chat attachments — dragging images and files into the conversation
 
-**Scoped 08-08-26 · Status: SCOPED, not started · MUST (operator, 08-08).**
+**Scoped 08-08-26 · Status: PHASE 0 DONE — all mechanisms verified on this machine. MUST (operator, 08-08).**
 
 **What this is, in one line:** drag or paste an image or a file into the homepage
 chat and have the model actually see it — the way Claude Code, Codex and every
@@ -130,42 +130,66 @@ Text files inlining as text is worth calling out: it is the common case for
    unchanged. Keeping one is an explicit act, not a default.
 4. **Nothing is written into the workspace the agent browses.** Staging lives in
    an app-managed directory reached only by `--add-dir`, for one turn.
-5. **Refuse rather than silently degrade on backends that cannot read images.**
-   The model floor is already unenforceable off Claude; attaching something the
-   agent cannot open and saying nothing is the worst of the three options.
+5. ~~Refuse rather than silently degrade on backends that cannot read images.~~
+   **WITHDRAWN 08-08 by measurement** — all three backends have a native
+   attachment mechanism. See Phase 0. Replaced by: **stage once, deliver per
+   backend.** Codex and OpenCode take paths and cannot take bytes, so the staged
+   file is the substrate all three share; Claude's inline block is an
+   optimisation on top, not an alternative to it.
 6. **Cap size and count, and say so at the drop** — not after an upload that
    appears to succeed and then fails at the transport.
 
 ---
 
-## Open question — does a path in a `-p` prompt actually get read?
+## Phase 0 answered it — measured, not assumed (08-08)
 
-**Mechanism (B) rests entirely on this and it has not been verified.** Claude
-Code reads image files with its own file tools, so a path in the prompt *should*
-be enough — but "should" is doing real work in that sentence, and if it is wrong
-the fallback has no fallback.
+The blocking question was whether a path in a `-p` prompt actually gets read.
+**It does.** And checking the other two backends changed the design, so all four
+findings are recorded here rather than in a commit message.
 
-**Answer it with one manual invocation before any UI is built:** `claude -p` with
-`--add-dir` pointed at a directory containing a real PNG, and a prompt asking
-what the image shows. Minutes of work, and it decides whether Phase 1 exists.
+The probe was a 120×120 PNG generated for the purpose — magenta ground, yellow
+square — chosen because both facts are verifiable and neither is guessable.
 
-**If it fails**, the options narrow to: ship (A) only and accept that attachments
-arrive with G-41, or bring G-41 forward. Both are decisions for the operator, not
-for this document.
+| Backend | Mechanism | Verified |
+|---|---|---|
+| **Claude**, streaming | inline `{"type":"image","source":{"type":"base64",…}}` block in the `content` **array** on stdin | **yes** — answered correctly, and **no file existed and no Read tool ran** |
+| **Claude**, default | path in the prompt + `--add-dir` | **yes** — answered correctly |
+| **Codex** | `-i, --image <FILE>...` — *"image(s) to attach to the initial prompt"* | flag confirmed present |
+| **OpenCode** | `-f, --file <array>` — *"file(s) to attach to message"* | flag confirmed present |
 
----
+### What this changes
 
-# Phase 0 — Prove the mechanisms, build no UI
+**Decision 5 was wrong and is withdrawn.** It said to refuse on backends that
+cannot read images. **All three can** — each with its own native attachment
+mechanism. There is nothing to refuse and no degraded path to warn about.
 
-- [ ] The `claude -p` + `--add-dir` + image-path check above. **Blocking.**
-- [ ] The inline-block check: hand-write one `{"type":"user","message":{"role":
-      "user","content":[{"type":"text",…},{"type":"image",…}]}}` line into a
-      streaming session and confirm the model sees the image.
-- [ ] Confirm what Codex and OpenCode do with an image path — refuse, ignore, or
-      read it. Decision 5 needs the answer.
+**And staging is not a Claude fallback — it is the universal substrate.** Codex
+and OpenCode both take **file paths**; neither accepts bytes. So a file on disk
+is required for two of three backends no matter what, which collapses the
+architecture into one shape:
 
-**Done when:** both mechanisms are known to work or known not to, on this
-machine, with no app code written.
+> **Stage once, then hand it to each backend the way that backend wants it.**
+
+One pipeline with a short per-backend tail, rather than two competing mechanisms.
+Claude's inline block stops being the *primary* design and becomes what it
+actually is — an optimisation available on one path of one backend, worth taking
+because it is the only route where **no file need exist at all**.
+
+**The lifetime rule is unaffected.** Staged files live in an app-managed
+directory outside the workspace the agent browses, and die with their
+conversation — the `chat_svgs` rule. Staging is still not saving.
+
+# Phase 0 — Prove the mechanisms, build no UI — **DONE 08-08**
+
+- [x] `claude -p` + `--add-dir` + an image path. **Reads it.**
+- [x] Inline base64 block on `--input-format stream-json`. **Works, with no file
+      and no Read tool** — the mechanism the operator asked for.
+- [x] Codex and OpenCode: both carry native attachment flags (`-i/--image`,
+      `-f/--file`). Decision 5 withdrawn.
+
+**Done. No app code was written to answer any of it**, which was the point:
+Phase 1 rested on an assumption, and an afternoon of UI built on a false one
+would have been wasted.
 
 # Phase 1 — Getting the bytes in
 
