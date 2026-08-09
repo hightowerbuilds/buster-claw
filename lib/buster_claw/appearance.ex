@@ -34,11 +34,24 @@ defmodule BusterClaw.Appearance do
   require Logger
 
   alias BusterClaw.Library.Artifact
+  alias BusterClaw.Pockets
   alias BusterClaw.Settings
   alias BusterClaw.Shaders
 
   @max_images 8
-  @subdir "backgrounds"
+  # The image pool lives in a Pocket (`pockets/backgrounds/`) as of 08-08. The
+  # slot mechanism above it is unchanged — a Pocket replaced the *drawer*, not
+  # the pool — which is why `@subdir` is now a relative path rather than a
+  # top-level entry, and why no caller of `image_url/1`, `image_path/1` or
+  # `next_empty_slot/0` had to move.
+  #
+  # The name is FIXED rather than resolved through `Pockets.for_role/1`: a
+  # malformed or duplicate manifest must never be able to silently relocate where
+  # a user's uploads are written. Roles describe this Pocket; they do not decide
+  # it. Binding a surface to a *different* Pocket by role waits for a second
+  # consumer that actually wants it.
+  @pocket "backgrounds"
+  @subdir "pockets/backgrounds"
   @image_basename "background"
 
   @builtin_shaders ~w(smoke waves mandel weather)
@@ -108,8 +121,11 @@ defmodule BusterClaw.Appearance do
   @doc "Upload extensions accepted by the picker (`allow_upload` `:accept`)."
   def accepted_extensions, do: Map.keys(@content_types)
 
-  @doc "Absolute path to the appearance directory under the workspace."
-  def dir, do: Artifact.workspace_path(@subdir)
+  @doc "Absolute path to the background Pocket that holds the image pool."
+  def dir, do: Pockets.pocket_dir(@pocket)
+
+  @doc "The Pocket the image pool lives in."
+  def pocket_name, do: @pocket
 
   @doc "Built-in shader design names."
   def builtin_shaders, do: @builtin_shaders
@@ -415,6 +431,7 @@ defmodule BusterClaw.Appearance do
 
       slot = next_empty_slot() ->
         File.mkdir_p!(dir())
+        ensure_pocket_manifest()
         # Drop any prior file in this slot (possibly a different extension).
         clear_image_files(slot)
         dest = Path.join(dir(), image_basename(slot) <> ext)
@@ -472,6 +489,8 @@ defmodule BusterClaw.Appearance do
       Settings.put(@migrated_key, "1")
     end
 
+    ensure_pocket_manifest()
+
     :ok
   rescue
     error ->
@@ -479,27 +498,63 @@ defmodule BusterClaw.Appearance do
       :error
   end
 
-  # The directory was `appearance/` before it was content-named `backgrounds/`.
-  # `Workspace.ensure/0` moves the files (it boots before this); the stored
-  # pointers are workspace-relative and fenced to `dir()`, so any still carrying
-  # the old prefix would fail the fence and its slot would read as empty. That
-  # must happen BEFORE the pool migration: `next_empty_slot/0` trusts those
-  # pointers, and a slot misread as empty gets a second image landed on it. The
-  # legacy pre-pool keys are rewritten too, for an install crossing both
-  # migrations in one launch. Cheap and idempotent: a pointer without the old
-  # prefix is left alone.
+  # This directory has moved TWICE: `appearance/` → `backgrounds/` (a content
+  # rename) → `pockets/backgrounds/` (a pile of the operator's images is a
+  # Pocket). `Workspace.ensure/0` moves the files, and it boots before this.
+  #
+  # The stored pointers are workspace-relative and fenced to `dir()`, so any
+  # still carrying an old prefix would fail the fence and its slot would read as
+  # empty. That must happen BEFORE the pool migration: `next_empty_slot/0` trusts
+  # those pointers, and **a slot misread as empty gets a second image landed on
+  # it.** The legacy pre-pool keys are rewritten too, for an install crossing
+  # every migration in one launch.
+  #
+  # Cheap and idempotent by shape: a pointer already under `pockets/backgrounds/`
+  # matches neither old prefix and is left alone.
+  @old_prefixes ["appearance/", "backgrounds/"]
+
   defp rewrite_renamed_dir do
     pool_keys = Enum.map(1..@max_images, &path_key/1)
     legacy_keys = Enum.map(1..5, &"terminal_background_#{&1}_path")
 
     Enum.each(pool_keys ++ legacy_keys ++ ["home_background_image_path"], fn key ->
       with rel when is_binary(rel) <- present(Settings.get(key)),
-           "appearance/" <> rest <- rel do
+           {:ok, rest} <- strip_old_prefix(rel) do
         Settings.put(key, Path.join(@subdir, rest))
       else
         _ -> :ok
       end
     end)
+  end
+
+  defp strip_old_prefix(rel) do
+    Enum.find_value(@old_prefixes, :error, fn prefix ->
+      case rel do
+        ^prefix <> rest -> {:ok, rest}
+        _ -> nil
+      end
+    end)
+  end
+
+  # Give the pool's Pocket a manifest so it appears in the Pockets tab as
+  # something described rather than as an unexplained folder. Deliberately NOT
+  # called at boot: `pockets/` is an on-demand entry, and a fresh install must
+  # not lay down a folder holding nothing the user made. So this runs when there
+  # is something to describe — the first upload, or a migration that moved files
+  # in.
+  defp ensure_pocket_manifest do
+    if File.dir?(dir()) do
+      Pockets.ensure_pocket(@pocket, %{
+        kind: :media,
+        description: "Background images you uploaded.",
+        roles: ["background"],
+        body:
+          "Pick which of these a surface shows in Settings → Appearance.\n" <>
+            "Drop images here or upload them there; both land in this folder."
+      })
+    end
+
+    :ok
   end
 
   # Terminal slots 1..5 keep their numbers in the pool — the mode becomes an

@@ -168,6 +168,96 @@ defmodule BusterClaw.PocketsTest do
     end
   end
 
+  describe "roles binding" do
+    test "for_role finds the pocket declaring it, and nil for one nobody declares" do
+      write_pocket("art", manifest(~s|kind: media\nroles: ["background"]|))
+      write_pocket("plain", manifest("kind: icons"))
+
+      assert %{name: "art"} = Pockets.for_role("background")
+      assert Pockets.for_role("app_icon") == nil
+      assert Pockets.for_role(nil) == nil
+    end
+
+    test "an unknown role is inert, not invalid" do
+      # A manifest may name a role no surface asks for yet. Refusing it would
+      # mean the app rejects a Pocket for being newer than itself.
+      write_pocket("forward", manifest(~s|kind: icons\nroles: ["not_a_real_role_yet"]|))
+
+      assert {:ok, %{roles: ["not_a_real_role_yet"]}} = Pockets.load("forward")
+      assert Enum.map(Pockets.list(), & &1.name) == ["forward"]
+    end
+
+    test "ties break by name so the answer is stable, not filesystem-ordered" do
+      write_pocket("zebra", manifest(~s|kind: media\nroles: ["background"]|))
+      write_pocket("aardvark", manifest(~s|kind: media\nroles: ["background"]|))
+
+      assert %{name: "aardvark"} = Pockets.for_role("background")
+    end
+  end
+
+  describe "the backgrounds pocket — Pockets' first consumer (D7)" do
+    alias BusterClaw.Appearance
+
+    test "the image pool lives in a pocket, and an upload lands in it" do
+      assert Appearance.dir() == Pockets.pocket_dir("backgrounds")
+
+      src = Path.join(System.tmp_dir!(), "bc_pk_src_#{System.unique_integer([:positive])}.png")
+      File.write!(src, "png-bytes")
+      on_exit(fn -> File.rm_rf(src) end)
+
+      assert {:ok, 1} = Appearance.put_image(src, "sky.png")
+
+      # The upload is visible THROUGH the Pocket, not only through Appearance —
+      # which is the whole claim of D7: a drawer that already existed is now one
+      # instance of a general mechanism.
+      assert {:ok, pocket} = Pockets.load("backgrounds")
+      assert pocket.kind == :media
+      assert "background" in pocket.roles
+      assert %{name: "background-1.png"} = Enum.find(Pockets.contents(pocket), &(&1.bytes > 0))
+      assert %{name: "backgrounds"} = Pockets.for_role("background")
+    end
+
+    test "no manifest is written until there is something to describe" do
+      # `pockets/` is an on-demand entry. A fresh install must not lay down a
+      # folder holding nothing the user made.
+      assert :ok = Appearance.ensure()
+      refute File.exists?(Pockets.manifest_path("backgrounds"))
+      assert Pockets.list() == []
+    end
+
+    test "a stored pointer under either old prefix is rewritten to the pocket" do
+      # `appearance/` → `backgrounds/` → `pockets/backgrounds/`. A pointer left at
+      # ANY earlier name would fail Appearance's containment fence and its slot
+      # would read as empty — and an empty-looking slot gets a second image
+      # landed on it.
+      File.mkdir_p!(Pockets.pocket_dir("backgrounds"))
+      File.write!(Path.join(Pockets.pocket_dir("backgrounds"), "old.png"), "x")
+
+      for {key, stored} <- [
+            {"background_image_1_path", "appearance/old.png"},
+            {"background_image_2_path", "backgrounds/old.png"}
+          ] do
+        BusterClaw.Settings.put(key, stored)
+      end
+
+      assert :ok = Appearance.ensure()
+
+      assert BusterClaw.Settings.get("background_image_1_path") == "pockets/backgrounds/old.png"
+      assert BusterClaw.Settings.get("background_image_2_path") == "pockets/backgrounds/old.png"
+    end
+
+    test "the rewrite is idempotent — a pointer already in the pocket is left alone" do
+      File.mkdir_p!(Pockets.pocket_dir("backgrounds"))
+      BusterClaw.Settings.put("background_image_1_path", "pockets/backgrounds/settled.png")
+
+      assert :ok = Appearance.ensure()
+      assert :ok = Appearance.ensure()
+
+      assert BusterClaw.Settings.get("background_image_1_path") ==
+               "pockets/backgrounds/settled.png"
+    end
+  end
+
   describe "contents" do
     test "lists regular files, excluding the manifest and dotfiles" do
       write_pocket("kit", manifest("kind: icons"), [

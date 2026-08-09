@@ -54,6 +54,72 @@ defmodule BusterClaw.Pockets do
   def kinds, do: @kinds
 
   @doc """
+  The roles that currently have a consumer — a surface that asks for them.
+
+  Deliberately short. A role is added here **when something asks for it**, not
+  when someone imagines it might: an unused role is the speculative breadth that
+  cost the extension mechanism its life, one name at a time.
+
+  A Pocket may declare a role that is not on this list. It simply never binds —
+  see `for_role/1`.
+  """
+  def roles, do: ~w(background)
+
+  @doc """
+  The Pocket filling `role`, or `nil`.
+
+  Ties break by name, so the answer is stable rather than filesystem-ordered.
+
+  **An unknown role is not an error.** A manifest may name a role no surface asks
+  for yet — it stays inert until one does, and a Pocket is never refused for
+  being newer than the app that reads it.
+  """
+  def for_role(role) when is_binary(role) do
+    list() |> Enum.find(&(role in &1.roles))
+  end
+
+  def for_role(_role), do: nil
+
+  @doc """
+  Create a Pocket's directory and, if it has no manifest yet, write one.
+
+  Never overwrites an existing `POCKET.md`: the operator's edits to their own
+  Pocket outrank ours. That does mean a shipped manifest cannot be corrected by a
+  later build — the app-wide seeded-defaults problem — which is exactly why the
+  *app's own* assets must not be seeded this way. See the roadmap's X.5.a.
+  """
+  def ensure_pocket(name, fields) when is_binary(name) and is_map(fields) do
+    with :ok <- check_name(name) do
+      File.mkdir_p!(pocket_dir(name))
+      path = manifest_path(name)
+
+      unless File.exists?(path) do
+        File.write!(path, render_manifest(name, fields))
+      end
+
+      :ok
+    end
+  end
+
+  defp render_manifest(name, fields) do
+    kind = fields |> Map.get(:kind, :free) |> to_string()
+    description = fields |> Map.get(:description, "") |> to_string()
+    roles = Map.get(fields, :roles, [])
+    body = fields |> Map.get(:body, "") |> to_string()
+
+    """
+    ---
+    name: #{name}
+    kind: #{kind}
+    description: #{description}
+    roles: #{Jason.encode!(roles)}
+    ---
+
+    #{body}
+    """
+  end
+
+  @doc """
   Create the pockets directory. On-demand per the workspace registry: called when
   the operator opens the surface that owns it, never at install.
   """

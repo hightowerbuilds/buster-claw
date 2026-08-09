@@ -343,7 +343,13 @@ defmodule BusterClaw.WorkspaceTest do
 
       # User content arrived intact at the new names.
       assert File.read!(Path.join(root, "jobs/custom.md")) == "# Custom\n"
-      assert File.read!(Path.join(root, "backgrounds/background-1.png")) == "bytes"
+
+      # Two hops in ONE pass: `appearance/` → `backgrounds/` →
+      # `pockets/backgrounds/`. @relocations is ordered, so an install that
+      # skipped a release crosses the whole chain on the next launch rather than
+      # stalling at an intermediate name nothing owns any more.
+      assert File.read!(Path.join(root, "pockets/backgrounds/background-1.png")) == "bytes"
+      refute "backgrounds" in listing
 
       assert File.read!(Path.join(root, ".buster-claw/dispatch/2026-07-31/Dispatch.jsonl")) ==
                ~s({"event":"queued"}\n)

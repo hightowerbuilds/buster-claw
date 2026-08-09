@@ -144,7 +144,7 @@ defmodule BusterClaw.AppearanceTest do
       {:ok, 1} = Appearance.put_image(fake_image(".jpg"), "sky.jpg")
       url = Appearance.image_url(1)
 
-      abs = Path.join([root, "backgrounds", "background-1.jpg"])
+      abs = Path.join([root, "pockets", "backgrounds", "background-1.jpg"])
       File.write!(abs, "entirely different bytes")
       File.touch!(abs, System.os_time(:second) + 100)
 
@@ -350,11 +350,12 @@ defmodule BusterClaw.AppearanceTest do
     # Seed the old world: per-surface files on disk plus the Settings rows the
     # pre-pool code wrote. Files are deliberately left under their OLD names —
     # the migration must adopt them in place, not move or lose them. They sit in
-    # `backgrounds/` (where `Workspace.ensure/0`'s relocation puts them before
-    # `Appearance.ensure/0` runs) while the legacy Settings rels still say
-    # `appearance/…` — so these tests also prove the rename rewrite.
+    # `pockets/backgrounds/` (where `Workspace.ensure/0`'s relocation puts them
+    # before `Appearance.ensure/0` runs) while the legacy Settings rels still say
+    # `appearance/…` — so these tests also prove the rename rewrite, now across
+    # BOTH hops: `appearance/` → `backgrounds/` → `pockets/backgrounds/`.
     defp seed_legacy(root, opts) do
-      dir = Path.join(root, "backgrounds")
+      dir = Path.join(root, "pockets/backgrounds")
       File.mkdir_p!(dir)
 
       Enum.each(Keyword.get(opts, :terminal_slots, []), fn n ->

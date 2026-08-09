@@ -221,13 +221,19 @@ defmodule BusterClaw.Workspace do
       seed: nil,
       note: "Saved site checks the agent can re-run."
     },
+    # MOVED 08-08 to `pockets/backgrounds/` — a pile of the operator's images is
+    # a Pocket. Declared `:deprecated` rather than deleted so `sweep_deprecated/0`
+    # removes the husk once `migrate_layout/0` has emptied it, and so an operator
+    # who still has one is not looking at an entry the registry cannot explain.
+    # The sweeper refuses a non-empty directory, so a file that collided during
+    # the move stays put and stays visible.
     %{
       name: "backgrounds",
       kind: :dir,
-      tier: :on_demand,
+      tier: :deprecated,
       owner: BusterClaw.Appearance,
       seed: nil,
-      note: "Background images you uploaded."
+      note: "Moved to pockets/backgrounds/. Swept when empty."
     },
 
     # --- on demand, drop zones: you put the first file in, not us ----------
@@ -392,6 +398,14 @@ defmodule BusterClaw.Workspace do
     {"studio", "sounds/studio"},
     {"job-descriptions", "jobs"},
     {"appearance", "backgrounds"},
+    # The SECOND move for this directory: `appearance/` → `backgrounds/` (a
+    # content-rename) and now `backgrounds/` → `pockets/backgrounds/`, because a
+    # pile of the operator's images is a Pocket and always was one. Both hops are
+    # listed, so an install that skipped a release crosses them in order.
+    #
+    # `Appearance.rewrite_renamed_dir/0` rewrites the stored pointers to match,
+    # and MUST run after this — it does, because Workspace.ensure/0 boots first.
+    {"backgrounds", "pockets/backgrounds"},
     {"shift", ".buster-claw/dispatch"}
   ]
 

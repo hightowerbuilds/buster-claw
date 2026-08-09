@@ -46,7 +46,7 @@ defmodule BusterClawWeb.AppearanceControllerTest do
 
     # Another writer replaces the file: the old ETag must stop matching, so the
     # webview refetches instead of pinning the stale bytes.
-    abs = Path.join([root, "backgrounds", "background-#{slot}.jpg"])
+    abs = Path.join([root, "pockets", "backgrounds", "background-#{slot}.jpg"])
     File.write!(abs, "replaced by another instance")
     File.touch!(abs, System.os_time(:second) + 100)
 
