@@ -564,6 +564,13 @@ defmodule BusterClaw.Commands do
   # The gated end of the walk, and the way back from it
   defdelegate sound_apply(args), to: BusterClaw.Commands.Sound
   defdelegate sound_restore_defaults(args \\ %{}), to: BusterClaw.Commands.Sound
+  # Pockets — the operator's own folders of media, READ ONLY. There is no verb
+  # here that records, changes or removes a mount, at any tier: mounting is an
+  # operator act in the UI, and the absence is the enforcement (POCKETS_ROADMAP
+  # D4). `test/buster_claw/commands/pocket_test.exs` fails if one ever appears.
+  defdelegate pocket_list(args \\ %{}), to: BusterClaw.Commands.Pocket
+  defdelegate pocket_describe(args), to: BusterClaw.Commands.Pocket
+  defdelegate pocket_read(args), to: BusterClaw.Commands.Pocket
   # Google Workspace
   defdelegate google_account_list(args \\ %{}), to: BusterClaw.Commands.Google
   defdelegate google_account_get(args), to: BusterClaw.Commands.Google

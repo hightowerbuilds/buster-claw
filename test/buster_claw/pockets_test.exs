@@ -258,6 +258,86 @@ defmodule BusterClaw.PocketsTest do
     end
   end
 
+  describe "a pocket the app writes into cannot be mounted away" do
+    alias BusterClaw.Appearance
+    alias BusterClaw.Pockets.{Mounts, Operator}
+
+    setup do
+      target = Path.join(System.tmp_dir!(), "bc_pk_mnt_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(target)
+      on_exit(fn -> File.rm_rf(target) end)
+      {:ok, target: target}
+    end
+
+    test "the backgrounds pocket is refused by name, manifest or not", %{target: target} do
+      assert {:error, :app_owned} = Operator.mount("backgrounds", target)
+
+      # And still refused once it exists and declares its role.
+      write_pocket("backgrounds", manifest(~s|kind: media\nroles: ["background"]|))
+      assert {:error, :app_owned} = Operator.mount("backgrounds", target)
+
+      refute Mounts.mounted?("backgrounds")
+    end
+
+    test "why it is refused: a mounted pool would read every slot as empty", %{target: target} do
+      # This is the failure the refusal prevents, demonstrated rather than
+      # asserted in prose. Appearance stores WORKSPACE-RELATIVE pointers, so a
+      # file it can address is by construction inside the workspace — a mount
+      # target never is.
+      src = Path.join(System.tmp_dir!(), "bc_pk_i_#{System.unique_integer([:positive])}.png")
+      File.write!(src, "png")
+      on_exit(fn -> File.rm_rf(src) end)
+
+      assert {:ok, 1} = Appearance.put_image(src, "sky.png")
+      assert Appearance.image_path(1) |> File.regular?()
+
+      # The pool's directory is the LOCAL pocket dir and stays that way.
+      assert Appearance.dir() == Pockets.pocket_dir("backgrounds")
+      assert BusterClaw.FileManager.within?(Appearance.image_path(1), Appearance.dir())
+
+      # And the mount that would have broken it never happened.
+      assert {:error, :app_owned} = Operator.mount("backgrounds", target)
+      assert Appearance.image_path(1) |> File.regular?()
+    end
+
+    test "any pocket declaring a consumer-backed role is refused too", %{target: target} do
+      write_pocket("wallpapers", manifest(~s|kind: media\nroles: ["background"]|))
+
+      assert {:error, :role_bound} = Operator.mount("wallpapers", target)
+    end
+
+    test "a pocket with an inert role mounts fine", %{target: target} do
+      write_pocket("icons", manifest(~s|kind: icons\nroles: ["app_icon"]|))
+
+      assert {:ok, _} = Operator.mount("icons", target)
+      assert Mounts.mounted?("icons")
+    end
+
+    test "a mount recorded before the manifest can never bind to a role", %{target: target} do
+      # The back door: mount first (no manifest, so no role to refuse), then
+      # write a manifest claiming the role. for_role/1 must still not bind it.
+      assert {:ok, _} = Operator.mount("sneaky", target)
+      write_pocket("sneaky", manifest(~s|kind: media\nroles: ["background"]|))
+
+      assert {:ok, %{binding: {:mounted, _, _}, roles: ["background"]}} = Pockets.load("sneaky")
+      assert Pockets.for_role("background") == nil
+    end
+
+    test "unmount is reachable from Pockets and makes the bytes unreachable", %{target: target} do
+      File.write!(Path.join(target, "a.png"), "bytes")
+      {:ok, _} = Operator.mount("kit", target)
+      write_pocket("kit", manifest("kind: icons"))
+
+      {:ok, pocket} = Pockets.load("kit")
+      assert Pockets.resolve(pocket, "a.png")
+
+      assert :ok = Operator.unmount("kit")
+      {:ok, relocal} = Pockets.load("kit")
+      assert relocal.binding == :local
+      assert Pockets.resolve(relocal, "a.png") == nil
+    end
+  end
+
   describe "contents" do
     test "lists regular files, excluding the manifest and dotfiles" do
       write_pocket("kit", manifest("kind: icons"), [

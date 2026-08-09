@@ -45,6 +45,7 @@ defmodule BusterClawWeb.StatusLive do
   @home_tabs [
     {"chat", "Chat"},
     {"notes", "Notes"},
+    {"pockets", "Pockets"},
     {"calendar", "Calendar"},
     {"phone", "Phone"},
     {"studio", "Studio"},
@@ -904,6 +905,9 @@ defmodule BusterClawWeb.StatusLive do
 
             <div :if={@home_tab == "notes"} class="flex min-h-0 flex-1 flex-col">
               <.live_component module={BusterClawWeb.NotesComponent} id="home-notes" />
+            </div>
+            <div :if={@home_tab == "pockets"} class="flex min-h-0 flex-1 flex-col">
+              <.live_component module={BusterClawWeb.PocketsPanel} id="home-pockets" />
             </div>
 
             <div :if={@home_tab == "studio"} class="flex min-h-0 flex-1 flex-col">

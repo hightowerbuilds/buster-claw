@@ -1332,6 +1332,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       expected = [
         {"chat", "Chat"},
         {"notes", "Notes"},
+        {"pockets", "Pockets"},
         {"calendar", "Calendar"},
         {"phone", "Phone"},
         {"studio", "Studio"},

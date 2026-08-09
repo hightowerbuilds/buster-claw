@@ -10,12 +10,19 @@ defmodule BusterClaw.Pockets do
   (`BusterClaw.Skills`), job descriptions and trusted-sender lists — file-first,
   git-diffable, operator-editable.
 
-  ## Phase 1 scope
+  ## Local and mounted
 
-  Local Pockets only. `binding` is always `:local`, so `dir/1` is always the
-  Pocket's own directory and every existing containment guard already covers it.
-  Roles parse and are carried, but nothing binds to them yet — the role table is
-  Phase 2 and the mount registry is Phase 3.
+  A Pocket's manifest **always** lives at `<workspace>/pockets/<name>/POCKET.md`,
+  even when its bytes do not. A mount moves where the *contents* are read from,
+  never where the description is written — that split is the whole of roadmap
+  D4/D5, because `POCKET.md` is a file the agent can write and the mount path is
+  not.
+
+  So `pocket_dir/1` is the manifest's home and `pocket.dir` is where the files
+  are. They are the same directory for a local Pocket and different for a mounted
+  one, and `BusterClaw.Pockets.Mounts` is the only thing that can make them
+  differ. One consequence worth knowing: files sitting beside a mounted Pocket's
+  manifest become invisible, because `contents/1` reads the mount.
 
   ## Invalid is a state, not a silence
 
@@ -30,6 +37,7 @@ defmodule BusterClaw.Pockets do
 
   alias BusterClaw.FileManager
   alias BusterClaw.Library.{Artifact, Frontmatter}
+  alias BusterClaw.Pockets.Mounts
 
   @subdir "pockets"
   @manifest "POCKET.md"
@@ -45,7 +53,13 @@ defmodule BusterClaw.Pockets do
   @doc "Absolute path to the pockets directory under the workspace."
   def dir, do: Artifact.workspace_path(@subdir)
 
-  @doc "Absolute path to one Pocket's own directory (its files may live elsewhere)."
+  @doc """
+  Absolute path to one Pocket's own directory under the workspace.
+
+  This is where `POCKET.md` lives, always. It is **not** necessarily where the
+  Pocket's files live — for a mounted Pocket that is `pocket.dir`, which the
+  loader fills in from `BusterClaw.Pockets.Mounts`.
+  """
   def pocket_dir(name) when is_binary(name), do: Path.join(dir(), name)
 
   @doc "Absolute path to a Pocket's manifest."
@@ -76,7 +90,12 @@ defmodule BusterClaw.Pockets do
   being newer than the app that reads it.
   """
   def for_role(role) when is_binary(role) do
-    list() |> Enum.find(&(role in &1.roles))
+    # A MOUNTED Pocket never fills a role — see `mount/3`. Enforced here as well
+    # as there so a mount recorded *before* a manifest declared the role cannot
+    # bind afterwards through the back door.
+    list()
+    |> Enum.filter(&(&1.binding == :local))
+    |> Enum.find(&(role in &1.roles))
   end
 
   def for_role(_role), do: nil
@@ -86,26 +105,35 @@ defmodule BusterClaw.Pockets do
   `nil`.
 
   **This is the one function that decides reach**, and every surface that reads a
-  Pocket's bytes goes through it. It is deliberately the only place that will
-  need to change when mounts land: today every Pocket is `:local`, so the answer
-  is always inside `<workspace>/pockets/`; a mounted Pocket resolves inside its
-  mount root instead, and nothing else moves.
+  Pocket's bytes goes through it. Mounts landed here and nowhere else, exactly as
+  the Phase 1 contract promised: `FileManager.within?/2` is untouched (roadmap
+  D3), and this resolver gained one guard rather than the containment layer
+  losing one.
 
-  Three guards, in order, and each defeats a different attack:
+  Four guards, in order, and each defeats a different attack:
 
   1. `filename` must be a **bare name** — no separator, no `..`, no leading dot.
      A caller cannot ask for a path, only for a file the Pocket lists.
-  2. The resolved path is **canonicalized and re-checked** against the Pocket's
+  2. The Pocket's root must be **admissible**: inside `<workspace>/pockets/`, or
+     at/inside a root the operator explicitly registered in
+     `BusterClaw.Pockets.Mounts`. Nothing else, ever. This is the guard mounts
+     added, and it is what stops a `%{dir: "/etc"}` handed in by a caller — or a
+     mount root that has since been revoked — from resolving to anything.
+  3. The resolved path is **canonicalized and re-checked** against the Pocket's
      directory (`FileManager.within?/2`), so a symlink planted inside a Pocket
      cannot escape it. **A mount is a new root, not a hole.**
-  3. It must be a **regular file**, checked with `lstat` so a symlink is seen
+  4. It must be a **regular file**, checked with `lstat` so a symlink is seen
      rather than followed.
+
+  Guard 2 is re-asked on every call and nothing is cached, which is why
+  unmounting makes bytes unreachable the instant the row is deleted.
 
   Also accepts a Pocket *name*, loading it first. A Pocket that does not load
   resolves to `nil`: an unreadable manifest must never make its bytes reachable.
   """
   def resolve(%{dir: pocket_dir}, filename) when is_binary(filename) do
     with true <- bare_name?(filename),
+         true <- admissible_root?(pocket_dir),
          path = Path.join(pocket_dir, filename),
          true <- FileManager.within?(path, pocket_dir),
          {:ok, %File.Stat{type: :regular}} <- File.lstat(path) do
@@ -150,6 +178,45 @@ defmodule BusterClaw.Pockets do
   end
 
   def asset_url(_pocket, _filename), do: nil
+
+  @doc """
+  Whether `caller` may WRITE bytes into `pocket`.
+
+  Read is not asked here — `resolve/2` answers that, and it answers the same for
+  every caller. This function exists for the write half only, and it is the
+  contract any future write path must call rather than checking `binding`
+  itself.
+
+  - `:local` — `true`. The Pocket is inside the workspace, so writing to it is
+    governed by `FileManager.within?/2` exactly as every other workspace path is.
+    Claiming otherwise here would be a fence that does not exist.
+  - `{:mounted, _path, writable}` — the operator's stored grant AND
+    `BusterClaw.Pockets.Mounts.attended?/1`. **Read-only by default, and an
+    unattended run never gets write regardless of the stored value** (roadmap
+    D5). See `Mounts` for why detecting "unattended" takes two checks.
+
+  `caller` is the same atom `BusterClaw.Commands.call/3` and `PolicyEngine` use
+  (`:trusted | :agent_untrusted | :agent | :mcp`). It has **no default**: a gate
+  that grants by omission is a gate someone forgets to pass an argument to.
+  """
+  def writable?(%{binding: :local}, _caller), do: true
+
+  def writable?(%{binding: {:mounted, _path, writable}}, caller) do
+    writable and Mounts.attended?(caller)
+  end
+
+  def writable?(_pocket, _caller), do: false
+
+  # Guard 2 of `resolve/2`, and the whole of what mounts changed about reach.
+  #
+  # The workspace case is checked FIRST and answers without a query, so the
+  # common path never touches the registry. Only a root outside `pockets/` costs
+  # a lookup, and only a root the operator registered survives it.
+  defp admissible_root?(root) when is_binary(root) do
+    FileManager.within?(root, dir()) or Mounts.registered_root?(root)
+  end
+
+  defp admissible_root?(_root), do: false
 
   # A caller may name a file, never a path. This is checked before any join, so
   # `..` never reaches the filesystem at all.
@@ -267,23 +334,30 @@ defmodule BusterClaw.Pockets do
   @doc """
   The files a Pocket holds, as `%{name, path, bytes}`, sorted by name.
 
-  Reads from `pocket.dir` — which is the mount path once Phase 3 exists — so no
-  caller has to know whether a Pocket is local or mounted. Directories and
-  dotfiles are skipped, and so is the manifest itself: it describes the Pocket
-  rather than being part of its contents.
+  Reads from `pocket.dir` — the mount path for a mounted Pocket — so no caller
+  has to know which case it is in. Directories and dotfiles are skipped, and so
+  is the manifest itself: it describes the Pocket rather than being part of its
+  contents.
+
+  Fenced by the same admissibility guard as `resolve/2`, so an unregistered root
+  lists nothing rather than listing whatever is there. A mount whose target has
+  been deleted, renamed, or unmounted therefore reads as **empty** — the Pocket
+  is still there and still describes itself, it simply has no contents, and
+  nothing raises on the way to finding that out.
   """
   def contents(%{dir: pocket_dir}) do
-    case File.ls(pocket_dir) do
-      {:ok, entries} ->
-        entries
-        |> Enum.sort()
-        |> Enum.reject(&(&1 == @manifest or String.starts_with?(&1, ".")))
-        |> Enum.flat_map(&file_entry(pocket_dir, &1))
-
-      _ ->
-        []
+    with true <- admissible_root?(pocket_dir),
+         {:ok, entries} <- File.ls(pocket_dir) do
+      entries
+      |> Enum.sort()
+      |> Enum.reject(&(&1 == @manifest or String.starts_with?(&1, ".")))
+      |> Enum.flat_map(&file_entry(pocket_dir, &1))
+    else
+      _ -> []
     end
   end
+
+  def contents(_pocket), do: []
 
   # --- internals ----------------------------------------------------------
 
@@ -318,19 +392,32 @@ defmodule BusterClaw.Pockets do
     with :ok <- check_declared_name(name, fields),
          {:ok, kind} <- check_kind(fields),
          {:ok, roles} <- check_roles(fields) do
+      {binding, dir} = binding_for(name)
+
       {:ok,
        %{
          name: name,
          kind: kind,
          description: string_field(fields, "description"),
          roles: roles,
-         # Phase 1 is local-only. Phase 3 replaces this pair with a lookup in the
-         # app-owned mount registry — deliberately NOT read from `fields`, which
-         # the agent can write.
-         binding: :local,
-         dir: pocket_dir(name),
+         binding: binding,
+         dir: dir,
          body: body
        }}
+    end
+  end
+
+  # The reach half, and the reason it is a separate function from everything
+  # above it: `fields` is `POCKET.md`, which the agent can write, and NOTHING
+  # here may be read from it. The registry is the only input.
+  #
+  # A mount is reported even when its target has gone missing. The Pocket is
+  # still mounted — that is a true and useful thing for the UI to say — and the
+  # missing target shows up as empty contents rather than as a load failure.
+  defp binding_for(name) do
+    case Mounts.fetch(name) do
+      {:ok, %{path: path, writable: writable}} -> {{:mounted, path, writable}, path}
+      :error -> {:local, pocket_dir(name)}
     end
   end
 

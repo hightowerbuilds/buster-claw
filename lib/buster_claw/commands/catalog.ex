@@ -22,6 +22,7 @@ defmodule BusterClaw.Commands.Catalog do
     Library,
     Notify,
     Orchestration,
+    Pocket,
     Sound,
     Telephony,
     Web
@@ -40,5 +41,6 @@ defmodule BusterClaw.Commands.Catalog do
         Telephony.entries() ++
         Notify.entries() ++
         Sound.entries() ++
+        Pocket.entries() ++
         Orchestration.entries()
 end

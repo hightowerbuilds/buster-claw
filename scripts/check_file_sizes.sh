@@ -189,6 +189,23 @@ check lib/buster_claw_web/components/home_widget.ex           699 FROZEN
 check lib/buster_claw_web/live/calendar_component.ex          866 FROZEN
 check lib/buster_claw_web/live/phone_component.ex             541 HELD
 
+# Pockets (POCKETS_ROADMAP, 08-08/09). Capped ON ARRIVAL rather than after they
+# sprawl — every file above this line was added to the inventory late, once it
+# was already too big to cut cheaply. These are at their current size with no
+# headroom, so the first line of growth is a decision someone has to defend.
+#
+# `pockets.ex` is the widest on purpose: it is the loader, the role table, the
+# read fence and the mount entry point. If it grows, the fence
+# (`resolve/2`/`asset_url/2`) is the seam to extract, because it is the part
+# with its own test file already.
+check lib/buster_claw/pockets.ex                              535 HELD
+check lib/buster_claw/pockets/mounts.ex                       347 HELD
+check lib/buster_claw/pocket.ex                               138 HELD
+check lib/buster_claw_web/components/pockets_panel.ex         294 HELD
+check lib/buster_claw_web/controllers/pocket_asset_controller.ex  97 HELD
+check lib/buster_claw/commands/pocket.ex                      265 HELD
+check lib/buster_claw/commands/catalog/pocket.ex               75 HELD
+
 if [ "$fail" -ne 0 ]; then
   echo "FAIL: the file-size inventory does not hold."
   echo

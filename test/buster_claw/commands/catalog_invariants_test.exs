@@ -163,6 +163,18 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     #   allowlist. Nothing outbound, nothing written; the writing cut-up verbs
     #   (sound_index_import, sound_index_delete, sound_assemble) are :restricted
     #   and deliberately absent from this list.
+    #
+    #   pocket_list / pocket_describe / pocket_read (added 08-08, POCKETS_ROADMAP
+    #   Phase 4) — the whole Pocket surface, and it is read-only by
+    #   construction. They list the operator's own media folders, report one
+    #   folder's manifest and file listing, and return the text of one file.
+    #   `pocket_read`'s entire reach is `Pockets.resolve/2`: a BARE filename,
+    #   canonicalized back against the Pocket's own directory and `lstat`ed, so
+    #   a separator, a `..` or a planted symlink is refused rather than
+    #   followed. Binary files return no bytes at all. Nothing here writes, and
+    #   — the point of the roadmap's D4 — there is deliberately no verb at any
+    #   tier that records, changes or removes a MOUNT; that is an operator act
+    #   in the UI, and `commands/pocket_test.exs` fails if one ever appears.
     @safe_tier ~w(
       activity_report
       agent_run_status
@@ -218,6 +230,9 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       phone_get
       phone_list
       phone_stats
+      pocket_describe
+      pocket_list
+      pocket_read
       runtime_status
       sheets_get
       sheets_get_values

@@ -94,6 +94,11 @@ defmodule BusterClaw.Pocket do
     elsewhere on the machine, recorded by the operator through the UI. `writable`
     is an operator grant that an unattended run never receives regardless of its
     value.
+
+  The registry is `BusterClaw.Pockets.Mounts`, which keeps one row per mount in
+  `BusterClaw.Settings` — app-owned state with no file behind it, so there is no
+  path on the agent's map that leads to it. Its moduledoc carries the reasoning
+  for that choice and for why "unattended" takes two checks rather than one.
   """
   @type binding :: :local | {:mounted, String.t(), boolean()}
 
