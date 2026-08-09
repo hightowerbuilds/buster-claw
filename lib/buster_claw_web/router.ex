@@ -127,6 +127,14 @@ defmodule BusterClawWeb.Router do
     get "/image", WorkspaceFileController, :image
   end
 
+  # One file out of one Pocket. No pipeline: these are raw asset bytes, not an
+  # HTML page. Every read is fenced by `Pockets.resolve/2` — a bare filename,
+  # canonicalized inside the Pocket, `lstat`-ed so a planted symlink is refused.
+  # This is the single route a mounted Pocket's bytes will reach the app through.
+  scope "/pockets", BusterClawWeb do
+    get "/:pocket/:file", PocketAssetController, :show
+  end
+
   # The Agent Mode mirror: an MJPEG stream of a run's viewport, rendered by an
   # <img> in the browse tab (Phase 7). No pipeline — this is a long-lived chunked
   # media response, not an HTML page. Loopback-only; the frames show a page the

@@ -28,6 +28,7 @@ defmodule BusterClaw.Pockets do
 
   require Logger
 
+  alias BusterClaw.FileManager
   alias BusterClaw.Library.{Artifact, Frontmatter}
 
   @subdir "pockets"
@@ -79,6 +80,85 @@ defmodule BusterClaw.Pockets do
   end
 
   def for_role(_role), do: nil
+
+  @doc """
+  Resolve `filename` inside `pocket` to an absolute path the app may read, or
+  `nil`.
+
+  **This is the one function that decides reach**, and every surface that reads a
+  Pocket's bytes goes through it. It is deliberately the only place that will
+  need to change when mounts land: today every Pocket is `:local`, so the answer
+  is always inside `<workspace>/pockets/`; a mounted Pocket resolves inside its
+  mount root instead, and nothing else moves.
+
+  Three guards, in order, and each defeats a different attack:
+
+  1. `filename` must be a **bare name** — no separator, no `..`, no leading dot.
+     A caller cannot ask for a path, only for a file the Pocket lists.
+  2. The resolved path is **canonicalized and re-checked** against the Pocket's
+     directory (`FileManager.within?/2`), so a symlink planted inside a Pocket
+     cannot escape it. **A mount is a new root, not a hole.**
+  3. It must be a **regular file**, checked with `lstat` so a symlink is seen
+     rather than followed.
+
+  Also accepts a Pocket *name*, loading it first. A Pocket that does not load
+  resolves to `nil`: an unreadable manifest must never make its bytes reachable.
+  """
+  def resolve(%{dir: pocket_dir}, filename) when is_binary(filename) do
+    with true <- bare_name?(filename),
+         path = Path.join(pocket_dir, filename),
+         true <- FileManager.within?(path, pocket_dir),
+         {:ok, %File.Stat{type: :regular}} <- File.lstat(path) do
+      path
+    else
+      _ -> nil
+    end
+  end
+
+  def resolve(name, filename) when is_binary(name) and is_binary(filename) do
+    case load(name) do
+      {:ok, pocket} -> resolve(pocket, filename)
+      _ -> nil
+    end
+  end
+
+  # LAST, and it has to be: a catch-all defined above the by-name clause
+  # swallowed it, and every valid request 404'd while the fence looked correct.
+  def resolve(_pocket, _filename), do: nil
+
+  @doc """
+  Served URL for one of a Pocket's files, with a cache-busting stamp, or `nil`.
+
+  Revalidation-based caching like `AppearanceController`'s, and for the same
+  reason: workspace files are shared by every instance of the app and by the
+  agent, so bytes can change under a URL whose stamp some other instance minted.
+  """
+  def asset_url(%{name: name} = pocket, filename) do
+    case resolve(pocket, filename) do
+      nil ->
+        nil
+
+      path ->
+        stamp =
+          case File.stat(path, time: :posix) do
+            {:ok, %{mtime: mtime, size: size}} -> "#{mtime}-#{size}"
+            _ -> "0"
+          end
+
+        "/pockets/#{URI.encode(name)}/#{URI.encode(filename)}?v=#{stamp}"
+    end
+  end
+
+  def asset_url(_pocket, _filename), do: nil
+
+  # A caller may name a file, never a path. This is checked before any join, so
+  # `..` never reaches the filesystem at all.
+  defp bare_name?(name) do
+    name != "" and
+      name == Path.basename(name) and
+      not String.starts_with?(name, ".") and
+      not String.contains?(name, "/")
+  end
 
   @doc """
   Create a Pocket's directory and, if it has no manifest yet, write one.
