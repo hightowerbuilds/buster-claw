@@ -64,6 +64,20 @@ defmodule BusterClawWeb.ErrorFormatter do
       "Use a `selector`, or call `find_elements`/`extract` to disambiguate first."
   end
 
+  # A failure reported by the desktop JS bridge, wrapped by
+  # `BrowserCommandController`. The string is the bridge's own message and is
+  # already capped at 200 chars there, so passing it through adds no egress the
+  # cap did not already bound.
+  #
+  # There was no clause here until 08-08, which meant this tuple fell to the
+  # fallback and EVERY desktop-side browser failure rendered as "unexpected
+  # error" — the controller truncated a real diagnosis specifically so it could
+  # be shown, and the formatter dropped it. The message survived only as a
+  # :warning on stdout, which under `tauri dev` is terminal scrollback, not a
+  # file. Found in the field, after it cost a multi-probe investigation and an
+  # unnecessary detour onto Agent Mode.
+  def format({:browser_failed, msg}) when is_binary(msg), do: "browser: #{msg}"
+
   def format({:missing_config, key}), do: "missing config: #{key}"
   def format({:unexpected_response, _body}), do: "unexpected response from upstream"
 

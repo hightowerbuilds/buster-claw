@@ -27,6 +27,25 @@ export const ScreenshotBridge = {
         this.reportCommand(ref, {error: "desktop app required for browser commands"})
         return
       }
+      // Mounted while Agent Mode held the surface, so `[data-browser-surface]`
+      // was never in the DOM, so `sync()` never called `browser_open` and the
+      // Rust side has no surface registered. Rust answers "no active browser
+      // tab", which is true and useless: it reads as a dead browser stack
+      // rather than as "something else is using this tab". That cost a real
+      // errand a multi-probe detour on 08-08.
+      //
+      // Deliberately narrow — `this.opened` false, not merely mirroring. Where
+      // the surface WAS opened before the run started, live-tab commands keep
+      // working exactly as before; this only speaks up where the alternative
+      // was a misleading failure.
+      if (!this.opened && this.el.dataset.agentMirror === "1") {
+        this.reportCommand(ref, {
+          error:
+            "the browse tab is in Agent Mode and has no live tab of its own — " +
+            "use agent_run_* for this run, or finish it and try again"
+        })
+        return
+      }
       try {
         let data = {ok: true}
         if (action === "current") {

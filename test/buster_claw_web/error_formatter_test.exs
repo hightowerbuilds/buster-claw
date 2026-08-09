@@ -70,6 +70,32 @@ defmodule BusterClawWeb.ErrorFormatterTest do
       assert log =~ "[error_formatter] unknown error shape"
     end
 
+    # FIELD-FOUND 08-08 (browser-control book errand). The desktop JS bridge
+    # POSTs a real error string on failure; `browser_command_controller` wraps
+    # it as `{:browser_failed, msg}` — deliberately truncated to 200 chars for
+    # exactly this purpose. There was no clause for that tuple, so every
+    # desktop-side browser failure hit the fallback and became the same
+    # five-syllable shrug, indistinguishable from every other one. The message
+    # survived only as a :warning on stdout, which under `tauri dev` is terminal
+    # scrollback rather than a file. It cost the operator a multi-probe
+    # investigation and a detour onto Agent Mode.
+    test "a desktop bridge failure keeps its diagnosis instead of collapsing" do
+      assert ErrorFormatter.format({:browser_failed, "Target closed"}) ==
+               "browser: Target closed"
+    end
+
+    test "a bridge failure is not logged as an unknown shape" do
+      {result, log} =
+        with_log([level: :warning], fn ->
+          ErrorFormatter.format({:browser_failed, "no active tab"})
+        end)
+
+      assert result == "browser: no active tab"
+
+      refute log =~ "unknown error shape",
+             "the clause matched but the fallback still ran"
+    end
+
     test "does not leak Authorization-style secrets into the formatted output" do
       weird = %{
         __struct__: SomeUnknownErrorStruct,
