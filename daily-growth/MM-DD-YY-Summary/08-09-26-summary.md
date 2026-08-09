@@ -542,8 +542,107 @@ was fine.
 ## What needs a person
 
 - **The live walk in a packaged build**: drop art in from Finder, watch a slot go
-  to text, remove the extra, watch it come back. Also the mount gesture, which
-  has a registry and no button yet.
+  to text, remove the extra, watch it come back. Plus a real mount. Filed as one
+  sitting in `LAUNCH` **G-40**.
+
+  *(The mount button landed later the same day — this line read "a registry and
+  no button yet" for about an hour. Phase 3 is complete, surface included.)*
 - **`status_live.ex` finally paid a debt** — the banner moved out rather than the
   file growing, 944 → 929, and the cap followed it down in the same commit. It is
   the first time that ratchet has moved in the direction it is usually ignored in.
+
+
+---
+
+# Terminal paint — the agent recolours itself, live
+
+**The day's fourth roadmap, and the one that was asked for as a joke.** Scoped
+and shipped in an afternoon: the model can now repaint the terminal it is running
+in, while you watch it work.
+
+| Shipped | Commits |
+|---|---|
+| Scoped — four verbs, an agent slot, a legibility floor | `4540daa` |
+| Phase 0 — a socket-less writer can reach a terminal | `9a492ae` |
+| The agent slot, the floor, the four verbs, the picker, the skill | `193adc5` |
+
+    ./buster-claw run terminal_theme_paint --json '{"colors":{"foreground":"#ff9d2f"}}'
+
+## The toy has a sharp edge, and it is the whole design
+
+These are the first commands in this app that change **what the operator sees**.
+That is worth saying plainly, because it is the reason a colour feature needed a
+threat model at all:
+
+**An agent that can set `foreground` to `background` can hide its own output.**
+Every line still prints and none of it can be read. Setting every ANSI colour to
+the background is worse — plain text survives and only colourised output
+vanishes, so the terminal still *looks* like it is working. That is not code
+execution; it is observability suppression, in the one window where a person
+watches the agent.
+
+So the floor is enforced in Elixir on the same call that would otherwise succeed.
+It holds for unattended runs, and there is no flag around it.
+
+## Reading first killed the obvious implementation
+
+**The selected terminal theme is client-side only** — `localStorage["bc:term-theme"]`.
+Only the custom *palette* is server-side. So a command that writes a Setting
+**cannot change what a terminal looks like**, and a command has no socket to push
+an event with either.
+
+And `TerminalTheme.topic/0` had **no subscribers at all**. Live apply ran through
+`AppearanceLive` pushing directly on the socket that made the edit, which works
+only because the editor and the terminal share a browser. A pub/sub that reads as
+working wiring, with nothing on the other end.
+
+That made Phase 0 the whole feature's foundation rather than a nicety.
+
+## Measurement corrected the design three times
+
+The legibility floor started as *"every ANSI colour clears 2.0:1"*. Then:
+
+1. **Monokai's ANSI `black` is byte-identical to its background** (ratio 1.00),
+   Nord's is 1.24. A per-colour floor would have **refused both shipped
+   presets**. The rule now counts: 10 of 16.
+2. **Exempting `black` by name would also have refused Nord**, whose
+   `brightBlack` is 1.69. The count is load-bearing twice over, not once.
+3. **The floor bites at our own accent.** `foreground: "#ff4d1c"` scores
+   **4.48** against a floor of 4.5 — the roadmap's own example request, "make the
+   foreground orange", fails by 0.02. Correct WCAG behaviour, correctable from
+   the returned ratio, and now the first thing the skill warns about, because it
+   is what anyone tries first.
+
+An agent also found the roadmap **contradicting itself**: Part III said `paint`
+merges over the *currently selected* palette, which its own finding says the
+server cannot know.
+
+## Two mistakes of mine, both caught by something other than me
+
+**The first seam draft crashed `TerminalLive`.** Reusing `TerminalTheme.topic/0`
+meant `ChromeHook` — which subscribes for every LiveView — immediately delivered
+that topic's existing "the operator edited their palette" message to views with
+no clause for it. Found by the first test run. The fix was a separate topic, and
+the split turned out to be meaningful rather than defensive.
+
+**And `9a492ae` shipped the tree red.** Phase 0 grew `chrome_hook.ex` past its
+size cap; I ran format and compile but not the size gate. A parallel agent found
+it and refused to fix a file it did not own, which is exactly right. The lesson
+is the boring one: **the gate is part of the commit, not part of the review.**
+
+## What the day's four roadmaps have in common
+
+Every one of them was corrected by a guard, a test or a measurement rather than
+by re-reading:
+
+- the D4 call-graph lockstep caught **its own author** making a mount writer
+  reachable from the command surface;
+- `ClawConfirmTest` caught a `data-confirm` that does nothing in the packaged
+  webview;
+- a dock that every LiveView test insisted was fine was stale in a real browser,
+  because `render/1` re-renders the whole tree while a browser gets only the diff;
+- and a contrast floor that looked obviously right would have refused the app's
+  own themes.
+
+**A test that passes on the surface you changed proves less than it looks like it
+does.** Four for four.
