@@ -502,6 +502,50 @@ already been created. See the shipped-defaults problem in `LAUNCH_ROADMAP` V.8.
 
 ---
 
+### `extract` returns empty on anchors and cart rows
+
+*Field-found 08-08 (browser-control book errand, Finding 2).*
+
+**What.** `extract` with `div[data-component-type="s-search-result"] h2` returned
+four clean titles; the same selector with ` a` appended returned **zero**. On the
+Amazon cart page `span.sc-product-title` worked, but
+`span.sc-item-price-block span.a-price span.a-offscreen` and
+`div[data-name="Active Items"] .sc-list-item` both came back empty.
+
+**Why deferred.** Cause not established — could be Amazon markup drift, or
+`extract` failing to resolve elements whose text lives in descendants. Telling
+those apart needs a fixture page, not a guess.
+
+**What makes it expensive later.** It silently degrades the thing Agent Mode
+exists to protect. On the 08-08 run the per-line cart price could not be read
+back, so the frozen ledger's $49.29 came from the **product buy box, not the
+cart line**. Those normally agree and diverge on a format or seller swap — which
+is exactly the case the frozen cart is supposed to catch. An `extract` that
+returns empty rather than erroring means the fallback is silent.
+
+### Stopped Agent Mode runs accumulate with no reaping
+
+*Field-found 08-08 (browser-control book errand, Finding 3).*
+
+**What.** `agent_run_status` with no id listed `scope_6H` in mode `stopped` from
+a prior errand. Runs stay registered after they terminate by design — the
+trajectory is the receipt — but nothing ever reaps them. Either age them out or
+expose a prune command.
+
+**Why deferred.** It needs a policy call (how old is too old, and does anything
+depend on an old trajectory staying readable) rather than a patch.
+
+**What makes it expensive later.** A stale registered run is not inert: it was
+the **trigger** for the whole 08-08 live-tab fault. BrowseLive picked it up on
+mount, which meant the browser surface was never rendered, which meant the JS
+hook never called `browser_open`, which meant every live-tab command failed with
+"no active browser tab". `91b6c24` and `7f4071b` fixed that chain, so a stale run
+no longer breaks anything — but it accumulated quietly for a whole session
+before it did, and the next thing that reads "the newest run" inherits the same
+surprise.
+
+---
+
 
 ## Rules of engagement
 

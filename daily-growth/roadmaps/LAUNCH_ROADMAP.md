@@ -850,6 +850,17 @@ logged-in checkout.
       signed-in session. Nothing in the repo can do this — it needs the
       operator's own account.
 
+      **Two field exercises have now gone by without testing it.** The 08-08
+      book errand drove a real signed-in Amazon session under Agent Mode and
+      succeeded — 17 steps, book in the cart, `commerce: true` — but stopped at
+      the cart by design and never reached checkout, so the gate did not fire
+      and this finding must still be assumed **open**. That is the trap worth
+      naming: an errand can exercise nearly the whole commerce path, look like a
+      clean pass, and leave the one control that stops money untested. **A run
+      that stops at the cart is not evidence about the gate.** Reaching
+      `/gp/buy/` has to be the explicit goal of the walk, not a side effect of a
+      shopping errand.
+
       **Its stakes rose three times on 08-03**, which is why it leads: the agent
       can now file a purchase receipt (`agent_run_confirm_purchase`), reach
       signed-in sites unattended (`$secret.<name>` resolves against a real
