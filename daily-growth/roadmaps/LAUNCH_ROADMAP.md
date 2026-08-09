@@ -920,6 +920,25 @@ logged-in checkout.
       it *reads* well on a real build — cheap, and the only claim 3,272 tests
       cannot make.
 
+- [ ] **The three chat skins, looked at.** Inherited 08-09 from
+      `CHAT_SKINS_ROADMAP.md`, whose own acceptance section this is. Settings →
+      Appearance → Chat theme: change it three times and watch the preview. Then
+      open the homepage **with a conversation already on screen** and confirm the
+      **old messages** restyle, not just new ones — that is the whole design, and
+      a test can only assert the attribute changed and the nodes survived, not
+      that the result looks right. Toggle dark/light against each skin (three
+      skins × two themes = **six** combinations, and skin CSS uses only daisyUI
+      tokens precisely so all six work). Finally, with a run in flight, confirm
+      **Stop**, **Steer now** and the attach affordance are all reachable in all
+      three.
+
+      **What CI does cover, so you can skip re-checking it:** all three skins
+      render byte-identical DOM apart from `data-chat-skin`; no skin uses a hex
+      literal or `display: none`; every `data-chat-*` selector in the stylesheet
+      exists in the markup. What it cannot cover is legibility — including
+      whether Minimal's opaque panel reads well where the shader used to show
+      through, which is the one place this trades away an existing look.
+
 > **If the checkout walk fails, stop and fix before the rest.** The others are
 > quality; that one is money.
 
