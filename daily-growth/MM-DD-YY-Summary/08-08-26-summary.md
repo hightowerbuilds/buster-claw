@@ -878,3 +878,110 @@ A deferral with a trigger is a decision. A deferral without one is a list.
 does not cover.** The search threshold was 10x wrong until it was timed; the tier
 fix was worth making and still leaves a read an untrusted run can perform. Both
 are only useful written down in the form someone can act on later.
+
+---
+
+# Night, continued: the sentence, and the word that redirected the work
+
+The Studio thread ran on after the recogniser landed. Its last stretch produced
+the one thing this whole day was building toward, and then the most useful piece
+of feedback anyone gave.
+
+## First, the door
+
+`sound_import` (`4f34bf7`). The app could already *assemble* ramshackle
+sentences and had **no way to get a voicemail in**: recordings are mp3 under the
+Library, `sound_assemble` reads WAVs from the Studio, nothing bridged them.
+`import_source/1` had done the conversion for weeks; it had no verb.
+
+Two independent guards, because one being subtly wrong is the whole risk — a
+segment scan before the filesystem is touched at all, then containment on the
+expanded path — with thirteen traversal shapes asserted to their exact named
+errors. A 54.5-second voicemail imports end to end in **224 ms**.
+
+`sound_probe` gained decode-on-demand at the same time, closing a gap Phase 0
+had flagged honestly rather than papered over: three of its four facts need a
+*parsed* clip, so it was blind on exactly the input the acceptance walk starts
+from. **It paid for itself immediately — the real voicemails peak at ~0.96, near
+the rail**, which means `normalize` has almost nothing to do on this corpus and
+clipping on assembly is the live risk instead. Nobody would have guessed that;
+the default probe could not see it.
+
+## The threshold, measured — and a small sample that flattered
+
+The DTW matcher's synthetic tests suggested a usable band of 0.2–0.9. Against
+**real speech** — the Free Spoken Digit Dataset, 8 kHz, same band as telephony —
+it runs an order of magnitude higher. 45 labelled files, **990 pairs**:
+same-word/same-speaker median **4.43**, different-word **8.99**, best operating
+point ≈ **6.0 at precision 0.88 / recall 0.93**. Speaker-dependence confirmed as
+designed: the same word from another voice sits closer to a *different word* than
+to the same speaker saying it again.
+
+**An early 8-file sample showed clean separation with no overlap at all.** At 990
+pairs, 128 of 225 negatives fall below the worst positive. **Small samples
+flatter**, and the honest frame that came out of it is that this is a *shortlist
+generator to audition*, not an oracle.
+
+## Then the sentence
+
+Ten voicemails, aligned by distributing each transcript's words across its VAD
+spans. 655 words, 237 distinct, 47 with three or more takes. Enough for a real
+paragraph, every word of it drawn from audio someone actually left:
+
+> *"Good morning. I need you to send me an email tomorrow morning. Please write
+> up all the Spanish words that you want. Thank you."*
+
+**24 words, spliced out of six different voicemails. A sentence nobody ever
+said.** It rendered.
+
+And then the honest part: **it worked from a throwaway script.** The agent had
+`sound_import`, `sound_index_search` and `sound_assemble` and no way to *fill*
+the index between them. `Cutup.Align` and `sound_align` (`12f15ae`) closed
+that — plus a fourth index origin, `:aligned`, because labelling a proportional
+guess `:recognizer` would tell a future reader that a recogniser ran.
+
+## "Garbled" — one word, and it redirected everything
+
+Asked how it sounded, the operator said: **garbled**.
+
+That single word was worth more than any measurement taken all day, because it
+ruled out the tempting next step. The plan had been a learning session — rate
+takes, fit weights, pick better ones. **But selection ranks what exists. If every
+take of a word has the wrong boundaries, choosing between them cannot help.**
+Garbled meant the takes themselves were wrong, so the fix was `Align`, not
+labels.
+
+And both defects were ones `Align`'s own moduledoc had already predicted, in
+order:
+
+1. **Boundaries landed mid-vowel** — words laid out proportionally, clamped only
+   at span edges, so an interior boundary fell wherever the arithmetic put it.
+2. **Function words were over-allotted** — `to`, `the`, `of` run under 80 ms in
+   real speech but got a full syllable's share, so they ate their neighbours'
+   onsets. **And this corpus is mostly function words**, so the algorithm was
+   worst at exactly the words a cut-up splices most.
+
+Fixed (`c9fd9b3`): snap each boundary to the nearest strictly-quieter frame
+within 40 ms, and scale function words by 0.55 over a curated stopword set.
+Rebuilt in four variants — neither, snap, reduce, both — and the operator judged
+**both** better. **The default is backed by ear, which is the only validation
+that means anything for a change to how something sounds.**
+
+## What the day taught, beyond the audio
+
+**A written-down prediction is worth more than a written-down design.** `Align`
+shipped with a moduledoc naming its two likely failure modes. When the operator
+said "garbled," the diagnosis took minutes instead of an afternoon, because the
+module had already told us where to look. Every agent today was asked what it
+expected to break first; that habit paid off here directly.
+
+**Ask the question whose answer changes what you do next.** "Garbled" versus
+"crazy-good" pointed at two completely different next steps — alignment work
+versus leaning into the aesthetic. Four words of operator feedback resolved it.
+No amount of internal reasoning would have.
+
+**And measure the thing your plan rests on.** Snapping — one of the two fixes
+just shipped — moved total duration by **10 ms across 24 words**. It is close to
+inert, exactly as its own strictly-quieter rule predicts. That is recorded as
+open rather than claimed as a win, because the improvement the operator heard may
+have come almost entirely from the other fix.
