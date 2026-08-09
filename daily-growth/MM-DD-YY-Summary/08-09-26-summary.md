@@ -1,4 +1,4 @@
-# 08-09-26 — Three looks for the chat, and the stream that decided how
+# 08-09-26 — Three looks for the chat, three for the terminal
 
 Scoped `CHAT_SKINS_ROADMAP.md` and shipped all four phases: the homepage chat now
 has three skins — **Industrial Claw** (as it was), **Minimal** (a terminal
@@ -209,3 +209,102 @@ Also worth recording: another session held `pockets.ex` in a warning state and r
 the suite concurrently for much of the afternoon. `MIX_TEST_PARTITION=skins` gave
 this work its own SQLite lane, which is the difference between "30 failures" and
 "Database busy."
+
+
+---
+
+# Terminal themes — one list, three presets, and a palette of your own
+
+`TERMINAL_THEME_ROADMAP.md`, all three phases (`d0d1363` + the editor). The ask was
+a UI for custom colours and then a cull to Industrial / Nord / Monokai.
+
+## Two things that were not what they looked like
+
+**A theme is 21 colours, not three.** The picker's swatch shows background,
+foreground and accent, which is why this reads as a simple feature. An xterm palette
+is five core values plus **8 ANSI colours and 8 bright variants** — and those 16 are
+what colour `ls` and `git status`.
+
+**The list already existed twice.** The palettes were in `assets/js/lib/theme.js`;
+a second, partial copy (key, label, three swatch colours) was in `AppearanceLive`,
+kept in step by a **comment** and nothing else, with **no test touching terminal
+themes at all**. Which makes the cull precisely the shape this repo keeps getting
+bitten by: delete from one language and the suite stays green either way, leaving
+either a dead palette or a swatch that selects a theme which no longer exists and
+silently renders the default.
+
+So the cull came *second*. `BusterClaw.TerminalTheme` owns the list, `theme.js`
+applies it, the payload arrives as `<meta name="bc-term-palettes">` — in the head
+rather than on the picker, because a terminal can mount on a page that has no
+picker. A `<meta>` rather than a JSON `<script>` block because the CSP here is
+`script-src 'self'` with nothing inline: a data block is not executed and so not
+actually blocked, but the repo deliberately removed its last inline script to drop
+the nonce, and re-adding a tag that merely *looks* like a violation buys nothing.
+
+**Industrial stays a `null` palette, meaning token-derived.** It is resolved in the
+browser from `--color-base-*` and `--color-primary`, which is what makes it the only
+theme that follows the app's light/dark switch. Elixir cannot read computed CSS, so
+it declares the fact and leaves the resolving where it has to happen. Flattening
+every theme into fixed hex would have killed that on the **default** theme — the
+kind of regression nobody files, they just notice the terminal stopped matching the
+app.
+
+## The custom theme is a copy, and that is the design
+
+The editor opens on **"Start from Nord / Monokai"**, which copies that palette whole.
+Two things follow, and they are the point:
+
+- The palette is **always complete**, so a custom theme can never be the
+  half-applied thing where the background is yours and `ls` is xterm's.
+- The common case is **one edit** — "Nord but a black background" — not a
+  twenty-one-field form.
+
+**Industrial is not offered as a starting point**, because it has nothing fixed to
+copy. Offering it would either snapshot whichever app theme happened to be on, or
+produce a palette missing its ANSI values.
+
+## A test caught a field that could never have worked
+
+`selectionForeground` was in my field list and in **neither surviving preset** — so
+a copy was a 20-colour palette against a validator demanding 21, and *no custom
+theme could ever have been saved*. Cut, with the better reason on top: unset, xterm
+leaves selected text in its own colour, so a selected error line stays red. Adding
+it later means adding it to both presets at once, which is a visible change to them
+and therefore a decision rather than a fill-in.
+
+## Live apply without a new mechanism
+
+The `<meta>` is server-rendered and cannot change without a reload, so an edit
+reaches the browser as a `push_event` that patches the cached table and restyles
+every terminal on the page. The browser then mirrors the palette into
+`localStorage`, where the **existing** `storage` listener carries it to other
+windows. `Settings` is the durable store; `localStorage` is only the cross-window
+nudge, which is why load time trusts the `<meta>` and not it. No terminal-hosting
+LiveView had to subscribe to anything.
+
+## Refusals, and one form
+
+Every colour is validated as `#rrggbb` and normalized — these strings go to xterm
+*and* into the swatch's `style` attribute, so an unvalidated one is a markup
+question rather than a styling one. A **partial** palette is refused rather than
+merged: the editor always holds a complete one, so a partial save means a form that
+lost inputs, and merging would accept it silently. A stored palette that has gone
+bad resolves to **no custom theme** rather than a partly applied one.
+
+The editor is **one form** carrying the whole palette, so the params *are* the
+palette and there is no per-field event to keep in step with the field list. The hex
+is shown rather than typed: a second text input sharing a field's `name` would put
+two values on the wire for one field.
+
+## The cull
+
+Industrial, Nord, Monokai survive. Dracula, Solarized, Gruvbox, Tokyo Night, Light
+and Matrix are gone from **both** languages, asserted in both. `currentTermTheme()`
+now resolves a stored key against the themes that exist, so whoever had picked
+Dracula lands on the default *with the swatch highlighted* rather than on a legible
+terminal with nothing selected — which would have read as the setting being lost
+rather than retired. Losing `light` costs nothing: Industrial already tracks the
+app's light theme, which a fixed palette cannot.
+
+`appearance_live.ex` enters the file-size inventory at 1,010 with the cut named (the
+terminal-theme block is a coherent component; so is the background catalog).

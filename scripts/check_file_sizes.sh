@@ -146,6 +146,18 @@ check lib/buster_claw_web/live/status/chat.ex                685 HELD
 # LEFT it (`text-[17px]` and friends), because a utility class cannot be
 # multiplied and the sizes had to become `calc(x * var(--chat-scale, 1))`.
 check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
+
+# Added 08-09 when the terminal theme editor took this from 705 to ~991. Never
+# decomposed, so like chat_panel.ex above this is the first number on the file
+# rather than a post-split cap. It is a settings page whose job is genuinely broad
+# — backgrounds for two surfaces, an image pool with uploads, the app theme, the
+# terminal palette with a 21-field colour editor, and the chat's two axes — and the
+# palettes themselves live in `BusterClaw.TerminalTheme`, not here.
+#
+# The obvious cut when this next needs room: the terminal-theme block (its five
+# events, the draft helpers and the colour rows) is a coherent component, and the
+# background catalog is a second one.
+check lib/buster_claw_web/live/appearance_live.ex            1010 HELD
 check lib/buster_claw_web/live/status/comms.ex               125 HELD
 check lib/buster_claw_web/live/status/studio.ex              114 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD
@@ -231,7 +243,7 @@ check lib/buster_claw_web/live/phone_component.ex             541 HELD
 check lib/buster_claw/pockets.ex                              484 HELD
 check lib/buster_claw/pockets/mounts.ex                       347 HELD
 check lib/buster_claw/pocket.ex                               138 HELD
-check lib/buster_claw_web/components/pockets_panel.ex         338 HELD
+check lib/buster_claw_web/components/pockets_panel.ex         383 HELD
 check lib/buster_claw_web/controllers/pocket_asset_controller.ex  97 HELD
 check lib/buster_claw/commands/pocket.ex                      265 HELD
 check lib/buster_claw/commands/catalog/pocket.ex               75 HELD
@@ -242,8 +254,18 @@ check lib/buster_claw/commands/catalog/pocket.ex               75 HELD
 # the four events must be here. The MARKUP is not — it is 114 lines in
 # `pockets/brand_slots.ex`, created for it. If a later reader finds slot markup
 # in the panel, this raise was wrong.
+#
+# Raised again 08-09, 338 -> 383 and 114 -> 146, fixing an upload that rendered
+# and did nothing. Both raises are the SAME defect: the feature had no way to
+# report failure. The panel gained `handle_progress/3` (auto_upload fires
+# phx-change on selection, before the entry is done, so consuming there silently
+# returned []) and kept `Brand.put/3`'s error instead of swallowing it inside the
+# `{:ok, _}` the consumer wants. brand_slots.ex gained the four places an upload
+# can fail — config errors, per-entry errors, progress, and the server's refusal.
+# None of it was rendered before, so a refused file looked exactly like a file
+# that had not been chosen.
 check lib/buster_claw/pockets/brand.ex                        302 HELD
-check lib/buster_claw_web/components/pockets/brand_slots.ex   114 HELD
+check lib/buster_claw_web/components/pockets/brand_slots.ex   146 HELD
 check lib/buster_claw_web/components/brand_art.ex              55 HELD
 
 if [ "$fail" -ne 0 ]; then

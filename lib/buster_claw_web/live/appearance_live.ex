@@ -53,7 +53,7 @@ defmodule BusterClawWeb.AppearanceLive do
     {:ok,
      socket
      |> assign(:page_title, "Appearance")
-     |> assign(:terminal_themes, TerminalTheme.themes())
+     |> assign_terminal_themes()
      |> assign(:surfaces, Appearance.surfaces())
      |> assign(:chat_skins, ChatSkin.skins())
      |> assign(:chat_skin, ChatSkin.get())
@@ -109,6 +109,62 @@ defmodule BusterClawWeb.AppearanceLive do
       {:ok, key} -> {:noreply, assign(socket, :chat_text_size, key)}
       {:error, :invalid_size} -> {:noreply, socket}
     end
+  end
+
+  # --- the custom terminal theme -------------------------------------------
+
+  # Open the editor on a COPY of a preset. That is the design, not a convenience:
+  # a copy is always a complete 22-colour palette, so a custom theme can never be
+  # the half-applied thing where the background is yours and `ls` is xterm's. It
+  # also makes the common case ("Nord but a black background") one edit.
+  def handle_event("start_custom_theme", %{"from" => from}, socket) do
+    case TerminalTheme.copy_of(from) do
+      {:ok, palette} ->
+        {:noreply,
+         socket
+         |> assign(:custom_draft, palette)
+         |> assign(:custom_name, TerminalTheme.custom_name())
+         |> assign(:custom_error, nil)}
+
+      {:error, :not_copyable} ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("edit_custom_theme", _params, socket) do
+    case TerminalTheme.custom() do
+      nil -> {:noreply, socket}
+      theme -> {:noreply, open_draft(socket, theme)}
+    end
+  end
+
+  def handle_event("close_custom_theme", _params, socket) do
+    {:noreply, assign(socket, custom_draft: nil, custom_error: nil)}
+  end
+
+  # One form carrying the whole palette, saved on every change, so the terminal
+  # restyles while the colour picker is still open. No Save button for the same
+  # reason nothing else on this page has one.
+  #
+  # The params ARE the palette — every input is named for its field — so there is
+  # no per-field event to keep in step with the field list. `_target` is dropped
+  # unread: it says which input moved, and this saves all of them anyway.
+  def handle_event("save_custom_theme", params, socket) do
+    name = Map.get(params, "name", "")
+    colors = Map.drop(params, ["_target", "name"])
+
+    {:noreply, socket |> assign(:custom_name, name) |> save_draft(colors)}
+  end
+
+  def handle_event("delete_custom_theme", _params, socket) do
+    TerminalTheme.clear_custom()
+
+    {:noreply,
+     socket
+     |> assign(custom_draft: nil, custom_error: nil)
+     |> assign_terminal_themes()
+     |> push_event("bc-term-custom", %{palette: nil})
+     |> put_flash(:info, "Custom terminal theme deleted.")}
   end
 
   def handle_event("toggle_custom", %{"surface" => surface}, socket) do
@@ -472,12 +528,201 @@ defmodule BusterClawWeb.AppearanceLive do
                 </span>
               </button>
             </div>
+
+            <%!-- The custom slot. Creating one means COPYING a preset, which is the
+                  design rather than a convenience: a copy is always a complete
+                  22-colour palette, so a custom theme can never be the half-applied
+                  thing where the background is yours and `ls` is xterm's. It also
+                  makes the common case one edit.
+
+                  Industrial is not offered as a starting point because it has no
+                  fixed colours to copy — it is resolved from the app's tokens so it
+                  can follow the light/dark switch. --%>
+            <div class="space-y-3 border-t-2 border-base-content/15 pt-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="ic-eyebrow">Your own</h3>
+                <div :if={@custom_theme} class="flex gap-2">
+                  <button
+                    type="button"
+                    phx-click="edit_custom_theme"
+                    class="rounded border-2 border-base-content/25 px-2.5 py-1 font-mono text-[0.62rem] uppercase tracking-wide transition hover:border-primary hover:text-primary"
+                  >
+                    Edit colours
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="delete_custom_theme"
+                    class="rounded border-2 border-error/50 px-2.5 py-1 font-mono text-[0.62rem] uppercase tracking-wide text-error transition hover:bg-error/10"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              <div :if={is_nil(@custom_theme) and is_nil(@custom_draft)} class="space-y-2">
+                <p class="text-sm leading-6 text-base-content/70">
+                  Start from a theme and change what you like. Every colour is copied, so
+                  program output stays themed too.
+                </p>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    :for={preset <- TerminalTheme.starting_points()}
+                    type="button"
+                    phx-click="start_custom_theme"
+                    phx-value-from={preset.key}
+                    data-start-from={preset.key}
+                    class="rounded border-2 border-base-content/25 px-3 py-1.5 text-sm font-semibold transition hover:border-primary hover:text-primary"
+                  >
+                    Start from {preset.label}
+                  </button>
+                </div>
+              </div>
+
+              <%!-- One form for the whole palette: every input is named for its
+                    field, so the params are the palette and there is no per-field
+                    event to keep in step with the field list. Saved on every change
+                    — the terminal restyles while the picker is still open. --%>
+              <form
+                :if={@custom_draft}
+                id="custom-theme-editor"
+                phx-change="save_custom_theme"
+                class="space-y-4"
+              >
+                <div class="space-y-1">
+                  <label for="custom-theme-name" class="ic-eyebrow block">Name</label>
+                  <input
+                    id="custom-theme-name"
+                    type="text"
+                    name="name"
+                    value={@custom_name}
+                    maxlength="40"
+                    class="w-full rounded border-2 border-base-content/25 bg-base-100 px-3 py-1.5 text-sm font-semibold focus:border-primary focus:outline-none"
+                  />
+                </div>
+
+                <p :if={@custom_error} role="alert" class="text-sm font-semibold text-error">
+                  {@custom_error}
+                </p>
+
+                <div class="grid gap-2 sm:grid-cols-2">
+                  <.color_row
+                    :for={{field, label} <- TerminalTheme.core_fields()}
+                    field={field}
+                    label={label}
+                    value={@custom_draft[field]}
+                  />
+                </div>
+
+                <%!-- Collapsed, not omitted. These 16 are what colour `ls` and
+                      `git status`; most people will never open this, and the ones
+                      who want them would otherwise have no way in. --%>
+                <details class="rounded border-2 border-base-content/20">
+                  <summary class="ic-collapse-summary text-sm font-semibold">
+                    Program colours (16)
+                    <span class="font-mono text-[0.62rem] uppercase tracking-wide text-base-content/50">
+                      ANSI
+                    </span>
+                  </summary>
+                  <div class="grid gap-2 border-t-2 border-base-content/15 p-3 sm:grid-cols-2">
+                    <.color_row
+                      :for={{field, label} <- TerminalTheme.ansi_fields()}
+                      field={field}
+                      label={label}
+                      value={@custom_draft[field]}
+                    />
+                  </div>
+                </details>
+
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-xs leading-5 text-base-content/55">
+                    Saved as you go, and applied to every open terminal. A custom theme keeps
+                    its colours when you switch the app between light and dark — only Industrial
+                    follows that.
+                  </p>
+                  <button
+                    type="button"
+                    phx-click="close_custom_theme"
+                    class="shrink-0 rounded border-2 border-base-content/25 px-3 py-1.5 text-sm font-semibold transition hover:border-primary hover:text-primary"
+                  >
+                    Done
+                  </button>
+                </div>
+              </form>
+            </div>
           </section>
         </div>
       </section>
     </Layouts.app>
     """
   end
+
+  # One palette field: a native colour swatch, its label, and the hex it resolves
+  # to.
+  #
+  # The swatch is the only input — the hex is shown, not typed. A second text input
+  # sharing the field's `name` would put two values on the wire for one field, and
+  # "pick a colour" is what was asked for; a hex field is a power-user affordance
+  # that can be added later without changing the store.
+  attr :field, :string, required: true
+  attr :label, :string, required: true
+  attr :value, :string, required: true
+
+  defp color_row(assigns) do
+    ~H"""
+    <label class="flex items-center gap-2 rounded border-2 border-base-content/20 px-2 py-1.5">
+      <input
+        type="color"
+        name={@field}
+        value={@value}
+        data-color-field={@field}
+        aria-label={@label}
+        class="size-7 shrink-0 cursor-pointer rounded-sm border-0 bg-transparent p-0"
+      />
+      <span class="min-w-0 flex-1 truncate text-sm">{@label}</span>
+      <span class="shrink-0 font-mono text-[0.62rem] uppercase text-base-content/55">
+        {@value}
+      </span>
+    </label>
+    """
+  end
+
+  defp assign_terminal_themes(socket) do
+    socket
+    |> assign(:terminal_themes, TerminalTheme.themes())
+    |> assign(:custom_theme, TerminalTheme.custom())
+    |> assign_new(:custom_draft, fn -> nil end)
+    |> assign_new(:custom_name, fn -> TerminalTheme.custom_name() end)
+    |> assign_new(:custom_error, fn -> nil end)
+  end
+
+  defp open_draft(socket, theme) do
+    socket
+    |> assign(:custom_draft, theme.palette)
+    |> assign(:custom_name, theme.label)
+    |> assign(:custom_error, nil)
+  end
+
+  # Persist, refresh the picker, and push the palette at the browser so every open
+  # terminal restyles without a reload. The push is what makes this live; the
+  # Settings write is what makes it survive a restart.
+  defp save_draft(socket, draft) do
+    case TerminalTheme.set_custom(socket.assigns.custom_name, draft) do
+      {:ok, theme} ->
+        socket
+        |> assign(:custom_draft, draft)
+        |> assign(:custom_error, nil)
+        |> assign_terminal_themes()
+        |> push_event("bc-term-custom", %{palette: theme.palette})
+
+      {:error, reason} ->
+        socket
+        |> assign(:custom_draft, draft)
+        |> assign(:custom_error, custom_error_text(reason))
+    end
+  end
+
+  defp custom_error_text(:invalid_name), do: "Give the theme a name (up to 40 characters)."
+  defp custom_error_text(:invalid_colors), do: "That is not a valid #rrggbb colour."
 
   # A surface's panel: what it's running now, live, plus its palette.
   attr :surface, :atom, required: true

@@ -947,6 +947,29 @@ logged-in checkout.
       keep the homepage's translucent blurred panel — an opaque draft was corrected
       on 08-09 — so none of them should look out of place beside the other tabs.
 
+- [ ] **Terminal themes, including one you made.** Inherited 08-09 from
+      `TERMINAL_THEME_ROADMAP.md`, whose acceptance section this is. Settings →
+      Appearance → Terminal theme: pick each of Industrial, Nord and Monokai with a
+      terminal **already open** and confirm it restyles. Then *Start from Nord*,
+      change the background, and confirm the open terminal follows as you pick.
+      Open a **second window** and confirm both terminals agree. Restart the app
+      and confirm the custom theme is still there and still selected.
+
+      Two specific things to look at, because they are the honest edges of the
+      design. **Run something with coloured output** (`ls`, `git status`) under a
+      custom theme with the ANSI section untouched — it should look themed, because
+      a custom theme is a *copy* of a preset and copies all 21 colours; if it looks
+      like default xterm colours, the copy is not doing its job. And **toggle the
+      app between light and dark**: Industrial should follow, and a custom theme
+      should not. That asymmetry is deliberate and the UI says so, but it is worth
+      seeing.
+
+      **What CI covers:** the three presets and the six removals in *both*
+      languages, a stale selection resolving to the default, every colour validated
+      as `#rrggbb`, a partial palette refused rather than merged, and the push event
+      that carries an edit to the browser. What it cannot cover is whether xterm
+      renders the palette the way the swatch promised.
+
 > **If the checkout walk fails, stop and fix before the rest.** The others are
 > quality; that one is money.
 

@@ -1,8 +1,9 @@
 defmodule BusterClaw.TerminalThemeTest do
-  # Pure data. The point of these is that nothing asserted anything about terminal
-  # themes before — the Elixir list and the JS palette table were two copies held
-  # together by a comment.
-  use ExUnit.Case, async: true
+  # The catalog half is pure data; the custom slot writes Settings rows. The point
+  # of all of it is that nothing asserted anything about terminal themes before —
+  # the Elixir list and the JS palette table were two copies held together by a
+  # comment.
+  use BusterClaw.DataCase, async: true
 
   alias BusterClaw.TerminalTheme
 
@@ -109,6 +110,149 @@ defmodule BusterClaw.TerminalThemeTest do
 
       assert decoded["nord"] == TerminalTheme.palette("nord")
       assert decoded["nord"]["background"] == "#2e3440"
+    end
+  end
+
+  describe "the custom slot" do
+    defp nord_copy(overrides \\ %{}) do
+      {:ok, palette} = TerminalTheme.copy_of("nord")
+      Map.merge(palette, overrides)
+    end
+
+    test "nothing saved means no custom theme and no fourth key" do
+      assert TerminalTheme.custom() == nil
+      assert TerminalTheme.keys() == TerminalTheme.preset_keys()
+    end
+
+    test "a copy of a preset is a complete palette" do
+      # The whole reason the editor opens on a copy: 22 values, so a custom theme
+      # can never be the half-applied thing where the background is yours and `ls`
+      # is xterm's.
+      {:ok, palette} = TerminalTheme.copy_of("nord")
+
+      for {field, _label} <- TerminalTheme.fields() do
+        assert Map.has_key?(palette, field), "a copy is missing #{field}"
+      end
+
+      assert map_size(palette) == length(TerminalTheme.fields())
+    end
+
+    test "industrial cannot be copied, and is not offered as a starting point" do
+      # It is token-derived, so there are no fixed colours to copy. Offering it
+      # would either snapshot whichever app theme happened to be on or produce a
+      # palette missing its ANSI values.
+      assert TerminalTheme.copy_of("industrial") == {:error, :not_copyable}
+      refute "industrial" in Enum.map(TerminalTheme.starting_points(), & &1.key)
+      assert Enum.map(TerminalTheme.starting_points(), & &1.key) == ["nord", "monokai"]
+    end
+
+    test "saving appears in the picker, last, with a swatch of its own colours" do
+      assert {:ok, theme} =
+               TerminalTheme.set_custom("Mine", nord_copy(%{"background" => "#010203"}))
+
+      assert theme.key == TerminalTheme.custom_key()
+      assert theme.label == "Mine"
+      assert theme.swatch.bg == "#010203"
+      assert List.last(TerminalTheme.keys()) == TerminalTheme.custom_key()
+      assert TerminalTheme.valid?(TerminalTheme.custom_key())
+    end
+
+    test "it survives being read back, and reaches the browser payload" do
+      TerminalTheme.set_custom("Mine", nord_copy(%{"background" => "#010203"}))
+
+      assert TerminalTheme.palette("custom")["background"] == "#010203"
+      assert Jason.decode!(TerminalTheme.payload_json())["custom"]["background"] == "#010203"
+    end
+
+    test "colours are normalized, and a bad one is refused whole" do
+      assert {:ok, theme} = TerminalTheme.set_custom("Mine", nord_copy(%{"red" => "  #AABBCC "}))
+      assert theme.palette["red"] == "#aabbcc"
+
+      # Refused rather than partly applied: these strings go to xterm AND into the
+      # swatch's `style` attribute.
+      assert {:error, :invalid_colors} =
+               TerminalTheme.set_custom("Mine", nord_copy(%{"red" => "red"}))
+
+      assert {:error, :invalid_colors} =
+               TerminalTheme.set_custom("Mine", nord_copy(%{"red" => "#fff"}))
+
+      assert {:error, :invalid_colors} =
+               TerminalTheme.set_custom(
+                 "Mine",
+                 nord_copy(%{"red" => "#aabbcc; background: url(x)"})
+               )
+    end
+
+    test "a partial palette is refused rather than merged" do
+      # The editor always holds a complete palette, so a partial save means a form
+      # that lost inputs — merging would accept it silently.
+      assert {:error, :invalid_colors} =
+               TerminalTheme.set_custom("Mine", %{"background" => "#010203"})
+    end
+
+    test "a name is required, and bounded" do
+      assert {:error, :invalid_name} = TerminalTheme.set_custom("   ", nord_copy())
+
+      assert {:error, :invalid_name} =
+               TerminalTheme.set_custom(String.duplicate("x", 41), nord_copy())
+
+      assert {:ok, theme} = TerminalTheme.set_custom("  Trimmed  ", nord_copy())
+      assert theme.label == "Trimmed"
+    end
+
+    test "a stored palette that has gone bad resolves to no custom theme" do
+      # Not to a partly-applied one: a half-written palette would leave the
+      # terminal in a state no preset could explain.
+      TerminalTheme.set_custom("Mine", nord_copy())
+      BusterClaw.Settings.put("terminal_custom_theme_colors", ~s({"background":"nope"}))
+
+      assert TerminalTheme.custom() == nil
+      assert TerminalTheme.keys() == TerminalTheme.preset_keys()
+
+      BusterClaw.Settings.put("terminal_custom_theme_colors", "not json at all")
+      assert TerminalTheme.custom() == nil
+    end
+
+    test "deleting forgets it, idempotently" do
+      TerminalTheme.set_custom("Mine", nord_copy())
+      assert TerminalTheme.custom()
+
+      assert TerminalTheme.clear_custom() == :ok
+      assert TerminalTheme.custom() == nil
+      assert TerminalTheme.clear_custom() == :ok
+    end
+
+    test "saving and deleting are announced" do
+      TerminalTheme.subscribe()
+
+      TerminalTheme.set_custom("Mine", nord_copy())
+      assert_receive {:terminal_theme, %{key: "custom"}}
+
+      TerminalTheme.clear_custom()
+      assert_receive {:terminal_theme, nil}
+    end
+
+    test "the field list is the five core plus the sixteen ANSI, no overlap" do
+      core = Enum.map(TerminalTheme.core_fields(), &elem(&1, 0))
+      ansi = Enum.map(TerminalTheme.ansi_fields(), &elem(&1, 0))
+
+      assert length(core) == 5
+      assert length(ansi) == 16
+      assert core -- ansi == core
+      assert Enum.map(TerminalTheme.fields(), &elem(&1, 0)) == core ++ ansi
+      assert Enum.uniq(core ++ ansi) == core ++ ansi
+    end
+
+    test "a preset's palette covers exactly the field list" do
+      # The editor copies a preset and then saves it back through validation, so a
+      # preset that carried an unknown key or missed one would make its own copy
+      # unsavable. This test caught exactly that: `selectionForeground` was in the
+      # field list and in neither preset, so no copy could ever be saved.
+      for preset <- TerminalTheme.starting_points() do
+        assert Enum.sort(Map.keys(preset.palette)) ==
+                 Enum.sort(Enum.map(TerminalTheme.fields(), &elem(&1, 0))),
+               "#{preset.key}'s palette does not match the editor's field list"
+      end
     end
   end
 

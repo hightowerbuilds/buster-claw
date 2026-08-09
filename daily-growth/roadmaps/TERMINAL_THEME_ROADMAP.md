@@ -1,12 +1,13 @@
 # Terminal themes — one source of truth, three presets, and a custom palette
 
-**Scoped 08-09-26 · Status: Phases 0 and 1 SHIPPED 08-09. Phase 2 next.**
+**Scoped 08-09-26 · Status: Phases 0–2 SHIPPED 08-09. Only the operator walk
+remains.**
 
 | Phase | State |
 |---|---|
 | 0 — One list, in Elixir | **DONE** |
 | 1 — Cull to Industrial, Nord, Monokai | **DONE** |
-| 2 — The custom theme: store, editor, live apply | Not started |
+| 2 — The custom theme: store, editor, live apply | **DONE** |
 | 3 — Decided against / deferred | Below, not silently dropped |
 
 **The ask (operator, 08-09):** a simple UI to pick custom colors and save a theme;
@@ -120,13 +121,24 @@ custom theme does not follow the app's light/dark switch, only Industrial does.
 
 ### The UI
 
-Six core colours always visible, each labelled by what it actually does
-(background, text, cursor, text under cursor, selection, text in selection). The
+**Five** core colours always visible, each labelled by what it actually does
+(background, text, cursor, text under cursor, selection). Not six: `selectionForeground`
+was cut, and the test that caught it is worth keeping in mind — **neither surviving
+preset sets it**, so a copy could never have satisfied a validator that required
+it, and no custom theme could ever have been saved. xterm's behaviour when it is
+unset is also the better one (selected text keeps its own colour, so a selected
+error line stays red). Adding it later means adding it to both presets at the same
+time, which is a visible change to them and therefore a decision rather than a
+fill-in. The
 16 ANSI colours in a **collapsed** section below, pre-filled from the starting
 preset — present for whoever wants them, out of the way for whoever does not.
 
-Native `<input type="color">` swatches paired with a hex field, `phx-change` per
-input so the terminal restyles as you drag. **One custom slot, named** — not a
+Native `<input type="color">` swatches, the hex **shown rather than typed** — a
+second text input sharing a field's `name` would put two values on the wire for one
+field, and "pick a colour" was the ask; a hex field is a power-user affordance that
+can be added without touching the store. **One form** carrying the whole palette
+with `phx-change`, so the params *are* the palette and there is no per-field event
+to keep in step with the field list. **One custom slot, named** — not a
 library of saved themes. "Save a theme" was singular, and a list brings rename,
 delete, duplicate and an ordering question with it. The store is written so a
 second slot is a schema change and not a redesign.
@@ -137,9 +149,15 @@ second slot is a schema change and not a redesign.
 that is fine for one string, but 22 colours with a name is **data**: it should be
 testable, it should be visible to Elixir, and `Appearance` already stores
 per-surface palettes in `Settings` as hex triples, so there is precedent and no new
-mechanism. Live apply across open terminals and windows goes over PubSub, the way
-`Appearance` broadcasts a background change, rather than the `storage` event the
-current path leans on.
+mechanism. **Live apply, resolved:** the `<meta>` is server-rendered and cannot change without
+a reload, so an edit reaches the browser as a `push_event` — which patches the
+cached palette table and restyles every terminal on that page — and the browser
+mirrors the palette into `localStorage`, where the **existing** `storage` listener
+carries it to other windows. So `Settings` is the durable store and `localStorage`
+is only the cross-window nudge, which is why load time trusts the `<meta>` and not
+it. That reuses a mechanism already in place instead of subscribing every
+terminal-hosting LiveView to a new topic. (`TerminalTheme.subscribe/0` exists and
+broadcasts, for whoever needs server-side notification later.)
 
 **Every colour is validated as `#rrggbb` on the way in.** These strings are handed
 to xterm and interpolated into a `style` attribute for the chip preview; an

@@ -43,7 +43,61 @@ defmodule BusterClaw.TerminalTheme do
   matching the app.
   """
 
+  alias BusterClaw.Settings
+
   @default "industrial"
+
+  # The one custom slot. A key rather than a list because "save a theme" was
+  # singular: a library brings rename, delete, duplicate and an ordering question
+  # with it, and none of those were asked for. The store below is shaped so a
+  # second slot is a Settings key and a loop, not a redesign.
+  @custom_key "custom"
+  @custom_name_setting "terminal_custom_theme_name"
+  @custom_colors_setting "terminal_custom_theme_colors"
+  @custom_default_name "Custom"
+
+  # The core values, labelled by what they actually do rather than by their xterm
+  # names — "cursorAccent" means the character *under* the cursor, which nobody
+  # guesses.
+  #
+  # `selectionForeground` is deliberately NOT here, and the reason is worth
+  # keeping: neither surviving preset sets it, so xterm leaves selected text in
+  # whatever colour it already had. That is the better default — a selected error
+  # line stays red — and it is what both presets ship today. Including the field
+  # would also have made a preset copy fail validation, since a copy must be
+  # complete and no preset has this value to copy. Adding it later means adding it
+  # to both palettes at the same time, which is a visible change to the presets and
+  # therefore a decision rather than a fill-in.
+  @core_fields [
+    {"background", "Background"},
+    {"foreground", "Text"},
+    {"cursor", "Cursor"},
+    {"cursorAccent", "Text under cursor"},
+    {"selectionBackground", "Selection"}
+  ]
+
+  # The 16 ANSI slots. These are what colour `ls`, `git status` and every program
+  # that emits colour, which is why a custom theme copies them from a preset
+  # instead of leaving them out: omitted, xterm substitutes its own and the theme
+  # only half-applies.
+  @ansi_fields [
+    {"black", "Black"},
+    {"red", "Red"},
+    {"green", "Green"},
+    {"yellow", "Yellow"},
+    {"blue", "Blue"},
+    {"magenta", "Magenta"},
+    {"cyan", "Cyan"},
+    {"white", "White"},
+    {"brightBlack", "Bright black"},
+    {"brightRed", "Bright red"},
+    {"brightGreen", "Bright green"},
+    {"brightYellow", "Bright yellow"},
+    {"brightBlue", "Bright blue"},
+    {"brightMagenta", "Bright magenta"},
+    {"brightCyan", "Bright cyan"},
+    {"brightWhite", "Bright white"}
+  ]
 
   # Three themes as of 08-09 (operator call): Industrial, Nord, Monokai. Dracula,
   # Solarized, Gruvbox, Tokyo Night, Light and Matrix were removed — a stored
@@ -125,19 +179,57 @@ defmodule BusterClaw.TerminalTheme do
     }
   ]
 
-  @keys Enum.map(@themes, & &1.key)
+  @preset_keys Enum.map(@themes, & &1.key)
 
-  @doc "Every theme as `%{key, label, swatch, palette}`, in picker order."
-  def themes, do: @themes
+  @doc "The shipped themes, without the operator's custom slot."
+  def presets, do: @themes
+
+  @doc "Every shipped theme key."
+  def preset_keys, do: @preset_keys
+
+  @doc """
+  Every theme in picker order, the custom slot last when one has been saved.
+
+  Runtime rather than compile-time, because the custom slot is a `Settings` row.
+  """
+  def themes do
+    case custom() do
+      nil -> @themes
+      theme -> @themes ++ [theme]
+    end
+  end
 
   @doc "Every valid theme key, in picker order."
-  def keys, do: @keys
+  def keys, do: Enum.map(themes(), & &1.key)
 
   @doc "The theme an unset or unrecognized selection resolves to."
   def default, do: @default
 
-  @doc "Whether `key` names a theme that exists."
-  def valid?(key), do: key in @keys
+  @doc "The key the custom slot occupies."
+  def custom_key, do: @custom_key
+
+  @doc "The five core palette fields as `{name, label}`, in editor order."
+  def core_fields, do: @core_fields
+
+  @doc "The 16 ANSI palette fields as `{name, label}`, in editor order."
+  def ansi_fields, do: @ansi_fields
+
+  @doc "Every palette field as `{name, label}` — the five core, then the 16 ANSI."
+  def fields, do: @core_fields ++ @ansi_fields
+
+  @doc """
+  Themes a custom palette can be copied from.
+
+  Only the ones with a fixed palette. `industrial` is excluded on purpose: it is
+  token-derived, so it has no fixed colours to copy — starting from it would either
+  snapshot whichever app theme happened to be active or produce a palette missing
+  its 16 ANSI values, and both of those are the half-applied result the copy exists
+  to prevent.
+  """
+  def starting_points, do: Enum.filter(@themes, &(&1.palette != nil))
+
+  @doc "Whether `key` names a theme that exists (including a saved custom one)."
+  def valid?(key), do: key in keys()
 
   @doc "Operator-facing label for a key, or `nil`."
   def label(key), do: find(key, :label)
@@ -153,10 +245,140 @@ defmodule BusterClaw.TerminalTheme do
   def palette(key), do: find(key, :palette)
 
   defp find(key, field) do
-    case Enum.find(@themes, &(&1.key == key)) do
+    case Enum.find(themes(), &(&1.key == key)) do
       nil -> nil
       theme -> Map.get(theme, field)
     end
+  end
+
+  # --- the custom slot -----------------------------------------------------
+
+  @doc """
+  The saved custom theme as a picker entry, or `nil` when none has been saved.
+
+  A stored palette that has lost a field or gained a bad colour resolves to `nil`
+  rather than to something partly applied — a half-written palette would leave the
+  terminal in a state no preset could explain.
+  """
+  def custom do
+    with colors when is_binary(colors) <- Settings.get(@custom_colors_setting),
+         {:ok, decoded} <- Jason.decode(colors),
+         {:ok, palette} <- validate_palette(decoded) do
+      %{
+        key: @custom_key,
+        label: custom_name(),
+        swatch: %{
+          bg: palette["background"],
+          fg: palette["foreground"],
+          accent: palette["cursor"]
+        },
+        palette: palette
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  @doc "The custom theme's name, or the fallback when it has never been named."
+  def custom_name do
+    case Settings.get(@custom_name_setting) do
+      name when is_binary(name) and name != "" -> name
+      _ -> @custom_default_name
+    end
+  end
+
+  @doc """
+  Save the custom theme.
+
+  `colors` is a `%{field => "#rrggbb"}` map that must cover every field in
+  `fields/0` — partial saves are refused rather than merged, because the editor
+  always holds a complete palette (it starts as a copy of a preset) and a merge
+  would silently accept a form that had lost half its inputs.
+
+  Returns `{:ok, theme}`, `{:error, :invalid_colors}` or `{:error, :invalid_name}`.
+  """
+  def set_custom(name, colors) when is_binary(name) and is_map(colors) do
+    trimmed = String.trim(name)
+
+    if trimmed == "" or String.length(trimmed) > 40 do
+      {:error, :invalid_name}
+    else
+      case validate_palette(colors) do
+        {:ok, palette} ->
+          Settings.put(@custom_name_setting, trimmed)
+          Settings.put(@custom_colors_setting, Jason.encode!(palette))
+          broadcast()
+          {:ok, custom()}
+
+        :error ->
+          {:error, :invalid_colors}
+      end
+    end
+  end
+
+  def set_custom(_name, _colors), do: {:error, :invalid_colors}
+
+  @doc "Forget the custom theme. Idempotent."
+  def clear_custom do
+    Settings.delete(@custom_colors_setting)
+    Settings.delete(@custom_name_setting)
+    broadcast()
+    :ok
+  end
+
+  @doc """
+  A complete palette copied from preset `key`, for the editor to open on.
+
+  `{:error, :not_copyable}` for anything without a fixed palette — see
+  `starting_points/0`.
+  """
+  def copy_of(key) do
+    case palette(key) do
+      nil -> {:error, :not_copyable}
+      palette -> {:ok, palette}
+    end
+  end
+
+  # Every field present, every value a #rrggbb literal. Strict on both counts: the
+  # values are handed to xterm AND interpolated into the swatch's `style`
+  # attribute, so an unvalidated one is a markup question rather than a styling
+  # one, and a missing one is a theme that applies to some of the terminal.
+  #
+  # (`BusterClaw.Appearance` has the same hex rule as a private helper for its
+  # 3-colour shader palettes. Two copies of one regex is not worth a module; a
+  # third should be.)
+  defp validate_palette(colors) when is_map(colors) do
+    names = Enum.map(fields(), &elem(&1, 0))
+
+    palette =
+      Map.new(names, fn name ->
+        {name, colors |> Map.get(name) |> normalize_hex()}
+      end)
+
+    if Enum.any?(palette, fn {_name, hex} -> is_nil(hex) end) do
+      :error
+    else
+      {:ok, palette}
+    end
+  end
+
+  defp validate_palette(_colors), do: :error
+
+  defp normalize_hex(hex) when is_binary(hex) do
+    trimmed = hex |> String.trim() |> String.downcase()
+    if Regex.match?(~r/^#[0-9a-f]{6}$/, trimmed), do: trimmed, else: nil
+  end
+
+  defp normalize_hex(_hex), do: nil
+
+  @doc "PubSub topic a custom-theme change is announced on."
+  def topic, do: "terminal:theme"
+
+  @doc "Subscribe the calling process to custom-theme changes."
+  def subscribe, do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, topic())
+
+  defp broadcast do
+    Phoenix.PubSub.broadcast(BusterClaw.PubSub, topic(), {:terminal_theme, custom()})
   end
 
   @doc """
@@ -169,7 +391,7 @@ defmodule BusterClaw.TerminalTheme do
   costs no round-trip.
   """
   def payload_json do
-    @themes
+    themes()
     |> Map.new(&{&1.key, &1.palette})
     |> Jason.encode!()
   end

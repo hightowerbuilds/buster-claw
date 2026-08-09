@@ -81,8 +81,51 @@ function setTermTheme(key) {
 }
 
 window.addEventListener("bc:set-term-theme", (e) => setTermTheme(e.target.dataset.termTheme))
+
+// ---- The custom theme, edited live -----------------------------------------
+// The <meta> is server-rendered and cannot change without a reload, so an edit in
+// Settings arrives as a server event instead. Two jobs: patch the cached table so
+// the terminal restyles on this page as the colour picker moves, and mirror the
+// palette into localStorage so OTHER windows' terminals pick it up through the
+// `storage` listener already below. Durable storage is `Settings` on the server;
+// localStorage here is only the cross-window nudge, which is why load-time trusts
+// the <meta> and not this.
+const TERM_CUSTOM_KEY = "bc:term-custom"
+
+function patchCustom(palette) {
+  const table = termThemes()
+  if (palette) {
+    table.custom = palette
+  } else {
+    delete table.custom
+  }
+  applyTermTheme(currentTermTheme())
+}
+
+window.addEventListener("phx:bc-term-custom", (e) => {
+  const palette = e.detail?.palette || null
+  patchCustom(palette)
+  try {
+    if (palette) {
+      localStorage.setItem(TERM_CUSTOM_KEY, JSON.stringify(palette))
+    } else {
+      localStorage.removeItem(TERM_CUSTOM_KEY)
+    }
+  } catch (_e) {
+    // A full or blocked localStorage costs cross-window sync, not the edit — the
+    // palette is already saved server-side and this page has already applied it.
+  }
+})
 window.addEventListener("storage", (e) => {
   if (e.key === TERM_THEME_KEY) applyTermTheme(currentTermTheme())
+  if (e.key === TERM_CUSTOM_KEY) {
+    try {
+      patchCustom(e.newValue ? JSON.parse(e.newValue) : null)
+    } catch (_e) {
+      // Ignore a malformed write from another window rather than dropping this
+      // window's working terminal.
+    }
+  }
 })
 // When the app light/dark theme flips, refresh terminals that track it.
 window.addEventListener("phx:set-theme", () => {

@@ -7,6 +7,7 @@ defmodule BusterClawWeb.AppearanceLiveTest do
   alias BusterClaw.Appearance
   alias BusterClaw.ChatSkin
   alias BusterClaw.ChatTextSize
+  alias BusterClaw.TerminalTheme
 
   setup do
     root = Path.join(System.tmp_dir!(), "bc_appearance_lv_#{System.unique_integer([:positive])}")
@@ -266,6 +267,122 @@ defmodule BusterClawWeb.AppearanceLiveTest do
 
     assert Appearance.colors(:terminal) == ["#112233", "#445566", "#778899"]
     assert Appearance.colors(:home) == ["#0e0e0e", "#ff4d1c", "#f4f1ea"]
+  end
+
+  describe "the custom terminal theme" do
+    defp start_from_nord(view) do
+      view |> element(~s([data-start-from="nord"])) |> render_click()
+    end
+
+    defp palette_params(overrides) do
+      {:ok, palette} = TerminalTheme.copy_of("nord")
+      Map.merge(palette, overrides)
+    end
+
+    test "offers the three presets and, with none saved, two starting points",
+         %{conn: conn} do
+      {:ok, view, html} = live(conn, "/appearance")
+
+      for key <- TerminalTheme.preset_keys() do
+        assert has_element?(view, ~s([data-term-theme="#{key}"]))
+      end
+
+      # The six removed presets are gone from the picker as well as the catalog.
+      for gone <- ~w(dracula solarized gruvbox tokyo-night light matrix) do
+        refute has_element?(view, ~s([data-term-theme="#{gone}"]))
+      end
+
+      # Industrial is not a starting point: it is token-derived, so there are no
+      # fixed colours to copy.
+      assert has_element?(view, ~s([data-start-from="nord"]))
+      assert has_element?(view, ~s([data-start-from="monokai"]))
+      refute has_element?(view, ~s([data-start-from="industrial"]))
+      assert html =~ "Start from Nord"
+    end
+
+    test "starting from a preset opens a complete editor", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      start_from_nord(view)
+
+      assert has_element?(view, "#custom-theme-editor")
+
+      # Every field, including the 16 in the collapsed section — the editor holds a
+      # complete palette so a custom theme can never be half-applied.
+      for {field, _label} <- TerminalTheme.fields() do
+        assert has_element?(view, ~s(#custom-theme-editor [data-color-field="#{field}"])),
+               "the editor has no input for #{field}"
+      end
+    end
+
+    test "changing a colour saves it and pushes it at the browser", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+      start_from_nord(view)
+
+      view
+      |> element("#custom-theme-editor")
+      |> render_change(palette_params(%{"background" => "#010203", "name" => "Mine"}))
+
+      # Persisted, so it survives a restart...
+      assert TerminalTheme.palette("custom")["background"] == "#010203"
+      assert TerminalTheme.custom_name() == "Mine"
+
+      # ...and pushed, which is what restyles open terminals with no reload. The
+      # <meta> the layout renders cannot change without one.
+      assert_push_event(view, "bc-term-custom", %{palette: %{"background" => "#010203"}})
+    end
+
+    test "a saved theme joins the picker and can be re-opened", %{conn: conn} do
+      TerminalTheme.set_custom("Mine", palette_params(%{"background" => "#010203"}))
+
+      {:ok, view, html} = live(conn, "/appearance")
+
+      assert has_element?(view, ~s([data-term-theme="custom"]))
+      assert html =~ "Mine"
+      # No starting-point buttons once one exists — the choice now is edit or delete.
+      refute has_element?(view, ~s([data-start-from="nord"]))
+
+      view |> element(~s(button[phx-click="edit_custom_theme"])) |> render_click()
+      assert has_element?(view, "#custom-theme-editor")
+    end
+
+    test "a bad colour is refused with a message, and nothing is stored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+      start_from_nord(view)
+
+      html =
+        view
+        |> element("#custom-theme-editor")
+        |> render_change(palette_params(%{"red" => "not-a-colour", "name" => "Mine"}))
+
+      assert html =~ "not a valid #rrggbb colour"
+      assert TerminalTheme.custom() == nil
+    end
+
+    test "an empty name is refused rather than saved blank", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/appearance")
+      start_from_nord(view)
+
+      html =
+        view
+        |> element("#custom-theme-editor")
+        |> render_change(palette_params(%{"name" => "   "}))
+
+      assert html =~ "Give the theme a name"
+      assert TerminalTheme.custom() == nil
+    end
+
+    test "deleting removes it from the picker and tells the browser", %{conn: conn} do
+      TerminalTheme.set_custom("Mine", palette_params(%{}))
+      {:ok, view, _html} = live(conn, "/appearance")
+
+      view |> element(~s(button[phx-click="delete_custom_theme"])) |> render_click()
+
+      assert TerminalTheme.custom() == nil
+      refute has_element?(view, ~s([data-term-theme="custom"]))
+      assert_push_event(view, "bc-term-custom", %{palette: nil})
+      assert has_element?(view, ~s([data-start-from="nord"]))
+    end
   end
 
   describe "the chat theme picker" do
