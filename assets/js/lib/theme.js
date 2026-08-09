@@ -116,8 +116,49 @@ window.addEventListener("phx:bc-term-custom", (e) => {
     // palette is already saved server-side and this page has already applied it.
   }
 })
+// ---- Wear this theme now ---------------------------------------------------
+// The server-side counterpart of `bc:set-term-theme` (a click). A command has no
+// socket and the selected theme lives in localStorage, so `BusterClaw.TerminalPaint`
+// broadcasts and ChromeHook pushes this. One event does both jobs, because from
+// here selecting and painting are the same act: know the palette, then wear it.
+const TERM_AGENT_KEY = "bc:term-agent"
+
+window.addEventListener("phx:bc-term-apply", (e) => {
+  const key = e.detail?.key
+  const palette = e.detail?.palette || null
+  if (!key) return
+
+  if (palette) {
+    termThemes()[key] = palette
+    try {
+      // Mirror for other windows, the same nudge the custom palette uses. Only
+      // the agent slot is mirrored: presets are already in the server-rendered
+      // <meta>, and the operator's custom slot has its own key above.
+      if (key === "agent") localStorage.setItem(TERM_AGENT_KEY, JSON.stringify(palette))
+    } catch (_e) {
+      // Cross-window sync is the only casualty; this window has already applied.
+    }
+  }
+
+  setTermTheme(key)
+})
+
 window.addEventListener("storage", (e) => {
   if (e.key === TERM_THEME_KEY) applyTermTheme(currentTermTheme())
+  if (e.key === TERM_AGENT_KEY) {
+    try {
+      const table = termThemes()
+      if (e.newValue) {
+        table.agent = JSON.parse(e.newValue)
+      } else {
+        delete table.agent
+      }
+      applyTermTheme(currentTermTheme())
+    } catch (_e) {
+      // A malformed write from another window is ignored rather than dropping
+      // this window's working palette.
+    }
+  }
   if (e.key === TERM_CUSTOM_KEY) {
     try {
       patchCustom(e.newValue ? JSON.parse(e.newValue) : null)

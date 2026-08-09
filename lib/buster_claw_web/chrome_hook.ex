@@ -14,6 +14,15 @@ defmodule BusterClawWeb.ChromeHook do
   process, and render happens in that same process, so there is no cross-talk
   between the parent split view and its panes.
 
+  ## Terminal paint
+
+  It also carries `{:terminal_theme_apply, key, palette}` out to the browser as a
+  `bc-term-apply` client event. That message is the *only* way something without
+  a socket — a command, a job — can change what a terminal looks like, because
+  the selected theme lives in `localStorage` rather than on the server. See
+  `BusterClaw.TerminalPaint` for why, and note the same `:halt` reasoning as
+  below applies: nothing else may handle it.
+
   ## Brand art
 
   The dock is in the layout and the banner is on the homepage, so when an
@@ -39,11 +48,22 @@ defmodule BusterClawWeb.ChromeHook do
   import Phoenix.LiveView, only: [attach_hook: 4, connected?: 1]
 
   alias BusterClaw.Pockets.Brand
+  alias BusterClaw.TerminalPaint
 
   def on_mount(:default, _params, session, socket) do
     Process.put(:bc_embedded, session["embedded"] == true)
 
-    if connected?(socket), do: Phoenix.PubSub.subscribe(BusterClaw.PubSub, Brand.topic())
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(BusterClaw.PubSub, Brand.topic())
+      # The only route a socket-less writer has to a terminal. See
+      # `BusterClaw.TerminalPaint`: the selected theme is client-side, so a
+      # command cannot change it by writing a Setting.
+      #
+      # ITS OWN topic, not `TerminalTheme`'s. Subscribing every LiveView to that
+      # one delivered its `{:terminal_theme, custom}` message to views with no
+      # clause for it, and TerminalLive crashed.
+      TerminalPaint.subscribe()
+    end
 
     socket =
       socket
@@ -57,6 +77,12 @@ defmodule BusterClawWeb.ChromeHook do
   def embedded?, do: Process.get(:bc_embedded, false)
 
   defp handle_brand(:brand_art_changed, socket), do: {:halt, assign_brand(socket)}
+
+  # Wear this theme now. `palette` is installed under `key` first when present.
+  defp handle_brand({:terminal_theme_apply, key, palette}, socket) do
+    {:halt, Phoenix.LiveView.push_event(socket, "bc-term-apply", %{key: key, palette: palette})}
+  end
+
   defp handle_brand(_message, socket), do: {:cont, socket}
 
   # Both surfaces are assigned HERE rather than each view fetching its own,
