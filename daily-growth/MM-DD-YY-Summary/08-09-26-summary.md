@@ -726,3 +726,183 @@ tests": a guard written in the same sitting as the code inherits its blind spot.
   in a note renders italic in the editor and plain everywhere else.
 - Serialize with `textContent`, **never `innerText`**: `innerText` respects CSS,
   so every hidden marker would vanish from the file on the next save.
+
+---
+
+# The dead-code pass — and the four guards that replaced a delete
+
+`daily-growth/archive/08-09-26-dead-code.md` · `89b2de9`
+
+**The measurement first.** ~170,000 lines of code: Elixir 150,841, JS 12,236,
+Rust 4,771, CSS 1,196, plus 50,515 of Markdown. 3,514 tests, a 0.64:1
+test-to-source ratio in Elixir — which is why the findings were small. **Rust
+read as 69,250 until `desktop/tauri/target/` was excluded**; four copies of a
+generated `named_entities.rs` were 64k of it. A number that wrong at first glance
+is worth stating, because it is the shape of every measurement mistake here:
+counting what is on disk rather than what is authored.
+
+**What went:** 22 functions deleted, 47 made private, 10 CSS rules, one JS const
+and six over-broad exports, two stale Dialyzer entries, and two pieces of schema
+nothing touched — the `mcp_servers` table and `agent_conversations.docked`, whose
+only writer was itself uncalled. **A dead writer can mean a dead column**; when
+the only thing that writes a field turns out to be unused, check the field.
+
+**What arrived instead, and this is the durable half.** Four findings were *not*
+deleted, because tracing showed deletion was the wrong fix:
+
+- a **lockstep guard** over the workspace seed registry, asserting 11
+  `{module, fun}` contracts that no grep and no compiler can see;
+- a **byte-identity test** for the diary's append-only path against
+  `render_diary/2`, which claimed to be its own oracle and had no test — it
+  passes, so the O(1)-per-event optimisation is sound;
+- **two non-vacuous floor tests** for `ModelPolicy`, replacing a docstring that
+  promised a test which did not exist;
+- **`Clinch` deriving `managed?`** from one list instead of restating it three
+  times inline — a permission boundary that was stated four ways.
+
+## The one that would have shipped broken
+
+`write_readme/0` is registered as `seed: {__MODULE__, :write_readme}`. Converting
+it to `defp` **compiles clean, passes all 3,569 tests, and breaks workspace
+seeding at runtime** — and `run_seed/1` rescues the failure into a
+`Logger.warning`, so nothing crashes; the folder simply never appears. A
+`{__MODULE__, :fun}` registry is invisible to a grep for `fun(` *and* to
+`--warnings-as-errors`. It was the one item on a 52-line list where a green suite
+proved nothing.
+
+## Three of the pass's own findings were wrong
+
+Worth more than the deletions. **Same file is not same module** — `twiddles/1` is
+called from a sibling module in one file, and only the compiler caught it. **A
+fixed-string scan cannot tell `foo` from `@foo`** — eight entries were actually
+dead rather than over-exposed, because every credited "internal call site" was a
+module attribute. And **a docstring naming a caller is not evidence of one**:
+three functions were public, or kept, on the strength of prose describing a caller
+or a test that did not exist.
+
+So the roadmap now opens by saying every count in it is a **grep-derived lower
+bound, not an inventory** — five more dead things surfaced only while working the
+findings.
+
+**Left open, measured not fixed: Dialyzer exits 2 with 56 findings on `main`.**
+The 08-02 baseline was frozen and never extended, so 20 post-baseline modules
+carry them. 44 are the accepted `:unmatched_return` class; **12 can be real
+defects**. It leaves as its own roadmap, because a gate everyone believes is
+blocking — and which blocks nothing, since this repo pushes straight to `main` —
+is worse than no gate.
+
+---
+
+# The Studio can cut, but it cannot record — or listen
+
+`STUDIO_ROADMAP` Parts V and VI, rewritten · `787a506`, `500c1dd`, `ef8f580`
+
+Three documents were written this morning from different angles: how to capture
+audio, how to browse and correct the corpus, and whether words could be sourced
+from YouTube. **They converged, three independent ways, on one action: record the
+operator's own voice.** The engineering line already said the donor session was
+highest value; the measurement line was a sentence that scored 3/10 because two of
+its seven words exist in no transcript; and the legal survey walked four legal
+layers and landed on *"record 30–60 minutes of phonetically balanced sentences"*
+**on the merits, not as a consolation**. All three folded into one map, and the
+sources were deleted.
+
+**Then the numbers arrived and stopped being an argument.** `Cutup.Gaps` measured
+the real corpus: 237 distinct words, **93 cuttable, 144 single-take**, and
+`origins: %{"aligned" => 655}` — **nothing has ever been hand-corrected**. So 61%
+of the vocabulary cannot be spliced with, and no take in the corpus is worth more
+than 0.9 confidence. Those are the two roadmap arguments, now measured.
+
+## The failure the silence check exists for, reproduced on the first try
+
+A real 1-second capture through `ffmpeg -f avfoundation` returned **exit status 0,
+empty stderr, a well-formed 42 KB WAV, and 21,109 samples every one of which was
+exactly zero** — with **no consent prompt ever appearing**. TCC attributes
+microphone consent to the *responsible* process, and the chain is `beam.smp`
+spawning `ffmpeg` out of `Contents/Resources`, carrying neither an `Info.plist`
+nor an entitlement. Consent is silently absent rather than denied.
+
+That is why `record/1` reads the result back and refuses a silent take. It is also
+the strongest argument for capturing in the signed WebView instead, which is what
+Part V's remaining phases do.
+
+## `sound_record` is gated, and not for the usual reason
+
+`PolicyEngine`'s baseline is precise: `:restricted` earns a confirmation from an
+`:agent` or `:mcp` caller, but **an `:agent_untrusted` caller is stopped only by
+`gated`**. So a restricted-but-ungated recording verb would have been reachable,
+without confirmation, by an autonomous run acting on content it did not choose to
+read. `catalog_invariants_test` matches `_set$` but nothing matching "record", so
+**no existing invariant would have caught it.**
+
+`sound_apply` gates a change in *outbound behaviour*; `sound_record` gates
+*hardware capture*. Two reasons that do not substitute for each other, now written
+into `Catalog.Sound` — which had claimed *"exactly one of them is gated"* and had
+to lose the superlative, with a note saying not to restore it.
+
+## Two traps that would have poisoned the corpus quietly
+
+**`autoGainControl` must be off.** It returns two takes of the same word, a minute
+apart, at different levels — which is exactly the artefact `sound_assemble`'s
+`normalize` exists to suppress, **reintroduced upstream where nothing downstream
+can remove it.** **And Bluetooth input reproduces the problem the donor session
+exists to escape:** opening a BT headset as an input drops A2DP to HFP, which is
+8 kHz — so a session recorded over AirPods would hand the project a second
+telephony-grade corpus. Enumeration reads Apple's own transport table rather than
+guessing from device names, and reports the *live stream's* rate, never the
+device's advertised one.
+
+## Mix | Voice, and a frozen file that could not grow
+
+The Studio tab gained sub-tabs on the Explained tab's rail-and-registry pattern.
+The reason it is a rail *above* the component rather than a switch *inside* it:
+`sound_studio_component.ex` is **FROZEN at 1,235 lines with its cap equal to its
+size**, so it cannot grow by one line and a sub-tab inside it was never available.
+Mix renders it completely unchanged; the eight assigns moved from a
+`.live_component` call site to a `.studio_panel` one, net zero.
+
+---
+
+# Three sessions, one working tree
+
+The coordination cost more wall-clock than the code did, and produced rules worth
+keeping.
+
+**A gate run against a dirty working tree can hide a red `main`.**
+`notes/rail.ex` sat 26 lines over its cap on `main` for three commits while every
+session's local `check_file_sizes.sh` ran green — because the fix was sitting
+*uncommitted* in the shared tree the whole time. It surfaced only when someone ran
+the gate against a clean checkout.
+
+**Move a ref with a compare-and-swap.** `git update-ref <ref> <new> <expected-old>`
+— the third argument is the lesson. A bare `reset --soft` against a SHA read five
+minutes earlier silently orphaned another session's commit; the same staleness hit
+the CAS form and produced a loud refusal, which then proved the trees were already
+identical to a merge someone else had made.
+
+**A test asserting a universal over the command catalog depends on unlanded work.**
+One session's guard asserted `sound_apply` was the only gated `sound_*` verb — it
+**passed against `HEAD` and failed against the merged tree**, and would have
+shipped green and turned red when the other landed. A universal is fine when it *is*
+a review-forcing snapshot; not when it is scenery around a claim about something
+else. They look identical in a diff.
+
+**And the mistake that was mine:** I said I would wait, then committed while
+another session was verifying, because a *third* session's commit had landed and I
+read that as the coast being clear. My four modules were self-contained in the
+compile sense and not in the git sense — which put the branch one ahead and one
+behind, and made their verified parent stale. Nothing was lost, because the commit
+was already pushed and nobody forced. The recovery was a merge rather than a
+rebase: rebase needs a clean tree, and stashing in a shared tree sweeps everyone's
+work, so only my twelve paths were stashed — after verifying they were
+byte-identical to what was already committed.
+
+## Housekeeping, at the end of it
+
+Five orphaned BEAMs from timed-out `mix run` commands, some over a day old, each
+still holding the dev SQLite file — a likely contributor to the `Database busy`
+failures that made `MIX_TEST_PARTITION` mandatory. **73 test databases, 34 MB**,
+one per lane name invented across the day: `config/test.exs` derives the filename
+from the partition, and nothing ever removes them. Both were correctly gitignored,
+which is exactly why they accumulated unnoticed. The partitioning was necessary;
+inventing a fresh lane name per run was habit, not requirement.
