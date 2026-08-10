@@ -11,7 +11,8 @@ defmodule BusterClaw.Telephony.Relay do
     this Mac hasn't drained yet, oldest first.
   - `download_recording/2` — voicemail audio from the private `recordings`
     bucket.
-  - `mark_synced/2` — flip `synced` after the row is safely in local SQLite.
+  - `delete_recording/2` + `delete_event/2` — ERASE the row and its audio once
+    the Mac has it. The relay is a queue, not storage.
 
   Deliberately a poller's client, not a websocket: a Realtime subscription
   can't replay rows that arrived while the laptop slept, so a catch-up read
@@ -64,16 +65,47 @@ defmodule BusterClaw.Telephony.Relay do
     end
   end
 
-  @doc "Mark one relay row drained. `id` is the row's uuid."
-  def mark_synced(id, opts \\ []) when is_binary(id) do
+  @doc """
+  Delete one voicemail object from the private `recordings` bucket.
+
+  `{:ok, :gone}` for a 404 — the object is already absent, which is the state we
+  wanted, so an absent object is success rather than an error to retry forever.
+
+  Deleting is the point, not housekeeping: the relay is a **queue**, not storage.
+  Audio sits in someone else's cloud only for as long as it takes this Mac to
+  come and get it.
+  """
+  def delete_recording(path, opts \\ []) when is_binary(path) do
+    request(opts)
+    |> Req.merge(url: "/storage/v1/object/recordings/" <> path)
+    |> Req.delete()
+    |> case do
+      {:ok, %{status: status}} when status in 200..299 -> :ok
+      {:ok, %{status: 404}} -> {:ok, :gone}
+      {:ok, %{status: status, body: body}} -> {:error, {:storage_status, status, body}}
+      {:error, reason} -> {:error, {:storage_request_failed, reason}}
+    end
+  end
+
+  @doc """
+  Delete one relay row. `id` is the row's uuid.
+
+  **This replaced `mark_synced/2` on 2026-08-10, and the difference matters.**
+  Flipping a `synced` flag left every voicemail transcript and every recording in
+  the relay forever: `list_unsynced/1` filters them out, so drained rows became
+  invisible rather than gone, and nothing ever collected them. Deleting makes the
+  drain's own retry loop the erasure's retry loop too — a failed delete leaves the
+  row listed, so the next tick tries again, where the local unique index on
+  `twilio_sid` dedupes the re-read into a no-op.
+  """
+  def delete_event(id, opts \\ []) when is_binary(id) do
     request(opts)
     |> Req.merge(
       url: "/rest/v1/telephony_events",
       params: [id: "eq." <> id],
-      headers: [{"prefer", "return=minimal"}],
-      json: %{synced: true}
+      headers: [{"prefer", "return=minimal"}]
     )
-    |> Req.patch()
+    |> Req.delete()
     |> case do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       {:ok, %{status: status, body: body}} -> {:error, {:relay_status, status, body}}

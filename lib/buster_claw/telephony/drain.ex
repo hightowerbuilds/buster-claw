@@ -7,12 +7,12 @@ defmodule BusterClaw.Telephony.Drain do
   (`BusterClaw.Telephony.Relay`), downloads voicemail audio into the Library,
   mirrors each row into local SQLite via `Telephony.record_event/2` (which
   broadcasts to `PhoneLive` and observes inbound events on Sentinel), and only
-  then flips the remote row's `synced` flag.
+  then DELETES the remote row and its audio.
 
   ## Discipline
 
-  - **Persist-then-ack.** A row is marked synced only after the local insert
-    succeeds. A crash in between re-drains the row next tick, where the local
+  - **Persist-then-erase.** A row is deleted from the relay only after the local
+    insert succeeds. A crash in between re-drains the row next tick, where the local
     unique index on `twilio_sid` dedupes it — so the failure mode is a retry,
     never a lost voicemail.
   - **Transcript grace.** Twilio's transcription callback lands *after* the
@@ -122,7 +122,7 @@ defmodule BusterClaw.Telephony.Drain do
     with {:ok, recording} <- fetch_recording(row, state),
          {:ok, attrs} <- event_attrs(row, recording),
          :ok <- persist(attrs) do
-      ack(row, state)
+      erase(row, state)
     else
       {:error, reason} ->
         Logger.warning(
@@ -330,17 +330,42 @@ defmodule BusterClaw.Telephony.Drain do
     end
   end
 
-  defp ack(row, state) do
-    case Relay.mark_synced(row["id"], req_options: state.req_options) do
-      :ok ->
-        :ok
-
+  # Erase the row from the relay once it is safely local. Deletion IS the ack:
+  # a deleted row cannot be listed again, so it needs no `synced` flag, and a
+  # failed delete leaves the row listed and therefore retried — which is the
+  # property a flag could not give us. Until 08-10 this flipped `synced` instead,
+  # and every drained voicemail's audio and transcript stayed in the relay
+  # permanently, invisible to `list_unsynced/1` and collected by nothing.
+  #
+  # Recording first, then row. If the object delete fails, the row stays and the
+  # whole step retries. If the row delete fails after the object is gone, the
+  # next tick re-reads the row, the download 404s into the existing
+  # "record without audio" path, `persist/1` dedupes on `twilio_sid` (returning
+  # :ok WITHOUT re-enqueuing dispatch work), and the row is deleted then. Both
+  # orders of partial failure converge; neither strands audio.
+  defp erase(row, state) do
+    with :ok <- erase_recording(row, state),
+         :ok <- Relay.delete_event(row["id"], req_options: state.req_options) do
+      :ok
+    else
       {:error, reason} ->
-        # Local row exists; next tick re-drains and dedupes back to this ack.
-        Logger.warning("Telephony drain: ack failed for #{row["id"]}: #{inspect(reason)}")
+        # Local row exists; next tick re-drains, dedupes, and retries the erase.
+        Logger.warning("Telephony drain: erase failed for #{row["id"]}: #{inspect(reason)}")
         :error
     end
   end
+
+  defp erase_recording(%{"recording_path" => path}, state) when is_binary(path) do
+    case Relay.delete_recording(path, req_options: state.req_options) do
+      :ok -> :ok
+      # Already absent is the state we wanted, not a failure to retry.
+      {:ok, :gone} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # SMS rows and voicemails whose object was already gone carry no path.
+  defp erase_recording(_row, _state), do: :ok
 
   defp parse_timestamp(value) when is_binary(value) do
     case DateTime.from_iso8601(value) do

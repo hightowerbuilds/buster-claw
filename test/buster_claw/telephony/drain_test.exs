@@ -48,8 +48,12 @@ defmodule BusterClaw.Telephony.DrainTest do
     )
   end
 
-  # One stub routes all three relay calls by method + path; storage behavior
-  # and PATCH tracking are parameterized through the test process.
+  # One stub routes every relay call by method + path; storage behavior and
+  # erase tracking are parameterized through the test process.
+  #
+  # PATCH is deliberately NOT routed. Erasing replaced the `synced` flag on
+  # 08-10, so a PATCH reaching this stub means the old flag-flip came back —
+  # and an unmatched clause raises, which is the loud failure we want.
   defp stub_relay(rows, opts \\ []) do
     test_pid = self()
     storage = Keyword.get(opts, :storage, {:ok, "mp3-bytes"})
@@ -59,10 +63,14 @@ defmodule BusterClaw.Telephony.DrainTest do
         {"GET", "/rest/v1/telephony_events"} ->
           Req.Test.json(conn, rows)
 
-        {"PATCH", "/rest/v1/telephony_events"} ->
+        {"DELETE", "/rest/v1/telephony_events"} ->
           conn = Plug.Conn.fetch_query_params(conn)
-          send(test_pid, {:acked, conn.query_params["id"]})
+          send(test_pid, {:erased_row, conn.query_params["id"]})
           Plug.Conn.send_resp(conn, 204, "")
+
+        {"DELETE", "/storage/v1/object/recordings/" <> path} ->
+          send(test_pid, {:erased_recording, path})
+          Plug.Conn.send_resp(conn, 200, "")
 
         {"GET", "/storage/v1/object/recordings/" <> _path} ->
           case storage do
@@ -78,7 +86,7 @@ defmodule BusterClaw.Telephony.DrainTest do
     end)
   end
 
-  test "drains a voicemail: audio to the Library, event to SQLite, remote acked",
+  test "drains a voicemail: audio to the Library, event to SQLite, remote row AND audio erased",
        %{tmp_dir: tmp_dir} do
     stub_relay([relay_row()])
 
@@ -92,21 +100,21 @@ defmodule BusterClaw.Telephony.DrainTest do
     assert event.recording_path == "phone/recordings/2026-07-12/voicemail-RE123.mp3"
     assert File.read!(Path.join(tmp_dir, event.recording_path)) == "mp3-bytes"
 
-    assert_received {:acked, "eq.9b2e6c1a-0000-4000-8000-000000000001"}
+    assert_received {:erased_row, "eq.9b2e6c1a-0000-4000-8000-000000000001"}
   end
 
-  test "a re-drained row (already local) is acked without a duplicate" do
+  test "a re-drained row (already local) is erased without a duplicate" do
     stub_relay([relay_row()])
 
     assert :ok = Drain.drain(state())
-    assert_received {:acked, _}
+    assert_received {:erased_row, _}
 
     # Crash-between-persist-and-ack: the same row comes back next tick.
     stub_relay([relay_row()])
     assert :ok = Drain.drain(state())
 
     assert length(Telephony.list_events()) == 1
-    assert_received {:acked, _}
+    assert_received {:erased_row, _}
   end
 
   test "a young voicemail without a transcript waits for the grace window" do
@@ -120,7 +128,7 @@ defmodule BusterClaw.Telephony.DrainTest do
 
     assert :ok = Drain.drain(state())
     assert Telephony.list_events() == []
-    refute_received {:acked, _}
+    refute_received {:erased_row, _}
   end
 
   test "an old voicemail without a transcript drains anyway" do
@@ -130,7 +138,7 @@ defmodule BusterClaw.Telephony.DrainTest do
 
     assert [event] = Telephony.list_events()
     assert event.transcript == nil
-    assert_received {:acked, _}
+    assert_received {:erased_row, _}
   end
 
   test "a missing recording (404) drains without audio rather than blocking" do
@@ -141,7 +149,7 @@ defmodule BusterClaw.Telephony.DrainTest do
     assert [event] = Telephony.list_events()
     assert event.recording_path == nil
     assert event.metadata["recording_missing"] == true
-    assert_received {:acked, _}
+    assert_received {:erased_row, _}
   end
 
   test "a transient storage failure leaves the row queued for retry" do
@@ -150,7 +158,7 @@ defmodule BusterClaw.Telephony.DrainTest do
     assert :ok = Drain.drain(state())
 
     assert Telephony.list_events() == []
-    refute_received {:acked, _}
+    refute_received {:erased_row, _}
   end
 
   test "a traversal recording_path from the relay is refused" do
@@ -159,7 +167,7 @@ defmodule BusterClaw.Telephony.DrainTest do
     assert :ok = Drain.drain(state())
 
     assert Telephony.list_events() == []
-    refute_received {:acked, _}
+    refute_received {:erased_row, _}
   end
 
   test "a relay read failure is survived" do
@@ -350,4 +358,82 @@ defmodule BusterClaw.Telephony.DrainTest do
       assert Dispatch.list_open() == []
     end
   end
+
+  # Until 08-10 the drain flipped a `synced` flag and left every voicemail's audio
+  # and transcript in the relay permanently — invisible to `list_unsynced/1`, so
+  # nothing ever collected them. These assert the erasure itself, not just that a
+  # row stopped being listed.
+  describe "the relay is a queue, not storage" do
+    test "the audio object is deleted, not merely the row", %{tmp_dir: _tmp_dir} do
+      stub_relay([relay_row()])
+
+      assert :ok = Drain.drain(state())
+
+      assert_received {:erased_row, _}
+      assert_received {:erased_recording, "2026-07-12/voicemail-RE123.mp3"}
+    end
+
+    test "a failed row delete does NOT count as drained, so the next tick retries" do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"GET", "/rest/v1/telephony_events"} ->
+            Req.Test.json(conn, [relay_row()])
+
+          {"GET", "/storage/v1/object/recordings/" <> _} ->
+            conn
+            |> Plug.Conn.put_resp_content_type("audio/mpeg")
+            |> Plug.Conn.send_resp(200, "mp3-bytes")
+
+          {"DELETE", "/storage/v1/object/recordings/" <> path} ->
+            send(test_pid, {:erased_recording, path})
+            Plug.Conn.send_resp(conn, 200, "")
+
+          # The row delete fails — the event is already local, so the only correct
+          # outcome is that the erase is retried, never that the data is stranded.
+          {"DELETE", "/rest/v1/telephony_events"} ->
+            Plug.Conn.send_resp(conn, 500, "")
+        end
+      end)
+
+      assert :ok = Drain.drain(state())
+
+      # Local persistence still happened: losing a voicemail is never the failure mode.
+      assert [_event] = Telephony.list_events()
+      # And the row was not acked, so it stays listed for the next tick.
+      refute_received {:erased_row, _}
+    end
+
+    test "an already-absent audio object is success, not a permanent retry" do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"GET", "/rest/v1/telephony_events"} ->
+            Req.Test.json(conn, [relay_row()])
+
+          {"GET", "/storage/v1/object/recordings/" <> _} ->
+            conn
+            |> Plug.Conn.put_resp_content_type("audio/mpeg")
+            |> Plug.Conn.send_resp(200, "mp3-bytes")
+
+          # Someone else already removed it, or a previous tick deleted the object
+          # and then failed on the row. Either way the object is in the state we
+          # wanted; treating 404 as an error would strand the row forever.
+          {"DELETE", "/storage/v1/object/recordings/" <> _} ->
+            Plug.Conn.send_resp(conn, 404, "")
+
+          {"DELETE", "/rest/v1/telephony_events"} ->
+            conn = Plug.Conn.fetch_query_params(conn)
+            send(test_pid, {:erased_row, conn.query_params["id"]})
+            Plug.Conn.send_resp(conn, 204, "")
+        end
+      end)
+
+      assert :ok = Drain.drain(state())
+      assert_received {:erased_row, _}
+    end
+  end
+
 end
