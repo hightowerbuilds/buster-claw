@@ -564,6 +564,15 @@ defmodule BusterClaw.Commands do
   # The gated end of the walk, and the way back from it
   defdelegate sound_apply(args), to: BusterClaw.Commands.Sound
   defdelegate sound_restore_defaults(args \\ %{}), to: BusterClaw.Commands.Sound
+  # Capture, and the coverage report a donor passage is written against
+  # (STUDIO_ROADMAP Part V). A separate module: these point at the microphone and
+  # the OS mixer, not at the cutting surface.
+  defdelegate sound_gaps(args \\ %{}), to: BusterClaw.Commands.SoundCapture
+  defdelegate sound_devices(args \\ %{}), to: BusterClaw.Commands.SoundCapture
+  defdelegate sound_input_level(args \\ %{}), to: BusterClaw.Commands.SoundCapture
+  defdelegate sound_input_level_set(args), to: BusterClaw.Commands.SoundCapture
+  # Gated: the microphone is the one input an unattended run must not open alone
+  defdelegate sound_record(args), to: BusterClaw.Commands.SoundCapture
   # Pockets — the operator's own folders of media, READ ONLY. There is no verb
   # here that records, changes or removes a mount, at any tier: mounting is an
   # operator act in the UI, and the absence is the enforcement (POCKETS_ROADMAP

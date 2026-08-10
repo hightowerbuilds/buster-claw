@@ -8,17 +8,37 @@ defmodule BusterClaw.Commands.Catalog.Sound do
   The reads are `:safe`: they open files read-only, touch no setting, and change
   nothing about what the machine plays.
 
-  Everything that writes is `:restricted`, and exactly one of them is `gated`.
-  The line is worth stating: `sound_import`, `sound_assemble` and the four
-  editing verbs write a **new source** into `sounds/studio/`, `sound_align` and
-  `sound_index_*` write text beside it, and `sound_delete` removes one. None of
-  those installs a chime or routes a key.
+  Everything that writes is `:restricted`. The line is worth stating:
+  `sound_import`, `sound_assemble` and the four editing verbs write a **new
+  source** into `sounds/studio/`, `sound_align` and `sound_index_*` write text
+  beside it, and `sound_delete` removes one. None of those installs a chime,
+  routes a key, or opens a microphone.
 
-  **`sound_apply` is the gated one**, and it is the only entry here that changes
-  what the machine does when nobody is watching: it copies a studio source into
-  the sound library and points a routing key at it. `sound_restore_defaults` is
-  its counterweight — `:restricted` but not gated, because it is the way back and
-  gating an undo only ever strands the person using it.
+  **Two entries are `gated`, for two different reasons, and the reasons do not
+  substitute for each other:**
+
+  * **`sound_apply` gates a change in outbound behaviour.** It copies a studio
+    source into the sound library and points a routing key at it — the only entry
+    here that changes what the machine *does* when nobody is watching.
+    `sound_restore_defaults` is its counterweight: `:restricted` but not gated,
+    because it is the way back and gating an undo only ever strands the person
+    using it.
+  * **`sound_record` gates hardware capture.** It opens the **microphone**. That
+    is not a behaviour change — nothing plays differently afterwards — it is a
+    privacy boundary, and `PolicyEngine`'s baseline is what forces the flag:
+    `:restricted` earns a confirmation from an `:agent` or `:mcp` caller, but an
+    **`:agent_untrusted` caller is stopped only by `gated`**. Ungated, an
+    unattended run acting on content it did not choose could have recorded the
+    room. See `Commands.SoundCapture` for the argument in full.
+
+  **Do not restore a superlative here.** This paragraph read *"exactly one of
+  them is gated"* and named `sound_apply` as *"the only entry"* until 08-09, when
+  `sound_record` landed and made both claims false — and worse, made the
+  behaviour-change sentence look like the reason the microphone verb was gated.
+  A count of gated verbs in this family is a fact about three sessions' work in
+  flight, not an invariant; state the *reasons*, which are stable, rather than
+  the tally, which is not. Found by a neighbouring session whose test asserted the
+  superlative and passed against `HEAD` while failing against the merged tree.
 
   `sound_find` and `sound_sentence` are the two entries whose descriptions carry
   a **measurement** rather than a default. `sound_find`'s threshold has no
@@ -361,6 +381,56 @@ defmodule BusterClaw.Commands.Catalog.Sound do
         args: %{
           "sounds" => %{type: :boolean, required: false, default: true},
           "routes" => %{type: :boolean, required: false, default: false}
+        }
+      },
+      %{
+        name: "sound_gaps",
+        type: :read,
+        tier: :safe,
+        description:
+          "What the word corpus is MISSING, which is the question sound_index_words cannot answer. Returns distinct_words, total_takes, cuttable (words with 2 or more takes), and single_take — the words with exactly one. That last list is the point: a word with one take is a quotation, not a cut-up, and splicing it produces the same recording every time. Pass target (a list of words, or one string that gets split on whitespace) to also get missing — the target words with NO take at all, which is what makes a sentence impossible before anything is built. by_take_count is sorted most-covered first and limit caps it. origins counts takes by provenance: aligned is a proportional guess capped at 0.9 confidence, recognizer came from sound_find, manual was marked by ear and is the only origin worth 1.0. unreadable_sources counts index files that would not load, so a low indexed_sources says why. An empty corpus reports zeros, not an error.",
+        args: %{
+          "target" => %{type: :string, required: false},
+          "limit" => %{type: :integer, required: false}
+        }
+      },
+      %{
+        name: "sound_devices",
+        type: :read,
+        tier: :safe,
+        description:
+          "Audio input devices that could be recorded from, with name, transport (builtin, usb, bluetooth, virtual, unknown), channels, sample_rate_hz, and which is the system default. Read from system_profiler, not ffmpeg — ffmpeg's device list gives a name and nothing else. TWO CAVEATS THAT MATTER: sample_rate_hz is the device's ADVERTISED capability, not what an open stream will actually run at, so never quote it as the rate of a recording. And a Bluetooth headset opened as an INPUT drops from A2DP to HFP, which is 8 kHz narrowband — near the phone-quality audio the corpus is trying to escape — so a recording made over one is close to worthless for cut-up work. Bluetooth-LE devices may report transport unknown rather than bluetooth, so treat unknown as unproven rather than safe.",
+        args: %{}
+      },
+      %{
+        name: "sound_input_level",
+        type: :read,
+        tier: :safe,
+        description:
+          "The OS input volume of the current default input device, 0 to 100. Coarse, and it is the hardware input level rather than anything applied after capture. Errors with no_input_device when the machine has no controllable input — which is NOT the same as a volume of 0, and must never be rendered as one, because on a slider they look identical and mean opposite things.",
+        args: %{}
+      },
+      %{
+        name: "sound_input_level_set",
+        type: :mutate,
+        tier: :restricted,
+        description:
+          "Set the OS input volume of the current default input device, 0 to 100. Reports previous so the change can be undone. Coarse, applies to the default input rather than a named device, and cannot be aimed at one. This is the real hardware input level — which matters because a gain applied AFTER capture raises the recorded level but cannot undo clipping that already happened at the converter. Aim for peaks around -12 to -6 dBFS while speaking, with nothing touching 0: digital clipping is unrecoverable and no later verb repairs it.",
+        args: %{
+          "volume" => %{type: :integer, required: true}
+        }
+      },
+      %{
+        name: "sound_record",
+        type: :mutate,
+        tier: :restricted,
+        gated: true,
+        description:
+          "Record from an input device into sounds/studio/ as a new source — duration-bounded (seconds, up to 300), optional name and device, default input when device is omitted. Gated because it opens the MICROPHONE, and an unattended run acting on content it did not choose must not do that without a person saying yes. READ THIS BEFORE RELYING ON IT: on macOS this path can return perfect digital SILENCE with a zero exit code and nothing on stderr, because microphone consent is granted to the responsible process and the chain here is the BEAM spawning ffmpeg, which carries neither an Info.plist nor an entitlement of its own. Measured 08-09: a real capture produced a valid WAV whose every sample was zero, and no consent prompt ever appeared. So the result is read back and a silent take is REFUSED rather than stored, returning silent_capture with the reason. Reports peak and clipped so a bad take is caught at the door. A name collision de-duplicates rather than overwriting, because the capture already happened and cannot be retaken. This is a convenience for a trusted caller; the operator's recording path is the in-app recorder, which captures inside the signed app where consent can be attributed.",
+        args: %{
+          "seconds" => %{type: :number, required: true},
+          "name" => %{type: :string, required: false},
+          "device" => %{type: :string, required: false}
         }
       }
     ]

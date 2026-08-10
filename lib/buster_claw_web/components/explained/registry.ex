@@ -24,14 +24,17 @@ defmodule BusterClawWeb.Explained.Registry do
   # `status_live_test.exs`, "the Command List tab is the atlas". Named here
   # because it took a search to find, and someone once concluded it did not
   # exist and wrote a second, weaker copy of it.
+  # Synced 08-09 for the Studio's five capture verbs (STUDIO_ROADMAP Part V):
+  # sound_gaps / sound_devices / sound_input_level are :safe reads,
+  # sound_input_level_set is :restricted, and sound_record is :restricted + gated.
   @command_stats %{
-    total: 198,
-    read: 81,
+    total: 203,
+    read: 84,
     trigger: 17,
-    mutate: 100,
-    safe: 84,
-    restricted: 114,
-    gated: 21
+    mutate: 102,
+    safe: 87,
+    restricted: 116,
+    gated: 22
   }
 
   # Feature sub-tabs: rail + tile metadata for every non-site tab. A key in

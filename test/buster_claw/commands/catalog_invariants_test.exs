@@ -254,9 +254,12 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
       skill_suggestions
       slides_get
       sound_corpus
+      sound_devices
+      sound_gaps
       sound_index_list
       sound_index_search
       sound_index_words
+      sound_input_level
       sound_list
       sound_probe
       sound_routes
@@ -275,6 +278,21 @@ defmodule BusterClaw.Commands.CatalogInvariantsTest do
     # code-shipped catalogue of public API metadata. No outbound call, no user
     # data, no secret, nothing irreversible — it answers "where could financial
     # data come from", which is the same answer for every caller.
+    #
+    # `sound_gaps`, `sound_devices` and `sound_input_level` reviewed and added
+    # 08-09 with the capture surface (STUDIO_ROADMAP Part V). Each is a read in
+    # the strict sense — none opens the microphone, and that is the line worth
+    # stating, because all three sit next to a verb that does:
+    #   * `sound_gaps` reads the word indexes already on disk and counts them.
+    #   * `sound_devices` ASKS WHAT EXISTS via `system_profiler`. Enumerating
+    #     inputs is not capturing from one; it needs no TCC consent and returns
+    #     the same answer whether or not consent was ever granted.
+    #   * `sound_input_level` reads the OS input volume. It is the get half of a
+    #     pair whose set half is deliberately `:restricted` — reading a mixer
+    #     level reveals nothing about the room.
+    # `sound_record` and `sound_input_level_set` are NOT here, by design: the
+    # first is `:restricted` AND `gated` (see `sound_capture_test.exs` for why
+    # `:restricted` alone would not have been enough), the second `:restricted`.
     # (Note lives out here because ~w() has no comment syntax; putting it inside
     # the sigil turns every word into a command name, which this very test
     # caught.)
