@@ -100,4 +100,56 @@ defmodule BusterClawWeb.SetupLiveTest do
       assert Setup.google_complete?()
     end
   end
+
+  # The wizard told the user two different things about the same step: three copy
+  # strings promised "you'll do this once" while a fourth warned about reconnecting
+  # weekly. While Google has the app in "Testing", the weekly one is the true one —
+  # so onboarding's cheerful version was a promise it breaks on day eight, made to
+  # exactly the people being handed a trial build.
+  #
+  # These assert the CONTRADICTION cannot come back, not merely that some sentence
+  # renders: any onboarding copy claiming a one-time connect while `beta_testing?/0`
+  # holds is a regression, wherever a future edit puts it.
+  describe "how often the user is told to reconnect Google" do
+    setup do
+      prev = Application.get_env(:buster_claw, :google_oauth_app_status)
+      on_exit(fn -> Application.put_env(:buster_claw, :google_oauth_app_status, prev) end)
+      :ok
+    end
+
+    test "while unverified, no onboarding copy promises a one-time connect", %{conn: conn} do
+      Application.put_env(:buster_claw, :google_oauth_app_status, "testing")
+
+      {:ok, view, _html} = live(conn, ~p"/setup")
+      html = render_hook(view, "goto", %{"step" => "google"})
+
+      assert html =~ "reconnect about once a week"
+
+      # Every phrasing of the broken promise, not just the one that was there.
+      refute html =~ "do this once"
+      refute html =~ "one-time"
+      refute html =~ "one time"
+    end
+
+    test "once Google verifies the app, the one-time promise becomes true and returns",
+         %{conn: conn} do
+      Application.put_env(:buster_claw, :google_oauth_app_status, "verified")
+
+      {:ok, view, _html} = live(conn, ~p"/setup")
+      html = render_hook(view, "goto", %{"step" => "google"})
+
+      # `You'll` renders as `You&#39;ll`, so match the part that survives escaping.
+      assert html =~ "do this once."
+      refute html =~ "reconnect about once a week"
+    end
+
+    test "the sentence is derived from app status, so call sites cannot drift apart" do
+      Application.put_env(:buster_claw, :google_oauth_app_status, "testing")
+      assert BusterClawWeb.GoogleOAuth.reconnect_sentence() =~ "once a week"
+
+      Application.put_env(:buster_claw, :google_oauth_app_status, "verified")
+      assert BusterClawWeb.GoogleOAuth.reconnect_sentence() == "You'll do this once."
+    end
+  end
+
 end

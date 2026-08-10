@@ -77,6 +77,34 @@ defmodule BusterClawWeb.GoogleOAuth do
     Application.get_env(:buster_claw, :google_oauth_app_status, "testing") == "testing"
   end
 
+  @doc """
+  How often connecting Google actually has to be done, as one finished sentence.
+
+  **Every place in onboarding that tells the user how often to expect this must
+  call here.** It exists because three of them said "you'll do this once" while a
+  fourth correctly warned about reconnecting weekly — the wizard contradicted
+  itself on the same screen, and the pleasant version was the wrong one. Under
+  `beta_testing?/0` (the default, and the state on 2026-08-10) Google caps the app
+  at 100 hand-added testers and **expires their refresh tokens every 7 days**, so
+  "once" is false for every early user — exactly the people being handed a trial
+  build.
+
+  A user told "once" who is then asked again on day eight does not conclude that
+  Google's verification queue is slow. They conclude the app is broken, and that
+  is the impression a first week is made of.
+
+  Returning a sentence rather than a boolean is deliberate: a caller cannot render
+  half of this correctly. When verification clears, `:google_oauth_app_status`
+  flips to `"verified"` and every call site becomes truthful in one edit.
+  """
+  def reconnect_sentence do
+    if beta_testing?() do
+      "Google will ask you to reconnect about once a week until it finishes verifying the app."
+    else
+      "You'll do this once."
+    end
+  end
+
   @doc "Prefilled mailto for requesting a spot on the Google tester list."
   def beta_request_mailto do
     contact = Application.get_env(:buster_claw, :google_beta_contact, "lukehightower11@gmail.com")
