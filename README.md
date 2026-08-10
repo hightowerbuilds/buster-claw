@@ -138,10 +138,16 @@ curl -X POST http://127.0.0.1:4000/api/run \
 
 ## Contributing
 
-`mix precommit` must pass. It runs eight gates: compile with warnings-as-errors, `deps.unlock --unused`, format, `credo --strict`, the full test suite, and the `check_cycles.sh` / `check_file_sizes.sh` / `check_rust.sh` scripts. The JS tests (`bun test assets/js`) run separately — see [docs/QUALITY.md](docs/QUALITY.md). Contributions ship under the MIT license — no CLA, no copyright assignment.
+`mix precommit` must pass. It runs eight gates: compile with warnings-as-errors, `deps.unlock --unused`, format, `credo --strict`, the full test suite, and the `check_cycles.sh` / `check_file_sizes.sh` / `check_rust.sh` scripts. The JS tests (`bun test assets/js`) run separately — see [docs/QUALITY.md](docs/QUALITY.md). Contributions ship under the repository license (PolyForm Shield 1.0.0) — no CLA, no copyright assignment.
 
 ## License
 
-**[MIT](LICENSE)** — including the WGSL shaders and the CSS design system. Fork it, sell it, build on it.
+**[PolyForm Shield 1.0.0](LICENSE)** — source-available, not open source.
 
-The **name, wordmark, and logo** are reserved; rename your fork. See **[TRADEMARK.md](TRADEMARK.md)** — it's short, and the only ask is that you don't ship under our badge.
+**Use it for anything, including commercial work.** Read it, audit it, run it at your company, change it, build on it. There is nothing to buy and no account to create. The source is readable so the runtime can be *audited* rather than trusted on faith — which is the whole point of a tool that drives a browser and reads your email.
+
+**The one thing you may not do is compete with it** — ship Buster Claw, or a product built from its source, as a substitute for Buster Claw.
+
+The **name, wordmark, and logo** are reserved separately; rename your fork. See **[TRADEMARK.md](TRADEMARK.md)**.
+
+> **Relicensed 2026-08-10, and the earlier grant still stands.** Buster Claw was MIT-licensed from April until this date. **An MIT grant cannot be withdrawn**: every commit released under it remains MIT for anyone who has it, with all the rights MIT gives, permanently. This license governs the code from here forward. If you rely on the MIT terms, pin a commit from before 2026-08-10.

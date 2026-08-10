@@ -37,7 +37,7 @@ they are decided here and cited there.*
 | Target buyer | **Dev-first**, prosumer later | 07-04 |
 | The paid tier | **BusterPhone managed telephony. We are the phone company.** | 07-12 |
 | Never ship | **BYO-Twilio as the paid tier** — zero marginal cost means nothing to enforce | 07-12 |
-| Source model | **Open core, MIT** (`LICENSE`), name/wordmark reserved (`TRADEMARK.md`) | 07-12 |
+| Source model | **Source-available: PolyForm Shield 1.0.0** (`LICENSE`), name/wordmark reserved (`TRADEMARK.md`) | 07-27 · **executed 08-10** |
 | Entitlement model | **Server-side by nature. No license-key DRM in the client, ever** | 07-04 |
 | Domain | **busterclaw.lol** | 07-14 |
 | Bundle ID | **`lol.busterclaw.desktop`** — shipped, one-way door now closed | 07-18 |
@@ -53,9 +53,37 @@ they are decided here and cited there.*
 | Browserbase | **DELETED.** Never shippable; don't rebuild | 07-12 |
 | Whisper / local STT | **DEMOLISHED 06-28.** Don't reflex-rebuild | 06-28 |
 
-**Why this hangs together.** BYO Claude means zero token liability and no AI backend. Open
-core is safe because the money leg isn't defended by copyright — it's defended by *owning
-the phone number*. A fork gets the engine and none of the business.
+**Why this hangs together.** BYO Claude means zero token liability and no AI backend.
+Source-available is safe because the money leg isn't defended by copyright — it's defended
+by *owning the phone number*. A fork gets the engine and none of the business.
+
+> ### The source model was decided twice, and the repo only heard the first one
+>
+> **07-12** locked *"open core, MIT"* and the repo shipped MIT. **07-27** reversed it: the
+> website commit `c8e731e` — *"Retire the open-source positioning for source-available"* —
+> changed busterclaw.lol to say **"source-available, not open source"** and **"redistribution
+> is not granted."** That decision never reached this map, the `LICENSE`, the README, or
+> `TRADEMARK.md`.
+>
+> **For two weeks the public repo and the public website stated opposite legal terms about
+> the same product**, and the repo's version was the more generous one — README: *"Fork it,
+> sell it, build on it."* Found 08-10 while surveying the website for `G-21`/`G-22`.
+>
+> **Executed 08-10** as **PolyForm Shield 1.0.0** — a standard instrument rather than
+> bespoke text, chosen because it matches the already-published wording (any use including
+> commercial; no competing use) and because a known license is one a cautious company's
+> legal team can accept without reading it twice.
+>
+> **The MIT grant is not retractable and was never treated as if it were.** Every commit
+> published April–08-10 stays MIT for anyone who has it, permanently, including the right to
+> resell. `LICENSE`, README and `TRADEMARK.md` all say so rather than quietly implying
+> otherwise. **The cost of the delay is exactly that window**, and it is permanent — which
+> is the argument for a decision reaching the code the day it is made, not a fortnight later.
+>
+> **The lesson is where the drift was, not that there was drift.** Nothing in this repo could
+> have caught it: the contradicting statement lived in a different repository, on a surface no
+> test here renders. The front-door problem is usually described as four surfaces telling four
+> stories; this is the same failure with legal consequences attached.
 
 ---
 

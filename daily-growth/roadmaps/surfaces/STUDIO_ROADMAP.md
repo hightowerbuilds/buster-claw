@@ -850,7 +850,7 @@ consistent voice), **VCTK** (48 kHz studio, ~24 min/speaker), **LibriVox**, and 
 Government works (17 U.S.C. § 105).
 
 > **Do not vendor any of them into this repo.** FSDD is share-alike and this tree
-> is MIT open-core. A fetch script plus a gitignored fixture directory, with tests
+> is source-available (PolyForm Shield). A fetch script plus a gitignored fixture directory, with tests
 > that skip when it is absent — the pattern `sound_studio_test.exs` already uses
 > for a missing `afconvert`. And per V.0, a licensed bank stays **separate** from
 > the operator's voice.
@@ -1392,7 +1392,7 @@ decided nothing, so a reported cost of 0.0 means *best-of-one*, not *good*.**
 word index → search → concatenate — validated by a decade of use, and its **fragment
 and n-gram / pattern search is more expressive than `sound_index_search`'s
 whole-word lookup.** Cheap, high-value addition to the search box. **Read it; do not
-vendor it** — this tree is MIT open-core and the dependency is unnecessary. It is
+vendor it** — this tree is source-available (PolyForm Shield) and the dependency is unnecessary. It is
 also informative for what it *lacks*: no audition, no boundary correction, no notion
 of take quality. **That absence is the gap this Part fills**, which means this is an
 unserved need rather than a solved one.

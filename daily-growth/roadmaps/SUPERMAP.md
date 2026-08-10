@@ -266,6 +266,7 @@ Who gets it, what they pay, and how we find out whether anyone wants it.
 | The front door — one sentence, four surfaces | README, site, `SetupLive`, `StatusLive` | **ACTIVE, nothing done** | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) |
 | The bill | — | measured | [`DISTRIBUTION`](distribution/DISTRIBUTION_ROADMAP.md) |
 | Anything paid | — | **not started, on purpose** | [`DISTRIBUTION`](distribution/DISTRIBUTION_ROADMAP.md) |
+| **Source model** | `LICENSE`, `TRADEMARK.md`, README | **RELICENSED 08-10 — PolyForm Shield 1.0.0** | [`DISTRIBUTION`](distribution/DISTRIBUTION_ROADMAP.md) |
 
 **Free beta first, charge later** is a locked decision — nobody needs to be able
 to pay for either release to succeed. The one thing worth charging for is a phone
@@ -278,6 +279,16 @@ goodwill.
 the README, the website, the wizard and the home screen say one sentence — is
 hours of deletion and rewording, and `IX.1` measures whether it worked for the
 cost of an afternoon.
+
+**And the front-door problem has already cost something real.** On 08-10 the
+public repo and the public website were found stating **opposite legal terms**:
+the site had said *"source-available, not open source — redistribution is not
+granted"* since 07-27, while `LICENSE` shipped MIT and the README said *"fork it,
+sell it, build on it."* Resolved the same day in the site's favour (PolyForm
+Shield 1.0.0), **but the MIT grant already published cannot be withdrawn** and
+that window is permanent. **No test in this repo could have caught it** — the
+contradicting statement lived in another repository. Four surfaces telling four
+stories is usually a marketing problem; here it was a licensing one.
 
 ---
 
