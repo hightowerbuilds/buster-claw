@@ -1775,10 +1775,13 @@ defmodule BusterClawWeb.StatusLiveTest do
                "tutorial names #{cmd}, which is not in the command catalog"
       end
 
-      # The Studio -> Voice placeholder tripwire belongs here and is HELD for
-      # one commit: it asserts against `BusterClawWeb.Studio.Registry`, which is
-      # another session's module and not in HEAD yet. Restoring it is step 4 of
-      # the agreed landing order -- it passes once the Studio shell lands.
+      # The claim the whole tab opens with, turned into a contract: Studio -> Voice
+      # is a placeholder, so this tutorial is the only place the engine is
+      # explained. BUILD that tab and this fails — which is the reminder to come
+      # back here and stop saying "there is no screen for this yet".
+      assert "voice" in Enum.map(BusterClawWeb.Studio.Registry.placeholders(), & &1.key),
+             "Studio -> Voice is now built, but the Voice tutorial still says it is not"
+
       assert html =~ "no screen for this yet"
 
       # sound_sentence writes a SOURCE and nothing else. The tutorial promises
