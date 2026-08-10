@@ -41,7 +41,7 @@ defmodule BusterClaw.BrowserControl.Egress.Policy do
   # The operator's per-host levels live in `Settings` under this key as a JSON
   # object, `{"host": "level"}`. Settings rather than a workspace file on
   # purpose: a seeded file could never be improved on an install that already
-  # had one (see LAUNCH_ROADMAP V.8), and this list is one we expect to grow.
+  # had one (see QA_BACKLOG V.8), and this list is one we expect to grow.
   @overrides_key "browser_egress_overrides"
 
   # Shipped defaults. These stay in CODE so a new entry reaches every install on

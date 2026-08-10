@@ -1,6 +1,6 @@
 # The QA backlog — real, and blocking nothing
 
-**Split out of `LAUNCH_ROADMAP.md` 2026-08-09 · Status: OPEN, unprioritised by design.**
+**Carved out of the launch roadmap 2026-08-09 · Status: OPEN, unprioritised by design.**
 
 > **Everything here blocks nothing.** That is the entry criterion. If an item
 > blocks a release it belongs in [`RELEASE_GATE_ROADMAP`](RELEASE_GATE_ROADMAP.md)
@@ -244,3 +244,46 @@ surface itself; what they taught is recorded here.
 
 ---
 
+
+---
+
+## Finding index
+
+The `F-n` numbering came from the 07-17 first-user review and is preserved so older notes
+resolve. `G-n` items are the release gate, now spread across the maps in this folder,
+`../website/` and `../distribution/` — each number still lives in exactly one map.
+
+| # | Finding | Where it lives now |
+|---|---|---|
+| F-1 | Unsigned | **Written, unexercised** — III.0, G-1→G-4 |
+| F-2 | Intel-only | ✅ **Two-arch CI built** — III.G |
+| F-3 | Bundle waste (PLTs, Playwright) | ✅ fixed |
+| F-4 | Bundle ID is a personal handle | ✅ fixed 07-18 |
+| F-5, F-47 | No updater, no update notification | **G-18→G-20** — now P0 |
+| F-6, F-17 | Wizard and README pitch different products | VI-a, **G-23** |
+| F-7, F-53 | Homebrew assumed; "Re-check" has no failure detail | **G-10, G-11** |
+| F-8 | "You'll do this once" vs 7-day beta tokens | Part VIII |
+| F-9 | Max-permission onboarding in one click | VI-e |
+| F-10, F-18 | Two agent entry points | VI.1 |
+| F-11 | Unauthenticated loopback scopes · key reveal | **G-33** |
+| F-12 | `Sentinel.Pending` is a stub with no gate | **G-29** |
+| F-13, F-28 | README omits/misdescribes the home chat | VI-d |
+| F-14, F-52 | `bypassPermissions` undisclosed | **G-31** |
+| F-16 | Trusted-senders gate hidden in a corner widget | V.2 |
+| F-19, F-25, F-26, F-27 | Documentation drift | VI-b, VI-c |
+| F-20 | Phone in the dock, unbuilt for a new user | **G-37** |
+| F-21 | Voice tab is a dead end | **G-36** |
+| F-22, F-23, F-38 | Wallets over-built | ✅ removed `db10a58` |
+| F-24, F-39 | Multiple independent shader systems | V.6, **G-17** |
+| F-29, F-50, F-51 | Retired trial number; two live Supabase functions | ✅ fixed 07-18 |
+| F-30, F-31 | Security buried; no refusal badge | **G-32** |
+| F-32 | No kill-switch UI | **G-30** |
+| F-33, F-46 | No agent-orientation check; empty first run | VI-f, VI-g |
+| F-34 | `auth_status` dead signal | ✅ column dropped |
+| F-41 | No telemetry or crash reporting | **G-25** |
+| F-43 | No user-facing error recovery | **G-26** |
+| F-44 | No workspace move/reset/export from the UI | V.6 |
+| F-45 | macOS floor undetermined | **G-16** |
+| F-48 | "Shipped = compiles" browser features | ✅ walked 07-22 |
+| F-49 | Webview cache shared across builds | V.6 |
+| **BLOCKER-1** | `build_desktop.sh` no longer stages the release | ✅ **fixed** — Part II |

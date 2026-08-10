@@ -1,6 +1,6 @@
 # Apple — the complete acceptance path
 
-**Split out of `LAUNCH_ROADMAP.md` 2026-08-09 · Status: ACTIVE. G-2 is the next action.**
+**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE. G-2 is the next action.**
 
 > ### The one-sentence version
 >
@@ -34,7 +34,7 @@ is open: the constraint has moved from *waiting on Apple* to *doing the work*.
 
 **Release 1 is this map plus a clean-machine launch.** Everything else in the
 release — the website, telemetry, the trust surface — is Release 2 and lives in
-its own map. See [`LAUNCH_ROADMAP`](LAUNCH_ROADMAP.md) for the spine.
+its own map. See the [Supermap](../SUPERMAP.md) for which is next.
 
 ---
 
@@ -569,8 +569,196 @@ one refund at a time, and it was an hour's work to measure.
 
 ## What this map does not cover
 
-- **The website, download page, privacy policy** — [`WEBSITE_ROADMAP`](WEBSITE_ROADMAP.md) (`G-21`–`G-24`).
+- **The website, download page, privacy policy** — [`WEBSITE_ROADMAP`](../website/WEBSITE_ROADMAP.md) (`G-21`–`G-24`).
 - **Telemetry, error surface, uninstall, diagnostics, the trust claims** — [`TRUST_AND_SUPPORT_ROADMAP`](TRUST_AND_SUPPORT_ROADMAP.md) (`G-25`–`G-35`).
 - **The human walkthrough, the dock, the repeatable checklist** — [`RELEASE_GATE_ROADMAP`](RELEASE_GATE_ROADMAP.md) (`G-36`–`G-41`).
-- **Money and audience** — [`DISTRIBUTION_ROADMAP`](DISTRIBUTION_ROADMAP.md).
-- **Google restricted scopes and CASA** — [`GOOGLE_VERIFICATION_ROADMAP`](GOOGLE_VERIFICATION_ROADMAP.md).
+- **Money and audience** — [`DISTRIBUTION_ROADMAP`](../distribution/DISTRIBUTION_ROADMAP.md).
+- **Google restricted scopes and CASA** — [`GOOGLE_VERIFICATION_ROADMAP`](../integrations/GOOGLE_VERIFICATION_ROADMAP.md).
+
+---
+
+## The short version
+
+*Was the launch roadmap's Part 0. It lived in the spine because the next action
+has been an Apple action since enrollment cleared.*
+
+**The code is written. Enrollment has cleared. The certificate is the next click.**
+
+**The one thing to do next: create the Developer ID Application certificate (G-2).** Nothing
+else in Part III can start, and it is minutes of work.
+
+Between HEAD and **Release 1** — a signed DMG in a few known hands — there are three things:
+
+1. **The certificate does not exist yet.** The account is at the certificates page. Pick
+   *Developer ID Application*, not *Installer*; generate the CSR locally so the private key
+   stays on a machine you keep; export the `.p12` **with its private key**; back it up
+   offline. Then two GitHub secrets and CI starts producing signed builds with no workflow
+   edit. See **III.D**.
+2. **Nothing has ever been notarized, stapled, or opened on a machine that didn't build
+   it.** The pipeline is written against Apple's documented behaviour and Livebook's working
+   implementation. That is a strong prior, not evidence. It will be wrong somewhere; budget
+   rejection rounds (**III.H**).
+3. **First launch on a clean machine is untested.** The TCC prompt, no-`claude`, no-Homebrew,
+   and offline paths have never been watched by anyone (**G-9**–**G-15**).
+
+**Deferred to Release 2, deliberately:** the updater, telemetry, the download page, and the
+privacy policy. All are mandatory for strangers and none of them are for a group you can
+email — which is exactly why Release 1 exists.
+
+**What is no longer in the way.** The build blocker is fixed. Entitlements are correct and
+asserted. Every Mach-O in the OTP tree is signed by a script that finds them by content. CI
+imports a throwaway keychain, notarizes, staples, verifies all of **III.J**, and tears the
+keychain down on failure. Two native architectures, no lipo. **The packaged app is verified
+working end to end** — it boots, authenticates, and drives a real browser from inside the
+artifact. **CI now proves the artifact, not just the source** (**G-5**), and **the advertised
+macOS floor can no longer be a lie** (**G-16**). All of that was "the bulk of the week" in
+the previous revision.
+
+**Ordering principle, updated for where we actually are:** the slow external clock (Apple)
+has already started and cleared. What remains is ordered by *what fails on someone else's
+Mac* — sign it, notarize it, then watch a real person open it on hardware that has never
+seen the repo.
+
+**The honest estimate:** **Release 1 in about a week** is achievable, and the largest unknown
+is not engineering — it is how many notarization rejection rounds Apple hands back. **Release
+2 is a further week or so**, dominated by the updater, whose subtlety is the BEAM swap
+described in **III.I**, not the plumbing.
+
+**Money is deliberately not on this path.** The locked decision is *free beta first, charge
+later*. Nobody needs to be able to pay for either release to be a success. See [`DISTRIBUTION_ROADMAP`](../distribution/DISTRIBUTION_ROADMAP.md).
+
+---
+---
+
+
+---
+
+## Verified status at HEAD
+
+*Was the launch roadmap's Part II — kept whole rather than split row-by-row, because its
+value is being one dated snapshot. Four rows are owned by sibling maps and say so.*
+
+**Every row below was checked against the working tree on 2026-08-01** by running the thing,
+not by reading the previous revision. Where a claim could only be settled by a real
+certificate or real hardware, it says so rather than guessing.
+
+### Shipped since the 07-27 revision
+
+| Item | Evidence |
+|---|---|
+| **BLOCKER-1 — `build_desktop.sh` didn't stage the release** | **Fixed.** The three staging lines are restored, plus a hard assertion that fails the build unless `bin/buster_claw` is executable *and* `erts-*` exists. The failure mode that shipped six days of empty DMGs now cannot exit 0 |
+| **Entitlements (III.E)** | **Done.** `plutil -lint` clean; exactly four keys, confirmed by `plutil -convert json`: `allow-jit`, `allow-unsigned-executable-memory`, `disable-library-validation`, `allow-dyld-environment-variables`. `get-task-allow` appears only inside a warning comment, and `PlistBuddy` confirms it does not resolve as a key |
+| **Signing every Mach-O (III.F)** | **Done.** `scripts/codesign_release.sh` finds Mach-O **by content**, not mode bits — Livebook's `find -perm +111` would sign 17 of 24 objects and miss seven NIFs that ship without an execute bit. Signs inside-out, `--force`, `--options runtime`, `--timestamp`, retries the flaky Apple timestamp service, verifies every signature, and asserts `allow-jit` actually landed on `beam.smp` |
+| **CI signing + notarization (III.H)** | **Done.** Throwaway keychain in `RUNNER_TEMP` (never the login keychain), `set-key-partition-list` so codesign can't block on a GUI prompt, keychain search list **prepended** not replaced, both credential shapes supported, full III.J verification, and an `always()` teardown so a failed build can't leave a private key on shared infrastructure |
+| **Info.plist / TCC usage strings (III.E)** | **Done.** `desktop/tauri/Info.plist` carries Desktop, Documents, and Downloads strings. It needs no wiring: verified in the `cargo-tauri` binary's own schema text — *"Tauri also looks for a `Info.plist` file in the same directory as the Tauri configuration file."* Microphone, camera, and Apple Events are deliberately **absent**, and the file explains why so nobody adds them on a hunch |
+| **Two architectures (III.G)** | **Done.** `macos-15` (aarch64) + `macos-15-intel` (x86_64), each building its own native ERTS. No lipo anywhere |
+| **tauri-cli version drift** | **Fixed 08-01.** CI pinned 2.8.0 while the crate resolved 2.11.1 — and the install step guarded on `command -v`, so with `rust-cache` persisting `~/.cargo/bin` the pin **could not be changed**; editing it would have been a silent no-op on every warm run. Now compares the version, passes `--force`, pinned to 2.11.4 |
+| **Version single-sourcing** | **Done.** `VERSION` → `tauri.conf.json` + `Cargo.toml` via `scripts/sync_version.sh`; `mix.exs` reads `VERSION` directly. A release only ever requires editing one file |
+
+> ### The one bug found in that work, and why it is worth recording
+>
+> `codesign_release.sh` guarded against a double hyphen inside XML comments — a real
+> hazard, since AMFI rejects what `plutil` accepts. But the guard scanned the raw file, and
+> `<!--` and `-->` **each contain a double hyphen themselves**. It matched every
+> well-formed comment, so it could never pass.
+>
+> The first fix was worse: moving the scan into `OFFENDING_LINES="$(… | grep …)"` under
+> `set -euo pipefail` meant a *clean* file made `grep` exit 1, `pipefail` propagated it to
+> the assignment, and `set -e` killed the script — **exit 1, no output at all.** A guard
+> that fails silently precisely when it has nothing to complain about.
+>
+> Both are fixed and verified in both directions (clean file passes; a real `--options` in
+> a comment body is caught, reported at the correct line, showing the original text).
+> **The lesson is the shape:** every guard in this pipeline must be tested against a
+> *passing* input, not only a failing one. A guard is code, and untested code is untested
+> whether or not it is short.
+
+### Open, confirmed at HEAD
+
+| Item | Evidence |
+|---|---|
+| **No Apple Developer membership** | No certificate exists. `HAVE_APPLE_CERT` is the CI gate and it is false. **This is the gate on everything in Part III** |
+| **Nothing has been signed, notarized, or stapled — ever** | The entire path is written and unexercised. See the banner in III.0 |
+| **No updater** | Zero references to `tauri-plugin-updater` in `desktop/tauri/Cargo.toml`. No minisign key exists. **Now P0** (III.I) |
+| **No telemetry, no crash reporting** *(owned by [`TRUST_AND_SUPPORT`](TRUST_AND_SUPPORT_ROADMAP.md))* | The only Sentry code is the *integration* that reads the user's own project. Nothing reports our own crashes |
+| ~~`minimumSystemVersion` claims macOS 11.0~~ | **Measured and corrected 08-01 → 14.0.** It was wrong by three major versions: the bundled OTP requires 14.0 while the bundle advertised 11.0, so macOS 11–13 got a launch that dies at dyld. Now asserted on every build (**G-16**). The *feature* floor (WebGPU) is still unmeasured — **G-17** |
+| **No download page, no privacy policy, no terms** *(owned by [`WEBSITE`](../website/WEBSITE_ROADMAP.md))* | busterclaw.lol serves 200 from Vercel (separate repo), but `/download`, `/privacy`, `/terms` are all **404**. The homepage leads with the runtime paragraph VI-a exists to replace |
+| ~~Nothing proves the packaged app boots~~ | **Closed 08-01.** `smoke_release_boot.sh` is wired into `release-desktop.yml` ahead of signing and upload (**G-5**). The GUI-side `smoke_desktop.sh` is still manual and unvalidated on a hosted runner (**G-6**) |
+| **Approval gate is a stub** *(owned by [`TRUST_AND_SUPPORT`](TRUST_AND_SUPPORT_ROADMAP.md))* | `lib/buster_claw/sentinel/pending.ex` — its own moduledoc: *"Approve/deny actions are Phase 2."* |
+| **No kill-switch UI** *(owned by [`TRUST_AND_SUPPORT`](TRUST_AND_SUPPORT_ROADMAP.md))* | **Zero** occurrences of `STOP` or `kill_switch` anywhere in `lib/buster_claw_web/` |
+| **Security is the last settings tab** | `settings_tabs.ex` — 8th of 8, after Get Started, Appearance, Voice, Notify, Integrations, Configuration, Cmd List |
+| **Voice tab is a 58-line dead end** | `voice_live.ex` is 58 lines and tells you the control is elsewhere |
+| **Phone tab is in the dock, unbuilt for a new user** | `phone_live.ex` is 1,275 lines; a new user has no number to give out |
+| **Bundle size unmeasured post-cleanup** | Playwright and the PLTs are gone; nobody has measured what the DMG now weighs |
+| **Two HIGH items, now `G-34`/`G-35`** | Walk a live signed-in checkout and confirm the payment gate fires; send `nosniff` on four pipeline-less media routes |
+| **Full clone-to-DMG never run end to end** | **Half closed 08-01.** `build_desktop.sh` ran end to end locally and produced a working `.app` + DMG that passes both smokes. Never yet run from a *clean clone* — the run reused warm caches, which is the difference that hid BLOCKER-1 for six days (**G-7**) |
+| **The packaged app is verified working** | **New, positive, 08-01.** `smoke_desktop.sh` PASSED against the real bundle: boots, authenticates, completes a full native-bridge round-trip (Phoenix → PubSub → LiveView → JS → Tauri invoke → POST back), renders a live page through the hidden webview, and drives a headless Chrome over CDP from inside the artifact. The Info.plist TCC strings were confirmed **present in the built bundle**, so Tauri's auto-merge works as documented |
+
+---
+
+---
+
+
+---
+
+## Risks
+
+*The Apple-owned risks from the launch roadmap's Part XI. R2 lives with Google
+verification, R3/R6/R8 with trust and support, R10 with the website.*
+
+- **R1 — Everything Apple is written and unproven.** The whole pipeline is a strong prior, not
+  evidence. *Mitigation:* it is guarded and self-asserting at every step, and III.J is checked
+  in CI rather than trusted. Expect rejection rounds anyway; budget them.
+- **R4 — The minisign key.** Leak it and anyone can push code to every install. Lose it and you
+  can never update anyone again. **There is no rotation.** *Mitigation:* offline backup on the
+  day it is generated, before the first signed release.
+- **R5 — Unknown macOS floor.** Cheap to test, embarrassing to discover via refunds. The
+  declared 11.0 is a guess. *Mitigation:* G-16, a morning's work.
+- **R7 — Intel is a one-year shelf.** Rosetta's removal means the Intel DMG has a limited life,
+  and every hour spent on it is spent on a shrinking audience. *Mitigation:* ship it, don't
+  invest in it, and revisit when macOS 28 lands.
+- **R10 — busterclaw.lol is an exotic TLD** some corporate mail filters treat badly, and it is
+  baked into the bundle ID. The door is closed; this is a risk to watch, not a decision to reopen.
+
+---
+
+---
+
+## Sources
+
+Apple documentation and the July research pass. **Everything here should be re-verified against
+Apple's live docs before acting on it** — Apple changes these pages without notice.
+
+- [App Store Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
+- [Apple Developer Program — Enroll](https://developer.apple.com/programs/enroll/)
+- [Developer ID](https://developer.apple.com/developer-id/)
+- [Notarizing macOS Software Before Distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
+- [Resolving Common Notarization Issues](https://developer.apple.com/documentation/security/resolving-common-notarization-issues)
+- [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
+- [Hardened Runtime](https://developer.apple.com/documentation/security/hardened-runtime)
+- [Apple Forums 683158 — NSTask in a sandboxed app](https://developer.apple.com/forums/thread/683158)
+- [Apple Dev News — Sequoia runtime protection](https://developer.apple.com/news/?id=saqachfa)
+- [Tauri v2 — macOS code signing](https://v2.tauri.app/distribute/sign/macos/)
+- [Tauri v2 — Updater plugin](https://v2.tauri.app/plugin/updater/)
+- [tauri-bundler `macos/app.rs` — proof resources go unsigned](https://github.com/tauri-apps/tauri/blob/dev/crates/tauri-bundler/src/bundle/macos/app.rs)
+- [Livebook — `App.entitlements`](https://github.com/livebook-dev/livebook/blob/main/rel/app/src-tauri/App.entitlements)
+- [Livebook — two-arch release workflow](https://github.com/livebook-dev/livebook/blob/main/.github/workflows/release.yml)
+- [ElixirKit — `Release.codesign/1`](https://github.com/livebook-dev/elixirkit/blob/main/lib/elixirkit/release.ex)
+- [Erlang Forums — why a universal ERTS breaks the JIT](https://erlangforums.com/t/is-it-possible-to-build-a-universal-binary-of-erlang-on-macos-arm-intel/975)
+- ["Code Signing and Notarization: Sparkle and Tears"](https://steipete.me/posts/2025/code-signing-and-notarization-sparkle-and-tears)
+- [Termius docs — no local terminal on MAS](https://docs.termius.com/organize-and-connect-to-hosts/connecting-to-a-server)
+- [MacRumors — macOS 27 is the last with Rosetta 2](https://www.macrumors.com/2026/06/10/macos-golden-gate-last-to-support-intel-apps/)
+- [Eclectic Light — Gatekeeper & notarization in Sequoia](https://eclecticlight.co/2024/08/10/gatekeeper-and-notarization-in-sequoia/)
+
+**In-repo cross-references:** `BUILD.md` · `docs/DESKTOP_PACKAGING.md` · `docs/QUALITY.md` ·
+`docs/LOCAL_TRUST.md` · `BUSTERPHONE_ROADMAP.md` ·
+`TRADING_TAB_CRITICAL_REVIEW_ROADMAP.md` · `LEFTOVERS_SURFACES.md`
+
+---
+
+
+---
+
+*The app in here is good, and the pipeline to let it out is now written. What remains is the
+part no amount of code can do for you: buy the certificate, run the thing, and watch a stranger
+open it on a Mac you have never touched.*

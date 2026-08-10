@@ -15,7 +15,7 @@ second, more immediate channel: your phone.
 
 ## 💰 07-12: THIS IS THE MONEY LEG
 
-**BusterPhone is now the paid tier** (`../LAUNCH_ROADMAP.md` Part V). It stopped
+**BusterPhone is now the paid tier** ([`DISTRIBUTION_ROADMAP`](../distribution/DISTRIBUTION_ROADMAP.md)). It stopped
 being a fun feature and became the only thing funding the fixed costs — CASA, Apple,
 domain, MoR. Build it accordingly.
 

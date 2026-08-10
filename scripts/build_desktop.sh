@@ -114,7 +114,7 @@ echo "    staged $(du -sh "$STAGED_REL" | cut -f1) release + $(basename "$(echo 
 # bundling invalidates the enclosing signature instead.
 #
 # No-op when APPLE_SIGNING_IDENTITY is unset, so unsigned local builds are
-# unchanged. See scripts/codesign_release.sh and LAUNCH_ROADMAP.md III.F.
+# unchanged. See scripts/codesign_release.sh and roadmaps/platform/APPLE_ROADMAP.md III.F.
 "$REPO_ROOT/scripts/codesign_release.sh" "$STAGED_REL"
 
 echo "==> Building Tauri bundle"

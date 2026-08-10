@@ -4,11 +4,13 @@
 surface sits on: the runner, the command surface, skills, Scene3D, and the sound
 verbs the Studio never got.
 
-**Everything here blocks nothing** and is **concrete** — someone could do it
-today without a design. See [`LEFTOVERS`](LEFTOVERS.md) for the rules of
-engagement and the promotion history.
+**Everything here blocks nothing** and is **concrete**.
 
-Covers [Supermap](SUPERMAP.md) Part V.
+Small, real, and deferred on purpose. Nothing here is blocking a ship; everything
+here is the kind of item that quietly never gets done because it never becomes
+urgent — until it does, at which point it is expensive.
+
+Covers [Supermap](../SUPERMAP.md) Part V.
 
 ---
 
@@ -261,3 +263,22 @@ whole design assumes free tiers and endpoints will move.
 
 ---
 
+
+---
+
+## The rule for this file
+
+An item earns a line only if it is **concrete** (someone could do it today
+without a design), and it carries **why it was deferred** and **what makes it
+expensive later**. If an item needs a design, it belongs in a real roadmap, not
+here.
+
+## Rules of engagement
+
+- An item leaves this file by being **done** or by being **promoted** to a real
+  roadmap because it turned out to need a design. It does not leave by rotting.
+- If an item has sat here through two dev summaries without moving, that is a
+  signal it is either not actually worth doing (delete it, and say so) or it is
+  more important than "leftover" implies (promote it).
+
+---

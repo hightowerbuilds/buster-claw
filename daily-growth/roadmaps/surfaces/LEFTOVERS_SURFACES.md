@@ -3,12 +3,13 @@
 **Split out of `LEFTOVERS.md` 2026-08-09.** The tail work attached to a screen
 the operator can point at: Home's sub-tabs and the full-screen surfaces.
 
-**Everything here blocks nothing** and is **concrete** — someone could do it
-today without a design. That is the entry rule, inherited unchanged; an item
-needing a design belongs in a real roadmap, not here. See
-[`LEFTOVERS`](LEFTOVERS.md) for the rules of engagement and the promotion history.
+**Everything here blocks nothing** and is **concrete**.
 
-Covers [Supermap](SUPERMAP.md) Parts II and III.
+Small, real, and deferred on purpose. Nothing here is blocking a ship; everything
+here is the kind of item that quietly never gets done because it never becomes
+urgent — until it does, at which point it is expensive.
+
+Covers [Supermap](../SUPERMAP.md) Parts II and III.
 
 ---
 
@@ -349,3 +350,59 @@ Pair with the Chart Build walk below; both need a browser and nothing else.
 
 ---
 
+
+---
+
+## The rule for this file
+
+An item earns a line only if it is **concrete** (someone could do it today
+without a design), and it carries **why it was deferred** and **what makes it
+expensive later**. If an item needs a design, it belongs in a real roadmap, not
+here.
+
+## Rules of engagement
+
+- An item leaves this file by being **done** or by being **promoted** to a real
+  roadmap because it turned out to need a design. It does not leave by rotting.
+- If an item has sat here through two dev summaries without moving, that is a
+  signal it is either not actually worth doing (delete it, and say so) or it is
+  more important than "leftover" implies (promote it).
+
+---
+
+---
+
+## Promotion history
+
+Kept because it is the record of this file working as intended — twice, items
+that needed a design or blocked a release left rather than rotting here.
+
+### Promoted 08-02 → `BROWSER_CLOSEOUT_ROADMAP.md`
+
+Four browser items left this file together: the **signed-in checkout walk**
+(HIGH), `find_elements`' **selector**, the **Keychain-backed `secret_resolver`**,
+and **per-host egress levels**. They went to a real roadmap because the biggest
+open browser question — *may the agent confirm a purchase, and what should a
+confirmation even produce now that the wallets ledger is deleted?* — needs a
+design, and this file's own rule says a thing needing a design does not belong
+here. Their detail travelled with them; nothing was lost.
+
+---
+
+---
+
+## Completed, kept as evidence
+
+The one item that left by being **done** rather than promoted. Kept because it
+records *what was actually walked* against a packaged build — which is the thing
+a later "has anyone tested this?" question needs, and which no test asserts.
+
+<!-- DONE 07-22: "Walk the new automation primitives in the real app" — walked
+against the PACKAGED app (stronger than the dev-shell ask). Agent side driven
+via /api/run: wait (match + real 10s timeout), click text (matched_by:text +
+navigation), extract selector+attr (30 matches), flow failing at the reported
+step WITH screenshot on disk (twice), check_save→run→`## Runs` line, plus
+open_tab (session:ephemeral honored), find_elements, read, screenshot (valid
+PNG). Operator confirmed GUI side: co-presence badge flashed on every call,
+7-tab eviction, sidebar bumper/⌘B, zoom, ⌘F count, popup-as-tab, download +
+reveal, menu accelerators, and the double-launch single-instance check. -->

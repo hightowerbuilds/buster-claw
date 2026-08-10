@@ -51,7 +51,7 @@ defmodule BusterClawWeb.ContentSecurityPolicy do
   header at all. Those pages are built from our own strings and escape every
   interpolation through `Phoenix.HTML.html_escape/1`, so this is a
   defence-in-depth gap rather than a live hole — but it is a gap, and it is
-  recorded in `LEFTOVERS.md` rather than left to be rediscovered.
+  recorded in `roadmaps/surfaces/LEFTOVERS_SURFACES.md` rather than left to be rediscovered.
   """
 
   import Plug.Conn

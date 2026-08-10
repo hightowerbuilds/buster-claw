@@ -1,6 +1,6 @@
 # Trust claims and support — making the pitch true before strangers arrive
 
-**Split out of `LAUNCH_ROADMAP.md` 2026-08-09 · Status: ACTIVE, mostly R2.**
+**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE, mostly R2.**
 
 > ### The one-sentence version
 >
@@ -74,9 +74,9 @@ one reputational risk that compounds.
 - [ ] **G-33.** Re-review the unauthenticated loopback scopes (`/browser/*`, `/ws/*`,
       `/finance/api/*`) and the plaintext recovery-key reveal. Either defend them in writing
       in `LOCAL_TRUST.md` or close them. *Documented decisions, but decisions to defend.*
-- [ ] **G-34.** **`LEFTOVERS.md` HIGH #1:** walk a live signed-in checkout and confirm the
+- [ ] **G-34.** **Promoted from leftovers, HIGH #1:** walk a live signed-in checkout and confirm the
       payment gate fires. The failure mode is an agent proceeding through a real payment page.
-- [ ] **G-35.** **`LEFTOVERS.md` HIGH #2:** send `nosniff` on the four pipeline-less media routes.
+- [ ] **G-35.** **Promoted from leftovers, HIGH #2:** send `nosniff` on the four pipeline-less media routes.
 
 
 ---
@@ -93,7 +93,7 @@ do them for Release 1.
 - **G-35 — send `nosniff` on the four pipeline-less media routes.** Detail lives
   with the media surface.
 
-Both were promoted out of `LEFTOVERS.md`, where they were the only two items
+Both were promoted out of the leftovers file, where they were the only two items
 marked HIGH.
 
 ---

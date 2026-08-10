@@ -55,7 +55,7 @@ ENTITLEMENTS="$REPO_ROOT/desktop/tauri/Entitlements.plist"
 
 if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
   echo "==> Code signing: SKIPPED (APPLE_SIGNING_IDENTITY unset — unsigned build)"
-  echo "    This bundle will not open on another Mac. See LAUNCH_ROADMAP.md III.F."
+  echo "    This bundle will not open on another Mac. See roadmaps/platform/APPLE_ROADMAP.md III.F."
   exit 0
 fi
 

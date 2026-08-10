@@ -8,7 +8,7 @@
 # for six days every DMG — including the ones CI uploaded — shipped an empty
 # Resources/release and could not boot Phoenix. Five CI jobs stayed green the
 # whole time, because the only thing CI asserted about the DMG was that the file
-# existed. See LAUNCH_ROADMAP.md G-5.
+# existed. See roadmaps/platform/APPLE_ROADMAP.md G-5.
 #
 # ## Why it drives the release binary rather than the .app
 #

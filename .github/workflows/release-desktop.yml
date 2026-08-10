@@ -1,7 +1,7 @@
 # Two-arch desktop DMG builds — the Livebook pattern (livebook-dev/livebook
 # release.yml): one native runner per architecture, each building its own
 # native ERTS. Never lipo the Erlang tree — a universal ERTS kills the JIT on
-# the Intel slice (daily-growth/roadmaps/LAUNCH_ROADMAP.md §III.G).
+# the Intel slice (daily-growth/roadmaps/platform/APPLE_ROADMAP.md §III.G).
 #
 # Signing and notarization are wired but SECRET-GATED. With no APPLE_CERTIFICATE
 # secret the whole path is skipped and this job produces unsigned artifacts —
@@ -210,7 +210,7 @@ jobs:
       - name: Build DMG
         run: ./scripts/build_desktop.sh
 
-      # Prove the ARTIFACT, not the source (LAUNCH_ROADMAP G-5). Every other gate
+      # Prove the ARTIFACT, not the source (APPLE_ROADMAP G-5). Every other gate
       # in this repo tests the tree; this is the only one that tests what we
       # actually ship. BLOCKER-1 — a truncated edit that left Resources/release
       # empty — sailed through five green jobs for six days because the only
@@ -229,7 +229,7 @@ jobs:
         run: ./scripts/smoke_release_boot.sh
 
       # The macOS floor we advertise must be one the bundle can actually meet
-      # (LAUNCH_ROADMAP G-16). Measured 08-01: the shell was built for 11.0 while
+      # (APPLE_ROADMAP G-16). Measured 08-01: the shell was built for 11.0 while
       # every one of the 24 OTP binaries required 14.0, and the bundle advertised
       # 11.0 — so on macOS 11 through 13 it would install, pass Gatekeeper, launch
       # the shell, and then have dyld reject beam.smp.
@@ -241,7 +241,7 @@ jobs:
       - name: Verify the advertised macOS floor
         run: ./scripts/check_macos_floor.sh
 
-      # The definition of "Apple is done" (LAUNCH_ROADMAP III.J), asserted in CI
+      # The definition of "Apple is done" (APPLE_ROADMAP III.J), asserted in CI
       # rather than trusted. Each check below has failed for somebody, and every
       # one of them fails silently at build time and loudly on a user's Mac.
       - name: Verify signature, notarization, and staple

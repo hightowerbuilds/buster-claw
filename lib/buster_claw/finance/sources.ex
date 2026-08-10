@@ -12,7 +12,7 @@ defmodule BusterClaw.Finance.Sources do
   The shipped list lives in `@builtins`, and operator additions merge over it
   from `<workspace>/sources/*.md` at read time — the `TerminalCommands` pattern.
   Not a seeded workspace file, deliberately: `maybe_write` skips anything that
-  already exists (`LAUNCH_ROADMAP` V.8), so a seeded catalogue could never be
+  already exists (`QA_BACKLOG` V.8), so a seeded catalogue could never be
   corrected on a machine that had already run once. A registry of third-party
   APIs is the most update-prone thing in this application — free tiers close,
   endpoints move, terms change. It has to be patchable by shipping code.

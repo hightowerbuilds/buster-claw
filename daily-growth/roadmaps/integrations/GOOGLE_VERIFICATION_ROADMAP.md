@@ -1,6 +1,6 @@
 # Google verification and CASA — a decision before it is a project
 
-**Split out of `LAUNCH_ROADMAP.md` 2026-08-09 · Status: DEFERRED, deliberately.**
+**Carved out of the launch roadmap 2026-08-09 · Status: DEFERRED, deliberately.**
 
 > ### The one-sentence version
 >
@@ -14,7 +14,7 @@ deferred, and the deferral is load-bearing rather than lazy.
 
 **It has a hard dependency on the website:** OAuth brand verification needs a
 homepage **and a privacy policy at a matching domain**, both of which are 404
-today. See [`WEBSITE_ROADMAP`](WEBSITE_ROADMAP.md), `G-22`.
+today. See [`WEBSITE_ROADMAP`](../website/WEBSITE_ROADMAP.md), `G-22`.
 
 ---
 

@@ -1,6 +1,6 @@
 # The release gate — the human walkthrough and the repeatable checklist
 
-**Split out of `LAUNCH_ROADMAP.md` 2026-08-09 · Status: ACTIVE.**
+**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE.**
 
 > ### The one-sentence version
 >
@@ -20,7 +20,7 @@ itself to someone judging it in ten seconds.
 > specific waste this choice creates, and the only defence is timing.
 
 **`G-40` is the big one** — consolidated 08-03 from the browser closeout map and
-`LEFTOVERS.md`, where these had been accumulating separately for weeks. They are
+the leftovers maps, where these had been accumulating separately for weeks. They are
 one gate because they are one *sitting*.
 
 ---
@@ -56,7 +56,7 @@ A stranger judges maturity by the weakest surface they click.
 ### G-40 — The human walkthrough: one build, every answer **[R1]**
 
 **Consolidated 08-03** from `BROWSER_CLOSEOUT_ROADMAP.md` (archived) and
-`LEFTOVERS.md`, where these had been accumulating separately for weeks. They are
+the leftovers maps, where these had been accumulating separately for weeks. They are
 one gate because they are one *sitting*: a packaged build, a signed-in session,
 and a person looking. Splitting them across documents is why none of them
 happened.
@@ -313,5 +313,136 @@ Everything above is one-time. This runs every release, forever.
 
 - **Signing, notarization, the updater, the macOS floor** — [`APPLE_ROADMAP`](APPLE_ROADMAP.md).
 - **Telemetry, error surface, the trust claims** — [`TRUST_AND_SUPPORT_ROADMAP`](TRUST_AND_SUPPORT_ROADMAP.md).
-- **The download page** — [`WEBSITE_ROADMAP`](WEBSITE_ROADMAP.md).
+- **The download page** — [`WEBSITE_ROADMAP`](../website/WEBSITE_ROADMAP.md).
 - **Per-surface QA that blocks nothing** — [`QA_BACKLOG`](QA_BACKLOG.md).
+
+---
+
+## What the release is
+
+*The release-wide framing from the launch roadmap, which every gate in every map
+inherits.*
+
+> ### Two releases, not one
+>
+> **Release 1 — target: roughly one week.** A signed, notarized, stapled DMG for **both
+> architectures**, handed directly to a handful of people we can email. It proves the entire
+> Apple path on real hardware with real stakes and no strangers. **The updater does not
+> block this** — a new link is an email.
+>
+> **Release 2 — public download.** A stranger visits **busterclaw.lol**, downloads a DMG,
+> double-clicks it, and the app opens with **no dialog of any kind**. This is where the
+> updater, telemetry, the download page, and the privacy policy become mandatory, because
+> "please re-download" stops being a message you can send to everyone affected.
+>
+> Every gate item is tagged **[R1]** or **[R2]**. The split exists because the two
+> have genuinely different risk: R1's audience can be told things, and R2's cannot.
+
+> **We are not freezing the tree.** Feature work continues on `main` and the release gate
+> runs against whatever is there at release time (operator call, 08-01). That is a real
+> trade: every merge after a manual QA pass silently invalidates it.
+>
+> **So the gate is built to be cheap to re-run.** Prefer an assertion in CI over a paragraph
+> in a checklist — an automated gate survives a merge and a manual one does not. Where a
+> check can only be human (first launch on a clean machine, the III.J walk), **run it against
+> the artifact you are actually shipping, as late as possible.**
+
+> ### The trading stack was deleted 2026-08-08
+>
+> Trading, Portfolio, MarketData, Watchlist and Chart Build were removed whole
+> (`293f47f`), and the extension mechanism built to re-home them followed
+> (`a89163e`). **~24,000 lines.** Operator decision: size the app down and finish
+> what remains.
+>
+> **This closes gate items and risks rather than completing them** — the honest
+> distinction, and the reason each is marked *closed by deletion* rather than
+> ticked. Affected: **G-38**, **R9**, **V.9**, **T-10**, two **G-40** manual
+> checks, and the Trading rows in the QA checklist and the surface table.
+>
+> `finance_*` (SEC/Finnhub, public reads) survives; nothing else from that stack does.
+
+> ~~**R9 — Trading is in the dock while its remediation is open.**~~ **CLOSED BY
+> DELETION 08-08.** The financial surface no longer exists, so there is no unsafe
+> path in it to find.
+
+---
+
+---
+
+## The order to do it in
+
+### Stage 0 — Done, and what it unblocked
+
+| # | Task | State |
+|---|---|---|
+| 0a | Enroll in the Apple Developer Program | **DONE 08-01.** This was the gate on all of Part III |
+| 0e | **Identify the Intel Mac** you will run III.J on | **Still owed**, and it is a scheduling dependency, not an engineering one. Every III.J test runs twice |
+
+### Stage 1 — Release 1: get it signed (this week)
+
+*The critical path. Everything else in every map waits behind 1a.*
+
+| # | Task | Cost |
+|---|---|---|
+| **1a** | **G-2: create + export the Developer ID Application certificate**, back it up offline, add the GitHub secrets | **Minutes. THE NEXT ACTION** |
+| 1b | G-2b: App Store Connect API key for notarization (`.p8` downloads once) | Minutes |
+| 1c | **G-3: first real signed build.** Expect rejection rounds | Hours to days — the largest unknown here |
+| 1d | **G-4: III.J exit tests, both arches, on real hardware** | A day, plus Intel-Mac scheduling |
+| 1e | **G-9–G-15: first launch on a clean machine.** TCC prompt, no-`claude`, no-Homebrew, offline | A day. **Run this LAST, against the artifact you ship** |
+| 1f | G-34/G-35: the two `LEFTOVERS` HIGH items — payment gate walk, `nosniff` | Hours. Safety, not presentation |
+| 1g | **G-7: the clean-clone build.** Local end-to-end passed; a cold clone has not | Hours plus surprises |
+
+### Stage 2 — Free work, any time (does not block Release 1)
+
+| # | Task | Cost |
+|---|---|---|
+| 2a | **VI-a: pick one front door**; make README, site, wizard, and home agree | Hours. Highest leverage in the document |
+| 2b | **Run the one-sentence test** (IX.1) before and after 2a | An afternoon |
+| 2c | VI-b/VI-c: delete retired features from the user guide, fix the wizard docs | Hours |
+| 2d | G-17/G-17b: the WebGPU feature floor, and stating the floor in the README | A morning |
+| 2e | G-36/G-37: move Voice and Phone out of main navigation | Small diffs |
+
+### Stage 3 — Release 2: the public download (the week after)
+
+| # | Task | Cost |
+|---|---|---|
+| 3a | **G-18–G-20: the updater.** Minisign keypair, **offline key backup**, per-arch `latest.json`, the BEAM-safe swap | **Days. The subtle part is III.I, not the plumbing** |
+| 3b | G-21–G-24: download page, `/privacy`, `/terms`, the stated floor and Claude requirement | Hours to a day |
+| 3c | G-25–G-28: telemetry, user-facing error surface, uninstall, diagnostic bundle | Days |
+| 3d | G-29–G-33: the trust claims — approval gate, kill switch, disclosure, Security tab | Days |
+| 3e | 0b/0c/0d: decide on restricted Gmail scopes; start Google verification if yes | Free to decide; weeks to months if yes |
+
+### Stage 4 — Ship, then watch
+
+IX.3 sessions on the real signed DMG · publish · one question by email each week to whoever
+shows up: *"What did you use it for this week?"* The answers are the roadmap.
+
+### Explicitly off the critical path
+
+- **SMS / A2P 10DLC** — code-complete, frozen on the Sole-Proprietor registration reset. Does
+  not gate anything here.
+- ~~**Trading Stages 1–7**~~ — **moot 08-08.** The surface was deleted rather than
+  remediated, which closed G-38, R9 and V.9 together.
+- **The iPhone companion and the newspaper reader** — separate products (retained in git history).
+- **Everything in [`QA_BACKLOG`](QA_BACKLOG.md).**
+
+**The bill lives with [`DISTRIBUTION`](../distribution/DISTRIBUTION_ROADMAP.md)** —
+it is a money question, and duplicating it is how two documents start disagreeing.
+
+---
+
+## How `G-40` was assembled
+
+### Promoted 08-03 → the release gate, as **G-40**
+
+Every item that needed *a person looking at a packaged build* left this file
+together and became one release gate: the **Chart Build look**, the
+**first-open workspace through the setup wizard**, and the **packaged byte-range
+and codec walk** — joined there by the **signed-in checkout walk** inherited
+from `BROWSER_CLOSEOUT_ROADMAP.md` on its archive.
+
+They went because they are one sitting, not four errands, and because splitting
+them across two documents is why none of them had happened. The detail travelled
+with them; nothing was lost. This file's rule still holds — they needed no
+design, only a build and an afternoon — but they blocked a release, and this
+file is explicitly for things that block nothing.

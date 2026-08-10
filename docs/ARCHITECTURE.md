@@ -29,7 +29,7 @@ Buster Claw has no built-in LLM and needs no API keys: the intelligence is an ag
 - `BusterClaw.Telephony` (+ `BusterClawWeb.PhoneLive`): BusterPhone — inbound voicemail and SMS drained from a signed relay, transcripts, the local message archive, and the trusted-caller/PIN gates that decide what becomes queue work.
 - `BusterClaw.Notes`: the operator's Markdown vault under `notes/` — the Home Notes tab, `note_*` commands, `[[wiki links]]` and backlinks. Distinct from `BusterClaw.Journal` (the Activity record) and from the Library.
 - `BusterClaw.BrowserControl` (+ `BusterClaw.AgentRuns`): co-presence verbs against the live tab, plus Agent Mode — a separate Chromium with a frozen scope and a payment gate.
-- `BusterClaw.Clinch`: the credential store — one chokepoint for encrypted values, with use (in-BEAM) split from management (Tauri IPC → loopback `/api/clinch`). See `daily-growth/roadmaps/CLINCH_ROADMAP.md`.
+- `BusterClaw.Clinch`: the credential store — one chokepoint for encrypted values, with use (in-BEAM) split from management (Tauri IPC → loopback `/api/clinch`). See `daily-growth/roadmaps/integrations/CLINCH_ROADMAP.md`.
 - `BusterClaw.Notifications`: timers, alarms, reminders, and the SoundBoard chime routing.
 - `BusterClaw.Appearance` (+ `BusterClaw.Shaders`): one background catalog — built-in WGSL shaders, workspace `shaders/*.wgsl`, and uploaded images — shared by the homepage and the terminal.
 - `BusterClaw.Memory`: `Memory.RunSummary` rows capturing each headless run, full-text searched by `memory_search`.

@@ -3,7 +3,7 @@ defmodule BusterClaw.TerminalPaint do
   The one path by which something **without a browser socket** changes what a
   terminal looks like.
 
-  Scoped as Phase 0 of `daily-growth/roadmaps/TERMINAL_PAINT_ROADMAP.md`, and it
+  Scoped as Phase 0 of `daily-growth/roadmaps/shell/TERMINAL_PAINT_ROADMAP.md`, and it
   is Phase 0 because without it the rest of that roadmap cannot exist.
 
   ## Why this module has to exist

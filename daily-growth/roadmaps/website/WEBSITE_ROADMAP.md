@@ -1,6 +1,6 @@
 # busterclaw.lol — where the public finds the app
 
-**Split out of `LAUNCH_ROADMAP.md` 2026-08-09 · Status: ACTIVE, nothing built.**
+**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE, nothing built.**
 
 > ### The one-sentence version
 >
@@ -16,14 +16,14 @@ part of the release that cannot be done from here.
 
 | Path | State |
 |---|---|
-| `/` | 200 — leads with the runtime paragraph, which is the sentence [`FRONT_DOOR_ROADMAP`](FRONT_DOOR_ROADMAP.md) exists to replace |
+| `/` | 200 — leads with the runtime paragraph, which is the sentence [`FRONT_DOOR_ROADMAP`](../distribution/FRONT_DOOR_ROADMAP.md) exists to replace |
 | `/download` | **404** |
 | `/privacy` | **404** |
 | `/terms` | **404** |
 
 **It gates more than the download.** `/privacy` at a matching domain is a hard
 prerequisite for Google OAuth brand verification — see
-[`GOOGLE_VERIFICATION_ROADMAP`](GOOGLE_VERIFICATION_ROADMAP.md). The site is
+[`GOOGLE_VERIFICATION_ROADMAP`](../integrations/GOOGLE_VERIFICATION_ROADMAP.md). The site is
 therefore on two critical paths, not one.
 
 **All of it is R2.** Release 1 hands a DMG to people we can email; none of this
@@ -53,7 +53,7 @@ labels.*
 **G-23 is not a website task in isolation** — it is one quarter of a four-way
 agreement between the README, this site, the onboarding wizard, and the home
 screen's primary action. Doing it here alone produces a fourth different pitch.
-It belongs to [`FRONT_DOOR_ROADMAP`](FRONT_DOOR_ROADMAP.md) and is listed here
+It belongs to [`FRONT_DOOR_ROADMAP`](../distribution/FRONT_DOOR_ROADMAP.md) and is listed here
 because this is one of the four surfaces that has to change.
 
 **G-24 exists because of a specific failure mode.** The measured macOS floor is
@@ -73,7 +73,7 @@ answers your phone," **B** = the runtime pitch. Measure visit → download per
 variant. **If neither clears ~3–5% from a warm audience, the problem is the
 pitch, not the product.**
 
-This tests **H2** in [`DISTRIBUTION_ROADMAP`](DISTRIBUTION_ROADMAP.md) — the
+This tests **H2** in [`DISTRIBUTION_ROADMAP`](../distribution/DISTRIBUTION_ROADMAP.md) — the
 claim that the phone pitch beats the runtime pitch. It is falsifiable and cheap,
 and the answer changes what the homepage says.
 
@@ -82,13 +82,13 @@ and the answer changes what the homepage says.
 ## What this map does not cover
 
 - **The DMG itself** — signing, notarization, stapling, both architectures:
-  [`APPLE_ROADMAP`](APPLE_ROADMAP.md).
-- **The updater and `latest.json`** — also [`APPLE_ROADMAP`](APPLE_ROADMAP.md).
+  [`APPLE_ROADMAP`](../platform/APPLE_ROADMAP.md).
+- **The updater and `latest.json`** — also [`APPLE_ROADMAP`](../platform/APPLE_ROADMAP.md).
   The site links to releases; it does not serve updates.
 - **Telemetry, the error surface, uninstall docs** —
-  [`TRUST_AND_SUPPORT_ROADMAP`](TRUST_AND_SUPPORT_ROADMAP.md).
+  [`TRUST_AND_SUPPORT_ROADMAP`](../platform/TRUST_AND_SUPPORT_ROADMAP.md).
 - **Pricing pages.** There is nothing to sell yet; the locked decision is free
-  beta first. See [`DISTRIBUTION_ROADMAP`](DISTRIBUTION_ROADMAP.md).
+  beta first. See [`DISTRIBUTION_ROADMAP`](../distribution/DISTRIBUTION_ROADMAP.md).
 
 ---
 

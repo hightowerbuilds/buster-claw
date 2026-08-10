@@ -1,6 +1,6 @@
 # Distribution — who gets it, what they pay, and how we find out
 
-**Split out of `LAUNCH_ROADMAP.md` 2026-08-09 · Status: ACTIVE.**
+**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE.**
 
 > ### The one-sentence version
 >
@@ -16,26 +16,48 @@ document that disagrees with this one.
 **What it covers:** the tiers and the margin, the five falsifiable claims about
 whether anyone wants this, and the concept tests that settle them.
 
-**What it does not:** the DMG ([`APPLE_ROADMAP`](APPLE_ROADMAP.md)), the download
-page ([`WEBSITE_ROADMAP`](WEBSITE_ROADMAP.md)), and the pitch itself
+**What it does not:** the DMG ([`APPLE_ROADMAP`](../platform/APPLE_ROADMAP.md)), the download
+page ([`WEBSITE_ROADMAP`](../website/WEBSITE_ROADMAP.md)), and the pitch itself
 ([`FRONT_DOOR_ROADMAP`](FRONT_DOOR_ROADMAP.md)).
 
 ---
 
 ## Locked decisions
 
-Settled in the 07-04, 07-12 and 07-18 operator sessions. Restated, not reopened.
+Settled in the 07-04, 07-12, 07-14, 07-18 and 07-27 operator sessions. Not reopened;
+restated because they are the constraints every other map inherits.
 
-- **Free beta, then charge.** Not a freemium ladder, not a trial clock.
-- **BYO Claude.** The user brings their own subscription. This is a
-  falsifiable claim (**H4**), not an article of faith.
-- **MIT open core**, with `LICENSE` + `TRADEMARK.md` landed 07-12.
-- **busterclaw.lol**, chosen 07-14 (it was buster.mom).
-- **Apple as an individual**, merchant of record for anything paid.
-- **`on-duty` is free forever** — unpaywallable by construction, because the
-  loop runs on the user's own machine against their own Claude.
-- **Google Workspace is free goodwill**, not a tier.
-- **Signature Feed was cut 07-14.** Do not re-propose it as a paid tier.
+*Was the launch roadmap's Part I. Several rows are Apple's or the website's to execute;
+they are decided here and cited there.*
+
+| Question | Decision | Locked |
+|---|---|---|
+| Pricing model | Free core + paid tier — **free beta first, charge later** | 07-04 |
+| Who pays for Claude | **BYO.** Buyer brings their own Claude subscription. We never resell tokens | 07-04 |
+| Target buyer | **Dev-first**, prosumer later | 07-04 |
+| The paid tier | **BusterPhone managed telephony. We are the phone company.** | 07-12 |
+| Never ship | **BYO-Twilio as the paid tier** — zero marginal cost means nothing to enforce | 07-12 |
+| Source model | **Open core, MIT** (`LICENSE`), name/wordmark reserved (`TRADEMARK.md`) | 07-12 |
+| Entitlement model | **Server-side by nature. No license-key DRM in the client, ever** | 07-04 |
+| Domain | **busterclaw.lol** | 07-14 |
+| Bundle ID | **`lol.busterclaw.desktop`** — shipped, one-way door now closed | 07-18 |
+| Apple | **Enroll as an individual now** ($99/yr). Don't wait for an entity | 07-04 |
+| Distribution | **Developer ID + notarization. Never the Mac App Store** (III.B) | 07-27 |
+| Architectures | **Two native single-arch DMGs. Never lipo the ERTS** (III.G) | 07-27 |
+| Payments | **Merchant of record** (Paddle or Lemon Squeezy) — they are the seller | 07-04 |
+| Business entity | **Deferred.** With an MoR, the LLC is about liability, not tax plumbing | 07-04 |
+| A2P registration | **Direct Sole Proprietor**, not a business brand | 07-18 |
+| GWS | **Free forever.** Goodwill, not a paywall | 07-12 |
+| on-duty | **Free forever, by construction.** It touches none of our infrastructure | 07-12 |
+| Signature Feed | **CUT.** Don't re-propose | 07-14 |
+| Browserbase | **DELETED.** Never shippable; don't rebuild | 07-12 |
+| Whisper / local STT | **DEMOLISHED 06-28.** Don't reflex-rebuild | 06-28 |
+
+**Why this hangs together.** BYO Claude means zero token liability and no AI backend. Open
+core is safe because the money leg isn't defended by copyright — it's defended by *owning
+the phone number*. A fork gets the engine and none of the business.
+
+---
 
 ---
 
@@ -72,7 +94,7 @@ in-app "get a number" UI · a server-side entitlement check.
 
 At $10–15/mo against a number (~$1–2/mo) plus usage, gross margin is roughly 80–85%.
 
-**The build behind the tier is [`BUSTERPHONE_ROADMAP`](BUSTERPHONE_ROADMAP.md),**
+**The build behind the tier is [`BUSTERPHONE_ROADMAP`](../integrations/BUSTERPHONE_ROADMAP.md),**
 which is blocked on Clinch Phase 3. Provisioning is not worth writing until
 **IX.4** below says someone wants it.
 
@@ -99,7 +121,7 @@ you intended.** Today's likely result is a fail — that's the point, it's evide
 that costs an afternoon. **Re-run after the front-door rewrite; the delta is the finding.**
 
 **IX.2 — The landing-page test.** Lives in
-[`WEBSITE_ROADMAP`](WEBSITE_ROADMAP.md), because it ships as part of the download
+[`WEBSITE_ROADMAP`](../website/WEBSITE_ROADMAP.md), because it ships as part of the download
 page. It is the test for **H2**.
 
 **IX.3 — Five moderated first-run sessions.** Five users finds most usability problems. Clean
@@ -126,7 +148,7 @@ front door before inviting anyone. After IX.4: they ask for the number back, or 
 paid-tier question before building provisioning.**
 
 **IX.3's dependency:** it needs a signed DMG, so it runs after
-[`APPLE_ROADMAP`](APPLE_ROADMAP.md) Stage 1. IX.1, IX.4 and IX.5 do not — they
+[`APPLE_ROADMAP`](../platform/APPLE_ROADMAP.md) Stage 1. IX.1, IX.4 and IX.5 do not — they
 can start today.
 
 ---
@@ -147,7 +169,7 @@ can start today.
 **$99 unlocks every Apple item.** The real currency is engineering time — and the
 expensive-looking item, App Store compliance, is the one we are deliberately not
 buying. **CASA is the only line here that could multiply**, which is why
-[`GOOGLE_VERIFICATION_ROADMAP`](GOOGLE_VERIFICATION_ROADMAP.md) is a decision
+[`GOOGLE_VERIFICATION_ROADMAP`](../integrations/GOOGLE_VERIFICATION_ROADMAP.md) is a decision
 before it is a project.
 
 ---

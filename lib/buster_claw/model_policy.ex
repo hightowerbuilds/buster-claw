@@ -62,7 +62,7 @@ defmodule BusterClaw.ModelPolicy do
 
   Shipped defaults are in code so they can be improved on upgrade; the operator's
   choices live in `Settings`. A seeded workspace file could never be corrected on
-  an install that already had one — see `LAUNCH_ROADMAP` **V.8**.
+  an install that already had one — see `QA_BACKLOG` **V.8**.
 
   ## Leaf, deliberately
 

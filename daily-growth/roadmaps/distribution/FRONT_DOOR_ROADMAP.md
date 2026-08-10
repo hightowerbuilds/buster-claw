@@ -1,6 +1,6 @@
 # The front door — one sentence, four surfaces
 
-**Split out of `LAUNCH_ROADMAP.md` 2026-08-09 · Status: ACTIVE, nothing done.**
+**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE, nothing done.**
 
 > ### The one-sentence version
 >
@@ -70,7 +70,7 @@ that builds confidence and one that reveals the seams.
 | Surface | Where it lives | Owner map |
 |---|---|---|
 | README | this repo | — |
-| busterclaw.lol homepage | separate repo | [`WEBSITE_ROADMAP`](WEBSITE_ROADMAP.md) `G-23` |
+| busterclaw.lol homepage | separate repo | [`WEBSITE_ROADMAP`](../website/WEBSITE_ROADMAP.md) `G-23` |
 | The onboarding wizard | `SetupLive` | this map, VI-c |
 | The home screen's primary action | `StatusLive` | this map, VI-a |
 

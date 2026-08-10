@@ -51,7 +51,7 @@ with a mouse.
 **Why now.** Every other authoring surface in this product is agent-addressable.
 The Studio is the one room the agent cannot enter, so *"turn that voicemail into
 my notification chime"* is a thing the app can do and the assistant cannot. This
-was `SOUND_STUDIO_ROADMAP`'s Phase 2, never built, and has sat in `LEFTOVERS.md`
+was `SOUND_STUDIO_ROADMAP`'s Phase 2, never built, and has sat in `LEFTOVERS_AGENT_CORE.md`
 since 08-02 with the honest note that it *"doesn't get expensive; it stays
 absent, which is the actual cost."*
 
@@ -241,7 +241,7 @@ language to turn a recording into a chime.
 
 - [ ] The verbs need a **reference skill**, not a longer system prompt — the
   `shader-designer` precedent, and the same argument recorded for the scene3d
-  guide in `LEFTOVERS.md`: a system-prompt string is neither runtime-loadable nor
+  guide in `LEFTOVERS_AGENT_CORE.md`: a system-prompt string is neither runtime-loadable nor
   operator-editable.
 - [ ] The skill carries the workflow, not just the verbs: probe before you cut,
   render to a new name, tell the operator what you are about to route *before*
@@ -414,7 +414,7 @@ one day the app may want both.
 > **And the caution that still applies:** do not land the native option before
 > the first notarized build. The Whisper post-mortem names *"an unproven
 > notarization/entitlement gamble on the Apple-signing critical path"* among the
-> reasons it was cut, and `LAUNCH_ROADMAP` is still waiting on **G-2** with
+> reasons it was cut, and the Apple map is still waiting on **G-2** with
 > nothing ever notarized or stapled. Part III is entitlement-free by
 > construction, which is a further reason it goes first.
 
@@ -935,7 +935,7 @@ that file documents about itself, all load-bearing:**
    exception and gets commented as one, in the same voice as its neighbours.
 
 **This is notarization-affecting.** Budget a full signed-and-notarized build to
-validate it, not a `cargo tauri dev` run — read `LAUNCH_ROADMAP.md` III.E first.
+validate it, not a `cargo tauri dev` run — read `../platform/APPLE_ROADMAP.md` III.E first.
 
 **No CSP change should be needed**, because of the AudioWorklet decision in V.7. If
 a future path wants blob playback, `media-src 'self' blob:` gets argued on its own
@@ -1571,7 +1571,7 @@ being appended to a phase list that has already been built against.
 
 **Known candidates already on file, neither committed to:**
 
-- **The chime designer** (`LEFTOVERS.md`) — `SoundGen`'s five-field tone spec as
+- **The chime designer** (`../agent-core/LEFTOVERS_AGENT_CORE.md`) — `SoundGen`'s five-field tone spec as
   an editor, with the shipped 16 as starting points so *tuning* is the common
   path. `LEFTOVERS` says explicitly it should be **promoted back to its own
   roadmap** if genuinely wanted rather than picked up as a leftover. If it lands
@@ -1580,7 +1580,7 @@ being appended to a phase list that has already been built against.
   `blob:` URL** — the CSP declares no `media-src`, so media falls back to
   `default-src 'self'`, which excludes `blob:`. A blob preview works in dev and
   fails only in the packaged app. `dtmf.js` is the precedent.
-- **The `nosniff` gap on four media routes** (`LEFTOVERS.md`, HIGH) — belongs to
+- **The `nosniff` gap on four media routes** (now gate `G-35`) — belongs to
   the security surface rather than to a Studio feature, but it is Studio-adjacent
   and nobody has owned it since the music build found it.
 
@@ -1608,7 +1608,7 @@ being appended to a phase list that has already been built against.
 - `sound_studio_component.ex` is **1,235 lines** and `StatusLive` (1,460) owns six
   studio assigns. Neither blocks this roadmap — the CLI talks to the domain
   modules, not the component — but both are on the decomposition list in
-  `LEFTOVERS.md`, and Studio work is what grows them.
+  the leftovers maps, and Studio work is what grows them.
 - Check whether `Sound.install_bundled/0` should be reachable as a verb. It is
   the "restore the defaults" path and an agent that has just overwritten a chime
   is exactly who needs it.

@@ -305,7 +305,7 @@ check lib/buster_claw_web/live/settings_live.ex               936 FROZEN
 # Raised 08-08 for chat attachments, and this one BROKE THE FROZEN PROMISE — a
 # frozen file is meant to shrink or hold, never grow, and this grew by 160. The
 # raise is recorded rather than quiet because a quiet one is the failure this
-# gate exists to catch, and the debt is filed in LEFTOVERS.md rather than left
+# gate exists to catch, and the debt is filed in roadmaps/agent-core/LEFTOVERS_AGENT_CORE.md rather than left
 # as a number nobody remembers earning.
 #
 # What could NOT be extracted: roughly half the growth is documentation, and the

@@ -2,7 +2,7 @@
 
 **Scoped 08-08-26 · Status: SUPERSEDED + ARCHIVED 08-08-26, never started.**
 
-> **Read `daily-growth/roadmaps/CLINCH_ROADMAP.md` instead.** This map was
+> **Read `daily-growth/roadmaps/integrations/CLINCH_ROADMAP.md` instead.** This map was
 > absorbed whole on the day it was scoped, because reading it against the
 > credential findings made one thing obvious: its own foundation — *"anyone who
 > can reach the loopback listener can operate the UI"* — is a statement that a
