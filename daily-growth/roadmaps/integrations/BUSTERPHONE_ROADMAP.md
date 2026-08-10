@@ -90,13 +90,55 @@ Mac (outbound-only) ← polls queue ← telephony_events (synced=false)
 > polling is the house pattern (WalletPoller) with zero new deps; and 30s is
 > invisible for an answering machine. A Realtime waker can sit on top later by
 > just calling `Drain.tick_now/1` — no rework. Discipline: persist-then-ack
-> (a crash between the local insert and the remote `synced` flip re-drains and
+> (a crash between the local insert and the remote ack re-drains and
 > dedupes on the local `twilio_sid` unique index — retry, never a lost
 > voicemail), a transcript grace window (young transcript-less voicemails wait
 > for Twilio's trailing transcription callback before the one-shot drain), and
 > per-row isolation (storage 404 drains without audio; transient failures
 > retry; a traversal `recording_path` from the cloud is refused before it can
 > land inside the Library root).
+
+> ### 🔴 08-10: the relay was an archive, not a queue — fixed
+>
+> **The drain acked a row by flipping `synced` to `true`.** `list_unsynced/1`
+> filters on that flag, so a drained row became **invisible rather than gone** —
+> every voicemail's audio object and every transcript stayed in Supabase
+> permanently, and nothing anywhere collected them. The diagram above says
+> "queue"; the behaviour was an archive nobody knew they were keeping.
+>
+> **Found while establishing facts for the privacy policy** (`G-22`), which is
+> the argument for writing one: it forces you to state what happens to data, and
+> the statement turned out to be false. **No test caught it** — every test
+> asserted the ack happened, which it did.
+>
+> **Fixed `797cabd`: deletion is now the ack**, and that choice is load-bearing
+> rather than cosmetic. A flag and a delete both stop a row being listed, but only
+> the delete makes the drain's existing retry loop the *erasure's* retry loop —
+> a failed delete leaves the row listed, so the next tick retries. With a flag, a
+> failed cleanup stranded the data forever with nothing to notice. Order is
+> recording-then-row; both partial failures converge (see `Drain.erase/2`).
+>
+> **What made the retry safe to rely on:** on a duplicate, `persist/1` returns
+> `:ok` *without* calling `maybe_enqueue_dispatch` — so re-reading a drained row
+> can never resurrect an old voicemail as agent work.
+>
+> **The pre-08-10 backlog is NOT cleaned up by this.** Rows acked before the fix
+> carry `synced = true` and are filtered out of the new erase path too.
+> [`supabase/one-time-sweep-drained.sql`](../../../supabase/one-time-sweep-drained.sql)
+> is the inspect-first runbook for it. **Deliberately not automated:** widening
+> the drain's query to catch those rows would mean a lost or reset local database
+> replays every voicemail ever received back through the enqueue path.
+>
+> **It may be a no-op.** `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are unset
+> on the dev machine and `runtime.exs` gates the drain on both, so the drain has
+> probably never run outside tests and there may be no `synced` rows at all.
+> Confirm with the runbook's Step 2 before doing anything destructive.
+>
+> **⚠️ Ordering caveat for when you set those variables** — which is a step this
+> roadmap already required for other reasons. **Setting them starts the drain on
+> its 30-second tick**, and the first thing it now does is drain *and erase*
+> whatever is queued. **Run the inspection before setting them permanently, not
+> after**, or the evidence you wanted to look at is gone by the time you look.
 
 This buys **always-on capture** — a call that lands while the Mac is asleep
 waits in Supabase and drains on next sync — and keeps the Mac purely

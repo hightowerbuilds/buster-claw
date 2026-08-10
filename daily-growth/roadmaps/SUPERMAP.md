@@ -222,7 +222,7 @@ Not surfaces. The machinery every surface sits on.
 |---|---|---|---|
 | **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phase 3 next** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
 | **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
-| The relay (Supabase) | `telephony/relay.ex` | SHIPPED | [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — confirm the rotated DB password landed |
+| The relay (Supabase) | `telephony/relay.ex` | SHIPPED — **now erases, 08-10** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) — pre-08-10 backlog sweep · [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — rotated DB password |
 | Google Workspace | `Google` (16 modules) | SHIPPED | [`GOOGLE_VERIFICATION`](integrations/GOOGLE_VERIFICATION_ROADMAP.md) — restricted scopes, CASA |
 | Operational — GitHub, Sentry, Umami | `Integrations` | SHIPPED | — |
 | Web search & data sources | `catalog/web.ex`, `Search` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — persisting macro series |
