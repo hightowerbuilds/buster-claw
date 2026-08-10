@@ -2,7 +2,7 @@ defmodule BusterClawWeb.HomeWidget do
   @moduledoc """
   Home header corner widget: the Calendar / Contacts card that fills the header
   gap to the right of the banner. (The Get Started guide now lives on the home
-  Explore tab's Intro, `BusterClawWeb.ExplorePanel`.)
+  Explained tab's Intro, `BusterClawWeb.ExplainedPanel`.)
 
   Presentation only — the `select_widget_tab`, `add_contact`, and `remove_contact`
   events are handled by the parent LiveView (`StatusLive`).

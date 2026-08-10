@@ -90,16 +90,43 @@ check() { # path cap tier
 # `studio.ex` is the other half of that split and capped on arrival: the library,
 # the routing table, the four editing verbs, and the one gated `sound_apply`.
 #
+# `cmd_table.ex` (08-09) renders the whole catalog inside the Command List
+# tutorial, because the two links that used to say "the live, complete list is
+# there" both pointed at `/cmd-list` — which is the terminal CHEATSHEET editor,
+# not the command catalog. Operator called it. It is capped on arrival and is a
+# sibling rather than part of `cmd.ex` for the ordinary reason: that file was at
+# 411 against a 430 cap and this is 203 lines. Note it is GENERATED from
+# `Commands.list_commands/0`, so unlike the tutorials it does not grow when the
+# surface does — 203 commands and 33 groups render from the same markup as 300
+# would. Growth here means new markup, and should be questioned.
+#
 # `explained_panel.ex` 104 -> 105 for the eighth tutorial. One line, and worth
 # naming because two Studio modules cite this file BY NAME as the minimal
 # example ("the rail and the dispatch, and nothing else"). It still is: the line
 # is a dispatch line. If a raise here ever buys anything other than an import or
 # a `:if`, that citation is what it is spending.
 #
-# `registry.ex` 172 -> 190 -> 210 across the same day: a feature entry per tab,
-# each a long `body` plus the comment explaining the one entry whose `path`
+# 105 -> 113, and by that rule this raise IS spending the citation, so it says
+# what it bought. The rail moved to a sidebar and the CRT chrome moved with it,
+# off the tutorial pane, which is long-form reading and was being overlaid with
+# scanlines. That needed one non-scrolling wrapper: `.ic-scanlines::after` is
+# `absolute; inset: 0`, so on the scrolling rail it sizes to the visible box and
+# then scrolls away, baring the bottom of a scrolled rail. Two of the eight added
+# lines are that wrapper; the other six are the two comments explaining it and
+# the left-edge marker, both of which are CSS traps a later reader would
+# otherwise "tidy" straight back into a bug. Structure is still rail + dispatch.
+#
+# `registry.ex` 172 -> 190 -> 210 -> 219 across the same day: a feature entry per
+# tab, each a long `body`, plus the comment explaining the one entry whose `path`
 # points at the command list rather than at the tab it describes.
-check lib/buster_claw_web/components/explained_panel.ex        105 HELD
+#
+# The last nine bought a REORDER, not content. The operator moved the two
+# outbound site tabs to the bottom of the rail, which meant they could no longer
+# be a literal spliced in front of `@features` — they are now `@sites`, their own
+# named list, and `@tabs`/`@tiles` compose the three. That is why the file grew
+# while the tab count did not: the ordering is now stated once, in one place,
+# instead of being implied twice by the shape of two literals.
+check lib/buster_claw_web/components/explained_panel.ex        113 HELD
 check lib/buster_claw_web/components/explained/ramshackle.ex   565 HELD
 check lib/buster_claw_web/components/explained/studio.ex       307 HELD
 check lib/buster_claw_web/components/explained/phone.ex        460 HELD
@@ -108,8 +135,9 @@ check lib/buster_claw_web/components/explained/shaders.ex      325 HELD
 check lib/buster_claw_web/components/explained/browser.ex      310 HELD
 check lib/buster_claw_web/components/explained/models.ex       305 HELD
 check lib/buster_claw_web/components/explained/gws.ex          278 HELD
+check lib/buster_claw_web/components/explained/cmd_table.ex    203 HELD
 check lib/buster_claw_web/components/explained/shared.ex       182 HELD
-check lib/buster_claw_web/components/explained/registry.ex     210 HELD
+check lib/buster_claw_web/components/explained/registry.ex     219 HELD
 check lib/buster_claw_web/components/explained/intro.ex        151 HELD
 
 # The Message Machine's three panels.

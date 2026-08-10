@@ -52,37 +52,45 @@ defmodule BusterClawWeb.ExplainedPanel do
     assigns = assign(assigns, tabs: Registry.tabs(), stubs: Registry.stubs())
 
     ~H"""
-    <section id="home-explained" class="ic-panel ic-scanlines flex min-h-0 flex-1 overflow-hidden">
-      <%!-- The rail scrolls on its own: eleven tabs outgrow a short panel, and a
-            rail that scrolled with the tutorial hides the tab you want. --%>
-      <div
-        role="tablist"
-        aria-label="Explained"
-        aria-orientation="vertical"
-        class="flex w-40 min-h-0 shrink-0 flex-col gap-0.5 overflow-y-auto border-r-2 border-base-content/20 py-2 lg:w-48"
-      >
-        <%!-- Marker on the LEFT edge, not mirroring the divider on the right:
+    <section id="home-explained" class="ic-panel flex min-h-0 flex-1 overflow-hidden">
+      <%!-- Scanlines and aberration live on the RAIL ONLY: they used to sit on
+            this `<section>` and laid a CRT overlay over the tutorial text, which
+            is long-form reading. The wrapper exists because
+            `.ic-scanlines::after` is `absolute; inset: 0` — on the scrolling
+            element it sizes to the visible box and then scrolls away with the
+            content, baring the bottom of a scrolled rail. This one cannot. --%>
+      <div class="ic-scanlines flex w-40 shrink-0 flex-col border-r-2 border-base-content/20 lg:w-48">
+        <%!-- The rail scrolls on its own: eleven tabs outgrow a short panel, and
+              a rail that scrolled with the tutorial hides the tab you want. --%>
+        <div
+          role="tablist"
+          aria-label="Explained"
+          aria-orientation="vertical"
+          class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-2"
+        >
+          <%!-- Marker on the LEFT edge, not mirroring the divider on the right:
               this box scrolls, and a child overhanging one whose `overflow-y` is
               `auto` makes `overflow-x` `auto` too, so the faithful mirror of the
               old `-mb-0.5` would have bought a stray horizontal scrollbar. --%>
-        <button
-          :for={{key, label} <- @tabs}
-          type="button"
-          role="tab"
-          aria-selected={to_string(@tab == key)}
-          phx-click="select_explained_tab"
-          phx-value-tab={key}
-          class={[
-            "border-l-2 px-3 py-1.5 text-left font-display text-xs font-bold uppercase leading-tight tracking-wide transition",
-            if(@tab == key,
-              do: "border-primary bg-primary/10 text-primary",
-              else:
-                "border-transparent text-base-content/55 hover:border-base-content/25 hover:text-base-content"
-            )
-          ]}
-        >
-          {label}
-        </button>
+          <button
+            :for={{key, label} <- @tabs}
+            type="button"
+            role="tab"
+            aria-selected={to_string(@tab == key)}
+            phx-click="select_explained_tab"
+            phx-value-tab={key}
+            class={[
+              "ic-rail-tab border-l-2 px-3 py-1.5 text-left font-display text-xs font-bold uppercase leading-tight tracking-wide transition",
+              if(@tab == key,
+                do: "border-primary bg-primary/10 text-primary",
+                else:
+                  "border-transparent text-base-content/55 hover:border-base-content/25 hover:text-base-content"
+              )
+            ]}
+          >
+            {label}
+          </button>
+        </div>
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto">

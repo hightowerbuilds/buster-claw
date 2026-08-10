@@ -15,9 +15,9 @@ defmodule BusterClawWeb.PocketsPanel do
   Their markup lives in `BusterClawWeb.Pockets.PocketControls` and
   `BusterClawWeb.Pockets.BrandSlots`; only the state and the events are here.
 
-  ## Why this is a live_component and `ExplorePanel` is not
+  ## Why this is a live_component and `ExplainedPanel` is not
 
-  Explore keeps its sub-tab in the parent LiveView because a half-read tutorial
+  Explained keeps its sub-tab in the parent LiveView because a half-read tutorial
   must survive a glance at Chat. Which Pocket is open is not that: the list is
   the resting state, and coming back to it after a tab switch is the right
   answer rather than a lost one. So the selection lives here, where the feature

@@ -4,7 +4,7 @@ defmodule BusterClawWeb.Gws.Registry do
   display order.
 
   One list feeds the rail, the pane dispatch and the parent LiveView's tab
-  guard. It is a separate, dependency-free module for the reason the Explore
+  guard. It is a separate, dependency-free module for the reason the Explained
   split found: the panes need it and the console imports the panes, so an
   accessor left on the console would put a runtime edge against a compile edge.
   """

@@ -1683,6 +1683,39 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute html =~ "Tutorial in the works"
     end
 
+    test "the Command List tab carries the whole catalog inline, not a link to it",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
+
+      html = render_click(view, "select_explained_tab", %{"tab" => "cmd"})
+
+      assert has_element?(view, "#explained-command-atlas")
+
+      # EVERY command, not a sample. This is the assertion the operator asked for
+      # on 08-09 — the tutorial used to link out for the list, so the page could
+      # go stale against the catalog without anything noticing. Now it cannot:
+      # add a command anywhere in the catalog and it renders here, or this fails.
+      commands = Commands.list_commands()
+      missing = Enum.reject(commands, &(html =~ ~s(id="cmd-#{&1.name}")))
+
+      assert missing == [],
+             "#{length(missing)} command(s) are in the catalog but not on the page: " <>
+               Enum.map_join(Enum.take(missing, 10), ", ", & &1.name)
+
+      # The two links this replaced pointed at /cmd-list, which is NOT the command
+      # catalog — it is `CmdListLive`, the terminal cheatsheet editor. That was a
+      # reader following "browse the full command list" to an editor for something
+      # else. Assert the tab does not send them there again.
+      refute html =~ ~s(href="/cmd-list"),
+             "the Command List tutorial links to /cmd-list, which edits the terminal " <>
+               "cheatsheet and does not contain the command catalog"
+
+      # Descriptions ride along, so the list is usable rather than an index.
+      sample = Enum.find(commands, &(&1.name == "sound_apply"))
+      assert html =~ String.slice(sample.description, 0, 60)
+    end
+
     test "the Studio tab teaches the library, the routing table, and the one gated verb",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")

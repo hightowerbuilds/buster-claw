@@ -60,29 +60,16 @@ defmodule BusterClawWeb.Explained.Registry do
       path_label: "Open Configuration"
     },
     %{
-      key: "shaders",
-      label: "Shaders & Backgrounds",
-      eyebrow: "Ambiance",
-      blurb: "The live WGSL smoke behind the homepage — and how to swap it.",
+      key: "gws",
+      label: "Gmail/GWS",
+      eyebrow: "Google Workspace",
+      blurb: "Connect once; the agent reads and acts on mail, calendar, files.",
       body:
-        "The homepage background is a real WGSL shader, compiled live in the " <>
-          "webview. Add a valid .wgsl file to your workspace and it can appear in " <>
-          "Appearance without rebuilding the app; select it there to apply it.",
-      path: "/appearance",
-      path_label: "Open Appearance"
-    },
-    %{
-      key: "phone",
-      label: "BusterPhone",
-      eyebrow: "The phone line",
-      blurb: "An answering machine and SMS relay your agent works for you.",
-      body:
-        "Your agent gets its own number. Voice greets callers, records, " <>
-          "transcribes, and archives messages. Trusted SMS can become Dispatch " <>
-          "work; voicemail requires both a trusted number and a valid PIN before " <>
-          "it is enqueued. The Phone tab is the switchboard and local archive.",
-      path: "/phone",
-      path_label: "Open the Phone tab"
+        "Connect with the bundled button when this build provides it, or use " <>
+          "Advanced setup with your own OAuth client. Trusted senders can enqueue " <>
+          "work; other mail is still archived but does not become agent work.",
+      path: "/settings",
+      path_label: "Open Configuration"
     },
     %{
       key: "browser",
@@ -98,6 +85,31 @@ defmodule BusterClawWeb.Explained.Registry do
       path_label: "Open the browser"
     },
     %{
+      key: "phone",
+      label: "BusterPhone",
+      eyebrow: "The phone line",
+      blurb: "An answering machine and SMS relay your agent works for you.",
+      body:
+        "Your agent gets its own number. Voice greets callers, records, " <>
+          "transcribes, and archives messages. Trusted SMS can become Dispatch " <>
+          "work; voicemail requires both a trusted number and a valid PIN before " <>
+          "it is enqueued. The Phone tab is the switchboard and local archive.",
+      path: "/phone",
+      path_label: "Open the Phone tab"
+    },
+    %{
+      key: "shaders",
+      label: "Shaders & Backgrounds",
+      eyebrow: "Ambiance",
+      blurb: "The live WGSL smoke behind the homepage — and how to swap it.",
+      body:
+        "The homepage background is a real WGSL shader, compiled live in the " <>
+          "webview. Add a valid .wgsl file to your workspace and it can appear in " <>
+          "Appearance without rebuilding the app; select it there to apply it.",
+      path: "/appearance",
+      path_label: "Open Appearance"
+    },
+    %{
       key: "cmd",
       label: "Command List",
       eyebrow: "The surface",
@@ -108,18 +120,6 @@ defmodule BusterClawWeb.Explained.Registry do
           "policy flags, and audit receipts for mutations and triggers.",
       path: "/cmd-list",
       path_label: "Open the command list"
-    },
-    %{
-      key: "gws",
-      label: "Gmail/GWS",
-      eyebrow: "Google Workspace",
-      blurb: "Connect once; the agent reads and acts on mail, calendar, files.",
-      body:
-        "Connect with the bundled button when this build provides it, or use " <>
-          "Advanced setup with your own OAuth client. Trusted senders can enqueue " <>
-          "work; other mail is still archived but does not become agent work.",
-      path: "/settings",
-      path_label: "Open Configuration"
     },
     # Studio and Ramshackle are two tabs rather than one because they answer
     # different questions over the same folders. Studio is "what does this
@@ -169,26 +169,35 @@ defmodule BusterClawWeb.Explained.Registry do
   # a `@features` entry with no panel must still render something true.
   @built ~w(models shaders phone browser cmd gws studio ramshackle)
 
-  # {key, rail label}, in rail order. Intro leads, the two site tabs follow,
-  # then the feature tabs in @features order.
-  @tabs [{"intro", "Intro"}, {"site", "BusterClaw.lol"}, {"ntf", "NTF"}] ++
-          Enum.map(@features, &{&1.key, &1.label})
+  # The two outbound tabs. They are not features — neither teaches this app, and
+  # both send you to a website — which is why they sit last rather than second
+  # (operator, 08-09). Kept as their own list because they have no `body`, no
+  # `path` and no tutorial module; they are not `@features` entries wearing a
+  # different hat.
+  @sites [
+    %{
+      key: "site",
+      label: "BusterClaw.lol",
+      eyebrow: "Headquarters",
+      blurb: "Where the app lives — and where your agent's number comes from."
+    },
+    %{
+      key: "ntf",
+      label: "Notes That Float",
+      eyebrow: "From the same bench",
+      blurb: "Creative writing and journaling in a spatial, 3D notebook."
+    }
+  ]
 
-  # Intro-grid tiles: the two site tabs, then the stubs. Grid order = rail order.
-  @tiles [
-           %{
-             key: "site",
-             label: "BusterClaw.lol",
-             eyebrow: "Headquarters",
-             blurb: "Where the app lives — and where your agent's number comes from."
-           },
-           %{
-             key: "ntf",
-             label: "Notes That Float",
-             eyebrow: "From the same bench",
-             blurb: "Creative writing and journaling in a spatial, 3D notebook."
-           }
-         ] ++ Enum.map(@features, &Map.take(&1, [:key, :label, :eyebrow, :blurb]))
+  # {key, rail label}, in rail order. Intro leads as the launcher, then the
+  # feature tabs in @features order, then the two outbound site tabs.
+  @tabs [{"intro", "Intro"}] ++
+          Enum.map(@features, &{&1.key, &1.label}) ++
+          Enum.map(@sites, &{&1.key, &1.label})
+
+  # Intro-grid tiles. Grid order = rail order, minus Intro itself — a launcher
+  # does not need a tile that reopens the launcher.
+  @tiles Enum.map(@features, &Map.take(&1, [:key, :label, :eyebrow, :blurb])) ++ @sites
 
   @doc "The busterclaw.lol URL — headquarters, and the future number counter."
   def site_url, do: @site_url

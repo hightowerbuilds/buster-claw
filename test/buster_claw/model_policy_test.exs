@@ -272,7 +272,7 @@ defmodule BusterClaw.ModelPolicyTest do
     # automatically — and fails this test, which is the signal to a future editor
     # that the guard just went live and this readout can be retired.
     #
-    # This is the mistake `BusterClawWeb.Explore.Models` records: a loop over
+    # This is the mistake `BusterClawWeb.Explained.Models` records: a loop over
     # `ModelPolicy.floors()` kept passing for a day after the map emptied,
     # because an empty collection makes every such loop vacuous.
     test "the floor guard above is dormant, because no surface declares a floor" do

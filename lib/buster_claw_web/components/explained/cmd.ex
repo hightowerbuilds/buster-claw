@@ -5,6 +5,7 @@ defmodule BusterClawWeb.Explained.Cmd do
   examples per non-GWS family.
   """
   use BusterClawWeb, :html
+  import BusterClawWeb.Explained.CmdTable
   import BusterClawWeb.Explained.Shared
 
   alias BusterClawWeb.Explained.Registry
@@ -37,13 +38,12 @@ defmodule BusterClawWeb.Explained.Cmd do
           <span id="explained-command-total" class="font-mono font-bold">{@command_stats.total}</span>
           commands. Some UI-only work — parts of Appearance and Studio, say —
           deliberately stays outside that surface. You do not memorize the
-          commands: say outcomes in Chat and let the agent select them. The live,
-          complete list is on <.link
-            navigate="/cmd-list"
+          commands: say outcomes in Chat and let the agent select them. <a
+            href="#explained-command-atlas"
             class="font-semibold text-primary hover:opacity-80"
           >
-            Cmd List
-          </.link>.
+            Every one of them is at the bottom of this page
+          </a>, read from the catalog as this page renders.
         </p>
         <p>Each command carries three independent pieces of metadata:</p>
         <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
@@ -253,7 +253,9 @@ defmodule BusterClawWeb.Explained.Cmd do
       <%!-- Cycle 2 was "The market at a glance" (finance_quote/news/fundamentals/
             filings) until 08-08, when the operator called it: trading is not part
             of what Explained teaches any more. The finance_* commands still exist and
-            are still on /cmd-list — they simply stopped being one of the six things
+            are still in the catalog — five of them, in the table at the foot of this
+            page, which is where that sentence used to say "/cmd-list" and was wrong:
+            that route edits the terminal cheatsheet. They simply stopped being one of the six things
             the atlas puts in front of a first-time user. The notebook replaced it
             because it carries a better lesson: two write verbs that look alike and
             are not interchangeable, and a concurrency rule you can actually hit. --%>
@@ -399,12 +401,7 @@ defmodule BusterClawWeb.Explained.Cmd do
         </ol>
       </.example>
 
-      <.link
-        navigate="/cmd-list"
-        class="inline-flex w-fit items-center gap-2 rounded-xs bg-primary px-4 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-primary-content transition hover:opacity-85"
-      >
-        <.icon name="hero-arrow-right" class="size-3.5" /> Browse the full command list
-      </.link>
+      <.command_table />
     </div>
     """
   end

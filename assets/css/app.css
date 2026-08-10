@@ -505,6 +505,45 @@ body { background-color: var(--color-base-100); }
   .ic-scanlines img.ic-crt-focus { display: none; }
 }
 
+/* Chromatic aberration on a vertical rail's tabs, on hover only — the Explained
+   sidebar today.
+
+   Same two channel colours as the CRT image effect above (`rgba(255,0,64)` red,
+   `rgba(0,224,255)` cyan) so the rail reads as the same apparatus, but applied
+   as `text-shadow` rather than the `drop-shadow` pair: this is type, and a
+   filter on text would also blur the glyph edges it is meant to split.
+
+   The offset is deliberately 1px per channel — enough to read as a misconverged
+   tube at a glance, small enough that the label stays a label. This effect is
+   for the RAIL and must not follow the tutorial pane: those pages are long-form
+   reading, and a split on body text is illegible rather than atmospheric. */
+.ic-rail-tab {
+  transition: text-shadow 120ms ease-out, color 120ms ease-out,
+    border-color 120ms ease-out;
+}
+.ic-rail-tab:hover {
+  text-shadow:
+    -1px 0 0 rgba(255, 0, 64, 0.7),
+    1px 0 0 rgba(0, 224, 255, 0.7);
+}
+/* Keyboard users get the same signal — the rail is a tablist and is arrow-key
+   navigable, so hover-only would leave it invisible to anyone not using a
+   mouse. */
+.ic-rail-tab:focus-visible {
+  text-shadow:
+    -1px 0 0 rgba(255, 0, 64, 0.7),
+    1px 0 0 rgba(0, 224, 255, 0.7);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ic-rail-tab { transition: none; }
+}
+/* Same bargain the scanlines strike two rules up: the effect is atmosphere, and
+   atmosphere loses to a stated contrast preference. */
+@media (prefers-contrast: more) {
+  .ic-rail-tab:hover,
+  .ic-rail-tab:focus-visible { text-shadow: none; }
+}
+
 /* Full-window smoke background for the homepage — a WebGPU canvas (SmokeBackground
    hook) fixed to the viewport so it spans edge-to-edge and resizes with the
    window (ignoring the shell's centered max-width container). It sits at z-0

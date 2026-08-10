@@ -3,7 +3,7 @@ defmodule BusterClawWeb.SettingsTabs do
   The Settings section's shared header: the wordmark and the nav bar of links to
   each settings sub-tab (Appearance, Voice, Notify, Integrations, Configuration,
   Cmd List, Security), with the active one highlighted. (Get Started's 3-step
-  onboarding moved to the home Explore tab's Intro, 08-02.)
+  onboarding moved to the home Explained tab's Intro, 08-02.)
   """
   use BusterClawWeb, :html
 
