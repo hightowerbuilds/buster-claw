@@ -153,7 +153,18 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # owed. The homepage banner became swappable and the heading moved out to
 # `components/brand_art.ex` rather than growing here: 944 -> 929. The cap follows
 # the file down in the same commit, which is the ratchet this script exists for.
-check lib/buster_claw_web/live/status_live.ex                929 HELD
+# Raised 08-09, 929 -> 942, for the Studio tab's Mix|Voice sub-tabs
+# (STUDIO_ROADMAP VI.0b). Thirteen lines, and the SHELL is not here: the rail, the
+# dispatch and the placeholder are 142 lines in `components/studio_panel.ex` and
+# the whitelist is in `status/studio.ex`, both created/extended for it. What
+# landed here is the irreducible part — the `:studio_tab` assign (a home panel
+# renders behind `:if`, so the sub-tab cannot be held by the panel that shows it),
+# one `handle_event` clause that delegates in full, and the toolbar's condition
+# gaining `and @studio_tab == "mix"` because that toolbar belongs to Mix. The
+# dispatch swap was net ZERO: the frozen component's ten assign lines moved from
+# a `.live_component` call to a `.studio_panel` one. If a later reader finds rail
+# markup or tab logic in this file, this raise was wrong.
+check lib/buster_claw_web/live/status_live.ex                942 HELD
 check lib/buster_claw_web/live/status/chat.ex                685 HELD
 
 # Added 08-09 when the chat skins pushed this past 1,000 lines. It has never been
@@ -198,8 +209,34 @@ check lib/buster_claw_web/components/chat_panel.ex          1040 HELD
 # does not own that.
 check lib/buster_claw_web/live/appearance_live.ex            1035 HELD
 check lib/buster_claw_web/live/status/comms.ex               125 HELD
-check lib/buster_claw_web/live/status/studio.ex              114 HELD
+# Raised 08-09, 114 -> 150, for the Studio's Mix|Voice sub-tab (STUDIO_ROADMAP
+# VI.0b). This module moved instead of `status_live.ex` — which is at its cap and
+# is the point of these two numbers sitting next to each other: it took the mount
+# default (`assign_studio_tab/1`) and the whitelist (`select_studio_tab/2`, which
+# reads `StudioPanel.tab_keys/0`, so the rail, the guard and the dispatch cannot
+# disagree), and left the LiveView one assign, one clause and one condition. Most
+# of the +33 is the `@doc`s stating why the assign is not the panel's.
+check lib/buster_claw_web/live/status/studio.ex              150 HELD
 check lib/buster_claw_web/live/status/weather.ex              97 HELD
+
+# The Studio tab's sub-tab rail (STUDIO_ROADMAP VI.0b, 08-09): Mix is the
+# existing studio, Voice is a placeholder until Parts V and VI land. Capped ON
+# ARRIVAL, and the two numbers are deliberately different.
+#
+# `studio_panel.ex` has NO headroom: it is the rail and the dispatch and nothing
+# else — the shape `explained_panel.ex` above proved — so its first line of growth
+# means a Voice surface is landing in the dispatcher instead of in its own module,
+# which is the decision this gate should make someone defend. Note what it does
+# NOT do: `sound_studio_component.ex` is FROZEN at exactly its size, so the rail
+# lives ABOVE it and Mix renders it unchanged. That is why the frozen cap below
+# still holds with a whole sub-tab axis added.
+#
+# `registry.ex` gets a little room on purpose. The design promise is that adding
+# a sub-tab — or splitting Voice into recording and dictionary, which the roadmap
+# expects — is ONE edit in the registry; a zero-headroom cap would quietly make it
+# two.
+check lib/buster_claw_web/components/studio_panel.ex         142 HELD
+check lib/buster_claw_web/components/studio/registry.ex       75 HELD
 
 # The Notes vault: state in the live_component, markup in three function
 # components. Split at ~810 lines during the Home Activity + Notes roadmap's
@@ -213,9 +250,17 @@ check lib/buster_claw_web/live/status/weather.ex              97 HELD
 # snippets. The switcher came out as its own file instead of a fourth section of
 # the component. The roadmap is closed, so the next change to any of these owes
 # a reason here.
+#
+# The reason, 08-09 (daily-growth/archive/08-09-26-notes-editor.md W1/W2): the rail gained the vault's
+# right-click menu, because delete moved off the editor header and onto the
+# list. It is a net move — `editor.ex` lost the pencil and the trash can in the
+# same change and stays under its own cap — so the +26 buys the rail a menu it
+# now owns outright, not a second feature. `editor.ex` keeps 300 rather than
+# ratcheting down: at 292 it is nowhere near the 80% floor, and the header it
+# lost was traded for the docs explaining what replaced it.
 check lib/buster_claw_web/live/notes_component.ex              744 HELD
 check lib/buster_claw_web/components/notes/editor.ex           300 HELD
-check lib/buster_claw_web/components/notes/rail.ex             211 HELD
+check lib/buster_claw_web/components/notes/rail.ex             250 HELD
 check lib/buster_claw_web/components/notes/switcher.ex         134 HELD
 
 # --- FROZEN: named by an unstarted phase; capped at today's size -------------

@@ -15,11 +15,44 @@ defmodule BusterClawWeb.Status.Studio do
   `mutate_open_mix/2` is the single path every keyboard-driven arrangement
   change goes through: load, apply, save, record the previous state for undo,
   and tell the component to re-read.
+
+  The Studio's own sub-tab (`Mix` | `Voice`) is assigned here too, and for the
+  same reason as everything above — plus a second one: `StatusLive` sits at its
+  file-size cap, so the wiring a sub-tab needs lands in this module and the
+  LiveView keeps only the mount assign, one `handle_event` clause and one
+  condition.
   """
   import Phoenix.Component
   import Phoenix.LiveView
 
   alias BusterClaw.Notifications.StudioMix
+  alias BusterClawWeb.StudioPanel
+
+  # ---------------------------------------------------------------------------
+  # The sub-tab rail
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Default the Studio's sub-tab at mount. `Mix` leads because it is the studio
+  that exists; `Voice` is a placeholder until Parts V and VI land.
+  """
+  def assign_studio_tab(socket), do: assign(socket, :studio_tab, "mix")
+
+  @doc """
+  Switch sub-tabs, refusing a key the rail never offered.
+
+  The whitelist is `StudioPanel.tab_keys/0`, which reads the same registry the
+  rail and the panel dispatch read — so a real key can never be missing from one
+  of the three, and a forged one is a no-op rather than a crash. Same posture as
+  the Explained rail's handler.
+  """
+  def select_studio_tab(socket, tab) do
+    if tab in StudioPanel.tab_keys() do
+      assign(socket, :studio_tab, tab)
+    else
+      socket
+    end
+  end
 
   # ---------------------------------------------------------------------------
   # Arranger history

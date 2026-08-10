@@ -105,6 +105,9 @@ defmodule BusterClawWeb.StatusLive do
      # the tab's `:if` discards the panel on every switch — so a half-read
      # tutorial survives a glance at Chat. The key list belongs to ExplainedPanel.
      |> assign(:explained_tab, "intro")
+     # Which Studio sub-tab is showing (Mix | Voice) — owned here for the same
+     # reason as the arranger state below it. See `Status.Studio`.
+     |> assign_studio_tab()
      # Transport for the Studio's music library. nil until the dock player
      # announces — it renders a library with no transport rather than guessing.
      |> assign(:music_player, nil)
@@ -273,6 +276,12 @@ defmodule BusterClawWeb.StatusLive do
   end
 
   def handle_event("explained_try_in_chat", _params, socket), do: {:noreply, socket}
+
+  # The Studio's sub-tab rail (Mix | Voice). Whitelisted through
+  # `StudioPanel.tab_keys/0` inside `Status.Studio.select_studio_tab/2`.
+  def handle_event("select_studio_tab", %{"tab" => tab}, socket) do
+    {:noreply, select_studio_tab(socket, tab)}
+  end
 
   # The Studio's selection is owned HERE, not by the component: home tabs render
   # behind `:if`, which removes the DOM and discards the live_component with it,
@@ -848,7 +857,9 @@ defmodule BusterClawWeb.StatusLive do
                 </button>
               </div>
 
-              <BusterClawWeb.SoundStudioComponent.toolbar :if={@home_tab == "studio"} />
+              <BusterClawWeb.SoundStudioComponent.toolbar :if={
+                @home_tab == "studio" and @studio_tab == "mix"
+              } />
             </div>
 
             <div :if={@home_tab == "chat"} class="flex min-h-0 flex-1 flex-col gap-2">
@@ -895,10 +906,12 @@ defmodule BusterClawWeb.StatusLive do
               <.live_component module={BusterClawWeb.PocketsPanel} id="home-pockets" />
             </div>
 
+            <%!-- Two sub-tabs: Mix (this studio) and Voice. The rail is in
+                  StudioPanel, above the FROZEN component, which Mix renders
+                  unchanged with the assigns it always had. --%>
             <div :if={@home_tab == "studio"} class="flex min-h-0 flex-1 flex-col">
-              <.live_component
-                module={BusterClawWeb.SoundStudioComponent}
-                id="home-studio"
+              <BusterClawWeb.StudioPanel.studio_panel
+                tab={@studio_tab}
                 player={@music_player}
                 studio_source={@studio_source}
                 studio_trim={@studio_trim}
