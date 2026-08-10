@@ -1,6 +1,7 @@
 # Apple — the complete acceptance path
 
-**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE. G-2 is the next action.**
+**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE. G-2 done 08-10; G-2b is
+the next action.**
 
 > ### The one-sentence version
 >
@@ -10,8 +11,12 @@
 **Enrollment cleared 2026-08-01.** That was the gate on everything here, and it
 is open: the constraint has moved from *waiting on Apple* to *doing the work*.
 
-**The one thing to do next: create the Developer ID Application certificate
-(G-2).** Nothing else on this page can start, and it is minutes of work.
+**The certificate exists as of 2026-08-10** — Team `KD977J8NF6`, G2 issuer, valid
+to 2031. Signing is real and its CI import path has been exercised (III.D, G-2).
+
+**The one thing to do next: the App Store Connect API key (G-2b).** Signing works
+and **notarization has no credentials**, so a build today would sign and then fail
+at the notary. It is minutes of work.
 
 > ### Stable anchors — do not renumber
 >
@@ -48,14 +53,20 @@ The single most important distinction in this document.
 
 | | Written & committed | Exercised against a real cert |
 |---|---|---|
+| **Credential import (III.D)** | ✅ | ✅ **08-10 — the first ✅ in this column** |
 | Entitlements (III.E) | ✅ | ❌ |
 | OTP tree signing (III.F) | ✅ | ❌ |
 | Two-arch build (III.G) | ✅ | ❌ (built unsigned only) |
-| Notarization + stapling (III.H) | ✅ | ❌ |
+| Notarization + stapling (III.H) | ✅ | ❌ (no notary credentials yet — G-2b) |
 | Updater (III.I) | ❌ | ❌ |
 | Exit tests (III.J) | ✅ asserted in CI | ❌ |
 
-**Everything in the right-hand column flips on the day enrollment clears, and not before.**
+**A certificate does not flip this column; running things does.** That was the 08-10
+lesson and it arrived immediately: the certificate existed and the credential row still
+would not have gone green, because the `.p12` macOS produced was one OpenSSL 3 could
+write and `security import` could not read (III.D). **One row turned green by being
+replayed locally — the rest are still prose.**
+
 Do not treat the left column as progress toward the right one; it is a prerequisite for
 *starting* it. The purpose of the left column is that when the certificate arrives, the
 remaining work is *running* the pipeline and fixing what Apple objects to — not writing it
@@ -136,18 +147,95 @@ working, but you cannot sign or notarize anything new until it's restored.
 
 ### III.D — Certificates and identifiers
 
-- [ ] **Create a Developer ID Application certificate.** The only certificate we need. It
+**DONE 2026-08-10.** The certificate exists, is installed locally, and its CI import
+path has been *exercised* rather than assumed. What follows is what actually
+happened, because three steps of the original instructions could not be followed
+as written.
+
+| | |
+|---|---|
+| Team ID | `KD977J8NF6` |
+| Subject | `Developer ID Application: Luke Hightower (KD977J8NF6)` |
+| Issuer | `Developer ID Certification Authority`, **OU=G2** |
+| Valid | 2026-08-10 → **2031-08-11** |
+| SHA-1 | `21D1A27D1D2ACB03DF693708BA7D30F4B15F641D` |
+| Material | `~/Desktop/apple-dev-skills/` (`developer_id.key`, `.p12`, `.cer`, password) |
+
+- [x] **Created a Developer ID Application certificate.** The only certificate we need. It
       signs the `.app` and the `.dmg`.
-- [ ] **Skip the Developer ID Installer certificate.** That signs `.pkg` installers.
-- [ ] **Export as `.p12` and back it up offline.** Apple limits Developer ID Application
-      certificates per account (currently five). Losing the private key burns one.
-- [ ] **Store as GitHub Actions secrets.** `release-desktop.yml` reads
+- [x] **Skipped the Developer ID Installer certificate.** That signs `.pkg` installers.
+- [x] **Exported as `.p12`.** Apple limits Developer ID Application certificates per
+      account (currently five). Losing the private key burns one.
+- [x] **Stored as GitHub Actions secrets.** `release-desktop.yml` reads
       `secrets.APPLE_CERTIFICATE` to flip `HAVE_APPLE_CERT`, and the workflow header
       documents the full secret list. Adding them is the *only* change needed to turn CI
-      from unsigned to signed — no workflow edit.
-- [ ] **No provisioning profile is required** for plain Developer ID + hardened runtime.
+      from unsigned to signed — no workflow edit. Confirmed: no edit was needed.
+- [x] **No provisioning profile is required** for plain Developer ID + hardened runtime.
       Worth knowing so you don't go looking for a step that doesn't exist.
 - [ ] **Bundle identifier is locked:** `lol.busterclaw.desktop`. Do not change it.
+- [ ] **Back the `.p12` and its password up somewhere off this machine.** Currently on an
+      iCloud-synced Desktop — an operator decision on 08-10, recorded because a signing
+      key in cloud sync is a choice, not an accident.
+
+#### Three things that stopped the written instructions, in order
+
+**1. There is no Keychain Access → Certificate Assistant on macOS 26.** The app still
+exists but moved out of `/System/Applications/Utilities/` to
+`/System/Library/CoreServices/Applications/`, and `mdfind` does not index it — so it
+looks deleted, and searching *inside* its window finds nothing because Certificate
+Assistant is a **menu-bar** item, not a keychain entry.
+
+**Generate the CSR with `openssl` instead.** It produces an equivalent request and
+keeps the private key on this Mac, which was the only property that mattered:
+
+```
+openssl req -new -newkey rsa:2048 -nodes \
+  -keyout developer_id.key \
+  -out CertificateSigningRequest.certSigningRequest \
+  -subj "/emailAddress=<you>/CN=<Your Name>/C=US"
+```
+
+The trade is that **the private key is now a file rather than a keychain entry**, so
+the "back it up offline" step stops being optional housekeeping and becomes the only
+thing standing between you and a burned certificate.
+
+**2. Apple's certificate page defaults to the wrong Sub-CA.** The *Select a Developer ID
+Certificate Intermediary* step offers **G2 Sub-CA** and **Previous Sub-CA**, and lands on
+**Previous** — which the page itself says expires **2027-02-01**, a fixed date, not five
+years out. Taking the default on 08-10 would have bought a certificate with **under six
+months of life** and burned one of five to do it. **Pick `G2 Sub-CA`.** Verify after the
+fact with `openssl x509 -noout -issuer`: it must read `OU=G2`.
+
+**3. A `.p12` from OpenSSL 3 cannot be imported by macOS.** OpenSSL 3 defaults to
+AES-256-CBC with a SHA-256 MAC; `security import` only understands the legacy
+PBE-SHA1-3DES form and fails with:
+
+```
+SecKeychainItemImport: MAC verification failed during PKCS12 import (wrong password?)
+```
+
+**The password is not wrong.** That message sends you to re-export, re-type, and doubt
+the one thing that was correct. Add **`-legacy`** to `openssl pkcs12 -export` and it
+imports first try.
+
+> **This one would have detonated in CI, not here.** `release-desktop.yml` runs the same
+> `security import`, so the failure would have arrived on the first signed build —
+> mid-run, on a machine you cannot inspect, with a message about a password that is fine,
+> alongside every other never-exercised step in III.E–III.J. **The general rule: replay a
+> CI credential step locally before trusting it to CI.** See the simulation under G-2.
+
+#### Verifying a certificate actually matches its key
+
+Before building the `.p12`, confirm the certificate Apple returned belongs to the key you
+hold. The moduli must be identical:
+
+```
+openssl x509 -inform DER -in developerID_application.cer -noout -modulus | openssl md5
+openssl rsa  -in developer_id.key -noout -modulus | openssl md5
+```
+
+Cheap, and it distinguishes "wrong file" from "wrong encryption" before those two failure
+modes can be confused with each other.
 
 **On expiry:** Developer ID certificates expire (five years). A signature carrying a
 **secure timestamp** stays valid after the certificate expires — which is precisely why
@@ -430,22 +518,24 @@ a handful of known people; `[R2]` blocks the public download.*
 
 - [x] **G-1. DONE 08-01.** Enrolled in the Apple Developer Program. *This was the gate on all
       of Part III; the constraint is now doing the work, not waiting for Apple.*
-- [ ] **G-2. ← THE NEXT ACTION.** Create + export the Developer ID Application certificate.
-      **Pick `Developer ID Application`**, not `Developer ID Installer` (that signs `.pkg`;
-      we ship `.dmg`) and not `Apple Development` (cannot be distributed).
-      **Generate the CSR locally** — Keychain Access → Certificate Assistant → *Request a
-      Certificate From a Certificate Authority* → Saved to disk. The private key is created
-      on that Mac and never leaves it; Apple only holds the public half. Lose it and the
-      certificate is dead weight and you have burned one of five.
-      **Export the `.p12` with the private key selected, not the certificate alone** — the
-      cert-only export imports cleanly and signs nothing.
-      Then `base64 -i Certificates.p12` → `APPLE_CERTIFICATE`, plus
-      `APPLE_CERTIFICATE_PASSWORD`. **Back the `.p12` and its password up offline.**
-- [ ] **G-2b.** Create the **App Store Connect API key** for notarization: App Store Connect
-      → Users and Access → Integrations → Team Keys. → `APPLE_API_KEY_P8` (base64),
-      `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`.
+- [x] **G-2. DONE 08-10.** Developer ID Application certificate created, exported, installed
+      locally, and both CI secrets set. Team `KD977J8NF6`, G2 issuer, valid to 2031-08-11.
+      Full account and the three traps in **III.D** — the CSR route changed (no Certificate
+      Assistant on macOS 26), the Sub-CA default is wrong, and the `.p12` needs `-legacy`.
+      **`HAVE_APPLE_CERT` is now `true`; no workflow edit was required, as designed.**
+      > **The import was replayed locally before trusting CI**, in a throwaway keychain
+      > running the workflow's own commands — `create-keychain` → `import` →
+      > `find-identity -p codesigning` → `delete-keychain`. It resolved
+      > `Developer ID Application: Luke Hightower (KD977J8NF6)`. **That simulation is what
+      > caught the `-legacy` defect**, which would otherwise have surfaced as a CI failure
+      > blaming the password. Re-run it after any change to the cert or the import step.
+- [ ] **G-2b. ← THE NEXT ACTION.** Create the **App Store Connect API key** for notarization:
+      App Store Connect → Users and Access → Integrations → Team Keys. → `APPLE_API_KEY_P8`
+      (base64), `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`.
       **The `.p8` can be downloaded exactly once.** Preferred over the Apple-ID + app-specific
       password path because it is revocable and scoped, and keeps an account password out of CI.
+      **Signing now works and notarization has no credentials** — a build would sign and then
+      fail at the notary, so this is the gap between here and G-3.
 - [ ] **G-3.** Run the signing pipeline for the first time. Expect rejection rounds (III.H).
 - [ ] **G-4.** Pass every **III.J** exit test — **on both architectures, on real hardware.**
 
@@ -582,14 +672,17 @@ one refund at a time, and it was an hour's work to measure.
 *Was the launch roadmap's Part 0. It lived in the spine because the next action
 has been an Apple action since enrollment cleared.*
 
-**The code is written. Enrollment has cleared. The certificate is the next click.**
+**The code is written. Enrollment has cleared. The certificate now exists** — see III.D.
+*(Written 08-01, when the certificate was still the next click. Kept because the three
+numbered items below are still the honest shape of what is unproven.)*
 
 **The one thing to do next: create the Developer ID Application certificate (G-2).** Nothing
 else in Part III can start, and it is minutes of work.
 
 Between HEAD and **Release 1** — a signed DMG in a few known hands — there are three things:
 
-1. **The certificate does not exist yet.** The account is at the certificates page. Pick
+1. ~~**The certificate does not exist yet.**~~ **DONE 08-10 (III.D).** Retained because the
+   reasoning still applies to the next one: Pick
    *Developer ID Application*, not *Installer*; generate the CSR locally so the private key
    stays on a machine you keep; export the `.p12` **with its private key**; back it up
    offline. Then two GitHub secrets and CI starts producing signed builds with no workflow
@@ -677,8 +770,8 @@ certificate or real hardware, it says so rather than guessing.
 
 | Item | Evidence |
 |---|---|
-| **No Apple Developer membership** | No certificate exists. `HAVE_APPLE_CERT` is the CI gate and it is false. **This is the gate on everything in Part III** |
-| **Nothing has been signed, notarized, or stapled — ever** | The entire path is written and unexercised. See the banner in III.0 |
+| ~~**No Apple Developer membership**~~ | **Closed 08-10.** Certificate created, secrets set, `HAVE_APPLE_CERT` now **true**. See III.D |
+| **Nothing has been signed, notarized, or stapled — ever** | Still true 08-10. The *credential import* is now exercised (G-2); everything downstream of it is not. See the banner in III.0 |
 | **No updater** | Zero references to `tauri-plugin-updater` in `desktop/tauri/Cargo.toml`. No minisign key exists. **Now P0** (III.I) |
 | **No telemetry, no crash reporting** *(owned by [`TRUST_AND_SUPPORT`](TRUST_AND_SUPPORT_ROADMAP.md))* | The only Sentry code is the *integration* that reads the user's own project. Nothing reports our own crashes |
 | ~~`minimumSystemVersion` claims macOS 11.0~~ | **Measured and corrected 08-01 → 14.0.** It was wrong by three major versions: the bundled OTP requires 14.0 while the bundle advertised 11.0, so macOS 11–13 got a launch that dies at dyld. Now asserted on every build (**G-16**). The *feature* floor (WebGPU) is still unmeasured — **G-17** |
