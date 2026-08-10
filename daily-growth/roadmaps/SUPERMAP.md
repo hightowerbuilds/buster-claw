@@ -89,22 +89,28 @@ the section tables below point at it from wherever else it applies.**
 
 1. **[The Clinch](#part-vi--integrations)** — Phase 3 next; it unblocks BusterPhone.
 2. **[BusterPhone](#part-vi--integrations)** — the only paid thing.
-3. **[Apple](#part-vii--platform--release)** — `G-2` **done 08-10**; `G-2b`, the notary key, is next. Minutes of work, and signing is dead without it.
+3. **[Apple](#part-vii--platform--release)** — `G-2`/`G-2b` **done 08-10**; `G-3`, the first signed build, is next. Budget rejection rounds.
 4. **[Studio → Voice](#part-ii--home)** — needs a person at a microphone.
 5. **[The Dialyzer gate](#part-vii--platform--release)** — red on `main`, blocking nothing.
 
-Two of those wait on the operator rather than an agent: the `getUserMedia` spike
-needs a permission dialog clicked at a packaged build, and `G-2b` needs a key
-generated in App Store Connect.
+One of those waits on the operator rather than an agent: the `getUserMedia` spike
+needs a permission dialog clicked at a packaged build. A second is coming — `G-4`
+needs an **Intel Mac**, still unidentified, and every exit test runs twice.
 
-**First movement on the release path since 08-01.** `G-2` landed 08-10 — a
-Developer ID certificate (team `KD977J8NF6`, valid to 2031) with both CI secrets
-set, so `HAVE_APPLE_CERT` is now `true` and CI produces signed builds with no
-workflow edit. **The credential import is the first thing in the Apple map ever
-exercised rather than written** ([`APPLE`](platform/APPLE_ROADMAP.md) III.0). It
-also cost three surprises the map had not predicted — a relocated Keychain
-Access, a Sub-CA default that expires in six months, and a `.p12` macOS cannot
-read — all recorded in III.D.
+**First movement on the release path since 08-01.** `G-2` and `G-2b` both landed
+08-10: a Developer ID certificate (team `KD977J8NF6`, valid to 2031) and App Store
+Connect notary credentials (key `SAKNAF6YLA`). **All five release secrets are set**,
+`HAVE_APPLE_CERT` is `true`, and CI produces signed builds with no workflow edit.
+
+**Both are the first entries ever in the Apple map's "exercised" column**
+([`APPLE`](platform/APPLE_ROADMAP.md) III.0) — the certificate replayed through
+CI's own import commands, the notary key through a real authenticated call. Each
+verification caught something inspection would not have: a `.p12` macOS cannot
+read, and a `.p8` that had never reached the disk. Four traps in total are
+recorded in III.D and G-2b, including a Sub-CA default that expires in six months.
+
+**Nothing has been signed, notarized or stapled yet.** Credentials are proven;
+the pipeline they feed is not.
 
 ---
 
@@ -224,7 +230,7 @@ the Voice webhook → set `SUPABASE_URL` / `SERVICE_ROLE_KEY` → call it.
 | Section | Where | State | Map |
 |---|---|---|---|
 | Tauri desktop shell | `desktop/tauri/` | SHIPPED | — |
-| **Apple — sign, notarize, staple** | CI, `scripts/codesign_release.sh` | **ACTIVE — signing LIVE 08-10; `G-2b` next** | [`APPLE`](platform/APPLE_ROADMAP.md) |
+| **Apple — sign, notarize, staple** | CI, `scripts/codesign_release.sh` | **ACTIVE — all credentials live 08-10; `G-3` next** | [`APPLE`](platform/APPLE_ROADMAP.md) |
 | **The release gate** | — | **ACTIVE** | [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md) |
 | **Trust claims & support** | `Sentinel`, — | **ACTIVE** | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) |
 | CI gates | `scripts/check_*.sh` | SHIPPED, **one red** | — |

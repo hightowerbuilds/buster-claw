@@ -1,7 +1,7 @@
 # Apple — the complete acceptance path
 
-**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE. G-2 done 08-10; G-2b is
-the next action.**
+**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE. G-2 and G-2b done 08-10;
+G-3 is the next action.**
 
 > ### The one-sentence version
 >
@@ -14,9 +14,13 @@ is open: the constraint has moved from *waiting on Apple* to *doing the work*.
 **The certificate exists as of 2026-08-10** — Team `KD977J8NF6`, G2 issuer, valid
 to 2031. Signing is real and its CI import path has been exercised (III.D, G-2).
 
-**The one thing to do next: the App Store Connect API key (G-2b).** Signing works
-and **notarization has no credentials**, so a build today would sign and then fail
-at the notary. It is minutes of work.
+**Notarization credentials exist as of 2026-08-10** and were proven against Apple's
+notary API (G-2b). **Every release secret is now set** — certificate, password, and
+the three API-key values.
+
+**The one thing to do next: G-3, the first real signed build.** Nothing about
+signing, notarizing or stapling an actual artifact has ever run. **Budget rejection
+rounds** — this is the largest unknown between here and Release 1.
 
 > ### Stable anchors — do not renumber
 >
@@ -53,19 +57,22 @@ The single most important distinction in this document.
 
 | | Written & committed | Exercised against a real cert |
 |---|---|---|
-| **Credential import (III.D)** | ✅ | ✅ **08-10 — the first ✅ in this column** |
+| **Credential import (III.D)** | ✅ | ✅ **08-10** |
 | Entitlements (III.E) | ✅ | ❌ |
 | OTP tree signing (III.F) | ✅ | ❌ |
 | Two-arch build (III.G) | ✅ | ❌ (built unsigned only) |
-| Notarization + stapling (III.H) | ✅ | ❌ (no notary credentials yet — G-2b) |
+| **Notary credentials (G-2b)** | ✅ | ✅ **08-10** |
+| Notarization + stapling (III.H) | ✅ | ❌ — credentials proven, no artifact submitted |
 | Updater (III.I) | ❌ | ❌ |
 | Exit tests (III.J) | ✅ asserted in CI | ❌ |
+
+*The two ✅ in the right column arrived 08-10 and were the first ever.*
 
 **A certificate does not flip this column; running things does.** That was the 08-10
 lesson and it arrived immediately: the certificate existed and the credential row still
 would not have gone green, because the `.p12` macOS produced was one OpenSSL 3 could
-write and `security import` could not read (III.D). **One row turned green by being
-replayed locally — the rest are still prose.**
+write and `security import` could not read (III.D). **Two rows turned green by being
+replayed against the real thing — the rest are still prose.**
 
 Do not treat the left column as progress toward the right one; it is a prerequisite for
 *starting* it. The purpose of the left column is that when the certificate arrives, the
@@ -529,13 +536,26 @@ a handful of known people; `[R2]` blocks the public download.*
       > `Developer ID Application: Luke Hightower (KD977J8NF6)`. **That simulation is what
       > caught the `-legacy` defect**, which would otherwise have surfaced as a CI failure
       > blaming the password. Re-run it after any change to the cert or the import step.
-- [ ] **G-2b. ← THE NEXT ACTION.** Create the **App Store Connect API key** for notarization:
-      App Store Connect → Users and Access → Integrations → Team Keys. → `APPLE_API_KEY_P8`
-      (base64), `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`.
-      **The `.p8` can be downloaded exactly once.** Preferred over the Apple-ID + app-specific
-      password path because it is revocable and scoped, and keeps an account password out of CI.
-      **Signing now works and notarization has no credentials** — a build would sign and then
-      fail at the notary, so this is the gap between here and G-3.
+- [x] **G-2b. DONE 08-10.** App Store Connect API key created and all three secrets set.
+      Key `SAKNAF6YLA`, Developer role. Preferred over the Apple-ID + app-specific password
+      path because it is revocable and scoped, and keeps an account password out of CI.
+      > **Verified by an authenticated round-trip, not by inspection.**
+      > `xcrun notarytool history --key … --key-id … --issuer …` returned
+      > **`No submission history`** — Apple accepted the credentials and correctly reported
+      > zero submissions. **A malformed key, a wrong Key ID or a wrong Issuer ID all fail
+      > this call**, so it separates "credentials are good" from every other thing that can
+      > go wrong during a first notarization. Re-run it after any key rotation.
+      >
+      > **Two navigation traps.** The key is on **appstoreconnect.apple.com**, not
+      > `developer.apple.com` where the certificate lives — different site, easily conflated
+      > in the same sitting. And the **Issuer ID sits above the table, not in it**, so it
+      > reads as page furniture rather than a value you need; it is the one people miss.
+      >
+      > **The `.p8` downloads exactly once**, and it was not on disk when the IDs were first
+      > read out — worth checking before leaving the page. If it is lost, revoke and
+      > regenerate; keys are free and unlimited, and the only cost is that **the Key ID
+      > changes**, so all three secrets must be set together or CI fails during
+      > notarization complaining about authentication rather than about a mismatch.
 - [ ] **G-3.** Run the signing pipeline for the first time. Expect rejection rounds (III.H).
 - [ ] **G-4.** Pass every **III.J** exit test — **on both architectures, on real hardware.**
 
@@ -772,6 +792,7 @@ certificate or real hardware, it says so rather than guessing.
 |---|---|
 | ~~**No Apple Developer membership**~~ | **Closed 08-10.** Certificate created, secrets set, `HAVE_APPLE_CERT` now **true**. See III.D |
 | **Nothing has been signed, notarized, or stapled — ever** | Still true 08-10. The *credential import* is now exercised (G-2); everything downstream of it is not. See the banner in III.0 |
+| **No notarization credentials** *(closed 08-10 — see G-2b)* | ~~None existed.~~ Key `SAKNAF6YLA` set and verified |
 | **No updater** | Zero references to `tauri-plugin-updater` in `desktop/tauri/Cargo.toml`. No minisign key exists. **Now P0** (III.I) |
 | **No telemetry, no crash reporting** *(owned by [`TRUST_AND_SUPPORT`](TRUST_AND_SUPPORT_ROADMAP.md))* | The only Sentry code is the *integration* that reads the user's own project. Nothing reports our own crashes |
 | ~~`minimumSystemVersion` claims macOS 11.0~~ | **Measured and corrected 08-01 → 14.0.** It was wrong by three major versions: the bundled OTP requires 14.0 while the bundle advertised 11.0, so macOS 11–13 got a launch that dies at dyld. Now asserted on every build (**G-16**). The *feature* floor (WebGPU) is still unmeasured — **G-17** |
