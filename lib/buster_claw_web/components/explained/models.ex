@@ -1,4 +1,4 @@
-defmodule BusterClawWeb.Explore.Models do
+defmodule BusterClawWeb.Explained.Models do
   @moduledoc """
   The Models tutorial — which agent CLI and model run each surface.
 
@@ -16,7 +16,7 @@ defmodule BusterClawWeb.Explore.Models do
   names a surface set, it is a string literal and it will rot.
   """
   use BusterClawWeb, :html
-  import BusterClawWeb.Explore.Shared
+  import BusterClawWeb.Explained.Shared
 
   alias BusterClaw.ModelPolicy
 

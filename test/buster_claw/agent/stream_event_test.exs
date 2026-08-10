@@ -311,7 +311,9 @@ defmodule BusterClaw.Agent.StreamEventTest do
     # the tutorial and the summary until 08-03. It was never true of claude, and
     # this is the assertion that stops it coming back.
     test "claude's cost is a real number, not nil" do
-      line = ~s({"type":"result","result":"OK","total_cost_usd":0.0802325,"usage":{"input_tokens":2}})
+      line =
+        ~s({"type":"result","result":"OK","total_cost_usd":0.0802325,"usage":{"input_tokens":2}})
+
       assert {:ok, %{cost_usd: cost}} = StreamEvent.parse(:claude, line)
       assert is_number(cost) and cost > 0
     end
@@ -355,7 +357,9 @@ defmodule BusterClaw.Agent.StreamEventTest do
     end
 
     test "a result with no usage block at all is nil, not an empty map" do
-      assert {:ok, %{usage: nil}} = StreamEvent.parse(:claude, ~s({"type":"result","result":"OK"}))
+      assert {:ok, %{usage: nil}} =
+               StreamEvent.parse(:claude, ~s({"type":"result","result":"OK"}))
+
       assert {:ok, %{usage: nil}} = StreamEvent.parse(:codex, ~s({"type":"turn.completed"}))
     end
   end
@@ -372,7 +376,8 @@ defmodule BusterClaw.Agent.StreamEventTest do
           "\n"
         )
 
-      assert %{input_tokens: 9, output_tokens: 3, cost_usd: 0.5} = StreamEvent.run_usage(:claude, output)
+      assert %{input_tokens: 9, output_tokens: 3, cost_usd: 0.5} =
+               StreamEvent.run_usage(:claude, output)
     end
 
     # opencode emits one step_finish per STEP; only the last ends the run, so the
@@ -396,5 +401,4 @@ defmodule BusterClaw.Agent.StreamEventTest do
       assert StreamEvent.run_usage(:claude, nil) == nil
     end
   end
-
 end

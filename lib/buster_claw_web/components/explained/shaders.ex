@@ -1,6 +1,6 @@
-defmodule BusterClawWeb.Explore.Shaders do
+defmodule BusterClawWeb.Explained.Shaders do
   @moduledoc """
-  The Shaders & Backgrounds tutorial — the one surface in Explore where the
+  The Shaders & Backgrounds tutorial — the one surface in Explained where the
   agent cannot press the button.
 
   Appearance has **no commands**. There is no `appearance_*` or `shader_*` entry
@@ -28,7 +28,7 @@ defmodule BusterClawWeb.Explore.Shaders do
   homepage.
   """
   use BusterClawWeb, :html
-  import BusterClawWeb.Explore.Shared
+  import BusterClawWeb.Explained.Shared
 
   alias BusterClaw.Appearance
 
@@ -70,7 +70,7 @@ defmodule BusterClawWeb.Explore.Shaders do
         </p>
       </div>
 
-      <section class="flex flex-col gap-3" id="explore-shader-catalog">
+      <section class="flex flex-col gap-3" id="explained-shader-catalog">
         <h3 class="font-display text-base font-black uppercase tracking-wide">
           One catalog, two targets
         </h3>
@@ -181,7 +181,7 @@ defmodule BusterClawWeb.Explore.Shaders do
         </ol>
       </.example>
 
-      <section class="flex flex-col gap-3" id="explore-shader-contract">
+      <section class="flex flex-col gap-3" id="explained-shader-contract">
         <h3 class="font-display text-base font-black uppercase tracking-wide">
           Writing one: the file contract
         </h3>

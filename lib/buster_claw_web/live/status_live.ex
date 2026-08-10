@@ -48,7 +48,7 @@ defmodule BusterClawWeb.StatusLive do
     {"calendar", "Calendar"},
     {"phone", "Phone"},
     {"studio", "Studio"},
-    {"explore", "Explore"},
+    {"explained", "Explained"},
     {"activity", "Activity"}
   ]
   @home_tab_keys Enum.map(@home_tabs, &elem(&1, 0))
@@ -101,10 +101,10 @@ defmodule BusterClawWeb.StatusLive do
      # Home main view: "chat" (default) or "calendar". The sub-tab toggle swaps
      # the whole panel — the chat is hidden while the calendar is showing.
      |> assign(:home_tab, "chat")
-     # Which Explore sub-tab is showing. Owned here for the usual reason —
+     # Which Explained sub-tab is showing. Owned here for the usual reason —
      # the tab's `:if` discards the panel on every switch — so a half-read
-     # tutorial survives a glance at Chat. The key list belongs to ExplorePanel.
-     |> assign(:explore_tab, "intro")
+     # tutorial survives a glance at Chat. The key list belongs to ExplainedPanel.
+     |> assign(:explained_tab, "intro")
      # Transport for the Studio's music library. nil until the dock player
      # announces — it renders a library with no transport rather than guessing.
      |> assign(:music_player, nil)
@@ -243,12 +243,12 @@ defmodule BusterClawWeb.StatusLive do
     {:noreply, switch_home_tab(socket, tab)}
   end
 
-  # The Explore rail's key list is owned by ExplorePanel (one registry feeds the
+  # The Explained rail's key list is owned by ExplainedPanel (one registry feeds the
   # rail, this whitelist, and the panel dispatch); an unknown key is refused, not
   # crashed on — same posture as the guarded tab handlers around it.
-  def handle_event("select_explore_tab", %{"tab" => tab}, socket) do
-    if tab in BusterClawWeb.ExplorePanel.tab_keys() do
-      {:noreply, assign(socket, :explore_tab, tab)}
+  def handle_event("select_explained_tab", %{"tab" => tab}, socket) do
+    if tab in BusterClawWeb.ExplainedPanel.tab_keys() do
+      {:noreply, assign(socket, :explained_tab, tab)}
     else
       {:noreply, socket}
     end
@@ -257,14 +257,14 @@ defmodule BusterClawWeb.StatusLive do
   # A tutorial's "Try in Chat" button. It **prefills and stops** — same
   # `bc:chat_prefill` path the corner widget's Email button uses, and for the
   # same reason: staging an ask is not making one. This is the whole safety
-  # story for Explore's runnable demos. Opening a tutorial, or clicking every
+  # story for Explained's runnable demos. Opening a tutorial, or clicking every
   # button on it, must never execute a command; the operator still presses send,
   # which is also where the agent's own gates get their chance to fire.
   #
   # The text is bounded rather than trusted for length: it arrives from a
   # phx-value on the operator's own page, so it is not a trust problem, but an
   # unbounded string pushed into the composer is a denial-of-usability one.
-  def handle_event("explore_try_in_chat", %{"text" => text}, socket)
+  def handle_event("explained_try_in_chat", %{"text" => text}, socket)
       when is_binary(text) and byte_size(text) in 1..2000 do
     {:noreply,
      socket
@@ -272,7 +272,7 @@ defmodule BusterClawWeb.StatusLive do
      |> push_event("bc:chat_prefill", %{text: text})}
   end
 
-  def handle_event("explore_try_in_chat", _params, socket), do: {:noreply, socket}
+  def handle_event("explained_try_in_chat", _params, socket), do: {:noreply, socket}
 
   # The Studio's selection is owned HERE, not by the component: home tabs render
   # behind `:if`, which removes the DOM and discards the live_component with it,
@@ -910,8 +910,8 @@ defmodule BusterClawWeb.StatusLive do
               />
             </div>
 
-            <div :if={@home_tab == "explore"} class="flex min-h-0 flex-1 flex-col">
-              <BusterClawWeb.ExplorePanel.explore_panel tab={@explore_tab} />
+            <div :if={@home_tab == "explained"} class="flex min-h-0 flex-1 flex-col">
+              <BusterClawWeb.ExplainedPanel.explained_panel tab={@explained_tab} />
             </div>
 
             <div :if={@home_tab == "activity"} class="flex min-h-0 flex-1 flex-col">

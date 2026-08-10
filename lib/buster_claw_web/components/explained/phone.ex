@@ -1,4 +1,4 @@
-defmodule BusterClawWeb.Explore.Phone do
+defmodule BusterClawWeb.Explained.Phone do
   @moduledoc """
   The BusterPhone tutorial — the answering machine and SMS relay.
 
@@ -23,7 +23,7 @@ defmodule BusterClawWeb.Explore.Phone do
   button exists.
   """
   use BusterClawWeb, :html
-  import BusterClawWeb.Explore.Shared
+  import BusterClawWeb.Explained.Shared
 
   def phone_panel(assigns) do
     ~H"""

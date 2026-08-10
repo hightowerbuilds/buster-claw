@@ -63,7 +63,7 @@ check() { # path cap tier
 
 # --- HELD: decomposed 08-08-26, MODULARIZATION_ROADMAP Phases 1 and 2 --------
 
-# The Explore tab: a rail and a dispatch, one module per tutorial.
+# The Explained tab: a rail and a dispatch, one module per tutorial.
 #
 # Caps raised 08-08 for the demo contract: every worked example on these pages
 # now carries four required fact attrs (prerequisites, side effects, where the
@@ -71,16 +71,46 @@ check() { # path cap tier
 # example and is the whole point of that commit. The two new tutorials are
 # capped at their as-written size — they are content files with one function
 # each, so the honest cap is "don't grow", not "don't exceed a split target".
-check lib/buster_claw_web/components/explore_panel.ex        104 HELD
-check lib/buster_claw_web/components/explore/phone.ex        460 HELD
-check lib/buster_claw_web/components/explore/cmd.ex          430 HELD
-check lib/buster_claw_web/components/explore/shaders.ex      325 HELD
-check lib/buster_claw_web/components/explore/browser.ex      310 HELD
-check lib/buster_claw_web/components/explore/models.ex       305 HELD
-check lib/buster_claw_web/components/explore/gws.ex          278 HELD
-check lib/buster_claw_web/components/explore/shared.ex       182 HELD
-check lib/buster_claw_web/components/explore/registry.ex     172 HELD
-check lib/buster_claw_web/components/explore/intro.ex        151 HELD
+#
+# `ramshackle.ex` (08-09) is the widest tutorial in the rail and is capped on
+# arrival at its as-written size. The reason it is bigger than `phone.ex` is not
+# sprawl: it is the only tutorial whose subject has NO surface to point at, so
+# where the others can say "click this and look", it has to carry the whole
+# mechanism as prose — five worked cycles, the six selector weights, and the
+# three splice constants. If it ever grows, the seam is the mechanism sections
+# (pipeline, origins, lattice, numbers), which are self-contained and would
+# extract as a sibling cleanly; the five `.example` cycles would not.
+#
+# It was `voice.ex` for part of that day, one tab covering both the cut-up and
+# the chime surface. Splitting it into `studio.ex` + `ramshackle.ex` did NOT
+# shrink it — the cut-up content was always the whole file, and `studio.ex` is
+# new writing rather than an extraction. Recorded here because the pair of caps
+# below otherwise reads like a decomposition, and it was not one.
+#
+# `studio.ex` is the other half of that split and capped on arrival: the library,
+# the routing table, the four editing verbs, and the one gated `sound_apply`.
+#
+# `explained_panel.ex` 104 -> 105 for the eighth tutorial. One line, and worth
+# naming because two Studio modules cite this file BY NAME as the minimal
+# example ("the rail and the dispatch, and nothing else"). It still is: the line
+# is a dispatch line. If a raise here ever buys anything other than an import or
+# a `:if`, that citation is what it is spending.
+#
+# `registry.ex` 172 -> 190 -> 210 across the same day: a feature entry per tab,
+# each a long `body` plus the comment explaining the one entry whose `path`
+# points at the command list rather than at the tab it describes.
+check lib/buster_claw_web/components/explained_panel.ex        105 HELD
+check lib/buster_claw_web/components/explained/ramshackle.ex   565 HELD
+check lib/buster_claw_web/components/explained/studio.ex       307 HELD
+check lib/buster_claw_web/components/explained/phone.ex        460 HELD
+check lib/buster_claw_web/components/explained/cmd.ex          430 HELD
+check lib/buster_claw_web/components/explained/shaders.ex      325 HELD
+check lib/buster_claw_web/components/explained/browser.ex      310 HELD
+check lib/buster_claw_web/components/explained/models.ex       305 HELD
+check lib/buster_claw_web/components/explained/gws.ex          278 HELD
+check lib/buster_claw_web/components/explained/shared.ex       182 HELD
+check lib/buster_claw_web/components/explained/registry.ex     210 HELD
+check lib/buster_claw_web/components/explained/intro.ex        151 HELD
 
 # The Message Machine's three panels.
 check lib/buster_claw_web/components/phone/contact_list.ex   330 HELD
@@ -107,7 +137,7 @@ check lib/buster_claw_web/components/gws/calendar_sync.ex    101 HELD
 # straight back out (`init`, `pending`, `marker`, `decode`, `hydrate`,
 # `place_in_pool`). If a later reader finds real logic in these lines rather than
 # wiring, this raise was wrong and the cut is owed.
-# Raised again 08-08, by 11 lines, for `explore_try_in_chat` — the handler behind
+# Raised again 08-08, by 11 lines, for `explained_try_in_chat` — the handler behind
 # a tutorial's "Try in Chat" button. It belongs here for the same reason
 # `email_contact` above it does: switching the home tab and pushing the composer
 # prefill are both operations on THIS LiveView's own state, and the panel that

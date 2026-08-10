@@ -1,15 +1,15 @@
-defmodule BusterClawWeb.Explore.Registry do
+defmodule BusterClawWeb.Explained.Registry do
   @moduledoc """
-  The Explore tab's registries — the single source of truth every other Explore
+  The Explained tab's registries — the single source of truth every other Explained
   module reads from.
 
   Adding a sub-tab is **one edit in this file**: a `@features` entry, which
   renders the generic stub until its key is listed in `@built` and a panel
-  module plus a dispatch line exist in `BusterClawWeb.ExplorePanel` (the two
+  module plus a dispatch line exist in `BusterClawWeb.ExplainedPanel` (the two
   site tabs are the exception — they have their own `@tabs` entries).
 
-  The rail, the Intro grid, the parent LiveView's `select_explore_tab`
-  whitelist (via `BusterClawWeb.ExplorePanel.tab_keys/0`) and the panel
+  The rail, the Intro grid, the parent LiveView's `select_explained_tab`
+  whitelist (via `BusterClawWeb.ExplainedPanel.tab_keys/0`) and the panel
   dispatch all read from here, so a tab can never exist in one of them and not
   the others. That property is the reason this module is data-only: it has no
   dependency on anything, which is what lets every panel read it without a
@@ -117,6 +117,45 @@ defmodule BusterClawWeb.Explore.Registry do
           "work; other mail is still archived but does not become agent work.",
       path: "/settings",
       path_label: "Open Configuration"
+    },
+    # Studio and Ramshackle are two tabs rather than one because they answer
+    # different questions over the same folders. Studio is "what does this
+    # machine play, and how do I change it" — a library, a routing table, four
+    # editing verbs and the single gated `sound_apply`. Ramshackle is "how do I
+    # build a sentence nobody said" — word indexes, alignment, a matcher, a
+    # lattice. They were one tab for part of 08-09 and it was wrong: someone who
+    # wants a custom chime should never have to read about dynamic time warping
+    # to get one.
+    %{
+      key: "studio",
+      label: "Studio",
+      eyebrow: "Sound",
+      blurb: "The chimes this machine plays — cut them, then decide what they're for.",
+      body:
+        "Working material in sounds/studio/, an installed library in sounds/, " <>
+          "and a routing table saying which event key plays what. Trim, fade, " <>
+          "normalize and join write new sources; one gated verb installs a source " <>
+          "and points a key at it.",
+      path: "/notify-settings",
+      path_label: "Open the sound board"
+    },
+    %{
+      key: "ramshackle",
+      label: "Ramshackle",
+      eyebrow: "The cut-up",
+      blurb: "Sentences spliced out of recordings you already have.",
+      # The one entry whose `path` is not the surface it describes, because that
+      # surface does not exist: Studio → Voice is a placeholder (`Studio.Registry`'s
+      # `@built` is `~w(mix)`) and the cut-up engine is reachable only through
+      # commands. The tutorial opens by saying so; a deep link into an empty tab
+      # would say the opposite.
+      body:
+        "Audio you already have — voicemails, imported files — indexed word by " <>
+          "word, then cut apart and spliced into sentences nobody said. No model, " <>
+          "no training, no network. The engine is complete and command-only; the " <>
+          "Studio tab that will front it is not built.",
+      path: "/cmd-list",
+      path_label: "See every sound_ command"
     }
   ]
 
@@ -125,7 +164,7 @@ defmodule BusterClawWeb.Explore.Registry do
   # returns [] and the `:for` that renders them is vacuous. Left in place rather
   # than deleted — the stub is what makes adding a tab a one-line edit here, and
   # a `@features` entry with no panel must still render something true.
-  @built ~w(models shaders phone browser cmd gws)
+  @built ~w(models shaders phone browser cmd gws studio ramshackle)
 
   # {key, rail label}, in rail order. Intro leads, the two site tabs follow,
   # then the feature tabs in @features order.

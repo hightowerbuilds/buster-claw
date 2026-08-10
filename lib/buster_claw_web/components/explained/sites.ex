@@ -1,4 +1,4 @@
-defmodule BusterClawWeb.Explore.Sites do
+defmodule BusterClawWeb.Explained.Sites do
   @moduledoc """
   The two outbound tabs — busterclaw.lol and notesthatfloat.com.
 
@@ -6,9 +6,9 @@ defmodule BusterClawWeb.Explore.Sites do
   app has a browser, and using it is the point.
   """
   use BusterClawWeb, :html
-  import BusterClawWeb.Explore.Shared
+  import BusterClawWeb.Explained.Shared
 
-  alias BusterClawWeb.Explore.Registry
+  alias BusterClawWeb.Explained.Registry
 
   # busterclaw.lol — headquarters and the future counter for the agent's phone
   # number. Keep vending in future tense until the store is actually live.

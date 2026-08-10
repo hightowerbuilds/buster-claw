@@ -1,19 +1,19 @@
-defmodule BusterClawWeb.Explore.Intro do
+defmodule BusterClawWeb.Explained.Intro do
   @moduledoc """
-  The Explore launcher: what Explore is for, the three-step Get Started
+  The Explained launcher: what Explained is for, the three-step Get Started
   collapsible, and a grid of square tiles — one per sub-tab, in rail order.
 
-  A tile fires the same `select_explore_tab` event as the rail; the content
+  A tile fires the same `select_explained_tab` event as the rail; the content
   lives on the tab it opens, so nothing here duplicates a panel.
   """
   use BusterClawWeb, :html
-  import BusterClawWeb.Explore.Shared
+  import BusterClawWeb.Explained.Shared
 
-  alias BusterClawWeb.Explore.Registry
+  alias BusterClawWeb.Explained.Registry
 
-  # The opening tab is a launcher: what Explore is for, then a grid of square
+  # The opening tab is a launcher: what Explained is for, then a grid of square
   # tiles — one per sub-tab, in rail order. A tile fires the same
-  # `select_explore_tab` event as the rail; the content lives on the tab it
+  # `select_explained_tab` event as the rail; the content lives on the tab it
   # opens, so nothing here duplicates a panel.
   def intro_panel(assigns) do
     assigns = assign(assigns, :tiles, Registry.tiles())
@@ -21,7 +21,7 @@ defmodule BusterClawWeb.Explore.Intro do
     ~H"""
     <div class="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
       <div>
-        <p class="ic-eyebrow">Explore</p>
+        <p class="ic-eyebrow">Explained</p>
         <h2 class="mt-2 font-display text-2xl font-black tracking-tight">
           Learn the machine.
         </h2>
@@ -39,7 +39,7 @@ defmodule BusterClawWeb.Explore.Intro do
             default: returning users see one quiet row, first-run users open it
             once. State is the browser's, not LiveView's — a re-render that
             collapses it just restores the default. --%>
-      <details id="explore-get-started" class="group ic-panel overflow-hidden">
+      <details id="explained-get-started" class="group ic-panel overflow-hidden">
         <summary class="ic-collapse-summary">
           <div>
             <p class="ic-eyebrow">Get started</p>
@@ -118,7 +118,7 @@ defmodule BusterClawWeb.Explore.Intro do
         <button
           :for={tile <- @tiles}
           type="button"
-          phx-click="select_explore_tab"
+          phx-click="select_explained_tab"
           phx-value-tab={tile.key}
           class="ic-panel flex aspect-square flex-col justify-between p-4 text-left transition hover:-translate-y-0.5 hover:border-primary"
         >

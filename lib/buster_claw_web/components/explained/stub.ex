@@ -1,4 +1,4 @@
-defmodule BusterClawWeb.Explore.Stub do
+defmodule BusterClawWeb.Explained.Stub do
   @moduledoc """
   A feature tab before its tutorial exists.
 

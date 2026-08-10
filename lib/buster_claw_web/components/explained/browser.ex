@@ -1,11 +1,11 @@
-defmodule BusterClawWeb.Explore.Browser do
+defmodule BusterClawWeb.Explained.Browser do
   @moduledoc """
   The BrowserControl tutorial — where the agent's hands are (the live tab, the
   ephemeral sandbox, or the Agent Mode window), and the cycles that follow from
   that.
   """
   use BusterClawWeb, :html
-  import BusterClawWeb.Explore.Shared
+  import BusterClawWeb.Explained.Shared
 
   # The BrowserControl tutorial. The load-bearing concept is *where the agent's
   # hands are* — the live tab, the ephemeral sandbox, or the Agent Mode window —

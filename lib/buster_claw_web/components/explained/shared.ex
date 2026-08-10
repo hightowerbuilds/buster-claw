@@ -1,6 +1,6 @@
-defmodule BusterClawWeb.Explore.Shared do
+defmodule BusterClawWeb.Explained.Shared do
   @moduledoc """
-  The leaf components the Explore tutorials are built from — a worked cycle, the
+  The leaf components the Explained tutorials are built from — a worked cycle, the
   prompt the user types, an inline shell command with a copy button, and an
   outbound link.
 
@@ -115,7 +115,7 @@ defmodule BusterClawWeb.Explore.Shared do
         <button
           :if={@try_in_chat}
           type="button"
-          phx-click="explore_try_in_chat"
+          phx-click="explained_try_in_chat"
           phx-value-text={@text}
           data-demo-try-in-chat
           aria-label="Put this prompt in the Chat composer without sending it"

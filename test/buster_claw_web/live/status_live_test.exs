@@ -1468,25 +1468,25 @@ defmodule BusterClawWeb.StatusLiveTest do
         {"calendar", "Calendar"},
         {"phone", "Phone"},
         {"studio", "Studio"},
-        {"explore", "Explore"},
+        {"explained", "Explained"},
         {"activity", "Activity"}
       ]
 
       assert BusterClawWeb.StatusLive.home_tabs() == expected
     end
 
-    test "the Explore sub-tab opens on Intro with a launcher tile per sub-tab",
+    test "the Explained sub-tab opens on Intro with a launcher tile per sub-tab",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      html = render_click(view, "select_home_tab", %{"tab" => "explore"})
+      html = render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      assert has_element?(view, "button[phx-value-tab='explore'].bg-primary")
-      assert has_element?(view, "#home-explore")
+      assert has_element?(view, "button[phx-value-tab='explained'].bg-primary")
+      assert has_element?(view, "#home-explained")
       # Intro is the default sub-tab and carries the what-this-is copy.
       assert has_element?(
                view,
-               "#home-explore button[phx-value-tab='intro'][aria-selected='true']"
+               "#home-explained button[phx-value-tab='intro'][aria-selected='true']"
              )
 
       assert html =~ "Learn the machine."
@@ -1494,8 +1494,8 @@ defmodule BusterClawWeb.StatusLiveTest do
       # The 3-step onboarding moved here from the retired Settings Get Started
       # tab (08-02) — steps only, no quick-chat starters. It's a native
       # <details> collapsible, CLOSED by default (no `open` attribute).
-      assert has_element?(view, "details#explore-get-started")
-      refute has_element?(view, "details#explore-get-started[open]")
+      assert has_element?(view, "details#explained-get-started")
+      refute has_element?(view, "details#explained-get-started[open]")
 
       # Step order: install a supported harness → chat → communications.
       assert [_, one, two, three] =
@@ -1513,7 +1513,7 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       # Every non-Intro sub-tab has a launcher tile (rail button + grid tile
       # both carry phx-value-tab, so each key appears at least twice).
-      for key <- BusterClawWeb.ExplorePanel.tab_keys(), key != "intro" do
+      for key <- BusterClawWeb.ExplainedPanel.tab_keys(), key != "intro" do
         tiles =
           view
           |> render()
@@ -1526,16 +1526,16 @@ defmodule BusterClawWeb.StatusLiveTest do
     test "the site tiles open tabs that carry the copy and the external link",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
       # busterclaw.lol: planned asset model, without claiming vending is live.
-      html = render_click(view, "select_explore_tab", %{"tab" => "site"})
+      html = render_click(view, "select_explained_tab", %{"tab" => "site"})
       assert html =~ "planned"
       assert html =~ "Until number vending opens"
       refute html =~ "The number is the one thing you buy"
       assert html =~ "/browse?url=https%3A%2F%2Fbusterclaw.lol"
 
-      html = render_click(view, "select_explore_tab", %{"tab" => "ntf"})
+      html = render_click(view, "select_explained_tab", %{"tab" => "ntf"})
       assert html =~ "Notes That Float"
       assert html =~ "creative-writing and journaling app"
       assert html =~ "spatial, 3D view"
@@ -1546,9 +1546,9 @@ defmodule BusterClawWeb.StatusLiveTest do
     test "the BusterPhone tab separates recording a message from enqueueing it",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      html = render_click(view, "select_explore_tab", %{"tab" => "phone"})
+      html = render_click(view, "select_explained_tab", %{"tab" => "phone"})
 
       assert html =~ "BusterPhone — an answering machine that can act"
       assert html =~ ~s(href="/phone")
@@ -1634,14 +1634,14 @@ defmodule BusterClawWeb.StatusLiveTest do
     test "the Shaders tab teaches the file contract and that selection is yours alone",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      html = render_click(view, "select_explore_tab", %{"tab" => "shaders"})
+      html = render_click(view, "select_explained_tab", %{"tab" => "shaders"})
 
       assert html =~ "Shaders &amp; Backgrounds"
       assert html =~ ~s(href="/appearance")
-      assert has_element?(view, "#explore-shader-catalog")
-      assert has_element?(view, "#explore-shader-contract")
+      assert has_element?(view, "#explained-shader-catalog")
+      assert has_element?(view, "#explained-shader-contract")
 
       # The catalog is rendered FROM Appearance, so it cannot describe a set of
       # built-ins or a pool size the module no longer has.
@@ -1683,19 +1683,140 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute html =~ "Tutorial in the works"
     end
 
-    test "every Explore demo declares its contract and offers the two safe actions",
+    test "the Studio tab teaches the library, the routing table, and the one gated verb",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
+
+      html = render_click(view, "select_explained_tab", %{"tab" => "studio"})
+
+      assert has_element?(view, "#explained-studio-surfaces")
+      assert has_element?(view, "#explained-studio-safety")
+      assert html =~ ~s(href="/notify-settings")
+
+      for cmd <- ~w(sound_routes sound_list sound_trim sound_fade sound_normalize
+                    sound_concat sound_probe sound_apply) do
+        assert html =~ ~s(data-terminal-command-copy="#{cmd}"),
+               "the Studio tutorial does not offer #{cmd} as a copyable command"
+
+        assert Commands.command_type(cmd) != nil,
+               "tutorial names #{cmd}, which is not in the command catalog"
+      end
+
+      catalog = Map.new(Commands.list_commands(), &{&1.name, &1})
+
+      # The claim this tutorial is built on: of everything the page teaches,
+      # `sound_apply` alone crosses from "a file exists" to "the machine behaves
+      # differently", and it is the one carrying the gate.
+      #
+      # Scoped to the verbs THIS PAGE names, deliberately. The first draft asserted
+      # `sound_apply` was the only gated verb in the whole `sound_*` family, which
+      # was true of HEAD and false the moment the capture work lands `sound_record`
+      # — also gated, for an unrelated reason (it opens the microphone). That
+      # version would have passed here and then failed in someone else's commit,
+      # which is a worse defect than the one it was guarding against.
+      assert Map.fetch!(catalog, "sound_apply") |> Map.get(:gated, false),
+             "the Studio tutorial rests on sound_apply being gated"
+
+      for name <- ~w(sound_routes sound_list sound_trim sound_fade sound_normalize
+                     sound_concat sound_probe sound_import sound_delete
+                     sound_restore_defaults) do
+        refute Map.get(Map.fetch!(catalog, name), :gated, false),
+               "the Studio tutorial teaches #{name} as a verb that writes and stops, " <>
+                 "but it is now gated — the page's safety story needs rewriting"
+      end
+
+      # The counterweight, and it matters as much: the way back must NOT be gated.
+      restore = Map.fetch!(catalog, "sound_restore_defaults")
+      assert restore.type == :mutate
+      refute Map.get(restore, :gated, false), "gating the undo strands whoever needs it"
+
+      # The four editing verbs write a new source and nothing else — none of them
+      # may quietly become the thing that changes what plays.
+      for name <- ~w(sound_trim sound_fade sound_normalize sound_concat) do
+        entry = Map.fetch!(catalog, name)
+        assert entry.type == :mutate
+        assert entry.tier == :restricted
+        refute Map.get(entry, :gated, false), "#{name} writes a new source; it must not be gated"
+      end
+
+      refute html =~ "Tutorial in the works"
+    end
+
+    test "the Ramshackle tab explains a command-only engine and says so",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
+
+      html = render_click(view, "select_explained_tab", %{"tab" => "ramshackle"})
+
+      assert html =~ "Ramshackle Voice"
+      assert has_element?(view, "#explained-ramshackle-pipeline")
+      assert has_element?(view, "#explained-ramshackle-origins")
+      assert has_element?(view, "#explained-ramshackle-lattice")
+      assert has_element?(view, "#explained-ramshackle-numbers")
+
+      # Every command the tutorial names must exist — the same contract the other
+      # tutorials carry. This one leans on it harder than most: the tab has no
+      # surface, so the verbs ARE the feature and a renamed one would leave the
+      # page teaching a command that cannot be run.
+      for cmd <- ~w(sound_corpus sound_transcript_words sound_import sound_align
+                    sound_find sound_sentence sound_index_search sound_assemble
+                    sound_index_words sound_probe) do
+        # Anchored on the copy attribute rather than on `<code>#{cmd}</code>`:
+        # this tab names every verb through `<.copy_command>`, which renders a
+        # classed `<code>` beside a copy button. Asserting the attribute proves
+        # the stronger thing anyway — the command is not merely mentioned, it is
+        # offered in a form the reader can lift straight into a terminal.
+        assert html =~ ~s(data-terminal-command-copy="#{cmd}"),
+               "the Voice tutorial does not offer #{cmd} as a copyable command"
+
+        assert Commands.command_type(cmd) != nil,
+               "tutorial names #{cmd}, which is not in the command catalog"
+      end
+
+      # The Studio -> Voice placeholder tripwire belongs here and is HELD for
+      # one commit: it asserts against `BusterClawWeb.Studio.Registry`, which is
+      # another session's module and not in HEAD yet. Restoring it is step 4 of
+      # the agreed landing order -- it passes once the Studio shell lands.
+      assert html =~ "no screen for this yet"
+
+      # sound_sentence writes a SOURCE and nothing else. The tutorial promises
+      # that twice, so assert the verb has not quietly grown a routing side
+      # effect: it must stay a restricted mutation rather than a trigger.
+      sentence = Map.fetch!(Map.new(Commands.list_commands(), &{&1.name, &1}), "sound_sentence")
+      assert sentence.type == :mutate
+      assert sentence.tier == :restricted
+
+      refute html =~ "Tutorial in the works"
+    end
+
+    test "every Explained demo declares its contract and offers the two safe actions",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
       # The four fact rows are required attrs on `<.example>`, so a demo missing
       # one is a compile warning rather than a passing test. What this asserts is
       # the other half: that the rows actually REACH the page, on every tab that
       # has demos, and that the two safe actions ride along with each prompt.
-      tabs = ~w(models shaders phone browser cmd gws)
+      #
+      # Derived, not listed. This was a hardcoded `~w(models shaders phone
+      # browser cmd gws)` until 08-09, and the Ramshackle Voice tab landed
+      # outside it — a seventh tutorial that this test went on passing without
+      # ever rendering. A list of tabs maintained by hand is a guard that goes
+      # quietly stale the moment the rail grows, which is the whole failure mode
+      # `Explained.Registry` exists to prevent everywhere else.
+      #
+      # Intro is a launcher and the two site tabs are outbound links, so neither
+      # carries demos; a stub tab has none either, by definition.
+      stubs = Enum.map(BusterClawWeb.Explained.Registry.stubs(), & &1.key)
+      tabs = BusterClawWeb.ExplainedPanel.tab_keys() -- (~w(intro site ntf) ++ stubs)
+
+      assert length(tabs) >= 8, "the demo-contract sweep lost tabs instead of gaining them"
 
       for tab <- tabs do
-        html = render_click(view, "select_explore_tab", %{"tab" => tab})
+        html = render_click(view, "select_explained_tab", %{"tab" => tab})
 
         facts = Regex.scan(~r/data-demo-facts/, html)
         assert facts != [], "the #{tab} tutorial has no worked demos"
@@ -1708,19 +1829,19 @@ defmodule BusterClawWeb.StatusLiveTest do
                    "#{length(rows)} #{field} rows"
         end
 
-        # Copy prompt is always available; nothing on an Explore tab submits.
+        # Copy prompt is always available; nothing on an Explained tab submits.
         assert html =~ "Copy prompt",
                "the #{tab} tutorial has no copyable prompt"
 
         refute html =~ ~s(phx-click="send"),
-               "an Explore tutorial must never offer to submit anything"
+               "an Explained tutorial must never offer to submit anything"
       end
     end
 
     test "Try in Chat prefills the composer and does not submit", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
-      render_click(view, "select_explore_tab", %{"tab" => "cmd"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
+      render_click(view, "select_explained_tab", %{"tab" => "cmd"})
 
       # Clicking the button on a real tutorial prompt: it switches to Chat and
       # pushes the prefill event. Prefill only — the hook fills the input and the
@@ -1736,17 +1857,17 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       # A forged or oversized payload is refused rather than crashing the page —
       # same posture as the sub-tab whitelist beside it.
-      render_click(view, "explore_try_in_chat", %{"text" => String.duplicate("x", 3000)})
-      render_click(view, "explore_try_in_chat", %{})
+      render_click(view, "explained_try_in_chat", %{"text" => String.duplicate("x", 3000)})
+      render_click(view, "explained_try_in_chat", %{})
       assert has_element?(view, "#home-agent-chat")
     end
 
     test "the GWS unattended cycle does not offer to paste an email into Chat",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      html = render_click(view, "select_explore_tab", %{"tab" => "gws"})
+      html = render_click(view, "select_explained_tab", %{"tab" => "gws"})
 
       # That cycle's prompt is mail from a trusted sender, and the lesson is that
       # the trigger is the mail — offering "Try in Chat" on it would teach the
@@ -1764,9 +1885,9 @@ defmodule BusterClawWeb.StatusLiveTest do
     test "the Models tab teaches the shape: unset, per surface, and the floor",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      html = render_click(view, "select_explore_tab", %{"tab" => "models"})
+      html = render_click(view, "select_explained_tab", %{"tab" => "models"})
 
       assert html =~ "Models — whose model, whose bill, and which surface"
       assert html =~ "ASKED PER SURFACE, FIRST MATCH WINS"
@@ -1826,9 +1947,9 @@ defmodule BusterClawWeb.StatusLiveTest do
     test "the Gmail/GWS tab is a real tutorial: prompts, real commands, no stub line",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      html = render_click(view, "select_explore_tab", %{"tab" => "gws"})
+      html = render_click(view, "select_explained_tab", %{"tab" => "gws"})
 
       # The six cycles, prompt-first.
       assert html =~ "The morning brief"
@@ -1892,26 +2013,26 @@ defmodule BusterClawWeb.StatusLiveTest do
     test "the Command List tab is the atlas: renamed, diagrammed, real commands",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      html = render_click(view, "select_explore_tab", %{"tab" => "cmd"})
+      html = render_click(view, "select_explained_tab", %{"tab" => "cmd"})
 
       # Renamed from "Cmd & Promptship" (operator, 08-02).
       assert html =~ "Command List"
       refute html =~ "Promptship"
 
       # The taxonomy is rendered from the catalog's three independent axes.
-      assert has_element?(view, "#explore-command-taxonomy")
-      assert has_element?(view, "#explore-command-operation-types")
-      assert has_element?(view, "#explore-command-trust-tiers")
-      assert has_element?(view, "#explore-command-policy-flags")
+      assert has_element?(view, "#explained-command-taxonomy")
+      assert has_element?(view, "#explained-command-operation-types")
+      assert has_element?(view, "#explained-command-trust-tiers")
+      assert has_element?(view, "#explained-command-policy-flags")
 
       commands = Commands.list_commands()
       types = Enum.frequencies_by(commands, & &1.type)
       tiers = Enum.frequencies_by(commands, & &1.tier)
       gated = Enum.count(commands, &Map.get(&1, :gated, false))
 
-      assert element(view, "#explore-command-total") |> render() =~ to_string(length(commands))
+      assert element(view, "#explained-command-total") |> render() =~ to_string(length(commands))
       assert html =~ "#{Map.fetch!(types, :read)} read"
       assert html =~ "#{Map.fetch!(types, :trigger)} trigger"
       assert html =~ "#{Map.fetch!(types, :mutate)} mutate"
@@ -1928,7 +2049,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert html =~ ~s(role="img")
 
       # The six examples. Cycle 2 was "The market at a glance" until 08-08, when
-      # the operator took trading out of what Explore teaches. The finance_*
+      # the operator took trading out of what Explained teaches. The finance_*
       # commands still exist and are still on /cmd-list — the atlas simply stopped
       # leading a first-time user there, so this asserts the market cycle is GONE
       # rather than merely that the notebook one is present.
@@ -1979,9 +2100,9 @@ defmodule BusterClawWeb.StatusLiveTest do
     test "the BrowserControl tab teaches the three surfaces and the payment gate",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      html = render_click(view, "select_explore_tab", %{"tab" => "browser"})
+      html = render_click(view, "select_explained_tab", %{"tab" => "browser"})
 
       # The three-surfaces diagram and its load-bearing labels.
       assert html =~ "YOUR LIVE TAB"
@@ -2023,37 +2144,37 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute html =~ "Tutorial in the works"
     end
 
-    # The Trading tutorial left Explore on 08-08 with the surface it taught.
+    # The Trading tutorial left Explained on 08-08 with the surface it taught.
 
-    test "an unknown Explore sub-tab key is refused, not crashed on", %{conn: conn} do
+    test "an unknown Explained sub-tab key is refused, not crashed on", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
-      # The rail's whitelist is ExplorePanel.tab_keys/0; a forged key leaves the
+      # The rail's whitelist is ExplainedPanel.tab_keys/0; a forged key leaves the
       # current sub-tab in place.
-      render_click(view, "select_explore_tab", %{"tab" => "../../etc"})
+      render_click(view, "select_explained_tab", %{"tab" => "../../etc"})
 
       assert has_element?(
                view,
-               "#home-explore button[phx-value-tab='intro'][aria-selected='true']"
+               "#home-explained button[phx-value-tab='intro'][aria-selected='true']"
              )
     end
 
-    test "the Explore sub-tab selection survives a glance at Chat", %{conn: conn} do
+    test "the Explained sub-tab selection survives a glance at Chat", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       # The assign lives in StatusLive, not the `:if`-discarded panel — so an
       # open tutorial must still be open after a round-trip through Chat.
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
-      render_click(view, "select_explore_tab", %{"tab" => "browser"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
+      render_click(view, "select_explained_tab", %{"tab" => "browser"})
       render_click(view, "select_home_tab", %{"tab" => "chat"})
-      refute has_element?(view, "#home-explore")
+      refute has_element?(view, "#home-explained")
 
-      render_click(view, "select_home_tab", %{"tab" => "explore"})
+      render_click(view, "select_home_tab", %{"tab" => "explained"})
 
       assert has_element?(
                view,
-               "#home-explore button[phx-value-tab='browser'][aria-selected='true']"
+               "#home-explained button[phx-value-tab='browser'][aria-selected='true']"
              )
     end
   end

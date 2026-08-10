@@ -1,13 +1,13 @@
-defmodule BusterClawWeb.Explore.Cmd do
+defmodule BusterClawWeb.Explained.Cmd do
   @moduledoc """
   The Command List tutorial — the atlas of the command surface: anatomy
   (operation type / trust tier / policy flag), the funnel diagram, then worked
   examples per non-GWS family.
   """
   use BusterClawWeb, :html
-  import BusterClawWeb.Explore.Shared
+  import BusterClawWeb.Explained.Shared
 
-  alias BusterClawWeb.Explore.Registry
+  alias BusterClawWeb.Explained.Registry
 
   # The Command List tutorial: the atlas of the command surface. Anatomy first
   # (operation type / trust tier / policy flag), then the funnel diagram and examples
@@ -28,13 +28,13 @@ defmodule BusterClawWeb.Explore.Cmd do
       </div>
 
       <div
-        id="explore-command-taxonomy"
+        id="explained-command-taxonomy"
         class="flex flex-col gap-3 text-sm leading-relaxed text-base-content/80"
       >
         <p>
           Buster Claw's agent-addressable backend operations share one canonical
           set of
-          <span id="explore-command-total" class="font-mono font-bold">{@command_stats.total}</span>
+          <span id="explained-command-total" class="font-mono font-bold">{@command_stats.total}</span>
           commands. Some UI-only work — parts of Appearance and Studio, say —
           deliberately stays outside that surface. You do not memorize the
           commands: say outcomes in Chat and let the agent select them. The live,
@@ -47,19 +47,19 @@ defmodule BusterClawWeb.Explore.Cmd do
         </p>
         <p>Each command carries three independent pieces of metadata:</p>
         <ul class="ic-unfold" style="list-style: none; padding-left: 0;">
-          <li id="explore-command-operation-types">
+          <li id="explained-command-operation-types">
             <span class="font-mono font-bold text-base-content">operation type</span>
             — {@command_stats.read} read, {@command_stats.trigger} trigger, and {@command_stats.mutate} mutate. A read does not change app state, but it
             may still contact a service such as Google, a broker, or the public web.
           </li>
-          <li id="explore-command-trust-tiers">
+          <li id="explained-command-trust-tiers">
             <span class="font-mono font-bold text-base-content">trust tier</span>
             — {@command_stats.safe} safe and {@command_stats.restricted} restricted.
             The tier controls which callers may invoke a command; it does not say
             whether network traffic occurs. Restricted commands require a trusted
             path.
           </li>
-          <li id="explore-command-policy-flags">
+          <li id="explained-command-policy-flags">
             <span class="font-mono font-bold text-primary">policy flag</span>
             — {@command_stats.gated} commands are additionally <code>gated</code>.
             An autonomous run working untrusted-origin content cannot execute one;
@@ -252,7 +252,7 @@ defmodule BusterClawWeb.Explore.Cmd do
 
       <%!-- Cycle 2 was "The market at a glance" (finance_quote/news/fundamentals/
             filings) until 08-08, when the operator called it: trading is not part
-            of what Explore teaches any more. The finance_* commands still exist and
+            of what Explained teaches any more. The finance_* commands still exist and
             are still on /cmd-list — they simply stopped being one of the six things
             the atlas puts in front of a first-time user. The notebook replaced it
             because it carries a better lesson: two write verbs that look alike and

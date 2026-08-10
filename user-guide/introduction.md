@@ -36,7 +36,7 @@ The dock at the bottom switches between five surfaces:
 
 - **Home** — the main screen, with its own row of sub-tabs: **Chat** (talk to
   your agent), **Notes** (your Markdown notebook), **Calendar**, **Phone**
-  (BusterPhone's message machine), **Studio** (sound editing), **Explore**
+  (BusterPhone's message machine), **Studio** (sound editing), **Explained**
   (guided tours of each feature), and **Activity** (the one log of what your
   agent did).
 - **Workspace** — file browser for everything Buster Claw keeps (your
