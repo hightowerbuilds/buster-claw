@@ -377,7 +377,7 @@ Apple's live docs before acting on it** — Apple changes these pages without no
 - [Eclectic Light — Gatekeeper & notarization in Sequoia](https://eclecticlight.co/2024/08/10/gatekeeper-and-notarization-in-sequoia/)
 
 **In-repo cross-references:** `BUILD.md` · `docs/DESKTOP_PACKAGING.md` · `docs/QUALITY.md` ·
-`docs/LOCAL_TRUST.md` · `phone-maps/BUSTERPHONE_ROADMAP.md` ·
+`docs/LOCAL_TRUST.md` · `BUSTERPHONE_ROADMAP.md` ·
 `TRADING_TAB_CRITICAL_REVIEW_ROADMAP.md` · `LEFTOVERS.md`
 
 ---

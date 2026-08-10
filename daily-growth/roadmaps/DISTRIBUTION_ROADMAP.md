@@ -72,7 +72,7 @@ in-app "get a number" UI · a server-side entitlement check.
 
 At $10–15/mo against a number (~$1–2/mo) plus usage, gross margin is roughly 80–85%.
 
-**The build behind the tier is [`phone-maps/BUSTERPHONE_ROADMAP`](phone-maps/BUSTERPHONE_ROADMAP.md),**
+**The build behind the tier is [`BUSTERPHONE_ROADMAP`](BUSTERPHONE_ROADMAP.md),**
 which is blocked on Clinch Phase 3. Provisioning is not worth writing until
 **IX.4** below says someone wants it.
 

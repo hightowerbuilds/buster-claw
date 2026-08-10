@@ -47,7 +47,7 @@ each other and with the code.** Three things keep that from recurring —
 
 | Spine | Release | Feature | Tail |
 |---|---|---|---|
-| [`LAUNCH_ROADMAP`](LAUNCH_ROADMAP.md) | [`APPLE`](APPLE_ROADMAP.md) · [`RELEASE_GATE`](RELEASE_GATE_ROADMAP.md) · [`TRUST_AND_SUPPORT`](TRUST_AND_SUPPORT_ROADMAP.md) · [`WEBSITE`](WEBSITE_ROADMAP.md) · [`DISTRIBUTION`](DISTRIBUTION_ROADMAP.md) · [`GOOGLE_VERIFICATION`](GOOGLE_VERIFICATION_ROADMAP.md) · [`FRONT_DOOR`](FRONT_DOOR_ROADMAP.md) | [`CLINCH`](CLINCH_ROADMAP.md) · [`STUDIO`](STUDIO_ROADMAP.md) · [`BUSTERPHONE`](phone-maps/BUSTERPHONE_ROADMAP.md) · [`TERMINAL_THEME`](TERMINAL_THEME_ROADMAP.md) · [`TERMINAL_PAINT`](TERMINAL_PAINT_ROADMAP.md) · [`IMAGE_SHADER`](IMAGE_SHADER_ROADMAP.md) | [`QA_BACKLOG`](QA_BACKLOG.md) · [`LEFTOVERS`](LEFTOVERS.md) → [surfaces](LEFTOVERS_SURFACES.md) · [agent core](LEFTOVERS_AGENT_CORE.md) · [platform](LEFTOVERS_PLATFORM.md) |
+| [`LAUNCH_ROADMAP`](LAUNCH_ROADMAP.md) | [`APPLE`](APPLE_ROADMAP.md) · [`RELEASE_GATE`](RELEASE_GATE_ROADMAP.md) · [`TRUST_AND_SUPPORT`](TRUST_AND_SUPPORT_ROADMAP.md) · [`WEBSITE`](WEBSITE_ROADMAP.md) · [`DISTRIBUTION`](DISTRIBUTION_ROADMAP.md) · [`GOOGLE_VERIFICATION`](GOOGLE_VERIFICATION_ROADMAP.md) · [`FRONT_DOOR`](FRONT_DOOR_ROADMAP.md) | [`CLINCH`](CLINCH_ROADMAP.md) · [`STUDIO`](STUDIO_ROADMAP.md) · [`BUSTERPHONE`](BUSTERPHONE_ROADMAP.md) · [`TERMINAL_THEME`](TERMINAL_THEME_ROADMAP.md) · [`TERMINAL_PAINT`](TERMINAL_PAINT_ROADMAP.md) · [`IMAGE_SHADER`](IMAGE_SHADER_ROADMAP.md) | [`QA_BACKLOG`](QA_BACKLOG.md) · [`LEFTOVERS`](LEFTOVERS.md) → [surfaces](LEFTOVERS_SURFACES.md) · [agent core](LEFTOVERS_AGENT_CORE.md) · [platform](LEFTOVERS_PLATFORM.md) |
 
 ---
 
@@ -88,7 +88,7 @@ certificate requested.
 | Notes | `NotesComponent` | SHIPPED | [`LEFTOVERS_SURFACES`](LEFTOVERS_SURFACES.md) — renaming orphans `[[wiki links]]` |
 | Pockets | `PocketsPanel` | SHIPPED | — |
 | Calendar | `CalendarComponent` | SHIPPED | — |
-| Phone | `PhoneComponent` | surface SHIPPED, leg **ACTIVE** | [`BUSTERPHONE`](phone-maps/BUSTERPHONE_ROADMAP.md) |
+| Phone | `PhoneComponent` | surface SHIPPED, leg **ACTIVE** | [`BUSTERPHONE`](BUSTERPHONE_ROADMAP.md) |
 | **Studio → Mix** | `SoundStudioComponent` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](LEFTOVERS_AGENT_CORE.md) — no `sound_*` CLI verbs |
 | **Studio → Voice** | `Studio.Registry` | **PLACEHOLDER** | [`STUDIO`](STUDIO_ROADMAP.md) Parts V–VI |
 | Explained | `ExplainedPanel` | SHIPPED | [`LEFTOVERS_SURFACES`](LEFTOVERS_SURFACES.md) — two errands, five tiles |
@@ -161,7 +161,7 @@ Not surfaces. The machinery every surface sits on.
 | Section | Where | State | Map |
 |---|---|---|---|
 | **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phase 3 next** | [`CLINCH`](CLINCH_ROADMAP.md) |
-| **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg** | [`BUSTERPHONE`](phone-maps/BUSTERPHONE_ROADMAP.md) |
+| **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg** | [`BUSTERPHONE`](BUSTERPHONE_ROADMAP.md) |
 | The relay (Supabase) | `telephony/relay.ex` | SHIPPED | [`LEFTOVERS_PLATFORM`](LEFTOVERS_PLATFORM.md) — confirm the rotated DB password landed |
 | Google Workspace | `Google` (16 modules) | SHIPPED | [`GOOGLE_VERIFICATION`](GOOGLE_VERIFICATION_ROADMAP.md) — restricted scopes, CASA |
 | Operational — GitHub, Sentry, Umami | `Integrations` | SHIPPED | — |
