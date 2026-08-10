@@ -94,4 +94,35 @@ if grep -rnE 'BusterClaw/api_token|buster_claw/api_token' "${DOCS[@]}" >&2; then
   exit 1
 fi
 
-echo "docs drift check: OK (README, docs/, user-guide against CLI + catalog + token source)"
+# --- source of truth 4: how many commands there actually are -----------------
+# Every "N commands" in a live doc must equal the real catalog size. This is a
+# number that cannot be maintained by hand: three sessions add commands to the
+# catalog concurrently, and nobody adding one thinks to grep the prose for a
+# count. It has been wrong twice — the README said 191 and busterclaw.lol said
+# ~160 on 2026-08-10, against a real catalog of 203.
+#
+# Unlike the checks above, a failure here is usually the DOC being stale rather
+# than the code being wrong, so the message says which number to change.
+CATALOG_COUNT=$(wc -l <<<"$CATALOG" | tr -d ' ')
+count_fail=0
+while IFS= read -r hit; do
+  file=${hit%%:*}
+  rest=${hit#*:}
+  line=${rest%%:*}
+  stated=$(grep -oE '[0-9]+' <<<"${rest#*:}" | head -1)
+  if [[ $stated != "$CATALOG_COUNT" ]]; then
+    echo "DRIFT $file:$line: says $stated commands; the catalog has $CATALOG_COUNT" >&2
+    count_fail=1
+  fi
+done < <(grep -rnoE '[0-9]+ commands' "${DOCS[@]}" || true)
+
+if [[ $count_fail -ne 0 ]]; then
+  echo "" >&2
+  echo "A live doc states a command count that no longer matches the catalog." >&2
+  echo "The catalog is the source of truth ($CATALOG_COUNT); update the prose." >&2
+  echo "NOTE: busterclaw.lol states this number too and is NOT covered by this" >&2
+  echo "gate — it lives in another repository. Update it by hand." >&2
+  exit 1
+fi
+
+echo "docs drift check: OK (README, docs/, user-guide against CLI + catalog + token source + $CATALOG_COUNT commands)"
