@@ -70,7 +70,7 @@ defmodule BusterClaw.Appearance do
   #
   # `veil` is bundled and tested but deliberately NOT in @builtin_shaders yet:
   # it cannot be offered until a surface can feed it an image
-  # (IMAGE_SHADER_ROADMAP Phase 3).
+  # (roadmaps/surfaces/IMAGE_SHADER_ROADMAP.md Phase 3).
   @builtin_image_shaders ~w(veil)
 
   @default_colors ["#0e0e0e", "#ff4d1c", "#f4f1ea"]

@@ -62,7 +62,7 @@ in flight for this area?" without opening anything.
 roadmaps/
 ├── SUPERMAP.md ·············· this file — the only index
 ├── shell/ ·················· Part I    TERMINAL_THEME · TERMINAL_PAINT
-├── surfaces/ ··············· Parts II–III  STUDIO · LEFTOVERS_SURFACES
+├── surfaces/ ··············· Parts II–III  STUDIO · IMAGE_SHADER · LEFTOVERS_SURFACES
 ├── agent-core/ ············· Part V    LEFTOVERS_AGENT_CORE
 ├── integrations/ ··········· Part VI   CLINCH · BUSTERPHONE (+NUMBER_VENDING) · GOOGLE_VERIFICATION
 ├── platform/ ··············· Part VII  APPLE · RELEASE_GATE · TRUST_AND_SUPPORT · QA_BACKLOG · LEFTOVERS_PLATFORM
@@ -131,6 +131,7 @@ certificate requested.
 | Widget → Contacts | `BusterClaw.Contacts` | SHIPPED | — |
 | Widget → Notify | `NotifyLive` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — the chime designer |
 | Background shader | `Shaders` | SHIPPED | — |
+| Image-reactive shaders | — | **SCOPED** | [`IMAGE_SHADER`](surfaces/IMAGE_SHADER_ROADMAP.md) |
 | The home screen's primary action | `StatusLive` | SHIPPED, **says the wrong thing** | [`FRONT_DOOR`](distribution/FRONT_DOOR_ROADMAP.md) `VI-a` |
 
 **Studio → Voice is the only unbuilt surface in Home.** The binding constraint is
@@ -184,8 +185,7 @@ Not surfaces. The machinery every surface sits on.
 | Skills | `Skills` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — two seeds uncombed |
 | Memory | `Memory` | SHIPPED | — |
 | Scene3D | `Scene3D` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — polish, waiting on evidence |
-| Shaders | `Shaders` | SHIPPED | — |
-| Image-reactive shaders | — | **SCOPED** | [`IMAGE_SHADER`](IMAGE_SHADER_ROADMAP.md) |
+| Shaders — the authoring machinery | `Shaders` | SHIPPED | — |
 | Library, analyzer, ingest, journal | `Library`, `Analyzer`, `ingest/` | SHIPPED | — |
 
 ---
