@@ -89,28 +89,39 @@ the section tables below point at it from wherever else it applies.**
 
 1. **[The Clinch](#part-vi--integrations)** — Phase 3 next; it unblocks BusterPhone.
 2. **[BusterPhone](#part-vi--integrations)** — the only paid thing.
-3. **[Apple](#part-vii--platform--release)** — `G-2`/`G-2b` **done 08-10**; `G-3`, the first signed build, is next. Budget rejection rounds.
+3. **[Apple](#part-vii--platform--release)** — **a signed DMG exists 08-10** and is with the notary. What is next is not code: **an Apple Silicon Mac.**
 4. **[Studio → Voice](#part-ii--home)** — needs a person at a microphone.
 5. **[The Dialyzer gate](#part-vii--platform--release)** — red on `main`, blocking nothing.
 
-One of those waits on the operator rather than an agent: the `getUserMedia` spike
-needs a permission dialog clicked at a packaged build. A second is coming — `G-4`
-needs an **Intel Mac**, still unidentified, and every exit test runs twice.
+Two of those wait on the operator rather than an agent: the `getUserMedia` spike
+needs a permission dialog clicked at a packaged build, and **`G-4` needs an Apple
+Silicon Mac** — a dependency this repo had recorded backwards until 08-10.
 
 **First movement on the release path since 08-01.** `G-2` and `G-2b` both landed
 08-10: a Developer ID certificate (team `KD977J8NF6`, valid to 2031) and App Store
 Connect notary credentials (key `SAKNAF6YLA`). **All five release secrets are set**,
 `HAVE_APPLE_CERT` is `true`, and CI produces signed builds with no workflow edit.
 
-**Both are the first entries ever in the Apple map's "exercised" column**
-([`APPLE`](platform/APPLE_ROADMAP.md) III.0) — the certificate replayed through
-CI's own import commands, the notary key through a real authenticated call. Each
-verification caught something inspection would not have: a `.p12` macOS cannot
-read, and a `.p8` that had never reached the disk. Four traps in total are
-recorded in III.D and G-2b, including a Sub-CA default that expires in six months.
+**Then the pipeline itself ran, and passed on the first attempt.** A signed `.app`
+and a signed **27 MB x86_64 DMG** were built from current `main`, and six of the
+eight machine-checkable III.J assertions are green: valid signature, hardened
+runtime, full chain to Apple Root CA, `allow-jit` on `beam.smp` itself, native
+single-arch, and **24 of 24 Mach-O objects signed** — a count the map had predicted
+exactly. The DMG is with the notary awaiting a verdict.
 
-**Nothing has been signed, notarized or stapled yet.** Credentials are proven;
-the pipeline they feed is not.
+**The Apple map's "exercised" column went from empty to five marks in one day**
+([`APPLE`](platform/APPLE_ROADMAP.md) III.0), each earned by running the thing.
+
+**Two findings outrank the green checks.** First, **current `main` still packages** —
+the staging assertion held against a tree 254 commits and +50k/−15k lines past the
+last packaged build, which nobody had verified. Second, **the architecture dependency
+was recorded backwards**: the dev machine *is* the Intel Mac, and what is missing is
+an **Apple Silicon** one — the majority slice, never built outside CI, never signed,
+never launched.
+
+**What remains has no prior.** The pipeline was a strong prior and it held; **first
+launch on a machine that did not build the app is not** — the TCC prompt, no-`claude`,
+no-Homebrew and offline paths have never been watched by anyone.
 
 ---
 
@@ -230,7 +241,7 @@ the Voice webhook → set `SUPABASE_URL` / `SERVICE_ROLE_KEY` → call it.
 | Section | Where | State | Map |
 |---|---|---|---|
 | Tauri desktop shell | `desktop/tauri/` | SHIPPED | — |
-| **Apple — sign, notarize, staple** | CI, `scripts/codesign_release.sh` | **ACTIVE — all credentials live 08-10; `G-3` next** | [`APPLE`](platform/APPLE_ROADMAP.md) |
+| **Apple — sign, notarize, staple** | CI, `scripts/codesign_release.sh` | **ACTIVE — signed DMG built 08-10, at the notary; needs an arm64 Mac** | [`APPLE`](platform/APPLE_ROADMAP.md) |
 | **The release gate** | — | **ACTIVE** | [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md) |
 | **Trust claims & support** | `Sentinel`, — | **ACTIVE** | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) |
 | CI gates | `scripts/check_*.sh` | SHIPPED, **one red** | — |

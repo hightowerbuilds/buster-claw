@@ -1,7 +1,7 @@
 # Apple — the complete acceptance path
 
-**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE. G-2 and G-2b done 08-10;
-G-3 is the next action.**
+**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE. G-2/G-2b done and G-3
+signing green 08-10; awaiting the notary, and an Apple Silicon Mac.**
 
 > ### The one-sentence version
 >
@@ -18,9 +18,14 @@ to 2031. Signing is real and its CI import path has been exercised (III.D, G-2).
 notary API (G-2b). **Every release secret is now set** — certificate, password, and
 the three API-key values.
 
-**The one thing to do next: G-3, the first real signed build.** Nothing about
-signing, notarizing or stapling an actual artifact has ever run. **Budget rejection
-rounds** — this is the largest unknown between here and Release 1.
+**A signed x86_64 DMG exists as of 2026-08-10** and is with the notary. The signing
+half of G-3 passed on the first attempt; III.E, III.F and most of III.J are now
+exercised rather than written.
+
+**The one thing to do next: an Apple Silicon Mac.** Everything proven so far covers
+the Intel slice only, and the arm64 slice — most of the user base — has never been
+built outside CI, signed, or launched. See the arch note in III.J; **this map had
+that dependency recorded backwards until 08-10.**
 
 > ### Stable anchors — do not renumber
 >
@@ -34,12 +39,17 @@ rounds** — this is the largest unknown between here and Release 1.
 > The same rule holds for `G-n`: stable, cited from commit messages, re-tagged
 > and re-ordered but never renumbered.
 
-> ### Written versus exercised
+> ### Written versus exercised — substantially closed 2026-08-10
 >
-> **Nothing has ever been signed, notarized, stapled, or opened on a machine that
-> did not build it.** The pipeline is written against Apple's documented
-> behaviour and Livebook's working implementation. That is a strong prior, not
-> evidence. It will be wrong somewhere — budget rejection rounds.
+> This banner used to read *"nothing has ever been signed, notarized, stapled, or
+> opened on a machine that did not build it."* **The first two clauses are now
+> false for x86_64**: a signed DMG exists and is with the notary.
+>
+> **The last clause is still entirely true, on both architectures.** Nothing has
+> been opened on a machine that did not build it, and that is where the remaining
+> risk lives — the TCC prompt, no-`claude`, no-Homebrew and offline paths
+> (`G-9`–`G-15`), plus every human III.J test. The pipeline was a strong prior and
+> it held; **first-launch behaviour has no such prior.**
 
 **Release 1 is this map plus a clean-machine launch.** Everything else in the
 release — the website, telemetry, the trust surface — is Release 2 and lives in
@@ -58,21 +68,22 @@ The single most important distinction in this document.
 | | Written & committed | Exercised against a real cert |
 |---|---|---|
 | **Credential import (III.D)** | ✅ | ✅ **08-10** |
-| Entitlements (III.E) | ✅ | ❌ |
-| OTP tree signing (III.F) | ✅ | ❌ |
-| Two-arch build (III.G) | ✅ | ❌ (built unsigned only) |
+| Entitlements (III.E) | ✅ | ✅ **08-10** — all four keys on `beam.smp` itself |
+| OTP tree signing (III.F) | ✅ | ✅ **08-10** — 24/24 Mach-O, first try |
+| Two-arch build (III.G) | 🟡 | 🟡 **x86_64 signed 08-10; aarch64 never built outside CI** |
 | **Notary credentials (G-2b)** | ✅ | ✅ **08-10** |
-| Notarization + stapling (III.H) | ✅ | ❌ — credentials proven, no artifact submitted |
+| Notarization + stapling (III.H) | ✅ | 🟡 **submitted 08-10**, awaiting verdict |
 | Updater (III.I) | ❌ | ❌ |
-| Exit tests (III.J) | ✅ asserted in CI | ❌ |
+| Exit tests (III.J) | ✅ asserted in CI | 🟡 **6 of 8 machine checks green on x86_64**; the human four unrun |
 
-*The two ✅ in the right column arrived 08-10 and were the first ever.*
+*Every mark in the right column arrived on 08-10; the column was empty that morning.*
 
 **A certificate does not flip this column; running things does.** That was the 08-10
 lesson and it arrived immediately: the certificate existed and the credential row still
 would not have gone green, because the `.p12` macOS produced was one OpenSSL 3 could
-write and `security import` could not read (III.D). **Two rows turned green by being
-replayed against the real thing — the rest are still prose.**
+write and `security import` could not read (III.D). **On 08-10 this column went from zero ✅ to five**, every one earned by running the
+thing rather than reading it. What is left is genuinely external: Apple's verdict, and
+four tests that need a human on hardware.
 
 Do not treat the left column as progress toward the right one; it is a prerequisite for
 *starting* it. The purpose of the left column is that when the certificate arrives, the
@@ -486,16 +497,29 @@ not satisfy Gatekeeper. Verification cannot be turned off.
 Not "it built." These, in order, **on hardware that has never seen the repo**. CI asserts
 the machine-checkable ones already; the rest are human.
 
-**Asserted in CI today:**
+**Asserted in CI today** — and walked by hand against a signed local build on
+**2026-08-10** (x86_64 only; see the arch note below):
 
-- [ ] `codesign --verify --deep --strict --verbose=2` → valid on disk
-- [ ] `codesign -dv --verbose=4` shows `Authority=Developer ID Application` and `runtime` in the flags
+- [x] `codesign --verify --deep --strict --verbose=2` → **valid on disk, satisfies its
+      Designated Requirement**
+- [x] `codesign -dv --verbose=4` → `Authority=Developer ID Application: Luke Hightower
+      (KD977J8NF6)` → `Developer ID Certification Authority` → `Apple Root CA`,
+      `flags=0x10000(runtime)`, `Identifier=lol.busterclaw.desktop`
 - [ ] `spctl -a -t exec -vvv` → **`source=Notarized Developer ID`**, not merely "accepted"
       *(accepted alone is not enough: an unnotarized build is accepted locally because this
       machine signed it)*
+      > **08-10, sharper than expected.** The pre-notarization result is not "accepted" —
+      > it is **`rejected — source=Unnotarized Developer ID`**. Gatekeeper read a genuine
+      > Developer ID signature and refused it *only* for the missing ticket. That is a
+      > better negative control than this line anticipated: it distinguishes "correctly
+      > signed, not yet notarized" from "not really signed", which "accepted" cannot.
 - [ ] `stapler validate` passes on both the `.app` and the `.dmg`
-- [ ] `beam.smp` carries `allow-jit` on its own signature
-- [ ] `lipo -archs` on `beam.smp` matches the runner's arch
+      *(08-10: `does not have a ticket stapled to it` — correct for an unnotarized build)*
+- [x] `beam.smp` carries `allow-jit` on its own signature → **confirmed**, all four
+      entitlements present on `erts-16.3.1/bin/beam.smp` itself, not merely on the outer app
+- [x] `lipo -archs` on `beam.smp` matches the runner's arch → **`x86_64`**, single-arch
+- [x] **Every Mach-O in the bundle verifies** — 24 signed, 0 unsigned. **The map's predicted
+      count was exact**: `find -perm +111` would have signed 17 and missed 7 NIFs.
 
 **Only a human on real hardware can do these:**
 
@@ -508,8 +532,21 @@ the machine-checkable ones already; the rest are human.
 - [ ] **Repeat every line above on the Intel DMG on an Intel Mac**
 
 > **The last line is not a formality.** Two architectures means every exit test runs twice,
-> on two physical machines. Access to an Intel Mac is a scheduling dependency, not a
-> technical one — identify the machine before enrollment clears, not after.
+> on two physical machines.
+>
+> ### The arch dependency was recorded backwards — corrected 08-10
+>
+> This map, and Stage 0e in the release gate, said *"identify the Intel Mac you will run
+> III.J on — still owed."* **The development machine IS the Intel Mac** — an i9-9980HK —
+> and every DMG ever built in this tree is `x64`. Nothing was owed.
+>
+> **What is owed is an Apple Silicon Mac**, and it is the worse gap of the two: the
+> download page is meant to say *"Apple Silicon — most Macs since 2020"*, so the untested
+> slice is the majority one. As of 08-10 the aarch64 build has **never been built outside
+> CI, never signed, and never launched anywhere.**
+>
+> This inverts **R7** too. "Intel is a one-year shelf" is still true, but the practical
+> position today is the reverse: Intel is the only slice with evidence behind it.
 
 ---
 
@@ -556,7 +593,24 @@ a handful of known people; `[R2]` blocks the public download.*
       > regenerate; keys are free and unlimited, and the only cost is that **the Key ID
       > changes**, so all three secrets must be set together or CI fails during
       > notarization complaining about authentication rather than about a mismatch.
-- [ ] **G-3.** Run the signing pipeline for the first time. Expect rejection rounds (III.H).
+- [~] **G-3. IN FLIGHT 08-10.** Signing pipeline run for the first time — **it worked end to
+      end on the first attempt**, which was not the expected outcome. `build_desktop.sh` with
+      `APPLE_SIGNING_IDENTITY` set produced a signed `.app` and a signed 27 MB `x64` DMG;
+      six of the eight machine-checkable III.J assertions are green (III.J). **DMG submitted
+      to the notary**, submission `ea367ea2-c957-4f4a-851b-c460d9d03f3f`, awaiting verdict.
+      **Remaining for G-3: Apple's answer, then `stapler staple`, then re-run `spctl` and
+      confirm it flips to `source=Notarized Developer ID`.**
+      > **What the first run proved beyond signing.** The staging assertion — `bin/buster_claw`
+      > executable and `erts-*` present — **held against a tree 254 commits and +50k/−15k
+      > lines past the last packaged build**. That guard exists because a staging regression
+      > once shipped six days of empty DMGs, and until 08-10 nobody knew whether current
+      > `main` still packaged at all. It does.
+      >
+      > **Two operational notes.** A non-interactive run auto-sets `CI=true` and skips the
+      > DMG's Finder window styling — functional, not pretty; re-run from a real terminal for
+      > an artifact you hand someone. And `notarytool submit --wait` outlived a 10-minute
+      > agent timeout: **the submission survives the client being killed**, so recover with
+      > `notarytool history` rather than resubmitting and burning a second upload.
 - [ ] **G-4.** Pass every **III.J** exit test — **on both architectures, on real hardware.**
 
 ### G-5 — Prove the artifact, not the source **[R1]**
@@ -803,10 +857,11 @@ certificate or real hardware, it says so rather than guessing.
 | **Security is the last settings tab** | `settings_tabs.ex` — 8th of 8, after Get Started, Appearance, Voice, Notify, Integrations, Configuration, Cmd List |
 | **Voice tab is a 58-line dead end** | `voice_live.ex` is 58 lines and tells you the control is elsewhere |
 | **Phone tab is in the dock, unbuilt for a new user** | `phone_live.ex` is 1,275 lines; a new user has no number to give out |
-| **Bundle size unmeasured post-cleanup** | Playwright and the PLTs are gone; nobody has measured what the DMG now weighs |
+| ~~**Bundle size unmeasured post-cleanup**~~ | **Measured 08-10: 27 MB** signed x86_64 DMG |
 | **Two HIGH items, now `G-34`/`G-35`** | Walk a live signed-in checkout and confirm the payment gate fires; send `nosniff` on four pipeline-less media routes |
 | **Full clone-to-DMG never run end to end** | **Half closed 08-01.** `build_desktop.sh` ran end to end locally and produced a working `.app` + DMG that passes both smokes. Never yet run from a *clean clone* — the run reused warm caches, which is the difference that hid BLOCKER-1 for six days (**G-7**) |
-| **The packaged app is verified working** | **New, positive, 08-01.** `smoke_desktop.sh` PASSED against the real bundle: boots, authenticates, completes a full native-bridge round-trip (Phoenix → PubSub → LiveView → JS → Tauri invoke → POST back), renders a live page through the hidden webview, and drives a headless Chrome over CDP from inside the artifact. The Info.plist TCC strings were confirmed **present in the built bundle**, so Tauri's auto-merge works as documented |
+| **The packaged app is verified working** | **REFRESHED 08-10** — rebuilt and *signed* from current `main`, 254 commits and +50k/−15k lines after the 08-01 run. The staging assertion held; see G-3. The row below is the 08-01 evidence, kept because its round-trip claims have not been re-walked. |
+| ~~**The packaged app is verified working**~~ *(08-01 evidence)* | **08-01.** `smoke_desktop.sh` PASSED against the real bundle: boots, authenticates, completes a full native-bridge round-trip (Phoenix → PubSub → LiveView → JS → Tauri invoke → POST back), renders a live page through the hidden webview, and drives a headless Chrome over CDP from inside the artifact. The Info.plist TCC strings were confirmed **present in the built bundle**, so Tauri's auto-merge works as documented |
 
 ---
 

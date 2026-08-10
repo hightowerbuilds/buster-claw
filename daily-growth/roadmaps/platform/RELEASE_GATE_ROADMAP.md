@@ -376,7 +376,7 @@ inherits.*
 | # | Task | State |
 |---|---|---|
 | 0a | Enroll in the Apple Developer Program | **DONE 08-01.** This was the gate on all of Part III |
-| 0e | **Identify the Intel Mac** you will run III.J on | **Still owed**, and it is a scheduling dependency, not an engineering one. Every III.J test runs twice |
+| 0e | ~~**Identify the Intel Mac** you will run III.J on~~ → **Identify an APPLE SILICON Mac** | **Recorded backwards until 08-10.** The dev machine *is* the Intel Mac (i9-9980HK) and every DMG in the tree is `x64`; nothing was owed. What is owed is arm64 — **the majority slice**, never built outside CI, never signed, never launched. Still a scheduling dependency, not an engineering one, and now the last hard blocker on Release 1 |
 
 ### Stage 1 — Release 1: get it signed (this week)
 
