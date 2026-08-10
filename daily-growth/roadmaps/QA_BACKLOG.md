@@ -1,0 +1,246 @@
+# The QA backlog — real, and blocking nothing
+
+**Split out of `LAUNCH_ROADMAP.md` 2026-08-09 · Status: OPEN, unprioritised by design.**
+
+> **Everything here blocks nothing.** That is the entry criterion. If an item
+> blocks a release it belongs in [`RELEASE_GATE_ROADMAP`](RELEASE_GATE_ROADMAP.md)
+> or [`APPLE_ROADMAP`](APPLE_ROADMAP.md); if it is a concrete deferred task tied
+> to one surface it belongs in that surface's leftovers map. This is the middle
+> tier: known QA debt, grouped by area, kept so it stays visible.
+
+**Distinct from `LEFTOVERS`**, which holds *concrete* items someone could do
+today. Several things here still need a design.
+
+---
+
+## Part V — The backlog
+
+**Nothing here blocks the release.** It is kept in this document rather than a separate file
+because the last time this work lived in its own roadmap, four documents disagreed with each
+other and with the code. Promote items into Part IV when they earn it.
+
+### V.1 — Testing gaps
+
+The baseline is genuinely strong for a solo project: four CI jobs (`build`, `rust`, `js`,
+`dialyzer`) plus the release DMG job, zero warnings, and a static ACL lockstep test that
+catches a class of bug that only appears in the packaged app. The gaps are about *where the
+confidence sits*, not volume.
+
+> **Measured 2026-08-01: 2,028 tests, 0 failures, 22 excluded, 32.9s.** Up ~24% from the
+> 07-27 measurement of 1,638. Green.
+>
+> **One thing observed and worth writing down.** An identical run launched *while a
+> saturating Rust compile held the machine* produced **816 failures — every one of them at
+> `Ecto.Adapters.SQL.Sandbox.start_owner!/2`, none in a test body.** Under CPU starvation the
+> SQLite sandbox checkouts time out en masse. It is not a defect and the suite is not flaky
+> on an idle machine, but **a loaded CI runner is the normal case, not the exception**, and
+> this failure presents as 816 unrelated red tests rather than as "the machine was busy."
+> If CI ever goes red that way, this is why. See **T-11**.
+
+| # | Gap | Why it matters | Status |
+|---|---|---|---|
+| T-1 | No test proves the packaged app boots | BLOCKER-1 shipped through five green CI jobs | **Promoted → G-5** |
+| T-2 | `:browser_engine` tests excluded by default **and in CI** | One of the largest subsystems; its tests never run automatically | Backlog — run nightly |
+| T-3 | No exhaustive tier×command authorization matrix | The trust model is the differentiator; it deserves a generated test over the whole catalog | Backlog — *half a day* |
+| T-4 | No end-to-end LiveView/browser tests | A stale-DOM defect on a deleted surface was invisible to server-rendered-HTML assertions — the class of bug outlived the surface | Backlog |
+| T-5 | No migration test from a real 0.1.0 database | First update to a real user is the first time this runs | **Partly promoted → G-20** |
+| T-6 | Smoke scripts manual, not in CI | Only checks that exercise production ACL resolution end to end | **Promoted → G-6** |
+| T-7 | No soak/leak test | Always-on app, continuous render loops, long-lived LiveViews | Backlog |
+| T-8 | No prompt-injection regression suite | The most likely real-world attack on an agent runtime | Backlog — **highest-value backlog item** |
+| T-9 | Rust `browser/` modules thinly tested relative to size | 934-line `mod.rs`, 582-line `js.rs` | Backlog |
+| T-11 | Sandbox checkout times out under CPU starvation | Green on an idle machine; 816 sandbox-checkout failures under a saturating parallel build. Presents as mass unrelated red, not as "the runner was busy" — and a gate that goes red for unreproducible reasons teaches you to ignore red | **New 08-01** — low priority, but pin `max_cases` or raise the ownership timeout before it bites in CI |
+
+**Principles worth keeping.** *Test at the boundary that fails* — 131 passing tests on the
+old Trading surface, concentrated on prompt text and pure math, missed a stale-DOM defect and
+an unsafe execution boundary. The surface is gone; the lesson is not. And **every bug found in QA gets a regression test before the fix is merged**; the
+QA lists are one-time discovery, the tests are what make them permanent.
+
+### V.2 — Per-surface QA
+
+Worth doing before a wide audience; not worth blocking the first download.
+
+**Home** — chat send/stream/interrupt/error; a hung run is killed and reported · shader
+degrades to blank canvas without an error · SVG sketchpad refuses malicious SVG (script tags,
+external refs, `foreignObject`) · notify timer/alarm/reminder each fire and dismiss · journal
+note survives restart.
+
+**Terminal** — PTY survives tab switches and window resize · multiple terminals ·
+close-with-busy-process confirmation · ANSI/unicode/wide-glyph rendering · large scrollback
+doesn't wedge the UI · `./buster-claw` resolves inside the workspace on an installed build.
+
+**Browser** — navigate/back/forward/reload/tabs/⌘1–9/⌘W/⌘F · tab eviction at the cap ·
+popup-as-tab · download + reveal in Finder · bookmarks round-trip with folders · history dedup
+and clear · agent co-presence badge fires on every agent-driven call · **SSRF guard refuses
+`localhost`, `127.0.0.1`, `169.254.169.254`, an IPv6 literal, and a DNS-rebinding host** ·
+Agent Mode run starts/streams/stops and survives the command call that started it.
+
+**Workspace** — file tree lists/opens/renders markdown · drag-and-drop import · a file deleted
+on disk disappears without an error · path traversal via a crafted filename is refused.
+
+**Phone** — inbound call → greeting → record → transcript → Library doc + `/phone` row ·
+voicemail audio plays · a call while the Mac is asleep drains on wake · inbound SMS from a
+trusted number creates a Dispatch item, from a stranger archives only · outbound `sms_send`
+respects the kill switch and daily cap · empty states read as "nothing yet," not broken.
+
+**Calendar / Integrations / Security / Settings / Manual** — calendar handles all-day,
+multi-day, and empty months · GitHub/Sentry/Umami manual poll, good-signature webhook,
+**bad-signature webhook must fail closed**, **no-configured-secret webhook must fail closed** ·
+Security feed streams live, redacts secrets, paginates at 10k rows · every settings toggle
+persists across restart · every Manual link resolves.
+
+### V.3 — The agent loop
+
+`on-duty` → claimed → work → `dispatch reply` → `done` end to end · the STOP file halts an
+unattended shift within one tick · the crash-loop brake trips instead of burning tokens · the
+budget cap stops the shift and records a Sentinel event · killing the agent mid-run reclaims
+the orphaned item · a wall-clock timeout kills the **whole process group** (no orphaned Bash
+or MCP grandchildren) · `shift/Dispatch.md` matches the database after every state change ·
+two agents cannot claim the same item · a malicious dispatch item body cannot escalate the
+caller's trust tier.
+
+### V.4 — Google Workspace
+
+Connect/disconnect/reconnect; a revoked token surfaces a clear reconnect prompt · refresh-token
+expiry produces a real message, not a silent failure · Gmail sync with 0, 1, and thousands of
+messages · `gmail_send` from an `agent_untrusted` caller is refused and queued · attachments,
+unicode subjects, HTML-only mail · a trusted sender's mail queues, a stranger's archives ·
+Calendar/Drive/Docs/Contacts each survive an empty account and a rate-limited response.
+
+### V.5 — Security and trust
+
+**Tier matrix, exhaustively:** every catalog command against each of `trusted` /
+`agent_untrusted` / `agent` / `mcp` — **automate this (T-3)** · a `restricted` command from
+`mcp` is refused, recorded, and **not executed** · operator `policy.md` rules tighten but can
+never loosen a baseline protection · Sentinel redaction catches an API key, a Bearer token, an
+OAuth `code` in a URL, and a card number — **by key name *and* by value shape** · a phone PIN
+never appears in `security_events` in the clear · CSP holds on every page · **prompt injection:
+a hostile web page, a hostile email body, and a hostile SMS body each fail to make the agent
+run a gated command.**
+
+### V.6 — Durability, performance, accessibility
+
+**Durability** — every migration runs forward on a 0.1.0-seeded database · kill the app
+mid-write with no corruption or lost dispatch item · the workspace can be moved and found ·
+deleting the workspace under a running app errors rather than crash-loops · a full-disk
+condition is handled · encrypted secrets survive restart and a wrong key fails closed · SQLite
+WAL files are checkpointed.
+
+**Performance** — idle CPU with a continuous render loop · battery over an hour idle · memory
+after 8 hours · per-row shaders under 100+ rows · cold start to interactive · a 10k-row
+Security feed and 5k-item Dispatch queue still render.
+
+**Accessibility** — full keyboard navigation · VoiceOver reads the audit feed and chat ·
+contrast passes for hazard-orange on both backgrounds · gain/loss and success/refusal never
+communicated by colour alone · `prefers-reduced-motion` disables the shader.
+
+### V.7 — Platform matrix
+
+| | Apple Silicon | Intel |
+|---|---|---|
+| **Oldest supported macOS** | determine (**G-16**) | determine (**G-16**) |
+| **Current macOS** | required | required |
+| **Latest beta macOS** | before each release | best effort |
+
+Also: a non-admin user account, and a non-English locale with a non-US date format.
+
+### V.8 — Seeded defaults have no upgrade path
+
+**Status: open, needs a design. Inherited 08-03 from `CHART_BUILDER_ROADMAP.md`
+(archived) — the operator flagged it as app-wide work coming soon.**
+
+`maybe_write` — `File.exists?` → skip — is the house seeding idiom, and it is
+used far more widely than the skill that surfaced it. Every one of these is
+frozen at whatever version first touched that install; improving a default
+reaches new installs only:
+
+| Seeder | Files |
+|---|---|
+| `Skills.ensure/0` | `save-note`, `shader-designer`, roster |
+| `Jobs.ensure/0` | `mail-triage`, `voicemail-triage`, `sms-triage`, roster |
+| `Jobs.seed_trusted_senders/0` | **`memory/policy.md`**, `trusted-email-senders.md`, `trusted-phone-numbers.md` |
+| `Jobs.seed_agent_settings/0` | agent settings |
+| `TerminalCommands.ensure/0` | roster, command catalog |
+
+**Note what is on that list.** `memory/policy.md` is the operator's security
+policy, and `trusted-email-senders.md` / `trusted-phone-numbers.md` gate the
+autonomous email and phone loops. If a *default* in any of those turns out to be
+too permissive, **no shipped install ever receives the tightening.** That moves
+this from a polish item to something V.5 has an interest in: it is the delivery
+half of every default protection we ship. The command catalog has the same
+shape — a newly gated command added to the default catalog does not reach an
+install that already seeded one.
+
+**Why this belongs in a release document even though it blocks nothing.**
+III.I ships a patch channel for the *binary*. This is its content twin, and the
+two have opposite defaults: code is replaced on update, workspace files never
+are. So **whatever seeded defaults go out in R1 are what that cohort keeps
+permanently**, and R1's cohort is the handful of people whose experience we most
+want to be able to fix. The cost is asymmetric in time — cheap to design now,
+and after R1 it means asking real users to delete files by hand.
+
+**This is not hypothetical.** Caught 08-03 while reconciling the `chart-builder`
+palette against the `dataviz` method: the shipped-by-default palette contained
+colours that *failed* the OKLCH lightness band for a dark surface. Had that skill
+gone out a day earlier, every install would have kept the failing palette
+forever. The fix on this machine was `rm` on the dev-workspace copy — which is
+exactly the manual step that does not scale past one machine.
+
+**Why it is a design and not a chore.** Never overwriting is *correct* for
+operator-edited files — file-first, git-diffable, operator-owned is the whole
+point of the skills layer — and *wrong* for an untouched default. Those two
+cases are currently indistinguishable, and that is the actual problem. The
+design has to answer:
+
+- How do you tell an operator's edit from an untouched default? Checksum the
+  body we seeded, or carry a version in the frontmatter?
+- Does an upgrade replace, merge, or write a `.new` beside the file and *say so*?
+- Does a skill carry a version at all, and who bumps it?
+
+**The one outcome worse than staleness is silently clobbering an operator's
+edited file.** Design against that first — and note the security files raise the
+stakes on the opposite side too: leaving a too-permissive `policy.md` in place
+because the operator once touched it is its own failure. A baseline that
+tightens may need to be enforced in code rather than seeded as text, which is a
+real answer this design is allowed to reach.
+
+Whatever the mechanism, apply it once across the whole table above rather than
+per-seeder — six `ensure/0` functions drifting apart is how this became invisible
+in the first place.
+
+### V.9 — Trading: the model in the financial data path — **CLOSED BY DELETION 08-08**
+
+**Was: open, needs a design.** Inherited 08-03 from
+`TRADING_TAB_CRITICAL_REVIEW_ROADMAP.md` (archived); resolved by removing the
+surface rather than by designing around it (`293f47f`).
+
+Three findings were live when it closed, and they are worth keeping as a record of
+what a money surface costs to hold — **not** as a to-do:
+
+1. **A model transcribed money into the permanent ledger.** The account snapshot
+   was a Claude turn emitting JSON, filed daily by `Portfolio.Recorder` into
+   durable history. Careful prose is not a parser, and the broker keeps no value
+   history, so a number that landed wrong was permanent.
+2. **Submission travelled through a Claude run.** The struct was the source of
+   truth and the operator had confirmed the parsed values, but the last hop was a
+   model turn, and "do not double-submit" was prose rather than an idempotency
+   guarantee.
+3. **Last-four was the account identity, everywhere.** The archived review
+   recorded a first-party MCP client with OAuth, PKCE and HMAC account keys as
+   done. **None of it was ever in the code** — verified 08-03, and worth
+   remembering as the sharpest instance of a checkbox outrunning a tree.
+
+4. **Irreversibility asymmetry decided the design, and was noticed too late.** The
+   ledger had to be durable because the broker published no history; the bar cache
+   was disposable because a lost bar is one tool call away. **Which half a datum
+   falls in should decide its schema before anything else does.**
+
+**The generalisable lesson, which outlives the surface:** a checkbox in an
+archived roadmap is a claim about the past, and the tree is the only authority on
+the present. Finding #3 was found by grepping, not by reading the roadmap.
+
+Full detail in `daily-growth/MM-DD-YY-Summary/08-08-26-summary.md`. The trading
+sections of `archive/08-08-26-busterclaw-critical-review.md` were excised on 08-08 with the
+surface itself; what they taught is recorded here.
+
+---
+
