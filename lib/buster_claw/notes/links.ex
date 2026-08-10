@@ -11,13 +11,18 @@ defmodule BusterClaw.Notes.Links do
 
   Everything here runs only over the parts of a document that are **not** code.
   A note about this very feature will contain a wiki link inside a fence, and
-  turning that into a link would corrupt the sample it exists to show. Fenced
-  blocks (``` and ~~~, including indented and longer runs) and inline code spans
-  are excluded before any scanning happens — which is also why `replace/2` lives
-  here rather than being a `String.replace/3` at the call site.
+  counting that as a link would make it a backlink of itself. Fenced blocks
+  (``` and ~~~, including indented and longer runs) and inline code spans are
+  excluded before any scanning happens — which is why the fence walk below lives
+  here rather than being a `Regex.scan/2` at the call site.
 
-  `replace/2` is byte-preserving outside the substitutions themselves: lines are
-  classified, rewritten in place, and rejoined.
+  ## What used to be here
+
+  `replace/2` rewrote wiki links into `#note/…` Markdown links for the Notes
+  preview pane. `daily-growth/archive/08-09-26-notes-editor.md` Phase 1 deleted that pane — the editor
+  renders its own Markdown now, and a clicked link reaches
+  `Notes.resolve_link/2` directly with its raw target. Nothing rewrites a
+  document's text any more, which is a better place to be.
   """
 
   # Target stops at ], | or a newline; a label may contain anything but ] and
@@ -45,26 +50,6 @@ defmodule BusterClaw.Notes.Links do
 
   def parse(_body), do: []
 
-  @doc """
-  Rewrite wiki links into ordinary Markdown links the preview can render.
-
-  `resolve` receives a target and returns the note path it names, or `nil`. A
-  resolved link becomes `#note/<path>`; an unresolved one becomes
-  `#note-new/<target>`, which the editor turns into a "create this note" button.
-
-  Fragment hrefs on purpose: the sanitizer strips custom schemes, and a fragment
-  whose click handler never runs is inert — where a `/notes/...` path would be a
-  404 the moment JavaScript fails.
-  """
-  def replace(body, resolve) when is_binary(body) and is_function(resolve, 1) do
-    body
-    |> classify()
-    |> Enum.map_join("\n", fn
-      {:code, line} -> line
-      {:text, line} -> rewrite(line, resolve)
-    end)
-  end
-
   defp scan(text) do
     @link
     |> Regex.scan(text)
@@ -72,27 +57,6 @@ defmodule BusterClaw.Notes.Links do
       [_raw, target] -> %{target: String.trim(target), label: nil}
       [_raw, target, label] -> %{target: String.trim(target), label: String.trim(label)}
     end)
-  end
-
-  defp rewrite(line, resolve) do
-    @inline_code
-    |> Regex.split(line, include_captures: true)
-    |> Enum.map_join(fn chunk ->
-      if code_span?(chunk),
-        do: chunk,
-        else: Regex.replace(@link, chunk, fn _whole, t, l -> markdown_link(t, l, resolve) end)
-    end)
-  end
-
-  defp markdown_link(target, label, resolve) do
-    target = String.trim(target)
-    label = String.trim(label)
-    text = if label == "", do: target, else: label
-
-    case resolve.(target) do
-      nil -> "[#{text}](#note-new/#{URI.encode_www_form(target)})"
-      path -> "[#{text}](#note/#{URI.encode_www_form(path)})"
-    end
   end
 
   defp prose_parts(line) do

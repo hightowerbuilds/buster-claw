@@ -8,6 +8,14 @@ defmodule BusterClawWeb.Notes.Rail do
 
   Below `md` the rail is the whole pane and collapses once a note is open, which
   is the first half of the two-step narrow layout.
+
+  ## Deleting lives here
+
+  Since the operator walk (`daily-growth/archive/08-09-26-notes-editor.md` W2) the only way to delete a
+  note is to right-click its row: the trash can that used to sit beside the
+  writing surface destroyed the file you were looking at, and `data-claw-confirm`
+  made that survivable rather than safe. The list is where a file manager puts
+  it, and a note you are not looking at can be deleted without opening it.
   """
   use BusterClawWeb, :html
 
@@ -143,12 +151,19 @@ defmodule BusterClawWeb.Notes.Rail do
           >
             <.icon name="hero-folder" class="size-3" />{note.heading}
           </p>
+          <%!-- `data-note-row` is the right-click surface, and it carries the
+                path rather than being a bare marker: the menu is rendered once,
+                outside the stream, so the row is the only place the hook can
+                learn which note it is acting on. It duplicates `phx-value-path`
+                deliberately — the switcher and the backlink chips carry that
+                attribute too, and a right-click on those must stay native. --%>
           <button
             id={"open-#{id}"}
             type="button"
             phx-click="select_note"
             phx-value-path={note.path}
             phx-target={@target}
+            data-note-row={note.path}
             aria-current={@selected == note.path && "page"}
             class={[
               "group flex w-full items-center gap-2 rounded-xs px-2.5 py-2 text-left transition",
@@ -186,6 +201,36 @@ defmodule BusterClawWeb.Notes.Rail do
           </button>
         </li>
       </ul>
+
+      <%!-- The rail's right-click menu (W2). Rendered once, positioned and
+            shown by the hook, and under `phx-update="ignore"` because the hook
+            writes the half of the delete button that depends on which row was
+            pressed.
+
+            That button is the editor header's old trash can, moved verbatim:
+            `phx-click`, `phx-target` and the confirm are the server's, and only
+            `phx-value-path` + the message's note name are the hook's. LiveView
+            and `claw_confirm` both read attributes at click time, so nothing
+            here needs `pushEventTo` — which also means the confirmed delete is
+            the exact code path that shipped, not a second one. --%>
+      <div
+        id="notes-ctx"
+        phx-hook="NoteContextMenu"
+        phx-update="ignore"
+        hidden
+        class="fixed z-50 min-w-44 border-2 border-base-content/30 bg-base-100 shadow-lg"
+      >
+        <button
+          id="notes-ctx-delete"
+          type="button"
+          data-ctx-delete
+          phx-click="delete_note"
+          phx-target={@target}
+          class="block w-full px-3 py-2 text-left font-mono text-xs font-bold uppercase text-error transition hover:bg-error/10"
+        >
+          Delete note
+        </button>
+      </div>
     </aside>
     """
   end

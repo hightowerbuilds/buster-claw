@@ -659,6 +659,46 @@ moment to reconsider the pattern rather than the moment to write more prose.
 
 ---
 
+### From `daily-growth/archive/08-09-26-notes-editor.md`, archived 08-09
+
+The Notes editor shipped as a live-preview word processor and was walked and
+accepted. Three items left over, none needing a design.
+
+**What.**
+
+- **Enter continues a list, and Tab nests one.** Pressing Return at the end of
+  `- buy milk` should open `- `, on an empty `- ` should end the list, and Tab
+  should indent a list line. A working, tested implementation of exactly this
+  existed (`assets/js/lib/note_structure.js`, 43 tests) and was **deleted on
+  purpose** — recovering it from git is a five-minute job, and re-deriving it
+  from scratch would be silly.
+- **External links do nothing when clicked.** `[label](url)` renders styled and
+  carries its target as `data-target`, but only `[[wiki links]]` navigate.
+- **Custom undo granularity.** ⌘Z is the browser's and works. A tested history
+  ring with word-level coalescing (`note_history.js`, 37 tests) also exists in
+  git history if per-word steps ever prove too coarse or too fine.
+
+**Why deferred.** All three were casualties of the simplification that finally
+made the editor usable, not of anyone running out of time. Two earlier designs
+failed because they took control away from the browser; the third works because
+it takes almost none. Every item above is an *intercept* — a place where the
+editor overrides the browser again — so each must go back **one at a time, each
+walked in the real app before the next**. Landing them as a batch is precisely
+how the base was lost twice, and a green suite did not catch it either time.
+
+**What makes it expensive later.** Only one of them, and it is the link click:
+a URL survives tokenizing as inert data, so wiring the click **without a scheme
+allowlist turns `[click](javascript:alert(1))` into working script** on a surface
+that renders agent-authored and pasted content. That exact string is already in
+the editor's XSS fixtures, which is the cheap half of the guard; the expensive
+half is remembering why it is there. Wire the check in the same commit as the
+click handler, never after.
+
+The other two cost nothing by waiting — they are conveniences on a surface that
+works without them, and the git objects do not rot.
+
+---
+
 ## Rules of engagement
 
 - An item leaves this file by being **done** or by being **promoted** to a real

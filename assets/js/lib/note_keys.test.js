@@ -1,5 +1,5 @@
 import {expect, test, describe} from "bun:test"
-import {isSaveChord, notesIntent, shouldAnnounceDirty} from "./note_keys.js"
+import {formatChord, isSaveChord, notesIntent, shouldAnnounceDirty} from "./note_keys.js"
 
 describe("isSaveChord", () => {
   test("⌘S and Ctrl+S both save", () => {
@@ -74,5 +74,42 @@ describe("notesIntent", () => {
     expect(notesIntent(key("p"), {switcherOpen: true})).toBe(null)
     expect(notesIntent(null, {})).toBe(null)
     expect(notesIntent({}, {})).toBe(null)
+  })
+})
+
+describe("formatChord", () => {
+  test("the three universal chords, on either platform", () => {
+    expect(formatChord({key: "b", metaKey: true})).toBe("bold")
+    expect(formatChord({key: "i", ctrlKey: true})).toBe("italic")
+    expect(formatChord({key: "k", metaKey: true})).toBe("link")
+  })
+
+  test("capitalization does not change the chord", () => {
+    expect(formatChord({key: "B", metaKey: true, shiftKey: true})).toBe("bold")
+  })
+
+  test("bare letters type letters", () => {
+    expect(formatChord({key: "b"})).toBe(null)
+    expect(formatChord({key: "i"})).toBe(null)
+  })
+
+  test("⌘S stays the save chord and never formats", () => {
+    expect(formatChord({key: "s", metaKey: true})).toBe(null)
+  })
+
+  test("alt-modified chords are left to the OS", () => {
+    expect(formatChord({key: "b", metaKey: true, altKey: true})).toBe(null)
+  })
+
+  test("commands without a chord have none", () => {
+    // Deliberate: eleven of the fourteen toolbar commands are click-only.
+    for (const key of ["h", "1", "l", "o", "t", "q", "e", "r"]) {
+      expect(formatChord({key, metaKey: true})).toBe(null)
+    }
+  })
+
+  test("a missing or keyless event never claims a chord", () => {
+    expect(formatChord(null)).toBe(null)
+    expect(formatChord({metaKey: true})).toBe(null)
   })
 })

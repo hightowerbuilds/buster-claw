@@ -77,3 +77,26 @@ export function shouldAnnounceDirty({dirty, state}) {
 
   return true
 }
+
+// Which formatting command a keydown asks for, or null.
+//
+// Three chords, and only three. ⌘B, ⌘I and ⌘K mean the same thing in every
+// editor a person has used, so claiming them is expected rather than rude. The
+// other eleven toolbar commands get no chord: a shortcut for "numbered list"
+// that nobody can guess is a line in a manual nobody reads, and it costs a
+// keystroke the browser or the OS may want.
+//
+// ⌘S is rejected first for the same reason it is in `notesIntent` — it belongs
+// to the save path, and a near-miss that formats instead of saving would be a
+// genuinely bad surprise.
+const FORMAT_CHORDS = {b: "bold", i: "italic", k: "link"}
+
+export function formatChord(event) {
+  if (!event || typeof event.key !== "string") return null
+  if (!(event.metaKey || event.ctrlKey)) return null
+  if (isSaveChord(event)) return null
+  // ⌥⌘B and friends belong to the OS and to the browser's own menus.
+  if (event.altKey) return null
+
+  return FORMAT_CHORDS[event.key.toLowerCase()] || null
+}

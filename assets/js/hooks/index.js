@@ -32,6 +32,7 @@ import {ChatWindow} from "./chat_window.js"
 import {Composer} from "./composer.js"
 import {NoteEditor} from "./note_editor.js"
 import {NotesKeys} from "./notes_keys.js"
+import {NoteContextMenu, NoteTitle} from "./note_context.js"
 import {ClinchManager, RecoveryKey} from "./clinch.js"
 
 export const Hooks = {
@@ -74,6 +75,8 @@ export const Hooks = {
   SoundPreview,
   NoteEditor,
   NotesKeys,
+  NoteContextMenu,
+  NoteTitle,
   ClinchManager,
   RecoveryKey,
 }

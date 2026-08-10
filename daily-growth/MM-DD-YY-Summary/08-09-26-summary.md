@@ -646,3 +646,83 @@ by re-reading:
 
 **A test that passes on the surface you changed proves less than it looks like it
 does.** Four for four.
+
+---
+
+# Notes became a word processor, on the third try
+
+**One roadmap scoped, shipped, walked three times, and archived** —
+`daily-growth/archive/08-09-26-notes-editor.md`.
+
+The operator's correction opened it: *"I think I led us slightly astray in the
+initial design. We want this to function like a notepad or MS Word-like writing
+processor."* `HOME_ACTIVITY_NOTES_ROADMAP` had shipped a **Markdown vault with an
+editor attached** — a source textarea beside a rendered preview. The ask was the
+other emphasis: **a writing surface whose storage format happens to be Markdown.**
+
+| Shipped | |
+|---|---|
+| Live-preview editor — headings render big and bold, markers hide | Phases 0–1 |
+| A 14-button formatting toolbar, ⌘B/⌘I/⌘K | Phase 2 |
+| Rename by double-clicking the title; delete by right-clicking a rail row | W1, W2 |
+| The preview pane deleted — the editor *is* the preview | D7 |
+| `Links.replace/2` deleted with the pane it served | — |
+
+## The number that matters: three editing designs, two walks failed
+
+Every one of the three defects **passed a full green suite** and was unusable in
+the app:
+
+1. **Phase 1** replaced the focused line's element on every keystroke and restored
+   the caret by offset. Typing felt like it was catching — and the `data-hot`
+   attribute that reveals a line's markers was stripped by its own re-render, so
+   the central behaviour switched itself off the moment you used it.
+2. **Phase 3** kept a parallel model — `docLines`, `decorated`, `rendered`, `hot`
+   — beside the DOM. One stale index made an early return swallow edits, and
+   backspace stopped deleting.
+3. **The simplification** (Part VIII) took the opposite approach and is what
+   ships: **typing writes nothing to the DOM tree.** The browser inserts and
+   deletes characters exactly as it would in a textarea; DOM writes happen only
+   on a full render, on a toolbar command, or when the caret *leaves* a line.
+   Enter, Backspace, IME and ⌘Z work because nothing fights them.
+
+**The fix each time was to take less control, not more.** That is the sentence
+worth carrying to the next interactive surface.
+
+## The bug that was not where it looked
+
+The third walk reported the save chip *"flickering between saved and unsaved in a
+rough manner"*, with a suggested fix of a longer save loop. The cause was not in
+the save path at all: every save reassigned `editor_form`, re-rendering the
+`<textarea>` — and **LiveView will not clobber a *focused* input.** That
+protection had been silently carrying the design until Phase 1 hid the textarea,
+at which point the server's copy started landing mid-keystroke and rebuilding the
+surface under the caret.
+
+`assign_body/2` now records the note's text without re-rendering the field, so
+the diff carries no update for that element at all. **The client owns the draft;
+the server confirms it.** A longer debounce would have made the collision rarer
+and looked like it worked.
+
+## Three vacuous guards, in one feature
+
+Tests that asserted a property the code did not have and passed anyway: the
+preview fence guard after the preview stopped emitting markup; `"hot and cold are
+the same markup"`, which never passed a caret argument; and its own replacement's
+first draft, asserting `lineHtml.length === 2` — **a parameter with a default
+does not count toward `Function.length`**. The lesson is not "write better
+tests": a guard written in the same sitting as the code inherits its blind spot.
+**Break the thing on purpose and watch the test fail.** The toolbar lockstep, the
+`data-hot` guard and the echo guard were each verified that way.
+
+## Also worth recording
+
+- **Three file-disjoint agents ran cleanly** in a tree three sessions were
+  writing to — and two of their modules were deleted hours later because the
+  design they built onto was wrong. **Parallelism multiplies a plan; it does not
+  check one.**
+- The tokenizer's emphasis rule is measured against **Earmark**, the renderer
+  this app actually uses, not CommonMark — otherwise every `snake_case_identifier`
+  in a note renders italic in the editor and plain everywhere else.
+- Serialize with `textContent`, **never `innerText`**: `innerText` respects CSS,
+  so every hidden marker would vanish from the file on the next save.

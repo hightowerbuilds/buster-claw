@@ -978,7 +978,7 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute has_element?(view, "#calendar-grid")
     end
 
-    test "the Notes sub-tab creates, edits, previews, and saves a Markdown file",
+    test "the Notes sub-tab creates, edits, and saves a Markdown file",
          %{conn: conn, root: root} do
       {:ok, view, _html} = live(conn, ~p"/")
 
@@ -993,8 +993,11 @@ defmodule BusterClawWeb.StatusLiveTest do
       |> render_submit()
 
       assert has_element?(view, "#notes-editor-pane")
+      # The model and the view the NoteEditor hook renders into. The surface is
+      # `phx-update="ignore"` and stays empty on the server, so there is nothing
+      # here to assert about its contents — that is the JS suite's job.
       assert has_element?(view, "#note-editor")
-      assert has_element?(view, "#note-preview")
+      assert has_element?(view, ~s(#note-surface[phx-update="ignore"][contenteditable="true"]))
 
       view
       |> form("#note-editor-form", %{
@@ -1003,7 +1006,6 @@ defmodule BusterClawWeb.StatusLiveTest do
       |> render_change()
 
       assert has_element?(view, ~s(#note-save-status[data-state="saved"]))
-      assert has_element?(view, "#note-preview h1")
 
       assert File.read!(Path.join([root, "notes", "Remote access.md"])) =~
                "Keep Phoenix on loopback"
@@ -1057,8 +1059,12 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert has_element?(view, ~s(button[phx-value-path="Projects/Launch.md"]))
 
       # Rename and move in one submission: the file lands under its new name at
-      # the vault root and nothing is left behind at the old path.
-      view |> element("#rename-note-button") |> render_click()
+      # the vault root and nothing is left behind at the old path. The form is
+      # opened by double-clicking the title, which is a hook pushing the same
+      # event the removed pencil pushed (W1).
+      refute has_element?(view, "#rename-note-form")
+      view |> element("#note-title") |> render_hook("toggle_rename", %{})
+      assert has_element?(view, "#rename-note-form")
 
       view
       |> form("#rename-note-form", %{"rename" => %{"title" => "Launch plan", "folder" => ""}})
@@ -1068,6 +1074,60 @@ defmodule BusterClawWeb.StatusLiveTest do
       refute File.exists?(Path.join([root, "notes", "Projects", "Launch.md"]))
       refute has_element?(view, ~s([data-note-heading="Projects"]))
       assert has_element?(view, ~s(button[phx-value-path="Launch plan.md"]))
+    end
+
+    test "rename and delete are gestures, not buttons in the editor header",
+         %{conn: conn, root: root} do
+      # daily-growth/archive/08-09-26-notes-editor.md W1/W2. The operator asked for the pencil and the
+      # trash can to go; asserting their absence is the only way "we put one
+      # back for convenience" ever gets noticed.
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Doomed"}})
+      |> render_submit()
+
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Kept"}})
+      |> render_submit()
+
+      refute has_element?(view, "#rename-note-button")
+      refute has_element?(view, "#delete-note-button")
+
+      # The title is the rename trigger: hook-bound, focusable, and carrying the
+      # phx-target that routes its push back to this component.
+      assert has_element?(view, ~s(#note-title[phx-hook="NoteTitle"][tabindex="0"]))
+
+      # What the rail owes the context menu: a marked row per note, carrying the
+      # path, and one hook-owned menu whose Delete item is otherwise the header
+      # button that used to do this.
+      assert has_element?(view, ~s(button[data-note-row="Doomed.md"]))
+      assert has_element?(view, ~s(button[data-note-row="Kept.md"]))
+      assert has_element?(view, ~s(#notes-ctx[phx-hook="NoteContextMenu"][phx-update="ignore"]))
+      assert has_element?(view, ~s(#notes-ctx-delete[data-ctx-delete][phx-click="delete_note"]))
+
+      # The path is the hook's to fill in, so the server must not ship one — a
+      # hardcoded value here would delete the wrong note on the first click.
+      refute view |> element("#notes-ctx-delete") |> render() =~ "phx-value-path"
+
+      # Deleting a note that is not the open one leaves the editor alone. The
+      # click goes through the menu item itself with the path the hook would
+      # have set, which is also what proves `phx-target` routes it here rather
+      # than at StatusLive.
+      view |> element(~s(button[data-note-row="Kept.md"])) |> render_click()
+      view |> element("#notes-ctx-delete") |> render_click(%{"path" => "Doomed.md"})
+
+      refute File.exists?(Path.join([root, "notes", "Doomed.md"]))
+      refute has_element?(view, ~s(button[data-note-row="Doomed.md"]))
+      assert has_element?(view, "#notes-editor-pane")
+
+      # Deleting the open one closes it.
+      view |> element("#notes-ctx-delete") |> render_click(%{"path" => "Kept.md"})
+
+      refute File.exists?(Path.join([root, "notes", "Kept.md"]))
+      refute has_element?(view, "#notes-editor-pane")
+      assert has_element?(view, "#notes-empty-state")
     end
 
     test "the Notes editor reports Unsaved, saves on demand, and reconciles with disk",
@@ -1127,7 +1187,64 @@ defmodule BusterClawWeb.StatusLiveTest do
       assert File.read!(path) == "# From a third editor\n"
     end
 
-    test "the preview toggle swaps the pane on narrow windows", %{conn: conn} do
+    test "the toolbar renders every command as a client-only button", %{conn: conn} do
+      # No `phx-click` anywhere in it, deliberately: formatting is a text edit
+      # the hook makes locally, and a round-trip between pressing Bold and
+      # seeing bold would undo the point of the surface. What the buttons DO is
+      # the JS suite's; that they exist, and that they are inert to the server,
+      # is this one's.
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Formatted"}})
+      |> render_submit()
+
+      assert has_element?(view, ~s(#note-toolbar[role="toolbar"]))
+
+      for %{cmd: cmd} <- BusterClawWeb.Notes.Toolbar.commands() do
+        assert has_element?(view, ~s(#note-cmd-#{cmd}[data-note-cmd="#{cmd}"][type="button"])),
+               "the toolbar is missing a button for #{cmd}"
+      end
+
+      refute view |> element("#note-toolbar") |> render() =~ "phx-click"
+    end
+
+    test "a save does not echo the draft back into the editor field", %{conn: conn, root: root} do
+      # The regression guard for the "flickering between saved and unsaved"
+      # report (08-09). The <textarea> is hidden and never focused, and LiveView
+      # only declines to clobber a FOCUSED input — so re-rendering it on every
+      # save pushed the server's copy over the client's live draft mid-keystroke.
+      #
+      # The fix is that a save assigns :body but NOT :editor_form, so the diff
+      # carries no update for that element at all. This asserts the mechanism:
+      # the rendered field must be byte-identical across a save, even though the
+      # file on disk changed. It looks like asserting staleness, and it is —
+      # the client owns the draft, the server only confirms it.
+      {:ok, view, _html} = live(conn, ~p"/")
+      render_click(view, "select_home_tab", %{"tab" => "notes"})
+
+      view
+      |> form("#new-note-form", %{"note" => %{"title" => "Echo"}})
+      |> render_submit()
+
+      before = view |> element("#note-editor") |> render()
+
+      view
+      |> form("#note-editor-form", %{"editor" => %{"body" => "# Typed by the client\n"}})
+      |> render_change()
+
+      assert has_element?(view, ~s(#note-save-status[data-state="saved"]))
+      assert File.read!(Path.join([root, "notes", "Echo.md"])) == "# Typed by the client\n"
+
+      assert view |> element("#note-editor") |> render() == before,
+             "the save re-rendered the editor field, which clobbers the client's draft"
+    end
+
+    test "the editor is the preview: there is no second pane and no toggle",
+         %{conn: conn} do
+      # daily-growth/archive/08-09-26-notes-editor.md D7. Asserted rather than assumed, because "the
+      # preview came back" is a regression nothing else in this file would see.
       {:ok, view, _html} = live(conn, ~p"/")
       render_click(view, "select_home_tab", %{"tab" => "notes"})
 
@@ -1135,13 +1252,9 @@ defmodule BusterClawWeb.StatusLiveTest do
       |> form("#new-note-form", %{"note" => %{"title" => "Toggle me"}})
       |> render_submit()
 
-      assert has_element?(view, "#note-preview.hidden")
-      refute has_element?(view, "#note-editor-form.hidden")
-
-      view |> element("#toggle-preview-button") |> render_click()
-
-      assert has_element?(view, "#note-editor-form.hidden")
-      refute has_element?(view, "#note-preview.hidden")
+      refute has_element?(view, "#note-preview")
+      refute has_element?(view, "#toggle-preview-button")
+      assert has_element?(view, "#note-surface")
     end
 
     test "a Markdown file too large to edit is listed but never opened",
@@ -1239,40 +1352,25 @@ defmodule BusterClawWeb.StatusLiveTest do
       render_click(view, "select_home_tab", %{"tab" => "notes"})
       view |> element(~s(button[phx-value-path="Launch.md"])) |> render_click()
 
-      html = render(view)
-      assert html =~ ~s(href="#note/Remote+access.md")
-      assert html =~ ~s(href="#note-new/Ghost")
-
-      # A known link opens the note it names...
+      # The editor sends the raw target and nothing else — one event for both
+      # cases, because only the server can tell them apart. A known link opens
+      # the note it names...
       view
       |> element("#notes-editor-pane")
-      |> render_hook("open_link", %{"path" => "Remote access.md"})
+      |> render_hook("follow_link", %{"target" => "Remote access"})
 
-      assert render(view) =~ "Remote access.md"
+      assert has_element?(view, ~s(#notes-editor-pane[data-note-path="Remote access.md"]))
       # ...and the note it came from is listed as a backlink.
       assert has_element?(view, "#note-backlinks")
       assert has_element?(view, ~s(#note-backlinks button[phx-value-path="Launch.md"]))
 
-      # A missing link creates the note rather than dead-ending.
+      # ...while a missing one is created rather than dead-ending.
       view
       |> element("#notes-editor-pane")
-      |> render_hook("create_link", %{"title" => "Ghost"})
+      |> render_hook("follow_link", %{"target" => "Ghost"})
 
       assert File.exists?(Path.join([root, "notes", "Ghost.md"]))
       assert has_element?(view, ~s(button[phx-value-path="Ghost.md"]))
-    end
-
-    test "a wiki link inside a code fence is left as text", %{conn: conn, root: root} do
-      File.mkdir_p!(Path.join(root, "notes"))
-      File.write!(Path.join([root, "notes", "Syntax.md"]), "```\n[[Fenced]]\n```\n")
-
-      {:ok, view, _html} = live(conn, ~p"/")
-      render_click(view, "select_home_tab", %{"tab" => "notes"})
-      view |> element(~s(button[phx-value-path="Syntax.md"])) |> render_click()
-
-      html = render(view)
-      assert html =~ "[[Fenced]]"
-      refute html =~ "#note-new/Fenced"
     end
 
     test "the new-note chord reveals the rail by clearing the selection", %{conn: conn} do

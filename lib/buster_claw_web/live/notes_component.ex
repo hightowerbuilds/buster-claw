@@ -20,9 +20,14 @@ defmodule BusterClawWeb.NotesComponent do
 
   ## Layout
 
-  Three panes on wide windows, and a two-step rail → editor below `md` with the
-  preview behind a toggle below `xl`. Both collapses are class-only; the panes
-  are one DOM and one set of ids at every width.
+  Two panes — rail and editor — collapsing to a two-step rail → editor below
+  `md`. The collapse is class-only; the panes are one DOM and one set of ids at
+  every width.
+
+  The editor renders its own Markdown (`daily-growth/archive/08-09-26-notes-editor.md` Phase 1), so there
+  is no preview pane and this module holds no rendered HTML. Its only remaining
+  Markdown-shaped job is resolving a clicked `[[wiki link]]`, which needs the
+  vault index and therefore has to be here.
   """
 
   use BusterClawWeb, :live_component
@@ -31,9 +36,7 @@ defmodule BusterClawWeb.NotesComponent do
   import BusterClawWeb.Notes.Rail
   import BusterClawWeb.Notes.Switcher
 
-  alias BusterClaw.Markdown
   alias BusterClaw.Notes
-  alias BusterClaw.Notes.Links
 
   # The switcher is a jump list, not a search results page: past a screenful,
   # more rows are noise. The count of what was left out is shown rather than
@@ -58,8 +61,6 @@ defmodule BusterClawWeb.NotesComponent do
      |> assign(:editor_form, editor_form(""))
      |> assign(:folder_form_open, false)
      |> assign(:renaming, false)
-     |> assign(:preview_open, false)
-     |> assign(:preview_html, "")
      |> assign(:backlinks, [])
      |> assign(:query, "")
      |> assign(:index, [])
@@ -219,31 +220,24 @@ defmodule BusterClawWeb.NotesComponent do
     open_path(close_switcher(socket), path)
   end
 
-  # A wiki link in the preview. The path came from the vault's own resolution, so
-  # it is re-read rather than trusted: the note may have moved since it rendered.
-  def handle_event("open_link", %{"path" => path}, socket), do: open_path(socket, path)
-
-  # A link to a note that does not exist yet. Creating it here is the whole point
-  # of rendering missing links differently from broken ones.
-  def handle_event("create_link", %{"title" => title}, socket) do
-    {folder, name} = split_link_title(title)
-
-    case Notes.create(name, folder) do
-      {:ok, note} ->
-        {:noreply, socket |> reload_notes() |> load_folders() |> open(note)}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> assign(:save_status, :error)
-         |> assign(:save_error, create_error(reason))}
+  # A `[[wiki link]]` clicked in the editor. The editor sends the raw target and
+  # nothing else: resolution needs the vault index and the fuzzy basename match,
+  # and a second implementation of that in JavaScript is two sources of truth for
+  # what a link means.
+  #
+  # An unresolved target is created rather than refused, which is the whole point
+  # of a wiki link — you write the name first and the note follows.
+  def handle_event("follow_link", %{"target" => target}, socket) do
+    case Notes.resolve_link(target, socket.assigns.index) do
+      nil -> create_link(socket, target)
+      path -> open_path(socket, path)
     end
   end
 
-  def handle_event("toggle_preview", _params, socket) do
-    {:noreply, assign(socket, :preview_open, not socket.assigns.preview_open)}
-  end
-
+  # Pushed by the `NoteTitle` hook when the operator double-clicks the open
+  # note's title (or presses Enter/F2 on it), and by the form's own Cancel. It
+  # stayed a toggle when the pencil that used to push it was removed (W1),
+  # because Cancel and a second double-click are the same intent.
   def handle_event("toggle_rename", _params, socket) do
     {:noreply,
      socket
@@ -275,7 +269,7 @@ defmodule BusterClawWeb.NotesComponent do
     # A conflict has stopped autosave. Keep taking the user's typing; just do
     # not hand it to a save that would have to be forced to land.
     if socket.assigns.save_status == :conflict do
-      {:noreply, assign_draft(socket, body)}
+      {:noreply, assign_body(socket, body)}
     else
       save(socket, body, socket.assigns.revision)
     end
@@ -308,6 +302,9 @@ defmodule BusterClawWeb.NotesComponent do
     save(socket, socket.assigns.body, :force)
   end
 
+  # The rail's right-click menu, past `data-claw-confirm` (W2). `path` is any
+  # row's, not necessarily the open note's — which is why the clause below asks
+  # rather than assumes before clearing the editor.
   def handle_event("delete_note", %{"path" => path}, socket) do
     case Notes.delete(path) do
       :ok ->
@@ -327,6 +324,21 @@ defmodule BusterClawWeb.NotesComponent do
     end
   end
 
+  defp create_link(socket, target) do
+    {folder, name} = split_link_title(target)
+
+    case Notes.create(name, folder) do
+      {:ok, note} ->
+        {:noreply, socket |> reload_notes() |> load_folders() |> open(note)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:save_status, :error)
+         |> assign(:save_error, create_error(reason))}
+    end
+  end
+
   defp save(%{assigns: %{selected: nil}} = socket, _body, _revision), do: {:noreply, socket}
 
   defp save(socket, body, expected_revision) do
@@ -334,7 +346,7 @@ defmodule BusterClawWeb.NotesComponent do
       {:ok, note} ->
         {:noreply,
          socket
-         |> assign_draft(note.body)
+         |> assign_body(note.body)
          |> assign(:revision, note.revision)
          |> assign(:save_status, :saved)
          |> assign(:save_error, nil)
@@ -343,7 +355,7 @@ defmodule BusterClawWeb.NotesComponent do
       {:error, {:conflict, current}} ->
         {:noreply,
          socket
-         |> assign_draft(body)
+         |> assign_body(body)
          |> assign(:save_status, :conflict)
          |> assign(:save_error, nil)
          |> assign(:conflict, current)}
@@ -351,7 +363,7 @@ defmodule BusterClawWeb.NotesComponent do
       {:error, reason} ->
         {:noreply,
          socket
-         |> assign_draft(body)
+         |> assign_body(body)
          |> assign(:save_status, :error)
          |> assign(:save_error, error_message(reason))}
     end
@@ -401,22 +413,31 @@ defmodule BusterClawWeb.NotesComponent do
     end
   end
 
-  # Rendering the preview here rather than in `render/1` keeps a vault read and a
-  # Markdown pass off every re-render — including the ones a sibling assign
-  # causes, which have nothing to do with the note's text.
+  # Two ways to take in text, and the difference is load-bearing.
+  #
+  # `assign_body/2` records what the note now contains WITHOUT re-rendering the
+  # form field. Every save takes this path. `assign_draft/2` also re-renders the
+  # field, and only a genuine "here is different text" event may: opening a note,
+  # reloading the disk version, resolving a conflict, closing the editor.
+  #
+  # Why the split exists. The `<textarea>` is now hidden and never focused — it
+  # is the model behind the contenteditable, not the editor itself. LiveView
+  # deliberately does not clobber a FOCUSED input, which is what used to make
+  # echoing the saved body back harmless. Unfocused, that protection is gone: the
+  # server's copy lands on the client mid-keystroke, the `NoteEditor` hook sees a
+  # value it did not write, rebuilds the whole surface, and the caret and the
+  # characters typed during the round-trip go with it.
+  #
+  # That is what "flickering between saved and unsaved in a rough manner" was
+  # (operator, 08-09), and it was introduced by hiding the textarea rather than
+  # by anything in the save logic. **The client owns the draft; the server
+  # confirms it.** A longer debounce would only have made the collision rarer.
+  defp assign_body(socket, body), do: assign(socket, :body, body)
+
   defp assign_draft(socket, body) do
     socket
-    |> assign(:body, body)
+    |> assign_body(body)
     |> assign(:editor_form, editor_form(body))
-    |> assign(:preview_html, preview_html(body, socket.assigns.index))
-  end
-
-  defp preview_html("", _index), do: ""
-
-  defp preview_html(body, index) do
-    body
-    |> Links.replace(&Notes.resolve_link(&1, index))
-    |> Markdown.to_html()
   end
 
   # A link target may name a folder ("Projects/Launch"); creation takes the
@@ -667,8 +688,6 @@ defmodule BusterClawWeb.NotesComponent do
         rename_form={@rename_form}
         folder_options={folder_options(@folders)}
         editor_form={@editor_form}
-        preview_open={@preview_open}
-        preview_html={@preview_html}
         backlinks={@backlinks}
       />
     </div>

@@ -190,6 +190,189 @@
 }
 
 /* ============================================================
+   NOTES — the live-preview writing surface
+   ============================================================
+
+   The editor holds literal Markdown, one <div class="nl"> per line, and this
+   stylesheet is the entire "it looks like a word processor" half of the
+   feature. See daily-growth/archive/08-09-26-notes-editor.md.
+
+   Two rules carry the whole design:
+
+     1. `.nm` — a marker run (`## `, `**`, `](url)`). Its characters are ALWAYS
+        in the DOM; this file only decides whether they are visible. Hiding one
+        must never be done with `display:none` on a hot line, because the caret
+        has to be able to sit among them.
+     2. `[data-hot]` — the line the caret is in. Its markers show, dimmed, so
+        you can see and edit the syntax you are standing on. Every other line
+        hides them and reads as finished prose.
+
+   Marker hiding is `font-size:0` rather than `display:none` deliberately: the
+   text stays in the layout as a zero-width run, so `textContent` — which the
+   save path reads — is untouched either way, and a cold line's spans still
+   participate in selection when you drag across them. */
+
+.ic-note-surface {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
+}
+
+/* One line, one block. `min-height` keeps an empty paragraph clickable. */
+.ic-note-surface .nl {
+  min-height: 1.7em;
+  padding-block: 0.05rem;
+}
+
+/* ---- markers ---------------------------------------------------------- */
+
+.ic-note-surface .nm {
+  font-size: 0;
+  letter-spacing: 0;
+}
+
+.ic-note-surface .nl[data-hot] .nm {
+  font-size: 0.85em;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: color-mix(in oklab, var(--color-primary) 70%, transparent);
+  letter-spacing: normal;
+}
+
+/* ---- blocks ----------------------------------------------------------- */
+
+.ic-note-surface .nl[data-block="heading"] {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin-block-start: 0.9em;
+}
+.ic-note-surface .nl[data-block="heading"][data-level="1"] { font-size: 2rem; font-weight: 900; }
+.ic-note-surface .nl[data-block="heading"][data-level="2"] { font-size: 1.55rem; }
+.ic-note-surface .nl[data-block="heading"][data-level="3"] { font-size: 1.25rem; }
+.ic-note-surface .nl[data-block="heading"][data-level="4"] { font-size: 1.1rem; }
+.ic-note-surface .nl[data-block="heading"][data-level="5"],
+.ic-note-surface .nl[data-block="heading"][data-level="6"] {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Lists and quotes indent with padding, so their markers can vanish without
+   the text sliding left. `--n-depth` carries the nesting from data-depth. */
+.ic-note-surface .nl[data-block="bullet"],
+.ic-note-surface .nl[data-block="ordered"],
+.ic-note-surface .nl[data-block="task"],
+.ic-note-surface .nl[data-block="quote"] {
+  padding-inline-start: calc(1.5rem + var(--n-depth, 0) * 1.25rem);
+  position: relative;
+}
+.ic-note-surface .nl[data-depth="1"] { --n-depth: 1; }
+.ic-note-surface .nl[data-depth="2"] { --n-depth: 2; }
+.ic-note-surface .nl[data-depth="3"] { --n-depth: 3; }
+
+/* The drawn marks. `contenteditable="false"` is not available on a pseudo
+   element, but a pseudo element is not editable content either — which is
+   exactly why the bullet, the number and the checkbox are drawn here rather
+   than inserted as nodes the caret could land inside. */
+.ic-note-surface .nl[data-block="bullet"]:not([data-hot])::before {
+  content: "•";
+  position: absolute;
+  left: calc(0.55rem + var(--n-depth, 0) * 1.25rem);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+.ic-note-surface .nl[data-block="ordered"]:not([data-hot])::before {
+  content: "›";
+  position: absolute;
+  left: calc(0.55rem + var(--n-depth, 0) * 1.25rem);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+.ic-note-surface .nl[data-block="task"]:not([data-hot]) .nm {
+  /* The checkbox is drawn out of the marker span itself, so the click target
+     and the syntax it stands for are the same element. Cold lines only: on the
+     hot line the real `- [ ] ` shows, and a box clipped around it would hide
+     the text you moved the caret there to edit. */
+  position: absolute;
+  left: calc(0.35rem + var(--n-depth, 0) * 1.25rem);
+  top: 0.35em;
+  display: inline-block;
+  width: 0.95em;
+  height: 0.95em;
+  border: 2px solid color-mix(in oklab, var(--color-base-content) 40%, transparent);
+  border-radius: 2px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.ic-note-surface .nl[data-block="task"][data-checked="true"]:not([data-hot]) .nm {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.ic-note-surface .nl[data-block="task"][data-checked="true"] {
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklab, var(--color-base-content) 35%, transparent);
+}
+
+.ic-note-surface .nl[data-block="quote"] {
+  border-inline-start: 3px solid color-mix(in oklab, var(--color-primary) 45%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+  font-style: italic;
+}
+
+/* A rule is entirely marker, so on a cold line it has no visible text and needs
+   a height of its own to stay clickable. */
+.ic-note-surface .nl[data-block="hr"] {
+  border-block-end: 2px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  min-height: 0.8em;
+  line-height: 0.8;
+  margin-block: 0.9em;
+}
+
+.ic-note-surface .nl[data-block="fence"],
+.ic-note-surface .nl[data-block="code"] {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background-color: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  padding-inline: 0.6rem;
+}
+.ic-note-surface .nl[data-block="fence"] .nm {
+  /* A fence line is all marker; hiding it would collapse the block's own edge. */
+  font-size: 0.875em;
+  font-family: var(--font-mono);
+  color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+}
+
+/* ---- inline spans ------------------------------------------------------ */
+
+.ic-note-surface .n-bold { font-weight: 700; }
+.ic-note-surface .n-italic { font-style: italic; }
+.ic-note-surface .n-strike {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+}
+.ic-note-surface span.n-code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+  border-radius: 3px;
+  padding-inline: 0.25em;
+}
+.ic-note-surface .ns.n-link,
+.ic-note-surface .ns.n-wiki {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.ic-note-surface .ns.n-wiki { cursor: pointer; }
+
+/* ============================================================
    INDUSTRIAL CLAW — type system + identity layer
    ============================================================ */
 @theme {
@@ -226,7 +409,7 @@ body { background-color: var(--color-base-100); }
   color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
 }
 
-/* "How it unfolds" step list in Explore tutorials: numbered in hazard-orange
+/* "How it unfolds" step list in Explained tutorials: numbered in hazard-orange
    mono, command names in <code> picked out the same way. */
 .ic-unfold {
   display: flex;
