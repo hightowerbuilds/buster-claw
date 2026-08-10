@@ -33,6 +33,22 @@ defmodule BusterClawWeb.Router do
     plug BusterClawWeb.ContentSecurityPolicy
   end
 
+  # Raw workspace bytes — a user's upload or an agent's output. One header, and
+  # deliberately ONLY that header: these scopes stay free of `accepts` (they answer
+  # media-element and CSS `url()` requests, not a single format), of
+  # `fetch_session`, and of `protect_from_forgery`, all for the reasons written on
+  # each scope below.
+  #
+  # It is a pipeline rather than a `put_resp_header` per controller because there
+  # are nine such routes and fixing them individually is exactly how four of them
+  # ended up uncovered — `X-Content-Type-Options` appeared nowhere in the codebase
+  # until `RangeResponse` began sending it for audio. A scope missing
+  # `pipe_through :media` is now visible in this file beside eight that have it.
+  # See `BusterClawWeb.NoSniff` for what it defends and what it does not.
+  pipeline :media do
+    plug BusterClawWeb.NoSniff
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
   end
@@ -77,36 +93,44 @@ defmodule BusterClawWeb.Router do
     get "/google/oauth/callback", GoogleOAuthController, :callback
   end
 
-  # Uploaded appearance asset served from the writable workspace dir. No pipeline
-  # so it isn't constrained to a single `accepts` format (the webview requests it
-  # as an image via CSS `url()`); loopback-only and non-sensitive. One shared
+  # Uploaded appearance asset served from the writable workspace dir. Only `:media`
+  # (nosniff) — no `accepts`, so it isn't constrained to a single format (the webview
+  # requests it as an image via CSS `url()`); loopback-only and non-sensitive. One shared
   # image pool backs both the homepage and the terminal, so the slot is the whole
   # address — there is no per-surface route.
   scope "/appearance", BusterClawWeb do
+    pipe_through :media
+
     get "/image/:slot", AppearanceController, :image
   end
 
-  # Voicemail audio for the Message Machine panel's <audio> player. No pipeline
-  # (media element requests, not HTML); path-guarded to the Library root and
+  # Voicemail audio for the Message Machine panel's <audio> player. Only `:media`
+  # (media element requests, not HTML, so no `accepts`); path-guarded to the Library root and
   # audio extensions only; loopback-only.
   scope "/phone", BusterClawWeb do
+    pipe_through :media
+
     get "/recording", TelephonyRecordingController, :show
   end
 
-  # Music library audio for the dock player. No pipeline (media element
+  # Music library audio for the dock player. Only `:media` (media element
   # requests, not HTML); the name is resolved by Music.path_for/1 against the
   # library listing, never joined from raw input; loopback-only. Unlike the
   # routes around it this one honors byte ranges — a track is long enough to
   # seek through. See BusterClawWeb.RangeResponse.
   scope "/music", BusterClawWeb do
+    pipe_through :media
+
     get "/track/:name", MusicController, :show
   end
 
   # Studio working files (<workspace>/studio/) for the Studio tab's waveform and
-  # preview. No pipeline; the name is resolved by SoundStudio.path_for/1 against
+  # preview. Only `:media`; the name is resolved by SoundStudio.path_for/1 against
   # the real listing, never joined from raw input. Byte ranges (and nosniff) via
   # RangeResponse — imported material can be long enough to scrub.
   scope "/studio", BusterClawWeb do
+    pipe_through :media
+
     get "/file/:name", StudioFileController, :show
   end
 
@@ -115,38 +139,54 @@ defmodule BusterClawWeb.Router do
   # fixed-path fallback chime; `:named` only resolves names that are real
   # library entries (Sound.path_for), so no traversal surface.
   scope "/notify", BusterClawWeb do
+    pipe_through :media
+
     get "/sound", NotifySoundController, :show
     get "/sound/:name", NotifySoundController, :named
   end
 
   # Renders a workspace file (Markdown → HTML, .html as-is) for the in-app browser.
-  # No pipeline: returns a raw HTML document, not a LiveView page. Path-guarded to
-  # the workspace by FileManager; loopback-only.
+  # Only `:media`: returns a raw HTML document, not a LiveView page, so no root layout
+  # and no CSRF. Path-guarded to the workspace by FileManager; loopback-only.
+  #
+  # NOTE: `nosniff` does not protect `:show`. It serves workspace `.html` as
+  # `text/html` deliberately (docs/LOCAL_TRUST.md), so nothing is being sniffed —
+  # that route's exposure is the MISSING CSP, which is still open. `:image` is the
+  # one here nosniff actually covers.
   scope "/ws", BusterClawWeb do
+    pipe_through :media
+
     get "/file", WorkspaceFileController, :show
     get "/image", WorkspaceFileController, :image
   end
 
-  # One file out of one Pocket. No pipeline: these are raw asset bytes, not an
+  # One file out of one Pocket. Only `:media`: these are raw asset bytes, not an
   # HTML page. Every read is fenced by `Pockets.resolve/2` — a bare filename,
   # canonicalized inside the Pocket, `lstat`-ed so a planted symlink is refused.
   # This is the single route a mounted Pocket's bytes will reach the app through.
   scope "/pockets", BusterClawWeb do
+    pipe_through :media
+
     get "/:pocket/:file", PocketAssetController, :show
   end
 
   # The Agent Mode mirror: an MJPEG stream of a run's viewport, rendered by an
-  # <img> in the browse tab (Phase 7). No pipeline — this is a long-lived chunked
-  # media response, not an HTML page. Loopback-only; the frames show a page the
+  # <img> in the browse tab (Phase 7). Only `:media` — this is a long-lived chunked
+  # media response, not an HTML page, so `accepts` would be wrong. Loopback-only; the frames show a page the
   # user is already watching in a window on their own machine.
   scope "/browser", BusterClawWeb do
+    pipe_through :media
+
     get "/agent-view/:run_id", AgentViewController, :show
   end
 
   # Raw WGSL for a custom homepage shader, fetched by the SmokeBackground hook and
-  # compiled live in the webview. No pipeline; name guarded by Shaders.read/1;
-  # loopback-only.
+  # compiled live in the webview. Only `:media`; name guarded by Shaders.read/1;
+  # loopback-only. Raw WGSL is text/plain, so nosniff is what keeps a browser from
+  # deciding a shader is markup.
   scope "/shaders", BusterClawWeb do
+    pipe_through :media
+
     get "/:name", ShaderController, :show
   end
 
