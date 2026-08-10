@@ -482,4 +482,155 @@ defmodule BusterClaw.AppearanceTest do
       assert_receive {:terminal_background, %{kind: :shader, shader: "waves"}}
     end
   end
+
+  # --- an image with a shader over it (IMAGE_SHADER_ROADMAP Phase 2) --------
+
+  describe "the combined image + shader mode" do
+    defp write_image_shader(root, name) do
+      dir = Path.join(root, "shaders")
+      File.mkdir_p!(dir)
+
+      File.write!(
+        Path.join(dir, name <> ".wgsl"),
+        """
+        @fragment
+        fn fs_main(in: VOut) -> @location(0) vec4<f32> {
+          let src = img(in.uv);
+          return vec4<f32>(mix(src.rgb, u.colA.xyz, 0.4 * has_img()), 1.0);
+        }
+        """
+      )
+    end
+
+    test "resolves to :image_shader carrying BOTH halves", %{root: root} do
+      write_image_shader(root, "veiled")
+      {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
+      url = Appearance.image_url(1)
+
+      assert {:ok, "image:1+veiled"} = Appearance.set_background(:home, "image:1+veiled")
+
+      assert %{
+               kind: :image_shader,
+               shader: "veiled",
+               image_url: ^url,
+               slot: 1,
+               source_url: "/shaders/veiled",
+               custom_shader: true
+             } = Appearance.background(:home)
+    end
+
+    test "option_key round-trips the combined mode", %{root: root} do
+      write_image_shader(root, "veiled")
+      {:ok, 2} = seed_two_slots()
+
+      {:ok, key} = Appearance.set_background(:terminal, "image:2+veiled")
+      assert key == "image:2+veiled"
+      # option_key/1 is the stated inverse of set_background/2 and the picker
+      # marks the in-use tile with it; a combined mode that round-tripped to
+      # "image:2" would highlight the plain image tile instead.
+      assert Appearance.option_key(Appearance.background(:terminal)) == key
+      assert Appearance.background_mode(:terminal) == key
+    end
+
+    test "a shader that ignores the image is refused, and said so", %{root: root} do
+      write_custom_shader(root, "plain")
+      {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
+
+      # Distinct from :invalid_mode on purpose. The shader is real and
+      # selectable — it just would not react, and pairing it with an image would
+      # render a plain pattern under a label promising otherwise.
+      assert {:error, :not_image_reactive} =
+               Appearance.set_background(:home, "image:1+plain")
+
+      assert {:error, :invalid_mode} = Appearance.set_background(:home, "image:1+nosuch")
+      assert {:error, :empty_slot} = Appearance.set_background(:home, "image:7+plain")
+    end
+
+    test "a bundled image-reactive shader is accepted without a workspace file" do
+      # veil ships in the JS bundle, so there is no shaders/veil.wgsl to read.
+      # It is still not in @builtin_shaders yet (Phase 3), so it must NOT be
+      # selectable — this pins the halfway state rather than leaving it to chance.
+      {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
+      assert "veil" in Appearance.builtin_image_shaders()
+      assert Appearance.samples_image?("veil")
+      assert {:error, :invalid_mode} = Appearance.set_background(:home, "image:1+veil")
+    end
+
+    test "degrades when the slot empties", %{root: root} do
+      write_image_shader(root, "veiled")
+      {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
+      {:ok, _} = Appearance.set_background(:home, "image:1+veiled")
+
+      :ok = Appearance.clear_image(1)
+
+      assert Appearance.background(:home).kind != :image_shader
+    end
+
+    test "degrades when the shader file is deleted", %{root: root} do
+      write_image_shader(root, "veiled")
+      {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
+      {:ok, _} = Appearance.set_background(:home, "image:1+veiled")
+
+      File.rm!(Path.join([root, "shaders", "veiled.wgsl"]))
+
+      assert Appearance.background(:home).kind != :image_shader
+    end
+
+    test "degrades when the shader is EDITED to stop sampling", %{root: root} do
+      # The third staleness check, and the only one a write-time check could not
+      # have caught: the file is still there and still valid, it just no longer
+      # reacts. Without this the app keeps rendering the mode and keeps calling
+      # it image-reactive.
+      write_image_shader(root, "veiled")
+      {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
+      {:ok, _} = Appearance.set_background(:home, "image:1+veiled")
+      assert Appearance.background(:home).kind == :image_shader
+
+      write_custom_shader(root, "veiled")
+
+      assert Appearance.background(:home).kind != :image_shader
+    end
+
+    test "a plain image mode is untouched by any of this" do
+      {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
+      assert {:ok, "image:1"} = Appearance.set_background(:home, "image:1")
+      assert %{kind: :image, shader: nil} = Appearance.background(:home)
+    end
+
+    defp seed_two_slots do
+      {:ok, 1} = Appearance.put_image(fake_image(), "a.png")
+      Appearance.put_image(fake_image(), "b.png")
+    end
+  end
+
+  describe "@builtin_image_shaders / IMAGE_REACTIVE_BUILTINS lockstep" do
+    @shaders_js "assets/js/smoke/shaders.js"
+
+    test "the Elixir list matches the JS one exactly" do
+      # A built-in's WGSL lives in the JS bundle, where Elixir cannot read it, so
+      # this list exists twice by necessity. Twice-with-a-comment is precisely how
+      # the terminal palettes drifted (TERMINAL_THEME_ROADMAP), so it is asserted
+      # instead: delete a shader from one language and this fails rather than
+      # leaving a mode that resolves to a shader which no longer exists.
+      js = File.read!(@shaders_js)
+
+      names =
+        Regex.run(~r/IMAGE_REACTIVE_BUILTINS\s*=\s*\[(.*?)\]/s, js)
+        |> List.last()
+        |> then(&Regex.scan(~r/"([a-z0-9-]+)"/, &1))
+        |> Enum.map(&List.last/1)
+        |> Enum.sort()
+
+      assert names == Enum.sort(Appearance.builtin_image_shaders())
+    end
+
+    test "every name on the list is a real bundled shader" do
+      js = File.read!(@shaders_js)
+
+      for name <- Appearance.builtin_image_shaders() do
+        assert js =~ ~r/^\s*#{name}:\s/m,
+               "#{name} is listed as image-reactive but is not registered in SHADERS"
+      end
+    end
+  end
 end

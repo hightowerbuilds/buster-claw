@@ -55,6 +55,24 @@ defmodule BusterClaw.Appearance do
   @image_basename "background"
 
   @builtin_shaders ~w(smoke waves mandel weather)
+
+  # Bundled shaders that react to the selected background image. The Elixir half
+  # of a pair whose JS half is `IMAGE_REACTIVE_BUILTINS` in
+  # `assets/js/smoke/shaders.js`; `appearance_test.exs` reads that file and
+  # asserts the two agree, because a built-in's WGSL lives in the JS bundle where
+  # Elixir cannot see it.
+  #
+  # A list rather than a scan, and `smoke` is the reason: it carries a live
+  # `contentTex` path from its Humo era, gated on a `reveal` that backgrounds
+  # hold at 0. A scan calls it image-reactive; pairing it with an image would
+  # draw the image nowhere. Workspace shaders need no such list — they are an
+  # `fs_main` body alone, so `Shaders.samples_image?/1` is exact.
+  #
+  # `veil` is bundled and tested but deliberately NOT in @builtin_shaders yet:
+  # it cannot be offered until a surface can feed it an image
+  # (IMAGE_SHADER_ROADMAP Phase 3).
+  @builtin_image_shaders ~w(veil)
+
   @default_colors ["#0e0e0e", "#ff4d1c", "#f4f1ea"]
 
   @shader_labels %{
@@ -126,6 +144,22 @@ defmodule BusterClaw.Appearance do
 
   @doc "Built-in shader design names."
   def builtin_shaders, do: @builtin_shaders
+
+  @doc "Bundled shader designs that react to the selected background image."
+  def builtin_image_shaders, do: @builtin_image_shaders
+
+  @doc """
+  True when shader `name` composites the selected background image — a bundled
+  one that is known to, or a workspace one whose source calls the image API.
+
+  Built-ins are checked first because a built-in shadows a workspace file of the
+  same name (see the `shaders/` README), so the bundled answer is the one that
+  would actually render.
+  """
+  def samples_image?(name) when is_binary(name),
+    do: name in @builtin_image_shaders or Shaders.samples_image?(name)
+
+  def samples_image?(_name), do: false
 
   @doc "Content-type for a stored image path, by extension."
   def content_type(path) do
@@ -233,8 +267,10 @@ defmodule BusterClaw.Appearance do
   The resolved background for `surface` as
   `%{kind, mode, shader, source_url, image_url, slot, custom, colors, custom_shader}`.
 
-  `kind` is `:none | :shader | :image`; `mode` is the legacy-shaped
-  `"off" | <shader> | "image"` the homepage template keys off. `source_url`
+  `kind` is `:none | :shader | :image | :image_shader`; `mode` is the
+  legacy-shaped `"off" | <shader> | "image"` the homepage template keys off.
+  `:image_shader` is an image with an image-reactive shader over it, and carries
+  BOTH `shader` and `image_url` because both render. `source_url`
   (`/shaders/<name>`) is set only for a workspace shader — built-ins are bundled
   and need no fetch. `custom`/`colors` carry the optional palette and are
   meaningful only for a shader. This is the single source of truth the terminal
@@ -268,6 +304,21 @@ defmodule BusterClaw.Appearance do
             image_url: image_url(slot),
             slot: slot,
             custom_shader: false
+          }
+
+        {:image_shader, slot, name} ->
+          # Both halves are populated, because both render: the shader draws, and
+          # it samples the image. `mode` stays the shader's name — a surface keys
+          # its canvas off `mode`, and this IS a shader render, one that happens
+          # to have an image bound behind it.
+          %{
+            kind: :image_shader,
+            mode: name,
+            shader: name,
+            source_url: if(name in @builtin_shaders, do: nil, else: "/shaders/#{name}"),
+            image_url: image_url(slot),
+            slot: slot,
+            custom_shader: name not in @builtin_shaders
           }
 
         :off ->
@@ -306,6 +357,7 @@ defmodule BusterClaw.Appearance do
   def option_key(%{kind: :none}), do: "off"
   def option_key(%{kind: :shader, shader: name}), do: name
   def option_key(%{kind: :image, slot: slot}), do: "image:#{slot}"
+  def option_key(%{kind: :image_shader, slot: slot, shader: name}), do: "image:#{slot}+#{name}"
 
   # Resolve the stored mode against what actually exists right now. Anything
   # stale (a removed shader file, a cleared image slot, an unparseable value)
@@ -329,29 +381,60 @@ defmodule BusterClaw.Appearance do
 
   defp classify(nil), do: :unknown
   defp classify("off"), do: :off
-  defp classify(mode) when mode in @builtin_shaders, do: {:shader, mode}
 
-  defp classify("image:" <> slot) do
+  # `image:<n>` (an image alone) or `image:<n>+<shader>` (an image with an
+  # image-reactive shader over it). Must precede the bare-shader clause below —
+  # no shader name contains a colon, but the ordering is what guarantees it.
+  defp classify("image:" <> rest) do
+    case String.split(rest, "+", parts: 2) do
+      [slot] -> classify_image(slot)
+      [slot, shader] -> classify_image_shader(slot, shader)
+    end
+  end
+
+  defp classify(mode) when is_binary(mode) do
+    if shader_selectable?(mode), do: {:shader, mode}, else: :unknown
+  end
+
+  defp classify(_mode), do: :unknown
+
+  defp classify_image(slot) do
     case Integer.parse(slot) do
       {n, ""} -> if image_present?(n), do: {:image, n}, else: :unknown
       _ -> :unknown
     end
   end
 
-  defp classify(mode) when is_binary(mode) do
-    # A workspace shader. Shaderfaces are refused here, not just in the picker —
-    # a face stored as a mode (set before faces were fenced off) degrades.
-    if not Shaders.face?(mode) and Shaders.exists?(mode), do: {:shader, mode}, else: :unknown
+  # Three things have to still be true, and the third is the interesting one: the
+  # shader must still SAMPLE. A shader can stop being image-reactive by being
+  # edited long after this mode was chosen, and a mode that survived that would
+  # render a plain pattern while the picker still called it image-reactive.
+  # Checked here, on resolve, rather than once at write time.
+  defp classify_image_shader(slot, shader) do
+    with {n, ""} <- Integer.parse(slot),
+         true <- image_present?(n),
+         true <- shader_selectable?(shader),
+         true <- samples_image?(shader) do
+      {:image_shader, n, shader}
+    else
+      _ -> :unknown
+    end
   end
 
-  defp classify(_mode), do: :unknown
+  # A name that may be rendered as a shader: a built-in, or a workspace file that
+  # exists. Shaderfaces are refused here and not just in the picker — a face
+  # stored as a mode (set before faces were fenced off) degrades.
+  defp shader_selectable?(name),
+    do: name in @builtin_shaders or (not Shaders.face?(name) and Shaders.exists?(name))
 
   # --- writing a surface ---------------------------------------------------
 
   @doc """
-  Point `surface` at an option `key`: `"off"`, a shader name, or `"image:<slot>"`
-  (the slot must be filled). Returns `{:ok, key}`, `{:error, :empty_slot}`, or
-  `{:error, :invalid_mode}`.
+  Point `surface` at an option `key`: `"off"`, a shader name, `"image:<slot>"`, or
+  `"image:<slot>+<shader>"` (an image with an image-reactive shader over it). The
+  slot must be filled, and for the combined form the shader must actually sample
+  the image. Returns `{:ok, key}`, `{:error, :empty_slot}`,
+  `{:error, :not_image_reactive}`, or `{:error, :invalid_mode}`.
   """
   def set_background(surface, key) when is_map_key(@surfaces, surface) and is_binary(key) do
     case classify(key) do
@@ -363,8 +446,25 @@ defmodule BusterClaw.Appearance do
   def set_background(_surface, _key), do: {:error, :invalid_mode}
 
   # An "image:<n>" that didn't classify failed because the slot is empty, which
-  # is worth telling the user apart from a name we don't recognize at all.
-  defp invalid_reason("image:" <> _), do: :empty_slot
+  # is worth telling the user apart from a name we don't recognize at all. The
+  # combined form has a third way to fail that earns its own word: the shader is
+  # real and selectable, it just ignores the image — so pairing them would render
+  # a plain pattern while the UI claimed a reaction. Silently accepting that is
+  # the failure this whole mode exists to make impossible.
+  defp invalid_reason("image:" <> rest) do
+    case String.split(rest, "+", parts: 2) do
+      [_slot] ->
+        :empty_slot
+
+      [slot, shader] ->
+        cond do
+          classify_image(slot) == :unknown -> :empty_slot
+          not shader_selectable?(shader) -> :invalid_mode
+          true -> :not_image_reactive
+        end
+    end
+  end
+
   defp invalid_reason(_key), do: :invalid_mode
 
   defp put_mode(surface, key) do

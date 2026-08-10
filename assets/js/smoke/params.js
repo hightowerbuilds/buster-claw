@@ -10,8 +10,8 @@ export const clamp01 = (x) => Math.max(0, Math.min(1, x))
 
 const clampR = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
 
-// Uniform buffer layout — must mirror `struct U` in smoke.wgsl.js:
-// six vec4<f32> = 24 floats = 96 bytes.
+// Uniform buffer layout — must mirror `struct U` in prelude.wgsl.js (and the
+// copy in smoke.wgsl.js): eleven vec4<f32> = 44 floats = 176 bytes.
 //   [0] res.x  [1] res.y  [2..3] pad
 //   [4] time   [5] intensity  [6] reveal  [7] freezeTime (lens hold timestamp)
 //   [8] lens.x [9] lens.y (uv, y-up)  [10] lens radius  [11] lens strength
@@ -19,7 +19,13 @@ const clampR = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
 //   [16] style pixelCell (1 = off)  [17] style paletteAmt (0 = off)  [18] motion (1 = full)  [19] pad
 //   [20] post glow  [21] post grain  [22] post scanline  [23] post vignette
 //   [24..26] colorA rgb  [27] pad   [28..30] colorB rgb  [31] pad   [32..34] colorC rgb  [35] pad
-export const UNIFORM_FLOATS = 36
+//   [36..37] image px w/h (0 = no image)  [38..39] viewport px w/h
+//   [40..43] this canvas's rect in the viewport (x, y, w, h as 0..1 fractions)
+//
+// The count grew 36 -> 44 for the image slots. Appending vec4s is safe: every
+// field before them keeps its offset, so shaders that never mention the new ones
+// are untouched. It is only ever safe to APPEND.
+export const UNIFORM_FLOATS = 44
 
 // Fallback palette (rgb 0..1) if no colors are supplied — the smoke defaults.
 const DEFAULT_COLORS = {
@@ -49,8 +55,31 @@ export const NEUTRAL_EXPRESSION = {
   paletteAmt: 0,
 }
 
+// No image bound. Width 0 is the signal `has_img()` reads, so an image-reactive
+// shader selected without an image renders its degraded design rather than
+// sampling an empty texture.
+export const IMAGE_NONE = {width: 0, height: 0, viewportWidth: 0, viewportHeight: 0}
+
+// This canvas covers the whole viewport — the homepage case, and the default.
+// A split terminal pane passes its own rect so the panes continue one picture.
+export const RECT_FULL = {x: 0, y: 0, width: 1, height: 1}
+
 export function packUniforms(
-  {width, height, timeSec, intensity, reveal, freezeTime = 0, lens, expression, post, motion = 1, colors},
+  {
+    width,
+    height,
+    timeSec,
+    intensity,
+    reveal,
+    freezeTime = 0,
+    lens,
+    expression,
+    post,
+    motion = 1,
+    colors,
+    image,
+    imageRect,
+  },
   out
 ) {
   const e = expression || NEUTRAL_EXPRESSION
@@ -93,6 +122,19 @@ export function packUniforms(
   u[33] = c.c[1]
   u[34] = c.c[2]
   u[35] = 0
+  const im = image || IMAGE_NONE
+  const r = imageRect || RECT_FULL
+  // Clamped at 0: a negative dimension would flip the aspect test in img_uv and
+  // mirror the picture, and there is no reading of "-800 pixels wide" that means
+  // anything else.
+  u[36] = Math.max(0, im.width)
+  u[37] = Math.max(0, im.height)
+  u[38] = Math.max(0, im.viewportWidth)
+  u[39] = Math.max(0, im.viewportHeight)
+  u[40] = r.x
+  u[41] = r.y
+  u[42] = r.width
+  u[43] = r.height
   return u
 }
 

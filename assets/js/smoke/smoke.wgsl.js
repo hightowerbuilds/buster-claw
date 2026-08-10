@@ -12,8 +12,18 @@
 // here in a later phase; for now this is the smoke atmosphere + content
 // composite + the still-lens, ported from the original smoke.wgsl.
 //
-// Uniform layout — must mirror `struct U` (five vec4<f32> = 20 floats = 80
-// bytes); see packUniforms in params.js:
+// Uniform layout — see packUniforms in params.js, which owns the authoritative
+// map. This shader predates the shared prelude and still carries its own copy of
+// `struct U` (and of hash/noise/fbm/aces/vs_main); every other built-in prepends
+// WGSL_PRELUDE instead.
+//
+// That copy is allowed to be SHORTER than the prelude's struct — smoke does not
+// sample the background image, so it stops before `imgSize`/`imgRect`, and
+// binding a longer buffer to a shorter struct is fine. It is NOT allowed to
+// diverge in the fields it does declare: a field inserted or reordered here
+// shifts every offset after it and would feed this shader silently wrong
+// numbers. `prelude.test.js` asserts it stays a prefix of the prelude's.
+//
 //   res.xy    = canvas resolution in device pixels
 //   params.x  = time (seconds)
 //   params.y  = intensity (smoke density energy; the mapping layer drives this)

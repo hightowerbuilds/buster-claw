@@ -10,6 +10,8 @@ import {
   NEUTRAL_EXPRESSION,
   UNIFORM_FLOATS,
   POST_DEFAULT,
+  IMAGE_NONE,
+  RECT_FULL,
 } from "./params.js"
 
 describe("clamp01", () => {
@@ -226,5 +228,82 @@ describe("mapChatState (the uniform-mapping layer, v0)", () => {
   test("streaming with missing progress defaults to 0, out-of-range clamps", () => {
     expect(mapChatState({phase: "streaming"}).reveal).toBe(0)
     expect(mapChatState({phase: "streaming", streamProgress: 9}).reveal).toBe(1)
+  })
+})
+
+describe("the background image slots (IMAGE_SHADER_ROADMAP Phase 1)", () => {
+  const base = {width: 1, height: 1, timeSec: 0, intensity: 1, reveal: 0}
+
+  test("no image: dimensions are zero and the rect is the full viewport", () => {
+    const u = packUniforms(base)
+    // Width 0 is the signal has_img() reads. If this ever packs non-zero by
+    // default, every image-reactive shader starts sampling an empty texture and
+    // renders a dead rectangle instead of its degraded design.
+    expect(u[36]).toBe(0)
+    expect(u[37]).toBe(0)
+    expect([u[40], u[41], u[42], u[43]]).toEqual([
+      RECT_FULL.x,
+      RECT_FULL.y,
+      RECT_FULL.width,
+      RECT_FULL.height,
+    ])
+  })
+
+  test("an image packs its own pixels AND the viewport's into slots 36..39", () => {
+    const u = packUniforms({
+      ...base,
+      image: {width: 1600, height: 900, viewportWidth: 1280, viewportHeight: 800},
+    })
+    expect(u[36]).toBe(1600)
+    expect(u[37]).toBe(900)
+    // The viewport, not the canvas. img_uv cover-fits against the viewport so
+    // joined panes continue one picture; packing the canvas here would make each
+    // pane fit the whole image independently and break the seam.
+    expect(u[38]).toBe(1280)
+    expect(u[39]).toBe(800)
+  })
+
+  test("a pane's rect rides in slots 40..43", () => {
+    const u = packUniforms({...base, imageRect: {x: 0.5, y: 0, width: 0.5, height: 1}})
+    expect([u[40], u[41], u[42], u[43]]).toEqual([0.5, 0, 0.5, 1])
+  })
+
+  test("negative dimensions clamp to zero rather than mirroring the picture", () => {
+    // A negative dimension would invert the aspect comparison inside img_uv and
+    // silently mirror the image; there is no reading of "-800 pixels wide".
+    const u = packUniforms({
+      ...base,
+      image: {width: -800, height: 600, viewportWidth: -1, viewportHeight: 0},
+    })
+    expect(u[36]).toBe(0)
+    expect(u[38]).toBe(0)
+  })
+
+  test("IMAGE_NONE is what an absent image packs as", () => {
+    const implicit = packUniforms(base)
+    const explicit = packUniforms({...base, image: IMAGE_NONE})
+    expect(Array.from(explicit.slice(36, 44))).toEqual(Array.from(implicit.slice(36, 44)))
+  })
+
+  test("the image slots are APPENDED — nothing before them moved", () => {
+    // The whole reason growing the buffer 36 -> 44 is safe. If a future field is
+    // inserted mid-struct instead, every offset after it shifts and shaders read
+    // silently wrong numbers; this is the guard that refuses it.
+    const u = packUniforms({
+      ...base,
+      width: 800,
+      height: 600,
+      timeSec: 1.5,
+      lens: {x: 0.3, y: 0.7, radius: 0.16, strength: 0.5},
+      colors: {a: [1, 0, 0], b: [0, 1, 0], c: [0, 0, 1]},
+      image: {width: 10, height: 10, viewportWidth: 10, viewportHeight: 10},
+    })
+    expect(u[0]).toBe(800)
+    expect(u[4]).toBe(1.5)
+    expect(u[8]).toBeCloseTo(0.3)
+    expect(u[24]).toBe(1)
+    expect(u[28 + 1]).toBe(1)
+    expect(u[32 + 2]).toBe(1)
+    expect(u[35]).toBe(0)
   })
 })

@@ -1,10 +1,24 @@
 // Shared WGSL prelude for the alternative homepage background shaders. It
 // declares the SAME uniform + binding contract as smoke.wgsl.js (struct U at
 // binding 0, a sampler at 1, a content texture at 2) so every design runs
-// through createSmoke unchanged. Backgrounds never sample content — `touch()`
-// keeps bindings 1/2 in the `layout:"auto"` pipeline at ~zero cost. The
-// value-noise/fbm and ACES helpers are verbatim from the smoke shader; `bg_post`
-// is the shared background post pass.
+// through createSmoke unchanged. The value-noise/fbm and ACES helpers are
+// verbatim from the smoke shader; `bg_post` is the shared background post pass.
+//
+// Two kinds of background share this contract:
+//
+//   * A PLAIN background never samples content. `touch()` keeps bindings 1/2 in
+//     the `layout:"auto"` pipeline at ~zero cost; it always returns 0.
+//   * An IMAGE-REACTIVE background samples the user's selected background image
+//     out of `contentTex` through `img()`/`img_lum()` and composites it itself
+//     (the canvas is opaque — see IMAGE_SHADER_ROADMAP D1). It does not need
+//     `touch()`: sampling for real keeps the bindings alive by itself.
+//
+// A shader is treated as image-reactive by the app precisely when its source
+// calls this image API — derived from what it does, never from what it is
+// called. Note that a WORKSPACE shader is the fs_main body ALONE, so it reaches
+// the texture through `img()`/`img_lum()` and never writes `contentTex` itself;
+// the marker has to match the helper calls, not the binding name. See
+// `BusterClaw.Shaders.samples_image?/1`, which owns the authoritative pattern.
 export const WGSL_PRELUDE = /* wgsl */ `
 struct U {
   res: vec4<f32>,
@@ -16,6 +30,8 @@ struct U {
   colA: vec4<f32>,   // the 3-color palette (rgb in .xyz): base, mid/accent, highlight
   colB: vec4<f32>,
   colC: vec4<f32>,
+  imgSize: vec4<f32>, // .xy = image pixels (0 = no image), .zw = viewport pixels
+  imgRect: vec4<f32>, // this canvas's rect within the viewport, as 0..1 fractions
 };
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var smp: sampler;
@@ -75,9 +91,65 @@ fn aces(x: vec3<f32>) -> vec3<f32> {
   return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-// Keeps bindings 1+2 in the auto layout (backgrounds never sample content).
+// Keeps bindings 1+2 in the auto layout for a shader that never samples content.
+// Always returns 0 — it is a layout keeper, not a signal.
 fn touch() -> f32 {
   return textureSampleLevel(contentTex, smp, vec2<f32>(0.5, 0.5), 0.0).a * 0.0;
+}
+
+// --- the background image -------------------------------------------------
+// 1.0 when the user has an image bound behind this shader, else 0.0. Fold every
+// image-derived term through this so the shader still reads as a design when it
+// is selected WITHOUT an image, instead of sampling an empty texture and drawing
+// a dead rectangle.
+fn has_img() -> f32 {
+  return select(0.0, 1.0, u.imgSize.x > 0.0);
+}
+
+// Canvas uv -> image uv. ALWAYS go through this instead of sampling in.uv
+// directly, which is wrong three ways at once and looks plausible while you
+// write it:
+//
+//   1. Aspect. The canvas is the window's shape, the image is the photograph's.
+//      Sampling raw uv stretches one onto the other. This cover-fits (fill,
+//      preserve aspect, crop the overflow, centered).
+//   2. Origin. vs_main emits uv with a BOTTOM-left origin; images are
+//      top-left, so a raw sample lands upside down.
+//   3. Split panes. The fit is computed against the VIEWPORT, not this canvas,
+//      and offset by imgRect — so two joined terminals showing one picture
+//      continue it across the seam instead of each drawing a whole copy. A
+//      full-viewport canvas has imgRect = (0,0,1,1) and pays nothing for it.
+fn img_uv(uv_in: vec2<f32>) -> vec2<f32> {
+  let uv = vec2<f32>(uv_in.x, 1.0 - uv_in.y);
+  let vp = u.imgRect.xy + uv * u.imgRect.zw;
+  // No image, or a degenerate viewport: hand back viewport space rather than
+  // dividing by zero (0/0 is NaN, and a NaN uv samples as black across the whole
+  // frame). has_img() is how a shader SHOULD branch; this only keeps the math
+  // finite for one that forgets to.
+  if (u.imgSize.x <= 0.0 || u.imgSize.y <= 0.0 || u.imgSize.z <= 0.0 || u.imgSize.w <= 0.0) {
+    return vp;
+  }
+  let img_aspect = u.imgSize.x / u.imgSize.y;
+  let vp_aspect = u.imgSize.z / u.imgSize.w;
+  var s = vec2<f32>(1.0, 1.0);
+  if (img_aspect > vp_aspect) {
+    s.x = vp_aspect / img_aspect;
+  } else {
+    s.y = img_aspect / vp_aspect;
+  }
+  return (vp - vec2<f32>(0.5)) * s + vec2<f32>(0.5);
+}
+
+// The image under this pixel. textureSampleLevel rather than textureSample
+// so it is safe to call inside a branch — same reason touch() uses it.
+fn img(uv: vec2<f32>) -> vec4<f32> {
+  return textureSampleLevel(contentTex, smp, img_uv(uv), 0.0);
+}
+
+// Rec.709 luminance of the image under this pixel — the field most patterns want
+// to be driven by (thin the veil over highlights, gather it in shadow).
+fn img_lum(uv: vec2<f32>) -> f32 {
+  return dot(img(uv).rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
 }
 
 // 3-stop gradient: t=0 → a, 0.5 → b, 1 → c. The shaders map a scalar field

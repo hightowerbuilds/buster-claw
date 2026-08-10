@@ -82,4 +82,83 @@ defmodule BusterClaw.ShadersTest do
     assert :ok = Shaders.ensure()
     assert File.read!(readme) == "mine"
   end
+
+  describe "samples_image?/1 — image-reactive detection" do
+    test "a shader that calls the image API is image-reactive", %{root: root} do
+      write_shader(root, "veiled", """
+      @fragment
+      fn fs_main(in: VOut) -> @location(0) vec4<f32> {
+        let src = img(in.uv);
+        return vec4<f32>(mix(src.rgb, u.colA.xyz, 0.4 * has_img()), 1.0);
+      }
+      """)
+
+      assert Shaders.samples_image?("veiled")
+    end
+
+    test "img_lum and has_img each count on their own", %{root: root} do
+      write_shader(root, "lumonly", "@fragment\nfn fs_main() { let l = img_lum(uv); }\n")
+      write_shader(root, "flagonly", "@fragment\nfn fs_main() { let p = has_img(); }\n")
+
+      assert Shaders.samples_image?("lumonly")
+      assert Shaders.samples_image?("flagonly")
+    end
+
+    test "a plain shader is not, and neither is a missing or invalid one", %{root: root} do
+      write_shader(root, "plain", @valid)
+      write_shader(root, "broken", "// no entry point\n")
+
+      refute Shaders.samples_image?("plain")
+      refute Shaders.samples_image?("nosuch")
+      # An unreadable file cannot be image-reactive — read/1 gates it, so the
+      # combined mode degrades on a shader that has gone bad rather than pairing
+      # an image with something that will not compile.
+      refute Shaders.samples_image?("broken")
+      refute Shaders.samples_image?(nil)
+    end
+
+    test "the marker matches CALLS, not the binding name", %{root: root} do
+      # The trap this replaced: a workspace shader is the fs_main body alone, so
+      # a correctly-written image-reactive shader never writes `contentTex`
+      # anywhere. Checking for the binding name would have matched none of them.
+      write_shader(root, "viahelper", "@fragment\nfn fs_main() { let c = img(uv); }\n")
+      refute File.read!(Path.join([root, "shaders", "viahelper.wgsl"])) =~ "contentTex"
+      assert Shaders.samples_image?("viahelper")
+    end
+
+    test "a word that merely ends in img does not count", %{root: root} do
+      # `\b` earns its place: without it, `myimg(` matches `img(` and a shader
+      # that never touches the image gets offered as image-reactive.
+      write_shader(root, "decoy", """
+      @fragment
+      fn myimg(p: vec2<f32>) -> f32 { return 0.0; }
+      fn fs_main(in: VOut) -> @location(0) vec4<f32> {
+        return vec4<f32>(myimg(in.uv), 0.0, 0.0, 1.0);
+      }
+      """)
+
+      refute Shaders.samples_image?("decoy")
+    end
+
+    test "sampling contentTex directly still counts, but declaring it does not", %{root: root} do
+      # Bypassing the helpers is wrong (it gets aspect, origin and split panes
+      # wrong) but it IS image-reactive, so the mode should not lie about it.
+      write_shader(root, "raw", """
+      @fragment
+      fn fs_main(in: VOut) -> @location(0) vec4<f32> {
+        return textureSampleLevel(contentTex, smp, in.uv, 0.0);
+      }
+      """)
+
+      # ...whereas a bare mention (a comment, or a redeclared binding) is not a use.
+      write_shader(root, "mentions", """
+      // this shader talks about contentTex but never reads it
+      @fragment
+      fn fs_main(in: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+      """)
+
+      assert Shaders.samples_image?("raw")
+      refute Shaders.samples_image?("mentions")
+    end
+  end
 end

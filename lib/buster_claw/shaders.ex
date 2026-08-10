@@ -30,6 +30,21 @@ defmodule BusterClaw.Shaders do
   @max_bytes 64_000
   @name_re ~r/\A[a-z0-9][a-z0-9-]*\z/
 
+  # What makes a shader image-reactive: it calls the prelude's image API.
+  #
+  # Matching the CALLS and not the binding name is the whole point. A workspace
+  # shader is the `fs_main` body alone — the prelude (and with it
+  # `@binding(2) var contentTex`) is prepended in the browser — so a correctly
+  # written image-reactive shader reaches the texture through `img()` and never
+  # writes `contentTex` anywhere. A `contentTex` check would have matched none of
+  # them.
+  #
+  # `\b` so a shader with its own `myimg(...)` is not mistaken for one that
+  # samples; `textureSample\w*\(\s*contentTex` still catches an author who
+  # bypasses the helpers (wrong, but honestly image-reactive) while ignoring a
+  # bare declaration of the binding.
+  @image_api_re ~r/\b(?:img|img_uv|img_lum|has_img)\s*\(|textureSample\w*\s*\(\s*contentTex/
+
   def dir, do: Artifact.workspace_path(@subdir)
   def path(name), do: Path.join(dir(), name <> @ext)
 
@@ -63,6 +78,33 @@ defmodule BusterClaw.Shaders do
   """
   def face?(name) when is_binary(name), do: "face" in String.split(name, "-")
   def face?(_name), do: false
+
+  @doc """
+  True when custom shader `name` is **image-reactive** — its source calls the
+  prelude's image API (`img/1`, `img_lum/1`, `has_img/0`), so it composites the
+  user's selected background image rather than ignoring it.
+
+  Derived from what the file *does*, never from what it is called. Contrast
+  `face?/1`, which has to use a name rule because nothing in a face's WGSL
+  distinguishes it from a background — here there is a signal to read, so the
+  check cannot drift out of step with the file the way a naming convention can.
+
+  Deliberately answered on every **resolve** rather than cached when the mode is
+  written: a shader can stop sampling by being edited long after it was selected,
+  and a write-time check would leave the app promising a reaction the shader no
+  longer performs.
+
+  Bundled built-ins are not files and are not answered here — see
+  `BusterClaw.Appearance.samples_image?/1`, which layers them on top.
+  """
+  def samples_image?(name) when is_binary(name) do
+    case read(name) do
+      {:ok, body} -> Regex.match?(@image_api_re, body)
+      _ -> false
+    end
+  end
+
+  def samples_image?(_name), do: false
 
   @doc """
   Read + validate a custom shader's WGSL body. Returns `{:ok, wgsl}` or
