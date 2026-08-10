@@ -977,6 +977,51 @@ happily amplify a quiet noisy one along with its noise. **And the probe already
 measured this corpus peaking at ~0.96**, so headroom is the live risk here, not
 level.
 
+### Enumeration, measured 08-09 — use `system_profiler`, not `ffmpeg`
+
+Both candidates were run by hand and the choice is not close.
+**`ffmpeg -f avfoundation -list_devices true` returns an index and a name and
+nothing else** — no transport, no channel count, no sample rate, which is all three
+fields enumeration exists to provide. It also interleaves video devices, writes to
+stderr, and exits non-zero by design. **`/usr/sbin/system_profiler SPAudioDataType
+-json` carries every field.** (`ffmpeg` remains the right tool for *recording* in
+V.9 — just not for asking what exists.)
+
+**The transport vocabulary is verifiable rather than guessable.** It lives in the
+reporter binary:
+
+```
+strings /System/Library/SystemProfiler/SPAudioReporter.spreporter/Contents/MacOS/SPAudioReporter \
+  | grep coreaudio_device_type
+```
+
+→ exactly twelve: `builtin usb bluetooth virtual displayport hdmi airplay avb
+firewire thunderbolt pci unknown`. So `bluetooth` is a confirmed member of Apple's
+own table, not an inference from device names.
+
+**Three traps the real payload exposed, all of which a naive parser hits:**
+
+1. **The system-default flag sits on a *different device*.**
+   `coreaudio_default_audio_system_device` was on the **LG monitor**, not on any
+   input. The input discriminators are `coreaudio_device_input` and
+   `coreaudio_default_audio_input_device`.
+2. **"Built-in" does not mean "input"** — the speakers are built-in too.
+3. **`coreaudio_input_source` can be the literal placeholder `"spaudio_default"`.**
+   Take the name from `_name`, or the picker will offer the operator a microphone
+   called *"spaudio_default"*.
+
+**This machine has two inputs, not one:** *MacBook Pro Microphone* (builtin, 1 ch,
+48 kHz, default input) and *iPhone (5) Microphone* (Continuity Camera, transport
+reported as `unknown`). So multi-device handling is exercised by the current
+hardware after all.
+
+**And one honest limit on the Bluetooth guard below.** The reporter's table has a
+single `bluetooth` value, while CoreAudio distinguishes Bluetooth from
+Bluetooth-LE — so **a BLE headset may surface as `:unknown` rather than
+`:bluetooth`**. Nothing was paired on 08-09, so AirPods → `:bluetooth` rests on that
+string table and **has not been verified on hardware.** A caller that must not
+record over Bluetooth should treat `:unknown` as *unproven, not safe.*
+
 ### Bluetooth — the trap that reproduces the exact problem we are escaping
 
 **The highest-value warning in the microphone document.** Bluetooth has two
@@ -1204,6 +1249,73 @@ using that word improves. **The corpus gets better each time it is used.**
 notarization-affecting change; the dictionary has **no blockers at all** — it is
 LiveView plus existing hooks over verbs that already ship. So spike V.4a on day one,
 then build VI.1 while the packaging clears.
+
+## VI.0b Where it lives — ANSWERED 08-09 by the operator
+
+**Two sub-tabs inside the home Studio tab: `Mix` and `Voice`.** Mix is the
+existing cutting-and-arranging studio. **Voice** is voice training and ramshackle
+audio creation — the recorder from Part V and the dictionary below.
+
+This resolves the open question better than either option previously framed,
+because **it does not extend `sound_studio_component.ex` at all.**
+
+**The component is `FROZEN` at 1,235 lines, and its cap equals its current size —
+it cannot grow by a single line.** A sub-tab *inside* it was therefore never
+available. A sub-tab *above* it means the Mix tab renders it **unchanged**, and
+the Voice tab is a sibling. The frozen file stays frozen and no extraction is
+needed to start.
+
+### Copy the Explore tab exactly — it already solved this
+
+`ExplorePanel` (96 lines, capped 104) is *"the rail and the dispatch, and nothing
+else"*, with every tutorial its own module under `BusterClawWeb.Explore` and a
+**data-only `Explore.Registry`** as single source of truth. The rail, the parent's
+event whitelist (via `tab_keys/0`) and the panel dispatch all read from that
+registry, **so a tab cannot exist in one of them and not the others.** That
+property is the reason the registry has no dependencies.
+
+Mirror it:
+
+| New file | Role |
+|---|---|
+`components/studio/registry.ex` | Data-only: the sub-tabs, labels, blurbs. **Adding a third is one edit here.** |
+`components/studio_panel.ex` | The rail and the dispatch. `tab_keys/0` feeds the parent's whitelist. Mix dispatches to the existing `SoundStudioComponent`; Voice to the new module. |
+`components/studio/voice.ex` (and siblings) | The Voice tab's surfaces, as they land. |
+
+### The sub-tab assign belongs to `StatusLive`, not the panel
+
+Not a style choice — both existing modules state the reason. `Status.Studio`:
+*"home panels render behind `:if`, so the component — and any state it held — is
+discarded on every tab switch. An undo stack that empties when you glance at Chat
+does not read as a tab switch; it reads as the feature being broken."*
+`ExplorePanel` says the same about its sub-tab. So `:studio_tab` is a `StatusLive`
+assign, exactly like `:explore_tab`.
+
+**But `status_live.ex` is at its cap exactly (929/929 HELD).** The chat-skins work
+hit this and the answer is the same: **push the wiring down into
+`status/studio.ex`** (103/114, real headroom) and let `StatusLive` carry only the
+assign, one `handle_event` clause whitelisted through `StudioPanel.tab_keys/0`, and
+one condition. Raise the cap by those few lines **in the same commit, with the
+reason written there** — that is the ratchet's documented protocol, and the
+precedent is `chat_panel.ex` going 1,020 → 1,040 for the text-size axis.
+
+**One existing line changes:** the Studio toolbar at `status_live.ex:851` renders
+on `@home_tab == "studio"`; it belongs to Mix, so it gains
+`and @studio_tab == "mix"`. No new lines.
+
+### Build the shell before the contents
+
+The shell is **pure structure and independently testable**: the rail renders, the
+whitelist rejects an unknown tab, Mix still renders the existing studio
+byte-for-byte, Voice renders a placeholder. Ship that, then land the Voice tab's
+surfaces into a frame that already exists — rather than growing a frame and a
+feature at once and being unable to tell which broke.
+
+**A note on the Voice tab's own scope.** It holds two genuinely different
+activities: *recording* (V.6–V.8) and *browsing/auditioning/correcting* (VI.1–VI.3).
+They may want to be two tabs rather than one. Because the registry is data-only,
+**splitting them later is one edit** — which is the whole reason for copying Explore
+rather than hand-rolling a rail.
 
 ## VI.1 Browse and audition — this alone is worth shipping
 
@@ -1435,10 +1547,10 @@ that is a second, independent argument for VI.1.
 1. **Is the donor session actually going to happen?** The entire ordering rests on
    it. If yes, V.4–V.8 are the critical path. If no, the answer is LibriTTS as a
    separate bank (V.2) and Part VI becomes the whole map.
-2. **Where does the dictionary live** — a new tab, or an expansion of the Studio tab?
-   `sound_studio_component.ex` is **1,235 lines and `FROZEN`** in the size inventory,
-   so "expand it" means extracting first. That is a real cost and deserves an explicit
-   answer rather than discovery halfway through.
+2. ~~**Where does the dictionary live?**~~ **ANSWERED 08-09 — see VI.0b.** Two
+   sub-tabs in the home Studio tab, `Mix` and `Voice`, on the Explore tab's
+   rail-and-registry pattern. It sidesteps the `FROZEN` component entirely: Mix
+   renders it unchanged and Voice is a sibling, so no extraction is needed to start.
 3. **VI.2 or VI.3 first?** See VI.3.
 4. **Wired mic or built-in?** The built-in at 48 kHz is genuinely fine and is what is
    attached. A cheap USB dynamic would be better, is not a blocker, and should not

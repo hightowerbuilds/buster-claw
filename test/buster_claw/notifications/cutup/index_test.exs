@@ -173,8 +173,21 @@ defmodule BusterClaw.Notifications.Cutup.IndexTest do
 
       assert {:ok, index} = Index.load("a.wav")
       assert Enum.map(index.words, & &1.word) == ["first", "second"]
-      # A degraded field is not an unopenable file.
-      assert index.origin == :manual
+      # A degraded field is not an unopenable file — but it degrades DOWNWARD.
+      #
+      # This asserted `:manual` until 08-09, which was the bug: `:manual` is the
+      # one origin worth confidence 1.0, because it means a person marked the
+      # boundary by ear. Reading `"origin": "nonsense"` as `:manual` let damage
+      # promote itself to the most trustworthy value the corpus has, and made a
+      # corrupt header indistinguishable from real hand-correction — the single
+      # provenance guarantee the dictionary (STUDIO_ROADMAP Part VI) is built on.
+      # `:aligned` is the honest floor: a proportional guess, which is exactly
+      # what an unreadable field amounts to.
+      #
+      # Note this is about DECODING DAMAGED DATA, not about construction:
+      # `build/3` still defaults `origin:` to `:manual`, because a caller building
+      # an index by hand and not saying otherwise really is hand-making it.
+      assert index.origin == :aligned
       assert index.indexed_at == nil
     end
 
