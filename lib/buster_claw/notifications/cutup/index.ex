@@ -591,10 +591,22 @@ defmodule BusterClaw.Notifications.Cutup.Index do
 
   defp from_map(_name, _decoded), do: {:error, :invalid}
 
+  # A damaged `origin` degrades to `:aligned`, the LEAST trusted value, and never
+  # to `:manual`. `:manual` is the only origin that earns confidence 1.0, because
+  # it means a person marked the boundary by ear — so defaulting to it let a
+  # corrupt or truncated header flatter itself into the highest trust tier the
+  # corpus has. `:aligned` is the honest floor: a proportional guess, which is
+  # exactly what an unreadable field amounts to.
+  #
+  # This direction matters more than it looks. The dictionary (STUDIO_ROADMAP
+  # Part VI) is built on `manual` being earned and permanent — `import/2` refuses
+  # to overwrite an existing index without `overwrite: true` for that reason. An
+  # origin manufactured from damage would be indistinguishable from a real
+  # hand-correction. Found 08-09 while building `Cutup.Gaps`.
   defp decoded_origin(map) do
     case origin(Map.get(map, "origin")) do
       {:ok, found} -> found
-      {:error, _reason} -> :manual
+      {:error, _reason} -> :aligned
     end
   end
 

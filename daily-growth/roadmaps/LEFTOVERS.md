@@ -51,6 +51,46 @@ file is explicitly for things that block nothing.
 
 ---
 
+### Two wrong-direction failures found 08-09, both in shipped code
+
+Found by agents building the Studio capture modules, both **outside** their scope
+and deliberately not fixed there. Neither is urgent; both fail in the direction
+that hides the problem, which is what earns them a line.
+
+**1. A corrupt index header flatters itself to the highest trust tier.**
+`lib/buster_claw/notifications/cutup/index.ex` — `load/1` maps an **unparseable
+`origin` to `:manual`**. `manual` is the one origin that earns confidence **1.0**,
+because it means a human marked the boundary by ear. So a corrupt or truncated
+index header is read as the most trustworthy kind of data there is. It should
+degrade to the *least* trusted origin, not the most.
+
+*Why it matters later:* the whole point of the dictionary (Part VI) is that
+`manual` is earned and permanent — `sound_index_import` even refuses to overwrite
+without `overwrite: true` for that reason. A default that manufactures `manual`
+from damage undermines the one provenance guarantee the corpus has. Cheap now
+(one clause); expensive once real hand-corrections exist and nobody can tell
+which are genuine.
+
+**2. `agent_backend.ex` crashes the caller instead of returning its error tuple.**
+`lib/buster_claw/agent_backend.ex:225-246` — the `rescue` sits **outside** the
+`Task.yield`, but `Task.async/1` **links**. So if the enumerated CLI binary has
+vanished, `System.cmd` raises inside the task and takes the calling process down
+*before* the rescue can convert it to `{:error, {:enumerate_failed, _}}`. The
+error path exists and is unreachable.
+
+*Why it matters later:* it only fires when a backend CLI is uninstalled or moved
+mid-session — rare, and exactly when a clear message matters most. The fix is to
+move the `rescue` **inside** the task, which is what both
+`notifications/capture/devices.ex` and `notifications/capture.ex` now do
+deliberately; use either as the reference.
+
+**Two of five agents hit this independently on 08-09** — one reasoning it out
+before writing, the other discovering it when its own missing-binary test took the
+caller down with an EXIT. That it was found twice, by different routes, says the
+idiom is easy to get wrong rather than that one author slipped. A grep confirmed
+`agent_backend.ex:235` is the **only** remaining site: the repo's other eight
+`Task.async` calls do not rescue nearby, so this is a single fix and not a sweep.
+
 ### The code-quality roadmap's tail — Phase 4 and two odds
 
 **What.** Inherited 08-03 when `CODE_QUALITY_REFACTOR_ROADMAP` was archived. Four
