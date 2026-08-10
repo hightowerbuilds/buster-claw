@@ -906,3 +906,179 @@ one per lane name invented across the day: `config/test.exs` derives the filenam
 from the partition, and nothing ever removes them. Both were correctly gitignored,
 which is exactly why they accumulated unnoticed. The partitioning was necessary;
 inventing a fresh lane name per run was habit, not requirement.
+
+---
+
+# The Supermap — organising by the app instead of by the documents
+
+The afternoon's ask was a new file: one index with a section for every part of
+Buster Claw, each pointing at the roadmap that governs it. What it turned into
+was a reorganisation of every planning document in the repo — 1,671 lines of
+launch roadmap and 748 of leftovers dissolved into eighteen maps (plus one HTML
+reference) filed under the section each one owns.
+
+## The inversion, and why it was the whole point
+
+There were 8 live roadmaps and 102 archived ones. Between them they described
+the app accurately — **but only in pieces, and only to someone who already knew
+which piece to open.** A folder of documents cannot show *absence*: a surface
+nobody ever planned is invisible in a pile of 110 files, and an archived roadmap
+looks finished whether or not the surface is.
+
+So the map was organised by the **app**, not the folder. Every surface and
+integration got a section whether or not anything had ever been written about
+it, which makes the empty cells the deliverable rather than a gap in the work.
+
+**Twelve sections govern themselves.** Dock navigation, the Calendar surface,
+weather, contacts, the Manual, memory, the Tauri shell, and five more. Two of
+them are load-bearing:
+
+- **The policy engine and trust tiers** decide what the agent may do, and have
+  no document anywhere.
+- **Settings → Configuration** holds the Google connection, the agent models,
+  the profile and the recovery key, and has no document.
+
+Neither is broken. Both are places where a change gets made without ever being
+thought about first.
+
+## Two corrections the map surfaced by existing
+
+**There is no separate Music home tab.** The library lives inside the Studio's
+Mix tab; only the player is standalone. A memory note had said otherwise for
+long enough that it read as fact.
+
+**Per-part counts were the wrong summary.** The first draft opened with a table
+of section counts per part. That is the same failure as a universal asserted over
+the command catalog: a tally goes stale on the next edit and does it *silently*.
+Replaced with names — which are checkable, and which say something.
+
+## The operator's edit: live maps only
+
+First version, 653 lines, linked every archived roadmap that had ever touched a
+section. The instruction back was that this was too much, and that only current
+maps belonged.
+
+That cut was correct in a way worth recording: **a closed map made a row look
+busy when nothing was in flight**, which is the exact opposite of what the page
+is for. 653 lines → 188. Settings went from seven archived roadmaps hanging off
+it to seven rows and not a single link — and it *is* seven shipped tabs with
+nothing in flight. The empty Map column became the correct answer for most of
+the app, and the page started answering its one question in about ten seconds.
+
+## Splitting the document that warned against being split
+
+`LAUNCH_ROADMAP` opened with: *"The single release document… one file, because
+the last time this was four files they disagreed with each other and with the
+code."* It also pinned `III.E`, `III.F`, `III.G` and `III.J` as anchors cited by
+name from `codesign_release.sh`, `build_desktop.sh`, `Entitlements.plist` and
+`release-desktop.yml`.
+
+It was split anyway, into seven maps plus `QA_BACKLOG`, with three mitigations
+that are the price of doing it:
+
+1. **No identifier changed.** Every `G-n` and `III.x` kept its number and its
+   wording.
+2. **Each number lives in exactly one map.** `G-1`–`G-20` Apple, `G-21`–`G-24`
+   Website, `G-25`–`G-35` Trust, `G-36`–`G-41` Release Gate. A number in two
+   places is the old failure mode by definition.
+3. **Status has one home.** What disagreed last time was *what state we are in*.
+
+Then the operator's next instruction removed the spine too, and `LEFTOVERS` with
+it. Both dissolved into the maps; the Supermap became the only index.
+
+## The verification, and the two things it caught
+
+A split is where content quietly vanishes, so the check was mechanical rather
+than a read-through: every non-blank line of each original had to appear
+somewhere in the new set, every `G-n` checklist item had to have exactly one
+home, and every `III.x` heading had to survive unrenumbered.
+
+- **41 gate items, one home each.** 11 `III.x` sections, none renumbered. 27
+  leftovers items, one home each.
+- The line-level accounting found **two real losses**, both of which would have
+  gone unnoticed:
+  - the **`DONE 07-22` record** of the packaged-app walk — the only written
+    evidence of what was actually exercised against a real bundle, and nothing
+    in the suite asserts it. Restored as evidence.
+  - the leftovers **framing paragraph** (*"quietly never gets done because it
+    never becomes urgent — until it does, at which point it is expensive"*) and
+    **R9's** closure-by-deletion.
+
+## A verification loop that checked nothing and looked emphatic
+
+The first run of the one-home-per-gate check printed 41 confident failures.
+Every one was false. `NEW="a.md b.md"` then `grep -l "$pat" $NEW` — **zsh does
+not word-split unquoted parameters**, so the whole list arrived as one filename,
+every lookup found zero homes, and the loop reported total catastrophe.
+
+The failure mode is the interesting part: it failed *loud and wrong* rather than
+silent. Had the polarity been reversed — had the bug made everything look like it
+passed — the split would have shipped with content missing and a green check
+saying otherwise. **A verification script is code, and a check that cannot fail
+is worth less than no check at all.**
+
+## What actually breaks when documents move
+
+Not the prose. The prose degrades gracefully; a stale sentence is a nuisance.
+What breaks is **the references that move a build**:
+
+- `release-desktop.yml` citing `III.G`, `G-5`, `G-16`, `III.J`
+- `build_desktop.sh` and `codesign_release.sh` citing `III.F`
+- `smoke_release_boot.sh` citing `G-5`
+- four moduledocs citing `V.8`
+
+Those cite sections *by name*, next to the thing they document, which is the
+whole reason the launch map forbade renumbering. Every one was repointed.
+References inside dated summaries were deliberately left alone — one of them
+points at an older `DISTRIBUTION_ROADMAP` that *became* the launch map, so
+rewriting it would have falsified the record.
+
+## Two new sections, and the dependency they exposed
+
+**Distribution** and **busterclaw.lol** were added as their own sections. The
+second is three 404s and a wrong headline, and the useful finding is that **it
+sits on two critical paths, not one**: `/privacy` at a matching domain is a hard
+prerequisite for Google OAuth brand verification, so the website gates Google
+Workspace as well as the public download. That is why it kept getting deferred
+inside a roadmap about signing binaries.
+
+Read as a whole, the map says one dependency chain owns the schedule — **Clinch
+Phase 3 → BusterPhone → the paywall** — and that two items will not move by being
+planned harder: the `getUserMedia` spike needs someone to click a permission
+dialog at a packaged build, and G-2 needs someone to request a certificate.
+
+## The shared tree, again
+
+Three things happened that only happen with concurrent sessions in one worktree:
+
+- **`git mv` staged a rename, and the staging was gone by the next command.**
+  Another session's index activity reset it. Re-staged explicitly; the renames
+  landed and history follows the files.
+- **`git add <directory>` swept in a peer's staged deletion** of
+  `MODULARIZATION_ROADMAP.md`. Caught in the pre-commit review and unstaged. The
+  standing rule is *stage explicit paths* — a directory argument is not an
+  explicit path, and this is the second time that distinction has cost something.
+- **`IMAGE_SHADER_ROADMAP.md` was left at the root on purpose** through the whole
+  reorganisation because it was another session's uncommitted file. It moved into
+  `surfaces/` only after they landed it in `62ac6d6`.
+
+## Where the maps live now
+
+`roadmaps/` mirrors the Supermap's parts: `shell/`, `surfaces/`, `agent-core/`,
+`integrations/`, `platform/`, `distribution/`, `website/`, with `SUPERMAP.md`
+alone at the root. The directory listing now answers "what is in flight for this
+area?" without opening anything.
+
+**Part IV — Settings gets no folder.** Nothing is in flight there, and an empty
+directory reads as an oversight rather than as a fact. Two maps span sections and
+are filed by primary owner rather than duplicated: `FRONT_DOOR` in
+`distribution/` though it also touches the onboarding wizard and the homepage,
+and `TRUST_AND_SUPPORT` in `platform/` though it also governs Settings → Security
+and Sentinel. **A map has one home; the section tables point at it from wherever
+else it applies.**
+
+The last move made that rule bite. The image-shader map belongs with Pockets —
+`Pockets.Mounts`, the *"strengthened symlink"* — in Part II, so filing it in
+`surfaces/` meant its Supermap row had to move out of Part V too, rather than
+point across folders. Part V keeps "Shaders — the authoring machinery," which is
+the part that genuinely is agent core.
