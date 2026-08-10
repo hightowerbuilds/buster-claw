@@ -376,14 +376,27 @@ defmodule BusterClawWeb.SetupLive do
             >
               <%!-- The reconnect cadence deliberately is NOT repeated here: it belongs to
               `GoogleOAuth.reconnect_sentence/0` and is stated once, above. This note carries
-              the other half of the unverified-app limit — the 100-tester cap and how to get
-              on the list. --%>
+              the other half of the unverified-app limit: the approved-tester list, and the
+              one symptom that means you are not on it.
+
+              Naming the symptom is the whole point. While the OAuth app is in Testing,
+              an address that is not on the list never reaches our callback at all —
+              Google stops the flow on its own "Access blocked" page. So the app cannot
+              detect this, cannot report it, and cannot recover from it: the wizard just
+              sits on step 3 looking broken. The only defence available to us is telling
+              the user in advance what that screen means. --%>
               <span class="font-semibold">Beta note:</span>
-              Google limits this app to a small list of approved testers right now.
+              Google limits this app to an approved-tester list right now.
               <a href={GoogleOAuth.beta_request_mailto()} class="underline hover:text-base-content">
                 Request access
               </a>
               with the Gmail address you'll connect, and you'll get a confirmation within a day.
+              <span class="font-semibold">
+                If Google shows an "Access blocked" screen saying this app "has not completed
+                the Google verification process", that address isn't on the list yet —
+                it isn't a fault in Buster Claw, and nothing here can fix it.
+              </span>
+              Request access, then come back to this step.
             </p>
 
             <%!-- One-click connect via the bundled OAuth client: nothing to

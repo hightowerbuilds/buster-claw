@@ -112,8 +112,27 @@ defmodule BusterClawWeb.SetupLiveTest do
   # holds is a regression, wherever a future edit puts it.
   describe "how often the user is told to reconnect Google" do
     setup do
-      prev = Application.get_env(:buster_claw, :google_oauth_app_status)
-      on_exit(fn -> Application.put_env(:buster_claw, :google_oauth_app_status, prev) end)
+      prev_status = Application.get_env(:buster_claw, :google_oauth_app_status)
+      prev_client = Application.get_env(:buster_claw, :google_bundled_client)
+
+      # The beta note is gated on `@bundled_available` — correctly, since the
+      # tester list belongs to OUR bundled OAuth app and a bring-your-own-client
+      # user has their own. Without a bundled client configured the note never
+      # renders, so a test asserting its copy would pass vacuously against an
+      # empty string. Configure one.
+      Application.put_env(:buster_claw, :google_bundled_client, %{
+        client_id: "test-id",
+        client_secret: "test-secret"
+      })
+
+      BusterClaw.Google.BundledClient.reset()
+
+      on_exit(fn ->
+        Application.put_env(:buster_claw, :google_oauth_app_status, prev_status)
+        Application.put_env(:buster_claw, :google_bundled_client, prev_client)
+        BusterClaw.Google.BundledClient.reset()
+      end)
+
       :ok
     end
 
@@ -141,6 +160,36 @@ defmodule BusterClawWeb.SetupLiveTest do
       # `You'll` renders as `You&#39;ll`, so match the part that survives escaping.
       assert html =~ "do this once."
       refute html =~ "reconnect about once a week"
+    end
+
+    # An address that is not on Google's tester list never reaches our callback —
+    # Google ends the flow on its own "Access blocked" page. The app therefore cannot
+    # detect, log, or report this, and the wizard simply sits on step 3 looking broken.
+    # Naming the symptom in advance is the only defence available, so it is asserted.
+    test "the unverified-app note names the symptom of not being on the tester list",
+         %{conn: conn} do
+      Application.put_env(:buster_claw, :google_oauth_app_status, "testing")
+
+      {:ok, view, _html} = live(conn, ~p"/setup")
+      html = render_hook(view, "goto", %{"step" => "google"})
+
+      assert html =~ "Access blocked"
+      assert html =~ "has not completed"
+      assert html =~ "isn&#39;t on the list yet"
+      # And a way to act on it, not just a diagnosis.
+      assert html =~ "Request access"
+      assert html =~ "mailto:"
+    end
+
+    test "once verified, the tester-list note disappears with the cap it describes",
+         %{conn: conn} do
+      Application.put_env(:buster_claw, :google_oauth_app_status, "verified")
+
+      {:ok, view, _html} = live(conn, ~p"/setup")
+      html = render_hook(view, "goto", %{"step" => "google"})
+
+      refute html =~ "Access blocked"
+      refute html =~ "approved-tester list"
     end
 
     test "the sentence is derived from app status, so call sites cannot drift apart" do

@@ -35,6 +35,67 @@ answers your email" should expect extra scrutiny and at least one rejection roun
 > days.** Users must reconnect Google weekly until verification clears. The onboarding says
 > "you'll do this once," which is **false for every early user**. Say it out loud, and fix
 > the wizard copy.
+>
+> **Both halves fixed 2026-08-10** (`bc6c535`, and the runbook below). The wizard now
+> derives its cadence claim from `GoogleOAuth.reconnect_sentence/0` and names the
+> "Access blocked" symptom. **The operator half had never been written down at all.**
+
+---
+
+## The tester runbook — do this BEFORE you invite anyone
+
+**Added 2026-08-10, because it was the gap nothing covered.** The app's own copy tells a
+tester how to *request* access. Nothing anywhere told the operator how to *grant* it — so
+the first trial invitation would have produced a tester stuck on a Google error page and an
+operator with no idea which knob to turn.
+
+### Why no amount of app code can rescue this
+
+While the OAuth app is in **Testing**, an address that is not on the approved list **never
+reaches our callback.** Google terminates the flow on its own screen — *"Access blocked: …
+has not completed the Google verification process."* Our `GoogleOAuthController.callback/2`
+is never invoked, so:
+
+- the app cannot detect it,
+- cannot log it to Sentinel,
+- cannot show an error, and
+- **cannot tell it apart from a user who simply wandered off.**
+
+The wizard just sits on step 3. **This is the failure mode with the worst ratio of
+"trivially preventable" to "looks like the product is broken" in the whole onboarding
+path**, and the only lever available is saying it in advance — which the beta note now does.
+
+### The steps
+
+1. **Google Cloud Console** → the project holding the bundled OAuth client → **APIs &
+   Services → OAuth consent screen → Audience** (historically *"Test users"*; Google has
+   moved this page more than once — look for the tester list, not a fixed URL).
+2. **+ Add users** → the tester's **exact Gmail address**. No wildcards, no domains, no
+   aliases: the address they will actually pick on the consent screen.
+3. **Do it before you send the invite.** A tester who tries first hits the block page, and
+   the fix is invisible from their side even after you add them — **they must restart the
+   consent flow**, so you have to tell them to try again.
+4. **Cap: 100 test users, and removals do not free a slot retroactively in any way you
+   should rely on.** For a "handful of people we can email" this is not a constraint; if a
+   trial ever approaches it, that is the signal to finish verification rather than to
+   economise on testers.
+5. **Warn them about the weekly reconnect** even though the wizard now says it. The app's
+   copy is a backstop, not an invitation — a person told in advance by a human reads a
+   weekly prompt as expected; a person who only reads it on screen at the moment it happens
+   often does not.
+
+### The one thing to check when a tester says "it doesn't work"
+
+Ask what the **last screen they saw** was, and whether it was Google's or ours.
+
+| What they saw | What it means |
+|---|---|
+| Google's "Access blocked … has not completed the Google verification process" | not on the tester list — step 1 above |
+| Google's consent screen, then back to Buster Claw with a failure | a real OAuth failure; `GoogleOAuthController` handled it, so there is a message and a Sentinel entry to read |
+| Nothing — the wizard just sat there | almost always the first row |
+
+**That question is the entire diagnostic**, and it works because our callback either ran or
+it didn't. There is no third case.
 
 **The fallback, and it is a good one:** GWS ships as *"developer preview — bring your own
 OAuth app"* while the rest of the download is public. A dev can make their own OAuth client in
