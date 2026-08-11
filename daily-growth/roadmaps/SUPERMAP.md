@@ -87,7 +87,7 @@ the section tables below point at it from wherever else it applies.**
 
 ## Where the build is
 
-1. **[The Clinch](#part-vi--integrations)** — Phase 3 next; it unblocks BusterPhone.
+1. **[The Clinch](#part-vi--integrations)** — Phases 0–3 done 08-10; **BusterPhone is now configurable in a packaged build.** Re-key works but nothing can invoke it.
 2. **[BusterPhone](#part-vi--integrations)** — the only paid thing.
 3. **[Apple](#part-vii--platform--release)** — **`G-1`–`G-3` DONE 08-10: a notarized, stapled DMG exists.** What is next is not code — an **Apple Silicon Mac**.
 4. **[Studio → Voice](#part-ii--home)** — needs a person at a microphone.
@@ -228,7 +228,7 @@ Not surfaces. The machinery every surface sits on.
 
 | Section | Where | State | Map |
 |---|---|---|---|
-| **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phase 3 next** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
+| **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phases 0–3 done 08-10; Phase 4 all but one item** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
 | **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | The relay (Supabase) | `telephony/relay.ex` | SHIPPED — **now erases, 08-10** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) — pre-08-10 backlog sweep · [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — rotated DB password |
 | Google Workspace | `Google` (16 modules) | SHIPPED | [`GOOGLE_VERIFICATION`](integrations/GOOGLE_VERIFICATION_ROADMAP.md) — restricted scopes, CASA |
@@ -237,10 +237,23 @@ Not surfaces. The machinery every surface sits on.
 | Weather | `Weather` | SHIPPED | — |
 | Notes That Float / Shadiox | outside this repo | **SCOPED** | — |
 
-**The Clinch's Phase 3 unblocks BusterPhone, which is the entire paywall.** That
-is the one dependency chain on this page; everything else is parallel to it.
-BusterPhone's next actions are the operator's, in order: upgrade Twilio → wire
-the Voice webhook → set `SUPABASE_URL` / `SERVICE_ROLE_KEY` → call it.
+**The Clinch's Phase 3 landed 08-10, so BusterPhone is no longer blocked on it.**
+Twilio and Supabase credentials now live in the Clinch and can be entered from
+Settings → Configuration, which is what makes the paid tier configurable in a
+packaged build at all — a double-clicked `.app` inherits launchd's environment,
+not your shell's.
+
+BusterPhone's remaining actions are the operator's, in order: upgrade Twilio →
+wire the Voice webhook → enter the credentials → call it. **Enter them in the app
+rather than as environment variables**, and note that doing so starts the drain
+on its next 30-second tick.
+
+> **Re-key is implemented but not operable.** `Clinch.Rekey.run/2` rotates the
+> master key and is tested end to end; nothing invokes it, and the shell must
+> sequence re-key-then-adopt, which nothing orchestrates. Rotation is a
+> prerequisite for the remote-access phases — *a credential you cannot rotate is
+> one you cannot respond to a compromise with* — so this is the gap between
+> "Phase 4 is written" and "Phase 5 can start".
 
 ---
 

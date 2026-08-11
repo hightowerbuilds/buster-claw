@@ -1,14 +1,15 @@
 # The Clinch — one place for credentials, reachable from anywhere
 
-**Scoped 08-08-26 · Status: ACTIVE — Phases 0, 1, 2 shipped 08-08. Phase 3 next.**
+**Scoped 08-08-26 · Status: ACTIVE — Phases 0–3 shipped, Phase 4 all but one item.
+Phase 5 (remote mode) is next, and is now unblocked.**
 
 | Phase | State |
 |---|---|
 | 0 — Stop the bleeding | **DONE** (`35d7a55`, `df1d097`) |
 | 1 — The Clinch contract | **DONE** (`6ee19d1`) |
 | 2 — The management gate | **DONE** (`8aff7f9`) |
-| 3 — The screen, and evicting the env vars | **NEXT.** Unblocks BusterPhone; closes finding #5 |
-| 4 — Rotation, revocation, the second vault | Not started. Must precede Phase 5 |
+| 3 — The screen, and evicting the env vars | **DONE 08-10** (`6415825`, `121f954`, `43f61e2`, `1a705a2`, `7ec5f52`). BusterPhone is configurable in a packaged build; closes #5 |
+| 4 — Rotation, revocation, the second vault | **ALL BUT #7** (`2f157d1`, `6b36f42`, `3efe94e`, `c683f00`). Re-key, one vault, visibility and revocation done; the terminal token remains |
 | 5–7 — Remote mode, pairing, private network | Not started (absorbed from the SSH map) |
 
 **One thing no test can close.** Everything below is verified by automated gates,
@@ -17,6 +18,21 @@ acceptance criterion — *"a packaged build stores and deletes a credential from
 the UI"* — needs a person, a signed build and an afternoon. It belongs with
 LAUNCH **G-40**, which is already the bucket for exactly this class of item, and
 it should travel there rather than sit here looking done.
+
+> **A notarized DMG now exists (08-10), so that walk is finally possible.** It was
+> blocked on an artifact until the Apple path completed; it is now blocked only on
+> someone sitting down with it.
+
+> ### 🔴 Re-key has no way to run it — 08-10
+>
+> `Clinch.Rekey.run/2` works and is tested end to end. **Nothing invokes it.**
+> There is no command, no button, and no Tauri path, and the shell must sequence
+> **re-key first, adopt second** — which nothing orchestrates. Rotation is
+> possible in principle and not yet operable.
+>
+> This is deliberately recorded rather than filed as done: a phase whose stated
+> acceptance is *"rotating the recovery key preserves every integration"* is not
+> finished while rotating the recovery key is something only a test can do.
 
 **Supersedes `SSH_REMOTE_ACCESS_ROADMAP.md`** (researched 08-08, archived the
 same day without ever starting). Its research is carried forward here in full —
@@ -364,9 +380,33 @@ ACL registrations fails `acl_lockstep` before packaging can hide it.
 
 ---
 
-## Phase 3 — The Clinch screen, and evicting the env vars
+## Phase 3 — The Clinch screen, and evicting the env vars — **DONE 08-10**
 
-The phase that unblocks the money leg.
+The phase that unblocks the money leg. **BusterPhone is configurable in a packaged
+build for the first time.**
+
+> ### What the build taught, beyond the checklist
+>
+> **3c turned out to be a deletion, not a mechanism.** The phase asked for
+> key-gated children that "start and stop when a credential appears or
+> disappears, without an app restart", which reads like a DynamicSupervisor.
+> `Drain.drain/1` had always opened with `Relay.configured?()`, so the *work* was
+> already gated; gating the *child* at boot was a second answer to the same
+> question — and the one that could go stale, since a credential stored after boot
+> could never flip it. Removing the boot gate was the whole change.
+>
+> **A second writable kind, not a writable `:service_key`.** The first attempt put
+> app credentials in the existing kind and made `managed?` per-entry. `Clinch`'s
+> own invariant test refused it: that forces `list/1` to restate `managed?` as a
+> literal, which is the coincidence-not-derivation bug it exists to prevent. Its
+> failure message read *"the write boundary has two answers again"*. `Types`
+> already says a kind decides **where it lives and who may manage it** — two
+> stores with two managers is two kinds. Hence `:app_key`.
+>
+> **A cost worth knowing before the next credential moves:** making config
+> resolution storage-backed means pure unit tests of those modules now need a
+> database. `TwilioTest` and `FinanceFinnhubTest` moved to `DataCase`. The third
+> module to read a credential will pay the same tax.
 
 - A **Settings → Clinch** panel: every credential by kind, with name, note,
   last-used, and where it came from. Add / replace / delete through Phase 2's
@@ -388,10 +428,38 @@ credential stops it.
 
 ---
 
-## Phase 4 — Rotation, revocation, and the second vault
+## Phase 4 — Rotation, revocation, and the second vault — **ALL BUT #7, 08-10**
 
 Cheap once the Clinch owns the values, and it must precede remote access: a
 credential you cannot rotate is one you cannot respond to a compromise with.
+
+> ### The chokepoint paid for itself
+>
+> Phase 1's facade moduledoc predicted that routing both vaults through one place
+> would make retiring the second *"a change to this file plus a migration, rather
+> than a change to every caller"*. That is exactly what it cost: one facade, one
+> schema, one migration (`20260810220000`), verified on live data — 3 values up,
+> 3 back, 3 up again, zero skipped.
+>
+> **A documentation error nearly wrote unreadable ciphertext.** The facade's table
+> gave the Google AAD as `google:v1` — that is the *key derivation prefix*; the AAD
+> was `buster_claw.google.vault.v1`. The two vaults' frames were byte-identical, so
+> a migration written from that table would have produced values that fail GCM
+> authentication forever, with no error until use. Caught before writing it, fixed
+> in `48026f5`. **When two things differ only in constants, naming one wrongly is
+> invisible.**
+>
+> ### The bug that outranks the features
+>
+> `Sentinel.Event` validates `category` against a whitelist and `observe/4` is
+> best-effort by design — so **both new revocation categories were silently
+> dropped**. Invalid changeset, warning logged, caller told nothing. The full suite
+> passed; the new tests passed. A security feature this roadmap says exists was
+> recording nothing, and the only evidence was one `Logger` line in green output.
+>
+> `SentinelCategoryTest` now scans every `observe/4` call site against
+> `Event.categories/0`. **Any best-effort write is a place a feature can be absent
+> and green** — worth checking wherever else that pattern appears.
 
 - **Re-key.** Re-encrypt every stored value under a new `secret_key_base` in one
   transaction, with the old key still available. Today a key change silently
@@ -409,6 +477,20 @@ credential you cannot rotate is one you cannot respond to a compromise with.
 **Acceptance:** rotating the recovery key preserves every integration, `$secret`,
 and Google account. A revoked credential fails its next use loudly, with a
 message naming what to do.
+
+**Where each item landed:**
+
+| Item | State |
+|---|---|
+| Re-key | **DONE** `6b36f42` — one transaction; unreadable values counted and left byte-for-byte, because that is what a previous bad key change leaves behind and aborting would refuse to run when most needed |
+| Retire `Google.Vault` (#6) | **DONE** `2f157d1` |
+| Invariant 5's visibility half | **DONE** `3efe94e` — "nothing configured" and "everything unreadable" rendered identically; now they do not |
+| Revocation as a first-class event | **DONE** `c683f00` — no separate `revoke/1`, because a second verb leaves a path that removes a credential *without* the event |
+| **Scope the terminal's token (#7)** | **NOT DONE.** A behaviour change for anything scripted against the in-app terminal; needs its own walk and the operator's sign-off |
+
+**And the acceptance is only half met.** Every clause is true of
+`Clinch.Rekey.run/2`, and nothing can call it — see the banner at the top of this
+file. Rotation is implemented, not operable.
 
 ---
 
