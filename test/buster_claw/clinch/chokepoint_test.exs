@@ -1,7 +1,12 @@
 defmodule BusterClaw.Clinch.ChokepointTest do
   @moduledoc """
   Clinch Phase 1's exit criterion: `BusterClaw.Clinch.Vault` is the **only**
-  module that touches `BusterClaw.Vault` or `BusterClaw.Google.Vault`.
+  module that touches `BusterClaw.Vault`.
+
+  It guarded two vaults until Phase 4 retired `BusterClaw.Google.Vault`
+  (migration `20260810220000`). The chokepoint is why that retirement was this
+  file plus a migration rather than a change to every caller — which is the
+  argument Phase 1 made when it built the facade, now paid off.
 
   Why this is worth a test rather than a convention. The chokepoint is the whole
   argument for the Clinch existing — one place where audit, policy and the Phase
@@ -20,15 +25,12 @@ defmodule BusterClaw.Clinch.ChokepointTest do
   # The two vault implementations, and the one facade allowed to call them.
   @allowed [
     "lib/buster_claw/vault.ex",
-    "lib/buster_claw/google/vault.ex",
     "lib/buster_claw/clinch/vault.ex"
   ]
 
   @patterns [
     "alias BusterClaw.Vault",
-    "alias BusterClaw.Google.Vault",
-    "BusterClaw.Vault.",
-    "BusterClaw.Google.Vault."
+    "BusterClaw.Vault."
   ]
 
   defp lib_files do
@@ -74,17 +76,16 @@ defmodule BusterClaw.Clinch.ChokepointTest do
   # Without this, the test above passes just as happily if the patterns stop
   # matching anything at all — a stripper bug would read as a clean codebase.
   #
-  # The facade is the one file that must match, and it must match BOTH: the two
-  # vault implementations do not name themselves (`defmodule BusterClaw.Vault`
-  # is neither an alias nor a call), so it is the only positive control there is.
-  test "the scan still sees the facade aliasing both vaults" do
+  # The facade is the one file that must match: the vault implementation does not
+  # name itself (`defmodule BusterClaw.Vault` is neither an alias nor a call), so
+  # this is the only positive control there is. It got weaker when Phase 4 removed
+  # the second vault — one assertion where there were two — which is worth knowing
+  # if the stripper is ever changed.
+  test "the scan still sees the facade aliasing the vault" do
     code = code_only(File.read!("lib/buster_claw/clinch/vault.ex"))
 
     assert String.contains?(code, "alias BusterClaw.Vault"),
            "the facade no longer aliases the app vault, or the stripper ate it"
-
-    assert String.contains?(code, "alias BusterClaw.Google.Vault"),
-           "the facade no longer aliases the Google vault, or the stripper ate it"
   end
 
   # The stripper must remove prose, or every moduledoc explaining the vaults

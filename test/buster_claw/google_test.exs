@@ -4,13 +4,17 @@ defmodule BusterClaw.GoogleTest do
   alias BusterClaw.Google
   alias BusterClaw.Google.Account
   alias BusterClaw.Google.OAuth
-  alias BusterClaw.Google.Vault
+  alias BusterClaw.Vault
 
   setup do
     Req.Test.verify_on_exit!()
     :ok
   end
 
+  # Phase 4 retired BusterClaw.Google.Vault; `google_accounts` columns are now
+  # written by the single app vault (migration 20260810220000). These tests
+  # follow the behaviour rather than the module — the round-trip property they
+  # assert is what mattered, and it is unchanged.
   describe "vault" do
     test "encrypts and decrypts credential values" do
       assert {:ok, encrypted} = Vault.encrypt("client-secret")

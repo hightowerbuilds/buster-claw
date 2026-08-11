@@ -1,29 +1,35 @@
 defmodule BusterClaw.Clinch.Vault do
   @moduledoc """
-  The crypto chokepoint: the **only** module that calls `BusterClaw.Vault` or
-  `BusterClaw.Google.Vault`. Enforced by `Clinch.ChokepointTest`.
+  The crypto chokepoint: the **only** module that calls `BusterClaw.Vault`.
+  Enforced by `Clinch.ChokepointTest`.
 
-  ## Why a facade over two vaults
+  ## One vault, and why this facade still earns its place
 
-  There are two, and they are not interchangeable — different AAD, different key
-  derivation, so a value written by one cannot be read by the other:
+  There used to be two, with different keys and AADs, so a value written by one
+  could not be read by the other. `google_accounts`' `*_enc` columns were the
+  second one's. Migration `20260810220000` re-encrypted them under the app vault
+  and `BusterClaw.Google.Vault` is gone — Clinch Phase 4, finding #6.
 
-  | vault | module, key derivation, AAD | holds |
-  |---|---|---|
-  | `:app` | `BusterClaw.Vault` · key `sha256("vault:v1:" <> secret_key_base)` · AAD `buster_claw.vault.v1` | integration tokens, webhook secrets, `$secret` and `:app_key` values |
-  | `:google` | `BusterClaw.Google.Vault` · key `sha256("google:v1:" <> secret_key_base)` · AAD `buster_claw.google.vault.v1` | the `google_accounts` `*_enc` columns |
+  | vault | key derivation | AAD | holds |
+  |---|---|---|---|
+  | `:app` | `sha256("vault:v1:" <> secret_key_base)` | `buster_claw.vault.v1` | everything encrypted at rest |
 
-  > **Both are listed with key AND AAD because this table used to conflate them.**
-  > It gave the `:google` AAD as `google:v1`, which is the KEY DERIVATION prefix —
-  > the AAD is `buster_claw.google.vault.v1`. The frames are otherwise identical
-  > (version byte 1, 12-byte IV, 16-byte tag), so anything written from the wrong
-  > constant looks correct and fails GCM authentication forever. Found 08-10 while
-  > scoping the Phase 4 migration that would have been written from this table.
+  **That collapse is the argument for the facade, made in retrospect.** Retiring a
+  vault used directly by every caller would have been a change to every caller;
+  routing them through here first made it this file plus a migration, exactly as
+  Phase 1 predicted when it built the chokepoint.
 
-  Clinch Phase 4 retires `:google` by re-encrypting those columns under `:app`
-  and deleting the second vault. Routing both through one facade first is what
-  makes that a change to *this file plus a migration*, rather than a change to
-  every caller — which is the whole argument for a chokepoint.
+  The `vault` argument survives at `:app` rather than being deleted. A second
+  vault is a live possibility again the moment a credential needs a different key
+  — a hardware-backed key, or a per-device key for Phase 6 pairing — and the
+  chokepoint is worth keeping shaped for it. `Clinch.ChokepointTest` enforces that
+  this stays the only caller.
+
+  > **The two constants were documented wrong until 08-10**, with the Google AAD
+  > given as `google:v1` — its key prefix. The frames were identical, so anything
+  > written from the wrong constant would have failed GCM authentication at use
+  > time and been unrecoverable. Recorded because the same shape recurs: when two
+  > things differ only in constants, naming one of them wrongly is invisible.
 
   ## Deliberately dependency-free
 
@@ -40,34 +46,29 @@ defmodule BusterClaw.Clinch.Vault do
   *act*, which is a decision only the caller can make.
   """
 
-  alias BusterClaw.Google.Vault, as: GoogleVault
   alias BusterClaw.Vault, as: AppVault
 
-  @type vault :: :app | :google
+  @type vault :: :app
 
   @doc "Encrypt a value. `{:error, :invalid_plaintext}` for a non-binary."
   @spec encrypt(term(), vault()) :: {:ok, binary() | nil} | {:error, atom()}
   def encrypt(value, vault \\ :app)
   def encrypt(value, :app), do: AppVault.encrypt(value)
-  def encrypt(value, :google), do: GoogleVault.encrypt(value)
 
   @doc "Encrypt a value, raising on failure."
   @spec encrypt!(term(), vault()) :: binary() | nil
   def encrypt!(value, vault \\ :app)
   def encrypt!(value, :app), do: AppVault.encrypt!(value)
-  def encrypt!(value, :google), do: GoogleVault.encrypt!(value)
 
   @doc "Decrypt a value. `{:error, :invalid_ciphertext}` on a key mismatch or tampering."
   @spec decrypt(binary() | nil, vault()) :: {:ok, String.t() | nil} | {:error, atom()}
   def decrypt(value, vault \\ :app)
   def decrypt(value, :app), do: AppVault.decrypt(value)
-  def decrypt(value, :google), do: GoogleVault.decrypt(value)
 
   @doc "Decrypt a value, raising on failure."
   @spec decrypt!(binary() | nil, vault()) :: String.t() | nil
   def decrypt!(value, vault \\ :app)
   def decrypt!(value, :app), do: AppVault.decrypt!(value)
-  def decrypt!(value, :google), do: GoogleVault.decrypt!(value)
 
   @doc """
   True when `value` is *framed* as the app vault's ciphertext, without attempting

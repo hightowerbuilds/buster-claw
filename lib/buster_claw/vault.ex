@@ -4,8 +4,12 @@ defmodule BusterClaw.Vault do
   integration tokens, webhook secrets, delivery tokens).
 
   The wire format is `<<version, iv::12, tag::16, ciphertext>>`. The key is
-  derived from `secret_key_base`; see `BusterClaw.Google.Vault` for the
-  equivalent Google-credential vault that predates this module.
+  derived from `secret_key_base`.
+
+  **The only vault.** A second one (`BusterClaw.Google.Vault`, for the
+  `google_accounts` `*_enc` columns) existed until Phase 4 re-encrypted those
+  columns under this one and deleted it — migration `20260810220000`. Reach it
+  through `BusterClaw.Clinch.Vault`, which is the enforced chokepoint.
   """
 
   @version 1

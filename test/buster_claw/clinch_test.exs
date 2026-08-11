@@ -218,13 +218,15 @@ defmodule BusterClaw.ClinchTest do
 
       assert is_binary(raw)
 
-      assert {:ok, "client-secret"} = BusterClaw.Google.Vault.decrypt(raw),
-             "the google_accounts columns must stay readable by the Google vault"
-
-      assert {:error, :invalid_ciphertext} = BusterClaw.Vault.decrypt(raw),
-             "the app vault must NOT be able to read a Google column — if it can, " <>
-               "the vaults were merged without the Phase 4 migration and existing " <>
-               "installs are about to lose their Google credentials"
+      # INVERTED 08-10 by Phase 4's migration (20260810220000), and deliberately
+      # kept rather than deleted. Until that migration existed this asserted the
+      # opposite — that the app vault must NOT read this column — as a tripwire
+      # against merging the vaults and silently orphaning every install's Google
+      # credentials. It fired correctly; the migration is what earned the flip.
+      assert {:ok, "client-secret"} = BusterClaw.Vault.decrypt(raw),
+             "the google_accounts columns must be readable by the app vault — " <>
+               "there is only one vault as of Phase 4, and a value written here " <>
+               "that the app vault cannot read is a credential nobody can use"
     end
   end
 

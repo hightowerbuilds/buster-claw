@@ -5,7 +5,7 @@ defmodule BusterClaw.RuntimeConfig do
 
   ## Why this module exists
 
-  `Vault`, `Google.Vault`, `Recovery` and `Dispatcher` used to read these out of
+  `Vault`, `Recovery` and `Dispatcher` used to read these out of
   the endpoint's own config: `Application.get_env(:buster_claw,
   BusterClawWeb.Endpoint, [])`. That is only a config KEY, not a call — but the
   alias is still a module reference, so `mix xref` recorded an edge from core
