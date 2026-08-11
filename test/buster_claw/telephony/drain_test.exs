@@ -436,4 +436,55 @@ defmodule BusterClaw.Telephony.DrainTest do
     end
   end
 
+
+  # The drain became always-on in Phase 3c: it used to be started only when
+  # credentials existed at boot, which made a key added later invisible until
+  # restart — and Clinch-stored credentials arrive after boot by definition.
+  #
+  # That is only safe because an unconfigured drain does nothing. These assert it,
+  # because "harmless when unconfigured" is now the DEFAULT state of every install
+  # that has not set up BusterPhone, not an edge case.
+  describe "unconfigured is the default, and must be harmless" do
+    setup do
+      prev_url = Application.get_env(:buster_claw, :telephony_relay_url)
+      prev_key = Application.get_env(:buster_claw, :telephony_relay_key)
+      Application.put_env(:buster_claw, :telephony_relay_url, nil)
+      Application.put_env(:buster_claw, :telephony_relay_key, nil)
+
+      on_exit(fn ->
+        Application.put_env(:buster_claw, :telephony_relay_url, prev_url)
+        Application.put_env(:buster_claw, :telephony_relay_key, prev_key)
+      end)
+
+      :ok
+    end
+
+    test "a tick with no credentials makes no request and does not crash" do
+      # Any HTTP at all is a failure: an unconfigured install must not talk to a
+      # relay it has no key for, every 30 seconds, forever.
+      Req.Test.stub(__MODULE__, fn conn ->
+        flunk("unconfigured drain attempted #{conn.method} #{conn.request_path}")
+      end)
+
+      assert :ok = Drain.drain(state())
+    end
+
+    test "it starts working once credentials are stored, with no restart" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"GET", "/rest/v1/telephony_events"} -> Req.Test.json(conn, [])
+        end
+      end)
+
+      # Same process, same state — only the stored credential changed.
+      assert :ok = Drain.drain(state())
+
+      assert {:ok, _} = BusterClaw.Clinch.put({:app_key, "supabase_url"}, "https://x.test")
+      assert {:ok, _} = BusterClaw.Clinch.put({:app_key, "supabase_service_role_key"}, "srk")
+
+      assert :ok = Drain.drain(state())
+      assert BusterClaw.Telephony.Relay.configured?()
+    end
+  end
+
 end

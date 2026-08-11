@@ -175,10 +175,20 @@ defmodule BusterClaw.Application do
   end
 
   # The BusterPhone relay drain: pulls telephony events from the Supabase queue
-  # into local SQLite. Key-gated in runtime.exs (needs SUPABASE_URL + the
-  # service-role key); off in tests (the Drain suite drives drain/1 directly).
+  # into local SQLite.
+  #
+  # **Runs by default, and decides for itself whether there is work.** It used to
+  # be key-gated here, which meant credentials arriving after boot did nothing
+  # until the app restarted — the exact failure Phase 3 set out to remove. Making
+  # the child conditional was always redundant: `drain/1` opens with
+  # `Relay.configured?()`, so an unconfigured drain has only ever cost one no-op
+  # every 30 seconds. Gating the WORK is the real gate; gating the child was a
+  # second answer to the same question, and the one that could go stale.
+  #
+  # The flag survives as an explicit override — `false` in tests, where the Drain
+  # suite drives `drain/1` directly and a live ticker would race it.
   defp telephony_drain_child do
-    if Application.get_env(:buster_claw, :telephony_drain_enabled, false) do
+    if Application.get_env(:buster_claw, :telephony_drain_enabled, true) do
       BusterClaw.Telephony.Drain
     end
   end

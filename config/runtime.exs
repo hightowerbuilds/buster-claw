@@ -98,9 +98,14 @@ if config_env() != :test do
   telephony_relay_url = System.get_env("SUPABASE_URL")
   telephony_relay_key = System.get_env("SUPABASE_SERVICE_ROLE_KEY")
 
+  # The drain runs unless explicitly switched off. It was gated on the credentials
+  # being present at boot, which made a key added later invisible until restart —
+  # and Clinch-stored credentials arrive after boot by definition (Phase 3).
+  # `drain/1` checks `Relay.configured?()` on every tick, so an unconfigured drain
+  # is a no-op, not a problem.
   telephony_drain_enabled =
     case System.get_env("BUSTER_CLAW_TELEPHONY_DRAIN") do
-      nil -> is_binary(telephony_relay_url) and is_binary(telephony_relay_key)
+      nil -> true
       value -> value in ["1", "true", "TRUE", "yes", "YES"]
     end
 
