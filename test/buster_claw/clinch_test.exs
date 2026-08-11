@@ -252,4 +252,69 @@ defmodule BusterClaw.ClinchTest do
       assert :error = resolve.("nope")
     end
   end
+
+  # Phase 3 gave the Clinch a second writable kind, so Twilio / Supabase / Finnhub
+  # could stop being environment variables and start being rotatable. These assert
+  # the kind is genuinely separate storage rather than a label on the same row.
+  describe ":app_key — the app's own service credentials" do
+    @app_ref {:app_key, "twilio_auth_token"}
+
+    test "round-trips through put, resolve and delete" do
+      assert {:ok, entry} = Clinch.put(@app_ref, "sk-live-abc", note: "Twilio")
+      assert entry.kind == :app_key
+      assert entry.name == "twilio_auth_token"
+      # The value never comes back, not even on the write that just set it.
+      refute Map.has_key?(entry, :value)
+
+      assert {:ok, "sk-live-abc"} = Clinch.resolve(@app_ref)
+      assert {:ok, _} = Clinch.delete(@app_ref)
+      assert :error = Clinch.resolve(@app_ref)
+    end
+
+    test "a name is unique within its kind, not across kinds" do
+      assert {:ok, _} = Clinch.put({:app_key, "shared-name"}, "app-value")
+      assert {:ok, _} = Clinch.put({:sign_in, "shared-name"}, "sign-in-value")
+
+      # Two credentials, not one overwritten twice.
+      assert {:ok, "app-value"} = Clinch.resolve({:app_key, "shared-name"})
+      assert {:ok, "sign-in-value"} = Clinch.resolve({:sign_in, "shared-name"})
+    end
+
+    test "deleting one kind's name leaves the other kind's alone" do
+      assert {:ok, _} = Clinch.put({:app_key, "collide"}, "app-value")
+      assert {:ok, _} = Clinch.put({:sign_in, "collide"}, "sign-in-value")
+
+      assert {:ok, _} = Clinch.delete({:app_key, "collide"})
+
+      assert :error = Clinch.resolve({:app_key, "collide"})
+      assert {:ok, "sign-in-value"} = Clinch.resolve({:sign_in, "collide"})
+    end
+
+    test "lists separately from an integration's token, which stays unmanaged" do
+      assert {:ok, _} = Clinch.put(@app_ref, "sk-live-abc")
+
+      assert {:ok, _} =
+               BusterClaw.Integrations.create_integration(%{
+                 name: "some-integration",
+                 service_type: "github",
+                 token: "gh-token"
+               })
+
+      assert [app] = Clinch.list(:app_key)
+      assert app.name == "twilio_auth_token"
+      assert app.managed?
+
+      assert [integration] = Clinch.list(:service_key)
+      assert integration.name == "some-integration"
+      # The Integrations screen owns it; deleting from here would strand the row.
+      refute integration.managed?
+    end
+
+    test "an unmanaged kind still refuses writes" do
+      assert {:error, :unmanaged_kind} = Clinch.put({:service_key, "nope"}, "value")
+      assert {:error, :unmanaged_kind} = Clinch.delete({:service_key, "nope"})
+      assert {:error, :unmanaged_kind} = Clinch.put({:oauth, "a@b.com"}, "value")
+    end
+  end
+
 end

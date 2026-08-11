@@ -1,7 +1,15 @@
 defmodule BusterClaw.Clinch.Secret do
   @moduledoc """
-  One stored credential of a writable kind — today that means `:sign_in`, the
-  values an Agent Mode run types as `$secret.<name>`.
+  One stored credential of a writable kind.
+
+  Two kinds live here. `:sign_in` is the values an Agent Mode run types as
+  `$secret.<name>`. `:service_key` is the app's own credentials — Twilio, the
+  Supabase service role, Finnhub — which moved out of `runtime.exs` in Phase 3 so
+  they could be rotated and revoked, which an environment variable never could be.
+
+  **A name is unique within its kind, not globally.** A service key called
+  `twilio` and a sign-in value called `twilio` are different credentials; making
+  them collide would be an accident waiting rather than a safeguard.
 
   `value` is `BusterClaw.Encrypted`, so it is ciphertext at rest and never
   appears in a dump of the database. (Phase 0 closed the other half of that
@@ -23,6 +31,7 @@ defmodule BusterClaw.Clinch.Secret do
   @type t :: %__MODULE__{}
 
   schema "browser_secrets" do
+    field :kind, :string, default: "sign_in"
     field :name, :string
     field :value, BusterClaw.Encrypted
     field :note, :string
@@ -32,13 +41,16 @@ defmodule BusterClaw.Clinch.Secret do
 
   def changeset(secret, attrs) do
     secret
-    |> cast(attrs, [:name, :value, :note])
-    |> validate_required([:name, :value])
+    |> cast(attrs, [:kind, :name, :value, :note])
+    |> validate_required([:kind, :name, :value])
+    |> validate_inclusion(:kind, Enum.map(Types.managed_kinds(), &Atom.to_string/1),
+      message: "is not a kind the Clinch can write"
+    )
     |> validate_format(:name, Types.name_format(),
       message: "must match $secret.<name>: lowercase letters, digits, _ . -"
     )
     |> validate_length(:name, max: Types.max_name_length())
     |> validate_length(:note, max: Types.max_note_length())
-    |> unique_constraint(:name)
+    |> unique_constraint([:kind, :name])
   end
 end

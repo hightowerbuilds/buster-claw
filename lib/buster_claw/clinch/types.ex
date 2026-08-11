@@ -32,7 +32,7 @@ defmodule BusterClaw.Clinch.Types do
   shape of everything written against it in the meantime.
   """
 
-  @kinds ~w(service_key oauth sign_in loopback_token device_key)a
+  @kinds ~w(service_key app_key oauth sign_in loopback_token device_key)a
 
   # Byte-identical to the grammar `BrowserControl.Secret` has always enforced,
   # and to what `Egress.SecretRef` will actually match. A name outside it could
@@ -46,7 +46,7 @@ defmodule BusterClaw.Clinch.Types do
   @max_note_length 200
 
   @typedoc "What a credential is, which decides where it lives and who may manage it."
-  @type kind :: :service_key | :oauth | :sign_in | :loopback_token | :device_key
+  @type kind :: :service_key | :app_key | :oauth | :sign_in | :loopback_token | :device_key
 
   @typedoc "A credential's name within its kind. Unique per kind, never globally."
   @type name :: String.t()
@@ -77,9 +77,27 @@ defmodule BusterClaw.Clinch.Types do
   @spec kinds() :: [kind()]
   def kinds, do: @kinds
 
-  @doc "The kinds `Clinch` can write today. Everything else is listed read-only."
+  @doc """
+  The kinds `Clinch` can write. Everything else is listed read-only.
+
+  `:app_key` joined `:sign_in` in Phase 3, when Twilio, the Supabase service role
+  and Finnhub moved out of `runtime.exs` into the Clinch's own encrypted store.
+
+  ## Why `:app_key` is not just `:service_key`
+
+  Both are "a key for an external service", and the first attempt did put them in
+  one kind. That was wrong, and `Clinch`'s own test said so: it forced
+  `list/1` to restate `managed?` as a per-entry literal, which is exactly the
+  coincidence-not-derivation bug that test exists to prevent.
+
+  The distinction is the one this module already draws — a kind decides **where it
+  lives and who may manage it**. An `:app_key` lives in the Clinch and the Clinch
+  can rotate it. A `:service_key` is a row in `integrations`, owned and managed by
+  the Integrations screen; deleting it from here would leave the integration
+  behind with no token. Different store, different manager, different kind.
+  """
   @spec managed_kinds() :: [kind()]
-  def managed_kinds, do: [:sign_in]
+  def managed_kinds, do: [:sign_in, :app_key]
 
   @doc "The name grammar enforced on writable kinds."
   @spec name_format() :: Regex.t()

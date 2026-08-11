@@ -88,14 +88,18 @@ defmodule BusterClaw.Clinch do
   @spec resolve(ref(), keyword()) :: Types.resolution()
   def resolve(ref, opts \\ [])
 
-  def resolve({:sign_in, name}, opts) when is_binary(name) do
-    case Repo.get_by(Secret, name: normalize(name)) do
-      %Secret{value: value} when is_binary(value) and value != "" ->
-        audit_use(:sign_in, name, opts)
-        {:ok, value}
+  def resolve({kind, name}, opts) when is_binary(name) do
+    if kind in Types.managed_kinds() do
+      case Repo.get_by(Secret, kind: Atom.to_string(kind), name: normalize(name)) do
+        %Secret{value: value} when is_binary(value) and value != "" ->
+          audit_use(kind, name, opts)
+          {:ok, value}
 
-      _absent_or_undecryptable ->
-        :error
+        _absent_or_undecryptable ->
+          :error
+      end
+    else
+      :error
     end
   end
 
@@ -123,34 +127,45 @@ defmodule BusterClaw.Clinch do
           {:ok, map()} | {:error, :unmanaged_kind | :missing_name_or_value | map()}
   def put(ref, value, opts \\ [])
 
-  def put({:sign_in, name}, value, opts)
+  def put({kind, name}, value, opts)
       when is_binary(name) and is_binary(value) and value != "" do
-    attrs = %{name: normalize(name), value: value, note: presence(opts[:note])}
+    if kind in Types.managed_kinds() do
+      attrs = %{
+        kind: Atom.to_string(kind),
+        name: normalize(name),
+        value: value,
+        note: presence(opts[:note])
+      }
 
-    %Secret{}
-    |> Secret.changeset(attrs)
-    |> Repo.insert(on_conflict: {:replace, [:value, :note, :updated_at]}, conflict_target: :name)
-    |> case do
-      {:ok, secret} -> {:ok, shape(secret)}
-      {:error, changeset} -> {:error, errors(changeset)}
+      %Secret{}
+      |> Secret.changeset(attrs)
+      |> Repo.insert(
+        on_conflict: {:replace, [:value, :note, :updated_at]},
+        conflict_target: [:kind, :name]
+      )
+      |> case do
+        {:ok, secret} -> {:ok, shape(secret)}
+        {:error, changeset} -> {:error, errors(changeset)}
+      end
+    else
+      {:error, :unmanaged_kind}
     end
   end
-
-  def put({kind, _name}, _value, _opts) when kind not in [:sign_in],
-    do: {:error, :unmanaged_kind}
 
   def put(_ref, _value, _opts), do: {:error, :missing_name_or_value}
 
   @doc "Forget a credential. `{:error, :not_found}` rather than a silent success."
   @spec delete(ref()) :: {:ok, map()} | {:error, :not_found | :unmanaged_kind}
-  def delete({:sign_in, name}) when is_binary(name) do
-    case Repo.get_by(Secret, name: normalize(name)) do
-      nil -> {:error, :not_found}
-      %Secret{} = secret -> with {:ok, _} <- Repo.delete(secret), do: {:ok, shape(secret)}
+  def delete({kind, name}) when is_binary(name) do
+    if kind in Types.managed_kinds() do
+      case Repo.get_by(Secret, kind: Atom.to_string(kind), name: normalize(name)) do
+        nil -> {:error, :not_found}
+        %Secret{} = secret -> with {:ok, _} <- Repo.delete(secret), do: {:ok, shape(secret)}
+      end
+    else
+      {:error, :unmanaged_kind}
     end
   end
-
-  def delete({kind, _name}) when kind not in [:sign_in], do: {:error, :unmanaged_kind}
   def delete(_ref), do: {:error, :not_found}
 
   @doc """
@@ -168,13 +183,10 @@ defmodule BusterClaw.Clinch do
 
   @doc "The entries of one kind. Unwritable kinds list what their own store holds."
   @spec list(Types.kind()) :: [Types.entry()]
-  def list(:sign_in) do
-    Secret
-    |> select([s], %{name: s.name, note: s.note, updated_at: s.updated_at})
-    |> order_by([s], asc: s.name)
-    |> Repo.all()
-    |> Enum.map(&Map.merge(&1, %{kind: :sign_in, managed?: managed?(:sign_in)}))
-  end
+  def list(:sign_in), do: stored(:sign_in)
+
+  @doc false
+  def list(:app_key), do: stored(:app_key)
 
   def list(:oauth) do
     "google_accounts"
@@ -186,6 +198,10 @@ defmodule BusterClaw.Clinch do
     )
   end
 
+  # An integration's token, owned by the `integrations` table and managed on the
+  # Integrations screen. The Clinch lists it so the operator can see everything in
+  # one place, but never writes it — deleting from here would leave the
+  # integration row behind with no token. App-owned keys are `:app_key`.
   def list(:service_key) do
     "integrations"
     |> where([i], not is_nil(i.token))
@@ -239,7 +255,25 @@ defmodule BusterClaw.Clinch do
     :ok
   end
 
-  defp shape(%Secret{} = secret), do: %{kind: :sign_in, name: secret.name, note: secret.note}
+  defp shape(%Secret{} = secret),
+    do: %{kind: kind_atom(secret.kind), name: secret.name, note: secret.note}
+
+  # The Clinch's own encrypted rows for one writable kind.
+  defp stored(kind) do
+    Secret
+    |> where([s], s.kind == ^Atom.to_string(kind))
+    |> select([s], %{name: s.name, note: s.note, updated_at: s.updated_at})
+    |> order_by([s], asc: s.name)
+    |> Repo.all()
+    |> Enum.map(&Map.merge(&1, %{kind: kind, managed?: managed?(kind)}))
+  end
+
+  # A stored row's kind is written by us from `Types.managed_kinds/0`, so an
+  # unknown string means the column was edited outside the app. Fall back to the
+  # least-privileged reading rather than crashing a listing.
+  defp kind_atom(kind) when is_binary(kind) do
+    Enum.find(Types.kinds(), :service_key, &(Atom.to_string(&1) == kind))
+  end
 
   defp normalize(name), do: name |> to_string() |> String.trim() |> String.downcase()
 
