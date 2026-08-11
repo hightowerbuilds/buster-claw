@@ -20,6 +20,8 @@ defmodule BusterClaw.Telephony.Relay do
   it's the whole drain. `req_options` (Req.Test plugs) inject in tests.
   """
 
+  alias BusterClaw.Clinch.AppKeys
+
   @doc "True when both the relay URL and service-role key are configured."
   def configured? do
     is_binary(url()) and url() != "" and is_binary(key()) and key() != ""
@@ -123,6 +125,9 @@ defmodule BusterClaw.Telephony.Relay do
     |> Req.merge(Keyword.get(opts, :req_options, []))
   end
 
-  defp url, do: Application.get_env(:buster_claw, :telephony_relay_url)
-  defp key, do: Application.get_env(:buster_claw, :telephony_relay_key)
+  # Read live via the Clinch (env as fallback), never at boot — a key typed into
+  # Settings must work without restarting the app, and a deleted one must stop
+  # working on the next call. See `BusterClaw.Clinch.AppKeys`.
+  defp url, do: AppKeys.get("supabase_url")
+  defp key, do: AppKeys.get("supabase_service_role_key")
 end

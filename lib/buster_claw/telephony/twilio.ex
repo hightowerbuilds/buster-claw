@@ -30,6 +30,8 @@ defmodule BusterClaw.Telephony.Twilio do
   copy of the conditions, which would drift out of step with the tagged errors.
   """
 
+  alias BusterClaw.Clinch.AppKeys
+
   @api "https://api.twilio.com"
 
   @doc "True when both the Twilio Account SID and Auth Token are configured."
@@ -212,9 +214,12 @@ defmodule BusterClaw.Telephony.Twilio do
     |> Req.merge(Keyword.get(opts, :req_options, []))
   end
 
-  defp account_sid, do: get_in(config(), [:account_sid])
-  defp auth_token, do: get_in(config(), [:auth_token])
-  defp messaging_service_sid, do: get_in(config(), [:messaging_service_sid])
+  # Live through the Clinch, env as fallback. `sms_enabled` deliberately does NOT
+  # move: a kill switch you can flip from a settings screen is not the same
+  # safeguard as one that needs a deliberate act outside the running app.
+  defp account_sid, do: AppKeys.get("twilio_account_sid")
+  defp auth_token, do: AppKeys.get("twilio_auth_token")
+  defp messaging_service_sid, do: AppKeys.get("twilio_messaging_service_sid")
   defp sms_enabled?, do: get_in(config(), [:sms_enabled]) == true
   defp config, do: Application.get_env(:buster_claw, :twilio, %{})
 

@@ -92,8 +92,10 @@ defmodule BusterClaw.Finance.Finnhub do
 
   defp unix_to_iso(_seconds), do: nil
 
+  # Live through the Clinch, env as fallback — a key typed into Settings works
+  # without a restart, and a deleted one stops working on the next call.
   defp api_key do
-    case Application.get_env(:buster_claw, :finnhub_api_key) do
+    case BusterClaw.Clinch.AppKeys.get("finnhub_api_key") do
       key when is_binary(key) and key != "" -> {:ok, key}
       _ -> {:error, :not_configured}
     end

@@ -1,5 +1,9 @@
 defmodule BusterClaw.Telephony.TwilioTest do
-  use ExUnit.Case, async: false
+  # Needs the database as of Phase 3b: Twilio's credentials resolve through
+  # `Clinch.AppKeys`, which reads the Clinch first and falls back to app env.
+  # The `Application.put_env` setup below still drives these tests — it is now
+  # exercising the FALLBACK path, which is the one dev and CI actually use.
+  use BusterClaw.DataCase, async: false
 
   alias BusterClaw.Telephony.Twilio
 
