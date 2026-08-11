@@ -1579,7 +1579,15 @@ defmodule BusterClawWeb.StatusLiveTest do
 
       # Setup is described honestly: the operator's own Twilio and relay, and no
       # store to buy a number from yet (the busterclaw.lol tab says the same).
-      assert html =~ "SUPABASE_SERVICE_ROLE_KEY"
+      #
+      # This used to assert the string SUPABASE_SERVICE_ROLE_KEY, as a proxy for
+      # "the setup section tells you what you need". Phase 3 moved those
+      # credentials into the Clinch, so naming an environment variable is no
+      # longer the honest instruction — a packaged app cannot see one. The
+      # assertion follows the same intent to where the answer now lives.
+      assert html =~ "Service credentials"
+      assert html =~ ~s(href="/settings")
+      assert html =~ "cannot see variables"
       assert html =~ "There is no one-click"
       assert html =~ "planned work, not a store you can visit"
 

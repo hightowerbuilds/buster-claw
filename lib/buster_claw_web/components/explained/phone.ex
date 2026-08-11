@@ -56,10 +56,15 @@ defmodule BusterClawWeb.Explained.Phone do
           The inbound path is built and shipped, but it runs on
           <span class="font-semibold text-base-content">your</span>
           Twilio number and <span class="font-semibold text-base-content">your</span>
-          Supabase relay: the app reads <code>SUPABASE_URL</code>
-          and <code>SUPABASE_SERVICE_ROLE_KEY</code>
-          for the inbound drain, and Twilio
-          credentials for cost lookups and outbound texts. There is no one-click
+          Supabase relay. Put both in
+          <.link navigate={~p"/settings"} class="underline hover:text-base-content">
+            Settings → Configuration → Service credentials
+          </.link>
+          — they take effect immediately, with no restart, and can be cleared
+          again from the same place. Setting them as environment variables still
+          works for development, but a double-clicked app cannot see variables
+          exported in your shell, so the settings screen is the path that works
+          in a real install. There is no one-click
           number yet — buying one from
           <span class="font-semibold text-base-content">busterclaw.lol</span>
           is planned work, not a store you can visit. Until then this tab is the
