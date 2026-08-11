@@ -180,4 +180,73 @@ defmodule BusterClaw.Clinch.RekeyTest do
                "no key that reads everything."
     end
   end
+
+  # Invariant 5's other half. Re-keying gives a bad key change a way out; this
+  # gives it a way to be SEEN. Without it, "nothing configured" and "everything
+  # unreadable" render identically, because Encrypted fails closed to nil.
+  describe "unreadable/0" do
+    test "a healthy store reports zero" do
+      assert {:ok, _} = Clinch.put({:sign_in, "acme"}, "value")
+
+      assert %{count: 0, stores: []} = Rekey.unreadable()
+    end
+
+    test "counts values written under a different key, and names their stores" do
+      assert {:ok, _} = Clinch.put({:sign_in, "acme"}, "value")
+
+      assert {:ok, _} =
+               Integrations.create_integration(%{
+                 name: "gh",
+                 service_type: "github",
+                 token: "gh-token"
+               })
+
+      # The key changes and nothing is rotated — the exact situation.
+      live_key(@new_base)
+
+      report = Rekey.unreadable()
+
+      assert report.count == 2
+      assert report.stores == ["browser_secrets", "integrations"]
+    end
+
+    test "a rotation clears it" do
+      assert {:ok, _} = Clinch.put({:sign_in, "acme"}, "value")
+
+      live_key(@new_base)
+      assert Rekey.unreadable().count == 1
+
+      # Rotate FROM the old key, which is still what the data is under.
+      assert {:ok, _} = Rekey.run(@old_base, @new_base)
+
+      assert %{count: 0} = Rekey.unreadable()
+    end
+
+    test "legacy plaintext is not damage and is not counted" do
+      # `Encrypted` passes through a value that is not framed as our ciphertext,
+      # by design, so the column can migrate lazily. Reporting it as unreadable
+      # would be a false alarm about something that works.
+      Repo.insert_all("browser_secrets", [
+        %{
+          kind: "sign_in",
+          name: "legacy",
+          value: "plain-old-string",
+          inserted_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+        }
+      ])
+
+      assert %{count: 0} = Rekey.unreadable()
+    end
+
+    test "no master key at all is not reported as every credential being damaged" do
+      assert {:ok, _} = Clinch.put({:sign_in, "acme"}, "value")
+
+      Application.put_env(:buster_claw, :secret_key_base, nil)
+
+      # "There is no key" is a different state from "these values are corrupt",
+      # and a machine with no key yet must not be told its credentials are broken.
+      assert %{count: 0} = Rekey.unreadable()
+    end
+  end
 end

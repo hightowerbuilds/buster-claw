@@ -103,6 +103,19 @@ defmodule BusterClaw.Clinch.Vault do
   end
 
   @doc """
+  Decrypt under a key that may be absent.
+
+  `{:error, :no_key}` when `key` is `nil` — there is no master key configured, so
+  nothing can be read, and that is a different answer from "this value is
+  damaged". A health check must not report every credential as corrupt on a
+  machine that simply has no key yet.
+  """
+  @spec decrypt_with_current(binary() | nil, binary() | nil) ::
+          {:ok, String.t() | nil} | {:error, atom()}
+  def decrypt_with_current(_value, nil), do: {:error, :no_key}
+  def decrypt_with_current(value, key), do: AppVault.decrypt_with_key(value, key)
+
+  @doc """
   True when `value` is *framed* as the app vault's ciphertext, without attempting
   decryption — the distinction `Encrypted` needs to tell a key mismatch (fail
   closed) from a legacy plaintext value (pass through).

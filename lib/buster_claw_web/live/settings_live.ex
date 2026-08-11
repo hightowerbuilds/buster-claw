@@ -22,6 +22,7 @@ defmodule BusterClawWeb.SettingsLive do
   alias BusterClaw.AgentBackend
   alias BusterClaw.Clinch
   alias BusterClaw.Clinch.AppKeys
+  alias BusterClaw.Clinch.Rekey
   alias BusterClaw.Google
   alias BusterClaw.Google.CalendarSync
   alias BusterClaw.Google.Gmail
@@ -73,6 +74,7 @@ defmodule BusterClawWeb.SettingsLive do
      |> assign(:restore_path, Recovery.restore_file_path())
      |> assign(:clinch_entries, Clinch.list())
      |> assign(:app_keys, app_keys())
+     |> assign(:unreadable, Rekey.unreadable())
      |> assign_status()}
   end
 
@@ -332,7 +334,8 @@ defmodule BusterClawWeb.SettingsLive do
     {:noreply,
      socket
      |> assign(:clinch_entries, Clinch.list())
-     |> assign(:app_keys, app_keys())}
+     |> assign(:app_keys, app_keys())
+     |> assign(:unreadable, Rekey.unreadable())}
   end
 
   @impl true
@@ -708,7 +711,7 @@ defmodule BusterClawWeb.SettingsLive do
         </section>
 
         <BusterClawWeb.ClinchPanels.app_keys_panel app_keys={@app_keys} />
-        <BusterClawWeb.ClinchPanels.clinch_panel entries={@clinch_entries} />
+        <BusterClawWeb.ClinchPanels.clinch_panel entries={@clinch_entries} unreadable={@unreadable} />
         <BusterClawWeb.ClinchPanels.recovery_panel restore_path={@restore_path} />
       </section>
     </Layouts.app>
@@ -913,7 +916,6 @@ defmodule BusterClawWeb.SettingsLive do
   # --- shared ------------------------------------------------------------
 
   defp assign_status(socket), do: assign(socket, :status, Setup.status())
-
 
   # The service-credential rows, grouped for the panel. `source/1` is read here
   # rather than in the component so the template stays free of storage lookups —

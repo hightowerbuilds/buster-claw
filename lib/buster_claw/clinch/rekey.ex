@@ -92,6 +92,63 @@ defmodule BusterClaw.Clinch.Rekey do
   def stores, do: @stores
 
   @doc """
+  What a rotation could not move: stored values that are framed as our ciphertext
+  but do not decrypt under the **current** key. Reads only; writes nothing.
+
+  This is invariant 5's other half. Re-keying gives a bad key change a way *out*;
+  this gives it a way to be *seen*. Without it the two states are indistinguishable
+  from the UI:
+
+    * "you have not configured anything yet" — nothing stored, and
+    * "everything you configured is unreadable" — plenty stored, none of it usable
+
+  Both render as an empty-looking app, because `Encrypted` fails closed and loads
+  an unreadable value as `nil`. One of them is fine and the other is an emergency.
+
+  Counted by *store*, not by name. A name would be more precise and is not the
+  question being asked here — the operator needs to know that credentials exist
+  which the current key cannot open, and roughly what they are. `Clinch.list/0`
+  already names everything.
+
+  A value that is not framed as our ciphertext at all is **not** counted: that is
+  a legacy plaintext value, which `Encrypted` passes through by design, and
+  reporting it as damaged would be a false alarm about something working.
+  """
+  @spec unreadable() :: %{count: non_neg_integer(), stores: [String.t()]}
+  def unreadable do
+    case current_key() do
+      # No master key at all. Nothing can be read, but nothing is damaged either —
+      # and telling a machine that has not been given a key yet that every
+      # credential is corrupt is the false alarm this check exists to avoid.
+      nil -> %{count: 0, stores: []}
+      key -> scan(key)
+    end
+  end
+
+  defp scan(key) do
+    {count, stores} =
+      Enum.reduce(@stores, {0, []}, fn {table, columns}, acc ->
+        table
+        |> rows(columns)
+        |> Enum.reduce(acc, fn row, {n, tables} ->
+          bad =
+            Enum.count(columns, fn column ->
+              value = Map.fetch!(row, column)
+
+              # Framed as ours but unopenable. Anything else is either absent or
+              # legacy plaintext, and neither is damage.
+              Vault.ciphertext?(value) and
+                match?({:error, _}, Vault.decrypt_with_current(value, key))
+            end)
+
+          if bad > 0, do: {n + bad, [table | tables]}, else: {n, tables}
+        end)
+      end)
+
+    %{count: count, stores: stores |> Enum.uniq() |> Enum.sort()}
+  end
+
+  @doc """
   Re-encrypt every stored credential from `old_secret_key_base` to
   `new_secret_key_base`.
 
@@ -160,6 +217,13 @@ defmodule BusterClaw.Clinch.Rekey do
           Repo.rollback({:reencrypt_failed, table, column, reason})
       end
     end)
+  end
+
+  defp current_key do
+    case BusterClaw.RuntimeConfig.secret_key_base() do
+      base when is_binary(base) and base != "" -> Vault.derive_key(base)
+      _ -> nil
+    end
   end
 
   defp write(table, id, column, ciphertext) do

@@ -42,6 +42,7 @@ defmodule BusterClawWeb.ClinchPanels do
       "rounded border-2 border-base-content/30 px-4 py-2 text-sm font-semibold transition hover:bg-base-200"
 
   attr :entries, :list, required: true
+  attr :unreadable, :map, required: true
 
   @doc "Every credential the app holds — names and metadata, never values."
   def clinch_panel(assigns) do
@@ -61,6 +62,28 @@ defmodule BusterClawWeb.ClinchPanels do
         Credentials can only be changed on the Mac running Buster Claw. This page
         is reachable, but adding or removing a credential is not.
       </p>
+
+      <%!-- Invariant 5: a rotated key must never silently unconfigure anything.
+            `Encrypted` fails closed and loads an unreadable value as nil, so
+            without this the screen below looks IDENTICAL whether nothing is
+            stored or everything is stored and unopenable. One is fine; the other
+            is an emergency. --%>
+      <div
+        :if={@unreadable.count > 0}
+        class="rounded border-2 border-error/50 bg-error/10 p-3 text-sm"
+        role="alert"
+      >
+        <p class="font-semibold">
+          {@unreadable.count} stored credential{if @unreadable.count == 1, do: "", else: "s"} cannot be read with the current master key.
+        </p>
+        <p class="mt-1 text-xs leading-5">
+          Affected: {Enum.join(@unreadable.stores, ", ")}. The values are still on
+          disk and still encrypted — they were written under a different key. This
+          is what a changed master key looks like, and it is recoverable: restore
+          the previous key and the credentials come back. Entering new values here
+          will also work, and leaves the old rows unreadable but harmless.
+        </p>
+      </div>
 
       <%!-- No phx-change and no phx-submit: the value goes from this input
             straight to the desktop shell, never over the LiveView channel. --%>

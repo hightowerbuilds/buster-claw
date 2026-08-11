@@ -328,7 +328,8 @@ defmodule BusterClawWeb.SettingsLiveTest do
     end
 
     test "values are never rendered, not even a stored one", %{conn: conn} do
-      assert {:ok, _} = BusterClaw.Clinch.put({:app_key, "twilio_auth_token"}, "super-secret-token")
+      assert {:ok, _} =
+               BusterClaw.Clinch.put({:app_key, "twilio_auth_token"}, "super-secret-token")
 
       {:ok, _view, html} = live(conn, ~p"/settings")
 
@@ -336,4 +337,62 @@ defmodule BusterClawWeb.SettingsLiveTest do
     end
   end
 
+  # Invariant 5: a rotated key must never SILENTLY unconfigure anything. The
+  # warning is the difference between an empty-looking app that is fine and an
+  # empty-looking app that is an emergency.
+  describe "unreadable-credential warning" do
+    setup do
+      prev = Application.get_env(:buster_claw, :secret_key_base)
+      prev_env = System.get_env("SECRET_KEY_BASE")
+      System.delete_env("SECRET_KEY_BASE")
+
+      Application.put_env(
+        :buster_claw,
+        :secret_key_base,
+        "settings-old-key-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      )
+
+      on_exit(fn ->
+        Application.put_env(:buster_claw, :secret_key_base, prev)
+        if prev_env, do: System.put_env("SECRET_KEY_BASE", prev_env)
+      end)
+
+      :ok
+    end
+
+    test "is absent when every credential reads", %{conn: conn} do
+      assert {:ok, _} = BusterClaw.Clinch.put({:sign_in, "acme"}, "value")
+
+      {:ok, _view, html} = live(conn, ~p"/settings")
+
+      refute html =~ "cannot be read with the current master key"
+    end
+
+    test "appears, counts, and says the values are recoverable", %{conn: conn} do
+      assert {:ok, _} = BusterClaw.Clinch.put({:sign_in, "acme"}, "value")
+
+      # The key changes with no rotation — the situation the warning is for.
+      Application.put_env(
+        :buster_claw,
+        :secret_key_base,
+        "settings-new-key-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      )
+
+      {:ok, _view, html} = live(conn, ~p"/settings")
+
+      # Collapse whitespace: HEEx keeps the newline+indent inside a sentence, so a
+      # phrase that reads as one line in the template is not contiguous in the
+      # HTML. The property is what the copy SAYS, not how it is wrapped.
+      text = html |> String.replace(~r/\s+/, " ")
+
+      assert text =~ "cannot be read with the current master key"
+      assert text =~ "browser_secrets"
+
+      # Recoverability is the point. A warning that only says "broken" invites
+      # the one action that makes it permanent — re-entering everything and
+      # discarding a key that would have brought it all back.
+      assert text =~ "still on disk and still encrypted"
+      assert text =~ "restore the previous key and the credentials come back"
+    end
+  end
 end
