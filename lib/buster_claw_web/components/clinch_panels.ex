@@ -107,6 +107,101 @@ defmodule BusterClawWeb.ClinchPanels do
     """
   end
 
+
+  attr :app_keys, :list, required: true
+
+  @doc """
+  The app's own service credentials — Twilio, the Supabase relay, Finnhub.
+
+  Registry-driven rather than a free-text form, because unlike a `$secret` these
+  have **known names**: the app looks up `twilio_auth_token` by that exact string,
+  so letting an operator invent the name would produce a credential that stores
+  fine and is never read. One row per `Clinch.AppKeys` entry, and adding a
+  credential is a row in that registry rather than markup here.
+
+  **Where each value comes from is the column that matters.** A packaged `.app`
+  inherits launchd's environment, not a shell's, so a key that works in your
+  terminal can be invisible to the shipped app — and "Environment" against a row
+  that a packaged build cannot see is the difference between a mystery and a
+  diagnosis.
+  """
+  def app_keys_panel(assigns) do
+    ~H"""
+    <section class="ic-panel space-y-4 p-6" id="clinch-app-keys" phx-hook="ClinchAppKeys">
+      <h2 class="ic-eyebrow">Service credentials</h2>
+      <p class="text-sm text-base-content/70">
+        Keys Buster Claw uses on your behalf. Stored encrypted, read at the moment
+        of use, and never shown here. Storing one takes effect immediately — no
+        restart — and clearing one stops it being used on the next call.
+      </p>
+
+      <p
+        data-clinch-unavailable
+        hidden
+        class="rounded border border-warning/40 bg-warning/10 p-3 text-sm"
+      >
+        Credentials can only be changed on the Mac running Buster Claw. This page
+        is reachable, but adding or removing a credential is not.
+      </p>
+
+      <div :for={{group, keys} <- @app_keys} class="space-y-3">
+        <h3 class="font-mono text-xs uppercase tracking-wide text-base-content/50">{group}</h3>
+
+        <div :for={key <- keys} class="rounded border-2 border-base-content/15 p-3" data-app-key={key.name}>
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <span class="text-sm font-semibold">{key.label}</span>
+            <span class={[
+              "rounded px-2 py-0.5 font-mono text-[0.65rem] uppercase tracking-wide",
+              key.source == :clinch && "bg-success/15 text-success",
+              key.source == :env && "bg-warning/15 text-warning",
+              key.source == :unset && "bg-base-300 text-base-content/60"
+            ]}>
+              {source_label(key.source)}
+            </span>
+          </div>
+
+          <p class="mt-1 text-xs leading-5 text-base-content/60">{key.note}</p>
+
+          <p :if={key.source == :env} class="mt-1 text-xs leading-5 text-warning/90">
+            Coming from <code class="font-mono">{key.env}</code>. A packaged app cannot
+            see variables set in your shell — store it here to make it work outside a
+            dev terminal.
+          </p>
+
+          <%!-- Plain DOM, no phx-: the value goes to the shell, never over the
+                LiveView channel. Same rule as the panel above. --%>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              data-app-key-value
+              type="password"
+              class="input min-w-0 flex-1 text-sm"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder={if key.source == :clinch, do: "Replace value", else: "Paste value"}
+              aria-label={"New value for #{key.label}"}
+            />
+            <button type="button" data-app-key-store class={button_outline()}>Store</button>
+            <button
+              :if={key.source == :clinch}
+              type="button"
+              data-app-key-clear
+              class={button_outline()}
+            >
+              Clear
+            </button>
+          </div>
+
+          <p data-app-key-status class="mt-1 text-xs text-base-content/60" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  defp source_label(:clinch), do: "Stored"
+  defp source_label(:env), do: "Environment"
+  defp source_label(:unset), do: "Not set"
+
   attr :restore_path, :string, required: true
 
   @doc "The master key — read from the Keychain by the shell, never by the server."

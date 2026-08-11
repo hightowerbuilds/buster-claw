@@ -258,4 +258,82 @@ defmodule BusterClawWeb.SettingsLiveTest do
       assert has_element?(view, ~s(#gws-tab-accounts[aria-current="page"]))
     end
   end
+
+  # Phase 3d. The panel's whole reason for existing is that a packaged app cannot
+  # see shell environment variables, so BusterPhone was unconfigurable outside a
+  # dev terminal. These assert the two things that makes true: the rows exist, and
+  # they say where each value is coming from.
+  describe "service credentials panel" do
+    setup do
+      prev = Application.get_env(:buster_claw, :finnhub_api_key)
+      on_exit(fn -> Application.put_env(:buster_claw, :finnhub_api_key, prev) end)
+      :ok
+    end
+
+    test "renders a row per registry entry, grouped", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/settings")
+
+      for key <- BusterClaw.Clinch.AppKeys.all() do
+        assert html =~ key.label, "#{key.name} is in the registry but not on the screen"
+      end
+
+      assert html =~ "BusterPhone"
+      assert html =~ "Service credentials"
+    end
+
+    test "shows where each value comes from, and updates when that changes", %{conn: conn} do
+      Application.put_env(:buster_claw, :finnhub_api_key, nil)
+
+      {:ok, view, html} = live(conn, ~p"/settings")
+      assert html =~ "Not set"
+
+      assert {:ok, _} = BusterClaw.Clinch.put({:app_key, "finnhub_api_key"}, "stored-value")
+
+      # The hook pushes this after the shell stores a credential; the panel must
+      # re-read the SOURCE, not just the list of names.
+      html = render_hook(view, "clinch:changed", %{})
+      assert html =~ "Stored"
+    end
+
+    test "an environment-sourced key says so, and says why it matters", %{conn: conn} do
+      Application.put_env(:buster_claw, :finnhub_api_key, "from-the-shell")
+
+      {:ok, _view, html} = live(conn, ~p"/settings")
+
+      assert html =~ "Environment"
+      # The diagnosis, not just the label — this is the sentence that turns
+      # "it works in my terminal but not in the app" into an explanation.
+      assert html =~ "packaged app cannot"
+      assert html =~ "FINNHUB_API_KEY"
+    end
+
+    # The load-bearing property of this whole panel design, and the one a future
+    # refactor to a "normal" LiveView form would silently destroy.
+    test "no credential input carries a phx- binding", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/settings")
+
+      [_ | rows] = String.split(html, "data-app-key=")
+
+      for row <- rows do
+        # Just the row's own markup, up to the next element boundary we control.
+        fragment = row |> String.split("data-app-key-status") |> List.first()
+
+        refute fragment =~ "phx-change",
+               "a service-credential row grew a phx-change — the value would " <>
+                 "travel over the LiveView channel and land in the diff"
+
+        refute fragment =~ "phx-submit",
+               "a service-credential row grew a phx-submit — same leak"
+      end
+    end
+
+    test "values are never rendered, not even a stored one", %{conn: conn} do
+      assert {:ok, _} = BusterClaw.Clinch.put({:app_key, "twilio_auth_token"}, "super-secret-token")
+
+      {:ok, _view, html} = live(conn, ~p"/settings")
+
+      refute html =~ "super-secret-token"
+    end
+  end
+
 end

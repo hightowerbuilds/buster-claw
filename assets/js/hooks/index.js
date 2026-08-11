@@ -33,7 +33,7 @@ import {Composer} from "./composer.js"
 import {NoteEditor} from "./note_editor.js"
 import {NotesKeys} from "./notes_keys.js"
 import {NoteContextMenu, NoteTitle} from "./note_context.js"
-import {ClinchManager, RecoveryKey} from "./clinch.js"
+import {ClinchManager, ClinchAppKeys, RecoveryKey} from "./clinch.js"
 
 export const Hooks = {
   PortfolioChart,
@@ -78,5 +78,6 @@ export const Hooks = {
   NoteContextMenu,
   NoteTitle,
   ClinchManager,
+  ClinchAppKeys,
   RecoveryKey,
 }

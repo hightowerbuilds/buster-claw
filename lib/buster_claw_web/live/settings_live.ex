@@ -21,6 +21,7 @@ defmodule BusterClawWeb.SettingsLive do
 
   alias BusterClaw.AgentBackend
   alias BusterClaw.Clinch
+  alias BusterClaw.Clinch.AppKeys
   alias BusterClaw.Google
   alias BusterClaw.Google.CalendarSync
   alias BusterClaw.Google.Gmail
@@ -71,6 +72,7 @@ defmodule BusterClawWeb.SettingsLive do
      # a tunnel (Clinch Phase 2).
      |> assign(:restore_path, Recovery.restore_file_path())
      |> assign(:clinch_entries, Clinch.list())
+     |> assign(:app_keys, app_keys())
      |> assign_status()}
   end
 
@@ -327,7 +329,10 @@ defmodule BusterClawWeb.SettingsLive do
   # The shell stored or forgot a credential. Re-read the listing — names and
   # metadata only; the value was never here and is not arriving now.
   def handle_event("clinch:changed", _params, socket) do
-    {:noreply, assign(socket, :clinch_entries, Clinch.list())}
+    {:noreply,
+     socket
+     |> assign(:clinch_entries, Clinch.list())
+     |> assign(:app_keys, app_keys())}
   end
 
   @impl true
@@ -702,6 +707,7 @@ defmodule BusterClawWeb.SettingsLive do
           </button>
         </section>
 
+        <BusterClawWeb.ClinchPanels.app_keys_panel app_keys={@app_keys} />
         <BusterClawWeb.ClinchPanels.clinch_panel entries={@clinch_entries} />
         <BusterClawWeb.ClinchPanels.recovery_panel restore_path={@restore_path} />
       </section>
@@ -907,6 +913,18 @@ defmodule BusterClawWeb.SettingsLive do
   # --- shared ------------------------------------------------------------
 
   defp assign_status(socket), do: assign(socket, :status, Setup.status())
+
+
+  # The service-credential rows, grouped for the panel. `source/1` is read here
+  # rather than in the component so the template stays free of storage lookups —
+  # and so a refresh after `clinch:changed` genuinely re-reads where each value is
+  # coming from, which is the column the panel exists to show.
+  defp app_keys do
+    AppKeys.all()
+    |> Enum.map(&Map.put(&1, :source, AppKeys.source(&1.name)))
+    |> Enum.group_by(& &1.group)
+    |> Enum.sort_by(fn {group, _keys} -> group end)
+  end
 
   defp button_outline,
     do:

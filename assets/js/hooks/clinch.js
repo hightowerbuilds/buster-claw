@@ -2,6 +2,7 @@ import {
   invoker,
   managementAvailable,
   putPayload,
+  deletePayload,
   errorMessage,
   safeEntry,
 } from "../lib/clinch.js"
@@ -140,5 +141,99 @@ export const RecoveryKey = {
     this.panel?.setAttribute("hidden", "hidden")
     if (this.button) this.button.textContent = "Reveal key"
     this.revealed = false
+  },
+}
+
+// The service-credential rows (Twilio, Supabase, Finnhub).
+//
+// Same rule as ClinchManager and for the same reason: the value is read straight
+// out of the DOM and handed to the shell, never sent as a LiveView event. What
+// differs is the shape — these have KNOWN names from `Clinch.AppKeys`, so each
+// row carries its own name in `data-app-key` and there is no name field to get
+// wrong. A row is a registry entry, not a free-text form.
+export const ClinchAppKeys = {
+  mounted() {
+    this.invoke = invoker()
+    this.notice = this.el.querySelector("[data-clinch-unavailable]")
+
+    if (!managementAvailable()) {
+      // Hide the controls, not the rows: seeing WHERE each credential comes from
+      // is useful over a tunnel even when changing it is not.
+      this.rows().forEach((row) => {
+        row.querySelectorAll("input, button").forEach((node) => {
+          node.setAttribute("hidden", "hidden")
+        })
+      })
+      this.notice?.removeAttribute("hidden")
+      return
+    }
+
+    this.notice?.setAttribute("hidden", "hidden")
+
+    this.onClick = (event) => {
+      const store = event.target.closest("[data-app-key-store]")
+      const clear = event.target.closest("[data-app-key-clear]")
+      if (store) return this.store(store.closest("[data-app-key]"))
+      if (clear) return this.clear(clear.closest("[data-app-key]"))
+    }
+
+    this.el.addEventListener("click", this.onClick)
+  },
+
+  destroyed() {
+    if (this.onClick) this.el.removeEventListener("click", this.onClick)
+  },
+
+  rows() {
+    return Array.from(this.el.querySelectorAll("[data-app-key]"))
+  },
+
+  store(row) {
+    if (!row) return
+    const valueEl = row.querySelector("[data-app-key-value]")
+
+    const {payload, error} = putPayload({
+      kind: "app_key",
+      name: row.dataset.appKey,
+      value: valueEl?.value,
+    })
+
+    if (error) return this.say(row, errorMessage(error))
+
+    this.say(row, "Storing…")
+
+    this.invoke("clinch_put", payload)
+      .then(() => {
+        // Out of the DOM the moment it is stored. It was never in an assign.
+        if (valueEl) valueEl.value = ""
+        this.say(row, "Stored. In use immediately — no restart.")
+        this.pushEvent("clinch:changed", {})
+      })
+      .catch((reason) => this.say(row, errorMessage(reason)))
+  },
+
+  clear(row) {
+    if (!row) return
+
+    const {payload, error} = deletePayload({
+      kind: "app_key",
+      name: row.dataset.appKey,
+    })
+
+    if (error) return this.say(row, errorMessage(error))
+
+    this.say(row, "Clearing…")
+
+    this.invoke("clinch_delete", payload)
+      .then(() => {
+        this.say(row, "Cleared. It stops being used on the next call.")
+        this.pushEvent("clinch:changed", {})
+      })
+      .catch((reason) => this.say(row, errorMessage(reason)))
+  },
+
+  say(row, message) {
+    const status = row?.querySelector("[data-app-key-status]")
+    if (status) status.textContent = message
   },
 }
