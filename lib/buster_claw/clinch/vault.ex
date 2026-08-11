@@ -8,8 +8,17 @@ defmodule BusterClaw.Clinch.Vault do
   There are two, and they are not interchangeable — different AAD, different key
   derivation, so a value written by one cannot be read by the other:
 
-  | `:app` | `BusterClaw.Vault`, AAD `buster_claw.vault.v1` | integration tokens, webhook secrets, `$secret` values |
-  | `:google` | `BusterClaw.Google.Vault`, AAD `google:v1` | the `google_accounts` `*_enc` columns |
+  | vault | module, key derivation, AAD | holds |
+  |---|---|---|
+  | `:app` | `BusterClaw.Vault` · key `sha256("vault:v1:" <> secret_key_base)` · AAD `buster_claw.vault.v1` | integration tokens, webhook secrets, `$secret` and `:app_key` values |
+  | `:google` | `BusterClaw.Google.Vault` · key `sha256("google:v1:" <> secret_key_base)` · AAD `buster_claw.google.vault.v1` | the `google_accounts` `*_enc` columns |
+
+  > **Both are listed with key AND AAD because this table used to conflate them.**
+  > It gave the `:google` AAD as `google:v1`, which is the KEY DERIVATION prefix —
+  > the AAD is `buster_claw.google.vault.v1`. The frames are otherwise identical
+  > (version byte 1, 12-byte IV, 16-byte tag), so anything written from the wrong
+  > constant looks correct and fails GCM authentication forever. Found 08-10 while
+  > scoping the Phase 4 migration that would have been written from this table.
 
   Clinch Phase 4 retires `:google` by re-encrypting those columns under `:app`
   and deleting the second vault. Routing both through one facade first is what
