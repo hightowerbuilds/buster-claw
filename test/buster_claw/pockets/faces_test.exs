@@ -110,6 +110,12 @@ defmodule BusterClaw.Pockets.FacesTest do
     end
 
     test "a symlinked face is refused rather than followed" do
+      # This is the one guard here that is a security property rather than a
+      # behaviour. A mount is how a Pocket reaches outside itself and it is the
+      # ONLY way — `Pockets.Mounts` exists to make that reach a registered,
+      # revocable thing. A face that followed a symlink would be a second, silent
+      # way out, which is exactly the hole the mount design is built to close.
+      # `Notes` refuses `:symlink` entries on `lstat` for the same reason.
       put_pocket_face("real")
       outside = Path.join(System.tmp_dir!(), "bc_faces_outside_#{System.unique_integer()}.wgsl")
       File.write!(outside, wgsl("1.0"))
