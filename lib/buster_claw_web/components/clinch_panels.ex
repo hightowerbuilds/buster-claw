@@ -107,7 +107,6 @@ defmodule BusterClawWeb.ClinchPanels do
     """
   end
 
-
   attr :app_keys, :list, required: true
 
   @doc """
@@ -147,7 +146,11 @@ defmodule BusterClawWeb.ClinchPanels do
       <div :for={{group, keys} <- @app_keys} class="space-y-3">
         <h3 class="font-mono text-xs uppercase tracking-wide text-base-content/50">{group}</h3>
 
-        <div :for={key <- keys} class="rounded border-2 border-base-content/15 p-3" data-app-key={key.name}>
+        <div
+          :for={key <- keys}
+          class="rounded border-2 border-base-content/15 p-3"
+          data-app-key={key.name}
+        >
           <div class="flex flex-wrap items-baseline justify-between gap-2">
             <span class="text-sm font-semibold">{key.label}</span>
             <span class={[
