@@ -140,11 +140,15 @@ check lib/buster_claw_web/components/explained/shared.ex       182 HELD
 check lib/buster_claw_web/components/explained/registry.ex     219 HELD
 check lib/buster_claw_web/components/explained/intro.ex        151 HELD
 
-# The Message Machine's three panels.
+# The Message Machine's three panels, and the registry that decides which of
+# them a sub-tab shows. `registry.ex` is capped on arrival: it is data-only by
+# construction (a `when` guard reads it at compile time), so growth here means a
+# third sub-tab, which is exactly the change that should cost a decision.
 check lib/buster_claw_web/components/phone/contact_list.ex   330 HELD
 check lib/buster_claw_web/components/phone/playback.ex       314 HELD
 check lib/buster_claw_web/components/phone/log.ex            256 HELD
 check lib/buster_claw_web/components/phone/shared.ex         176 HELD
+check lib/buster_claw_web/components/phone/registry.ex        62 HELD
 
 # The Google Workspace console: a rail, and one module per pane.
 check lib/buster_claw_web/components/gws_panels.ex           135 HELD
@@ -341,7 +345,13 @@ check lib/buster_claw_web/components/home_widget.ex           699 FROZEN
 # Not in a phase, but the two largest surviving mixed files. Frozen so the next
 # roadmap inherits them no worse than it found them.
 check lib/buster_claw_web/live/calendar_component.ex          866 FROZEN
-check lib/buster_claw_web/live/phone_component.ex             541 HELD
+# Raised 08-10, 541 -> 560, for the `Messages | Contacts` sub-tab rail: the rail
+# markup, one guarded event, and the two `:if` wrappers the panels moved inside.
+# The rail is HERE rather than in a panel module for the reason `StudioPanel`
+# records — each panel brings its own `.ic-panel`, which on the homepage is
+# translucent, so nesting one inside another doubles the blur. The tab LIST is
+# not here at all; it is `Phone.Registry`, which is the point of the change.
+check lib/buster_claw_web/live/phone_component.ex             560 HELD
 
 # Pockets (POCKETS_ROADMAP, 08-08/09). Capped ON ARRIVAL rather than after they
 # sprawl — every file above this line was added to the inventory late, once it
@@ -364,9 +374,19 @@ check lib/buster_claw/pocket.ex                               138 HELD
 # it. If a later reader finds control markup in this file, this raise was wrong.
 check lib/buster_claw_web/components/pockets_panel.ex         467 HELD
 check lib/buster_claw_web/components/pockets/pocket_controls.ex  174 HELD
-check lib/buster_claw_web/controllers/pocket_asset_controller.ex  97 HELD
+# Raised 08-10, 97 -> 108, for one `.wgsl` entry in the content-type table and
+# the six lines saying why `text/plain` is the safe answer for it (nosniff is
+# what makes it safe, not the type). The table is the file's whole point, so a
+# raise that adds a row to it is the raise this cap exists to permit; a raise
+# that adds path handling is not — see the moduledoc's "adds no path handling".
+check lib/buster_claw_web/controllers/pocket_asset_controller.ex 108 HELD
 check lib/buster_claw/commands/pocket.ex                      265 HELD
 check lib/buster_claw/commands/catalog/pocket.ex               75 HELD
+# Contact shaderfaces out of ONE Pocket (08-10). Capped on arrival. Two thirds
+# of it is the moduledoc, and deliberately: it records the per-contact-Pocket
+# design that was built up to and reversed, so the next reader does not re-derive
+# it. The code is a name, a list, a merge and a two-step resolve.
+check lib/buster_claw/pockets/faces.ex                        164 HELD
 
 # Terminal paint (TERMINAL_PAINT_ROADMAP, 08-09) — the agent recolours the
 # terminal it is running in. Capped on arrival, no headroom.

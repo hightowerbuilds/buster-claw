@@ -52,7 +52,14 @@ defmodule BusterClawWeb.PocketAssetController do
     ".mp3" => "audio/mpeg",
     ".wav" => "audio/wav",
     ".txt" => "text/plain; charset=utf-8",
-    ".md" => "text/plain; charset=utf-8"
+    ".md" => "text/plain; charset=utf-8",
+    # Contact shaderfaces (`BusterClaw.Pockets.Faces`). `text/plain` is what
+    # `ShaderController` already serves WGSL as, and the hook reads it with
+    # `res.text()` — there is no registered WGSL media type a browser does
+    # anything useful with. What makes it safe is the `nosniff` header below:
+    # `text/plain` + nosniff can never be executed as script or parsed as a
+    # document, which is exactly the guarantee operator-supplied bytes need.
+    ".wgsl" => "text/plain; charset=utf-8"
   }
 
   def show(conn, %{"pocket" => pocket, "file" => file}) do

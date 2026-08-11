@@ -19,6 +19,11 @@ defmodule BusterClawWeb.PhoneLiveTest do
     event
   end
 
+  defp select_tab(view, key) do
+    view |> element("button[role=tab][phx-value-tab=#{key}]") |> render_click()
+    view
+  end
+
   test "renders the empty machine", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/phone")
 
@@ -204,15 +209,20 @@ defmodule BusterClawWeb.PhoneLiveTest do
     assert has_element?(view, "#phone-contact-call[disabled]")
     refute has_element?(view, "#phone-dial-match")
 
+    # Caller history rides with the contact, so it is on the Contacts tab. The
+    # selection made from the keypad above carries across — the tabs are two
+    # views of one component's state, not two components.
+    select_tab(view, "contacts")
+
     assert has_element?(view, "#phone-contact-history:not([open])")
     assert has_element?(view, "#phone-contact-history-toggle", "Caller history")
     assert has_element?(view, "#phone-contact-history-items", "Voicemail")
   end
 
   test "contacts: add via form, select shows the shaderface card", %{conn: conn} do
-    {:ok, view, html} = live(conn, "/phone")
+    {:ok, view, _html} = live(conn, "/phone")
 
-    assert html =~ "No contacts yet"
+    assert render(select_tab(view, "contacts")) =~ "No contacts yet"
 
     view |> element("button[phx-click=toggle_add_contact]") |> render_click()
 
@@ -249,5 +259,133 @@ defmodule BusterClawWeb.PhoneLiveTest do
   test "recording route refuses path escapes", %{conn: conn} do
     conn = get(conn, "/phone/recording", %{"path" => "../../etc/passwd"})
     assert conn.status == 404
+  end
+
+  describe "the sub-tab rail" do
+    # THE DRIFT TEST. On 08-08 the homepage's Phone tab shipped as a rail button
+    # the server refused: the rail offered it, the guard had never heard of it,
+    # and the click raised. This walks the registry and clicks EVERY button it
+    # produces, so a key that reaches the rail without reaching the guard fails
+    # here rather than under the operator's cursor.
+    #
+    # It is deliberately written over `Registry.tabs()` rather than over a
+    # literal `["messages", "contacts"]`: a literal would have to be updated by
+    # the same person who added the tab, which is the failure mode itself.
+    test "every tab the registry renders is one the guard accepts", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/phone")
+
+      for tab <- BusterClawWeb.Phone.Registry.tabs() do
+        assert html =~ ~s(phx-value-tab="#{tab.key}"),
+               "#{tab.key} is in the registry but the rail did not render it"
+
+        rendered = render(select_tab(view, tab.key))
+
+        assert rendered =~ ~s(data-phone-tab="#{tab.key}"),
+               "the rail offers #{tab.key} but clicking it showed no panel"
+      end
+    end
+
+    test "Messages is the tab a fresh mount lands on", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/phone")
+
+      assert html =~ ~s(data-phone-tab="messages")
+      refute html =~ ~s(data-phone-tab="contacts")
+    end
+
+    test "the rail marks exactly one tab selected", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/phone")
+
+      assert has_element?(view, "button[phx-value-tab=messages][aria-selected=true]")
+      assert has_element?(view, "button[phx-value-tab=contacts][aria-selected=false]")
+
+      select_tab(view, "contacts")
+
+      assert has_element?(view, "button[phx-value-tab=messages][aria-selected=false]")
+      assert has_element?(view, "button[phx-value-tab=contacts][aria-selected=true]")
+    end
+
+    test "each tab shows its own panel and hides the other's", %{conn: conn} do
+      {:ok, _} = Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
+      {:ok, view, html} = live(conn, "/phone")
+
+      # Messages: the log and the keypad, no contact list.
+      assert html =~ "Message machine"
+      refute has_element?(view, "button[phx-click=toggle_add_contact]")
+
+      contacts = render(select_tab(view, "contacts"))
+
+      assert contacts =~ "Dana Printshop"
+      assert has_element?(view, "button[phx-click=toggle_add_contact]")
+      refute has_element?(view, "#phone-dial-key-5")
+    end
+  end
+
+  describe "contact faces" do
+    test "a face picked from the Pocket is served from the Pocket URL", %{conn: conn} do
+      {:ok, contact} =
+        Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
+
+      BusterClaw.Pockets.Faces.ensure()
+
+      File.write!(
+        Path.join(
+          BusterClaw.Pockets.pocket_dir(BusterClaw.Pockets.Faces.pocket_name()),
+          "ember.wgsl"
+        ),
+        "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }"
+      )
+
+      {:ok, _} = Contacts.update_contact(contact, %{face_shader: "ember"})
+
+      {:ok, view, _html} = live(conn, "/phone")
+      html = render(select_tab(view, "contacts"))
+      assert html =~ "Dana Printshop"
+
+      card =
+        view
+        |> element("button[phx-click=select_contact][phx-value-id='#{contact.id}']")
+        |> render_click()
+
+      assert card =~ "/pockets/contact-faces/ember.wgsl"
+    end
+
+    test "the Pocket's wgsl is served as text/plain with nosniff", %{conn: conn} do
+      BusterClaw.Pockets.Faces.ensure()
+
+      File.write!(
+        Path.join(
+          BusterClaw.Pockets.pocket_dir(BusterClaw.Pockets.Faces.pocket_name()),
+          "ember.wgsl"
+        ),
+        "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }"
+      )
+
+      conn = get(conn, "/pockets/contact-faces/ember.wgsl")
+
+      assert conn.status == 200
+      assert get_resp_header(conn, "content-type") == ["text/plain; charset=utf-8"]
+      # `text/plain` is only safe BECAUSE of this header — without it a browser
+      # is free to sniff operator-supplied bytes into a document.
+      assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+    end
+
+    test "a contact with no face still gets one", %{conn: conn} do
+      {:ok, contact} =
+        Contacts.create_contact(%{name: "Dana Printshop", phone: "+15035550142"})
+
+      {:ok, view, _html} = live(conn, "/phone")
+      select_tab(view, "contacts")
+
+      card =
+        view
+        |> element("button[phx-click=select_contact][phx-value-id='#{contact.id}']")
+        |> render_click()
+
+      # The generative fallback: a canvas, a seed, and NO source URL to fetch.
+      assert card =~ "data-face-canvas"
+      assert card =~ "data-seed"
+      refute card =~ "data-shader-source"
+      assert card =~ "Generative"
+    end
   end
 end

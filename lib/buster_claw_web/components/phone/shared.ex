@@ -14,6 +14,7 @@ defmodule BusterClawWeb.Phone.Shared do
   """
   use BusterClawWeb, :html
 
+  alias BusterClaw.Pockets.Faces
   alias BusterClaw.Telephony.Event
 
   def shader_bg(assigns) do
@@ -80,8 +81,12 @@ defmodule BusterClawWeb.Phone.Shared do
   # ShaderFace hook (phx-update="ignore" pins whatever compiled at mount).
   def face_id(contact), do: "face-#{contact.id}-#{contact.face_shader || "gen"}"
 
+  # Where the ShaderFace hook fetches a custom face's WGSL. `Pockets.Faces` owns
+  # the order (its Pocket, then `<workspace>/shaders/`) and returns nil for a
+  # face that is no longer anywhere — which is the generative face, the same
+  # answer as never having picked one.
   def face_source(%{face_shader: nil}), do: nil
-  def face_source(%{face_shader: name}), do: ~p"/shaders/#{name}"
+  def face_source(%{face_shader: name}), do: Faces.source_url(name)
 
   # A known contact shows by name everywhere; strangers stay as numbers.
   def display_name(contacts, number) do

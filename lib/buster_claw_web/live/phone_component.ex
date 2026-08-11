@@ -1,8 +1,10 @@
 defmodule BusterClawWeb.PhoneComponent do
   @moduledoc """
-  The Message Machine: BusterPhone's call/text log as a shader window — the log
-  fills the left column; the right column divides into Playback (top, over the
-  telephone `keypad` WGSL shader) and Contacts (bottom). Voicemails play inline from the
+  The Message Machine: BusterPhone's call/text log as a shader window, behind a
+  two-tab rail. **Messages** is the log (left) beside Playback (right, over the
+  telephone `keypad` WGSL shader); **Contacts** is the address book and the
+  shaderface card, which gets the whole panel rather than the bottom third of a
+  column. Voicemails play inline from the
   Library (`/phone/recording`) and show their Twilio cost (back-filled — see
   `VOICEMAIL_COST_ROADMAP.md`), SMS reads as per-number threads, and unheard
   voicemails are the blinking light — selecting one marks it heard. Live-updates
@@ -43,11 +45,19 @@ defmodule BusterClawWeb.PhoneComponent do
   use BusterClawWeb, :live_component
 
   alias BusterClaw.Contacts
+  alias BusterClaw.Pockets.Faces
   alias BusterClaw.Telephony
   alias BusterClaw.Telephony.Event
   alias BusterClawWeb.Phone.ContactList
   alias BusterClawWeb.Phone.Log, as: PhoneLog
   alias BusterClawWeb.Phone.Playback
+  alias BusterClawWeb.Phone.Registry
+
+  # The sub-tab whitelist, read at COMPILE TIME from the same list the rail
+  # renders — a `when` guard cannot call a remote function, and that constraint
+  # is the point: the rail and the guard cannot become two literals that drift.
+  # See `Registry`'s moduledoc for the 08-08 fault this prevents.
+  @tab_keys Registry.tab_keys()
 
   @filters [
     %{key: "all", label: "All"},
@@ -84,7 +94,13 @@ defmodule BusterClawWeb.PhoneComponent do
   end
 
   defp load_initial(socket) do
+    # On-demand, per the workspace registry: the faces Pocket is created when the
+    # operator opens the surface that owns it, never at install. Idempotent, and
+    # it never overwrites a manifest they have edited.
+    Faces.ensure()
+
     socket
+    |> assign(:tab, "messages")
     |> assign(:keypad_keys, @keypad_keys)
     |> assign(:filter, "all")
     |> assign(:selected_event, nil)
@@ -98,12 +114,16 @@ defmodule BusterClawWeb.PhoneComponent do
     |> assign(:contact_trusted, false)
     |> assign(:contact_history, [])
     |> assign(:reload_queued, false)
-    |> assign(:face_shaders, BusterClaw.Shaders.list())
+    |> assign(:face_shaders, Faces.choices())
     |> load_contacts()
     |> load_data()
   end
 
   @impl true
+  def handle_event("select_phone_tab", %{"tab" => tab}, socket) when tab in @tab_keys do
+    {:noreply, assign(socket, :tab, tab)}
+  end
+
   def handle_event("filter", %{"kind" => kind}, socket)
       when kind in ["all", "voicemail", "sms", "call"] do
     {:noreply,
@@ -257,7 +277,7 @@ defmodule BusterClawWeb.PhoneComponent do
         {:noreply,
          socket
          |> select_contact(updated)
-         |> assign(:face_shaders, BusterClaw.Shaders.list())
+         |> assign(:face_shaders, Faces.choices())
          |> load_contacts()}
     end
   end
@@ -442,37 +462,78 @@ defmodule BusterClawWeb.PhoneComponent do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, filters: @filters, wave_colors: @wave_colors)
+    assigns =
+      assign(assigns, filters: @filters, wave_colors: @wave_colors, tabs: Registry.tabs())
 
     ~H"""
-    <div id={"#{@id}-root"} class="flex h-full min-h-0 flex-col gap-3 p-3 lg:grid lg:grid-cols-5">
-      <PhoneLog.event_log
-        target={@myself}
-        events={@events}
-        threads={@threads}
-        filter={@filter}
-        filters={@filters}
-        stats={@stats}
-        selected_event={@selected_event}
-        selected_thread={@selected_thread}
-        contacts_by_number={@contacts_by_number}
-      />
+    <div id={"#{@id}-root"} class="flex h-full min-h-0 flex-col gap-3 p-3">
+      <div
+        role="tablist"
+        aria-label="Phone"
+        class="flex shrink-0 flex-wrap gap-1 border-b-2 border-base-content/20"
+      >
+        <button
+          :for={t <- @tabs}
+          type="button"
+          role="tab"
+          title={t.blurb}
+          aria-selected={to_string(@tab == t.key)}
+          phx-click="select_phone_tab"
+          phx-target={@myself}
+          phx-value-tab={t.key}
+          class={[
+            "-mb-0.5 border-b-2 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide transition",
+            if(@tab == t.key,
+              do: "border-primary text-primary",
+              else: "border-transparent text-base-content/55 hover:text-base-content"
+            )
+          ]}
+        >
+          {t.label}
+        </button>
+      </div>
 
-      <%!-- RIGHT: divided column — Playback over Machine --%>
-      <div class="flex min-h-0 flex-1 flex-col gap-3 lg:col-span-2">
-        <Playback.playback
+      <%!-- Messages: the log beside Playback. Both panels are `:if`-ed rather
+            than hidden, so their `phx-update="ignore"` shader canvases are torn
+            down and remounted on a tab switch instead of animating unseen. --%>
+      <div
+        :if={@tab == "messages"}
+        data-phone-tab="messages"
+        class="flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:grid-cols-5"
+      >
+        <PhoneLog.event_log
           target={@myself}
-          keypad_keys={@keypad_keys}
-          dialed_number={@dialed_number}
-          dial_match={@dial_match}
+          events={@events}
+          threads={@threads}
+          filter={@filter}
+          filters={@filters}
+          stats={@stats}
           selected_event={@selected_event}
           selected_thread={@selected_thread}
-          selected_contact={@selected_contact}
-          thread_messages={@thread_messages}
           contacts_by_number={@contacts_by_number}
-          wave_colors={@wave_colors}
         />
 
+        <div class="flex min-h-0 flex-1 flex-col gap-3 lg:col-span-2">
+          <Playback.playback
+            target={@myself}
+            keypad_keys={@keypad_keys}
+            dialed_number={@dialed_number}
+            dial_match={@dial_match}
+            selected_event={@selected_event}
+            selected_thread={@selected_thread}
+            selected_contact={@selected_contact}
+            thread_messages={@thread_messages}
+            contacts_by_number={@contacts_by_number}
+            wave_colors={@wave_colors}
+          />
+        </div>
+      </div>
+
+      <div
+        :if={@tab == "contacts"}
+        data-phone-tab="contacts"
+        class="flex min-h-0 flex-1 flex-col"
+      >
         <ContactList.contacts
           target={@myself}
           contacts={@contacts}

@@ -288,8 +288,8 @@ defmodule BusterClawWeb.Phone.ContactList do
               </select>
             </form>
             <p class="font-mono text-[10px] leading-relaxed text-base-content/40">
-              Want a custom face? Ask Buster to design one — it lands in
-              workspace/shaders/ and shows up in this picker.
+              Want a custom face? Ask Buster to design one, or drop a .wgsl into
+              the contact-faces Pocket. Either shows up in this picker.
             </p>
           </div>
         </div>
