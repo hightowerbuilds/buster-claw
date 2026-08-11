@@ -71,6 +71,38 @@ defmodule BusterClaw.Clinch.Vault do
   def decrypt!(value, :app), do: AppVault.decrypt!(value)
 
   @doc """
+  Derive an at-rest key from a `secret_key_base`, for a rotation that must hold
+  the old key and the new one at the same time.
+  """
+  @spec derive_key(String.t()) :: binary()
+  def derive_key(secret_key_base), do: AppVault.derive_key(secret_key_base)
+
+  @doc """
+  Re-encrypt one value from `old_key` to `new_key`.
+
+  `{:ok, ciphertext}` on success, `:unreadable` when the value will not decrypt
+  under `old_key`, and `{:error, reason}` if re-encryption itself fails.
+
+  **`:unreadable` is a distinct answer on purpose.** A rotation must be able to
+  tell "this value is not ours to move" from "the rotation is broken", because
+  the two demand opposite responses: the first is one credential to re-enter, the
+  second is a rotation to abort before it writes anything.
+
+  `nil` passes through as `nil` — an absent credential is not a failed one.
+  """
+  @spec rekey(binary() | nil, binary(), binary()) ::
+          {:ok, binary() | nil} | :unreadable | {:error, atom()}
+  def rekey(nil, _old_key, _new_key), do: {:ok, nil}
+
+  def rekey(ciphertext, old_key, new_key) do
+    case AppVault.decrypt_with_key(ciphertext, old_key) do
+      {:ok, nil} -> {:ok, nil}
+      {:ok, plaintext} -> AppVault.encrypt_with_key(plaintext, new_key)
+      {:error, _reason} -> :unreadable
+    end
+  end
+
+  @doc """
   True when `value` is *framed* as the app vault's ciphertext, without attempting
   decryption — the distinction `Encrypted` needs to tell a key mismatch (fail
   closed) from a legacy plaintext value (pass through).
