@@ -9,7 +9,17 @@ defmodule BusterClaw.Sentinel.Event do
   import Ecto.Changeset
 
   @severities ~w(info notice warning critical)
-  @categories ~w(security_block command_invoke outbound_send untrusted_ingest settings_change google_auth credential_use)
+  @categories ~w(security_block command_invoke outbound_send untrusted_ingest settings_change google_auth credential_use credential_revoked credential_missing)
+
+  @doc """
+  Every category an event may carry.
+
+  `Sentinel.observe/4` with anything outside this list is **dropped** — the
+  changeset is invalid, the write is best-effort, and the caller is told nothing.
+  `SentinelCategoryTest` scans for call sites so a new category cannot be emitted
+  into a void.
+  """
+  def categories, do: @categories
 
   @derive {Jason.Encoder,
            only: [

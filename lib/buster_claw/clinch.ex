@@ -96,6 +96,7 @@ defmodule BusterClaw.Clinch do
           {:ok, value}
 
         _absent_or_undecryptable ->
+          audit_missing(kind, name, opts)
           :error
       end
     else
@@ -156,17 +157,26 @@ defmodule BusterClaw.Clinch do
 
   @doc "Forget a credential. `{:error, :not_found}` rather than a silent success."
   @spec delete(ref()) :: {:ok, map()} | {:error, :not_found | :unmanaged_kind}
-  def delete({kind, name}) when is_binary(name) do
+  def delete(ref, opts \\ [])
+
+  def delete({kind, name}, opts) when is_binary(name) do
     if kind in Types.managed_kinds() do
       case Repo.get_by(Secret, kind: Atom.to_string(kind), name: normalize(name)) do
-        nil -> {:error, :not_found}
-        %Secret{} = secret -> with {:ok, _} <- Repo.delete(secret), do: {:ok, shape(secret)}
+        nil ->
+          {:error, :not_found}
+
+        %Secret{} = secret ->
+          with {:ok, _} <- Repo.delete(secret) do
+            audit_revoked(kind, name, opts)
+            {:ok, shape(secret)}
+          end
       end
     else
       {:error, :unmanaged_kind}
     end
   end
-  def delete(_ref), do: {:error, :not_found}
+
+  def delete(_ref, _opts), do: {:error, :not_found}
 
   @doc """
   Every credential the app holds, as `t:BusterClaw.Clinch.Types.entry/0` —
@@ -247,6 +257,43 @@ defmodule BusterClaw.Clinch do
       Sentinel.observe(
         :credential_use,
         "#{kind} credential \"#{normalize(name)}\" resolved",
+        %{kind: kind, name: normalize(name)},
+        caller: opts[:caller]
+      )
+    end
+
+    :ok
+  end
+
+  # Removing a credential IS revoking it, so the event rides the one verb that can
+  # remove one. A separate `revoke/1` alongside `delete/1` would read better and be
+  # worse: it would leave a path that removes a credential WITHOUT the event, which
+  # is exactly the "looks like a typo in the audit feed" state this replaces.
+  defp audit_revoked(kind, name, opts) do
+    Sentinel.observe(
+      :credential_revoked,
+      "#{kind} credential \"#{normalize(name)}\" revoked — anything using it will now fail",
+      %{kind: kind, name: normalize(name)},
+      caller: opts[:caller]
+    )
+
+    :ok
+  end
+
+  # A use that found nothing. Named rather than silent, because the failure a
+  # revocation causes shows up somewhere else entirely — an agent run that stops
+  # working, a drain that goes quiet — and without this there is nothing tying
+  # the effect back to the cause.
+  #
+  # Honest about what it does not know: this cannot tell "revoked" from "never
+  # configured", because nothing keeps a tombstone. It says a credential was
+  # wanted and absent, and names what to do about it.
+  defp audit_missing(kind, name, opts) do
+    if Keyword.get(opts, :audit, true) do
+      Sentinel.observe(
+        :credential_missing,
+        "#{kind} credential \"#{normalize(name)}\" was needed and is not stored — " <>
+          "store it in Settings → Configuration, or restore the master key if it was rotated",
         %{kind: kind, name: normalize(name)},
         caller: opts[:caller]
       )

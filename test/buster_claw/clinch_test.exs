@@ -319,4 +319,68 @@ defmodule BusterClaw.ClinchTest do
     end
   end
 
+  # Phase 4: "revocation is a first-class action with a Sentinel event, not a
+  # delete that looks like a typo in the audit feed." Before this, deleting a
+  # credential wrote nothing at all — not a typo, an absence.
+  describe "revocation" do
+    @rev {:sign_in, "revoke-me"}
+
+    # Through the schema, not the raw table: `metadata` is an Ecto `:map`, and a
+    # raw-table query returns it undecoded.
+    defp events(category) do
+      BusterClaw.Repo.all(from e in BusterClaw.Sentinel.Event, where: e.category == ^category)
+    end
+
+    test "removing a credential records a revocation, not silence" do
+      assert {:ok, _} = Clinch.put(@rev, "value")
+      assert {:ok, _} = Clinch.delete(@rev)
+
+      assert [event] = events("credential_revoked")
+      assert event.message =~ "revoke-me"
+      assert event.message =~ "revoked"
+
+      # The name and kind, never the value — the Clinch's standing rule.
+      assert event.metadata["name"] == "revoke-me"
+      assert event.metadata["kind"] == "sign_in"
+      refute event.message =~ "value"
+    end
+
+    test "a revocation is a warning, not buried at :info with routine uses" do
+      assert {:ok, _} = Clinch.put(@rev, "value")
+      assert {:ok, _} = Clinch.delete(@rev)
+
+      assert [%{severity: "warning"}] = events("credential_revoked")
+    end
+
+    test "deleting something absent records nothing" do
+      assert {:error, :not_found} = Clinch.delete({:sign_in, "never-existed"})
+
+      assert events("credential_revoked") == [],
+             "a failed delete must not claim a credential was revoked"
+    end
+
+    # The acceptance criterion's second half: "a revoked credential fails its next
+    # use loudly, with a message naming what to do."
+    test "the next use of a revoked credential is recorded and says what to do" do
+      assert {:ok, _} = Clinch.put(@rev, "value")
+      assert {:ok, _} = Clinch.delete(@rev)
+
+      assert :error = Clinch.resolve(@rev)
+
+      assert [event] = events("credential_missing")
+      assert event.message =~ "revoke-me"
+      assert event.message =~ "Settings"
+      assert event.message =~ "restore the master key"
+    end
+
+    test "a config read does not flood the feed" do
+      # AppKeys resolves on every drain tick and every Twilio call. If those wrote
+      # a missing-credential event each time, one unconfigured install would bury
+      # every real event under thousands.
+      assert :error = Clinch.resolve({:app_key, "finnhub_api_key"}, audit: false)
+      assert :error = Clinch.resolve({:app_key, "finnhub_api_key"}, audit: false)
+
+      assert events("credential_missing") == []
+    end
+  end
 end

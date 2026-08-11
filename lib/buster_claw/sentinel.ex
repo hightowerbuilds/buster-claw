@@ -159,6 +159,19 @@ defmodule BusterClaw.Sentinel do
   # record that a credential had been used at all.
   def classify(:credential_use, _meta), do: :info
 
+  # Revoking a credential is a deliberate, consequential act — the operator
+  # removing the app's ability to do something. :warning puts it in the alert
+  # tiers beside outbound sends, because the question it has to answer later is
+  # "when did this stop working, and did I do that?" A revocation buried at :info
+  # among thousands of routine uses answers it too slowly to matter.
+  def classify(:credential_revoked, _meta), do: :warning
+
+  # Something tried to use a credential that is not there. :notice rather than
+  # :warning: the common causes are benign (never configured, or configured on
+  # another machine), and an alert tier for an app that is merely unfinished
+  # would train the operator to ignore the tier.
+  def classify(:credential_missing, _meta), do: :notice
+
   def classify(_other, _meta), do: :info
 
   defp tier(meta) when is_map(meta), do: to_string(meta[:tier] || meta["tier"] || "")
