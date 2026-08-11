@@ -1,7 +1,7 @@
 # Apple — the complete acceptance path
 
-**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE. G-2/G-2b done and G-3
-signing green 08-10; awaiting the notary, and an Apple Silicon Mac.**
+**Carved out of the launch roadmap 2026-08-09 · Status: ACTIVE. G-1 through G-3 DONE
+08-10 — a notarized, stapled x86_64 DMG exists. G-4 needs an Apple Silicon Mac.**
 
 > ### The one-sentence version
 >
@@ -14,15 +14,25 @@ is open: the constraint has moved from *waiting on Apple* to *doing the work*.
 **The certificate exists as of 2026-08-10** — Team `KD977J8NF6`, G2 issuer, valid
 to 2031. Signing is real and its CI import path has been exercised (III.D, G-2).
 
-**Notarization credentials exist as of 2026-08-10** and were proven against Apple's
-notary API (G-2b). **Every release secret is now set** — certificate, password, and
-the three API-key values.
+> ### 🎉 2026-08-10: Apple is done, for one architecture
+>
+> **`Buster Claw_0.1.0_x64.dmg` is signed, notarized, and stapled**, and every one
+> of III.J's eight machine-checkable exit tests passes — including the two that
+> only a real notarization can produce: `spctl` reporting
+> **`source=Notarized Developer ID`** (not merely "accepted") and `stapler
+> validate` on both the `.app` and the `.dmg`.
+>
+> **Apple's verdict: `Accepted`, "Ready for distribution", zero issues, first
+> attempt.** The map budgeted rejection rounds and none were needed.
+>
+> Two things the ticket independently confirms. Apple issued **27 ticket entries**
+> — the app, the Tauri binary, `beam.smp` and every other Mach-O individually —
+> which is outside verification that `codesign_release.sh` found them all *by
+> content*. And **`beam.smp` carries its own cdhash in the ticket**, so the notary
+> specifically blessed the JIT-enabled BEAM. That was the likeliest thing in the
+> bundle to be refused, and it wasn't.
 
-**A signed x86_64 DMG exists as of 2026-08-10** and is with the notary. The signing
-half of G-3 passed on the first attempt; III.E, III.F and most of III.J are now
-exercised rather than written.
-
-**The one thing to do next: an Apple Silicon Mac.** Everything proven so far covers
+**The one thing to do next: an Apple Silicon Mac.** Everything proven above covers
 the Intel slice only, and the arm64 slice — most of the user base — has never been
 built outside CI, signed, or launched. See the arch note in III.J; **this map had
 that dependency recorded backwards until 08-10.**
@@ -72,18 +82,21 @@ The single most important distinction in this document.
 | OTP tree signing (III.F) | ✅ | ✅ **08-10** — 24/24 Mach-O, first try |
 | Two-arch build (III.G) | 🟡 | 🟡 **x86_64 signed 08-10; aarch64 never built outside CI** |
 | **Notary credentials (G-2b)** | ✅ | ✅ **08-10** |
-| Notarization + stapling (III.H) | ✅ | 🟡 **submitted 08-10**, awaiting verdict |
+| Notarization + stapling (III.H) | ✅ | ✅ **08-10 — Accepted, zero issues, stapled** |
 | Updater (III.I) | ❌ | ❌ |
-| Exit tests (III.J) | ✅ asserted in CI | 🟡 **6 of 8 machine checks green on x86_64**; the human four unrun |
+| Exit tests (III.J) | ✅ asserted in CI | ✅ **all 8 machine checks green on x86_64**; the human four unrun |
 
 *Every mark in the right column arrived on 08-10; the column was empty that morning.*
 
 **A certificate does not flip this column; running things does.** That was the 08-10
 lesson and it arrived immediately: the certificate existed and the credential row still
 would not have gone green, because the `.p12` macOS produced was one OpenSSL 3 could
-write and `security import` could not read (III.D). **On 08-10 this column went from zero ✅ to five**, every one earned by running the
-thing rather than reading it. What is left is genuinely external: Apple's verdict, and
-four tests that need a human on hardware.
+write and `security import` could not read (III.D). **On 08-10 this column went from
+zero ✅ to seven**, every one earned by running the thing rather than reading it.
+
+**What is left is no longer written-versus-exercised at all.** The updater is unwritten,
+and the rest is four tests that need a human in front of hardware — on an architecture
+we do not have. No amount of code closes those.
 
 Do not treat the left column as progress toward the right one; it is a prerequisite for
 *starting* it. The purpose of the left column is that when the certificate arrives, the
@@ -396,6 +409,40 @@ genuine arm64 build from an Intel one wearing a universal wrapper.
 
 ### III.H — Notarization mechanics
 
+> ### Budget hours, not minutes — measured 2026-08-10
+>
+> **The first submission took about five and a half hours** from upload to
+> `Accepted`. Apple's published guidance is "minutes to an hour," the Developer ID
+> Notary Service showed **green with no incident** throughout, and the verdict when
+> it came had **zero issues**. Nothing was wrong. It was simply slow.
+>
+> **Do not read a long wait as a problem.** A malformed artifact, a bad signature,
+> or a missing entitlement comes back as `Invalid` **with a per-file log** — it does
+> not sit in `In Progress`. Extended `In Progress` is queue time, and there is no
+> lever on it.
+>
+> **The best available explanation is the artifact's shape, and it is a hypothesis
+> rather than a finding.** This bundle is **2,876 files, 2,451 of them `.beam`** —
+> an entire Erlang/OTP release, where a typical Mac app is a handful of binaries and
+> some resources. The notary unpacks and walks all of it. If that is the cause, the
+> cost is structural: **every Buster Claw release will be slow to notarize**, and no
+> amount of pipeline work changes it. Worth re-measuring on the second submission,
+> which is the cheapest way to tell a queue fluke from a property of the artifact.
+>
+> **Practical consequences for a release day:**
+>
+> - **Do not schedule notarization as the last step of a working session.** Submit,
+>   then do something else.
+> - **`notarytool submit --wait` outlives its client being killed.** The submission
+>   is server-side; recover with `notarytool history`, never a resubmit — a second
+>   upload of the same bytes just competes for the same answer.
+> - **Do not touch the artifact while waiting.** The ticket staples to *those* exact
+>   bytes; rebuilding orphans it.
+> - **Escalation, if it ever is genuinely stuck:** check
+>   [developer.apple.com/system-status](https://developer.apple.com/system-status/)
+>   for the Developer ID Notary Service, then file Feedback Assistant with the
+>   submission ID. A green status page makes that report *more* useful, not less.
+
 **Credentials.** Two shapes; CI supports both and prefers the first.
 
 - **App Store Connect API key** — Issuer ID + Key ID + `.p8`. **Preferred: revocable,
@@ -505,16 +552,18 @@ the machine-checkable ones already; the rest are human.
 - [x] `codesign -dv --verbose=4` → `Authority=Developer ID Application: Luke Hightower
       (KD977J8NF6)` → `Developer ID Certification Authority` → `Apple Root CA`,
       `flags=0x10000(runtime)`, `Identifier=lol.busterclaw.desktop`
-- [ ] `spctl -a -t exec -vvv` → **`source=Notarized Developer ID`**, not merely "accepted"
+- [x] `spctl -a -t exec -vvv` → **`source=Notarized Developer ID`**, not merely "accepted"
+      **PASSES 08-10** — reads exactly that.
       *(accepted alone is not enough: an unnotarized build is accepted locally because this
       machine signed it)*
-      > **08-10, sharper than expected.** The pre-notarization result is not "accepted" —
-      > it is **`rejected — source=Unnotarized Developer ID`**. Gatekeeper read a genuine
-      > Developer ID signature and refused it *only* for the missing ticket. That is a
-      > better negative control than this line anticipated: it distinguishes "correctly
-      > signed, not yet notarized" from "not really signed", which "accepted" cannot.
-- [ ] `stapler validate` passes on both the `.app` and the `.dmg`
-      *(08-10: `does not have a ticket stapled to it` — correct for an unnotarized build)*
+      > **The negative control was sharper than this line anticipated.** Before
+      > notarization the result was not "accepted" — it was **`rejected —
+      > source=Unnotarized Developer ID`**. Gatekeeper read a genuine Developer ID
+      > signature and refused it *only* for the missing ticket, then flipped to
+      > `accepted / Notarized Developer ID` once stapled. Both halves were observed, so
+      > this check is known to discriminate rather than merely known to pass.
+- [x] `stapler validate` passes on both the `.app` and the `.dmg` — **PASSES 08-10**
+      *(before notarization it correctly read `does not have a ticket stapled to it`)*
 - [x] `beam.smp` carries `allow-jit` on its own signature → **confirmed**, all four
       entitlements present on `erts-16.3.1/bin/beam.smp` itself, not merely on the outer app
 - [x] `lipo -archs` on `beam.smp` matches the runner's arch → **`x86_64`**, single-arch
@@ -593,13 +642,19 @@ a handful of known people; `[R2]` blocks the public download.*
       > regenerate; keys are free and unlimited, and the only cost is that **the Key ID
       > changes**, so all three secrets must be set together or CI fails during
       > notarization complaining about authentication rather than about a mismatch.
-- [~] **G-3. IN FLIGHT 08-10.** Signing pipeline run for the first time — **it worked end to
-      end on the first attempt**, which was not the expected outcome. `build_desktop.sh` with
-      `APPLE_SIGNING_IDENTITY` set produced a signed `.app` and a signed 27 MB `x64` DMG;
-      six of the eight machine-checkable III.J assertions are green (III.J). **DMG submitted
-      to the notary**, submission `ea367ea2-c957-4f4a-851b-c460d9d03f3f`, awaiting verdict.
-      **Remaining for G-3: Apple's answer, then `stapler staple`, then re-run `spctl` and
-      confirm it flips to `source=Notarized Developer ID`.**
+- [x] **G-3. DONE 08-10.** Signing pipeline run for the first time — **it worked end to
+      end on the first attempt**, which was not the expected outcome; this map budgets
+      rejection rounds. `build_desktop.sh` with `APPLE_SIGNING_IDENTITY` set produced a
+      signed `.app` and a signed 27 MB `x64` DMG; submission
+      `ea367ea2-c957-4f4a-851b-c460d9d03f3f` came back **`Accepted` / "Ready for
+      distribution" with zero issues**, and both artifacts are stapled. **All eight
+      machine-checkable III.J assertions pass.**
+      > **The ticket is outside verification of III.F.** Apple issued **27 ticket
+      > entries** — the app, the Tauri binary, `beam.smp`, and every other Mach-O
+      > individually. That is Apple confirming `codesign_release.sh` found them all *by
+      > content*, which no local check could establish. **`beam.smp` carries its own
+      > cdhash**, so the notary specifically blessed the JIT-enabled BEAM — the likeliest
+      > thing in this bundle to be refused, and it wasn't.
       > **What the first run proved beyond signing.** The staging assertion — `bin/buster_claw`
       > executable and `erts-*` present — **held against a tree 254 commits and +50k/−15k
       > lines past the last packaged build**. That guard exists because a staging regression

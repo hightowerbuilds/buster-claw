@@ -89,7 +89,7 @@ the section tables below point at it from wherever else it applies.**
 
 1. **[The Clinch](#part-vi--integrations)** — Phase 3 next; it unblocks BusterPhone.
 2. **[BusterPhone](#part-vi--integrations)** — the only paid thing.
-3. **[Apple](#part-vii--platform--release)** — **a signed DMG exists 08-10** and is with the notary. What is next is not code: **an Apple Silicon Mac.**
+3. **[Apple](#part-vii--platform--release)** — **`G-1`–`G-3` DONE 08-10: a notarized, stapled DMG exists.** What is next is not code — an **Apple Silicon Mac**.
 4. **[Studio → Voice](#part-ii--home)** — needs a person at a microphone.
 5. **[The Dialyzer gate](#part-vii--platform--release)** — red on `main`, blocking nothing.
 
@@ -103,11 +103,14 @@ Connect notary credentials (key `SAKNAF6YLA`). **All five release secrets are se
 `HAVE_APPLE_CERT` is `true`, and CI produces signed builds with no workflow edit.
 
 **Then the pipeline itself ran, and passed on the first attempt.** A signed `.app`
-and a signed **27 MB x86_64 DMG** were built from current `main`, and six of the
-eight machine-checkable III.J assertions are green: valid signature, hardened
-runtime, full chain to Apple Root CA, `allow-jit` on `beam.smp` itself, native
-single-arch, and **24 of 24 Mach-O objects signed** — a count the map had predicted
-exactly. The DMG is with the notary awaiting a verdict.
+and a signed **27 MB x86_64 DMG** were built from current `main`, Apple returned
+**`Accepted` / "Ready for distribution" with zero issues**, and both artifacts are
+stapled. **All eight machine-checkable III.J exit tests pass**, including the two
+only a real notarization can produce: `spctl` reading `source=Notarized Developer
+ID`, and `stapler validate` on the `.app` and the `.dmg`.
+
+**A distributable macOS app exists** — not a build. It opens on a stranger's Intel
+Mac with no dialog. The map budgeted rejection rounds; none were needed.
 
 **The Apple map's "exercised" column went from empty to five marks in one day**
 ([`APPLE`](platform/APPLE_ROADMAP.md) III.0), each earned by running the thing.
@@ -122,6 +125,11 @@ never launched.
 **What remains has no prior.** The pipeline was a strong prior and it held; **first
 launch on a machine that did not build the app is not** — the TCC prompt, no-`claude`,
 no-Homebrew and offline paths have never been watched by anyone.
+
+**And one measured surprise: notarization took about five and a half hours**, against
+published guidance of "minutes to an hour", with the notary service green throughout
+and zero issues in the verdict. Budget hours per release, not minutes
+([`APPLE`](platform/APPLE_ROADMAP.md) III.H).
 
 ---
 
@@ -241,7 +249,7 @@ the Voice webhook → set `SUPABASE_URL` / `SERVICE_ROLE_KEY` → call it.
 | Section | Where | State | Map |
 |---|---|---|---|
 | Tauri desktop shell | `desktop/tauri/` | SHIPPED | — |
-| **Apple — sign, notarize, staple** | CI, `scripts/codesign_release.sh` | **ACTIVE — signed DMG built 08-10, at the notary; needs an arm64 Mac** | [`APPLE`](platform/APPLE_ROADMAP.md) |
+| **Apple — sign, notarize, staple** | CI, `scripts/codesign_release.sh` | **`G-1`–`G-3` DONE 08-10 (x86_64). `G-4` blocked on an arm64 Mac** | [`APPLE`](platform/APPLE_ROADMAP.md) |
 | **The release gate** | — | **ACTIVE** | [`RELEASE_GATE`](platform/RELEASE_GATE_ROADMAP.md) |
 | **Trust claims & support** | `Sentinel`, — | **ACTIVE** | [`TRUST_AND_SUPPORT`](platform/TRUST_AND_SUPPORT_ROADMAP.md) |
 | CI gates | `scripts/check_*.sh` | SHIPPED, **one red** | — |

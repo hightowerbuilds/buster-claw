@@ -384,7 +384,7 @@ inherits.*
 
 | # | Task | Cost |
 |---|---|---|
-| **1a** | **G-2: create + export the Developer ID Application certificate**, back it up offline, add the GitHub secrets | **Minutes. THE NEXT ACTION** |
+| ~~1a~~ | ~~G-2: the Developer ID certificate~~ | **DONE 08-10** |
 | 1b | G-2b: App Store Connect API key for notarization (`.p8` downloads once) | Minutes |
 | 1c | **G-3: first real signed build.** Expect rejection rounds | Hours to days — the largest unknown here |
 | 1d | **G-4: III.J exit tests, both arches, on real hardware** | A day, plus Intel-Mac scheduling |
