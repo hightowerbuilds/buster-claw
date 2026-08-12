@@ -23,16 +23,33 @@ it should travel there rather than sit here looking done.
 > blocked on an artifact until the Apple path completed; it is now blocked only on
 > someone sitting down with it.
 
-> ### 🔴 Re-key has no way to run it — 08-10
+> ### Rotation is operable — `0e289de`
 >
-> `Clinch.Rekey.run/2` works and is tested end to end. **Nothing invokes it.**
-> There is no command, no button, and no Tauri path, and the shell must sequence
-> **re-key first, adopt second** — which nothing orchestrates. Rotation is
-> possible in principle and not yet operable.
+> **`./buster-claw clinch rotate --confirm`.** A CLI verb, not a catalog command:
+> the Clinch's split is *use, never manage*, and rotation is management, so no
+> agent can reach it because there is nothing to reach. A test asserts no catalog
+> entry matches `rotate`, so adding one later trips a guard rather than quietly
+> widening the surface. The endpoint sits on `:api_trusted` — and a *valid* token
+> is not a *trusted* one; the MCP and agent-untrusted tokens are tested refusals.
 >
-> This is deliberately recorded rather than filed as done: a phase whose stated
-> acceptance is *"rotating the recovery key preserves every integration"* is not
-> finished while rotating the recovery key is something only a test can do.
+> **The new key is generated on the operator's machine and printed before anything
+> is re-encrypted.** That ordering is the safety property, not the presentation:
+> a failed rotation leaves them holding a key that opens nothing, which is
+> harmless, while a successful one whose key they never saw leaves a database
+> nobody can open. The endpoint refuses to generate a key for the same reason —
+> the only copy of a master key should exist somewhere the operator chose *before*
+> anything depends on it.
+>
+> **What is still manual, by decision (operator, 08-10): the Keychain write.** The
+> app switches to the new key immediately (`System.put_env`, which
+> `RuntimeConfig` reads first) so nothing restarts, but persisting it is the
+> operator's step and the CLI says so plainly. Without it the next boot reads the
+> old key and every credential looks absent.
+>
+> **The one-click version is a real design problem, not laziness.** "Data moved"
+> and "Keychain updated" are two systems, and a failure between them leaves a key
+> that opens nothing — a two-phase commit across BEAM and Rust. Worth doing
+> properly as its own scope rather than improvised.
 
 **Supersedes `SSH_REMOTE_ACCESS_ROADMAP.md`** (researched 08-08, archived the
 same day without ever starting). Its research is carried forward here in full —
@@ -483,14 +500,19 @@ message naming what to do.
 | Item | State |
 |---|---|
 | Re-key | **DONE** `6b36f42` — one transaction; unreadable values counted and left byte-for-byte, because that is what a previous bad key change leaves behind and aborting would refuse to run when most needed |
+| Invocable | **DONE** `0e289de` — `clinch rotate --confirm`, trusted-token floor, key printed first |
 | Retire `Google.Vault` (#6) | **DONE** `2f157d1` |
 | Invariant 5's visibility half | **DONE** `3efe94e` — "nothing configured" and "everything unreadable" rendered identically; now they do not |
 | Revocation as a first-class event | **DONE** `c683f00` — no separate `revoke/1`, because a second verb leaves a path that removes a credential *without* the event |
 | **Scope the terminal's token (#7)** | **NOT DONE.** A behaviour change for anything scripted against the in-app terminal; needs its own walk and the operator's sign-off |
 
-**And the acceptance is only half met.** Every clause is true of
-`Clinch.Rekey.run/2`, and nothing can call it — see the banner at the top of this
-file. Rotation is implemented, not operable.
+**The acceptance is met**, and operably: `./buster-claw clinch rotate --confirm`
+rotates the key, preserves every integration, `$secret`, `:app_key` and Google
+account, and a revoked credential's next use is recorded with what to do about it.
+
+**One item remains, and it is the only thing between Phase 4 and Phase 5:**
+scoping the terminal's token (#7). It is a behaviour change for anything scripted
+against the in-app terminal, so it needs its own walk rather than a quiet landing.
 
 ---
 

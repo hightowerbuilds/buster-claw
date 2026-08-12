@@ -248,12 +248,13 @@ wire the Voice webhook → enter the credentials → call it. **Enter them in th
 rather than as environment variables**, and note that doing so starts the drain
 on its next 30-second tick.
 
-> **Re-key is implemented but not operable.** `Clinch.Rekey.run/2` rotates the
-> master key and is tested end to end; nothing invokes it, and the shell must
-> sequence re-key-then-adopt, which nothing orchestrates. Rotation is a
-> prerequisite for the remote-access phases — *a credential you cannot rotate is
-> one you cannot respond to a compromise with* — so this is the gap between
-> "Phase 4 is written" and "Phase 5 can start".
+> **Rotation works: `./buster-claw clinch rotate --confirm`.** A CLI verb rather
+> than a catalog command, because rotation is credential *management* and no agent
+> should reach it. The new key is printed before anything is re-encrypted, and
+> writing it to the Keychain stays the operator's step — stated in the output, not
+> hidden. **One item remains before Phase 5 (remote mode): scoping the terminal's
+> token, which changes behaviour for anything scripted against the in-app
+> terminal.**
 
 ---
 
