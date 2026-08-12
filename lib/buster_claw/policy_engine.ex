@@ -40,7 +40,7 @@ defmodule BusterClaw.PolicyEngine do
   alias BusterClaw.Library.Artifact
 
   @policy_file "policy.md"
-  @callers ~w(trusted agent_untrusted agent mcp)a
+  @callers ~w(trusted terminal agent_untrusted agent mcp)a
 
   @type decision :: :allow | {:confirm, map()} | {:block, map()}
 
@@ -86,6 +86,14 @@ defmodule BusterClaw.PolicyEngine do
       do: {:confirm, meta(request, :baseline, "gated command for agent_untrusted caller")},
       else: :allow
   end
+
+  # `:terminal` is trusted-equivalent HERE, deliberately and explicitly rather
+  # than by falling through the catch-all below. The operator's own shell must
+  # keep running dispatch work, sends and deletes; what it does not get is
+  # credential MANAGEMENT, and that is gated at the router by `RequireTrusted`
+  # because those routes never reach `Commands.call/3` and so have no tier to
+  # consult. Stating it means a future reader sees a decision, not an omission.
+  defp baseline(_request, :terminal), do: :allow
 
   defp baseline(_request, _caller), do: :allow
 

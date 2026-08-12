@@ -51,6 +51,7 @@ struct ReleaseLauncher {
     api_token: String,
     mcp_token: String,
     agent_token: String,
+    terminal_token: String,
     port: u16,
     phoenix_url: String,
 }
@@ -72,6 +73,7 @@ impl ReleaseLauncher {
             .env("BUSTER_CLAW_API_TOKEN", &self.api_token)
             .env("BUSTER_CLAW_MCP_API_TOKEN", &self.mcp_token)
             .env("BUSTER_CLAW_AGENT_API_TOKEN", &self.agent_token)
+            .env("BUSTER_CLAW_TERMINAL_API_TOKEN", &self.terminal_token)
             .env("RELEASE_DISTRIBUTION", "none")
             .stdout(Stdio::from(stdout_log))
             .stderr(Stdio::from(stderr_log))
@@ -551,6 +553,14 @@ fn main() {
             // the only one on disk in the clear (Clinch Phase 0). The migrate list
             // adopts and deletes any such file left by an older build.
             let agent_token = ensure_secret(&data_dir, "agent_token", &["agent_token"], 43)?;
+            // The terminal token (Clinch finding #7). The in-app PTY used to
+            // inherit the FULL token, so an agent running in it could reach
+            // /api/clinch and manage credentials — the exact capability
+            // RequireTrusted's reasoning assumes an attacker cannot get, because
+            // "it gets no shell". The terminal is a shell. This one runs every
+            // command the full token runs and is refused by RequireTrusted.
+            let terminal_token =
+                ensure_secret(&data_dir, "terminal_token", &["terminal_token"], 43)?;
             let workspace_root = workspace::resolve_workspace_root(&data_dir)?;
             workspace::ensure_workspace_dirs(&workspace_root)?;
             let database_path = data_dir.join("buster_claw.db");
@@ -577,6 +587,7 @@ fn main() {
                 api_token,
                 mcp_token,
                 agent_token,
+                terminal_token,
                 port,
                 phoenix_url: format!("http://127.0.0.1:{port}"),
             };
@@ -588,6 +599,11 @@ fn main() {
             // PTY (terminal.rs) forwards them from this process's env.
             std::env::set_var("BUSTER_CLAW_URL", &launcher.phoenix_url);
             std::env::set_var("BUSTER_CLAW_API_TOKEN", &launcher.api_token);
+            // The PTY gets the TERMINAL token under that same name (see
+            // terminal.rs). This process keeps the full one because clinch.rs
+            // needs it to reach the management routes on the operator's behalf —
+            // downgrading it here would break the credential panel itself.
+            std::env::set_var("BUSTER_CLAW_TERMINAL_API_TOKEN", &launcher.terminal_token);
 
             // Initial boot: spawn the release, then transition the webview once
             // healthy. Done on a background thread so setup() returns promptly.

@@ -44,6 +44,11 @@ defmodule BusterClawWeb.ApiAuth do
       Plug.Crypto.secure_compare(token, BusterClaw.ApiToken.value()) ->
         {:ok, :trusted}
 
+      # Before agent/mcp: the terminal runs everything the full token runs and is
+      # separated only by what it may MANAGE, which the router decides.
+      Plug.Crypto.secure_compare(token, BusterClaw.ApiToken.terminal_value()) ->
+        {:ok, :terminal}
+
       Plug.Crypto.secure_compare(token, BusterClaw.ApiToken.agent_value()) ->
         {:ok, :agent_untrusted}
 

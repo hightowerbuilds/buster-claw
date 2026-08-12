@@ -56,6 +56,12 @@ const EXPECTED: &[(&str, &str)] = &[
     ("api_token", "BUSTER_CLAW_API_TOKEN"),
     ("mcp_token", "BUSTER_CLAW_MCP_API_TOKEN"),
     ("agent_token", "BUSTER_CLAW_AGENT_API_TOKEN"),
+    // Clinch finding #7. The PTY used to inherit BUSTER_CLAW_API_TOKEN — the full
+    // token — so an agent with a prompt could reach /api/clinch and manage
+    // credentials. This one is trusted-equivalent for commands and refused by
+    // RequireTrusted, and terminal.rs injects it into the shell UNDER THE NAME
+    // BUSTER_CLAW_API_TOKEN, so the in-app CLI needs no change.
+    ("terminal_token", "BUSTER_CLAW_TERMINAL_API_TOKEN"),
 ];
 
 #[test]

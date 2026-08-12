@@ -59,6 +59,7 @@ config :buster_claw, :favicons,
 config :buster_claw, :api_token, "test-token-loopback-only"
 config :buster_claw, :mcp_api_token, "test-mcp-token-safe-tier-only"
 config :buster_claw, :agent_api_token, "test-agent-token-untrusted-provenance"
+config :buster_claw, :terminal_api_token, "test-terminal-token-no-credential-management"
 config :buster_claw, :orchestrator_enabled, false
 # The unattended work pump is off in tests; the Dispatcher suite starts its own
 # instance with a stub runner and drives it via tick_now/1.

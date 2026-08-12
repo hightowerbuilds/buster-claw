@@ -92,10 +92,24 @@ pub fn terminal_open(
     // packaged release sets these in the process env (main.rs); in dev they come
     // from `.env`. Without them the CLI defaults to :4000 with no token and can't
     // reach the running app.
-    for key in ["BUSTER_CLAW_URL", "BUSTER_CLAW_API_TOKEN"] {
-        if let Some(val) = std::env::var_os(key) {
-            cmd.env(key, val);
-        }
+    if let Some(val) = std::env::var_os("BUSTER_CLAW_URL") {
+        cmd.env("BUSTER_CLAW_URL", val);
+    }
+
+    // The shell inside this PTY gets the TERMINAL token, not the full one, under
+    // the name the CLI already reads. Clinch finding #7: an agent with a prompt
+    // could otherwise reach /api/clinch and manage credentials, which is the one
+    // thing the Clinch says no caller may do. It runs every command the full
+    // token runs; only credential management is refused (RequireTrusted).
+    //
+    // Falls back to the full token when the terminal one is absent — a dev shell
+    // started from `.env` without it keeps working rather than silently losing
+    // its ability to talk to the app at all.
+    let terminal_token = std::env::var_os("BUSTER_CLAW_TERMINAL_API_TOKEN")
+        .or_else(|| std::env::var_os("BUSTER_CLAW_API_TOKEN"));
+
+    if let Some(val) = terminal_token {
+        cmd.env("BUSTER_CLAW_API_TOKEN", val);
     }
 
     let child = pair

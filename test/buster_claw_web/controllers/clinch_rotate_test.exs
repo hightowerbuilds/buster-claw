@@ -46,7 +46,13 @@ defmodule BusterClawWeb.ClinchRotateTest do
     end
 
     test "a valid but lesser token cannot rotate", %{conn: _conn} do
-      for token <- [BusterClaw.ApiToken.mcp_value(), BusterClaw.ApiToken.agent_value()] do
+      for token <- [
+            BusterClaw.ApiToken.mcp_value(),
+            BusterClaw.ApiToken.agent_value(),
+            # Clinch #7: the in-app terminal. An agent with a prompt must not be
+            # able to rotate the master key.
+            BusterClaw.ApiToken.terminal_value()
+          ] do
         conn =
           build_conn()
           |> put_req_header("authorization", "Bearer #{token}")

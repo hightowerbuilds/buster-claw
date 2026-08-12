@@ -81,6 +81,44 @@ defmodule BusterClaw.ApiToken do
     token
   end
 
+  @doc """
+  Return the terminal token, loading it on first access.
+
+  A *distinct* token the desktop shell injects into the in-app PTY. It
+  authenticates as the `:terminal` caller, which runs **every command the full
+  token runs** — dispatch work, sends, deletes — and is refused by
+  `BusterClawWeb.RequireTrusted`, so credential *management* is unreachable from
+  a shell.
+
+  ## Why the terminal needed its own token at all
+
+  `RequireTrusted`'s own reasoning was that the full token is safe because it
+  lives in the Keychain and the shell's process environment, and an attacker
+  "gets no shell and therefore no Keychain". **The in-app terminal is a shell,
+  and it had the full token in its environment** — so an agent running there had
+  exactly the capability that argument says is out of reach, and could store,
+  delete, or rotate credentials. Clinch finding #7.
+
+  The Clinch's founding rule is that a caller may *use* a credential and never
+  *manage* one. This is what makes that true where an agent has a prompt.
+
+  Keychain-backed and injected as `BUSTER_CLAW_API_TOKEN` **into the PTY only**;
+  the shell keeps the full token for its own management calls. Preset via
+  `config :buster_claw, :terminal_api_token` in dev/test.
+  """
+  def terminal_value do
+    case Application.get_env(@app, :terminal_api_token) do
+      nil -> initialize_terminal()
+      token when is_binary(token) -> token
+    end
+  end
+
+  defp initialize_terminal do
+    token = load_or_generate(terminal_token_path())
+    Application.put_env(@app, :terminal_api_token, token)
+    token
+  end
+
   defp initialize_agent do
     token = load_or_generate(agent_token_path())
     Application.put_env(@app, :agent_api_token, token)
@@ -116,6 +154,13 @@ defmodule BusterClaw.ApiToken do
   defp mcp_token_path do
     case Application.get_env(@app, :mcp_api_token_path) do
       nil -> Path.join(Path.dirname(token_path()), "mcp_token")
+      path when is_binary(path) -> path
+    end
+  end
+
+  defp terminal_token_path do
+    case Application.get_env(@app, :terminal_api_token_path) do
+      nil -> Path.join(Path.dirname(token_path()), "terminal_token")
       path when is_binary(path) -> path
     end
   end
