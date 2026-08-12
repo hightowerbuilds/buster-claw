@@ -241,6 +241,177 @@ the same sitting as its fix inherits the fix's blind spot.
 
 ---
 
+---
+
+# The Clinch: Phases 3 and 4, in one sitting
+
+**Credentials can now be entered in the app, rotated, revoked, and seen when they
+break — and an agent with a shell can no longer manage any of them.**
+
+| Shipped | Commits |
+|---|---|
+| 3a — `:app_key`, a second writable kind | `6415825` |
+| 3b — live resolution, environment as fallback | `121f954` |
+| 3c — the drain self-gates | `43f61e2` |
+| 3d — the service-credentials panel | `1a705a2` |
+| 3e — the tutorial points at it | `7ec5f52` |
+| 4 — one vault, re-key, visibility, revocation, invocable, terminal token | `2f157d1` `6b36f42` `3efe94e` `c683f00` `0e289de` `b8721aa` |
+
+**Phase 3 exists because a packaged app cannot see your shell.** A double-clicked
+`.app` inherits launchd's environment, so Twilio and Supabase credentials exported
+in `.zshrc` were invisible to the shipped product — which is why BusterPhone had
+never been configurable outside a dev terminal. That is the paid tier.
+
+## Three times the code refused a wrong design
+
+**A test rejected my data model.** I put app credentials in the existing
+`:service_key` kind and made `managed?` per-entry. `Clinch`'s invariant test
+refused it: that forces `list/1` to restate `managed?` as a literal, the
+coincidence-not-derivation bug it exists to prevent. Its message read *"the write
+boundary has two answers again"*. `Types` already said a kind decides **where it
+lives and who may manage it** — two stores with two managers is two kinds. Hence
+`:app_key`.
+
+**A phase turned out to be a deletion.** 3c asked for children that "start and
+stop when a credential appears or disappears, without an app restart", which reads
+like a DynamicSupervisor. `Drain.drain/1` had always opened with
+`Relay.configured?()` — the *work* was already gated. Gating the *child* at boot
+was a second answer to the same question, and the one that could go stale, since a
+credential stored after boot could never flip it. **Removing the boot gate was the
+whole change.**
+
+**A tripwire fired at exactly the commit it was written for.** `clinch_test`
+asserted the app vault must *not* read a Google column, warning that if it could,
+*"the vaults were merged without the Phase 4 migration and existing installs are
+about to lose their Google credentials"*. That is precisely what I was doing. It
+now asserts the inverse, and records that the migration is what earned the flip.
+
+## The bug that outranks everything built today
+
+`Sentinel.Event` validates `category` against a whitelist, and `Sentinel.observe/4`
+is **best-effort by design** — the audit write must never raise on the hot path.
+
+So both new revocation categories were **silently dropped**. Invalid changeset,
+warning logged, caller told nothing. The full suite passed. The new tests passed.
+**A security feature the roadmap says exists was recording precisely nothing**, and
+the only evidence was one `Logger` line in the middle of green output.
+
+`SentinelCategoryTest` now scans every `observe/4` call site against
+`Event.categories/0` — source text, not runtime, because a category in a branch no
+test took is exactly the one that gets dropped in production. It carries a
+non-empty check so a broken scan cannot read as a clean codebase, and a positive
+control proving the whitelist rejects anything.
+
+**The general lesson is worth more than the fix: any best-effort write is a place
+a feature can be absent and green.** Worth auditing wherever else that pattern
+lives here.
+
+## A documentation error that would have destroyed credentials
+
+`Clinch.Vault`'s table gave the Google AAD as `google:v1`. That is the **key
+derivation prefix**; the AAD was `buster_claw.google.vault.v1`.
+
+The two vaults' frames were byte-identical — version 1, 12-byte IV, 16-byte tag —
+differing only in key and AAD. **A migration written from that table would have
+produced ciphertext that fails GCM authentication forever, with no error until
+someone needed the value.** I caught it because I read the code before trusting
+the doc that described it.
+
+**When two things differ only in constants, naming one of them wrongly is
+invisible.**
+
+## Two failures that are not the same
+
+The re-key's central design call. A value that will not decrypt under the old key
+is **not** evidence the rotation is broken — it is evidence that value was
+*already* unreadable, which is exactly the state a previous bad key change leaves
+behind. Aborting on it would make the tool refuse to run on the machine that most
+needs it. And overwriting it would destroy the only copy of something a restored
+key might still recover.
+
+So: **unreadable is counted and left byte-for-byte; an actual error rolls back the
+lot.** A partial rotation — some values under the old key, some the new, no single
+key that reads them all — is the worst outcome available.
+
+## Invariant 5 needed both halves
+
+*"A rotated key never **silently** unconfigures anything."* `Encrypted` fails
+closed and loads an unreadable value as `nil`, so two states rendered identically:
+*"you have not configured anything"* and *"everything you configured is
+unreadable."* Both look like an empty app. One is fine and one is an emergency.
+
+Re-keying gave a bad key change a way **out**; the visibility check gave it a way
+to be **seen**. And **my own test caught that I had built the distinction and then
+ignored it** — `{:error, :no_key}` was added to the vault specifically to separate
+"no key configured" from "damaged", then matched as `{:error, _}` one function
+away and counted as damage.
+
+The warning leads with **recoverability**, not breakage, because a warning that
+only says "broken" invites the one action that makes it permanent: re-entering
+everything and discarding a key that would have brought it all back.
+
+## The terminal was a hole in the codebase's own argument
+
+`RequireTrusted` justifies the full token by saying an attacker *"gets no shell and
+therefore no Keychain."*
+
+**The in-app terminal is a shell, and it had the full token.** An agent running
+there — the ordinary way this product is used — could store, delete, and (after
+that morning's work) rotate credentials. *Use, never manage* was untrue wherever an
+agent had a prompt, and Phase 5 would have made it untrue **remotely**.
+
+The fix is a fourth token, and **the load-bearing half is that it is
+trusted-equivalent for commands**. The terminal runs the operator's own agent; it
+must keep doing dispatch work, sends and deletes. Scoping it further would close
+the hole by breaking the loop the product is built on — so a test asserts
+`gmail_send` still passes for `:terminal` and says why. **That is the regression a
+future "tighten this up" change would cause, and it is the direction nobody thinks
+to guard.**
+
+Two more worth keeping: `clinch.rs` reads `BUSTER_CLAW_API_TOKEN` from the Tauri
+*process* env to reach management routes on the operator's behalf, so downgrading
+that variable would have broken the credential panel itself. And
+`secret_provisioning.rs` **refused the new secret until it was declared** — the
+named inventory written after `agent_token` was provisioned nowhere and quietly
+wrote itself to disk in cleartext on every packaged install. It worked.
+
+## What is implemented and what is operable are different questions
+
+Re-key passed its tests and **nothing could call it**. No command, no button, and
+the shell must sequence re-key-then-adopt with nothing orchestrating it. A phase
+whose acceptance is *"rotating the recovery key preserves every integration"* is
+not finished while rotating it is something only a test can do — so it was recorded
+as a red banner rather than filed as done, then closed with
+`./buster-claw clinch rotate --confirm`.
+
+**A CLI verb, not a catalog command**, because rotation is *management* and the
+Clinch's split is structural: no agent can reach it because there is nothing to
+reach. **The new key is printed before anything is re-encrypted** — a failed
+rotation leaves a key that opens nothing, which is harmless; a successful one whose
+key was never seen leaves a database nobody can open.
+
+Key custody stays manual by operator decision, and the ordering for a future
+one-click flow is now written down: **neither naive order is safe**, and the shape
+that works is write the new key as a *second* Keychain entry, re-key, then promote
+— so at every instant at least one stored key opens the data.
+
+## The shared tree, and an error of mine
+
+**Commit `2f157d1` swept in three of the Phone agent's untracked files.** I staged
+explicit paths and verified the index immediately before committing — it showed
+exactly my nine files. Then a bare `git commit` took **whatever the index held at
+that moment**, and the agent staged into the shared index in between.
+
+The defence is a pathspec commit, `git commit -- <paths>`, which I had used earlier
+the same day for this exact hazard and then stopped using. **Verifying the index
+and committing the index are two moments**, and in a shared tree that gap is real.
+Not reverted — history was pushed and the content was final.
+
+I also **gave the agent a confident, wrong diagnosis**: I said `asset_url/2` would
+format a path for a file that does not exist. It calls `resolve/2` first and
+returns `nil`. I inferred it from `resolve/2` existing rather than reading the
+function, and the agent had to disprove it.
+
 ## Where Release 1 actually stands
 
 **The Apple path is finished for x86_64.** There is a DMG you could hand to someone
