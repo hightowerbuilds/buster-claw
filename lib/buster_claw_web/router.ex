@@ -256,6 +256,11 @@ defmodule BusterClawWeb.Router do
 
     post "/clinch", ClinchController, :put
     delete "/clinch", ClinchController, :delete
+
+    # Rotating the master key is credential MANAGEMENT, so it sits behind the
+    # same trusted-token floor as storing one — never on the command catalog,
+    # where an agent could reach it.
+    post "/clinch/rotate", ClinchController, :rotate
   end
 
   # Other scopes may use custom stacks.

@@ -4,6 +4,7 @@ defmodule BusterClawWeb.ClinchController do
 
   - `POST /api/clinch` — store or replace a credential.
   - `DELETE /api/clinch` — forget one.
+  - `POST /api/clinch/rotate` — re-encrypt everything under a new master key.
 
   There is deliberately **no GET**. Listing belongs to the LiveView, which reads
   `Clinch.list/0` and gets names and metadata; reading a *value* is not something
@@ -30,7 +31,9 @@ defmodule BusterClawWeb.ClinchController do
   use BusterClawWeb, :controller
 
   alias BusterClaw.Clinch
+  alias BusterClaw.Clinch.Rekey
   alias BusterClaw.Clinch.Types
+  alias BusterClaw.RuntimeConfig
 
   def put(conn, %{"kind" => kind, "name" => name, "value" => value} = params)
       when is_binary(name) and is_binary(value) do
@@ -65,6 +68,52 @@ defmodule BusterClawWeb.ClinchController do
   # Kinds arrive as strings over the wire and must never be `String.to_atom/1`d —
   # that is an unbounded atom table keyed by request input. Matching against the
   # declared enum is both the safe conversion and the validation.
+  @doc """
+  Rotate the master key: re-encrypt every stored credential under `new_key`.
+
+  **The caller supplies the new key and is responsible for keeping it.** This
+  endpoint will not generate one, because the only copy of a master key must
+  exist somewhere the operator chose before anything depends on it — a key this
+  server invented and returned in a response is a key that lives, briefly, only
+  in a log-shaped place.
+
+  On success the running app switches to the new key immediately, so credentials
+  keep resolving without a restart. **Persisting the key is the caller's job**
+  (macOS Keychain, via the shell) and it is the step that makes the rotation
+  survive a reboot — see `BusterClaw.Clinch.Rekey`.
+  """
+  def rotate(conn, %{"new_key" => new_key}) when is_binary(new_key) do
+    case RuntimeConfig.secret_key_base() do
+      current when is_binary(current) and current != "" ->
+        do_rotate(conn, current, new_key)
+
+      _ ->
+        send_error(conn, 422, "no_current_key")
+    end
+  end
+
+  def rotate(conn, _params), do: send_error(conn, 422, "missing_new_key")
+
+  defp do_rotate(conn, current, new_key) do
+    case Rekey.run(current, new_key) do
+      {:ok, report} ->
+        # The data now lives under the new key, so the running app must use it or
+        # every subsequent read fails until restart. `System.put_env` is what
+        # `RuntimeConfig.secret_key_base/0` reads first.
+        System.put_env("SECRET_KEY_BASE", new_key)
+
+        json(conn, %{
+          ok: true,
+          rekeyed: report.rekeyed,
+          unreadable: report.unreadable,
+          skipped: report.skipped
+        })
+
+      {:error, reason} ->
+        send_error(conn, 422, to_string(reason))
+    end
+  end
+
   defp parse_kind(kind) when is_binary(kind) do
     case Enum.find(Types.kinds(), &(Atom.to_string(&1) == kind)) do
       nil -> {:error, :unknown_kind}

@@ -44,6 +44,7 @@ defmodule BusterClaw.CLI do
   defp route(["--help"], _opts), do: usage()
   defp route(["terminal", "open"], opts), do: terminal_open(opts)
   defp route(["terminal", "open", role], opts), do: terminal_open(opts, role)
+  defp route(["clinch", "rotate"], opts), do: clinch_rotate(opts)
   defp route(["on-duty"], opts), do: on_duty(opts)
   defp route(["off-duty"], opts), do: off_duty(opts)
   defp route(["dispatch", "add" | rest], opts), do: dispatch_add_cmd(rest, opts)
@@ -89,6 +90,9 @@ defmodule BusterClaw.CLI do
       timeout: :integer,
       max_runs: :integer,
       once: :boolean,
+      # `clinch rotate` refuses without it: a rotation whose key you did not save
+      # is a database nobody can open.
+      confirm: :boolean,
       no_activate: :boolean,
       verbose: :boolean,
       status: :string,
@@ -167,6 +171,84 @@ defmodule BusterClaw.CLI do
   #
   # Standing down is `off-duty`, and only `off-duty`. Ctrl-C cannot do it — see
   # `trap_off_duty/2` for why the BEAM makes that impossible.
+  # Rotate the master key. Deliberately a CLI verb and NOT a catalog command:
+  # the Clinch's split is that a caller may *use* a credential and never *manage*
+  # one, and rotation is management. Keeping it off the catalog means no agent
+  # can reach it — structurally, rather than by a tier that has to be right.
+  #
+  # The new key is generated HERE, on the operator's machine, and printed BEFORE
+  # anything is re-encrypted. If the rotation then fails, they have a key that
+  # opens nothing — harmless. If it succeeds and they never saw the key, they own
+  # a database nobody can open. Printing first is the whole safety property.
+  defp clinch_rotate(opts) do
+    if Keyword.get(opts, :confirm) do
+      new_key = Base.encode64(:crypto.strong_rand_bytes(48))
+
+      IO.puts("""
+
+      ┌─ NEW MASTER KEY ────────────────────────────────────────────────
+      │
+      │  #{new_key}
+      │
+      └─ Save this NOW, before continuing to read.
+         Everything encrypted at rest is about to be re-encrypted under it.
+      """)
+
+      case http_post("/api/clinch/rotate", %{"new_key" => new_key}, auth: true, opts: opts) do
+        {:ok, %{"ok" => true} = result} ->
+          IO.puts("Re-encrypted #{result["rekeyed"]} value(s).")
+          report_unreadable(result)
+
+          IO.puts("""
+
+          The running app is already using the new key — nothing to restart.
+
+          STILL TO DO, and the rotation does not survive a reboot without it:
+          store the key above in the macOS Keychain (service BusterClaw, account
+          secret_key_base), or drop it in the RESTORE_SECRET_KEY file the shell
+          adopts at launch. Until then the next boot will read the OLD key and
+          every credential will look absent.
+          """)
+
+        {:ok, %{"ok" => false, "error" => error}} ->
+          IO.puts(:stderr, "error: #{error} — nothing was changed; the key above is unused")
+          System.halt(1)
+
+        {:error, reason} ->
+          IO.puts(
+            :stderr,
+            "error: #{inspect(reason)} — nothing was changed; the key above is unused"
+          )
+
+          System.halt(1)
+      end
+    else
+      IO.puts(:stderr, """
+      clinch rotate re-encrypts every stored credential under a NEW master key.
+
+      It prints the new key first. You must save it — the app cannot recover a key
+      it was never given, and the Keychain is not updated for you.
+
+      Re-run with --confirm when you are ready to write the key down.
+      """)
+
+      System.halt(1)
+    end
+  end
+
+  defp report_unreadable(%{"unreadable" => count} = result) when count > 0 do
+    IO.puts(:stderr, """
+
+    WARNING: #{count} value(s) could not be read with the OLD key and were left
+    untouched: #{Enum.join(result["skipped"] || [], ", ")}
+
+    They were already unreadable before this rotation — nothing was destroyed.
+    They need re-entering, or the key they were written under restored.
+    """)
+  end
+
+  defp report_unreadable(_result), do: :ok
+
   defp on_duty(opts) do
     shift_args =
       %{"unattended" => true}
