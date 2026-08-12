@@ -1,7 +1,8 @@
 # The Clinch — one place for credentials, reachable from anywhere
 
-**Scoped 08-08-26 · Status: ACTIVE — Phases 0–3 shipped, Phase 4 all but one item.
-Phase 5 (remote mode) is next, and is now unblocked.**
+**Scoped 08-08-26 · Status: ACTIVE — Phases 0–4 COMPLETE. Phase 5 (remote mode) is
+next, and its prerequisite is met: credentials can now be rotated and revoked, and
+an agent with a shell cannot manage them.**
 
 | Phase | State |
 |---|---|
@@ -9,8 +10,8 @@ Phase 5 (remote mode) is next, and is now unblocked.**
 | 1 — The Clinch contract | **DONE** (`6ee19d1`) |
 | 2 — The management gate | **DONE** (`8aff7f9`) |
 | 3 — The screen, and evicting the env vars | **DONE 08-10** (`6415825`, `121f954`, `43f61e2`, `1a705a2`, `7ec5f52`). BusterPhone is configurable in a packaged build; closes #5 |
-| 4 — Rotation, revocation, the second vault | **ALL BUT #7** (`2f157d1`, `6b36f42`, `3efe94e`, `c683f00`). Re-key, one vault, visibility and revocation done; the terminal token remains |
-| 5–7 — Remote mode, pairing, private network | Not started (absorbed from the SSH map) |
+| 4 — Rotation, revocation, the second vault | **DONE** (`2f157d1`, `6b36f42`, `3efe94e`, `c683f00`, `0e289de`, `b8721aa`) |
+| 5–7 — Remote mode, pairing, private network | **NEXT.** Not started (absorbed from the SSH map); Phase 4 was the gate and it is open |
 
 **One thing no test can close.** Everything below is verified by automated gates,
 but nobody has clicked these controls in a **packaged build**. Phase 2's own
@@ -50,6 +51,19 @@ it should travel there rather than sit here looking done.
 > and "Keychain updated" are two systems, and a failure between them leaves a key
 > that opens nothing — a two-phase commit across BEAM and Rust. Worth doing
 > properly as its own scope rather than improvised.
+>
+> ### If someone builds the one-click flow, the ordering is the whole job
+>
+> Neither naive order is safe. Re-key then write the Keychain: a failed write
+> leaves data under the new key and the Keychain holding the old, so the next boot
+> opens nothing. Write then re-key: a failed re-key leaves the reverse.
+>
+> The shape that works is **write the new key as a SECOND Keychain entry first,
+> re-key, then promote it** — so at every instant at least one stored key opens the
+> data, and boot can try the pending entry when the primary fails. That is what
+> makes it a phase rather than a button, and it is why the CLI leaves custody with
+> the operator: a human who has written the key down is a recovery path that needs
+> no protocol.
 
 **Supersedes `SSH_REMOTE_ACCESS_ROADMAP.md`** (researched 08-08, archived the
 same day without ever starting). Its research is carried forward here in full —
@@ -445,7 +459,7 @@ credential stops it.
 
 ---
 
-## Phase 4 — Rotation, revocation, and the second vault — **ALL BUT #7, 08-10**
+## Phase 4 — Rotation, revocation, and the second vault — **COMPLETE 08-10**
 
 Cheap once the Clinch owns the values, and it must precede remote access: a
 credential you cannot rotate is one you cannot respond to a compromise with.
@@ -504,15 +518,40 @@ message naming what to do.
 | Retire `Google.Vault` (#6) | **DONE** `2f157d1` |
 | Invariant 5's visibility half | **DONE** `3efe94e` — "nothing configured" and "everything unreadable" rendered identically; now they do not |
 | Revocation as a first-class event | **DONE** `c683f00` — no separate `revoke/1`, because a second verb leaves a path that removes a credential *without* the event |
-| **Scope the terminal's token (#7)** | **NOT DONE.** A behaviour change for anything scripted against the in-app terminal; needs its own walk and the operator's sign-off |
+| Scope the terminal's token (#7) | **DONE** `b8721aa` — a fourth token, trusted-equivalent for commands and refused for management |
 
 **The acceptance is met**, and operably: `./buster-claw clinch rotate --confirm`
 rotates the key, preserves every integration, `$secret`, `:app_key` and Google
 account, and a revoked credential's next use is recorded with what to do about it.
 
-**One item remains, and it is the only thing between Phase 4 and Phase 5:**
-scoping the terminal's token (#7). It is a behaviour change for anything scripted
-against the in-app terminal, so it needs its own walk rather than a quiet landing.
+> ### #7 was sharper than its one-line description — 08-10
+>
+> The line above says "the PTY gets a terminal-tier token", which reads like
+> tidiness. What it actually fixed: **`RequireTrusted`'s own justification for the
+> full token is that an attacker "gets no shell and therefore no Keychain" — and
+> the in-app terminal is a shell that had the full token in its environment.** An
+> agent running there could store, delete and (after `0e289de`) rotate
+> credentials. The founding rule — *use, never manage* — was untrue wherever an
+> agent had a prompt, and Phase 5 would have made it untrue *remotely*.
+>
+> **The tier is trusted-equivalent for commands, and that is the load-bearing
+> half.** The terminal runs the operator's own agent: it must keep doing dispatch
+> work, sends and deletes. Scoping it further would close the hole by breaking the
+> loop this product is built on — so a test asserts `gmail_send` and
+> `document_save` still pass for `:terminal`, and says why in its failure message.
+> **That is the regression a future "tighten this up" change would cause**, and it
+> is the direction nobody thinks to guard.
+>
+> **A Rust trap, recorded because the next person will hit it.** `clinch.rs` reads
+> `BUSTER_CLAW_API_TOKEN` from the Tauri *process* env to reach the management
+> routes on the operator's behalf. Downgrading that variable would have broken the
+> credential panel itself. The process keeps the full token; `terminal.rs` injects
+> the terminal one into the PTY *under the same name*, so the in-app CLI needed no
+> change.
+>
+> **`secret_provisioning.rs` refused the new secret until it was declared** — the
+> named-inventory guard written after `agent_token` was provisioned nowhere and
+> quietly wrote itself to disk in cleartext on every packaged install. It worked.
 
 ---
 

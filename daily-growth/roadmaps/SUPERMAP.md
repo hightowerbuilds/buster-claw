@@ -87,7 +87,7 @@ the section tables below point at it from wherever else it applies.**
 
 ## Where the build is
 
-1. **[The Clinch](#part-vi--integrations)** — Phases 0–3 done 08-10; **BusterPhone is now configurable in a packaged build.** Re-key works but nothing can invoke it.
+1. **[The Clinch](#part-vi--integrations)** — **Phases 0–4 complete 08-10.** BusterPhone is configurable in a packaged build, keys rotate, and an agent with a shell cannot manage credentials. Phase 5 (remote mode) is unblocked.
 2. **[BusterPhone](#part-vi--integrations)** — the only paid thing.
 3. **[Apple](#part-vii--platform--release)** — **`G-1`–`G-3` DONE 08-10: a notarized, stapled DMG exists.** What is next is not code — an **Apple Silicon Mac**.
 4. **[Studio → Voice](#part-ii--home)** — needs a person at a microphone.
@@ -228,7 +228,7 @@ Not surfaces. The machinery every surface sits on.
 
 | Section | Where | State | Map |
 |---|---|---|---|
-| **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phases 0–3 done 08-10; Phase 4 all but one item** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
+| **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phases 0–4 COMPLETE 08-10; Phase 5 (remote) next** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
 | **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | The relay (Supabase) | `telephony/relay.ex` | SHIPPED — **now erases, 08-10** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) — pre-08-10 backlog sweep · [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — rotated DB password |
 | Google Workspace | `Google` (16 modules) | SHIPPED | [`GOOGLE_VERIFICATION`](integrations/GOOGLE_VERIFICATION_ROADMAP.md) — restricted scopes, CASA |
@@ -252,9 +252,12 @@ on its next 30-second tick.
 > than a catalog command, because rotation is credential *management* and no agent
 > should reach it. The new key is printed before anything is re-encrypted, and
 > writing it to the Keychain stays the operator's step — stated in the output, not
-> hidden. **One item remains before Phase 5 (remote mode): scoping the terminal's
-> token, which changes behaviour for anything scripted against the in-app
-> terminal.**
+> hidden.
+>
+> **And the in-app terminal now has its own token.** It ran on the full one, so an
+> agent at that prompt could manage credentials — the thing the Clinch exists to
+> prevent. It is trusted-equivalent for commands (the dispatch loop is untouched)
+> and refused for management. **Phase 5 can start.**
 
 ---
 
