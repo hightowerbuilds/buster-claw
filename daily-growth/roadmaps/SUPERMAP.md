@@ -229,6 +229,7 @@ Not surfaces. The machinery every surface sits on.
 | Section | Where | State | Map |
 |---|---|---|---|
 | **The Clinch — credentials** | `Clinch`, `ClinchPanels`, Tauri `clinch_*` | **ACTIVE — Phases 0–4 COMPLETE 08-10; Phase 5 (remote) next** | [`CLINCH`](integrations/CLINCH_ROADMAP.md) |
+| **Reaching it from a phone** | transport + a possible companion app | **SCOPED 08-13 — research map, nothing built** | [`PHONE_ACCESS`](integrations/PHONE_ACCESS_ROADMAP.md) |
 | **Twilio / BusterPhone** | `Telephony` | **ACTIVE — the money leg** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
 | The relay (Supabase) | `telephony/relay.ex` | SHIPPED — **now erases, 08-10** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) — pre-08-10 backlog sweep · [`LEFTOVERS_PLATFORM`](platform/LEFTOVERS_PLATFORM.md) — rotated DB password |
 | Google Workspace | `Google` (16 modules) | SHIPPED | [`GOOGLE_VERIFICATION`](integrations/GOOGLE_VERIFICATION_ROADMAP.md) — restricted scopes, CASA |
