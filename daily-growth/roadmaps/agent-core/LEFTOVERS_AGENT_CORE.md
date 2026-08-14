@@ -266,6 +266,65 @@ whole design assumes free tiers and endpoints will move.
 
 ---
 
+### From the 08-13 code review — the agent core's ledger
+
+*Filed from [`CODE_REVIEW_08-13-26`](../CODE_REVIEW_08-13-26.html) §5, the
+whole-codebase review. Its top findings for this section were fixed the same
+day (`20a36a9`); these are the ones that remain, each verified against the
+file, not inferred.*
+
+- **Land the `Agent.Chat` state machine as a doc.** The Phase 5 prerequisite —
+  "write it down before any split" — is now *written*: the review's §5 carries
+  the full state × event × guard × effect table, verified against the file
+  (~14 transitions; the real machine is `status × transport-presence`, because
+  on a persistent transport `:idle` splits in two). It needs a home in or
+  beside `chat.ex`. Only then come the ruled seams — event projection (~280
+  nearly-pure lines) and queue/ledger choreography (~280) — landing the
+  GenServer at ~900 and honoring the cut this file's first item is owed.
+- **Consume the duplex steer replay.** `20a36a9` stopped the false `:steered`
+  claim by reporting `:unconfirmed` on a bare pipe write. The upgrade path —
+  consume the `--replay-user-messages` echo
+  (`ChatMessageEncoder.operator_replay?/1` is the ready-made, currently unused
+  discriminator) and promote the ledger row uncertain → delivered — is real
+  wiring, including a delivery chip a LiveView stream will not re-render on
+  its own.
+- **The recovered queue never self-dispatches** (`chat.ex:426–447` vs `:472`):
+  after a crash, the next new submit starts ahead of items the operator was
+  shown as queued. Idle-with-a-non-empty-queue is unreachable any other way,
+  so the only case is exactly the case that matters.
+- **`capabilities/1`'s no-process fallback hardcodes one-shot Claude**
+  (`chat.ex:193`) against its own doc's promise of "the backend the next turn
+  would use" — the send button can be mislabeled before a duplex or codex
+  conversation's first message.
+- **`audit_run` and `audit_delivery` disagree on harness attribution**
+  (`chat.ex:1279` vs `:1011`): a confined conversation's run audit charges the
+  stored agent while claude actually ran the turn — the exact attribution the
+  field's comment says it exists for.
+- **Server-connection `refs` maps leak across reconnects**
+  (`codex_app_server.ex:385`, `open_code_server.ex:489`): `Chat` drops handles
+  on interrupt/timeout/transport-drop without unregistering, so stale entries
+  accumulate and late events for dropped turns reach the pid only to die in
+  the catch-all.
+- **`ModelPolicy`'s floors are vacuously green** (`model_policy.ex:105, 125`):
+  `@floors` and `@claude_only` both emptied with the trading deletion — the
+  doc-drift comb's "collection empties, guard goes vacuous" cluster,
+  pre-acknowledged in comments. Watch item until a money surface returns.
+- **Split `commands/sound.ex`** — 2,514 lines, the largest file in the repo,
+  ungoverned — into `Sound.Library` (~630) / `Sound.Corpus` (~950) /
+  `Sound.Render` (~800) behind a delegating facade, with `under_library/1`
+  keeping exactly one home. The 2,524-line `sound_test.exs` is the proof
+  harness. Minimum even unscheduled: FROZEN 2514 in the size gate. The repo
+  already conceded the point — `SoundCapture` was split out 08-09 explicitly
+  to protect this file, which then kept growing.
+- Small, dated: `split_lines/1` triplicated (`stream_event.ex:97` + both
+  servers); `send(parent, :noop)` scaffolding at `open_code_server.ex:298`;
+  claude `normalize/1` keeps only the first `tool_use` block and drops sibling
+  text (`stream_event.ex:437`); `cli.ex` usage drift (`dispatch reply`,
+  `--body`, `--account` implemented but undocumented; unreachable `--help`
+  route clause at `:44`).
+
+---
+
 ## The rule for this file
 
 An item earns a line only if it is **concrete** (someone could do it today

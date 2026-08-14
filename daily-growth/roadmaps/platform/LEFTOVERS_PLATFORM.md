@@ -169,6 +169,37 @@ DB password and a reset stays a two-minute dashboard job. Pure bookkeeping.
 
 ---
 
+### From the 08-13 code review — code health
+
+*Filed from [`CODE_REVIEW_08-13-26`](../CODE_REVIEW_08-13-26.html) §§7 and 12.
+The gmail fence — the review's one security-weight finding — landed same-day
+(`1728e64`); these are the follow-ons.*
+
+- **Extend `check_file_sizes.sh` beyond the web layer.** Core, JS and Rust are
+  entirely outside the inventory, and that is exactly where the current
+  heavyweights live (`commands/sound.ex` at 2,514 has no cap). The review's
+  §12 carries a 19-file proposed table with tiers, caps and one-line reasons.
+  Per the gate's own header, this is the cheapest single action that keeps the
+  review's other findings from being undone by regrowth.
+- **`google/gmail.ex` is three modules sharing a namespace** — API calls
+  (~220), MIME composer (~160), body parser (~180). `Gmail.Mime` and
+  `Gmail.Parser` extract with zero call-site change, leaving a ~400-line API
+  module on the money-adjacent on-duty path.
+- **`integrations.ex` is under-factored, not over-featured:** the
+  error/disabled run-recording block appears five times nearly verbatim
+  (`:114, :148, :206, :398, :460`) — one in-module `record_failure` helper
+  removes ~90 lines with zero call-site change. Also worth a look:
+  `poll_all/1` polls disabled integrations too, writing an error run per row.
+- **`integrations/github.ex:478`** hand-rolls a constant-time compare;
+  `Plug.Crypto.secure_compare/2` is already in the dependency tree and is the
+  audited version of the same loop.
+- **`appearance.ex`'s migration annex** — ~140 lines serving only pre-08-08
+  installs — extracts to `Appearance.Migration.ensure/0` behind a
+  `defdelegate`, into a file whose eventual deletion is one `rm`. Lands the
+  module ~660. Do it when the veil work in flight settles.
+
+---
+
 ## The rule for this file
 
 An item earns a line only if it is **concrete** (someone could do it today

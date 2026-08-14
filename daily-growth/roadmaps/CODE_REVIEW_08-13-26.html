@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Review — 08-13-26</title>
+<style>
+  :root {
+    --bg: #121212;
+    --panel: #1a1a1a;
+    --panel2: #202020;
+    --ink: #f4f1ea;
+    --dim: #9d9a92;
+    --hazard: #ff4d1c;
+    --ok: #7dc98f;
+    --warn: #e8b64c;
+    --line: #2e2e2e;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Archivo", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.55; font-size: 16px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+  header.masthead { border-bottom: 3px solid var(--hazard); padding-bottom: 1.5rem; margin-bottom: 2.5rem; }
+  .eyebrow {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .25em;
+    text-transform: uppercase; color: var(--hazard); margin-bottom: .75rem;
+  }
+  h1 { font-size: 2.4rem; font-weight: 900; text-transform: uppercase; letter-spacing: -.02em; margin: 0 0 .5rem; }
+  .sub { color: var(--dim); max-width: 62ch; }
+  h2 {
+    font-size: 1.35rem; font-weight: 900; text-transform: uppercase; letter-spacing: .01em;
+    margin: 3rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
+  }
+  h2 .no { color: var(--hazard); font-family: var(--mono); font-size: 1rem; margin-right: .6rem; }
+  h3 { font-size: 1.02rem; font-weight: 700; margin: 1.8rem 0 .5rem; }
+  h3 code { font-size: .95em; }
+  p { max-width: 75ch; }
+  code {
+    font-family: var(--mono); font-size: .84em; background: var(--panel2);
+    padding: .1em .35em; border-radius: 3px; white-space: nowrap;
+  }
+  .tablebox { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--line); }
+  table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+  th {
+    font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .12em;
+    text-align: left; color: var(--dim); background: var(--panel);
+    padding: .55rem .7rem; border-bottom: 2px solid var(--line);
+  }
+  td { padding: .5rem .7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.num, th.num { text-align: right; font-family: var(--mono); }
+  tr:last-child td { border-bottom: none; }
+  .tag {
+    font-family: var(--mono); font-size: .66rem; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; padding: .15em .5em; border-radius: 2px; white-space: nowrap;
+  }
+  .tag.split { background: rgba(255,77,28,.16); color: var(--hazard); }
+  .tag.leave { background: rgba(125,201,143,.14); color: var(--ok); }
+  .tag.cap   { background: rgba(232,182,76,.14); color: var(--warn); }
+  .tag.fix   { background: rgba(255,77,28,.28); color: #ffb49d; }
+  .tag.pend  { background: rgba(157,154,146,.18); color: var(--dim); }
+  .verdictline { font-family: var(--mono); font-size: .8rem; color: var(--dim); margin: .2rem 0 .8rem; }
+  .callout {
+    border-left: 3px solid var(--hazard); background: var(--panel);
+    padding: .9rem 1.1rem; margin: 1.2rem 0; max-width: 75ch;
+  }
+  .callout.good { border-left-color: var(--ok); }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout p { margin: .3rem 0; }
+  .callout .k { font-family: var(--mono); font-size: .68rem; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+  ul { max-width: 78ch; padding-left: 1.3rem; }
+  li { margin: .35rem 0; }
+  .filehead {
+    display: flex; align-items: baseline; gap: .7rem; flex-wrap: wrap;
+    margin: 1.8rem 0 .3rem;
+  }
+  .filehead code { font-size: .95rem; font-weight: 700; background: none; padding: 0; color: var(--ink); }
+  .filehead .lines { font-family: var(--mono); font-size: .78rem; color: var(--dim); }
+  .small { font-size: .85rem; color: var(--dim); }
+  a { color: var(--hazard); }
+  .toc { columns: 2; column-gap: 2.5rem; font-size: .9rem; max-width: none; }
+  .toc li { break-inside: avoid; }
+  .toc a { text-decoration: none; color: var(--ink); }
+  .toc a:hover { color: var(--hazard); }
+  @media (max-width: 640px) { .toc { columns: 1; } h1 { font-size: 1.8rem; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">Buster Claw · Internal Review</div>
+  <h1>Code Review — Every Part, With Its Argument</h1>
+  <p class="sub">
+    Whole-codebase review, 2026-08-13. Six parallel reviewers, one per cluster, each briefed with the
+    prior rulings (the archived <code>MODULARIZATION_ROADMAP</code>, the size gate, the operator's
+    standing decisions) so the review argues <em>with</em> the history instead of rediscovering it.
+    For each part: what it is, why it's the size it is, and whether that size is a feature being big
+    or a file doing several jobs — because those are different problems needing opposite treatments.
+  </p>
+</header>
+
+<nav>
+  <ul class="toc">
+    <li><a href="#measure">1 · The measurement</a></li>
+    <li><a href="#method">2 · How verdicts were reached</a></li>
+    <li><a href="#commands">3 · The command surface</a></li>
+    <li><a href="#audio">4 · The audio subsystem</a></li>
+    <li><a href="#agent">5 · Agent core</a></li>
+    <li><a href="#web">6 · The web layer</a></li>
+    <li><a href="#core">7 · Core domain</a></li>
+    <li><a href="#js">8 · JavaScript</a></li>
+    <li><a href="#rust">9 · Rust shell</a></li>
+    <li><a href="#tests">10 · Tests</a></li>
+    <li><a href="#defects">11 · Defect ledger</a></li>
+    <li><a href="#actions">12 · Ranked actions + gate additions</a></li>
+  </ul>
+</nav>
+
+<h2 id="measure"><span class="no">1</span>The measurement</h2>
+
+<p>~113,000 source lines plus 62,202 test lines across 286 test files (a healthy ~0.66 test-to-code
+ratio, and the big test files mirror the big source files exactly — <code>sound_test.exs</code> at
+2,524 sits beside <code>sound.ex</code> at 2,514).</p>
+
+<div class="tablebox"><table>
+  <tr><th>Layer</th><th class="num">Lines</th><th>Largest subsystems</th></tr>
+  <tr><td><code>lib/buster_claw/</code> (core)</td><td class="num">65,003</td>
+      <td>notifications/ 10,050 · commands/ 9,459 · agent/ 6,514 · browser_control/ 3,693 · google/ 3,376 · scene3d/ 2,456 — plus <strong>75 loose root-level files, 20,464 lines</strong></td></tr>
+  <tr><td><code>lib/buster_claw_web/</code></td><td class="num">29,082</td>
+      <td>live/ 13,368 (34 files) · components/ 12,208 (55 files) · controllers/ 2,077</td></tr>
+  <tr><td><code>assets/js/</code></td><td class="num">13,941</td><td>44-hook registry, 4 esbuild entries, 19 bun-tested <code>lib/</code> modules</td></tr>
+  <tr><td><code>desktop/tauri/src/</code></td><td class="num">4,478</td><td>browser/ (8-module split, 07-22) + main.rs + terminal/clinch/voice</td></tr>
+  <tr><td><code>test/</code></td><td class="num">62,202</td><td>286 files</td></tr>
+</table></div>
+
+<div class="callout">
+  <p class="k">The governance gap — the single most consequential finding</p>
+  <p>The web layer is under governance: <code>scripts/check_file_sizes.sh</code> caps ~60 files with a
+  both-directions ratchet, and it demonstrably works (a silent red-tree commit was caught by it on 08-09).
+  The <strong>core, JS, and Rust layers are entirely outside it</strong> — and that is exactly where
+  today's heavyweights live. <code>commands/sound.ex</code> (2,514 — the largest file in the repo),
+  the whole <code>cutup/</code> cluster, <code>cli.ex</code>, <code>scene3d.ex</code>,
+  <code>chrome.js</code>, <code>browser/mod.rs</code>: no caps. The repo's own history says ungoverned
+  decompositions get undone (TradingLive regrew 1,900 → 2,174; the xref cycle count regrew within a day).</p>
+</div>
+
+<p>Regrowth since the 08-08 measurement, five days ago: root-level core grew 67 files/17,859 lines →
+75 files/20,464. <code>chat_panel.ex</code> grew 618 → 1,030 (capped, with reasons recorded).
+<code>commands/</code> grew 5,481 → 9,459 — almost entirely one domain (sound, +3,125).
+The roadmap's thesis — <em>"this is a rate, not a job"</em> — is confirmed live.</p>
+
+<h2 id="method"><span class="no">2</span>How verdicts were reached</h2>
+
+<p>Every large file gets one of four verdicts, using the house diagnostic from the archived
+modularization roadmap:</p>
+<ul>
+  <li><span class="tag leave">leave</span> <strong>Feature-sized</strong> — one job written at length.
+      The lines are the feature (a validated registry, one algorithm plus its corrections, a
+      delegate wall that must be one module). Splitting it is churn.</li>
+  <li><span class="tag cap">cap</span> <strong>Feature-sized but ungoverned</strong> — correct today,
+      but nothing asserts it stays that way. Enters the size gate; seams pre-named for the day it grows.</li>
+  <li><span class="tag split">split</span> <strong>Overloaded</strong> — several jobs sharing a
+      namespace. Split by the proven method: extract to a module, delegate or import so call sites
+      stay byte-identical, zero behavior change, cap lowered in the same commit.</li>
+  <li><span class="tag fix">fix</span> A defect found in passing, independent of size.</li>
+</ul>
+<p>For web files, markup share is the diagnosis: 80% <code>~H</code> is <em>long</em> (split by
+panel); 11% is <em>overloaded</em> (extract logic). Prior rulings were honored throughout — clusters
+already read and declared correct (<code>browser_control/</code>, <code>scene3d/</code> pipeline,
+the commands facade, the post-split HELD files) were health-checked, not re-litigated.</p>
+
+<h2 id="commands"><span class="no">3</span>The command surface — the 08-08 ruling survives, minus one file</h2>
+
+<p class="verdictline">commands/ 9,459 lines / 42 files · cli.ex 947 · commands.ex 738 · terminal_commands.ex 795</p>
+
+<p><strong>The argument for this part:</strong> every external surface — chat, CLI, API, agent —
+dispatches through one choke point (<code>Commands.call/2</code>: policy check, rate limit, dispatch,
+Sentinel audit with per-command secret scrubbing), which delegates to per-domain implementation
+modules paired with per-domain <code>catalog/</code> metadata modules. The catalog stays in code
+deliberately: compile-time validation of the command surface, with
+<code>catalog_invariants_test.exs</code> running structural checks over it.</p>
+
+<h3><code>lib/buster_claw/commands.ex</code> <span class="lines">738 lines</span></h3>
+<p><span class="tag leave">leave</span> The back two-thirds is a wall of 218 <code>defdelegate</code>s —
+and the size is the point. The wall is a reviewable inventory of the whole surface, and it must be one
+module for <code>apply(__MODULE__, …)</code> dispatch to preserve the single policy door. The scrub
+functions stay co-located with <code>record/3</code>: that adjacency <em>is</em> the "one door"
+property. Only extractable logic: the skill-step runner (~55 lines) — small win, optional.</p>
+
+<h3><code>lib/buster_claw/commands/web.ex</code> <span class="lines">894 lines</span></h3>
+<p><span class="tag split">split</span> Four domains in one file: co-presence primitives (~560),
+flows/checks/egress/secrets (~200), bookmarks/history (~95), plus fetch/download. Every function is
+thin adaptation — wide, not deep — so the split is safe: <code>Commands.WebCopresence</code> +
+<code>Commands.WebFlows</code>, with the <code>Commands</code> facade keeping every call site
+byte-identical. One care point: <code>browser_flow</code>'s <code>tab_step/2</code> calls the
+primitives as local functions <em>deliberately</em> (never through <code>Commands.call/3</code>, to
+avoid double-audit) — after the split they become direct <code>WebCopresence.*</code> calls and the
+explanatory comment must move with them. Sharper win inside the file:
+<code>browser_click</code>/<code>browser_fill</code> carry <strong>six near-identical clause bodies</strong>
+(web.ex:228–273, 286–360) differing only in target key — ~130 lines a single target-extraction
+helper halves, provable against the existing 819-line co-presence test.</p>
+
+<h3><code>lib/buster_claw/cli.ex</code> <span class="lines">947 lines</span></h3>
+<p><span class="tag leave">leave</span> A thin escript HTTP client that owns no command logic —
+routing sugar, the operator-only <code>clinch rotate</code>, the on-duty loop, and ~400 lines of
+human-facing formatters. Feature-sized; two of its longest comments memorialize real shipped bugs.
+But it has <strong>drifted</strong>: <code>dispatch reply</code> is routed and implemented
+(cli.ex:56, 493–501) yet absent from <code>usage/0</code>, along with <code>--body</code> and
+<code>--account</code>; the <code>route(["--help"], _)</code> clause at cli.ex:44 is unreachable
+(OptionParser consumes the flag first).</p>
+
+<h3><code>lib/buster_claw/terminal_commands.ex</code> <span class="lines">795 lines</span></h3>
+<p><span class="tag cap">cap</span> A different catalog entirely — the whitelisted cmd-list the
+in-app terminal reads, with protected-role enforcement and file-first storage. Feature-sized at the
+top of its band; two pre-named seams if ever touched (the merge/normalize block ~200 lines; skill-prompt
+synthesis ~50). No code overlap with <code>commands.ex</code> — but a live naming hazard: the codebase
+now has three unrelated things called "catalog" (<code>Commands.Catalog</code>,
+<code>TerminalCommands.Catalog</code>, the skills catalog), which is the doc-drift comb's
+"a name gets reclaimed" seam waiting to fire. In-file duplication: <code>blank_to_nil</code> exists
+twice here, 250 lines apart, plus once in <code>Commands.Helpers</code>.</p>
+
+<h3><code>lib/buster_claw/commands/catalog/web.ex</code> <span class="lines">600 lines</span></h3>
+<p><span class="tag leave">leave</span> Pure data: 37 documented entries at ~16 lines each — the
+honest cost of the surface, per the standing <code>entries/0</code> ruling. If it keeps growing, the
+nine <code>agent_run_*</code> entries (~175 lines) could move to their own catalog file mirroring
+<code>commands/agent_runs.ex</code> — and since three sessions write into this catalog concurrently,
+finer files actually <em>reduce</em> merge collisions.</p>
+
+<h2 id="audio"><span class="no">4</span>The audio subsystem — one outlier atop an exemplary pipeline</h2>
+
+<p class="verdictline">notifications/ 10,050 lines · commands/sound.ex 2,514 · cutup/ 7,036 across 12 stages</p>
+
+<div class="callout good">
+  <p class="k">The pipeline is the house's best work</p>
+  <p><code>cutup/</code> is the scene3d shape executed better: one stage per module
+  (<code>Types → Signal → Mfcc → Features → Dtw → Vad → Align → Index → Select → Assemble</code>,
+  plus <code>Transcripts</code> and <code>Gaps</code>), clean dependency direction, returned-errors
+  totality, a test file per stage (8,169 test lines), and docs that carry measurements rather than
+  adjectives. Every large file in it — <code>align.ex</code> 936, <code>select.ex</code> 926,
+  <code>features.ex</code> 740 — is feature-sized: one algorithm plus its corrections, with the
+  moduledoc as the design record. <strong>Leave all of them.</strong> Cap at +10% if governance is wanted.</p>
+</div>
+
+<h3><code>lib/buster_claw/commands/sound.ex</code> <span class="lines">2,514 lines — largest file in the repo, ungoverned</span></h3>
+<p><span class="tag split">split</span> The entire <code>sound_*</code> verb surface except capture:
+24 verbs, <strong>zero DSP</strong> (everything delegates to <code>Cutup.*</code>/<code>SoundStudio</code>).
+~19% is deliberate agent-facing prose (the <code>*_notes</code> functions — house style, not bloat).
+Each verb is feature-sized; <strong>the file is overloaded</strong> — at least four verb families
+sharing only ~50 lines of coercion helpers. The repo already concedes this:
+<code>Commands.SoundCapture</code>'s own moduledoc says it was split out on 08-09
+"to stop the Sound module, <em>already the largest file in lib/</em>, from absorbing a second concern."</p>
+<p><strong>The split</strong> (house method; <code>commands.ex</code> stays byte-identical behind a
+delegating <code>Commands.Sound</code> facade; the 2,524-line test file is the proof harness):</p>
+<ul>
+  <li><code>Sound.Library</code> (~630) — <code>sound_list/routes/sources/probe/delete/apply/restore_defaults</code>: the chime surface plus the one gated routing verb.</li>
+  <li><code>Sound.Corpus</code> (~950) — transcripts, indexes, <code>sound_align</code>, <code>sound_find</code>. If 950 is still uncomfortable, <code>sound_find</code> alone (369 lines, self-contained) is the clean second cut.</li>
+  <li><code>Sound.Render</code> (~800) — <code>sound_import/assemble/sentence</code> + the four editing verbs atop the shared <code>edit/3</code> scaffold: the verbs that write audio.</li>
+  <li>Shared helpers (~180) incl. <code>under_library/1</code> — <em>the</em> security boundary of the family, which must keep exactly one home.</li>
+</ul>
+<p>Minimum action even if no split is scheduled: <strong>enter the size gate as FROZEN 2514 now.</strong></p>
+<p class="small">In passing: two private functions both named <code>boolean</code> with opposite
+nil-semantics (sound.ex:1094 vs :2476); <code>median/1</code> duplicated from
+<code>cutup/select.ex:867</code>; <code>under_library/1</code> (:1573) does not resolve symlinks —
+low severity, but its comment claims "no second line of defence," so the gap belongs in the doc or a
+<code>realpath</code> check; transcript vocabulary keeps apostrophes while index vocabulary strips
+them, and nothing says so.</p>
+
+<h3>The rest of the audio family</h3>
+<div class="tablebox"><table>
+  <tr><th>File</th><th class="num">Lines</th><th>Verdict</th><th>Argument</th></tr>
+  <tr><td><code>notifications/sound_studio.ex</code></td><td class="num">725</td><td><span class="tag cap">cap ~800</span></td>
+      <td>PCM16 editing core + studio folder catalog — mildly two-jobs, but split cost exceeds benefit today; <code>SoundStudio.Store</code> is the seam if the folder half grows.</td></tr>
+  <tr><td><code>notifications/studio_mix.ex</code></td><td class="num">595</td><td><span class="tag leave">leave</span></td>
+      <td>Arrangement model + v1→v2 migration; cohesive. Three cosmetic "an mix" typos (:118, :285, :424).</td></tr>
+  <tr><td><code>notifications/sound.ex</code></td><td class="num">578</td><td><span class="tag leave">leave</span></td>
+      <td>The two-layer library + routing walk the whole surface rests on. Minor: <code>resolved/1</code> re-implements <code>for_notification/1</code>'s walk — two copies of one walk.</td></tr>
+  <tr><td><code>notifications/sound_gen.ex</code></td><td class="num">180</td><td><span class="tag leave">leave</span></td>
+      <td>The known <code>ms_to_samples</code> "duplicate" vs sound_studio.ex should <strong>stay un-unified</strong>: trunc vs round differ by design — unifying would change committed regenerated bytes and break byte-identical regeneration. Add a comment, not a fix.</td></tr>
+  <tr><td><code>cutup/index.ex</code> + <code>cutup/features.ex</code></td><td class="num">621/740</td><td><span class="tag fix">fix</span></td>
+      <td>The <code>safe_source/1</code> traversal gate is duplicated <em>verbatim</em> between the two stores (index.ex:428–447 ≡ features.ex:720–739). The one duplicate with security weight: if they diverge, one store's gate is weaker. Consolidate into a shared <code>Cutup.SourceName</code>.</td></tr>
+  <tr><td><code>cutup/gaps.ex</code></td><td class="num">250</td><td><span class="tag fix">fix</span></td>
+      <td>Stale comment at :205–210 asserts the exact defect that index.ex:599–611 fixed (damaged origin now degrades to <code>:aligned</code>, not <code>:manual</code>). One-line doc correction.</td></tr>
+</table></div>
+<p class="small">One structural risk worth naming: the 25 ms / 10 ms frame clock is described
+everywhere as "pinned in <code>Cutup.Types</code>" — but Types is prose-and-types only; the numbers
+live as independent attributes in signal.ex, vad.ex, and dtw.ex. The pin is a convention, not a
+mechanism; one module's copy drifting would silently mis-time every index. Give the clock one
+mechanical source.</p>
+
+<h2 id="agent"><span class="no">5</span>Agent core — the diagnosis confirmed, the state machine finally written down</h2>
+<p class="verdictline">agent/ 6,514 lines · chat.ex 1,510 (FROZEN) · attachments.ex 911 · stream_event.ex 622 · two server connections · six transport adapters</p>
+
+<p><strong>The argument for this part:</strong> the layering is genuinely clean and was verified so —
+<code>Chat</code> (one GenServer per conversation: ordering, queue, persistence, audit) never builds
+argv; <code>ChatTransport</code> (the three ways a turn leaves the BEAM: one-shot pipe, duplex pipe,
+server-backed) never touches the transcript; <code>AgentBackend</code> is a pure measured-facts
+table; <code>AttachmentDelivery</code> is the only I/O between them; <code>StreamEvent</code> is the
+single pure parser (five observed wire schemas → one struct, every mapping citing a probe).
+The three adapters do not share a shape, so the behaviour is a real abstraction, not ceremony.</p>
+
+<h3><code>agent/chat.ex</code> <span class="lines">1,510 · FROZEN · "Phase 5"</span></h3>
+<p><span class="tag cap">hold — doc first, then split</span> The standing ruling ("not obviously
+wrong; write the state machine down before any split") is <strong>confirmed and slightly
+understated</strong>: the review counted 10 read sites, 5 direct write sites, and 8 transition
+funnels on <code>status</code> — ~14 distinct transitions, against the ruled "eleven-plus." The real
+machine is <code>status × transport-presence</code>, because on a persistent transport
+<code>:idle</code> splits into two states (transport held vs not), with co-varying invariants
+(<code>run</code>/<code>timer</code>/<code>turn_ref</code> non-nil iff running; <code>port</code>/
+<code>handle</code> set iff a transport is held; <code>cost_baseline</code> survives turns only while
+the transport does). <strong>The full transition table now exists</strong> — every state × event ×
+guard × effect, from steer-receipt outcomes through the three exit shapes to the one transition that
+deliberately skips <code>dispatch_next</code> (<code>:reset</code>) — in the reviewer's report; the
+single most valuable next commit is landing it as documentation in or beside the file. Only then take
+the ruled seams: event projection (~280 nearly-pure lines) and queue/ledger choreography (~280),
+leaving the GenServer at ~900 as transitions + I/O.</p>
+
+<div class="callout">
+  <p class="k">Two live bugs found while verifying the machine</p>
+  <p><strong>(1) <code>:steered</code> claimed without its receipt.</strong> The contract says
+  <code>:steered</code> means "the backend proved acceptance" (chat.ex:162), and ClaudeDuplex
+  advertises <code>receipt: :boundary_replay</code> — but its <code>steer</code> returns
+  <code>%{written_bytes:…}</code> with no receipt key, so chat.ex:946 maps a successful
+  <code>Port.command</code> straight to <code>:steered</code>. The purpose-built discriminator
+  <code>ChatMessageEncoder.operator_replay?/1</code> has <strong>zero production callers</strong>.
+  The docs themselves call a false steered-claim "the single most damaging bug this feature can
+  have." Consume the replay receipt, or downgrade the capability to <code>:sent</code>.</p>
+  <p><strong>(2) Pipe-path model resolution uses the wrong namespace.</strong> Server transports
+  correctly resolve <code>ModelPolicy.model_for(agent, :chat)</code> (chat.ex:776, with a comment
+  explaining exactly why <code>for_surface/1</code> is wrong) — but <code>default_spawner</code>
+  injects <code>ModelPolicy.for_surface(:chat)</code> (chat.ex:1492). Concrete failure: global
+  backend = codex + a confined conversation pinning <code>:claude</code> → claude is spawned with
+  <code>--model gpt-5.6-…</code> from the codex bucket. The divergence the in-file comment warns
+  about is live on the pipe path.</p>
+</div>
+
+<p class="small">Also in chat.ex: the crash-recovered queue never self-dispatches and the next new
+submit jumps ahead of items the operator saw queued (:426–447 vs :472); the no-process
+<code>capabilities/1</code> fallback hardcodes one-shot Claude, mislabeling the send button for
+duplex/codex conversations before the first message (:193); <code>audit_run</code> records
+<code>state.agent</code> while <code>audit_delivery</code> records <code>effective_agent</code> —
+cost attribution disagrees for confined conversations (:1279 vs :1011).</p>
+
+<h3>The rest of the agent family</h3>
+<div class="tablebox"><table>
+  <tr><th>File</th><th class="num">Lines</th><th>Verdict</th><th>Argument</th></tr>
+  <tr><td><code>agent/attachments.ex</code></td><td class="num">911</td><td><span class="tag leave">leave</span></td>
+      <td>Feature-sized; the file <em>is</em> its security argument — generated filenames, magic-byte sniffing, size-before-read, symlink refusal, read-back re-validation are one argument that splitting would scatter. ~15% is the moduledoc. Minor: <code>room_for/2</code> is check-then-write (:539) — caps exceedable by a racing double-drop; one LiveView is the writer in practice.</td></tr>
+  <tr><td><code>agent/stream_event.ex</code></td><td class="num">622</td><td><span class="tag leave">leave</span></td>
+      <td>Five schemas × pure clauses, every mapping probe-cited; no shared fallback between codex's two schemas is a deliberate correct call. First cut if a sixth schema arrives: the starfield activity classifier (~73 lines, different consumer). Undocumented fidelity loss: claude normalize takes only the first <code>tool_use</code> block and drops sibling text (:437–454).</td></tr>
+  <tr><td><code>agent/open_code_server.ex</code> / <code>codex_app_server.ex</code></td><td class="num">528/426</td><td><span class="tag leave">leave</span></td>
+      <td>One protocol connection each; the awkward parts are the protocols'. The ~40 shared-looking lines are structural echoes — a common base would couple two protocols that differ in every load-bearing way. <strong>Defect:</strong> the <code>refs</code> maps leak stale entries across reconnects — Chat drops handles on interrupt/timeout without unregistering, so late events for dropped turns still get sent to the Chat pid (caught only by a catch-all). Also <code>send(parent, :noop)</code> to self at open_code_server.ex:298 looks like leftover scaffolding.</td></tr>
+  <tr><td><code>agent_backend.ex</code></td><td class="num">536</td><td><span class="tag leave">leave</span></td>
+      <td>The measured-facts table; nearly half is dated evidence ("measured 08-03, <code>--help</code> quoted") that is the module's whole value. If it ever splits: per-concern, never per-backend — the cross-backend comparisons in the comments are the point. Watch item: the codex <code>known_models</code> list is partially unverified by its own admission and will drift.</td></tr>
+  <tr><td><code>dispatcher.ex</code></td><td class="num">568</td><td><span class="tag leave">leave</span></td>
+      <td>The unattended pump; bulk is six flat <code>record_outcome</code> clauses. The subtle part — swarm worst-case budget reserved up front, reconciled on completion — is well-commented. Known edge: a <code>:run_done</code> from a stale pid drops without recording its Sentinel/Memory outcome.</td></tr>
+  <tr><td><code>model_policy.ex</code></td><td class="num">498</td><td><span class="tag leave">leave</span></td>
+      <td>A deliberate leaf; a third is storage/migration with its own measured race decision. <strong>Watch:</strong> <code>@floors</code> and <code>@claude_only</code> are both empty since the trading deletion, so the floor guards are all vacuously green — precisely the doc-drift comb's "collection empties, guard goes vacuous" cluster, pre-acknowledged in comments. Cosmetic: <code>in_force/0</code> re-decodes Settings ~12+ times per call.</td></tr>
+</table></div>
+<p class="small">Siblings all single-purpose and right-sized (<code>chat_transport.ex</code> 307 with
+the correct no-cycle note; the six adapters 83–229; <code>attachment_delivery.ex</code> 306;
+<code>deliveries.ex</code> 236). <code>split_lines/1</code> is triplicated across stream_event and
+both servers.</p>
+
+<h2 id="web"><span class="no">6</span>The web layer — governed, and the two frozen phases re-verified</h2>
+
+<p class="verdictline">29,082 lines · ~60 files capped HELD/FROZEN · post-split families (explained/, phone/, gws/, notes/, status/) all holding</p>
+
+<h3><code>live/sound_studio_component.ex</code> <span class="lines">1,235 · FROZEN · "Phase 3"</span></h3>
+<p><span class="tag split">split</span> 20% markup → ~980 lines of logic in a live_component:
+catalog builders, 29 <code>handle_event</code> clauses, import, render/mixdown/install, trim,
+rename/delete with mix retargeting. <strong>The frozen Phase 3 plan still fits, with one real
+correction:</strong> four catalog item builders bake router <code>~p</code> URLs (lines 208, 242,
+258, 273), so a core <code>Notifications.StudioCatalog</code> must not take them whole. Split the
+extraction: core owns <code>{id, kind, name, label, sub, path}</code> (exactly what the future
+<code>sound_*</code> CLI needs — paths, not URLs); the web side decorates with <code>url</code> in
+the already-existing <code>BusterClawWeb.SoundStudio.Catalog</code>. The plan's second half (import
+pipeline) is now marginal (~60 lines); the better second extraction is the
+<strong>render/trim/rename block</strong> (~170 lines of socket-free <code>{:ok,_}/{:error,_}</code>
+functions). Callers to update: <code>StatusLive</code> reaches
+<code>collapsed_groups/0</code>/<code>put_collapsed/1</code> directly (status_live.ex:135, 318).</p>
+<p class="small">Defects in passing: an empty "Import" section banner at :297–303 labels code that
+moved to :577–607 (doc drift inside a frozen file); <code>resolve_source/1</code> triggers a full
+4-directory + DB catalog rescan per clip — rendering an n-clip mix does n scans; pass the assigned
+<code>groups</code> down instead.</p>
+
+<h3><code>live/settings_live.ex</code> <span class="lines">934 · FROZEN · "Phase 4"</span></h3>
+<p><span class="tag split">split</span> The plan fits and its open question resolves: every settings
+sub-tab is its own <em>route</em> (settings_tabs.ex:10–18) — no <code>:if</code>-gated panel anywhere —
+so real live_components are legitimate here, with one mechanic: <code>handle_info</code> for account/
+clinch changes must forward via <code>send_update</code> (the pattern <code>status/studio.ex</code>
+already uses). The numbers have shifted in the split's favor: GWS is now <strong>12 of 20</strong>
+handle_event clauses (was 8 of 23). Order: <strong>models first</strong> — markup 453–650 + helpers
+≈300 lines, no handle_info, maps 1:1 onto <code>BusterClaw.ModelPolicy</code> — then GWS.</p>
+<p class="small">In passing: <code>bundled_connect</code>/<code>open_google_sign_in</code> (:109–147)
+near-verbatim duplicate <code>setup_live.ex:155–225</code> — the Google-connect flow lives in two
+files that must move in lockstep today; <code>gmail_search_form</code>/<code>gmail_sync_form</code>
+built from identical maps (:727–753).</p>
+
+<h3><code>live/calendar_component.ex</code> <span class="lines">866 · FROZEN · first responsibility map produced</span></h3>
+<p><span class="tag split">split</span> ~45% markup — genuinely mixed. The map: 14 handle_event
+clauses (90–269), render + modal form (271–524), view components (526–673), grid/date math
+(675–866). Two clean byte-identical seams, both honoring the home-panel constraint (this component
+<em>is</em> hosted behind <code>:if</code>, so function components and pure modules only):
+<strong>(1)</strong> view components + modal form → <code>components/calendar/views.ex</code>
+(~240 lines; they already take an explicit <code>target</code> attr, so they lift out unchanged);
+<strong>(2)</strong> pure date/grid math → <code>BusterClaw.Calendar.Grid</code> in core (~190 lines,
+zero assigns — questions about dates, not sockets). All handlers stay.
+In passing: the Sunday-start-of-week expression is written three times (:689, :695, :744);
+<code>day_view</code> declares a required <code>:today</code> attr it never uses (:624).</p>
+
+<h3>Healthy files, held deliberately</h3>
+<div class="tablebox"><table>
+  <tr><th>File</th><th class="num">Lines</th><th class="num">~H share</th><th>Verdict</th></tr>
+  <tr><td><code>live/setup_live.ex</code></td><td class="num">668</td><td class="num">~58%</td><td><span class="tag leave">leave</span> — long, not overloaded; 11 one-call handlers. The fix it wants is the shared Google-connect helper, not a split.</td></tr>
+  <tr><td><code>live/file_tree.ex</code></td><td class="num">545</td><td class="num">~55%</td><td><span class="tag leave">leave</span> — one concern rendered thoroughly; server re-validates client-filtered drops.</td></tr>
+  <tr><td><code>live/terminal_live.ex</code></td><td class="num">451</td><td class="num">~53%</td><td><span class="tag leave">leave</span> — host chrome for the xterm hook; load-bearing comments intact.</td></tr>
+  <tr><td><code>live/status/chat.ex</code></td><td class="num">675</td><td class="num">—</td><td><span class="tag leave">leave</span> — pure socket-in/out projection as contracted; visual-pool numbering hand-checked against the live path, no drift.</td></tr>
+  <tr><td><code>live/status/chat_attachments.ex</code></td><td class="num">544</td><td class="num">—</td><td><span class="tag leave">leave</span> — sound security posture; its two smells are documented in-file with reasons.</td></tr>
+</table></div>
+
+<div class="callout warn">
+  <p class="k">Phase 8 (design primitives) has drifted worse, in the confirming direction</p>
+  <p><code>CoreComponents</code> is still the Phoenix generator defaults plus one wordmark. Fresh
+  counts: <code>button_outline</code> ×4 verbatim <code>defp</code> copies (settings_live:931,
+  setup_live:590, cmd_list_live:457, clinch_panels:40) + an inline variant; display headings 8×/10×;
+  <strong>the chip idiom is now at 14 occurrences</strong> (recorded as 4× on 08-08). The scoped
+  <code>ic_*</code> component pass would collapse ~30 verbatim sites — and it remains correctly
+  sequenced <em>after</em> the extractions above, since it changes call sites.</p>
+</div>
+
+<h2 id="core"><span class="no">7</span>Core domain — mostly right, one security finding</h2>
+
+<div class="callout">
+  <p class="k">Finding: unfenced attachment paths on outbound email</p>
+  <p><code>google/gmail.ex:485–493</code> — <code>resolve_attachment_path/1</code> accepts any
+  absolute path and expands relative ones against the workspace root, with <strong>no
+  <code>within?</code> fence of any kind</strong>. Every peer file-reaching surface in this review
+  fences (Notes :459, Pockets :140, Appearance :759). A caller — an agent command, a prompt-injected
+  draft flow — can attach <code>~/.ssh/id_ed25519</code> to an outbound email; email send is
+  precisely the exfiltration channel the Egress work exists to close. Whether the command layer gates
+  upstream was not verified; the module-level posture is out of step with the codebase's own
+  discipline regardless. <strong>Add a workspace fence or explicit allowlist here.</strong>
+  Minor sibling: <code>render_attachment_part/1</code> (:413–421) interpolates filenames into MIME
+  headers unsanitized — a <code>"</code> or CRLF corrupts/injects headers; one
+  <code>String.replace</code> fixes it.</p>
+</div>
+
+<div class="tablebox"><table>
+  <tr><th>File</th><th class="num">Lines</th><th>Verdict</th><th>Argument &amp; seams</th></tr>
+  <tr><td><code>scene3d.ex</code></td><td class="num">913</td><td><span class="tag cap">cap 940</span></td>
+      <td>The trust boundary for model-authored JSON — extract/validate/expand/render/guide. ~250 prose, ~60 data (the caps ARE the DoS surface and belong beside their checks), ~600 wide-not-deep validation. Feature-sized; validation and expansion share budget-threading, so splitting them severs a real coupling. Seam if ever needed: <code>guide/0</code> (~95 lines of prompt content, the introduction.ex precedent).</td></tr>
+  <tr><td><code>terminal_theme.ex</code></td><td class="num">859</td><td><span class="tag cap">cap 880</span></td>
+      <td>~300 data + ~250 prose + ~310 logic in four coherent blocks. Extract on next growth: the WCAG legibility floor (~130 lines, one caller) as <code>TerminalTheme.Legibility</code>; the HSL generator (~120) as <code>Spectrum</code>. Note: the hex-normalizer exists here (refuses) and in appearance.ex (silently coerces to #000000) with divergent failure modes.</td></tr>
+  <tr><td><code>appearance.ex</code></td><td class="num">~809*</td><td><span class="tag split">split</span></td>
+      <td>The background catalog plus a <strong>migration annex</strong> (~140 lines serving only pre-08-08 installs) — the textbook extraction: <code>Appearance.Migration.ensure/0</code> behind a <code>defdelegate</code>, into a file whose eventual deletion is one <code>rm</code>. Lands ~660. (*mid-flight in the working tree; cap where the veil work lands.)</td></tr>
+  <tr><td><code>google/gmail.ex</code></td><td class="num">739</td><td><span class="tag split">split</span></td>
+      <td>Genuinely three modules in a namespace: API calls (~220), MIME composer (~160), body parser (~180). <code>Gmail.Mime</code> + <code>Gmail.Parser</code> extract with zero call-site change, leaving a ~400-line API module. <strong>Fence attachments first</strong> (above).</td></tr>
+  <tr><td><code>workspace.ex</code></td><td class="num">629</td><td><span class="tag leave">leave · cap 660</span></td>
+      <td>~275 lines are the <code>@entries</code> registry with load-bearing history comments. Deliberately one file: the module's whole argument is that layout used to be an emergent property of scattered calls. Splitting registry from enforcement recreates the disease it cured.</td></tr>
+  <tr><td><code>notes.ex</code></td><td class="num">578</td><td><span class="tag leave">leave · cap 610</span></td>
+      <td>One coherent contract — containment, UTF-8, size, atomic-write, optimistic-concurrency — every function one rule applied to one verb. One of the best files in the set. <code>Notes.Search</code> (~110 pure lines) is the seam if ever needed.</td></tr>
+  <tr><td><code>integrations.ex</code></td><td class="num">539</td><td><span class="tag fix">fix in place</span></td>
+      <td><strong>Under-factored, not over-featured:</strong> the error/disabled run-recording block appears <em>five times</em> nearly verbatim (:114, :148, :206, :398, :460) — ~125 lines that one internal <code>record_failure/…</code> helper makes ~35. Lands ~430, ratchet after. Also: <code>poll_all/1</code> polls disabled integrations, writing a row of error runs each.</td></tr>
+  <tr><td><code>integrations/github.ex</code></td><td class="num">495</td><td><span class="tag leave">leave · cap 520</span></td>
+      <td>Well-shaped adapter. Swap the hand-rolled <code>secure_compare/2</code> (:478) for <code>Plug.Crypto.secure_compare/2</code>, already in the dep tree. <code>parse_retry_after</code> duplicated with <code>Google.Client</code>.</td></tr>
+  <tr><td><code>browser_control/agent_mode.ex</code></td><td class="num">613</td><td><span class="tag leave">leave · cap 650</span></td>
+      <td>Health-checked against the 08-08 "reference shape" ruling: still holds — all four moduledoc safety properties map to enforcement code, not hope. One nit: <code>safe_transition/2</code> (:599) silently swallows illegal transitions on halt paths; a one-line comment closes the gap with the module's own standard.</td></tr>
+  <tr><td><code>finance/sources.ex</code></td><td class="num">547</td><td><span class="tag leave">leave · cap 580</span></td>
+      <td>Confirmed: nothing but the registry lives there; strict status parsing means a typo can't promote to <code>:verified</code>. Standing ruling holds; growth here is a new source entry, which the cap makes visible and cheap to approve.</td></tr>
+  <tr><td><code>pockets.ex</code></td><td class="num">484</td><td><span class="tag leave">holds</span></td>
+      <td>Already HELD with its seam pre-declared. Four-guard resolve intact, ordering fix memorialized, manifest never trusted for bindings. No change.</td></tr>
+</table></div>
+
+<p class="small">Possible live UI drift found in passing: <code>option_key(%{kind: :image_shader,…})</code>
+returns <code>"image:slot+shader"</code> (appearance.ex:379) but <code>options/0</code> only mints
+<code>"image:slot"</code> keys — so with an image+shader background selected, the in-use check at
+appearance_live.ex:955 highlights <em>no</em> tile. Verify in the running app whether the overlay
+picker row covers it.</p>
+
+<h2 id="js"><span class="no">8</span>JavaScript — disciplined architecture, two dead passengers</h2>
+
+<p class="verdictline">13,941 lines · 4 esbuild entries · 44-hook registry · 19 bun-tested pure lib/ modules</p>
+
+<p><strong>The argument for this part:</strong> the functional-core/imperative-shell split is real —
+parsing, decoration, tab math, attachment logic all live in pure <code>lib/*</code> modules with
+sibling <code>.test.js</code> files run by <code>bun test</code> in precommit; hooks are thin DOM
+wiring. <code>hooks_registered_test.exs</code> guards the markup→registry direction of the
+hook contract.</p>
+
+<div class="callout">
+  <p class="k">Dead hooks — 436 lines of the deleted Trading stack, shipped on every page load</p>
+  <p><code>hooks/portfolio_chart.js</code> (157) and <code>hooks/chat_window.js</code> (279) are
+  registered in <code>hooks/index.js</code> (:39, :49) and referenced by <strong>zero markup</strong> —
+  remnants of the 08-08 Trading deletion. The registry test is deliberately one-directional
+  (markup→registry) so it cannot see them. Delete both; and now that "registered but unnamed" means
+  "deleted feature" rather than "feature not landed," add the reverse assertion at least as a snapshot.</p>
+</div>
+
+<div class="tablebox"><table>
+  <tr><th>File</th><th class="num">Lines</th><th>Verdict</th><th>Argument &amp; seams</th></tr>
+  <tr><td><code>chrome.js</code></td><td class="num">864</td><td><span class="tag split">seam</span></td>
+      <td>The embedded browser's whole chrome — feature-sized, but three UIs share one bar (bookmarks / omnibox suggestions / find bar coordinate via flags). Extract find bar (467–533) and suggestions (375–454) to <code>lib/</code> modules with a small bar-ownership arbiter. Cap ~900.</td></tr>
+  <tr><td><code>hooks/tab_strip.js</code></td><td class="num">664</td><td><span class="tag split">split</span></td>
+      <td>Three cohabiting jobs: the strip proper; <strong>split-tab/surface reconciliation</strong> (the JS half of the fragile Rust surface lifecycle — currently untested, unlike everything in lib/); a bespoke context menu (~150). Extract <code>lib/split_tabs.js</code> (mostly pure, immediately testable) + the menu. Cap ~500 after. <strong>Cap this file first</strong> — overloaded <em>and</em> sitting on the app's most fragile cross-language seam.</td></tr>
+  <tr><td><code>hooks/note_editor.js</code></td><td class="num">560</td><td><span class="tag leave">leave · cap 600</span></td>
+      <td>Disciplined: all parsing/commands already extracted and tested; ~120 lines are the design essay guarding against rebuilding the two failed editors — load-bearing, per the ruled "browser owns editing" design.</td></tr>
+  <tr><td><code>hooks/shader_preview.js</code></td><td class="num">124</td><td><span class="tag fix">fix</span></td>
+      <td><code>frame()</code> calls <code>fit()</code> → <code>getBoundingClientRect()</code> <strong>every frame at 60fps</strong> — the exact forced-layout its sibling <code>smoke_background.js:70–72</code> documents avoiding (ResizeObserver + cached rect), and it skips the <code>document.hidden</code> rAF-stop. File is already modified in the working tree; now is the moment.</td></tr>
+  <tr><td><code>smoke/smoke.js</code> + <code>hooks/smoke_background.js</code></td><td class="num">230/286</td><td><span class="tag leave">leave</span></td>
+      <td>Clean GPU-handle module + good frame-loop hygiene; working-tree additions follow the existing failure posture. Dedup opportunity: the boot sequence (fetch-source/create/lost/setImage) is duplicated nearly line-for-line between the two hooks — a shared <code>bootSmoke(el, opts)</code> cuts ~60 lines.</td></tr>
+</table></div>
+
+<p class="small">Also: the ⌘-digit tab-shortcut convention is implemented three times
+(chrome.js:314, tab_strip.js:78, tab_strip.js:579) with nothing asserting agreement;
+<code>showCloseConfirm</code> (tab_strip.js:617–649) re-implements <code>lib/claw_confirm.js</code>'s
+modal — export <code>clawConfirm</code> as a promise and delete the copy. No
+<code>confirm()/alert()/prompt()</code> anywhere (clean); no severed phx-hook contracts among the 42
+live names.</p>
+
+<h2 id="rust"><span class="no">9</span>Rust shell — the 07-22 shape holds, and improved</h2>
+
+<p class="verdictline">4,478 lines · browser/ 8-module split intact · tests 34 → 39 · purity guards + 3-way ACL lockstep live</p>
+
+<p><strong>The argument for this part:</strong> decisions live in pure, textually-guarded modules
+(<code>js.rs</code>, <code>state.rs</code>, <code>labels.rs</code>, <code>geometry.rs</code> —
+asserted tauri-free); effects live in "too dumb to be wrong" shells (<code>webviews.rs</code>,
+<code>ffi.rs</code>); the ACL lockstep test covers all 40 commands including the new working-tree
+<code>clinch_*</code> trio.</p>
+
+<div class="tablebox"><table>
+  <tr><th>File</th><th class="num">Lines</th><th>Verdict</th><th>Argument</th></tr>
+  <tr><td><code>browser/mod.rs</code></td><td class="num">934</td><td><span class="tag cap">cap 1000</span></td>
+      <td>Still the coordinator: ~30 <code>#[tauri::command]</code> entries of 10–40 lines each, delegating decisions down. Two spots of mild re-accumulation: <code>browser_find_count</code> embeds the <em>only</em> injected page-script living outside <code>js.rs</code> (:377–386 — safe today via <code>js_str</code>, but outside the escaping suite and invisible to the purity guard); and <code>browser_wait_active</code> blocks async-executor threads with <code>std::thread::sleep</code> polling (:712, :729 — up to 30s; <code>tokio::time::sleep</code> is the correct shape, low priority).</td></tr>
+  <tr><td><code>main.rs</code></td><td class="num">797</td><td><span class="tag cap">cap 850</span></td>
+      <td>Bootstrap: single-instance guard, macOS menu, release spawn/health/respawn watchdog, Keychain provisioning. Named seam if it trips: menu builders (:267–407) → <code>menu.rs</code>. Toolchain note: <code>std::env::set_var</code> after threads may exist (:600–606) becomes <code>unsafe</code> in Rust 2024.</td></tr>
+  <tr><td><code>browser/js.rs</code></td><td class="num">582</td><td><span class="tag leave">leave · cap 650</span></td>
+      <td>Right-sized for the security-critical file: ~350 payload, ~140 escaping/priority tests — exactly the ratio wanted. Growth should mean new scripts <em>with</em> new tests, here.</td></tr>
+  <tr><td><code>browser/state.rs</code></td><td class="num">477</td><td><span class="tag leave">leave</span></td>
+      <td>Pure mutexed bookkeeping; eviction factored pure and 12-way tested; ~185 of the lines are tests. Cosmetic: the poison-recovery incantation ×20 could be one private helper.</td></tr>
+</table></div>
+
+<p class="small">The one cross-language seam with <em>no</em> guard: the Rust→chrome contract
+(<code>window.__on*</code> / <code>__agent*</code> / <code>__menuShortcut</code>) is stringly-typed
+across two languages — the same fragility class as phx-hook, not covered by any lockstep test. A
+cheap grep-based test asserting each name in <code>notify.rs</code>/<code>webviews.rs</code> appears
+in <code>chrome.js</code> would be in-house style.</p>
+
+<h2 id="tests"><span class="no">10</span>Tests</h2>
+<p>62,202 lines across 286 files, ~0.66 test-to-code. Coverage mirrors weight where it matters:
+the audio pipeline carries a test file per stage (8,169 lines) pinning measured invariants
+(Parseval, DTW length-independence); the Rust side grew 34 → 39 tests in the right places; JS's
+pure <code>lib/</code> layer is fully bun-tested while hooks (thin by design) are guarded by the
+registry lockstep test. The suite's known blind spots are the cross-language contracts named above
+(Rust→chrome strings; registry→markup direction of the hook test) — both cheap, both grep-shaped,
+both in the house guard idiom.</p>
+
+<h2 id="defects"><span class="no">11</span>Defect ledger — everything found in passing, ranked</h2>
+
+<div class="tablebox"><table>
+  <tr><th>#</th><th>Where</th><th>What</th><th>Weight</th></tr>
+  <tr><td>1</td><td><code>google/gmail.ex:485–493</code></td><td>Unfenced attachment paths on outbound email (exfiltration-shaped; every peer surface fences). Plus filename→MIME-header injection at :413–421.</td><td><span class="tag leave">FIXED 08-13</span></td></tr>
+  <tr><td>2</td><td><code>chat.ex:946</code> + <code>claude_duplex.ex:205</code></td><td><code>:steered</code> claimed without consuming the advertised receipt; <code>operator_replay?/1</code> dead in production. The docs call a false steered-claim "the single most damaging bug this feature can have."</td><td><span class="tag leave">FIXED 08-13</span></td></tr>
+  <tr><td>3</td><td><code>chat.ex:1492</code> vs <code>:776</code></td><td>Pipe-path spawner resolves <code>for_surface(:chat)</code> not <code>model_for(agent,:chat)</code> — confined conversation + differing global backend spawns claude with a codex-bucket model id.</td><td><span class="tag leave">FIXED 08-13</span></td></tr>
+  <tr><td>4</td><td><code>hooks/portfolio_chart.js</code>, <code>hooks/chat_window.js</code></td><td>436 lines of dead Trading-stack hooks registered and shipped on every page load; invisible to the one-directional hook test.</td><td><span class="tag leave">FIXED 08-13</span></td></tr>
+  <tr><td>5</td><td><code>cutup/index.ex:428</code> ≡ <code>cutup/features.ex:720</code></td><td><code>safe_source/1</code> traversal gate duplicated verbatim between the two stores — divergence weakens one gate silently.</td><td><span class="tag fix">security-adjacent</span></td></tr>
+  <tr><td>6</td><td><code>chat.ex:426–447</code> vs <code>:472</code></td><td>Crash-recovered queue never self-dispatches; the next new submit jumps items the operator saw queued.</td><td><span class="tag fix">behavior</span></td></tr>
+  <tr><td>7</td><td><code>codex_app_server.ex:385</code>, <code>open_code_server.ex:489</code></td><td><code>refs</code> maps leak stale entries across reconnects; Chat drops handles without unregistering, so late events route to the pid via catch-all discard.</td><td><span class="tag fix">leak</span></td></tr>
+  <tr><td>8</td><td><code>hooks/shader_preview.js:86,115</code></td><td>Per-frame <code>getBoundingClientRect</code> forced layout at 60fps; no hidden-tab rAF stop.</td><td><span class="tag fix">perf</span></td></tr>
+  <tr><td>9</td><td><code>integrations.ex</code> ×5 sites</td><td>Five near-verbatim ~25-line failure-recording blocks; one helper removes ~90 lines.</td><td><span class="tag fix">dup</span></td></tr>
+  <tr><td>10</td><td><code>appearance.ex:379</code> vs <code>appearance_live.ex:955</code></td><td>Image+shader background may highlight no tile in the picker (option_key never matches a minted key). Verify in the running app.</td><td><span class="tag fix">UI drift</span></td></tr>
+  <tr><td>11</td><td><code>chat.ex:193</code>, <code>:1279</code></td><td><code>capabilities/1</code> nil-process fallback hardcodes one-shot Claude (mislabels the send button pre-first-message); <code>audit_run</code> vs <code>audit_delivery</code> disagree on which harness to attribute cost to.</td><td><span class="tag fix">drift</span></td></tr>
+  <tr><td>12</td><td><code>cli.ex</code> usage</td><td><code>dispatch reply</code>, <code>--body</code>, <code>--account</code> implemented but undocumented; unreachable <code>--help</code> route clause at :44.</td><td><span class="tag fix">doc drift</span></td></tr>
+  <tr><td>13</td><td><code>cutup/gaps.ex:205–210</code></td><td>Comment asserts the exact defect index.ex:599–611 fixed (origin degrades to <code>:aligned</code>, not <code>:manual</code>).</td><td><span class="tag fix">doc drift</span></td></tr>
+  <tr><td>14</td><td><code>commands/sound.ex:1573</code></td><td><code>under_library/1</code> doesn't resolve symlinks; its comment claims no second line of defence exists.</td><td><span class="tag fix">hardening</span></td></tr>
+  <tr><td>15</td><td><code>settings_live.ex:109–147</code> ≈ <code>setup_live.ex:155–225</code></td><td>Google bundled-connect flow duplicated across two surfaces that must move in lockstep.</td><td><span class="tag fix">dup</span></td></tr>
+  <tr><td>16</td><td><code>tab_strip.js:617–649</code></td><td>Bespoke confirm modal re-implements <code>lib/claw_confirm.js</code>; export <code>clawConfirm</code> and delete.</td><td><span class="tag fix">dup</span></td></tr>
+  <tr><td>17</td><td><code>browser/mod.rs:377–386</code></td><td>The one injected page-script outside <code>js.rs</code> and its escaping suite.</td><td><span class="tag fix">hardening</span></td></tr>
+  <tr><td>18</td><td><code>github.ex:478</code></td><td>Hand-rolled constant-time compare; <code>Plug.Crypto.secure_compare/2</code> is already in the tree.</td><td><span class="tag fix">hardening</span></td></tr>
+  <tr><td>19</td><td><code>model_policy.ex:105,125</code></td><td><code>@floors</code>/<code>@claude_only</code> empty since the trading deletion — every floor guard vacuously green (the doc-drift comb's named cluster; pre-acknowledged in comments).</td><td><span class="tag fix">vacuous guard</span></td></tr>
+  <tr><td>20</td><td><code>sound_studio_component.ex:297–303, 130/629/705</code></td><td>Empty "Import" banner (moved code); per-clip full catalog rescans (n scans per n-clip render).</td><td><span class="tag fix">drift/perf</span></td></tr>
+  <tr><td>21</td><td>cutup frame clock</td><td>25/10 ms constants "pinned in Types" by prose only; three independent attribute copies.</td><td><span class="tag fix">structural risk</span></td></tr>
+</table></div>
+
+<h2 id="actions"><span class="no">12</span>Ranked actions, and what enters the size gate</h2>
+
+<h3>The worklist, in the order it earns</h3>
+<p class="small"><strong>Status 08-13:</strong> items 1–3 landed same-day (<code>1728e64</code>,
+<code>20a36a9</code>, <code>577085e</code>); everything else is filed by section into the LEFTOVERS
+maps (agent-core · platform · surfaces · the new <code>LEFTOVERS_SHELL</code>) and cited from the
+SUPERMAP.</p>
+<ul>
+  <li><strong>1. Fence gmail attachments</strong> (+ the MIME filename sanitize) — the one security-weight finding, small diff. <strong>DONE 08-13 (<code>1728e64</code>)</strong> — fence via <code>FileManager.within?/2</code>, catalog contract updated, refusal + escape + injection tests added.</li>
+  <li><strong>2. The two chat.ex live bugs</strong> — consume (or honestly downgrade) the ClaudeDuplex steer receipt, and point <code>default_spawner</code> at <code>model_for(agent, :chat)</code>. <strong>DONE 08-13 (<code>20a36a9</code>)</strong> — steer now reports <code>:unconfirmed</code> (honest downgrade; the replay-consuming upgrade is filed in LEFTOVERS_AGENT_CORE), and the pipe path resolves per-harness via <code>resolve_model/1</code>. <code>chat.ex</code> held at exactly its FROZEN 1510.</li>
+  <li><strong>3. Delete the two dead hooks</strong> and add the reverse (registry→markup) assertion. <strong>DONE 08-13 (<code>577085e</code>)</strong> — 436 lines + the orphaned dropzone CSS deleted; the new assertion was verified by injection (it failed on exactly these two hooks before the deletion).</li>
+  <li><strong>4. Land the Agent.Chat state-machine table as a doc</strong> — the ruled Phase 5 prerequisite is now <em>written</em> (§5); it just needs a home in or beside the file. Only after that, the projection/queue seams.</li>
+  <li><strong>5. Extend the size gate</strong> with the core + JS + Rust inventory below — the cheapest thing that stops this review's findings from being undone, per the gate's own header.</li>
+  <li><strong>6. Split <code>commands/sound.ex</code></strong> into Library / Corpus / Render behind a delegating facade — the repo's largest file, already conceded too big by its own sibling's moduledoc; the 2,524-line test file is the harness.</li>
+  <li><strong>7. The in-place dedups:</strong> integrations.ex failure blocks (~90 lines), web.ex click/fill clauses (~65), <code>safe_source</code> consolidation, claw_confirm export.</li>
+  <li><strong>8. Phase 3 (Sound Studio catalog → core, with the paths-vs-URLs correction) and Phase 4 (Settings, models first)</strong> — both frozen plans re-verified against current code and still fit.</li>
+  <li><strong>9. shader_preview.js layout thrash</strong> — the file is already open in the working tree.</li>
+  <li><strong>10. The small doc-drift fixes</strong> (cli usage, gaps.ex comment, empty Import banner, "an mix" ×3, the stale hardcoded <code>capabilities/1</code> fallback).</li>
+  <li><strong>11. Phase 8 design primitives</strong> — after the extractions, as sequenced; the repetition counts have only grown.</li>
+</ul>
+
+<h3>Proposed <code>check_file_sizes.sh</code> additions</h3>
+<div class="tablebox"><table>
+  <tr><th>File</th><th class="num">Lines</th><th>Tier</th><th class="num">Cap</th><th>One-line reason</th></tr>
+  <tr><td><code>lib/buster_claw/commands/sound.ex</code></td><td class="num">2514</td><td>FROZEN</td><td class="num">2514</td><td>Largest ungoverned file; owed the three-way split</td></tr>
+  <tr><td><code>lib/buster_claw/scene3d.ex</code></td><td class="num">913</td><td>HELD</td><td class="num">940</td><td>Trust boundary; a new primitive should cost a defense</td></tr>
+  <tr><td><code>lib/buster_claw/terminal_theme.ex</code></td><td class="num">859</td><td>HELD</td><td class="num">880</td><td>Legibility + Spectrum are the seams on next growth</td></tr>
+  <tr><td><code>lib/buster_claw/appearance.ex</code></td><td class="num">~809</td><td>HELD</td><td class="num">850</td><td>Cap where veil lands; migration annex is the owed cut</td></tr>
+  <tr><td><code>lib/buster_claw/google/gmail.ex</code></td><td class="num">739</td><td>HELD</td><td class="num">780</td><td>Mime + Parser extractions owed; fence first</td></tr>
+  <tr><td><code>lib/buster_claw/workspace.ex</code></td><td class="num">629</td><td>HELD</td><td class="num">660</td><td>Registry-as-file is the design; don't split</td></tr>
+  <tr><td><code>lib/buster_claw/browser_control/agent_mode.ex</code></td><td class="num">613</td><td>HELD</td><td class="num">650</td><td>Still the reference shape</td></tr>
+  <tr><td><code>lib/buster_claw/notes.ex</code></td><td class="num">578</td><td>HELD</td><td class="num">610</td><td>Clean; Notes.Search if ever needed</td></tr>
+  <tr><td><code>lib/buster_claw/finance/sources.ex</code></td><td class="num">547</td><td>HELD</td><td class="num">580</td><td>Registry growth is the sanctioned growth</td></tr>
+  <tr><td><code>lib/buster_claw/integrations.ex</code></td><td class="num">539</td><td>HELD</td><td class="num">560</td><td>Ratchet to ~460 when the dedup lands</td></tr>
+  <tr><td><code>lib/buster_claw/notifications/cutup/align.ex</code></td><td class="num">936</td><td>HELD</td><td class="num">1030</td><td>Feature-sized; +10% maintenance room</td></tr>
+  <tr><td><code>lib/buster_claw/notifications/cutup/select.ex</code></td><td class="num">926</td><td>HELD</td><td class="num">1020</td><td>Same</td></tr>
+  <tr><td><code>lib/buster_claw/notifications/sound_studio.ex</code></td><td class="num">725</td><td>HELD</td><td class="num">800</td><td>Store split only if the folder half grows</td></tr>
+  <tr><td><code>desktop/tauri/src/browser/mod.rs</code></td><td class="num">934</td><td>HELD</td><td class="num">1000</td><td>The 07-22 shape, asserted at last</td></tr>
+  <tr><td><code>desktop/tauri/src/main.rs</code></td><td class="num">797</td><td>HELD</td><td class="num">850</td><td>menu.rs is the named seam if it trips</td></tr>
+  <tr><td><code>desktop/tauri/src/browser/js.rs</code></td><td class="num">582</td><td>HELD</td><td class="num">650</td><td>Growth = new scripts + new tests, here</td></tr>
+  <tr><td><code>assets/js/chrome.js</code></td><td class="num">864</td><td>FROZEN</td><td class="num">864</td><td>Owed find-bar + suggestions extraction</td></tr>
+  <tr><td><code>assets/js/hooks/tab_strip.js</code></td><td class="num">664</td><td>FROZEN</td><td class="num">664</td><td>Owed split-tabs + menu extraction; most fragile seam</td></tr>
+  <tr><td><code>assets/js/hooks/note_editor.js</code></td><td class="num">560</td><td>HELD</td><td class="num">600</td><td>Disciplined; the essay is load-bearing</td></tr>
+</table></div>
+
+<p class="small" style="margin-top:3rem; border-top:1px solid var(--line); padding-top:1rem;">
+Method: six parallel read-only reviewers (audio · agent-core · commands/CLI · web · core-domain ·
+JS/Rust), each briefed with the archived MODULARIZATION_ROADMAP's rulings, the size-gate inventory,
+and the operator's standing decisions. Clusters previously read-and-ruled-correct were health-checked
+only, and every prior ruling tested here survived except one: the application of the 08-08
+"commands/ is correct" ruling to <code>commands/sound.ex</code> specifically. No code was modified.
+</p>
+
+</div>
+</body>
+</html>

@@ -353,6 +353,68 @@ Pair with the Chart Build walk below; both need a browser and nothing else.
 
 ---
 
+### From the 08-13 code review — surfaces
+
+*Filed from [`CODE_REVIEW_08-13-26`](../CODE_REVIEW_08-13-26.html) §§4 and 6.
+Both frozen modularization phases were re-verified against current code and
+still fit — with corrections that change how they should be executed.*
+
+- **Phase 3 (Sound Studio catalog → core) fits, with one real correction:**
+  four catalog item builders bake router `~p` URLs
+  (`sound_studio_component.ex:208, 242, 258, 273`), so the core module takes
+  `{id, kind, name, label, sub, path}` — exactly what the missing `sound_*`
+  CLI needs — and the web side decorates `url` in the already-existing
+  `BusterClawWeb.SoundStudio.Catalog`. The plan's import-pipeline half is now
+  marginal (~60 lines); the better second cut is the render/trim/rename block
+  (~170 socket-free `{:ok,_}/{:error,_}` lines). Callers to update:
+  `StatusLive` reaches `collapsed_groups/0`/`put_collapsed/1` directly
+  (`status_live.ex:135, 318`).
+- **Phase 4 (Settings) fits, and its open question resolves YES:** every
+  settings sub-tab is its own route (`settings_tabs.ex:10–18`), so real
+  live_components are legitimate — forward `handle_info` via `send_update`,
+  the pattern `status/studio.ex` already uses. The numbers moved in the
+  split's favor: GWS is now 12 of 20 clauses. Models first (~300 lines, no
+  `handle_info`, maps 1:1 onto `ModelPolicy`).
+- **Calendar (866, FROZEN) now has its map and two byte-identical seams:**
+  view components + the modal form → `components/calendar/views.ex` (~240
+  lines; the `target` attr is already threaded), and the pure date/grid math →
+  core `Calendar.Grid` (~190 lines, zero assigns). Honors the home-panel
+  constraint — function components and pure modules only. Nits: the
+  Sunday-week-start expression ×3 (`:689, :695, :744`); `day_view`'s required
+  `:today` attr is unused (`:624`).
+- **Phase 8's premise has only strengthened:** the chip idiom is now at 14
+  occurrences (recorded 4× on 08-08), `button_outline` ×4 verbatim `defp`
+  copies plus an inline variant, display headings 8×/10×. Still correctly
+  sequenced *after* the extractions — it changes call sites.
+- **The cut-up pipeline is healthy — leave it — but carries four repairs:**
+  `safe_source/1` duplicated *verbatim* between the two stores
+  (`index.ex:428` ≡ `features.ex:720` — the one duplicate with security
+  weight); `gaps.ex:205` asserts the exact defect `index.ex:599` fixed
+  (damaged origin degrades to `:aligned`, not `:manual`); the 25/10 ms frame
+  clock is "pinned in Types" by prose only — three independent attribute
+  copies, one drift away from silently mis-timing every index; transcript and
+  index vocabularies use different apostrophe normal forms and nothing says
+  so.
+- `sound_studio_component.ex:297–303` — an empty "Import" section banner
+  labels code that moved to `:577–607`; and `resolve_source/1` triggers a full
+  4-directory + DB catalog rescan per clip, so an n-clip render does n scans —
+  pass the assigned `groups` down.
+- **`appearance.ex:379` vs `appearance_live.ex:955`** — with an image+shader
+  background selected, `option_key` matches no minted catalog key, so no tile
+  may highlight. Verify in the running app before treating as a bug.
+- **`shader_preview.js:86/115`** calls `getBoundingClientRect` every frame at
+  60fps — the exact forced layout its sibling `smoke_background.js:70–72`
+  documents avoiding — and skips the hidden-tab rAF stop. The two hooks also
+  duplicate the boot sequence nearly line-for-line (~60 lines a shared
+  `bootSmoke(el, opts)` would cut). The file is in flight under
+  `IMAGE_SHADER_ROADMAP`; fix it there.
+- Cosmetic, dated: "an mix" ×3 in `studio_mix.ex` (`:118, :285, :424`); the
+  Google bundled-connect handler pair duplicated between
+  `settings_live.ex:109–147` and `setup_live.ex:155–225` — two surfaces that
+  must move in lockstep today.
+
+---
+
 ## The rule for this file
 
 An item earns a line only if it is **concrete** (someone could do it today
