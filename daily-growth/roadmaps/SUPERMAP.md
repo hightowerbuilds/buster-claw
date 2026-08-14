@@ -158,7 +158,7 @@ and zero issues in the verdict. Budget hours per release, not minutes
 | Pockets | `PocketsPanel` | SHIPPED | — |
 | Calendar | `CalendarComponent` | SHIPPED | — |
 | Phone | `PhoneComponent` | surface SHIPPED, leg **ACTIVE** | [`BUSTERPHONE`](integrations/BUSTERPHONE_ROADMAP.md) |
-| **Studio → Mix** | `SoundStudioComponent` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — no `sound_*` CLI verbs |
+| **Studio → Mix** | `SoundStudioComponent` | SHIPPED | [`LEFTOVERS_AGENT_CORE`](agent-core/LEFTOVERS_AGENT_CORE.md) — `commands/sound.ex` is owed a split |
 | **Studio → Voice** | `Studio.Registry` | **PLACEHOLDER** | [`STUDIO`](surfaces/STUDIO_ROADMAP.md) Parts V–VI |
 | Explained | `ExplainedPanel` | SHIPPED | [`LEFTOVERS_SURFACES`](surfaces/LEFTOVERS_SURFACES.md) — two errands, five tiles |
 | Activity | `ActivityComponent` | SHIPPED | — |
