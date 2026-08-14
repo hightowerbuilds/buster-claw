@@ -91,7 +91,7 @@ the section tables below point at it from wherever else it applies.**
 2. **[BusterPhone](#part-vi--integrations)** — the only paid thing.
 3. **[Apple](#part-vii--platform--release)** — **`G-1`–`G-3` DONE 08-10: a notarized, stapled DMG exists.** What is next is not code — an **Apple Silicon Mac**.
 4. **[Studio → Voice](#part-ii--home)** — needs a person at a microphone.
-5. **[The Dialyzer gate](#part-vii--platform--release)** — red on `main`, blocking nothing.
+5. **[The Dialyzer gate](#part-vii--platform--release)** — **GREEN 08-13** (`1d52cff`): exit 0, was 67 findings. The baseline is a rule now rather than a file list, so adding a file no longer breaks it.
 
 Two of those wait on the operator rather than an agent: the `getUserMedia` spike
 needs a permission dialog clicked at a packaged build, and **`G-4` needs an Apple
