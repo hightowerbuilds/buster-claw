@@ -663,10 +663,13 @@ no API token, which is the second wall from the boundary section, proven.
 > **A phone is not a small laptop, and Phases 5–7 assume a laptop.** iOS
 > suspends a backgrounded app within seconds, so the forwarded port dies the
 > moment you leave the SSH client to look at the UI — which is the entire point.
-> `tailscale serve` reaches the loopback listener without any of this, keeps the
-> loopback bind intact, and may make the phone path need no SSH at all. Scoped
-> separately in [`PHONE_ACCESS`](PHONE_ACCESS_ROADMAP.md); **read it before
-> writing phone instructions into this phase's onboarding copy.**
+>
+> **The phone is not getting an SSH path at all.** Operator call 08-13: the
+> phone is a *control device*, not a second Buster Claw, and no mesh VPN is
+> wanted in the path. That points at the relay — which already polls outward and
+> needs no listener — rather than at anything in these phases. Scoped in
+> [`PHONE_ACCESS`](PHONE_ACCESS_ROADMAP.md), **parked until the desktop app
+> ships**. Do not write phone instructions into this phase's onboarding copy.
 
 - A Tailscale-aware guide, kept optional and vendor-neutral. Detect
   presence/version read-only; never enroll a tailnet or edit ACLs without the

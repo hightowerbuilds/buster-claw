@@ -1,264 +1,314 @@
 # Reaching Buster Claw from a phone
 
-*Scoped 08-13. Companion to [`CLINCH`](CLINCH_ROADMAP.md) Phases 5–7, which own
-the Mac side. This map owns the phone side and nothing else.*
+*Scoped 08-13, **reshaped the same day** by an operator call that changed which
+half of the problem we are solving. Companion to [`CLINCH`](CLINCH_ROADMAP.md)
+Phases 5–7, which own the Mac side.*
 
-**Nothing here is built. This is a research map, and its first phase is
-measurement rather than construction** — because the central question is about
-how iOS behaves, and that is not answerable by reading our own source.
+> ## PARKED — the desktop app ships first
+>
+> **Operator call, 08-13: the phone comes after the desktop app is complete.**
+> Nothing in this map starts until Release 1 is out the door
+> ([`DISTRIBUTION`](../distribution/DISTRIBUTION_ROADMAP.md)). It is written now
+> so the research is not re-derived later, and so nobody wires a phone path into
+> Clinch Phase 7's onboarding copy on the assumption that SSH is the answer.
+>
+> **It isn't.** Read *The shape we chose* before touching this.
 
 ---
 
 ## The question, stated honestly
 
-"Can I SSH into my laptop from my phone?" is two questions wearing one coat, and
-the answer differs for each:
+"Can I SSH into my laptop from my phone?" is two questions wearing one coat:
 
 | | |
 |---|---|
 | **A shell on the Mac, from the phone** | Yes. Solved, unglamorous, works today with an off-the-shelf app |
-| **The Buster Claw UI on the phone** | Much harder, and **SSH may be the wrong tool for it** |
+| **The Buster Claw UI on the phone** | Much harder — and **SSH turns out to be the wrong tool** |
 
-The second is the one worth a roadmap. Buster Claw's UI is a Phoenix app bound
-to `127.0.0.1`; reaching it means a forwarded port, and a forwarded port means a
-process on the phone holding a TCP socket open **while you are looking at a
-different app** — which is precisely what iOS is designed to prevent.
+---
+
+## The shape we chose
+
+The operator's requirement, in their words: *the ability to converse with Buster
+Claw in a way that the model is only ever looking at my computer, and there isn't
+a VPN with all of my info out there. The phone is more of a control device than
+another iteration of Buster Claw on the phone.*
+
+That is a different target from remote access, and a much better one. Three
+consequences follow immediately:
+
+1. **This is not sync, and must never drift into it.** There is one instance, on
+   the Mac. The phone holds no copy, works offline never, and has nothing to
+   reconcile. Sync would mean a second copy converging over time — a distributed
+   system, and one that collides head-on with the loopback premise.
+2. **The phone does not need the UI**, which is what made everything hard: iOS
+   backgrounding, tunnels, and the 18 of 29 LiveViews that have never been laid
+   out narrow.
+3. **The transport question mostly evaporates.** What remains is message passing,
+   and we already own a message-passing path where **the Mac never listens.**
+
+> **A control device needs a channel, not a window.** Every hard problem in
+> Track B below comes from trying to put a window on a phone.
 
 ---
 
 ## The fundamentals
 
-Four facts decide everything downstream. Three are structural and will not
-change; the fourth is the one that reframes the project.
+These are why SSH is not the answer, kept because the reasoning has to survive
+the next person who suggests it.
 
 ### F1 — iOS suspends a backgrounded app within seconds, and its sockets die
 
-This is not a bug, a setting, or a thing a better SSH client fixes. It is the
-platform's execution model. A forwarded port survives only while its owning app
-is alive, so the naive flow — open SSH app, start tunnel, switch to Safari — is
-the exact motion that kills the tunnel.
+Not a bug, a setting, or a thing a better client fixes — it is the platform's
+execution model. A forwarded port lives only while its owning app is alive, so
+"open SSH app, start tunnel, switch to Safari" is the exact motion that kills the
+tunnel.
 
-**On iPad this is softer:** split-screen keeps both apps foregrounded, which is
-why iPad users report tunnels that "just work" and iPhone users do not. **An
-iPad is a materially easier first target than an iPhone**, and we should not
-average the two into one claim.
+**On iPad this is softer**: split-screen keeps both apps foregrounded. An iPad is
+a materially easier target than an iPhone, and the two should never be averaged
+into one claim.
 
 ### F2 — Every iOS SSH client that survives backgrounding borrows an entitlement that has nothing to do with SSH
 
-Persistent background execution on iOS is granted to a short list of categories
-— location, audio, VoIP/CallKit, and Network Extension. An SSH client qualifies
-for none of them, so the ones that persist claim one anyway. Blink's documented
-mechanism is explicit about it: `geo track` **turns on location tracking** for
-the sole purpose of keeping the SSH connection alive. Termius advertises
-multi-hour background sessions; NaviTerm markets background port forwarding as a
-feature.
+Persistent background execution is granted to a short list: location, audio,
+VoIP/CallKit, Network Extension. SSH qualifies for none, so clients that persist
+claim one anyway. Blink's documented mechanism is `geo track`, which **turns on
+location tracking** purely to keep the connection alive.
 
-Read that plainly: **the stability is a workaround, not a capability.** It costs
-a location permission granted under false pretences, it costs battery, and it
-persists at Apple's discretion rather than the vendor's. Building our
-recommended remote path on top of someone else's entitlement workaround is a
-dependency we would not accept anywhere else in this codebase.
+**That is a workaround, not a capability.** It costs a location permission
+granted under false pretences, costs battery, and persists at Apple's discretion.
 
 ### F3 — mosh fixes the terminal and can never fix the UI
 
-Mosh is the right answer to F1 for a *shell*: it is UDP-based, survives IP
-changes, sleep and roaming, and reconnects without ceremony. It also **has no
-port forwarding**, by design and long-standing.
+Mosh is the right answer for a *shell* — UDP, survives sleep, roaming and IP
+changes. It also **has no port forwarding**, by design. It cleanly solves the
+easy question and is structurally incapable of solving the other one.
 
-So mosh cleanly solves question one and is structurally incapable of solving
-question two. Any plan that says "use mosh for stability" has quietly answered
-the easy question.
+### F4 — NAT and persistence are different problems
 
-### F4 — NAT and persistence are different problems, and Tailscale only solves one
-
-From cell data the Mac has no reachable address; it sits behind home NAT. A VPN
-mesh (Tailscale or equivalent) fixes that and gives the phone a stable address
-for the Mac.
-
-**It does not fix F1.** Tailscale-plus-SSH still needs an SSH app holding a
-socket. Conflating the two is the most likely way this project wastes a month:
-you install Tailscale, reachability improves, the tunnel still dies on lock, and
-the diagnosis lands on the wrong layer.
-
-### What follows
-
-> **"Stable SSH on a phone" decomposes into reachability and persistence. SSH
-> owns neither. It is the thing that runs *through* a solution to both.**
-
-Which raises the question the rest of this map turns on: if the phone needs a
-persistent, reachable transport anyway, **does it need SSH at all?**
+From cell data the Mac has no reachable address. A mesh VPN fixes that. **It does
+nothing for F1.** Conflating the two is the most likely way this wastes a month:
+reachability improves, the tunnel still dies on lock, and the diagnosis lands on
+the wrong layer.
 
 ---
 
-## The finding that reframes it
+# Track A — the control channel *(chosen)*
 
-`tailscale serve` proxies a **loopback** service to the tailnet over HTTPS. The
-Mac's own `tailscaled` connects to `127.0.0.1:4000` locally and publishes it to
-your other devices. On the phone, the Tailscale app is a Network Extension VPN —
-**a category iOS legitimately allows to persist**, which is exactly the
-entitlement F2 says SSH clients have to fake.
+## The relay is already the rendezvous
 
-The consequence for us is the interesting part:
+`Telephony.Drain` polls **outward** every 30 seconds (`@default_interval_ms
+30_000`) against the Supabase relay. Persist-then-ack, with a transcript grace
+period. **The Mac never listens.** There is no port to reach, nothing to forward,
+nothing exposed — the entire "how does the phone reach my Mac" problem does not
+arise, and it has been deployed since 07-12.
 
-- **Phoenix stays bound to `127.0.0.1`.** Our hardest invariant survives
-  untouched. Tailscale's own documentation independently arrives at the same
-  rule: *"when you use the identity headers to authenticate to a backend
-  service, it's best practice to only have the service listen on localhost."*
-  That is our existing architecture, described by someone else, for their
-  reasons.
-- **The phone needs no SSH client, no port forward, and no background hack.**
-  Safari and the Tailscale app.
-- **Serve supplies identity headers** (`Tailscale-User-Login` and friends). The
-  Clinch roadmap rejects binding to a LAN address because it *"erases the
-  loopback trust boundary without replacing it with identity."* Serve does not
-  erase the boundary **and** offers the identity — the first path that gets both.
+That is the same rendezvous pattern a rented cloud box would implement. We built
+it already, for telephony, and it generalises.
 
-This is not free, and the costs are real and specific:
+### What exists, and the one thing that doesn't
 
-- **`check_origin` breaks.** Production is `["//127.0.0.1", "//localhost"]`; the
-  origin becomes `https://<machine>.<tailnet>.ts.net` and the LiveView WebSocket
-  is refused. Fixable and one line, but it is a **per-user** value, so it has to
-  come from config the Remote Access panel writes — not a constant.
-- **Funnel is a one-word typo away.** `tailscale funnel` on the same port makes
-  the service **public**, and Funnel traffic carries **no identity headers**.
-  Serve and Funnel cannot share a port; whichever ran last wins. This deserves a
-  guard, not a warning in setup copy.
-- **Phoenix would sit behind a TLS-terminating proxy for the first time** —
-  forwarded scheme/host handling, secure cookies, URL generation.
-- **Vendor dependency.** Phase 7 of the Clinch map commits to keeping the
-  private-network guide *"optional and vendor-neutral."* Serve cannot be the
-  only path.
+Checked rather than assumed, 08-13:
+
+| | |
+|---|---|
+| Relay + outbound-polling drain | **Built** |
+| Outbound replies — `Twilio.send_sms/3` | **Built** |
+| Inbound persists, broadcasts to `PhoneLive`, reaches Sentinel | **Built** |
+| **An inbound message reaching the agent** | **Missing entirely** — there is not one reference to the agent anywhere in `lib/buster_claw/telephony/` |
+
+So today an inbound message lands in a list in the UI. **It is a mailbox, not a
+conversation**, and the gap between those two is most of this track.
+
+## A1 — Carry a message to the model and back
+
+The smallest honest version: a message arriving at the relay reaches the agent,
+the agent answers on the Mac against Mac-local context, and the reply returns by
+the same path.
+
+- Runs under a caller tier, like every other command path. **Not `:trusted`** —
+  a message from a phone is not a person at the keyboard, and the tier system
+  only means anything when the surface with the least proof gets the least trust.
+- Reuses the existing conversation machinery rather than growing a second chat
+  implementation with different semantics — the same reasoning that keeps Notes
+  writes on one path.
+- Rate-limited and bounded. A loop that answers its own messages is a bill.
+
+## A2 — Authentication, which is the actual work
+
+The phone posts to the relay over HTTPS. **That is a web endpoint, and it needs
+real auth — this is the piece that does not exist and must not be hand-waved.**
+It is precisely the "web-auth and session-security project" the Clinch map
+declined to take on accidentally; taking it on deliberately, scoped to one
+endpoint, is a different proposition.
+
+**The natural home is the Clinch, and the machinery already shipped.** A paired
+phone is a credential row with the lifecycle Phase 4 built: created, listed,
+audited, **revoked**, and re-keyed. Clinch Phase 6 pairs a *forwarding-only*
+device; this pairs a *control-only* device — same lifecycle, different
+capability, one implementation.
+
+**Invariant, non-negotiable:** a paired phone can converse. It can **never**
+manage credentials, and the refusal must be structural — no `__TAURI__`, no
+management token — not a policy check one refactor from being wrong.
+
+## A3 — The surface on the phone
+
+A minimal page, added to the home screen. Not the app. Send a message, read the
+reply, see whether the Mac is awake.
+
+**"The Mac is asleep" must be a first-class state**, not a spinner that never
+resolves. The drain's last successful tick already knows.
+
+**Exit for Track A:** a message sent from a phone on cellular reaches the model,
+is answered against Mac-local context, and returns — with the Mac never
+accepting an inbound connection, the phone unable to reach `/api/clinch`, and a
+revoked phone refused on its next attempt.
+
+---
+
+## What this costs, in money
+
+The reason this track leads: **it adds nothing to the bill.** Telephony becomes
+an *option* on top rather than the only way in.
+
+### If we do add SMS or voice
+
+Personal use is cheap. The compliance regime is the real cost.
+
+| | |
+|---|---|
+| Toll-free number (the trial 844) | ~$2.15/mo |
+| Messages, all-in with carrier pass-through | ~$0.012–0.013 each |
+| ~300 messages/month, personal use | **~$5–7/mo** |
+
+**Registration is the part that matters, and it does not belong to Twilio.**
+Brand and campaign fees are The Campaign Registry's and the carriers' — *every*
+US provider passes them through. **Switching to AWS End User Messaging or anyone
+else swaps the vendor and keeps the fees.**
+
+Two specifics worth carrying forward:
+
+- The trial number is **toll-free**, which uses **Toll-Free Verification, not
+  A2P 10DLC** — a cheaper path with its own approval process that can be
+  rejected. Confirm which regime applies before building on SMS.
+- **The GTM went voice-first specifically to avoid A2P.** Wiring SMS
+  conversation walks back into what that decision routed around. That is a
+  reason to keep telephony optional here, not a reason to abandon it.
+
+### The $5 cloud box, evaluated
+
+*Considered 08-13: could a $5 AWS instance replace Tailscale and Twilio?*
+
+**Replace Twilio: no.** A real phone number needs a carrier, and the
+registration follows you to whichever one you pick.
+
+**Replace Tailscale: yes, genuinely** — a rented rendezvous box is a sound,
+classic architecture, and $3–5/mo is the right price. It is rejected for a
+different reason:
+
+> **A box you rent sees more of your data than the VPN it replaces.** Tailscale
+> is WireGuard — encrypted end to end, device to device, unreadable by them. A
+> relay terminating TLS holds your Chat messages **in plaintext, in RAM, on
+> hardware in someone else's datacenter.** Avoiding it with end-to-end SSH drags
+> back every problem in F1–F4.
+
+And you would then be running a public internet-facing server: patching, cert
+renewal, auth, rate limits, abuse. **The $5 is the cheapest part of it.**
+
+Since the relay already implements the same pattern with no listener on the Mac,
+the box buys nothing we do not have. If Supabase ever needs replacing, that is a
+component swap — not a new architecture, and not a reason to start one now.
+
+---
+
+# Track B — the full UI on a phone *(deferred, possibly never)*
+
+Only if Track A proves that a conversation is not enough. Kept because the
+research is done and re-deriving it is waste.
+
+## B1 — Measure, do not design
+
+Every claim in F1–F4 is structural or vendor-documented; **none is measured on a
+real device with our app**, and the Clinch's rule is *prove the tunnel first*.
+
+| Step | What it proves |
+|---|---|
+| Load the UI, navigate three tabs | Initial HTML + routing |
+| Stream a long Chat response | LiveView WebSocket under load |
+| **Lock the screen 60s, unlock** | The F1 test. The one that matters |
+| **Switch apps 5 min, return** | The real usage pattern |
+| Idle 30 min on cellular | Keepalive and NAT rebinding |
+| Sleep the Mac, wake it | Reconnect, not just survival |
+| Upload from the photo library | Multipart through the transport |
+| Visit Terminal, Browser, Voice | That the remote-mode notices render (guarded 08-13, `d26c4ad`) |
+
+Across **SSH `-L` from an iOS client**, **the same over Tailscale**, and
+**Tailscale Serve** — on iPhone *and* iPad, because F1 differs. Record battery
+drain and whether the client demanded a location permission.
+
+## B2 — Choose a transport
+
+| Option | Strength | Cost / risk |
+|---|---|---|
+| SSH `-L` from an iOS app | Preserves every invariant; no new vendor | **Persistence depends on a third-party background hack (F2)** |
+| Tailscale + SSH `-L` | Fixes NAT (F4); pairs with Clinch Phase 6's restricted key | No better on the thing that actually breaks |
+| **Tailscale Serve** | **No SSH app on the phone.** Persistence via an entitlement iOS actually grants. **Loopback bind preserved.** Supplies identity headers | `check_origin` becomes per-user config; Funnel footgun; first proxy in front of Phoenix; vendor dependency the operator has declined |
+| Bind Phoenix to tailnet/LAN | — | **Already rejected**, and Serve makes it unnecessary |
+| Public HTTP tunnel / Funnel | — | **Already rejected** |
+
+**Serve is technically the strongest and is currently declined on preference** —
+the operator does not want a mesh VPN in the path. Recorded rather than
+argued: if Track B ever revives, this is where it starts, and the technical case
+is [Tailscale's own recommendation](https://tailscale.com/docs/features/tailscale-serve)
+that identity-header backends **listen only on localhost**, which is what we
+already do.
+
+## B3 — Origin and identity
+
+Only if B2 selects Serve. `check_origin` becomes a runtime list — loopback
+always, tailnet host only when remote mode is on. The existing guard
+(`remote_mode_test.exs`) refuses `false` and `true` and must keep passing: a list
+that grows is fine, a list that becomes a boolean is the failure it was written
+for. Plus a guard that **Funnel is off** — one command makes the service public
+and strips the identity headers, which is too sharp an edge for setup copy.
+
+## B4 — The UI has to survive a 390pt screen
+
+**11 of 29 LiveViews contain any responsive breakpoint classes.** Triage over
+Chat, Activity, Notes, Calendar and Settings; the rest may be honestly cramped.
+
+---
+
+# Track C — the companion app *(after the desktop app is complete)*
+
+Explicitly last, by operator call. Four shapes, one survives:
+
+| Shape | Verdict |
+|---|---|
+| `WKWebView` wrapper around the tunnel | **Near-zero value.** Add to Home Screen already gives an icon and a chromeless window, and the wrapper hits the same F1 wall |
+| Ship our own Network Extension VPN | **Reject.** The honest way to get persistence, and it makes us a network vendor — entitlement request, WireGuard-class engineering, permanent security surface. Rebuilding Tailscale to avoid depending on Tailscale |
+| Full native client over a public authenticated API | **Reject.** The web-auth project already declined, plus a second complete UI forever |
+| **Narrow companion — notifications, approvals, Activity, BusterPhone** | **The only one worth scoping.** It does what a web page cannot: push, an approve/deny surface for agent actions, share-sheet capture into Notes |
+
+The narrow companion is also the only shape where the management invariant is
+comfortable rather than strained: it never looks like a shell, so it is never
+tempted to act like one.
 
 ---
 
 ## Invariants
 
-Inherited from the Clinch, and non-negotiable here:
-
-1. **Phoenix binds only to loopback.** Every option below either preserves this
-   or is rejected.
-2. **A phone is never a credential-management surface.** Not the mobile web UI,
-   not a future native app. Management requires `window.__TAURI__` *and* an API
-   token, and no phone has either. **A native iOS app must not become a second
-   shell that quietly re-opens the door Phase 2 closed** — this is the single
-   most likely way an app would damage the security model, and it must be a
-   structural refusal rather than a policy check, exactly as on the desktop.
-3. **No public exposure.** Not Funnel, not router port-forwarding, not a
-   third-party HTTP tunnel. Unchanged from the Clinch's rejected list.
-4. **Nothing here becomes the only way in.** SSH-over-OpenSSH stays a supported
-   path for people who will not install a mesh VPN.
-
----
-
-## Phase 0 — Measure, do not design
-
-**The whole map is provisional until these numbers exist.** Every claim above
-about iOS is either structural (F1, F3) or sourced from vendor documentation
-(F2) — none of it is measured on *your* device with *our* app, and the Clinch's
-own rule is *prove the tunnel first*.
-
-Run each transport against the same script and record what actually happens:
-
-| Step | What it proves |
-|---|---|
-| Load the UI, sign nothing, navigate three tabs | Initial HTML + routing |
-| Send a long Chat message, watch it stream | LiveView WebSocket under sustained load |
-| **Lock the screen for 60s, unlock** | The F1 test. The one that matters |
-| **Switch to another app for 5 min, return** | The real usage pattern |
-| Leave it idle 30 min on cellular | Keepalive and NAT rebinding |
-| Sleep the Mac, wake it | Reconnect, not just survival |
-| Upload a file from the phone's photo library | Multipart through the transport |
-| Visit Terminal, Browser, Voice tabs | That the remote-mode notices render (guarded 08-13, `d26c4ad`) |
-
-Across three transports: **SSH `-L` from an iOS client**, **the same over
-Tailscale**, and **Tailscale Serve**. On both iPhone and iPad if one is
-available, because F1 differs between them.
-
-Record battery drain and whether the SSH client demanded a location permission.
-
-**Exit:** a filled table. Not a decision — the table *is* the deliverable, and
-Phase 1 is not allowed to start without it.
-
----
-
-## Phase 1 — Choose the transport
-
-| Option | Strength | Cost / risk |
-|---|---|---|
-| **A. SSH `-L` from an iOS SSH app** | Preserves every invariant untouched; no new vendor; works on any network we can already reach | **Persistence depends on a third-party background-mode workaround (F2).** Battery cost, a location prompt, and Apple's discretion |
-| **B. Tailscale + SSH `-L` over the tailnet** | Fixes NAT (F4); keeps the SSH gate; pairs with the Clinch's forwarding-only key | Still has A's persistence problem. Strictly better than A on reachability, no better on the thing that breaks |
-| **C. Tailscale Serve** | **No SSH app on the phone.** Persistence via an entitlement iOS actually grants. Loopback bind preserved. Gains identity headers | `check_origin` must become config-driven; Funnel footgun; first proxy in front of Phoenix; vendor dependency |
-| D. Bind Phoenix to the tailnet/LAN address | — | **Already rejected** in the Clinch map, and Serve makes it unnecessary |
-| E. Public HTTP tunnel / Funnel | — | **Already rejected.** A web-auth and session-security project wearing a networking hat |
-
-**Proposed: C for the UI, A retained for the shell.** They are complements, not
-rivals — Serve gives you the app on your phone, and an SSH client (with mosh,
-per F3) gives you a terminal when you want one. Neither needs the other.
-
-**B is the fallback** if Serve fails the Phase 0 table or the proxy proves
-fragile, on the same logic the Clinch applies to its gateway: *if the proxy adds
-fragility, take the simpler thing.*
-
-**A stays supported regardless**, for invariant 4.
-
----
-
-## Phase 2 — Make origin and identity honest
-
-Only if Phase 1 selects C.
-
-- `check_origin` becomes a list assembled at runtime: the two loopback entries
-  always, plus the tailnet hostname **only when remote mode is on**. The
-  existing guard (`remote_mode_test.exs`) already refuses `false` and `true` and
-  must keep passing — a list that grows is fine, a list that becomes a boolean
-  is the failure it was written for.
-- Decide, explicitly, whether identity headers are *used* or merely *present*.
-  Trusting them is only sound while nothing but `tailscaled` can reach the port,
-  which is true precisely because of invariant 1 — so **the day someone widens
-  the bind, header trust silently becomes forgeable.** If we consume them, that
-  coupling needs a test that fails on the bind change, not a comment.
-- **A guard that Funnel is not enabled**, checked from the app and surfaced in
-  the Remote Access panel. One command turns private into public and strips
-  identity; that is too sharp an edge to leave to documentation.
-- Proxy hygiene: forwarded scheme/host, secure cookie behaviour, generated URLs.
-
----
-
-## Phase 3 — The UI has to survive a 390pt screen
-
-Transport is only half of "usable from a phone." **11 of 29 LiveViews contain
-any responsive breakpoint classes**, which means the majority were laid out for
-a desktop window and have never been looked at narrow.
-
-This is not a rewrite. It is a triage pass over the surfaces a phone would
-actually use — Chat, Activity, Notes, Calendar, Settings — with the rest allowed
-to be honestly cramped. The dock, the split view and any fixed-width panel are
-the likely casualties.
-
-**This phase blocks the app question below**, because a native shell around an
-unusable layout is an expensive way to ship the same problem.
-
----
-
-## Phase 4 — The companion app question
-
-Deliberately last. Four shapes, and only one survives contact with F1–F4:
-
-| Shape | Verdict |
-|---|---|
-| **A `WKWebView` wrapper pointed at the tunnel** | **Near-zero value.** With transport C, Safari plus Add to Home Screen already gives an icon and a chromeless window. Without C, the wrapper cannot hold the tunnel either — it faces the same F1 wall |
-| **We ship our own Network Extension VPN** | **Reject.** It is the honest way to get persistence, and it makes us a network vendor: an entitlement request, WireGuard-class engineering, and a permanent security surface. We would be rebuilding Tailscale to avoid depending on Tailscale |
-| **A full native client over an authenticated public API** | **Reject.** This is the "web-auth and session-security project" the Clinch map already declined, plus a second complete UI to maintain forever |
-| **A narrow companion — notifications, approvals, Activity, BusterPhone** | **The only one worth scoping.** It does what the web UI *cannot*: push notifications, an approve/deny surface for agent actions, share-sheet capture into Notes, and a natural home for the call and SMS surface the money leg is building |
-
-The narrow companion is also the only shape where invariant 2 is comfortable
-rather than strained — it never needs to look like a shell, so it is never
-tempted to act like one.
-
-**Not scoped further here.** It should not start until Phases 0–3 answer whether
-a phone is a place people actually want this, and it inherits an unresolved
-question of its own: what an App Store reviewer makes of an app that is inert
-without a Mac on the same tailnet.
+1. **Phoenix binds only to loopback.** Inherited, non-negotiable.
+2. **A phone is never a credential-management surface.** Not the control page,
+   not a native app. **The most likely way a phone app damages this codebase is
+   by becoming a second shell that re-opens the door Clinch Phase 2 closed.**
+   Structural refusal, not a policy check.
+3. **No public exposure.** No Funnel, no router forwarding, no third-party HTTP
+   tunnel, no rented public listener.
+4. **No sync.** One instance, on the Mac. A phone that holds state is a
+   different product.
+5. **Nothing here becomes the only way in.**
 
 ---
 
@@ -266,50 +316,36 @@ without a Mac on the same tailnet.
 
 | Alternative | Decision |
 |---|---|
-| Recommend an SSH client's background hack as the supported path | **Reject as *the* path.** Fine as a documented option with its costs named (F2); not something we build a product promise on |
-| mosh for the UI | **Impossible**, not merely unwise — no port forwarding (F3) |
-| Tailscale Funnel | **Reject.** Public exposure, and it strips the identity headers that made Serve attractive |
-| Router port-forwarding / dynamic DNS | **Reject**, unchanged from the Clinch map |
-| Tauri's iOS target for a native app | **Reject.** Tauri v2 builds for iOS, but our shell is PTY, Keychain, `WKUIDelegate` and native-webview code that shares almost nothing with it. It would be a new app wearing a familiar name |
-| Averaging iPhone and iPad behaviour into one claim | **Reject.** Split-screen changes F1 materially; measure them separately |
+| **Buster Claw provisions its own cloud instance** | **Reject.** It means handing the agent credentials with instance-creation rights — the most abusable class there is, where the failure mode is a five-figure bill from a loop. It contradicts the standing rule that *Buster Claw never automates public exposure or UPnP*, at larger scale. And it points the agent at credentials that **spend money**, when the Clinch exists to keep it from credentials that merely unlock things |
+| A rented relay box instead of the Supabase relay | **Reject for now.** Same pattern, no listener gained, and TLS terminating on rented hardware is a worse privacy posture than the VPN it was meant to avoid |
+| Switching SMS providers to escape A2P fees | **Impossible.** The fees are the carriers' and The Campaign Registry's; every US provider passes them through |
+| An SSH client's background hack as *the* supported path | **Reject as the path.** Fine as a documented option with its costs named |
+| mosh for the UI | **Impossible**, not merely unwise (F3) |
+| Tauri's iOS target | **Reject.** Tauri v2 builds for iOS, but our shell is PTY, Keychain, `WKUIDelegate` and native-webview code that shares almost nothing. A new app wearing a familiar name |
+| Averaging iPhone and iPad behaviour | **Reject.** Split-screen changes F1 materially |
 
 ---
 
-## Exit criteria for the map as a whole
+## Open questions
 
-- The Phase 0 table is filled from a real device, and the chosen transport
-  survives a screen lock and a five-minute app switch.
-- Phoenix still binds only to loopback, proven by the existing gate.
-- A phone cannot reach `/api/clinch`, and the Clinch panels render their
-  unavailable notice — both already guarded, and both must still pass over the
-  new transport rather than only over `-L`.
-- Funnel is off and something other than a human checks that.
-- The five phone-relevant surfaces are usable at 390pt.
+**Track A** — what tier a phone message runs under; whether the relay's erase
+window is right for conversation rather than telephony; what "the Mac is asleep"
+looks like on the phone.
 
----
-
-## Open questions only a device can answer
-
-1. Does a LiveView WebSocket survive an iOS screen lock over Serve, or does the
-   VPN persist while Safari's socket does not? **The Network Extension staying
-   alive does not entail the browser's connection staying alive**, and this is
-   the single assumption most likely to be wrong.
-2. Does Serve proxy WebSockets without additional configuration?
-3. How long does an idle tunnel survive on cellular before NAT rebinding kills
-   it, and does LiveView's reconnect cover it?
-4. iPhone versus iPad: how much of the difference is split-screen, and does that
-   change the recommendation?
+**Track B**, if it ever revives — whether a LiveView WebSocket survives an iOS
+screen lock over Serve. **The Network Extension staying alive does not entail
+the browser's connection staying alive**, and that is the assumption most likely
+to be wrong.
 
 ---
 
 ## Research sources
 
-- [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve) —
-  loopback proxying, identity headers, the localhost-binding recommendation
-- [Tailscale Funnel](https://tailscale.com/docs/features/tailscale-funnel) —
-  public exposure, and why it and Serve cannot share a port
-- [`tailscale serve` reference](https://tailscale.com/docs/reference/tailscale-cli/serve)
+- [Twilio US SMS pricing](https://www.twilio.com/en-us/sms/pricing/us)
+- [A2P 10DLC brands, campaigns and costs](https://www.piyushgambhir.com/blogs/twilio-a2p-brands-campaigns-costs-throughput-compliance)
+- [Twilio 10DLC registration explained](https://www.sociocs.com/post/twilio-10dlc-explained/)
+- [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve) — loopback proxying, identity headers, the localhost-binding recommendation
+- [Tailscale Funnel](https://tailscale.com/docs/features/tailscale-funnel) — public exposure, and why it and Serve cannot share a port
 - [Blink Shell — advanced SSH, tunnels and `geo track`](https://docs.blink.sh/advanced/advanced-ssh)
 - [Termius — port forwarding and tunneling](https://docs.termius.com/organize-and-connect-to-hosts/port-forwarding-and-tunneling)
-- Carried from [`CLINCH`](CLINCH_ROADMAP.md): OpenSSH forwarding and
-  authorized-key restrictions, Tailscale SSH, SSH-over-Tailscale
+- Carried from [`CLINCH`](CLINCH_ROADMAP.md): OpenSSH forwarding and authorized-key restrictions, Tailscale SSH
