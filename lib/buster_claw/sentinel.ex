@@ -82,7 +82,12 @@ defmodule BusterClaw.Sentinel do
 
     case %Event{} |> Event.changeset(attrs) |> Repo.insert() do
       {:ok, event} ->
-        PubSub.broadcast(BusterClaw.PubSub, @topic, {:security_event, event})
+        # Deliberately discarded, and gated so it has to be said out loud: the
+        # event is already persisted by this point, so a failed broadcast costs
+        # a live UI update and nothing durable. Failing the observe here would
+        # invert that — it would turn "the feed did not refresh" into "the
+        # security event did not record".
+        _ = PubSub.broadcast(BusterClaw.PubSub, @topic, {:security_event, event})
         {:ok, event}
 
       {:error, reason} = err ->

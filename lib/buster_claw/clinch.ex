@@ -252,15 +252,26 @@ defmodule BusterClaw.Clinch do
   # `audit: false` exists for `known?/1` alone: an existence check is not a use,
   # and recording one would make the feed claim a credential was consumed when
   # nothing read it.
+  #
+  # The `_ =` on each `observe/4` below is deliberate and gated. `Sentinel`
+  # logs its own persist failure, and a failed audit write must not fail the
+  # credential operation that triggered it — but this file is on the
+  # `unmatched_return` gate list in `.dialyzer_ignore.exs`, so discarding that
+  # result has to be *written down* rather than defaulted to. That gate exists
+  # because this exact discard has already cost us once: two revocation
+  # categories recorded nothing while the suite stayed green, since `Event`
+  # whitelists categories and `observe/4` is best-effort. `_ =` is a signature,
+  # not a shrug.
   defp audit_use(kind, name, opts) do
-    if Keyword.get(opts, :audit, true) do
-      Sentinel.observe(
-        :credential_use,
-        "#{kind} credential \"#{normalize(name)}\" resolved",
-        %{kind: kind, name: normalize(name)},
-        caller: opts[:caller]
-      )
-    end
+    _ =
+      if Keyword.get(opts, :audit, true) do
+        Sentinel.observe(
+          :credential_use,
+          "#{kind} credential \"#{normalize(name)}\" resolved",
+          %{kind: kind, name: normalize(name)},
+          caller: opts[:caller]
+        )
+      end
 
     :ok
   end
@@ -270,12 +281,13 @@ defmodule BusterClaw.Clinch do
   # worse: it would leave a path that removes a credential WITHOUT the event, which
   # is exactly the "looks like a typo in the audit feed" state this replaces.
   defp audit_revoked(kind, name, opts) do
-    Sentinel.observe(
-      :credential_revoked,
-      "#{kind} credential \"#{normalize(name)}\" revoked — anything using it will now fail",
-      %{kind: kind, name: normalize(name)},
-      caller: opts[:caller]
-    )
+    _ =
+      Sentinel.observe(
+        :credential_revoked,
+        "#{kind} credential \"#{normalize(name)}\" revoked — anything using it will now fail",
+        %{kind: kind, name: normalize(name)},
+        caller: opts[:caller]
+      )
 
     :ok
   end
@@ -289,15 +301,16 @@ defmodule BusterClaw.Clinch do
   # configured", because nothing keeps a tombstone. It says a credential was
   # wanted and absent, and names what to do about it.
   defp audit_missing(kind, name, opts) do
-    if Keyword.get(opts, :audit, true) do
-      Sentinel.observe(
-        :credential_missing,
-        "#{kind} credential \"#{normalize(name)}\" was needed and is not stored — " <>
-          "store it in Settings → Configuration, or restore the master key if it was rotated",
-        %{kind: kind, name: normalize(name)},
-        caller: opts[:caller]
-      )
-    end
+    _ =
+      if Keyword.get(opts, :audit, true) do
+        Sentinel.observe(
+          :credential_missing,
+          "#{kind} credential \"#{normalize(name)}\" was needed and is not stored — " <>
+            "store it in Settings → Configuration, or restore the master key if it was rotated",
+          %{kind: kind, name: normalize(name)},
+          caller: opts[:caller]
+        )
+      end
 
     :ok
   end

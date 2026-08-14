@@ -66,7 +66,13 @@ defmodule BusterClaw.Sentinel.Pending do
     }
 
     entries = Enum.take([entry | state.entries], @max_entries)
-    PubSub.broadcast(BusterClaw.PubSub, @topic, {:pending_action, entry})
+
+    # Discarded on purpose, and gated so it is written rather than defaulted:
+    # the entry is already in this GenServer's state, which is what `list/0`
+    # reads. A failed broadcast means a watching LiveView misses the nudge, not
+    # that the pending action was lost.
+    _ = PubSub.broadcast(BusterClaw.PubSub, @topic, {:pending_action, entry})
+
     {:noreply, %{state | entries: entries, seq: seq}}
   end
 

@@ -158,7 +158,7 @@ defmodule BusterClaw.Notes do
          :ok <- exclusive_write(target, "") do
       relative = Path.relative_to(target, dir())
       result = get(relative)
-      broadcast({:created, relative})
+      _ = broadcast({:created, relative})
       {:ok, result}
     else
       {:error, :eexist} -> {:error, :exists}
@@ -175,7 +175,7 @@ defmodule BusterClaw.Notes do
          {:ok, target} <- safe_directory_path(path),
          true <- not File.exists?(target) || {:error, :exists},
          :ok <- File.mkdir_p(target) do
-      broadcast({:folder_created, normalize_relative(path)})
+      _ = broadcast({:folder_created, normalize_relative(path)})
       :ok
     else
       {:error, reason} -> {:error, reason}
@@ -199,7 +199,7 @@ defmodule BusterClaw.Notes do
          {:ok, absolute} <- safe_note_path(path),
          :ok <- atomic_write(absolute, body) do
       saved = note(path, body, absolute)
-      broadcast({:saved, saved.path, saved.revision})
+      _ = broadcast({:saved, saved.path, saved.revision})
       {:ok, saved}
     else
       nil -> {:error, :not_found}
@@ -231,7 +231,7 @@ defmodule BusterClaw.Notes do
     with {:ok, absolute} <- safe_note_path(path),
          {:ok, %File.Stat{type: :regular}} <- File.stat(absolute),
          :ok <- File.rm(absolute) do
-      broadcast({:deleted, normalize_relative(path)})
+      _ = broadcast({:deleted, normalize_relative(path)})
       :ok
     else
       {:error, :enoent} -> :ok
@@ -421,7 +421,7 @@ defmodule BusterClaw.Notes do
          :ok <- exclusive_write(destination, body),
          :ok <- remove_source(source, destination) do
       moved = normalize_relative(to)
-      broadcast({:moved, normalize_relative(from), moved})
+      _ = broadcast({:moved, normalize_relative(from), moved})
       {:ok, get(moved)}
     else
       :unchanged -> {:ok, get(normalize_relative(from))}
@@ -441,7 +441,7 @@ defmodule BusterClaw.Notes do
         :ok
 
       {:error, reason} ->
-        File.rm(destination)
+        _ = File.rm(destination)
         {:error, reason}
     end
   end
@@ -547,7 +547,7 @@ defmodule BusterClaw.Notes do
       :ok
     else
       {:error, reason} ->
-        File.rm(temporary)
+        _ = File.rm(temporary)
         {:error, reason}
     end
   end
