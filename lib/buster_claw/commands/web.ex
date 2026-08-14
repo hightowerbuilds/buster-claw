@@ -225,50 +225,14 @@ defmodule BusterClaw.Commands.Web do
   selector/text targets don't. Every click records an explicit Sentinel event
   with its provenance (target + element label + how it matched).
   """
-  def browser_click(%{"selector" => selector}) when is_binary(selector) and selector != "" do
-    with {:ok, result} <- element_action(:click, %{"selector" => selector}) do
-      label = element_label(result)
-      matched_by = matched_by(result, "selector")
+  def browser_click(%{"selector" => selector}) when is_binary(selector) and selector != "",
+    do: element_command(:click, :selector, selector, %{})
 
-      BusterClaw.Sentinel.observe(
-        :outbound_send,
-        ~s|Clicked element matching "#{selector}" (#{label}) in the user's live tab|,
-        %{via: "browser_click", selector: selector, label: label, matched_by: matched_by}
-      )
+  def browser_click(%{"text" => text}) when is_binary(text) and text != "",
+    do: element_command(:click, :text, text, %{})
 
-      {:ok, %{clicked: selector, label: label, matched_by: matched_by}}
-    end
-  end
-
-  def browser_click(%{"text" => text}) when is_binary(text) and text != "" do
-    with {:ok, result} <- element_action(:click, %{"text" => text}) do
-      label = element_label(result)
-      matched_by = matched_by(result, "text")
-
-      BusterClaw.Sentinel.observe(
-        :outbound_send,
-        ~s|Clicked element with text "#{text}" (#{label}) in the user's live tab|,
-        %{via: "browser_click", text: text, label: label, matched_by: matched_by}
-      )
-
-      {:ok, %{clicked: text, label: label, matched_by: matched_by}}
-    end
-  end
-
-  def browser_click(%{"index" => index}) when is_integer(index) and index >= 0 do
-    with {:ok, result} <- element_action(:click, %{"index" => index}) do
-      label = element_label(result)
-      matched_by = matched_by(result, "index")
-
-      BusterClaw.Sentinel.observe(
-        :outbound_send,
-        "Clicked element ##{index} (#{label}) in the user's live tab",
-        %{via: "browser_click", index: index, label: label, matched_by: matched_by}
-      )
-
-      {:ok, %{clicked: index, label: label, matched_by: matched_by}}
-    end
-  end
+  def browser_click(%{"index" => index}) when is_integer(index) and index >= 0,
+    do: element_command(:click, :index, index, %{})
 
   def browser_click(_args), do: {:error, :missing_target}
 
@@ -284,80 +248,70 @@ defmodule BusterClaw.Commands.Web do
   label, how it matched, and the value's *length* — never the raw value).
   """
   def browser_fill(%{"selector" => selector, "value" => value})
-      when is_binary(selector) and selector != "" and is_binary(value) do
-    with {:ok, result} <- element_action(:fill, %{"selector" => selector, "value" => value}) do
-      label = element_label(result)
-      matched_by = matched_by(result, "selector")
-
-      BusterClaw.Sentinel.observe(
-        :outbound_send,
-        ~s|Filled element matching "#{selector}" (#{label}) in the user's live tab|,
-        %{
-          via: "browser_fill",
-          selector: selector,
-          label: label,
-          matched_by: matched_by,
-          value_length: String.length(value)
-        }
-      )
-
-      {:ok,
-       %{
-         filled: selector,
-         label: label,
-         matched_by: matched_by,
-         value_length: String.length(value)
-       }}
-    end
-  end
+      when is_binary(selector) and selector != "" and is_binary(value),
+      do: element_command(:fill, :selector, selector, %{"value" => value})
 
   def browser_fill(%{"text" => text, "value" => value})
-      when is_binary(text) and text != "" and is_binary(value) do
-    with {:ok, result} <- element_action(:fill, %{"text" => text, "value" => value}) do
-      label = element_label(result)
-      matched_by = matched_by(result, "text")
-
-      BusterClaw.Sentinel.observe(
-        :outbound_send,
-        ~s|Filled element with text "#{text}" (#{label}) in the user's live tab|,
-        %{
-          via: "browser_fill",
-          text: text,
-          label: label,
-          matched_by: matched_by,
-          value_length: String.length(value)
-        }
-      )
-
-      {:ok,
-       %{filled: text, label: label, matched_by: matched_by, value_length: String.length(value)}}
-    end
-  end
+      when is_binary(text) and text != "" and is_binary(value),
+      do: element_command(:fill, :text, text, %{"value" => value})
 
   def browser_fill(%{"index" => index, "value" => value})
-      when is_integer(index) and index >= 0 and is_binary(value) do
-    with {:ok, result} <- element_action(:fill, %{"index" => index, "value" => value}) do
+      when is_integer(index) and index >= 0 and is_binary(value),
+      do: element_command(:fill, :index, index, %{"value" => value})
+
+  def browser_fill(_args), do: {:error, :missing_target_or_value}
+
+  # One body for all six click/fill clauses. The clause heads above own what
+  # actually differs between them: the target precedence (selector → text →
+  # index), the guards, and the `:missing_target` vs `:missing_target_or_value`
+  # fallthrough — so a malformed target still falls through to the next head
+  # exactly as before.
+  #
+  # `target` is only ever *placed* under a key, never tested for truthiness:
+  # `index: 0` is a real target and must not read as "no target given".
+  defp element_command(action, kind, target, extra) do
+    key = Atom.to_string(kind)
+
+    with {:ok, result} <- element_action(action, Map.put(extra, key, target)) do
       label = element_label(result)
-      matched_by = matched_by(result, "index")
+      matched_by = matched_by(result, key)
+      # fill alone carries the value's LENGTH (never the raw value); click adds
+      # nothing. Deliberately per-action, not unified.
+      details = element_details(extra)
 
       BusterClaw.Sentinel.observe(
         :outbound_send,
-        "Filled element ##{index} (#{label}) in the user's live tab",
-        %{
-          via: "browser_fill",
-          index: index,
-          label: label,
-          matched_by: matched_by,
-          value_length: String.length(value)
-        }
+        element_message(action, kind, target, label),
+        details
+        |> Map.merge(%{via: "browser_#{action}", label: label, matched_by: matched_by})
+        |> Map.put(kind, target)
       )
 
       {:ok,
-       %{filled: index, label: label, matched_by: matched_by, value_length: String.length(value)}}
+       details
+       |> Map.merge(%{label: label, matched_by: matched_by})
+       |> Map.put(result_key(action), target)}
     end
   end
 
-  def browser_fill(_args), do: {:error, :missing_target_or_value}
+  defp element_details(%{"value" => value}), do: %{value_length: String.length(value)}
+  defp element_details(_extra), do: %{}
+
+  defp result_key(:click), do: :clicked
+  defp result_key(:fill), do: :filled
+
+  defp element_verb(:click), do: "Clicked"
+  defp element_verb(:fill), do: "Filled"
+
+  defp element_message(action, :selector, target, label),
+    do: ~s|#{element_verb(action)} element matching "#{target}" (#{label}) in the user's live tab|
+
+  defp element_message(action, :text, target, label),
+    do:
+      ~s|#{element_verb(action)} element with text "#{target}" (#{label}) in the user's live tab|
+
+  defp element_message(action, :index, target, label),
+    do: "#{element_verb(action)} element ##{target} (#{label}) in the user's live tab"
 
   # Run a click/fill through the bridge and decode the page script's small JSON
   # result, so failures ("stale index — call browser_find_elements again",

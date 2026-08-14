@@ -177,6 +177,38 @@ defmodule BusterClaw.Commands.WebCopresenceTest do
     assert {:error, :bad_element_payload} = Task.await(task)
   end
 
+  # Index 0 is a real target, not "no target given". Every other click/fill
+  # assertion in this file echoes the target back from the caller's own args, so
+  # a truthiness-style check that dropped `index: 0` from the *bridge payload*
+  # would leave the whole suite green while the desktop got no target at all.
+  # Pin the payload itself, for both verbs.
+  test "index 0 reaches the desktop as a real target for both click and fill" do
+    Bridge.subscribe()
+
+    click = Task.async(fn -> Commands.browser_click(%{"index" => 0}) end)
+    assert_receive {:browser_command, click_ref, :click, click_payload}, 1_000
+    assert click_payload["index"] == 0
+
+    Bridge.fulfill(click_ref, {:ok, %{data: Jason.encode!(%{"ok" => true, "label" => "First"})}})
+    assert {:ok, %{clicked: 0, label: "First", matched_by: "index"}} = Task.await(click)
+
+    assert [click_event | _] = BusterClaw.Sentinel.list_events(limit: 1)
+    assert click_event.message =~ "Clicked element #0 (First)"
+    assert click_event.metadata["index"] == 0
+
+    fill = Task.async(fn -> Commands.browser_fill(%{"index" => 0, "value" => "abc"}) end)
+    assert_receive {:browser_command, fill_ref, :fill, fill_payload}, 1_000
+    assert fill_payload["index"] == 0
+    assert fill_payload["value"] == "abc"
+
+    Bridge.fulfill(fill_ref, {:ok, %{data: Jason.encode!(%{"ok" => true, "label" => "First"})}})
+    assert {:ok, %{filled: 0, label: "First", value_length: 3}} = Task.await(fill)
+
+    assert [fill_event | _] = BusterClaw.Sentinel.list_events(limit: 1)
+    assert fill_event.message =~ "Filled element #0 (First)"
+    assert fill_event.metadata["index"] == 0
+  end
+
   test "browser_tabs reads the durable per-surface tab state" do
     state = %{"tabs" => [%{"url" => "https://a.com", "label" => "A"}], "active" => 0}
     BusterClaw.Settings.put("browser_tabs.main", Jason.encode!(state))
