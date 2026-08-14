@@ -119,6 +119,56 @@ defmodule BusterClaw.IntegrationsTest do
     assert integration.last_error == "Integration is disabled"
   end
 
+  test "webhook failures record an error run and mark the integration errored" do
+    body = Jason.encode!(%{"action" => "opened"})
+
+    assert {:ok, integration} =
+             Integrations.create_integration(%{
+               name: "webhook-repo",
+               service_type: "github",
+               webhook_secret: "webhook-secret",
+               config_text: ~s({"owner":"acme","repo":"checkout"})
+             })
+
+    assert {:error, run} =
+             Integrations.handle_webhook(
+               integration,
+               [{"x-hub-signature-256", "sha256=deadbeef"}],
+               body
+             )
+
+    assert run.integration_id == integration.id
+    assert run.trigger == "webhook"
+    assert run.status == "error"
+    assert run.records_fetched == 0
+    assert run.error =~ "unauthorized"
+
+    integration = Integrations.get_integration!(integration.id)
+    assert integration.last_status == "error"
+    assert integration.last_error =~ "unauthorized"
+  end
+
+  test "webhooks for disabled integrations record a disabled run" do
+    assert {:ok, integration} =
+             Integrations.create_integration(%{
+               name: "disabled-webhook-repo",
+               service_type: "github",
+               webhook_secret: "webhook-secret",
+               enabled: false
+             })
+
+    assert {:error, run} =
+             Integrations.handle_webhook(integration, [], Jason.encode!(%{"action" => "opened"}))
+
+    assert run.trigger == "webhook"
+    assert run.status == "error"
+    assert run.error == "Integration is disabled"
+
+    integration = Integrations.get_integration!(integration.id)
+    assert integration.last_status == "disabled"
+    assert integration.last_error == "Integration is disabled"
+  end
+
   test "latest_documents returns integration tagged Library documents first" do
     integration_doc = raw_document!("GitHub Snapshot", ["integration", "github", "monitoring"])
     _other_doc = raw_document!("Regular Document", ["research"])

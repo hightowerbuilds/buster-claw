@@ -472,24 +472,10 @@ defmodule BusterClaw.Integrations.GitHub do
     expected = :crypto.mac(:hmac, :sha256, secret, body) |> Base.encode16(case: :lower)
     signature = signature |> String.trim() |> String.trim_leading("sha256=") |> String.downcase()
 
-    if secure_compare(expected, signature), do: :ok, else: {:error, :unauthorized}
+    # Plug.Crypto.secure_compare/2 is the audited version of the same
+    # length-safe constant-time loop this module used to hand-roll.
+    if Plug.Crypto.secure_compare(expected, signature), do: :ok, else: {:error, :unauthorized}
   end
-
-  defp secure_compare(expected, candidate) when is_binary(candidate) do
-    expected = to_string(expected)
-
-    if byte_size(expected) == byte_size(candidate) do
-      expected
-      |> :binary.bin_to_list()
-      |> Enum.zip(:binary.bin_to_list(candidate))
-      |> Enum.reduce(0, fn {left, right}, acc -> Bitwise.bor(acc, Bitwise.bxor(left, right)) end)
-      |> Kernel.==(0)
-    else
-      false
-    end
-  end
-
-  defp secure_compare(_expected, _candidate), do: false
 
   defp timestamp, do: DateTime.utc_now() |> DateTime.truncate(:second)
 end

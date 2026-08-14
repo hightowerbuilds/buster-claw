@@ -28,6 +28,7 @@ defmodule BusterClaw.Integrations do
 
   @topic "integrations"
   @max_error 8_000
+  @disabled_error "Integration is disabled"
 
   def topic, do: @topic
 
@@ -112,29 +113,11 @@ defmodule BusterClaw.Integrations do
   end
 
   def poll_integration(%Integration{enabled: false} = integration, opts) do
-    now = timestamp()
-    error = "Integration is disabled"
-
-    {:ok, run} =
-      create_run(%{
-        integration_id: integration.id,
-        trigger: trigger(opts),
-        status: "error",
-        records_fetched: 0,
-        error: error,
-        started_at: now,
-        finished_at: now,
-        metadata: %{"service_type" => integration.service_type}
-      })
-
-    {:ok, _integration} =
-      update_integration(integration, %{
-        last_run_at: now,
-        last_status: "disabled",
-        last_error: error
-      })
-
-    {:error, run}
+    record_failure(integration, @disabled_error,
+      trigger: trigger(opts),
+      started_at: timestamp(),
+      last_status: "disabled"
+    )
   end
 
   def poll_integration(%Integration{} = integration, opts) do
@@ -145,28 +128,10 @@ defmodule BusterClaw.Integrations do
         poll_with_adapter(integration, adapter, now, opts)
 
       {:error, reason} ->
-        error = bounded_error(error_message(reason))
-
-        {:ok, run} =
-          create_run(%{
-            integration_id: integration.id,
-            trigger: trigger(opts),
-            status: "error",
-            records_fetched: 0,
-            error: error,
-            started_at: now,
-            finished_at: now,
-            metadata: %{"service_type" => integration.service_type}
-          })
-
-        {:ok, _integration} =
-          update_integration(integration, %{
-            last_run_at: now,
-            last_status: "error",
-            last_error: error
-          })
-
-        {:error, run}
+        record_failure(integration, failure_error(reason),
+          trigger: trigger(opts),
+          started_at: now
+        )
     end
   end
 
@@ -179,53 +144,18 @@ defmodule BusterClaw.Integrations do
 
     case result do
       {:ok, items, documents, skipped_snapshots} ->
-        document = List.first(documents)
-
-        {:ok, run} =
-          create_run(%{
-            integration_id: integration.id,
-            document_id: document && document.id,
-            trigger: trigger(opts),
-            status: "ok",
-            records_fetched: length(items),
-            error: nil,
-            started_at: started_at,
-            finished_at: timestamp(),
-            metadata: poll_metadata(integration, documents, skipped_snapshots)
-          })
-
-        {:ok, _integration} =
-          update_integration(integration, %{
-            last_run_at: started_at,
-            last_status: "ok",
-            last_error: nil
-          })
-
-        {:ok, run}
+        record_success(integration, documents, length(items),
+          trigger: trigger(opts),
+          started_at: started_at,
+          metadata: poll_metadata(integration, documents, skipped_snapshots)
+        )
 
       {:error, reason} ->
-        error = bounded_error(error_message(reason))
-
-        {:ok, run} =
-          create_run(%{
-            integration_id: integration.id,
-            trigger: trigger(opts),
-            status: "error",
-            records_fetched: 0,
-            error: error,
-            started_at: started_at,
-            finished_at: timestamp(),
-            metadata: %{"service_type" => integration.service_type}
-          })
-
-        {:ok, _integration} =
-          update_integration(integration, %{
-            last_run_at: started_at,
-            last_status: "error",
-            last_error: error
-          })
-
-        {:error, run}
+        record_failure(integration, failure_error(reason),
+          trigger: trigger(opts),
+          started_at: started_at,
+          finished_at: timestamp()
+        )
     end
   end
 
@@ -294,7 +224,7 @@ defmodule BusterClaw.Integrations do
     config = config || %{}
 
     %{
-      enabled: enabled_config?(%Integration{config: config}, "dedupe_poll_snapshots"),
+      enabled: enabled_config?(config, "dedupe_poll_snapshots"),
       window_days: dedupe_window_days(Map.get(config, "dedupe_window_days", 30))
     }
   end
@@ -396,29 +326,11 @@ defmodule BusterClaw.Integrations do
   end
 
   def handle_webhook(%Integration{enabled: false} = integration, _headers, _body, opts) do
-    now = timestamp()
-    error = "Integration is disabled"
-
-    {:ok, run} =
-      create_run(%{
-        integration_id: integration.id,
-        trigger: trigger(Keyword.put(opts, :trigger, "webhook")),
-        status: "error",
-        records_fetched: 0,
-        error: error,
-        started_at: now,
-        finished_at: now,
-        metadata: %{"service_type" => integration.service_type}
-      })
-
-    {:ok, _integration} =
-      update_integration(integration, %{
-        last_run_at: now,
-        last_status: "disabled",
-        last_error: error
-      })
-
-    {:error, run}
+    record_failure(integration, @disabled_error,
+      trigger: webhook_trigger(opts),
+      started_at: timestamp(),
+      last_status: "disabled"
+    )
   end
 
   def handle_webhook(%Integration{} = integration, headers, body, opts) do
@@ -434,58 +346,89 @@ defmodule BusterClaw.Integrations do
 
     case result do
       {:ok, items, documents} ->
-        document = List.first(documents)
-
-        {:ok, run} =
-          create_run(%{
-            integration_id: integration.id,
-            document_id: document && document.id,
-            trigger: trigger(Keyword.put(opts, :trigger, "webhook")),
-            status: "ok",
-            records_fetched: length(items),
-            error: nil,
-            started_at: now,
-            finished_at: timestamp(),
-            metadata: %{
-              "service_type" => integration.service_type,
-              "documents" => Enum.map(documents, & &1.artifact_path)
-            }
-          })
-
-        {:ok, _integration} =
-          update_integration(integration, %{last_run_at: now, last_status: "ok", last_error: nil})
-
-        {:ok, run}
+        record_success(integration, documents, length(items),
+          trigger: webhook_trigger(opts),
+          started_at: now,
+          metadata: %{
+            "service_type" => integration.service_type,
+            "documents" => Enum.map(documents, & &1.artifact_path)
+          }
+        )
 
       {:error, reason} ->
-        error = bounded_error(error_message(reason))
-
-        {:ok, run} =
-          create_run(%{
-            integration_id: integration.id,
-            trigger: trigger(Keyword.put(opts, :trigger, "webhook")),
-            status: "error",
-            records_fetched: 0,
-            error: error,
-            started_at: now,
-            finished_at: timestamp(),
-            metadata: %{"service_type" => integration.service_type}
-          })
-
-        {:ok, _integration} =
-          update_integration(integration, %{
-            last_run_at: now,
-            last_status: "error",
-            last_error: error
-          })
-
-        {:error, run}
+        record_failure(integration, failure_error(reason),
+          trigger: webhook_trigger(opts),
+          started_at: now,
+          finished_at: timestamp()
+        )
     end
   end
 
+  # The one place a run row is written for a failed poll/webhook. Callers differ
+  # only in the trigger, the clock (a disabled/adapter check finishes at the same
+  # instant it started; real work finishes later) and whether the integration is
+  # marked "disabled" rather than "error".
+  defp record_failure(%Integration{} = integration, error, opts) do
+    started_at = Keyword.fetch!(opts, :started_at)
+
+    {:ok, run} =
+      create_run(%{
+        integration_id: integration.id,
+        trigger: Keyword.fetch!(opts, :trigger),
+        status: "error",
+        records_fetched: 0,
+        error: error,
+        started_at: started_at,
+        finished_at: Keyword.get(opts, :finished_at, started_at),
+        metadata: %{"service_type" => integration.service_type}
+      })
+
+    {:ok, _integration} =
+      update_integration(integration, %{
+        last_run_at: started_at,
+        last_status: Keyword.get(opts, :last_status, "error"),
+        last_error: error
+      })
+
+    {:error, run}
+  end
+
+  # Sibling of `record_failure/3` for the poll and webhook success paths, which
+  # differ only in the trigger and the metadata map.
+  defp record_success(%Integration{} = integration, documents, records_fetched, opts) do
+    document = List.first(documents)
+    started_at = Keyword.fetch!(opts, :started_at)
+
+    {:ok, run} =
+      create_run(%{
+        integration_id: integration.id,
+        document_id: document && document.id,
+        trigger: Keyword.fetch!(opts, :trigger),
+        status: "ok",
+        records_fetched: records_fetched,
+        error: nil,
+        started_at: started_at,
+        finished_at: timestamp(),
+        metadata: Keyword.fetch!(opts, :metadata)
+      })
+
+    {:ok, _integration} =
+      update_integration(integration, %{
+        last_run_at: started_at,
+        last_status: "ok",
+        last_error: nil
+      })
+
+    {:ok, run}
+  end
+
+  defp failure_error(reason), do: bounded_error(error_message(reason))
+
   defp trigger(opts), do: opts |> Keyword.get(:trigger, "manual") |> to_string()
 
-  defp enabled_config?(%Integration{config: config}, key) when is_map(config) do
+  defp webhook_trigger(opts), do: trigger(Keyword.put(opts, :trigger, "webhook"))
+
+  defp enabled_config?(config, key) when is_map(config) do
     case Map.get(config, key) do
       true -> true
       1 -> true
@@ -494,7 +437,7 @@ defmodule BusterClaw.Integrations do
     end
   end
 
-  defp enabled_config?(_integration, _key), do: false
+  defp enabled_config?(_config, _key), do: false
 
   defp integration_document?(document) do
     "integration" in document_tags(document)
