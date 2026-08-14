@@ -4,10 +4,11 @@ defmodule BusterClaw.Scene3d.Svg do
   `t:BusterClaw.Scene3d.Types.frame/0` serialized to one self-contained
   `<svg>…</svg>` string.
 
-  Server-rendered SVG, for exactly the reasons `BusterClawWeb.PortfolioChart`
-  gives: the numbers already live on the server, LiveView already re-renders, and
-  the CSP forbids fetching a drawing library anyway. There is no charting or 3D
-  dependency here and there should not be one.
+  Server-rendered SVG, for exactly the reasons the Trading stack's
+  `PortfolioChart` established before it was deleted (08-08): the numbers
+  already live on the server, LiveView already re-renders, and the CSP forbids
+  fetching a drawing library anyway. There is no charting or 3D dependency here
+  and there should not be one.
 
   ## The safety posture, which inverts `BusterClaw.SvgViewer`'s
 

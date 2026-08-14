@@ -25,10 +25,8 @@ import {FileTreeDnd} from "./file_tree_dnd.js"
 import {WorkspaceDropzone} from "./workspace_dropzone.js"
 import {ChatDropzone} from "./chat_dropzone.js"
 import {NotifySound, SoundPreview} from "./notify_sound.js"
-import {PortfolioChart} from "./portfolio_chart.js"
 import {MusicPlayer} from "./music_player.js"
 import {Dtmf} from "./dtmf.js"
-import {ChatWindow} from "./chat_window.js"
 import {Composer} from "./composer.js"
 import {NoteEditor} from "./note_editor.js"
 import {NotesKeys} from "./notes_keys.js"
@@ -36,7 +34,6 @@ import {NoteContextMenu, NoteTitle} from "./note_context.js"
 import {ClinchManager, ClinchAppKeys, RecoveryKey} from "./clinch.js"
 
 export const Hooks = {
-  PortfolioChart,
   MusicPlayer,
   Dtmf,
   CornerWidget,
@@ -46,7 +43,6 @@ export const Hooks = {
   VoiceBridge,
   VoiceToggle,
   AgentChat,
-  ChatWindow,
   Composer,
   ThinkingTimer,
   QueueRail,

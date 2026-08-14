@@ -162,19 +162,6 @@
   .bc-split-right { flex: 1 1 0; }
 }
 
-/* The Trading tab's split is gone: the panel owns the full width and the chats
-   float over it as ChatWindow instances, positioned from localStorage. Nothing
-   sizes a rail here any more.
-
-   The tab strip doubles as a drop target — drag a floating chat onto it to dock
-   it as a sub-tab. The ChatWindow hook toggles this class while a window is
-   over the strip, so the target is visible BEFORE the user commits to the drop
-   rather than only after something has already happened. */
-.bc-tab-dropzone-active {
-  border-color: var(--color-primary, currentColor);
-  background-color: color-mix(in oklab, var(--color-primary, currentColor) 12%, transparent);
-}
-
 /* Notes editor save chip. Four of its five states are assigns; "Saving…" is
    not, because the in-flight save is over before any assign made during it
    could paint. LiveView already marks the form for exactly that window, so the
