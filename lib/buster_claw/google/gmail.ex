@@ -1,9 +1,19 @@
 defmodule BusterClaw.Google.Gmail do
-  @moduledoc "Gmail read/search/draft/send helpers for connected Google Workspace accounts."
+  @moduledoc """
+  Gmail read/search/draft/send helpers for connected Google Workspace accounts.
+
+  This module is the Gmail API surface: which endpoint each verb hits, what
+  query parameters it carries, and how concurrent fan-out and paging limits
+  behave. Transport, auth and retry live in `BusterClaw.Google.Client`; the two
+  halves of message shaping live beside this file —
+  `BusterClaw.Google.Gmail.Mime` composes outbound messages (and owns the
+  attachment fence), `BusterClaw.Google.Gmail.Parser` reads inbound responses.
+  """
 
   alias BusterClaw.Google.Account
   alias BusterClaw.Google.Client
-  alias BusterClaw.Library.Artifact
+  alias BusterClaw.Google.Gmail.Mime
+  alias BusterClaw.Google.Gmail.Parser
 
   @default_limit 10
   @max_limit 50
@@ -16,7 +26,7 @@ defmodule BusterClaw.Google.Gmail do
       labels =
         body
         |> Map.get("labels", [])
-        |> Enum.map(&label_summary/1)
+        |> Enum.map(&Parser.label_summary/1)
 
       {:ok, labels}
     end
@@ -108,7 +118,7 @@ defmodule BusterClaw.Google.Gmail do
     opts = Keyword.put(opts, :params, [{"format", "full"}])
 
     with {:ok, body} <- Client.get_json(account, path, opts) do
-      {:ok, parse_message(body)}
+      {:ok, Parser.parse_message(body)}
     end
   end
 
@@ -124,12 +134,12 @@ defmodule BusterClaw.Google.Gmail do
 
     with {:ok, body} <-
            Client.get_json(account, "users/me/history", Keyword.put(opts, :params, params)) do
-      {:ok, history_summary(body)}
+      {:ok, Parser.history_summary(body)}
     end
   end
 
   def create_draft(%Account{} = account, attrs, opts \\ []) when is_map(attrs) do
-    with {:ok, mime} <- message_mime(attrs),
+    with {:ok, mime} <- Mime.message_mime(attrs),
          {:ok, body} <-
            Client.post_json(
              account,
@@ -137,12 +147,12 @@ defmodule BusterClaw.Google.Gmail do
              %{"message" => %{"raw" => Base.url_encode64(mime, padding: false)}},
              opts
            ) do
-      {:ok, draft_summary(body)}
+      {:ok, Parser.draft_summary(body)}
     end
   end
 
   def send_message(%Account{} = account, attrs, opts \\ []) when is_map(attrs) do
-    with {:ok, mime} <- message_mime(attrs),
+    with {:ok, mime} <- Mime.message_mime(attrs),
          {:ok, body} <-
            Client.post_json(
              account,
@@ -150,7 +160,7 @@ defmodule BusterClaw.Google.Gmail do
              send_payload(mime, attrs),
              opts
            ) do
-      {:ok, sent_message_summary(body)}
+      {:ok, Parser.sent_message_summary(body)}
     end
   end
 
@@ -168,7 +178,7 @@ defmodule BusterClaw.Google.Gmail do
     }
 
     with {:ok, body} <- Client.post_json(account, path, body, opts) do
-      {:ok, message_summary(body)}
+      {:ok, Parser.message_summary(body)}
     end
   end
 
@@ -177,7 +187,7 @@ defmodule BusterClaw.Google.Gmail do
     path = "users/me/messages/#{URI.encode_www_form(to_string(message_id))}/trash"
 
     with {:ok, body} <- Client.post_json(account, path, %{}, opts) do
-      {:ok, sent_message_summary(body)}
+      {:ok, Parser.sent_message_summary(body)}
     end
   end
 
@@ -192,7 +202,7 @@ defmodule BusterClaw.Google.Gmail do
 
   defp label_id_list(attrs, keys) do
     keys
-    |> Enum.find_value([], fn key -> get_attr(attrs, key) end)
+    |> Enum.find_value([], fn key -> Mime.get_attr(attrs, key) end)
     |> normalize_label_ids()
   end
 
@@ -209,7 +219,7 @@ defmodule BusterClaw.Google.Gmail do
   defp send_payload(mime, attrs) do
     base = %{"raw" => Base.url_encode64(mime, padding: false)}
 
-    case header_value(get_attr(attrs, "thread_id")) do
+    case Mime.header_value(Mime.get_attr(attrs, "thread_id")) do
       "" -> base
       thread_id -> Map.put(base, "threadId", thread_id)
     end
@@ -226,7 +236,7 @@ defmodule BusterClaw.Google.Gmail do
     ]
 
     with {:ok, body} <- Client.get_json(account, path, Keyword.put(opts, :params, params)) do
-      {:ok, message_summary(body)}
+      {:ok, Parser.message_summary(body)}
     end
   end
 
@@ -241,455 +251,6 @@ defmodule BusterClaw.Google.Gmail do
       {:ok, items} -> {:ok, Enum.reverse(items)}
       error -> error
     end
-  end
-
-  defp parse_message(body) do
-    payload = Map.get(body, "payload", %{})
-    headers = headers_map(payload)
-    {text, html} = message_bodies(payload)
-
-    %{
-      id: Map.get(body, "id"),
-      thread_id: Map.get(body, "threadId"),
-      history_id: Map.get(body, "historyId"),
-      internal_date: parse_internal_date(Map.get(body, "internalDate")),
-      snippet: Map.get(body, "snippet"),
-      label_ids: Map.get(body, "labelIds", []),
-      subject: Map.get(headers, "subject"),
-      from: Map.get(headers, "from"),
-      to: Map.get(headers, "to"),
-      date: Map.get(headers, "date"),
-      # The RFC 5322 Message-ID header (distinct from the Gmail API `id`); used as
-      # the In-Reply-To / References target when replying so the reply threads.
-      message_id_header: Map.get(headers, "message-id"),
-      body_text: text || html_to_text(html),
-      body_html: html,
-      raw: body
-    }
-  end
-
-  defp message_summary(body) do
-    payload = Map.get(body, "payload", %{})
-    headers = headers_map(payload)
-
-    %{
-      id: Map.get(body, "id"),
-      thread_id: Map.get(body, "threadId"),
-      history_id: Map.get(body, "historyId"),
-      internal_date: parse_internal_date(Map.get(body, "internalDate")),
-      snippet: Map.get(body, "snippet"),
-      label_ids: Map.get(body, "labelIds", []),
-      subject: Map.get(headers, "subject"),
-      from: Map.get(headers, "from"),
-      date: Map.get(headers, "date")
-    }
-  end
-
-  defp label_summary(label) do
-    %{
-      id: Map.get(label, "id"),
-      name: Map.get(label, "name"),
-      type: Map.get(label, "type"),
-      message_list_visibility: Map.get(label, "messageListVisibility"),
-      label_list_visibility: Map.get(label, "labelListVisibility")
-    }
-  end
-
-  defp draft_summary(body) do
-    %{
-      id: Map.get(body, "id"),
-      message_id: get_in(body, ["message", "id"]),
-      thread_id: get_in(body, ["message", "threadId"]),
-      raw: body
-    }
-  end
-
-  defp sent_message_summary(body) do
-    %{
-      id: Map.get(body, "id"),
-      thread_id: Map.get(body, "threadId"),
-      label_ids: Map.get(body, "labelIds", []),
-      raw: body
-    }
-  end
-
-  defp history_summary(body) do
-    history = Map.get(body, "history", [])
-
-    deleted_message_ids =
-      history |> Enum.flat_map(&history_event_message_ids(&1, "messagesDeleted")) |> unique_ids()
-
-    message_ids =
-      history
-      |> Enum.flat_map(&history_changed_message_ids/1)
-      |> unique_ids()
-      |> Enum.reject(&(&1 in deleted_message_ids))
-
-    %{
-      history: history,
-      history_id: Map.get(body, "historyId"),
-      message_ids: message_ids,
-      deleted_message_ids: deleted_message_ids,
-      next_page_token: Map.get(body, "nextPageToken"),
-      raw: body
-    }
-  end
-
-  defp history_changed_message_ids(entry) do
-    history_message_ids(entry, "messages") ++
-      history_event_message_ids(entry, "messagesAdded") ++
-      history_event_message_ids(entry, "labelsAdded") ++
-      history_event_message_ids(entry, "labelsRemoved")
-  end
-
-  defp history_message_ids(entry, key) do
-    entry
-    |> Map.get(key, [])
-    |> Enum.map(&Map.get(&1, "id"))
-  end
-
-  defp history_event_message_ids(entry, key) do
-    entry
-    |> Map.get(key, [])
-    |> Enum.map(fn event ->
-      get_in(event, ["message", "id"]) || Map.get(event, "id")
-    end)
-  end
-
-  defp unique_ids(ids) do
-    ids
-    |> Enum.reject(&(&1 in [nil, ""]))
-    |> Enum.map(&to_string/1)
-    |> Enum.uniq()
-  end
-
-  defp message_mime(attrs) do
-    with {:ok, to} <- required_header(attrs, "to", :missing_recipient),
-         {:ok, subject} <- required_header(attrs, "subject", :missing_subject),
-         {:ok, body} <- required_body(attrs),
-         {:ok, attachments} <- load_attachments(attrs) do
-      base_headers =
-        [
-          {"To", to},
-          optional_header("Cc", attrs, "cc"),
-          optional_header("Bcc", attrs, "bcc"),
-          optional_header("In-Reply-To", attrs, "in_reply_to"),
-          optional_header("References", attrs, "references"),
-          {"Subject", subject},
-          {"MIME-Version", "1.0"}
-        ]
-        |> Enum.reject(&is_nil/1)
-
-      {:ok, render_mime(base_headers, body, attachments)}
-    end
-  end
-
-  # No attachments: a plain single-part text/plain message (backward compatible).
-  defp render_mime(base_headers, body, []) do
-    render_headers(base_headers ++ [{"Content-Type", ~s(text/plain; charset="UTF-8")}]) <>
-      "\r\n\r\n" <> body
-  end
-
-  # With attachments: a multipart/mixed message — text body first, then each file.
-  defp render_mime(base_headers, body, attachments) do
-    boundary = mime_boundary()
-
-    top =
-      render_headers(
-        base_headers ++ [{"Content-Type", ~s(multipart/mixed; boundary="#{boundary}")}]
-      )
-
-    body_part =
-      render_headers([{"Content-Type", ~s(text/plain; charset="UTF-8")}]) <> "\r\n\r\n" <> body
-
-    parts = [body_part | Enum.map(attachments, &render_attachment_part/1)]
-
-    encoded_parts =
-      Enum.map_join(parts, "", fn part -> "--#{boundary}\r\n" <> part <> "\r\n" end)
-
-    top <> "\r\n\r\n" <> encoded_parts <> "--#{boundary}--\r\n"
-  end
-
-  defp render_attachment_part(%{filename: filename, content_type: content_type, data: data}) do
-    encoded = data |> Base.encode64() |> chunk_base64()
-
-    # Both values are caller-supplied and land inside header lines: a CRLF in
-    # either would terminate the header and inject arbitrary ones, and a `"` in
-    # the filename would escape its quoted parameter. Stripped rather than
-    # escaped — no legitimate filename or MIME type carries any of them.
-    filename = String.replace(filename, ~r/[\r\n"]/, "")
-    content_type = String.replace(content_type, ~r/[\r\n]/, "")
-
-    render_headers([
-      {"Content-Type", ~s(#{content_type}; name="#{filename}")},
-      {"Content-Transfer-Encoding", "base64"},
-      {"Content-Disposition", ~s(attachment; filename="#{filename}")}
-    ]) <> "\r\n\r\n" <> encoded
-  end
-
-  defp render_headers(headers) do
-    headers
-    |> Enum.reject(&is_nil/1)
-    |> Enum.map_join("\r\n", fn {key, value} -> "#{key}: #{value}" end)
-  end
-
-  # RFC 2045 caps base64 lines at 76 characters.
-  defp chunk_base64(encoded) do
-    encoded
-    |> String.to_charlist()
-    |> Enum.chunk_every(76)
-    |> Enum.map_join("\r\n", &List.to_string/1)
-  end
-
-  defp mime_boundary do
-    "=_bc_" <> (:crypto.strong_rand_bytes(12) |> Base.url_encode64(padding: false))
-  end
-
-  defp load_attachments(attrs) do
-    attrs
-    |> get_attr("attachments")
-    |> normalize_attachment_list()
-    |> Enum.reduce_while({:ok, []}, fn spec, {:ok, acc} ->
-      case load_attachment(spec) do
-        {:ok, attachment} -> {:cont, {:ok, [attachment | acc]}}
-        {:error, _} = err -> {:halt, err}
-      end
-    end)
-    |> case do
-      {:ok, list} -> {:ok, Enum.reverse(list)}
-      error -> error
-    end
-  end
-
-  defp normalize_attachment_list(nil), do: []
-  defp normalize_attachment_list(list) when is_list(list), do: list
-  defp normalize_attachment_list(single), do: [single]
-
-  defp load_attachment(path) when is_binary(path), do: load_attachment(%{"path" => path})
-
-  defp load_attachment(%{} = spec) do
-    with {:ok, abs} <- resolve_attachment_path(spec_path(spec)),
-         {:ok, data} <- read_attachment(abs) do
-      filename = spec_filename(spec) || Path.basename(abs)
-      content_type = spec_content_type(spec) || guess_content_type(filename)
-      {:ok, %{filename: filename, content_type: content_type, data: data}}
-    end
-  end
-
-  defp load_attachment(_other), do: {:error, :invalid_attachment}
-
-  defp spec_path(spec),
-    do: nilify(Map.get(spec, "path") || Map.get(spec, "file") || Map.get(spec, "filepath"))
-
-  defp spec_filename(spec), do: nilify(Map.get(spec, "filename") || Map.get(spec, "name"))
-
-  defp spec_content_type(spec),
-    do: nilify(Map.get(spec, "content_type") || Map.get(spec, "mime_type"))
-
-  defp resolve_attachment_path(nil), do: {:error, :missing_attachment_path}
-  defp resolve_attachment_path(""), do: {:error, :missing_attachment_path}
-
-  # Attachments may only come from inside the workspace. Outbound email is the
-  # one channel where an unfenced read becomes an exfiltration — a caller (or a
-  # prompt-injected draft flow) naming `~/.ssh/id_ed25519` here would mail it —
-  # and every other file-reaching surface in the app fences the same way.
-  # `FileManager.within?/2` canonicalizes through symlinks, so a link planted
-  # inside the workspace cannot smuggle a path outside it.
-  defp resolve_attachment_path(path) do
-    root = Artifact.workspace_root()
-
-    expanded =
-      case Path.type(path) do
-        :absolute -> Path.expand(path)
-        _relative -> Path.expand(path, root)
-      end
-
-    if BusterClaw.FileManager.within?(expanded, root) do
-      {:ok, expanded}
-    else
-      {:error, {:attachment_outside_workspace, expanded}}
-    end
-  end
-
-  defp read_attachment(abs) do
-    case File.read(abs) do
-      {:ok, data} -> {:ok, data}
-      {:error, reason} -> {:error, {:attachment_unreadable, abs, reason}}
-    end
-  end
-
-  # A flat extension→MIME lookup table. Cyclomatic complexity counts each branch
-  # as a decision, but there is no decision here — adding a file type is not
-  # added complexity. The metric is measuring the wrong thing; don't "fix" this
-  # by splitting the table.
-  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
-  defp guess_content_type(filename) do
-    case filename |> Path.extname() |> String.downcase() do
-      ".pdf" -> "application/pdf"
-      ".html" -> "text/html"
-      ".htm" -> "text/html"
-      ".txt" -> "text/plain"
-      ".md" -> "text/markdown"
-      ".csv" -> "text/csv"
-      ".json" -> "application/json"
-      ".png" -> "image/png"
-      ".jpg" -> "image/jpeg"
-      ".jpeg" -> "image/jpeg"
-      ".gif" -> "image/gif"
-      ".doc" -> "application/msword"
-      ".docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      ".xls" -> "application/vnd.ms-excel"
-      ".xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      ".zip" -> "application/zip"
-      _ -> "application/octet-stream"
-    end
-  end
-
-  defp nilify(""), do: nil
-  defp nilify(value), do: value
-
-  defp required_header(attrs, key, error) do
-    case header_value(get_attr(attrs, key)) do
-      "" -> {:error, error}
-      value -> {:ok, value}
-    end
-  end
-
-  defp optional_header(label, attrs, key) do
-    case header_value(get_attr(attrs, key)) do
-      "" -> nil
-      value -> {label, value}
-    end
-  end
-
-  defp required_body(attrs) do
-    case get_attr(attrs, "body") do
-      value when value in [nil, ""] -> {:error, :missing_body}
-      value -> {:ok, to_string(value)}
-    end
-  end
-
-  # Same shape as guess_content_type/1: a flat key→attribute lookup, not branching
-  # logic. Left as one readable table on purpose.
-  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
-  defp get_attr(attrs, key) when is_binary(key) do
-    case key do
-      "to" ->
-        Map.get(attrs, "to") || Map.get(attrs, :to) || Map.get(attrs, "recipient") ||
-          Map.get(attrs, :recipient)
-
-      "cc" ->
-        Map.get(attrs, "cc") || Map.get(attrs, :cc)
-
-      "bcc" ->
-        Map.get(attrs, "bcc") || Map.get(attrs, :bcc)
-
-      "subject" ->
-        Map.get(attrs, "subject") || Map.get(attrs, :subject)
-
-      "body" ->
-        Map.get(attrs, "body") || Map.get(attrs, :body)
-
-      "in_reply_to" ->
-        Map.get(attrs, "in_reply_to") || Map.get(attrs, :in_reply_to)
-
-      "references" ->
-        Map.get(attrs, "references") || Map.get(attrs, :references)
-
-      "thread_id" ->
-        Map.get(attrs, "thread_id") || Map.get(attrs, :thread_id)
-
-      _other ->
-        Map.get(attrs, key)
-    end
-  end
-
-  defp header_value(nil), do: ""
-
-  defp header_value(values) when is_list(values) do
-    values
-    |> Enum.map(&header_value/1)
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.join(", ")
-  end
-
-  defp header_value(value) do
-    value
-    |> to_string()
-    |> String.replace(~r/[\r\n]+/, " ")
-    |> String.trim()
-  end
-
-  defp headers_map(payload) do
-    payload
-    |> Map.get("headers", [])
-    |> Map.new(fn header ->
-      {header |> Map.get("name", "") |> String.downcase(), Map.get(header, "value")}
-    end)
-  end
-
-  defp message_bodies(payload) do
-    payload
-    |> flatten_parts()
-    |> Enum.reduce({nil, nil}, fn part, {text, html} ->
-      decoded = part |> Map.get("body", %{}) |> Map.get("data") |> decode_base64url()
-
-      case {Map.get(part, "mimeType"), decoded} do
-        {"text/plain", value} when is_binary(value) -> {text || value, html}
-        {"text/html", value} when is_binary(value) -> {text, html || value}
-        _other -> {text, html}
-      end
-    end)
-  end
-
-  defp flatten_parts(payload) do
-    parts = Map.get(payload, "parts", [])
-
-    if parts == [] do
-      [payload]
-    else
-      Enum.flat_map(parts, &flatten_parts/1)
-    end
-  end
-
-  defp decode_base64url(nil), do: nil
-
-  defp decode_base64url(data) do
-    data
-    |> pad_base64()
-    |> Base.url_decode64()
-    |> case do
-      {:ok, decoded} -> decoded
-      :error -> nil
-    end
-  end
-
-  defp pad_base64(data) do
-    case rem(String.length(data), 4) do
-      0 -> data
-      missing -> data <> String.duplicate("=", 4 - missing)
-    end
-  end
-
-  defp html_to_text(nil), do: nil
-
-  defp html_to_text(html) do
-    html
-    |> String.replace(~r/<br\s*\/?>/i, "\n")
-    |> String.replace(~r/<\/p>/i, "\n")
-    |> String.replace(~r/<[^>]+>/, "")
-    |> decode_common_entities()
-    |> String.trim()
-  end
-
-  defp decode_common_entities(text) do
-    text
-    |> String.replace("&nbsp;", " ")
-    |> String.replace("&amp;", "&")
-    |> String.replace("&lt;", "<")
-    |> String.replace("&gt;", ">")
-    |> String.replace("&quot;", "\"")
-    |> String.replace("&#39;", "'")
   end
 
   defp maybe_put_query(params, query) when query in [nil, ""], do: params
@@ -709,24 +270,6 @@ defmodule BusterClaw.Google.Gmail do
       [{"historyTypes", to_string(history_type)} | acc]
     end)
   end
-
-  defp parse_internal_date(nil), do: nil
-
-  defp parse_internal_date(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {milliseconds, _rest} -> DateTime.from_unix(milliseconds, :millisecond) |> ok_or_nil()
-      :error -> nil
-    end
-  end
-
-  defp parse_internal_date(value) when is_integer(value) do
-    DateTime.from_unix(value, :millisecond) |> ok_or_nil()
-  end
-
-  defp parse_internal_date(_value), do: nil
-
-  defp ok_or_nil({:ok, value}), do: value
-  defp ok_or_nil(_other), do: nil
 
   defp clamp_limit(limit) when is_binary(limit) do
     case Integer.parse(limit) do
