@@ -23,8 +23,11 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
   * **`system/init` re-emits at the start of every turn**, same session id, same
     capability list — so capabilities can be read per turn, and nothing may latch
     on "the first init".
-  * **The receipt is the replayed user message.** See
-    `BusterClaw.Agent.ChatMessageEncoder` for the string-vs-blocks discriminator.
+  * **The receipt is the replayed user message** — see
+    `BusterClaw.Agent.ChatMessageEncoder` for the string-vs-blocks
+    discriminator. **Nothing consumes that replay yet**, so `steer/3` reports
+    `:unconfirmed` rather than letting a bare pipe write masquerade as proof;
+    the UI says "sent", the ledger says "uncertain", and both are the truth.
 
   ## Why this is a separate module from `ChatTransport.Claude`
 
@@ -79,6 +82,10 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
   def capabilities do
     %{
       modes: [:start_turn, :queue_next, :steer, :interrupt],
+      # The KIND of receipt this wire offers. Offers, not yet delivers: until
+      # the replay echo is consumed, every steer's per-call receipt is
+      # `:unconfirmed` (see `steer/3`), and that per-call value — not this
+      # field — is what decides whether "STEERED" may render.
       receipt: :boundary_replay,
       # The process outlives the turn, so `Chat` must end turns on the `result`
       # event and read an OS exit as transport failure rather than completion.
@@ -119,7 +126,21 @@ defmodule BusterClaw.Agent.ChatTransport.ClaudeDuplex do
         # A steered message may carry its own attachments — same channel, same
         # encoder. Only the inline blocks and the prompt prefix can apply: the
         # process is by definition already running.
-        write(handle, text, ChatTransport.deliveries(handle, duplex: true))
+        #
+        # `:unconfirmed`, because a successful `Port.command/2` proves only that
+        # WE wrote — the wire's actual proof is the `--replay-user-messages`
+        # echo at the next boundary, and nothing consumes that echo yet
+        # (`ChatMessageEncoder.operator_replay?/1` is the ready-made
+        # discriminator, currently unused). Claiming `:steered` on a bare write
+        # is exactly the false claim the ChatTransport contract forbids; `Chat`
+        # maps `:unconfirmed` to `:sent`/"uncertain", the same honest downgrade
+        # OpenCode's receiptless v1 path takes. Upgrading this to a real
+        # `:steered` means consuming the replay — filed in
+        # LEFTOVERS_AGENT_CORE, not faked here.
+        with {:ok, handle, receipt} <-
+               write(handle, text, ChatTransport.deliveries(handle, duplex: true)) do
+          {:ok, handle, Map.put(receipt, :receipt, :unconfirmed)}
+        end
     end
   end
 

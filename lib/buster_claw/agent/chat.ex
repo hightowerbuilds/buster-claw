@@ -1485,11 +1485,11 @@ defmodule BusterClaw.Agent.Chat do
   defp default_spawner(prompt, opts) do
     opts =
       opts
-      # The model is resolved per RUN (it does not change the argv shape). The
-      # harness is NOT resolved here — it arrives on `opts` from the Chat state,
-      # because the stream flags were already built from it and a second
-      # resolution could disagree with them.
-      |> Keyword.put_new(:model, ModelPolicy.for_surface(:chat))
+      # Resolved per RUN, and for THIS run's harness — the `:agent` the adapter
+      # put in `opts`, through `resolve_model/1`, never `for_surface/1`: global
+      # policy's backend is not necessarily this conversation's (a confinement
+      # pin diverges them), and a model id only means anything in its own namespace.
+      |> Keyword.put_new(:model, resolve_model(Keyword.get(opts, :agent)))
 
     # A duplex transport needs stdin left open; every other caller of
     # `AgentRunner` needs it closed. The two openers are separate functions

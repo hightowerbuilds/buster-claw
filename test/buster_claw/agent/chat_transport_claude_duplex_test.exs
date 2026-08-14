@@ -104,7 +104,13 @@ defmodule BusterClaw.Agent.ChatTransportClaudeDuplexTest do
       assert_receive {:spawned, _port, _opts}
       _ = echoed()
 
-      assert {:ok, _handle, _receipt} = ClaudeDuplex.steer(handle, turn_ref, "actually, stop")
+      # `:unconfirmed`, deliberately: a successful pipe write is not the replay
+      # echo, and nothing consumes the echo yet. `Chat` maps this to `:sent` /
+      # "uncertain" — if this assertion starts failing because the receipt got
+      # stronger, the replay had better actually be consumed now.
+      assert {:ok, _handle, %{receipt: :unconfirmed}} =
+               ClaudeDuplex.steer(handle, turn_ref, "actually, stop")
+
       assert get_in(Jason.decode!(echoed()), ["message", "content"]) == "actually, stop"
 
       ClaudeDuplex.close(handle)
