@@ -413,6 +413,13 @@ defmodule BusterClaw.Google.Gmail do
   defp render_attachment_part(%{filename: filename, content_type: content_type, data: data}) do
     encoded = data |> Base.encode64() |> chunk_base64()
 
+    # Both values are caller-supplied and land inside header lines: a CRLF in
+    # either would terminate the header and inject arbitrary ones, and a `"` in
+    # the filename would escape its quoted parameter. Stripped rather than
+    # escaped — no legitimate filename or MIME type carries any of them.
+    filename = String.replace(filename, ~r/[\r\n"]/, "")
+    content_type = String.replace(content_type, ~r/[\r\n]/, "")
+
     render_headers([
       {"Content-Type", ~s(#{content_type}; name="#{filename}")},
       {"Content-Transfer-Encoding", "base64"},
@@ -482,14 +489,26 @@ defmodule BusterClaw.Google.Gmail do
   defp resolve_attachment_path(nil), do: {:error, :missing_attachment_path}
   defp resolve_attachment_path(""), do: {:error, :missing_attachment_path}
 
+  # Attachments may only come from inside the workspace. Outbound email is the
+  # one channel where an unfenced read becomes an exfiltration — a caller (or a
+  # prompt-injected draft flow) naming `~/.ssh/id_ed25519` here would mail it —
+  # and every other file-reaching surface in the app fences the same way.
+  # `FileManager.within?/2` canonicalizes through symlinks, so a link planted
+  # inside the workspace cannot smuggle a path outside it.
   defp resolve_attachment_path(path) do
+    root = Artifact.workspace_root()
+
     expanded =
       case Path.type(path) do
         :absolute -> Path.expand(path)
-        _relative -> Path.expand(path, Artifact.workspace_root())
+        _relative -> Path.expand(path, root)
       end
 
-    {:ok, expanded}
+    if BusterClaw.FileManager.within?(expanded, root) do
+      {:ok, expanded}
+    else
+      {:error, {:attachment_outside_workspace, expanded}}
+    end
   end
 
   defp read_attachment(abs) do

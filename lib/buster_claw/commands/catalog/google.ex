@@ -105,7 +105,7 @@ defmodule BusterClaw.Commands.Catalog.Google do
               type: :array,
               required: false,
               description:
-                "File paths (relative to the workspace, or absolute), or objects with path/filename/content_type."
+                "Paths inside the workspace (relative, or absolute within it), or objects with path/filename/content_type. Files outside the workspace are refused."
             }
           })
       },
@@ -127,7 +127,7 @@ defmodule BusterClaw.Commands.Catalog.Google do
               type: :array,
               required: false,
               description:
-                "File paths (relative to the workspace, or absolute), or objects with path/filename/content_type."
+                "Paths inside the workspace (relative, or absolute within it), or objects with path/filename/content_type. Files outside the workspace are refused."
             },
             "confirm_send" => %{type: :boolean, required: true, default: false}
           })

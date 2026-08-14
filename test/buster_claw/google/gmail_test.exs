@@ -286,10 +286,7 @@ defmodule BusterClaw.Google.GmailTest do
 
   test "sends a Gmail message with a file attachment as a multipart/mixed payload" do
     path =
-      Path.join(System.tmp_dir!(), "buster-claw-attach-#{System.unique_integer([:positive])}.txt")
-
-    File.write!(path, "attachment contents")
-    on_exit(fn -> File.rm(path) end)
+      workspace_file!("attach-#{System.unique_integer([:positive])}.txt", "attachment contents")
 
     Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
       assert conn.request_path == "/gmail/v1/users/me/messages/send"
@@ -334,11 +331,7 @@ defmodule BusterClaw.Google.GmailTest do
   end
 
   test "honors explicit filename and content_type on an attachment spec" do
-    path =
-      Path.join(System.tmp_dir!(), "buster-claw-attach-#{System.unique_integer([:positive])}.bin")
-
-    File.write!(path, "%PDF-1.4 fake")
-    on_exit(fn -> File.rm(path) end)
+    path = workspace_file!("attach-#{System.unique_integer([:positive])}.bin", "%PDF-1.4 fake")
 
     Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -372,9 +365,10 @@ defmodule BusterClaw.Google.GmailTest do
   end
 
   test "fails before calling Google when an attachment is unreadable" do
+    # Inside the workspace (so it clears the fence) but nonexistent.
     missing =
       Path.join(
-        System.tmp_dir!(),
+        BusterClaw.Library.Artifact.workspace_root(),
         "buster-claw-missing-#{System.unique_integer([:positive])}.txt"
       )
 
@@ -392,6 +386,91 @@ defmodule BusterClaw.Google.GmailTest do
                  "subject" => "Broken attachment",
                  "body" => "See attached.",
                  "attachments" => [missing]
+               },
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+  end
+
+  test "refuses an attachment path outside the workspace, before touching disk or Google" do
+    # Real file, readable, outside the fence — the exfiltration shape. The
+    # refusal must come from the path, not from readability.
+    outside =
+      Path.join(System.tmp_dir!(), "buster-claw-secret-#{System.unique_integer([:positive])}.txt")
+
+    File.write!(outside, "private key material")
+    on_exit(fn -> File.rm(outside) end)
+
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn _conn ->
+      flunk("Google should not be called for an out-of-workspace attachment")
+    end)
+
+    account = connected_account!()
+
+    assert {:error, {:attachment_outside_workspace, _abs}} =
+             Gmail.send_message(
+               account,
+               %{
+                 "to" => "Ada <ada@example.com>",
+                 "subject" => "Exfil attempt",
+                 "body" => "See attached.",
+                 "attachments" => [outside]
+               },
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+  end
+
+  test "a relative attachment path cannot dot-dot its way out of the workspace" do
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn _conn ->
+      flunk("Google should not be called for an escaping relative path")
+    end)
+
+    account = connected_account!()
+
+    assert {:error, {:attachment_outside_workspace, _abs}} =
+             Gmail.send_message(
+               account,
+               %{
+                 "to" => "Ada <ada@example.com>",
+                 "subject" => "Escape attempt",
+                 "body" => "See attached.",
+                 "attachments" => ["../../etc/passwd"]
+               },
+               req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
+             )
+  end
+
+  test "strips CRLF and quotes from attachment filenames and content types before they reach MIME headers" do
+    path = workspace_file!("attach-#{System.unique_integer([:positive])}.txt", "payload")
+
+    Req.Test.stub(BusterClaw.GoogleHTTP, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      raw = body |> Jason.decode!() |> Map.fetch!("raw") |> decode_base64url!()
+
+      # The CRLF is what turns injected text into a header line of its own;
+      # stripped, the text survives only inertly inside the quoted parameter.
+      refute raw =~ "\r\nX-Injected:"
+      refute raw =~ "\r\nBcc:"
+      assert raw =~ ~s(filename="evil.txtX-Injected: evil")
+
+      Req.Test.json(conn, %{"id" => "msg-attach-3", "threadId" => "thread-attach-3"})
+    end)
+
+    account = connected_account!()
+
+    assert {:ok, _message} =
+             Gmail.send_message(
+               account,
+               %{
+                 "to" => "Ada <ada@example.com>",
+                 "subject" => "Hostile filename",
+                 "body" => "See attached.",
+                 "attachments" => [
+                   %{
+                     "path" => path,
+                     "filename" => "evil.txt\"\r\nX-Injected: evil",
+                     "content_type" => "text/plain\r\nBcc: attacker@example.com"
+                   }
+                 ]
                },
                req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
              )
@@ -450,6 +529,18 @@ defmodule BusterClaw.Google.GmailTest do
                "msg-1",
                req_options: [plug: {Req.Test, BusterClaw.GoogleHTTP}]
              )
+  end
+
+  # Attachments must live inside the workspace now (the fence in
+  # `resolve_attachment_path/1` refuses everything else), so test files are
+  # written there rather than to `System.tmp_dir!()`.
+  defp workspace_file!(name, contents) do
+    root = BusterClaw.Library.Artifact.workspace_root()
+    File.mkdir_p!(root)
+    path = Path.join(root, name)
+    File.write!(path, contents)
+    on_exit(fn -> File.rm(path) end)
+    path
   end
 
   defp connected_account! do
